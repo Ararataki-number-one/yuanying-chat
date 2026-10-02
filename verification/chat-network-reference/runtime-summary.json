@@ -1,19 +1,13 @@
 {
-  "testApkSha256": "63523d3500c9aafe0687ef85ccc3c37fbb3d1e2955f6775cb52dfb1380ea27f5",
+  "testApkSha256": "a20dcd86c62fb68fd13b152602832056d3c8378fec70d70034583e22094f2a93",
   "environment": "Android 15 API 35 software emulator, 360 dp, timeout multiplier 8",
   "outcomes": [
-    {
-      "activity": "StartupRouteTestActivity",
-      "file": "startup-route-results.json",
-      "status": "passed",
-      "passed": 22,
-      "total": 22
-    },
     {
       "activity": "CompactModeTestActivity",
       "file": "compact-mode-results.json",
       "status": "incomplete",
-      "reason": "No current result before 240-second deadline"
+      "reason": "No current result before 240-second deadline",
+      "testApkSha256": "63523d3500c9aafe0687ef85ccc3c37fbb3d1e2955f6775cb52dfb1380ea27f5"
     },
     {
       "activity": "CompactModeTestActivity",
@@ -21,28 +15,40 @@
       "status": "inconclusive",
       "passed": 1,
       "total": 3,
+      "testApkSha256": "63523d3500c9aafe0687ef85ccc3c37fbb3d1e2955f6775cb52dfb1380ea27f5",
       "observedStatus": "failed",
-      "reason": "Original-mode prerequisite was not written because preceding compact-mode scenario did not complete."
-    },
-    {
-      "activity": "NetworkReferenceTestActivity",
-      "file": "network-reference-results.json",
-      "status": "passed",
-      "passed": 41,
-      "total": 41
-    },
-    {
-      "activity": "NetworkPriorityTestActivity",
-      "file": "network-priority-results.json",
-      "status": "passed",
-      "passed": 15,
-      "total": 15
+      "reason": "Original-mode preference was not written because the preceding mode-switch scenario did not complete; retain raw 1/3 result."
     },
     {
       "activity": "FunctionalHubTestActivity",
       "file": "functional-hub-results.json",
       "status": "incomplete",
-      "reason": "No current result before 240-second deadline"
+      "reason": "No current result before 240-second deadline",
+      "testApkSha256": "63523d3500c9aafe0687ef85ccc3c37fbb3d1e2955f6775cb52dfb1380ea27f5"
+    },
+    {
+      "activity": "NetworkReferenceTestActivity",
+      "file": "network-reference-results.json",
+      "status": "passed",
+      "passed": 43,
+      "total": 43,
+      "testApkSha256": "a20dcd86c62fb68fd13b152602832056d3c8378fec70d70034583e22094f2a93"
+    },
+    {
+      "activity": "StartupRouteTestActivity",
+      "file": "startup-route-results.json",
+      "status": "passed",
+      "passed": 22,
+      "total": 22,
+      "testApkSha256": "a20dcd86c62fb68fd13b152602832056d3c8378fec70d70034583e22094f2a93"
+    },
+    {
+      "activity": "NetworkPriorityTestActivity",
+      "file": "network-priority-results.json",
+      "status": "failed",
+      "passed": 14,
+      "total": 15,
+      "testApkSha256": "a20dcd86c62fb68fd13b152602832056d3c8378fec70d70034583e22094f2a93"
     }
   ],
   "initialAttempt": [
@@ -72,5 +78,43 @@
       "status": "incomplete",
       "reason": "No current result before 240-second deadline"
     }
-  ]
+  ],
+  "priorTestApkSha256": "a20dcd86c62fb68fd13b152602832056d3c8378fec70d70034583e22094f2a93",
+  "fixtureAttempts": [
+    {
+      "file": "network-reference-fixture-first-attempt.json",
+      "status": "failed",
+      "reason": "Unsynchronized test fixture injection raced with real singleton initialization."
+    },
+    {
+      "file": "network-reference-fixture-save-attempt.json",
+      "status": "failed",
+      "reason": "Test observed the original entry before fixture initialization was synchronized."
+    }
+  ],
+  "startupRepeat": {
+    "file": "startup-route-final-first-attempt.json",
+    "status": "failed",
+    "passed": 21,
+    "total": 22,
+    "repeatUsesUnchangedAssertions": true
+  },
+  "priorityRepeat": {
+    "file": "network-priority-final-first-attempt.json",
+    "status": "failed",
+    "passed": 14,
+    "total": 15,
+    "priorityRecoveryMs": 1456,
+    "originalThresholdMs": 800,
+    "repeatUsesUnchangedAssertions": true
+  },
+  "webRegressionScope": "Web scenarios were attempted on the earlier 1.5.3 test APK. Later production edits only correct phone-mode network metadata; chat assets and WebView implementation remain unchanged.",
+  "unresolvedPerformanceCheck": {
+    "file": "network-priority-results.json",
+    "name": "Recovery is not queued behind five-second socket probes",
+    "observedMs": 2056,
+    "thresholdMs": 800,
+    "status": "failed",
+    "physicalDeviceRecheckRequired": true
+  }
 }
