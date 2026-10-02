@@ -44,3 +44,15 @@ work/android-tools/
 最新逐项结果见 [verification](../verification/validation-summary.json)。
 
 `-Development` 只用于本机调试。`-Personal` 依赖未公开的个人预设打包器；普通发布版无需该功能，也不包含个人网络参数。
+
+## 已准备的 Codex Linux 环境
+
+云环境保留了 JDK 17、Android SDK 35 和 Build Tools 35.0.0。原 `build.ps1` 使用 Windows 可执行文件名和分隔符；Linux 适配助手在 Git 忽略的 `work/cloud-setup/` 中，按相同资源、Java、D8、打包与签名流程构建，不修改仓库依赖。
+
+```bash
+cd /workspace/yuanying-chat
+python3 work/cloud-setup/build.py release
+python3 work/cloud-setup/build.py test
+```
+
+构建输出与上述 Windows 命令相同。助手会校验 APK 签名、对齐和包信息。这些助手随已准备的云环境保留，普通源码克隆仍以 Windows 构建说明为准。编译独立测试 APK 不等于执行测试 Activity；设备回归需要 Android 设备或模拟器。

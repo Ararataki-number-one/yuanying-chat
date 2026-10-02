@@ -1,14 +1,87 @@
 package local.pocketchat;
-import android.app.*;import android.os.SystemClock;import android.widget.*;import org.json.*;
 
-/** Network design panels consume existing evidence; missing diagnostics are explicit extension slots. */
+import android.app.*;
+import android.os.SystemClock;
+import android.widget.*;
+import org.json.*;
+
+/** Mode-aware network workspace; every operation belongs to the named profile. */
 final class DesignNetworkUi {
-  static void render(MainActivity a,LinearLayout box,int tab){box.addView(DesignUi.tabs(a,new String[]{"方案","订阅","节点","出口","诊断"},tab,n->{a.hub.networkTab=n;a.hub.network();}));NativeNetwork network=NativeNetwork.get(a);DesignUi.note(box,"当前窗口："+Profiles.display(a,Profiles.slot(a)));if(tab==0)scheme(a,box,network);if(tab==1)subscription(a,box);if(tab==2)nodes(a,box,network);if(tab==3)exit(a,box,network);if(tab==4)diagnostics(a,box,network);}
-  static void scheme(MainActivity a,LinearLayout box,NativeNetwork n){LinearLayout card=DesignUi.card(a),head=DesignUi.row(a);head.addView(DesignUi.icon(a,"window",DesignUi.CYAN,38));TextView title=DesignUi.text(a,Profiles.display(a,Profiles.slot(a))+" 网络方案",16,DesignUi.TEXT);title.setPadding(a.dp(9),0,0,0);head.addView(title,new LinearLayout.LayoutParams(0,-2,1));head.addView(DesignUi.badge(a,a.session.networkReady?"● 使用中":"待连接",a.session.networkReady?DesignUi.GREEN:DesignUi.MUTED));card.addView(head);String mode=a.session.internalNetwork()?"内置订阅入口＋固定出口":a.prefs.getString("proxy","").isEmpty()?"使用手机现有网络":"应用专用代理";DesignUi.note(card,mode);if(a.session.internalNetwork())DesignUi.field(card,"当前入口",n.currentEntry.isEmpty()?"尚未选择":NativeNetwork.display(n.currentEntry));DesignUi.field(card,"连接状态",NetworkMetricsUi.line(a.session,n,System.currentTimeMillis(),SystemClock.elapsedRealtime()));DesignUi.action(card,"设置网络方式",true,()->modes(a));DesignUi.addCard(box,card);DesignUi.addCard(box,DesignUi.setting(a,"globe","多个网络方案","为本窗口预留方案管理入口","开发中",()->FutureFeatures.open(a,FutureFeatures.Feature.NETWORK_PLANS,Profiles.slot(a))));DesignUi.action(box,"连接状态与重连",false,()->NetworkStatusUi.show(a));DesignUi.action(box,"完整线路统计",false,()->NetworkMetricsUi.show(a));}
-  static void modes(MainActivity a){new AlertDialog.Builder(a).setTitle("网络方式").setItems(new String[]{"使用手机 VPN","应用专用 HTTP / SOCKS 代理","内置网络：订阅＋固定 SOCKS5 出口"},(d,n)->{if(ProfileUi.working(a.session)){a.status("当前任务结束后再切换网络");return;}if(n==0){a.prefs.edit().putBoolean("networkConfigured",true).putString("networkMode","external").putString("proxy","").putBoolean("requireExternalVpn",true).commit();a.session.reconnect();}if(n==1)a.externalNetworkSettings();if(n==2)FeatureDialogs.networkAdvanced(a);}).setNegativeButton("取消",null).show();}
-  static void subscription(MainActivity a,LinearLayout box){JSONObject saved=new SecretStore(a).settings();LinearLayout card=DesignUi.card(a);LinearLayout head=DesignUi.row(a);head.addView(DesignUi.icon(a,"globe",DesignUi.CYAN,36));TextView name=DesignUi.text(a,"当前窗口订阅",16,DesignUi.TEXT);name.setPadding(a.dp(10),0,0,0);head.addView(name,new LinearLayout.LayoutParams(0,-2,1));head.addView(DesignUi.badge(a,saved.optString("subscriptionUrl").isEmpty()?"未配置":"已配置",saved.optString("subscriptionUrl").isEmpty()?DesignUi.MUTED:DesignUi.GREEN));card.addView(head);DesignUi.note(card,"订阅地址与固定出口凭据按窗口加密保存。当前支持一份订阅配置。");DesignUi.action(card,"编辑订阅与固定出口",true,()->FeatureDialogs.networkAdvanced(a));DesignUi.action(card,"更新当前订阅",false,()->{if(ProfileUi.working(a.session)){a.status("请等待当前任务结束");return;}a.loading.task("正在更新订阅…");NativeNetwork.get(a).refresh((ok,msg)->{a.loading.dismissTask();a.status(msg);if(ok)a.session.applyProxy(NativeNetwork.get(a).proxy());});});DesignUi.addCard(box,card);DesignUi.addCard(box,DesignUi.setting(a,"plus","添加更多订阅","多个订阅列表接口","开发中",()->FutureFeatures.open(a,FutureFeatures.Feature.MULTI_SUBSCRIPTIONS,Profiles.slot(a))));}
-  static void nodes(MainActivity a,LinearLayout box,NativeNetwork n){DesignUi.action(box,"重新测速 / 选择入口",true,()->FeatureDialogs.nodes(a));if(n.results.length()==0)DesignUi.note(box,"还没有线路测量结果，配置内置网络后可进行测速。");for(int i=0;i<n.results.length();i++){JSONObject r=n.results.optJSONObject(i);String internal=r.optString("internalName");String delay=r.optInt("delay")>0?r.optInt("delay")+" ms":"本次不可用";String details=delay+(r.optInt("samples")>0?" · 成功 "+Math.round(r.optDouble("successRate")*100)+"% · 波动 "+r.optLong("jitter")+" ms":"");DesignUi.addCard(box,DesignUi.setting(a,"globe",r.optString("name"),details,internal.equals(n.currentEntry)?"使用中":"",()->{if(ProfileUi.working(a.session)){a.status("当前任务结束后再切换入口");return;}a.loading.task("正在切换并核实线路…");n.select(internal,(ok,msg)->{a.loading.dismissTask();a.status(msg);a.hub.network();});}));}}
-  static void exit(MainActivity a,LinearLayout box,NativeNetwork n){LinearLayout card=DesignUi.card(a);DesignUi.field(card,"出口信息",ExitIpUi.value(a.session,n));DesignUi.note(card,"只展示实际核实的地址。城市和地区尚无独立核验数据。");DesignUi.addCard(box,card);DesignUi.action(box,"查看 / 核实固定出口",true,()->ExitIpUi.show(a));DesignUi.action(box,"授权检查实际网络出口",false,()->EnvironmentAuditUi.show(a));DesignUi.action(box,"查看网络事件",false,()->a.hub.text("本机网络事件",NetworkJournal.text(a)));}
-  static void diagnostics(MainActivity a,LinearLayout box,NativeNetwork n){LinearLayout chain=DesignUi.card(a);DesignUi.field(chain,"当前连接链路",a.session.internalNetwork()?"本机 → 入口节点 → 固定出口 → ChatGPT":a.prefs.getString("proxy","").isEmpty()?"本机网络 / 手机 VPN → ChatGPT":"本机 → 应用代理 → ChatGPT");DesignUi.addCard(box,chain);long now=System.currentTimeMillis();JSONObject q=n.quality.stats(n.currentEntry,now);status(a,box,"当前连接",a.session.offline?"已断开":a.session.networkReady?"已连接":"待确认",a.session.networkReady?DesignUi.GREEN:DesignUi.MUTED);status(a,box,"线路延迟",a.session.internalNetwork()?NetworkMetricsUi.latency(q,now):"当前模式未统计",DesignUi.CYAN);status(a,box,"探测稳定性",a.session.internalNetwork()?NetworkMetricsUi.stability(q,now):"当前模式未统计",DesignUi.MUTED);status(a,box,"出口核实",ExitIpUi.value(a.session,n),DesignUi.MUTED);status(a,box,"DNS / TCP / TLS 分项","开发中 · 尚未分项测量",DesignUi.MUTED);status(a,box,"WebRTC / DNS 完整泄漏测试","未覆盖 · 可查看现有自检证据",DesignUi.MUTED);DesignUi.action(box,"测一下真实线路延迟",true,()->n.measureLatency((ok,msg)->{a.status(msg);a.hub.network();}));DesignUi.action(box,"环境自检与检查详情",false,()->EnvironmentAuditUi.show(a));DesignUi.action(box,"连接阶段耗时",false,()->NetworkStatusUi.show(a));DesignUi.addCard(box,DesignUi.setting(a,"globe","完整分项诊断","测量接口预留","开发中",()->FutureFeatures.open(a,FutureFeatures.Feature.FULL_DIAGNOSTIC,Profiles.slot(a))));}
-  static void status(MainActivity a,LinearLayout box,String name,String value,int color){LinearLayout row=DesignUi.row(a);row.setPadding(a.dp(10),a.dp(11),a.dp(10),a.dp(11));row.addView(DesignUi.text(a,name,12,DesignUi.TEXT),new LinearLayout.LayoutParams(0,-2,1));TextView info=DesignUi.text(a,value,11,color);info.setMaxWidth(a.dp(200));row.addView(info);DesignUi.addCard(box,row);}
+  static String mode(MainActivity a){return a.session.internalNetwork()?"内置网络 · 订阅入口 + 固定出口":!a.prefs.getString("proxy","").isEmpty()?"应用专用代理":a.prefs.getBoolean("requireExternalVpn",true)?"手机 VPN":"手机网络";}
+  static void render(MainActivity a,LinearLayout box,int tab){
+    DesignUi.scope(a,box);
+    box.addView(DesignUi.tabs(a,new String[]{"连接配置","订阅入口","节点选择","出口信息","连接诊断"},tab,n->{a.hub.networkTab=n;a.hub.network();}));
+    NativeNetwork network=NativeNetwork.get(a);
+    if(tab==0)scheme(a,box,network);
+    if(tab==1||tab==2){
+      if(!a.session.internalNetwork()){
+        DesignUi.section(box,"当前使用"+mode(a),"订阅入口和节点选择用于内置网络模式。当前模式的连接状态可在诊断页查看。");
+        DesignUi.action(box,"选择网络方式",true,()->modes(a));return;
+      }
+      if(tab==1)subscription(a,box);else nodes(a,box,network);
+    }
+    if(tab==3)exit(a,box,network);if(tab==4)diagnostics(a,box,network);
+  }
+  static void scheme(MainActivity a,LinearLayout box,NativeNetwork n){
+    DesignUi.section(box,"当前连接","");LinearLayout card=DesignUi.card(a);
+    DesignUi.field(card,"网络方式",mode(a));DesignUi.field(card,"连接状态",NetworkMetricsUi.line(a.session,n,System.currentTimeMillis(),SystemClock.elapsedRealtime()));
+    if(a.session.internalNetwork())DesignUi.field(card,"当前入口",n.currentEntry.isEmpty()?"尚未选择":NativeNetwork.display(n.currentEntry));
+    DesignUi.action(card,"选择网络方式",true,()->modes(a));DesignUi.action(card,"编辑当前网络参数",false,()->{if(a.session.internalNetwork())FeatureDialogs.networkAdvanced(a);else a.externalNetworkSettings();});DesignUi.addCard(box,card);
+    DesignUi.section(box,"连接维护", "切换网络前请先完成当前回复或传输任务。");
+    DesignUi.action(box,"查看连接状态 / 重新连接",false,()->NetworkStatusUi.show(a));
+    if(a.session.internalNetwork())DesignUi.action(box,"查看线路统计",false,()->NetworkMetricsUi.show(a));
+  }
+  static void modes(MainActivity a){
+    new AlertDialog.Builder(a).setTitle("选择该环境的网络方式").setItems(new String[]{"手机网络 / 手机 VPN","应用专用 HTTP / SOCKS 代理","内置网络：订阅入口 + 固定 SOCKS5 出口"},(d,n)->{
+      if(ProfileUi.working(a.session)){a.status("当前任务结束后再切换网络");return;}
+      if(n==0)phone(a);else if(n==1)a.externalNetworkSettings();else FeatureDialogs.networkAdvanced(a);
+    }).setNegativeButton("取消",null).show();
+  }
+  static void phone(MainActivity a){
+    CheckBox vpn=new CheckBox(a);vpn.setText("手机 VPN 断开时暂停联网");vpn.setChecked(a.prefs.getBoolean("requireExternalVpn",true));vpn.setPadding(a.dp(20),a.dp(8),a.dp(20),a.dp(8));
+    new AlertDialog.Builder(a).setTitle("手机网络 / VPN").setMessage("使用手机当前网络，不设置应用专用代理。").setView(vpn).setPositiveButton("保存并连接",(d,w)->{if(ProfileUi.working(a.session)){a.status("当前任务结束后再切换网络");return;}a.prefs.edit().putBoolean("networkConfigured",true).putString("networkMode","external").putString("proxy","").putBoolean("requireExternalVpn",vpn.isChecked()).commit();a.session.reconnect();a.hub.refresh();}).setNegativeButton("取消",null).show();
+  }
+  static void subscription(MainActivity a,LinearLayout box){
+    JSONObject saved=new SecretStore(a).settings();DesignUi.section(box,"订阅与固定出口","每个环境支持一份订阅配置，凭据加密保存。");
+    LinearLayout card=DesignUi.card(a);DesignUi.field(card,"配置状态",saved.optString("subscriptionUrl").isEmpty()?"未配置":"已配置");
+    DesignUi.action(card,"编辑订阅与固定出口",true,()->FeatureDialogs.networkAdvanced(a));
+    DesignUi.action(card,"更新已保存的订阅",false,()->{
+      if(ProfileUi.working(a.session)){a.status("请等待当前任务结束");return;}
+      if(saved.optString("subscriptionUrl").isEmpty()){a.status("请先保存订阅地址");return;}
+      a.loading.task("正在更新订阅…");NativeNetwork.get(a).refresh((ok,msg)->{a.loading.dismissTask();a.status(msg);if(ok)a.session.applyProxy(NativeNetwork.get(a).proxy());});
+    });DesignUi.addCard(box,card);
+  }
+  static void nodes(MainActivity a,LinearLayout box,NativeNetwork n){
+    DesignUi.section(box,"入口节点","延迟表示本次实际测量结果。");DesignUi.action(box,"测速 / 选择入口",true,()->FeatureDialogs.nodes(a));
+    if(n.results.length()==0)DesignUi.note(box,"还没有测量结果，保存内置网络配置后可进行测速。");
+    for(int i=0;i<n.results.length();i++){
+      JSONObject r=n.results.optJSONObject(i);String internal=r.optString("internalName");String delay=r.optInt("delay")>0?r.optInt("delay")+" ms":"本次不可用";
+      String detail=delay+(r.optInt("samples")>0?" · 成功 "+Math.round(r.optDouble("successRate")*100)+"% · 波动 "+r.optLong("jitter")+" ms":"");
+      DesignUi.addCard(box,DesignUi.setting(a,"globe",r.optString("name"),detail,internal.equals(n.currentEntry)?"使用中":"",()->{
+        if(ProfileUi.working(a.session)){a.status("当前任务结束后再切换入口");return;}
+        a.loading.task("正在切换并核实线路…");n.select(internal,(ok,msg)->{a.loading.dismissTask();a.status(msg);a.hub.network();});
+      }));
+    }
+  }
+  static void exit(MainActivity a,LinearLayout box,NativeNetwork n){
+    DesignUi.section(box,"出口核对","只显示实际记录的结果；公开出口检查由你手动发起。");
+    LinearLayout card=DesignUi.card(a);DesignUi.field(card,"出口信息",ExitIpUi.value(a.session,n));DesignUi.addCard(box,card);
+    if(a.session.internalNetwork())DesignUi.action(box,"查看 / 核实固定出口",true,()->ExitIpUi.show(a));
+    DesignUi.action(box,"环境自检 / 手动授权出口检查",false,()->EnvironmentAuditUi.show(a));
+  }
+  static void diagnostics(MainActivity a,LinearLayout box,NativeNetwork n){
+    DesignUi.section(box,"连接诊断","");LinearLayout chain=DesignUi.card(a);
+    DesignUi.field(chain,"连接链路",a.session.internalNetwork()?"本机 → 入口节点 → 固定出口 → ChatGPT":a.prefs.getString("proxy","").isEmpty()?"手机网络 / VPN → ChatGPT":"本机 → 应用代理 → ChatGPT");DesignUi.addCard(box,chain);
+    status(a,box,"当前连接",a.session.offline?"已断开":a.session.networkReady?"已连接":"待确认",a.session.networkReady?DesignUi.GREEN:DesignUi.MUTED);
+    if(a.session.internalNetwork()){
+      long now=System.currentTimeMillis();JSONObject q=n.quality.stats(n.currentEntry,now);
+      status(a,box,"线路延迟",NetworkMetricsUi.latency(q,now),DesignUi.BLUE);status(a,box,"探测稳定性",NetworkMetricsUi.stability(q,now),DesignUi.MUTED);
+      DesignUi.action(box,"测量线路延迟",true,()->{if(ProfileUi.working(a.session)){a.status("请等待当前任务结束");return;}n.measureLatency((ok,msg)->{a.status(msg);a.hub.network();});});
+    }
+    DesignUi.action(box,"查看连接阶段耗时",false,()->NetworkStatusUi.show(a));
+    DesignUi.action(box,"查看本机网络事件",false,()->a.hub.text("网络事件",NetworkJournal.text(a)));
+    DesignUi.action(box,"环境自检与检查详情",false,()->EnvironmentAuditUi.show(a));
+    DesignUi.note(box,"尚未提供 DNS / TCP / TLS 分项测量及完整泄漏检测。");
+  }
+  static void status(MainActivity a,LinearLayout box,String name,String value,int color){LinearLayout row=DesignUi.card(a);row.addView(DesignUi.text(a,name,12,DesignUi.MUTED));row.addView(DesignUi.text(a,value,14,color));DesignUi.addCard(box,row);}
 }

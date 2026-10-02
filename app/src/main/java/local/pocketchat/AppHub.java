@@ -1,22 +1,64 @@
 package local.pocketchat;
-import android.app.*;import android.content.*;import android.os.*;import android.view.*;import android.widget.*;import org.json.*;
 
-/** Five designed destinations retain original chat drivers, dialogs and account scopes. */
+import android.content.*;
+import android.view.*;
+import android.widget.*;
+
+/** Navigation preserves the live chat document while displaying native workspaces. */
 final class AppHub {
-  MainActivity a;final LinearLayout root,bar;final View chat;final FrameLayout panel;int page,settingsTab,networkTab,downloadFilter;long navigation;final Button[] tabs=new Button[5];final Runnable tick=()->{if(!a.active||a.destroyed||page==0)return;if(page==1||page==4)refresh();a.handler.postDelayed(this.tick,2500);};
-  AppHub(MainActivity a,LinearLayout root,View chat){this.a=a;this.root=root;this.chat=chat;panel=new FrameLayout(a);panel.setVisibility(View.GONE);root.addView(panel,new LinearLayout.LayoutParams(-1,0,1));bar=DesignUi.nav(a,0,n->{if(n==0)defaultWindow();else select(new int[]{0,2,1,4,3}[n]);},tabs);root.addView(bar,new LinearLayout.LayoutParams(-1,-2));mark();}
-  void defaultWindow(){int id=AppSettings.defaultSlot(a);if(id==Profiles.slot(a)){select(0);a.showPage(true);}else a.startActivity(new Intent(a,Profiles.activity(id)).putExtra("openWindowAction","chat").putExtra("forceWebMode",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
-  void select(int target){if(target<0||target>4)return;if(target==2){a.startActivity(new Intent(a,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));return;}long token=++navigation;if(page==0&&target!=0)a.session.pageMemory.capture(()->{if(token==navigation)show(target);});else show(target);}
-  void show(int target){page=target;chat.setVisibility(page==0?View.VISIBLE:View.GONE);a.toolbar.setVisibility(page==0?View.VISIBLE:View.GONE);a.composer.setVisibility(page==0&&!a.pageMode?View.VISIBLE:View.GONE);panel.setVisibility(page==0?View.GONE:View.VISIBLE);a.session.foreground(a.active);mark();a.handler.removeCallbacks(tick);if(page!=0){((android.view.inputmethod.InputMethodManager)a.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(a.input.getWindowToken(),0);refresh();a.handler.postDelayed(tick,2500);}else{a.session.pageMemory.restorePending=true;if(a.session.networkReady&&MainActivity.chatUrl(a.remote.getUrl()))a.session.pageMemory.restore(a.remote.getUrl(),a.session.navigationEpoch);a.session.wakePolling();}}
-  void mark(){DesignUi.markNav(a,tabs,page==0?0:page==2?1:page==1?2:page==4?3:4);}
-  String rendered="";LinearLayout layout(String title){String identity=page+"|"+settingsTab+"|"+networkTab+"|"+downloadFilter+"|"+title;int oldY=0;if(identity.equals(rendered)&&panel.getChildCount()>0){android.view.ViewGroup old=(android.view.ViewGroup)panel.getChildAt(0);if(old.getChildCount()>1&&old.getChildAt(1) instanceof ScrollView)oldY=old.getChildAt(1).getScrollY();}rendered=identity;final int restoreY=oldY;LinearLayout screen=DesignUi.column(a);screen.setBackground(new DesignUi.Stars(a));LinearLayout box=DesignUi.body(a,screen,title,()->select(0));panel.removeAllViews();panel.addView(screen,new FrameLayout.LayoutParams(-1,-1));if(screen.getChildCount()>1&&screen.getChildAt(1) instanceof ScrollView){ScrollView scroll=(ScrollView)screen.getChildAt(1);scroll.post(()->scroll.scrollTo(0,restoreY));}return box;}
-  void action(LinearLayout box,String label,Runnable run){DesignUi.action(box,label,false,run);}void note(LinearLayout box,String s){DesignUi.note(box,s);}void refresh(){if(page==1)downloads();if(page==2)environments();if(page==3)settings();if(page==4)DesignNetworkUi.render(a,layout("网络中心"),networkTab);}
+  static final int CHAT=0, DOWNLOADS=1, ENVIRONMENTS=2, SETTINGS=3, NETWORK=4;
+  private static final int[] DESTINATIONS={CHAT,ENVIRONMENTS,DOWNLOADS,NETWORK,SETTINGS};
+  final MainActivity a;
+  final LinearLayout root,bar;
+  final View chat;
+  final FrameLayout panel;
+  int page,settingsTab,networkTab,downloadFilter;
+  long navigation;
+  String rendered="";
+  final Button[] tabs=new Button[5];
+  final Runnable tick=this::updateTick;
+
+  AppHub(MainActivity a,LinearLayout root,View chat){
+    this.a=a;this.root=root;this.chat=chat;
+    panel=new FrameLayout(a);panel.setVisibility(View.GONE);
+    root.addView(panel,new LinearLayout.LayoutParams(-1,0,1));
+    bar=DesignUi.nav(a,0,n->select(DESTINATIONS[n]),tabs);root.addView(bar,new LinearLayout.LayoutParams(-1,-2));mark();
+  }
+  void updateTick(){if(!a.active||a.destroyed||page==CHAT)return;if(page==DOWNLOADS||page==NETWORK)refresh();a.handler.postDelayed(tick,2500);}
+  void select(int target){
+    if(target<CHAT||target>NETWORK)return;
+    if(target==ENVIRONMENTS){a.startActivity(new Intent(a,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));return;}
+    long token=++navigation;
+    if(page==CHAT&&target!=CHAT)a.session.pageMemory.capture(()->{if(token==navigation)show(target);});else show(target);
+  }
+  void show(int target){
+    page=target;chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);a.toolbar.setVisibility(page==CHAT?View.VISIBLE:View.GONE);
+    a.composer.setVisibility(page==CHAT&&!a.pageMode?View.VISIBLE:View.GONE);panel.setVisibility(page==CHAT?View.GONE:View.VISIBLE);
+    a.session.foreground(a.active);mark();a.handler.removeCallbacks(tick);
+    if(page!=CHAT){((android.view.inputmethod.InputMethodManager)a.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(a.input.getWindowToken(),0);refresh();a.handler.postDelayed(tick,2500);}
+    else{a.session.pageMemory.restorePending=true;if(a.session.networkReady&&MainActivity.chatUrl(a.remote.getUrl()))a.session.pageMemory.restore(a.remote.getUrl(),a.session.navigationEpoch);a.session.wakePolling();}
+  }
+  void mark(){int selected=0;for(int i=0;i<DESTINATIONS.length;i++)if(DESTINATIONS[i]==page)selected=i;DesignUi.markNav(a,tabs,selected);}
+  LinearLayout layout(String title){
+    String identity=page+"|"+settingsTab+"|"+networkTab+"|"+downloadFilter+"|"+title;int oldY=0;
+    if(identity.equals(rendered)&&panel.getChildCount()>0){ViewGroup old=(ViewGroup)panel.getChildAt(0);if(old.getChildCount()>1&&old.getChildAt(1) instanceof ScrollView)oldY=old.getChildAt(1).getScrollY();}
+    rendered=identity;final int restoreY=oldY;LinearLayout screen=DesignUi.screen(a),box=DesignUi.body(a,screen,title,()->select(CHAT));
+    panel.removeAllViews();panel.addView(screen,new FrameLayout.LayoutParams(-1,-1));
+    if(screen.getChildCount()>1&&screen.getChildAt(1) instanceof ScrollView){ScrollView scroll=(ScrollView)screen.getChildAt(1);scroll.post(()->scroll.scrollTo(0,restoreY));}return box;
+  }
+  void action(LinearLayout box,String label,Runnable run){DesignUi.action(box,label,false,run);}
+  void note(LinearLayout box,String text){DesignUi.note(box,text);}
+  void refresh(){if(page==DOWNLOADS)downloads();if(page==SETTINGS)settings();if(page==NETWORK)DesignNetworkUi.render(a,layout("环境网络"),networkTab);}
   void downloads(){DesignDownloads.render(a,layout("下载中心"),downloadFilter,n->{downloadFilter=n;downloads();},a.downloads.savedActions);}
-  void environments(){LinearLayout box=layout("窗口管理");action(box,"打开完整窗口管理",()->a.startActivity(new Intent(a,WindowHomeActivity.class)));JSONArray rows=ProfileCatalog.get(a).list();for(int i=0;i<rows.length();i++){JSONObject r=rows.optJSONObject(i);if(!r.optBoolean("created"))continue;int id=r.optInt("slot");action(box,r.optString("name")+" · 打开",()->open(id,false));}}
-  void open(int id,boolean edit){if(id==Profiles.slot(a)){if(edit)EnvironmentEditorUi.show(a);else select(0);}else a.startActivity(new Intent(a,Profiles.activity(id)).putExtra("openWindowAction",edit?"edit":"chat").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
-  void settings(){DesignSettingsUi.render(a,layout("设置"),settingsTab);}
-  void network(){page=4;mark();DesignNetworkUi.render(a,layout("网络中心"),networkTab);}
-  void cache(){LinearLayout box=layout("数据与存储");JSONObject scan=AppPrefs.temporaryCache(a,System.currentTimeMillis(),false);note(box,"当前窗口："+Profiles.display(a,Profiles.slot(a)));LinearLayout card=DesignUi.card(a);DesignUi.field(card,"可清理的旧临时文件",scan.optInt("count")+" 个 · "+NetworkMetricsUi.amount(scan.optLong("bytes")));DesignUi.field(card,"保留的续传中间文件",scan.optInt("protected")+" 个");DesignUi.note(card,"只清理超过 30 天且没有任务引用的下载中间文件。聊天、草稿、Cookie 和已保存文件保留。");DesignUi.addCard(box,card);action(box,"清理上述旧临时文件",()->{AppPrefs.temporaryCache(a,System.currentTimeMillis(),true);cache();});action(box,"偏好与自动清理策略",()->EnvironmentEditorUi.editTab(a,2));DesignUi.addCard(box,DesignUi.setting(a,"shield","清理窗口登录数据","账号数据清理入口","开发中",()->FutureFeatures.open(a,FutureFeatures.Feature.PROFILE_DATA_CLEAR,Profiles.slot(a))));}
+  void settings(){DesignSettingsUi.render(a,layout("应用设置"),settingsTab);}
+  void network(){show(NETWORK);}
   void text(String title,String value){DesignUi.message(a,title,value);}
-  void about(){LinearLayout box=layout("关于元婴期院士");note(box,"Android ChatGPT 网页客户端\nv1.5.0 星空设计版");action(box,"功能介绍",()->text("功能介绍","最多 8 个独立窗口；保留原网页与简洁聊天、历史、附件、下载、后台通知、固定出口、隐私保护与环境自检。新增默认窗口直达、五个导航入口及分层设置。"));action(box,"使用帮助",()->text("使用帮助","窗口需要分别登录。当前窗口设置只作用于当前窗口；全局设置控制默认窗口、启动入口和应用外观。下载页可以查看全部窗口文件。标注开发中的入口尚未接入。"));action(box,"开源与第三方许可",()->text("第三方许可","源码和许可随源码包提供。内置 Mihomo、AndroidX、KaTeX、Marked、DOMPurify 等组件保留原有许可说明。"));action(box,"隐私说明",()->text("隐私说明","没有广告或遥测。网络配置与检查基线按窗口加密保存。联网自检每次需要授权，结果只覆盖对应路径，不保证 VPN 隐身或账号不被封。"));action(box,"复制耗时诊断",()->{((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("耗时诊断",a.session.trace.copyText()));a.status("已复制本机耗时诊断");});}
+  void about(){
+    LinearLayout box=layout("关于元婴期院士");note(box,"Android ChatGPT 网页客户端\nv1.5.0 · 环境管理版");
+    action(box,"功能介绍",()->text("功能介绍","最多 8 个独立环境，支持分组、备注和收藏；原网页与简洁聊天、历史、附件、下载、后台通知、固定出口、隐私保护与环境自检。"));
+    action(box,"使用帮助",()->text("使用帮助","在环境列表新建或编辑环境。编辑页分为基本信息、网络配置、浏览器与使用偏好。\n\n环境分别登录。网络页显示所属环境；应用设置控制默认入口与系统权限。下载页汇总全部环境文件。\n\n保护等级改变后会重新加载连接。草稿保存不会应用设置。尚未开放的能力列在功能支持范围。"));
+    action(box,"第三方许可",()->text("第三方许可","源码和许可随源码包提供。内置 Mihomo、AndroidX、KaTeX、Marked、DOMPurify 等组件保留原有许可说明。"));
+    action(box,"隐私说明",()->text("隐私说明","没有广告或遥测。网络配置与检查基线按环境加密保存。联网自检每次需要授权，结果只覆盖对应路径。"));
+    action(box,"复制本机耗时诊断",()->{((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("耗时诊断",a.session.trace.copyText()));a.status("已复制本机耗时诊断");});
+  }
 }

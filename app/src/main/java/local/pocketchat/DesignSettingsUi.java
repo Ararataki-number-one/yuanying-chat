@@ -1,12 +1,40 @@
 package local.pocketchat;
-import android.app.*;import android.widget.*;import org.json.*;import java.util.*;
 
+import android.app.*;
+import android.widget.*;
+import org.json.*;
+import java.util.*;
+
+/** App-wide settings live here; profile options belong to the environment editor. */
 final class DesignSettingsUi {
-  static void render(MainActivity a,LinearLayout box,int selected){box.addView(DesignUi.tabs(a,new String[]{"当前窗口设置","全局应用设置"},selected,n->{a.hub.settingsTab=n;a.hub.settings();}));DesignUi.note(box,selected==0?"当前窗口："+Profiles.display(a,Profiles.slot(a)):"全局设置控制应用入口与外观");
-    if(selected==0){group(a,box,"基础设置","窗口名称、平台、真实语言与时区","window",()->EnvironmentEditorUi.editTab(a,0));group(a,box,"浏览器配置","实际内核、UA、WebRTC 与保护等级","globe",()->EnvironmentEditorUi.editTab(a,1));group(a,box,"网络设置","网络方式、节点、订阅、连接检查","globe",()->a.hub.select(4));group(a,box,"数据与存储","草稿、历史、缓存与下载记录","file",()->a.hub.cache());group(a,box,"偏好设置","历史、草稿、滚动位置、后台与通知","settings",()->EnvironmentEditorUi.editTab(a,2));group(a,box,"隐私保护 / 环境自检","保护等级、一致性与变化提醒","shield",()->DesignPrivacyUi.show(a));}
-    else{group(a,box,"默认窗口与启动入口","默认："+Profiles.display(a,AppSettings.defaultSlot(a)),"window",()->defaultEntry(a));group(a,box,"应用外观","星空深蓝、背景纹理、品牌页","brand",()->appearance(a));group(a,box,"下载设置","默认目录与当前窗口的下载偏好","download",()->downloads(a));group(a,box,"后台等待与通知","应用偏好、系统通知和电池设置","chat",()->FeatureDialogs.backgroundSettings(a));group(a,box,"关于与使用帮助","版本、功能、第三方许可与诊断","settings",()->a.hub.about());}}
-  static void group(MainActivity a,LinearLayout box,String title,String detail,String icon,Runnable click){DesignUi.addCard(box,DesignUi.setting(a,icon,title,detail,"",click));}
-  static void defaultEntry(MainActivity a){JSONArray rows=ProfileCatalog.get(a).list();List<Integer> ids=new ArrayList<>();List<String> titles=new ArrayList<>();for(int i=0;i<rows.length();i++)if(rows.optJSONObject(i).optBoolean("created")){ids.add(i);titles.add(rows.optJSONObject(i).optString("name"));}LinearLayout box=DesignUi.column(a);box.setPadding(a.dp(18),0,a.dp(18),a.dp(14));Spinner spinner=new Spinner(a);spinner.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,titles));spinner.setSelection(Math.max(0,ids.indexOf(AppSettings.defaultSlot(a))));box.addView(spinner);CheckBox direct=new CheckBox(a);direct.setText("启动时直达默认窗口的原网页");direct.setChecked(AppSettings.bool(a,"startupDirect",true));box.addView(direct);DesignUi.note(box,"关闭后先进入窗口列表。已有窗口分别保留登录与网络设置。");new AlertDialog.Builder(a).setTitle("默认窗口与启动方式").setView(box).setPositiveButton("保存",(d,w)->{AppSettings.defaultSlot(a,ids.get(spinner.getSelectedItemPosition()));AppSettings.put(a,"startupDirect",String.valueOf(direct.isChecked()));a.hub.settings();if(a.designChrome!=null)a.designChrome.update();}).setNegativeButton("取消",null).show();}
-  static void appearance(MainActivity a){LinearLayout box=DesignUi.column(a);box.setPadding(a.dp(18),0,a.dp(18),a.dp(14));DesignUi.field(box,"当前主题","星空深蓝 · 蓝紫渐变");CheckBox stars=new CheckBox(a);stars.setText("显示星空背景纹理");stars.setChecked(AppSettings.bool(a,"starBackground",true));box.addView(stars);Button brand=DesignUi.button(a,"查看品牌启动页",false,()->a.startActivity(new android.content.Intent(a,BrandLaunchActivity.class).putExtra("previewBrand",true)));box.addView(brand);new AlertDialog.Builder(a).setTitle("应用外观").setView(box).setPositiveButton("保存",(d,w)->{AppSettings.put(a,"starBackground",String.valueOf(stars.isChecked()));a.hub.settings();a.hub.root.invalidate();}).setNegativeButton("取消",null).show();}
-  static void downloads(MainActivity a){LinearLayout box=DesignUi.column(a);box.setPadding(a.dp(18),0,a.dp(18),a.dp(14));DesignUi.field(box,"当前窗口默认目录",DefaultDownloads.description(a));CheckBox wifi=new CheckBox(a);wifi.setText("当前窗口仅在 Wi-Fi 下载");wifi.setChecked(AppPrefs.enabled(a,"wifiDownloads"));box.addView(wifi);DesignUi.addCard(box,DesignUi.setting(a,"download","自定义默认目录","目录设置接口已预留","开发中",()->FutureFeatures.open(a,FutureFeatures.Feature.CUSTOM_DOWNLOAD_PATH,Profiles.slot(a))));new AlertDialog.Builder(a).setTitle("下载设置").setView(box).setPositiveButton("保存",(d,w)->AppPrefs.apply(a,J.obj("wifiDownloads",wifi.isChecked()))).setNegativeButton("取消",null).show();}
+  static void render(MainActivity a,LinearLayout box,int selected){render(a,box,()->a.hub.settings());}
+  static void render(Activity a,LinearLayout box,Runnable refresh){
+    DesignUi.note(box,"应用设置 · 对所有环境生效");
+    DesignUi.section(box,"启动与界面","");
+    group(a,box,"默认环境与启动入口","默认："+Profiles.display(a,AppSettings.defaultSlot(a)),"window",()->defaultEntry(a,refresh));
+    group(a,box,"界面与品牌页","浅色管理界面 · 蓝色重点操作","brand",()->appearance(a));
+    DesignUi.section(box,"系统权限", "通知与电池权限由 Android 统一管理。每个环境的等待、提醒开关在环境编辑页设置。");
+    group(a,box,"通知与电池设置","查看系统通知权限与后台运行限制","chat",()->FeatureDialogs.backgroundSettings(a));
+    DesignUi.section(box,"帮助与能力","");
+    group(a,box,"关于与使用帮助","版本、环境隔离、第三方许可","settings",()->about(a));
+    group(a,box,"功能支持范围","已实现功能与后续能力规划","shield",()->capabilities(a));
+  }
+  static void group(Activity a,LinearLayout box,String title,String detail,String icon,Runnable click){DesignUi.addCard(box,DesignUi.setting(a,icon,title,detail,"",click));}
+  static void about(Activity a){DesignUi.message(a,"元婴期院士 · 1.5.0","Android ChatGPT 网页客户端\n\n在环境列表新建或编辑环境。每个环境分别登录，编辑页保存基本信息、浏览器保护和使用偏好。\n\n网络配置在所属环境内保存并连接。应用设置控制默认启动环境与系统权限。下载中心汇总文件。\n\n聊天与登录保存在本机，网络凭据由 Android Keystore 加密。第三方许可随源码提供，包括 Mihomo、AndroidX、KaTeX、Marked 与 DOMPurify。\n\n保护范围以实际自检为准。");}
+  static void capabilities(Activity a){DesignUi.message(a,"功能支持范围","已实现\n• 最多 8 个独立环境、分组、备注与收藏\n• 独立登录、Cookie、聊天、草稿和网络配置\n• 手机网络 / VPN、应用代理、单个订阅与固定出口\n• 三档隐私保护、现有环境自检\n• 文件下载、后台等待与通知\n\n后续能力\n自定义 UA / 指纹、独立语言时区、多个订阅、自动化、环境删除与登录数据清理仍未开放。\n\n本应用使用 Android System WebView。实际保护范围以自检结果为准。");}
+  static void defaultEntry(Activity a,Runnable refresh){
+    JSONArray rows=ProfileCatalog.get(a).list();List<Integer> ids=new ArrayList<>();List<String> titles=new ArrayList<>();
+    for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.optBoolean("created")){ids.add(row.optInt("slot"));titles.add(row.optString("name"));}}
+    LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));Spinner spinner=new Spinner(a);
+    spinner.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,titles));spinner.setSelection(Math.max(0,ids.indexOf(AppSettings.defaultSlot(a))));box.addView(spinner);
+    CheckBox direct=new CheckBox(a);direct.setText("启动时直接进入默认环境的原网页");direct.setChecked(AppSettings.bool(a,"startupDirect",true));box.addView(direct);
+    DesignUi.note(box,"关闭后先进入环境管理。底部“会话”会回到正在使用的环境。");
+    new AlertDialog.Builder(a).setTitle("默认环境与启动入口").setView(box).setPositiveButton("保存",(d,w)->{if(spinner.getSelectedItemPosition()<0)return;AppSettings.defaultSlot(a,ids.get(spinner.getSelectedItemPosition()));AppSettings.put(a,"startupDirect",String.valueOf(direct.isChecked()));refresh.run();if(a instanceof MainActivity&&((MainActivity)a).designChrome!=null)((MainActivity)a).designChrome.update();}).setNegativeButton("取消",null).show();
+  }
+  static void appearance(Activity a){
+    LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));DesignUi.field(box,"管理界面","浅色背景 · 清晰分组 · 蓝色操作按钮");
+    DesignUi.note(box,"ChatGPT 原网页继续使用网站自身的外观设置。");
+    box.addView(DesignUi.button(a,"查看品牌启动页",false,()->a.startActivity(new android.content.Intent(a,BrandLaunchActivity.class).putExtra("previewBrand",true))));
+    new AlertDialog.Builder(a).setTitle("界面与品牌页").setView(box).setPositiveButton("关闭",null).show();
+  }
 }

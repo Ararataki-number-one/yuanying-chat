@@ -8,7 +8,7 @@ import android.view.Gravity;
 import android.widget.Button;
 
 final class Ui {
-  static final int INK=0xffedf5ff,MUTED=0xff99acc5,PAPER=0xff04101e,SOFT=0xff0b1d30;
+  static final int INK=0xff1e293b,MUTED=0xff64748b,PAPER=0xfff4f6fa,SOFT=0xffeaf1ff;
   static int dp(Context c,int n){return (int)(c.getResources().getDisplayMetrics().density*n+.5f);}
   static GradientDrawable shape(Context c,int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(c,radius));return d;}
   static RippleDrawable ripple(Context c,int color,int radius){return new RippleDrawable(ColorStateList.valueOf(0x18000000),shape(c,color,radius),shape(c,Color.WHITE,radius));}

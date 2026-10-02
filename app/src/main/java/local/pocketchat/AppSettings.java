@@ -8,4 +8,6 @@ final class AppSettings {
   static boolean bool(Context c,String key,boolean fallback){return Boolean.parseBoolean(get(c,key,String.valueOf(fallback)));}
   static int defaultSlot(Context c){int id=0;try{id=Integer.parseInt(get(c,"defaultSlot","0"));}catch(Exception ignored){}if(id<0||id>=Profiles.MAX||android.os.Build.VERSION.SDK_INT<28&&id>0||!ProfileCatalog.get(c).item(id).optBoolean("created"))return 0;return id;}
   static boolean defaultSlot(Context c,int id){if(id<0||id>=Profiles.MAX||!ProfileCatalog.get(c).item(id).optBoolean("created"))return false;put(c,"defaultSlot",String.valueOf(id));return true;}
+  static int recentSlot(Context c){int selected=defaultSlot(c);long latest=0;org.json.JSONArray rows=ProfileCatalog.get(c).list();for(int i=0;i<rows.length();i++){org.json.JSONObject row=rows.optJSONObject(i);if(row.optBoolean("created")&&row.optLong("opened")>latest){selected=row.optInt("slot");latest=row.optLong("opened");}}return selected;}
+
 }
