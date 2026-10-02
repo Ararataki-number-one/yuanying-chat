@@ -4,6 +4,7 @@ import android.content.*;
 import android.database.Cursor;
 import android.database.sqlite.*;
 import org.json.*;
+import java.util.*;
 
 /** Shared metadata only. Cookies, chats and sealed settings remain profile-local. */
 final class ProfileCatalog extends SQLiteOpenHelper {
@@ -22,6 +23,29 @@ final class ProfileCatalog extends SQLiteOpenHelper {
   void draft(int slot,JSONObject value){ContentValues v=new ContentValues();v.put("draft",value==null?"":value.toString());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
   void opened(int slot){ContentValues v=new ContentValues();v.put("opened",System.currentTimeMillis());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
   void favorite(int slot,boolean value){ContentValues v=new ContentValues();v.put("favorite",value?1:0);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
+  int group(Collection<Integer> slots,String value){
+    String group=value==null?"":value.trim();
+    if(group.length()>12)throw new IllegalArgumentException("分组最多 12 字");
+    ContentValues values=new ContentValues();values.put("group_name",group);
+    return updateCreated(slots,values);
+  }
+  int favorites(Collection<Integer> slots,boolean favorite){
+    ContentValues values=new ContentValues();values.put("favorite",favorite?1:0);
+    return updateCreated(slots,values);
+  }
+  private int updateCreated(Collection<Integer> slots,ContentValues values){
+    if(slots==null||slots.isEmpty())return 0;
+    SQLiteDatabase db=getWritableDatabase();int changed=0;
+    db.beginTransaction();
+    try{
+      for(Integer slot:new LinkedHashSet<>(slots)){
+        if(slot==null||slot<0||slot>=Profiles.MAX)continue;
+        changed+=db.update("environments",values,"slot=? AND created=1",new String[]{String.valueOf(slot)});
+      }
+      db.setTransactionSuccessful();
+    }finally{db.endTransaction();}
+    return changed;
+  }
   long lastSeen;String lastSignature="";
   void heartbeat(ChatSession s,boolean force){String mode=s.internalNetwork()?"内置网络":s.prefs.getString("proxy","").isEmpty()?"手机网络":"应用代理";String problem=s.offline?"网络已断开":s.navigationFailed?"网页加载失败":!s.networkIssue.isEmpty()?"连接需处理":"";String page=s.prefs.getBoolean("pageMode",false)?"原网页":"简洁";String signature=s.networkReady+"|"+(s.pending!=null)+"|"+mode+"|"+s.privacy.level()+"|"+problem+"|"+page;long now=System.currentTimeMillis();if(!force&&signature.equals(lastSignature)&&now-lastSeen<5000)return;lastSeen=now;lastSignature=signature;ContentValues v=new ContentValues();v.put("created",1);v.put("pid",android.os.Process.myPid());v.put("seen",now);v.put("connected",s.networkReady?1:0);v.put("waiting",s.pending==null?0:1);v.put("mode",mode);v.put("problem",problem);v.put("page",page);v.put("privacy",s.privacy.level());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(Profiles.slot(s.context))});}
 }

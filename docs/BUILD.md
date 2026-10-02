@@ -25,11 +25,13 @@ work/android-tools/
 ./build.ps1 -ToolsRoot 'D:/AndroidTools'
 ```
 
-结果是 `dist/PocketChat-1.5.0.apk`。临时输出位于 `work/android-test/`。
+结果是 `dist/PocketChat-1.5.1.apk`。临时输出位于 `work/android-test/`。
 
 首次构建会在 `work/android-test/private/local-test.jks` 创建本地签名密钥。该目录被 Git 忽略。
 
 发布版本的原签名密钥不在仓库。自行生成的不同签名安装包不能直接覆盖已安装的官方发布包；需要覆盖更新时必须使用同一原签名。
+
+使用原密钥时，将它放在被 Git 忽略的 `work/android-test/private/local-test.jks`，替换自动生成的测试密钥并妥善保留原文件。本次云环境已配置用户提供的原密钥；Windows 与云环境构建助手都读取该路径。密钥文件不属于发布附件或源码。
 
 ## 独立测试包
 
