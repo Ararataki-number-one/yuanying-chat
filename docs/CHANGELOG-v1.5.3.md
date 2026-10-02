@@ -19,6 +19,7 @@
 - 自动随机只使用勾选池；手动指定只使用所选节点；更换订阅会清除旧入口和旧池；固定出口独立选择，不参与随机。
 - 订阅与出口库汇总已有环境的配置，并使用原有加密存储保存库数据。订阅详情更新可选入口，不直接改变任何窗口的当前连接。没有全局默认出口。
 - 旧配置不会在打开页面时自动转换或保存。未保存编辑的旧配置继续使用原有入口选择方式。
+- 切到手机网络或应用代理后，不沿用旧固定出口的地区、IP、连接成功或异常状态；没有会话时明确等待窗口连接。网络方式改变会更新 UI 快照。
 
 ## 复用与必要适配
 
@@ -54,8 +55,8 @@
 | `build.ps1` | 更新 APK 文件名，测试包使用独立 Provider authority，注册隔离测试活动。 |
 | `tests/CompactModeTestActivity.java` | 核对新顶部、网络定位和原模式切换 / 草稿保留。 |
 | `tests/DesignUiTestActivity.java` | 更新顶部和三个网络 Tab 的旧界面断言。 |
-| `tests/NetworkReferenceTestActivity.java` | 用真实 Mihomo 解析 / 选择器和真实加密保存 / 跨进程分发验证候选、随机池、取消、保存及页面。 |
-| `tests/NetworkBridgeProbeActivity.java` | 仅测试包使用的第七窗口连接回调夹具，避免依赖私人代理或账号。 |
+| `tests/NetworkReferenceTestActivity.java` | 用真实 Mihomo 解析 / 选择器和真实加密保存 / 跨进程分发验证候选、随机池、取消、保存及页面；增加手机网络状态检查与可单独复跑的 IPC 场景。 |
+| `tests/NetworkBridgeProbeActivity.java` | 仅测试包使用的第七窗口连接回调夹具；与真实单例初始化同步，避免夹具被同时创建的实例覆盖。 |
 | `docs/ui/yuanying_ui_reference.html` | 保存用户提供的视觉参考，未加入运行时 assets。 |
 | `docs/CHANGELOG-v1.5.3.md` | 本轮行为、边界和逐文件修改说明。 |
 | `README.md` | 当前版本、下载入口和三栏网络功能说明。 |

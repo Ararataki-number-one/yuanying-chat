@@ -6,7 +6,7 @@
 
 [下载 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/environment-management-preview-20261002/public-downloads/PocketChat-1.5.3-chat-network-preview.apk)，49,370,478 字节。
 
-SHA-256：`3c4719857c358d942a8e1485fced1f5959194f4be7ca10c6634190cc545d8633`。
+SHA-256：`d7288bc9bacb6a6126e3fa40e85ae82b61b8fc85e0d371ee38a1488d9565ceee`。
 
 包名 `local.pocketchat`，使用原发布签名，可覆盖原签名版本。此前临时签名预览包不适用。签名与递增版本号已核对；真实账号覆盖后登录保留仍需手机核验。
 
@@ -20,10 +20,10 @@ SHA-256：`3c4719857c358d942a8e1485fced1f5959194f4be7ca10c6634190cc545d8633`。
 
 ## 验证范围
 
-发布和测试 APK 构建、签名、对齐及版本检查通过。此测试包已生成 78 项通过结果。实际 Mihomo 解析与选择器、真实加密配置保存及跨窗口私有分发的范围详见验证记录。
+发布和测试 APK 构建、签名、对齐及版本检查通过。此测试包已生成 79 项通过结果；恢复耗时检查在当前软件模拟器上为 2,056 ms，超过原 800 ms 门槛，该项未通过且未放宽断言。实际 Mihomo 解析与选择器、真实加密配置保存及跨窗口私有分发的范围详见验证记录。
 
-未完成或无法判定的检查：compact-mode-results.json、compact-mode-restore-results.json、functional-hub-results.json。模拟器 WebView 渲染进程崩溃，网页回归未完成。未连接真机、未登录真实账号；测试代理连接回调与延迟使用隔离夹具，未声称验证私人代理的公开连通性。
+未通过、未完成或无法判定的检查：compact-mode-results.json、compact-mode-restore-results.json、functional-hub-results.json、network-priority-results.json。模拟器 WebView 渲染进程崩溃，网页回归未完成。未连接真机、未登录真实账号；测试代理连接回调与延迟使用隔离夹具，未声称验证私人代理的公开连通性。
 
-[逐文件修改说明](https://github.com/Ararataki-number-one/yuanying-chat/blob/bd8c9c2224711476fedfe4a546d783d935ac280a/docs/CHANGELOG-v1.5.3.md) · [本轮验证](https://github.com/Ararataki-number-one/yuanying-chat/blob/bd8c9c2224711476fedfe4a546d783d935ac280a/verification/chat-network-reference/README.md)
+[逐文件修改说明](https://github.com/Ararataki-number-one/yuanying-chat/blob/ca4cfe1128c35fe8f5211b8d8b52ab84b8e40921/docs/CHANGELOG-v1.5.3.md) · [本轮验证](https://github.com/Ararataki-number-one/yuanying-chat/blob/ca4cfe1128c35fe8f5211b8d8b52ab84b8e40921/verification/chat-network-reference/README.md)
 
-源码提交：`bd8c9c2224711476fedfe4a546d783d935ac280a`；源码分支：`feature/chat-network-reference`。历史 APK 保留，签名密钥没有加入源码或下载附件。
+源码提交：`ca4cfe1128c35fe8f5211b8d8b52ab84b8e40921`；源码分支：`feature/chat-network-reference`。历史 APK 保留，签名密钥没有加入源码或下载附件。
