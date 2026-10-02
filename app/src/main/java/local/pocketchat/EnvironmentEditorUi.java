@@ -28,40 +28,32 @@ final class EnvironmentEditorUi {
   static void edit(MainActivity a,JSONObject initial,int tab){
     // Old drafts may lack newly introduced metadata; inherit its current value.
     JSONObject existing=current(a);final Runnable[] exit={null};final Dialog dialog=new Dialog(a){@Override public void onBackPressed(){if(exit[0]!=null)exit[0].run();else super.onBackPressed();}};
-    LinearLayout root=DesignUi.screen(a),outer=DesignUi.body(a,root,"编辑环境",()->{if(exit[0]!=null)exit[0].run();});
-    DesignUi.note(outer,"环境 "+String.format(Locale.ROOT,"%02d",Profiles.slot(a)+1)+" · "+Profiles.display(a,Profiles.slot(a)));
+    LinearLayout root=DesignUi.screen(a),outer=DesignUi.body(a,root,"编辑 · "+Profiles.display(a,Profiles.slot(a)),()->{if(exit[0]!=null)exit[0].run();});
     LinearLayout tabs=DesignUi.row(a);outer.addView(tabs);
     LinearLayout basic=DesignUi.column(a),network=DesignUi.column(a),browser=DesignUi.column(a),preferences=DesignUi.column(a);
     FrameLayoutHost host=new FrameLayoutHost(a,basic,network,browser,preferences);outer.addView(host);
 
-    DesignUi.section(basic,"环境资料","名称、分组和备注用于整理环境，不包含账号密码。");
     LinearLayout info=DesignUi.card(a);
     EditText name=DesignUi.input(info,"环境名称",initial.optString("name",existing.optString("name")),"例如：工作账号");name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});
     EditText group=DesignUi.input(info,"分组",initial.optString("group",existing.optString("group")),"例如：工作、个人；留空为未分组");group.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
-    EditText notes=DesignUi.input(info,"备注",initial.optString("notes",existing.optString("notes")),"用途说明，最多 120 字");notes.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
-    DesignUi.field(info,"平台","ChatGPT · chatgpt.com");DesignUi.addCard(basic,info);
-    DesignUi.section(basic,"环境隔离","每个环境分别保存登录、Cookie、聊天、草稿和网络配置。最多 8 个环境。");
-    DesignUi.note(basic,"平台版本和设备信息可在浏览器页核对。");
+    EditText notes=DesignUi.input(info,"备注",initial.optString("notes",existing.optString("notes")),"用途说明，最多 120 字");notes.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});notes.setSingleLine(false);notes.setMaxLines(4);notes.setGravity(android.view.Gravity.TOP);notes.setPadding(a.dp(10),a.dp(10),a.dp(10),a.dp(10));notes.getLayoutParams().height=a.dp(96);
+    DesignUi.addCard(basic,info);
 
-    DesignUi.section(network,"连接配置","网络参数通过独立表单保存并连接。这里显示当前已生效的配置。");
     LinearLayout net=DesignUi.card(a);DesignUi.field(net,"网络方式",DesignNetworkUi.mode(a));
     DesignUi.field(net,"连接状态",a.session.offline?"手机离线":a.session.networkReady?"已连接":"待连接");
-    DesignUi.note(net,"前往网络配置时，未应用的编辑内容会保存为草稿。");DesignUi.addCard(network,net);
+    DesignUi.addCard(network,net);
 
-    DesignUi.section(browser,"隐私保护","使用 Android System WebView 的实际浏览器环境。");
+    DesignUi.section(browser,"隐私保护","");
     LinearLayout protection=DesignUi.card(a);Spinner privacy=new Spinner(a);
-    privacy.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,new String[]{"兼容 · 保留系统行为","标准 · 限制部分设备读取","强化 · 增加 Canvas / 音频限制"}));
+    privacy.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,new String[]{"兼容","标准","强化"}));
     privacy.setSelection(Math.max(0,Math.min(2,initial.optInt("privacyLevel",a.session.privacy.level()))));protection.addView(privacy);
-    DesignUi.note(protection,"标准保护需要支持加载前脚本的 WebView。强化可能影响图片、音频和验证。调整后保存会重新加载连接。");
-    DesignUi.field(protection,"加载前保护",a.session.privacy.earlyInstalled?"已安装":"未安装，以自检结果为准");DesignUi.action(protection,"查看保护详情",false,()->DesignUi.message(a,"当前保护详情",a.session.privacy.summary()));DesignUi.addCard(browser,protection);
+    DesignUi.note(protection,"强化保护可能影响验证和音视频。");
+    DesignUi.action(protection,"保护详情",false,()->DesignUi.message(a,"隐私保护",a.session.privacy.summary()+"\n\n标准保护需要支持加载前脚本的 WebView。保存新的保护等级后会重新连接。"));DesignUi.addCard(browser,protection);
     DesignUi.action(browser,"查看环境自检",false,()->EnvironmentAuditUi.show(a));
-    DesignUi.section(browser,"实际设备信息","以下信息来自当前设备，供核对；独立 UA、语言、时区和指纹参数尚未开放。");
-    LinearLayout identity=DesignUi.card(a);DesignUi.field(identity,"内核版本",EnvironmentAudit.packageVersion());
-    DesignUi.field(identity,"User-Agent",a.remote.getSettings().getUserAgentString());
-    android.util.DisplayMetrics metrics=a.getResources().getDisplayMetrics();DesignUi.field(identity,"屏幕",metrics.widthPixels+" × "+metrics.heightPixels);
-    DesignUi.field(identity,"系统","Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT);
-    DesignUi.field(identity,"语言 / 时区",Locale.getDefault().toLanguageTag()+" / "+TimeZone.getDefault().getID());
-    DesignUi.field(identity,"定位权限","不向网页授权");DesignUi.addCard(browser,identity);
+    DesignUi.addCard(browser,DesignUi.setting(a,"settings","浏览器信息",EnvironmentAudit.packageVersion(),"",()->{
+      android.util.DisplayMetrics metrics=a.getResources().getDisplayMetrics();
+      DesignUi.message(a,"浏览器信息","内核："+EnvironmentAudit.packageVersion()+"\n系统：Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT+"\n屏幕："+metrics.widthPixels+" × "+metrics.heightPixels+"\n语言："+Locale.getDefault().toLanguageTag()+"\n时区："+TimeZone.getDefault().getID()+"\n定位：不向网页授权\n\nUser-Agent\n"+a.remote.getSettings().getUserAgentString()+"\n\n独立 UA、语言、时区和指纹参数尚未开放。");
+    }));
 
     CheckBox[] options=new CheckBox[AppPrefs.KEYS.length];
     String[] headings={"会话与恢复","后台与通知","下载与存储"};int[][] ranges={{0,3},{3,7},{7,9}};
@@ -72,9 +64,7 @@ final class EnvironmentEditorUi {
         options[i].setChecked(initial.has(AppPrefs.KEYS[i])?initial.optBoolean(AppPrefs.KEYS[i]):AppPrefs.enabled(a,AppPrefs.KEYS[i]));card.addView(options[i]);
       }DesignUi.addCard(preferences,card);
     }
-    DesignUi.note(preferences,"自动历史同步只处理可见列表；后台等待关闭后不撤销提问。自动清理只处理无任务引用的旧中间文件。");
-    DesignUi.field(preferences,"该环境下载目录",DefaultDownloads.description(a));
-    DesignUi.action(preferences,"数据与临时文件",false,()->storage(a));
+    DesignUi.action(preferences,"下载位置与存储",false,()->storage(a));
 
     java.util.function.Supplier<JSONObject> read=()->{
       JSONObject value=J.obj("name",name.getText().toString().trim(),"group",group.getText().toString().trim(),"notes",notes.getText().toString().trim(),"privacyLevel",privacy.getSelectedItemPosition());
@@ -84,19 +74,26 @@ final class EnvironmentEditorUi {
     exit[0]=()->{
       JSONObject value=read.get();boolean dirty=false;java.util.Iterator<String> keys=value.keys();while(keys.hasNext()){String key=keys.next();if(!java.util.Objects.equals(value.opt(key),baseline.opt(key))){dirty=true;break;}}
       if(!dirty){dialog.dismiss();return;}
-      new AlertDialog.Builder(a).setTitle("保存未应用的修改？").setMessage("草稿只保存填写内容，不改变运行中的环境。")
+      AlertDialog prompt=new AlertDialog.Builder(a).setTitle("退出前保留修改？").setMessage("草稿只保存填写内容，不改变运行中的环境。")
         .setPositiveButton("存草稿并退出",(d,w)->{ProfileCatalog.get(a).draft(Profiles.slot(a),value);dialog.dismiss();})
         .setNeutralButton("放弃本次修改",(d,w)->dialog.dismiss()).setNegativeButton("继续编辑",null).show();
+      prompt.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(DesignUi.RED);
     };
     DesignUi.action(net,"配置网络 →",true,()->{
       ProfileCatalog.get(a).draft(Profiles.slot(a),read.get());dialog.dismiss();a.status("编辑内容已保存为草稿");a.hub.select(4);
     });
     updateTabs(a,tabs,host,tab);
+    TextView validation=DesignUi.text(a,"",13,DesignUi.RED);validation.setPadding(a.dp(14),a.dp(8),a.dp(14),0);validation.setVisibility(android.view.View.GONE);validation.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);root.addView(validation);
     LinearLayout actions=DesignUi.row(a);actions.setPadding(a.dp(12),a.dp(10),a.dp(12),a.dp(10));
-    for(Button button:new Button[]{DesignUi.button(a,"取消",false,()->exit[0].run()),DesignUi.button(a,"存草稿",false,()->{ProfileCatalog.get(a).draft(Profiles.slot(a),read.get());dialog.dismiss();a.status("环境草稿已保存，尚未应用");}),DesignUi.button(a,"保存环境",true,()->{if(apply(a,read.get(),name))dialog.dismiss();})}){
+    for(Button button:new Button[]{DesignUi.button(a,"取消",false,()->exit[0].run()),DesignUi.button(a,"存草稿",false,()->{ProfileCatalog.get(a).draft(Profiles.slot(a),read.get());dialog.dismiss();a.status("环境草稿已保存，尚未应用");}),DesignUi.button(a,"保存环境",true,()->{
+      JSONObject value=read.get();if(apply(a,value,name)){dialog.dismiss();return;}
+      if(value.optString("name").isEmpty()){updateTabs(a,tabs,host,BASIC);name.requestFocus();validation.setText("先给环境填写一个名称，再保存。");}
+      else{if(value.optInt("privacyLevel")!=a.session.privacy.level())updateTabs(a,tabs,host,BROWSER);validation.setText(a.lastUiStatus);}
+      validation.setVisibility(android.view.View.VISIBLE);
+    })}){
       LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,a.dp(48),1);p.setMargins(a.dp(3),0,a.dp(3),0);actions.addView(button,p);
     }
-    root.addView(actions);dialog.setContentView(root);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);
+    root.addView(actions);dialog.setCanceledOnTouchOutside(false);dialog.setContentView(root);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
   }
   static void updateTabs(MainActivity a,LinearLayout tabs,FrameLayoutHost host,int selected){int n=Math.max(0,Math.min(SECTIONS.length-1,selected));host.page(n);tabs.removeAllViews();tabs.addView(DesignUi.tabs(a,SECTIONS,n,i->updateTabs(a,tabs,host,i)),new LinearLayout.LayoutParams(-1,-2));}
   static boolean apply(MainActivity a,JSONObject value,EditText name){
@@ -111,7 +108,7 @@ final class EnvironmentEditorUi {
   }
   static void storage(MainActivity a){
     JSONObject scan=AppPrefs.temporaryCache(a,System.currentTimeMillis(),false);
-    new AlertDialog.Builder(a).setTitle("数据与存储 · "+Profiles.display(a,Profiles.slot(a))).setMessage("可清理旧临时文件："+scan.optInt("count")+" 个 / "+NetworkMetricsUi.amount(scan.optLong("bytes"))+"\n任务引用的中间文件："+scan.optInt("protected")+" 个\n\n清理仅处理超过 30 天且未被任务引用的中间文件。聊天、草稿、登录与已保存文件保留。").setPositiveButton("清理旧临时文件",(d,w)->{JSONObject result=AppPrefs.temporaryCache(a,System.currentTimeMillis(),true);a.status("已清理 "+result.optInt("removed")+" 个旧临时文件");}).setNegativeButton("关闭",null).show();
+    new AlertDialog.Builder(a).setTitle("数据与存储 · "+Profiles.display(a,Profiles.slot(a))).setMessage("下载位置："+DefaultDownloads.description(a)+"\n\n可清理旧临时文件："+scan.optInt("count")+" 个 / "+NetworkMetricsUi.amount(scan.optLong("bytes"))+"\n任务引用的中间文件："+scan.optInt("protected")+" 个\n\n清理仅处理超过 30 天且未被任务引用的中间文件。聊天、草稿、登录与已保存文件保留。").setPositiveButton("清理旧临时文件",(d,w)->{JSONObject result=AppPrefs.temporaryCache(a,System.currentTimeMillis(),true);a.status("已清理 "+result.optInt("removed")+" 个旧临时文件");}).setNegativeButton("关闭",null).show();
   }
   static final class FrameLayoutHost extends android.widget.FrameLayout {
     final LinearLayout[] pages;FrameLayoutHost(MainActivity a,LinearLayout... views){super(a);pages=views;for(LinearLayout v:views)addView(v);}

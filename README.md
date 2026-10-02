@@ -2,11 +2,11 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.1（versionCode 27，原版签名预览包）。**
+**当前版本：1.5.2（versionCode 28，原版签名预览包）。**
 
 ## 下载与安装
 
-- [下载 1.5.1 原版签名预览 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/environment-management-preview-20261002/public-downloads/PocketChat-1.5.1-environment-preview.apk)
+- [下载 1.5.2 原版签名预览 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/environment-management-preview-20261002/public-downloads/PocketChat-1.5.2-interaction-preview.apk)
 - [历史 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
 - [查看 Releases](https://github.com/Ararataki-number-one/yuanying-chat/releases)
 
@@ -43,6 +43,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 - [环境管理与配置结构](docs/ENVIRONMENT-MANAGEMENT.md)
 - [UI 与实际功能](docs/UI-FUNCTIONS.md)
+- [统一交互规则与网络优化方向](docs/INTERACTION-AND-NETWORK.md)
 - [品牌素材与提示词](docs/ASSETS.md)
 - [历史 1.5.0 界面预览](docs/screenshots)
 
@@ -55,10 +56,12 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 ## 构建和验证
 
 - [构建说明](docs/BUILD.md)
+- [1.5.2 交互优化说明](docs/CHANGELOG-v1.5.2.md)
 - [1.5.1 更新说明](docs/CHANGELOG-v1.5.1.md)
 - [历史 1.5.0 更新说明](docs/CHANGELOG-v1.5.0.md)
 - [界面与功能对应](docs/UI-FUNCTIONS.md)
-- [本轮环境管理与覆盖更新验证](verification/environment-management-round2/README.md)
+- [本轮交互验证](verification/interaction-round3/README.md)
+- [上一轮环境管理与覆盖更新验证](verification/environment-management-round2/README.md)
 - [第一轮环境管理验证：28 项原生检查通过；网页回归未完成](verification/environment-management/README.md)
 - [历史 1.5.0 验证摘要：578 项检查、8 次熄屏测试](verification/validation-summary.json)
 - [逐项结果](verification/test-results)

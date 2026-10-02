@@ -25,7 +25,7 @@ work/android-tools/
 ./build.ps1 -ToolsRoot 'D:/AndroidTools'
 ```
 
-结果是 `dist/PocketChat-1.5.1.apk`。临时输出位于 `work/android-test/`。
+结果是 `dist/PocketChat-1.5.2.apk`。临时输出位于 `work/android-test/`。
 
 首次构建会在 `work/android-test/private/local-test.jks` 创建本地签名密钥。该目录被 Git 忽略。
 
@@ -43,7 +43,7 @@ work/android-tools/
 
 测试样本拦截网页请求，不需要登录真实账号。网络出口公开服务测试需要单独明确发起，不属于默认本地回归。
 
-最新逐项结果见 [verification](../verification/validation-summary.json)。
+本轮逐项结果见 [交互验证](../verification/interaction-round3/README.md)，旧版本记录单独保留。
 
 `-Development` 只用于本机调试。`-Personal` 依赖未公开的个人预设打包器；普通发布版无需该功能，也不包含个人网络参数。
 

@@ -9,17 +9,68 @@ import android.widget.*;
 import org.json.*;
 
 final class FeatureDialogs {
-  static EditText field(MainActivity a,LinearLayout box,String title,String value,int type){TextView label=a.label(title,13,Ui.MUTED);label.setPadding(0,a.dp(12),0,a.dp(2));box.addView(label);EditText e=new EditText(a);e.setTextSize(15);e.setSingleLine(true);e.setInputType(type);e.setText(value);box.addView(e);return e;}
-  static void networkAdvanced(MainActivity a){final AlertDialog[] editing={null};SecretStore vault=new SecretStore(a);JSONObject saved=vault.settings();LinearLayout box=new LinearLayout(a);box.setOrientation(1);box.setPadding(a.dp(22),a.dp(8),a.dp(22),a.dp(12));TextView intro=a.label("内置代理只服务于元婴期院士。手机直接连接订阅入口，再经固定 SOCKS5 出口访问 ChatGPT。",14,Ui.MUTED);box.addView(intro);
-    EditText subscription=field(a,box,"Clash / Mihomo 订阅（HTTPS）",saved.optString("subscriptionUrl"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
-    EditText host=field(a,box,"固定出口服务器",saved.optString("exitHost"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
-    EditText port=field(a,box,"固定出口端口",saved.has("exitPort")?saved.optString("exitPort"):"",InputType.TYPE_CLASS_NUMBER);
+  static EditText field(MainActivity a,LinearLayout box,String title,String value,int type){EditText e=DesignUi.input(box,title,value,"");e.setInputType(type);return e;}
+  static void networkAdvanced(MainActivity a){
+    SecretStore vault=new SecretStore(a);JSONObject saved=vault.settings();LinearLayout box=DesignUi.column(a);box.setPadding(a.dp(18),a.dp(8),a.dp(18),a.dp(16));
+    DesignUi.note(box,Profiles.display(a,Profiles.slot(a))+" · 先连接订阅中的入口，再经固定出口访问 ChatGPT。");
+    EditText subscription=field(a,box,"入口订阅地址（HTTPS）",saved.optString("subscriptionUrl"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+    subscription.setHint("填写 Clash / Mihomo 订阅地址");
+    EditText host=field(a,box,"固定出口服务器",saved.optString("exitHost"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);host.setHint("服务器域名或 IP");
+    EditText port=field(a,box,"固定出口端口",saved.has("exitPort")?saved.optString("exitPort"):"",InputType.TYPE_CLASS_NUMBER);port.setHint("1–65535");
     EditText user=field(a,box,"出口用户名",saved.optString("exitUser"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
     EditText password=field(a,box,"出口密码",saved.optString("exitPassword"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
-    TextView note=a.label("配置由 Android Keystore 加密保存。支持 ARM64 与 x86_64。订阅首次下载需要可用网络，成功后保留加密缓存。",12,Ui.MUTED);note.setPadding(0,a.dp(12),0,a.dp(8));box.addView(note);Button nodes=new Button(a);nodes.setText("节点测速 / 切换入口");box.addView(nodes);nodes.setOnClickListener(v->nodes(a));if(vault.hasBundledDefaults()){Button defaults=new Button(a);defaults.setText("恢复之前提供的默认配置");box.addView(defaults);defaults.setOnClickListener(v->new AlertDialog.Builder(a).setTitle("恢复默认配置？").setMessage("将替换当前手动修改的网络参数。").setPositiveButton("恢复并连接",(x,w)->{try{vault.restoreBundledDefaults();if(editing[0]!=null)editing[0].dismiss();a.session.reconnect();a.status("已恢复默认网络配置");}catch(Exception e){a.status("恢复默认配置失败");}}).setNegativeButton("取消",null).show());}Button advanced=new Button(a);advanced.setText("关闭后从网络页切换方式");box.addView(advanced);advanced.setOnClickListener(v->{if(editing[0]!=null)editing[0].dismiss();DesignNetworkUi.modes(a);});
-    ScrollView scroll=new ScrollView(a);scroll.addView(box);AlertDialog d=new AlertDialog.Builder(a).setTitle("订阅与固定出口").setView(scroll).setPositiveButton("保存并连接",null).setNeutralButton("更新订阅",null).setNegativeButton("取消",null).create();editing[0]=d;d.setOnShowListener(x->{d.getButton(-1).setOnClickListener(v->{if(ProfileUi.working(a.session)){a.status("当前任务结束后再修改网络");return;}try{JSONObject config=J.obj("subscriptionUrl",subscription.getText().toString().trim(),"exitHost",host.getText().toString().trim(),"exitPort",Integer.parseInt(port.getText().toString()),"exitUser",user.getText().toString(),"exitPassword",password.getText().toString());NativeNetwork.validate(config);vault.save(config);a.prefs.edit().putBoolean("networkConfigured",true).putString("networkMode","internal").commit();d.dismiss();a.session.reconnect();}catch(Exception e){subscription.setError(e.getMessage()==null?"请检查服务器与端口":e.getMessage());}});d.getButton(-3).setOnClickListener(v->{if(ProfileUi.working(a.session)){a.status("请等待当前任务结束");return;}d.dismiss();a.loading.task("正在更新订阅…");NativeNetwork.get(a).refresh((ok,msg)->{a.loading.dismissTask();a.status(msg);if(ok)a.session.applyProxy(NativeNetwork.get(a).proxy());});});});d.show();}
+    password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+    EditText[] fields={subscription,host,port,user,password};String[] baseline=new String[fields.length];for(int i=0;i<fields.length;i++)baseline[i]=fields[i].getText().toString();
+    DesignUi.note(box,"保存后会重新连接此环境。用户名和密码在本机加密保存；首次下载订阅需要可用网络。");
+    TextView notice=DesignUi.text(a,"",13,DesignUi.RED);notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(notice);
+    ScrollView scroll=new ScrollView(a);scroll.addView(box);
+    AlertDialog dialog=new AlertDialog.Builder(a).setTitle("订阅与固定出口").setView(scroll).setPositiveButton("保存并连接",null).setNegativeButton("取消",null).create();
+    if(vault.hasBundledDefaults())DesignUi.action(box,"恢复默认网络配置",false,()->{
+      if(DesignNetworkUi.busy(a)){notice.setText("当前操作还未完成，请稍后再恢复配置。");return;}
+      new AlertDialog.Builder(a).setTitle("恢复默认网络配置？").setMessage("当前参数和本次填写的修改会被默认配置替换。")
+        .setPositiveButton("恢复并连接",(d,w)->{try{vault.restoreBundledDefaults();dialog.dismiss();a.session.reconnect();a.status("已恢复默认网络配置");}catch(Exception e){notice.setText("恢复失败，请稍后重试。");}}).setNegativeButton("继续编辑",null).show();
+    });
+    dialog.show();
+    DesignUi.protectEdits(a,dialog,()->{for(int i=0;i<fields.length;i++)if(!baseline[i].equals(fields[i].getText().toString()))return true;return false;});
+    dialog.getButton(-1).setOnClickListener(v->{
+      if(DesignNetworkUi.busy(a)){notice.setText("当前回复或操作还未完成，请结束后再保存网络配置。");return;}
+      notice.setText("");for(EditText field:fields)field.setError(null);
+      int number;try{number=Integer.parseInt(port.getText().toString().trim());}catch(Exception e){port.setError("请输入 1–65535 的端口");port.requestFocus();return;}
+      JSONObject config=J.obj("subscriptionUrl",subscription.getText().toString().trim(),"exitHost",host.getText().toString().trim(),"exitPort",number,"exitUser",user.getText().toString(),"exitPassword",password.getText().toString());
+      try{NativeNetwork.validate(config);}catch(Exception e){String reason=e.getMessage()==null?"请检查网络参数":e.getMessage();EditText invalid=reason.contains("端口")?port:reason.contains("固定出口")?host:subscription;invalid.setError(reason);invalid.requestFocus();return;}
+      try{vault.save(config);a.prefs.edit().putBoolean("networkConfigured",true).putString("networkMode","internal").commit();dialog.dismiss();a.session.reconnect();}
+      catch(Exception e){notice.setText("配置未能保存，请稍后重试。填写的内容仍在此处。");}
+    });
+  }
   static void network(MainActivity a){DesignNetworkUi.modes(a);}
-  static void nodes(MainActivity a){NativeNetwork n=NativeNetwork.get(a);LinearLayout box=new LinearLayout(a);box.setOrientation(1);box.setPadding(a.dp(16),a.dp(12),a.dp(16),a.dp(16));TextView state=a.label(n.message,14,Ui.MUTED);box.addView(state);LinearLayout rows=new LinearLayout(a);rows.setOrientation(1);box.addView(rows);Runnable refresh=()->{state.setText(n.message);rows.removeAllViews();for(int i=0;i<n.results.length();i++){JSONObject item=n.results.optJSONObject(i);if(item==null)continue;String name=item.optString("internalName"),title=item.optString("name"),detail=item.optInt("delay")>0?item.optInt("delay")+" ms":"不可用";if(item.optInt("samples")>0)detail+=" · "+item.optInt("samples")+" 次检测，成功 "+Math.round(item.optDouble("successRate")*100)+"%，波动 "+item.optLong("jitter")+" ms";rows.addView(a.sheetRow("",(name.equals(n.currentEntry)?"✓ ":"")+title+" · "+detail,()->{if(ProfileUi.working(a.session)){a.status("请先等待当前任务结束");return;}a.loading.task("正在切换并检查线路…");n.select(name,(ok,msg)->{a.loading.dismissTask();state.setText(msg);});}));}};refresh.run();ScrollView scroll=new ScrollView(a);scroll.addView(box);new AlertDialog.Builder(a).setTitle("完整链路测速").setView(scroll).setPositiveButton("重新测速",(d,w)->{a.loading.task("正在测试线路速度…");n.rescan((ok,msg)->{a.loading.dismissTask();nodes(a);});}).setNegativeButton("关闭",null).show();}
+  static void nodes(MainActivity a){
+    NativeNetwork n=NativeNetwork.get(a);LinearLayout box=DesignUi.column(a);box.setPadding(a.dp(16),a.dp(12),a.dp(16),a.dp(16));
+    TextView state=DesignUi.text(a,n.message,14,DesignUi.MUTED);state.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(state);
+    LinearLayout rows=DesignUi.column(a);box.addView(rows);final boolean[] operating={false};
+    ScrollView scroll=new ScrollView(a);scroll.addView(box);
+    AlertDialog dialog=new AlertDialog.Builder(a).setTitle("完整链路测速").setView(scroll).setPositiveButton("重新测速",null).setNegativeButton("关闭",null).create();
+    final Runnable[] refresh={null};refresh[0]=()->{
+      DesignUi.rebuild(rows,true,()->{
+        if(n.results.length()==0)DesignUi.empty(rows,"还没有测量结果","保存内置网络配置后，点“重新测速”检查实际线路。","",null);
+        for(int i=0;i<n.results.length();i++){
+          JSONObject item=n.results.optJSONObject(i);if(item==null)continue;
+          String name=item.optString("internalName"),title=item.optString("name"),detail=item.optInt("delay")>0?item.optInt("delay")+" ms":"本次不可用";
+          if(item.optInt("samples")>0)detail+=" · 成功 "+Math.round(item.optDouble("successRate")*100)+"% · 波动 "+item.optLong("jitter")+" ms";
+          LinearLayout card=DesignUi.setting(a,"globe",title,detail,name.equals(n.currentEntry)?"使用中":"",()->{
+            if(operating[0]||DesignNetworkUi.busy(a)){a.status("请等待当前操作完成");return;}
+            operating[0]=true;dialog.getButton(-1).setEnabled(false);a.loading.task("正在切换并检查线路…");
+            n.select(name,(ok,msg)->{a.loading.dismissTask();operating[0]=false;a.status(msg);if(dialog.isShowing()){state.setText(msg);dialog.getButton(-1).setEnabled(true);refresh[0].run();}});
+          });DesignUi.addCard(rows,card);
+        }
+      });
+    };
+    dialog.show();refresh[0].run();
+    dialog.getButton(-1).setOnClickListener(v->{
+      if(operating[0]||DesignNetworkUi.busy(a)){a.status("请等待当前操作完成");return;}
+      operating[0]=true;dialog.getButton(-1).setEnabled(false);a.loading.task("正在测试线路速度…");
+      n.rescan((ok,msg)->{a.loading.dismissTask();operating[0]=false;a.status(msg);if(dialog.isShowing()){state.setText(msg);dialog.getButton(-1).setEnabled(true);refresh[0].run();}});
+    });
+  }
   static boolean begin(MainActivity a){if(a.session.pending!=null||a.session.submitting||a.session.operation||a.session.navigating||a.session.navigationFailed||a.session.state.optBoolean("busy")){a.status("请先等待当前任务结束");return false;}a.session.operation=true;a.session.changed();return true;}
   static void end(MainActivity a,String message){a.loading.dismissTask();a.session.escape();a.session.operation=false;a.session.setStatus(message);}
   static void models(MainActivity a){if(!begin(a))return;a.loading.task("正在读取模型与思考强度…");a.status("正在读取可用模型与强度…");a.session.asyncDriver("model-open",new JSONObject(),3000,opened->{if(!opened.optBoolean("ok")){end(a,opened.optString("reason","请先登录"));return;}a.handler.postDelayed(()->a.runDriver("model-options",new JSONObject(),o->modelPanel(a,o)),250);});}

@@ -16,6 +16,8 @@ public class WindowHomeActivity extends Activity {
   EditText search;
   Button groupButton,sortButton,selectionButton,visibleSelectionButton;
   Button batchGroupButton,favoriteSelectedButton,unfavoriteSelectedButton;
+  Button createButton,filterOptions;
+  LinearLayout preparation;
   int filter,sort;
   String selectedGroup;
   boolean selecting,preparing;
@@ -37,22 +39,22 @@ public class WindowHomeActivity extends Activity {
     tools.addView(selectionButton,new LinearLayout.LayoutParams(dp(64),dp(48)));
     LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(dp(112),dp(48));
     createParams.leftMargin=dp(8);
-    tools.addView(DesignUi.button(this,"＋ 新建环境",true,()->createWindow()),createParams);
+    createButton=DesignUi.button(this,"＋ 新建环境",true,()->createWindow());tools.addView(createButton,createParams);
     box.addView(tools);
-    search=DesignUi.input(box,"查找环境","","名称、编号、分组或备注");
+    preparation=DesignUi.progress(this,"正在创建环境…","完成后会打开新环境，请稍候。");
+    preparation.setVisibility(View.GONE);DesignUi.addCard(box,preparation);
+    LinearLayout searchRow=DesignUi.row(this),searchBox=DesignUi.column(this);
+    search=DesignUi.input(searchBox,"","","搜索环境名称、分组或备注");
+    search.setContentDescription("搜索环境");searchRow.addView(searchBox,new LinearLayout.LayoutParams(0,-2,1));
+    filterOptions=DesignUi.button(this,"筛选",false,this::chooseFilters);LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(dp(72),dp(48));op.leftMargin=dp(8);searchRow.addView(filterOptions,op);
+    LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(8);box.addView(searchRow,sp);
     search.addTextChangedListener(new TextWatcher(){
       public void beforeTextChanged(CharSequence s,int x,int c,int f){}
       public void onTextChanged(CharSequence s,int x,int b,int c){lastSignature="";refresh();}
       public void afterTextChanged(Editable e){}
     });
-    LinearLayout controls=DesignUi.row(this);
-    controls.setPadding(0,dp(10),0,dp(4));
-    groupButton=DesignUi.button(this,"全部分组 ▾",false,()->chooseGroup());
-    sortButton=DesignUi.button(this,"编号排序 ▾",false,()->chooseSort());
-    controls.addView(groupButton,new LinearLayout.LayoutParams(0,dp(44),1));
-    LinearLayout.LayoutParams right=new LinearLayout.LayoutParams(0,dp(44),1);
-    right.leftMargin=dp(8);
-    controls.addView(sortButton,right);box.addView(controls);
+    groupButton=DesignUi.button(this,"全部分组 ▾",false,this::chooseGroup);
+    sortButton=DesignUi.button(this,"编号排序 ▾",false,this::chooseSort);
     HorizontalScrollView filterScroll=new HorizontalScrollView(this);
     filterScroll.setHorizontalScrollBarEnabled(false);
     filters=DesignUi.row(this);filterScroll.addView(filters);
@@ -67,7 +69,7 @@ public class WindowHomeActivity extends Activity {
     selectionTools.addView(selectionCount,new LinearLayout.LayoutParams(0,-2,1));
     visibleSelectionButton=DesignUi.button(this,"全选当前结果",false,()->selectVisible());
     visibleSelectionButton.setTextSize(12);
-    selectionTools.addView(visibleSelectionButton,new LinearLayout.LayoutParams(dp(128),dp(44)));
+    selectionTools.addView(visibleSelectionButton,new LinearLayout.LayoutParams(dp(128),dp(48)));
     selectionBar.addView(selectionTools);
     LinearLayout batchActions=DesignUi.row(this);
     batchActions.setPadding(0,dp(8),0,0);
@@ -77,17 +79,12 @@ public class WindowHomeActivity extends Activity {
     Button[] actions={batchGroupButton,favoriteSelectedButton,unfavoriteSelectedButton};
     for(int i=0;i<actions.length;i++){
       actions[i].setTextSize(13);
-      LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,dp(44),1);
+      LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,dp(48),1);
       if(i>0)params.leftMargin=dp(6);
       batchActions.addView(actions[i],params);
     }
     selectionBar.addView(batchActions);root.addView(selectionBar);
-    root.addView(DesignUi.nav(this,1,n->{
-      if(n==1)return;
-      if(n==2)startActivity(new Intent(this,DownloadCenterActivity.class));
-      else if(n==4)startActivity(new Intent(this,AppSettingsActivity.class));
-      else openWindow(lastWindow(),n==3?"network":"chat");
-    },null));
+    root.addView(DesignUi.nav(this,1,n->WorkspaceNavigation.select(this,1,n),null));
     setContentView(root);
     if(state!=null){
       filter=Math.max(0,Math.min(4,state.getInt("filter")));
@@ -118,6 +115,13 @@ public class WindowHomeActivity extends Activity {
     return out;
   }
   int lastWindow(){return AppSettings.recentSlot(this);}
+  void chooseFilters(){
+    LinearLayout choices=DesignUi.column(this);choices.setPadding(dp(18),dp(8),dp(18),dp(16));
+    groupButton=DesignUi.button(this,(selectedGroup==null?"全部分组":selectedGroup.isEmpty()?"未分组":selectedGroup)+" ▾",false,this::chooseGroup);
+    sortButton=DesignUi.button(this,new String[]{"编号排序 ▾","最近使用 ▾","名称排序 ▾"}[sort],false,this::chooseSort);
+    choices.addView(groupButton,new LinearLayout.LayoutParams(-1,dp(48)));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(48));p.topMargin=dp(8);choices.addView(sortButton,p);
+    new AlertDialog.Builder(this).setTitle("筛选与排序").setView(choices).setPositiveButton("完成",null).show();
+  }
   void chooseGroup(){
     List<String> groups=new ArrayList<>();groups.add(null);groups.add("");
     JSONArray rows=ProfileCatalog.get(this).list();
@@ -154,8 +158,8 @@ public class WindowHomeActivity extends Activity {
   }
   static String networkStatus(JSONObject row,boolean active,boolean fresh){
     String mode=row.optString("mode");
-    if(mode.isEmpty())return "网络状态尚未记录";
-    if(!active)return "网络 · "+mode+" · 未运行";
+    if(mode.isEmpty())return "网络 · 暂无记录";
+    if(!active)return "网络 · "+mode;
     if(!fresh)return "网络 · "+mode+" · 状态待核对";
     String problem=row.optString("problem");
     return "网络 · "+mode+" · "+(!problem.isEmpty()?problem:row.optBoolean("connected")?"已连接":"待连接");
@@ -178,13 +182,14 @@ public class WindowHomeActivity extends Activity {
     if(signature.equals(lastSignature))return;lastSignature=signature;
     groupButton.setText((selectedGroup==null?"全部分组":selectedGroup.isEmpty()?"未分组":selectedGroup)+" ▾");
     sortButton.setText(new String[]{"编号排序 ▾","最近使用 ▾","名称排序 ▾"}[sort]);
+    filterOptions.setText(selectedGroup!=null||sort!=0?"筛选 ●":"筛选");filterOptions.setContentDescription("筛选与排序，当前分组："+(selectedGroup==null?"全部":selectedGroup.isEmpty()?"未分组":selectedGroup));
     filters.removeAllViews();String[] labels={"全部","收藏","运行中","等待回复","需处理"};
     for(int i=0;i<labels.length;i++){
       final int n=i;
       Button button=DesignUi.button(this,labels[i]+" "+counts[i],false,()->{filter=n;lastSignature="";refresh();});
       button.setTextSize(12);button.setSelected(i==filter);
       if(i==filter){button.setTextColor(DesignUi.BLUE);button.setBackground(DesignUi.surface(this,0xffeaf1ff,8,0xffb6cdfa));}
-      LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(i==3?100:88),dp(44));
+      LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(i==3?100:88),dp(48));
       p.rightMargin=dp(6);filters.addView(button,p);
     }
     if(sort==1)ordered.sort((l,r)->Long.compare(r.optLong("opened"),l.optLong("opened")));
@@ -212,39 +217,29 @@ public class WindowHomeActivity extends Activity {
       TextView name=DesignUi.text(this,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"),16,DesignUi.TEXT);
       name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);title.addView(name);
       String group=row.optString("group").isEmpty()?"未分组":row.optString("group");
-      TextView sub=DesignUi.text(this,(selecting?String.format(Locale.ROOT,"%02d",id+1)+" · ":"")+group,12,DesignUi.MUTED);
+      TextView sub=DesignUi.text(this,(selecting?String.format(Locale.ROOT,"%02d",id+1)+" · ":"")+group+(id==AppSettings.defaultSlot(this)?" · 默认":"")+(!row.optString("draft").isEmpty()?" · 草稿":""),12,DesignUi.MUTED);
       sub.setSingleLine();sub.setEllipsize(TextUtils.TruncateAt.END);title.addView(sub);
       head.addView(title,new LinearLayout.LayoutParams(0,-2,1));
       boolean problem=!row.optString("problem").isEmpty();
       String status=problem?(active?"需处理":"上次异常"):active?(row.optBoolean("waiting")?"等待回复":fresh?"运行中":"待核对"):"未运行";
       head.addView(DesignUi.badge(this,status,problem?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED));card.addView(head);
-      DesignUi.note(card,networkStatus(row,active,fresh));
-      TextView recent=DesignUi.text(this,"最近使用 · "+recentUse(row.optLong("opened"),now),12,DesignUi.MUTED);
-      card.addView(recent);
-      LinearLayout tags=DesignUi.row(this);
-      if(id==AppSettings.defaultSlot(this))tags.addView(DesignUi.badge(this,"默认启动",DesignUi.BLUE));
-      if(!row.optString("draft").isEmpty())tags.addView(DesignUi.badge(this,"有配置草稿",DesignUi.MUTED));
-      if(tags.getChildCount()>0){tags.setPadding(0,dp(8),0,0);card.addView(tags);}
-      if(!row.optString("notes").isEmpty()){
-        TextView note=DesignUi.text(this,row.optString("notes"),12,DesignUi.MUTED);
-        note.setSingleLine();note.setEllipsize(TextUtils.TruncateAt.END);note.setPadding(0,dp(6),0,0);card.addView(note);
-      }
-      if(!selecting){
-        LinearLayout actions=DesignUi.row(this);actions.setPadding(0,dp(10),0,0);
-        Button open=DesignUi.button(this,"打开环境",true,()->openWindow(id,"chat"));
-        open.setContentDescription("打开环境 "+row.optString("name"));
-        actions.addView(open,new LinearLayout.LayoutParams(0,dp(48),1));
-        Button more=DesignUi.button(this,"更多",false,()->menu(id));
-        more.setContentDescription("更多操作 "+row.optString("name"));
-        LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(dp(88),dp(48));
-        moreParams.leftMargin=dp(8);actions.addView(more,moreParams);card.addView(actions);
+      TextView network=DesignUi.text(this,networkStatus(row,active,fresh),12,problem?DesignUi.RED:DesignUi.MUTED);
+      network.setMaxLines(2);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,dp(8),0,dp(4));card.addView(network);
+      TextView recent=DesignUi.text(this,"最近使用 · "+recentUse(row.optLong("opened"),now),11,DesignUi.MUTED);
+      if(selecting)card.addView(recent);
+      else{
+        LinearLayout actions=DesignUi.row(this);actions.setPadding(0,dp(4),0,0);
+        actions.addView(recent,new LinearLayout.LayoutParams(0,-2,1));
+        Button open=DesignUi.button(this,"打开环境",true,()->openWindow(id,"chat"));open.setContentDescription("打开环境 "+row.optString("name"));open.setTextSize(13);open.setPadding(dp(4),0,dp(4),0);
+        actions.addView(open,new LinearLayout.LayoutParams(dp(96),dp(48)));
+        Button more=DesignUi.button(this,"更多",false,()->menu(id));more.setTextSize(12);more.setPadding(dp(4),0,dp(4),0);more.setContentDescription("更多操作 "+row.optString("name"));
+        LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(dp(48),dp(48));moreParams.leftMargin=dp(6);actions.addView(more,moreParams);card.addView(actions);
       }
       DesignUi.addCard(cards,card);
     }
-    count.setText("环境 "+counts[0]+" / 8\n当前显示 "+visibleIds.size());
+    count.setText(visibleIds.size()==counts[0]?counts[0]+" 个环境":"显示 "+visibleIds.size()+" / "+counts[0]);
     if(visibleIds.isEmpty()){
-      DesignUi.note(cards,"没有符合条件的环境。可修改关键词或重置筛选。");
-      DesignUi.action(cards,"重置筛选",false,()->{filter=0;selectedGroup=null;search.setText("");lastSignature="";refresh();});
+      DesignUi.empty(cards,"没有匹配的环境","试试其他关键词，或重置分组与状态筛选。","重置筛选",()->{filter=0;selectedGroup=null;search.setText("");lastSignature="";refresh();});
     }
     updateSelectionBar(rows);
   }
@@ -326,10 +321,11 @@ public class WindowHomeActivity extends Activity {
     EditText notes=DesignUi.input(box,"备注",row.optString("notes"),"环境用途说明");
     group.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
     notes.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
-    new AlertDialog.Builder(this).setTitle("分组与备注 · "+row.optString("name")).setView(box)
+    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("分组与备注 · "+row.optString("name")).setView(box)
       .setPositiveButton("保存",(d,w)->{
-        ProfileCatalog.get(this).details(id,group.getText().toString(),notes.getText().toString());lastSignature="";refresh();
+        ProfileCatalog.get(this).details(id,group.getText().toString(),notes.getText().toString());lastSignature="";refresh();DesignUi.feedback(this,"分组与备注已保存");
       }).setNegativeButton("取消",null).show();
+    DesignUi.protectEdits(this,dialog,()->!group.getText().toString().equals(row.optString("group"))||!notes.getText().toString().equals(row.optString("notes")));
   }
   void openWindow(int id,String action){
     if(id<0||id>=Profiles.MAX)return;
@@ -347,11 +343,99 @@ public class WindowHomeActivity extends Activity {
     new Wizard(next,rows).show();
   }
   final class Wizard {
-    final int id;final JSONArray windows;final Dialog dialog=new Dialog(WindowHomeActivity.this);LinearLayout body;int step,sourceType;String title;String group="";int sourceSlot;boolean makeDefault;Wizard(int id,JSONArray windows){this.id=id;this.windows=windows;title="环境 "+(id+1);sourceSlot=AppSettings.defaultSlot(WindowHomeActivity.this);}
-    void show(){LinearLayout screen=DesignUi.screen(WindowHomeActivity.this);body=DesignUi.body(WindowHomeActivity.this,screen,"创建环境",()->dialog.dismiss());dialog.setContentView(screen);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);render();}
-    void render(){body.removeAllViews();body.addView(DesignUi.tabs(WindowHomeActivity.this,new String[]{"基本信息","网络来源","确认创建"},step,n->{if(n<step){step=n;render();}}));if(step==0){EditText name=DesignUi.input(body,"环境名称",title,"例如：工作号、研究专用");name.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){title=s.toString();}public void afterTextChanged(Editable e){}});EditText groupInput=DesignUi.input(body,"分组（可选）",group,"最多 12 字，留空为未分组");groupInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});groupInput.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int c,int f){}public void onTextChanged(CharSequence s,int a,int b,int c){group=s.toString().trim();}public void afterTextChanged(Editable e){}});DesignUi.field(body,"选择平台","ChatGPT · chatgpt.com");DesignUi.note(body,"当前支持 ChatGPT，创建后需单独登录。");DesignUi.action(body,"下一步：配置来源 →",true,()->{if(title.trim().isEmpty()||title.trim().length()>24){name.setError("名称需要 1–24 字");return;}title=title.trim();step=1;render();});}
-      if(step==1){String[] choices={"复制默认环境网络","复制指定环境网络","创建后手动配置"};for(int i=0;i<3;i++){final int n=i;LinearLayout card=DesignUi.card(WindowHomeActivity.this);RadioButton radio=new RadioButton(WindowHomeActivity.this);radio.setText(choices[i]);radio.setTextColor(DesignUi.TEXT);radio.setChecked(sourceType==i);card.addView(radio);card.addView(DesignUi.text(WindowHomeActivity.this,i==0?"复制默认环境的网络配置":i==1?"选择一个环境，只复制网络设置":"新环境内手动设置网络",12,DesignUi.MUTED));radio.setOnClickListener(v->{sourceType=n;render();});DesignUi.addCard(body,card);}if(sourceType==1){String[] names=new String[windows.length()];java.util.List<Integer> ids=new ArrayList<>();java.util.List<String> labels=new ArrayList<>();for(int i=0;i<windows.length();i++)if(windows.optJSONObject(i).optBoolean("created")){ids.add(i);labels.add(windows.optJSONObject(i).optString("name"));}Spinner spinner=new Spinner(WindowHomeActivity.this);spinner.setAdapter(new ArrayAdapter<>(WindowHomeActivity.this,android.R.layout.simple_spinner_dropdown_item,labels));int selected=ids.indexOf(sourceSlot);spinner.setSelection(selected>=0?selected:0);spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onItemSelected(android.widget.AdapterView<?> p,View v,int pos,long item){sourceSlot=ids.get(pos);}public void onNothingSelected(android.widget.AdapterView<?> p){}});body.addView(spinner);}DesignUi.note(body,"登录、Cookie、聊天、草稿和环境自检基线分别保存。这里的复制只涉及网络配置。");DesignUi.action(body,"下一步：确认创建 →",true,()->{step=2;render();});}
-      if(step==2){DesignUi.field(body,"环境名称",title);DesignUi.field(body,"平台","ChatGPT");DesignUi.field(body,"分组",group.isEmpty()?"未分组":group);DesignUi.field(body,"网络来源",sourceType==2?"自定义配置":Profiles.display(WindowHomeActivity.this,sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot));CheckBox selected=new CheckBox(WindowHomeActivity.this);selected.setText("设为默认环境");selected.setChecked(makeDefault);selected.setOnCheckedChangeListener((b,c)->makeDefault=c);body.addView(selected);DesignUi.action(body,"创建并打开",true,()->create());}}
-    void create(){if(preparing)return;preparing=true;Context source=Profiles.context(WindowHomeActivity.this,sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot);boolean clone=sourceType!=2;dialog.dismiss();new Thread(()->{String error="";try{Profiles.prepare(source,id,clone);Profiles.rename(source,id,title);ProfileCatalog.get(source).details(id,group,"");if(makeDefault)AppSettings.defaultSlot(source,id);}catch(Exception e){error="环境准备失败，请重试";}String failure=error;handler.post(()->{preparing=false;if(isFinishing()||isDestroyed())return;lastSignature="";refresh();if(failure.isEmpty())openWindow(id,sourceType==2?"network":"chat");else SavedFileActions.toast(WindowHomeActivity.this,failure);});},"window-create").start();}
+    final int id;final JSONArray windows;final Dialog dialog;
+    LinearLayout body,actions;EditText name;AlertDialog exitPrompt;
+    int step,sourceType,sourceSlot;String title,group="";boolean makeDefault;
+    Wizard(int id,JSONArray windows){
+      this.id=id;this.windows=windows;title="环境 "+(id+1);sourceSlot=AppSettings.defaultSlot(WindowHomeActivity.this);
+      dialog=new Dialog(WindowHomeActivity.this){@Override public void onBackPressed(){Wizard.this.back();}};
+      dialog.setCanceledOnTouchOutside(false);
+    }
+    void show(){
+      LinearLayout screen=DesignUi.screen(WindowHomeActivity.this);
+      body=DesignUi.body(WindowHomeActivity.this,screen,"创建环境",this::back);
+      actions=DesignUi.row(WindowHomeActivity.this);actions.setPadding(dp(14),dp(10),dp(14),dp(10));
+      screen.addView(actions);dialog.setContentView(screen);dialog.show();
+      dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);render();
+    }
+    void back(){if(step>0){step--;render();}else close();}
+    void close(){
+      boolean dirty=!title.equals("环境 "+(id+1))||!group.isEmpty()||sourceType!=0||makeDefault;
+      if(!dirty){dialog.dismiss();return;}
+      if(exitPrompt!=null&&exitPrompt.isShowing())return;
+      exitPrompt=new AlertDialog.Builder(WindowHomeActivity.this).setTitle("放弃创建环境？")
+        .setMessage("退出后，本次填写的名称、分组和网络来源不会保存。")
+        .setPositiveButton("继续填写",null).setNegativeButton("放弃创建",(d,w)->dialog.dismiss()).show();
+      exitPrompt.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(DesignUi.RED);
+    }
+    void render(){
+      DesignUi.rebuild(body,false,()->{
+        body.addView(DesignUi.tabs(WindowHomeActivity.this,new String[]{"基本信息","网络来源","确认创建"},step,n->{if(n<step){step=n;render();}}));
+        if(step==0)basic();else if(step==1)network();else summary();
+      });
+      actions.removeAllViews();
+      Button back=DesignUi.button(WindowHomeActivity.this,step==0?"取消创建":"上一步",false,this::back);
+      Button next=DesignUi.button(WindowHomeActivity.this,step==2?"创建并打开":"下一步",true,this::next);
+      actions.addView(back,new LinearLayout.LayoutParams(0,dp(48),1));
+      LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(48),1);p.leftMargin=dp(8);actions.addView(next,p);
+    }
+    void basic(){
+      name=DesignUi.input(body,"环境名称",title,"例如：工作号、研究专用");
+      name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});
+      watch(name,()->title=name.getText().toString());
+      EditText input=DesignUi.input(body,"分组（可选）",group,"最多 12 字，留空为未分组");
+      input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});watch(input,()->group=input.getText().toString().trim());
+
+    }
+    void watch(EditText input,Runnable changed){input.addTextChangedListener(new TextWatcher(){
+      public void beforeTextChanged(CharSequence s,int a,int c,int f){}
+      public void onTextChanged(CharSequence s,int a,int b,int c){changed.run();}
+      public void afterTextChanged(Editable e){}
+    });}
+    void network(){
+      String[] choices={"使用默认环境的网络设置","使用其他环境的网络设置","自己配置网络"};
+      LinearLayout choicesBox=DesignUi.card(WindowHomeActivity.this);
+      for(int i=0;i<choices.length;i++){
+        final int n=i;RadioButton radio=new RadioButton(WindowHomeActivity.this);
+        radio.setText(choices[i]);radio.setTextColor(DesignUi.TEXT);radio.setChecked(sourceType==i);radio.setMinHeight(dp(48));choicesBox.addView(radio);
+        radio.setOnClickListener(v->{sourceType=n;render();});
+      }DesignUi.addCard(body,choicesBox);
+      if(sourceType==1){
+        List<Integer> ids=new ArrayList<>();List<String> labels=new ArrayList<>();
+        for(int i=0;i<windows.length();i++)if(windows.optJSONObject(i).optBoolean("created")){ids.add(i);labels.add(windows.optJSONObject(i).optString("name"));}
+        Spinner spinner=new Spinner(WindowHomeActivity.this);spinner.setMinimumHeight(dp(48));
+        spinner.setAdapter(new ArrayAdapter<>(WindowHomeActivity.this,android.R.layout.simple_spinner_dropdown_item,labels));
+        spinner.setSelection(Math.max(0,ids.indexOf(sourceSlot)));
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+          public void onItemSelected(AdapterView<?> p,View v,int pos,long item){if(pos>=0&&pos<ids.size())sourceSlot=ids.get(pos);}
+          public void onNothingSelected(AdapterView<?> p){}
+        });body.addView(spinner);
+      }
+      DesignUi.note(body,"只复制网络设置，账号需要在新环境单独登录。");
+    }
+    void summary(){
+      DesignUi.field(body,"环境名称",title);if(!group.isEmpty())DesignUi.field(body,"分组",group);
+      DesignUi.field(body,"网络来源",sourceType==2?"创建后手动配置":Profiles.display(WindowHomeActivity.this,sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot));
+      CheckBox selected=new CheckBox(WindowHomeActivity.this);selected.setText("设为默认环境");selected.setTextColor(DesignUi.TEXT);selected.setMinHeight(dp(48));
+      DesignUi.note(body,sourceType==2?"创建后会打开网络配置页。保存网络方式后，再登录 ChatGPT。":"创建后会使用复制的网络配置打开会话，请在新环境单独登录 ChatGPT。");
+      selected.setChecked(makeDefault);selected.setOnCheckedChangeListener((b,c)->makeDefault=c);body.addView(selected);
+    }
+    void next(){
+      if(step==0){if(title.trim().isEmpty()||title.trim().length()>24){name.setError("名称需要 1–24 字");name.requestFocus();return;}title=title.trim();}
+      if(step<2){step++;render();}else create();
+    }
+    void create(){
+      if(preparing)return;preparing=true;createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);
+      Context source=Profiles.context(WindowHomeActivity.this,sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot);
+      boolean clone=sourceType!=2;dialog.dismiss();
+      new Thread(()->{
+        String error="";try{Profiles.prepare(source,id,clone);Profiles.rename(source,id,title);ProfileCatalog.get(source).details(id,group,"");if(makeDefault)AppSettings.defaultSlot(source,id);}
+        catch(Exception e){error="环境准备失败，请重试";}
+        String failure=error;handler.post(()->{
+          preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);lastSignature="";refresh();
+          if(failure.isEmpty())openWindow(id,sourceType==2?"network":"chat");else DesignUi.feedback(WindowHomeActivity.this,failure);
+        });
+      },"window-create").start();
+    }
   }
 }

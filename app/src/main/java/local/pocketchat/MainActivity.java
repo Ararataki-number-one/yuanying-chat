@@ -31,7 +31,7 @@ public class MainActivity extends Activity {
   LinearLayout toolbar;TextView nativeTab,webTab;AlertDialog networkDialog;String lastUiStatus="";TextView modelTitle,effortChip,webNotice;Ui.IconButton navigation;Dialog drawer;String currentModel="",currentEffort="";
   interface Result {void accept(JSONObject value);}
   int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+.5f);}
-  void status(String s){status.setText(s);boolean quiet=s.startsWith("已连接")||s.equals("回复完成");status.setVisibility(quiet?View.GONE:View.VISIBLE);boolean attention=s.matches(".*(失败|错误|请|待确认|未完成|无法).*" );status.setTextColor(attention?0xffff6875:Ui.MUTED);if(pageMode&&attention&&!s.equals(lastUiStatus))Toast.makeText(this,s,Toast.LENGTH_SHORT).show();lastUiStatus=s;}
+  void status(String s){status.setText(s);boolean quiet=s.startsWith("已连接")||s.equals("回复完成");status.setVisibility(quiet?View.GONE:View.VISIBLE);boolean attention=s.matches(".*(失败|错误|请|待确认|未完成|无法).*" );status.setTextColor(attention?DesignUi.RED:Ui.MUTED);boolean nativeFeedback=hub!=null&&hub.page!=AppHub.CHAT&&!quiet&&!s.startsWith("正在")&&!s.startsWith("准备连接");if(!s.isEmpty()&&!s.equals(lastUiStatus)){if(nativeFeedback&&attention)hub.feedback(s,true);else if(nativeFeedback||pageMode&&attention)Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}lastUiStatus=s;}
   String asset(String path)throws IOException {try(InputStream in=getAssets().open(path)){ByteArrayOutputStream b=new ByteArrayOutputStream();byte[] buf=new byte[8192];int n;while((n=in.read(buf))>0)b.write(buf,0,n);return b.toString("UTF-8");}}
   JSONObject object(String s){try{return new JSONObject(s);}catch(Exception e){return new JSONObject();}}
   JSONObject fields(Object... p){JSONObject o=new JSONObject();try{for(int i=0;i<p.length;i+=2)o.put((String)p[i],p[i+1]);}catch(Exception ignored){}return o;}
@@ -78,13 +78,22 @@ public class MainActivity extends Activity {
   void startNetwork(){session.connect();if(!prefs.getBoolean("networkConfigured",false)&&!getIntent().getBooleanExtra("openEnvironmentEditor",false)&&(!getIntent().hasExtra("openWindowAction")||"chat".equals(getIntent().getStringExtra("openWindowAction"))))handler.postDelayed(()->networkSettings(),350);}
   void networkSettings(){FeatureDialogs.network(this);}
   void externalNetworkSettings(){
-    if(ProfileUi.working(session)){status("当前任务结束后再修改网络");return;}
-    LinearLayout box=new LinearLayout(this);box.setOrientation(1);box.setPadding(dp(22),dp(8),dp(22),0);
-    TextView hint=new TextView(this);hint.setText("仅影响元婴期院士，不修改系统代理。网站仍能看到出口 IP，这项保护不能保证 VPN 不被识别。填写已配置好完整链路的 HTTP / SOCKS 代理地址。\n例如：http://127.0.0.1:7890\n\n手机上的 127.0.0.1 指手机自身。电脑测试转发不能在电脑关闭后供手机使用。");hint.setTextSize(14);box.addView(hint);
-    EditText proxy=new EditText(this);proxy.setSingleLine(true);proxy.setInputType(17);proxy.setHint("http://代理地址:端口");proxy.setText(prefs.getString("proxy",""));box.addView(proxy);
-    CheckBox requireVpn=new CheckBox(this);requireVpn.setText("使用手机现有网络时，VPN 断开就暂停联网（推荐）");requireVpn.setChecked(prefs.getBoolean("requireExternalVpn",true));box.addView(requireVpn);
-    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("应用专用网络").setView(box).setPositiveButton("保存代理",null).setNeutralButton("使用手机现有网络",(d,w)->{if(ProfileUi.working(session)){status("当前任务结束后再修改网络");return;}prefs.edit().putBoolean("networkConfigured",true).putString("proxy","").putString("networkMode","external").putBoolean("requireExternalVpn",requireVpn.isChecked()).commit();session.reconnect();}).setNegativeButton("取消",null).create();
-    dialog.setOnShowListener(unused->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{if(ProfileUi.working(session)){status("当前任务结束后再修改网络");return;}String value=proxy.getText().toString().trim();if(!validProxy(value)){proxy.setError("格式：http://主机:端口，不包含账号密码或路径");return;}prefs.edit().putBoolean("networkConfigured",true).putString("proxy",value).putString("networkMode","external").putBoolean("requireExternalVpn",requireVpn.isChecked()).commit();dialog.dismiss();session.reconnect();}));dialog.show();
+    if(DesignNetworkUi.busy(this)){status("请等待当前操作完成，再修改网络。");return;}
+    LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),dp(8),dp(18),dp(16));
+    DesignUi.note(box,Profiles.display(this,Profiles.slot(this))+" · 使用已配置好完整链路的应用代理。");
+    String saved=prefs.getString("proxy","");
+    EditText proxy=DesignUi.input(box,"代理地址",saved,"http://主机:端口 或 socks://主机:端口");proxy.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);
+    DesignUi.note(box,"本机代理可填写 http://127.0.0.1:7890，其中 127.0.0.1 指这部手机。保存后会重新连接此环境。");
+    TextView notice=DesignUi.text(this,"",13,DesignUi.RED);notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(notice);
+    ScrollView scroll=new ScrollView(this);scroll.addView(box);
+    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("应用专用代理").setView(scroll).setPositiveButton("保存并连接",null).setNegativeButton("取消",null).create();
+    dialog.show();DesignUi.protectEdits(this,dialog,()->!saved.equals(proxy.getText().toString()));
+    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+      if(DesignNetworkUi.busy(this)){notice.setText("当前操作还未完成，请稍后再保存。");return;}
+      String value=proxy.getText().toString().trim();
+      if(!validProxy(value)){proxy.setError("填写 http(s)://主机:端口 或 socks://主机:端口，且不含账号密码或路径");proxy.requestFocus();return;}
+      prefs.edit().putBoolean("networkConfigured",true).putString("proxy",value).putString("networkMode","external").commit();dialog.dismiss();session.reconnect();
+    });
   }
   static boolean chatUrl(String url){try{Uri u=Uri.parse(url);return "https".equals(u.getScheme())&&"chatgpt.com".equals(u.getHost())&&u.getUserInfo()==null&&(u.getPort()==-1||u.getPort()==443);}catch(Exception e){return false;}}
   WebViewClient remoteClient(){WebViewClient original=session.client();return new WebViewClient(){@Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r){return original.shouldInterceptRequest(v,r);}@Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){if(r.isForMainFrame()&&downloads!=null&&downloads.intercept(r.getUrl().toString()))return true;return original.shouldOverrideUrlLoading(v,r);}@Override public void onPageStarted(WebView v,String u,android.graphics.Bitmap i){original.onPageStarted(v,u,i);}@Override public void onPageCommitVisible(WebView v,String u){original.onPageCommitVisible(v,u);}@Override public void onPageFinished(WebView v,String u){original.onPageFinished(v,u);}@Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){original.onReceivedError(v,r,e);}@Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse response){original.onReceivedHttpError(v,r,response);}};}
