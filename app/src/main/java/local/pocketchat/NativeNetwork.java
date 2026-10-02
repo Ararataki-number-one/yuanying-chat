@@ -23,9 +23,10 @@ class NativeNetwork {
   java.lang.Process process;JSONObject settings;volatile int controllerPort,proxyPort;int failures;volatile String token="";String fingerprint="";List<String> names=new ArrayList<>();long lastScan=0;int totalEntries=0;volatile long startupDuration=0;volatile String startupPath="";volatile long startupBeganAt=0,coreDuration=0,providerDuration=0,exitCheckDuration=0;volatile boolean startupCached=false;
   static final String MEASUREMENT_PROFILE="unified-delay-v1";volatile long lastProbeDuration=0,lastProbeDurationAt=0;volatile String lastProbeEntry="";
   static final String PROBE="https://www.gstatic.com/generate_204";
-  NativeNetwork(Context c){context=c.getApplicationContext();quality=new RouteQuality(context);traffic=new TrafficMonitor(this);secrets=new SecretStore(c);root=new File(c.getNoBackupFilesDir(),"network-runtime");root.mkdirs();worker.scheduleWithFixedDelay(()->runHealth(),30,30,TimeUnit.SECONDS);}
+  NativeNetwork(Context c){this(c,new File(c.getNoBackupFilesDir(),"network-runtime"),true);}
+  NativeNetwork(Context c,File directory,boolean monitor){context=c.getApplicationContext();quality=new RouteQuality(context);traffic=new TrafficMonitor(this);secrets=new SecretStore(c);root=directory;root.mkdirs();if(monitor)worker.scheduleWithFixedDelay(()->runHealth(),30,30,TimeUnit.SECONDS);}
   static void validate(JSONObject s)throws Exception{URI u=new URI(s.optString("subscriptionUrl"));if(!"https".equals(u.getScheme())||u.getHost()==null||u.getUserInfo()!=null)throw new IOException("请填写 HTTPS 格式的 Clash / Mihomo 订阅地址");String host=s.optString("exitHost");if(host.isEmpty()||host.matches(".*[\\s/\\\\@].*"))throw new IOException("请填写有效的固定出口地址");int port=s.optInt("exitPort");if(port<1||port>65535)throw new IOException("固定出口端口应为 1–65535");}
-  void report(String text){message=text;ChatSession s=ChatSession.peek();if(s!=null)main.post(()->s.networkStatus(text,ready));}
+  void report(String text){message=text;ChatSession s=ChatSession.peek();WindowNetworkState.save(context,s,this);if(s!=null)main.post(()->s.networkStatus(text,ready));}
   String proxy(){return "http://127.0.0.1:"+proxyPort;}
   static int freePort()throws Exception{try(ServerSocket s=new ServerSocket(0,0,InetAddress.getByName("127.0.0.1"))){return s.getLocalPort();}}
   boolean coreAlive(){return process!=null&&process.isAlive();}
@@ -48,16 +49,15 @@ class NativeNetwork {
     boolean fromCache=cached!=null&&meta.optString("urlHash").equals(hash(settings.optString("subscriptionUrl")));startupCached=fromCache;
     if(fromCache)try(FileOutputStream out=new FileOutputStream(new File(root,"subscription.yaml"))){out.write(cached);}
     J.write(new File(root,"config.json"),config(true,!fromCache).toString().replace("\\/","/"));
-    File binary=new File(context.getApplicationInfo().nativeLibraryDir,"libmihomo.so");if(!binary.isFile())throw new IOException("该手机架构没有可用的内置网络内核");
     report(fromCache?"正在从加密缓存启动手机独立网络…":"正在下载订阅并启动手机独立网络…");
-    process=new ProcessBuilder("/system/bin/sh","-c","umask 077; echo $$ > \"$1/core.pid\"; exec \"$2\" -d \"$1\" -f \"$1/config.json\"","pocket-core",root.getAbsolutePath(),binary.getAbsolutePath()).redirectErrorStream(true).start();
-    final java.lang.Process owned=process;new Thread(()->{try(InputStream in=owned.getInputStream()){byte[] b=new byte[4096];while(in.read(b)>=0){}}catch(Exception ignored){}},"core-output-discard").start();
-    long controllerDeadline=System.currentTimeMillis()+20000;for(int i=0;i<100;i++){if(System.currentTimeMillis()>controllerDeadline)throw new IOException("内置代理启动超时");if(!process.isAlive())throw new IOException("安卓代理内核启动后退出");try{api("GET","/version",null,2000);break;}catch(Exception e){if(i==99)throw new IOException("内置代理控制服务未就绪");Thread.sleep(150);}}
+    launchCore();
     coreDuration=android.os.SystemClock.elapsedRealtime()-startupBegan;long providerBegan=android.os.SystemClock.elapsedRealtime();
-    long providerDeadline=System.currentTimeMillis()+35000;JSONArray nodes=null;for(int i=0;i<60&&System.currentTimeMillis()<providerDeadline;i++){try{nodes=api("GET","/providers/proxies/Subscription",null,3000).optJSONArray("proxies");if(nodes!=null&&nodes.length()>0)break;}catch(Exception ignored){}Thread.sleep(500);}
-    names.clear();if(nodes!=null)for(int i=0;i<nodes.length();i++){JSONObject p=nodes.optJSONObject(i);if(p!=null&&p.optString("name").startsWith("Entry|"))names.add(p.optString("name"));}
+    JSONArray nodes=readProvider();names=new ArrayList<>(providerNames(nodes));
+    long updated=fromCache?meta.optLong("updatedAt"):System.currentTimeMillis();
+    File provider=new File(root,"subscription.yaml");if(provider.exists())try(FileInputStream in=new FileInputStream(provider)){secrets.put("subscription",J.read(in,16*1024*1024));secrets.put("subscription-meta",J.obj("urlHash",hash(settings.optString("subscriptionUrl")),"updatedAt",updated).toString().getBytes(StandardCharsets.UTF_8));}
+    secrets.put("subscription-ui",J.obj("urlHash",hash(settings.optString("subscriptionUrl")),"nodes",new JSONArray(names)).toString().getBytes(StandardCharsets.UTF_8));
+    EntrySelection.validate(settings,names);names=EntrySelection.allowed(settings,names);
     String remembered=context.getSharedPreferences("chat",0).getString("lastGoodEntry","");if(names.remove(remembered))names.add(0,remembered);totalEntries=names.size();if(names.isEmpty())throw new IOException("订阅未读到可用节点；请确认它是 Clash / Mihomo 格式");if(names.size()>64)names=new ArrayList<>(names.subList(0,64));
-    File provider=new File(root,"subscription.yaml");if(provider.exists())try(FileInputStream in=new FileInputStream(provider)){secrets.put("subscription",J.read(in,16*1024*1024));secrets.put("subscription-meta",J.obj("urlHash",hash(settings.optString("subscriptionUrl"))).toString().getBytes(StandardCharsets.UTF_8));}
     J.write(new File(root,"config.json"),config(false,false).toString().replace("\\/","/"));api("PUT","/configs?force=true",J.obj("path",new File(root,"config.json").getAbsolutePath()),5000);
     providerDuration=android.os.SystemClock.elapsedRealtime()-providerBegan;chooseStartupRoute();ready=true;recoveryBlocked=false;failures=0;startupDuration=android.os.SystemClock.elapsedRealtime()-startupBegan;report("手机独立网络已连接 · "+display(currentEntry));
   }
@@ -105,9 +105,34 @@ class NativeNetwork {
     }finally{for(Future<RouteProbe> task:active)task.cancel(true);}
   }
   long startupSearchBudgetMs(){return 45000;}
+  void launchCore()throws Exception{
+    File binary=new File(context.getApplicationInfo().nativeLibraryDir,"libmihomo.so");if(!binary.isFile())throw new IOException("该手机架构没有可用的内置网络内核");
+    process=new ProcessBuilder("/system/bin/sh","-c","umask 077; echo $$ > \"$1/core.pid\"; exec \"$2\" -d \"$1\" -f \"$1/config.json\"","pocket-core",root.getAbsolutePath(),binary.getAbsolutePath()).redirectErrorStream(true).start();
+    final java.lang.Process owned=process;new Thread(()->{try(InputStream in=owned.getInputStream()){byte[] b=new byte[4096];while(in.read(b)>=0){}}catch(Exception ignored){}},"core-output-discard").start();
+    long deadline=System.currentTimeMillis()+20000;for(int i=0;i<100;i++){if(System.currentTimeMillis()>deadline)throw new IOException("内置代理启动超时");if(!process.isAlive())throw new IOException("安卓代理内核启动后退出");try{api("GET","/version",null,2000);return;}catch(Exception e){Thread.sleep(150);}}throw new IOException("内置代理控制服务未就绪");
+  }
+  JSONArray readProvider()throws Exception{
+    long deadline=System.currentTimeMillis()+35000;for(int i=0;i<60&&System.currentTimeMillis()<deadline;i++){if(process==null||!process.isAlive())throw new IOException("订阅解析进程已退出");try{JSONArray nodes=api("GET","/providers/proxies/Subscription",null,3000).optJSONArray("proxies");if(nodes!=null&&nodes.length()>0)return nodes;}catch(Exception ignored){}Thread.sleep(500);}throw new IOException("订阅未读到可用节点，请检查订阅格式或网络");
+  }
+  static List<String> providerNames(JSONArray nodes){List<String> out=new ArrayList<>();for(int i=0;i<nodes.length();i++){JSONObject p=nodes.optJSONObject(i);if(p!=null&&p.optString("name").startsWith("Entry|")&&!out.contains(p.optString("name")))out.add(p.optString("name"));}return out;}
+  interface PreviewCallback{void done(boolean ok,String message,JSONArray names,byte[] provider);}
+  static void previewSubscription(Context c,String url,byte[] cache,PreviewCallback callback){
+    // A short-lived parser instance has no listener, account document, or active route.
+    NativeNetwork reader=new NativeNetwork(c,new File(c.getNoBackupFilesDir(),"subscription-preview-"+UUID.randomUUID()),false);
+    reader.worker.execute(()->{JSONArray nodes=new JSONArray();byte[] provider=null;String error="";try{
+      reader.settings=J.obj("subscriptionUrl",url);reader.token=UUID.randomUUID().toString();reader.controllerPort=freePort();reader.proxyPort=freePort();
+      if(cache!=null)try(FileOutputStream out=new FileOutputStream(new File(reader.root,"subscription.yaml"))){out.write(cache);}
+      JSONObject config=reader.config(true,cache==null);config.put("proxies",new JSONArray());config.put("proxy-groups",new JSONArray());
+      J.write(new File(reader.root,"config.json"),config.toString().replace("\\/","/"));reader.launchCore();nodes=new JSONArray(providerNames(reader.readProvider()));if(nodes.length()==0)throw new IOException("订阅没有可选入口");
+      try(FileInputStream in=new FileInputStream(new File(reader.root,"subscription.yaml"))){provider=J.read(in,16*1024*1024);}
+    }catch(Exception e){error=e instanceof IOException&&e.getMessage()!=null?e.getMessage():"订阅读取失败，已保留原配置";}finally{reader.stopNow();reader.probes.shutdownNow();reader.closers.shutdownNow();reader.traffic.reader.shutdownNow();reader.worker.shutdown();deletePreview(reader.root);}
+      final JSONArray result=nodes;final byte[] bytes=provider;final String reason=error;reader.main.post(()->callback.done(reason.isEmpty(),reason,result,bytes));
+    });
+  }
+  static void deletePreview(File directory){File[] files=directory.listFiles();if(files!=null)for(File f:files){if(f.isDirectory())deletePreview(f);else f.delete();}directory.delete();}
   void configureProbeEntries()throws Exception{for(int i=0;i<names.size();i++)api("PUT","/proxies/ProbeEntry"+i,J.obj("name",names.get(i)),3000);}
 
-  boolean configurationMatches(){try{if(settings==null)return false;JSONObject now=secrets.settings();for(String key:new String[]{"subscriptionUrl","exitHost","exitPort","exitUser","exitPassword"})if(!settings.optString(key).equals(now.optString(key)))return false;return true;}catch(Exception e){return false;}}
+  boolean configurationMatches(){try{if(settings==null)return false;JSONObject now=secrets.settings();for(String key:new String[]{"subscriptionUrl","exitHost","exitPort","exitUser","exitPassword","entryMode","entryPool","entry"})if(!settings.optString(key).equals(now.optString(key)))return false;return true;}catch(Exception e){return false;}}
   synchronized void cancelMaintenance(){maintenanceGeneration++;lastMaintenanceAt=android.os.SystemClock.elapsedRealtime();NetworkWork work=backgroundWork;if(work!=null)work.cancel(closers);}
   synchronized NetworkWork beginMaintenance(long expected){if(starting||expected!=maintenanceGeneration)return null;NetworkWork work=new NetworkWork();backgroundWork=work;maintenance.set(work);return work;}
   void finishMaintenance(NetworkWork work){work.finish();maintenance.remove();synchronized(this){if(backgroundWork==work)backgroundWork=null;}Thread.interrupted();}
@@ -116,14 +141,14 @@ class NativeNetwork {
   void track(HttpURLConnection c)throws InterruptedIOException{NetworkWork work=maintenance.get();if(work!=null)work.add(c);}
   void untrack(HttpURLConnection c){NetworkWork work=maintenance.get();if(work!=null)work.remove(c);}
   boolean backgroundIdle(){ChatSession s=ChatSession.peek();return s!=null&&!s.uiVisible&&!s.browserWorkActive();}
-  void runHealth(){if(!ready||starting)return;long now=android.os.SystemClock.elapsedRealtime();if(now-lastMaintenanceAt<(backgroundIdle()?120000:30000))return;NetworkWork work=beginMaintenance(maintenanceGeneration);if(work==null)return;lastMaintenanceAt=now;try{health();}finally{finishMaintenance(work);}}
+  void runHealth(){if(!ready||starting)return;long now=android.os.SystemClock.elapsedRealtime();if(now-lastMaintenanceAt<(backgroundIdle()?120000:30000))return;NetworkWork work=beginMaintenance(maintenanceGeneration);if(work==null)return;lastMaintenanceAt=now;try{health();}finally{finishMaintenance(work);WindowNetworkState.save(context,ChatSession.peek(),this);}}
   JSONObject group(String name,String filter){JSONObject g=J.obj("name",name,"type","select","proxies",J.arr("REJECT"),"use",J.arr("Subscription"),"empty-fallback","REJECT","interval",0,"hidden",true);if(filter!=null)try{g.put("filter",filter);}catch(Exception ignored){}return g;}
   JSONObject exit(String name,String group){return J.obj("name",name,"type","socks5","server",settings.optString("exitHost"),"port",settings.optInt("exitPort"),"username",settings.optString("exitUser"),"password",settings.optString("exitPassword"),"udp",false,"dialer-proxy",group);}
   static String literalRegex(String s){StringBuilder b=new StringBuilder();for(char c:s.toCharArray()){if("\\.+*?()|[]{}^$".indexOf(c)>=0)b.append('\\');b.append(c);}return b.toString();}
   JSONObject config(boolean bootstrap,boolean download){
     JSONObject provider=J.obj("type",download?"http":"file","path","./subscription.yaml","health-check",J.obj("enable",false),"override",J.obj("additional-prefix","Entry|"));
     if(download)try{provider.put("url",settings.optString("subscriptionUrl"));provider.put("interval",0);provider.put("proxy","DIRECT");provider.put("size-limit",16*1024*1024);provider.put("header",J.obj("User-Agent",J.arr("mihomo")));}catch(Exception ignored){}
-    JSONArray proxies=J.arr(exit("FixedExit","EntryChoice")),groups=J.arr(group("EntryChoice",null));if(!bootstrap)for(int i=0;i<names.size();i++){groups.put(group("ProbeEntry"+i,"^(?:"+literalRegex(names.get(i))+")$"));proxies.put(exit("ProbeExit"+i,"ProbeEntry"+i));}
+    JSONArray proxies=J.arr(exit("FixedExit","EntryChoice")),groups=J.arr(group("EntryChoice",!bootstrap&&!settings.optString("entryMode").isEmpty()?EntrySelection.filter(names):null));if(!bootstrap)for(int i=0;i<names.size();i++){groups.put(group("ProbeEntry"+i,"^(?:"+literalRegex(names.get(i))+")$"));proxies.put(exit("ProbeExit"+i,"ProbeEntry"+i));}
     return J.obj("port",0,"socks-port",0,"mixed-port",0,"redir-port",0,"tproxy-port",0,"allow-lan",false,"bind-address","127.0.0.1","mode","rule","unified-delay",true,"log-level","silent","ipv6",false,"external-controller","127.0.0.1:"+controllerPort,"secret",token,
       "external-controller-cors",J.obj("allow-origins",new JSONArray(),"allow-private-network",false),"profile",J.obj("store-selected",false,"store-fake-ip",false),"tun",J.obj("enable",false),"sniffer",J.obj("enable",false),"geo-auto-update",false,
       "dns",J.obj("enable",true,"listen","127.0.0.1:0","ipv6",false,"enhanced-mode","redir-host","default-nameserver",J.arr("https://223.5.5.5/dns-query","https://223.6.6.6/dns-query"),"nameserver",J.arr("https://dns.alidns.com/dns-query"+(!bootstrap?"#FixedExit":""),"https://doh.pub/dns-query"+(!bootstrap?"#FixedExit":"")),"proxy-server-nameserver",J.arr("https://dns.alidns.com/dns-query","https://doh.pub/dns-query")),
@@ -161,5 +186,5 @@ class NativeNetwork {
   void stopNow(){ready=false;lastProbeDuration=0;lastProbeDurationAt=0;lastProbeEntry="";if(process!=null){process.destroy();process=null;}cleanupOwnedPid();}
   void cleanupOwnedPid(){try{File pidFile=new File(root,"core.pid");if(!pidFile.exists())return;int pid;try(FileInputStream in=new FileInputStream(pidFile)){pid=Integer.parseInt(J.text(in,32).trim());}if(pid<=1||pid==android.os.Process.myPid())return;String cmd,status;try(FileInputStream in=new FileInputStream("/proc/"+pid+"/cmdline")){cmd=J.text(in,8192);}try(FileInputStream in=new FileInputStream("/proc/"+pid+"/status")){status=J.text(in,8192);}if(cmd.contains("libmihomo.so")&&cmd.contains(root.getAbsolutePath())&&status.matches("(?s).*Uid:\\s+"+android.os.Process.myUid()+"\\s+.*"))android.os.Process.killProcess(pid);pidFile.delete();}catch(Exception ignored){}}
   static String display(String name){return name.startsWith("Entry|")?name.substring(6):name;}
-  static String hash(String s)throws Exception{byte[] b=MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.ROOT,"%02x",x&255));return out.toString();}
+  static String hash(String s){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.ROOT,"%02x",x&255));return out.toString();}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}}
 }

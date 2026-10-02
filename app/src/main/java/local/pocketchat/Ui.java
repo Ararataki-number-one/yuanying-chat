@@ -25,6 +25,7 @@ final class Ui {
         case "filter":path.moveTo(3,4);path.lineTo(21,4);path.lineTo(14,12);path.lineTo(14,20);path.lineTo(10,22);path.lineTo(10,12);path.close();canvas.drawPath(path,p);break;
         case "pause":canvas.drawLine(8,5,8,19,p);canvas.drawLine(16,5,16,19,p);break;
         case "brand":canvas.drawCircle(12,12,10,p);p.setStyle(Paint.Style.FILL);canvas.drawCircle(12,7,2,p);path.moveTo(12,9);path.lineTo(8,14);path.lineTo(5,18);path.quadTo(12,15,19,18);path.lineTo(16,14);path.close();canvas.drawPath(path,p);break;
+        case "hamburger":canvas.drawLine(3,6,21,6,p);canvas.drawLine(3,12,21,12,p);canvas.drawLine(3,18,21,18,p);break;
         case "menu":canvas.drawLine(4,8,20,8,p);canvas.drawLine(4,15,14,15,p);break;
         case "new":path.moveTo(13,5);path.lineTo(6,5);path.quadTo(4,5,4,7);path.lineTo(4,18);path.quadTo(4,20,6,20);path.lineTo(17,20);path.quadTo(19,20,19,18);path.lineTo(19,12);canvas.drawPath(path,p);path.reset();path.moveTo(10,14);path.lineTo(11,10);path.lineTo(18,3);path.lineTo(21,6);path.lineTo(14,13);path.close();canvas.drawPath(path,p);break;
         case "more":p.setStyle(Paint.Style.FILL);for(int x:new int[]{5,12,19})canvas.drawCircle(x,12,1.5f,p);break;
