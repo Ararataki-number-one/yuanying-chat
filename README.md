@@ -2,14 +2,15 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.0（versionCode 26）。**
+**当前版本：1.5.1（versionCode 27，原版签名预览包）。**
 
 ## 下载与安装
 
-- [下载 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
+- [下载 1.5.1 原版签名预览 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/environment-management-preview-20261002/public-downloads/PocketChat-1.5.1-environment-preview.apk)
+- [历史 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
 - [查看 Releases](https://github.com/Ararataki-number-one/yuanying-chat/releases)
 
-已有发布版请直接覆盖安装，不要先卸载。覆盖更新需要相同签名。
+原发布 1.5.0 和上一轮原签名预览包可直接覆盖安装，无需卸载。此前临时签名预览包使用不同证书，不能直接覆盖。
 
 安卓 8.0 起可使用默认窗口；安卓 9.0 起支持最多 8 个独立窗口。内置网络组件支持 ARM64 和 x86_64。
 
@@ -17,7 +18,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 | 部分 | 已实现内容 |
 | --- | --- |
-| 环境管理 | 首次品牌页进入后默认直达指定窗口原网页；创建、分组、备注、搜索、收藏、筛选与排序；最多 8 个环境 |
+| 环境管理 | 首次品牌页进入后默认直达指定窗口原网页；创建、分组、备注、搜索、收藏、筛选与排序；多选、批量分组与收藏；最多 8 个环境 |
 | 独立环境 | 分开的 WebView 登录目录、Cookie、本机聊天与草稿、偏好和加密网络配置 |
 | 聊天 | 简洁与原网页模式、模型与强度选择、Markdown、数学公式、代码、消息复制与分享 |
 | 会话与草稿 | 聊天侧边栏、历史同步、会话改名与删除、草稿冲突处理和恢复、阅读位置恢复 |
@@ -36,7 +37,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 ## 环境管理与功能设置
 
-底部为会话、环境、下载、网络、设置。环境管理支持分组、备注、收藏、搜索与排序；环境编辑按基本信息、网络配置、浏览器和使用偏好组织。网络页面始终显示所属环境，应用设置只放全局入口与系统权限。
+底部为会话、环境、下载、网络、设置。环境卡片突出名称、分组、网络状态和最近使用；支持多选、批量分组和收藏，全选只处理当前结果并提示筛选外的选择。环境编辑按基本信息、网络配置、浏览器和使用偏好组织。网络页面始终显示所属环境，应用设置只放全局入口与系统权限。
 
 管理界面参考 AdsPower 的环境列表与分组配置思路，采用适合手机的卡片布局。自定义指纹、多订阅、自动化等未实现能力统一在“功能支持范围”说明，保留 `FutureFeatures.Adapter` 扩展接口。
 
@@ -54,9 +55,11 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 ## 构建和验证
 
 - [构建说明](docs/BUILD.md)
-- [1.5.0 更新说明](docs/CHANGELOG-v1.5.0.md)
+- [1.5.1 更新说明](docs/CHANGELOG-v1.5.1.md)
+- [历史 1.5.0 更新说明](docs/CHANGELOG-v1.5.0.md)
 - [界面与功能对应](docs/UI-FUNCTIONS.md)
-- [本次环境管理验证：28 项原生检查通过；网页回归未完成](verification/environment-management/README.md)
+- [本轮环境管理与覆盖更新验证](verification/environment-management-round2/README.md)
+- [第一轮环境管理验证：28 项原生检查通过；网页回归未完成](verification/environment-management/README.md)
 - [历史 1.5.0 验证摘要：578 项检查、8 次熄屏测试](verification/validation-summary.json)
 - [逐项结果](verification/test-results)
 - [工程实现记录](docs/ENGINEERING-HISTORY.md)
