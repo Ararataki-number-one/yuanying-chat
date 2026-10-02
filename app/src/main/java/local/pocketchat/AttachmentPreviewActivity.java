@@ -1,0 +1,31 @@
+package local.pocketchat;
+
+import android.app.*;
+import android.os.*;
+import android.content.*;
+import android.graphics.*;
+import android.graphics.pdf.PdfRenderer;
+import android.net.Uri;
+import android.view.*;
+import android.widget.*;
+import java.io.*;
+import java.util.concurrent.*;
+
+/** Local SAF preview: no network requests, scripts, or public file paths. */
+public class AttachmentPreviewActivity extends Activity {
+  @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}
+  final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler(Looper.getMainLooper());
+  ZoomImage image;TextView info;Button previous,next;PdfRenderer pdf;ParcelFileDescriptor fd;File scratch;int page=0,total=0;boolean busy=false,closed=false;
+  @Override public void onCreate(Bundle state){super.onCreate(state);LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setBackgroundColor(Color.WHITE);root.setFitsSystemWindows(true);Button close=new Button(this);close.setText("返回聊天 · "+getIntent().getStringExtra("name"));close.setOnClickListener(v->finish());root.addView(close);image=new ZoomImage(this);image.setBackgroundColor(0xffeeeeee);root.addView(image,new LinearLayout.LayoutParams(-1,0,1));info=new TextView(this);info.setGravity(Gravity.CENTER);info.setText("正在打开…");root.addView(info);LinearLayout controls=new LinearLayout(this);previous=new Button(this);previous.setText("上一页");previous.setEnabled(false);next=new Button(this);next.setText("下一页");next.setEnabled(false);controls.addView(previous,new LinearLayout.LayoutParams(0,-2,1));controls.addView(next,new LinearLayout.LayoutParams(0,-2,1));root.addView(controls);previous.setOnClickListener(v->showPage(page-1));next.setOnClickListener(v->showPage(page+1));setContentView(root);worker.execute(()->open());}
+  void open(){try{Uri uri=Uri.parse(getIntent().getStringExtra("uri"));if(!"content".equals(uri.getScheme()))throw new IOException("无法读取本地附件");String mime=getIntent().getStringExtra("mime"),name=getIntent().getStringExtra("name");if("application/pdf".equals(mime)||(name!=null&&name.toLowerCase(java.util.Locale.ROOT).endsWith(".pdf"))){scratch=File.createTempFile("preview-",".pdf",getCacheDir());try(InputStream in=getContentResolver().openInputStream(uri);OutputStream out=new FileOutputStream(scratch)){byte[] b=new byte[65536];long count=0;int n;while((n=in.read(b))!=-1){count+=n;if(count>128L*1024*1024)throw new IOException("文件超过 128 MB，请使用原网页查看");out.write(b,0,n);}}fd=ParcelFileDescriptor.open(scratch,ParcelFileDescriptor.MODE_READ_ONLY);pdf=new PdfRenderer(fd);total=pdf.getPageCount();main.post(()->showPage(0));}else{BitmapFactory.Options opt=new BitmapFactory.Options();opt.inJustDecodeBounds=true;try(InputStream in=getContentResolver().openInputStream(uri)){BitmapFactory.decodeStream(in,null,opt);}if(opt.outWidth<=0||opt.outHeight<=0)throw new IOException("此格式暂不支持预览，请在原网页查看");opt.inSampleSize=1;while((long)(opt.outWidth/opt.inSampleSize)*(opt.outHeight/opt.inSampleSize)>6000000L)opt.inSampleSize*=2;opt.inJustDecodeBounds=false;Bitmap bitmap;try(InputStream in=getContentResolver().openInputStream(uri)){bitmap=BitmapFactory.decodeStream(in,null,opt);}if(bitmap==null)throw new IOException("图片无法解码");main.post(()->{if(closed){bitmap.recycle();return;}image.setImageBitmap(bitmap);image.fit();info.setText("双指缩放 · 拖动查看 · 双击复位");});}}catch(Exception e){failure(e);} }
+  void showPage(int requested){if(closed||busy||pdf==null||requested<0||requested>=total)return;busy=true;previous.setEnabled(false);next.setEnabled(false);info.setText("正在加载第 "+(requested+1)+" 页…");worker.execute(()->{try(PdfRenderer.Page p=pdf.openPage(requested)){float scale=Math.min(2f,2000f/Math.max(p.getWidth(),p.getHeight()));Bitmap b=Bitmap.createBitmap(Math.max(1,(int)(p.getWidth()*scale)),Math.max(1,(int)(p.getHeight()*scale)),Bitmap.Config.ARGB_8888);b.eraseColor(Color.WHITE);p.render(b,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);main.post(()->{busy=false;if(closed){b.recycle();return;}page=requested;image.setImageBitmap(b);image.fit();info.setText((page+1)+" / "+total+" 页 · 双指缩放");previous.setEnabled(page>0);next.setEnabled(page+1<total);});}catch(Exception e){busy=false;failure(e);}});}
+  void failure(Exception e){main.post(()->{if(!closed)info.setText("打开失败："+(e instanceof SecurityException?"文件访问已失效，请重新选择附件":e.getMessage()));});}
+  @Override protected void onDestroy(){closed=true;worker.execute(()->{try{if(pdf!=null)pdf.close();if(fd!=null)fd.close();}catch(Exception ignored){}if(scratch!=null)scratch.delete();});worker.shutdown();super.onDestroy();}
+  static class ZoomImage extends ImageView {
+    final Matrix matrix=new Matrix();final ScaleGestureDetector scale;final GestureDetector gesture;float zoom=1,base=1,x,y;
+    ZoomImage(Context c){super(c);setScaleType(ScaleType.MATRIX);scale=new ScaleGestureDetector(c,new ScaleGestureDetector.SimpleOnScaleGestureListener(){public boolean onScale(ScaleGestureDetector d){float target=Math.max(base,Math.min(base*8,zoom*d.getScaleFactor())),factor=target/zoom;matrix.postScale(factor,factor,d.getFocusX(),d.getFocusY());zoom=target;setImageMatrix(matrix);return true;}});gesture=new GestureDetector(c,new GestureDetector.SimpleOnGestureListener(){public boolean onDown(MotionEvent e){return true;}public boolean onDoubleTap(MotionEvent e){fit();return true;}});setContentDescription("附件预览，可双指缩放与拖动");}
+    void fit(){post(()->{if(getDrawable()==null)return;int w=getDrawable().getIntrinsicWidth(),h=getDrawable().getIntrinsicHeight();base=Math.min((float)getWidth()/w,(float)getHeight()/h);zoom=base;matrix.reset();matrix.postScale(base,base);matrix.postTranslate((getWidth()-w*base)/2,(getHeight()-h*base)/2);setImageMatrix(matrix);});}
+    @Override public boolean onTouchEvent(MotionEvent e){scale.onTouchEvent(e);gesture.onTouchEvent(e);if(e.getActionMasked()==MotionEvent.ACTION_MOVE&&!scale.isInProgress()&&e.getPointerCount()==1){matrix.postTranslate(e.getX()-x,e.getY()-y);setImageMatrix(matrix);}x=e.getX();y=e.getY();return true;}
+    @Override protected void onSizeChanged(int w,int h,int oldw,int oldh){super.onSizeChanged(w,h,oldw,oldh);fit();}
+  }
+}

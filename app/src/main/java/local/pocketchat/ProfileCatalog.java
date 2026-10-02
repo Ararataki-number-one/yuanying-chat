@@ -1,0 +1,26 @@
+package local.pocketchat;
+
+import android.content.*;
+import android.database.Cursor;
+import android.database.sqlite.*;
+import org.json.*;
+
+/** Shared metadata only. Cookies, chats and sealed settings remain profile-local. */
+final class ProfileCatalog extends SQLiteOpenHelper {
+  static ProfileCatalog instance;final Context root;
+  static synchronized ProfileCatalog get(Context c){if(instance==null)instance=new ProfileCatalog(Profiles.global(c));return instance;}
+  ProfileCatalog(Context c){super(c,"environment-catalog.db",null,2);root=c;}
+  public void onCreate(SQLiteDatabase db){db.execSQL("CREATE TABLE environments (slot INTEGER PRIMARY KEY,name TEXT NOT NULL,created INTEGER NOT NULL DEFAULT 0,draft TEXT NOT NULL DEFAULT '',pid INTEGER NOT NULL DEFAULT 0,seen INTEGER NOT NULL DEFAULT 0,connected INTEGER NOT NULL DEFAULT 0,waiting INTEGER NOT NULL DEFAULT 0,mode TEXT NOT NULL DEFAULT '',privacy INTEGER NOT NULL DEFAULT 1,opened INTEGER NOT NULL DEFAULT 0,favorite INTEGER NOT NULL DEFAULT 0)");SharedPreferences old=root.getSharedPreferences("browser-environment-names",0);for(int i=0;i<Profiles.MAX;i++){SharedPreferences p=Profiles.context(root,i).getSharedPreferences("chat",0);ContentValues v=new ContentValues();v.put("slot",i);v.put("name",old.getString("name"+i,i==0?"默认环境":"环境 "+(i+1)));v.put("created",i==0||p.getBoolean("environmentInitialized",false)||p.getBoolean("networkConfigured",false)?1:0);db.insert("environments",null,v);}}
+  public void onUpgrade(SQLiteDatabase db,int old,int next){if(old<2){db.execSQL("ALTER TABLE environments ADD COLUMN opened INTEGER NOT NULL DEFAULT 0");db.execSQL("ALTER TABLE environments ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0");}}
+  JSONObject item(int slot){try(Cursor c=getReadableDatabase().query("environments",null,"slot=?",new String[]{String.valueOf(slot)},null,null,null)){return c.moveToFirst()?row(c):new JSONObject();}}
+  static JSONObject row(Cursor c){return J.obj("slot",c.getInt(c.getColumnIndexOrThrow("slot")),"name",c.getString(c.getColumnIndexOrThrow("name")),"created",c.getInt(c.getColumnIndexOrThrow("created"))==1,"draft",c.getString(c.getColumnIndexOrThrow("draft")),"pid",c.getInt(c.getColumnIndexOrThrow("pid")),"seen",c.getLong(c.getColumnIndexOrThrow("seen")),"connected",c.getInt(c.getColumnIndexOrThrow("connected"))==1,"waiting",c.getInt(c.getColumnIndexOrThrow("waiting"))==1,"mode",c.getString(c.getColumnIndexOrThrow("mode")),"opened",c.getLong(c.getColumnIndexOrThrow("opened")),"favorite",c.getInt(c.getColumnIndexOrThrow("favorite"))==1,"privacy",c.getInt(c.getColumnIndexOrThrow("privacy")));}
+  JSONArray list(){JSONArray out=new JSONArray();try(Cursor c=getReadableDatabase().query("environments",null,null,null,null,null,"slot ASC")){while(c.moveToNext())out.put(row(c));}return out;}
+  String name(int slot){return item(slot).optString("name",slot==0?"默认环境":"环境 "+(slot+1));}
+  void rename(int slot,String name){String text=name.trim();if(text.isEmpty()||text.length()>24)return;ContentValues v=new ContentValues();v.put("name",text);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
+  void created(int slot){ContentValues v=new ContentValues();v.put("created",1);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
+  void draft(int slot,JSONObject value){ContentValues v=new ContentValues();v.put("draft",value==null?"":value.toString());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
+  void opened(int slot){ContentValues v=new ContentValues();v.put("opened",System.currentTimeMillis());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
+  void favorite(int slot,boolean value){ContentValues v=new ContentValues();v.put("favorite",value?1:0);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
+  long lastSeen;String lastSignature="";
+  void heartbeat(ChatSession s,boolean force){String mode=s.internalNetwork()?"内置网络":s.prefs.getString("proxy","").isEmpty()?"手机网络":"应用代理";String signature=s.networkReady+"|"+(s.pending!=null)+"|"+mode+"|"+s.privacy.level();long now=System.currentTimeMillis();if(!force&&signature.equals(lastSignature)&&now-lastSeen<5000)return;lastSeen=now;lastSignature=signature;ContentValues v=new ContentValues();v.put("created",1);v.put("pid",android.os.Process.myPid());v.put("seen",now);v.put("connected",s.networkReady?1:0);v.put("waiting",s.pending==null?0:1);v.put("mode",mode);v.put("privacy",s.privacy.level());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(Profiles.slot(s.context))});}
+}

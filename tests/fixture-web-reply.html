@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font:16px sans-serif;margin:16px}textarea{width:95%;height:80px}button{padding:12px}article{padding:8px}#turns{max-height:40vh;overflow:auto}</style>
+<h3>网页发送观察测试 · 无账号 / 无外网</h3>
+<button data-testid="model-switcher-dropdown-button">Thinking</button><button aria-label="Thinking effort">Extra High</button>
+<div id="turns"></div><form><textarea id="prompt-textarea"></textarea><button type="submit" data-testid="send-button" aria-label="Send">发送</button></form>
+<a id="away" href="/c/other">其他对话</a>
+<script>
+let serial=0, timers=[];
+window.sendCount=0;window.settings={};
+window.fixture={
+ reset(options={}){timers.forEach(clearTimeout);timers=[];settings=options;turns.replaceChildren();document.querySelectorAll('[data-testid="stop-button"],[role="alert"]').forEach(e=>e.remove());document.querySelector('textarea').value='';history.replaceState({},'',options.url||'/c/web-test');sendCount=0;},
+ user(id,text){const el=document.createElement('article');el.dataset.messageAuthorRole='user';if(id)el.dataset.messageId=id;el.textContent=text;turns.append(el);return el;},
+ answer(id,text,complete=true){const el=document.createElement('article');el.dataset.messageAuthorRole='assistant';el.dataset.messageId=id;const body=document.createElement('div');body.className='markdown';body.textContent=text;el.append(body);if(complete){const copy=document.createElement('button');copy.dataset.testid='copy-turn-action-button';copy.setAttribute('aria-label','Copy response');copy.textContent='Copy';el.append(copy);}turns.append(el);return el;},
+ send(){const prompt=document.querySelector('textarea').value;if(!prompt&&!settings.attachment)return;sendCount++;const n=++serial;const options={...settings};
+   const submit=()=>{if(options.virtualized)turns.replaceChildren();const uid=options.noId?'':(options.id||'web-user-'+n);fixture.user(uid,prompt||'sample.pdf');if(options.ambiguous)fixture.user('extra-'+n,prompt);document.querySelector('textarea').value='';if(location.pathname==='/')history.replaceState({},'','/c/web-test');
+     const reply=fixture.answer('web-reply-'+n,'正在生成',false);const stop=document.createElement('button');stop.dataset.testid='stop-button';stop.setAttribute('aria-label','Stop');stop.textContent='Stop';document.body.append(stop);
+     const complete=()=>{reply.querySelector('.markdown').textContent='完整回复 '+n;const copy=document.createElement('button');copy.dataset.testid='copy-turn-action-button';copy.setAttribute('aria-label','Copy response');copy.textContent='Copy';reply.append(copy);stop.remove();if(options.error){const error=document.createElement('div');error.setAttribute('role','alert');error.textContent='Something went wrong: network error';reply.append(error);}};
+     let t=setTimeout(complete,options.delay??600);timers.push(t);stop.onclick=()=>{clearTimeout(t);complete();};};
+   if(options.submitDelay)timers.push(setTimeout(submit,options.submitDelay));else submit();
+ }
+};
+document.querySelector('form').onsubmit=e=>{e.preventDefault();fixture.send();};
+document.querySelector('textarea').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();document.querySelector('form').requestSubmit();}};
+document.querySelector('#away').onclick=e=>{e.preventDefault();history.pushState({},'','/c/other');};
+</script>

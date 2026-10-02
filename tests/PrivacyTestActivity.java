@@ -1,0 +1,39 @@
+package local.pocketchat;
+
+import android.os.*;
+import android.webkit.*;
+import android.net.Uri;
+import org.json.*;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+public class PrivacyTestActivity extends ContinuityFixtureActivity {
+  final JSONArray checks=new JSONArray();int attempts;boolean strong=false;
+  void check(String name,boolean value){checks.put(J.obj("name",name,"pass",value));}
+  @Override public void onCreate(Bundle b){getSharedPreferences("chat",0).edit().clear().putBoolean("networkConfigured",true).putString("networkMode","external").putBoolean("requireExternalVpn",false).putBoolean("pageMode",true).putBoolean("webNotificationAsked",true).putString("conversation",ORIGIN+"c/privacy-fixture").commit();super.onCreate(b);handler.postDelayed(()->ready(),150);}
+  @Override WebViewClient remoteClient(){WebViewClient client=super.remoteClient();return new WebViewClient(){
+    @Override public void onPageStarted(WebView w,String u,android.graphics.Bitmap b){client.onPageStarted(w,u,b);}
+    @Override public void onPageCommitVisible(WebView w,String u){client.onPageCommitVisible(w,u);}
+    @Override public void onPageFinished(WebView w,String u){client.onPageFinished(w,u);}
+    @Override public WebResourceResponse shouldInterceptRequest(WebView w,WebResourceRequest r){try{String html="<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'><script>window.firstProtection=window.__pocketPrivacy||null;</script><style>body{margin:0;font:16px sans-serif}header{position:fixed;top:env(safe-area-inset-top,0px);height:44px;background:#eee;width:100%}main{padding-top:48px}textarea{height:60px}</style></head><body><header id='site-header'>网页顶部 · 没有重复安全区</header><main><button data-testid='model-switcher-dropdown-button'>Thinking</button><button aria-label='Thinking effort'>Extra High</button><textarea id='prompt-textarea'></textarea><article data-message-author-role='user' data-message-id='privacy-user'>本地隐私检查</article><article data-message-author-role='assistant' data-message-id='privacy-reply'><div class='markdown'>不连接账号</div></article><canvas id='canvas' width='8' height='8'></canvas><iframe src='https://frame.fixture.invalid/child'></iframe></main><script>window.sendCount=0;</script></body></html>";
+      if(r.getUrl().getHost().equals("frame.fixture.invalid"))html="<html><script>window.childProtection=window.__pocketPrivacy||null;</script><body>child fixture</body></html>";
+      return new WebResourceResponse("text/html","UTF-8",new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
+    }catch(Exception e){return blocked();}}
+  };}
+  void ready(){if((session.navigating||session.entries.length()!=2)&&attempts++<80){handler.postDelayed(()->ready(),100);return;}check("Privacy fixture reaches usable state",!session.navigating&&session.entries.length()==2);boolean early=session.privacy.earlyInstalled;
+    check("Standard mode remains usable",session.privacy.canNavigate());check("UA omits detailed device build",remote.getSettings().getUserAgentString().contains("Android 10; K; wv")&&!remote.getSettings().getUserAgentString().contains("Build/"));check("UA accurately retains WebView marker",remote.getSettings().getUserAgentString().contains("; wv")&&remote.getSettings().getUserAgentString().contains("Version/4.0"));check("File and content access stay disabled",!remote.getSettings().getAllowFileAccess()&&!remote.getSettings().getAllowContentAccess());check("Mixed content remains blocked",remote.getSettings().getMixedContentMode()==WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+    PermissionRequest permission=new PermissionRequest(){boolean denied;public Uri getOrigin(){return Uri.parse(ORIGIN);}public String[] getResources(){return new String[]{RESOURCE_AUDIO_CAPTURE,RESOURCE_VIDEO_CAPTURE,"future.permission"};}public void grant(String[] values){check("Sensitive permission request is denied",false);}public void deny(){check("Sensitive and unknown permissions are denied",true);}};attachments.chrome().onPermissionRequest(permission);attachments.chrome().onGeolocationPermissionsShowPrompt(ORIGIN,(origin,allow,remember)->check("Location is never granted or remembered",!allow&&!remember));
+    remote.evaluateJavascript("(()=>{let blocked=false;try{if(window.__pocketPrivacy)new RTCPeerConnection({iceServers:[]});}catch(e){blocked=e.name==='NotAllowedError';}const canvas=document.querySelector('canvas');canvas.getContext('2d').fillRect(0,0,4,4);let pixels=true;try{canvas.toDataURL();}catch{pixels=false;}return {first:!!firstProtection,rtc:blocked,hardware:navigator.hardwareConcurrency,canvas:pixels,header:document.querySelector('header').getBoundingClientRect().top};})()",raw->{JSONObject data=J.parse(raw);
+      if(early){check("Shield runs before the page's first script",data.optBoolean("first"));check("RTC constructors cannot create a peer connection",data.optBoolean("rtc"));check("Hardware concurrency is coarsened",data.optInt("hardware")<=4);}else check("Unsupported early protection is reported honestly",session.privacy.summary().contains("未覆盖")&&!data.optBoolean("first"));
+      check("Standard mode preserves normal canvas export",data.optBoolean("canvas"));int[] bar=new int[2],web=new int[2];toolbar.getLocationOnScreen(bar);remote.getLocationOnScreen(web);check("No blank native view exists below toolbar",Math.abs(web[1]-(bar[1]+toolbar.getHeight()))<=1);check("Webpage header starts at its viewport top",Math.abs(data.optDouble("header"))<=1);
+      check("Geometry uses the real WebView viewport",remote.getHeight()>300&&remote.getWidth()>200);strong=early;strict();
+    });
+  }
+  void strict(){if(!strong){session.prefs.edit().putInt("privacyLevel",2).commit();session.privacy.earlyInstalled=false;session.networkReady=false;session.openConnection(false,false);check("Unsupported strict policy blocks network loading",remote.getSettings().getBlockNetworkLoads()&&!session.networkReady&&session.manualAttention);session.prefs.edit().putInt("privacyLevel",1).commit();dns();return;}
+    session.prefs.edit().putInt("privacyLevel",2).commit();session.privacy.apply();session.navigate(ORIGIN+"c/privacy-fixture","本地强化保护检查");attempts=0;waitStrict();
+  }
+  void waitStrict(){if(session.navigating&&attempts++<80){handler.postDelayed(()->waitStrict(),100);return;}remote.evaluateJavascript("(()=>{let data=false,pixels=false;const canvas=document.querySelector('canvas');try{canvas.toDataURL();}catch(e){data=e.name==='NotAllowedError';}try{canvas.getContext('2d').getImageData(0,0,1,1);}catch(e){pixels=e.name==='NotAllowedError';}return {first:!!firstProtection,data,pixels};})()",raw->{JSONObject data=J.parse(raw);check("Strict shield also precedes first page script",data.optBoolean("first"));check("Strict mode restricts canvas readout",data.optBoolean("data")&&data.optBoolean("pixels"));check("Privacy modes never submit a message",session.pending==null);dns();});}
+  void dns(){NativeNetwork n=NativeNetwork.get(this);n.settings=J.obj("exitHost","127.0.0.1","exitPort",9);n.names=new ArrayList<>(Arrays.asList("Entry|fixture"));JSONObject full=n.config(false,false),bootstrap=n.config(true,false);check("Final website DNS uses the fixed-exit proxy",full.optJSONObject("dns").optJSONArray("nameserver").optString(0).endsWith("#FixedExit"));check("Bootstrap DNS avoids a proxy initialization cycle",!bootstrap.optJSONObject("dns").optJSONArray("nameserver").optString(0).contains("#FixedExit"));check("Node resolver remains explicitly separate",!full.optJSONObject("dns").optJSONArray("proxy-server-nameserver").optString(0).contains("#FixedExit"));write();}
+  void write(){try{J.write(new File(getFilesDir(),"privacy-results.json"),J.obj("checks",checks,"documentStartSupported",session.privacy.earlySupported(),"earlyInstalled",strong,"webView",WebView.getCurrentWebViewPackage().versionName).toString(2));}catch(Exception ignored){}}
+}

@@ -1,0 +1,5 @@
+package local.pocketchat;
+import android.content.*;import android.os.*;import android.widget.*;import org.json.*;import java.io.*;
+public class DownloadCenterTestActivity extends DownloadCenterActivity {
+  @Override public void onCreate(Bundle b){super.onCreate(b);new Handler(Looper.getMainLooper()).postDelayed(()->{JSONArray checks=new JSONArray(),rows=DownloadLibrary.get(this).list();checks.put(J.obj("name","Opening native download center does not create chat or network","pass",ChatSession.peek()==null));checks.put(J.obj("name","Saved files remain indexed after process recreation","pass",rows.length()>0&&box.getChildCount()>3));boolean label=false;for(int i=0;i<box.getChildCount();i++)if(box.getChildAt(i) instanceof TextView&&((TextView)box.getChildAt(i)).getText().toString().contains("默认位置"))label=true;checks.put(J.obj("name","Download center shows the default folder","pass",label));checks.put(J.obj("name","Native saved file actions are available","pass",actions!=null));try{J.write(new File(getFilesDir(),"download-center-results.json"),J.obj("checks",checks).toString(2));}catch(Exception ignored){}},200);}
+}
