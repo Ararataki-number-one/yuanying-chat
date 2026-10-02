@@ -25,7 +25,7 @@ work/android-tools/
 ./build.ps1 -ToolsRoot 'D:/AndroidTools'
 ```
 
-结果是 `dist/PocketChat-1.5.2.apk`。临时输出位于 `work/android-test/`。
+结果是 `dist/PocketChat-1.5.3.apk`。临时输出位于 `work/android-test/`。
 
 首次构建会在 `work/android-test/private/local-test.jks` 创建本地签名密钥。该目录被 Git 忽略。
 

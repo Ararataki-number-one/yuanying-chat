@@ -2,11 +2,11 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.2（versionCode 28，原版签名预览包）。**
+**当前版本：1.5.3（versionCode 29，原版签名预览包）。**
 
 ## 下载与安装
 
-- [下载 1.5.2 原版签名预览 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/environment-management-preview-20261002/public-downloads/PocketChat-1.5.2-interaction-preview.apk)
+- [下载 1.5.3 会话与网络界面 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/environment-management-preview-20261002/public-downloads/PocketChat-1.5.3-chat-network-preview.apk)
 - [历史 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
 - [查看 Releases](https://github.com/Ararataki-number-one/yuanying-chat/releases)
 
@@ -25,7 +25,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 | 附件 | 图片与文件上传状态、重新上传、移除、图片与 PDF 本地预览 |
 | 下载 | 自动保存、同名编号、暂停与续传、跨窗口文件列表、打开、分享、另存为 |
 | 后台等待 | 等待与完成通知、发送状态恢复；重新连接不会自动重发提问 |
-| 网络管理 | 手机 VPN、应用代理、内置订阅入口与固定 SOCKS5 出口；节点选择与线路统计 |
+| 网络管理 | 全部窗口网络、订阅与固定出口三栏；候选编辑后保存并应用；勾选池随机 / 手动入口；原完整线路测速与出口核验 |
 | 隐私与自检 | 三档保护、指定浏览器字段一致性检查、用户授权的出口检查、环境基线变化提醒 |
 | 偏好 | 草稿、历史、滚动位置、后台与通知开关、仅 Wi-Fi 下载、旧临时文件清理 |
 
@@ -37,9 +37,9 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 ## 环境管理与功能设置
 
-底部为会话、环境、下载、网络、设置。环境卡片突出名称、分组、网络状态和最近使用；支持多选、批量分组和收藏，全选只处理当前结果并提示筛选外的选择。环境编辑按基本信息、网络配置、浏览器和使用偏好组织。网络页面始终显示所属环境，应用设置只放全局入口与系统权限。
+底部为会话、环境、下载、网络、设置。环境卡片突出名称、分组、网络状态和最近使用；支持多选、批量分组和收藏，全选只处理当前结果并提示筛选外的选择。环境编辑按基本信息、网络配置、浏览器和使用偏好组织。会话顶部的网络状态可直接定位当前窗口；网络页列出全部窗口，编辑网络使用居中弹窗，保存后才应用。应用设置继续控制全局入口与系统权限。
 
-管理界面参考 AdsPower 的环境列表与分组配置思路，采用适合手机的卡片布局。自定义指纹、多订阅、自动化等未实现能力统一在“功能支持范围”说明，保留 `FutureFeatures.Adapter` 扩展接口。
+管理界面参考 AdsPower 的环境列表与分组配置思路，采用适合手机的卡片布局。1.5.3 增加入口订阅库，各窗口从所选订阅选择入口；自定义指纹、自动化等扩展能力沿用既有支持范围。
 
 - [环境管理与配置结构](docs/ENVIRONMENT-MANAGEMENT.md)
 - [UI 与实际功能](docs/UI-FUNCTIONS.md)
@@ -56,11 +56,13 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 ## 构建和验证
 
 - [构建说明](docs/BUILD.md)
+- [1.5.3 会话与网络界面：逐文件修改说明](docs/CHANGELOG-v1.5.3.md)
 - [1.5.2 交互优化说明](docs/CHANGELOG-v1.5.2.md)
 - [1.5.1 更新说明](docs/CHANGELOG-v1.5.1.md)
 - [历史 1.5.0 更新说明](docs/CHANGELOG-v1.5.0.md)
 - [界面与功能对应](docs/UI-FUNCTIONS.md)
-- [本轮交互验证](verification/interaction-round3/README.md)
+- [本轮会话与网络验证](verification/chat-network-reference/README.md)
+- [上一轮交互验证](verification/interaction-round3/README.md)
 - [上一轮环境管理与覆盖更新验证](verification/environment-management-round2/README.md)
 - [第一轮环境管理验证：28 项原生检查通过；网页回归未完成](verification/environment-management/README.md)
 - [历史 1.5.0 验证摘要：578 项检查、8 次熄屏测试](verification/validation-summary.json)
