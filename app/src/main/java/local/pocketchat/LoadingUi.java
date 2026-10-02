@@ -13,7 +13,7 @@ final class LoadingUi {
   LoadingUi(MainActivity activity){a=activity;
     band=new LinearLayout(a);band.setGravity(Gravity.CENTER_VERTICAL);band.setPadding(a.dp(22),a.dp(4),a.dp(22),a.dp(9));band.setVisibility(View.GONE);
     band.addView(spinner(16),new LinearLayout.LayoutParams(a.dp(16),a.dp(16)));bandText=a.label("",12,Ui.MUTED);bandText.setPadding(a.dp(10),0,0,0);band.addView(bandText);band.setOnClickListener(v->ReplyState.show(a));band.setContentDescription("回复状态，点按检查或恢复连接");band.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-    cover=new LinearLayout(a);cover.setOrientation(1);cover.setGravity(Gravity.CENTER);cover.setPadding(a.dp(28),a.dp(16),a.dp(28),a.dp(16));cover.setBackgroundColor(Color.WHITE);cover.setClickable(true);cover.setVisibility(View.GONE);
+    cover=new LinearLayout(a);cover.setOrientation(1);cover.setGravity(Gravity.CENTER);cover.setPadding(a.dp(28),a.dp(16),a.dp(28),a.dp(16));cover.setBackgroundColor(Ui.PAPER);cover.setClickable(true);cover.setVisibility(View.GONE);
     wheel=spinner(32);cover.addView(wheel,new LinearLayout.LayoutParams(a.dp(32),a.dp(32)));title=a.label("",16,Ui.INK);title.setGravity(Gravity.CENTER);title.setPadding(0,a.dp(20),0,a.dp(8));title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);cover.addView(title);
     hint=a.label("",13,Ui.MUTED);hint.setGravity(Gravity.CENTER);cover.addView(hint);retry=new Button(a);retry.setText("重新加载");retry.setOnClickListener(v->a.session.retryCurrent());cover.addView(retry);
     website=new Button(a);website.setText("查看原网页");website.setOnClickListener(v->a.showPage(true));cover.addView(website);

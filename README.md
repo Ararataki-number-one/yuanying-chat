@@ -2,11 +2,11 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按窗口配置的网络和隐私保护。
 
-**当前版本：1.4.1（versionCode 25）。**
+**当前版本：1.5.0（versionCode 26）。**
 
 ## 下载与安装
 
-- [下载 1.4.1 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.4.1/YuanyingChat-v1.4.1.apk)
+- [下载 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
 - [查看 Releases](https://github.com/Ararataki-number-one/yuanying-chat/releases)
 
 已有发布版请直接覆盖安装，不要先卸载。覆盖更新需要相同签名。
@@ -17,7 +17,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 | 部分 | 已实现内容 |
 | --- | --- |
-| 窗口首页 | 打开应用先显示窗口卡片；创建、搜索、收藏、筛选、改名和编辑；最多 8 个窗口 |
+| 窗口首页 | 首次品牌页进入后默认直达指定窗口原网页；创建、搜索、收藏、筛选、改名和编辑；最多 8 个窗口 |
 | 独立环境 | 分开的 WebView 登录目录、Cookie、本机聊天与草稿、偏好和加密网络配置 |
 | 聊天 | 简洁与原网页模式、模型与强度选择、Markdown、数学公式、代码、消息复制与分享 |
 | 会话与草稿 | 聊天侧边栏、历史同步、会话改名与删除、草稿冲突处理和恢复、阅读位置恢复 |
@@ -34,18 +34,28 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 安卓 10+ 默认下载目录为 `Download/元婴期院士/窗口_编号/`；安卓 8–9 保存到对应窗口的应用内文件目录，可打开、分享或另存为。
 
+## 星空界面与预留功能
+
+底部为默认、窗口、下载、网络、设置五个入口。窗口编辑分为基础、浏览器和偏好；设置分为当前窗口与全局应用设置。已有网络、隐私与聊天功能继续使用实际状态。
+
+自定义指纹、多个网络方案/订阅、自动化脚本等项目标为“开发中”，通过 `FutureFeatures.Adapter` 预留接入接口，尚未作为实际可用功能开放。
+
+- [UI 对照与预留接口](docs/UI-FUNCTIONS.md)
+- [品牌素材与提示词](docs/ASSETS.md)
+- [完整界面预览](docs/screenshots)
+
 ## 窗口首页
 
 下图使用独立测试数据：
 
-<img src="docs/window-home.png" alt="窗口首页" width="360">
+<img src="docs/brand.png" alt="品牌页" width="300"> <img src="docs/window-home.png" alt="窗口管理" width="300">
 
 ## 构建和验证
 
 - [构建说明](docs/BUILD.md)
-- [1.4.1 更新说明](docs/CHANGELOG-v1.4.1.md)
+- [1.5.0 更新说明](docs/CHANGELOG-v1.5.0.md)
 - [界面与功能对应](docs/UI-FUNCTIONS.md)
-- [验证摘要：549 项检查、8 次熄屏测试](verification/validation-summary.json)
+- [验证摘要：578 项检查、8 次熄屏测试](verification/validation-summary.json)
 - [逐项结果](verification/test-results)
 - [工程实现记录](docs/ENGINEERING-HISTORY.md)
 

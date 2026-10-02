@@ -2,7 +2,7 @@
 
 Source: Java + Android SDK 35, min API 26. Run build.ps1 with PowerShell on Windows. It expects JDK 17, Android build tools and platform folders under workspace/work/android-tools/{java,build,platform}. Dependencies are bundled in libs and app/src/main/jniLibs. The signing key is generated locally under work/android-test/private and is intentionally not distributed. A locally regenerated key cannot update an existing installation signed with another key.
 
-Default builds dist/PocketChat-1.4.1.apk (versionCode 25). -Test builds the separate local.pocketchat.test package and fixtures. -Development enables local WebView inspection; neither mode is used for the delivered release. The source snapshot contains no private account or network configuration.
+Default builds PocketChat-1.5.0.apk (versionCode 26). -Test builds the separate local.pocketchat.test package and fixtures. -Development enables local WebView inspection; neither mode is used for the delivered release. The source snapshot contains no private account or network configuration.
 
 `-ToolsRoot <path>` optionally reuses an existing android-tools directory. Retain the original signing key under workspace/work/android-test/private/local-test.jks when building an in-place update. No signing key is included in the source distribution.
 
@@ -89,3 +89,8 @@ ProfileCatalog is a shared SQLite metadata catalog for names, editor drafts and 
 AppPrefs defaults preserve existing behavior. Background waiting and completion notifications are independent flags. WiFi-only applies to managed file downloads, with checks before requests and during transfers; unverifiable WiFi is not accepted. Cleanup is off by default and only removes old unreferenced top-level download .part files after a canonical-path check. User files, resumable task data, chats and cookies are retained. NetworkJournal stores only fixed categories in the owning environment. Download notifications have separate per-profile identifiers and per-task PendingIntents.
 
 FunctionalHubTestActivity exercises actual native module views and existing local chat fixtures. ExpandedProfileTestActivity starts an actual profile7 process and verifies data/notification/service mappings. Production excludes test components and remains non-debuggable.
+
+
+## 1.5.0 designed native interface
+
+BrandLaunchActivity routes to the selected default window in webpage mode after the first brand screen. Five native destinations, shared UI-only catalog options, and cross-window sanitized download progress preserve existing account and storage scopes. Unsupported controls use FutureFeatures.Adapter development slots rather than fake operational settings. Website content, fingerprint policy and network backend are not replaced by design-board sample data. See docs/UI-FUNCTIONS.md for the complete mapping.
