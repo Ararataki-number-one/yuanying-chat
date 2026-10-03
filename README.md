@@ -2,15 +2,18 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.6（versionCode 32，原版签名阅读优化包）。**
+**当前版本：1.5.7（versionCode 33，原版签名 Firefox 内核更新包）。**
 
 ## 下载与安装
 
-- [下载 1.5.6 电脑版阅读优化 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/desktop-reading-20261003/public-downloads/PocketChat-1.5.6-desktop-reading.apk)
+- [下载 1.5.7 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.7-gecko/PocketChat-1.5.7-gecko-arm64.apk)
+- [上一版 1.5.6 电脑版阅读优化 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/477353188f4af649055bae7a1235b03e7c221fd9/public-downloads/PocketChat-1.5.6-desktop-reading.apk)
 - [历史 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
 - [查看 Releases](https://github.com/Ararataki-number-one/yuanying-chat/releases)
 
 原发布 1.5.0 和上一轮原签名预览包可直接覆盖安装，无需卸载。此前临时签名预览包使用不同证书，不能直接覆盖。
+
+Firefox 新内核首次需要重新登录。原系统内核的登录数据保留，可从“会话 → 更多 → 浏览器内核”切回。Firefox 当前用于原网页，简洁模式会重新打开系统内核；两种内核分别保存登录。真实 Google / ChatGPT 登录和 ARM 手机兼容性仍需设备验收。
 
 安卓 8.0 起可使用默认窗口；安卓 9.0 起支持最多 8 个独立窗口。内置网络组件支持 ARM64 和 x86_64。
 
@@ -19,7 +22,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 | 部分 | 已实现内容 |
 | --- | --- |
 | 环境管理 | 首次品牌页进入后默认直达指定窗口原网页；创建、分组、备注、搜索、收藏、筛选与排序；多选、批量分组与收藏；最多 8 个环境 |
-| 独立环境 | 分开的 WebView 登录目录、Cookie、本机聊天与草稿、偏好和加密网络配置 |
+| 独立环境 | 分开的浏览器登录目录、Cookie、本机聊天与草稿、偏好和加密网络配置；Firefox 与系统内核各自保留登录 |
 | 网页显示 | 创建环境时选择手机版 / 电脑版；已有环境在浏览器设置中修改，按环境独立保存；电脑版缩放记忆、适应屏幕与输入安全区 |
 | 聊天 | 简洁与原网页模式、模型与强度选择、Markdown、数学公式、代码、消息复制与分享 |
 | 会话与草稿 | 聊天侧边栏、历史同步、会话改名与删除、草稿冲突处理和恢复、阅读位置恢复 |
@@ -27,7 +30,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 | 下载 | 自动保存、同名编号、暂停与续传、跨窗口文件列表、打开、分享、另存为 |
 | 后台等待 | 等待与完成通知、发送状态恢复；重新连接不会自动重发提问 |
 | 网络管理 | 全部窗口网络、订阅与固定出口三栏；候选编辑后保存并应用；勾选池随机 / 手动入口；原完整线路测速与出口核验 |
-| 隐私与自检 | 三档保护、指定浏览器字段一致性检查、用户授权的出口检查、环境基线变化提醒 |
+| 隐私与自检 | 系统内核保留三档保护与原自检；Firefox 使用原生跟踪保护并关闭 WebRTC，旧指纹脚本和网页自检尚未移植 |
 | 偏好 | 草稿、历史、滚动位置、后台与通知开关、仅 Wi-Fi 下载、旧临时文件清理 |
 
 当前平台是 ChatGPT。模型和网页可用功能由当前登录账号及网页实际提供。软件通过内置网页登录，不要求填写 API Key。
@@ -48,6 +51,8 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 1.5.6 增加电脑版各环境的缩放记忆及“更多 → 网页缩放”。横竖屏按可用宽度恢复，键盘弹出时原网页会话暂时收起底部导航，关闭后恢复。保留真实网页，不修改模型、输入或消息界面。Google WebView 登录限制仍未解除；已完成保留隔离和各环境网络的内核替换源码评估，新内核尚未接入。
 
+1.5.7 在正式应用内接入 Mozilla 官方 GeckoView，继续加载真实网页，沿用各环境网络配置和独立数据目录。新内核模式不初始化 Chromium；内核切换会重新打开当前环境。加载失败时可重试或选择系统内核。已验证受控网页存储和独立代理，但换内核不能保证解除 Google 的登录限制。
+
 - [保留独立环境的浏览器内核迁移评估](docs/BROWSER-ENGINE-MIGRATION.md)
 - [环境管理与配置结构](docs/ENVIRONMENT-MANAGEMENT.md)
 - [下一轮 Android 电脑版 Chrome 扩展方案（尚未实现）](docs/ANDROID-DESKTOP-EXTENSIONS.md)
@@ -65,6 +70,8 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 ## 构建和验证
 
 - [构建说明](docs/BUILD.md)
+- [1.5.7 正式应用内核：逐文件修改说明](docs/CHANGELOG-v1.5.7.md)
+- [1.5.7 原生浏览器验证及验收边界](verification/gecko-production/README.md)
 - [1.5.6 电脑版阅读：逐文件修改说明](docs/CHANGELOG-v1.5.6.md)
 - [1.5.5 浏览器设置与登录提示：逐文件修改说明](docs/CHANGELOG-v1.5.5.md)
 - [1.5.4 环境网页显示：逐文件修改说明](docs/CHANGELOG-v1.5.4.md)
@@ -92,7 +99,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 `app/` 为应用源码和资源，`libs/` 为构建依赖，`tests/` 为隔离测试，`third-party/` 保留第三方许可与对应源码，`verification/` 为验证材料。
 
-签名密钥、账号会话、个人网络凭据和个人预设不在仓库。自行构建将生成本机签名，与已有发布包签名不同。
+签名密钥、账号会话、个人网络凭据和个人预设不在仓库。自行构建发布包默认未签名；使用不同密钥签名后，无法覆盖已有原签名发布包。
 
 ## 许可
 
