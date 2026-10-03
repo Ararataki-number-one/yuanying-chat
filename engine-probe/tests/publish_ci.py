@@ -17,7 +17,7 @@ report = {'sourceCommit': source, 'runId': os.environ['GITHUB_RUN_ID'],
 for abi in ['arm64-v8a', 'x86_64']:
     apk = root / f'engine-probe/app/build/outputs/apk/debug/app-{abi}-debug.apk'
     if apk.exists():
-        if apk.stat().st_size >= 100_000_000:
+        if apk.stat().st_size >= 104_000_000:
             report['artifacts'].append({'file': apk.name, 'bytes': apk.stat().st_size,
                 'published': False, 'reason': 'exceeds conservative Git blob size limit'})
             continue
@@ -35,7 +35,9 @@ if verification.exists():
 (stage / 'manifest.json').write_text(json.dumps(report, indent=2) + '\n')
 (stage / 'README.md').write_text('独立 GeckoView SDK 技术验证包，**不是正式版本、不是 Google 登录修复版**。\n'
     '只允许受控 loopback 测试，不继承正式应用网络和登录，原应用不会被覆盖。\n'
-    'debug 签名来自 CI；原版签名密钥没有上传。验收结论以 device-results.json 为准，缺失代表未执行。\n')
+    'debug 签名来自 CI；原版签名密钥没有上传。验收结论以 device-results.json 为准，缺失代表未执行。\n'
+    'GeckoView 采用 [MPL-2.0](https://www.mozilla.org/MPL/2.0/)，对应源码版本见 '
+    '[Mozilla 官方 release](https://hg.mozilla.org/releases/mozilla-release/rev/8eb25af4acf031ab1e06abf1a912275083c820ed)。\n')
 # Use the original checkout and ordinary Git authorization; do not extract tokens.
 branch = 'apk/gecko-sdk-probe-20261003'
 process_env = dict(os.environ, GIT_INDEX_FILE=str(out / 'public-index'), GIT_WORK_TREE=str(stage),
