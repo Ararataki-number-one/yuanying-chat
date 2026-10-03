@@ -51,10 +51,11 @@ final class EnvironmentEditorUi {
     privacy.setSelection(Math.max(0,Math.min(2,initial.optInt("privacyLevel",a.session.privacy.level()))));protection.addView(privacy);
     DesignUi.note(protection,"强化保护可能影响验证和音视频。");
     DesignUi.action(protection,"保护详情",false,()->DesignUi.message(a,"隐私保护",a.session.privacy.summary()+"\n\n标准保护需要支持加载前脚本的 WebView。保存新的保护等级后会重新连接。"));DesignUi.addCard(browser,protection);
+    DesignUi.action(browser,"浏览器内核",false,()->BrowserEngineUi.show(a));
     DesignUi.action(browser,"查看环境自检",false,()->EnvironmentAuditUi.show(a));
-    DesignUi.addCard(browser,DesignUi.setting(a,"settings","浏览器信息",EnvironmentAudit.packageVersion(),"",()->{
+    DesignUi.addCard(browser,DesignUi.setting(a,"settings","浏览器信息",(GeckoWebView.active(a.remote)?GeckoWebView.VERSION:EnvironmentAudit.packageVersion()),"",()->{
       android.util.DisplayMetrics metrics=a.getResources().getDisplayMetrics();
-      DesignUi.message(a,"浏览器信息","内核："+EnvironmentAudit.packageVersion()+"\n网页显示："+BrowserDisplay.label(a.session.privacy.desktop)+"\n系统：Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT+"\n屏幕："+metrics.widthPixels+" × "+metrics.heightPixels+"\n语言："+Locale.getDefault().toLanguageTag()+"\n时区："+TimeZone.getDefault().getID()+"\n定位：不向网页授权\n\nUser-Agent\n"+a.remote.getSettings().getUserAgentString()+"\n\n网页显示方式支持手机版 / 电脑版；自定义 UA、语言、时区和指纹参数尚未开放。");
+      DesignUi.message(a,"浏览器信息","内核："+(GeckoWebView.active(a.remote)?GeckoWebView.VERSION:EnvironmentAudit.packageVersion())+"\n网页显示："+BrowserDisplay.label(a.session.privacy.desktop)+"\n系统：Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT+"\n屏幕："+metrics.widthPixels+" × "+metrics.heightPixels+"\n语言："+Locale.getDefault().toLanguageTag()+"\n时区："+TimeZone.getDefault().getID()+"\n定位：不向网页授权\n\nUser-Agent\n"+a.remote.getSettings().getUserAgentString()+"\n\n网页显示方式支持手机版 / 电脑版；自定义 UA、语言、时区和指纹参数尚未开放。");
     }));
 
     CheckBox[] options=new CheckBox[AppPrefs.KEYS.length];
@@ -109,7 +110,7 @@ final class EnvironmentEditorUi {
     boolean displayChange=value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
     if((change||displayChange)&&browserBusy(s)){String reason=browserTaskReason(s);a.status(reason.isEmpty()?"网页正在回复，回复结束后再保存":reason);return false;}
     if(displayChange&&value.optBoolean("desktopSite")&&!s.privacy.earlySupported()){a.status("请更新 Android System WebView 后再使用电脑版，设置未应用");return false;}
-    if(change&&level>0&&(!s.privacy.earlySupported()||!s.guard.workerProtection)){a.status("请更新 Android System WebView，设置未应用");return false;}
+    if(change&&level>0&&!GeckoWebView.active(s.web)&&(!s.privacy.earlySupported()||!s.guard.workerProtection)){a.status("请更新 Android System WebView，设置未应用");return false;}
     Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));AppPrefs.apply(a,value);s.prefs.edit().putInt("privacyLevel",level).commit();ProfileCatalog.get(a).draft(Profiles.slot(a),null);
     if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(change||displayChange)s.applyBrowserSettings(change);
     s.audit.refresh(true);ProfileCatalog.get(a).heartbeat(s,true);if(a.hub!=null)a.hub.refresh();if(a.designChrome!=null)a.designChrome.update();a.status(displayChange&&!s.networkReady?"环境配置已保存，加载网页时应用显示方式":"环境配置已保存");return true;

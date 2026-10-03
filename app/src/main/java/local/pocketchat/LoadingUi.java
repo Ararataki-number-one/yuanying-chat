@@ -19,8 +19,8 @@ final class LoadingUi {
     website=DesignUi.button(a,"查看原网页",false,()->a.showPage(true));cover.addView(website);
   }
   ProgressBar spinner(int size){ProgressBar p=new ProgressBar(a);p.setIndeterminate(true);p.setIndeterminateTintList(ColorStateList.valueOf(DesignUi.BLUE));return p;}
-  void update(){ChatSession s=a.session;if(s==null)return;boolean failed=s.navigationFailed;boolean show=(s.navigating||failed)&&!s.showingCache&&!a.pageMode;
-    if(show){if(!failed)a.status.setVisibility(View.GONE);cover.animate().cancel();cover.setAlpha(1);cover.setVisibility(View.VISIBLE);coverShown=true;String value=failed?"暂时没有加载完成":s.navigationLabel;if(!value.equals(lastTitle)){title.setText(value);lastTitle=value;}hint.setText(failed?s.status:(System.currentTimeMillis()-s.navigationStarted>8000?"网络有些慢，仍在加载…":"加载完成后会自动显示"));wheel.setVisibility(failed?View.GONE:View.VISIBLE);retry.setVisibility(failed?View.VISIBLE:View.GONE);website.setVisibility(failed?View.VISIBLE:View.GONE);
+  void update(){ChatSession s=a.session;if(s==null)return;boolean failed=s.navigationFailed;boolean raw=GeckoWebView.active(s.web)&&a.pageMode;boolean waiting=raw&&(s.connecting||!s.networkReady||s.web.getUrl()==null||s.web.getUrl().isEmpty());boolean show=raw?waiting||failed:(s.navigating||failed)&&!s.showingCache;
+    if(show){if(!failed)a.status.setVisibility(View.GONE);cover.animate().cancel();cover.setAlpha(1);cover.setVisibility(View.VISIBLE);coverShown=true;String value=failed?"暂时没有加载完成":waiting?"正在准备网页":s.navigationLabel;if(!value.equals(lastTitle)){title.setText(value);lastTitle=value;}boolean attention=failed||raw&&!s.connecting&&!s.networkReady;hint.setText(attention?s.status:(System.currentTimeMillis()-s.navigationStarted>8000?"网络有些慢，仍在加载…":"加载完成后会自动显示"));wheel.setVisibility(attention?View.GONE:View.VISIBLE);retry.setVisibility(attention?View.VISIBLE:View.GONE);website.setText(raw?"选择浏览器内核":"查看原网页");website.setOnClickListener(v->{if(raw)BrowserEngineUi.show(a);else a.showPage(true);});website.setVisibility(attention?View.VISIBLE:View.GONE);
     }else if(coverShown){coverShown=false;cover.animate().alpha(0).setDuration(180).withEndAction(()->{if(!coverShown)cover.setVisibility(View.GONE);}).start();}
     String message=s.status;boolean error=message.matches(".*(失败|错误|超时|请|待确认|未完成|解除等待|已到).*"),working=!error&&(s.submitting||s.pending!=null||message.startsWith("正在")||message.startsWith("准备连接"));
     boolean small=(working||taskRunning)&&!show&&taskDialog==null;
@@ -40,4 +40,3 @@ final class LoadingUi {
   void dismissTask(){taskRunning=false;taskMessage="";Dialog d=taskDialog;taskDialog=null;if(d!=null&&d.isShowing())d.dismiss();if(!a.destroyed)update();}
 
 }
-
