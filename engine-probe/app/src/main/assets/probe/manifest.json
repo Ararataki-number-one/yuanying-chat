@@ -1,0 +1,9 @@
+{
+  "manifest_version": 2,
+  "name": "PocketChat SDK validation bridge",
+  "version": "0.1.0",
+  "browser_specific_settings": {"gecko": {"id": "engine-probe@pocketchat.local"}},
+  "permissions": ["proxy", "<all_urls>", "nativeMessaging", "geckoViewAddons", "nativeMessagingFromContent"],
+  "background": {"scripts": ["background.js"]},
+  "content_scripts": [{"matches": ["http://127.0.0.1:8765/*"], "js": ["fixture.js"], "run_at": "document_start"}]
+}
