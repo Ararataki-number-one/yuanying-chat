@@ -17,12 +17,15 @@ report = {'sourceCommit': source, 'runId': os.environ['GITHUB_RUN_ID'],
 for abi in ['arm64-v8a', 'x86_64']:
     apk = root / f'engine-probe/app/build/outputs/apk/debug/app-{abi}-debug.apk'
     if apk.exists():
-        assert apk.stat().st_size < 100_000_000, 'use releases for larger files'
+        if apk.stat().st_size >= 100_000_000:
+            report['artifacts'].append({'file': apk.name, 'bytes': apk.stat().st_size,
+                'published': False, 'reason': 'exceeds conservative Git blob size limit'})
+            continue
         target = stage / f'PocketChat-GeckoProbe-0.1.0-{abi}.apk'
         shutil.copy2(apk, target)
         report['artifacts'].append({'file': target.name, 'bytes': target.stat().st_size,
             'sha256': hashlib.sha256(target.read_bytes()).hexdigest(), 'signing': 'CI debug, independent applicationId'})
-for name in ['device-results.json', 'device-route-trace.json', 'device-native-events.txt',
+for name in ['device-results.json', 'device-route-trace.json', 'device-native-events.txt', 'build.log', 'native-test.log',
              'device-screen.png', 'emulator.log', 'last-device-log.txt']:
     if (out / name).exists():
         shutil.copy2(out / name, stage / name)
