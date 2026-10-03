@@ -1,29 +1,27 @@
-# 1.5.3 会话与网络界面预览（原版签名）
+# 1.5.4 环境网页显示预览（原版签名）
 
-版本 1.5.3（versionCode 29），更新日期 2026-10-02。
+版本 1.5.4（versionCode 30），更新日期 2026-10-03。
 
-## 下载与覆盖安装
+[下载 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/desktop-environments-preview-20261003/public-downloads/PocketChat-1.5.4-desktop-environments-preview.apk)，49,374,574 字节。
 
-[下载 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/environment-management-preview-20261002/public-downloads/PocketChat-1.5.3-chat-network-preview.apk)，49,370,478 字节。
+SHA-256：`45c4fda8f8fd6c952c366bb6622ec4b0d485ec079c9a65ef7479388029d7b09c`。
 
-SHA-256：`d7288bc9bacb6a6126e3fa40e85ae82b61b8fc85e0d371ee38a1488d9565ceee`。
+包名 `local.pocketchat`，使用原发布签名，可覆盖原签名版本。此前临时签名包不适用；覆盖后真实账号登录保持仍需手机核验。私钥未公开。
 
-包名 `local.pocketchat`，使用原发布签名，可覆盖原签名版本。此前临时签名预览包不适用。签名与递增版本号已核对；真实账号覆盖后登录保留仍需手机核验。
+## 使用
 
-## 界面变化
+- 新建环境 → 基本信息 → 网页显示方式，选择手机版 / 电脑版。
+- 已有环境 → 编辑环境 → 浏览器 → 网页显示方式，保存环境后应用。
+- 每个环境独立保存，旧环境默认手机版。环境列表仅在辅助信息行提示电脑版，会话顶部不增加按钮。
+- 电脑版继续使用真实 ChatGPT WebView，保留简洁 / 原网页逻辑，允许双指缩放。
+- 保存前复用原草稿和阅读位置保存能力；回复、连接或其他操作进行中提示等待；草稿保留失败不应用修改。
 
-- 会话顶部：汉堡菜单、可切换的环境名称、简洁 / 原网页、更多；第二行只显示真实网络状态并可定位当前窗口。
-- 主体继续使用原 ChatGPT WebView，没有把参考 HTML 作为网页，也没有修改官方页面元素。
-- 网络只有窗口网络、订阅、出口三栏；无需先切换环境即可编辑窗口。
-- 候选配置在保存并应用后才改变连接；自动随机受勾选池约束，手动入口与固定出口独立选择。
-- 网络编辑、选择、测速、筛选和详情均使用居中弹窗。
+## 验证
 
-## 验证范围
+发布和独立测试 APK 均通过编译、原签名、对齐及包版本检查。浏览器策略 23 / 23、视口 DOM 12 / 12、主机 SQLite 迁移 8 / 8，共 43 / 43 项主机检查通过。
 
-发布和测试 APK 构建、签名、对齐及版本检查通过。此测试包已生成 79 项通过结果；恢复耗时检查在当前软件模拟器上为 2,056 ms，超过原 800 ms 门槛，该项未通过且未放宽断言。实际 Mihomo 解析与选择器、真实加密配置保存及跨窗口私有分发的范围详见验证记录。
+本轮未连接真机、未登录真实账号。Android WebView 的实际电脑版布局、缩放、键盘、跨进程配置和登录保持未完成设备验证；原生创建表单用例仅编译，未运行。电脑版仍是 Android WebView。上一轮云模拟器渲染崩溃和恢复耗时失败保留在历史记录中，本轮未重跑或声称解决。
 
-未通过、未完成或无法判定的检查：compact-mode-results.json、compact-mode-restore-results.json、functional-hub-results.json、network-priority-results.json。模拟器 WebView 渲染进程崩溃，网页回归未完成。未连接真机、未登录真实账号；测试代理连接回调与延迟使用隔离夹具，未声称验证私人代理的公开连通性。
+[修改文件及原因](https://github.com/Ararataki-number-one/yuanying-chat/blob/e4a00220c63d25e710bb61d1f1a00487c94347ee/docs/CHANGELOG-v1.5.4.md) · [验证结果与设备清单](https://github.com/Ararataki-number-one/yuanying-chat/blob/e4a00220c63d25e710bb61d1f1a00487c94347ee/verification/environment-browser-display/README.md)
 
-[逐文件修改说明](https://github.com/Ararataki-number-one/yuanying-chat/blob/ca4cfe1128c35fe8f5211b8d8b52ab84b8e40921/docs/CHANGELOG-v1.5.3.md) · [本轮验证](https://github.com/Ararataki-number-one/yuanying-chat/blob/ca4cfe1128c35fe8f5211b8d8b52ab84b8e40921/verification/chat-network-reference/README.md)
-
-源码提交：`ca4cfe1128c35fe8f5211b8d8b52ab84b8e40921`；源码分支：`feature/chat-network-reference`。历史 APK 保留，签名密钥没有加入源码或下载附件。
+源码提交：`e4a00220c63d25e710bb61d1f1a00487c94347ee`；源码分支：`feature/environment-browser-display`。历史 APK 保留。

@@ -217,7 +217,7 @@ public class WindowHomeActivity extends Activity {
       TextView name=DesignUi.text(this,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"),16,DesignUi.TEXT);
       name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);title.addView(name);
       String group=row.optString("group").isEmpty()?"未分组":row.optString("group");
-      TextView sub=DesignUi.text(this,(selecting?String.format(Locale.ROOT,"%02d",id+1)+" · ":"")+group+(id==AppSettings.defaultSlot(this)?" · 默认":"")+(!row.optString("draft").isEmpty()?" · 草稿":""),12,DesignUi.MUTED);
+      TextView sub=DesignUi.text(this,(selecting?String.format(Locale.ROOT,"%02d",id+1)+" · ":"")+(row.optBoolean("desktopSite")?"电脑版 · ":"")+group+(id==AppSettings.defaultSlot(this)?" · 默认":"")+(!row.optString("draft").isEmpty()?" · 草稿":""),12,DesignUi.MUTED);
       sub.setSingleLine();sub.setEllipsize(TextUtils.TruncateAt.END);title.addView(sub);
       head.addView(title,new LinearLayout.LayoutParams(0,-2,1));
       boolean problem=!row.optString("problem").isEmpty();
@@ -345,7 +345,7 @@ public class WindowHomeActivity extends Activity {
   final class Wizard {
     final int id;final JSONArray windows;final Dialog dialog;
     LinearLayout body,actions;EditText name;AlertDialog exitPrompt;
-    int step,sourceType,sourceSlot;String title,group="";boolean makeDefault;
+    int step,sourceType,sourceSlot;String title,group="";boolean makeDefault,desktop;Spinner displayChoice;
     Wizard(int id,JSONArray windows){
       this.id=id;this.windows=windows;title="环境 "+(id+1);sourceSlot=AppSettings.defaultSlot(WindowHomeActivity.this);
       dialog=new Dialog(WindowHomeActivity.this){@Override public void onBackPressed(){Wizard.this.back();}};
@@ -360,11 +360,12 @@ public class WindowHomeActivity extends Activity {
     }
     void back(){if(step>0){step--;render();}else close();}
     void close(){
-      boolean dirty=!title.equals("环境 "+(id+1))||!group.isEmpty()||sourceType!=0||makeDefault;
+      if(step==0&&displayChoice!=null)desktop=displayChoice.getSelectedItemPosition()==1;
+      boolean dirty=!title.equals("环境 "+(id+1))||!group.isEmpty()||sourceType!=0||makeDefault||desktop;
       if(!dirty){dialog.dismiss();return;}
       if(exitPrompt!=null&&exitPrompt.isShowing())return;
       exitPrompt=new AlertDialog.Builder(WindowHomeActivity.this).setTitle("放弃创建环境？")
-        .setMessage("退出后，本次填写的名称、分组和网络来源不会保存。")
+        .setMessage("退出后，本次填写的环境配置不会保存。")
         .setPositiveButton("继续填写",null).setNegativeButton("放弃创建",(d,w)->dialog.dismiss()).show();
       exitPrompt.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(DesignUi.RED);
     }
@@ -385,7 +386,9 @@ public class WindowHomeActivity extends Activity {
       watch(name,()->title=name.getText().toString());
       EditText input=DesignUi.input(body,"分组（可选）",group,"最多 12 字，留空为未分组");
       input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});watch(input,()->group=input.getText().toString().trim());
-
+      displayChoice=BrowserDisplayUi.add(body,desktop);
+      displayChoice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long item){desktop=pos==1;}public void onNothingSelected(AdapterView<?> p){}});
+      DesignUi.note(body,"电脑版内容更密，可用双指缩放。");
     }
     void watch(EditText input,Runnable changed){input.addTextChangedListener(new TextWatcher(){
       public void beforeTextChanged(CharSequence s,int a,int c,int f){}
@@ -415,21 +418,24 @@ public class WindowHomeActivity extends Activity {
     }
     void summary(){
       DesignUi.field(body,"环境名称",title);if(!group.isEmpty())DesignUi.field(body,"分组",group);
+      DesignUi.field(body,"网页显示方式",BrowserDisplay.label(desktop));
       DesignUi.field(body,"网络来源",sourceType==2?"创建后手动配置":Profiles.display(WindowHomeActivity.this,sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot));
       CheckBox selected=new CheckBox(WindowHomeActivity.this);selected.setText("设为默认环境");selected.setTextColor(DesignUi.TEXT);selected.setMinHeight(dp(48));
       DesignUi.note(body,sourceType==2?"创建后会打开网络配置页。保存网络方式后，再登录 ChatGPT。":"创建后会使用复制的网络配置打开会话，请在新环境单独登录 ChatGPT。");
       selected.setChecked(makeDefault);selected.setOnCheckedChangeListener((b,c)->makeDefault=c);body.addView(selected);
     }
     void next(){
-      if(step==0){if(title.trim().isEmpty()||title.trim().length()>24){name.setError("名称需要 1–24 字");name.requestFocus();return;}title=title.trim();}
+      if(step==0){desktop=displayChoice.getSelectedItemPosition()==1;if(title.trim().isEmpty()||title.trim().length()>24){name.setError("名称需要 1–24 字");name.requestFocus();return;}title=title.trim();}
       if(step<2){step++;render();}else create();
     }
     void create(){
+      if(desktop&&!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)){DesignUi.feedback(WindowHomeActivity.this,"请更新 Android System WebView 后再使用电脑版");return;}
       if(preparing)return;preparing=true;createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);
       Context source=Profiles.context(WindowHomeActivity.this,sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot);
       boolean clone=sourceType!=2;dialog.dismiss();
+      final boolean desktopSetting=desktop;
       new Thread(()->{
-        String error="";try{Profiles.prepare(source,id,clone);Profiles.rename(source,id,title);ProfileCatalog.get(source).details(id,group,"");if(makeDefault)AppSettings.defaultSlot(source,id);}
+        String error="";try{Profiles.prepare(source,id,clone);Profiles.rename(source,id,title);ProfileCatalog.get(source).details(id,group,"");ProfileCatalog.get(source).browserDisplay(id,desktopSetting);if(makeDefault)AppSettings.defaultSlot(source,id);}
         catch(Exception e){error="环境准备失败，请重试";}
         String failure=error;handler.post(()->{
           preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);lastSignature="";refresh();

@@ -8,17 +8,23 @@ import java.util.*;
 import java.util.regex.*;
 
 final class BrowserPrivacy {
-  final ChatSession session;ScriptHandler script;boolean earlyInstalled;String originalAgent;
+  final ChatSession session;ScriptHandler script,displayScript;boolean earlyInstalled,desktop,desktopReady;String originalAgent;
   BrowserPrivacy(ChatSession s){session=s;originalAgent=WebSettings.getDefaultUserAgent(s.context);apply();}
   int level(){return session.prefs.getInt("privacyLevel",1);}
   boolean earlySupported(){return WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT);}
-  boolean canNavigate(){return level()==0||earlyInstalled&&session.guard.workerProtection;}
-  static String reducedAgent(String original){Matcher m=Pattern.compile("(?:Chrome|Chromium)/([0-9]+)").matcher(original);String version=m.find()?m.group(1):"";return version.isEmpty()?original:"Mozilla/5.0 (Linux; Android 10; K; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/"+version+".0.0.0 Mobile Safari/537.36";}
+  boolean wantsDesktop(){return ProfileCatalog.get(session.context).item(Profiles.slot(session.context)).optBoolean("desktopSite");}
+  boolean canNavigate(){return (!desktop||desktopReady)&&(level()==0||earlyInstalled&&session.guard.workerProtection);}
+  static String reducedAgent(String original){return BrowserDisplay.agent(original,1,false);}
   void apply(){WebSettings settings=session.web.getSettings();settings.setGeolocationEnabled(false);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setSafeBrowsingEnabled(true);settings.setMediaPlaybackRequiresUserGesture(true);CookieManager.getInstance().setAcceptThirdPartyCookies(session.web,false);GeolocationPermissions.getInstance().clearAll();
-    if(script!=null){script.remove();script=null;}earlyInstalled=false;int level=level();settings.setUserAgentString(level==0?originalAgent:reducedAgent(originalAgent));
+    if(script!=null){script.remove();script=null;}if(displayScript!=null){displayScript.remove();displayScript=null;}
+    earlyInstalled=false;desktop=wantsDesktop();desktopReady=!desktop;int level=level();
+    settings.setUseWideViewPort(desktop);settings.setLoadWithOverviewMode(desktop);settings.setSupportZoom(true);settings.setBuiltInZoomControls(desktop);settings.setDisplayZoomControls(!desktop);session.web.setInitialScale(0);
+    if(desktop&&earlySupported())try{displayScript=WebViewCompat.addDocumentStartJavaScript(session.web,BrowserDisplay.viewportScript(),new HashSet<>(Arrays.asList("https://chatgpt.com","https://chat.openai.com")));desktopReady=true;}catch(Exception ignored){}
+    settings.setUserAgentString(BrowserDisplay.agent(originalAgent,level,desktop));
     if(level>0&&earlySupported())try(InputStream in=session.context.getAssets().open("privacy-shield.js")){String source=J.text(in,64*1024).replace("__LEVEL__",String.valueOf(level));script=WebViewCompat.addDocumentStartJavaScript(session.web,source,Collections.singleton("*"));earlyInstalled=true;}catch(Exception ignored){}
   }
   String summary(){String text="当前环境："+Profiles.display(session.context,Profiles.slot(session.context))+"\n保护等级："+(level()==2?"强化":level()==1?"标准":"兼容");
+    text+="\n网页显示："+BrowserDisplay.label(desktop)+(desktop&&!desktopReady?" · 当前 WebView 不支持":"");
     text+="\n第三方 Cookie：阻止\n位置 / 摄像头 / 网页麦克风：不授权\nHTTP / 混合内容：阻止\n设备型号 UA："+(level()>0?"精简":"系统默认");
     text+="\n加载前脚本保护："+(earlyInstalled?"已注册":level()==0?"未启用":"此 WebView 不支持");
     text+="\nWebRTC："+(earlyInstalled?"加载前限制":"未覆盖，不能保证防止 RTC 绕行");

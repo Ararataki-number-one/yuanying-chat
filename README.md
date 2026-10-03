@@ -2,11 +2,11 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.3（versionCode 29，原版签名预览包）。**
+**当前版本：1.5.4（versionCode 30，原版签名预览包）。**
 
 ## 下载与安装
 
-- [下载 1.5.3 会话与网络界面 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/environment-management-preview-20261002/public-downloads/PocketChat-1.5.3-chat-network-preview.apk)
+- [下载 1.5.4 环境电脑版 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/desktop-environments-preview-20261003/public-downloads/PocketChat-1.5.4-desktop-environments-preview.apk)
 - [历史 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
 - [查看 Releases](https://github.com/Ararataki-number-one/yuanying-chat/releases)
 
@@ -20,6 +20,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 | --- | --- |
 | 环境管理 | 首次品牌页进入后默认直达指定窗口原网页；创建、分组、备注、搜索、收藏、筛选与排序；多选、批量分组与收藏；最多 8 个环境 |
 | 独立环境 | 分开的 WebView 登录目录、Cookie、本机聊天与草稿、偏好和加密网络配置 |
+| 网页显示 | 创建环境时选择手机版 / 电脑版；已有环境在浏览器设置中修改，按环境独立保存 |
 | 聊天 | 简洁与原网页模式、模型与强度选择、Markdown、数学公式、代码、消息复制与分享 |
 | 会话与草稿 | 聊天侧边栏、历史同步、会话改名与删除、草稿冲突处理和恢复、阅读位置恢复 |
 | 附件 | 图片与文件上传状态、重新上传、移除、图片与 PDF 本地预览 |
@@ -41,6 +42,8 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 管理界面参考 AdsPower 的环境列表与分组配置思路，采用适合手机的卡片布局。1.5.3 增加入口订阅库，各窗口从所选订阅选择入口；自定义指纹、自动化等扩展能力沿用既有支持范围。
 
+1.5.4 将“网页显示方式”放在新建环境的基本信息中；已有环境通过“编辑环境 → 浏览器”修改。默认手机版，电脑版继续加载真实 ChatGPT 网页并允许双指缩放。环境列表只在使用电脑版时显示一处小字提示；会话顶部不增加按钮。“简洁 / 原网页”仍控制聊天界面的显示，和手机版 / 电脑版分别保存。
+
 - [环境管理与配置结构](docs/ENVIRONMENT-MANAGEMENT.md)
 - [UI 与实际功能](docs/UI-FUNCTIONS.md)
 - [统一交互规则与网络优化方向](docs/INTERACTION-AND-NETWORK.md)
@@ -56,12 +59,14 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 ## 构建和验证
 
 - [构建说明](docs/BUILD.md)
+- [1.5.4 环境网页显示：逐文件修改说明](docs/CHANGELOG-v1.5.4.md)
 - [1.5.3 会话与网络界面：逐文件修改说明](docs/CHANGELOG-v1.5.3.md)
 - [1.5.2 交互优化说明](docs/CHANGELOG-v1.5.2.md)
 - [1.5.1 更新说明](docs/CHANGELOG-v1.5.1.md)
 - [历史 1.5.0 更新说明](docs/CHANGELOG-v1.5.0.md)
 - [界面与功能对应](docs/UI-FUNCTIONS.md)
-- [本轮会话与网络验证](verification/chat-network-reference/README.md)
+- [本轮环境网页显示验证：43 项主机检查通过，真机待验证](verification/environment-browser-display/README.md)
+- [上一轮会话与网络验证](verification/chat-network-reference/README.md)
 - [上一轮交互验证](verification/interaction-round3/README.md)
 - [上一轮环境管理与覆盖更新验证](verification/environment-management-round2/README.md)
 - [第一轮环境管理验证：28 项原生检查通过；网页回归未完成](verification/environment-management/README.md)
