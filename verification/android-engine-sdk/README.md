@@ -46,7 +46,7 @@ GeckoView 采用 MPL-2.0；[对应官方源码](https://hg.mozilla.org/releases/
 
 ## 证据文件
 
-- [官方 SDK 下载与校验](sdk-artifact.json)、[工具链校验](toolchain-receipts.json)、[最终 APK 清单](manifest.json)。
+- [官方 SDK 下载与校验](sdk-artifact.json)、[工具链校验](toolchain-receipts.json)、[最终 APK 清单](manifest.json)、[下载后包名与签名复核](apk-verification.json)。
 - [当前 CI 步骤状态](ci-build-status.json)、[构建日志](build.txt)、[设备测试日志](native-test.txt)。
 - [原生设备结果](device-results.json)、[实际 SOCKS / HTTP 请求](device-route-trace.json)、[SDK 原生事件](device-native-events.txt)。
 - [代理 context 源码证据](proxy-context-evidence.json)、[实际事件摘要](proxy-context-runtime-summary.json)。
