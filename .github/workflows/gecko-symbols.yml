@@ -1,0 +1,45 @@
+name: Diagnose Gecko native stack
+on:
+  push:
+    branches: [feature/android-engine-probe]
+    paths: [.github/workflows/gecko-symbols.yml]
+permissions:
+  contents: write
+jobs:
+  symbols:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read official symbols for the observed SDK build ID
+        run: |
+          python3 - <<'PY'
+          import urllib.request,json,pathlib,subprocess,os
+          addresses=[0x49c318d,0x3c3b9ce,0x42402f9,0x49313de,0x2f71d07,0x2f70be6,0x419860c,0x4198186]
+          result={'sdk':'157.0.20260924084938','buildId':'b53c7084577cbba340dc13a32d813ab69c72e9df','attempts':[]}
+          for identifier in ['84703CB57C57A3BB40DC13A32D813AB60','B53C7084577CBBA340DC13A32D813AB60']:
+              url='https://symbols.mozilla.org/libxul.so/'+identifier+'/libxul.so.sym'
+              attempt={'url':url,'matches':[]};result['attempts'].append(attempt)
+              try:
+                  with urllib.request.urlopen(url,timeout=60) as response:
+                      attempt['status']=response.status
+                      for raw in response:
+                          line=raw.decode(errors='replace').strip()
+                          if line.startswith('MODULE '):attempt['module']=line
+                          if line.startswith('FUNC '):
+                              parts=line.split(' ',4)
+                              if parts[1]=='m':parts=line.split(' ',5)[1:]
+                              start=int(parts[1],16);size=int(parts[2],16)
+                              for address in addresses:
+                                  if start<=address<start+size:attempt['matches'].append({'address':hex(address),'function':parts[4],'offset':address-start})
+                  if attempt['matches']:break
+              except Exception as error:attempt['error']=str(error)
+          stage=pathlib.Path('/tmp/gecko-symbol-report');stage.mkdir(exist_ok=True)
+          (stage/'native-symbols.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
+          env=dict(os.environ,GIT_INDEX_FILE='/tmp/gecko-symbol-index',GIT_WORK_TREE=str(stage),GIT_AUTHOR_NAME='PocketChat diagnostics',GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',GIT_COMMITTER_NAME='PocketChat diagnostics',GIT_COMMITTER_EMAIL='pocketchat@users.noreply.github.com')
+          subprocess.run(['git','read-tree','--empty'],env=env,check=True)
+          subprocess.run(['git','add','-f','native-symbols.json'],env=env,check=True)
+          tree=subprocess.check_output(['git','write-tree'],env=env,text=True).strip()
+          commit=subprocess.check_output(['git','commit-tree',tree,'-p',os.environ['GITHUB_SHA'],'-m','Record official Gecko native stack diagnosis'],env=env,text=True).strip()
+          subprocess.run(['git','push','origin',commit+':refs/heads/diagnostics/gecko-native-symbols-20261003'],check=True)
+          PY
