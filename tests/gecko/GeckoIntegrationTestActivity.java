@@ -10,7 +10,7 @@ import org.json.*;
 
 /** Test-only controlled HTTP exception; this class and manifest are absent from release. */
 public class GeckoIntegrationTestActivity extends Activity {
-  ChatSession session;int slot;long run;String action;boolean closedSessionRecovery,blockedRecoveryPreservesClosed,pendingFailureRetained;
+  ChatSession session;int slot;long run;String action;boolean closedSessionRecovery,blockedRecoveryPreservesClosed,pendingFailureRetained,activityResumed;
   long paintStarted,paintVisible,paintFinished;
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
@@ -45,6 +45,9 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   void waitReady(long serial){
     if(serial!=run)return;GeckoWebView web=(GeckoWebView)session.web;
+    // onNewIntent arrives before onResume when bringing another task forward.
+    // AndroidX publishes RESUMED in onActivityPostResumed, after Activity.onResume.
+    if(!activityResumed||!processForeground()){session.handler.postDelayed(()->waitReady(serial),50);return;}
     if("systemProbe".equals(action)){event("engineSwitch",J.obj("gecko",web.enabled));return;}
     if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
     if("switchGecko".equals(action)&&!web.enabled){web.useEngine(true);action="read";}
@@ -227,7 +230,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     });
   }
   void event(String kind,JSONObject result){Log.i("PocketGeckoIntegration",J.obj("kind",kind,"result",result,"nativeContext","environment-"+(slot+1),"processSlot",slot).toString());}
-  @Override protected void onResume(){super.onResume();if(session!=null)session.foreground(true);}
-  @Override protected void onPause(){if(session!=null)session.foreground(false);super.onPause();}
+  @Override protected void onResume(){super.onResume();activityResumed=true;if(session!=null)session.foreground(true);}
+  @Override protected void onPause(){activityResumed=false;if(session!=null)session.foreground(false);super.onPause();}
   @Override protected void onDestroy(){run++;super.onDestroy();}
 }
