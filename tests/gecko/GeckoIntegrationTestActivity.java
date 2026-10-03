@@ -49,7 +49,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("switchGecko".equals(action)&&!web.enabled){web.useEngine(true);action="read";}
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
     if("windows".equals(action)||"lostParent".equals(action)){windowFlow(serial);return;}
-    if("earlyPaint".equals(action)){web.loadUrl("http://127.0.0.1:8765/browser-loading?command="+serial);session.handler.postDelayed(()->paintResult(serial),300);return;}
+    if("earlyPaint".equals(action)||"cancelLoad".equals(action)){web.loadUrl("http://127.0.0.1:8765/browser-loading?command="+serial);session.handler.postDelayed(()->paintResult(serial),300);return;}
     if("closedSession".equals(action)){
       // Inject the exact SDK onKill contract (closed session), then render through the real SDK again.
       org.mozilla.geckoview.GeckoSession stopped=web.current;stopped.close();stopped.getContentDelegate().onKill(stopped);
@@ -91,7 +91,7 @@ public class GeckoIntegrationTestActivity extends Activity {
       org.mozilla.geckoview.GeckoSession parent=web.current;web.loadUrl(windowUrl("two",serial));
       waitWindow(serial,"two",SystemClock.elapsedRealtime()+15000,()->{
         if(!web.canBack){event("error",J.obj("error","parent history missing before popup"));return;}
-        web.evaluateJavascript("document.getElementById('popup').click();null",null);
+        tapElement(serial,"popup");
         waitWindow(serial,"three",SystemClock.elapsedRealtime()+15000,()->{
           if(web.current==parent||web.popups.size()!=1){event("error",J.obj("error","real popup did not become active"));return;}
           if("lostParent".equals(action)){parent.close();parent.getContentDelegate().onKill(parent);web.closePopup();
@@ -115,6 +115,14 @@ public class GeckoIntegrationTestActivity extends Activity {
     });
   }
   String windowUrl(String step,long serial){return "http://127.0.0.1:8765/browser-window?step="+step+"&command="+serial;}
+  void tapElement(long serial,String id){
+    session.web.evaluateJavascript("(()=>{const r=document.getElementById("+JSONObject.quote(id)+").getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()",raw->{
+      if(serial!=run)return;JSONObject rect=J.parse(raw);if(!rect.has("x")){event("error",J.obj("error","tap element not available"));return;}
+      android.graphics.Matrix transform=new android.graphics.Matrix();session.web.current.getClientToScreenMatrix(transform);
+      float[] point={(float)rect.optDouble("x"),(float)rect.optDouble("y")};transform.mapPoints(point);
+      event("tapNeeded",J.obj("id",id+"-"+serial,"x",Math.round(point[0]),"y",Math.round(point[1])));
+    });
+  }
   void waitWindow(long serial,String step,long deadline,Runnable done){
     if(serial!=run)return;
     session.web.evaluateJavascript("document.getElementById('window-step')?.textContent||null",raw->{
@@ -126,6 +134,12 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   void paintResult(long serial){
     if(serial!=run)return;
+    if("cancelLoad".equals(action)&&paintVisible>0&&paintFinished==0){
+      session.web.stopLoading();session.handler.postDelayed(()->{
+        if(serial!=run)return;
+        session.web.evaluateJavascript("document.querySelector('h1')?.textContent||null",raw->event("cancelledLoad",J.obj("reportedFailure",session.navigationFailed,"pageError",session.pageError,"visibleDocumentRetained",JSONObject.quote("Visible before slow resource").equals(raw))));
+      },400);return;
+    }
     if(paintFinished>0){event("paint",J.obj("started",paintStarted,"visible",paintVisible,"finished",paintFinished,"firstPaintBeforeComplete",paintVisible>paintStarted&&paintVisible<paintFinished));return;}
     if(paintStarted>0&&SystemClock.elapsedRealtime()-paintStarted>15000){event("error",J.obj("error","slow-resource fixture did not complete"));return;}
     session.handler.postDelayed(()->paintResult(serial),200);

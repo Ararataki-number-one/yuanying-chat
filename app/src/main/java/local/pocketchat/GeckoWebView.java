@@ -282,7 +282,10 @@ class GeckoWebView extends FrameLayout {
     int id=callbacks.add(port,callback==null?null:callback::onReceiveValue,10000);
     try{port.postMessage(J.obj("kind","evaluate","id",id,"code",code));}catch(Exception error){callbacks.complete(port,id,"null");}
   }
-  public void stopLoading(){if(enabled){queued="";if(current!=null)current.stop();}else system().stopLoading();}
+  public void stopLoading(){
+    if(enabled){queued="";if(current!=null){loadingTargets.remove(current);current.stop();}}
+    else system().stopLoading();
+  }
   public void setWebViewClient(WebViewClient value){client=value;if(!enabled)system().setWebViewClient(value);}
   public void setWebChromeClient(WebChromeClient value){chrome=value;if(!enabled)system().setWebChromeClient(value);}
   public void setDownloadListener(DownloadListener value){download=value;if(!enabled)system().setDownloadListener(value);}

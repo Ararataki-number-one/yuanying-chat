@@ -60,8 +60,8 @@ class Fixture(fixture.Fixture):
             step=query.get('step',['one'])[0];command=query.get('command',['0'])[0]
             assert step in ['one','two','three','four'] and command.isdigit()
             body=(f'<!doctype html><meta charset="utf-8"><title>Controlled window {step}</title>'
-                  f'<h1 id="window-step">{step}</h1><a id="popup" target="_blank" '
-                  f'href="/browser-window?step=three&command={command}">Open controlled popup</a>').encode()
+                  f'<h1 id="window-step">{step}</h1><button id="popup" '
+                  f'onclick="window.open(\'/browser-window?step=three&command={command}\',\'_blank\')">Open controlled popup</button>').encode()
         elif address.path=='/browser-loading':
             body=b'<!doctype html><meta charset="utf-8"><h1>Visible before slow resource</h1><img src="/slow-resource">'
         elif address.path=='/slow-resource':
@@ -93,6 +93,7 @@ def main():
     steps=[];logs=[]
     def run(context,action,kind='fixture'):
         adb('logcat','-c')
+        tapped=set()
         activity='GeckoIntegrationTestActivity' if context==1 else 'ProfileGeckoIntegrationActivity1'
         adb('shell','am','start','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action)
         deadline=time.monotonic()+120
@@ -103,6 +104,11 @@ def main():
                 try:event=json.loads(line[line.index('{'):])
                 except json.JSONDecodeError:continue
                 if event.get('nativeContext')!=f'environment-{context}':continue
+                if event.get('kind')=='tapNeeded':
+                    tap=event['result']
+                    if tap['id'] not in tapped:
+                        tapped.add(tap['id']);adb('shell','input','tap',str(tap['x']),str(tap['y']))
+                    continue
                 if event.get('kind')=='error':raise AssertionError(event)
                 if event.get('kind')==kind:
                     result=event['result']
@@ -138,6 +144,7 @@ def main():
         lost=run(1,'lostParent','windowFlow');assert lost['lostParentRecovery'] and lost['popups']==0,lost
         check(run(2,'read'),2,True)
         paint=run(1,'earlyPaint','paint');assert paint['firstPaintBeforeComplete'],paint
+        cancelled=run(1,'cancelLoad','cancelledLoad');assert not cancelled['reportedFailure'] and not cancelled['pageError'] and cancelled['visibleDocumentRetained'],cancelled
         assert any(x['kind']=='socks' and x.get('route')=='environment-1-socks' for x in fixture.TRACE)
         assert any(x['kind']=='httpProxy' and x.get('route')=='environment-2-http' for x in fixture.TRACE)
         assert any(x['kind']=='socks' and x['host']=='remote-probe.invalid' and x['addressType']==3 for x in fixture.TRACE)
@@ -168,7 +175,7 @@ def main():
             distinctHttpSocksRoutes='passed',workersAndWebSocket='passed',remoteDns='passed',guardBlocksRequests='passed',
             nativeContextClear='passed',systemEngineFallback='passed',closedBootstrapWithoutExtension='passed',productionActivityShell='passed',
             popupParentHistory='passed',closedSessionRecovery='passed (injected SDK onKill contract, real close/open/render)',
-            closedParentRecovery='passed',firstPaintBeforeSlowResource='passed')
+            closedParentRecovery='passed',firstPaintBeforeSlowResource='passed',cancelledLoadNotReportedAsFailure='passed')
     except Exception as error:
         report.update(status='failed',error=f'{type(error).__name__}: {error}');raise
     finally:
