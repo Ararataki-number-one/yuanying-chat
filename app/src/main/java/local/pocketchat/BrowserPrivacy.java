@@ -17,11 +17,11 @@ final class BrowserPrivacy {
   static String reducedAgent(String original){return BrowserDisplay.agent(original,1,false);}
   void apply(){
     if(script!=null){script.remove();script=null;}if(displayScript!=null){displayScript.remove();displayScript=null;}
-    earlyInstalled=false;desktop=wantsDesktop();desktopReady=!desktop;int level=level();
+    earlyInstalled=false;desktop=wantsDesktop();desktopReady=true;int level=level();
     if(GeckoWebView.active(session.web)){session.web.configure(desktop,level);desktopReady=true;session.reading.configure(desktop);return;}
     WebSettings settings=session.web.getSettings();settings.setGeolocationEnabled(false);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setSafeBrowsingEnabled(true);settings.setMediaPlaybackRequiresUserGesture(true);CookieManager.getInstance().setAcceptThirdPartyCookies(session.web.system(),false);GeolocationPermissions.getInstance().clearAll();
-    settings.setUseWideViewPort(desktop);settings.setLoadWithOverviewMode(desktop);settings.setSupportZoom(true);settings.setBuiltInZoomControls(desktop);settings.setDisplayZoomControls(!desktop);session.reading.configure(desktop);
-    if(desktop&&earlySupported())try{displayScript=WebViewCompat.addDocumentStartJavaScript(session.web.system(),BrowserDisplay.viewportScript(),new HashSet<>(Arrays.asList("https://chatgpt.com","https://chat.openai.com")));desktopReady=true;}catch(Exception ignored){}
+    // Desktop identity and readable phone layout are independent choices.
+    settings.setUseWideViewPort(false);settings.setLoadWithOverviewMode(false);settings.setSupportZoom(true);settings.setBuiltInZoomControls(desktop);settings.setDisplayZoomControls(!desktop);session.reading.configure(desktop);
     settings.setUserAgentString(BrowserDisplay.agent(originalAgent,level,desktop));
     if(level>0&&earlySupported())try(InputStream in=session.context.getAssets().open("privacy-shield.js")){String source=J.text(in,64*1024).replace("__LEVEL__",String.valueOf(level));script=WebViewCompat.addDocumentStartJavaScript(session.web.system(),source,Collections.singleton("*"));earlyInstalled=true;}catch(Exception ignored){}
   }

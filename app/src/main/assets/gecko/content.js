@@ -14,8 +14,10 @@
       port.postMessage({kind:'result', id:message.id, result:result ?? 'null'});
     } catch (_) {port.postMessage({kind:'result', id:message.id, result:'null'});}
   });
-  const scale = () => port.postMessage({kind:'scale', value:devicePixelRatio*(visualViewport?.scale ?? 1)});
+  const scale = () => port.postMessage({kind:'scale', value:devicePixelRatio*(visualViewport?.scale ?? 1), width:document.documentElement?.clientWidth ?? 0});
   visualViewport?.addEventListener('resize',scale);
+  window.addEventListener('resize',scale);
+  document.addEventListener('DOMContentLoaded',scale,{once:true});
   port.postMessage({kind:'ready'});
   scale();
 })();

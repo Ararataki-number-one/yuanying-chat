@@ -149,6 +149,7 @@ final class ChatSession {
   }};
 
   void sync(){
+    if(GeckoWebView.active(web)&&web.failed)return;
     if(LoginPagePolicy.login(web.getUrl()))return;
     if(inFlight||navigating&&!navigationDispatched)return;inFlight=true;long epoch=navigationEpoch,run=++syncRun;boolean optimized=webPerformance();
     runDriver(optimized?"web-inspect":"inspect",J.obj("navigationCheck",spaTransition),s->{

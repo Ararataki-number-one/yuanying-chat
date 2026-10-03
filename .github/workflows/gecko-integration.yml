@@ -2,7 +2,7 @@ name: Production Gecko integration
 on:
   push:
     branches: [feature/android-engine-probe]
-    paths: ['app/**', 'tests/gecko/**', 'tests/browser-runtime/**', 'tools/gecko/**', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
+    paths: ['app/**', 'tests/gecko/**', 'tests/browser-runtime/**', 'tests/browser-reading-host/**', 'tools/gecko/**', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -40,6 +40,9 @@ jobs:
           mkdir -p work/gecko-integration/bridge-host
           javac -encoding UTF-8 -d work/gecko-integration/bridge-host app/src/main/java/local/pocketchat/BrowserBridgeRequests.java tests/browser-runtime/BrowserBridgeRequestsTest.java
           java -cp work/gecko-integration/bridge-host local.pocketchat.BrowserBridgeRequestsTest | tee work/gecko-integration/bridge-host-results.json
+          mkdir -p work/gecko-integration/reading-host
+          javac -encoding UTF-8 -d work/gecko-integration/reading-host app/src/main/java/local/pocketchat/BrowserDisplay.java app/src/main/java/local/pocketchat/BrowserReadingPolicy.java app/src/main/java/local/pocketchat/BrowserReading.java tests/browser-reading-host/android/os/SystemClock.java tests/browser-reading-host/android/view/MotionEvent.java tests/browser-reading-host/local/pocketchat/ChatSession.java tests/browser-reading-host/local/pocketchat/BrowserReadingHostTest.java
+          java -cp work/gecko-integration/reading-host local.pocketchat.BrowserReadingHostTest | tee work/gecko-integration/reading-host-results.json
       - name: Publish unsigned build for local original signing
         run: python3 tools/gecko/publish_ci.py
       - name: Exercise two production environment processes

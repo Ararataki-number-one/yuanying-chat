@@ -44,7 +44,7 @@ final class EnvironmentEditorUi {
     DesignUi.addCard(network,net);
 
     LinearLayout display=DesignUi.card(a);Spinner displayChoice=BrowserDisplayUi.add(display,initial.optBoolean("desktopSite",existing.optBoolean("desktopSite")));
-    DesignUi.note(display,"保存后重新加载网页。电脑版可用双指缩放。");DesignUi.addCard(browser,display);
+    DesignUi.note(display,"保存后重新加载网页。电脑版按手机宽度排版，可双指缩放。");DesignUi.addCard(browser,display);
     DesignUi.section(browser,"隐私保护","");
     LinearLayout protection=DesignUi.card(a);Spinner privacy=new Spinner(a);
     privacy.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,new String[]{"兼容","标准","强化"}));
@@ -109,7 +109,6 @@ final class EnvironmentEditorUi {
     ChatSession s=a.session;int level=value.optInt("privacyLevel",s.privacy.level());if(level<0||level>2){a.status("请选择有效的保护等级");return false;}boolean change=level!=s.privacy.level();
     boolean displayChange=value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
     if((change||displayChange)&&browserBusy(s)){String reason=browserTaskReason(s);a.status(reason.isEmpty()?"网页正在回复，回复结束后再保存":reason);return false;}
-    if(displayChange&&value.optBoolean("desktopSite")&&!s.privacy.earlySupported()){a.status("请更新 Android System WebView 后再使用电脑版，设置未应用");return false;}
     if(change&&level>0&&!GeckoWebView.active(s.web)&&(!s.privacy.earlySupported()||!s.guard.workerProtection)){a.status("请更新 Android System WebView，设置未应用");return false;}
     Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));AppPrefs.apply(a,value);s.prefs.edit().putInt("privacyLevel",level).commit();ProfileCatalog.get(a).draft(Profiles.slot(a),null);
     if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(change||displayChange)s.applyBrowserSettings(change);

@@ -1,4 +1,4 @@
-# 构建 1.5.7
+# 构建 1.5.8
 
 正式应用现已接入 Mozilla 官方 GeckoView。使用 Gradle 构建以合并 SDK 的 Java、原生库、资源、服务和依赖；旧版手工 AAPT2/D8 流程不再适用于本版本。
 
@@ -26,12 +26,12 @@ python3 tools/sign-apk.py app/build/outputs/apk/release/app-arm64-v8a-release-un
   --tools "$ANDROID_HOME/build-tools/37.0.0" --java "$JAVA_HOME/bin/java"
 ```
 
-输出 `dist/PocketChat-1.5.7-gecko-arm64.apk` 和签名检查记录。助手检查原证书、包名 `local.pocketchat`、版本号 33、非调试构建、无测试入口及 16 KB 对齐。原版证书 SHA-256 为 `f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434`。不同证书的预览包不能覆盖原版。
+输出 `dist/PocketChat-1.5.8-gecko-arm64.apk` 和签名检查记录。助手从 `app/build.gradle` 读取版本，检查原证书、包名 `local.pocketchat`、当前版本号 34、非调试构建、无测试入口及 16 KB 对齐。原版证书 SHA-256 为 `f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434`。不同证书的预览包不能覆盖原版。
 
 ## 云环境
 
 已准备工具位于 `work/cloud-setup/jdk/` 与 `work/gecko-sdk-validation/`。`python3 engine-probe/tools/setup.py` 用官方地址与固定校验和准备 SDK 37.1、Build Tools 37、Gradle 和 Gecko AAR；它只写忽略目录。该脚本名称来自早期验证包，工具也用于正式构建。
 
-本云容器的 Maven Central 返回 429，完整 Gradle 构建通过 `.github/workflows/gecko-integration.yml` 在 GitHub runner 执行。该工作流先校验官方 SDK 和 Gradle，再运行发布编译、Lint 和 Android 15 KVM 回归。不要将本地 javac 成功描述为完整 APK 构建成功。
+本云容器的 Maven Central 返回 429，完整 Gradle 构建通过 `.github/workflows/gecko-integration.yml` 在 GitHub runner 执行。该工作流先校验官方 SDK 和 Gradle，再运行发布编译、发布版 LintVital、回调生命周期检查和 Android 15 KVM 回归。不要将本地 javac 成功描述为完整 APK 构建成功。
 
 无需常驻服务即可进行编译。设备回归需要 Android 设备或带 KVM 的模拟器，受控样本与 HTTP/SOCKS 服务由 `tests/gecko/run_device.py` 启动并结束。真实 Google/ChatGPT 登录需要在手机上验收，不在合成样本测试范围内。

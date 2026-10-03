@@ -59,11 +59,15 @@ class Fixture(fixture.Fixture):
         if address.path=='/browser-window':
             step=query.get('step',['one'])[0];command=query.get('command',['0'])[0]
             assert step in ['one','two','three','four'] and command.isdigit()
-            body=(f'<!doctype html><meta charset="utf-8"><title>Controlled window {step}</title>'
+            body=(f'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Controlled window {step}</title>'
                   f'<h1 id="window-step">{step}</h1><button id="popup" '
                   f'onclick="window.open(\'/browser-window?step=three&command={command}\',\'_blank\')">Open controlled popup</button>').encode()
         elif address.path=='/browser-loading':
             body=b'<!doctype html><meta charset="utf-8"><h1>Visible before slow resource</h1><img src="/slow-resource">'
+        elif address.path=='/browser-reading':
+            body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>Controlled responsive reading fixture</title><style>body{margin:0;font:18px sans-serif}main{padding:16px;box-sizing:border-box}#sidebar{width:260px;float:left}textarea{width:100%;box-sizing:border-box;font:inherit}pre{overflow:auto}@media(max-width:760px){#sidebar{display:none}}</style>
+            <aside id="sidebar">Controlled sidebar</aside><main><h1>Controlled readable content</h1><p>This fixture checks native viewport settings; it does not replace ChatGPT.</p><pre>Long code remains horizontally scrollable.........................................................................................</pre><textarea id="composer">Unsent draft stays here</textarea></main>'''
         elif address.path=='/slow-resource':
             time.sleep(5);body=b'synthetic-slow-resource'
         else:return super().do_GET()
@@ -107,7 +111,8 @@ def main():
                 if event.get('kind')=='tapNeeded':
                     tap=event['result']
                     if tap['id'] not in tapped:
-                        tapped.add(tap['id']);adb('shell','input','tap',str(tap['x']),str(tap['y']))
+                        tapped.add(tap['id']);time.sleep(.4);print(json.dumps(event),flush=True)
+                        adb('shell','input','tap',str(tap['x']),str(tap['y']))
                     continue
                 if event.get('kind')=='error':raise AssertionError(event)
                 if event.get('kind')==kind:
@@ -140,11 +145,20 @@ def main():
         for context in [1,2]:
             windows=run(context,'windows','windowFlow');assert windows['realPopup'] and windows['parentHistoryRestored'] and windows['popups']==0,windows
             recovery=run(context,'closedSession');check(recovery,context,True)
-            assert recovery['closedSessionRecovery'] and recovery['blockedRecoveryPreservesClosed'],recovery
+            assert recovery['closedSessionRecovery'] and recovery['blockedRecoveryPreservesClosed'] and recovery['pendingFailureRetained'],recovery
         lost=run(1,'lostParent','windowFlow');assert lost['lostParentRecovery'] and lost['popups']==0,lost
         check(run(2,'read'),2,True)
         paint=run(1,'earlyPaint','paint');assert paint['firstPaintBeforeComplete'],paint
         cancelled=run(1,'cancelLoad','cancelledLoad');assert not cancelled['reportedFailure'] and not cancelled['pageError'] and cancelled['visibleDocumentRetained'],cancelled
+        reading=[]
+        for size in ['945x2100','1024x2240','1128x2400','1920x1080']:
+            adb('shell','wm','size',size)
+            result=run(1,'reading','reading');reading.append(dict(size=size,**result))
+            assert result['mobileViewport'] and result['desktopIdentity'] and 'Android' not in result['userAgent'],result
+            assert abs(result['viewport']*result['density']-result['nativeWidth'])<5 and abs(result['scale']-1)<.02,result
+            assert result['sidebarHidden'] and result['composerWidth']>=result['viewport']-34 and result['draft']=='Unsent draft stays here',result
+        report['responsiveReading']=reading
+        adb('shell','wm','size','1080x2400')
         assert any(x['kind']=='socks' and x.get('route')=='environment-1-socks' for x in fixture.TRACE)
         assert any(x['kind']=='httpProxy' and x.get('route')=='environment-2-http' for x in fixture.TRACE)
         assert any(x['kind']=='socks' and x['host']=='remote-probe.invalid' and x['addressType']==3 for x in fixture.TRACE)
@@ -175,9 +189,13 @@ def main():
             distinctHttpSocksRoutes='passed',workersAndWebSocket='passed',remoteDns='passed',guardBlocksRequests='passed',
             nativeContextClear='passed',systemEngineFallback='passed',closedBootstrapWithoutExtension='passed',productionActivityShell='passed',
             popupParentHistory='passed',closedSessionRecovery='passed (injected SDK onKill contract, real close/open/render)',
-            closedParentRecovery='passed',firstPaintBeforeSlowResource='passed',cancelledLoadNotReportedAsFailure='passed')
+            closedParentRecovery='passed',firstPaintBeforeSlowResource='passed',cancelledLoadNotReportedAsFailure='passed',responsiveDesktopViewport='passed (controlled responsive fixture, portrait and landscape)')
     except Exception as error:
-        report.update(status='failed',error=f'{type(error).__name__}: {error}');raise
+        report.update(status='failed',error=f'{type(error).__name__}: {error}')
+        (OUT/'failure-screen.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+        adb('shell','uiautomator','dump','/sdcard/gecko-failure.xml')
+        (OUT/'failure-ui.xml').write_text(adb('shell','cat','/sdcard/gecko-failure.xml'))
+        raise
     finally:
         if report.get('status')!='passed':(OUT/'last-device-log.txt').write_text(adb('logcat','-d'))
         report['steps']=steps
