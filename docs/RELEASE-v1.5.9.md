@@ -8,4 +8,6 @@
 
 构建和 Android 回归验证见随版本发布的验证记录。受控测试使用模拟 Cookie，不包含用户账号。Google／ChatGPT 真实账号登录及使用中的服务器侧会话失效，仍需在实际手机上核验。
 
+[本次编译和设备回归](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/37135473325)通过：67 项主机检查、61 次 Android 15 / x86_64 受控操作，包括实际缩小与放大、可信点击和按正常打字间隔输入、会话 Cookie 重启恢复、退出登录及原生清理后的保存记录同步。页面关闭测试注入 SDK 的 onKill 契约，没有声称模拟器实际发生系统低内存回收。逐文件说明及验证边界保存在仓库的 `docs/CHANGELOG-v1.5.9.md` 和 `verification/browser-experience-v1.5.9/README.md`。
+
 安装包使用原签名，可覆盖安装，不需要卸载。
