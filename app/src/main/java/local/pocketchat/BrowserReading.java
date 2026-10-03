@@ -5,7 +5,7 @@ import android.view.MotionEvent;
 
 /** Presentation only: retains the existing WebView and profile-scoped preferences. */
 final class BrowserReading {
-  final ChatSession session;boolean desktop,ready,pinching,pinchChanged,keyboard;long document,gestureUntil,gesture;int width;float gestureScale,viewportWidth;
+  final ChatSession session;boolean desktop,ready,pinching,pinchChanged,keyboard;long document,gestureUntil,gesture;int width,restoreAttempts;float gestureScale,viewportWidth;
   final Runnable restore=this::restoreScale,focus=this::revealFocus;
   BrowserReading(ChatSession s){session=s;s.web.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
     int next=r-l;if(next<=0)return;boolean changed=next!=width;width=next;
@@ -19,7 +19,7 @@ final class BrowserReading {
       session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,value).apply();return value;
     }catch(ClassCastException ignored){return 1;}
   }
-  void cancelGesture(){gesture++;pinching=false;pinchChanged=false;gestureUntil=0;}
+  void cancelGesture(){gesture++;pinching=false;pinchChanged=false;gestureUntil=0;restoreAttempts=0;}
   void configure(boolean value){desktop=value;ready=false;cancelGesture();session.handler.removeCallbacks(restore);prepare();}
   void prepare(){int available=session.web.getWidth();if(available>0)width=available;session.web.setInitialScale(0);}
   void started(String url){document++;ready=false;viewportWidth=0;cancelGesture();session.handler.removeCallbacks(restore);session.handler.removeCallbacks(focus);session.web.setInitialScale(0);if(!desktop||!session.web.readingPage(url))session.web.setReadingLayout(1);}
@@ -31,12 +31,12 @@ final class BrowserReading {
     if(session.web.setReadingLayout(choice())){viewportWidth=0;return;}
     float current=session.web.getScale(),target=BrowserReadingPolicy.target(width,density(),viewportWidth,choice());
     if(current<=0||target<=0)return;float factor=target/current;
-    if(Math.abs(factor-1)>.015f)session.web.zoomBy(Math.max(.01f,Math.min(100f,factor)));
+    if(Math.abs(factor-1)>.015f&&restoreAttempts++<3){session.web.zoomBy(Math.max(.01f,Math.min(100f,factor)));session.handler.removeCallbacks(restore);session.handler.postDelayed(restore,500);}
   }
   void choose(float value){cancelGesture();session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,BrowserReadingPolicy.bounded(value)).apply();prepare();scheduleRestore();}
   void scaled(float value){if(value>0&&!Float.isNaN(value)&&!Float.isInfinite(value)&&BrowserReadingPolicy.remember(desktop,ready,pinching||SystemClock.uptimeMillis()<gestureUntil,session.web.getUrl())&&(pinchChanged||Math.abs(value-gestureScale)>.01f)){pinchChanged=true;session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,BrowserReadingPolicy.fromScale(width,density(),viewportWidth,value)).apply();}}
   @SuppressWarnings("deprecation") void touch(MotionEvent event){if(!desktop||!ready)return;int action=event.getActionMasked();if(event.getPointerCount()>1){if(!pinching){gesture++;pinchChanged=false;gestureScale=session.web.getScale();}pinching=true;gestureUntil=SystemClock.uptimeMillis()+400;session.handler.removeCallbacks(restore);}if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL){if(pinching){pinching=false;gestureUntil=SystemClock.uptimeMillis()+400;final long owner=document,token=gesture;final int measured=width;session.handler.postDelayed(()->{if(owner==document&&token==gesture&&measured==width&&ready)capturePinch();},160);}}}
-  @SuppressWarnings("deprecation") void capturePinch(){if(!pinchChanged)return;float actual=session.web.getScale();if(actual>0)scaled(actual);scheduleRestore();}
+  @SuppressWarnings("deprecation") void capturePinch(){if(!pinchChanged)return;float actual=session.web.getScale();if(actual>0)scaled(actual);restoreAttempts=0;scheduleRestore();}
   void keyboard(boolean value){keyboard=value;if(value)scheduleFocus();else session.handler.removeCallbacks(focus);}
   void scheduleFocus(){session.handler.removeCallbacks(focus);session.handler.postDelayed(focus,160);}
   void revealFocus(){if(keyboard&&desktop&&ready&&session.web.readingPage(session.web.getUrl()))session.web.evaluateJavascript(BrowserReadingPolicy.focusScript(),null);}

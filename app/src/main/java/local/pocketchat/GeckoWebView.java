@@ -365,11 +365,14 @@ class GeckoWebView extends FrameLayout {
     zoomTarget=target;zoomStarted=started;zoomX=x;zoomY=y;zoomRadius=radius;
     pinch(target,started,MotionEvent.ACTION_DOWN,1,x,y,radius);
     pinch(target,started,MotionEvent.ACTION_POINTER_DOWN|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,x,y,radius);
-    for(int step=1;step<=10;step++){final int n=step;owner.handler.postDelayed(()->{
+    // ScaleGestureDetector consumes the movement that crosses touch slop as
+    // its starting span. Establish that span before applying the requested ratio.
+    final float primed=radius*1.6f;
+    for(int step=0;step<12;step++){final int n=step;owner.handler.postDelayed(()->{
       if(target!=current||!enabled||destroyed||failed||epoch!=zoomEpoch||!target.isOpen())return;
-      float next=radius*(1+(amount-1)*n/10f);pinch(target,started,MotionEvent.ACTION_MOVE,2,x,y,next);
-      if(n==10){pinch(target,started,MotionEvent.ACTION_POINTER_UP|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,x,y,next);pinch(target,started,MotionEvent.ACTION_UP,1,x,y,next);zoomTarget=null;}
-    },step*16L);}
+      float next=primed*(1+(amount-1)*Math.max(0,n-1)/10f);pinch(target,started,MotionEvent.ACTION_MOVE,2,x,y,next);
+      if(n==11){pinch(target,started,MotionEvent.ACTION_POINTER_UP|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,x,y,next);pinch(target,started,MotionEvent.ACTION_UP,1,x,y,next);zoomTarget=null;}
+    },(step+1)*16L);}
   }
   private void cancelZoom(){zoomEpoch++;if(zoomTarget!=null&&zoomTarget.isOpen())pinch(zoomTarget,zoomStarted,MotionEvent.ACTION_CANCEL,1,zoomX,zoomY,zoomRadius);zoomTarget=null;}
   private void pinch(GeckoSession target,long start,int action,int count,float x,float y,float radius){
