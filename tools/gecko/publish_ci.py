@@ -25,6 +25,8 @@ for abi in ['arm64-v8a']:
 for name in ['build.log', 'native-test.log', 'bridge-host-results.json', 'reading-host-results.json', 'device-results.json', 'device-route-trace.json', 'device-native-events.txt', 'device-screen.png', 'last-device-log.txt', 'production-ui.xml', 'failure-screen.png', 'failure-ui.xml']:
     if (out / name).exists():
         shutil.copy2(out / name, stage / name)
+for screenshot in out.glob('reading-*.png'):
+    shutil.copy2(screenshot, stage / screenshot.name)
 (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
 branch = 'apk/gecko-integration-build-20261003'
 env = dict(os.environ, GIT_INDEX_FILE=str(out/'public-index'), GIT_WORK_TREE=str(stage),
