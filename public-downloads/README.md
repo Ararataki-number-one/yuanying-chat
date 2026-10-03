@@ -1,29 +1,30 @@
-# 1.5.5 浏览器设置与登录提示修复（原版签名）
+# 1.5.6 电脑版阅读优化（原版签名）
 
-版本 1.5.5（versionCode 31），更新日期 2026-10-03。
+版本 1.5.6（versionCode 32），更新日期 2026-10-03。
 
-[下载 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/browser-settings-login-fix-20261003/public-downloads/PocketChat-1.5.5-browser-settings-login-fix.apk)，49,378,670 字节。
+[下载 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/desktop-reading-20261003/public-downloads/PocketChat-1.5.6-desktop-reading.apk)，49,382,766 字节（约 49.4 MB）。
 
-SHA-256：`471b8547a6f01297fa4bc11641d7450fc3f41df9abaaa0c0dff959bd36d2b4fd`。
+SHA-256：`54fbfbdf2fc121d93c697ad4127719933e4d8edd285fbb97d4b28e5c3a656bb8`。
 
-包名 `local.pocketchat`，使用原发布证书，可覆盖原签名版本。此前临时签名包不适用；真实账号覆盖后登录保持仍需手机验证。私钥没有公开。
+包名 `local.pocketchat`，使用原发布证书，可覆盖原签名版本；真实设备覆盖与登录保持仍需手机验证。签名私钥没有公开。此前临时签名包不适用。
 
-## 修复内容
+## 阅读优化
 
-- 网页加载、连接和等待自动重连不再单独阻止保存显示方式／保护等级；保存前重新读取当前网页，旧页面和旧导航的 busy 不再卡住表单。
-- 保留真实提问、发送、回复、上传、下载和网页操作的保护，说明具体阻塞原因；不自动解除等待或丢弃任务。
-- 草稿与阅读位置保留后才应用设置，旧恢复和连接回调失效，继续使用同一个真实 WebView。
-- 登录页进入等待登录状态，不再把正常登录或身份提供方 HTTP 4xx 当成网络失败；真正网络错误和服务端 5xx 保留。
-- Google 明确拒绝浏览器时提供居中登录帮助及真实 ChatGPT／系统浏览器入口。网络和插件功能开发暂停。
+- 电脑版按实际可用宽度适应屏幕，各环境独立保存双指缩放；重新加载和重开恢复，横竖屏按新宽度重算。
+- 更多菜单新增居中“网页缩放”，微调或适应屏幕，不增加常驻面板、不刷新网页。
+- 键盘弹出时原网页会话临时收起底部导航，关闭后恢复；保留安全区，输入自动放大不覆盖用户选择。
+- 原网页代码、长回复、草稿、模型和消息结构保留；没有替换 ChatGPT 主页或输入框。
 
-## Google 登录限制
+## 登录与内核评估
 
-这没有解除 Google 对应用内 WebView 的登录限制。电脑版仍是 Android WebView；Google 登录成功没有验证。系统浏览器的登录不会自动同步回本应用，也不使用当前环境的应用专用代理。没有伪装内核、复制 Cookie 或替换官方登录表单。
+这版仍使用 Android WebView，**没有解除 Google 登录限制，也没有替换内核**。用户要求保留独立登录和各环境代理，已完成替换内嵌内核的源码评估；优先验证成熟 Android 预编译 SDK。Roxy 的 Windows/macOS 运行包体与 Chromium 源码编译空间是不同概念，电脑内核不能直接放入 Android APK。网络和用户插件功能开发保持暂停。
 
 ## 验证
 
-发布和独立测试 APK 的编译、签名、对齐与包版本通过；23 项显示策略、36 项设置／登录策略、17 项 DOM 检测，共 76 / 76 项主机检查通过。原生保存流程用例只编译，未执行。没有连接真机或登录真实账号。上一轮云模拟器 WebView 渲染崩溃和恢复耗时失败未重跑或声称修复。
+28 项实际控制器 host doubles、13 项输入脚本 DOM、9 项桌面 Chromium 离线布局、12 项 viewport、23 项显示策略、36 项设置／登录策略及 17 项 Google 拒绝检测，共 138 / 138 项已执行主机与桌面浏览器检查通过。发布和独立测试 APK 编译、原签名、对齐和版本通过，测试组件与 HTML 不进入发布包。
 
-[逐文件修改说明](https://github.com/Ararataki-number-one/yuanying-chat/blob/613b54a4276a4d1d7899e62305d05cfcbb247854/docs/CHANGELOG-v1.5.5.md) · [验证与设备核验](https://github.com/Ararataki-number-one/yuanying-chat/blob/613b54a4276a4d1d7899e62305d05cfcbb247854/verification/browser-settings-login/README.md)
+原生阅读用例仅编译，没有连接设备、运行 Android 阅读测试或登录真实账号。桌面 Chromium 缩小 viewport 不等于 Android 软键盘；真机双指、横竖屏、输入、代码滚动和覆盖仍需核验。
 
-源码提交：`613b54a4276a4d1d7899e62305d05cfcbb247854`；源码分支：`fix/browser-settings-login`。历史 APK 保留。
+[逐文件修改说明](https://github.com/Ararataki-number-one/yuanying-chat/blob/94a7de7d9a9208484bdbcd1bf0408b8e8648b639/docs/CHANGELOG-v1.5.6.md) · [验证记录](https://github.com/Ararataki-number-one/yuanying-chat/blob/94a7de7d9a9208484bdbcd1bf0408b8e8648b639/verification/desktop-reading/README.md) · [内核迁移评估](https://github.com/Ararataki-number-one/yuanying-chat/blob/94a7de7d9a9208484bdbcd1bf0408b8e8648b639/docs/BROWSER-ENGINE-MIGRATION.md)
+
+源码提交：`94a7de7d9a9208484bdbcd1bf0408b8e8648b639`；源码分支：`feature/desktop-reading`。历史 APK 保留。

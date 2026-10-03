@@ -11,7 +11,7 @@ final class AppHub {
   final MainActivity a;
   final LinearLayout root,bar,feedbackBar;
   final TextView feedbackText;
-  final View chat;
+  final View chat,divider;
   final FrameLayout panel;
   int page,settingsTab,networkTab,downloadFilter;
   long navigation;
@@ -30,7 +30,7 @@ final class AppHub {
     Button close=DesignUi.button(a,"×",false,()->feedbackBar.setVisibility(View.GONE));close.setTextSize(20);close.setContentDescription("关闭提示");
     LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(a.dp(48),a.dp(48));cp.leftMargin=a.dp(8);feedbackBar.addView(close,cp);
     root.addView(feedbackBar,new LinearLayout.LayoutParams(-1,-2));
-    View divider=new View(a);divider.setBackgroundColor(ReferenceUi.LINE);root.addView(divider,new LinearLayout.LayoutParams(-1,a.dp(1)));
+    divider=new View(a);divider.setBackgroundColor(ReferenceUi.LINE);root.addView(divider,new LinearLayout.LayoutParams(-1,a.dp(1)));
     bar=ReferenceUi.nav(a,0,n->select(DESTINATIONS[n]),tabs);root.addView(bar,new LinearLayout.LayoutParams(-1,-2));networkWorkspace=new NetworkWorkspaceUi(a,panel);mark();
   }
   void updateTick(){if(!a.active||a.destroyed||page==CHAT)return;if(page==DOWNLOADS||page==NETWORK)refresh();a.handler.postDelayed(tick,2500);}
@@ -44,10 +44,11 @@ final class AppHub {
     if(target!=page||target==CHAT)feedbackBar.setVisibility(View.GONE);
     page=target;chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);a.toolbar.setVisibility(page==CHAT?View.VISIBLE:View.GONE);
     a.composer.setVisibility(page==CHAT&&!a.pageMode?View.VISIBLE:View.GONE);panel.setVisibility(page==CHAT?View.GONE:View.VISIBLE);
-    a.session.foreground(a.active);mark();a.handler.removeCallbacks(tick);
+    a.session.foreground(a.active);mark();a.updateReadingLayout();a.handler.removeCallbacks(tick);
     if(page!=CHAT){((android.view.inputmethod.InputMethodManager)a.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(a.input.getWindowToken(),0);refresh();a.handler.postDelayed(tick,2500);}
     else{a.session.pageMemory.restorePending=true;if(a.session.networkReady&&MainActivity.chatUrl(a.remote.getUrl()))a.session.pageMemory.restore(a.remote.getUrl(),a.session.navigationEpoch);a.session.wakePolling();}
   }
+  void keyboard(){boolean hide=BrowserReadingPolicy.hideNavigation(page==CHAT,a.pageMode,a.keyboardVisible);bar.setVisibility(hide?View.GONE:View.VISIBLE);divider.setVisibility(hide?View.GONE:View.VISIBLE);}
   void mark(){int selected=0;for(int i=0;i<DESTINATIONS.length;i++)if(DESTINATIONS[i]==page)selected=i;ReferenceUi.markNav(tabs,selected);}
   LinearLayout layout(String title){
     String identity=page+"|"+settingsTab+"|"+networkTab+"|"+downloadFilter+"|"+title;int oldY=0;
@@ -69,7 +70,7 @@ final class AppHub {
   void networkFor(int slot){networkTab=0;networkWorkspace.focus(slot);select(NETWORK);}
   void text(String title,String value){DesignUi.message(a,title,value);}
   void about(){
-    LinearLayout box=layout("关于元婴期院士");note(box,"Android ChatGPT 网页客户端\nv1.5.5 · 浏览器设置与登录提示修复");
+    LinearLayout box=layout("关于元婴期院士");note(box,"Android ChatGPT 网页客户端\nv1.5.6 · 电脑版阅读优化");
     action(box,"功能介绍",()->text("功能介绍","最多 8 个独立环境，支持分组、备注和收藏；原网页与简洁聊天、历史、附件、下载、后台通知、固定出口、隐私保护与环境自检。"));
     action(box,"使用帮助",()->text("使用帮助","在环境列表新建或编辑环境。编辑页分为基本信息、网络配置、浏览器与使用偏好。\n\n环境分别登录。网络页显示所属环境；应用设置控制默认入口与系统权限。下载页汇总全部环境文件。\n\n保护等级改变后会重新加载连接。草稿保存不会应用设置。尚未开放的能力列在功能支持范围。"));
     action(box,"第三方许可",()->text("第三方许可","源码和许可随源码包提供。内置 Mihomo、AndroidX、KaTeX、Marked、DOMPurify 等组件保留原有许可说明。"));

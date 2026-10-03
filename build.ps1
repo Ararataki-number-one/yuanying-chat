@@ -10,7 +10,7 @@ $platformRoot=(Get-ChildItem (Join-Path $toolsRoot 'platform') -Directory | Sele
 $env:JAVA_HOME=$javaRoot
 $env:PATH="$javaRoot/bin;$env:PATH"
 $variant=if($Personal){'personal'}elseif($Test){'test'}elseif($Development){'development'}else{'release'}
-$outDir=Join-Path $workspaceRoot "work/android-test/build-1.5.5-$variant"
+$outDir=Join-Path $workspaceRoot "work/android-test/build-1.5.6-$variant"
 New-Item -ItemType Directory -Force "$outDir/classes","$outDir/dex","$outDir/assets" | Out-Null
 Copy-Item "$projectRoot/app/src/main/assets/*" "$outDir/assets" -Recurse -Force
 if($Personal){
@@ -31,6 +31,7 @@ if($Development){$manifest=$manifest.Replace('android:debuggable="false"','andro
 $sources=@(Get-ChildItem "$projectRoot/app/src/main/java" -Filter *.java -Recurse | ForEach-Object {$_.FullName})
 $libraries=@(Get-ChildItem "$projectRoot/libs" -Filter *.jar | ForEach-Object {$_.FullName})
 if($Test){
+  $manifest=$manifest.Replace('</application>','<activity android:name="local.pocketchat.BrowserReadingRegressionActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" /></application>')
   $manifest=$manifest.Replace('</application>','<activity android:name="local.pocketchat.BrowserSettingsRegressionActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" /></application>')
   $manifest=$manifest.Replace('</application>','<activity android:name="local.pocketchat.NetworkReferenceTestActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" /><activity android:name="local.pocketchat.NetworkBridgeProbeActivity" android:process=":profile7" android:exported="false" /></application>')
   $manifest=$manifest.Replace('</application>','<activity android:name="local.pocketchat.DesignLaunchTestActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" /><activity android:name="local.pocketchat.DesignUiTestActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" /></application>')
@@ -43,6 +44,7 @@ if($Test){
   $manifest=$manifest.Replace('</application>','<activity android:name="local.pocketchat.HistoryTestActivity" android:exported="true" /><activity android:name="local.pocketchat.PreviewTestActivity" android:exported="true" /><activity android:name="local.pocketchat.OptimizationTestActivity" android:exported="true" /><activity android:name="local.pocketchat.SavedFileTestActivity" android:exported="true" /><activity android:name="local.pocketchat.DownloadFlowTestActivity" android:exported="true" /><activity android:name="local.pocketchat.ReaderWindowTestActivity" android:exported="true" /><activity android:name="local.pocketchat.AttachmentGateTestActivity" android:exported="true" /><activity android:name="local.pocketchat.CompactModeTestActivity" android:exported="true" /><activity android:name="local.pocketchat.NetworkMetricsTestActivity" android:exported="true" /><activity android:name="local.pocketchat.RouteQualityTestActivity" android:exported="true" /><activity android:name="local.pocketchat.DeliveryTestActivity" android:exported="true" /><activity android:name="local.pocketchat.ImagesTestActivity" android:exported="true" /><activity android:name="local.pocketchat.DraftTestActivity" android:exported="true" /><activity android:name="local.pocketchat.ActionsTestActivity" android:exported="true" /><provider android:name="local.pocketchat.DownloadFixtureProvider" android:authorities="local.pocketchat.download-fixture" android:exported="false" android:grantUriPermissions="true" /><activity android:name="local.pocketchat.QuickSetupTestActivity" android:exported="true" /><activity android:name="local.pocketchat.RecoveryTestActivity" android:exported="true" /><activity android:name="local.pocketchat.NetworkFaultActivity" android:exported="true" /><activity android:name="local.pocketchat.CompletionTestActivity" android:exported="true" /><activity android:name="local.pocketchat.LoadingTestActivity" android:exported="true" /><activity android:name="local.pocketchat.MediaTestActivity" android:exported="true" /><provider android:name="local.pocketchat.MediaFixtureProvider" android:authorities="local.pocketchat.fixturefiles" android:exported="false" android:grantUriPermissions="true" /></application>')
   $manifest=$manifest.Replace('android:exported="true" />','android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" />')
   $sources+=@(Get-ChildItem "$projectRoot/tests" -Filter *.java | ForEach-Object {$_.FullName})
+  Copy-Item "$projectRoot/tests/fixture-desktop-reading.html" "$outDir/assets/fixture-desktop-reading.html" -Force
   Copy-Item "$projectRoot/tests/fixture.html" "$outDir/assets/fixture.html" -Force
   Copy-Item "$projectRoot/tests/fixture-continuity.html" "$outDir/assets/fixture-continuity.html" -Force
   Copy-Item "$projectRoot/tests/fixture-web-reply.html" "$outDir/assets/fixture-web-reply.html" -Force
@@ -87,7 +89,7 @@ if(!(Test-Path $keyFile)){
 }
 $distributionDir=Join-Path $workspaceRoot 'dist'
 New-Item -ItemType Directory -Force $distributionDir | Out-Null
-$apk=Join-Path $distributionDir $(if($Personal){'PocketChat-1.5.5-personal.apk'}elseif($Test){'PocketChat-tests.apk'}elseif($Development){'PocketChat-dev.apk'}else{'PocketChat-1.5.5.apk'})
+$apk=Join-Path $distributionDir $(if($Personal){'PocketChat-1.5.6-personal.apk'}elseif($Test){'PocketChat-tests.apk'}elseif($Development){'PocketChat-dev.apk'}else{'PocketChat-1.5.6.apk'})
 & "$javaRoot/bin/java.exe" -jar "$buildRoot/lib/apksigner.jar" sign --ks $keyFile --ks-key-alias local --ks-pass pass:android --key-pass pass:android --out $apk "$outDir/aligned.apk"
 Check 'APK sign'
 & "$javaRoot/bin/java.exe" -jar "$buildRoot/lib/apksigner.jar" verify --verbose $apk

@@ -2,11 +2,11 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.5（versionCode 31，原版签名修复包）。**
+**当前版本：1.5.6（versionCode 32，原版签名阅读优化包）。**
 
 ## 下载与安装
 
-- [下载 1.5.5 浏览器设置与登录提示修复 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/browser-settings-login-fix-20261003/public-downloads/PocketChat-1.5.5-browser-settings-login-fix.apk)
+- [下载 1.5.6 电脑版阅读优化 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/desktop-reading-20261003/public-downloads/PocketChat-1.5.6-desktop-reading.apk)
 - [历史 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
 - [查看 Releases](https://github.com/Ararataki-number-one/yuanying-chat/releases)
 
@@ -20,7 +20,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 | --- | --- |
 | 环境管理 | 首次品牌页进入后默认直达指定窗口原网页；创建、分组、备注、搜索、收藏、筛选与排序；多选、批量分组与收藏；最多 8 个环境 |
 | 独立环境 | 分开的 WebView 登录目录、Cookie、本机聊天与草稿、偏好和加密网络配置 |
-| 网页显示 | 创建环境时选择手机版 / 电脑版；已有环境在浏览器设置中修改，按环境独立保存 |
+| 网页显示 | 创建环境时选择手机版 / 电脑版；已有环境在浏览器设置中修改，按环境独立保存；电脑版缩放记忆、适应屏幕与输入安全区 |
 | 聊天 | 简洁与原网页模式、模型与强度选择、Markdown、数学公式、代码、消息复制与分享 |
 | 会话与草稿 | 聊天侧边栏、历史同步、会话改名与删除、草稿冲突处理和恢复、阅读位置恢复 |
 | 附件 | 图片与文件上传状态、重新上传、移除、图片与 PDF 本地预览 |
@@ -46,6 +46,9 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 1.5.5 修复加载、连接或等待重连时无法修改网页显示方式的问题；保存前重新读取当前网页，旧页面的忙碌状态不会一直阻止保存。登录跳转不再记作网络失败。Google 拒绝应用内浏览器时提供登录帮助；这是提示和状态修复，不能保证解除 Google 对 WebView 的登录限制。系统浏览器的账号会话不会自动同步回应用。
 
+1.5.6 增加电脑版各环境的缩放记忆及“更多 → 网页缩放”。横竖屏按可用宽度恢复，键盘弹出时原网页会话暂时收起底部导航，关闭后恢复。保留真实网页，不修改模型、输入或消息界面。Google WebView 登录限制仍未解除；已完成保留隔离和各环境网络的内核替换源码评估，新内核尚未接入。
+
+- [保留独立环境的浏览器内核迁移评估](docs/BROWSER-ENGINE-MIGRATION.md)
 - [环境管理与配置结构](docs/ENVIRONMENT-MANAGEMENT.md)
 - [下一轮 Android 电脑版 Chrome 扩展方案（尚未实现）](docs/ANDROID-DESKTOP-EXTENSIONS.md)
 - [UI 与实际功能](docs/UI-FUNCTIONS.md)
@@ -62,6 +65,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 ## 构建和验证
 
 - [构建说明](docs/BUILD.md)
+- [1.5.6 电脑版阅读：逐文件修改说明](docs/CHANGELOG-v1.5.6.md)
 - [1.5.5 浏览器设置与登录提示：逐文件修改说明](docs/CHANGELOG-v1.5.5.md)
 - [1.5.4 环境网页显示：逐文件修改说明](docs/CHANGELOG-v1.5.4.md)
 - [1.5.3 会话与网络界面：逐文件修改说明](docs/CHANGELOG-v1.5.3.md)
@@ -69,7 +73,8 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 - [1.5.1 更新说明](docs/CHANGELOG-v1.5.1.md)
 - [历史 1.5.0 更新说明](docs/CHANGELOG-v1.5.0.md)
 - [界面与功能对应](docs/UI-FUNCTIONS.md)
-- [本轮浏览器设置与登录提示验证：76 项主机检查通过，真机待验证](verification/browser-settings-login/README.md)
+- [本轮电脑版阅读验证：主机与 Chromium 通过，真机待验证](verification/desktop-reading/README.md)
+- [上一轮浏览器设置与登录提示验证：76 项主机检查通过，真机待验证](verification/browser-settings-login/README.md)
 - [上一轮环境网页显示验证：43 项主机检查通过，真机待验证](verification/environment-browser-display/README.md)
 - [上一轮会话与网络验证](verification/chat-network-reference/README.md)
 - [上一轮交互验证](verification/interaction-round3/README.md)

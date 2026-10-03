@@ -11,6 +11,7 @@ public class ContinuityFixtureActivity extends MainActivity {
   static volatile boolean failHead=false;static volatile String nextDraft="";
   @Override void startNetwork(){session.connect();}
   @Override WebViewClient remoteClient(){WebViewClient original=session.client();return new WebViewClient(){
+    @Override public void onScaleChanged(WebView v,float before,float after){original.onScaleChanged(v,before,after);}
     @Override public void onPageStarted(WebView v,String u,android.graphics.Bitmap b){original.onPageStarted(v,u,b);}
     @Override public void onPageCommitVisible(WebView v,String u){original.onPageCommitVisible(v,u);}
     @Override public void onPageFinished(WebView v,String u){original.onPageFinished(v,u);}
