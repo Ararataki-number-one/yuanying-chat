@@ -18,6 +18,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     @Override protected boolean allowedUrl(String target){
       return target.startsWith("http://127.0.0.1:8765/")||target.startsWith("http://remote-probe.invalid:8765/")||super.allowedUrl(target);
     }
+    @Override boolean readingPage(String target){return target.startsWith("http://127.0.0.1:8765/browser-reading")||super.readingPage(target);}
   }
   @Override public void onCreate(Bundle state){
     super.onCreate(state);slot=Profiles.slot(this);
@@ -29,7 +30,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     session.web.setWebViewClient(new android.webkit.WebViewClient(){
       @Override public void onPageStarted(WebView view,String target,android.graphics.Bitmap icon){if(target.contains("/browser-loading")){paintStarted=SystemClock.elapsedRealtime();paintVisible=paintFinished=0;}original.onPageStarted(view,target,icon);}
       @Override public void onPageCommitVisible(WebView view,String target){if(target.contains("/browser-loading")&&paintVisible==0)paintVisible=SystemClock.elapsedRealtime();original.onPageCommitVisible(view,target);}
-      @Override public void onPageFinished(WebView view,String target){if(target.contains("/browser-loading"))paintFinished=SystemClock.elapsedRealtime();if(target.startsWith("http://127.0.0.1:8765/")){session.navigating=false;session.navigationFailed=false;}else original.onPageFinished(view,target);}
+      @Override public void onPageFinished(WebView view,String target){if(target.contains("/browser-loading"))paintFinished=SystemClock.elapsedRealtime();if(target.startsWith("http://127.0.0.1:8765/")){session.navigating=false;session.navigationFailed=false;session.reading.visible(target);}else original.onPageFinished(view,target);}
     });
     session.guard.setBlocked(false);session.networkReady=true;session.foreground(true);
     LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setFitsSystemWindows(true);
@@ -48,7 +49,18 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
     if("switchGecko".equals(action)&&!web.enabled){web.useEngine(true);action="read";}
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
-    if("reading".equals(action)){web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
+    if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
+    if("readingZoom".equals(action)){readingZoom(serial,0,new JSONArray(),SystemClock.elapsedRealtime()+20000);return;}
+    if("readingInput".equals(action)){tapElement(serial,"composer");readingInput(serial,SystemClock.elapsedRealtime()+15000);return;}
+    if("sessionSeed".equals(action)||"sessionRead".equals(action)||"sessionLogout".equals(action)||"killRestore".equals(action)||"resumeSaved".equals(action)){
+      if("killRestore".equals(action)){
+        org.mozilla.geckoview.GeckoSession stopped=web.current;stopped.close();stopped.getContentDelegate().onKill(stopped);
+      }else if("resumeSaved".equals(action)){
+        String target=GeckoWebView.stateUrl(web.startupState);if(!target.contains("/browser-session")){event("error",J.obj("error","private session checkpoint missing"));return;}web.loadUrl(target);
+      }else web.loadUrl("http://127.0.0.1:8765/browser-session?context="+(slot+1)+"&action="+action);
+      sessionResult(serial,SystemClock.elapsedRealtime()+20000);return;
+    }
+    if("sessionCheckpoint".equals(action)){web.checkpointState();session.handler.postDelayed(()->event("checkpoint",J.obj("saved",web.states.containsKey(web.primary))),1000);return;}
     if("windows".equals(action)||"lostParent".equals(action)){windowFlow(serial);return;}
     if("earlyPaint".equals(action)||"cancelLoad".equals(action)){web.loadUrl("http://127.0.0.1:8765/browser-loading?command="+serial);session.handler.postDelayed(()->paintResult(serial),300);return;}
     if("closedSession".equals(action)){
@@ -123,6 +135,7 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(serial!=run)return;JSONObject rect=J.parse(raw);if(!rect.has("x")){event("error",J.obj("error","tap element not available"));return;}
       android.graphics.Matrix transform=new android.graphics.Matrix();session.web.current.getClientToScreenMatrix(transform);
       float[] point={(float)rect.optDouble("x"),(float)rect.optDouble("y")};transform.mapPoints(point);
+      int[] origin=new int[2];session.web.surface.getLocationOnScreen(origin);point[0]=origin[0]+(point[0]-origin[0])*session.web.readingLayout;point[1]=origin[1]+(point[1]-origin[1])*session.web.readingLayout;
       event("tapNeeded",J.obj("id",id+"-"+serial,"x",Math.round(point[0]),"y",Math.round(point[1]),"shown",session.web.isShown(),"width",session.web.getWidth(),"height",session.web.getHeight(),"scale",session.web.getScale(),"paused",session.browserPaused));
     });
   }
@@ -162,6 +175,50 @@ public class GeckoIntegrationTestActivity extends Activity {
       }
       if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","responsive fixture not painted","paused",session.browserPaused,"shown",session.web.isShown()));return;}
       session.handler.postDelayed(()->readingResult(serial,deadline),200);
+    });
+  }
+  void sessionResult(long serial,long deadline){
+    if(serial!=run)return;
+    session.web.evaluateJavascript("(()=>{const e=document.getElementById('session-result');if(!e)return null;return {token:e.textContent,draft:document.getElementById('session-draft').value,history:history.length}})()",raw->{
+      if(serial!=run)return;JSONObject result=J.parse(raw);
+      if(result.has("token")&&!session.web.failed&&session.web.painted.contains(session.web.current)){
+        if("sessionSeed".equals(action)){
+          session.web.evaluateJavascript("(()=>{const e=document.getElementById('session-draft');e.value='session-draft-"+(slot+1)+"';e.dispatchEvent(new Event('input',{bubbles:true}));return e.value})()",value->{session.web.checkpointState();session.handler.postDelayed(()->event("session",J.obj("token",result.optString("token"),"draft","session-draft-"+(slot+1),"checkpoint",session.web.states.containsKey(session.web.primary))),1000);});return;
+        }
+        event("session",J.obj("token",result.optString("token"),"draft",result.optString("draft"),"history",result.optInt("history"),"automaticRecovery",!session.web.failed&&session.web.current.isOpen(),"profileForeground",processForeground()));return;
+      }
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","session fixture did not recover","failed",session.web.failed,"url",session.web.getUrl()));return;}
+      session.handler.postDelayed(()->sessionResult(serial,deadline),150);
+    });
+  }
+  boolean processForeground(){try{
+    Object owner=Class.forName("androidx.lifecycle.ProcessLifecycleOwner").getMethod("get").invoke(null);
+    Object lifecycle=owner.getClass().getMethod("getLifecycle").invoke(owner);
+    return "RESUMED".equals(lifecycle.getClass().getMethod("getCurrentState").invoke(lifecycle).toString());
+  }catch(Exception ignored){return false;}}
+  void readingZoom(long serial,int step,JSONArray results,long deadline){
+    if(serial!=run)return;float[] choices={.8f,.6f,1.3f,.8f};
+    if(step==choices.length){event("readingZoom",J.obj("checks",results));return;}
+    float choice=choices[step];session.reading.choose(choice);waitReadingZoom(serial,step,results,deadline,choice);
+  }
+  void readingInput(long serial,long deadline){
+    if(serial!=run)return;session.web.evaluateJavascript("(()=>({focused:document.activeElement?.id,draft:document.getElementById('composer')?.value}))()",raw->{
+      if(serial!=run)return;JSONObject result=J.parse(raw);
+      if(result.optString("draft").contains("native-input-ok")){event("readingInput",J.obj("focused",result.optString("focused"),"draft",result.optString("draft"),"choice",session.reading.choice(),"layout",session.web.readingLayout));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","scaled native input did not receive keyboard text","measurement",result));return;}session.handler.postDelayed(()->readingInput(serial,deadline),200);
+    });
+  }
+  void waitReadingZoom(long serial,int step,JSONArray results,long deadline,float choice){
+    if(serial!=run)return;
+    session.web.evaluateJavascript("(()=>{const e=document.getElementById('composer');if(!e)return null;return {viewport:document.documentElement.clientWidth,density:devicePixelRatio,scale:visualViewport.scale,draft:e.value,document:performance.timeOrigin,font:parseFloat(getComputedStyle(e).fontSize)}})()",raw->{
+      if(serial!=run)return;JSONObject result=J.parse(raw);float factor=Math.min(1,choice);
+      double expected=session.web.getWidth()/factor,resultWidth=result.optDouble("viewport")*result.optDouble("density");
+      if(result.has("document")&&Math.abs(resultWidth-expected)<6&&Math.abs(result.optDouble("scale")-Math.max(1,choice))<.05){
+        try{result.put("choice",choice);result.put("layout",session.web.readingLayout);result.put("shownFontPixels",result.optDouble("font")*result.optDouble("density")*result.optDouble("scale")*session.web.readingLayout);result.put("nativeScale",session.web.getScale());result.put("nativeWidth",session.web.getWidth());}catch(Exception ignored){}
+        results.put(result);session.handler.postDelayed(()->readingZoom(serial,step+1,results,SystemClock.elapsedRealtime()+20000),200);return;
+      }
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","real reading zoom did not apply","choice",choice,"layout",session.web.readingLayout,"measurement",result,"ready",session.reading.ready));return;}
+      session.handler.postDelayed(()->waitReadingZoom(serial,step,results,deadline,choice),150);
     });
   }
   void event(String kind,JSONObject result){Log.i("PocketGeckoIntegration",J.obj("kind",kind,"result",result,"nativeContext","environment-"+(slot+1),"processSlot",slot).toString());}

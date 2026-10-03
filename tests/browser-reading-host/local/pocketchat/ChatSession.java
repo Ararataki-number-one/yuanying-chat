@@ -14,6 +14,8 @@ final class ChatSession {
   static class Web {
     int width=1080,height=1600,initial,zoomCalls,scriptCalls;float scale=3;boolean measuredViewportRequired;String url="https://chatgpt.com/c/one",script="";Layout layout;Touch touch;BrowserReading reading;
     boolean requiresViewportMeasurement(){return measuredViewportRequired;}
+    boolean readingPage(String target){return BrowserReadingPolicy.chat(target);}
+    boolean setReadingLayout(float choice){return false;}
     void addOnLayoutChangeListener(Layout cb){layout=cb;}void setOnTouchListener(Touch cb){touch=cb;}int getWidth(){return width;}String getUrl(){return url;}void setInitialScale(int percent){initial=percent;}float getScale(){return scale;}
     void zoomBy(float factor){zoomCalls++;scale*=factor;if(reading!=null)reading.scaled(scale);}void evaluateJavascript(String code,Object cb){scriptCalls++;script=code;}
     void size(int w,int h){int priorW=width,priorH=height;width=w;height=h;layout.changed(this,0,0,w,h,0,0,priorW,priorH);}

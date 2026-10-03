@@ -16,7 +16,8 @@ public final class BrowserReadingHostTest {
     check("Inset-reduced phone width retains natural reading size",near(BrowserReadingPolicy.target(984,3,328,1),3));
     check("Invalid and missing measurements do not invent a fixed desktop width",BrowserReadingPolicy.fit(0,3,360)==0&&BrowserReadingPolicy.fit(1080,Float.NaN,0)==0);
     check("Invalid preferences fall back to fit",BrowserReadingPolicy.bounded(Float.NaN)==1&&BrowserReadingPolicy.bounded(Float.POSITIVE_INFINITY)==1);
-    check("Zoom rejects negative and corrupt extreme values",BrowserReadingPolicy.bounded(.4f)==1&&BrowserReadingPolicy.bounded(100)==20);
+    check("Zoom allows smaller reading and bounds corrupt extreme values",BrowserReadingPolicy.bounded(.4f)==.6f&&BrowserReadingPolicy.bounded(.8f)==.8f&&BrowserReadingPolicy.bounded(100)==20);
+    check("Shrinking preserves relative CSS and device scale",near(BrowserReadingPolicy.target(1080,3,360,.8f),2.4f)&&near(BrowserReadingPolicy.fromScale(1080,3,360,2.4f),.8f));
     check("Untrusted and login origins cannot save zoom",!BrowserReadingPolicy.chat("https://accounts.google.com/")&&!BrowserReadingPolicy.chat("https://chatgpt.com.evil/")&&!BrowserReadingPolicy.chat("https://user@chatgpt.com/")&&!BrowserReadingPolicy.chat("https://chatgpt.com:444/")&&!BrowserReadingPolicy.chat("http://chatgpt.com/"));
     ChatSession.Prefs store=new ChatSession.Prefs();ChatSession s=new ChatSession(store);BrowserReading r=make(s);Object same=s.web;
     check("A new environment defaults to fitting its view",r.choice()==1&&s.web.zoomCalls==0);
