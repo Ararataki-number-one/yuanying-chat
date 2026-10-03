@@ -45,6 +45,7 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 1.5.4 将“网页显示方式”放在新建环境的基本信息中；已有环境通过“编辑环境 → 浏览器”修改。默认手机版，电脑版继续加载真实 ChatGPT 网页并允许双指缩放。环境列表只在使用电脑版时显示一处小字提示；会话顶部不增加按钮。“简洁 / 原网页”仍控制聊天界面的显示，和手机版 / 电脑版分别保存。
 
 - [环境管理与配置结构](docs/ENVIRONMENT-MANAGEMENT.md)
+- [下一轮 Android 电脑版 Chrome 扩展方案（尚未实现）](docs/ANDROID-DESKTOP-EXTENSIONS.md)
 - [UI 与实际功能](docs/UI-FUNCTIONS.md)
 - [统一交互规则与网络优化方向](docs/INTERACTION-AND-NETWORK.md)
 - [品牌素材与提示词](docs/ASSETS.md)
