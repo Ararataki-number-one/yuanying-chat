@@ -116,6 +116,7 @@ class ThreadedSocks(socketserver.ThreadingTCPServer):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--adb', required=True); parser.add_argument('--serial', default='emulator-5556')
+    parser.add_argument('--step-timeout', type=int, default=150)
     args = parser.parse_args(); OUTPUT.mkdir(parents=True, exist_ok=True)
     def adb(*arguments, timeout=30):
         return subprocess.check_output([args.adb, '-s', args.serial, *arguments], timeout=timeout, text=True)
@@ -130,7 +131,7 @@ def main():
         adb('logcat', '-c')
         adb('shell', 'am', 'start', '-n', 'local.pocketchat.engineprobe/.ProbeActivity',
             '--ei', 'context', str(context - 1), '--es', 'fixtureAction', action)
-        deadline = time.monotonic() + 150
+        deadline = time.monotonic() + args.step_timeout
         while time.monotonic() < deadline:
             output = adb('logcat', '-d', '-s', 'PocketEngineProbe:I', '*:S')
             for line in output.splitlines():
@@ -140,7 +141,9 @@ def main():
                     event = json.loads(line[line.index('{'):])
                 except json.JSONDecodeError:
                     continue
-                if event.get('kind') == 'fixture' and event['result'].get('action') == action:
+                if (event.get('kind') == 'fixture' and event['result'].get('action') == action
+                    and event['result'].get('context') == str(context)
+                    and event.get('nativeContext') == f'environment-{context}'):
                     logs.append(output); steps.append(event); print(json.dumps(event), flush=True)
                     if 'error' in event['result']:
                         raise AssertionError(event['result']['error'])

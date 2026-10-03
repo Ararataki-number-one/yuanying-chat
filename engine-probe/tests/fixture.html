@@ -42,7 +42,7 @@
   const result = {action, context, cookie: document.cookie, localStorage: localStorage.getItem('probe'),
     indexedDB: await database('readonly', store => store.get('probe')), cache: cached ? await cached.text() : null,
     serviceWorkers: registrations.length, workerToken};
-  if (action === 'network' || action === 'seed') {
+  if (action === 'network') {
     result.redirect = await (await fetch('/redirect')).text();
     result.remoteDns = await (await fetch('http://remote-probe.invalid:8765/dns')).text();
     result.downloadBytes = (await (await fetch('/download')).arrayBuffer()).byteLength;
@@ -62,10 +62,10 @@
   }
   db.close();
   document.querySelector('#result').textContent = JSON.stringify(result, null, 2);
-  window.postMessage({channel: 'pocketchat-engine-fixture', result}, location.origin);
+  document.title = 'PocketEngineFixture:' + JSON.stringify(result);
 })().catch(error => {
   const result = {error: String(error), action: new URLSearchParams(location.search).get('action')};
   document.querySelector('#result').textContent = JSON.stringify(result);
-  window.postMessage({channel: 'pocketchat-engine-fixture', result}, location.origin);
+  document.title = 'PocketEngineFixture:' + JSON.stringify(result);
 });
 </script></html>

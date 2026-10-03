@@ -21,6 +21,7 @@ public final class ProbeActivity extends Activity {
     private static GeckoRuntime runtime;
     private static WebExtension extension;
     private final GeckoSession[] sessions = new GeckoSession[2];
+    private final String[] fixtureUris = new String[2];
     private GeckoView view;
     private TextView status;
     private int selected;
@@ -120,6 +121,21 @@ public final class ProbeActivity extends Activity {
                 .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_DESKTOP)
                 .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_DESKTOP).build());
             sessions[i] = session;
+            session.setContentDelegate(new GeckoSession.ContentDelegate() {
+                @Override public void onTitleChange(GeckoSession s, String title) {
+                    int index = s == sessions[0] ? 0 : s == sessions[1] ? 1 : -1;
+                    String prefix = "PocketEngineFixture:";
+                    if (index < 0 || fixtureUris[index] == null || title == null || !title.startsWith(prefix)) return;
+                    try {
+                        JSONObject data = new JSONObject();
+                        data.put("kind", "fixture");
+                        data.put("result", new JSONObject(title.substring(prefix.length())));
+                        data.put("nativeContext", "environment-" + (index + 1));
+                        Log.i(TAG, data.toString());
+                        status.setText("环境 " + (index + 1) + " · 已收到真实内核测试结果");
+                    } catch (Exception error) { record("error", error.toString()); }
+                }
+            });
             session.setNavigationDelegate(new GeckoSession.NavigationDelegate() {
                 @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession s, LoadRequest request) {
                     // This proof package must not expose an unvalidated route to real accounts.
@@ -160,7 +176,8 @@ public final class ProbeActivity extends Activity {
         if (!"seed".equals(action) && !"read".equals(action) && !"clear".equals(action)
             && !"network".equals(action)) return;
         select(index);
-        sessions[index].loadUri("http://127.0.0.1:8765/fixture?context=" + (index + 1) + "&action=" + action);
+        fixtureUris[index] = "http://127.0.0.1:8765/fixture?context=" + (index + 1) + "&action=" + action;
+        sessions[index].loadUri(fixtureUris[index]);
     }
 
     private void record(String kind, String detail) {
