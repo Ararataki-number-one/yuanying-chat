@@ -23,8 +23,8 @@ subprocess.run([str(args.tools/'zipalign'),'-f','-P','16','4',str(args.apk),str(
 subprocess.run([str(java),'-jar',str(signer),'sign','--ks',str(args.key),'--ks-key-alias','local',
     '--ks-pass','env:POCKET_STORE_PASSWORD','--key-pass','env:POCKET_KEY_PASSWORD','--out',str(args.output),str(aligned)],check=True,env=env)
 cert=subprocess.check_output([str(java),'-jar',str(signer),'verify','--verbose','--print-certs',str(args.output)],text=True)
-match=re.search(r'Signer #1 certificate SHA-256 digest: ([0-9a-f]+)',cert)
-assert match and match[1]=='f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434','Signing certificate does not match original app.'
+digests=re.findall(r'certificate SHA-256 digest: ([0-9a-f]{64})',cert)
+assert digests and set(digests)=={'f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434'},'Signing certificate does not match original app.'
 badging=subprocess.check_output([str(args.tools/'aapt2'),'dump','badging',str(args.output)],text=True)
 assert "package: name='local.pocketchat' versionCode='33' versionName='1.5.7'" in badging,badging.splitlines()[0]
 assert 'application-debuggable' not in badging,'Release must not enable debugging.'
@@ -32,6 +32,6 @@ manifest=subprocess.check_output([str(args.tools/'aapt2'),'dump','xmltree',str(a
 assert 'GeckoIntegrationTestActivity' not in manifest and 'ProfileGeckoIntegrationActivity' not in manifest,'Test entry present in release.'
 subprocess.run([str(args.tools/'zipalign'),'-c','-P','16','4',str(args.output)],check=True)
 receipt={'file':args.output.name,'package':'local.pocketchat','version':'1.5.7','versionCode':33,'bytes':args.output.stat().st_size,
-    'sha256':hashlib.sha256(args.output.read_bytes()).hexdigest(),'signerSha256':match[1],'debuggable':False,'testActivitiesPresent':False}
+    'sha256':hashlib.sha256(args.output.read_bytes()).hexdigest(),'signerSha256':digests[0],'debuggable':False,'testActivitiesPresent':False}
 (args.output.parent/'gecko-apk-verification.json').write_text(json.dumps(receipt,indent=2)+'\n')
 print(json.dumps(receipt))

@@ -28,14 +28,19 @@ class HttpProxy(socketserver.BaseRequestHandler):
                 raw+=data
             header,remaining=raw.split(b'\r\n\r\n',1)
             lines=header.decode('iso-8859-1').split('\r\n');method,target,version=lines[0].split(' ',2)
-            address=urllib.parse.urlparse(target)
-            accepted=method=='GET' and address.hostname in ['127.0.0.1','remote-probe.invalid'] and address.port==8765
-            fixture.TRACE.append({'kind':'httpProxy','route':'environment-2-http','host':address.hostname,'port':address.port,'accepted':accepted})
+            address=urllib.parse.urlparse('//'+target if method=='CONNECT' else target)
+            accepted=method in ['GET','CONNECT'] and address.hostname in ['127.0.0.1','remote-probe.invalid'] and address.port==8765
+            fixture.TRACE.append({'kind':'httpProxy','route':'environment-2-http','method':method,'host':address.hostname,'port':address.port,'accepted':accepted})
             if not accepted:client.sendall(b'HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n');return
             with socket.create_connection(('127.0.0.1',8765),timeout=10) as upstream:
-                path=(address.path or '/')+('?' + address.query if address.query else '')
-                forwarded=[f'{method} {path} {version}']+[line for line in lines[1:] if not line.lower().startswith(('proxy-connection:','proxy-authorization:'))]
-                upstream.sendall(('\r\n'.join(forwarded)+'\r\n\r\n').encode('iso-8859-1')+remaining)
+                if method=='CONNECT':
+                    # Firefox tunnels WebSocket through an HTTP proxy, as it does HTTPS.
+                    client.sendall(b'HTTP/1.1 200 Connection established\r\n\r\n')
+                    if remaining:upstream.sendall(remaining)
+                else:
+                    path=(address.path or '/')+('?' + address.query if address.query else '')
+                    forwarded=[f'{method} {path} {version}']+[line for line in lines[1:] if not line.lower().startswith(('proxy-connection:','proxy-authorization:'))]
+                    upstream.sendall(('\r\n'.join(forwarded)+'\r\n\r\n').encode('iso-8859-1')+remaining)
                 while True:
                     ready,_,_=select.select([client,upstream],[],[],20)
                     if not ready:return
@@ -81,6 +86,7 @@ def main():
                 if event.get('kind')=='error':raise AssertionError(event)
                 if event.get('kind')==kind:
                     result=event['result']
+                    assert 'error' not in result,event
                     if kind=='fixture' and (result.get('context')!=str(context) or result.get('action')!=action):continue
                     logs.append(output);steps.append(event);print(json.dumps(event),flush=True)
                     assert 'error' not in result,result
@@ -97,7 +103,7 @@ def main():
         assert result.get('nativeCookies') is not None,result
         cookies=dict(part.split('=',1) for part in result['nativeCookies'].split('; ') if part)
         assert cookies==({'probe':expected,'nativeOnly':expected} if populated else {}),result
-    report={'actualAndroidExecution':True,'releaseMode':True,'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
+    report={'actualAndroidExecution':True,'releaseMode':True,'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
     try:
         check(run(1,'seed'),1,True);check(run(2,'read'),2,False)
         check(run(2,'seed'),2,True);check(run(1,'read'),1,True)

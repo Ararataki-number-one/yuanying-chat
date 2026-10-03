@@ -10,6 +10,7 @@ p.add_argument('--evidence',type=pathlib.Path,default=root/'work/gecko-integrati
 args=p.parse_args()
 report=json.loads((args.evidence/'device-results.json').read_text())
 assert report['status']=='passed' and report['actualAndroidExecution'] and report['releaseMode']
+assert report.get('sourceCommit')==args.source,'Native report belongs to a different source.'
 build=json.loads((args.evidence/'manifest.json').read_text())
 assert build['sourceCommit']==args.source,'Native evidence does not match the selected source.'
 receipt=json.loads((args.apk.parent/'gecko-apk-verification.json').read_text())
@@ -31,7 +32,7 @@ for number,offset in enumerate(range(0,len(raw),60_000_000)):
 
 真实网页改由 Mozilla 官方 GeckoView 加载，沿用原有环境数据和每个环境的网络配置。加载失败时显示重试和内核切换入口。
 
-新内核首次需要重新登录；原系统内核的登录数据保留。可在“会话 → 更多 → 浏览器内核”切回系统内核。原有未完成回复会暂时保留系统内核以避免中断。
+新内核首次需要重新登录；原系统内核的登录数据保留。可在“会话 → 更多 → 浏览器内核”切回系统内核。Firefox 当前用于原网页，简洁模式会重新打开系统内核；两种内核各自保存登录。原有未完成回复会暂时保留系统内核以避免中断。
 
 Android 15 原生回归已验证两个同时运行的环境、Cookie（含 HttpOnly）/LocalStorage/IndexedDB/Cache/ServiceWorker 隔离、独立 HTTP/SOCKS 代理、远端 DNS、Worker/WebSocket、重启恢复、原生清理和系统内核切换。
 
