@@ -6,7 +6,7 @@ import java.util.regex.*;
 final class BrowserDisplay {
   static final int DESKTOP_WIDTH=1024;
   static String label(boolean desktop){return desktop?"电脑版":"手机版";}
-  static boolean busy(boolean working,boolean navigating,boolean connecting,boolean recovering,boolean webBusy){return working||navigating||connecting||recovering||webBusy;}
+  static boolean busy(boolean working,boolean navigating,boolean connecting,boolean recovering,boolean webBusy){return working||webBusy;}
   static String agent(String original,int protection,boolean desktop){
     Matcher chrome=Pattern.compile("(?:Chrome|Chromium)/([0-9]+(?:\\.[0-9]+)*)").matcher(original);
     if(!chrome.find())return original;

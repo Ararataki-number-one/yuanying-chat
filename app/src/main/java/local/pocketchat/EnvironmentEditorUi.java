@@ -107,28 +107,29 @@ final class EnvironmentEditorUi {
     if(value.optString("group").length()>12||value.optString("notes").length()>120){a.status("分组最多 12 字，备注最多 120 字");return false;}
     ChatSession s=a.session;int level=value.optInt("privacyLevel",s.privacy.level());if(level<0||level>2){a.status("请选择有效的保护等级");return false;}boolean change=level!=s.privacy.level();
     boolean displayChange=value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
-    if((change||displayChange)&&browserBusy(s)){a.status("当前有未完成操作，结束后再调整网页显示或保护等级");return false;}
+    if((change||displayChange)&&browserBusy(s)){String reason=browserTaskReason(s);a.status(reason.isEmpty()?"网页正在回复，回复结束后再保存":reason);return false;}
     if(displayChange&&value.optBoolean("desktopSite")&&!s.privacy.earlySupported()){a.status("请更新 Android System WebView 后再使用电脑版，设置未应用");return false;}
     if(change&&level>0&&(!s.privacy.earlySupported()||!s.guard.workerProtection)){a.status("请更新 Android System WebView，设置未应用");return false;}
     Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));AppPrefs.apply(a,value);s.prefs.edit().putInt("privacyLevel",level).commit();ProfileCatalog.get(a).draft(Profiles.slot(a),null);
-    if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(change){s.audit.cancel();s.invalidateConnection();s.privacy.apply();s.openConnection(true,true);}
-    else if(displayChange&&s.networkReady&&!s.offline)s.navigate(s.resumeUrl(),"正在应用"+BrowserDisplay.label(value.optBoolean("desktopSite"))+"显示…");
+    if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(change||displayChange)s.applyBrowserSettings(change);
     s.audit.refresh(true);ProfileCatalog.get(a).heartbeat(s,true);if(a.hub!=null)a.hub.refresh();if(a.designChrome!=null)a.designChrome.update();a.status(displayChange&&!s.networkReady?"环境配置已保存，加载网页时应用显示方式":"环境配置已保存");return true;
   }
-  static boolean browserBusy(ChatSession s){return BrowserDisplay.busy(ProfileUi.working(s),s.navigating,s.connecting,s.recoveryScheduled,s.state.optBoolean("busy"));}
+  static String browserTaskReason(ChatSession s){return BrowserSettingsPolicy.reason(s.pending!=null,s.submitting,s.operation,s.transferActive,s.uploading(),false);}
+  static boolean browserBusy(ChatSession s){boolean reply=BrowserSettingsPolicy.currentReply(MainActivity.chatUrl(s.web.getUrl()),WebReplyObserver.same(s.web.getUrl(),s.state.optString("url")),s.state.optBoolean("busy"),s.stateEpoch,s.navigationEpoch);return BrowserDisplay.busy(ProfileUi.working(s),s.navigating,s.connecting,s.recoveryScheduled,reply);}
   static void editingEnabled(android.view.View view,boolean enabled){view.setEnabled(enabled);if(view instanceof android.view.ViewGroup){android.view.ViewGroup group=(android.view.ViewGroup)view;for(int i=0;i<group.getChildCount();i++)editingEnabled(group.getChildAt(i),enabled);}}
   static void applySafely(MainActivity a,JSONObject value,EditText name,java.util.function.Consumer<Boolean> done){
     ChatSession s=a.session;boolean browserChange=value.optInt("privacyLevel",s.privacy.level())!=s.privacy.level()||value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
-    if(value.optString("name").trim().isEmpty()||value.optString("name").trim().length()>24||!browserChange||!MainActivity.chatUrl(s.web.getUrl())||browserBusy(s)){done.accept(apply(a,value,name));return;}
+    if(value.optString("name").trim().isEmpty()||value.optString("name").trim().length()>24||!browserChange||!MainActivity.chatUrl(s.web.getUrl())||ProfileUi.working(s)){done.accept(apply(a,value,name));return;}
     final String url=s.web.getUrl(),scope=s.pageMemory.scope();final long epoch=s.navigationEpoch;
     s.operation=true;s.changed();a.status("正在保留网页草稿…");
     java.util.function.Consumer<String> fail=message->{s.operation=false;s.changed();a.status(message);done.accept(false);};
     // Inspect uses the existing read-only driver and detects oversized drafts before
     // page-state's bounded snapshot could omit them.
     s.asyncDriver("inspect",J.obj("expectedUrl",url),2500,inspected->{
-      if(!WebReplyObserver.same(url,inspected.optString("url"))||inspected.optBoolean("busy")||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())){
+      if(!WebReplyObserver.same(url,inspected.optString("url"))||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())){
         fail.accept("网页状态已改变，请稍后重试；环境设置尚未应用");return;
       }
+      s.state=inspected;s.stateEpoch=epoch;if(inspected.optBoolean("busy")){fail.accept("网页正在回复，回复结束后再保存");return;}
       if(inspected.optString("draft").length()>300000||inspected.optString("draftRaw").length()>300000){fail.accept("网页草稿过长，请先保存或发送，再切换显示方式");return;}
       s.asyncDriver("page-state",J.obj("expectedUrl",url),2500,state->{
         if(!state.optBoolean("ok")||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){

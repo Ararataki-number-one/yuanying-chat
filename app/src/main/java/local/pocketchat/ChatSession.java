@@ -18,7 +18,7 @@ final class ChatSession {
   static ChatSession peek(){return instance;}
   final Context context;final SharedPreferences prefs;final Handler handler=new Handler(Looper.getMainLooper());final WebView web;final BrowserPrivacy privacy;final BrowserNetworkGuard guard;EnvironmentAudit audit;final WebReplyObserver webObserver;long webConfirmationVersion=0;
   final List<WeakReference<Observer>> observers=new ArrayList<>();String driver="",historyDriver="",attachmentDriver="",attachmentOwner="",conversation="",status="准备连接",pageError="",confirmedPrompt="";long confirmationVersion=0;
-  JSONObject draftConflict,approvedDraft;JSONObject sentAttachments=new JSONObject();JSONObject state=new JSONObject();volatile JSONObject pending;JSONArray entries=new JSONArray(),attachments=new JSONArray();boolean networkReady=false,uiVisible=false,submitting=false,operation=false,inFlight=false;
+  JSONObject draftConflict,approvedDraft;JSONObject sentAttachments=new JSONObject();JSONObject state=new JSONObject();long stateEpoch=-1;boolean googleLoginBlocked;volatile JSONObject pending;JSONArray entries=new JSONArray(),attachments=new JSONArray();boolean networkReady=false,uiVisible=false,submitting=false,operation=false,inFlight=false;
   boolean showingCache=false,offline=false,connecting=false,recoveryScheduled=false,manualAttention=false;int recoveryAttempt=0;long recoveryToken=0;volatile long connectionEpoch=0;String networkIdentity="",networkIssue="",connectionStage="未连接";final ConversationStore cache;final WebTranscriptMirror webMirror=new WebTranscriptMirror();final WebTranscriptStore webStore;long lastWebSnapshot=0,syncRun=0;String lastWebUrl="",lastDeliverySignature="";final DeliveryStore deliveries;String activeDeliveryId="";volatile boolean transferActive=false;
   boolean navigating=false,navigationFailed=false;String navigationTarget="",navigationLabel="";long navigationEpoch=0,navigationStarted=0;long connectionStarted=0,proxyReadyAt=0,navigationMono=0,firstPageVisible=0,pageUsableAt=0;
   final ConnectionTrace trace=new ConnectionTrace();final PageMemory pageMemory=new PageMemory(this);String appliedIdentity="",requestedConversation="";boolean keepPageCandidate=false,browserPaused=false,spaTransition=false,documentNavigationSeen=false,backgroundAttachmentCheck=false;String spaBefore="",spaSignature="",lastDocumentId="",priorDocumentId="";boolean navigationDispatched=true,awaitNewDocument=false;int spaStable=0,backgroundAttachmentStable=0;
@@ -30,12 +30,25 @@ final class ChatSession {
   WebViewClient client(){return new WebViewClient(){
     @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r){return guard.intercept(r.getUrl());}
     @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){if(!guard.allowed()||!BrowserNetworkGuard.publicHttps(r.getUrl())){setStatus("连接尚未受保护，或地址属于不安全的网络");return true;}return false;}
-    @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){webObserver.suspendUnconfirmed("网页发生重新加载，原发送结果需要核对");pageError="";if(navigating&&targetMatches(url)){documentNavigationSeen=true;spaTransition=false;awaitNewDocument=!priorDocumentId.isEmpty();trace.mode="网页加载";}if(!navigating)beginNavigation(url,"正在加载对话…");}
+    @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){webObserver.suspendUnconfirmed("网页发生重新加载，原发送结果需要核对");pageError="";googleLoginBlocked=false;if(navigating&&targetMatches(url)){documentNavigationSeen=true;spaTransition=false;awaitNewDocument=!priorDocumentId.isEmpty();trace.mode="网页加载";}if(!navigating)beginNavigation(url,"正在加载对话…");}
     @Override public void onPageCommitVisible(WebView v,String url){if(navigating&&targetMatches(url)){if(firstPageVisible==0)firstPageVisible=SystemClock.elapsedRealtime();trace.visible=SystemClock.elapsedRealtime();webObserver.pageReady();wakePolling();}}
-    @Override public void onPageFinished(WebView v,String url){webObserver.pageReady();CookieManager.getInstance().flush();if(!MainActivity.chatUrl(url))finishNavigation("请在原网页中完成登录",false);if(MainActivity.chatUrl(url)){prefs.edit().putString("url",url).apply();if(targetMatches(url))wakePolling();}}
+    @Override public void onPageFinished(WebView v,String url){if(!url.equals(v.getUrl()))return;webObserver.pageReady();CookieManager.getInstance().flush();if(LoginPagePolicy.login(url)){if(pageError.isEmpty()){awaitLogin("请在网页中完成登录");if(LoginPagePolicy.google(url))checkGoogleLogin(url);}return;}if(!MainActivity.chatUrl(url))finishNavigation("请在原网页中完成登录",false);if(MainActivity.chatUrl(url)){prefs.edit().putString("url",url).apply();if(targetMatches(url))wakePolling();}}
     @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){if(r.isForMainFrame()){pageError="连接失败，请检查应用专用网络";finishNavigation(pageError);}}
-    @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse r2){if(r.isForMainFrame()&&r2.getStatusCode()>=400){pageError="网站返回 HTTP "+r2.getStatusCode()+"，请检查网络或登录状态";finishNavigation(pageError,r2.getStatusCode()>=500);}}
+    @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse r2){if(r.isForMainFrame()&&r2.getStatusCode()>=400){if(LoginPagePolicy.login(r.getUrl().toString())&&r2.getStatusCode()<500){awaitLogin("登录未完成，请查看网页登录提示");return;}pageError="网站返回 HTTP "+r2.getStatusCode()+"，请检查网络或登录状态";finishNavigation(pageError,r2.getStatusCode()>=500);}}
   };}
+  void awaitLogin(String message){navigating=false;navigationFailed=false;pageError="";recoveryScheduled=false;recoveryToken++;if(networkReady&&!offline&&guard.allowed()){networkIssue="";connectionStage="等待登录";}setStatus(message);}
+  void checkGoogleLogin(String url){final long epoch=navigationEpoch;web.evaluateJavascript(LoginPagePolicy.blockedScript(),raw->{
+    if(epoch!=navigationEpoch||!url.equals(web.getUrl())||!"true".equals(raw))return;googleLoginBlocked=true;awaitLogin("Google 暂不接受应用内浏览器登录，可打开登录帮助");
+  });}
+  void applyBrowserSettings(boolean protectionChanged){
+    // A confirmed user task was checked before entering this method. Replace only
+    // idle navigation/retry work, and invalidate callbacks belonging to it.
+    boolean reconnect=protectionChanged||connecting||!networkReady;
+    recoveryToken++;recoveryScheduled=false;manualAttention=false;recoveryAttempt=0;
+    navigationEpoch++;syncRun++;inFlight=false;navigating=false;navigationFailed=false;googleLoginBlocked=false;web.stopLoading();
+    if(reconnect){audit.cancel();invalidateConnection();privacy.apply();if(!offline)openConnection(false,protectionChanged);}
+    else{privacy.apply();if(!offline)navigate(resumeUrl(),"正在应用网页设置…");}
+  }
   void beginNavigation(String url,String label){navigationEpoch++;navigating=true;navigationFailed=false;navigationTarget=url;navigationLabel=label;spaTransition=false;documentNavigationSeen=false;navigationDispatched=true;priorDocumentId=lastDocumentId;awaitNewDocument=!priorDocumentId.isEmpty();spaStable=0;spaSignature="";navigationStarted=System.currentTimeMillis();trace.page("网页加载");navigationMono=SystemClock.elapsedRealtime();firstPageVisible=0;pageUsableAt=0;long epoch=navigationEpoch;setStatus(label);handler.postDelayed(()->{if(navigating&&navigationEpoch==epoch)finishNavigation("加载时间较长，请重试或查看原网页");},45000);}
   void navigate(String url,String label){
     if(!MainActivity.chatUrl(url)){setStatus("对话地址无效");return;}
@@ -133,9 +146,10 @@ final class ChatSession {
   }};
 
   void sync(){
+    if(LoginPagePolicy.login(web.getUrl()))return;
     if(inFlight||navigating&&!navigationDispatched)return;inFlight=true;long epoch=navigationEpoch,run=++syncRun;boolean optimized=webPerformance();
     runDriver(optimized?"web-inspect":"inspect",J.obj("navigationCheck",spaTransition),s->{
-      if(run!=syncRun)return;if(epoch!=navigationEpoch){inFlight=false;return;}if(navigating&&awaitNewDocument&&priorDocumentId.equals(s.optString("documentId"))){inFlight=false;return;}if(!s.optString("documentId").isEmpty()){lastDocumentId=s.optString("documentId");awaitNewDocument=false;}state=s;
+      if(run!=syncRun)return;if(epoch!=navigationEpoch){inFlight=false;return;}if(navigating&&awaitNewDocument&&priorDocumentId.equals(s.optString("documentId"))){inFlight=false;return;}if(!s.optString("documentId").isEmpty()){lastDocumentId=s.optString("documentId");awaitNewDocument=false;}state=s;stateEpoch=epoch;
       if(pending==null&&!navigating&&!navigationFailed){if(!pageError.isEmpty())status=pageError;else if(!s.optString("error").isEmpty())status=s.optString("error");else if(s.optBoolean("modelKnown"))status="已连接 · "+s.optString("model")+(s.optString("effort").isEmpty()?"":" · "+s.optString("effort"));else status="请打开登录页面完成登录";}
       // During startup the page may be an empty shell. Inspect readiness cheaply;
       // defer transcript walks until the target composer/content is actually present.

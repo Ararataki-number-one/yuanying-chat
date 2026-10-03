@@ -2,11 +2,11 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.4（versionCode 30，原版签名预览包）。**
+**当前版本：1.5.5（versionCode 31，原版签名修复包）。**
 
 ## 下载与安装
 
-- [下载 1.5.4 环境电脑版 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/desktop-environments-preview-20261003/public-downloads/PocketChat-1.5.4-desktop-environments-preview.apk)
+- [下载 1.5.5 浏览器设置与登录提示修复 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/refs/heads/apk/browser-settings-login-fix-20261003/public-downloads/PocketChat-1.5.5-browser-settings-login-fix.apk)
 - [历史 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
 - [查看 Releases](https://github.com/Ararataki-number-one/yuanying-chat/releases)
 
@@ -44,7 +44,10 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 
 1.5.4 将“网页显示方式”放在新建环境的基本信息中；已有环境通过“编辑环境 → 浏览器”修改。默认手机版，电脑版继续加载真实 ChatGPT 网页并允许双指缩放。环境列表只在使用电脑版时显示一处小字提示；会话顶部不增加按钮。“简洁 / 原网页”仍控制聊天界面的显示，和手机版 / 电脑版分别保存。
 
+1.5.5 修复加载、连接或等待重连时无法修改网页显示方式的问题；保存前重新读取当前网页，旧页面的忙碌状态不会一直阻止保存。登录跳转不再记作网络失败。Google 拒绝应用内浏览器时提供登录帮助；这是提示和状态修复，不能保证解除 Google 对 WebView 的登录限制。系统浏览器的账号会话不会自动同步回应用。
+
 - [环境管理与配置结构](docs/ENVIRONMENT-MANAGEMENT.md)
+- [下一轮 Android 电脑版 Chrome 扩展方案（尚未实现）](docs/ANDROID-DESKTOP-EXTENSIONS.md)
 - [UI 与实际功能](docs/UI-FUNCTIONS.md)
 - [统一交互规则与网络优化方向](docs/INTERACTION-AND-NETWORK.md)
 - [品牌素材与提示词](docs/ASSETS.md)
@@ -59,13 +62,15 @@ Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页�
 ## 构建和验证
 
 - [构建说明](docs/BUILD.md)
+- [1.5.5 浏览器设置与登录提示：逐文件修改说明](docs/CHANGELOG-v1.5.5.md)
 - [1.5.4 环境网页显示：逐文件修改说明](docs/CHANGELOG-v1.5.4.md)
 - [1.5.3 会话与网络界面：逐文件修改说明](docs/CHANGELOG-v1.5.3.md)
 - [1.5.2 交互优化说明](docs/CHANGELOG-v1.5.2.md)
 - [1.5.1 更新说明](docs/CHANGELOG-v1.5.1.md)
 - [历史 1.5.0 更新说明](docs/CHANGELOG-v1.5.0.md)
 - [界面与功能对应](docs/UI-FUNCTIONS.md)
-- [本轮环境网页显示验证：43 项主机检查通过，真机待验证](verification/environment-browser-display/README.md)
+- [本轮浏览器设置与登录提示验证：76 项主机检查通过，真机待验证](verification/browser-settings-login/README.md)
+- [上一轮环境网页显示验证：43 项主机检查通过，真机待验证](verification/environment-browser-display/README.md)
 - [上一轮会话与网络验证](verification/chat-network-reference/README.md)
 - [上一轮交互验证](verification/interaction-round3/README.md)
 - [上一轮环境管理与覆盖更新验证](verification/environment-management-round2/README.md)
