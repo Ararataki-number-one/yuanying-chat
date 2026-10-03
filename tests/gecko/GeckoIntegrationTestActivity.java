@@ -182,6 +182,11 @@ public class GeckoIntegrationTestActivity extends Activity {
     session.web.evaluateJavascript("(()=>{const e=document.getElementById('session-result');if(!e)return null;return {token:e.textContent,draft:document.getElementById('session-draft').value,history:history.length}})()",raw->{
       if(serial!=run)return;JSONObject result=J.parse(raw);
       if(result.has("token")&&!session.web.failed&&session.web.painted.contains(session.web.current)){
+        // First paint can precede the SDK's asynchronous form restoration.
+        if(("killRestore".equals(action)||"resumeSaved".equals(action))&&!result.optString("draft").equals("session-draft-"+(slot+1))){
+          if(SystemClock.elapsedRealtime()>deadline){org.mozilla.geckoview.GeckoSession.SessionState saved=session.web.states.get(session.web.primary);event("error",J.obj("error","SDK form restoration did not complete","measurement",result,"checkpointHasDraft",saved!=null&&saved.toString().contains("session-draft-"+(slot+1))));return;}
+          session.handler.postDelayed(()->sessionResult(serial,deadline),150);return;
+        }
         if("sessionSeed".equals(action)){
           session.web.evaluateJavascript("(()=>{const e=document.getElementById('session-draft');e.value='session-draft-"+(slot+1)+"';e.dispatchEvent(new Event('input',{bubbles:true}));return e.value})()",value->{session.web.checkpointState();session.handler.postDelayed(()->event("session",J.obj("token",result.optString("token"),"draft","session-draft-"+(slot+1),"checkpoint",session.web.states.containsKey(session.web.primary))),1000);});return;
         }
