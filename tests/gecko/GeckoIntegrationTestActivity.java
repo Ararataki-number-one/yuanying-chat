@@ -10,7 +10,8 @@ import org.json.*;
 
 /** Test-only controlled HTTP exception; this class and manifest are absent from release. */
 public class GeckoIntegrationTestActivity extends Activity {
-  ChatSession session;int slot;long run;String action;
+  ChatSession session;int slot;long run;String action;boolean closedSessionRecovery,blockedRecoveryPreservesClosed;
+  long paintStarted,paintVisible,paintFinished;
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
     FixtureView(Context context,ChatSession owner){super(context,owner);}
@@ -26,9 +27,9 @@ public class GeckoIntegrationTestActivity extends Activity {
     ChatSession.browserFactory=FixtureView::new;session=ChatSession.get(this);
     android.webkit.WebViewClient original=session.client();
     session.web.setWebViewClient(new android.webkit.WebViewClient(){
-      @Override public void onPageStarted(WebView view,String target,android.graphics.Bitmap icon){original.onPageStarted(view,target,icon);}
-      @Override public void onPageCommitVisible(WebView view,String target){original.onPageCommitVisible(view,target);}
-      @Override public void onPageFinished(WebView view,String target){if(target.startsWith("http://127.0.0.1:8765/")){session.navigating=false;session.navigationFailed=false;}else original.onPageFinished(view,target);}
+      @Override public void onPageStarted(WebView view,String target,android.graphics.Bitmap icon){if(target.contains("/browser-loading")){paintStarted=SystemClock.elapsedRealtime();paintVisible=paintFinished=0;}original.onPageStarted(view,target,icon);}
+      @Override public void onPageCommitVisible(WebView view,String target){if(target.contains("/browser-loading")&&paintVisible==0)paintVisible=SystemClock.elapsedRealtime();original.onPageCommitVisible(view,target);}
+      @Override public void onPageFinished(WebView view,String target){if(target.contains("/browser-loading"))paintFinished=SystemClock.elapsedRealtime();if(target.startsWith("http://127.0.0.1:8765/")){session.navigating=false;session.navigationFailed=false;}else original.onPageFinished(view,target);}
     });
     session.guard.setBlocked(false);session.networkReady=true;session.foreground(true);
     LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setFitsSystemWindows(true);
@@ -47,6 +48,14 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
     if("switchGecko".equals(action)&&!web.enabled){web.useEngine(true);action="read";}
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
+    if("windows".equals(action)||"lostParent".equals(action)){windowFlow(serial);return;}
+    if("earlyPaint".equals(action)){web.loadUrl("http://127.0.0.1:8765/browser-loading?command="+serial);session.handler.postDelayed(()->paintResult(serial),300);return;}
+    if("closedSession".equals(action)){
+      // Inject the exact SDK onKill contract (closed session), then render through the real SDK again.
+      org.mozilla.geckoview.GeckoSession stopped=web.current;stopped.close();stopped.getContentDelegate().onKill(stopped);
+      closedSessionRecovery=web.failed&&!stopped.isOpen();session.guard.setBlocked(true);web.loadUrl("http://127.0.0.1:8765/fixture");
+      blockedRecoveryPreservesClosed=!stopped.isOpen();session.guard.setBlocked(false);loadFixture(serial);return;
+    }
     if("switchSystem".equals(action)){web.useEngine(false);event("engineSwitch",J.obj("gecko",web.enabled));return;}
     if("switchGecko".equals(action)){web.useEngine(true);action="read";}
     if("clear".equals(action)){web.runtime.getStorageController().clearData(org.mozilla.geckoview.StorageController.ClearFlags.ALL)
@@ -70,11 +79,56 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(serial!=run)return;JSONObject result=J.parse(raw);
       if(result.length()>0&&action.equals(result.optString("action"))&&String.valueOf(slot+1).equals(result.optString("context"))&&String.valueOf(serial).equals(result.optString("command"))){((GeckoWebView)session.web).readCookies("http://127.0.0.1:8765/fixture",value->{
         if(serial!=run)return;
-        try{result.put("nativeCookies",value==null?JSONObject.NULL:value);}catch(Exception ignored){}event("fixture",result);
+        try{result.put("nativeCookies",value==null?JSONObject.NULL:value);if("closedSession".equals(action)){result.put("closedSessionRecovery",closedSessionRecovery&&((GeckoWebView)session.web).current.isOpen()&&!((GeckoWebView)session.web).failed);result.put("blockedRecoveryPreservesClosed",blockedRecoveryPreservesClosed);result.put("recoveryMethod","injected SDK onKill contract; real close/open/render");}}catch(Exception ignored){}event("fixture",result);
       });return;}
       if(session.navigationFailed)event("loadError",J.obj("failed",true,"url",session.web.getUrl(),"error",session.pageError,"guard",session.guard.allowed()));
       else session.handler.postDelayed(()->poll(serial),300);
     });
+  }
+  void windowFlow(long serial){
+    GeckoWebView web=session.web;web.loadUrl(windowUrl("one",serial));
+    waitWindow(serial,"one",SystemClock.elapsedRealtime()+15000,()->{
+      org.mozilla.geckoview.GeckoSession parent=web.current;web.loadUrl(windowUrl("two",serial));
+      waitWindow(serial,"two",SystemClock.elapsedRealtime()+15000,()->{
+        if(!web.canBack){event("error",J.obj("error","parent history missing before popup"));return;}
+        web.evaluateJavascript("document.getElementById('popup').click();null",null);
+        waitWindow(serial,"three",SystemClock.elapsedRealtime()+15000,()->{
+          if(web.current==parent||web.popups.size()!=1){event("error",J.obj("error","real popup did not become active"));return;}
+          if("lostParent".equals(action)){parent.close();parent.getContentDelegate().onKill(parent);web.closePopup();
+            if(!web.failed||web.current!=parent){event("error",J.obj("error","closed parent state was not restored"));return;}
+            web.loadUrl(windowUrl("two",serial));
+            waitWindow(serial,"two",SystemClock.elapsedRealtime()+15000,()->event("windowFlow",J.obj("lostParentRecovery",!web.failed&&parent.isOpen(),"popups",web.popups.size(),"url",web.getUrl())));return;
+          }
+          web.loadUrl(windowUrl("four",serial));
+          waitWindow(serial,"four",SystemClock.elapsedRealtime()+15000,()->{
+            if(!web.canBack){event("error",J.obj("error","popup history missing"));return;}
+            web.goBack();waitWindow(serial,"three",SystemClock.elapsedRealtime()+15000,()->{
+              web.evaluateJavascript("window.close();null",null);
+              waitWindow(serial,"two",SystemClock.elapsedRealtime()+15000,()->{
+                if(web.current!=parent||!web.canBack||!web.popups.isEmpty()){event("error",J.obj("error","parent history was lost after closing popup"));return;}
+                web.goBack();waitWindow(serial,"one",SystemClock.elapsedRealtime()+15000,()->event("windowFlow",J.obj("realPopup",true,"parentHistoryRestored",true,"popups",web.popups.size(),"url",web.getUrl(),"pendingCallbacks",web.callbacks.size())));
+              });
+            });
+          });
+        });
+      });
+    });
+  }
+  String windowUrl(String step,long serial){return "http://127.0.0.1:8765/browser-window?step="+step+"&command="+serial;}
+  void waitWindow(long serial,String step,long deadline,Runnable done){
+    if(serial!=run)return;
+    session.web.evaluateJavascript("document.getElementById('window-step')?.textContent||null",raw->{
+      if(serial!=run)return;
+      if(JSONObject.quote(step).equals(raw)&&session.web.getUrl().contains("step="+step)){done.run();return;}
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","window flow timed out at "+step,"url",session.web.getUrl(),"failed",session.web.failed));return;}
+      session.handler.postDelayed(()->waitWindow(serial,step,deadline,done),150);
+    });
+  }
+  void paintResult(long serial){
+    if(serial!=run)return;
+    if(paintFinished>0){event("paint",J.obj("started",paintStarted,"visible",paintVisible,"finished",paintFinished,"firstPaintBeforeComplete",paintVisible>paintStarted&&paintVisible<paintFinished));return;}
+    if(paintStarted>0&&SystemClock.elapsedRealtime()-paintStarted>15000){event("error",J.obj("error","slow-resource fixture did not complete"));return;}
+    session.handler.postDelayed(()->paintResult(serial),200);
   }
   void event(String kind,JSONObject result){Log.i("PocketGeckoIntegration",J.obj("kind",kind,"result",result,"nativeContext","environment-"+(slot+1),"processSlot",slot).toString());}
   @Override protected void onDestroy(){run++;if(session!=null)session.foreground(false);super.onDestroy();}

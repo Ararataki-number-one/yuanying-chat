@@ -54,6 +54,22 @@ class HttpProxy(socketserver.BaseRequestHandler):
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address=True;daemon_threads=True
 class Fixture(fixture.Fixture):
+    def do_GET(self):
+        address=urllib.parse.urlparse(self.path);query=urllib.parse.parse_qs(address.query)
+        if address.path=='/browser-window':
+            step=query.get('step',['one'])[0];command=query.get('command',['0'])[0]
+            assert step in ['one','two','three','four'] and command.isdigit()
+            body=(f'<!doctype html><meta charset="utf-8"><title>Controlled window {step}</title>'
+                  f'<h1 id="window-step">{step}</h1><a id="popup" target="_blank" '
+                  f'href="/browser-window?step=three&command={command}">Open controlled popup</a>').encode()
+        elif address.path=='/browser-loading':
+            body=b'<!doctype html><meta charset="utf-8"><h1>Visible before slow resource</h1><img src="/slow-resource">'
+        elif address.path=='/slow-resource':
+            time.sleep(5);body=b'synthetic-slow-resource'
+        else:return super().do_GET()
+        self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8')
+        self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store')
+        self.end_headers();self.wfile.write(body)
     def end_headers(self):
         address=urllib.parse.urlparse(self.path);query=urllib.parse.parse_qs(address.query)
         if address.path=='/fixture' and query.get('action')==['seed']:
@@ -115,6 +131,13 @@ def main():
             network=run(context,'network')
             assert network['remoteDns']=='synthetic-ok' and network['webSocket']=='synthetic-probe',network
             assert network['downloadBytes']==1152 and network['dedicatedWorker']=='synthetic-ok',network
+        for context in [1,2]:
+            windows=run(context,'windows','windowFlow');assert windows['realPopup'] and windows['parentHistoryRestored'] and windows['popups']==0,windows
+            recovery=run(context,'closedSession');check(recovery,context,True)
+            assert recovery['closedSessionRecovery'] and recovery['blockedRecoveryPreservesClosed'],recovery
+        lost=run(1,'lostParent','windowFlow');assert lost['lostParentRecovery'] and lost['popups']==0,lost
+        check(run(2,'read'),2,True)
+        paint=run(1,'earlyPaint','paint');assert paint['firstPaintBeforeComplete'],paint
         assert any(x['kind']=='socks' and x.get('route')=='environment-1-socks' for x in fixture.TRACE)
         assert any(x['kind']=='httpProxy' and x.get('route')=='environment-2-http' for x in fixture.TRACE)
         assert any(x['kind']=='socks' and x['host']=='remote-probe.invalid' and x['addressType']==3 for x in fixture.TRACE)
@@ -143,7 +166,9 @@ def main():
         assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         report.update(status='passed',liveEnvironmentProcesses='passed',storageIsolation='passed',restartPersistence='passed',
             distinctHttpSocksRoutes='passed',workersAndWebSocket='passed',remoteDns='passed',guardBlocksRequests='passed',
-            nativeContextClear='passed',systemEngineFallback='passed',closedBootstrapWithoutExtension='passed',productionActivityShell='passed')
+            nativeContextClear='passed',systemEngineFallback='passed',closedBootstrapWithoutExtension='passed',productionActivityShell='passed',
+            popupParentHistory='passed',closedSessionRecovery='passed (injected SDK onKill contract, real close/open/render)',
+            closedParentRecovery='passed',firstPaintBeforeSlowResource='passed')
     except Exception as error:
         report.update(status='failed',error=f'{type(error).__name__}: {error}');raise
     finally:
