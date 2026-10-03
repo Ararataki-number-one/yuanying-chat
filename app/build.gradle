@@ -8,6 +8,7 @@ tasks.register('prepareGeckoManifest') {
         def content = file('src/main/AndroidManifest.xml').getText('UTF-8')
             .replace(' package="local.pocketchat"', '')
             .replaceAll(/<uses-sdk[^>]*\/>/, '')
+            .replace(' android:debuggable="false"', '')
             .replace('android:authorities="local.pocketchat.', 'android:authorities="${applicationId}.')
         def services = new StringBuilder()
         for (slot in 0..<8) {
