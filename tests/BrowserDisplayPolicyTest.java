@@ -23,7 +23,7 @@ public final class BrowserDisplayPolicyTest {
     check("An unknown engine does not fabricate a Chrome version",BrowserDisplay.agent("unknown-browser",1,true).equals("unknown-browser"));
     check("Human-readable labels distinguish the two choices",BrowserDisplay.label(false).equals("手机版")&&BrowserDisplay.label(true).equals("电脑版"));
     check("An idle window can change display mode",!BrowserDisplay.busy(false,false,false,false,false));
-    for(int i=0;i<5;i++){boolean[] flags=new boolean[5];flags[i]=true;check("Active operation guard "+i+" blocks a display change",BrowserDisplay.busy(flags[0],flags[1],flags[2],flags[3],flags[4]));}
+    for(int i=0;i<5;i++){boolean[] flags=new boolean[5];flags[i]=true;check("Only user work and replies block display changes, flag "+i,BrowserDisplay.busy(flags[0],flags[1],flags[2],flags[3],flags[4])==(i==0||i==4));}
     check("Viewport policy provides desktop layout width",BrowserDisplay.viewportScript().contains("width=1024"));
     if(args.length>0)Files.write(Paths.get(args[0]),BrowserDisplay.viewportScript().getBytes(StandardCharsets.UTF_8));
     StringBuilder out=new StringBuilder("{\"passed\":"+checks.size()+",\"total\":"+checks.size()+",\"checks\":[");
