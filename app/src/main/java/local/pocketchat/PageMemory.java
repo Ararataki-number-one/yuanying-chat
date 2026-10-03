@@ -9,7 +9,7 @@ final class PageMemory {
   final ChatSession session;final LinkedHashMap<String,JSONObject> pages=new LinkedHashMap<>(16,0.75f,true);long serial;
   boolean restorePending;JSONObject lastRestore=new JSONObject();
   PageMemory(ChatSession s){session=s;}
-  String scope(){try{return session.appliedIdentity+":"+NativeNetwork.hash(String.valueOf(CookieManager.getInstance().getCookie(MainActivity.ORIGIN)));}catch(Exception e){return "";}}
+  String scope(){try{return session.appliedIdentity+":"+NativeNetwork.hash(GeckoWebView.active(session.web)?"gecko:"+((GeckoWebView)session.web).cookieStamp:String.valueOf(CookieManager.getInstance().getCookie(MainActivity.ORIGIN)));}catch(Exception e){return "";}}
   static String address(String url){try{android.net.Uri u=android.net.Uri.parse(url);return u.getScheme()+"://"+u.getHost()+u.getPath();}catch(Exception e){return "";}}
   String document(String url){JSONObject state=pages.get(scope()+"|"+address(url));return state==null?"":state.optString("documentId");}
   String content(String url){JSONObject state=pages.get(scope()+"|"+address(url));return state==null?"":state.optString("contentKey");}

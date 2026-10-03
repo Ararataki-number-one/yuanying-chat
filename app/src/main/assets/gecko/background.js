@@ -9,3 +9,12 @@ browser.proxy.onRequest.addListener(async request => {
   } catch (_) { return blocked; }
 }, {urls:['<all_urls>']});
 browser.runtime.sendNativeMessage('pocketroute', {kind:'ready'}).catch(() => {});
+// Each Android environment has its own runtime AND profile, including default cookie storage.
+const host = browser.runtime.connectNative('pocketroute');
+host.onMessage.addListener(async message => {
+  if(message.kind !== 'cookies' || !Number.isInteger(message.id))return;
+  try {
+    const cookies = await browser.cookies.getAll({url:message.url, storeId:'firefox-default'});
+    host.postMessage({kind:'cookies', id:message.id, value:cookies.map(cookie=>cookie.name+'='+cookie.value).join('; ')});
+  } catch (_) {host.postMessage({kind:'cookies', id:message.id, error:true});}
+});

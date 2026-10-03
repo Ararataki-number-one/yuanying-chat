@@ -42,7 +42,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
     if("switchSystem".equals(action)){web.useEngine(false);event("engineSwitch",J.obj("gecko",web.enabled));return;}
     if("switchGecko".equals(action)){web.useEngine(true);action="read";}
-    if("clear".equals(action))web.runtime.getStorageController().clearDataForSessionContext("environment-"+slot);
+    if("clear".equals(action))web.runtime.getStorageController().clearData(org.mozilla.geckoview.StorageController.ClearFlags.ALL);
     if("block".equals(action))session.guard.setBlocked(true);
     if("disableExtension".equals(action)){
       web.runtime.getWebExtensionController().disable(web.extension,1).accept(value->{web.current.loadUri("http://127.0.0.1:8765/fixture?context="+(slot+1)+"&action=read");session.handler.postDelayed(()->event("bootstrapCheck",J.obj("navigationFailed",session.navigationFailed)),5000);},error->event("error",J.obj("error","disable failed")));return;

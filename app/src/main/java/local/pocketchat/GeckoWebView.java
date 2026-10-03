@@ -13,6 +13,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
+import java.util.concurrent.*;
 
 /** Keeps the existing session/business API while Gecko owns the real remote page. */
 @SuppressWarnings("deprecation")
@@ -24,6 +25,7 @@ class GeckoWebView extends WebView {
   final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();
   final Map<GeckoSession,String> locations=new IdentityHashMap<>();
   final Map<Integer,ValueCallback<String>> callbacks=new HashMap<>();
+  final Map<Integer,ValueCallback<String>> cookieCallbacks=new HashMap<>();WebExtension.Port routePort;String cookieStamp="";
   WebViewClient client;WebChromeClient chrome;DownloadListener download;
   boolean enabled,ready,failed,desktop,canBack;String url="",queued="";float scale=1;int sequence;
 
@@ -57,6 +59,17 @@ class GeckoWebView extends WebView {
     }catch(Exception error){failure("新内核未能启动，可切换系统内核重试");}
   }
   private final WebExtension.MessageDelegate routeMessages=new WebExtension.MessageDelegate(){
+    @Override public void onConnect(WebExtension.Port port){
+      if(port.sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_EXTENSION)return;
+      routePort=port;port.setDelegate(new WebExtension.PortDelegate(){
+        @Override public void onPortMessage(Object message,WebExtension.Port incoming){
+          if(!(message instanceof JSONObject)||incoming!=routePort)return;JSONObject data=(JSONObject)message;
+          if(!"cookies".equals(data.optString("kind")))return;ValueCallback<String> callback=cookieCallbacks.remove(data.optInt("id"));
+          if(callback!=null)callback.onReceiveValue(data.optBoolean("error")?null:data.optString("value"));
+        }
+        @Override public void onDisconnect(WebExtension.Port incoming){if(routePort==incoming){routePort=null;ArrayList<ValueCallback<String>> pending=new ArrayList<>(cookieCallbacks.values());cookieCallbacks.clear();for(ValueCallback<String> callback:pending)callback.onReceiveValue(null);}}
+      });
+    }
     @Override public GeckoResult<Object> onMessage(String app,Object message,WebExtension.MessageSender sender){
       if(!"pocketroute".equals(app)||!(message instanceof JSONObject))return GeckoResult.fromValue(blocked());
       JSONObject request=(JSONObject)message;
@@ -84,7 +97,9 @@ class GeckoWebView extends WebView {
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
   }
   GeckoSession newSession(){
-    GeckoSession session=new GeckoSession(new GeckoSessionSettings.Builder().contextId("environment-"+Profiles.slot(owner.context))
+    // Isolation comes from existing Android processes and distinct profile directories.
+    // Default cookie storage remains usable by the official cookie API in this runtime.
+    GeckoSession session=new GeckoSession(new GeckoSessionSettings.Builder()
       .userAgentMode(desktop?GeckoSessionSettings.USER_AGENT_MODE_DESKTOP:GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
       .viewportMode(desktop?GeckoSessionSettings.VIEWPORT_MODE_DESKTOP:GeckoSessionSettings.VIEWPORT_MODE_MOBILE).build());
     session.getWebExtensionController().setMessageDelegate(extension,pageMessages,"pocketpage");
@@ -111,7 +126,7 @@ class GeckoWebView extends WebView {
     });
     session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
       @Override public void onPageStart(GeckoSession s,String target){if(s==current){url=target;cancelCallbacks();if(client!=null)client.onPageStarted(GeckoWebView.this,target,null);}}
-      @Override public void onPageStop(GeckoSession s,boolean success){if(s!=current)return;if(success&&client!=null){client.onPageCommitVisible(GeckoWebView.this,url);client.onPageFinished(GeckoWebView.this,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
+      @Override public void onPageStop(GeckoSession s,boolean success){if(s!=current)return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});client.onPageCommitVisible(GeckoWebView.this,url);client.onPageFinished(GeckoWebView.this,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
     });
     session.setContentDelegate(new GeckoSession.ContentDelegate(){
       @Override public void onCloseRequest(GeckoSession s){if(s==current)closePopup();}
@@ -160,6 +175,19 @@ class GeckoWebView extends WebView {
     }
   };
   protected boolean allowedUrl(String target){return BrowserNetworkGuard.publicHttps(Uri.parse(target));}
+  void readCookies(String target,ValueCallback<String> callback){
+    if(!enabled||routePort==null||!allowedUrl(target)){callback.onReceiveValue(null);return;}
+    int id=++sequence;cookieCallbacks.put(id,callback);
+    owner.handler.postDelayed(()->{ValueCallback<String> pending=cookieCallbacks.remove(id);if(pending!=null)pending.onReceiveValue(null);},5000);
+    try{routePort.postMessage(J.obj("kind","cookies","id",id,"url",target));}catch(Exception error){cookieCallbacks.remove(id);callback.onReceiveValue(null);}
+  }
+  String downloadCookies(String target)throws IOException{
+    if(Looper.myLooper()==Looper.getMainLooper())throw new IOException("不能在界面线程等待 Cookie");
+    CountDownLatch completed=new CountDownLatch(1);String[] result={null};
+    owner.handler.post(()->readCookies(target,value->{result[0]=value;completed.countDown();}));
+    try{if(!completed.await(7,TimeUnit.SECONDS)||result[0]==null)throw new IOException("当前环境的登录信息暂不可用，请重试下载");return result[0];}
+    catch(InterruptedException error){Thread.currentThread().interrupt();throw new IOException("下载已暂停");}
+  }
   private void failure(String message){failed=true;owner.pageError=message;owner.finishNavigation(message,false);}
   private void cancelCallbacks(){ArrayList<ValueCallback<String>> pending=new ArrayList<>(callbacks.values());callbacks.clear();for(ValueCallback<String> callback:pending)callback.onReceiveValue("null");}
   void configure(boolean desktop,int protection){

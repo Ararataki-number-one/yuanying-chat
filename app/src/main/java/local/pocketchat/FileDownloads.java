@@ -41,7 +41,7 @@ class FileDownloads {
       for(int redirects=0;redirects<=5;redirects++){
         if(!valid(attempt))throw new IOException("下载已取消");AppPrefs.requireDownloadNetwork(a);if(!https(url)||!BrowserNetworkGuard.publicHttps(Uri.parse(url)))throw new IOException("下载地址或重定向不受支持");if(!a.session.guard.allowed())throw new IOException("受保护连接已中断，下载已暂停");
         HttpURLConnection c=connect(url,proxy);connection=c;c.setInstanceFollowRedirects(false);c.setConnectTimeout(10000);c.setReadTimeout(25000);c.setRequestProperty("Accept-Encoding","identity");
-        if(ua!=null)c.setRequestProperty("User-Agent",ua);String cookie=android.webkit.CookieManager.getInstance().getCookie(url);if(cookie!=null)c.setRequestProperty("Cookie",cookie);
+        if(ua!=null)c.setRequestProperty("User-Agent",ua);String cookie=GeckoWebView.active(a.remote)?((GeckoWebView)a.remote).downloadCookies(url):android.webkit.CookieManager.getInstance().getCookie(url);if(cookie!=null)c.setRequestProperty("Cookie",cookie);
         long base=local.length();String expected=resumeValidator;
         if(base>0&&!expected.isEmpty()&&resumeAddress.equals(DownloadRange.resource(url))){c.setRequestProperty("Range","bytes="+base+"-");c.setRequestProperty("If-Range",expected);}else base=0;
         try{
