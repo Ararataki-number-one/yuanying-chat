@@ -22,6 +22,7 @@ final class GeckoEnvironmentContext extends ContextWrapper {
   @Override public boolean bindService(Intent intent,ServiceConnection connection,int flags){return super.bindService(isolated(intent),connection,flags);}
   @Override public boolean bindService(Intent intent,int flags,Executor executor,ServiceConnection connection){return super.bindService(isolated(intent),flags,executor,connection);}
   @Override public boolean bindIsolatedService(Intent intent,int flags,String instance,Executor executor,ServiceConnection connection){
-    return super.bindIsolatedService(intent,flags,"environment"+slot+"-"+instance,executor,connection);
+    // Android accepts only letters, digits, dots and underscores for instance names.
+    return super.bindIsolatedService(intent,flags,"environment"+slot+"_"+instance,executor,connection);
   }
 }

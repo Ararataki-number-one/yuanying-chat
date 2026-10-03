@@ -20,7 +20,7 @@ import java.util.concurrent.*;
 class GeckoWebView extends FrameLayout {
   WebView legacy; final GeckoSettings metadata=new GeckoSettings();
   final MutableContextWrapper displayContext;
-  static boolean wantsGecko(ChatSession session){return !"system".equals(session.prefs.getString("browserEngine","gecko"))&&session.pending==null;}
+  static boolean wantsGecko(ChatSession session){return !"system".equals(session.prefs.getString("browserEngine","gecko"))&&(session.pending==null||session.prefs.contains("browserEngine"));}
   WebView system(){if(enabled)throw new IllegalStateException("系统内核未启用");return legacy;}
   WebSettings getSettings(){return enabled?metadata:system().getSettings();}
   void setHost(android.app.Activity activity){displayContext.setBaseContext(activity==null?owner.context:activity);}
@@ -43,6 +43,8 @@ class GeckoWebView extends FrameLayout {
   GeckoWebView(Context context,ChatSession session){
     super(context);owner=session;displayContext=new MutableContextWrapper(context);
     enabled=wantsGecko(session);
+    // Legacy pending tasks belong to the old engine; new tasks retain their actual engine.
+    owner.prefs.edit().putString("browserEngine",enabled?"gecko":"system").commit();
     // The retained System WebView is only loaded when explicitly selected.
     if(!enabled){legacy=new WebView(context);legacy.getSettings().setBlockNetworkLoads(true);addView(legacy,new FrameLayout.LayoutParams(-1,-1));}
     if(enabled)owner.handler.post(this::initialize);
@@ -144,7 +146,7 @@ class GeckoWebView extends FrameLayout {
       @Override public void onCloseRequest(GeckoSession s){if(s==current)closePopup();}
       @Override public void onCrash(GeckoSession s){if(s==current)failure("网页进程已退出，请重新加载或切换系统内核");}
       @Override public void onExternalResponse(GeckoSession s,WebResponse response){
-        if(s==current&&download!=null)download.onDownloadStart(response.uri,"",response.headers.get("Content-Disposition"),response.headers.get("Content-Type"),-1);
+        if(s==current&&download!=null)download.onDownloadStart(response.uri,metadata.userAgent,header(response,"Content-Disposition"),header(response,"Content-Type"),-1);
       }
     });
     session.setPromptDelegate(new GeckoSession.PromptDelegate(){
@@ -187,6 +189,7 @@ class GeckoWebView extends FrameLayout {
     }
   };
   protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicHttps(Uri.parse(target));}
+  static String header(WebResponse response,String name){for(Map.Entry<String,String> entry:response.headers.entrySet())if(name.equalsIgnoreCase(entry.getKey()))return entry.getValue();return null;}
   void readCookies(String target,ValueCallback<String> callback){
     if(!enabled||routePort==null||!allowedUrl(target)){callback.onReceiveValue(null);return;}
     int id=++sequence;cookieCallbacks.put(id,callback);
