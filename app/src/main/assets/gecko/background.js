@@ -48,7 +48,10 @@ host.onMessage.addListener(async message => {
   }
   if(message.kind !== 'cookies' || !Number.isInteger(message.id))return;
   try {
-    await cookieReady;await cookieCommit;
+    // Native bulk clear does not emit cookies.onChanged for every deletion.
+    // Refresh from the real cookie store before reporting a completed read,
+    // so its deleted session cookies cannot return from the older journal.
+    await cookieReady;await checkpoint();
     const cookies = await browser.cookies.getAll({url:message.url, storeId:'firefox-default'});
     host.postMessage({kind:'cookies', id:message.id, value:cookies.map(cookie=>cookie.name+'='+cookie.value).join('; ')});
   } catch (_) {host.postMessage({kind:'cookies', id:message.id, error:true});}

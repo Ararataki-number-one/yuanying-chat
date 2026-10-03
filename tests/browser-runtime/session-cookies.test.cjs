@@ -16,7 +16,8 @@ function runtime(saved={},initial=[],failName=''){
     }}};
   const context=vm.createContext({browser});vm.runInContext(code,context);
   return {storage,sets,sent,ready:()=>vm.runInContext('cookieReady',context),
-    prepare:()=>message({kind:'prepare'}),flush:()=>vm.runInContext('cookieCommit',context),
+    prepare:()=>message({kind:'prepare'}),read:()=>message({kind:'cookies',id:1,url:'https://example.test/'}),flush:()=>vm.runInContext('cookieCommit',context),
+    clearNative(){cookies=[];},
     replace(list){cookies=copy(list);changed({cookie:cookie('event'),removed:true});}};
 }
 function check(name,value){assert.ok(value,name);checks.push({name,pass:true});}
@@ -31,6 +32,9 @@ function check(name,value){assert.ok(value,name);checks.push({name,pass:true});}
   restored.replace([]);await restored.flush();
   const logout=runtime(restored.storage);await logout.ready();
   check('Logout deletion cannot return after restart',logout.sets.length===0&&logout.storage.sessionCookiesV1.length===0);
+  const cleared=runtime(seed.storage);await cleared.ready();cleared.clearNative();await cleared.read();
+  const afterClear=runtime(cleared.storage);await afterClear.ready();
+  check('Native bulk clear without cookie events cannot return after a completed read',afterClear.sets.length===0&&cleared.sent.at(-1).kind==='cookies'&&cleared.sent.at(-1).value==='');
   const existing=runtime(seed.storage,[cookie('session',{value:'newer-native-value'})]);await existing.ready();
   check('A newer native cookie is never overwritten by the journal',existing.sets.length===0&&existing.storage.sessionCookiesV1[0].value==='newer-native-value');
   const domain=runtime({sessionCookiesV1:[cookie('domain',{domain:'.example.test',hostOnly:false,sameSite:'strict',firstPartyDomain:'site.test',partitionKey:{topLevelSite:'https://site.test'}})]});await domain.ready();
