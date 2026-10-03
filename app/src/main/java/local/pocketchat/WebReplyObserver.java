@@ -28,7 +28,7 @@ final class WebReplyObserver {
       script += "\nwindow.__pocketReadDriver=(action,arg)=>" + session.driver.replace("__ACTION__", "action").replace("__ARG__", "arg") + ";\nwindow.__pocketReadDriver('observe-install',{});";
       if(GeckoWebView.active(session.web)){supported=true;return;}
       if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return;
-      WebViewCompat.addWebMessageListener(session.web, "PocketWebReply", Collections.singleton("https://chatgpt.com"),
+      WebViewCompat.addWebMessageListener(session.web.system(), "PocketWebReply", Collections.singleton("https://chatgpt.com"),
         (view, message, origin, mainFrame, reply) -> {
           if (!mainFrame || !MainActivity.chatUrl(origin.toString())) return;
           String text = message.getData();
@@ -36,7 +36,7 @@ final class WebReplyObserver {
         });
       supported = true;
       if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT))
-        WebViewCompat.addDocumentStartJavaScript(session.web, script, Collections.singleton("https://chatgpt.com"));
+        WebViewCompat.addDocumentStartJavaScript(session.web.system(), script, Collections.singleton("https://chatgpt.com"));
     } catch (Exception ignored) { supported = false; }
   }
 

@@ -20,7 +20,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   @Override public void onCreate(Bundle state){
     super.onCreate(state);slot=Profiles.slot(this);
-    getSharedPreferences("chat",0).edit().putString("browserEngine","gecko").putString("networkMode","external")
+    getSharedPreferences("chat",0).edit().putString("browserEngine","systemProbe".equals(getIntent().getStringExtra("fixtureAction"))?"system":"gecko").putString("networkMode","external")
       .putString("proxy",(slot==0?"socks":"http")+"://127.0.0.1:"+(1080+slot)).putBoolean("requireExternalVpn",false)
       .putBoolean("networkConfigured",false).putBoolean("pageMode",true).commit();
     ChatSession.browserFactory=FixtureView::new;session=ChatSession.get(this);
@@ -34,7 +34,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setFitsSystemWindows(true);
     TextView label=new TextView(this);label.setText("正式应用内核回归 · 环境 "+(slot+1));label.setTextSize(16);root.addView(label);
     if(session.web.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)session.web.getParent()).removeView(session.web);
-    root.addView(session.web,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);command(getIntent());
+    session.web.setHost(this);root.addView(session.web,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);command(getIntent());
   }
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);command(intent);}
   void command(Intent intent){
@@ -43,6 +43,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   void waitReady(long serial){
     if(serial!=run)return;GeckoWebView web=(GeckoWebView)session.web;
+    if("systemProbe".equals(action)){event("engineSwitch",J.obj("gecko",web.enabled));return;}
     if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
     if("switchGecko".equals(action)&&!web.enabled){web.useEngine(true);action="read";}
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}

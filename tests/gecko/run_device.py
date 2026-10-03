@@ -113,14 +113,11 @@ def main():
         check(run(2,'read'),2,True)
         adb('shell','am','force-stop',package)
         check(run(1,'read'),1,True);check(run(2,'read'),2,True)
-        # Switching only the current surface preserves the other environment.
-        switch=run(1,'switchSystem','engineSwitch');assert switch['gecko'] is False
-        # Read after reopening Gecko in the same production session.
-        adb('logcat','-c')
-        activity=package+'/local.pocketchat.GeckoIntegrationTestActivity'
-        adb('shell','am','start','-n',activity,'--es','fixtureAction','switchGecko')
-        time.sleep(3)
-        check(run(1,'read'),1,True)
+        # Switching engines restarts the environment; native runtimes never coexist.
+        adb('shell','am','force-stop',package)
+        switch=run(1,'systemProbe','engineSwitch');assert switch['gecko'] is False
+        adb('shell','am','force-stop',package)
+        check(run(1,'read'),1,True);check(run(2,'read'),2,True)
         check(run(1,'clear'),1,False);check(run(2,'read'),2,True)
         bootstrap=run(1,'disableExtension','bootstrapCheck');assert bootstrap['navigationFailed'] is True,bootstrap
         check(run(2,'read'),2,True)

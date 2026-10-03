@@ -13,7 +13,7 @@ final class BrowserNetworkGuard {
   volatile boolean blocked=true;
   ServiceWorkerWebSettings workers;
   boolean workerProtection;
-  BrowserNetworkGuard(ChatSession s){session=s;
+  BrowserNetworkGuard(ChatSession s){session=s;if(GeckoWebView.wantsGecko(s)){workerProtection=true;return;}
     try{ServiceWorkerController controller=ServiceWorkerController.getInstance();workers=controller.getServiceWorkerWebSettings();workers.setBlockNetworkLoads(true);workers.setAllowFileAccess(false);workers.setAllowContentAccess(false);controller.setServiceWorkerClient(new ServiceWorkerClient(){
       @Override public WebResourceResponse shouldInterceptRequest(WebResourceRequest request){return intercept(request.getUrl());}
     });workerProtection=true;}catch(Exception ignored){}
