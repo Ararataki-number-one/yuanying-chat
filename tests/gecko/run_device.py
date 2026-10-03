@@ -106,12 +106,21 @@ def main():
     if sdk>=33:adb('shell','pm','grant',package,'android.permission.POST_NOTIFICATIONS')
     # A fresh test phone needs an explicit permission response before checking app UI.
     adb('shell','wm','size','1080x2400');adb('shell','wm','density','420')
+    for setting in ['window_animation_scale','transition_animation_scale','animator_duration_scale']:
+        adb('shell','settings','put','global',setting,'0')
+    launcher='com.google.android.apps.nexuslauncher'
+    has_pixel_launcher=launcher in adb('shell','pm','list','packages',launcher)
     steps=[];logs=[]
     def run(context,action,kind='fixture'):
         adb('logcat','-c')
         tapped=set()
         activity='GeckoIntegrationTestActivity' if context==1 else 'ProfileGeckoIntegrationActivity1'
-        adb('shell','am','start','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action)
+        # This emulator image's Pixel Launcher can ANR during first-boot package
+        # optimization and intercept otherwise correct trusted taps. Stop only
+        # that unrelated package before returning to the test Activity; never
+        # dismiss an app ANR. The Home step still exercises real backgrounding.
+        if has_pixel_launcher:adb('shell','am','force-stop',launcher)
+        adb('shell','am','start','-W','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action)
         deadline=time.monotonic()+120
         while time.monotonic()<deadline:
             output=adb('logcat','-d','-s','PocketGeckoIntegration:I','*:S')
@@ -128,7 +137,7 @@ def main():
                         if tap['id'].startswith('composer-'):
                             time.sleep(.5);adb('shell','input','text','native-input-ok')
                     continue
-                if event.get('kind')=='error':raise AssertionError(event)
+                if event.get('kind')=='error':logs.append(output);raise AssertionError(event)
                 if event.get('kind')==kind:
                     result=event['result']
                     assert 'error' not in result,event
