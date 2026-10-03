@@ -209,8 +209,10 @@ def main():
         assert any(x['kind']=='socks' and x.get('route')=='environment-1-socks' for x in fixture.TRACE)
         assert any(x['kind']=='httpProxy' and x.get('route')=='environment-2-http' for x in fixture.TRACE)
         assert any(x['kind']=='socks' and x['host']=='remote-probe.invalid' and x['addressType']==3 for x in fixture.TRACE)
-        before=len(fixture.TRACE);blocked=run(1,'block','blocked');assert blocked['guard'] is False and blocked['route']['port']==9,blocked
-        assert len(fixture.TRACE)==before,'blocked browser still requested fixture traffic'
+        blocked=run(1,'block','blocked');assert blocked['guard'] is False and blocked['route']['port']==9 and blocked['newFetchBlocked'],blocked
+        # Background service-worker updates already admitted before blocking may
+        # finish. Assert a uniquely identified new request, not global traffic.
+        assert not any(x.get('kind')=='http' and x.get('path','').startswith('/guard-blocked') for x in fixture.TRACE),'A new blocked request reached the fixture'
         check(run(2,'read'),2,True)
         adb('shell','am','force-stop',package)
         check(run(1,'read'),1,True);check(run(2,'read'),2,True)

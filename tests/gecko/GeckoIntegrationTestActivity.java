@@ -92,7 +92,10 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   void poll(long serial){
     if(serial!=run)return;
-    if("block".equals(action)){event("blocked",J.obj("guard",session.guard.allowed(),"route",((GeckoWebView)session.web).route("http://127.0.0.1:8765/fixture")));return;}
+    if("block".equals(action)){
+      String target="http://127.0.0.1:8765/guard-blocked?context="+(slot+1)+"&command="+serial;
+      session.web.evaluateJavascript("(()=>{window.__guardProbe='pending';const c=new AbortController();setTimeout(()=>c.abort(),4000);fetch("+JSONObject.quote(target)+",{cache:'no-store',signal:c.signal}).then(()=>window.__guardProbe='leaked',()=>window.__guardProbe='blocked');return null})()",unused->blockedProbe(serial,SystemClock.elapsedRealtime()+6000));return;
+    }
     session.web.evaluateJavascript("(()=>{const text=document.getElementById('result')?.textContent;if(!text||text==='测试中…')return null;try{return JSON.parse(text)}catch{return null}})()",raw->{
       if(serial!=run)return;JSONObject result=J.parse(raw);
       if(result.length()>0&&action.equals(result.optString("action"))&&String.valueOf(slot+1).equals(result.optString("context"))&&String.valueOf(serial).equals(result.optString("command"))){((GeckoWebView)session.web).readCookies("http://127.0.0.1:8765/fixture",value->{
@@ -101,6 +104,13 @@ public class GeckoIntegrationTestActivity extends Activity {
       });return;}
       if(session.navigationFailed)event("loadError",J.obj("failed",true,"url",session.web.getUrl(),"error",session.pageError,"guard",session.guard.allowed()));
       else session.handler.postDelayed(()->poll(serial),300);
+    });
+  }
+  void blockedProbe(long serial,long deadline){
+    if(serial!=run)return;session.web.evaluateJavascript("window.__guardProbe||null",raw->{
+      if(serial!=run)return;
+      if("\"blocked\"".equals(raw)||"\"leaked\"".equals(raw)){event("blocked",J.obj("guard",session.guard.allowed(),"route",session.web.route("http://127.0.0.1:8765/fixture"),"newFetchBlocked","\"blocked\"".equals(raw)));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","blocked fetch did not finish"));return;}session.handler.postDelayed(()->blockedProbe(serial,deadline),100);
     });
   }
   void windowFlow(long serial){
