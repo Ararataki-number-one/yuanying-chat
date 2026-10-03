@@ -190,6 +190,7 @@ def main():
         assert '"kind":"loadError"' in outage_log, 'proxy outage did not produce an actual navigation failure'
         logs.append(outage_log)
         report.update(status='passed', storageIsolation='passed', persistentStorage='passed',
+            contextScopedNativeClear='passed',
             globalSocksRoute='passed', proxyRemoteDns='passed', workersAndWebSocket='passed',
             proxyOutageNoDirect='passed')
     except Exception as error:

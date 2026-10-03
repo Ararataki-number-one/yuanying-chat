@@ -22,13 +22,8 @@
     const registration = await navigator.serviceWorker.register('/worker.js', {scope: '/'});
     await navigator.serviceWorker.ready;
   }
-  if (action === 'clear') {
-    document.cookie = 'probe=; Path=/; Max-Age=0';
-    localStorage.removeItem('probe');
-    await database('readwrite', store => store.clear());
-    await caches.delete('engine-probe');
-    for (const registration of await navigator.serviceWorker.getRegistrations()) await registration.unregister();
-  }
+  // For "clear", Java requests the SDK's context-scoped clear operation.
+  // Do not perform JavaScript deletion: this page verifies the SDK's outcome.
   const cached = await (await caches.open('engine-probe')).match('/stored-token');
   const registrations = await navigator.serviceWorker.getRegistrations();
   let workerToken = null;

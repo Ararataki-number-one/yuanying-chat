@@ -176,6 +176,12 @@ public final class ProbeActivity extends Activity {
         if (!"seed".equals(action) && !"read".equals(action) && !"clear".equals(action)
             && !"network".equals(action)) return;
         select(index);
+        if ("clear".equals(action)) {
+            // The SDK's context-scoped API has no completion result. The fixture
+            // reload and process restart verify its actual observable outcome.
+            runtime.getStorageController().clearDataForSessionContext("environment-" + (index + 1));
+            record("nativeClearRequested", "environment-" + (index + 1));
+        }
         fixtureUris[index] = "http://127.0.0.1:8765/fixture?context=" + (index + 1) + "&action=" + action;
         sessions[index].loadUri(fixtureUris[index]);
     }
