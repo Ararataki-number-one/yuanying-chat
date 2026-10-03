@@ -59,7 +59,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   void loadFixture(long serial){
     if(serial!=run)return;GeckoWebView web=(GeckoWebView)session.web;
-    String target="http://127.0.0.1:8765/fixture?context="+(slot+1)+"&action="+action;
+    String target="http://127.0.0.1:8765/fixture?context="+(slot+1)+"&action="+action+"&command="+serial;
     if("popup".equals(action))target="http://127.0.0.1:8765/popup-main";
     web.loadUrl(target);session.handler.postDelayed(()->poll(serial),500);
   }
@@ -68,7 +68,8 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("block".equals(action)){event("blocked",J.obj("guard",session.guard.allowed(),"route",((GeckoWebView)session.web).route("http://127.0.0.1:8765/fixture")));return;}
     session.web.evaluateJavascript("(()=>{const text=document.getElementById('result')?.textContent;if(!text||text==='测试中…')return null;try{return JSON.parse(text)}catch{return null}})()",raw->{
       if(serial!=run)return;JSONObject result=J.parse(raw);
-      if(result.length()>0){((GeckoWebView)session.web).readCookies("http://127.0.0.1:8765/fixture",value->{
+      if(result.length()>0&&action.equals(result.optString("action"))&&String.valueOf(slot+1).equals(result.optString("context"))&&String.valueOf(serial).equals(result.optString("command"))){((GeckoWebView)session.web).readCookies("http://127.0.0.1:8765/fixture",value->{
+        if(serial!=run)return;
         try{result.put("nativeCookies",value==null?JSONObject.NULL:value);}catch(Exception ignored){}event("fixture",result);
       });return;}
       if(session.navigationFailed)event("loadError",J.obj("failed",true,"url",session.web.getUrl(),"error",session.pageError,"guard",session.guard.allowed()));

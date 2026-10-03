@@ -32,6 +32,6 @@ manifest=subprocess.check_output([str(args.tools/'aapt2'),'dump','xmltree',str(a
 assert 'GeckoIntegrationTestActivity' not in manifest and 'ProfileGeckoIntegrationActivity' not in manifest,'Test entry present in release.'
 subprocess.run([str(args.tools/'zipalign'),'-c','-P','16','4',str(args.output)],check=True)
 receipt={'file':args.output.name,'package':'local.pocketchat','version':'1.5.7','versionCode':33,'bytes':args.output.stat().st_size,
-    'sha256':hashlib.sha256(args.output.read_bytes()).hexdigest(),'signerSha256':digests[0],'debuggable':False,'testActivitiesPresent':False}
+    'sha256':hashlib.sha256(args.output.read_bytes()).hexdigest(),'unsignedSha256':hashlib.sha256(args.apk.read_bytes()).hexdigest(),'signerSha256':digests[0],'debuggable':False,'testActivitiesPresent':False}
 (args.output.parent/'gecko-apk-verification.json').write_text(json.dumps(receipt,indent=2)+'\n')
 print(json.dumps(receipt))

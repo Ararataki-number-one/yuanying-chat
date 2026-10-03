@@ -14,6 +14,7 @@ assert report.get('sourceCommit')==args.source,'Native report belongs to a diffe
 build=json.loads((args.evidence/'manifest.json').read_text())
 assert build['sourceCommit']==args.source,'Native evidence does not match the selected source.'
 receipt=json.loads((args.apk.parent/'gecko-apk-verification.json').read_text())
+assert receipt['unsignedSha256']==next(item['sha256'] for item in build['artifacts'] if item['abi']=='arm64-v8a'),'Signed APK was not built from the selected source.'
 assert receipt['signerSha256']=='f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434'
 raw=args.apk.read_bytes()
 assert receipt['bytes']==len(raw) and receipt['sha256']==hashlib.sha256(raw).hexdigest()

@@ -34,7 +34,7 @@
       registrations[0].active.postMessage({kind: 'read'}, [channel.port2]);
     });
   }
-  const result = {action, context, cookie: document.cookie, localStorage: localStorage.getItem('probe'),
+  const result = {action, context, command:q.get('command'), cookie: document.cookie, localStorage: localStorage.getItem('probe'),
     indexedDB: await database('readonly', store => store.get('probe')), cache: cached ? await cached.text() : null,
     serviceWorkers: registrations.length, workerToken};
   if (action === 'network') {
@@ -59,7 +59,8 @@
   document.querySelector('#result').textContent = JSON.stringify(result, null, 2);
   document.title = 'PocketEngineFixture:' + JSON.stringify(result);
 })().catch(error => {
-  const result = {error: String(error), action: new URLSearchParams(location.search).get('action')};
+  const q = new URLSearchParams(location.search);
+  const result = {error: String(error), action:q.get('action'), context:q.get('context'), command:q.get('command')};
   document.querySelector('#result').textContent = JSON.stringify(result);
   document.title = 'PocketEngineFixture:' + JSON.stringify(result);
 });
