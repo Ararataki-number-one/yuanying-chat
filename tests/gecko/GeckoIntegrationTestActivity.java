@@ -24,6 +24,12 @@ public class GeckoIntegrationTestActivity extends Activity {
       .putString("proxy",(slot==0?"socks":"http")+"://127.0.0.1:"+(1080+slot)).putBoolean("requireExternalVpn",false)
       .putBoolean("networkConfigured",false).putBoolean("pageMode",true).commit();
     ChatSession.browserFactory=FixtureView::new;session=ChatSession.get(this);
+    android.webkit.WebViewClient original=session.client();
+    session.web.setWebViewClient(new android.webkit.WebViewClient(){
+      @Override public void onPageStarted(WebView view,String target,android.graphics.Bitmap icon){original.onPageStarted(view,target,icon);}
+      @Override public void onPageCommitVisible(WebView view,String target){original.onPageCommitVisible(view,target);}
+      @Override public void onPageFinished(WebView view,String target){if(target.startsWith("http://127.0.0.1:8765/")){session.navigating=false;session.navigationFailed=false;}else original.onPageFinished(view,target);}
+    });
     session.guard.setBlocked(false);session.networkReady=true;session.foreground(true);
     LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setFitsSystemWindows(true);
     TextView label=new TextView(this);label.setText("正式应用内核回归 · 环境 "+(slot+1));label.setTextSize(16);root.addView(label);
@@ -61,7 +67,9 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("block".equals(action)){event("blocked",J.obj("guard",session.guard.allowed(),"route",((GeckoWebView)session.web).route("http://127.0.0.1:8765/fixture")));return;}
     session.web.evaluateJavascript("(()=>{const text=document.getElementById('result')?.textContent;if(!text||text==='测试中…')return null;try{return JSON.parse(text)}catch{return null}})()",raw->{
       if(serial!=run)return;JSONObject result=J.parse(raw);
-      if(result.length()>0){event("fixture",result);return;}
+      if(result.length()>0){((GeckoWebView)session.web).readCookies("http://127.0.0.1:8765/fixture",value->{
+        try{result.put("nativeCookies",value==null?JSONObject.NULL:value);}catch(Exception ignored){}event("fixture",result);
+      });return;}
       if(session.navigationFailed)event("loadError",J.obj("failed",true));
       else session.handler.postDelayed(()->poll(serial),300);
     });

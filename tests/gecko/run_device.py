@@ -48,13 +48,20 @@ class HttpProxy(socketserver.BaseRequestHandler):
             with fixture.CONNECTION_LOCK:fixture.CONNECTIONS.discard(client)
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address=True;daemon_threads=True
+class Fixture(fixture.Fixture):
+    def end_headers(self):
+        address=urllib.parse.urlparse(self.path);query=urllib.parse.parse_qs(address.query)
+        if address.path=='/fixture' and query.get('action')==['seed']:
+            context=query.get('context',['0'])[0]
+            self.send_header('Set-Cookie',f'nativeOnly=synthetic-environment-{context}; Path=/; Max-Age=3600; HttpOnly; SameSite=Strict')
+        super().end_headers()
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',default='emulator-5554');args=parser.parse_args()
     OUT.mkdir(parents=True,exist_ok=True)
     def adb(*parts):return subprocess.check_output([args.adb,'-s',args.serial,*parts],text=True,timeout=30)
     package='local.pocketchat.test'
-    servers=[fixture.http.server.ThreadingHTTPServer(('127.0.0.1',8765),fixture.Fixture),Server(('127.0.0.1',1080),Socks),Server(('127.0.0.1',1081),HttpProxy)]
+    servers=[fixture.http.server.ThreadingHTTPServer(('127.0.0.1',8765),Fixture),Server(('127.0.0.1',1080),Socks),Server(('127.0.0.1',1081),HttpProxy)]
     for server in servers:threading.Thread(target=server.serve_forever,daemon=True).start()
     for port in [8765,1080,1081]:adb('reverse',f'tcp:{port}',f'tcp:{port}')
     adb('shell','pm','clear',package)
@@ -87,6 +94,9 @@ def main():
         for key in ['localStorage','indexedDB','cache','workerToken']:assert result[key]==expected,(key,result)
         assert result['cookie']==(f'probe={expected}' if populated else ''),result
         assert result['serviceWorkers']==int(populated),result
+        assert result.get('nativeCookies') is not None,result
+        cookies=dict(part.split('=',1) for part in result['nativeCookies'].split('; ') if part)
+        assert cookies==({'probe':expected,'nativeOnly':expected} if populated else {}),result
     report={'actualAndroidExecution':True,'releaseMode':True,'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
     try:
         check(run(1,'seed'),1,True);check(run(2,'read'),2,False)

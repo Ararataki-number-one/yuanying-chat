@@ -105,7 +105,8 @@ class GeckoWebView extends WebView {
     session.getWebExtensionController().setMessageDelegate(extension,pageMessages,"pocketpage");
     session.setNavigationDelegate(new GeckoSession.NavigationDelegate(){
       @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession s,LoadRequest request){
-        boolean allowed="about:blank".equals(request.uri)||owner.guard.allowed()&&allowedUrl(request.uri);
+        boolean blob=request.uri!=null&&request.uri.startsWith("blob:")&&MainActivity.chatUrl(request.uri.substring(5));
+        boolean allowed="about:blank".equals(request.uri)||owner.guard.allowed()&&(allowedUrl(request.uri)||blob);
         if(!allowed&&s==current)owner.setStatus("连接尚未受保护，网页已暂停加载");
         return GeckoResult.fromValue(allowed?AllowOrDeny.ALLOW:AllowOrDeny.DENY);
       }
@@ -114,7 +115,7 @@ class GeckoWebView extends WebView {
       }
       @Override public void onCanGoBack(GeckoSession s,boolean value){if(s==current)canBack=value;}
       @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){
-        if(!owner.guard.allowed()||!allowedUrl(target))return GeckoResult.fromValue(null);
+        if(!owner.guard.allowed()||!(target==null||target.isEmpty()||"about:blank".equals(target)||allowedUrl(target)))return GeckoResult.fromValue(null);
         GeckoSession popup=newSession();popups.add(popup);
         owner.handler.post(()->{if(!enabled)return;if(surface.getSession()!=null)surface.releaseSession();current.setActive(false);current=popup;url=target;canBack=false;surface.setSession(popup);popup.setActive(true);});
         return GeckoResult.fromValue(popup);
@@ -140,7 +141,7 @@ class GeckoWebView extends WebView {
         GeckoResult<PromptResponse> result=new GeckoResult<>();
         if(chrome==null||s!=current){result.complete(prompt.dismiss());return result;}
         WebChromeClient.FileChooserParams params=new WebChromeClient.FileChooserParams(){
-          @Override public int getMode(){return prompt.type==2?MODE_OPEN_MULTIPLE:MODE_OPEN;}
+          @Override public int getMode(){return prompt.type==FilePrompt.Type.MULTIPLE?MODE_OPEN_MULTIPLE:MODE_OPEN;}
           @Override public String[] getAcceptTypes(){return prompt.mimeTypes;}
           @Override public boolean isCaptureEnabled(){return false;}
           @Override public CharSequence getTitle(){return prompt.title;}
@@ -174,7 +175,7 @@ class GeckoWebView extends WebView {
       });
     }
   };
-  protected boolean allowedUrl(String target){return BrowserNetworkGuard.publicHttps(Uri.parse(target));}
+  protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicHttps(Uri.parse(target));}
   void readCookies(String target,ValueCallback<String> callback){
     if(!enabled||routePort==null||!allowedUrl(target)){callback.onReceiveValue(null);return;}
     int id=++sequence;cookieCallbacks.put(id,callback);
