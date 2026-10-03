@@ -149,7 +149,6 @@ def main():
         lost=run(1,'lostParent','windowFlow');assert lost['lostParentRecovery'] and lost['popups']==0,lost
         check(run(2,'read'),2,True)
         paint=run(1,'earlyPaint','paint');assert paint['firstPaintBeforeComplete'],paint
-        cancelled=run(1,'cancelLoad','cancelledLoad');assert not cancelled['reportedFailure'] and not cancelled['pageError'] and cancelled['visibleDocumentRetained'],cancelled
         reading=[]
         for size in ['945x2100','1024x2240','1128x2400','1920x1080']:
             adb('shell','wm','size',size)
@@ -160,6 +159,7 @@ def main():
             (OUT/f'reading-{size}.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         report['responsiveReading']=reading
         adb('shell','wm','size','1080x2400')
+        cancelled=run(1,'cancelLoad','cancelledLoad');assert not cancelled['reportedFailure'] and not cancelled['pageError'] and cancelled['visibleDocumentRetained'] and cancelled['documentReadyBeforeStop'],cancelled
         assert any(x['kind']=='socks' and x.get('route')=='environment-1-socks' for x in fixture.TRACE)
         assert any(x['kind']=='httpProxy' and x.get('route')=='environment-2-http' for x in fixture.TRACE)
         assert any(x['kind']=='socks' and x['host']=='remote-probe.invalid' and x['addressType']==3 for x in fixture.TRACE)

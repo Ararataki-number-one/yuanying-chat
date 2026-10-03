@@ -138,11 +138,16 @@ public class GeckoIntegrationTestActivity extends Activity {
   void paintResult(long serial){
     if(serial!=run)return;
     if("cancelLoad".equals(action)&&paintVisible>0&&paintFinished==0){
-      session.web.stopLoading();session.handler.postDelayed(()->{
-        if(serial!=run)return;
-        session.web.evaluateJavascript("document.querySelector('h1')?.textContent||null",raw->event("cancelledLoad",J.obj("reportedFailure",session.navigationFailed,"pageError",session.pageError,"visibleDocumentRetained",JSONObject.quote("Visible before slow resource").equals(raw))));
-      },400);return;
+      session.web.evaluateJavascript("(()=>({command:new URL(location.href).searchParams.get('command'),heading:document.querySelector('h1')?.textContent}))()",raw->{
+        if(serial!=run)return;JSONObject value=J.parse(raw);
+        if(!String.valueOf(serial).equals(value.optString("command"))||!"Visible before slow resource".equals(value.optString("heading"))){session.handler.postDelayed(()->paintResult(serial),200);return;}
+        session.web.stopLoading();session.handler.postDelayed(()->{
+          if(serial!=run)return;
+          session.web.evaluateJavascript("document.querySelector('h1')?.textContent||null",result->event("cancelledLoad",J.obj("reportedFailure",session.navigationFailed,"pageError",session.pageError,"visibleDocumentRetained",JSONObject.quote("Visible before slow resource").equals(result),"documentReadyBeforeStop",true,"result",result)));
+        },400);
+      });return;
     }
+    if("cancelLoad".equals(action)&&paintFinished>0){event("error",J.obj("error","cancel fixture completed before its document was ready"));return;}
     if(paintFinished>0){event("paint",J.obj("started",paintStarted,"visible",paintVisible,"finished",paintFinished,"firstPaintBeforeComplete",paintVisible>0&&paintVisible>=paintStarted&&paintFinished-paintVisible>500));return;}
     if(paintStarted>0&&SystemClock.elapsedRealtime()-paintStarted>15000){event("error",J.obj("error","slow-resource fixture did not complete"));return;}
     session.handler.postDelayed(()->paintResult(serial),200);
