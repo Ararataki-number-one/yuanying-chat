@@ -1,0 +1,81 @@
+
+Welcome to Gradle 9.8.0!
+
+Here are the highlights of this release:
+ - Java 27 support
+ - Maven mirror settings reuse
+ - Linked problem locations in build output
+
+For more details see https://docs.gradle.org/9.8.0/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as configuration cache cannot be reused due to --write-verification-metadata
+> Task :app:prepareGeckoManifest
+> Task :app:preBuild
+> Task :app:preReleaseBuild
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:generateReleaseResources
+> Task :app:packageReleaseResources
+> Task :app:processReleaseNavigationResources
+> Task :app:mergeReleaseNativeLibs
+> Task :app:javaPreCompileRelease
+> Task :app:parseReleaseLocalResources
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:checkReleaseAarMetadata
+> Task :app:generateReleaseRFile
+> Task :app:compileReleaseNavigationResources
+> Task :app:compileReleaseKotlin NO-SOURCE
+> Task :app:stripReleaseDebugSymbols
+
+> Task :app:compileReleaseJavaWithJavac
+warning: unknown enum constant Scope.LIBRARY
+  reason: class file for androidx.annotation.RestrictTo$Scope not found
+warning: unknown enum constant Scope.LIBRARY
+warning: unknown enum constant Scope.LIBRARY_GROUP
+warning: unknown enum constant Scope.LIBRARY
+warning: unknown enum constant Scope.LIBRARY
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+5 warnings
+
+> Task :app:extractReleaseNativeSymbolTables
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+
+> Task :app:processReleaseMainManifest FAILED
+/home/runner/work/yuanying-chat/yuanying-chat/app/build/generated/gecko/AndroidManifest.xml:2:3-72 Error:
+	The <uses-sdk> tag was detected in your main AndroidManifest.xml file. While its use is still permitted for specifying tools:overrideLibrary, it is no longer allowed for controlling SDK versions (e.g., targetSdkVersion, minSdkVersion). Starting with Android Gradle Plugin 9.0.0, these attributes have been deprecated within the manifest.
+
+To fix: Remove <uses-sdk> from your AndroidManifest.xml.
+
+See https://developer.android.com/r/studio-ui/build/manifest-merger for more information about the manifest merger.
+
+
+> Task :app:mergeReleaseResources
+> Task :app:mergeReleaseNativeDebugMetadata
+
+[Incubating] Problems report is available at: file:///home/runner/work/yuanying-chat/yuanying-chat/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:processReleaseMainManifest' (registered by plugin 'com.android.internal.application').
+> Manifest merger failed : The <uses-sdk> tag was detected in your main AndroidManifest.xml file. While its use is still permitted for specifying tools:overrideLibrary, it is no longer allowed for controlling SDK versions (e.g., targetSdkVersion, minSdkVersion). Starting with Android Gradle Plugin 9.0.0, these attributes have been deprecated within the manifest.
+  
+  To fix: Remove <uses-sdk> from your AndroidManifest.xml.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.8.0/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 1m 24s
+21 actionable tasks: 21 executed
