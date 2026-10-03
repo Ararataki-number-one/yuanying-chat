@@ -70,6 +70,10 @@ def main():
     for server in servers:threading.Thread(target=server.serve_forever,daemon=True).start()
     for port in [8765,1080,1081]:adb('reverse',f'tcp:{port}',f'tcp:{port}')
     adb('shell','pm','clear',package)
+    sdk=int(adb('shell','getprop','ro.build.version.sdk').strip())
+    if sdk>=33:adb('shell','pm','grant',package,'android.permission.POST_NOTIFICATIONS')
+    # A fresh test phone needs an explicit permission response before checking app UI.
+    adb('shell','wm','size','1080x2400');adb('shell','wm','density','420')
     steps=[];logs=[]
     def run(context,action,kind='fixture'):
         adb('logcat','-c')
@@ -103,7 +107,7 @@ def main():
         assert result.get('nativeCookies') is not None,result
         cookies=dict(part.split('=',1) for part in result['nativeCookies'].split('; ') if part)
         assert cookies==({'probe':expected,'nativeOnly':expected} if populated else {}),result
-    report={'actualAndroidExecution':True,'releaseMode':True,'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
+    report={'actualAndroidExecution':True,'releaseMode':True,'androidSdk':sdk,'androidAbi':adb('shell','getprop','ro.product.cpu.abi').strip(),'viewport':'1080x2400 / 420 dpi','sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
     try:
         check(run(1,'seed'),1,True);check(run(2,'read'),2,False)
         check(run(2,'seed'),2,True);check(run(1,'read'),1,True)
