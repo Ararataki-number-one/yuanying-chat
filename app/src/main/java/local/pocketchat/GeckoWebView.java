@@ -35,6 +35,7 @@ class GeckoWebView extends FrameLayout {
   final ArrayList<GeckoSession> popups=new ArrayList<>();
   final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();
   final Map<GeckoSession,String> locations=new IdentityHashMap<>();
+  final Map<GeckoSession,String> loadingTargets=new IdentityHashMap<>();
   final Map<Integer,ValueCallback<String>> callbacks=new HashMap<>();
   final Map<Integer,ValueCallback<String>> cookieCallbacks=new HashMap<>();WebExtension.Port routePort;String cookieStamp="";
   WebViewClient client;WebChromeClient chrome;DownloadListener download;
@@ -84,11 +85,12 @@ class GeckoWebView extends FrameLayout {
       });
     }
     @Override public GeckoResult<Object> onMessage(String app,Object message,WebExtension.MessageSender sender){
-      if(!"pocketroute".equals(app)||!(message instanceof JSONObject))return GeckoResult.fromValue(blocked());
+      if(!"pocketroute".equals(app)||!(message instanceof JSONObject)||sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_EXTENSION)return GeckoResult.fromValue(blocked().toString());
       JSONObject request=(JSONObject)message;
       if("ready".equals(request.optString("kind")))return GeckoResult.fromValue(null);
-      if(!"route".equals(request.optString("kind")))return GeckoResult.fromValue(blocked());
-      return GeckoResult.fromValue(route(request.optString("url")));
+      if(!"route".equals(request.optString("kind")))return GeckoResult.fromValue(blocked().toString());
+      // Native callbacks accept primitive values; Port.postMessage performs its own bundle conversion.
+      return GeckoResult.fromValue(route(request.optString("url")).toString());
     }
   };
   JSONObject blocked(){return J.obj("type","socks","host","127.0.0.1","port",9,"proxyDNS",true,"failoverTimeout",1);}
@@ -134,13 +136,13 @@ class GeckoWebView extends FrameLayout {
         return GeckoResult.fromValue(popup);
       }
       @Override public GeckoResult<String> onLoadError(GeckoSession s,String target,WebRequestError error){
-        if(s==current){owner.pageError="网页连接失败，请检查当前环境网络或重新加载";owner.finishNavigation(owner.pageError,false);}
+        if(s==current&&!"about:blank".equals(target)){owner.pageError="网页连接失败，请检查当前环境网络或重新加载";owner.finishNavigation(owner.pageError,false);}
         return null;
       }
     });
     session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
-      @Override public void onPageStart(GeckoSession s,String target){if(s==current){url=target;cancelCallbacks();if(client!=null)client.onPageStarted(null,target,null);}}
-      @Override public void onPageStop(GeckoSession s,boolean success){if(s!=current)return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
+      @Override public void onPageStart(GeckoSession s,String target){loadingTargets.put(s,target);if(s==current&&!"about:blank".equals(target)){url=target;cancelCallbacks();if(client!=null)client.onPageStarted(null,target,null);}}
+      @Override public void onPageStop(GeckoSession s,boolean success){String target=loadingTargets.get(s);if(s!=current||target==null||"about:blank".equals(target))return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
     });
     session.setContentDelegate(new GeckoSession.ContentDelegate(){
       @Override public void onCloseRequest(GeckoSession s){if(s==current)closePopup();}
@@ -211,7 +213,7 @@ class GeckoWebView extends FrameLayout {
   }
   void useEngine(boolean value){if(value!=enabled)throw new IllegalStateException("切换内核需要重新打开当前环境");}
   boolean closePopup(){
-    if(popups.isEmpty())return false;GeckoSession old=current;popups.remove(old);surface.releaseSession();current=popups.isEmpty()?primary:popups.get(popups.size()-1);url=locations.getOrDefault(current,"");canBack=false;surface.setSession(current);current.setActive(true);ports.remove(old);locations.remove(old);old.close();cancelCallbacks();return true;
+    if(popups.isEmpty())return false;GeckoSession old=current;popups.remove(old);surface.releaseSession();current=popups.isEmpty()?primary:popups.get(popups.size()-1);url=locations.getOrDefault(current,"");canBack=false;surface.setSession(current);current.setActive(true);ports.remove(old);locations.remove(old);loadingTargets.remove(old);old.close();cancelCallbacks();return true;
   }
   public void loadUrl(String target){if(!enabled){system().loadUrl(target);return;}queued=target;if(!ready||current==null)return;if(!owner.guard.allowed())return;queued="";current.loadUri(target);}
   public String getUrl(){return enabled?url:system().getUrl();}

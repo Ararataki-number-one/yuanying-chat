@@ -71,7 +71,7 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(result.length()>0){((GeckoWebView)session.web).readCookies("http://127.0.0.1:8765/fixture",value->{
         try{result.put("nativeCookies",value==null?JSONObject.NULL:value);}catch(Exception ignored){}event("fixture",result);
       });return;}
-      if(session.navigationFailed)event("loadError",J.obj("failed",true));
+      if(session.navigationFailed)event("loadError",J.obj("failed",true,"url",session.web.getUrl(),"error",session.pageError,"guard",session.guard.allowed()));
       else session.handler.postDelayed(()->poll(serial),300);
     });
   }
