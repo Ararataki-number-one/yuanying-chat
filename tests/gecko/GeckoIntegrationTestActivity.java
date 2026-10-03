@@ -134,11 +134,12 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   String windowUrl(String step,long serial){return "http://127.0.0.1:8765/browser-window?step="+step+"&command="+serial;}
   void tapElement(long serial,String id){
-    session.web.evaluateJavascript("(()=>{const r=document.getElementById("+JSONObject.quote(id)+").getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()",raw->{
+    session.web.evaluateJavascript("(()=>{const r=document.getElementById("+JSONObject.quote(id)+").getBoundingClientRect(),v=visualViewport;return {x:r.left+r.width/2,y:r.top+r.height/2,pixels:devicePixelRatio*(v?.scale||1),left:v?.offsetLeft||0,top:v?.offsetTop||0}})()",raw->{
       if(serial!=run)return;JSONObject rect=J.parse(raw);if(!rect.has("x")){event("error",J.obj("error","tap element not available"));return;}
-      android.graphics.Matrix transform=new android.graphics.Matrix();session.web.current.getClientToScreenMatrix(transform);
-      float[] point={(float)rect.optDouble("x"),(float)rect.optDouble("y")};transform.mapPoints(point);
-      int[] origin=new int[2];session.web.surface.getLocationOnScreen(origin);point[0]=origin[0]+(point[0]-origin[0])*session.web.readingLayout;point[1]=origin[1]+(point[1]-origin[1])*session.web.readingLayout;
+      // The SDK compositor matrix can still describe the previous document at
+      // first paint. Use this document's viewport and the actual Android origin.
+      int[] origin=new int[2];session.web.surface.getLocationOnScreen(origin);double pixels=rect.optDouble("pixels")*session.web.readingLayout;
+      float[] point={(float)(origin[0]+(rect.optDouble("x")-rect.optDouble("left"))*pixels),(float)(origin[1]+(rect.optDouble("y")-rect.optDouble("top"))*pixels)};
       event("tapNeeded",J.obj("id",id+"-"+serial,"x",Math.round(point[0]),"y",Math.round(point[1]),"shown",session.web.isShown(),"width",session.web.getWidth(),"height",session.web.getHeight(),"scale",session.web.getScale(),"paused",session.browserPaused));
     });
   }
