@@ -26,10 +26,10 @@ class GeckoWebView extends FrameLayout {
   void setHost(android.app.Activity activity){displayContext.setBaseContext(activity==null?owner.context:activity);}
   OnTouchListener touches;
   @Override public void setOnTouchListener(OnTouchListener listener){touches=listener;}
-  @Override public boolean dispatchTouchEvent(MotionEvent event){if(touches!=null&&touches.onTouch(this,event))return true;return super.dispatchTouchEvent(event);}
+  @Override public boolean dispatchTouchEvent(MotionEvent event){if(zoomTarget!=null&&event.getActionMasked()==MotionEvent.ACTION_DOWN)cancelZoom();if(touches!=null&&touches.onTouch(this,event))return true;return super.dispatchTouchEvent(event);}
   void destroy(){
     if(destroyed)return;destroyed=true;
-    zoomEpoch++;owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
+    cancelZoom();owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
     callbacks.clear();cookieCallbacks.clear();
     if(surface!=null&&surface.getSession()!=null)surface.releaseSession();
     for(GeckoSession session:new ArrayList<>(locations.keySet()))if(session.isOpen())session.close();
@@ -54,6 +54,7 @@ class GeckoWebView extends FrameLayout {
   final BrowserSessionStore sessionStore;
   GeckoSession.SessionState startupState;
   boolean checkpointReady,routePrepared;float readingLayout=1;long zoomEpoch,recoveryWindow;int contentRecoveries;
+  GeckoSession zoomTarget;long zoomStarted;float zoomX,zoomY,zoomRadius;
   final Runnable recovery=()->recoverClosed();
   final Runnable checkpoint=this::saveCheckpoint;
   final BrowserBridgeRequests callbacks,cookieCallbacks;WebExtension.Port routePort;String cookieStamp="";
@@ -137,7 +138,9 @@ class GeckoWebView extends FrameLayout {
   }
   private void open(){
     if(!enabled||destroyed)return;
-    if(surface==null){surface=new GeckoView(displayContext);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
+    // Choose the official transform-capable backend once. Changing a live SDK
+    // surface backend can leave its surface callback detached (157.0 SDK).
+    if(surface==null){surface=new GeckoView(displayContext);surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
     primary=newSession();current=primary;primary.open(runtime);surface.setSession(primary);configure(desktop,owner.privacy.level());ready=true;
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
   }
@@ -174,7 +177,7 @@ class GeckoWebView extends FrameLayout {
       }
     });
     session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
-      @Override public void onPageStart(GeckoSession s,String target){if(destroyed||!locations.containsKey(s))return;loadingTargets.put(s,target);painted.remove(s);pageScales.remove(s);viewportWidths.remove(s);WebExtension.Port old=ports.remove(s);if(old!=null)callbacks.cancel(old);if(s==current&&!"about:blank".equals(target)){zoomEpoch++;url=target;scale=1;if(client!=null)client.onPageStarted(null,target,null);}}
+      @Override public void onPageStart(GeckoSession s,String target){if(destroyed||!locations.containsKey(s))return;loadingTargets.put(s,target);painted.remove(s);pageScales.remove(s);viewportWidths.remove(s);WebExtension.Port old=ports.remove(s);if(old!=null)callbacks.cancel(old);if(s==current&&!"about:blank".equals(target)){cancelZoom();url=target;scale=1;if(client!=null)client.onPageStarted(null,target,null);}}
       @Override public void onPageStop(GeckoSession s,boolean success){String target=loadingTargets.get(s);if(destroyed||s!=current||target==null||"about:blank".equals(target)||crashed.contains(s))return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});pageVisible(s);client.onPageFinished(null,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
       @Override public void onSessionStateChange(GeckoSession s,GeckoSession.SessionState state){if(destroyed||!locations.containsKey(s)||state.size()==0)return;states.put(s,new GeckoSession.SessionState(state));if(s==primary){owner.handler.removeCallbacks(checkpoint);owner.handler.postDelayed(checkpoint,300);}}
     });
@@ -234,7 +237,7 @@ class GeckoWebView extends FrameLayout {
     }
   };
   protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicHttps(Uri.parse(target));}
-  boolean readingPage(String target){return BrowserReadingPolicy.chat(target);}
+  boolean readingPage(String target){return BrowserReadingPolicy.chat(target)&&!LoginPagePolicy.login(target);}
   static String header(WebResponse response,String name){for(Map.Entry<String,String> entry:response.headers.entrySet())if(name.equalsIgnoreCase(entry.getKey()))return entry.getValue();return null;}
   void readCookies(String target,ValueCallback<String> callback){
     if(destroyed||!enabled||routePort==null||!allowedUrl(target)){callback.onReceiveValue(null);return;}
@@ -257,7 +260,7 @@ class GeckoWebView extends FrameLayout {
   private void contentStopped(GeckoSession session,String message){
     if(destroyed||!locations.containsKey(session))return;
     crashed.add(session);painted.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null)callbacks.cancel(port);
-    if(session==current){zoomEpoch++;failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
+    if(session==current){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
       if(owner.uiVisible&&owner.guard.allowed()&&canRecoverAutomatically()){owner.manualAttention=false;owner.beginNavigation(url,"正在恢复当前网页…");owner.handler.removeCallbacks(recovery);owner.handler.postDelayed(recovery,250);}
       else if(owner.uiVisible)failure(message);
     }
@@ -281,6 +284,7 @@ class GeckoWebView extends FrameLayout {
     current.setActive(!owner.browserPaused);crashed.remove(current);failed=false;configure(desktop,owner.privacy.level());return true;
   }catch(Exception error){failure("网页暂未恢复，请重新打开当前环境");return false;}}
   private void activate(GeckoSession session){
+    cancelZoom();
     GeckoSession previous=current;
     if(surface.getSession()!=null)surface.releaseSession();
     if(previous!=null){if(previous.isOpen())previous.setActive(false);WebExtension.Port port=ports.get(previous);if(port!=null)callbacks.cancel(port);}
@@ -346,25 +350,27 @@ class GeckoWebView extends FrameLayout {
   /** Below native fit, reflow the same document into a larger, uniformly scaled surface. */
   boolean setReadingLayout(float choice){
     if(!enabled)return false;float next=Math.min(1,BrowserReadingPolicy.bounded(choice));if(Math.abs(next-readingLayout)<.001f)return false;
-    zoomEpoch++;float previous=readingLayout;readingLayout=next;scale=scale/previous*next;
-    if(surface!=null){surface.setViewBackend(next<1?GeckoView.BACKEND_TEXTURE_VIEW:GeckoView.BACKEND_SURFACE_VIEW);surface.setPivotX(0);surface.setPivotY(0);surface.setScaleX(next);surface.setScaleY(next);}
+    cancelZoom();float previous=readingLayout;readingLayout=next;scale=scale/previous*next;
+    if(surface!=null){surface.setPivotX(0);surface.setPivotY(0);surface.setScaleX(next);surface.setScaleY(next);}
     requestLayout();return true;
   }
   public void zoomBy(float factor){
     if(!enabled){system().zoomBy(factor);return;}
     if(destroyed||failed||current==null||!current.isOpen()||surface==null||factor<=0||!Float.isFinite(factor))return;
-    final GeckoSession target=current;final long started=SystemClock.uptimeMillis(),epoch=++zoomEpoch;
+    cancelZoom();final GeckoSession target=current;final long started=SystemClock.uptimeMillis(),epoch=zoomEpoch;
     final float x=surface.getWidth()/2f,y=surface.getHeight()/2f,radius=Math.min(surface.getWidth()/5f,48*getResources().getDisplayMetrics().density);
     final float amount=Math.max(.1f,Math.min(10f,factor));
     if(radius<=0)return;
+    zoomTarget=target;zoomStarted=started;zoomX=x;zoomY=y;zoomRadius=radius;
     pinch(target,started,MotionEvent.ACTION_DOWN,1,x,y,radius);
     pinch(target,started,MotionEvent.ACTION_POINTER_DOWN|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,x,y,radius);
     for(int step=1;step<=10;step++){final int n=step;owner.handler.postDelayed(()->{
       if(target!=current||!enabled||destroyed||failed||epoch!=zoomEpoch||!target.isOpen())return;
       float next=radius*(1+(amount-1)*n/10f);pinch(target,started,MotionEvent.ACTION_MOVE,2,x,y,next);
-      if(n==10){pinch(target,started,MotionEvent.ACTION_POINTER_UP|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,x,y,next);pinch(target,started,MotionEvent.ACTION_UP,1,x,y,next);}
+      if(n==10){pinch(target,started,MotionEvent.ACTION_POINTER_UP|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,x,y,next);pinch(target,started,MotionEvent.ACTION_UP,1,x,y,next);zoomTarget=null;}
     },step*16L);}
   }
+  private void cancelZoom(){zoomEpoch++;if(zoomTarget!=null&&zoomTarget.isOpen())pinch(zoomTarget,zoomStarted,MotionEvent.ACTION_CANCEL,1,zoomX,zoomY,zoomRadius);zoomTarget=null;}
   private void pinch(GeckoSession target,long start,int action,int count,float x,float y,float radius){
     MotionEvent.PointerProperties[] properties=new MotionEvent.PointerProperties[count];MotionEvent.PointerCoords[] coordinates=new MotionEvent.PointerCoords[count];
     for(int i=0;i<count;i++){properties[i]=new MotionEvent.PointerProperties();properties[i].id=i;properties[i].toolType=MotionEvent.TOOL_TYPE_FINGER;coordinates[i]=new MotionEvent.PointerCoords();coordinates[i].x=x+(i==0?-radius:radius);coordinates[i].y=y;coordinates[i].pressure=1;coordinates[i].size=1;}

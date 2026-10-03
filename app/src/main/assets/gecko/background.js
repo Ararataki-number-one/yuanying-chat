@@ -35,7 +35,9 @@ const cookieReady=(async()=>{
       if(c.partitionKey)details.partitionKey=c.partitionKey;
       await browser.cookies.set(details);
     }
-  } finally {restoring=false;await checkpoint();}
+    // Do not replace a complete journal with a partial restore after an API error.
+    await cookieCommit;restoring=false;await checkpoint();
+  } catch(error) {throw error;}
 })();
 cookieReady.catch(()=>{}); // The connected native host explicitly awaits preparation below.
 // Each Android environment has its own runtime AND profile, including default cookie storage.

@@ -219,7 +219,11 @@ def main():
         switch=run(1,'systemProbe','engineSwitch');assert switch['gecko'] is False
         adb('shell','am','force-stop',package)
         check(run(1,'read'),1,True);check(run(2,'read'),2,True)
+        assert run(1,'sessionSeed','session')['token']=='synthetic-session-1'
         check(run(1,'clear'),1,False);check(run(2,'read'),2,True)
+        adb('shell','am','force-stop',package)
+        assert run(1,'sessionRead','session')['token']=='none','Explicit profile clear restored a deleted session cookie'
+        assert run(2,'sessionRead','session')['token']=='synthetic-session-2'
         bootstrap=run(1,'disableExtension','bootstrapCheck');assert bootstrap['navigationFailed'] is True,bootstrap
         check(run(2,'read'),2,True)
         # Exercise the real outer Activity after moving its retained Gecko surface.
