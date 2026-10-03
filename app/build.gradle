@@ -15,7 +15,7 @@ tasks.register('prepareGeckoManifest') {
             def types = ['socket','gpu','rdd','utility','gmplugin','ipdlunittest'] + (0..<40).collect { 'tab' + it }
             for (type in types) services.append('<service android:name="local.pocketchat.GeckoEnvironmentServices$E')
                 .append(slot).append(type).append('" android:exported="false" android:process=":gecko_env')
-                .append(slot).append('_').append(type).append('" />\n')
+                .append(slot).append('_').append(type).append('_disable_art_image_" />\n')
         }
         generatedManifest.get().asFile.with { parentFile.mkdirs(); setText(content.replace('</application>', services.toString() + '</application>'), 'UTF-8') }
     }

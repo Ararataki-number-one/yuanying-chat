@@ -3,7 +3,7 @@ package local.pocketchat;
 /** Dedicated official SDK child services for each existing environment process. */
 public final class GeckoEnvironmentServices {
   public static final class E0socket extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
-  public static final class E0gpu extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
+  public static final class E0gpu extends org.mozilla.gecko.process.GeckoServiceGpuProcess {}
   public static final class E0rdd extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E0utility extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E0gmplugin extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
@@ -49,7 +49,7 @@ public final class GeckoEnvironmentServices {
   public static final class E0tab38 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E0tab39 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E1socket extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
-  public static final class E1gpu extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
+  public static final class E1gpu extends org.mozilla.gecko.process.GeckoServiceGpuProcess {}
   public static final class E1rdd extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E1utility extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E1gmplugin extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
@@ -95,7 +95,7 @@ public final class GeckoEnvironmentServices {
   public static final class E1tab38 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E1tab39 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E2socket extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
-  public static final class E2gpu extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
+  public static final class E2gpu extends org.mozilla.gecko.process.GeckoServiceGpuProcess {}
   public static final class E2rdd extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E2utility extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E2gmplugin extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
@@ -141,7 +141,7 @@ public final class GeckoEnvironmentServices {
   public static final class E2tab38 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E2tab39 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E3socket extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
-  public static final class E3gpu extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
+  public static final class E3gpu extends org.mozilla.gecko.process.GeckoServiceGpuProcess {}
   public static final class E3rdd extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E3utility extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E3gmplugin extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
@@ -187,7 +187,7 @@ public final class GeckoEnvironmentServices {
   public static final class E3tab38 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E3tab39 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E4socket extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
-  public static final class E4gpu extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
+  public static final class E4gpu extends org.mozilla.gecko.process.GeckoServiceGpuProcess {}
   public static final class E4rdd extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E4utility extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E4gmplugin extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
@@ -233,7 +233,7 @@ public final class GeckoEnvironmentServices {
   public static final class E4tab38 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E4tab39 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E5socket extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
-  public static final class E5gpu extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
+  public static final class E5gpu extends org.mozilla.gecko.process.GeckoServiceGpuProcess {}
   public static final class E5rdd extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E5utility extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E5gmplugin extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
@@ -279,7 +279,7 @@ public final class GeckoEnvironmentServices {
   public static final class E5tab38 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E5tab39 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E6socket extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
-  public static final class E6gpu extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
+  public static final class E6gpu extends org.mozilla.gecko.process.GeckoServiceGpuProcess {}
   public static final class E6rdd extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E6utility extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E6gmplugin extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
@@ -325,7 +325,7 @@ public final class GeckoEnvironmentServices {
   public static final class E6tab38 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E6tab39 extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E7socket extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
-  public static final class E7gpu extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
+  public static final class E7gpu extends org.mozilla.gecko.process.GeckoServiceGpuProcess {}
   public static final class E7rdd extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E7utility extends org.mozilla.gecko.process.GeckoServiceChildProcess {}
   public static final class E7gmplugin extends org.mozilla.gecko.process.GeckoServiceChildProcess {}

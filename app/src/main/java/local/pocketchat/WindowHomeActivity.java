@@ -429,7 +429,7 @@ public class WindowHomeActivity extends Activity {
       if(step<2){step++;render();}else create();
     }
     void create(){
-      if(desktop&&!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)){DesignUi.feedback(WindowHomeActivity.this,"请更新 Android System WebView 后再使用电脑版");return;}
+      // New environments use Firefox; System compatibility is checked in that environment on opening.
       if(preparing)return;preparing=true;createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);
       Context source=Profiles.context(WindowHomeActivity.this,sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot);
       boolean clone=sourceType!=2;dialog.dismiss();

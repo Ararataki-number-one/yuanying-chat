@@ -121,12 +121,23 @@ def main():
         check(run(1,'clear'),1,False);check(run(2,'read'),2,True)
         bootstrap=run(1,'disableExtension','bootstrapCheck');assert bootstrap['navigationFailed'] is True,bootstrap
         check(run(2,'read'),2,True)
+        # Exercise the real outer Activity after moving its retained Gecko surface.
+        adb('logcat','-c')
+        adb('shell','am','start','-n',package+'/local.pocketchat.MainActivity','--es','openWindowAction','native-smoke')
+        time.sleep(4)
+        assert adb('shell','pidof',package).strip(),'Production Activity exited'
+        adb('shell','uiautomator','dump','/sdcard/gecko-production.xml')
+        hierarchy=adb('shell','cat','/sdcard/gecko-production.xml')
+        (OUT/'production-ui.xml').write_text(hierarchy)
+        for label in ['会话','环境','下载','网络','设置','原网页']:assert label in hierarchy,(label,hierarchy)
+        assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         report.update(status='passed',liveEnvironmentProcesses='passed',storageIsolation='passed',restartPersistence='passed',
             distinctHttpSocksRoutes='passed',workersAndWebSocket='passed',remoteDns='passed',guardBlocksRequests='passed',
-            nativeContextClear='passed',systemEngineFallback='passed',closedBootstrapWithoutExtension='passed')
+            nativeContextClear='passed',systemEngineFallback='passed',closedBootstrapWithoutExtension='passed',productionActivityShell='passed')
     except Exception as error:
         report.update(status='failed',error=f'{type(error).__name__}: {error}');raise
     finally:
+        if report.get('status')!='passed':(OUT/'last-device-log.txt').write_text(adb('logcat','-d'))
         report['steps']=steps
         (OUT/'device-results.json').write_text(json.dumps(report,indent=2)+'\n')
         (OUT/'device-route-trace.json').write_text(json.dumps(fixture.TRACE,indent=2)+'\n')

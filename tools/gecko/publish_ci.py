@@ -19,7 +19,7 @@ for abi in ['arm64-v8a']:
         (stage / name).write_bytes(part)
         artifact['chunks'].append({'file': name, 'bytes': len(part), 'sha256': hashlib.sha256(part).hexdigest()})
     manifest['artifacts'].append(artifact)
-for name in ['build.log', 'native-test.log', 'device-results.json', 'device-route-trace.json', 'device-native-events.txt', 'device-screen.png', 'last-device-log.txt']:
+for name in ['build.log', 'native-test.log', 'device-results.json', 'device-route-trace.json', 'device-native-events.txt', 'device-screen.png', 'last-device-log.txt', 'production-ui.xml']:
     if (out / name).exists():
         shutil.copy2(out / name, stage / name)
 (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
