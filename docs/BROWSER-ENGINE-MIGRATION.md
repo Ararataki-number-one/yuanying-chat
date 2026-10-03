@@ -15,11 +15,11 @@
 | 路线 | 本次确认的能力 | 仍未确认的能力 | 判断 |
 | --- | --- | --- | --- |
 | Android System WebView | 当前环境目录、代理和功能已经围绕它实现 | 用户当前 Google 登录仍被拒绝；桌面显示不改变内核类型 | 保留旧环境用于回退，继续 UA 修补不能作为根本修复 |
-| GeckoView | 官方源码提供可嵌入 Gecko、桌面 UA / viewport、`contextId` 分隔 Cookie / localStorage、APK 内置扩展消息桥 | Google / ChatGPT 真账号登录；每环境代理与 DNS、worker 路由；下载、附件、后台恢复；正式 AAR 集成 | 可做较小的非 WebView 实验包，先证明登录与隔离；不直接接入正式环境 |
+| GeckoView | 官方预编译 AAR 已集成；双 context 存储隔离、重启持久化、按环境清理与固定 SOCKS 测试通过 | Google / ChatGPT 真账号登录；项目每环境代理与 DNS / worker 路由；下载、附件和后台业务适配 | 独立实验已运行，代理事件仍缺少环境标识；不直接接入正式环境 |
 | Chromium 完整浏览器层 | 官方 Android 构建路径；桌面 Android / 扩展代码存在，详见原扩展评估 | 当前没有可嵌入完整浏览器 SDK、ARM64 产物和实际登录验证；不能把扩展开关当兼容证据 | 更符合长期 Chromium / Chrome 扩展方向，但需要内核构建与维护投入 |
 | Kiwi 或未核验的第三方内核 | 已有旧源码可读 | 维护、安全更新、版本与真实登录兼容性未得到证明 | 不使用停止维护或来源不明的内核补丁 |
 
-GeckoView 上游源码锁定 `bf9757d91e2e53b8ab836f2a08bf4c0275fdcd23`。`GeckoSessionSettings.contextId` 的文档明确说明分隔 Cookie 与 localStorage；这不代表每个 context 自动得到不同代理。`GeckoRuntime` 限制单个运行进程只创建一个 runtime，不能在同一进程创建多个 runtime 来假装网络隔离。配置文件接口被上游描述为调试配置，不能仅依赖这个入口就宣称生产环境代理可用。
+早期 GeckoView 源码评估锁定 `bf9757d91e2e53b8ab836f2a08bf4c0275fdcd23`；当前实测 SDK 官方 POM 对应源码 revision 为 `8eb25af4acf031ab1e06abf1a912275083c820ed`。`GeckoSessionSettings.contextId` 的文档明确说明分隔 Cookie 与 localStorage；这不代表每个 context 自动得到不同代理。`GeckoRuntime` 限制单个运行进程只创建一个 runtime，不能在同一进程创建多个 runtime 来假装网络隔离。配置文件接口被上游描述为调试配置，不能仅依赖这个入口就宣称生产环境代理可用。
 
 上游内置扩展接口 `ensureBuiltIn` 和 native messaging 可用于迁移项目已有网页观察代码；用户自定义插件仍暂停。Gecko 扩展安装文档要求 Mozilla 签名 `.xpi`，因此这条路线不能承诺直接安装 Chrome 商店 `.crx`。若以后仍要求原生 Chrome 扩展，应优先继续完整 Chromium 的验证。
 
@@ -55,7 +55,17 @@ flowchart TD
 4. **真实网页操作**：官方标题、输入框、模型与消息保持，附件上传、下载、草稿和后台回复恢复可用；不能在 Google 登录页面注入网页驱动或隐私伪装脚本。
 5. **迁移与回退**：新引擎选择先形成候选，保存后应用；任务进行中不迁移，旧 WebView 数据保留，回退可以继续使用。不得自动转移或清空登录数据。
 
-## 当前能交付什么
+## 官方预编译 SDK 实验更新（2026-10-03）
+
+已取得 Mozilla 官方 GeckoView `157.0.20260924084938` AAR，241,700,764 bytes，SHA256 `25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0`，与官方校验文件一致。新增独立 [engine-probe](../engine-probe/README.md) 项目；没有把 GeckoView 加入正式 APK，也没有修改正式 WebView 生命周期或环境目录。
+
+当前发布 SDK 要求 Android 编译平台 37.1；已单独准备 JDK 17、Gradle 9.8.0 和 Android Build Tools 37.0.0，原生产 SDK 35 保留。本地 Java 测试 Activity 对真实 SDK 编译通过。完整 Gradle 依赖解析遇到 Maven Central 出口 IP 限流，因此使用仓库 CI；CI 的 APK 编译与 Android 35 原生测试已通过，本地完整 Gradle 构建仍受限。ARM64 实验包为 102,187,163 bytes（约 102 MB），可独立安装用于受控测试。
+
+SDK 内实际打包的代理实现暴露一处迁移缺口：`getCookieStoreIdForOriginAttributes` 未处理 `geckoViewSessionContextId`。所以 `contextId` 分隔存储并不能保证 `proxy.onRequest.cookieStoreId` 能识别环境。实际双环境 Cookie、localStorage、IndexedDB、CacheStorage、Service Worker 隔离与持久化测试已通过；使用官方按环境清理 API 后，重启仍保持删除结果，另一环境数据保留。固定 SOCKS 路线的 DNS、重定向、WebSocket、worker 与断线不直连测试也通过。代理事件在两个环境均返回 `firefox-default`，Service Worker 请求 `tabId=-1`，不能将全局代理结果当作正式应用每环境代理通过。
+
+实际结果和官方 SDK 证据见 [SDK 实验记录](../verification/android-engine-sdk/README.md)。Google / ChatGPT 真账号登录尚未测试；新 SDK 也不承诺直接安装 Chrome CRX。只有独立环境、正式线路和真机登录全部验收之后，才决定是否迁移。
+
+## 1.5.6 当时的交付与访问限制（历史记录）
 
 1.5.6 完成现有 WebView 的阅读优化和本次源码评估，**没有引入 GeckoView 或 Chromium 内核，也没有修复 Google 登录限制**。
 
