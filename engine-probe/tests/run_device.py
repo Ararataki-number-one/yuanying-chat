@@ -119,9 +119,9 @@ def main():
     args = parser.parse_args(); OUTPUT.mkdir(parents=True, exist_ok=True)
     def adb(*arguments, timeout=30):
         return subprocess.check_output([args.adb, '-s', args.serial, *arguments], timeout=timeout, text=True)
-    http = http.server.ThreadingHTTPServer(('127.0.0.1', 8765), Fixture)
+    http_server = http.server.ThreadingHTTPServer(('127.0.0.1', 8765), Fixture)
     socks = ThreadedSocks(('127.0.0.1', 1080), Socks)
-    for server in [http, socks]:
+    for server in [http_server, socks]:
         threading.Thread(target=server.serve_forever, daemon=True).start()
     adb('reverse', 'tcp:8765', 'tcp:8765'); adb('reverse', 'tcp:1080', 'tcp:1080')
     adb('shell', 'pm', 'clear', 'local.pocketchat.engineprobe')
@@ -183,7 +183,9 @@ def main():
             '--ei', 'context', '1', '--es', 'fixtureAction', 'network')
         time.sleep(15)
         assert sum(x['kind'] == 'http' for x in TRACE) == before, 'proxy outage caused direct requests'
-        logs.append(adb('logcat', '-d', '-s', 'PocketEngineProbe:I', '*:S'))
+        outage_log = adb('logcat', '-d', '-s', 'PocketEngineProbe:I', '*:S')
+        assert '"kind":"loadError"' in outage_log, 'proxy outage did not produce an actual navigation failure'
+        logs.append(outage_log)
         report.update(status='passed', storageIsolation='passed', persistentStorage='passed',
             globalSocksRoute='passed', proxyRemoteDns='passed', workersAndWebSocket='passed',
             proxyOutageNoDirect='passed')
@@ -195,7 +197,7 @@ def main():
         (OUTPUT / 'device-results.json').write_text(json.dumps(report, indent=2) + '\n')
         (OUTPUT / 'device-route-trace.json').write_text(json.dumps(TRACE, indent=2) + '\n')
         (OUTPUT / 'device-native-events.txt').write_text('\n'.join(logs))
-        http.shutdown()
+        http_server.shutdown()
 
 
 if __name__ == '__main__':
