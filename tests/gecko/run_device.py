@@ -135,7 +135,13 @@ def main():
                         tapped.add(tap['id']);time.sleep(.4);print(json.dumps(event),flush=True)
                         adb('shell','input','tap',str(tap['x']),str(tap['y']))
                         if tap['id'].startswith('composer-'):
-                            time.sleep(.5);adb('shell','input','text','native-input-ok')
+                            # adb input text emits a word's hardware key events
+                            # as fast as possible. Give the real browser/IME on
+                            # this CPU-limited emulator human typing intervals;
+                            # keep asserting the exact ordered text below.
+                            time.sleep(.5)
+                            for character in 'native-input-ok':
+                                adb('shell','input','text',character);time.sleep(.15)
                     continue
                 if event.get('kind')=='error':logs.append(output);raise AssertionError(event)
                 if event.get('kind')==kind:
