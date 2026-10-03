@@ -26,7 +26,7 @@ class GeckoWebView extends FrameLayout {
   void setHost(android.app.Activity activity){displayContext.setBaseContext(activity==null?owner.context:activity);}
   OnTouchListener touches;
   @Override public void setOnTouchListener(OnTouchListener listener){touches=listener;}
-  @Override public boolean dispatchTouchEvent(MotionEvent event){if(zoomTarget!=null&&event.getActionMasked()==MotionEvent.ACTION_DOWN)cancelZoom();if(touches!=null&&touches.onTouch(this,event))return true;return super.dispatchTouchEvent(event);}
+  @Override public boolean dispatchTouchEvent(MotionEvent event){if(zoomTarget!=null&&event.getActionMasked()==MotionEvent.ACTION_DOWN)cancelZoom();if(touches!=null&&touches.onTouch(this,event))return true;boolean handled=super.dispatchTouchEvent(event);syncSurfaceOrigin();return handled;}
   void destroy(){
     if(destroyed)return;destroyed=true;
     cancelZoom();owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
@@ -275,6 +275,7 @@ class GeckoWebView extends FrameLayout {
     if(!allowedUrl(target))target=owner.resumeUrl();
     GeckoSession.SessionState state=states.get(current);
     if(!reopenCurrent())return false;
+    owner.pageMemory.restorePending=true;
     owner.pageError="";owner.manualAttention=false;owner.beginNavigation(target,"正在恢复当前网页…");
     if(state!=null&&state.size()>0)current.restoreState(state);else current.loadUri(target);
     return true;
@@ -373,12 +374,15 @@ class GeckoWebView extends FrameLayout {
   private void cancelZoom(){zoomEpoch++;if(zoomTarget!=null&&zoomTarget.isOpen())pinch(zoomTarget,zoomStarted,MotionEvent.ACTION_CANCEL,1,zoomX,zoomY,zoomRadius);zoomTarget=null;}
   private void pinch(GeckoSession target,long start,int action,int count,float x,float y,float radius){
     MotionEvent.PointerProperties[] properties=new MotionEvent.PointerProperties[count];MotionEvent.PointerCoords[] coordinates=new MotionEvent.PointerCoords[count];
-    for(int i=0;i<count;i++){properties[i]=new MotionEvent.PointerProperties();properties[i].id=i;properties[i].toolType=MotionEvent.TOOL_TYPE_FINGER;coordinates[i]=new MotionEvent.PointerCoords();coordinates[i].x=x+(i==0?-radius:radius);coordinates[i].y=y;coordinates[i].pressure=1;coordinates[i].size=1;}
+    int[] origin=new int[2];if(surface!=null)surface.getLocationOnScreen(origin);
+    for(int i=0;i<count;i++){properties[i]=new MotionEvent.PointerProperties();properties[i].id=i;properties[i].toolType=MotionEvent.TOOL_TYPE_FINGER;coordinates[i]=new MotionEvent.PointerCoords();coordinates[i].x=origin[0]+x+(i==0?-radius:radius);coordinates[i].y=origin[1]+y;coordinates[i].pressure=1;coordinates[i].size=1;}
     MotionEvent event=MotionEvent.obtain(start,SystemClock.uptimeMillis(),action,count,properties,coordinates,0,0,1,1,0,0,InputDevice.SOURCE_TOUCHSCREEN,0);
+    event.offsetLocation(-origin[0],-origin[1]);
     target.getPanZoomController().onTouchEvent(event);event.recycle();
   }
   @Override protected void onFocusChanged(boolean gain,int direction,Rect previous){super.onFocusChanged(gain,direction,previous);if(enabled&&gain&&surface!=null)surface.requestFocus();}
   @Override public boolean onInterceptTouchEvent(MotionEvent event){return !enabled&&super.onInterceptTouchEvent(event);}
   @Override protected void onMeasure(int width,int height){super.onMeasure(width,height);if(surface!=null)surface.measure(MeasureSpec.makeMeasureSpec(Math.round(getMeasuredWidth()/readingLayout),MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(Math.round(getMeasuredHeight()/readingLayout),MeasureSpec.EXACTLY));}
-  @Override protected void onLayout(boolean changed,int l,int t,int r,int b){super.onLayout(changed,l,t,r,b);if(surface!=null)surface.layout(0,0,surface.getMeasuredWidth(),surface.getMeasuredHeight());}
+  private void syncSurfaceOrigin(){if(surface!=null&&surface.isAttachedToWindow()&&surface.getRootWindowInsets()!=null)surface.gatherTransparentRegion(null);}
+  @Override protected void onLayout(boolean changed,int l,int t,int r,int b){super.onLayout(changed,l,t,r,b);if(surface!=null){surface.layout(0,0,surface.getMeasuredWidth(),surface.getMeasuredHeight());syncSurfaceOrigin();}}
 }

@@ -171,14 +171,14 @@ def main():
         # Keep both processes live and repeatedly move the surface between foreground tasks.
         for _ in range(6):
             for context in [1,2]:
-                result=run(context,'sessionRead','session');assert result['token']==f'synthetic-session-{context}' and result['profileForeground'],result
+                result=run(context,'sessionLive','session');assert result['token']==f'synthetic-session-{context}' and result['profileForeground'] and result['draft']==f'session-draft-{context}',result
         adb('shell','input','keyevent','KEYCODE_HOME');time.sleep(2)
         for context in [1,2]:
-            resumed=run(context,'sessionRead','session');assert resumed['token']==f'synthetic-session-{context}' and resumed['profileForeground'],resumed
+            resumed=run(context,'sessionLive','session');assert resumed['token']==f'synthetic-session-{context}' and resumed['profileForeground'] and resumed['draft']==f'session-draft-{context}',resumed
             saved=run(context,'sessionCheckpoint','checkpoint');assert saved['saved'],saved
         adb('shell','am','force-stop',package)
         for context in [1,2]:
-            restored=run(context,'resumeSaved','session');assert restored['token']==f'synthetic-session-{context}' and restored['profileForeground'],restored
+            restored=run(context,'resumeSaved','session');assert restored['token']==f'synthetic-session-{context}' and restored['profileForeground'] and restored['draft']==f'session-draft-{context}',restored
         assert run(1,'sessionLogout','session')['token']=='none'
         # Wait for the official cookie removal event to reach the private journal.
         run(1,'sessionCheckpoint','checkpoint');adb('shell','am','force-stop',package)

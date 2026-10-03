@@ -16,7 +16,7 @@ final class BrowserSessionStore {
   void read(Consumer<String> done){io.execute(()->{
     String value=null;
     try(InputStream in=file.openRead();ByteArrayOutputStream out=new ByteArrayOutputStream()){
-      byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>LIMIT)throw new IOException("Session too large");out.write(buffer,0,n);}value=out.toString(StandardCharsets.UTF_8);
+      byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>LIMIT)throw new IOException("Session too large");out.write(buffer,0,n);}value=new String(out.toByteArray(),StandardCharsets.UTF_8);
     }catch(IOException ignored){}done.accept(value);
   });}
   void write(String value){if(value==null||value.length()>LIMIT)return;byte[] data=value.getBytes(StandardCharsets.UTF_8);if(data.length>LIMIT)return;io.execute(()->{

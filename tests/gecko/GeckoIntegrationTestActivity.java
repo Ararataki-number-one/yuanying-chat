@@ -52,12 +52,12 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
     if("readingZoom".equals(action)){readingZoom(serial,0,new JSONArray(),SystemClock.elapsedRealtime()+20000);return;}
     if("readingInput".equals(action)){tapElement(serial,"composer");readingInput(serial,SystemClock.elapsedRealtime()+15000);return;}
-    if("sessionSeed".equals(action)||"sessionRead".equals(action)||"sessionLogout".equals(action)||"killRestore".equals(action)||"resumeSaved".equals(action)){
+    if("sessionSeed".equals(action)||"sessionRead".equals(action)||"sessionLive".equals(action)||"sessionLogout".equals(action)||"killRestore".equals(action)||"resumeSaved".equals(action)){
       if("killRestore".equals(action)){
         org.mozilla.geckoview.GeckoSession stopped=web.current;stopped.close();stopped.getContentDelegate().onKill(stopped);
       }else if("resumeSaved".equals(action)){
         String target=GeckoWebView.stateUrl(web.startupState);if(!target.contains("/browser-session")){event("error",J.obj("error","private session checkpoint missing"));return;}web.loadUrl(target);
-      }else web.loadUrl("http://127.0.0.1:8765/browser-session?context="+(slot+1)+"&action="+action);
+      }else if(!"sessionLive".equals(action))web.loadUrl("http://127.0.0.1:8765/browser-session?context="+(slot+1)+"&action="+action);
       sessionResult(serial,SystemClock.elapsedRealtime()+20000);return;
     }
     if("sessionCheckpoint".equals(action)){web.checkpointState();session.handler.postDelayed(()->event("checkpoint",J.obj("saved",web.states.containsKey(web.primary))),1000);return;}
