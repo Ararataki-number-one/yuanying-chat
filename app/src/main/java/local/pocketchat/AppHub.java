@@ -69,7 +69,7 @@ final class AppHub {
   void networkFor(int slot){networkTab=0;networkWorkspace.focus(slot);select(NETWORK);}
   void text(String title,String value){DesignUi.message(a,title,value);}
   void about(){
-    LinearLayout box=layout("关于元婴期院士");note(box,"Android ChatGPT 网页客户端\nv1.5.3 · 会话与网络界面预览");
+    LinearLayout box=layout("关于元婴期院士");note(box,"Android ChatGPT 网页客户端\nv1.5.4 · 环境网页显示方式预览");
     action(box,"功能介绍",()->text("功能介绍","最多 8 个独立环境，支持分组、备注和收藏；原网页与简洁聊天、历史、附件、下载、后台通知、固定出口、隐私保护与环境自检。"));
     action(box,"使用帮助",()->text("使用帮助","在环境列表新建或编辑环境。编辑页分为基本信息、网络配置、浏览器与使用偏好。\n\n环境分别登录。网络页显示所属环境；应用设置控制默认入口与系统权限。下载页汇总全部环境文件。\n\n保护等级改变后会重新加载连接。草稿保存不会应用设置。尚未开放的能力列在功能支持范围。"));
     action(box,"第三方许可",()->text("第三方许可","源码和许可随源码包提供。内置 Mihomo、AndroidX、KaTeX、Marked、DOMPurify 等组件保留原有许可说明。"));

@@ -75,7 +75,7 @@ public class WindowHomeTestActivity extends WindowHomeActivity {
         legacy.execSQL("CREATE TABLE environments(slot INTEGER PRIMARY KEY,name TEXT,created INTEGER,draft TEXT,pid INTEGER,seen INTEGER,connected INTEGER,waiting INTEGER,mode TEXT,privacy INTEGER,opened INTEGER,favorite INTEGER,problem TEXT,page TEXT)");
         legacy.execSQL("CREATE TABLE app_settings(name TEXT PRIMARY KEY,value TEXT NOT NULL)");
         legacy.execSQL("INSERT INTO environments VALUES(0,'迁移保留',1,'{\"name\":\"旧草稿\"}',0,0,0,0,'手机网络',1,123,1,'','原网页')");
-        catalog.onUpgrade(legacy,3,4);
+        catalog.onUpgrade(legacy,3,5);
         try(android.database.Cursor row=legacy.rawQuery("SELECT name,draft,opened,favorite,group_name,notes FROM environments",null)){
           row.moveToFirst();check("v3 upgrade preserves names, drafts, opened times, and favorites",row.getString(0).equals("迁移保留")&&row.getString(1).contains("旧草稿")&&row.getLong(2)==123&&row.getInt(3)==1&&row.getString(4).isEmpty()&&row.getString(5).isEmpty());
         }
@@ -89,12 +89,12 @@ public class WindowHomeTestActivity extends WindowHomeActivity {
     try{
       wizard.show();wizard.name.setText("");((Button)wizard.actions.getChildAt(1)).performClick();
       check("Invalid wizard name keeps the form and shows an inline error",wizard.step==0&&wizard.dialog.isShowing()&&wizard.name.getError()!=null);
-      wizard.name.setText("交互回归环境");((Button)wizard.actions.getChildAt(1)).performClick();
-      wizard.sourceType=2;wizard.render();((Button)wizard.actions.getChildAt(1)).performClick();
+      wizard.name.setText("交互回归环境");wizard.displayChoice.setSelection(1);((Button)wizard.actions.getChildAt(1)).performClick();
+      check("Desktop display selection stays detached before creation",wizard.desktop&&!catalog.item(3).optBoolean("desktopSite"));wizard.sourceType=2;wizard.render();((Button)wizard.actions.getChildAt(1)).performClick();
       wizard.dialog.onBackPressed();
       check("System back from confirmation returns to network without discarding choices",wizard.step==1&&wizard.sourceType==2&&wizard.title.equals("交互回归环境")&&wizard.dialog.isShowing());
       ((Button)wizard.actions.getChildAt(0)).performClick();
-      check("Footer back restores the previously entered environment name",wizard.step==0&&wizard.name.getText().toString().equals("交互回归环境"));
+      check("Footer back restores the previously entered environment name",wizard.step==0&&wizard.name.getText().toString().equals("交互回归环境")&&wizard.displayChoice.getSelectedItemPosition()==1);
       ((Button)wizard.actions.getChildAt(0)).performClick();
       check("Leaving an edited creation form requires an explicit discard choice",wizard.exitPrompt!=null&&wizard.exitPrompt.isShowing()&&wizard.dialog.isShowing()&&!catalog.item(3).optBoolean("created"));
       wizard.exitPrompt.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
