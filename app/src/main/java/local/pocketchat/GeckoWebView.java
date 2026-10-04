@@ -34,7 +34,7 @@ class GeckoWebView extends FrameLayout {
     if(surface!=null&&surface.getSession()!=null)surface.releaseSession();
     for(GeckoSession session:new ArrayList<>(locations.keySet()))if(session.isOpen())session.close();
     if(primary!=null&&primary.isOpen())primary.close();
-    ports.clear();popups.clear();locations.clear();backStates.clear();pageScales.clear();viewportWidths.clear();loadingTargets.clear();painted.clear();usable.clear();crashed.clear();states.clear();
+    ports.clear();popups.clear();locations.clear();backStates.clear();pageScales.clear();viewportWidths.clear();loadingTargets.clear();pendingLoads.clear();painted.clear();usable.clear();crashed.clear();states.clear();
     routePort=null;ready=false;
     uploadWorker.execute(()->{for(GeckoUploadFiles.Selection files:uploadFiles)files.delete();uploadFiles.clear();});uploadWorker.shutdown();
     if(legacy!=null)legacy.destroy();
@@ -49,6 +49,7 @@ class GeckoWebView extends FrameLayout {
   final Map<GeckoSession,Boolean> backStates=new IdentityHashMap<>();
   final Map<GeckoSession,Float> pageScales=new IdentityHashMap<>(),viewportWidths=new IdentityHashMap<>();
   final Map<GeckoSession,String> loadingTargets=new IdentityHashMap<>();
+  final Set<GeckoSession> pendingLoads=Collections.newSetFromMap(new IdentityHashMap<>());
   final Set<GeckoSession> painted=Collections.newSetFromMap(new IdentityHashMap<>());
   final Set<GeckoSession> usable=Collections.newSetFromMap(new IdentityHashMap<>());
   final Set<GeckoSession> crashed=Collections.newSetFromMap(new IdentityHashMap<>());
@@ -167,7 +168,10 @@ class GeckoWebView extends FrameLayout {
         return GeckoResult.fromValue(allowed?AllowOrDeny.ALLOW:AllowOrDeny.DENY);
       }
       @Override public void onLocationChange(GeckoSession s,String target,List<GeckoSession.PermissionDelegate.ContentPermission> permissions,Boolean gesture){
-        if(destroyed||!locations.containsKey(s))return;locations.put(s,target);if(s!=current)return;url=target;if(MainActivity.chatUrl(target)&&!LoginPagePolicy.login(target))owner.prefs.edit().putString("url",target).apply();
+        if(destroyed||!locations.containsKey(s))return;boolean committed=pendingLoads.remove(s);locations.put(s,target);
+        if(committed){painted.remove(s);usable.remove(s);pageScales.remove(s);viewportWidths.remove(s);loadingTargets.put(s,target);}
+        if(s!=current)return;url=target;
+        if(committed&&!"about:blank".equals(target)){cancelZoom();if(client!=null)client.onPageStarted(null,target,null);}if(MainActivity.chatUrl(target)&&!LoginPagePolicy.login(target))owner.prefs.edit().putString("url",target).apply();
       }
       @Override public void onCanGoBack(GeckoSession s,boolean value){if(destroyed||!locations.containsKey(s))return;backStates.put(s,value);if(s==current)canBack=value;}
       @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){
@@ -183,8 +187,11 @@ class GeckoWebView extends FrameLayout {
       }
     });
     session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
-      @Override public void onPageStart(GeckoSession s,String target){if(destroyed||!locations.containsKey(s))return;loadingTargets.put(s,target);painted.remove(s);usable.remove(s);pageScales.remove(s);viewportWidths.remove(s);WebExtension.Port old=ports.remove(s);if(old!=null)callbacks.cancel(old);if(s==current&&!"about:blank".equals(target)){cancelZoom();url=target;scale=1;if(client!=null)client.onPageStarted(null,target,null);}}
-      @Override public void onPageStop(GeckoSession s,boolean success){String target=loadingTargets.get(s);if(destroyed||s!=current||target==null||"about:blank".equals(target)||crashed.contains(s))return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});pageVisible(s);client.onPageFinished(null,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
+      // A download starts a network load without replacing the current document.
+      // Only an authoritative location commit may invalidate its state or bridge.
+      @Override public void onPageStart(GeckoSession s,String target){if(destroyed||!locations.containsKey(s))return;loadingTargets.put(s,target);pendingLoads.add(s);}
+
+      @Override public void onPageStop(GeckoSession s,boolean success){String target=loadingTargets.get(s);boolean uncommitted=pendingLoads.remove(s);if(uncommitted&&usable.contains(s)){loadingTargets.put(s,locations.get(s));return;}if(destroyed||s!=current||target==null||"about:blank".equals(target)||crashed.contains(s))return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});pageVisible(s);client.onPageFinished(null,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
       @Override public void onSessionStateChange(GeckoSession s,GeckoSession.SessionState state){if(destroyed||!locations.containsKey(s)||state.size()==0)return;states.put(s,new GeckoSession.SessionState(state));if(s==primary){owner.handler.removeCallbacks(checkpoint);owner.handler.postDelayed(checkpoint,300);}}
     });
     session.setContentDelegate(new GeckoSession.ContentDelegate(){
@@ -193,7 +200,7 @@ class GeckoWebView extends FrameLayout {
       @Override public void onKill(GeckoSession s){contentStopped(s,"网页被系统关闭，点按重新加载可恢复当前环境");}
       @Override public void onFirstContentfulPaint(GeckoSession s){pageVisible(s);}
       @Override public void onExternalResponse(GeckoSession s,WebResponse response){
-        if(!destroyed&&s==current&&owner.guard.allowed()&&responseDownload!=null){responseDownload.receive(response);return;}
+        if(!destroyed&&s==current&&owner.guard.allowed()&&responseDownload!=null){pendingLoads.remove(s);loadingTargets.put(s,locations.get(s));responseDownload.receive(response);return;}
         if(response.body!=null)try{response.body.close();}catch(IOException ignored){}
       }
     });
@@ -280,7 +287,7 @@ class GeckoWebView extends FrameLayout {
   }
   private void contentStopped(GeckoSession session,String message){
     if(destroyed||!locations.containsKey(session))return;
-    crashed.add(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null)callbacks.cancel(port);
+    crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null)callbacks.cancel(port);
     if(session==current){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
       if(owner.uiVisible&&owner.guard.allowed()&&canRecoverAutomatically()){owner.manualAttention=false;owner.beginNavigation(url,"正在恢复当前网页…");owner.handler.removeCallbacks(recovery);owner.handler.postDelayed(recovery,250);}
       else if(owner.uiVisible)failure(message);
@@ -331,7 +338,7 @@ class GeckoWebView extends FrameLayout {
     if(destroyed||!popups.remove(old))return false;
     if(old==current){activate(popups.isEmpty()?primary:popups.get(popups.size()-1));owner.pageError="";if(crashed.contains(current))contentStopped(current,"上一页被系统关闭，点按重新加载可恢复");else{owner.beginNavigation(url,"正在返回上一页…");if(client!=null&&painted.contains(current)){client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}}}
     WebExtension.Port port=ports.remove(old);if(port!=null)callbacks.cancel(port);
-    locations.remove(old);backStates.remove(old);pageScales.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);
+    locations.remove(old);backStates.remove(old);pageScales.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);
     if(old.isOpen())old.close();return true;
   }
   public void loadUrl(String target){
@@ -354,7 +361,7 @@ class GeckoWebView extends FrameLayout {
     try{port.postMessage(J.obj("kind","evaluate","id",id,"code",code));}catch(Exception error){callbacks.complete(port,id,"null");}
   }
   public void stopLoading(){
-    if(enabled){queued="";if(current!=null){loadingTargets.remove(current);current.stop();}}
+    if(enabled){queued="";if(current!=null){loadingTargets.remove(current);pendingLoads.remove(current);current.stop();}}
     else system().stopLoading();
   }
   public void setWebViewClient(WebViewClient value){client=value;if(!enabled)system().setWebViewClient(value);}

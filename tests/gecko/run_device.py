@@ -170,7 +170,7 @@ def main():
         assert cookies==({'probe':expected,'nativeOnly':expected} if populated else {}),result
     report={'actualAndroidExecution':True,'releaseMode':True,'androidSdk':sdk,'androidAbi':adb('shell','getprop','ro.product.cpu.abi').strip(),'viewport':'1080x2400 / 420 dpi','sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
     try:
-        usability=run(1,'usability','usability');assert usability['mobileVisible'] and usability['upload']=='sample.txt:synthetic-upload' and usability['csv']=='name,value\nsynthetic,42\n' and usability['blob']==usability['csv'],usability
+        usability=run(1,'usability','usability');assert usability['documentPreserved'] and usability['mobileVisible'] and usability['upload']=='sample.txt:synthetic-upload' and usability['csv']=='name,value\nsynthetic,42\n' and usability['blob']==usability['csv'],usability
         report['browserUsability']=usability
         check(run(1,'seed'),1,True);check(run(2,'read'),2,False)
         check(run(2,'seed'),2,True);check(run(1,'read'),1,True)
