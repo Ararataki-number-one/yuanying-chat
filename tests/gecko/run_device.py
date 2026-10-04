@@ -329,10 +329,13 @@ def main():
         adb('shell','input','keyevent','KEYCODE_BACK') # Never install the synthetic replacement.
         report['appUpdates']=dict(downloadManager='passed (real system HTTP transfer)',good=good,failures=update_checks,provider=access,settingsUi='passed',androidInstaller='passed (opened; synthetic APK not installed)')
         queued=run(2,'queuedChanges','queuedChanges');assert all(queued[key] for key in ['savedWhileReplying','oldRouteKept','browserSavedWithoutApplying','replyCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn']),queued
-        deletion=management('deleteOne');check(run(2,'read'),2,False)
+        foreign_before=run(1,'foreignPreferences','foreignPreferences');assert foreign_before['marker']=='prime-target',foreign_before
+        deletion=management('deleteOne')
+        foreign_after=run(1,'foreignPreferences','foreignPreferences');assert not foreign_after['marker'],foreign_after
+        check(run(2,'read'),2,False)
         background_settings=run(2,'backgroundSettings','backgroundSettings');assert all(background_settings.values()),background_settings
         deletion_zero=management('deleteZero')
-        report['environmentManagement']=dict(queued=queued,backgroundSettings=background_settings,deleteOne=deletion,deleteZero=deletion_zero,slotReuseLogin='passed (old controlled cookie absent)',privacy=privacy,completion=completion)
+        report['environmentManagement']=dict(queued=queued,backgroundSettings=background_settings,deleteOne=deletion,deleteZero=deletion_zero,foreignPreferenceCache='passed (live parent sees cleared preferences)',slotReuseLogin='passed (old controlled cookie absent)',privacy=privacy,completion=completion)
         report.update(status='passed',liveEnvironmentProcesses='passed',storageIsolation='passed',restartPersistence='passed',
             distinctHttpSocksRoutes='passed',workersAndWebSocket='passed',remoteDns='passed',guardBlocksRequests='passed',
             nativeContextClear='passed',systemEngineFallback='passed',closedBootstrapWithoutExtension='passed',productionActivityShell='passed',

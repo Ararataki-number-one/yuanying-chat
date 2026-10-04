@@ -11,7 +11,7 @@ final class ProfileContext extends ContextWrapper {
   ProfileContext(Context base,int id){super(base instanceof ProfileContext?((ProfileContext)base).getBaseContext():base);if(id<0||id>=Profiles.MAX)throw new IllegalArgumentException();slot=id;}
   String name(String value){if(slot==0)return value;if(value.contains("/")||value.contains("\\"))throw new IllegalArgumentException("Invalid profile storage name");return "env"+slot+"_"+value;}
   @Override public Context getApplicationContext(){Context app=super.getApplicationContext();if(app instanceof ProfileContext)app=((ProfileContext)app).getBaseContext();return app instanceof PocketApplication?((PocketApplication)app).profile(slot):new ProfileContext(app,slot);}
-  @Override public android.content.SharedPreferences getSharedPreferences(String name,int mode){return super.getSharedPreferences(name(name),mode);}
+  @Override public android.content.SharedPreferences getSharedPreferences(String name,int mode){return super.getSharedPreferences(name(name),mode|(slot==Profiles.processSlot()?0:Context.MODE_MULTI_PROCESS));}
   @Override public File getDatabasePath(String name){return super.getDatabasePath(name(name));}
   @Override public SQLiteDatabase openOrCreateDatabase(String name,int mode,SQLiteDatabase.CursorFactory factory){return super.openOrCreateDatabase(name(name),mode,factory);}
   @Override public SQLiteDatabase openOrCreateDatabase(String name,int mode,SQLiteDatabase.CursorFactory factory,DatabaseErrorHandler handler){return super.openOrCreateDatabase(name(name),mode,factory,handler);}

@@ -48,6 +48,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     // onNewIntent arrives before onResume when bringing another task forward.
     // AndroidX publishes RESUMED in onActivityPostResumed, after Activity.onResume.
     if(!activityResumed||!processForeground()){session.handler.postDelayed(()->waitReady(serial),50);return;}
+    if("foreignPreferences".equals(action)){event("foreignPreferences",J.obj("marker",Profiles.context(this,1).getSharedPreferences("chat",0).getString("managementMarker","")));return;}
     if("systemProbe".equals(action)){event("engineSwitch",J.obj("gecko",web.enabled));return;}
     if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
     if("switchGecko".equals(action)&&!web.enabled){web.useEngine(true);action="read";}
@@ -97,7 +98,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     session.handler.postDelayed(()->event("backgroundSettings",J.obj("saved",saved,"actualBackground",!session.uiVisible&&!processForeground(),"replyFinished",session.pending==null,"automaticallyApplied",!DeferredBrowserSettings.pending(session)&&session.privacy.wantsDesktop()!=desktop&&session.privacy.desktop!=desktop)),8500);
   }
   void queuedChanges(long serial){
-    String original=session.prefs.getString("proxy","");int level=session.privacy.level();boolean desktop=session.privacy.wantsDesktop();
+    session.prefs.edit().putString("managementMarker","prime-target").commit();String original=session.prefs.getString("proxy","");int level=session.privacy.level();boolean desktop=session.privacy.wantsDesktop();
     session.pending=J.obj("id","synthetic-queued-question","kind","web","confirmed",true);session.navigating=false;session.connecting=false;session.state=J.obj("busy",false);
     session.changed();boolean browserSaved=DeferredBrowserSettings.save(session,2,!desktop),livePolicyKept=session.privacy.level()==level&&session.privacy.wantsDesktop()==desktop;
     NetworkBridge.run(this,slot,"external",J.obj("proxy","","requireExternalVpn",true),NetworkChanges.hash(this),(ok,message,snapshot)->{
