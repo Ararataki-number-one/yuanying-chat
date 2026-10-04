@@ -17,3 +17,5 @@
 普通 Android 应用无法静默覆盖安装。点击“安装更新”后先检查系统“安装未知应用”权限，必要时引导打开本应用的权限页面；返回后由 Android 安装器确认覆盖安装。用户可以取消安装，已经下载的安装包保留供以后安装。真正覆盖安装会由 Android 结束并替换旧应用进程；账号数据没有被应用清除。
 
 控制更新的来源文件见 `AppUpdates`、`AppUpdateManager`、`AppUpdateActivity`、`AppUpdateProvider`、`AppUpdateFiles`、`AppUpdatePolicy`、`AppUpdateJob` 和 `AppUpdateReceiver`。`tools/publish-update-feed.py` 维护公网渠道。测试只用合成 APK，原签名密钥不进入 CI 或公网。
+
+发布时，`docs/RELEASE-v版本.md` 用作应用内用户可读的简短更新说明；实现细节和验证限制写入 CHANGELOG 与 verification 文档，避免技术字段挤占更新页。

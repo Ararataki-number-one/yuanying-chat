@@ -2,11 +2,12 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.10（versionCode 36，原版签名 Firefox 使用体验修复包）。**
+**当前版本：1.5.11（versionCode 37，原版签名应用自动更新包）。**
 
 ## 下载与安装
 
-- [下载 1.5.10 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.10-gecko/PocketChat-1.5.10-gecko-arm64.apk)
+- [下载 1.5.11 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.11-gecko/PocketChat-1.5.11-gecko-arm64.apk)
+- [上一版 1.5.10 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.10-gecko/PocketChat-1.5.10-gecko-arm64.apk)
 - [上一版 1.5.9 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.9-gecko/PocketChat-1.5.9-gecko-arm64.apk)
 - [上一版 1.5.8 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.8-gecko/PocketChat-1.5.8-gecko-arm64.apk)
 - [上一版 1.5.7 Firefox 内核更新 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.7-gecko/PocketChat-1.5.7-gecko-arm64.apk)
@@ -31,9 +32,10 @@ Firefox 新内核首次需要重新登录。原系统内核的登录数据保留
 | 会话与草稿 | 聊天侧边栏、历史同步、会话改名与删除、草稿冲突处理和恢复、阅读位置恢复 |
 | 附件 | 图片与文件上传状态、重新上传、移除、图片与 PDF 本地预览 |
 | 下载 | 自动保存、同名编号、暂停与续传、跨窗口文件列表、打开、分享、另存为 |
+| 应用更新 | 每天自动检查、可选 Wi-Fi 自动下载、后台下载与取消/重试、原签名覆盖安装确认 |
 | 后台等待 | 等待与完成通知、发送状态恢复；重新连接不会自动重发提问 |
 | 网络管理 | 全部窗口网络、订阅与固定出口三栏；候选编辑后保存并应用；勾选池随机 / 手动入口；原完整线路测速与出口核验 |
-| 隐私与自检 | 系统内核保留三档保护与原自检；Firefox 使用原生跟踪保护并关闭 WebRTC，旧指纹脚本和网页自检尚未移植 |
+| 隐私与自检 | 系统内核保留三档保护与原自检；Firefox 使用原生跟踪保护并关闭 WebRTC，支持当前页面公共浏览器信息自检；系统内核脚本检测标为未覆盖 |
 | 偏好 | 草稿、历史、滚动位置、后台与通知开关、仅 Wi-Fi 下载、旧临时文件清理 |
 
 当前平台是 ChatGPT。模型和网页可用功能由当前登录账号及网页实际提供。软件通过内置网页登录，不要求填写 API Key。
@@ -41,6 +43,8 @@ Firefox 新内核首次需要重新登录。原系统内核的登录数据保留
 独立“记录”主页面已移除，会话历史仍在聊天侧边栏中。
 
 安卓 10+ 默认下载目录为 `Download/元婴期院士/窗口_编号/`；安卓 8–9 保存到对应窗口的应用内文件目录，可打开、分享或另存为。
+
+1.5.11 新增每天自动检查、Wi-Fi 自动下载选项、后台下载、取消/重试和原签名覆盖安装入口。见 [更新使用说明](docs/APP-UPDATES.md) 与 [构建、Android 和公网验证](verification/app-updates-v1.5.11/README.md)。
 
 1.5.10 修复 Firefox 文本附件读取、原生文件下载、页面遮挡、自检接入、编辑返回和版本显示。见 [逐文件修改说明](docs/CHANGELOG-v1.5.10.md) 与 [构建及 Android 验证](verification/browser-experience-v1.5.10/README.md)。手机版真机官网白屏仍需验收。
 
