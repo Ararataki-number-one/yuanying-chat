@@ -75,6 +75,6 @@ final class AppHub {
     action(box,"使用帮助",()->text("使用帮助","在环境列表新建或编辑环境。编辑页分为基本信息、网络配置、浏览器与使用偏好。\n\n环境分别登录。网络页显示所属环境；应用设置控制默认入口与系统权限。下载页汇总全部环境文件。\n\n保护等级改变后会重新加载连接。草稿保存不会应用设置。尚未开放的能力列在功能支持范围。"));
     action(box,"第三方许可",()->text("第三方许可","源码和许可随源码包提供。内置 Mihomo、AndroidX、KaTeX、Marked、DOMPurify 等组件保留原有许可说明。"));
     action(box,"隐私说明",()->text("隐私说明","没有广告或遥测。网络配置与检查基线按环境加密保存。联网自检每次需要授权，结果只覆盖对应路径。"));
-    action(box,"复制本机耗时诊断",()->{((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("耗时诊断",a.session.trace.copyText()));a.status("已复制本机耗时诊断");});
+    action(box,"复制本机耗时诊断",()->{((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("耗时诊断",a.session.trace.copyText(a)));a.status("已复制本机耗时诊断");});
   }
 }

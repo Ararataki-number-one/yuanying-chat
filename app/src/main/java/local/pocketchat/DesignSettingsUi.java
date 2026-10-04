@@ -20,7 +20,7 @@ final class DesignSettingsUi {
     group(a,box,"功能支持范围","查看支持的功能","shield",()->capabilities(a));
   }
   static void group(Activity a,LinearLayout box,String title,String detail,String icon,Runnable click){DesignUi.addCard(box,DesignUi.setting(a,icon,title,detail,"",click));}
-  static void about(Activity a){DesignUi.message(a,"元婴期院士 · 1.5.2","Android ChatGPT 网页客户端\n\n在环境列表新建或编辑环境。每个环境分别登录，编辑页保存基本信息、浏览器保护和使用偏好。\n\n网络配置在所属环境内保存并连接。应用设置控制默认启动环境与系统权限。下载中心汇总文件。\n\n聊天与登录保存在本机，网络凭据由 Android Keystore 加密。第三方许可随源码提供，包括 Mihomo、AndroidX、KaTeX、Marked 与 DOMPurify。\n\n保护范围以实际自检为准。");}
+  static void about(Activity a){DesignUi.message(a,"元婴期院士 · "+AppVersion.name(a),"Android ChatGPT 网页客户端\n\n在环境列表新建或编辑环境。每个环境分别登录，编辑页保存基本信息、浏览器保护和使用偏好。\n\n网络配置在所属环境内保存并连接。应用设置控制默认启动环境与系统权限。下载中心汇总文件。\n\n聊天与登录保存在本机，网络凭据由 Android Keystore 加密。第三方许可随源码提供，包括 Mihomo、AndroidX、KaTeX、Marked 与 DOMPurify。\n\n保护范围以实际自检为准。");}
   static void capabilities(Activity a){DesignUi.message(a,"功能支持范围","已实现\n• 最多 8 个独立环境、分组、备注与收藏\n• 独立登录、Cookie、聊天、草稿和网络配置\n• 手机网络 / VPN、应用代理、单个订阅与固定出口\n• 三档隐私保护、现有环境自检\n• 文件下载、后台等待与通知\n\n后续能力\n自定义 UA / 指纹、独立语言时区、多个订阅、自动化、环境删除与登录数据清理仍未开放。\n\n本应用使用 Android System WebView。实际保护范围以自检结果为准。");}
   static void defaultEntry(Activity a,Runnable refresh){
     JSONArray rows=ProfileCatalog.get(a).list();List<Integer> ids=new ArrayList<>();List<String> titles=new ArrayList<>();

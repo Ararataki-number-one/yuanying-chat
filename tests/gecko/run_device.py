@@ -56,7 +56,12 @@ class Server(socketserver.ThreadingTCPServer):
 class Fixture(fixture.Fixture):
     def do_GET(self):
         address=urllib.parse.urlparse(self.path);query=urllib.parse.parse_qs(address.query)
-        if address.path=='/browser-window':
+        if address.path=='/native-csv':
+            body=b'name,value\nsynthetic,42\n'
+            self.send_response(200);self.send_header('Content-Type','text/csv');self.send_header('Content-Disposition','attachment; filename="generated.csv"');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
+        if address.path=='/browser-usability':
+            body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><h1>Mobile browser capability fixture</h1><input id="upload" type="file" accept="text/plain"><p id="upload-result"></p><a id="csv" href="/native-csv">Download generated CSV</a><button id="blob" onclick="const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['name,value\\nsynthetic,42\\n'],{type:'text/csv'}));a.download='generated.csv';a.click();">Download page blob</button><script>document.getElementById('upload').onchange=async e=>{const f=e.target.files[0];document.getElementById('upload-result').textContent=f.name+':'+await f.text();};</script>'''
+        elif address.path=='/browser-window':
             step=query.get('step',['one'])[0];command=query.get('command',['0'])[0]
             assert step in ['one','two','three','four'] and command.isdigit()
             body=(f'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Controlled window {step}</title>'
@@ -165,6 +170,8 @@ def main():
         assert cookies==({'probe':expected,'nativeOnly':expected} if populated else {}),result
     report={'actualAndroidExecution':True,'releaseMode':True,'androidSdk':sdk,'androidAbi':adb('shell','getprop','ro.product.cpu.abi').strip(),'viewport':'1080x2400 / 420 dpi','sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
     try:
+        usability=run(1,'usability','usability');assert usability['mobileVisible'] and usability['upload']=='sample.txt:synthetic-upload' and usability['csv']=='name,value\nsynthetic,42\n' and usability['blob']==usability['csv'],usability
+        report['browserUsability']=usability
         check(run(1,'seed'),1,True);check(run(2,'read'),2,False)
         check(run(2,'seed'),2,True);check(run(1,'read'),1,True)
         for context in [1,2]:

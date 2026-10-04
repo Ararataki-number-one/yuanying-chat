@@ -331,7 +331,7 @@ public class WindowHomeActivity extends Activity {
     if(id<0||id>=Profiles.MAX)return;
     if(id>0&&Build.VERSION.SDK_INT<28){SavedFileActions.toast(this,"独立环境需要 Android 9 或更新版本");return;}
     ProfileCatalog.get(this).opened(id);
-    startActivity(new Intent(this,Profiles.activity(id)).putExtra("openWindowAction",action)
+    startActivity(new Intent(this,Profiles.activity(id)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action))
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
   }
   void createWindow(){

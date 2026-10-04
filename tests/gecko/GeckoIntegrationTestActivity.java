@@ -52,6 +52,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
     if("switchGecko".equals(action)&&!web.enabled){web.useEngine(true);action="read";}
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
+    if("usability".equals(action)){usability(serial);return;}
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
     if("readingZoom".equals(action)){readingZoom(serial,0,new JSONArray(),SystemClock.elapsedRealtime()+20000);return;}
     if("readingInput".equals(action)){tapElement(serial,"composer");readingInput(serial,SystemClock.elapsedRealtime()+15000);return;}
@@ -83,6 +84,28 @@ public class GeckoIntegrationTestActivity extends Activity {
       web.runtime.getWebExtensionController().disable(web.extension,1).accept(value->{web.current.loadUri("http://127.0.0.1:8765/fixture?context="+(slot+1)+"&action=read");session.handler.postDelayed(()->event("bootstrapCheck",J.obj("navigationFailed",session.navigationFailed)),5000);},error->event("error",J.obj("error","disable failed")));return;
     }
     loadFixture(serial);
+  }
+  void usability(long serial){
+    session.reading.configure(false);session.web.configure(false,session.privacy.level());
+    session.web.setWebChromeClient(new android.webkit.WebChromeClient(){
+      @Override public boolean onShowFileChooser(WebView unused,android.webkit.ValueCallback<android.net.Uri[]> callback,FileChooserParams params){callback.onReceiveValue(new android.net.Uri[]{android.net.Uri.parse("content://local.pocketchat.test.upload/document")});return true;}
+    });
+    session.web.loadUrl("http://127.0.0.1:8765/browser-usability?command="+serial);
+    usabilityReady(serial,SystemClock.elapsedRealtime()+20000);
+  }
+  void usabilityReady(long serial,long deadline){
+    if(serial!=run)return;
+    if(!session.web.hasVisibleDocument()){if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","mobile document remained blank"));return;}session.handler.postDelayed(()->usabilityReady(serial,deadline),100);return;}
+    session.web.evaluateJavascript("navigator.userAgent",raw->{if(!raw.contains("Android")||!raw.contains("Firefox")){event("error",J.obj("error","mobile identity missing","ua",raw));return;}
+      if(!session.audit.start(false,()->{JSONObject report=session.audit.report;session.web.evaluateJavascript("(()=>({url:location.href,body:!!document.getElementById('upload'),visible:document.body.innerText.length>0}))()",value->{JSONObject current=J.parse(value);if(!current.optBoolean("body")||!current.optBoolean("visible")||!current.optString("url").contains("browser-usability")||!report.optBoolean("fresh")||!report.optJSONObject("signals").optJSONObject("parent").optString("ua").contains("Firefox")){event("error",J.obj("error","current Firefox audit failed","report",report,"current",current));return;}tapElement(serial,"upload");usabilityUpload(serial,deadline);});}))event("error",J.obj("error",session.audit.lastError));
+    });
+  }
+  void usabilityUpload(long serial,long deadline){
+    if(serial!=run)return;
+    session.web.evaluateJavascript("document.getElementById('upload-result')?.textContent",raw->{String value=raw==null?"":raw;try{value=new org.json.JSONTokener(raw).nextValue().toString();}catch(Exception ignored){}final String selectedValue=value;if(!"sample.txt:synthetic-upload".equals(value)){if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","SAF text upload failed","result",raw));return;}session.handler.postDelayed(()->usabilityUpload(serial,deadline),100);return;}
+      final boolean[] csvReceived={false};session.web.responseDownload=response->{new Thread(()->{try(java.io.InputStream in=response.body){String body=new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);session.handler.post(()->{if(!"name,value\nsynthetic,42\n".equals(body)){event("error",J.obj("error","native CSV body mismatch","body",body));return;}if(!csvReceived[0]){csvReceived[0]=true;tapElement(serial,"blob");return;}event("usability",J.obj("mobileVisible",session.web.hasVisibleDocument(),"upload",selectedValue,"csv",body,"blob",body,"audit",session.audit.report));});}catch(Exception error){event("error",J.obj("error","native download failed: "+error.getMessage()));}},"fixture-download").start();};
+      tapElement(serial,"csv");
+    });
   }
   void loadFixture(long serial){
     if(serial!=run)return;GeckoWebView web=(GeckoWebView)session.web;

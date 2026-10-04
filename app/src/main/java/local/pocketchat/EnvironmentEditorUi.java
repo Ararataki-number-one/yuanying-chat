@@ -17,11 +17,12 @@ final class EnvironmentEditorUi {
     try{values.put("name",Profiles.display(a,Profiles.slot(a)));values.put("group",meta.optString("group"));values.put("notes",meta.optString("notes"));values.put("desktopSite",meta.optBoolean("desktopSite"));values.put("privacyLevel",a.session.privacy.level());}catch(Exception ignored){}
     return values;
   }
+  static void returnToList(MainActivity a){if(a.getIntent().getBooleanExtra("returnToEnvironmentList",false)){a.getIntent().removeExtra("returnToEnvironmentList");a.startActivity(new android.content.Intent(a,WindowHomeActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK|android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}}
   static void show(MainActivity a){editTab(a,BASIC);}
   static void editTab(MainActivity a,int tab){
     JSONObject draft=J.parse(ProfileCatalog.get(a).item(Profiles.slot(a)).optString("draft"));
     if(draft.length()>0)new AlertDialog.Builder(a).setTitle("有未应用的环境草稿").setMessage("继续编辑可恢复上次填写的内容；草稿不会改变运行中的环境。")
-      .setPositiveButton("继续草稿",(d,w)->edit(a,draft,tab)).setNeutralButton("编辑已保存配置",(d,w)->edit(a,current(a),tab)).setNegativeButton("取消",null).show();
+      .setPositiveButton("继续草稿",(d,w)->edit(a,draft,tab)).setNeutralButton("编辑已保存配置",(d,w)->edit(a,current(a),tab)).setNegativeButton("取消",(d,w)->returnToList(a)).setOnCancelListener(d->returnToList(a)).show();
     else edit(a,current(a),tab);
   }
   static void edit(MainActivity a,JSONObject value){edit(a,value,BASIC);}
@@ -84,7 +85,7 @@ final class EnvironmentEditorUi {
       prompt.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(DesignUi.RED);
     };
     DesignUi.action(net,"配置网络 →",true,()->{
-      ProfileCatalog.get(a).draft(Profiles.slot(a),read.get());dialog.dismiss();a.status("编辑内容已保存为草稿");a.hub.select(4);
+      a.getIntent().removeExtra("returnToEnvironmentList");ProfileCatalog.get(a).draft(Profiles.slot(a),read.get());dialog.dismiss();a.status("编辑内容已保存为草稿");a.hub.select(4);
     });
     updateTabs(a,tabs,host,tab);
     TextView validation=DesignUi.text(a,"",13,DesignUi.RED);validation.setPadding(a.dp(14),a.dp(8),a.dp(14),0);validation.setVisibility(android.view.View.GONE);validation.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);root.addView(validation);
@@ -100,7 +101,7 @@ final class EnvironmentEditorUi {
     })}){
       LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,a.dp(48),1);p.setMargins(a.dp(3),0,a.dp(3),0);actions.addView(button,p);
     }
-    root.addView(actions);dialog.setCanceledOnTouchOutside(false);dialog.setContentView(root);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+    root.addView(actions);dialog.setOnDismissListener(d->returnToList(a));dialog.setCanceledOnTouchOutside(false);dialog.setContentView(root);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
   }
   static void updateTabs(MainActivity a,LinearLayout tabs,FrameLayoutHost host,int selected){int n=Math.max(0,Math.min(SECTIONS.length-1,selected));host.page(n);tabs.removeAllViews();tabs.addView(DesignUi.tabs(a,SECTIONS,n,i->updateTabs(a,tabs,host,i)),new LinearLayout.LayoutParams(-1,-2));}
   static boolean apply(MainActivity a,JSONObject value,EditText name){
