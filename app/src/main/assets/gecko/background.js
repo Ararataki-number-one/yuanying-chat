@@ -41,11 +41,18 @@ const cookieReady=(async()=>{
 })();
 cookieReady.catch(()=>{}); // The connected native host explicitly awaits preparation below.
 // Each Android environment has its own runtime AND profile, including default cookie storage.
+let protectionSerial=Promise.resolve();
+const protect=level=>protectionSerial=protectionSerial.catch(()=>{}).then(async()=>{
+  let fingerprinting=false;
+  try{const control=browser.privacy?.websites?.resistFingerprinting;if(control){await control.set({value:level>=2});fingerprinting=(await control.get({})).value===true;}}catch(_){}
+  host.postMessage({kind:'protectionReady',level,fingerprinting});
+});
 const host = browser.runtime.connectNative('pocketroute');
 host.onMessage.addListener(async message => {
   if(message.kind==='prepare'){
-    try{await cookieReady;host.postMessage({kind:'ready'});}catch(_){host.postMessage({kind:'cookieRecoveryError'});}return;
+    try{await cookieReady;await protect(message.level??1);host.postMessage({kind:'ready'});}catch(_){host.postMessage({kind:'cookieRecoveryError'});}return;
   }
+  if(message.kind==='protection'){await protect(message.level??1);return;}
   if(message.kind !== 'cookies' || !Number.isInteger(message.id))return;
   try {
     // Native bulk clear does not emit cookies.onChanged for every deletion.

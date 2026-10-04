@@ -14,7 +14,7 @@ final class EnvironmentEditorUi {
 
   static JSONObject current(MainActivity a){
     JSONObject values=AppPrefs.values(a),meta=ProfileCatalog.get(a).item(Profiles.slot(a));
-    try{values.put("name",Profiles.display(a,Profiles.slot(a)));values.put("group",meta.optString("group"));values.put("notes",meta.optString("notes"));values.put("desktopSite",meta.optBoolean("desktopSite"));values.put("privacyLevel",a.session.privacy.level());}catch(Exception ignored){}
+    try{values.put("name",Profiles.display(a,Profiles.slot(a)));values.put("group",meta.optString("group"));values.put("notes",meta.optString("notes"));values.put("desktopSite",meta.optBoolean("desktopSite"));values.put("privacyLevel",a.session.privacy.level());JSONObject desired=DeferredBrowserSettings.desired(a.session);values.put("privacyLevel",desired.optInt("privacyLevel"));values.put("desktopSite",desired.optBoolean("desktopSite"));}catch(Exception ignored){}
     return values;
   }
   static void returnToList(MainActivity a){if(a.getIntent().getBooleanExtra("returnToEnvironmentList",false)){a.getIntent().removeExtra("returnToEnvironmentList");a.startActivity(new android.content.Intent(a,WindowHomeActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK|android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}}
@@ -45,13 +45,13 @@ final class EnvironmentEditorUi {
     DesignUi.addCard(network,net);
 
     LinearLayout display=DesignUi.card(a);Spinner displayChoice=BrowserDisplayUi.add(display,initial.optBoolean("desktopSite",existing.optBoolean("desktopSite")));
-    DesignUi.note(display,"保存后重新加载网页。电脑版按手机宽度排版，可双指缩放。");DesignUi.addCard(browser,display);
+    DesignUi.note(display,"电脑版按手机宽度排版，可双指缩放。回复期间可保存，结束后自动应用。");DesignUi.addCard(browser,display);
     DesignUi.section(browser,"隐私保护","");
     LinearLayout protection=DesignUi.card(a);Spinner privacy=new Spinner(a);
     privacy.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,new String[]{"兼容","标准","强化"}));
     privacy.setSelection(Math.max(0,Math.min(2,initial.optInt("privacyLevel",a.session.privacy.level()))));protection.addView(privacy);
     DesignUi.note(protection,"强化保护可能影响验证和音视频。");
-    DesignUi.action(protection,"保护详情",false,()->DesignUi.message(a,"隐私保护",a.session.privacy.summary()+"\n\n标准保护需要支持加载前脚本的 WebView。保存新的保护等级后会重新连接。"));DesignUi.addCard(browser,protection);
+    DesignUi.action(protection,"保护详情",false,()->DesignUi.message(a,"隐私保护",a.session.privacy.summary()));DesignUi.addCard(browser,protection);
     DesignUi.action(browser,"浏览器内核",false,()->BrowserEngineUi.show(a));
     DesignUi.action(browser,"查看环境自检",false,()->EnvironmentAuditUi.show(a));
     DesignUi.addCard(browser,DesignUi.setting(a,"settings","浏览器信息",(GeckoWebView.active(a.remote)?GeckoWebView.VERSION:EnvironmentAudit.packageVersion()),"",()->{
@@ -109,11 +109,12 @@ final class EnvironmentEditorUi {
     if(value.optString("group").length()>12||value.optString("notes").length()>120){a.status("分组最多 12 字，备注最多 120 字");return false;}
     ChatSession s=a.session;int level=value.optInt("privacyLevel",s.privacy.level());if(level<0||level>2){a.status("请选择有效的保护等级");return false;}boolean change=level!=s.privacy.level();
     boolean displayChange=value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
-    if((change||displayChange)&&browserBusy(s)){String reason=browserTaskReason(s);a.status(reason.isEmpty()?"网页正在回复，回复结束后再保存":reason);return false;}
+    boolean deferred=(change||displayChange)&&browserBusy(s);
+    
     if(change&&level>0&&!GeckoWebView.active(s.web)&&(!s.privacy.earlySupported()||!s.guard.workerProtection)){a.status("请更新 Android System WebView，设置未应用");return false;}
-    Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));AppPrefs.apply(a,value);s.prefs.edit().putInt("privacyLevel",level).commit();ProfileCatalog.get(a).draft(Profiles.slot(a),null);
-    if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(change||displayChange)s.applyBrowserSettings(change);
-    s.audit.refresh(true);ProfileCatalog.get(a).heartbeat(s,true);if(a.hub!=null)a.hub.refresh();if(a.designChrome!=null)a.designChrome.update();a.status(displayChange&&!s.networkReady?"环境配置已保存，加载网页时应用显示方式":"环境配置已保存");return true;
+    if(deferred&&!DeferredBrowserSettings.save(s,level,value.optBoolean("desktopSite"))){a.status("设置暂时无法保存，请重试");return false;}Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));if(!deferred){DeferredBrowserSettings.cancel(s);ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));s.prefs.edit().putInt("privacyLevel",level).commit();}AppPrefs.apply(a,value);ProfileCatalog.get(a).draft(Profiles.slot(a),null);
+    if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(!deferred&&(change||displayChange))s.applyBrowserSettings(change);
+    s.audit.refresh(true);ProfileCatalog.get(a).heartbeat(s,true);if(a.hub!=null)a.hub.refresh();if(a.designChrome!=null)a.designChrome.update();a.status(deferred?"环境已保存，当前回复结束后自动应用网页设置":displayChange&&!s.networkReady?"环境配置已保存，加载网页时应用显示方式":"环境配置已保存");return true;
   }
   static String browserTaskReason(ChatSession s){return BrowserSettingsPolicy.reason(s.pending!=null,s.submitting,s.operation,s.transferActive,s.uploading(),false);}
   static boolean browserBusy(ChatSession s){boolean reply=BrowserSettingsPolicy.currentReply(MainActivity.chatUrl(s.web.getUrl()),WebReplyObserver.same(s.web.getUrl(),s.state.optString("url")),s.state.optBoolean("busy"),s.stateEpoch,s.navigationEpoch);return BrowserDisplay.busy(ProfileUi.working(s),s.navigating,s.connecting,s.recoveryScheduled,reply);}
@@ -130,7 +131,7 @@ final class EnvironmentEditorUi {
       if(!WebReplyObserver.same(url,inspected.optString("url"))||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())){
         fail.accept("网页状态已改变，请稍后重试；环境设置尚未应用");return;
       }
-      s.state=inspected;s.stateEpoch=epoch;if(inspected.optBoolean("busy")){fail.accept("网页正在回复，回复结束后再保存");return;}
+      s.state=inspected;s.stateEpoch=epoch;if(inspected.optBoolean("busy")){s.operation=false;done.accept(apply(a,value,name));return;}
       if(inspected.optString("draft").length()>300000||inspected.optString("draftRaw").length()>300000){fail.accept("网页草稿过长，请先保存或发送，再切换显示方式");return;}
       s.asyncDriver("page-state",J.obj("expectedUrl",url),2500,state->{
         if(!state.optBoolean("ok")||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){

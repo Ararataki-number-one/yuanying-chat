@@ -21,7 +21,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     @Override boolean readingPage(String target){return target.startsWith("http://127.0.0.1:8765/browser-reading")||super.readingPage(target);}
   }
   @Override public void onCreate(Bundle state){
-    super.onCreate(state);slot=Profiles.slot(this);
+    super.onCreate(state);slot=Profiles.slot(this);ProfileCatalog.get(this).created(slot);
     getSharedPreferences("chat",0).edit().putString("browserEngine","systemProbe".equals(getIntent().getStringExtra("fixtureAction"))?"system":"gecko").putString("networkMode","external")
       .putString("proxy",(slot==0?"socks":"http")+"://127.0.0.1:"+(1080+slot)).putBoolean("requireExternalVpn",false)
       .putBoolean("networkConfigured",false).putBoolean("pageMode",true).commit();
@@ -52,6 +52,9 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
     if("switchGecko".equals(action)&&!web.enabled){web.useEngine(true);action="read";}
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
+    if("queuedChanges".equals(action)){queuedChanges(serial);return;}
+    if("privacy".equals(action)){privacy(serial,0);return;}
+    if("completion".equals(action)){completion(serial);return;}
     if("usability".equals(action)){usability(serial);return;}
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
     if("readingZoom".equals(action)){readingZoom(serial,0,new JSONArray(),SystemClock.elapsedRealtime()+20000);return;}
@@ -84,6 +87,26 @@ public class GeckoIntegrationTestActivity extends Activity {
       web.runtime.getWebExtensionController().disable(web.extension,1).accept(value->{web.current.loadUri("http://127.0.0.1:8765/fixture?context="+(slot+1)+"&action=read");session.handler.postDelayed(()->event("bootstrapCheck",J.obj("navigationFailed",session.navigationFailed)),5000);},error->event("error",J.obj("error","disable failed")));return;
     }
     loadFixture(serial);
+  }
+  void queuedChanges(long serial){
+    String original=session.prefs.getString("proxy","");int level=session.privacy.level();boolean desktop=session.privacy.wantsDesktop();
+    session.pending=J.obj("id","synthetic-queued-question","kind","web","confirmed",true);session.navigating=false;session.connecting=false;session.state=J.obj("busy",false);
+    session.changed();boolean browserSaved=DeferredBrowserSettings.save(session,2,!desktop),livePolicyKept=session.privacy.level()==level&&session.privacy.wantsDesktop()==desktop;
+    NetworkBridge.run(this,slot,"external",J.obj("proxy","","requireExternalVpn",true),NetworkChanges.hash(this),(ok,message,snapshot)->{
+      boolean kept=original.equals(session.prefs.getString("proxy",""))&&NetworkChanges.pending(this).length()>0&&session.pending!=null;
+      DeferredBrowserSettings.cancel(session);JSONObject job=session.pending;session.completeReply(job,J.obj("url",session.web.getUrl()));session.changed();session.state=J.obj("busy",false);session.navigating=false;
+      session.handler.postDelayed(()->event("queuedChanges",J.obj("savedWhileReplying",ok,"oldRouteKept",kept,"browserSavedWithoutApplying",browserSaved&&livePolicyKept,"replyCleared",session.pending==null&&!session.prefs.contains("pending")&&!ProfileCatalog.get(this).item(slot).optBoolean("waiting"),"appliedWhenIdle",session.prefs.getString("proxy","x").isEmpty()&&NetworkChanges.pending(this).length()==0,"vpnGuardBlocksWithoutVpn",session.guard.requiresVpn()&&!session.guard.allowed(),"message",message)),3500);
+    });
+  }
+  int priorPrivacy;
+  void privacy(long serial,int stage){
+    if(stage==0){priorPrivacy=session.privacy.level();session.prefs.edit().putInt("privacyLevel",2).commit();session.web.configure(session.privacy.desktop,2);session.handler.postDelayed(()->privacy(serial,1),1000);return;}
+    if(!session.web.privacyReady){if(stage>15){event("error",J.obj("error","privacy acknowledgment timeout"));return;}session.handler.postDelayed(()->privacy(serial,stage+1),500);return;}
+    boolean enabled=session.web.fingerprintingProtected;session.prefs.edit().putInt("privacyLevel",priorPrivacy).commit();session.web.configure(session.privacy.desktop,priorPrivacy);session.handler.postDelayed(()->event("privacy",J.obj("nativeFingerprintingEnabled",enabled,"restoredLevel",priorPrivacy)),1000);
+  }
+  void completion(long serial){
+    String html="<main><article data-turn='user'><div data-message-author-role='user' data-message-id='synthetic-user'>guest prompt</div></article><section><div data-message-author-role='assistant' data-message-id='synthetic-answer'><div class='markdown'>guest complete reply</div></div><button aria-label='Copy message'>Copy</button></section><textarea id='prompt-textarea'></textarea></main>";
+    session.web.evaluateJavascript("document.body.innerHTML="+JSONObject.quote(html),unused->{String code=session.driver.replace("__ACTION__",JSONObject.quote("poll")).replace("__ARG__",J.obj("userKey","id:synthetic-user","prompt","guest prompt","export",true).toString());session.web.evaluateJavascript(code,raw->{JSONObject poll=J.parse(raw);boolean current=poll.optBoolean("terminal")&&poll.optBoolean("submitted")&&!poll.optBoolean("busy");session.web.evaluateJavascript("document.querySelector('section button').remove();document.querySelector('main').insertAdjacentHTML('afterbegin','<section><div data-message-author-role=\"assistant\" data-message-id=\"prior\">old</div><button aria-label=\"Copy message\">Copy</button></section>');",v->session.web.evaluateJavascript(code,later->{JSONObject old=J.parse(later);event("completion",J.obj("guestActionsRecognized",current,"priorActionsCannotComplete",!old.optBoolean("terminal"),"reply",poll.optString("markdown")));}));});});
   }
   void usability(long serial){
     session.reading.configure(false);session.web.configure(false,session.privacy.level());

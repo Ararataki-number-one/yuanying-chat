@@ -66,7 +66,7 @@ class GeckoWebView extends FrameLayout {
   interface ResponseDownload {void receive(WebResponse response);}
   ResponseDownload responseDownload;
   WebViewClient client;WebChromeClient chrome;DownloadListener download;
-  boolean enabled,ready,failed,desktop,canBack,destroyed;String url="",queued="";float scale=1;
+  boolean enabled,ready,failed,desktop,canBack,destroyed,privacyReady,fingerprintingProtected;int protectionLevel=-1;String url="",queued="";float scale=1;
 
   GeckoWebView(Context context,ChatSession session){
     super(context);owner=session;displayContext=new MutableContextWrapper(context);sessionStore=new BrowserSessionStore(context);
@@ -112,6 +112,7 @@ class GeckoWebView extends FrameLayout {
       routePort=port;port.setDelegate(new WebExtension.PortDelegate(){
         @Override public void onPortMessage(Object message,WebExtension.Port incoming){
           if(!(message instanceof JSONObject)||incoming!=routePort)return;JSONObject data=(JSONObject)message;
+          if("protectionReady".equals(data.optString("kind"))){if(data.optInt("level")==owner.privacy.level()){privacyReady=true;protectionLevel=data.optInt("level");fingerprintingProtected=data.optBoolean("fingerprinting");if(ready&&!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}maybeOpen();}return;}
           if("ready".equals(data.optString("kind"))){routePrepared=true;maybeOpen();return;}
           if("cookieRecoveryError".equals(data.optString("kind"))){failure("登录状态暂未恢复，请重新打开当前环境");return;}
           if("cookies".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optBoolean("error")?null:data.optString("value"));
@@ -119,7 +120,7 @@ class GeckoWebView extends FrameLayout {
         @Override public void onDisconnect(WebExtension.Port incoming){if(routePort==incoming)routePort=null;cookieCallbacks.cancel(incoming);}
       });
       if(previous!=null&&previous!=port)cookieCallbacks.cancel(previous);
-      port.postMessage(J.obj("kind","prepare"));
+      port.postMessage(J.obj("kind","prepare","level",owner.privacy.level()));
     }
     @Override public GeckoResult<Object> onMessage(String app,Object message,WebExtension.MessageSender sender){
       if(!"pocketroute".equals(app)||!(message instanceof JSONObject)||sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_EXTENSION)return GeckoResult.fromValue(blocked().toString());
@@ -151,7 +152,7 @@ class GeckoWebView extends FrameLayout {
     primary=newSession();current=primary;primary.open(runtime);surface.setSession(primary);configure(desktop,owner.privacy.level());ready=true;
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
   }
-  private void maybeOpen(){if(!destroyed&&!failed&&!ready&&extension!=null&&checkpointReady&&routePrepared)open();}
+  private void maybeOpen(){if(!destroyed&&!failed&&!ready&&extension!=null&&checkpointReady&&routePrepared&&privacyReady)open();}
   GeckoSession newSession(){
     // Isolation comes from existing Android processes and distinct profile directories.
     // Default cookie storage remains usable by the official cookie API in this runtime.
@@ -327,6 +328,8 @@ class GeckoWebView extends FrameLayout {
   }
   void configure(boolean desktop,int protection){
     this.desktop=desktop;
+    if(runtime!=null){org.mozilla.geckoview.ContentBlocking.Settings policy=runtime.getSettings().getContentBlocking();policy.setAntiTracking(protection>0?org.mozilla.geckoview.ContentBlocking.AntiTracking.DEFAULT|org.mozilla.geckoview.ContentBlocking.AntiTracking.FINGERPRINTING|org.mozilla.geckoview.ContentBlocking.AntiTracking.CRYPTOMINING:org.mozilla.geckoview.ContentBlocking.AntiTracking.NONE);}
+    if(routePort!=null&&protectionLevel>=0&&protectionLevel!=protection){privacyReady=false;routePort.postMessage(J.obj("kind","protection","level",protection));}
     for(GeckoSession session:new ArrayList<>(locations.keySet())){session.getSettings().setUserAgentMode(desktop?GeckoSessionSettings.USER_AGENT_MODE_DESKTOP:GeckoSessionSettings.USER_AGENT_MODE_MOBILE);session.getSettings().setViewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE);session.getSettings().setUseTrackingProtection(protection>0);}
     if(current!=null&&current.isOpen()){GeckoSession source=current;source.getUserAgent().accept(value->{if(!destroyed&&source==current&&this.desktop==desktop)metadata.userAgent=value;},error->{});}
   }
@@ -343,7 +346,7 @@ class GeckoWebView extends FrameLayout {
   }
   public void loadUrl(String target){
     if(destroyed)return;if(!enabled){system().loadUrl(target);return;}queued=target;
-    if(!ready||current==null||!owner.guard.allowed())return;
+    if(!ready||!privacyReady||current==null||!owner.guard.allowed())return;
     if(crashed.contains(current)){
       if(!reopenCurrent())return;
     }

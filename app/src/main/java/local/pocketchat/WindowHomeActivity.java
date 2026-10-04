@@ -194,7 +194,7 @@ public class WindowHomeActivity extends Activity {
     }
     if(sort==1)ordered.sort((l,r)->Long.compare(r.optLong("opened"),l.optLong("opened")));
     if(sort==2)ordered.sort((l,r)->l.optString("name").compareToIgnoreCase(r.optString("name")));
-    cards.removeAllViews();visibleIds.clear();
+    cards.removeAllViews();visibleIds.clear();for(int i=0;i<rows.length();i++){JSONObject deleted=rows.optJSONObject(i);if(deleted.optBoolean("deleting")){int id=deleted.optInt("slot");DesignUi.action(cards,"继续清理 · "+deleted.optString("name"),false,()->startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));}}
     for(JSONObject row:ordered){
       boolean active=running.contains(row.optInt("pid"));
       boolean fresh=row.optLong("seen")>0&&now-row.optLong("seen")<60000;
@@ -306,13 +306,18 @@ public class WindowHomeActivity extends Activity {
   }
   void menu(int id){
     JSONObject row=ProfileCatalog.get(this).item(id);
-    String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境"};
+    String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境","删除环境"};
     new AlertDialog.Builder(this).setTitle(row.optString("name")).setItems(labels,(d,n)->{
       if(n==0)openWindow(id,"edit");if(n==1)metadata(id);
       if(n==2){ProfileCatalog.get(this).favorite(id,!row.optBoolean("favorite"));lastSignature="";refresh();}
       if(n==3){AppSettings.defaultSlot(this,id);lastSignature="";refresh();}
-      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(id);
+      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(id);if(n==6)deleteEnvironment(id);
     }).setNegativeButton("关闭",null).show();
+  }
+  void deleteEnvironment(int id){
+    JSONObject row=ProfileCatalog.get(this).item(id);AlertDialog dialog=new AlertDialog.Builder(this).setTitle("删除 "+row.optString("name")+"？")
+      .setMessage("将关闭此环境，清理它的登录、草稿、聊天缓存和网络配置。正在进行的回复和文件操作会中断。其他环境、订阅与固定出口，以及已保存到下载目录的文件会保留。")
+      .setNegativeButton("取消",null).setPositiveButton("删除环境",(d,w)->{try{ProfileCatalog.get(this).beginDelete(id);startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Exception e){SavedFileActions.toast(this,e.getMessage());}}).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
   }
   void metadata(int id){
     JSONObject row=ProfileCatalog.get(this).item(id);LinearLayout box=DesignUi.column(this);
@@ -338,7 +343,7 @@ public class WindowHomeActivity extends Activity {
     if(preparing)return;
     if(Build.VERSION.SDK_INT<28){SavedFileActions.toast(this,"独立环境需要 Android 9 或更新版本");return;}
     JSONArray rows=ProfileCatalog.get(this).list();int next=-1;
-    for(int i=1;i<rows.length();i++)if(!rows.optJSONObject(i).optBoolean("created")){next=i;break;}
+    for(int i=0;i<rows.length();i++)if(!rows.optJSONObject(i).optBoolean("created")&&!rows.optJSONObject(i).optBoolean("deleting")){next=i;break;}
     if(next<0){SavedFileActions.toast(this,"已达到 8 个环境");return;}
     new Wizard(next,rows).show();
   }

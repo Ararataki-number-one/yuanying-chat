@@ -184,6 +184,22 @@ def main():
                 steps.append(event);logs.append(output);print(json.dumps(event),flush=True);return result
             time.sleep(.5)
         raise TimeoutError('No native update result: '+action)
+    def management(action):
+        adb('logcat','-c')
+        adb('shell','am','start','-W','-n',package+'/local.pocketchat.EnvironmentManagementIntegrationActivity','--es','managementAction',action)
+        deadline=time.monotonic()+90
+        while time.monotonic()<deadline:
+            output=adb('logcat','-d','-s','PocketEnvironmentManagement:I','*:S')
+            for line in output.splitlines():
+                if '{' not in line:continue
+                try:result=json.loads(line[line.index('{'):])
+                except json.JSONDecodeError:continue
+                if result.get('action')!=action:continue
+                assert 'error' not in result,result
+                assert all(value is True for key,value in result.items() if key!='action'),result
+                steps.append(dict(kind='environmentManagement',result=result));print(json.dumps(result),flush=True);return result
+            time.sleep(1)
+        raise TimeoutError('Environment management: '+action)
     def check(result,context,populated):
         expected=f'synthetic-environment-{context}' if populated else None
         for key in ['localStorage','indexedDB','cache','workerToken']:assert result[key]==expected,(key,result)
@@ -272,6 +288,8 @@ def main():
         adb('shell','am','force-stop',package)
         assert run(1,'sessionRead','session')['token']=='none','Explicit profile clear restored a deleted session cookie'
         assert run(2,'sessionRead','session')['token']=='synthetic-session-2'
+        privacy=run(1,'privacy','privacy');assert privacy['nativeFingerprintingEnabled'] is True,privacy
+        completion=run(1,'completion','completion');assert completion['guestActionsRecognized'] and completion['priorActionsCannotComplete'],completion
         bootstrap=run(1,'disableExtension','bootstrapCheck');assert bootstrap['navigationFailed'] is True,bootstrap
         check(run(2,'read'),2,True)
         # Exercise the real outer Activity after moving its retained Gecko surface.
@@ -306,6 +324,9 @@ def main():
         assert 'packageinstaller' in installer_ui and ('Update' in installer_ui or '更新' in installer_ui),installer_ui
         adb('shell','input','keyevent','KEYCODE_BACK') # Never install the synthetic replacement.
         report['appUpdates']=dict(downloadManager='passed (real system HTTP transfer)',good=good,failures=update_checks,provider=access,settingsUi='passed',androidInstaller='passed (opened; synthetic APK not installed)')
+        queued=run(2,'queuedChanges','queuedChanges');assert all(queued[key] for key in ['savedWhileReplying','oldRouteKept','browserSavedWithoutApplying','replyCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn']),queued
+        deletion=management('deleteOne');check(run(2,'read'),2,False);deletion_zero=management('deleteZero')
+        report['environmentManagement']=dict(queued=queued,deleteOne=deletion,deleteZero=deletion_zero,slotReuseLogin='passed (old controlled cookie absent)',privacy=privacy,completion=completion)
         report.update(status='passed',liveEnvironmentProcesses='passed',storageIsolation='passed',restartPersistence='passed',
             distinctHttpSocksRoutes='passed',workersAndWebSocket='passed',remoteDns='passed',guardBlocksRequests='passed',
             nativeContextClear='passed',systemEngineFallback='passed',closedBootstrapWithoutExtension='passed',productionActivityShell='passed',

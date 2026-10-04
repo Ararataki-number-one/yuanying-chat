@@ -45,6 +45,9 @@ jobs:
           javac -encoding UTF-8 -d work/gecko-integration/reading-host app/src/main/java/local/pocketchat/BrowserDisplay.java app/src/main/java/local/pocketchat/BrowserReadingPolicy.java app/src/main/java/local/pocketchat/BrowserReading.java tests/browser-reading-host/android/os/SystemClock.java tests/browser-reading-host/android/view/MotionEvent.java tests/browser-reading-host/local/pocketchat/ChatSession.java tests/browser-reading-host/local/pocketchat/BrowserReadingHostTest.java
           java -cp work/gecko-integration/reading-host local.pocketchat.BrowserReadingHostTest | tee work/gecko-integration/reading-host-results.json
           node tests/browser-runtime/session-cookies.test.cjs | tee work/gecko-integration/cookie-host-results.json
+          mkdir -p work/gecko-integration/region-host
+          javac -encoding UTF-8 -d work/gecko-integration/region-host app/src/main/java/local/pocketchat/NodeRegion.java tests/browser-runtime/NodeRegionTest.java
+          java -cp work/gecko-integration/region-host local.pocketchat.NodeRegionTest | tee work/gecko-integration/region-host-results.json
           mkdir -p work/gecko-integration/update-host
           javac -encoding UTF-8 -d work/gecko-integration/update-host app/src/main/java/local/pocketchat/AppUpdatePolicy.java tests/browser-runtime/AppUpdatePolicyTest.java
           java -cp work/gecko-integration/update-host local.pocketchat.AppUpdatePolicyTest | tee work/gecko-integration/update-host-results.json

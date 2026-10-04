@@ -26,7 +26,7 @@ final class BrowserPrivacy {
     if(level>0&&earlySupported())try(InputStream in=session.context.getAssets().open("privacy-shield.js")){String source=J.text(in,64*1024).replace("__LEVEL__",String.valueOf(level));script=WebViewCompat.addDocumentStartJavaScript(session.web.system(),source,Collections.singleton("*"));earlyInstalled=true;}catch(Exception ignored){}
   }
   String summary(){String text="当前环境："+Profiles.display(session.context,Profiles.slot(session.context))+"\n保护等级："+(level()==2?"强化":level()==1?"标准":"兼容");
-    if(GeckoWebView.active(session.web))return text+"\n内核："+GeckoWebView.VERSION+"\n网页显示："+BrowserDisplay.label(desktop)+"\n浏览器身份：Firefox 官方手机版 / 电脑版\n登录与网页存储：当前环境独立目录\n网页线路：沿用此环境已有网络配置\n代理不可用：阻止连接，不自动直连\nWebRTC：关闭\nHTTP 与已知本地网页地址：阻止\n\n这版 Gecko 接入仍在验证。原 System WebView 的登录数据保留，可在会话菜单切回。原 WebView 的 Canvas、音频和设备信息脚本保护尚未迁移；新内核不能保证通过所有网站验证。";
+    if(GeckoWebView.active(session.web))return text+"\n内核："+GeckoWebView.VERSION+"\n网页显示："+BrowserDisplay.label(desktop)+"\n浏览器身份：Firefox 官方手机版 / 电脑版\n登录与网页存储：当前环境独立目录\n网页线路：沿用此环境已有网络配置\n代理不可用：阻止连接，不自动直连\nWebRTC：关闭\nHTTP 与已知本地网页地址：阻止\n指纹追踪器："+(level()>0?"官方列表拦截":"兼容模式")+"\nCanvas / 音频 / 设备信息："+(session.web.fingerprintingProtected?"Firefox 原生抗指纹保护已启用":"未启用原生抗指纹；强化模式可开启")+"\n手机 VPN 断开保护："+(session.guard.requiresVpn()?session.guard.vpnActive()?"已启用，VPN 已连接":"已启用，等待 VPN":"使用环境代理或已关闭")+"\n\n强化模式使用 Firefox 原生抗指纹设置，可能影响网站验证、Canvas 和音频。自检可以检查当前内核。原系统内核登录数据仍保留，各环境分别保存登录。";
     text+="\n网页显示："+BrowserDisplay.label(desktop)+(desktop&&!desktopReady?" · 当前 WebView 不支持":"");
     text+="\n第三方 Cookie：阻止\n位置 / 摄像头 / 网页麦克风：不授权\nHTTP / 混合内容：阻止\n设备型号 UA："+(level()>0?"精简":"系统默认");
     text+="\n加载前脚本保护："+(earlyInstalled?"已注册":level()==0?"未启用":"此 WebView 不支持");

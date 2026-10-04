@@ -18,12 +18,12 @@ final class Profiles {
   static String display(Context c,int id){return ProfileCatalog.get(c).name(id);}
   static void rename(Context c,int id,String name){String trimmed=name.trim();if(!trimmed.isEmpty()&&trimmed.length()<=24){ProfileCatalog.get(c).rename(id,trimmed);global(c).getSharedPreferences("browser-environment-names",0).edit().putString("name"+id,trimmed).apply();}}
   static void prepare(Context c,int target,boolean copyNetwork)throws Exception{
-    Context dest=context(c,target);android.content.SharedPreferences prefs=dest.getSharedPreferences("chat",0);if(prefs.getBoolean("environmentInitialized",false))return;
+    Context dest=context(c,target);android.content.SharedPreferences prefs=dest.getSharedPreferences("chat",0);if(ProfileCatalog.get(c).item(target).optBoolean("deleting"))throw new java.io.IOException("这个环境正在删除，请稍候");if(prefs.getBoolean("environmentInitialized",false)&&ProfileCatalog.get(c).item(target).optBoolean("created"))return;
     if(copyNetwork){android.content.SharedPreferences source=c.getSharedPreferences("chat",0);String mode=source.getString("networkMode","external");SecretStore old=new SecretStore(c),next=new SecretStore(dest);JSONObject settings=old.settings();
       if("internal".equals(mode)&&settings.length()>0){NativeNetwork.validate(settings);next.save(settings);byte[] meta=old.get("subscription-meta"),provider=old.get("subscription");if(meta!=null&&provider!=null&&J.parse(new String(meta,java.nio.charset.StandardCharsets.UTF_8)).optString("urlHash").equals(NativeNetwork.hash(settings.optString("subscriptionUrl")))){next.put("subscription",provider);next.put("subscription-meta",meta);}byte[] baseline=old.get("exit-baseline");if(baseline!=null)next.put("exit-baseline",baseline);}
       prefs.edit().putString("networkMode",mode).putString("proxy",source.getString("proxy","")).putBoolean("requireExternalVpn",source.getBoolean("requireExternalVpn",true)).putBoolean("networkConfigured",source.getBoolean("networkConfigured",false)).putString("lastGoodEntry",source.getString("lastGoodEntry","")).commit();
     }
     prefs.edit().putBoolean("environmentInitialized",true).putBoolean("pageMode",true).commit();ProfileCatalog.get(c).created(target);
   }
-  static void open(MainActivity a,int id){if(id==slot(a))return;if(Build.VERSION.SDK_INT<28){a.status("独立登录环境需要 Android 9 或更新版本");return;}a.startActivity(new Intent(a,activity(id)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
+  static void open(MainActivity a,int id){if(!ProfileCatalog.get(a).item(id).optBoolean("created"))return;if(id==slot(a))return;if(Build.VERSION.SDK_INT<28){a.status("独立登录环境需要 Android 9 或更新版本");return;}a.startActivity(new Intent(a,activity(id)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
 }

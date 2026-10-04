@@ -22,7 +22,7 @@ for abi in ['arm64-v8a']:
         (stage / name).write_bytes(part)
         artifact['chunks'].append({'file': name, 'bytes': len(part), 'sha256': hashlib.sha256(part).hexdigest()})
     manifest['artifacts'].append(artifact)
-for name in ['build.log', 'native-test.log', 'update-fixture-preparation.log', 'bridge-host-results.json', 'reading-host-results.json', 'cookie-host-results.json', 'update-host-results.json', 'update-ui.xml', 'update-installer-ui.xml', 'update-ui.png', 'device-results.json', 'device-route-trace.json', 'device-native-events.txt', 'device-screen.png', 'last-device-log.txt', 'production-ui.xml', 'failure-screen.png', 'failure-ui.xml']:
+for name in ['build.log', 'native-test.log', 'update-fixture-preparation.log', 'bridge-host-results.json', 'reading-host-results.json', 'cookie-host-results.json', 'update-host-results.json', 'region-host-results.json', 'update-ui.xml', 'update-installer-ui.xml', 'update-ui.png', 'device-results.json', 'device-route-trace.json', 'device-native-events.txt', 'device-screen.png', 'last-device-log.txt', 'production-ui.xml', 'failure-screen.png', 'failure-ui.xml']:
     if (out / name).exists():
         shutil.copy2(out / name, stage / name)
 for screenshot in out.glob('reading-*.png'):
