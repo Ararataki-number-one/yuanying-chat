@@ -2,11 +2,12 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.9（versionCode 35，原版签名缩放、登录记录与页面恢复修复包）。**
+**当前版本：1.5.10（versionCode 36，原版签名 Firefox 使用体验修复包）。**
 
 ## 下载与安装
 
-- [下载 1.5.9 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.9-gecko/PocketChat-1.5.9-gecko-arm64.apk)
+- [下载 1.5.10 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.10-gecko/PocketChat-1.5.10-gecko-arm64.apk)
+- [上一版 1.5.9 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.9-gecko/PocketChat-1.5.9-gecko-arm64.apk)
 - [上一版 1.5.8 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.8-gecko/PocketChat-1.5.8-gecko-arm64.apk)
 - [上一版 1.5.7 Firefox 内核更新 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.7-gecko/PocketChat-1.5.7-gecko-arm64.apk)
 - [上一版 1.5.6 电脑版阅读优化 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/477353188f4af649055bae7a1235b03e7c221fd9/public-downloads/PocketChat-1.5.6-desktop-reading.apk)
@@ -40,6 +41,8 @@ Firefox 新内核首次需要重新登录。原系统内核的登录数据保留
 独立“记录”主页面已移除，会话历史仍在聊天侧边栏中。
 
 安卓 10+ 默认下载目录为 `Download/元婴期院士/窗口_编号/`；安卓 8–9 保存到对应窗口的应用内文件目录，可打开、分享或另存为。
+
+1.5.10 修复 Firefox 文本附件读取、原生文件下载、页面遮挡、自检接入、编辑返回和版本显示。见 [逐文件修改说明](docs/CHANGELOG-v1.5.10.md) 与 [构建及 Android 验证](verification/browser-experience-v1.5.10/README.md)。手机版真机官网白屏仍需验收。
 
 1.5.9 允许电脑版缩小到 60%，实际缩小与放大均不刷新网页；修复独立进程的前后台生命周期，按环境保存会话 Cookie 和 SDK 页面状态，网页关闭后有限次自动恢复，并保留手动重试。退出登录和清理会更新 Cookie 保存记录。见 [逐文件修改说明](docs/CHANGELOG-v1.5.9.md) 与 [编译、Android 回归及原签名验证](verification/browser-experience-v1.5.9/README.md)。
 
