@@ -19,7 +19,7 @@
 | `app/src/main/java/local/pocketchat/DesignChrome.java` | 会话显示模式使用一层浅蓝容器，去掉重复描边；真实网页与切换逻辑保持原有实现。 |
 | `app/src/main/java/local/pocketchat/EnvironmentEditorUi.java` | 调整大字体下底部按钮排列，统一下拉项字色和字号、改善全屏编辑状态栏对比，保留取消、存草稿与保存的处理。 |
 | `app/src/main/java/local/pocketchat/EntryPickerUi.java` | 当前入口允许换行；大字体下先显示当前候选与重新随机，再显示节点列表；修正节点行触摸高度为 48 dp；精简说明并保留地区来自名称的来源提示。 |
-| `app/src/main/java/local/pocketchat/NetworkWorkspaceUi.java` | 将筛选收进标题区，压缩窗口列表顶部留白；代理地址示例放到可换行说明，保留原连接与保存逻辑。 |
+| `app/src/main/java/local/pocketchat/NetworkWorkspaceUi.java` | 将筛选收进标题区，压缩窗口列表顶部留白；代理地址示例放到可换行说明，刷新字形固定为 24 dp 防止大字体裁切，保留原连接与保存逻辑。 |
 | `app/src/main/java/local/pocketchat/BrowserDisplayUi.java` | 显示方式选择器复用共享字色与字号，选项及选择结果保持原样。 |
 | `app/build.gradle`、`app/src/main/AndroidManifest.xml` | 更新正式应用版本。内核扩展没有改动，扩展版本保留。 |
 | `tests/gecko/UiVisualIntegrationActivity.java`、`tests/gecko/AndroidManifest.xml` | 在独立测试包内打开生产原生控件，使用本地合成环境与订阅记录，不读取正式账号或发起真实网络配置。 |
