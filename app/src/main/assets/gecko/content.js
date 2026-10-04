@@ -32,7 +32,7 @@
   observe();
   document.addEventListener('DOMContentLoaded',observe,{once:true});
   document.addEventListener('DOMContentLoaded',documentReady,{once:true});
-  window.addEventListener('pageshow',documentReady);
+  window.addEventListener('pageshow',()=>{observedReady=false;documentReady();});
   documentReady();
   port.postMessage({kind:'ready'});
   scale();
