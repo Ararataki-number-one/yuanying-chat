@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "1.5.14",
-  "versionCode": 40,
+  "version": "1.5.15",
+  "versionCode": 41,
   "abi": "arm64-v8a",
   "minSdk": 26,
   "bytes": 120462577,
-  "sha256": "1f9c034a1dc41b816bbe56e20b541e0bbe3136e13bfda3bb0ddec7e12d924b54",
+  "sha256": "ed3878a34d68d748af8aeadddc24b76fe72c0074b3387888a3c59697d7fb78a6",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.14-gecko/PocketChat-1.5.14-gecko-arm64.apk",
-  "notes": "# 元婴期院士 1.5.14\n\n- 网络数据面移到独立服务进程，每个环境保留自己的代理内核与端口；浏览器重新打开时核验后复用原隧道。\n- 内核退出主动通知；单个环境停止不会停止其他环境的网络。\n- 新增可选的“低延迟优先”入口模式，在勾选池中按完整线路和网站响应优选，固定出口保持不变。\n- 测速增加 ChatGPT 网站首响应与复测结果，网站验证限制单独说明。\n- 空闲时小批量探测，回复、导航、上传与下载期间暂停后台检测，减少使用中的干扰。\n- DNS 服务通过固定出口比较，结果按环境保存；更快的配置留到下次连接时应用，不为测速重载当前网页。\n- 开启内核 DNS 缓存与 TCP 并行连接，复用成功的检测与出口核验连接。\n\n入口选择路径：网络 → 编辑网络 → 入口选择 → 低延迟优先 → 勾选入口 → 确定 → 保存并应用。原有随机和手动模式继续保留。\n\n使用原应用签名，可以覆盖安装。实际速度取决于订阅入口、固定出口和网站服务；优化不代表模型生成时间缩短。",
-  "sourceCommit": "32fe89eae00471513b2ea9cf9e52a86bf601804d"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.15-gecko/PocketChat-1.5.15-gecko-arm64.apk",
+  "notes": "# 1.5.15\n\n- 修复电脑版网页点击添加图片时，应用等待回复状态错误拦截文件选择器的问题。\n- 文件选择器遵循网页的图片类型和多选要求；修复无扩展名的系统相册图片交给 Firefox 后类型丢失的问题。\n- 原网页附件由网页管理，避免应用按附件名称推测进度而产生虚假的持续上传状态。\n- 手动完整线路测速允许在回复期间进行，只探测当前线路，不切换入口或固定出口。自动后台探测仍避让聊天、上传和下载。\n\n保留环境隔离、登录数据、固定出口和现有官方网页。Android 受控回归验证图片选择回调、真实 PNG 解码及上传接收，以及忙碌状态下测速保留连接；真实账号上传和真机长期运行仍需使用验证。",
+  "sourceCommit": "d387350a496c5b93d6b05c02ecf84fc8476ee8de"
 }
