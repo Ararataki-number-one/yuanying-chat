@@ -1,0 +1,124 @@
+
+Welcome to Gradle 9.8.0!
+
+Here are the highlights of this release:
+ - Java 27 support
+ - Maven mirror settings reuse
+ - Linked problem locations in build output
+
+For more details see https://docs.gradle.org/9.8.0/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as configuration cache cannot be reused due to --write-verification-metadata
+> Task :app:prepareGeckoManifest
+> Task :app:preBuild
+> Task :app:preReleaseBuild
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:generateReleaseResources
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:packageReleaseResources
+> Task :app:processReleaseNavigationResources
+> Task :app:mergeReleaseNativeLibs
+> Task :app:parseReleaseLocalResources
+> Task :app:javaPreCompileRelease
+> Task :app:checkReleaseAarMetadata
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseRFile
+> Task :app:compileReleaseNavigationResources
+> Task :app:compileReleaseKotlin NO-SOURCE
+> Task :app:stripReleaseDebugSymbols
+
+> Task :app:compileReleaseJavaWithJavac
+warning: unknown enum constant Scope.LIBRARY
+  reason: class file for androidx.annotation.RestrictTo$Scope not found
+warning: unknown enum constant Scope.LIBRARY
+warning: unknown enum constant Scope.LIBRARY_GROUP
+warning: unknown enum constant Scope.LIBRARY
+warning: unknown enum constant Scope.LIBRARY
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+5 warnings
+
+> Task :app:extractReleaseNativeSymbolTables
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+> Task :app:mergeReleaseResources
+
+> Task :app:processReleaseMainManifest
+/home/runner/work/yuanying-chat/yuanying-chat/app/build/generated/gecko/AndroidManifest.xml:10:273-305 Warning:
+	android:extractNativeLibs should not be specified in this source AndroidManifest.xml file. See https://d.android.com/guide/topics/manifest/application-element#extractNativeLibs for more information.
+The AGP Upgrade Assistant can remove the attribute from the AndroidManifest.xml file and update the build file accordingly. See https://d.android.com/studio/build/agp-upgrade-assistant for more information.
+
+> Task :app:processReleaseManifest
+> Task :app:processReleaseManifestForPackage
+> Task :app:mergeReleaseStartupProfile
+> Task :app:mergeReleaseArtProfile
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:processReleaseResources
+> Task :app:compressReleaseAssets
+> Task :app:desugarReleaseFileDependencies
+> Task :app:dexBuilderRelease
+> Task :app:mergeReleaseNativeDebugMetadata
+> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:extractProguardFiles
+> Task :app:mergeExtDexRelease
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:mergeDexRelease
+> Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:optimizeReleaseResources
+> Task :app:collectReleaseDependencies
+> Task :app:compileReleaseArtProfile
+> Task :app:sdkReleaseDependencyData
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:preIntegrationBuild
+> Task :app:mergeIntegrationJniLibFolders
+> Task :app:mergeReleaseJavaResource
+> Task :app:generateIntegrationResources
+> Task :app:checkIntegrationDuplicateClasses
+> Task :app:packageIntegrationResources
+> Task :app:processIntegrationNavigationResources
+> Task :app:javaPreCompileIntegration
+> Task :app:checkIntegrationAarMetadata
+> Task :app:mapIntegrationSourceSetPaths
+> Task :app:parseIntegrationLocalResources
+> Task :app:compileIntegrationNavigationResources
+> Task :app:generateIntegrationRFile
+> Task :app:compileIntegrationKotlin NO-SOURCE
+
+> Task :app:compileIntegrationJavaWithJavac FAILED
+/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/GeckoIntegrationTestActivity.java:109: error: ';' expected
+    session.web.evaluateJavascript("document.body.innerHTML="+JSONObject.quote(html),unused->{String code=session.driver.replace("location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'","location.protocol !== 'http:' || location.hostname !== '127.0.0.1' || location.port !== '8765'").replace("__ACTION__",JSONObject.quote("poll")).replace("__ARG__",J.obj("userKey","id:synthetic-user","prompt","guest prompt","export",true).toString());session.web.evaluateJavascript(code,raw->{JSONObject poll=J.parse(raw);boolean current=poll.optBoolean("terminal")&&poll.optBoolean("submitted")&&!poll.optBoolean("busy");session.web.evaluateJavascript("document.querySelector('section button').remove();document.querySelector('main').insertAdjacentHTML('afterbegin','<section><div data-message-author-role=\"assistant\" data-message-id=\"prior\">old</div><button aria-label=\"Copy message\">Copy</button></section>');",v->session.web.evaluateJavascript(code,later->{JSONObject old=J.parse(later);event("completion",J.obj("guestActionsRecognized",current,"priorActionsCannotComplete",!old.optBoolean("terminal"),"reply",poll.optString("markdown"),"poll",poll)));}));});});
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        ^
+1 error
+
+> Task :app:mergeIntegrationResources
+> Task :app:mergeIntegrationNativeLibs
+> Task :app:lintVitalAnalyzeRelease
+
+[Incubating] Problems report is available at: file:///home/runner/work/yuanying-chat/yuanying-chat/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileIntegrationJavaWithJavac' (registered by plugin 'com.android.internal.application').
+> Compilation failed; see the compiler output below.
+  /home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/GeckoIntegrationTestActivity.java:109: error: ';' expected
+      session.web.evaluateJavascript("document.body.innerHTML="+JSONObject.quote(html),unused->{String code=session.driver.replace("location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'","location.protocol !== 'http:' || location.hostname !== '127.0.0.1' || location.port !== '8765'").replace("__ACTION__",JSONObject.quote("poll")).replace("__ARG__",J.obj("userKey","id:synthetic-user","prompt","guest prompt","export",true).toString());session.web.evaluateJavascript(code,raw->{JSONObject poll=J.parse(raw);boolean current=poll.optBoolean("terminal")&&poll.optBoolean("submitted")&&!poll.optBoolean("busy");session.web.evaluateJavascript("document.querySelector('section button').remove();document.querySelector('main').insertAdjacentHTML('afterbegin','<section><div data-message-author-role=\"assistant\" data-message-id=\"prior\">old</div><button aria-label=\"Copy message\">Copy</button></section>');",v->session.web.evaluateJavascript(code,later->{JSONObject old=J.parse(later);event("completion",J.obj("guestActionsRecognized",current,"priorActionsCannotComplete",!old.optBoolean("terminal"),"reply",poll.optString("markdown"),"poll",poll)));}));});});
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          ^
+  1 error
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.8.0/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 1m 34s
+58 actionable tasks: 58 executed
