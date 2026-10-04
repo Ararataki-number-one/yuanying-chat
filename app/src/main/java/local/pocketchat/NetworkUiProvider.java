@@ -22,7 +22,8 @@ public class NetworkUiProvider extends ContentProvider {
   }
   void finish(String id,boolean ok,String message){if(Looper.myLooper()!=Looper.getMainLooper()){main.post(()->finish(id,ok,message));return;}if(id.equals(activeApply)){applying=false;activeApply="";ChatSession s=ChatSession.peek();if(s!=null){s.operation=false;s.changed();}}WindowNetworkState.save(profile,ChatSession.peek(),NativeNetwork.get(profile));jobs.put(id,J.obj("done",true,"ok",ok,"message",message));}
   boolean busy(ChatSession s,NativeNetwork n){return applying||n.starting||n.measuringLatency||s==null&&J.parse(profile.getSharedPreferences("chat",0).getString("pending","{}")).length()>0||s!=null&&(ProfileUi.working(s)||s.connecting);}
-  void request(String id,String action,JSONObject candidate,String baseline){
+  void request(String id,String action,JSONObject candidate,String baseline){request(id,action,candidate,baseline,false);}
+  void request(String id,String action,JSONObject candidate,String baseline,boolean deferred){
     if(!"apply".equals(action)&&!"external".equals(action)){operate(id,action,candidate,baseline);return;}
     saving=true;
     io.execute(()->{
@@ -32,7 +33,7 @@ public class NetworkUiProvider extends ContentProvider {
         NetworkChanges.validate(profile,action,candidate);NetworkChanges.save(profile,action,candidate,baseline);
       }catch(Exception e){error=e.getMessage()==null?"配置未能保存":e.getMessage();}
       String failure=error;main.post(()->{
-        saving=false;if(!failure.isEmpty()){finish(id,false,failure);return;}
+        saving=false;if(!failure.isEmpty()){if(deferred){JSONObject current=NetworkChanges.pending(profile);if(baseline.equals(current.optString("baseline"))&&candidate.toString().equals(String.valueOf(current.optJSONObject("config"))))NetworkChanges.clear(profile);ChatSession waiting=ChatSession.peek();if(waiting!=null)waiting.setStatus("已保存的网络设置需要重新编辑："+failure);}finish(id,false,failure);return;}
         ChatSession s=ChatSession.peek();NativeNetwork n=NativeNetwork.get(profile);
         if(saving||busy(s,n)||s!=null&&(s.navigating||s.state.optBoolean("busy"))){finish(id,true,"网络设置已保存，当前回复和文件操作结束后自动应用");return;}
         NetworkChanges.clear(profile);operate(id,action,candidate,baseline);
@@ -61,8 +62,8 @@ public class NetworkUiProvider extends ContentProvider {
     if(saving||busy(s,n)||s!=null&&(s.navigating||s.recoveryScheduled||s.state.optBoolean("busy")))return;
     JSONObject queued=NetworkChanges.pending(profile);if(queued.length()==0)return;
     String id=UUID.randomUUID().toString();jobs.put(id,J.obj("done",false));
-    request(id,queued.optString("action"),queued.optJSONObject("config"),queued.optString("baseline"));
-    JSONObject status=jobs.get(id);if(status!=null&&status.optBoolean("done")&&!status.optBoolean("ok")){NetworkChanges.clear(profile);if(s!=null)s.setStatus("已保存的网络设置未能应用："+status.optString("message"));}
+    request(id,queued.optString("action"),queued.optJSONObject("config"),queued.optString("baseline"),true);
+
   }
   void apply(String id,JSONObject candidate,String baseline){
     ChatSession s=ChatSession.peek();NativeNetwork n=NativeNetwork.get(profile);
