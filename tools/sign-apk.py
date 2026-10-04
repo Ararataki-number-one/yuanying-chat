@@ -34,7 +34,7 @@ import zipfile
 with zipfile.ZipFile(args.output) as archive:assert 'assets/network-fixture.p12' not in archive.namelist(),'Synthetic TLS key must never appear in production APK'
 assert 'application-debuggable' not in badging,'Release must not enable debugging.'
 manifest=subprocess.check_output([str(args.tools/'aapt2'),'dump','xmltree',str(args.output),'--file','AndroidManifest.xml'],text=True)
-assert all(name not in manifest for name in ['GeckoIntegrationTestActivity','ProfileGeckoIntegrationActivity','AppUpdateIntegrationActivity','GeckoUploadFixtureProvider','EnvironmentManagementIntegrationActivity','UiVisualIntegrationActivity','NetworkOptimizationIntegrationActivity']),'Test component present in release.'
+assert all(name not in manifest for name in ['GeckoIntegrationTestActivity','ProfileGeckoIntegrationActivity','AppUpdateIntegrationActivity','GeckoUploadFixtureProvider','EnvironmentManagementIntegrationActivity','UiVisualIntegrationActivity','NetworkOptimizationIntegrationActivity','NetworkTransportLifecycleActivity']),'Test component present in release.'
 subprocess.run([str(args.tools/'zipalign'),'-c','-P','16','4',str(args.output)],check=True)
 receipt={'file':args.output.name,'package':'local.pocketchat','version':version,'versionCode':version_code,'bytes':args.output.stat().st_size,
     'sha256':hashlib.sha256(args.output.read_bytes()).hexdigest(),'unsignedSha256':hashlib.sha256(args.apk.read_bytes()).hexdigest(),'signerSha256':digests[0],'debuggable':False,'testActivitiesPresent':False}

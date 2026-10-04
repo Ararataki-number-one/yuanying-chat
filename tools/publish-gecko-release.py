@@ -21,6 +21,7 @@ if version_code>=39:
 if version_code>=40:
     network=json.loads((args.evidence/'network-performance-results.json').read_text())
     assert len(visual.get('networkOptimizationScreens',[]))==3,'Missing compact and large-font low-latency UI checks.'
+    assert network.get('independentNetworkService')=='passed','Independent service lifecycle verification is required.'
     assert network['status']=='passed' and network['actualAndroidExecution'] and network['actualMihomoExecution'] and network['sourceCommit']==args.source,'Network evidence is missing or belongs to a different source.'
 build=json.loads((args.evidence/'manifest.json').read_text())
 assert build['sourceCommit']==args.source,'Native evidence does not match the selected source.'

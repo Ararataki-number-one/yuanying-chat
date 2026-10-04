@@ -19,9 +19,10 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
   void check(String name,boolean passed){JSONObject value=J.obj("name",name,"pass",passed);checks.put(value);Log.i("PocketNetworkPerformance",J.obj("kind","check","value",value).toString());if(!passed)throw new AssertionError(name);}
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test"))throw new SecurityException();new Thread(this::run,"network-optimization-fixture").start();}
   static class TestNetwork extends NativeNetwork {
-    final HttpFixture site,plain;boolean busy;
-    TestNetwork(Context c,HttpFixture site,HttpFixture plain){super(c,new File(c.getNoBackupFilesDir(),"network-performance-test"),false);this.site=site;this.plain=plain;}
-    @Override HttpURLConnection openProbeConnection(String target,int port)throws IOException{HttpURLConnection c=super.openProbeConnection(target,port);if(c instanceof HttpsURLConnection){if(!target.startsWith(site.url("/")))throw new IOException("Only controlled TLS endpoints are allowed");((HttpsURLConnection)c).setSSLSocketFactory(site.tls.getSocketFactory());}return c;}
+    final HttpFixture site,plain;final SSLSocketFactory trustFactory;boolean busy;
+    TestNetwork(Context c,HttpFixture site,HttpFixture plain){this(c,site,plain,false);}
+    TestNetwork(Context c,HttpFixture site,HttpFixture plain,boolean isolated){super(c,new File(c.getNoBackupFilesDir(),isolated?"network-runtime":"network-performance-test"),false);this.site=site;this.plain=plain;trustFactory=site.tls.getSocketFactory();}
+    @Override HttpURLConnection openProbeConnection(String target,int port)throws IOException{HttpURLConnection c=super.openProbeConnection(target,port);if(c instanceof HttpsURLConnection){if(!target.startsWith(site.url("/")))throw new IOException("Only controlled TLS endpoints are allowed");((HttpsURLConnection)c).setSSLSocketFactory(trustFactory);}return c;}
     @Override String websiteUrl(){return site.url("/website");}
     @Override String probeUrl(){return plain.url("/probe");}
     @Override String exitCheckUrl(){return site.url("/ip");}
@@ -49,7 +50,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       JSONObject core=n.api("GET","/configs",null,3000);check("TCP concurrency is enabled by the running core",core.optBoolean("tcp-concurrent"));
       JSONObject runningConfig=J.parse(new String(java.nio.file.Files.readAllBytes(new File(n.root,"config.json").toPath()),StandardCharsets.UTF_8));check("DNS nameservers remain guarded by the fixed exit",runningConfig.getJSONObject("dns").getJSONArray("nameserver").getString(0).endsWith("#FixedExit"));
       JSONObject first=n.measureWebsite("Entry|slow");check("First and repeat website headers are measured",first.getString("status").equals("ok")&&first.getLong("firstMs")>0&&first.getLong("warmMs")>0);
-      check("HEAD repeat reuses the same controlled HTTP connection",site.headConnections.size()>=2&&site.headConnections.get(0).equals(site.headConnections.get(1)));
+      NetworkCatalog.put(report,"firstWebsiteReading",first);NetworkCatalog.put(report,"headConnectionIds",new JSONArray(site.headConnections));check("HEAD repeat reuses the same controlled HTTP connection",site.headConnections.size()>=2&&site.headConnections.get(0).equals(site.headConnections.get(1)));
       check("Website probes contain no account Cookie or Authorization",!site.credentialsSeen);
       JSONObject alternative=n.measureWebsite("Entry|fast");check("A different candidate uses a new probe connection",!site.headConnections.get(1).equals(site.headConnections.get(2)));
       check("Candidate probing leaves the live route unchanged",n.currentEntry.equals("Entry|slow")&&n.api("GET","/proxies/EntryChoice",null,3000).getString("now").equals("Entry|slow"));
@@ -71,11 +72,32 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       n.quality.configure("synthetic-old-modes");for(int i=0;i<5;i++){n.quality.record("Entry|slow",500,now+i);n.quality.record("Entry|fast",30,now+i);}n.quality.selected("Entry|slow",now-RouteQuality.COOLDOWN-1000);NetworkCatalog.put(n.settings,"entryMode","random");n.scanAndSelect(false);check("Healthy random mode is not silently optimized",n.currentEntry.equals("Entry|slow"));NetworkCatalog.put(n.settings,"entryMode","manual");n.scanSubset(Collections.singletonList("Entry|slow"),false,false);check("Manual mode keeps the specified entry",n.currentEntry.equals("Entry|slow"));
       NetworkCatalog.put(n.settings,"entryMode","latency");n.websiteQuality.configure("synthetic-low-latency");for(int i=0;i<5;i++){n.websiteQuality.record("Entry|slow",900,now+i);n.websiteQuality.record("Entry|fast",50,now+i);}n.websiteQuality.selected("Entry|slow",now-RouteQuality.COOLDOWN-1000);n.websiteQuality.choose(n.names,n.currentEntry,false,true,now);n.scanSubset(n.names,false,true);check("Low latency selects a proven better candidate",n.currentEntry.equals("Entry|fast"));check("Optimizing preserves the fixed exit IP",n.exitIp.equals("203.0.113.8"));
       n.ready=true;site.ip="203.0.113.9";boolean mismatch=false;try{n.verifyExit();}catch(NativeNetwork.ExitMismatch expected){mismatch=true;}check("Exit IP changes still trigger the original protection",mismatch&&n.recoveryBlocked);
-      NetworkCatalog.put(report,"status","passed");
+      site.ip="203.0.113.8";testTransport(site,plain,config,yaml);
+      NetworkCatalog.put(report,"independentNetworkService","passed");NetworkCatalog.put(report,"status","passed");
     }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());}
     finally{if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
     NetworkCatalog.put(report,"checks",checks);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
     report.remove("checks");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
+  }
+  void testTransport(HttpFixture site,HttpFixture plain,JSONObject config,String yaml)throws Exception{
+    TestNetwork first=null,second=null,adopted=null;
+    try{
+      first=new TestNetwork(this,site,plain,true);first.startNow();JSONObject a=first.transport.call("snapshot","");
+      check("Proxy data plane has an independent Android process",a.getInt("servicePid")!=android.os.Process.myPid()&&a.getInt("pid")>0);
+      check("The independent service owns a live real proxy core",a.getBoolean("alive")&&first.coreAlive());int pid=a.getInt("pid"),port=first.proxyPort;
+      first.transport.detach();adopted=new TestNetwork(this,site,plain,true);check("A new control client adopts the running tunnel",adopted.adoptTransport());
+      JSONObject attached=adopted.transport.call("snapshot","");check("Client recreation keeps the exact core and port",attached.getInt("pid")==pid&&adopted.proxyPort==port&&adopted.startupPath.equals("service-adopted"));check("Adoption rechecks the fixed exit",adopted.exitIp.equals("203.0.113.8")&&adopted.lastVerified>0);
+      Context one=Profiles.context(this,1);SecretStore vault=new SecretStore(one);JSONObject other=J.parse(config.toString());NetworkCatalog.put(other,"subscriptionUrl","https://synthetic.invalid/environment-one");vault.save(other);vault.put("subscription",yaml.getBytes(StandardCharsets.UTF_8));vault.put("subscription-meta",J.obj("urlHash",NativeNetwork.hash(other.getString("subscriptionUrl")),"updatedAt",System.currentTimeMillis()).toString().getBytes(StandardCharsets.UTF_8));
+      second=new TestNetwork(one,site,plain,true);second.startNow();JSONObject b=second.transport.call("snapshot","");
+      check("Concurrent environments own different kernels and ports",b.getInt("pid")!=pid&&second.proxyPort!=adopted.proxyPort&&b.getInt("servicePid")==a.getInt("servicePid"));
+      CountDownLatch observed=new CountDownLatch(1);final JSONObject[] child={null};android.os.Messenger reply=new android.os.Messenger(new android.os.Handler(android.os.Looper.getMainLooper()){public void handleMessage(android.os.Message m){child[0]=J.parse(m.getData().getString("json"));observed.countDown();}});
+      runOnUiThread(()->startActivity(new android.content.Intent(this,NetworkTransportLifecycleActivity.class).putExtra("reply",reply).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)));
+      check("A separate environment control process observes its tunnel",observed.await(10,TimeUnit.SECONDS)&&child[0]!=null&&child[0].optInt("corePid")==b.getInt("pid")&&child[0].optInt("clientPid")!=android.os.Process.myPid());
+      Thread.sleep(500);check("Killing the environment control process keeps its proxy kernel",second.transport.call("snapshot","").getInt("pid")==b.getInt("pid")&&second.coreAlive());
+      android.os.Process.killProcess(pid);long deadline=android.os.SystemClock.elapsedRealtime()+5000;while(adopted.coreAlive()&&android.os.SystemClock.elapsedRealtime()<deadline)Thread.sleep(25);
+      check("Actual core exit is pushed to the control client",!adopted.coreAlive()&&!adopted.ready);check("One core exiting leaves the other environment usable",second.coreAlive()&&second.verifyExit().equals("203.0.113.8"));
+      adopted.stopNow();check("Stopping one environment does not stop the other",second.coreAlive());second.stopNow();check("The last tunnel stops through the service",!second.coreAlive());
+    }finally{for(TestNetwork net:new TestNetwork[]{first,second,adopted})if(net!=null){net.stopNow();net.worker.shutdownNow();net.probes.shutdownNow();net.closers.shutdownNow();net.traffic.reader.shutdownNow();}}
   }
   SSLContext tlsContext()throws Exception{KeyStore store=KeyStore.getInstance("PKCS12");try(InputStream in=getAssets().open("network-fixture.p12")){store.load(in,"network-fixture".toCharArray());}KeyManagerFactory keys=KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());keys.init(store,"network-fixture".toCharArray());TrustManagerFactory trust=TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());trust.init(store);SSLContext tls=SSLContext.getInstance("TLS");tls.init(keys.getKeyManagers(),trust.getTrustManagers(),null);return tls;}
   static abstract class LoopServer implements AutoCloseable {
