@@ -1,0 +1,19 @@
+Loading local repository...                                                     [=========                              ] 25% Loading local repository...       [=========                              ] 25% Fetch remote repository...        [=======================================] 100% Fetch remote repository...       
+Auto-selecting single ABI x86_64
+Do you wish to create a custom hardware profile? [no] * daemon not running; starting now at tcp:5037
+* daemon started successfully
+Performing Streamed Install
+Success
+{"kind": "tapNeeded", "result": {"id": "upload-1", "x": 321, "y": 487, "shown": true, "width": 1080, "height": 1732, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "tapNeeded", "result": {"id": "csv-1", "x": 256, "y": 685, "shown": true, "width": 1080, "height": 1732, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-1", "processSlot": 0}
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_device.py", line 283, in <module>
+    if __name__=='__main__':main()
+                            ^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_device.py", line 173, in main
+    usability=run(1,'usability','usability');assert usability['mobileVisible'] and usability['upload']=='sample.txt:synthetic-upload' and usability['csv']=='name,value\nsynthetic,42\n' and usability['blob']==usability['csv'],usability
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_device.py", line 151, in run
+    if event.get('kind')=='error':logs.append(output);raise AssertionError(event)
+                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'kind': 'error', 'result': {'error': 'tap element not available'}, 'nativeContext': 'environment-1', 'processSlot': 0}
