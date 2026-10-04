@@ -52,6 +52,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
     if("switchGecko".equals(action)&&!web.enabled){web.useEngine(true);action="read";}
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
+    if("backgroundSettings".equals(action)){backgroundSettings(serial);return;}
     if("queuedChanges".equals(action)){queuedChanges(serial);return;}
     if("privacy".equals(action)){privacy(serial,0);return;}
     if("completion".equals(action)){completion(serial);return;}
@@ -87,6 +88,13 @@ public class GeckoIntegrationTestActivity extends Activity {
       web.runtime.getWebExtensionController().disable(web.extension,1).accept(value->{web.current.loadUri("http://127.0.0.1:8765/fixture?context="+(slot+1)+"&action=read");session.handler.postDelayed(()->event("bootstrapCheck",J.obj("navigationFailed",session.navigationFailed)),5000);},error->event("error",J.obj("error","disable failed")));return;
     }
     loadFixture(serial);
+  }
+  void backgroundSettings(long serial){
+    boolean desktop=session.privacy.wantsDesktop();session.pending=J.obj("id","synthetic-background-settings","confirmed",true);session.navigating=false;session.connecting=false;
+    boolean saved=DeferredBrowserSettings.save(session,session.privacy.level(),!desktop);ChatService.begin(this);
+    event("homeNeeded",J.obj("id","background-settings-"+serial));
+    session.handler.postDelayed(()->{session.networkReady=false;session.guard.setBlocked(true);session.completeReply(session.pending,J.obj("url",session.web.getUrl()));session.changed();},5000);
+    session.handler.postDelayed(()->event("backgroundSettings",J.obj("saved",saved,"actualBackground",!session.uiVisible&&!processForeground(),"replyFinished",session.pending==null,"automaticallyApplied",!DeferredBrowserSettings.pending(session)&&session.privacy.wantsDesktop()!=desktop&&session.privacy.desktop!=desktop)),8500);
   }
   void queuedChanges(long serial){
     String original=session.prefs.getString("proxy","");int level=session.privacy.level();boolean desktop=session.privacy.wantsDesktop();
