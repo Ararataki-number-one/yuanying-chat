@@ -74,7 +74,7 @@ public class NetworkUiProvider extends ContentProvider {
       byte[] provider=catalog.cache(sub);if(provider==null)throw new java.io.IOException("请先读取所选订阅的入口，再保存");
       oldProvider=vault.get("subscription");oldMeta=vault.get("subscription-meta");oldUi=vault.get("subscription-ui");oldNetwork=vault.get("network");writing=true;
       vault.put("subscription",provider);vault.put("subscription-meta",J.obj("urlHash",sub.optString("id"),"updatedAt",sub.optLong("updatedAt")).toString().getBytes(StandardCharsets.UTF_8));vault.put("subscription-ui",J.obj("urlHash",sub.optString("id"),"nodes",sub.optJSONArray("nodes")).toString().getBytes(StandardCharsets.UTF_8));vault.save(candidate);
-      if(!prefs.edit().putString("networkMode","internal").putBoolean("networkConfigured",true).putString("lastGoodEntry",candidate.optString("entry")).commit())throw new java.io.IOException("网络配置未能保存");
+      if(!prefs.edit().putString("networkMode","internal").putBoolean("networkConfigured",true).putString("lastGoodEntry",candidate.optString("entry").isEmpty()?oldEntry:candidate.optString("entry")).commit())throw new java.io.IOException("网络配置未能保存");
     }catch(Exception error){
       // Restore only if writes began; candidate validation has no observable side effects.
       if(writing)try{restore(vault,"network",oldNetwork);restore(vault,"subscription",oldProvider);restore(vault,"subscription-meta",oldMeta);restore(vault,"subscription-ui",oldUi);prefs.edit().putString("networkMode",oldMode).putBoolean("networkConfigured",oldConfigured).putString("lastGoodEntry",oldEntry).commit();}catch(Exception ignored){}

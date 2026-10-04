@@ -31,6 +31,7 @@ public final class UiVisualIntegrationActivity extends Activity {
         JSONObject sub=workspace.catalog.subscriptions().getJSONObject(0);
         JSONArray nodes=sub.getJSONArray("nodes");
         NetworkDraft draft=new NetworkDraft(0,J.obj("subscriptionUrl",sub.getString("url"),"entryMode","random","entryPool",nodes,"entry",nodes.getString(0)),workspace.catalog);
+        if("latency".equals(getIntent().getStringExtra("entryMode")))draft.mode="latency";
         workspace.selectEntry(draft,()->{});
       }catch(Exception e){Log.e("PocketUiVisual","entry presentation failed",e);}
       Log.i("PocketUiVisual","ready "+action);

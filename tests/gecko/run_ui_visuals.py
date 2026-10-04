@@ -50,7 +50,27 @@ try:
         for width,height in [(360,640),(412,640)]:
             for scene in scenes:capture(variant,width,height,1,scene)
         for scene in ['proxy','entries','browser']:capture(variant,360,640,2,scene)
-    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'screenshots':records,'scope':'Production native UI and original widgets with local synthetic records; webpage, login and network core not replaced.'}
+    # Supplementary native screens for the new mode, with trusted Android taps.
+    optimization=[]
+    for width,scale in [(360,1),(412,1),(360,2)]:
+        adb('shell','am','force-stop',package);adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
+        adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction','entries','--es','entryMode','latency')
+        deadline=time.monotonic()+30
+        while True:
+            xml=dump()
+            if '勾选允许使用的入口' in xml:break
+            if time.monotonic()>deadline:raise AssertionError(('low latency modal missing',xml))
+            time.sleep(.5)
+        assert '低延迟优先' in xml and '重新随机' not in xml
+        choices=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.CheckBox'];assert choices
+        stem=f'network-latency-{width}-font{scale}'
+        (out/(stem+'.xml')).write_text(xml);(out/(stem+'.png')).write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+        if scale==1:
+            click(xml,'自动随机');xml=dump();assert '重新随机' in xml
+            click(xml,'手动指定');xml=dump();assert any(n.attrib.get('class')=='android.widget.RadioButton' for n in ET.fromstring(xml).iter('node'))
+            click(xml,'低延迟优先');xml=dump();assert '勾选允许使用的入口' in xml and '重新随机' not in xml
+        optimization.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','poolCheckboxes':len(choices)})
+    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'screenshots':records,'networkOptimizationScreens':optimization,'scope':'Production native UI and original widgets with local synthetic records; webpage, login and network core not replaced.'}
 except Exception as error:
     (out/'ui-visual-log.txt').write_text(adb('logcat','-d'))
     (out/'ui-visual-failure.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))

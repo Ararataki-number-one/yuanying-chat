@@ -12,9 +12,9 @@ final class EntrySelection {
   }
   static void validate(JSONObject config,List<String> nodes)throws IOException{
     String mode=config.optString("entryMode");if(mode.isEmpty())return;
-    if(!"manual".equals(mode)&&!"random".equals(mode))throw new IOException("请选择入口方式");
-    String chosen=config.optString("entry");if(!nodes.contains(chosen))throw new IOException("当前入口不属于所选订阅，请重新选择");
-    if("random".equals(mode)){List<String> pool=strings(config.optJSONArray("entryPool"));if(pool.isEmpty())throw new IOException("请至少勾选一个随机入口");if(!nodes.containsAll(pool))throw new IOException("随机池包含其他订阅的入口，请重新选择");if(!pool.contains(chosen))throw new IOException("当前入口不在勾选的随机池中");}
+    if(!"manual".equals(mode)&&!NetworkOptimizationPolicy.pooled(mode))throw new IOException("请选择入口方式");
+    String chosen=config.optString("entry");if(!("latency".equals(mode)&&chosen.isEmpty())&&!nodes.contains(chosen))throw new IOException("当前入口不属于所选订阅，请重新选择");
+    if(NetworkOptimizationPolicy.pooled(mode)){List<String> pool=strings(config.optJSONArray("entryPool"));if(pool.isEmpty())throw new IOException("请至少勾选一个入口");if(!nodes.containsAll(pool))throw new IOException("入口池包含其他订阅的入口，请重新选择");if(!chosen.isEmpty()&&!pool.contains(chosen))throw new IOException("当前入口不在勾选的入口池中");}
   }
   static String random(Collection<String> pool,Random random){if(pool.isEmpty())return "";return new ArrayList<>(pool).get(random.nextInt(pool.size()));}
   static String filter(List<String> names){StringBuilder value=new StringBuilder("^(?:");for(String name:names){if(value.length()>4)value.append('|');value.append(NativeNetwork.literalRegex(name));}return value.append(")$").toString();}

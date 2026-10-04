@@ -18,6 +18,9 @@ assert report.get('sourceCommit')==args.source,'Native report belongs to a diffe
 if version_code>=39:
     visual=json.loads((args.evidence/'ui-visual-results.json').read_text())
     assert visual['status']=='passed' and visual['actualAndroidExecution'] and visual['sourceCommit']==args.source,'UI evidence is missing or belongs to a different source.'
+if version_code>=40:
+    network=json.loads((args.evidence/'network-performance-results.json').read_text())
+    assert network['status']=='passed' and network['actualAndroidExecution'] and network['actualMihomoExecution'] and network['sourceCommit']==args.source,'Network evidence is missing or belongs to a different source.'
 build=json.loads((args.evidence/'manifest.json').read_text())
 assert build['sourceCommit']==args.source,'Native evidence does not match the selected source.'
 receipt=json.loads((args.apk.parent/'gecko-apk-verification.json').read_text())
@@ -38,6 +41,7 @@ for number,offset in enumerate(range(0,len(raw),60_000_000)):
     manifest['parts'].append({'file':name,'bytes':len(part),'sha256':hashlib.sha256(part).hexdigest()})
 (stage/'release-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 (stage/'device-results.json').write_text(json.dumps(report,indent=2)+'\n')
+if version_code>=40:shutil.copy2(args.evidence/'network-performance-results.json',stage/'network-performance-results.json')
 shutil.copy2(args.notes,stage/'RELEASE.md')
 workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkdir(parents=True)
 shutil.copy2(root/'.github/workflows/publish-gecko-release.yml',workflow)
