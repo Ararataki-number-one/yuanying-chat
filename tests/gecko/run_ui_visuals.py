@@ -4,7 +4,7 @@ import argparse,json,pathlib,re,subprocess,time,xml.etree.ElementTree as ET
 
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
 p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()
-package='local.pocketchat.test';scenes=['environments','network','proxy','entries','browser'];records=[]
+package='local.pocketchat.test';scenes=['chat','environments','network','proxy','entries','browser'];records=[]
 def adb(*values):return subprocess.check_output([args.adb,'-s',args.serial,*values],timeout=90).decode(errors='replace')
 def dump():
     adb('shell','uiautomator','dump','/sdcard/ui-visual.xml')
@@ -17,7 +17,7 @@ def capture(variant,width,height,scale,scene):
     if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
     adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
     adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene)
-    required={'environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息'}[scene]
+    required={'chat':'原网页','environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息'}[scene]
     deadline=time.monotonic()+35
     while True:
         xml=dump()
@@ -25,6 +25,7 @@ def capture(variant,width,height,scale,scene):
         if time.monotonic()>deadline:raise AssertionError((variant,scene,'screen did not appear',xml[-2000:]))
         time.sleep(.5)
     if scene=='browser':click(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
+    if scene=='chat':time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置','原网页'])
     assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
     stem=f'{variant}-{width}x{height}-font{scale:g}-{scene}'
     (shots/(stem+'.xml')).write_text(xml)
