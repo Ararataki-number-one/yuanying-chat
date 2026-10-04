@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Actual Android screenshots of production UI; never touches the formal app."""
-import argparse,json,pathlib,re,subprocess,time,xml.etree.ElementTree as ET
+import argparse,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET
 
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
 p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()
@@ -21,6 +21,8 @@ def capture(variant,width,height,scale,scene):
     deadline=time.monotonic()+35
     while True:
         xml=dump()
+        runtime=adb('logcat','-d','-s','AndroidRuntime:E','*:S')
+        if 'FATAL EXCEPTION' in runtime:raise AssertionError((variant,scene,'Android UI crashed',runtime[-5000:]))
         if required in xml:break
         if time.monotonic()>deadline:raise AssertionError((variant,scene,'screen did not appear',xml[-2000:]))
         time.sleep(.5)
@@ -29,19 +31,25 @@ def capture(variant,width,height,scale,scene):
     assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
     stem=f'{variant}-{width}x{height}-font{scale:g}-{scene}'
     (shots/(stem+'.xml')).write_text(xml)
-    (shots/(stem+'.png')).write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
-    records.append({'variant':variant,'logicalViewport':f'{width}x{height}','fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml'})
+    raw=subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30)
+    pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3),(variant,scene,'Unexpected actual viewport',pixels)
+    density=int(re.findall(r'density: (\d+)',adb('shell','wm','density'))[-1]);assert density==480,density
+    (shots/(stem+'.png')).write_bytes(raw)
+    records.append({'variant':variant,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml'})
 try:
     for variant in ['baseline','current']:
         adb('shell','am','force-stop',package)
         adb('install','-r',str(out/('ui-'+variant+'.apk')))
         adb('shell','pm','clear',package)
         if int(adb('shell','getprop','ro.build.version.sdk').strip())>=33:adb('shell','pm','grant',package,'android.permission.POST_NOTIFICATIONS')
-        for width,height in [(360,800),(412,915)]:
+        for width,height in [(360,640),(412,640)]:
             for scene in scenes:capture(variant,width,height,1,scene)
-        for scene in ['proxy','entries','browser']:capture(variant,360,800,2,scene)
+        for scene in ['proxy','entries','browser']:capture(variant,360,640,2,scene)
     report={'status':'passed','actualAndroidExecution':True,'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'screenshots':records,'scope':'Production native UI and original widgets with local synthetic records; webpage, login and network core not replaced.'}
 except Exception as error:
+    (out/'ui-visual-log.txt').write_text(adb('logcat','-d'))
+    (out/'ui-visual-failure.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+    (out/'ui-visual-failure.xml').write_text(dump())
     report={'status':'failed','error':repr(error),'screenshots':records};raise
 finally:
     (out/'ui-visual-results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
