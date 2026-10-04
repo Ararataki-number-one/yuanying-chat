@@ -33,6 +33,6 @@ final class AuditReport {
     }else row(rows,"network","实际网络出口",UNCOVERED,"本次只检查浏览器信息，没有访问网络检测服务");
     row(rows,"dns","DNS 网络泄漏",UNCOVERED,"可查看内置加密 DNS 配置，但未进行权威 DNS 探针或网络抓包，不能证明解析没有绕行");row(rows,"udp","UDP / QUIC / TLS 等路径",UNCOVERED,"本次 HTTPS 查询不能覆盖所有协议或识别全部浏览器网络指纹");
     if(!fresh)for(int i=0;i<rows.length();i++){JSONObject r=rows.optJSONObject(i);if(!UNCOVERED.equals(r.optString("state")))try{r.put("state",UNCOVERED);r.put("detail","检查期间环境变化，结果已作废，请在连接稳定后重测");}catch(Exception ignored){}}
-    return J.obj("at",System.currentTimeMillis(),"network",network,"fresh",fresh,"rows",rows,"signals",sample,"native",nativeResult,"scope","本机检查页面及指定公开检测服务，不是 VPN 隐身或防封号认证");
+    return J.obj("at",System.currentTimeMillis(),"network",network,"fresh",fresh,"rows",rows,"signals",sample,"native",nativeResult,"scope","gecko".equals(expected.optString("engine"))?"当前 Firefox 页面内的浏览器公共信息及指定检测服务":"本机检查页面及指定公开检测服务");
   }
 }

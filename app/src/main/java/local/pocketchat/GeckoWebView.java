@@ -322,7 +322,7 @@ class GeckoWebView extends FrameLayout {
   void configure(boolean desktop,int protection){
     this.desktop=desktop;
     for(GeckoSession session:new ArrayList<>(locations.keySet())){session.getSettings().setUserAgentMode(desktop?GeckoSessionSettings.USER_AGENT_MODE_DESKTOP:GeckoSessionSettings.USER_AGENT_MODE_MOBILE);session.getSettings().setViewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE);session.getSettings().setUseTrackingProtection(protection>0);}
-    if(current!=null&&current.isOpen()){GeckoSession source=current;source.getUserAgent().accept(value->{if(!destroyed&&source==current)metadata.userAgent=value;},error->{});}
+    if(current!=null&&current.isOpen()){GeckoSession source=current;source.getUserAgent().accept(value->{if(!destroyed&&source==current&&this.desktop==desktop)metadata.userAgent=value;},error->{});}
   }
   void useEngine(boolean value){if(value!=enabled)throw new IllegalStateException("切换内核需要重新打开当前环境");}
   boolean closePopup(){
