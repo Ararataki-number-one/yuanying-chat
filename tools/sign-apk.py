@@ -32,7 +32,7 @@ badging=subprocess.check_output([str(args.tools/'aapt2'),'dump','badging',str(ar
 assert f"package: name='local.pocketchat' versionCode='{version_code}' versionName='{version}'" in badging,badging.splitlines()[0]
 assert 'application-debuggable' not in badging,'Release must not enable debugging.'
 manifest=subprocess.check_output([str(args.tools/'aapt2'),'dump','xmltree',str(args.output),'--file','AndroidManifest.xml'],text=True)
-assert 'GeckoIntegrationTestActivity' not in manifest and 'ProfileGeckoIntegrationActivity' not in manifest,'Test entry present in release.'
+assert all(name not in manifest for name in ['GeckoIntegrationTestActivity','ProfileGeckoIntegrationActivity','AppUpdateIntegrationActivity','GeckoUploadFixtureProvider']),'Test component present in release.'
 subprocess.run([str(args.tools/'zipalign'),'-c','-P','16','4',str(args.output)],check=True)
 receipt={'file':args.output.name,'package':'local.pocketchat','version':version,'versionCode':version_code,'bytes':args.output.stat().st_size,
     'sha256':hashlib.sha256(args.output.read_bytes()).hexdigest(),'unsignedSha256':hashlib.sha256(args.apk.read_bytes()).hexdigest(),'signerSha256':digests[0],'debuggable':False,'testActivitiesPresent':False}

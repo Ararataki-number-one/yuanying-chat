@@ -23,6 +23,7 @@ jobs:
           echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           mkdir -p work/gecko-integration
+          "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore work/gecko-integration/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
           curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip
           echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-integration/gradle.zip' | sha256sum -c -
           unzip -q work/gecko-integration/gradle.zip -d work/gecko-integration/gradle
@@ -33,7 +34,7 @@ jobs:
       - name: Compile release and native regression package
         run: |
           set -euo pipefail
-          work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-integration/build.log
+          work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-integration/build.log
       - name: Check stale messages and continuous bridge use
         run: |
           set -euo pipefail
@@ -51,6 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          exec > >(tee work/gecko-integration/update-fixture-preparation.log) 2>&1
           tools="$ANDROID_HOME/build-tools/37.0.0"
           python3 - <<'PYCODE'
           import pathlib,re
@@ -59,7 +61,7 @@ jobs:
           pathlib.Path('work/gecko-integration/update-fixture.xml').write_text(text)
           PYCODE
           "$tools/aapt2" link -I "$ANDROID_HOME/platforms/android-37.1/android.jar" --manifest work/gecko-integration/update-fixture.xml -o work/gecko-integration/update-fixture-unsigned.apk
-          "$tools/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-fixture.apk work/gecko-integration/update-fixture-unsigned.apk
+          "$tools/apksigner" sign --ks work/gecko-integration/integration-test.jks --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-fixture.apk work/gecko-integration/update-fixture-unsigned.apk
           keytool -genkeypair -keystore work/gecko-integration/update-wrong-key.jks -alias fixture -storepass android -keypass android -dname CN=Synthetic -keyalg RSA -validity 2
           "$tools/apksigner" sign --ks work/gecko-integration/update-wrong-key.jks --ks-key-alias fixture --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-wrong-signer.apk work/gecko-integration/update-fixture-unsigned.apk
       - name: Publish unsigned build for local original signing
