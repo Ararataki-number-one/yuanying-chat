@@ -289,7 +289,7 @@ def main():
         assert run(1,'sessionRead','session')['token']=='none','Explicit profile clear restored a deleted session cookie'
         assert run(2,'sessionRead','session')['token']=='synthetic-session-2'
         privacy=run(1,'privacy','privacy');assert privacy['nativeFingerprintingEnabled'] is True,privacy
-        completion=run(1,'completion','completion');assert completion['guestActionsRecognized'] and completion['priorActionsCannotComplete'],completion
+        completion=run(1,'completion','completion');assert completion['guestActionsRecognized'] and completion['priorActionsCannotComplete'] and completion['nestedMessageIdRecognized'],completion
         bootstrap=run(1,'disableExtension','bootstrapCheck');assert bootstrap['navigationFailed'] is True,bootstrap
         check(run(2,'read'),2,True)
         # Exercise the real outer Activity after moving its retained Gecko surface.

@@ -100,15 +100,27 @@
     const text=node=>node.nodeType===Node.TEXT_NODE?node.nodeValue:node.nodeType!==Node.ELEMENT_NODE?'':node.tagName==='BR'?'\n':[...node.childNodes].map(text).join('')+(/^(DIV|P|LI)$/.test(node.tagName)?'\n':'');
     return text(clone).trim();
   }
+  function ownMessageId(el) {
+    return el.getAttribute('data-message-id') || el.getAttribute('data-chatgpt-selection-message-id') ||
+      (el.getAttribute('data-chatgpt-search-message-ids')||'').trim().split(/\s+/)[0] || '';
+  }
+  function legacyKey(el, index) {
+    const id=ownMessageId(el)||el.id;if(id)return 'id:'+id;
+    const unit=el.getAttribute('data-chatgpt-search-unit-key')||el.getAttribute('data-content-search-unit-key');if(unit)return 'unit:'+unit;
+    const article=el.closest('article'),turn=article&&(article.getAttribute('data-testid')||article.id);
+    return turn?'turn:'+turn:'index:'+index+':'+signature(el.innerText).slice(0,96);
+  }
   function key(el, index) {
-    const id = el.getAttribute('data-message-id') || el.getAttribute('data-chatgpt-selection-message-id') ||
-      (el.getAttribute('data-chatgpt-search-message-ids')||'').trim().split(/\s+/)[0] || el.id;
-    if (id) return 'id:' + id;
-    const turnKey=el.getAttribute('data-chatgpt-search-unit-key') || el.getAttribute('data-content-search-unit-key');
-    if(turnKey)return 'unit:'+turnKey;
-    const article = el.closest('article');
-    const turn = article && (article.getAttribute('data-testid') || article.id);
-    return turn ? 'turn:' + turn : 'index:' + index + ':' + signature(el.innerText).slice(0,96);
+    const id=ownMessageId(el)||el.id;if(id)return 'id:'+id;
+    const unit=el.getAttribute('data-chatgpt-search-unit-key')||el.getAttribute('data-content-search-unit-key');if(unit)return 'unit:'+unit;
+    // messages() de-duplicates the outer turn and its body. The authoritative
+    // message ID can live in the nested body; accept only one ID of this role.
+    const role=el.getAttribute('data-message-author-role')||el.getAttribute('data-turn');
+    if(role==='user'||role==='assistant'){
+      const nested=new Set([...el.querySelectorAll('[data-message-author-role="'+role+'"]')].map(ownMessageId).filter(Boolean));
+      if(nested.size===1)return 'id:'+[...nested][0];
+    }
+    return legacyKey(el,index);
   }
   function siteError(scope,fast=false) {
     if(!fast&&/Unable to load site|无法加载网站/.test(document.body.innerText||''))return '网站拒绝当前访问。请检查应用专用代理和出口，或查看网站状态；尚未确认登录。';
@@ -345,7 +357,7 @@
     let boundByNewIdentity=false;
     if(action==='latest')userIndex=users.length-1;
     else if (arg.userKey) {
-      userIndex=users.findIndex((el,i)=>key(el,i)===arg.userKey);
+      userIndex=users.findIndex((el,i)=>key(el,i)===arg.userKey || (arg.kind!=='web'&&legacyKey(el,i)===arg.userKey));
       if(userIndex<0)return {url:location.href,error:siteError(),submitted:false,bindingLost:true,pageLoading:document.readyState!=='complete'||users.length===0,busy:busy(),text:'',terminal:false};
       if(!samePrompt(userText(users[userIndex]),arg.prompt))return {url:location.href,error:'已绑定的提问正文发生变化，请检查网页。',submitted:false,bindingLost:true,text:'',terminal:false};
     }else if(Array.isArray(arg.beforeUserKeys)){

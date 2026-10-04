@@ -105,7 +105,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     boolean enabled=session.web.fingerprintingProtected;session.prefs.edit().putInt("privacyLevel",priorPrivacy).commit();session.web.configure(session.privacy.desktop,priorPrivacy);session.handler.postDelayed(()->event("privacy",J.obj("nativeFingerprintingEnabled",enabled,"restoredLevel",priorPrivacy)),1000);
   }
   void completion(long serial){
-    String html="<main><article data-turn='user' data-message-id='synthetic-user'><div data-message-author-role='user'>guest prompt</div></article><section><div data-message-author-role='assistant' data-message-id='synthetic-answer'><div class='markdown'>guest complete reply</div></div><button aria-label='Copy message'>Copy</button></section><textarea id='prompt-textarea'></textarea></main>";
+    String html="<main><article data-turn='user'><div data-message-author-role='user' data-message-id='synthetic-user'>guest prompt</div></article><section><div data-message-author-role='assistant' data-message-id='synthetic-answer'><div class='markdown'>guest complete reply</div></div><button aria-label='Copy message'>Copy</button></section><textarea id='prompt-textarea'></textarea></main>";
     // Only this test copy accepts the strictly bounded loopback fixture. The
     // production driver continues to require the real HTTPS ChatGPT origin.
     String code=session.driver
@@ -120,7 +120,7 @@ public class GeckoIntegrationTestActivity extends Activity {
         session.web.evaluateJavascript(previous,v->{
           session.web.evaluateJavascript(code,later->{
             JSONObject old=J.parse(later);
-            event("completion",J.obj("guestActionsRecognized",current,"priorActionsCannotComplete",!old.optBoolean("terminal"),"reply",poll.optString("markdown"),"poll",poll));
+            event("completion",J.obj("guestActionsRecognized",current,"priorActionsCannotComplete",!old.optBoolean("terminal"),"nestedMessageIdRecognized","id:synthetic-user".equals(poll.optString("userKey")),"reply",poll.optString("markdown"),"poll",poll));
           });
         });
       });
