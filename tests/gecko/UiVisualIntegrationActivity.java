@@ -47,7 +47,11 @@ public final class UiVisualIntegrationActivity extends Activity {
     }
     AppSettings.defaultSlot(this,0);AppSettings.put(this,"brandSeen","true");AppSettings.put(this,"updateAutoCheck","false");
     NetworkCatalog library=new NetworkCatalog(this);
-    if(library.subscriptions().length()==0){JSONObject sub=library.addSubscription("日常线路","https://example.test/ui-only-subscription");library.parsed(sub.getString("id"),J.arr("日本大阪 03","日本东京 01","香港入口"),"local-ui-fixture".getBytes(java.nio.charset.StandardCharsets.UTF_8),System.currentTimeMillis());}
+    if(library.subscriptions().length()==0){
+      JSONObject sub=library.addSubscription("日常线路","https://example.test/ui-only-subscription");
+      String fixture="proxies:\n  - {name: '日本大阪 03', type: socks5, server: 127.0.0.1, port: 1080}\n  - {name: '日本东京 01', type: socks5, server: 127.0.0.1, port: 1081}\n  - {name: '香港入口', type: socks5, server: 127.0.0.1, port: 1082}\n";
+      library.parsed(sub.getString("id"),J.arr("Entry|日本大阪 03","Entry|日本东京 01","Entry|香港入口"),fixture.getBytes(java.nio.charset.StandardCharsets.UTF_8),System.currentTimeMillis());
+    }
   }
   @Override protected void onDestroy(){if(workspace!=null)workspace.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
 }
