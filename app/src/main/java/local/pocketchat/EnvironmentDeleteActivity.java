@@ -45,5 +45,5 @@ public final class EnvironmentDeleteActivity extends Activity {
     Profiles.global(c).getSharedPreferences("browser-environment-names",0).edit().remove("name"+slot).commit();
     DownloadLibrary.get(c).removeEnvironmentTasks(slot);catalog.completeDelete(slot);
   }
-  static void erase(File f)throws IOException{if(!f.exists())return;if(java.nio.file.Files.isSymbolicLink(f.toPath())){if(!f.delete())throw new IOException();return;}if(f.isDirectory()){File[] children=f.listFiles();if(children==null)throw new IOException();for(File child:children)erase(child);}if(!f.delete())throw new IOException();}
+  static void erase(File f)throws IOException{if(java.nio.file.Files.isSymbolicLink(f.toPath())){if(!f.delete())throw new IOException("无法清理链接："+f.getName());return;}if(!f.exists())return;if(f.isDirectory()){File[] children=f.listFiles();if(children==null)throw new IOException("无法读取目录："+f.getName());for(File child:children)erase(child);}if(!f.delete())throw new IOException("无法清理文件："+f.getName());}
 }
