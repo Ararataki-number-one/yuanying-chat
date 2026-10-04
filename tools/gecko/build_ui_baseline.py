@@ -7,7 +7,7 @@ p=argparse.ArgumentParser();p.add_argument('--gradle',required=True);p.add_argum
 baseline='45b4d44528ad54fc7d54299fa9f6091a90446f79'
 if subprocess.run(['git','cat-file','-e',baseline+'^{commit}'],cwd=root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode:
     subprocess.run(['git','fetch','--depth=1','origin',baseline],cwd=root,check=True)
-files=[root/'app/src/main/java/local/pocketchat'/name for name in ['DesignUi.java','ReferenceUi.java','WindowHomeActivity.java','DesignChrome.java']]
+files=[root/'app/src/main/java/local/pocketchat'/name for name in ['DesignUi.java','ReferenceUi.java','WindowHomeActivity.java','DesignChrome.java','EnvironmentEditorUi.java']]
 original={file:file.read_bytes() for file in files}
 current=root/'app/build/outputs/apk/integration/app-x86_64-integration.apk'
 shutil.copy2(current,out/'ui-current.apk')

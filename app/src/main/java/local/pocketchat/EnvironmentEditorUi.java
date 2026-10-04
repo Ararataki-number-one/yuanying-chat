@@ -90,6 +90,10 @@ final class EnvironmentEditorUi {
     updateTabs(a,tabs,host,tab);
     TextView validation=DesignUi.text(a,"",13,DesignUi.RED);validation.setPadding(a.dp(14),a.dp(8),a.dp(14),0);validation.setVisibility(android.view.View.GONE);validation.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);root.addView(validation);
     LinearLayout actions=DesignUi.row(a);actions.setPadding(a.dp(12),a.dp(10),a.dp(12),a.dp(10));
+    boolean largeText=a.getResources().getConfiguration().fontScale>=1.4f;
+    LinearLayout secondary=largeText?DesignUi.row(a):actions;
+    if(largeText){actions.setOrientation(LinearLayout.VERTICAL);actions.addView(secondary,new LinearLayout.LayoutParams(-1,-2));}
+    int actionIndex=0;
     for(Button button:new Button[]{DesignUi.button(a,"取消",false,()->exit[0].run()),DesignUi.button(a,"存草稿",false,()->{ProfileCatalog.get(a).draft(Profiles.slot(a),read.get());dialog.dismiss();a.status("环境草稿已保存，尚未应用");}),DesignUi.button(a,"保存环境",true,()->{
       if(saving[0])return;saving[0]=true;editingEnabled(root,false);validation.setText("正在保存…");validation.setTextColor(DesignUi.MUTED);validation.setVisibility(android.view.View.VISIBLE);
       JSONObject value=read.get();applySafely(a,value,name,ok->{saving[0]=false;if(a.isDestroyed())return;if(ok){dialog.dismiss();return;}
@@ -99,7 +103,9 @@ final class EnvironmentEditorUi {
         validation.setTextColor(DesignUi.RED);validation.setVisibility(android.view.View.VISIBLE);
       });
     })}){
-      LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,a.dp(48),1);p.setMargins(a.dp(3),0,a.dp(3),0);actions.addView(button,p);
+      boolean primaryRow=largeText&&actionIndex==2;
+      LinearLayout.LayoutParams p=primaryRow?new LinearLayout.LayoutParams(-1,a.dp(48)):new LinearLayout.LayoutParams(0,a.dp(48),1);
+      p.setMargins(a.dp(3),primaryRow?a.dp(8):0,a.dp(3),0);(primaryRow?actions:secondary).addView(button,p);actionIndex++;
     }
     root.addView(actions);dialog.setOnDismissListener(d->returnToList(a));dialog.setCanceledOnTouchOutside(false);dialog.setContentView(root);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
   }
