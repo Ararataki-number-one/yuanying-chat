@@ -2,11 +2,12 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.13（versionCode 39，原版签名 Oil UI 界面校准更新）。**
+**当前版本：1.5.14（versionCode 40，原版签名独立网络服务与性能优化更新）。**
 
 ## 下载与安装
 
-- [下载 1.5.13 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.13-gecko/PocketChat-1.5.13-gecko-arm64.apk)
+- [下载 1.5.14 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.14-gecko/PocketChat-1.5.14-gecko-arm64.apk)
+- [上一版 1.5.13 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.13-gecko/PocketChat-1.5.13-gecko-arm64.apk)
 - [上一版 1.5.12 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.12-gecko/PocketChat-1.5.12-gecko-arm64.apk)
 - [上一版 1.5.11 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.11-gecko/PocketChat-1.5.11-gecko-arm64.apk)
 - [上一版 1.5.10 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.10-gecko/PocketChat-1.5.10-gecko-arm64.apk)
@@ -36,7 +37,7 @@ Firefox 新内核首次需要重新登录。原系统内核的登录数据保留
 | 下载 | 自动保存、同名编号、暂停与续传、跨窗口文件列表、打开、分享、另存为 |
 | 应用更新 | 每天自动检查、可选 Wi-Fi 自动下载、后台下载与取消/重试、原签名覆盖安装确认 |
 | 后台等待 | 等待与完成通知、发送状态恢复；重新连接不会自动重发提问 |
-| 网络管理 | 全部窗口网络、订阅与固定出口三栏；候选编辑后保存并应用；勾选池随机 / 手动入口；原完整线路测速与出口核验；节点名称地区提示与实际出口 IP 地区查询；回复期间保存候选，结束后应用 |
+| 网络管理 | 全部窗口网络、订阅与固定出口三栏；候选编辑后保存并应用；随机 / 手动 / 低延迟优先入口；完整线路与网站响应检测、出口核验；独立服务持有每环境内核、核验后接管；空闲维护与 DNS 优选；回复期间保存候选，结束后应用 |
 | 隐私与自检 | 系统内核保留三档保护与原自检；Firefox 使用原生跟踪保护并关闭 WebRTC，强化档启用官方原生抗指纹；支持当前页面公共浏览器信息自检；系统内核脚本检测标为未覆盖 |
 | 偏好 | 草稿、历史、滚动位置、后台与通知开关、仅 Wi-Fi 下载、旧临时文件清理 |
 
@@ -45,6 +46,8 @@ Firefox 新内核首次需要重新登录。原系统内核的登录数据保留
 独立“记录”主页面已移除，会话历史仍在聊天侧边栏中。
 
 安卓 10+ 默认下载目录为 `Download/元婴期院士/窗口_编号/`；安卓 8–9 保存到对应窗口的应用内文件目录，可打开、分享或另存为。
+
+1.5.14 将内置代理数据面移入独立网络服务，按环境监督真实内核，控制进程重建后核验并接管原端口。新增可选的低延迟优先入口、网站首响应检测、空闲小批量维护和按环境保存的 DNS 选择。见 [底层架构](docs/NETWORK-ARCHITECTURE.md)、[性能方案](docs/NETWORK-PERFORMANCE-PLAN.md)、[逐文件修改](docs/CHANGELOG-v1.5.14.md) 与 [Android、原签名和公网证据](verification/network-performance-v1.5.14/README.md)。
 
 1.5.13 使用 Oil UI 开源版校准原生视觉层级，统一颜色、卡片与导航；环境卡片的操作更安静，弹窗与环境编辑适配大字体。见 [逐文件修改说明](docs/CHANGELOG-v1.5.13.md) 与 [原生前后截图、评审和构建验证](verification/oil-ui-v1.5.13/README.md)。
 
