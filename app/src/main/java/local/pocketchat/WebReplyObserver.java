@@ -91,7 +91,7 @@ final class WebReplyObserver {
     }
     try {
       if ("intent".equals(type)) {
-        if (!session.prefs.getBoolean("pageMode", false) || session.submitting || session.operation ||
+        if (!session.prefs.getBoolean("pageMode", false) || session.submitting || session.operation && !session.configurationCapture ||
             !token.matches("[a-zA-Z0-9-]{16,80}") || event.optString("prompt").length() > 300000 ||
             Math.abs(System.currentTimeMillis() - event.optLong("capturedAt")) > 60000) return;
         JSONArray before = event.optJSONArray("beforeKeys");

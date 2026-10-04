@@ -11,7 +11,7 @@ final class EntryPickerUi {
   int dp(int n){return ReferenceUi.dp(a,n);}
   ReferenceUi.Modal show(){dialog.buttons("取消",dialog::dismiss,"确定",this::confirm);render();dialog.show();return dialog;}
   void render(){
-    dialog.body.removeAllViews();boolean random=mode.equals("random");dialog.body.addView(ReferenceUi.tabs(a,new String[]{"自动随机","手动指定"},random?0:1,n->{mode=n==0?"random":"manual";if(mode.equals("random")&&!pool.contains(entry))entry="";render();}));dialog.note(random?"勾选参与随机的入口":"选择当前订阅中的一个入口");
+    dialog.body.removeAllViews();boolean random=mode.equals("random");dialog.body.addView(ReferenceUi.tabs(a,new String[]{"自动随机","手动指定"},random?0:1,n->{mode=n==0?"random":"manual";if(mode.equals("random")&&!pool.contains(entry))entry="";render();}));dialog.note(random?"勾选参与随机的入口，地区按名称识别":"选择当前订阅中的一个入口，地区按名称识别");
     int columns=a.getResources().getConfiguration().screenWidthDp>360&&a.getResources().getConfiguration().fontScale<=1.2f?2:1;
     grid=new GridView(a);grid.setNumColumns(columns);grid.setHorizontalSpacing(dp(8));grid.setVerticalSpacing(dp(8));grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);grid.setNestedScrollingEnabled(true);
     grid.setOnTouchListener((v,event)->{if(event.getActionMasked()==MotionEvent.ACTION_DOWN)v.getParent().requestDisallowInterceptTouchEvent(v.canScrollVertically(1)||v.canScrollVertically(-1));return false;});

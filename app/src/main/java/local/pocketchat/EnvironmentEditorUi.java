@@ -123,15 +123,15 @@ final class EnvironmentEditorUi {
     ChatSession s=a.session;boolean browserChange=value.optInt("privacyLevel",s.privacy.level())!=s.privacy.level()||value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
     if(value.optString("name").trim().isEmpty()||value.optString("name").trim().length()>24||!browserChange||!MainActivity.chatUrl(s.web.getUrl())||ProfileUi.working(s)){done.accept(apply(a,value,name));return;}
     final String url=s.web.getUrl(),scope=s.pageMemory.scope();final long epoch=s.navigationEpoch;
-    s.operation=true;s.changed();a.status("正在保留网页草稿…");
-    java.util.function.Consumer<String> fail=message->{s.operation=false;s.changed();a.status(message);done.accept(false);};
+    s.operation=true;s.configurationCapture=true;s.changed();a.status("正在保留网页草稿…");
+    java.util.function.Consumer<String> fail=message->{DeferredBrowserSettings.release(s);s.changed();a.status(message);done.accept(false);};
     // Inspect uses the existing read-only driver and detects oversized drafts before
     // page-state's bounded snapshot could omit them.
     s.asyncDriver("inspect",J.obj("expectedUrl",url),2500,inspected->{
       if(!WebReplyObserver.same(url,inspected.optString("url"))||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())){
         fail.accept("网页状态已改变，请稍后重试；环境设置尚未应用");return;
       }
-      s.state=inspected;s.stateEpoch=epoch;if(inspected.optBoolean("busy")){s.operation=false;done.accept(apply(a,value,name));return;}
+      s.state=inspected;s.stateEpoch=epoch;if(inspected.optBoolean("busy")){DeferredBrowserSettings.release(s);done.accept(apply(a,value,name));return;}
       if(inspected.optString("draft").length()>300000||inspected.optString("draftRaw").length()>300000){fail.accept("网页草稿过长，请先保存或发送，再切换显示方式");return;}
       s.asyncDriver("page-state",J.obj("expectedUrl",url),2500,state->{
         if(!state.optBoolean("ok")||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){
@@ -141,7 +141,7 @@ final class EnvironmentEditorUi {
         try{s.webStore.worker.execute(()->{
           boolean stored=false;try{stored=draft.isEmpty()||DraftArchive.get(s.context).save(url,draft,"切换网页显示前的草稿");}catch(RuntimeException ignored){}final boolean saved=stored;
           s.handler.post(()->{
-            s.operation=false;s.changed();if(a.isDestroyed()||a.isFinishing()){done.accept(false);return;}
+            DeferredBrowserSettings.release(s);s.changed();if(a.isDestroyed()||a.isFinishing()){done.accept(false);return;}
             if(!saved||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())){a.status("草稿保留未完成或网页已改变，环境设置尚未应用");done.accept(false);return;}
             done.accept(apply(a,value,name));
           });
