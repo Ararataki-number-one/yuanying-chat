@@ -33,6 +33,7 @@ public final class EnvironmentDeleteActivity extends Activity {
       for(String name:new String[]{"gecko-browser","gecko-browser.yaml","gecko-session.json","gecko-session.json.bak","gecko-session.json.new","network-runtime"})erase(new File(profile.getNoBackupFilesDir(),name));
       for(String name:new String[]{"network","network-ui","exit-baseline","exit-region","subscription","subscription-meta","subscription-ui","pending-network"}){android.util.AtomicFile f=new android.util.AtomicFile(new SecretStore(profile).file(name));f.delete();}
       erase(new File(profile.getFilesDir(),"network-import.json"));erase(new File(profile.getCacheDir(),"gecko-uploads"));
+      File[] previews=profile.getNoBackupFilesDir().listFiles();if(previews!=null)for(File f:previews)if(f.getName().startsWith("subscription-preview-"))erase(f);
       File[] temporary=profile.getCacheDir().listFiles();if(temporary!=null)for(File f:temporary)if(f.getName().matches("download-.*[.]part")||f.getName().startsWith("subscription-preview-"))erase(f);
     }
     // System WebView data is private to this process suffix, even if Gecko is selected.

@@ -371,12 +371,12 @@
     const scope=reply && (reply.closest('[data-turn="assistant"],[data-testid^="conversation-turn-"],[data-content-search-turn-key],[data-turn-key],article') || reply.closest('[data-conversation-screenshot-content]') || reply.parentElement || reply);
     const terminalAction=el=>!el.closest('pre,[data-markdown-copy="code-block"]') && rendered(el) && !el.disabled &&
       (el.matches('[data-testid="copy-turn-action-button"],[data-testid="good-response-turn-action-button"],[data-testid="bad-response-turn-action-button"]') || /^(复制|复制回复|复制内容|Copy|Copy response|Copy message|Copy answer|已复制|Copied)$/i.test((el.getAttribute('aria-label')||el.innerText||'').trim()));
-    let actionScope=scope,terminal=false;
+    let actionScope=reply,terminal=false;
     // Actions can be siblings of the body. Stop before an ancestor containing
     // another assistant or a user message, so previous replies cannot finish this one.
-    for(let depth=0;actionScope&&depth<4;depth++,actionScope=actionScope.parentElement){
-      if(users.some(el=>actionScope.contains(el))||assistants.some(el=>el!==reply&&actionScope.contains(el)))break;
-      if([...actionScope.querySelectorAll('button,[role="button"]')].some(terminalAction)){terminal=true;break;}
+    for(let depth=0;actionScope&&depth<6;depth++,actionScope=actionScope.parentElement){
+      if(users.some(el=>el!==user&&actionScope.contains(el))||assistants.some(el=>el!==reply&&actionScope.contains(el)))break;
+      if([...actionScope.querySelectorAll('button,[role="button"]')].some(el=>terminalAction(el)&&!el.closest('[data-message-author-role="user"],[data-turn="user"]')&&(!actionScope.contains(user)||(reply.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)))){terminal=true;break;}
     }
     const working=!!scope && [...scope.querySelectorAll('button')].some(el=>visible(el) && /^(正在思考|正在搜索|Thinking|Searching)(\b|…|\.\.\.|$)/i.test(label(el)));
     const activeBusy=busy()||working;const liveLabels=scope?[...scope.querySelectorAll('button,[role="status"]')].filter(visible).map(label):[];const thinking=activeBusy&&liveLabels.some(t=>/^(?:Thinking|正在思考|思考中)(?:\b|…|\.\.\.|$)/i.test(t));const searching=activeBusy&&liveLabels.some(t=>/^(?:Searching|正在搜索|搜索中)(?:\b|…|\.\.\.|$)/i.test(t));
