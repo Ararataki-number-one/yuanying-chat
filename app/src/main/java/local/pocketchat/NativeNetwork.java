@@ -154,6 +154,7 @@ class NativeNetwork {
   void configureProbeEntries()throws Exception{for(int i=0;i<names.size();i++)api("PUT","/proxies/ProbeEntry"+i,J.obj("name",names.get(i)),3000);}
 
   boolean configurationMatches(){try{if(settings==null)return false;JSONObject now=secrets.settings();for(String key:new String[]{"subscriptionUrl","exitHost","exitPort","exitUser","exitPassword","entryMode","entryPool","entry"})if(!settings.optString(key).equals(now.optString(key)))return false;return true;}catch(Exception e){return false;}}
+  synchronized void pauseBackgroundWhenBusy(){NetworkWork work=backgroundWork;if(work!=null&&!work.allowBusy&&routeBusy())cancelMaintenance();}
   synchronized void cancelMaintenance(){maintenanceGeneration++;lastMaintenanceAt=android.os.SystemClock.elapsedRealtime();NetworkWork work=backgroundWork;if(work!=null)work.cancel(closers);}
   synchronized NetworkWork beginMaintenance(long expected){return beginMaintenance(expected,false);}
   synchronized NetworkWork beginMaintenance(long expected,boolean allowBusy){if(starting||expected!=maintenanceGeneration)return null;NetworkWork work=new NetworkWork(allowBusy);backgroundWork=work;maintenance.set(work);return work;}
