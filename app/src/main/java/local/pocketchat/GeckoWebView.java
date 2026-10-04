@@ -245,7 +245,6 @@ class GeckoWebView extends FrameLayout {
           if(source!=current)return;
           if("documentReady".equals(kind)&&data.optString("url").equals(getUrl())&&!crashed.contains(source)){
             usable.add(source);pageVisible(source);
-            if(owner.navigationFailed){owner.pageError="";owner.finishNavigation("",false);owner.setStatus(LoginPagePolicy.login(getUrl())?"请在网页中完成登录":"网页已显示");}
             owner.changed();return;
           }
           if("result".equals(kind))callbacks.complete(incoming,data.optInt("id"),data.optString("result","null"));
