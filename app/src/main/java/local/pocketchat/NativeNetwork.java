@@ -46,13 +46,13 @@ class NativeNetwork {
   static String transportFingerprint(JSONObject s){List<String> pool=EntrySelection.strings(s.optJSONArray("entryPool"));Collections.sort(pool);return hash(J.obj("subscription",s.optString("subscriptionUrl"),"host",s.optString("exitHost"),"port",s.optInt("exitPort"),"user",s.optString("exitUser"),"password",s.optString("exitPassword"),"mode",s.optString("entryMode"),"pool",new JSONArray(pool),"entry",s.optString("entry")).toString());}
   boolean adoptTransport()throws Exception{
     if(transport==null)return false;JSONObject state=transport.call("snapshot","");JSONObject value=secrets.settings();
-    if(!state.optBoolean("alive")||!transportFingerprint(value).equals(state.optString("configuration")))return false;
+    if(!state.optBoolean("alive")||!transportFingerprint(value).equals(state.optString("configuration")))return false;JSONObject meta=J.parse(new String(new android.util.AtomicFile(new File(root,"transport.json")).readFully(),StandardCharsets.UTF_8));if(!meta.optBoolean("ready"))return false;
     validate(value);settings=value;JSONObject config=J.parse(new String(java.nio.file.Files.readAllBytes(new File(root,"config.json").toPath()),StandardCharsets.UTF_8));
     token=config.optString("secret");controllerPort=state.optInt("controllerPort");proxyPort=state.optInt("proxyPort");webProbePort=state.optInt("webProbePort");
     if(token.isEmpty()||controllerPort<=0||proxyPort<=0)return false;
     fingerprint=hash(settings.optString("exitHost")+":"+settings.optInt("exitPort")+":"+settings.optString("exitUser")+":"+settings.optString("exitPassword"));
     String scope=fingerprint+":"+hash(settings.optString("subscriptionUrl"));quality.configure(MEASUREMENT_PROFILE+":"+scope);websiteQuality.configure("chatgpt-head-v1:"+scope);dns.configure(scope);activeDns=dns.primary(System.currentTimeMillis());
-    names=providerNames(readProvider());EntrySelection.validate(settings,names);names=EntrySelection.allowed(settings,names);totalEntries=names.size();
+    List<String> provider=providerNames(readProvider());EntrySelection.validate(settings,provider);names=EntrySelection.strings(meta.optJSONArray("names"));if(names.isEmpty()||!provider.containsAll(names))return false;totalEntries=names.size();
     JSONObject selected=api("GET","/proxies/EntryChoice",null,3000);currentEntry=selected.optString("now");List<String> configured=EntrySelection.strings(selected.optJSONArray("all"));if(!configured.isEmpty())names.retainAll(configured);activeDns=config.getJSONObject("dns").getJSONArray("nameserver").getString(0).replace("#FixedExit","");if(!names.contains(currentEntry))return false;
     report("正在恢复独立网络连接并核实固定出口…");verifyExit();ready=true;recoveryBlocked=false;startupPath="service-adopted";return true;
   }
@@ -74,7 +74,7 @@ class NativeNetwork {
     EntrySelection.validate(settings,names);names=EntrySelection.allowed(settings,names);if(lowLatency())names=rankedRoutes();
     String remembered=context.getSharedPreferences("chat",0).getString("lastGoodEntry","");if(names.remove(remembered))names.add(0,remembered);totalEntries=names.size();if(names.isEmpty())throw new IOException("订阅未读到可用节点；请确认它是 Clash / Mihomo 格式");if(names.size()>64&&!lowLatency())names=new ArrayList<>(names.subList(0,64));
     J.write(new File(root,"config.json"),config(false,false).toString().replace("\\/","/"));api("PUT","/configs?force=true",J.obj("path",new File(root,"config.json").getAbsolutePath()),5000);
-    providerDuration=android.os.SystemClock.elapsedRealtime()-providerBegan;chooseStartupRoute();ready=true;recoveryBlocked=false;failures=0;startupDuration=android.os.SystemClock.elapsedRealtime()-startupBegan;report("手机独立网络已连接 · "+display(currentEntry));
+    providerDuration=android.os.SystemClock.elapsedRealtime()-providerBegan;chooseStartupRoute();writeTransportMetadata(true);ready=true;recoveryBlocked=false;failures=0;startupDuration=android.os.SystemClock.elapsedRealtime()-startupBegan;report("手机独立网络已连接 · "+display(currentEntry));
   }
 
   // A successful HTTPS exit check already proves that the entire selected chain works.
@@ -120,9 +120,12 @@ class NativeNetwork {
     }finally{for(Future<RouteProbe> task:active)task.cancel(true);}
   }
   long startupSearchBudgetMs(){return 45000;}
+  void writeTransportMetadata(boolean active)throws IOException{
+    if(transport==null)return;android.util.AtomicFile file=new android.util.AtomicFile(new File(root,"transport.json"));FileOutputStream out=file.startWrite();try{out.write(J.obj("proxyPort",proxyPort,"webProbePort",webProbePort,"ready",active,"names",new JSONArray(names)).toString().getBytes(StandardCharsets.UTF_8));file.finishWrite(out);}catch(Exception e){file.failWrite(out);throw new IOException("网络运行状态未能保存",e);}
+  }
   void launchCore()throws Exception{
     File binary=new File(context.getApplicationInfo().nativeLibraryDir,"libmihomo.so");if(!binary.isFile())throw new IOException("该手机架构没有可用的内置网络内核");
-    if(transport!=null){J.write(new File(root,"transport.json"),J.obj("proxyPort",proxyPort,"webProbePort",webProbePort).toString());transport.call("launch",transportFingerprint(settings));}
+    if(transport!=null){writeTransportMetadata(false);transport.call("launch",transportFingerprint(settings));}
     else{
     process=new ProcessBuilder("/system/bin/sh","-c","umask 077; echo $$ > \"$1/core.pid\"; exec \"$2\" -d \"$1\" -f \"$1/config.json\"","pocket-core",root.getAbsolutePath(),binary.getAbsolutePath()).redirectErrorStream(true).start();
     final java.lang.Process owned=process;new Thread(()->{try(InputStream in=owned.getInputStream()){byte[] b=new byte[4096];while(in.read(b)>=0){}}catch(Exception ignored){}},"core-output-discard").start();
