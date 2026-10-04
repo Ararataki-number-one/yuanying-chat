@@ -36,6 +36,7 @@ try:
         adb('shell','am','force-stop',package)
         adb('install','-r',str(out/('ui-'+variant+'.apk')))
         adb('shell','pm','clear',package)
+        if int(adb('shell','getprop','ro.build.version.sdk').strip())>=33:adb('shell','pm','grant',package,'android.permission.POST_NOTIFICATIONS')
         for width,height in [(360,800),(412,915)]:
             for scene in scenes:capture(variant,width,height,1,scene)
         for scene in ['proxy','entries','browser']:capture(variant,360,800,2,scene)
