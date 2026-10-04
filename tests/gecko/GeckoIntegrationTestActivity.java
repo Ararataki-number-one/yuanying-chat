@@ -164,7 +164,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     final boolean touched=tapped;
     session.web.evaluateJavascript("document.getElementById('upload-result')?.textContent",raw->{
       String value="";try{value=new org.json.JSONTokener(raw).nextValue().toString();}catch(Exception ignored){}
-      if(value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;host.attachments.destroy();event("desktopImage",J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",session.privacy.desktop));return;}
+      if(value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;host.attachments.destroy();event("desktopImage",J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",((GeckoWebView)session.web).desktop));return;}
       if(SystemClock.elapsedRealtime()>deadline){session.pending=null;host.attachments.destroy();event("error",J.obj("error","desktop image chooser/upload failed","result",raw,"chooser",chooser[0]));return;}
       session.handler.postDelayed(()->desktopImageReady(serial,deadline,host,held,chooser,mime,touched),100);
     });
