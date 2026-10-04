@@ -68,9 +68,10 @@ public final class NetworkTransportService extends Service {
   }
   void stop(Node n)throws Exception{stop(n,true);}
   void stop(Node n,boolean announce)throws Exception{
-    java.lang.Process p=n.process;n.process=null;n.state="closed";n.generation=UUID.randomUUID().toString();
+    java.lang.Process p=n.process;n.state="stopping";
     if(p==null)cleanupOrphan(n);
     if(p!=null){p.destroy();if(!p.waitFor(2,TimeUnit.SECONDS)){p.destroyForcibly();if(!p.waitFor(2,TimeUnit.SECONDS))throw new IOException("网络内核尚未停止");}}
+    n.process=null;n.state="closed";n.generation=UUID.randomUUID().toString();
     File pidFile=new File(root(n),"core.pid");if(pidFile.exists()&&!pidFile.delete())throw new IOException("网络运行记录无法清理");n.pid=0;event(n);if(announce)updateNotification();
   }
   void cleanupOrphan(Node n)throws Exception{
@@ -80,7 +81,11 @@ public final class NetworkTransportService extends Service {
     String status=new String(java.nio.file.Files.readAllBytes(statusFile.toPath()),StandardCharsets.US_ASCII),cmd=new String(java.nio.file.Files.readAllBytes(new File("/proc/"+pid+"/cmdline").toPath()),StandardCharsets.UTF_8);
     if(!status.matches("(?s).*Uid:\\s+"+android.os.Process.myUid()+"\\s+.*")||!cmd.contains("libmihomo.so")||!cmd.contains(root(n).getAbsolutePath()))throw new IOException("网络运行记录不属于此环境");
     android.os.Process.killProcess(pid);
+    long deadline=android.os.SystemClock.elapsedRealtime()+2000;while(statusFile.isFile()){
+      try{String stopped=new String(java.nio.file.Files.readAllBytes(statusFile.toPath()),StandardCharsets.US_ASCII);if(stopped.matches("(?s).*State:\\s+Z.*"))return;}catch(java.nio.file.NoSuchFileException gone){return;}
+      if(android.os.SystemClock.elapsedRealtime()>=deadline)throw new IOException("上次网络内核尚未停止");Thread.sleep(20);
+    }
   }
   void event(Node n){Message message=Message.obtain(null,EVENT);Bundle data=new Bundle();data.putString("json",n.snapshot().toString());message.setData(data);for(Map.Entry<IBinder,Messenger> entry:n.subscribers.entrySet())try{entry.getValue().send(Message.obtain(message));}catch(RemoteException dead){n.subscribers.remove(entry.getKey());}}
-  @Override public void onDestroy(){destroying=true;main.removeCallbacks(idleStop);for(Node n:nodes){try{stop(n,false);}catch(Exception ignored){}n.commands.shutdownNow();}super.onDestroy();}
+  @Override public void onDestroy(){destroying=true;main.removeCallbacks(idleStop);for(Node n:nodes){n.commands.execute(()->{try{stop(n,false);}catch(Exception ignored){}});n.commands.shutdown();}super.onDestroy();}
 }

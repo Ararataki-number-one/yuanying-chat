@@ -96,7 +96,10 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       Thread.sleep(500);check("Killing the environment control process keeps its proxy kernel",second.transport.call("snapshot","").getInt("pid")==b.getInt("pid")&&second.coreAlive());
       android.os.Process.killProcess(pid);long deadline=android.os.SystemClock.elapsedRealtime()+5000;while(adopted.coreAlive()&&android.os.SystemClock.elapsedRealtime()<deadline)Thread.sleep(25);
       check("Actual core exit is pushed to the control client",!adopted.coreAlive()&&!adopted.ready);check("One core exiting leaves the other environment usable",second.coreAlive()&&second.verifyExit().equals("203.0.113.8"));
-      adopted.stopNow();check("Stopping one environment does not stop the other",second.coreAlive());second.stopNow();check("The last tunnel stops through the service",!second.coreAlive());
+      adopted.startNow();JSONObject restarted=adopted.transport.call("snapshot","");Thread.sleep(250);check("Restart creates a new generation that ignores the old exit event",restarted.getInt("pid")!=pid&&!restarted.getString("generation").equals(attached.getString("generation"))&&adopted.coreAlive()&&adopted.ready);check("Restarting one tunnel keeps the other kernel and port",second.transport.call("snapshot","").getInt("pid")==b.getInt("pid")&&second.proxyPort==b.getInt("proxyPort"));
+      check("A stop acknowledgement confirms the targeted core is closed",adopted.stopNow());check("Stopping one environment does not stop the other",second.coreAlive());
+      android.os.Process.killProcess(b.getInt("servicePid"));deadline=android.os.SystemClock.elapsedRealtime()+5000;while(second.coreAlive()&&android.os.SystemClock.elapsedRealtime()<deadline)Thread.sleep(25);check("Service process death closes the client's network admission",!second.coreAlive()&&!second.ready);
+      second.startNow();JSONObject recovered=second.transport.call("snapshot","");check("A replacement service restores and verifies the environment",recovered.getInt("servicePid")!=b.getInt("servicePid")&&recovered.getInt("pid")!=b.getInt("pid")&&second.ready&&second.exitIp.equals("203.0.113.8"));check("The last tunnel stops through the service",second.stopNow()&&!second.coreAlive());
     }finally{for(TestNetwork net:new TestNetwork[]{first,second,adopted})if(net!=null){net.stopNow();net.worker.shutdownNow();net.probes.shutdownNow();net.closers.shutdownNow();net.traffic.reader.shutdownNow();}}
   }
   SSLContext tlsContext()throws Exception{KeyStore store=KeyStore.getInstance("PKCS12");try(InputStream in=getAssets().open("network-fixture.p12")){store.load(in,"network-fixture".toCharArray());}KeyManagerFactory keys=KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());keys.init(store,"network-fixture".toCharArray());TrustManagerFactory trust=TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());trust.init(store);SSLContext tls=SSLContext.getInstance("TLS");tls.init(keys.getKeyManagers(),trust.getTrustManagers(),null);return tls;}
@@ -126,7 +129,9 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       while((request=in.readLine())!=null){String[] parts=request.split(" ");if(parts.length<2)return;String method=parts[0],path=parts[1];String header;while((header=in.readLine())!=null&&!header.isEmpty()){String lower=header.toLowerCase(Locale.ROOT);if(lower.startsWith("cookie:")||lower.startsWith("authorization:"))credentialsSeen=true;}
         requests++;byte[] body=new byte[0];int code=200;String type="text/plain",extra="";
         if(path.startsWith("/website")){int wait=websiteDelay;if(wait>0){if(delayedRequest!=null)delayedRequest.countDown();Thread.sleep(wait);}code=status;headConnections.add(socket.getPort());if(code==302)extra="Location: "+url("/redirect")+"\r\n";}
-        else if(path.startsWith("/probe"))code=204;
+        // A loopback HEAD can round down to 0 ms, which the real core rejects as a delay result.
+        // Model a small target response time, while preserving the different entry hop delays.
+        else if(path.startsWith("/probe")){Thread.sleep(10);code=204;}
         else if(path.startsWith("/ip"))body=("{\"ip\":\""+ip+"\"}").getBytes(StandardCharsets.UTF_8);
         else if(path.startsWith("/dns")){body=dnsAnswer();type="application/dns-message";}
         else if(path.startsWith("/redirect"))redirectSeen=true;

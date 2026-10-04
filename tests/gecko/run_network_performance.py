@@ -11,7 +11,9 @@ checks={}
 deadline=time.monotonic()+150
 while time.monotonic()<deadline:
     raw=adb('logcat','-d','-s','PocketNetworkPerformance:I','AndroidRuntime:E','*:S')
-    if 'FATAL EXCEPTION' in raw:raise AssertionError(raw)
+    if 'FATAL EXCEPTION' in raw:
+        (out/'network-performance-failure-log.txt').write_text(adb('logcat','-d'))
+        raise AssertionError(raw)
     for line in raw.splitlines():
         if 'PocketNetworkPerformance' not in line or '{' not in line:continue
         report=json.loads(line[line.index('{'):])
@@ -22,6 +24,7 @@ while time.monotonic()<deadline:
         report['sourceCommit']=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
         (out/'network-performance-results.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2),flush=True)
+        if report['status']!='passed':(out/'network-performance-failure-log.txt').write_text(adb('logcat','-d'))
         assert report['status']=='passed' and report['actualAndroidExecution'] and report['actualMihomoExecution'],report
         assert len(report['checks'])>=35 and all(c['pass'] for c in report['checks']),report
         raise SystemExit(0)
