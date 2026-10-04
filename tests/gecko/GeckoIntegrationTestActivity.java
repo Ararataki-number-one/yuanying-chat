@@ -160,13 +160,13 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   void desktopImageReady(long serial,long deadline,MainActivity host,JSONObject held,boolean[] chooser,boolean[] mime,boolean tapped){
     if(serial!=run)return;
-    if(!tapped&&session.web.hasVisibleDocument()&&!session.navigating){tapElement(serial,"upload");tapped=true;}
-    final boolean touched=tapped;
-    session.web.evaluateJavascript("document.getElementById('upload-result')?.textContent",raw->{
-      String value="";try{value=new org.json.JSONTokener(raw).nextValue().toString();}catch(Exception ignored){}
+    session.web.evaluateJavascript("(()=>({ready:location.pathname==='/browser-image'&&!!document.getElementById('upload'),value:document.getElementById('upload-result')?.textContent||''}))()",raw->{
+      JSONObject current=J.parse(raw);String value=current.optString("value");boolean touched=tapped;
+      if(!touched&&current.optBoolean("ready")&&session.web.hasVisibleDocument()&&!session.navigating){tapElement(serial,"upload");touched=true;}
+      final boolean next=touched;
       if(value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;host.attachments.destroy();event("desktopImage",J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",((GeckoWebView)session.web).desktop));return;}
       if(SystemClock.elapsedRealtime()>deadline){session.pending=null;host.attachments.destroy();event("error",J.obj("error","desktop image chooser/upload failed","result",raw,"chooser",chooser[0]));return;}
-      session.handler.postDelayed(()->desktopImageReady(serial,deadline,host,held,chooser,mime,touched),100);
+      session.handler.postDelayed(()->desktopImageReady(serial,deadline,host,held,chooser,mime,next),100);
     });
   }
   void usability(long serial){
