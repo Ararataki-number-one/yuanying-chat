@@ -2,11 +2,12 @@
 
 Android ChatGPT 网页客户端，支持独立登录窗口、简洁与原网页聊天、文件下载、后台等待，以及按环境配置的网络和隐私保护。
 
-**当前版本：1.5.11（versionCode 37，原版签名应用自动更新包）。**
+**当前版本：1.5.12（versionCode 38，原版签名环境管理与使用体验更新）。**
 
 ## 下载与安装
 
-- [下载 1.5.11 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.11-gecko/PocketChat-1.5.11-gecko-arm64.apk)
+- [下载 1.5.12 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.12-gecko/PocketChat-1.5.12-gecko-arm64.apk)
+- [上一版 1.5.11 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.11-gecko/PocketChat-1.5.11-gecko-arm64.apk)
 - [上一版 1.5.10 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.10-gecko/PocketChat-1.5.10-gecko-arm64.apk)
 - [上一版 1.5.9 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.9-gecko/PocketChat-1.5.9-gecko-arm64.apk)
 - [上一版 1.5.8 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.8-gecko/PocketChat-1.5.8-gecko-arm64.apk)
@@ -25,7 +26,7 @@ Firefox 新内核首次需要重新登录。原系统内核的登录数据保留
 
 | 部分 | 已实现内容 |
 | --- | --- |
-| 环境管理 | 首次品牌页进入后默认直达指定窗口原网页；创建、分组、备注、搜索、收藏、筛选与排序；多选、批量分组与收藏；最多 8 个环境 |
+| 环境管理 | 首次品牌页进入后默认直达指定窗口原网页；创建、删除、分组、备注、搜索、收藏、筛选与排序；多选、批量分组与收藏；最多 8 个环境 |
 | 独立环境 | 分开的浏览器登录目录、Cookie、本机聊天与草稿、偏好和加密网络配置；Firefox 与系统内核各自保留登录 |
 | 网页显示 | 创建环境时选择手机版 / 电脑版；已有环境在浏览器设置中修改，按环境独立保存；电脑版缩放记忆、适应屏幕与输入安全区 |
 | 聊天 | 简洁与原网页模式、模型与强度选择、Markdown、数学公式、代码、消息复制与分享 |
@@ -34,8 +35,8 @@ Firefox 新内核首次需要重新登录。原系统内核的登录数据保留
 | 下载 | 自动保存、同名编号、暂停与续传、跨窗口文件列表、打开、分享、另存为 |
 | 应用更新 | 每天自动检查、可选 Wi-Fi 自动下载、后台下载与取消/重试、原签名覆盖安装确认 |
 | 后台等待 | 等待与完成通知、发送状态恢复；重新连接不会自动重发提问 |
-| 网络管理 | 全部窗口网络、订阅与固定出口三栏；候选编辑后保存并应用；勾选池随机 / 手动入口；原完整线路测速与出口核验 |
-| 隐私与自检 | 系统内核保留三档保护与原自检；Firefox 使用原生跟踪保护并关闭 WebRTC，支持当前页面公共浏览器信息自检；系统内核脚本检测标为未覆盖 |
+| 网络管理 | 全部窗口网络、订阅与固定出口三栏；候选编辑后保存并应用；勾选池随机 / 手动入口；原完整线路测速与出口核验；节点名称地区提示与实际出口 IP 地区查询；回复期间保存候选，结束后应用 |
+| 隐私与自检 | 系统内核保留三档保护与原自检；Firefox 使用原生跟踪保护并关闭 WebRTC，强化档启用官方原生抗指纹；支持当前页面公共浏览器信息自检；系统内核脚本检测标为未覆盖 |
 | 偏好 | 草稿、历史、滚动位置、后台与通知开关、仅 Wi-Fi 下载、旧临时文件清理 |
 
 当前平台是 ChatGPT。模型和网页可用功能由当前登录账号及网页实际提供。软件通过内置网页登录，不要求填写 API Key。
@@ -43,6 +44,8 @@ Firefox 新内核首次需要重新登录。原系统内核的登录数据保留
 独立“记录”主页面已移除，会话历史仍在聊天侧边栏中。
 
 安卓 10+ 默认下载目录为 `Download/元婴期院士/窗口_编号/`；安卓 8–9 保存到对应窗口的应用内文件目录，可打开、分享或另存为。
+
+1.5.12 增加节点地区识别、环境删除与回复期间保存配置；压缩会话顶部，修正等待完成与网络管理状态，接入 Firefox 原生强化保护。见 [逐文件修改说明](docs/CHANGELOG-v1.5.12.md) 与 [构建、Android 和公网验证](verification/environment-management-v1.5.12/README.md)。
 
 1.5.11 新增每天自动检查、Wi-Fi 自动下载选项、后台下载、取消/重试和原签名覆盖安装入口。见 [更新使用说明](docs/APP-UPDATES.md) 与 [构建、Android 和公网验证](verification/app-updates-v1.5.11/README.md)。
 
