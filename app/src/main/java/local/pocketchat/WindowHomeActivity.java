@@ -186,7 +186,7 @@ public class WindowHomeActivity extends Activity {
     filters.removeAllViews();String[] labels={"全部","收藏","运行中","等待回复","需处理"};
     for(int i=0;i<labels.length;i++){
       final int n=i;
-      Button button=DesignUi.button(this,labels[i]+" "+counts[i],false,()->{filter=n;lastSignature="";refresh();});
+      Button button=ReferenceUi.link(this,labels[i]+" "+counts[i],()->{filter=n;lastSignature="";refresh();});
       button.setTextSize(12);button.setSelected(i==filter);
       if(i==filter){button.setTextColor(DesignUi.BLUE);button.setBackground(DesignUi.surface(this,0xffeaf1ff,8,0xffb6cdfa));}
       LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(i==3?100:88),dp(48));
@@ -205,17 +205,17 @@ public class WindowHomeActivity extends Activity {
       card.setClickable(true);card.setFocusable(true);
       card.setOnClickListener(v->{if(selecting)toggleSelection(id);else openWindow(id,"chat");});
       card.setOnLongClickListener(v->{toggleSelection(id);return true;});
-      if(selecting&&selectedIds.contains(id))card.setBackground(DesignUi.surface(this,0xfff0f5ff,12,DesignUi.BLUE));
+      if(selecting&&selectedIds.contains(id))card.setBackground(DesignUi.surface(this,0xfff0f5ff,14,DesignUi.BLUE));
       LinearLayout head=DesignUi.row(this);
       if(selecting){
         CheckBox check=new CheckBox(this);check.setChecked(selectedIds.contains(id));
         check.setContentDescription("选择环境 "+String.format(Locale.ROOT,"%02d",id+1)+" "+row.optString("name"));
         check.setOnCheckedChangeListener((b,selected)->toggleSelection(id));
         head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));
-      }else head.addView(DesignUi.badge(this,String.format(Locale.ROOT,"%02d",id+1),DesignUi.BLUE));
+      }else{TextView number=DesignUi.text(this,String.format(Locale.ROOT,"%02d",id+1),12,DesignUi.MUTED);number.setGravity(Gravity.CENTER);head.addView(number,new LinearLayout.LayoutParams(dp(24),-2));}
       LinearLayout title=DesignUi.column(this);title.setPadding(dp(10),0,dp(6),0);
       TextView name=DesignUi.text(this,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"),16,DesignUi.TEXT);
-      name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);title.addView(name);
+      name.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);title.addView(name);
       String group=row.optString("group").isEmpty()?"未分组":row.optString("group");
       TextView sub=DesignUi.text(this,(selecting?String.format(Locale.ROOT,"%02d",id+1)+" · ":"")+(row.optBoolean("desktopSite")?"电脑版 · ":"")+group+(id==AppSettings.defaultSlot(this)?" · 默认":"")+(!row.optString("draft").isEmpty()?" · 草稿":""),12,DesignUi.MUTED);
       sub.setSingleLine();sub.setEllipsize(TextUtils.TruncateAt.END);title.addView(sub);
@@ -225,14 +225,14 @@ public class WindowHomeActivity extends Activity {
       head.addView(DesignUi.badge(this,status,problem?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED));card.addView(head);
       TextView network=DesignUi.text(this,networkStatus(row,active,fresh),12,problem?DesignUi.RED:DesignUi.MUTED);
       network.setMaxLines(2);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,dp(8),0,dp(4));card.addView(network);
-      TextView recent=DesignUi.text(this,"最近使用 · "+recentUse(row.optLong("opened"),now),11,DesignUi.MUTED);
+      TextView recent=DesignUi.text(this,(row.optLong("opened")<=0?"尚未使用":"最近 "+recentUse(row.optLong("opened"),now)),12,DesignUi.MUTED);
       if(selecting)card.addView(recent);
       else{
         LinearLayout actions=DesignUi.row(this);actions.setPadding(0,dp(4),0,0);
         actions.addView(recent,new LinearLayout.LayoutParams(0,-2,1));
-        Button open=DesignUi.button(this,"打开环境",true,()->openWindow(id,"chat"));open.setContentDescription("打开环境 "+row.optString("name"));open.setTextSize(13);open.setPadding(dp(4),0,dp(4),0);
+        Button open=ReferenceUi.small(this,"打开环境",true,()->openWindow(id,"chat"));open.setContentDescription("打开环境 "+row.optString("name"));open.setTextSize(13);open.setPadding(dp(4),0,dp(4),0);
         actions.addView(open,new LinearLayout.LayoutParams(dp(96),dp(48)));
-        Button more=DesignUi.button(this,"更多",false,()->menu(id));more.setTextSize(12);more.setPadding(dp(4),0,dp(4),0);more.setContentDescription("更多操作 "+row.optString("name"));
+        Button more=ReferenceUi.more(this,()->menu(id));more.setContentDescription("更多操作 "+row.optString("name"));
         LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(dp(48),dp(48));moreParams.leftMargin=dp(6);actions.addView(more,moreParams);card.addView(actions);
       }
       DesignUi.addCard(cards,card);

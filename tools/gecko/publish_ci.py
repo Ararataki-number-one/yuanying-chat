@@ -25,6 +25,9 @@ for abi in ['arm64-v8a']:
 for name in ['build.log', 'native-test.log', 'update-fixture-preparation.log', 'bridge-host-results.json', 'reading-host-results.json', 'cookie-host-results.json', 'update-host-results.json', 'region-host-results.json', 'update-ui.xml', 'update-installer-ui.xml', 'update-ui.png', 'device-results.json', 'device-route-trace.json', 'device-native-events.txt', 'device-screen.png', 'last-device-log.txt', 'production-ui.xml', 'failure-screen.png', 'failure-ui.xml']:
     if (out / name).exists():
         shutil.copy2(out / name, stage / name)
+for name in ['ui-visual-results.json','ui-build-comparison.json']:
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
+if (out/'ui-visuals').exists():shutil.copytree(out/'ui-visuals',stage/'ui-visuals',dirs_exist_ok=True)
 for screenshot in out.glob('reading-*.png'):
     shutil.copy2(screenshot, stage / screenshot.name)
 (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')

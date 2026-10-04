@@ -35,6 +35,8 @@ jobs:
         run: |
           set -euo pipefail
           work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-integration/build.log
+      - name: Prepare previous UI for native comparison
+        run: python3 tools/gecko/build_ui_baseline.py --gradle work/gecko-integration/gradle/gradle-9.8.0/bin/gradle --key "$PWD/work/gecko-integration/integration-test.jks"
       - name: Check stale messages and continuous bridge use
         run: |
           set -euo pipefail
@@ -87,6 +89,7 @@ jobs:
           adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
           python3 tests/gecko/run_device.py --adb "$(command -v adb)" --serial emulator-5554
           adb exec-out screencap -p > work/gecko-integration/device-screen.png
+          python3 tests/gecko/run_ui_visuals.py --adb "$(command -v adb)" --serial emulator-5554
       - name: Publish synthetic regression evidence
         if: always()
         run: python3 tools/gecko/publish_ci.py

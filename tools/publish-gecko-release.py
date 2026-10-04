@@ -15,6 +15,9 @@ args=p.parse_args()
 report=json.loads((args.evidence/'device-results.json').read_text())
 assert report['status']=='passed' and report['actualAndroidExecution'] and report['releaseMode']
 assert report.get('sourceCommit')==args.source,'Native report belongs to a different source.'
+if version_code>=39:
+    visual=json.loads((args.evidence/'ui-visual-results.json').read_text())
+    assert visual['status']=='passed' and visual['actualAndroidExecution'] and visual['sourceCommit']==args.source,'UI evidence is missing or belongs to a different source.'
 build=json.loads((args.evidence/'manifest.json').read_text())
 assert build['sourceCommit']==args.source,'Native evidence does not match the selected source.'
 receipt=json.loads((args.apk.parent/'gecko-apk-verification.json').read_text())
