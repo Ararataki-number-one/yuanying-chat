@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: production-app-updates
+  cancel-in-progress: false
 jobs:
   publish:
     runs-on: ubuntu-24.04
@@ -51,5 +54,10 @@ jobs:
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" "$apk" release-manifest.json --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$tag" "$apk" release-manifest.json --target "$source_commit" --title "$version · 浏览器会话稳定性改进" --notes-file RELEASE.md --repo "$GITHUB_REPOSITORY"
+            gh release create "$tag" "$apk" release-manifest.json --target "$source_commit" --title "$version · 元婴期院士正式版" --notes-file RELEASE.md --repo "$GITHUB_REPOSITORY"
           fi
+      - name: Verify public download and advance app update channel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/publish-update-feed.py

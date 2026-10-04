@@ -38,6 +38,8 @@ for number,offset in enumerate(range(0,len(raw),60_000_000)):
 shutil.copy2(args.notes,stage/'RELEASE.md')
 workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkdir(parents=True)
 shutil.copy2(root/'.github/workflows/publish-gecko-release.yml',workflow)
+(stage/'tools').mkdir(exist_ok=True)
+shutil.copy2(root/'tools/publish-update-feed.py',stage/'tools/publish-update-feed.py')
 branch='apk/gecko-release-20261003'
 env=dict(os.environ,GIT_INDEX_FILE=str(root/'work/gecko-integration/signed-index'),GIT_WORK_TREE=str(stage),
     GIT_AUTHOR_NAME='PocketChat release',GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',
@@ -48,7 +50,7 @@ if previous:
     subprocess.run(['git','fetch','origin','refs/heads/'+branch],cwd=root,check=True)
     parents+=['-p',previous[0]]
 subprocess.run(['git','read-tree','--empty'],cwd=root,env=env,check=True)
-subprocess.run(['git','add','-f','--','.github','release-manifest.json','RELEASE.md','device-results.json',*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
+subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
 tree=subprocess.check_output(['git','write-tree'],cwd=root,env=env,text=True).strip()
 commit=subprocess.check_output(['git','commit-tree',tree,*parents,'-m','Publish original-signed production Gecko APK'],cwd=root,env=env,text=True).strip()
 subprocess.run(['git','-c','http.postBuffer=524288000','push','origin',commit+':refs/heads/'+branch],cwd=root,check=True)

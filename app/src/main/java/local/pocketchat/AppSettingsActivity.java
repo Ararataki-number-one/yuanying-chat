@@ -13,5 +13,5 @@ public class AppSettingsActivity extends Activity {
     root.addView(DesignUi.nav(this,4,n->WorkspaceNavigation.select(this,4,n),null));setContentView(root);refresh();
   }
   void refresh(){DesignUi.rebuild(box,true,()->DesignSettingsUi.render(this,box,()->refresh()));}
-  @Override protected void onResume(){super.onResume();if(box!=null)refresh();}
+  @Override protected void onResume(){super.onResume();AppUpdates.schedule(this);if(box!=null)refresh();}
 }

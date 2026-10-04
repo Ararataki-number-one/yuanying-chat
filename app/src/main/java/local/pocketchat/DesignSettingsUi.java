@@ -16,6 +16,7 @@ final class DesignSettingsUi {
     DesignUi.section(box,"系统权限", "");
     group(a,box,"通知与电池设置","通知提醒与后台运行权限","chat",()->FeatureDialogs.backgroundSettings(a));
     DesignUi.section(box,"帮助与能力","");
+    group(a,box,"应用更新",AppSettings.get(a,"updateLabel","当前版本 "+AppVersion.name(a)),"download",()->AppUpdates.open(a));
     group(a,box,"关于与使用帮助","版本与使用说明","settings",()->about(a));
     group(a,box,"功能支持范围","查看支持的功能","shield",()->capabilities(a));
   }

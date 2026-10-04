@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Release-mode SDK in the actual app: two live processes, distinct HTTP/SOCKS routes."""
-import argparse, importlib.util, json, pathlib, select, socket, socketserver
+import argparse, hashlib, importlib.util, json, pathlib, select, socket, socketserver
 import subprocess, threading, time, urllib.parse
 
 ROOT=pathlib.Path(__file__).resolve().parents[2]
@@ -56,6 +56,15 @@ class Server(socketserver.ThreadingTCPServer):
 class Fixture(fixture.Fixture):
     def do_GET(self):
         address=urllib.parse.urlparse(self.path);query=urllib.parse.parse_qs(address.query)
+        if address.path.startswith('/update-'):
+            source=OUT/('update-wrong-signer.apk' if address.path=='/update-wrong-signer' else 'update-fixture.apk')
+            body=bytearray(source.read_bytes())
+            if address.path=='/update-corrupt':body[len(body)//2]^=1
+            self.send_response(200);self.send_header('Content-Type','application/octet-stream');self.send_header('Content-Length',str(len(body)));self.end_headers()
+            if address.path=='/update-wait':time.sleep(10)
+            try:self.wfile.write(body)
+            except (BrokenPipeError,ConnectionResetError):pass
+            return
         if address.path=='/native-csv':
             body=b'name,value\nsynthetic,42\n'
             self.send_response(200);self.send_header('Content-Type','text/csv');self.send_header('Content-Disposition','attachment; filename="generated.csv"');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
@@ -160,6 +169,21 @@ def main():
             time.sleep(1)
         (OUT/'last-device-log.txt').write_text(adb('logcat','-d'))
         raise TimeoutError(f'No integration result: {context}, {action}, {kind}')
+    def update(action):
+        adb('logcat','-c')
+        source=OUT/('update-wrong-signer.apk' if action=='badSigner' else 'update-fixture.apk')
+        data=source.read_bytes()
+        adb('shell','am','start','-W','-n',package+'/local.pocketchat.AppUpdateIntegrationActivity','--es','updateAction',action,'--es','updateHash',hashlib.sha256(data).hexdigest(),'--el','updateBytes',str(len(data)))
+        deadline=time.monotonic()+90
+        while time.monotonic()<deadline:
+            output=adb('logcat','-d','-s','PocketAppUpdateIntegration:I','*:S')
+            for line in output.splitlines():
+                if '{' not in line:continue
+                result=json.loads(line[line.index('{'):]);assert 'error' not in result,result
+                event=dict(kind='appUpdate',action=action,result=result)
+                steps.append(event);logs.append(output);print(json.dumps(event),flush=True);return result
+            time.sleep(.5)
+        raise TimeoutError('No native update result: '+action)
     def check(result,context,populated):
         expected=f'synthetic-environment-{context}' if populated else None
         for key in ['localStorage','indexedDB','cache','workerToken']:assert result[key]==expected,(key,result)
@@ -260,6 +284,28 @@ def main():
         (OUT/'production-ui.xml').write_text(hierarchy)
         for label in ['会话','环境','下载','网络','设置','原网页']:assert label in hierarchy,(label,hierarchy)
         assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
+        update_checks=[]
+        for action in ['badHash','badSigner','cancel']:
+            result=update(action);update_checks.append(result)
+            assert result['state']=='available' and not result['uri'] and result['downloadId']==-1,result
+            if action=='badHash':assert '不完整' in result['message'],result
+            if action=='badSigner':assert '签名' in result['message'],result
+            if action=='cancel':assert '取消' in result['message'],result
+        good=update('good');assert good['state']=='ready' and good['uri'].startswith('content://'+package+'.app-updates/'),good
+        access=update('verifyAccess');assert access['readOnly'] and access['traversalRejected'] and access['sameSigner'],access
+        update('showUi');time.sleep(1)
+        adb('shell','uiautomator','dump','/sdcard/update-ui.xml');update_ui=adb('shell','cat','/sdcard/update-ui.xml');(OUT/'update-ui.xml').write_text(update_ui)
+        for label in ['应用更新','当前版本','安装更新','自动检查更新','Wi-Fi 下自动下载新版']:assert label in update_ui,(label,update_ui)
+        (OUT/'update-ui.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+        adb('shell','appops','set',package,'REQUEST_INSTALL_PACKAGES','allow')
+        import xml.etree.ElementTree as ET,re
+        button=next(node for node in ET.fromstring(update_ui).iter('node') if node.attrib.get('text')=='安装更新')
+        x1,y1,x2,y2=map(int,re.findall(r'\d+',button.attrib['bounds']))
+        adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2));time.sleep(3)
+        adb('shell','uiautomator','dump','/sdcard/update-installer-ui.xml');installer_ui=adb('shell','cat','/sdcard/update-installer-ui.xml');(OUT/'update-installer-ui.xml').write_text(installer_ui)
+        assert 'packageinstaller' in installer_ui and ('Update' in installer_ui or '更新' in installer_ui),installer_ui
+        adb('shell','input','keyevent','KEYCODE_BACK') # Never install the synthetic replacement.
+        report['appUpdates']=dict(downloadManager='passed (real system HTTP transfer)',good=good,failures=update_checks,provider=access,settingsUi='passed',androidInstaller='passed (opened; synthetic APK not installed)')
         report.update(status='passed',liveEnvironmentProcesses='passed',storageIsolation='passed',restartPersistence='passed',
             distinctHttpSocksRoutes='passed',workersAndWebSocket='passed',remoteDns='passed',guardBlocksRequests='passed',
             nativeContextClear='passed',systemEngineFallback='passed',closedBootstrapWithoutExtension='passed',productionActivityShell='passed',
