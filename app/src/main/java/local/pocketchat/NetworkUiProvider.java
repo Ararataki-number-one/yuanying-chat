@@ -5,7 +5,7 @@ import org.json.*;import java.util.*;import java.util.concurrent.*;import java.n
 
 /** Private UI-to-profile bridge. Each provider runs in the existing profile's own process. */
 public class NetworkUiProvider extends ContentProvider {
-  Context profile;final Handler main=new Handler(Looper.getMainLooper());final Map<String,JSONObject> jobs=new ConcurrentHashMap<>();boolean applying;String activeApply="";final Runnable drain=()->{drainPending();main.postDelayed(this.drain,1000);};final ExecutorService io=Executors.newSingleThreadExecutor();
+  Context profile;final Handler main=new Handler(Looper.getMainLooper());final Map<String,JSONObject> jobs=new ConcurrentHashMap<>();boolean applying,saving;String activeApply="";final Runnable drain=()->{drainPending();main.postDelayed(this.drain,1000);};final ExecutorService io=Executors.newSingleThreadExecutor();
   public static class Profile1 extends NetworkUiProvider{}public static class Profile2 extends NetworkUiProvider{}public static class Profile3 extends NetworkUiProvider{}public static class Profile4 extends NetworkUiProvider{}public static class Profile5 extends NetworkUiProvider{}public static class Profile6 extends NetworkUiProvider{}public static class Profile7 extends NetworkUiProvider{}
   @Override public boolean onCreate(){profile=Profiles.context(getContext(),Profiles.processSlot());main.post(drain);return true;}
   @Override public Bundle call(String method,String arg,Bundle extras){
@@ -18,19 +18,31 @@ public class NetworkUiProvider extends ContentProvider {
     if("state".equals(method)){NativeNetwork n=NativeNetwork.get(profile);JSONObject state=WindowNetworkState.live(ChatSession.peek(),n);NetworkCatalog.put(state,"configurationHash",NetworkChanges.hash(profile));result.putString("json",state.toString());return result;}
     if("job".equals(method)){JSONObject status=jobs.get(arg);result.putString("json",status==null?J.obj("done",true,"ok",false,"message","操作记录已过期").toString():status.toString());return result;}
     if(!"start".equals(method))throw new IllegalArgumentException();String action=extras==null?"":extras.getString("action","");JSONObject candidate=J.parse(extras==null?"{}":extras.getString("config","{}"));String baseline=extras==null?"":extras.getString("baseline","");
-    String id=UUID.randomUUID().toString();if(jobs.size()>24)jobs.entrySet().removeIf(x->x.getValue().optBoolean("done"));jobs.put(id,J.obj("done",false));main.post(()->operate(id,action,candidate,baseline));result.putString("id",id);return result;
+    String id=UUID.randomUUID().toString();if(jobs.size()>24)jobs.entrySet().removeIf(x->x.getValue().optBoolean("done"));jobs.put(id,J.obj("done",false));main.post(()->request(id,action,candidate,baseline));result.putString("id",id);return result;
   }
   void finish(String id,boolean ok,String message){if(Looper.myLooper()!=Looper.getMainLooper()){main.post(()->finish(id,ok,message));return;}if(id.equals(activeApply)){applying=false;activeApply="";ChatSession s=ChatSession.peek();if(s!=null){s.operation=false;s.changed();}}WindowNetworkState.save(profile,ChatSession.peek(),NativeNetwork.get(profile));jobs.put(id,J.obj("done",true,"ok",ok,"message",message));}
   boolean busy(ChatSession s,NativeNetwork n){return applying||n.starting||n.measuringLatency||s==null&&J.parse(profile.getSharedPreferences("chat",0).getString("pending","{}")).length()>0||s!=null&&(ProfileUi.working(s)||s.connecting);}
+  void request(String id,String action,JSONObject candidate,String baseline){
+    if(!"apply".equals(action)&&!"external".equals(action)){operate(id,action,candidate,baseline);return;}
+    saving=true;
+    io.execute(()->{
+      String error="";try{
+        if(!ProfileCatalog.get(profile).item(Profiles.slot(profile)).optBoolean("created"))throw new java.io.IOException("此环境已删除");
+        if(!baseline.equals(NetworkChanges.hash(profile)))throw new java.io.IOException("此窗口配置已变化，请重新编辑");
+        NetworkChanges.validate(profile,action,candidate);NetworkChanges.save(profile,action,candidate,baseline);
+      }catch(Exception e){error=e.getMessage()==null?"配置未能保存":e.getMessage();}
+      String failure=error;main.post(()->{
+        saving=false;if(!failure.isEmpty()){finish(id,false,failure);return;}
+        ChatSession s=ChatSession.peek();NativeNetwork n=NativeNetwork.get(profile);
+        if(saving||busy(s,n)||s!=null&&(s.navigating||s.state.optBoolean("busy"))){finish(id,true,"网络设置已保存，当前回复和文件操作结束后自动应用");return;}
+        NetworkChanges.clear(profile);operate(id,action,candidate,baseline);
+      });
+    });
+  }
   void operate(String id,String action,JSONObject candidate,String baseline){
     ChatSession s=ChatSession.peek();NativeNetwork n=NativeNetwork.get(profile);
     if(!ProfileCatalog.get(profile).item(Profiles.slot(profile)).optBoolean("created")){finish(id,false,"此环境已删除");return;}
-    if("apply".equals(action)||"external".equals(action)){
-      if(!baseline.equals(NetworkChanges.hash(profile))){finish(id,false,"此窗口配置已变化，请重新编辑");return;}
-      try{NetworkChanges.validate(profile,action,candidate);NetworkChanges.save(profile,action,candidate,baseline);}catch(Exception e){finish(id,false,e.getMessage()==null?"配置未能保存":e.getMessage());return;}
-      if(busy(s,n)||s!=null&&s.state.optBoolean("busy")){finish(id,true,"网络设置已保存，当前回复和文件操作结束后自动应用");return;}
-      NetworkChanges.clear(profile);
-    }else if(busy(s,n)){finish(id,false,"当前回复继续进行，稍后可测速或重连；网络配置可以先编辑保存");return;}
+    if(busy(s,n)){finish(id,false,"当前回复继续进行，网络配置可以先编辑保存");return;}
     if("measure".equals(action)){if(!"internal".equals(profile.getSharedPreferences("chat",0).getString("networkMode","external"))){finish(id,false,"当前方式没有完整线路测速数据；可在窗口详情检查连接");return;}n.measureLatency((ok,msg)->finish(id,ok,msg));return;}
     if("verify".equals(action)){if(!n.ready){finish(id,false,"请先连接此窗口，再核验出口");return;}applying=true;activeApply=id;if(s!=null)s.operation=true;n.checkExit((ok,msg)->finish(id,ok,msg));return;}
     if("reconnect".equals(action)){if(s!=null){s.reconnect();waitConnection(id,s,n,false,SystemClock.elapsedRealtime());}else if("internal".equals(profile.getSharedPreferences("chat",0).getString("networkMode","external")))n.restart((ok,msg)->finish(id,ok,msg));else finish(id,false,"打开此窗口的会话后可重连手机网络");return;}
@@ -46,10 +58,10 @@ public class NetworkUiProvider extends ContentProvider {
   void drainPending(){
     if(!ProfileCatalog.get(profile).item(Profiles.slot(profile)).optBoolean("created"))return;
     ChatSession s=ChatSession.peek();NativeNetwork n=NativeNetwork.get(profile);
-    if(busy(s,n)||s!=null&&(s.navigating||s.recoveryScheduled||s.state.optBoolean("busy")))return;
+    if(saving||busy(s,n)||s!=null&&(s.navigating||s.recoveryScheduled||s.state.optBoolean("busy")))return;
     JSONObject queued=NetworkChanges.pending(profile);if(queued.length()==0)return;
     String id=UUID.randomUUID().toString();jobs.put(id,J.obj("done",false));
-    operate(id,queued.optString("action"),queued.optJSONObject("config"),queued.optString("baseline"));
+    request(id,queued.optString("action"),queued.optJSONObject("config"),queued.optString("baseline"));
     JSONObject status=jobs.get(id);if(status!=null&&status.optBoolean("done")&&!status.optBoolean("ok")){NetworkChanges.clear(profile);if(s!=null)s.setStatus("已保存的网络设置未能应用："+status.optString("message"));}
   }
   void apply(String id,JSONObject candidate,String baseline){
