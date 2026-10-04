@@ -28,7 +28,7 @@ android {
     signingConfigs { debug { if (providers.gradleProperty('testSigningKey').isPresent()) storeFile file(providers.gradleProperty('testSigningKey').get()) } }
     sourceSets {
         main { manifest.srcFile(generatedManifest) }
-        integration { java.srcDirs = ['../tests/gecko']; manifest.srcFile('../tests/gecko/AndroidManifest.xml') }
+        integration { java.srcDirs = ['../tests/gecko']; assets.srcDirs = ['../tests/gecko/assets']; manifest.srcFile('../tests/gecko/AndroidManifest.xml') }
     }
     buildTypes {
         release { minifyEnabled false; debuggable false }

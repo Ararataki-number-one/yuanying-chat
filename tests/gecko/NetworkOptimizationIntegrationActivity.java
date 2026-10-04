@@ -7,6 +7,8 @@ import android.util.Log;
 import org.json.*;
 import java.io.*;
 import java.net.*;
+import java.security.KeyStore;
+import javax.net.ssl.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
@@ -17,18 +19,19 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
   void check(String name,boolean passed){JSONObject value=J.obj("name",name,"pass",passed);checks.put(value);Log.i("PocketNetworkPerformance",J.obj("kind","check","value",value).toString());if(!passed)throw new AssertionError(name);}
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test"))throw new SecurityException();new Thread(this::run,"network-optimization-fixture").start();}
   static class TestNetwork extends NativeNetwork {
-    final HttpFixture site;boolean busy;
-    TestNetwork(Context c,HttpFixture site){super(c,new File(c.getNoBackupFilesDir(),"network-performance-test"),false);this.site=site;}
+    final HttpFixture site,plain;boolean busy;
+    TestNetwork(Context c,HttpFixture site,HttpFixture plain){super(c,new File(c.getNoBackupFilesDir(),"network-performance-test"),false);this.site=site;this.plain=plain;}
+    @Override HttpURLConnection openProbeConnection(String target,int port)throws IOException{HttpURLConnection c=super.openProbeConnection(target,port);if(c instanceof HttpsURLConnection){if(!target.startsWith(site.url("/")))throw new IOException("Only controlled TLS endpoints are allowed");((HttpsURLConnection)c).setSSLSocketFactory(site.tls.getSocketFactory());}return c;}
     @Override String websiteUrl(){return site.url("/website");}
-    @Override String probeUrl(){return site.url("/probe");}
+    @Override String probeUrl(){return plain.url("/probe");}
     @Override String exitCheckUrl(){return site.url("/ip");}
     @Override boolean routeBusy(){return busy;}
     @Override boolean backgroundIdle(){return false;}
     @Override void report(String value){message=value;}
   }
   void run(){JSONObject report=J.obj("status","failed","actualAndroidExecution",true,"actualMihomoExecution",true);TestNetwork n=null;
-    try(HttpFixture site=new HttpFixture();Socks fixed=new Socks(0);Socks slow=new Socks(100);Socks fast=new Socks(5)){
-      site.start();fixed.start();slow.start();fast.start();
+    try(HttpFixture site=new HttpFixture(tlsContext());HttpFixture plain=new HttpFixture(null);Socks fixed=new Socks(0);Socks slow=new Socks(100);Socks fast=new Socks(5)){
+      site.start();plain.start();fixed.start();slow.start();fast.start();
       JSONObject config=J.obj("subscriptionUrl","https://synthetic.invalid/unused-subscription","exitHost","127.0.0.1","exitPort",fixed.port(),"entryMode","latency","entryPool",J.arr("Entry|slow","Entry|fast"),"entry","");
       SecretStore vault=new SecretStore(this);vault.save(config);String yaml="proxies:\n  - {name: slow, type: socks5, server: 127.0.0.1, port: "+slow.port()+"}\n  - {name: fast, type: socks5, server: 127.0.0.1, port: "+fast.port()+"}\n";
       vault.put("subscription",yaml.getBytes(StandardCharsets.UTF_8));vault.put("subscription-meta",J.obj("urlHash",NativeNetwork.hash(config.getString("subscriptionUrl")),"updatedAt",System.currentTimeMillis()).toString().getBytes(StandardCharsets.UTF_8));
@@ -41,7 +44,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       check("Maintenance rounds stay bounded",NetworkOptimizationPolicy.batch(nodes,nodes,"Entry|slow",0).size()<=4);
       LinkedHashSet<String> explored=new LinkedHashSet<>();List<String> many=new ArrayList<>();for(int i=0;i<20;i++)many.add("Entry|"+i);for(int i=0;i<many.size();i++)explored.addAll(NetworkOptimizationPolicy.batch(many,many,"Entry|0",i));check("Round robin explores the whole allowed pool",explored.containsAll(many));
 
-      n=new TestNetwork(this,site);getSharedPreferences("chat",0).edit().putString("lastGoodEntry","Entry|slow").commit();n.startNow();
+      n=new TestNetwork(this,site,plain);getSharedPreferences("chat",0).edit().putString("lastGoodEntry","Entry|slow").commit();n.startNow();
       check("Production Mihomo starts with ARC DNS and TCP concurrency",n.ready&&n.coreAlive());check("Startup verifies the same controlled fixed exit",n.exitIp.equals("203.0.113.8")&&n.currentEntry.equals("Entry|slow"));
       JSONObject core=n.api("GET","/configs",null,3000);check("TCP concurrency is enabled by the running core",core.optBoolean("tcp-concurrent"));
       JSONObject runningConfig=J.parse(new String(java.nio.file.Files.readAllBytes(new File(n.root,"config.json").toPath()),StandardCharsets.UTF_8));check("DNS nameservers remain guarded by the fixed exit",runningConfig.getJSONObject("dns").getJSONArray("nameserver").getString(0).endsWith("#FixedExit"));
@@ -74,9 +77,11 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     NetworkCatalog.put(report,"checks",checks);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
     report.remove("checks");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
   }
+  SSLContext tlsContext()throws Exception{KeyStore store=KeyStore.getInstance("PKCS12");try(InputStream in=getAssets().open("network-fixture.p12")){store.load(in,"network-fixture".toCharArray());}KeyManagerFactory keys=KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());keys.init(store,"network-fixture".toCharArray());TrustManagerFactory trust=TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());trust.init(store);SSLContext tls=SSLContext.getInstance("TLS");tls.init(keys.getKeyManagers(),trust.getTrustManagers(),null);return tls;}
   static abstract class LoopServer implements AutoCloseable {
-    final ServerSocket listener;final ExecutorService pool=Executors.newCachedThreadPool();final Set<Socket> sockets=ConcurrentHashMap.newKeySet();volatile boolean closed;
-    LoopServer()throws IOException{listener=new ServerSocket(0,16,InetAddress.getByName("127.0.0.1"));}
+    final ServerSocket listener;final SSLContext tls;final ExecutorService pool=Executors.newCachedThreadPool();final Set<Socket> sockets=ConcurrentHashMap.newKeySet();volatile boolean closed;
+    LoopServer()throws IOException{this(null);}
+    LoopServer(SSLContext tls)throws IOException{this.tls=tls;listener=tls==null?new ServerSocket(0,16,InetAddress.getByName("127.0.0.1")):tls.getServerSocketFactory().createServerSocket(0,16,InetAddress.getByName("127.0.0.1"));}
     int port(){return listener.getLocalPort();}
     void start(){pool.execute(()->{while(!closed)try{Socket s=listener.accept();sockets.add(s);pool.execute(()->{try{handle(s);}catch(Exception ignored){}finally{sockets.remove(s);try{s.close();}catch(Exception ignored){}}});}catch(IOException e){break;}});}
     abstract void handle(Socket s)throws Exception;
@@ -92,7 +97,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
   }
   static final class HttpFixture extends LoopServer {
     volatile int status=200,requests,websiteDelay;volatile CountDownLatch delayedRequest;volatile String ip="203.0.113.8";volatile boolean credentialsSeen,redirectSeen;final List<Integer> headConnections=Collections.synchronizedList(new ArrayList<>());
-    HttpFixture()throws IOException{}String url(String path){return "http://127.0.0.1:"+port()+path;}
+    HttpFixture(SSLContext tls)throws IOException{super(tls);}String url(String path){return (tls==null?"http":"https")+"://127.0.0.1:"+port()+path;}
     byte[] dnsAnswer(){byte[] q=NetworkDns.query(),answer=Arrays.copyOf(q,q.length+16);answer[2]=(byte)0x81;answer[3]=(byte)0x80;answer[7]=1;byte[] rr={(byte)0xc0,12,0,1,0,1,0,0,0,60,0,4,(byte)203,0,113,1};System.arraycopy(rr,0,answer,q.length,rr.length);return answer;}
     void handle(Socket socket)throws Exception{
       socket.setSoTimeout(15000);BufferedReader in=new BufferedReader(new InputStreamReader(socket.getInputStream(),StandardCharsets.ISO_8859_1));OutputStream out=socket.getOutputStream();String request;

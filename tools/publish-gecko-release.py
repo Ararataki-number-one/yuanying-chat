@@ -20,6 +20,7 @@ if version_code>=39:
     assert visual['status']=='passed' and visual['actualAndroidExecution'] and visual['sourceCommit']==args.source,'UI evidence is missing or belongs to a different source.'
 if version_code>=40:
     network=json.loads((args.evidence/'network-performance-results.json').read_text())
+    assert len(visual.get('networkOptimizationScreens',[]))==3,'Missing compact and large-font low-latency UI checks.'
     assert network['status']=='passed' and network['actualAndroidExecution'] and network['actualMihomoExecution'] and network['sourceCommit']==args.source,'Network evidence is missing or belongs to a different source.'
 build=json.loads((args.evidence/'manifest.json').read_text())
 assert build['sourceCommit']==args.source,'Native evidence does not match the selected source.'
@@ -57,7 +58,7 @@ if previous:
     subprocess.run(['git','fetch','origin','refs/heads/'+branch],cwd=root,check=True)
     parents+=['-p',previous[0]]
 subprocess.run(['git','read-tree','--empty'],cwd=root,env=env,check=True)
-subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
+subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*(['network-performance-results.json'] if version_code>=40 else []),*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
 tree=subprocess.check_output(['git','write-tree'],cwd=root,env=env,text=True).strip()
 commit=subprocess.check_output(['git','commit-tree',tree,*parents,'-m','Publish original-signed production Gecko APK'],cwd=root,env=env,text=True).strip()
 subprocess.run(['git','-c','http.postBuffer=524288000','push','origin',commit+':refs/heads/'+branch],cwd=root,check=True)

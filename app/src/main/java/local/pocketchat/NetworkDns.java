@@ -29,7 +29,7 @@ final class NetworkDns {
   static int measure(NativeNetwork n,String server)throws Exception{
     n.maintenanceCheck();String epoch=n.token;
     String target=server+"?dns="+Base64.getUrlEncoder().withoutPadding().encodeToString(query());
-    HttpURLConnection c=(HttpURLConnection)new URL(target).openConnection(new Proxy(Proxy.Type.HTTP,new InetSocketAddress("127.0.0.1",n.proxyPort)));n.track(c);boolean reusable=false;
+    HttpURLConnection c=n.openProbeConnection(target,n.proxyPort);n.track(c);boolean reusable=false;
     try{c.setConnectTimeout(2000);c.setReadTimeout(2000);c.setUseCaches(false);c.setInstanceFollowRedirects(false);c.setRequestProperty("Accept","application/dns-message");long began=android.os.SystemClock.elapsedRealtime();if(c.getResponseCode()!=200)return -1;byte[] answer;try(InputStream in=c.getInputStream()){answer=J.read(in,4096);}reusable=true;n.maintenanceCheck();if(!epoch.equals(n.token)||!valid(answer))return -1;return (int)Math.max(1,android.os.SystemClock.elapsedRealtime()-began);}finally{n.untrack(c);if(!reusable)c.disconnect();}
   }
 }

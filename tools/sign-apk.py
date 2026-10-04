@@ -30,6 +30,8 @@ digests=re.findall(r'certificate SHA-256 digest: ([0-9a-f]{64})',cert)
 assert digests and set(digests)=={'f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434'},'Signing certificate does not match original app.'
 badging=subprocess.check_output([str(args.tools/'aapt2'),'dump','badging',str(args.output)],text=True)
 assert f"package: name='local.pocketchat' versionCode='{version_code}' versionName='{version}'" in badging,badging.splitlines()[0]
+import zipfile
+with zipfile.ZipFile(args.output) as archive:assert 'assets/network-fixture.p12' not in archive.namelist(),'Synthetic TLS key must never appear in production APK'
 assert 'application-debuggable' not in badging,'Release must not enable debugging.'
 manifest=subprocess.check_output([str(args.tools/'aapt2'),'dump','xmltree',str(args.output),'--file','AndroidManifest.xml'],text=True)
 assert all(name not in manifest for name in ['GeckoIntegrationTestActivity','ProfileGeckoIntegrationActivity','AppUpdateIntegrationActivity','GeckoUploadFixtureProvider','EnvironmentManagementIntegrationActivity','UiVisualIntegrationActivity','NetworkOptimizationIntegrationActivity']),'Test component present in release.'
