@@ -54,6 +54,10 @@ class HttpProxy(socketserver.BaseRequestHandler):
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address=True;daemon_threads=True
 class Fixture(fixture.Fixture):
+    def do_POST(self):
+        body=self.rfile.read(int(self.headers.get('Content-Length','0')))
+        ok=self.path=='/image-received' and b'filename="photo-123.png"' in body and b'Content-Type: image/png' in body and b'\x89PNG\r\n\x1a\n' in body
+        self.send_response(200 if ok else 400);self.send_header('Content-Length','0');self.end_headers()
     def do_GET(self):
         address=urllib.parse.urlparse(self.path);query=urllib.parse.parse_qs(address.query)
         if address.path.startswith('/update-'):
@@ -68,7 +72,9 @@ class Fixture(fixture.Fixture):
         if address.path=='/native-csv':
             body=b'name,value\nsynthetic,42\n'
             self.send_response(200);self.send_header('Content-Type','text/csv');self.send_header('Content-Disposition','attachment; filename="generated.csv"');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
-        if address.path=='/browser-usability':
+        if address.path=='/browser-image':
+            body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><h1>Desktop image fixture</h1><input id="upload" type="file" accept="image/*" multiple><p id="upload-result"></p><script>upload.onchange=async e=>{try{const f=e.target.files[0],image=await createImageBitmap(f),bytes=new Uint8Array(await f.arrayBuffer());if(f.type!=='image/png'||image.width!==4||image.height!==3||bytes[0]!==137||bytes[1]!==80)throw Error('image bytes or MIME lost');const form=new FormData();form.append('file',f);const response=await fetch('/image-received',{method:'POST',body:form});if(!response.ok)throw Error('upload rejected');document.getElementById('upload-result').textContent='ok:'+f.name+':'+f.type+':4x3';}catch(error){document.getElementById('upload-result').textContent='error:'+error.message;}};</script>'''
+        elif address.path=='/browser-usability':
             body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><h1>Mobile browser capability fixture</h1><input id="upload" type="file" accept="text/plain"><p id="upload-result"></p><a id="csv" href="/native-csv">Download generated CSV</a><button id="blob" onclick="const a=document.createElement('a');a.href=window.URL.createObjectURL(new window.Blob(['name,value\\nsynthetic,42\\n'],{type:'text/csv'}));a.download='generated.csv';document.body.appendChild(a);a.click();a.remove();">Download page blob</button><script>document.getElementById('upload').onchange=async e=>{const f=e.target.files[0];document.getElementById('upload-result').textContent=f.name+':'+await f.text();};</script>'''
         elif address.path=='/browser-window':
             step=query.get('step',['one'])[0];command=query.get('command',['0'])[0]
@@ -216,6 +222,8 @@ def main():
     try:
         usability=run(1,'usability','usability');assert usability['documentPreserved'] and usability['mobileVisible'] and usability['upload']=='sample.txt:synthetic-upload' and usability['csv']=='name,value\nsynthetic,42\n' and usability['blob']==usability['csv'],usability
         report['browserUsability']=usability
+        image=run(1,'desktopImage','desktopImage');assert all(image[k] for k in ['productionChooserOpened','imageMimeAndMultiple','pendingPreserved','noPhantomUpload','desktop']) and image['upload']=='ok:photo-123.png:image/png:4x3',image
+        report['desktopImageUpload']=image
         check(run(1,'seed'),1,True);check(run(2,'read'),2,False)
         check(run(2,'seed'),2,True);check(run(1,'read'),1,True)
         for context in [1,2]:

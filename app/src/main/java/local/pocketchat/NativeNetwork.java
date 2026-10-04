@@ -155,9 +155,10 @@ class NativeNetwork {
 
   boolean configurationMatches(){try{if(settings==null)return false;JSONObject now=secrets.settings();for(String key:new String[]{"subscriptionUrl","exitHost","exitPort","exitUser","exitPassword","entryMode","entryPool","entry"})if(!settings.optString(key).equals(now.optString(key)))return false;return true;}catch(Exception e){return false;}}
   synchronized void cancelMaintenance(){maintenanceGeneration++;lastMaintenanceAt=android.os.SystemClock.elapsedRealtime();NetworkWork work=backgroundWork;if(work!=null)work.cancel(closers);}
-  synchronized NetworkWork beginMaintenance(long expected){if(starting||expected!=maintenanceGeneration)return null;NetworkWork work=new NetworkWork();backgroundWork=work;maintenance.set(work);return work;}
+  synchronized NetworkWork beginMaintenance(long expected){return beginMaintenance(expected,false);}
+  synchronized NetworkWork beginMaintenance(long expected,boolean allowBusy){if(starting||expected!=maintenanceGeneration)return null;NetworkWork work=new NetworkWork(allowBusy);backgroundWork=work;maintenance.set(work);return work;}
   void finishMaintenance(NetworkWork work){work.finish();maintenance.remove();synchronized(this){if(backgroundWork==work)backgroundWork=null;}Thread.interrupted();}
-  void maintenanceCheck()throws InterruptedIOException{NetworkWork work=maintenance.get();if(work!=null){if(routeBusy())work.cancel(closers);work.check();}}
+  void maintenanceCheck()throws InterruptedIOException{NetworkWork work=maintenance.get();if(work!=null){if(!work.allowBusy&&routeBusy())work.cancel(closers);work.check();}}
   boolean maintenanceCancelled(){NetworkWork work=maintenance.get();return work!=null&&work.cancelled;}
   void track(HttpURLConnection c)throws InterruptedIOException{NetworkWork work=maintenance.get();if(work!=null)work.add(c);}
   void untrack(HttpURLConnection c){NetworkWork work=maintenance.get();if(work!=null)work.remove(c);}
@@ -240,7 +241,7 @@ class NativeNetwork {
   synchronized void measureLatency(Callback cb){
     long now=android.os.SystemClock.elapsedRealtime();if(measuringLatency||now-lastManualProbe<5000){main.post(()->cb.done(false,"请稍后再测"));return;}if(!ready||starting||!coreAlive()){main.post(()->cb.done(false,"请先恢复应用网络"));return;}
     measuringLatency=true;lastManualProbe=now;cancelMaintenance();long generation=maintenanceGeneration;
-    worker.execute(()->{boolean ok=false;String text="线路暂未通过探测，可稍后再试";NetworkWork work=beginMaintenance(generation);
+    worker.execute(()->{boolean ok=false;String text="线路暂未通过探测，可稍后再试";NetworkWork work=beginMaintenance(generation,true);
       try{if(work==null)throw new IOException("连接已变化");if(ready&&!starting&&coreAlive()){String entry=currentEntry,epoch=token;int delay=probe("FixedExit");maintenanceCheck();if(ready&&entry.equals(currentEntry)&&epoch.equals(token)){quality.record(entry,delay,System.currentTimeMillis());ok=delay>0;if(ok){JSONObject site=measureWebsite(entry);text="线路 "+delay+" ms · "+WebsiteProbe.line(site,System.currentTimeMillis());}}}}
       catch(Exception cancelled){ok=false;text="测速已暂停，当前操作继续进行";}finally{if(work!=null)finishMaintenance(work);measuringLatency=false;WindowNetworkState.save(context,ChatSession.peek(),this);}
       final boolean success=ok;final String message=text;main.post(()->cb.done(success,message));});

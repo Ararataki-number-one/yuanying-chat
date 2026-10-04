@@ -14,6 +14,8 @@ public class GeckoIntegrationTestActivity extends Activity {
   long paintStarted,paintVisible,paintFinished;
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
+    boolean chooserOrigin;
+    @Override public String getUrl(){return chooserOrigin?MainActivity.ORIGIN:super.getUrl();}
     FixtureView(Context context,ChatSession owner){super(context,owner);}
     @Override protected boolean allowedUrl(String target){
       return target.startsWith("http://127.0.0.1:8765/")||target.startsWith("http://remote-probe.invalid:8765/")||super.allowedUrl(target);
@@ -57,6 +59,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("queuedChanges".equals(action)){queuedChanges(serial);return;}
     if("privacy".equals(action)){privacy(serial,0);return;}
     if("completion".equals(action)){completion(serial);return;}
+    if("desktopImage".equals(action)){desktopImage(serial);return;}
     if("usability".equals(action)){usability(serial);return;}
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
     if("readingZoom".equals(action)){readingZoom(serial,0,new JSONArray(),SystemClock.elapsedRealtime()+20000);return;}
@@ -133,6 +136,37 @@ public class GeckoIntegrationTestActivity extends Activity {
           });
         });
       });
+    });
+  }
+  // Only the origin is adapted for the loopback fixture. The production chooser,
+  // pending guard, SAF result and Gecko file preparation all run unchanged.
+  void desktopImage(long serial){
+    session.reading.configure(true);session.web.configure(true,session.privacy.level());
+    final JSONObject held=J.obj("kind","web","confirmed",true);session.pending=held;
+    FixtureView view=(FixtureView)session.web;final boolean[] chooser={false},mime={false};
+    MainActivity host=new MainActivity(){
+      @Override public android.view.Window getWindow(){return GeckoIntegrationTestActivity.this.getWindow();}
+      @Override void status(String message){if(message.contains("失败"))event("error",J.obj("error",message));}
+      @Override public void startActivityForResult(Intent intent,int request){
+        chooser[0]=request==74&&Intent.ACTION_OPEN_DOCUMENT.equals(intent.getAction());mime[0]="image/*".equals(intent.getType())&&intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE,false);
+        session.handler.post(()->{view.chooserOrigin=true;try{attachments.result(Activity.RESULT_OK,new Intent().setData(android.net.Uri.parse("content://synthetic.pocket.upload/image")));}finally{view.chooserOrigin=false;}});
+      }
+    };
+    host.attachBaseContext(this);host.session=session;host.remote=view;host.prefs=session.prefs;host.pageMode=true;host.status=new TextView(host);host.loading=new LoadingUi(host);host.attachments=new Attachments(host);
+    android.webkit.WebChromeClient production=host.attachments.chrome();
+    view.setWebChromeClient(new android.webkit.WebChromeClient(){@Override public boolean onShowFileChooser(WebView web,android.webkit.ValueCallback<android.net.Uri[]> callback,FileChooserParams params){view.chooserOrigin=true;try{return production.onShowFileChooser(web,callback,params);}finally{view.chooserOrigin=false;}}});
+    view.loadUrl("http://127.0.0.1:8765/browser-image?command="+serial);
+    session.handler.postDelayed(()->desktopImageReady(serial,SystemClock.elapsedRealtime()+25000,host,held,chooser,mime,false),200);
+  }
+  void desktopImageReady(long serial,long deadline,MainActivity host,JSONObject held,boolean[] chooser,boolean[] mime,boolean tapped){
+    if(serial!=run)return;
+    if(!tapped&&session.web.hasVisibleDocument()&&!session.navigating){tapElement(serial,"upload");tapped=true;}
+    final boolean touched=tapped;
+    session.web.evaluateJavascript("document.getElementById('upload-result')?.textContent",raw->{
+      String value="";try{value=new org.json.JSONTokener(raw).nextValue().toString();}catch(Exception ignored){}
+      if(value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;host.attachments.destroy();event("desktopImage",J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",session.privacy.desktop));return;}
+      if(SystemClock.elapsedRealtime()>deadline){session.pending=null;host.attachments.destroy();event("error",J.obj("error","desktop image chooser/upload failed","result",raw,"chooser",chooser[0]));return;}
+      session.handler.postDelayed(()->desktopImageReady(serial,deadline,host,held,chooser,mime,touched),100);
     });
   }
   void usability(long serial){

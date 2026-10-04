@@ -9,6 +9,9 @@ import java.util.concurrent.*;
 final class NetworkWork {
   final Set<HttpURLConnection> connections=new HashSet<>();
   final Set<Future<?>> futures=new HashSet<>();
+  final boolean allowBusy;
+  NetworkWork(){this(false);}
+  NetworkWork(boolean allowBusy){this.allowBusy=allowBusy;}
   volatile boolean cancelled;boolean active=true;Thread owner=Thread.currentThread();
   synchronized void check()throws InterruptedIOException{if(cancelled)throw new InterruptedIOException("测速已让位于连接恢复");}
   synchronized void add(HttpURLConnection c)throws InterruptedIOException{check();connections.add(c);}

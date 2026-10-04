@@ -4,6 +4,7 @@ import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
+import android.webkit.MimeTypeMap;
 import java.io.*;
 import java.util.*;
 
@@ -25,6 +26,7 @@ final class GeckoUploadFiles {
       if("file".equals(uri.getScheme()))name=new File(uri.getPath()).getName();
       else try(Cursor cursor=context.getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(cursor!=null&&cursor.moveToFirst()&&!cursor.isNull(0))name=cursor.getString(0);}
       name=name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]","_").trim();if(name.isEmpty()||name.equals(".")||name.equals(".."))name="附件";if(name.length()>80)name=name.substring(name.length()-80);
+      if("content".equals(uri.getScheme())){String mime=context.getContentResolver().getType(uri);if(mime!=null&&mime.startsWith("image/")){int dot=name.lastIndexOf('.');String actual=dot<0?null:MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substring(dot+1).toLowerCase(Locale.ROOT));String extension=MimeTypeMap.getSingleton().getExtensionFromMimeType(mime.toLowerCase(Locale.ROOT));if(extension!=null&&!mime.equalsIgnoreCase(actual))name+="."+extension;}}
       if(!names.add(name))throw new IOException("所选附件名称重复，请分别添加");
       File file=new File(directory,name);
       try(InputStream input=context.getContentResolver().openInputStream(uri);OutputStream output=new FileOutputStream(file)){

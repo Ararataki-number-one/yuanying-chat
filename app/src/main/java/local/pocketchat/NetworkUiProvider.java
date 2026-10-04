@@ -43,8 +43,8 @@ public class NetworkUiProvider extends ContentProvider {
   void operate(String id,String action,JSONObject candidate,String baseline){
     ChatSession s=ChatSession.peek();NativeNetwork n=NativeNetwork.get(profile);
     if(!ProfileCatalog.get(profile).item(Profiles.slot(profile)).optBoolean("created")){finish(id,false,"此环境已删除");return;}
-    if(busy(s,n)){finish(id,false,"当前回复继续进行，网络配置可以先编辑保存");return;}
     if("measure".equals(action)){if(!"internal".equals(profile.getSharedPreferences("chat",0).getString("networkMode","external"))){finish(id,false,"当前方式没有完整线路测速数据；可在窗口详情检查连接");return;}n.measureLatency((ok,msg)->finish(id,ok,msg));return;}
+    if(busy(s,n)){finish(id,false,"当前回复继续进行，网络配置可以先编辑保存");return;}
     if("verify".equals(action)){if(!n.ready){finish(id,false,"请先连接此窗口，再核验出口");return;}applying=true;activeApply=id;if(s!=null)s.operation=true;n.checkExit((ok,msg)->finish(id,ok,msg));return;}
     if("reconnect".equals(action)){if(s!=null){s.reconnect();waitConnection(id,s,n,false,SystemClock.elapsedRealtime());}else if("internal".equals(profile.getSharedPreferences("chat",0).getString("networkMode","external")))n.restart((ok,msg)->finish(id,ok,msg));else finish(id,false,"打开此窗口的会话后可重连手机网络");return;}
     if("external".equals(action)){
