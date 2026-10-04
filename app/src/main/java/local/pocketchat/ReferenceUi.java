@@ -32,9 +32,9 @@ final class ReferenceUi {
     for(int i=0;i<labels.length;i++){
       final int n=i;Button b=button(c,labels[i],false,()->click.accept(n));
       b.setTextColor(i==selected?BLUE:MUTED);b.setSelected(i==selected);b.setSingleLine(true);
-      b.setPadding(dp(c,large?12:4),0,dp(c,large?12:4),0);
       b.setTypeface(Typeface.create("sans-serif-medium",0));
       b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x182468f2),new InsetDrawable(surface(c,i==selected?BLUE_SOFT:Color.TRANSPARENT,10,Color.TRANSPARENT),0,dp(c,4),0,dp(c,4)),null));
+      b.setPadding(dp(c,large?12:4),0,dp(c,large?12:4),0);
       LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(large?-2:0,dp(c,48),large?0:1);if(i>0)p.leftMargin=dp(c,4);bar.addView(b,p);
     }
     if(!large)return bar;

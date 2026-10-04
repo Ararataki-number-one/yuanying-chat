@@ -29,6 +29,11 @@ def capture(variant,width,height,scale,scene):
     if scene=='browser':click(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
     if scene=='chat':time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置','原网页'])
     assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
+    if variant=='current' and scene=='entries':
+        choices=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class') in ['android.widget.CheckBox','android.widget.RadioButton']]
+        assert choices,(variant,scene,'Missing entry choices')
+        heights=[int(re.findall(r'\d+',n.attrib['bounds'])[3])-int(re.findall(r'\d+',n.attrib['bounds'])[1]) for n in choices]
+        assert max(heights)>=144,(variant,scene,'Entry touch area below 48 dp',heights)
     stem=f'{variant}-{width}x{height}-font{scale:g}-{scene}'
     (shots/(stem+'.xml')).write_text(xml)
     raw=subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30)

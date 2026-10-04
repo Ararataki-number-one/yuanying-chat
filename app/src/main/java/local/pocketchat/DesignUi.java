@@ -13,7 +13,12 @@ final class DesignUi {
   static void chrome(Activity a){a.getWindow().setStatusBarColor(BG);a.getWindow().setNavigationBarColor(BG);a.getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | (Build.VERSION.SDK_INT>=26?View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR:0));}
   static LinearLayout column(Context c){LinearLayout v=new LinearLayout(c);v.setOrientation(1);return v;}
   static LinearLayout row(Context c){LinearLayout v=new LinearLayout(c);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
-  static LinearLayout card(Context c){LinearLayout box=column(c);box.setPadding(dp(c,14),dp(c,12),dp(c,14),dp(c,10));box.setBackground(surface(c,CARD,14,LINE));return box;}
+  static LinearLayout card(Context c){LinearLayout box=column(c);box.setPadding(dp(c,14),dp(c,10),dp(c,14),dp(c,8));box.setBackground(surface(c,CARD,14,LINE));return box;}
+  static ArrayAdapter<String> spinnerAdapter(Context c,String[] labels){return new ArrayAdapter<String>(c,android.R.layout.simple_spinner_dropdown_item,labels){
+    TextView style(android.view.View view){TextView text=(TextView)view;text.setTextColor(TEXT);text.setTextSize(15);return text;}
+    @Override public android.view.View getView(int position,android.view.View reused,android.view.ViewGroup parent){return style(super.getView(position,reused,parent));}
+    @Override public android.view.View getDropDownView(int position,android.view.View reused,android.view.ViewGroup parent){return style(super.getDropDownView(position,reused,parent));}
+  };}
   static void addCard(LinearLayout parent,View card){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(parent.getContext(),10);parent.addView(card,p);}
   static final class ActionButton extends Button {
     ActionButton(Context c){super(c);}

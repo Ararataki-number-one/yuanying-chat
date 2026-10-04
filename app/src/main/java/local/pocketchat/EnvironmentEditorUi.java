@@ -48,7 +48,8 @@ final class EnvironmentEditorUi {
     DesignUi.note(display,"电脑版按手机宽度排版，可双指缩放。回复期间可保存，结束后自动应用。");DesignUi.addCard(browser,display);
     DesignUi.section(browser,"隐私保护","");
     LinearLayout protection=DesignUi.card(a);Spinner privacy=new Spinner(a);
-    privacy.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,new String[]{"兼容","标准","强化"}));
+    privacy.setAdapter(DesignUi.spinnerAdapter(a,new String[]{"兼容","标准","强化"}));
+    privacy.setMinimumHeight(a.dp(48));
     privacy.setSelection(Math.max(0,Math.min(2,initial.optInt("privacyLevel",a.session.privacy.level()))));protection.addView(privacy);
     DesignUi.note(protection,"强化保护可能影响验证和音视频。");
     DesignUi.action(protection,"保护详情",false,()->DesignUi.message(a,"隐私保护",a.session.privacy.summary()));DesignUi.addCard(browser,protection);
@@ -107,7 +108,7 @@ final class EnvironmentEditorUi {
       LinearLayout.LayoutParams p=primaryRow?new LinearLayout.LayoutParams(-1,a.dp(48)):new LinearLayout.LayoutParams(0,a.dp(48),1);
       p.setMargins(a.dp(3),primaryRow?a.dp(8):0,a.dp(3),0);(primaryRow?actions:secondary).addView(button,p);actionIndex++;
     }
-    root.addView(actions);dialog.setOnDismissListener(d->returnToList(a));dialog.setCanceledOnTouchOutside(false);dialog.setContentView(root);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+    root.addView(actions);dialog.setOnDismissListener(d->returnToList(a));dialog.setCanceledOnTouchOutside(false);dialog.setContentView(root);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);dialog.getWindow().setStatusBarColor(DesignUi.BG);dialog.getWindow().setNavigationBarColor(DesignUi.BG);dialog.getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|(Build.VERSION.SDK_INT>=26?android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR:0));dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
   }
   static void updateTabs(MainActivity a,LinearLayout tabs,FrameLayoutHost host,int selected){int n=Math.max(0,Math.min(SECTIONS.length-1,selected));host.page(n);tabs.removeAllViews();tabs.addView(DesignUi.tabs(a,SECTIONS,n,i->updateTabs(a,tabs,host,i)),new LinearLayout.LayoutParams(-1,-2));}
   static boolean apply(MainActivity a,JSONObject value,EditText name){

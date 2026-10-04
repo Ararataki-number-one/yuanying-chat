@@ -34,13 +34,15 @@ public class WindowHomeActivity extends Activity {
     LinearLayout box=DesignUi.body(this,root,"环境管理",null);
     LinearLayout tools=DesignUi.row(this);
     count=DesignUi.text(this,"",13,DesignUi.MUTED);
-    tools.addView(count,new LinearLayout.LayoutParams(0,-2,1));
+    boolean largeText=getResources().getConfiguration().fontScale>=1.4f;
+    if(largeText)tools.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
+    else tools=(LinearLayout)root.getChildAt(0);
     selectionButton=DesignUi.button(this,"多选",false,()->setSelecting(!selecting));
     tools.addView(selectionButton,new LinearLayout.LayoutParams(dp(64),dp(48)));
     LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(dp(112),dp(48));
     createParams.leftMargin=dp(8);
     createButton=DesignUi.button(this,"＋ 新建环境",true,()->createWindow());tools.addView(createButton,createParams);
-    box.addView(tools);
+    if(largeText)box.addView(tools);
     preparation=DesignUi.progress(this,"正在创建环境…","完成后会打开新环境，请稍候。");
     preparation.setVisibility(View.GONE);DesignUi.addCard(box,preparation);
     LinearLayout searchRow=DesignUi.row(this),searchBox=DesignUi.column(this);
@@ -57,6 +59,7 @@ public class WindowHomeActivity extends Activity {
     sortButton=DesignUi.button(this,"编号排序 ▾",false,this::chooseSort);
     HorizontalScrollView filterScroll=new HorizontalScrollView(this);
     filterScroll.setHorizontalScrollBarEnabled(false);
+    filterScroll.setHorizontalFadingEdgeEnabled(true);filterScroll.setFadingEdgeLength(dp(12));
     filters=DesignUi.row(this);filterScroll.addView(filters);
     LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,dp(48));
     fp.topMargin=dp(8);box.addView(filterScroll,fp);
@@ -158,11 +161,11 @@ public class WindowHomeActivity extends Activity {
   }
   static String networkStatus(JSONObject row,boolean active,boolean fresh){
     String mode=row.optString("mode");
-    if(mode.isEmpty())return "网络 · 暂无记录";
-    if(!active)return "网络 · "+mode;
-    if(!fresh)return "网络 · "+mode+" · 状态待核对";
+    if(mode.isEmpty())return "暂无网络记录";
+    if(!active)return mode;
+    if(!fresh)return mode+" · 状态待核对";
     String problem=row.optString("problem");
-    return "网络 · "+mode+" · "+(!problem.isEmpty()?problem:row.optBoolean("connected")?"已连接":"待连接");
+    return mode+" · "+(!problem.isEmpty()?problem:row.optBoolean("connected")?"已连接":"待连接");
   }
   void refresh(){
     if(cards==null||selectionBar==null)return;
@@ -187,7 +190,7 @@ public class WindowHomeActivity extends Activity {
     for(int i=0;i<labels.length;i++){
       final int n=i;
       Button button=ReferenceUi.link(this,labels[i]+" "+counts[i],()->{filter=n;lastSignature="";refresh();});
-      button.setTextSize(12);button.setSelected(i==filter);
+      button.setTextSize(12);button.setSelected(i==filter);button.setTextColor(i==filter?DesignUi.BLUE:DesignUi.MUTED);
       if(i==filter){button.setTextColor(DesignUi.BLUE);button.setBackground(DesignUi.surface(this,0xffeaf1ff,8,0xffb6cdfa));}
       LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(i==3?100:88),dp(48));
       p.rightMargin=dp(6);filters.addView(button,p);
@@ -225,8 +228,8 @@ public class WindowHomeActivity extends Activity {
       head.addView(DesignUi.badge(this,status,problem?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED));card.addView(head);
       TextView network=DesignUi.text(this,networkStatus(row,active,fresh),12,problem?DesignUi.RED:DesignUi.MUTED);
       network.setMaxLines(2);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,dp(8),0,dp(4));card.addView(network);
-      TextView recent=DesignUi.text(this,(row.optLong("opened")<=0?"尚未使用":"最近 "+recentUse(row.optLong("opened"),now)),12,DesignUi.MUTED);
-      if(selecting)card.addView(recent);
+      TextView recent=DesignUi.text(this,(row.optLong("opened")<=0?"":"最近 "+recentUse(row.optLong("opened"),now)),12,DesignUi.MUTED);
+      if(selecting){if(row.optLong("opened")>0)card.addView(recent);}
       else{
         LinearLayout actions=DesignUi.row(this);actions.setPadding(0,dp(4),0,0);
         actions.addView(recent,new LinearLayout.LayoutParams(0,-2,1));
