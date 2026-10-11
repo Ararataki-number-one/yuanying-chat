@@ -4,6 +4,7 @@
   window.__pocketInstallWebPerformance = api => {
     if (window.__pocketWebPerformance) return window.__pocketWebPerformance;
     const selector = '[data-message-author-role],article[data-turn],[data-chatgpt-search-unit-key],[data-content-search-unit-key]';
+    const memoOwnerSelector=selector+',.markdown,[data-markdown-text-style="assistant-message"]';
     const cache = new WeakMap(), sent = new Map(), messageGroups=new Map();
     const documentId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
     let dirty = true, revision = 0, orderKey = '', lastUrl = '', lastInteraction = 0, nodeSequence=0;
@@ -28,23 +29,33 @@
         const saved = cache.get(element);
         // A body memo and its enclosing transcript entry must both expire.
         // Stopping at the first cached descendant leaves the parent stale.
-        if (saved) { saved.dirty = true; saved.version++; }
+        if (saved) { saved.dirty = true; saved.version++; dirty=true; }
         if (element.matches?.(selector)) { dirty = true; matched=true; }
         element = element.parentElement;
       }
       return matched;
     }
+    function expireInserted(node) {
+      if(node.nodeType!==Node.ELEMENT_NODE||!(cache.has(node)||node.matches(memoOwnerSelector)||node.querySelector(memoOwnerSelector)))return;
+      // Virtualization can edit a detached cached turn before reattaching it.
+      // Inspect that inserted subtree once; ordinary streamed text/paragraphs
+      // have no memo owner and never walk the existing conversation tree.
+      const walker=document.createTreeWalker(node,NodeFilter.SHOW_ELEMENT);
+      let element=node;
+      do {const saved=cache.get(element);if(saved){saved.dirty=true;saved.version++;dirty=true;}}while((element=walker.nextNode()));
+    }
     new MutationObserver(records => {
       for (const record of records) {
         mark(record.target);
         if(record.type==='attributes'&&messageAttributes.has(record.attributeName)){messageGroups.clear();dirty=true;}
+        if(record.type==='childList')for(const node of record.addedNodes)expireInserted(node);
         if (record.type === 'childList') for (const node of [...record.addedNodes,...record.removedNodes]) {
           if (node.nodeType === Node.ELEMENT_NODE && (node.matches(selector) || node.querySelector(selector))) { dirty = true; messageGroups.clear(); break; }
         }
       }
     }).observe(document, {subtree:true,childList:true,characterData:true,attributes:true,
       attributeFilter:['data-message-id','data-chatgpt-selection-message-id','data-chatgpt-search-message-ids',
-        'href','download','src','alt','aria-label','hidden','aria-hidden','data-file-name',
+        'href','download','src','srcset','sizes','alt','title','aria-label','hidden','aria-hidden','data-file-name','data-language','encoding',
         'class','data-testid','data-turn','data-markdown-text-style','data-is-reasoning',
         'data-message-author-role','data-chatgpt-search-unit-key','data-content-search-unit-key']});
     document.addEventListener('load', event => mark(event.target), true);
@@ -64,9 +75,12 @@
         nodes.forEach((node,index) => {
           const id = api.key(node,index); ids.add(id);
           const saved = record(node);
-          if (!saved.entry || saved.dirty || saved.id !== id) {
+          const dependency=api.dependency?.(node), dependencyRecord=dependency?record(dependency):null;
+          const dependencyVersion=dependencyRecord?dependencyRecord.identity+'.'+dependencyRecord.version:'';
+          if (!saved.entry || saved.dirty || saved.id !== id || saved.dependencyVersion!==dependencyVersion) {
             const entry = api.entry(node,index,users);
             saved.id=id;saved.entry=entry;saved.serial=JSON.stringify(entry);saved.dirty=false;
+            saved.dependencyVersion=dependencyVersion;
             stats.entriesBuilt++;
           }
           if (saved.entry.role !== 'user' && !saved.entry.text.trim() && !saved.entry.downloads?.length) return;

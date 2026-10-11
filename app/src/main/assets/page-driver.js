@@ -104,7 +104,7 @@
   function observed(node,kind,build){return window.__pocketWebPerformance?.memo(node,kind,build) ?? build();}
   function observedUserText(node){return observed(node,'userText',()=>userText(node));}
   function observedMarkdown(node){return observed(node,'markdown',()=>markdown(node));}
-  function observedFiles(node){return observed(node,'files',()=>fileControls(node));}
+  function observedFiles(node){return observed(assistantScope(node)||node,'files',()=>fileControls(node));}
   function ownMessageId(el) {
     return el.getAttribute('data-message-id') || el.getAttribute('data-chatgpt-selection-message-id') ||
       (el.getAttribute('data-chatgpt-search-message-ids')||'').trim().split(/\s+/)[0] || '';
@@ -278,7 +278,7 @@
 
   }
   if(action==='transcript'||action==='web-transcript'){
-    if(action==='web-transcript'){if(!window.__pocketInstallWebPerformance)return {ok:false,error:'网页缓存尚未就绪'};return window.__pocketInstallWebPerformance({nodes:entryNodes,users:()=>messages('user'),key,entry:transcriptEntry}).snapshot(arg);}
+    if(action==='web-transcript'){if(!window.__pocketInstallWebPerformance)return {ok:false,error:'网页缓存尚未就绪'};return window.__pocketInstallWebPerformance({nodes:entryNodes,users:()=>messages('user'),key,entry:transcriptEntry,dependency:assistantScope}).snapshot(arg);}
     const users=new Set(messages('user'));const entries=entryNodes().map((el,i)=>transcriptEntry(el,i,users)).filter(x=>x.role==='user'||x.text.trim()||x.downloads?.length);
     return {ok:true,url:location.href,title:document.title,entries};
   }
@@ -401,7 +401,7 @@
     const recoverable=!!error && !/上限|限制|额度|limit|验证|verify|captcha|unusual activity/i.test(errorText) && /网络|连接|重试|retry|went wrong|network|出了点|出现错误/i.test(errorText);
     const replyKey=reply?key(reply,assistants.indexOf(reply)):'';
     const incremental=!!arg.incrementalObservation&&!!window.__pocketWebPerformance;
-    const contentRevision=incremental?window.__pocketWebPerformance.contentRevision([...replies,...bodies]):'';
+    const contentRevision=incremental?window.__pocketWebPerformance.contentRevision([...replies,...bodies,...replies.map(assistantScope)]):'';
     const result={url:location.href,error,recoverable,thinking,searching,busy:activeBusy,submitted:!!user,
       userKey:user?key(user,userIndex):'',userOrdinal:userIndex,boundByNewIdentity,otherQuestion:!!laterUser,
       replyKey,terminal};

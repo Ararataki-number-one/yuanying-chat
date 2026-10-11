@@ -49,6 +49,11 @@ def verify_performance_evidence(directory, source):
         'Production stable lightweight samples finish and persist the actual reply task',
         'The complete final body is durably saved by the production transcript worker',
         'Actual Android tap and keyboard input preserve the existing composer draft',
+        'Sibling generated file cards invalidate the actual Gecko reply revision',
+        'Sibling file cards appear in incremental transcript downloads',
+        'Renaming a sibling file card refreshes actual Gecko metadata and transcript downloads',
+        'Removing a sibling file card invalidates the actual Gecko reply metadata',
+        'Reattaching an edited cached body refreshes actual Gecko terminal text and transcript',
     } <= names, 'Long-reply correctness regression is required.'
     measurements = {case['variant']: case for case in gecko['measurements']}
     assert set(measurements) == {'baseline', 'current'}
@@ -69,8 +74,10 @@ def verify_performance_evidence(directory, source):
         'Network list refresh sees draft removal without a global pending cache',
         'Actual Android main-thread region and cold latency reads complete',
         'Region and latency UI snapshots cause no main-thread disk reads or writes',
+        'Cold profile metadata paths resolve without Android main-thread directory access',
+        'Background cold-path resolution restores the correct eight environment snapshots',
     } <= passed, 'Multi-profile cache and main-thread disk regression is required.'
-    for name, count in [('snapshot-host-results.json', 14), ('reply-observation-host-results.json', 25)]:
+    for name, count in [('snapshot-host-results.json', 14), ('reply-observation-host-results.json', 37)]:
         report = json.loads((directory / name).read_text())
         assert report['passed'] == report['total'] >= count, name
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True, 'geckoChecks': gecko['checkCount'],

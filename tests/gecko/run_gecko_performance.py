@@ -71,6 +71,9 @@ def main():
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
     receipt = json.loads((baseline_root / 'source.json').read_text())
     assert receipt['sourceCommit'] == BASELINE, receipt
+    if subprocess.run(['git', 'cat-file', '-e', BASELINE + '^{commit}'], cwd=ROOT,
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+        subprocess.run(['git', 'fetch', '--depth=1', 'origin', BASELINE], cwd=ROOT, check=True)
     for name in ['page-driver.js', 'web-performance.js']:
         historical = subprocess.check_output(['git', 'show', BASELINE + ':app/src/main/assets/' + name], cwd=ROOT)
         packaged = (baseline_root / name).read_bytes()

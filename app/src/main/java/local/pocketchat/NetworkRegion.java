@@ -14,10 +14,16 @@ final class NetworkRegion {
   static final ExecutorService snapshots=Executors.newSingleThreadExecutor();
   static final FileSnapshotCache<JSONObject> cache=new FileSnapshotCache<>(snapshots,JSONObject::new);
   static final android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());
+  static final java.util.Map<Context,RegionPaths[]> paths=new java.util.IdentityHashMap<>();
+  static final class RegionPaths {volatile File region,latency;boolean queued;final Object resolving=new Object();}
+  static RegionPaths paths(Context c){Context root=Profiles.global(c);int slot=Profiles.slot(c);synchronized(paths){RegionPaths[] entries=paths.computeIfAbsent(root,key->new RegionPaths[Profiles.MAX]);if(entries[slot]==null)entries[slot]=new RegionPaths();return entries[slot];}}
+  static void notifySnapshot(Context c){main.post(()->{ChatSession s=ChatSession.peek();if(s!=null&&!s.deleted&&Profiles.slot(s.context)==Profiles.slot(c))s.changed();});}
+  static void resolvePaths(Context c,RegionPaths entry){synchronized(entry.resolving){if(entry.region!=null)return;File base=Profiles.global(c).getNoBackupFilesDir();int slot=Profiles.slot(c);if(slot>0)base=new File(base,"profiles/env"+slot);entry.latency=new File(base,"route-latency.sealed");entry.region=new File(base,"exit-region.sealed");}}
+  static File path(Context c,String name){RegionPaths entry=paths(c);File known="exit-region".equals(name)?entry.region:entry.latency;if(known!=null)return known;if(android.os.Looper.myLooper()!=android.os.Looper.getMainLooper()){resolvePaths(c,entry);return "exit-region".equals(name)?entry.region:entry.latency;}synchronized(entry){if(!entry.queued){entry.queued=true;snapshots.execute(()->{try{resolvePaths(c,entry);notifySnapshot(c);}finally{synchronized(entry){entry.queued=false;}}});}}return null;}
   static final ExecutorService latencyWorker=Executors.newSingleThreadExecutor();
   static volatile boolean latencyRunning;static long latencyAttempted;static String latencyAttemptRoute="";
-  static JSONObject snapshot(Context c,String name){SecretStore vault=new SecretStore(c);return cache.read(vault.file(name),android.os.Looper.myLooper()==android.os.Looper.getMainLooper(),()->{byte[] raw=vault.get(name);return raw==null?new JSONObject():J.parse(new String(raw,StandardCharsets.UTF_8));},()->main.post(()->{ChatSession s=ChatSession.peek();if(s!=null&&!s.deleted&&Profiles.slot(s.context)==Profiles.slot(c))s.changed();}));}
-  static boolean ready(Context c,String name){return cache.ready(new SecretStore(c).file(name));}
+  static JSONObject snapshot(Context c,String name){File file=path(c,name);if(file==null)return new JSONObject();SecretStore vault=new SecretStore(c);return cache.read(file,android.os.Looper.myLooper()==android.os.Looper.getMainLooper(),()->{byte[] raw=vault.get(name);return raw==null?new JSONObject():J.parse(new String(raw,StandardCharsets.UTF_8));},()->notifySnapshot(c));}
+  static boolean ready(Context c,String name){RegionPaths entry=paths(c);File file="exit-region".equals(name)?entry.region:entry.latency;return file!=null&&cache.ready(file);}
   static JSONObject read(Context c){return snapshot(c,"exit-region");}
   static String region(Context c,String ip){JSONObject value=read(c);return ip.equals(value.optString("ip"))&&System.currentTimeMillis()-value.optLong("at")<7*86400000L?value.optString("region"):"";}
   static String exitIp(Context c,ChatSession s){JSONObject value=read(c);return s!=null&&s.networkIdentity().equals(value.optString("route"))&&System.currentTimeMillis()-value.optLong("at")<7*86400000L?value.optString("ip"):"";}

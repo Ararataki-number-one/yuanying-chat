@@ -163,13 +163,44 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       known.put("knownReplyContentRevision",replaced.optString("replyContentRevision"));
       evaluate("(()=>{const file=document.getElementById('generated-file');file.download='new-result.csv';file.textContent='new-result.csv';return {fileChanged:true};})()",false,x->later(()->poll(known,false,file->{
         check("Generated file changes invalidate terminal markdown and attachment metadata",!file.optBoolean("contentUnchanged")&&file.optBoolean("hasFiles")&&file.optString("markdown").contains("new-result.csv"));
-        evaluate("document.getElementById('current-copy').remove();({copyRemoved:true})",false,y->later(()->poll(args(),false,old->{
-          check("Earlier response copy controls cannot complete the current reply",!old.optBoolean("terminal"));
-          evaluate("window.__fixtureTelemetry()",false,end->{check("Semantic checks preserve the synthetic login, draft and no-send invariant",end.optBoolean("draftPreserved")&&end.optBoolean("cookiePreserved")&&end.optInt("sendCount")==0);productionLifecycle();});
-        }),100));
+        siblingFiles(file);
       }),100));
     }),100));
   }),100));}
+  void remember(JSONObject poll)throws Exception{known.put("knownReplyKey",poll.optString("replyKey")).put("knownReplyContentRevision",poll.optString("replyContentRevision"));}
+  JSONObject snapshotCursor(JSONObject snapshot){return J.obj("documentId",snapshot.optString("documentId"),"revision",snapshot.optLong("revision"));}
+  JSONObject currentEntry(JSONObject snapshot){JSONArray rows=snapshot.optJSONArray("changes");for(int i=0;rows!=null&&i<rows.length();i++){JSONObject entry=rows.optJSONObject(i);if(entry!=null&&"id:current-answer".equals(entry.optString("id")))return entry;}return new JSONObject();}
+  boolean download(JSONObject entry,String name){JSONArray files=entry.optJSONArray("downloads");for(int i=0;files!=null&&i<files.length();i++)if(name.equals(files.optJSONObject(i).optString("name")))return true;return false;}
+  void siblingFiles(JSONObject prior)throws Exception{
+    remember(prior);evaluate("document.getElementById('current-answer').parentElement.insertAdjacentHTML('beforeend','<a id=\"sibling-file\" download=\"sibling.csv\" href=\"/backend-api/files/sibling\">sibling.csv</a>');({fileAdded:true})",false,v->later(()->poll(known,false,added->{
+      check("Sibling generated file cards invalidate the actual Gecko reply revision",!added.optBoolean("contentUnchanged")&&added.optBoolean("hasFiles")&&!added.optString("replyContentRevision").equals(prior.optString("replyContentRevision")));
+      snapshot(new JSONObject(),withFile->{
+        check("Sibling file cards appear in incremental transcript downloads",download(currentEntry(withFile),"sibling.csv"));remember(added);
+        evaluate("(()=>{const file=document.getElementById('sibling-file');file.download='renamed-sibling.csv';file.textContent='renamed-sibling.csv';return {fileRenamed:true};})()",false,w->later(()->poll(known,false,renamed->{
+          snapshot(snapshotCursor(withFile),withRenamed->{
+            check("Renaming a sibling file card refreshes actual Gecko metadata and transcript downloads",!renamed.optBoolean("contentUnchanged")&&!renamed.optString("replyContentRevision").equals(added.optString("replyContentRevision"))&&download(currentEntry(withRenamed),"renamed-sibling.csv")&&!download(currentEntry(withRenamed),"sibling.csv"));remember(renamed);
+            evaluate("document.getElementById('sibling-file').remove();({fileRemoved:true})",false,x->later(()->poll(known,false,removed->{
+              snapshot(snapshotCursor(withRenamed),withoutFile->{
+                check("Removing a sibling file card invalidates the actual Gecko reply metadata",!removed.optBoolean("contentUnchanged")&&!removed.optString("replyContentRevision").equals(renamed.optString("replyContentRevision"))&&!download(currentEntry(withoutFile),"renamed-sibling.csv")&&download(currentEntry(withoutFile),"new-result.csv"));remember(removed);detachedBody(withoutFile);
+              });
+            }),100));
+          });
+        }),100));
+      });
+    }),100));
+  }
+  void detachedBody(JSONObject cursor){evaluate("(()=>{const body=document.querySelector('#current-answer > .markdown');window.__fixtureDetachedBody=body;body.remove();return {detached:true};})()",false,v->later(()->{
+    evaluate("(()=>{const body=window.__fixtureDetachedBody;body.querySelector('#long-body').textContent='detached existing body edited while outside the document';document.getElementById('current-answer').append(body);delete window.__fixtureDetachedBody;return {reattached:true};})()",false,w->later(()->poll(known,false,reinserted->{
+      snapshot(snapshotCursor(cursor),after->{
+        String expected="detached existing body edited while outside the document";
+        check("Reattaching an edited cached body refreshes actual Gecko terminal text and transcript",!reinserted.optBoolean("contentUnchanged")&&reinserted.optString("markdown").startsWith(expected)&&currentEntry(after).optString("text").startsWith(expected));
+        evaluate("document.getElementById('current-copy').remove();({copyRemoved:true})",false,x->later(()->poll(args(),false,old->{
+          check("Earlier response copy controls cannot complete the current reply",!old.optBoolean("terminal"));
+          evaluate("window.__fixtureTelemetry()",false,end->{check("Semantic checks preserve the synthetic login, draft and no-send invariant",end.optBoolean("draftPreserved")&&end.optBoolean("cookiePreserved")&&end.optInt("sendCount")==0);productionLifecycle();});
+        }),100));
+      });
+    }),100));
+  },100));}
   void productionLifecycle(){attempt(()->{
     String canonical=MainActivity.ORIGIN+"c/performance-fixture",actual=ORIGIN+PATH+"?variant=current";
     String code="(()=>{document.getElementById('long-body').textContent='preserved reply line '.repeat(5000)+' Java retained final tail';"+
