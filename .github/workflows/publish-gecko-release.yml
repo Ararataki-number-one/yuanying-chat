@@ -27,6 +27,9 @@ jobs:
           if m['versionCode']>=43:
               from tools.gecko.check_performance_evidence import verify_performance_evidence
               assert verify_performance_evidence(pathlib.Path('.'),m['sourceCommit'])==m['performanceRegression']
+          if m['versionCode']>=44:
+              from tools.gecko.check_connection_evidence import verify_connection_evidence
+              assert verify_connection_evidence(pathlib.Path('.'),m['sourceCommit'])==m['connectionRecoveryRegression']
           data=bytearray()
           for part in m['parts']:
               assert re.fullmatch(re.escape(m['filename'])+r'\.part[0-9]{2}',part['file'])

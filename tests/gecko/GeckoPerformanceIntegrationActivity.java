@@ -12,6 +12,8 @@ import android.widget.TextView;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.mozilla.geckoview.*;
 import org.json.*;
 
@@ -23,12 +25,21 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   final FrameSample frames=new FrameSample();
   ChatSession session;String variant,driver,performanceSource;JSONObject before,known,firstFull,baselineMetrics,currentMetrics,productionJob;
   int checkCount,samples;boolean finished;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
+  String originalDriver,manualDraft;JSONObject manualJob;long manualEpoch,manualConnection;
+  CountDownLatch archiveEntered,archiveRelease;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
-    boolean semanticRoute;JSONObject productionPoll;String navigationError="";
+    boolean semanticRoute,inspectPending;JSONObject productionPoll,productionInspect;int pageStateReads,stableBeforeInspectedPoll=-1,completionBeforeInspectedPoll=-1;String pageStateDraft="",navigationError="",semanticUrl=MainActivity.ORIGIN+"c/performance-fixture";
     FixtureView(Context c,ChatSession owner){super(c,owner);}
-    @Override public String getUrl(){return semanticRoute?MainActivity.ORIGIN+"c/performance-fixture":super.getUrl();}
-    @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){super.evaluateJavascript(code,raw->{if(semanticRoute&&code.contains("window.__pocketReadDriver(\"poll\","))productionPoll=J.parse(raw);if(callback!=null)callback.onReceiveValue(raw);});}
+    @Override public String getUrl(){return semanticRoute?semanticUrl:super.getUrl();}
+    @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){
+      if(semanticRoute&&inspectPending&&code.contains("window.__pocketReadDriver(\"poll\",")){inspectPending=false;stableBeforeInspectedPoll=owner.stableTicks;completionBeforeInspectedPoll=owner.webObserver.completionSamples;}
+      super.evaluateJavascript(code,raw->{
+      if(semanticRoute&&code.contains("window.__pocketReadDriver(\"poll\","))productionPoll=J.parse(raw);
+      if(semanticRoute&&code.contains("window.__pocketReadDriver(\"web-inspect\","))productionInspect=J.parse(raw);
+      if(semanticRoute&&code.contains("window.__pocketReadDriver(\"page-state\",")){pageStateReads++;pageStateDraft=J.parse(raw).optString("draft");}
+      if(callback!=null)callback.onReceiveValue(raw);
+    });}
     @Override protected boolean allowedUrl(String target){return target!=null&&target.startsWith(ORIGIN+"/");}
     @Override boolean readingPage(String target){return target!=null&&target.startsWith(ORIGIN+PATH);}
     @Override JSONObject route(String target){
@@ -62,7 +73,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   void later(Step step,long delay){handler.postDelayed(()->attempt(step),delay);}
   void event(String kind,JSONObject value){Log.i("PocketGeckoPerformance",J.obj("kind",kind,"value",value).toString());}
   void check(String name,boolean pass){checkCount++;event("check",J.obj("name",name,"pass",pass));if(!pass)throw new IllegalStateException(name);}
-  void fail(Exception error){if(finished)return;finished=true;frames.stop();event("report",J.obj("status","failed","actualAndroidExecution",true,"actualGeckoExecution",true,"checkCount",checkCount,"error",error.toString()));}
+  void fail(Exception error){if(finished)return;finished=true;frames.stop();if(archiveRelease!=null)archiveRelease.countDown();event("report",J.obj("status","failed","actualAndroidExecution",true,"actualGeckoExecution",true,"checkCount",checkCount,"error",error.toString()));}
   String asset(String name)throws Exception{try(InputStream in=getAssets().open(name)){return J.text(in,512*1024);}}
   @Override public void onCreate(Bundle saved){super.onCreate(saved);attempt(()->{
     if(!getPackageName().endsWith(".test"))throw new SecurityException("Only isolated integration package may run this fixture");
@@ -287,9 +298,173 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   void waitInput(long expires){evaluate("({draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent)})",false,value->{
     if(!value.optString("draft").endsWith("-user-typed")){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Android keyboard input did not reach Gecko: "+value);later(()->waitInput(expires),100);return;}
     check("Actual Android tap and keyboard input preserve the existing composer draft",value.optString("draft").equals("unsent draft stays unchanged-user-typed"));
-    check("Actual user input neither sends a message nor changes the synthetic login",value.optInt("sendCount")==0&&value.optString("cookie").contains("session=synthetic-performance"));success();
+    check("Actual user input neither sends a message nor changes the synthetic login",value.optInt("sendCount")==0&&value.optString("cookie").contains("session=synthetic-performance"));bindingLifecycle();
   });}
-  void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"baselineSource",BASELINE,"checkCount",checkCount,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply, no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
+  // Run after both immutable measurements and all existing capture/gesture checks.
+  // Preserve real SPA paths when adapting only the official host for the loopback copy.
+  void bindingLifecycle(){attempt(()->{
+    ((FixtureView)session.web).semanticUrl=MainActivity.ORIGIN+"c/binding-fixture";
+    String code="(()=>{history.replaceState(null,'','/c/binding-fixture');window.__bindingDraft=document.getElementById('prompt-textarea').value;"+
+      "window.__pocketReadDriver=(action,arg)=>{const mapped={...arg};for(const key of ['confirmedUrl','expectedUrl'])if(mapped[key]){const address=new URL(mapped[key]);if(address.origin==="+JSONObject.quote(android.net.Uri.parse(MainActivity.ORIGIN).getScheme()+"://"+android.net.Uri.parse(MainActivity.ORIGIN).getHost())+")mapped[key]="+JSONObject.quote(ORIGIN)+"+address.pathname+address.search+address.hash;}"+
+      "const value=window.__fixtureReadDriver(action,mapped);if(value?.url)value.url="+JSONObject.quote(MainActivity.ORIGIN.substring(0,MainActivity.ORIGIN.length()-1))+"+new URL(value.url).pathname;return value;};return {adapted:true};})()";
+    evaluate(code,false,ready->{
+      String route=((FixtureView)session.web).semanticUrl,id=session.deliveries.begin(route,"bound performance prompt",new JSONArray(),"web",null);
+      productionJob=J.obj("id",id,"kind","web","confirmed",true,"userKey","id:current-question","prompt","bound performance prompt","confirmedUrl",route,"expectedUrl",route,"export",true,"startedAt",System.currentTimeMillis());
+      session.pending=productionJob;session.activeDeliveryId=id;session.prefs.edit().putString("pending",productionJob.toString()).commit();session.stableReply="";session.stableTicks=0;
+      later(()->bindingPoll(first->{
+        check("Binding regression starts with the actual full reply and one incomplete native terminal sample",first.optBoolean("submitted")&&session.pending==productionJob&&session.webObserver.completionSamples==1&&session.observedReplyMarkdown.length()>105000);
+        bindingEmptyMain();
+      }),100);
+    });
+  });}
+  void bindingPoll(Result result){attempt(()->{
+    session.handler.removeCallbacks(session.tick);session.inFlight=true;long serial=++session.syncRun;((FixtureView)session.web).productionPoll=null;
+    session.pollSync(session.navigationEpoch,serial,true);awaitBinding(result,SystemClock.elapsedRealtime()+10000);
+  });}
+  void bindingInspect(Result result){attempt(()->{
+    session.handler.removeCallbacks(session.tick);session.inFlight=false;((FixtureView)session.web).productionPoll=null;((FixtureView)session.web).productionInspect=null;((FixtureView)session.web).inspectPending=true;
+    session.sync();awaitBinding(result,SystemClock.elapsedRealtime()+10000);
+  });}
+  void awaitBinding(Result result,long expires){attempt(()->{
+    if(session.inFlight){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Binding regression production poll timeout");later(()->awaitBinding(result,expires),50);return;}
+    JSONObject poll=((FixtureView)session.web).productionPoll;if(poll==null)throw new IllegalStateException("Binding regression did not execute the real Gecko driver");result.accept(poll);
+  });}
+  boolean awaitingBinding(JSONObject value){return value.optBoolean("bindingPending")&&!value.optBoolean("bindingLost")&&!value.optBoolean("otherQuestion")&&!value.optBoolean("submitted")&&!value.optBoolean("terminal")&&!value.optBoolean("contentObserved")&&session.pending==productionJob&&session.prefs.contains("pending")&&!session.status.contains("对话已改变")&&session.stableTicks==0&&session.webObserver.completionSamples==0;}
+  void bindingMutate(String code,Result result){evaluate(code,false,unused->later(()->bindingPoll(result),100));}
+  void bindingEmptyMain(){bindingMutate("(()=>{window.__bindingMain=document.querySelector('main');window.__bindingChildren=[...window.__bindingMain.childNodes];window.__bindingMain.replaceChildren();return {detached:true};})()",missing->{
+    check("Same-route empty DOM waits without losing the confirmed task or accumulating terminal samples",awaitingBinding(missing));
+    bindingMutate("window.__bindingMain.replaceChildren(...window.__bindingChildren);({restored:true})",restored->{
+      check("Restoring the original message key and prompt rebinds the real native task",restored.optBoolean("submitted")&&!restored.optBoolean("bindingPending")&&!restored.optBoolean("bindingLost")&&"id:current-question".equals(restored.optString("userKey"))&&session.pending==productionJob);
+      bindingVirtualizedUser();
+    });
+  });}
+  void bindingVirtualizedUser(){bindingMutate("(()=>{window.__bindingUser=document.querySelector('[data-message-id=\"current-question\"]');window.__bindingUserNext=window.__bindingUser.nextSibling;window.__bindingUser.remove();return {virtualized:true};})()",missing->{
+    check("Virtualizing only the bound user waits even while other historical messages remain",awaitingBinding(missing));
+    bindingMutate("window.__bindingMain.insertBefore(window.__bindingUser,window.__bindingUserNext);({restored:true})",restored->{
+      check("Restoring a virtualized user retains its exact identity and pending operation",restored.optBoolean("submitted")&&"id:current-question".equals(restored.optString("userKey"))&&session.pending==productionJob);
+      bindingHomepageAllocation();
+    });
+  });}
+  void bindingRoute(String path,Result result){
+    ((FixtureView)session.web).semanticUrl=MainActivity.ORIGIN.substring(0,MainActivity.ORIGIN.length()-1)+path;
+    bindingMutate("history.replaceState(null,'',"+JSONObject.quote(path)+");({routeChanged:true})",result);
+  }
+  void bindingHomepageAllocation()throws Exception{
+    productionJob.put("confirmedUrl",MainActivity.ORIGIN).put("expectedUrl",MainActivity.ORIGIN);session.prefs.edit().putString("pending",productionJob.toString()).commit();
+    evaluate("document.getElementById('composer').insertAdjacentHTML('beforeend','<button id=\"stop-button\" data-testid=\"stop-button\" aria-label=\"Stop\">Stop</button>');({streaming:true})",false,unused->bindingRoute("/",home->{
+      check("A confirmed homepage prompt remains bound before the website assigns its conversation route",home.optBoolean("submitted")&&!home.optBoolean("bindingLost")&&session.pending==productionJob);
+      evaluate("window.__bindingUser.querySelector('[data-user-message-bubble]').textContent='a different prompt with the same message ID';({promptChanged:true})",false,changed->bindingRoute("/c/allocated-fixture",wrong->{
+        check("Homepage allocation rejects the same user ID when its prompt no longer matches",wrong.optBoolean("bindingLost")&&!wrong.optBoolean("submitted")&&session.pending==productionJob&&productionJob.optString("confirmedUrl").equals(MainActivity.ORIGIN));
+        bindingMutate("window.__bindingUser.querySelector('[data-user-message-bubble]').textContent='bound performance prompt';({promptRestored:true})",allocated->{
+        check("Homepage conversation allocation preserves the exact user identity and persists the new route",allocated.optBoolean("submitted")&&allocated.optBoolean("routeAssigned")&&!allocated.optBoolean("bindingLost")&&allocated.optString("error").isEmpty()&&"id:current-question".equals(allocated.optString("userKey"))&&session.pending==productionJob&&productionJob.optString("confirmedUrl").equals(((FixtureView)session.web).semanticUrl)&&J.parse(session.prefs.getString("pending","{}")).optString("confirmedUrl").equals(((FixtureView)session.web).semanticUrl));
+        bindingRoute("/c/a-different-conversation",other->{
+          check("A genuine different conversation is rejected even if its visible message IDs match",other.optBoolean("bindingLost")&&!other.optBoolean("submitted")&&session.pending==productionJob&&session.stableTicks==0&&session.webObserver.completionSamples==0);
+          bindingNeutralShell();
+        });
+        });
+      }));
+    }));
+  }
+  void bindingNeutralShell(){
+    ((FixtureView)session.web).semanticUrl=MainActivity.ORIGIN;
+    bindingMutate("(()=>{window.__neutralChildren=[...window.__bindingMain.childNodes];window.__bindingMain.replaceChildren();document.getElementById('composer').hidden=true;history.replaceState(null,'','/');return {neutralShell:true};})()",shell->{
+      check("A neutral homepage shell during restoration waits without declaring another conversation",awaitingBinding(shell));
+      evaluate("window.__bindingMain.replaceChildren(...window.__neutralChildren);document.getElementById('composer').hidden=false;({restored:true})",false,unused->bindingRoute("/c/allocated-fixture",restored->{
+        check("Restoring the bound conversation after a neutral shell retains its pending task",restored.optBoolean("submitted")&&!restored.optBoolean("bindingLost")&&session.pending==productionJob);
+        bindingSocketError();
+      }));
+    });
+  }
+  void bindingSocketError(){bindingMutate("document.querySelector('[data-message-id=\"old-answer-0\"] .markdown p').append(' Browser app server websocket closed');({historicalText:true})",ordinary->{
+    check("Websocket error words in ordinary historical reply text do not become a website fault",ordinary.optString("error").isEmpty()&&ordinary.optString("errorCode").isEmpty()&&ordinary.optBoolean("submitted")&&session.pending==productionJob);
+    bindingMutate("document.querySelector('[data-message-id=\"old-answer-0\"]').parentElement.insertAdjacentHTML('beforeend','<div id=\"historical-socket-error\" role=\"alert\">Browser app server websocket closed <button aria-label=\"Retry\">Retry</button></div>');({historicalAlert:true})",historical->{
+      check("A rendered historical reply socket alert and retry control do not invalidate the current task",historical.optString("error").isEmpty()&&historical.optString("errorCode").isEmpty()&&historical.optBoolean("submitted")&&session.pending==productionJob);
+    bindingMutate("document.getElementById('historical-socket-error').remove();document.getElementById('stop-button').remove();({stopped:true})",first->{
+      check("The restored real reply has only one valid terminal sample before the website error",first.optBoolean("submitted")&&session.pending==productionJob&&session.webObserver.completionSamples==1);
+      later(()->bindingPoll(second->{
+        check("Two real terminal samples still cannot finish before a website fault intervenes",session.pending==productionJob&&session.webObserver.completionSamples==2);
+        evaluate("document.getElementById('current-answer').parentElement.insertAdjacentHTML('beforeend','<div id=\"socket-error\" role=\"alert\">Browser app server websocket closed</div>');({siteError:true})",false,unused->later(()->bindingInspect(error->{
+          check("Actual native inspection recognizes the website socket fault before polling and resets terminal stability",((FixtureView)session.web).productionInspect!=null&&((FixtureView)session.web).productionInspect.optBoolean("websiteSocketClosed")&&((FixtureView)session.web).stableBeforeInspectedPoll==0&&((FixtureView)session.web).completionBeforeInspectedPoll==0&&session.stableTicks==0&&session.webObserver.completionSamples==0);
+          check("A rendered website websocket-closed alert has a recoverable error while preserving the original binding",error.optBoolean("recoverable")&&!error.optString("error").isEmpty()&&"website_socket_closed".equals(error.optString("errorCode"))&&error.optBoolean("websiteSocketClosed")&&error.optBoolean("submitted")&&!error.optBoolean("bindingLost")&&session.pending==productionJob&&productionJob.optString("userKey").equals(error.optString("userKey")));
+          check("Website errors clear native stable samples and never finish or clear the persisted task",session.stableTicks==0&&session.webObserver.completionSamples==0&&session.websiteConnectionIssue&&session.prefs.contains("pending")&&!"completed".equals(session.deliveries.get(productionJob.optString("id")).optString("state")));
+          later(()->bindingPoll(again->{
+            check("Repeated website error observations cannot accumulate completion samples",!again.optString("errorCode").isEmpty()&&session.pending==productionJob&&session.stableTicks==0&&session.webObserver.completionSamples==0);
+            bindingMutate("document.getElementById('socket-error').remove();({restored:true})",restored->bindingFinal(1,restored));
+          }),1100);
+        }),100));
+      }),1100);
+    });
+    });
+  });}
+  void bindingFinal(int index,JSONObject value)throws Exception{
+    check("Recovered binding terminal sample "+index+" retains the entire real final reply",value.optBoolean("submitted")&&value.optString("error").isEmpty()&&!session.websiteConnectionIssue&&session.observedReplyMarkdown.length()>105000&&session.observedReplyMarkdown.contains("Java retained final tail"));
+    if(index<3){
+      check("Recovered binding terminal sample "+index+" keeps the task pending until the fresh stability window passes",session.pending==productionJob&&session.prefs.contains("pending")&&session.webObserver.completionSamples==index);
+      later(()->bindingPoll(next->bindingFinal(index+1,next)),1100);return;
+    }
+    check("A restored bound reply completes only after three fresh actual samples and two seconds",session.pending==null&&!session.prefs.contains("pending")&&"completed".equals(session.deliveries.get(productionJob.optString("id")).optString("state")));
+    evaluate("({sendCount:Number(document.getElementById('send-count').textContent),draft:document.getElementById('prompt-textarea').value,savedDraft:window.__bindingDraft,cookie:document.cookie})",false,finalState->{
+      check("SPA restoration and websocket faults never resubmit and preserve the typed draft and synthetic login",finalState.optInt("sendCount")==0&&finalState.optString("draft").equals(finalState.optString("savedDraft"))&&finalState.optString("cookie").contains("session=synthetic-performance"));manualRecoveryRaces();
+    });
+  }
+  void manualRecoveryRaces()throws Exception{
+    originalDriver=session.driver;
+    // page-state is still the exact real asset through the test-only host adapter.
+    // No fake snapshot or retry implementation substitutes for the production code.
+    session.driver="window.__pocketReadDriver(__ACTION__, __ARG__)";
+    String route=session.web.getUrl(),id=session.deliveries.begin(route,"bound performance prompt",new JSONArray(),"web",null);
+    manualJob=J.obj("id",id,"kind","web","confirmed",true,"userKey","id:current-question","prompt","bound performance prompt","confirmedUrl",route,"expectedUrl",route,"export",true);
+    session.pending=manualJob;session.activeDeliveryId=id;session.prefs.edit().putString("pending",manualJob.toString()).commit();
+    manualRace(1);
+  }
+  void manualRace(int index){attempt(()->{
+    manualDraft=index==1?"manual recovery first draft":"manual recovery pending draft";
+    evaluate("document.getElementById('prompt-textarea').value="+JSONObject.quote(manualDraft)+";({draftSet:true})",false,unused->{
+      session.handler.removeCallbacks(session.tick);manualEpoch=session.navigationEpoch;manualConnection=session.connectionEpoch;
+      FixtureView view=(FixtureView)session.web;view.pageStateReads=0;view.pageStateDraft="";
+      archiveEntered=new CountDownLatch(1);archiveRelease=new CountDownLatch(1);CountDownLatch entered=archiveEntered,release=archiveRelease;
+      session.webStore.worker.execute(()->{entered.countDown();try{release.await(30,TimeUnit.SECONDS);}catch(InterruptedException error){Thread.currentThread().interrupt();}});
+      waitArchiveWorker(index,SystemClock.elapsedRealtime()+10000);
+    });
+  });}
+  void waitArchiveWorker(int index,long expires){attempt(()->{
+    if(archiveEntered.getCount()!=0){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Archive worker did not enter controlled pause");later(()->waitArchiveWorker(index,expires),50);return;}
+    session.recoverWebsiteConnection();waitRecoverySnapshot(index,expires);
+  });}
+  void waitRecoverySnapshot(int index,long expires){attempt(()->{
+    FixtureView view=(FixtureView)session.web;
+    if(view.pageStateReads<1){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Manual recovery did not capture the real Gecko page state");later(()->waitRecoverySnapshot(index,expires),50);return;}
+    if(!session.websiteRecovering||!manualDraft.equals(view.pageStateDraft))throw new IllegalStateException("Manual recovery snapshot failed before the controlled race");
+    if(index==1){
+      evaluate("document.getElementById('prompt-textarea').value='new typing while archive waits';({draftChanged:true})",false,unused->{archiveRelease.countDown();waitRecoveryRace(index,SystemClock.elapsedRealtime()+10000);});
+    }else{
+      String id=session.deliveries.begin(session.web.getUrl(),"another pending task",new JSONArray(),"web",null);
+      manualJob=new JSONObject(manualJob.toString()).put("id",id);session.pending=manualJob;session.activeDeliveryId=id;session.prefs.edit().putString("pending",manualJob.toString()).commit();
+      archiveRelease.countDown();waitRecoveryRace(index,SystemClock.elapsedRealtime()+10000);
+    }
+  });}
+  void waitRecoveryRace(int index,long expires){attempt(()->{
+    if(session.websiteRecovering){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Manual recovery did not abort the stale operation");later(()->waitRecoveryRace(index,expires),50);return;}
+    String route=session.web.getUrl(),captured=manualDraft;
+    session.webStore.worker.execute(()->{
+      JSONArray drafts=DraftArchive.get(session.context).list(route);boolean stored=false;for(int i=0;i<drafts.length();i++)if(captured.equals(drafts.optJSONObject(i).optString("body")))stored=true;
+      final boolean persisted=stored;handler.post(()->attempt(()->{
+        check(index==1?"Manual website recovery durably archives its captured draft before checking newer typing":"Manual website recovery durably archives its captured draft even when the pending task changes",persisted);
+        evaluate("({draft:document.getElementById('prompt-textarea').value,sendCount:Number(document.getElementById('send-count').textContent),cookie:document.cookie})",false,end->{
+          boolean noReload=session.navigationEpoch==manualEpoch&&session.connectionEpoch==manualConnection&&!session.navigating&&session.networkReady&&session.guard.allowed()&&session.pending==manualJob&&J.parse(session.prefs.getString("pending","{}")).optString("id").equals(manualJob.optString("id"));
+          check(index==1?"Typing while manual recovery saves aborts reload and preserves the newer draft and original pending task":"Changing the pending task while manual recovery saves aborts stale reload and preserves the new task",noReload&&end.optString("draft").equals(index==1?"new typing while archive waits":captured)&&end.optInt("sendCount")==0&&end.optString("cookie").contains("session=synthetic-performance")&&((FixtureView)session.web).pageStateReads==(index==1?2:1));
+          if(index==1)manualRace(2);else{
+            session.driver=originalDriver;session.pending=null;session.prefs.edit().remove("pending").commit();
+            session.stableTicks=2;session.stableReply="pre-disconnect terminal";session.webObserver.completionSamples=2;session.invalidateConnection();
+            evaluate("({draft:document.getElementById('prompt-textarea').value,sendCount:Number(document.getElementById('send-count').textContent),cookie:document.cookie})",false,after->{
+              check("Connection invalidation resets native terminal samples without submitting or clearing browser data",session.stableTicks==0&&session.stableReply.isEmpty()&&session.webObserver.completionSamples==0&&after.optInt("sendCount")==0&&after.optString("draft").equals(captured)&&after.optString("cookie").contains("session=synthetic-performance"));success();
+            });
+          }
+        });
+      }));
+    });
+  });}
+  void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"baselineSource",BASELINE,"checkCount",checkCount,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
   String telemetryInstall(){return "(()=>{const data={readChars:0,readCalls:0,clones:0,started:performance.now(),rafCount:0,rafSum:0,rafMax:0,rafOver32:0,previous:0};"+
     "for(const [prototype,key] of [[HTMLElement.prototype,'innerText'],[Node.prototype,'textContent'],[Node.prototype,'nodeValue']]){const original=Object.getOwnPropertyDescriptor(prototype,key);if(original?.get&&original.configurable)Object.defineProperty(prototype,key,{...original,get(){const value=original.get.call(this);data.readCalls++;if(typeof value==='string')data.readChars+=value.length;return value;}});}"+
     "const clone=Node.prototype.cloneNode;Node.prototype.cloneNode=function(...args){data.clones++;return clone.apply(this,args);};"+
@@ -303,5 +478,5 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     @Override public void doFrame(long time){if(!active)return;if(previous>0){long gap=time-previous;count++;sum+=gap;max=Math.max(max,gap);if(gap>32000000L)over32++;}previous=time;Choreographer.getInstance().postFrameCallback(this);}
     JSONObject stop(){active=false;Choreographer.getInstance().removeFrameCallback(this);return J.obj("frames",count,"averageGapMs",count>0?sum/1000000.0/count:0,"maxGapMs",max/1000000.0,"gapsOver32Ms",over32);}
   }
-  @Override protected void onDestroy(){frames.stop();handler.removeCallbacksAndMessages(null);if(session!=null)session.handler.removeCallbacks(session.tick);super.onDestroy();}
+  @Override protected void onDestroy(){frames.stop();if(archiveRelease!=null)archiveRelease.countDown();handler.removeCallbacksAndMessages(null);if(session!=null)session.handler.removeCallbacks(session.tick);super.onDestroy();}
 }

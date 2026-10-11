@@ -8,7 +8,7 @@ def adb(*args):return subprocess.check_output([a.adb,'-s',a.serial,*args],text=T
 adb('shell','am','force-stop','local.pocketchat.test');adb('shell','pm','clear','local.pocketchat.test');adb('logcat','-c')
 adb('shell','am','start','-W','-n','local.pocketchat.test/local.pocketchat.NetworkOptimizationIntegrationActivity')
 checks={}
-deadline=time.monotonic()+150
+deadline=time.monotonic()+240
 while time.monotonic()<deadline:
     raw=adb('logcat','-d','-s','PocketNetworkPerformance:I','AndroidRuntime:E','*:S')
     if 'FATAL EXCEPTION' in raw:
@@ -26,7 +26,7 @@ while time.monotonic()<deadline:
         print(json.dumps(report,indent=2),flush=True)
         if report['status']!='passed':(out/'network-performance-failure-log.txt').write_text(adb('logcat','-d'))
         assert report['status']=='passed' and report['actualAndroidExecution'] and report['actualMihomoExecution'],report
-        assert len(report['checks'])>=35 and all(c['pass'] for c in report['checks']),report
+        assert len(report['checks'])>=126 and all(c['pass'] for c in report['checks']),report
         raise SystemExit(0)
     time.sleep(1)
 (out/'network-performance-failure-log.txt').write_text(adb('logcat','-d'))

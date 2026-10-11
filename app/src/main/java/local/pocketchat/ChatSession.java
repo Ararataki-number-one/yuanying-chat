@@ -24,7 +24,7 @@ final class ChatSession {
   boolean showingCache=false,offline=false,connecting=false,recoveryScheduled=false,manualAttention=false;int recoveryAttempt=0;long recoveryToken=0;volatile long connectionEpoch=0;String networkIdentity="",networkIssue="",connectionStage="未连接";final ConversationStore cache;final WebTranscriptMirror webMirror=new WebTranscriptMirror();final WebTranscriptStore webStore;long lastWebSnapshot=0,syncRun=0;String lastWebUrl="",lastDeliverySignature="";final DeliveryStore deliveries;String activeDeliveryId="";volatile boolean transferActive=false;
   boolean deleted=false,configurationCapture=false;long lastDeferredBrowserAttempt=0;final int environmentGeneration;boolean navigating=false,navigationFailed=false;String navigationTarget="",navigationLabel="";long navigationEpoch=0,navigationStarted=0;long connectionStarted=0,proxyReadyAt=0,navigationMono=0,firstPageVisible=0,pageUsableAt=0;
   final ConnectionTrace trace=new ConnectionTrace();final PageMemory pageMemory=new PageMemory(this);String appliedIdentity="",requestedConversation="";boolean keepPageCandidate=false,browserPaused=false,spaTransition=false,documentNavigationSeen=false,backgroundAttachmentCheck=false;String spaBefore="",spaSignature="",lastDocumentId="",priorDocumentId="";boolean navigationDispatched=true,awaitNewDocument=false;int spaStable=0,backgroundAttachmentStable=0;
-  String stableReply="",progressJob="",progressSignature="";long lastReplyProgress=0;int stableTicks=0;long operationGeneration=0;
+  String stableReply="",progressJob="",progressSignature="";long lastReplyProgress=0;int stableTicks=0;long operationGeneration=0;boolean websiteConnectionIssue,websiteRecovering;
   String observedReplyJob="",observedReplyUrl="",observedReplyKey="",observedReplyRevision="",observedReplyMarkdown="";boolean observedReplyHasFiles;
   ChatSession(Context c){context=c.getApplicationContext();environmentGeneration=ProfileCatalog.get(context).item(Profiles.slot(context)).optInt("generation");cache=new ConversationStore(context);webStore=new WebTranscriptStore(this);deliveries=new DeliveryStore(context);if((context.getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0)WebView.setWebContentsDebuggingEnabled(true);prefs=context.getSharedPreferences("chat",0);sentAttachments=J.parse(prefs.getString("sentAttachments","{}"));pending=J.parse(prefs.getString("pending","{}"));if(pending.length()==0)pending=null;deliveries.recover(pending);if(pending!=null)activeDeliveryId=pending.optString("id");try{if(!prefs.getBoolean("pageMode",false))entries=new JSONArray(prefs.getString("transcript","[]"));try(InputStream in=context.getAssets().open("page-driver.js")){driver=J.text(in,512*1024);}}catch(Exception ignored){}conversation=prefs.getString("conversation","");try(InputStream in=context.getAssets().open("history-driver.js")){historyDriver=J.text(in,512*1024);}catch(Exception ignored){}
     try(InputStream in=context.getAssets().open("attachment-driver.js")){attachmentDriver=J.text(in,512*1024);}catch(Exception ignored){}
@@ -53,7 +53,7 @@ final class ChatSession {
     if(reconnect){audit.cancel();invalidateConnection();privacy.apply();if(!offline)openConnection(false,protectionChanged);}
     else{privacy.apply();if(!offline)navigate(resumeUrl(),"正在应用网页设置…");}
   }
-  void beginNavigation(String url,String label){navigationEpoch++;navigating=true;navigationFailed=false;navigationTarget=url;navigationLabel=label;spaTransition=false;documentNavigationSeen=false;navigationDispatched=true;priorDocumentId=lastDocumentId;awaitNewDocument=!priorDocumentId.isEmpty();spaStable=0;spaSignature="";navigationStarted=System.currentTimeMillis();trace.page("网页加载");navigationMono=SystemClock.elapsedRealtime();firstPageVisible=0;pageUsableAt=0;long epoch=navigationEpoch;setStatus(label);handler.postDelayed(()->{if(navigating&&navigationEpoch==epoch)finishNavigation("加载时间较长，请重试或查看原网页");},45000);}
+  void beginNavigation(String url,String label){resetReplyStability();websiteConnectionIssue=false;navigationEpoch++;navigating=true;navigationFailed=false;navigationTarget=url;navigationLabel=label;spaTransition=false;documentNavigationSeen=false;navigationDispatched=true;priorDocumentId=lastDocumentId;awaitNewDocument=!priorDocumentId.isEmpty();spaStable=0;spaSignature="";navigationStarted=System.currentTimeMillis();trace.page("网页加载");navigationMono=SystemClock.elapsedRealtime();firstPageVisible=0;pageUsableAt=0;long epoch=navigationEpoch;setStatus(label);handler.postDelayed(()->{if(navigating&&navigationEpoch==epoch)finishNavigation("加载时间较长，请重试或查看原网页");},45000);}
   void navigate(String url,String label){
     if(!MainActivity.chatUrl(url)){setStatus("对话地址无效");return;}
     requestedConversation="";String source=web.getUrl();boolean fast=privacy.desktop==privacy.wantsDesktop()&&webPerformance()&&networkReady&&!offline&&!navigating&&pageUsableAt>0&&pending==null&&!submitting&&!operation&&state.optBoolean("composer")&&!state.optBoolean("busy")&&MainActivity.chatUrl(source)&&!WebReplyObserver.same(source,url);
@@ -72,7 +72,7 @@ final class ChatSession {
   void loadNavigation(String url,long epoch){if(epoch!=navigationEpoch)return;if(privacy.desktop!=privacy.wantsDesktop()){privacy.apply();if(!privacy.canNavigate()){finishNavigation("请更新 Android System WebView，网页显示方式暂未应用",true);return;}}navigationDispatched=true;awaitNewDocument=!priorDocumentId.isEmpty();spaTransition=false;trace.mode="网页加载";web.stopLoading();web.loadUrl(url);wakePolling();}
 
   void watchNetwork(){try{android.net.ConnectivityManager cm=(android.net.ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);android.net.Network initial=cm.getActiveNetwork();offline=initial==null;networkIdentity=initial==null?"":initial.toString();Runnable refresh=()->{android.net.Network n=cm.getActiveNetwork();android.net.NetworkCapabilities caps=n==null?null:cm.getNetworkCapabilities(n);boolean available=n!=null&&caps!=null&&caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET);String identity=available?n.toString():"";boolean switched=available&&!networkIdentity.isEmpty()&&!identity.equals(networkIdentity);networkIdentity=identity;if(guard.requiresVpn()&&!guard.vpnActive()){invalidateConnection();manualAttention=true;networkIssue="手机 VPN 未连接，已暂停网页联网；连接 VPN 后点按重连";connectionStage="等待手机 VPN";setStatus(networkIssue);return;}if(manualAttention&&"等待手机 VPN".equals(connectionStage)){manualAttention=false;recoveryAttempt=0;scheduleRecovery();}connectivity(available);if(switched&&!offline)networkChanged();};cm.registerDefaultNetworkCallback(new android.net.ConnectivityManager.NetworkCallback(){void queue(){handler.removeCallbacks(refresh);handler.post(refresh);}public void onAvailable(android.net.Network n){queue();}public void onLost(android.net.Network n){queue();}public void onCapabilitiesChanged(android.net.Network n,android.net.NetworkCapabilities c){queue();}});}catch(Exception ignored){}}
-  void invalidateConnection(){if(pageUsableAt>0)pageMemory.capture(()->{});connectionEpoch++;navigationEpoch++;recoveryToken++;recoveryScheduled=false;connecting=false;networkReady=false;web.stopLoading();guard.setBlocked(true);inFlight=false;}
+  void invalidateConnection(){resetReplyStability();if(pageUsableAt>0)pageMemory.capture(()->{});connectionEpoch++;navigationEpoch++;recoveryToken++;recoveryScheduled=false;connecting=false;networkReady=false;web.stopLoading();guard.setBlocked(true);inFlight=false;}
   void connectivity(boolean available){boolean was=offline;offline=!available;if(offline){if(networkReady)ChatService.networkLost(context);invalidateConnection();navigating=false;navigationFailed=true;showingCache=entries.length()>0;connectionStage="手机网络不可用";networkIssue="当前离线 · 草稿与附件已保留，联网后继续核对";setStatus(networkIssue);}else if(was){manualAttention=false;recoveryAttempt=0;networkIssue="手机网络已恢复";scheduleRecovery();}}
   void networkChanged(){invalidateConnection();manualAttention=false;recoveryAttempt=0;networkIssue="手机网络已切换，正在重新核对连接";scheduleRecovery();}
   static long retryDelay(int attempt){long[] delays={1000,2000,5000,10000,20000};return delays[Math.min(Math.max(attempt,0),delays.length-1)];}
@@ -103,7 +103,33 @@ final class ChatSession {
 
   void networkStatus(String text,boolean ready){if(audit!=null)audit.refresh(false);if(!internalNetwork())return;NativeNetwork n=NativeNetwork.get(context);if(!ready&&!n.starting&&!connecting){if(networkReady)ChatService.networkLost(context);networkReady=false;guard.setBlocked(true);networkIssue=text;connectionStage="代理连接中断";setStatus(text);if(uiVisible||ChatService.running)scheduleRecovery();}else if(!ready||pending==null)setStatus(text);}
   void connect(){if(offline){setStatus("当前离线 · 草稿与附件已保留");return;}if(connecting||recoveryScheduled||manualAttention)return;if(networkReady&&(!internalNetwork()||NativeNetwork.get(context).ready&&NativeNetwork.get(context).coreAlive())){changed();return;}openConnection(false,false);}
-  void retryCurrent(){manualAttention=false;recoveryAttempt=0;recoveryToken++;recoveryScheduled=false;if(!networkReady)reconnect();else if(!web.recoverClosed())navigate(resumeUrl(),"正在重新加载…");}
+  void retryCurrent(){manualAttention=false;recoveryAttempt=0;recoveryToken++;recoveryScheduled=false;if(!networkReady||offline||!guard.allowed())reconnect();else if(!web.recoverClosed())navigate(resumeUrl(),"正在重新加载…");}
+  void recoverWebsiteConnection(){
+    if(websiteRecovering)return;
+    if(submitting||operation||transferActive||uploading()){setStatus("正在处理文件或发送，请稍后恢复网页连接");return;}
+    if(offline||!networkReady||!guard.allowed()){reconnect();return;}
+    String url=web.getUrl(),job=pending==null?"":pending.optString("id");long epoch=navigationEpoch;
+    websiteRecovering=true;
+    runDriver("page-state",J.obj("expectedUrl",url),snapshot->{
+      if(epoch!=navigationEpoch||!WebReplyObserver.same(url,web.getUrl())){websiteRecovering=false;return;}
+      if(!snapshot.optBoolean("ok")||!WebReplyObserver.same(url,snapshot.optString("url"))){websiteRecovering=false;setStatus("网页正在变化，请稍后再恢复连接");return;}
+      String draft=snapshot.optString("draft");
+      webStore.worker.execute(()->{
+        boolean saved=DraftArchive.get(context).save(url,draft,"恢复网页连接前草稿");
+        handler.post(()->{
+          if(epoch!=navigationEpoch||!WebReplyObserver.same(url,web.getUrl())||!job.equals(pending==null?"":pending.optString("id"))||submitting||operation||transferActive||uploading()){websiteRecovering=false;return;}
+          if(!saved){websiteRecovering=false;setStatus("草稿暂存失败，网页尚未重新加载");return;}
+          // Typing can continue while the archive is written. Never replace a
+          // newer draft merely because the route and pending task stayed equal.
+          runDriver("page-state",J.obj("expectedUrl",url),latest->{websiteRecovering=false;
+            if(epoch!=navigationEpoch||!WebReplyObserver.same(url,web.getUrl())||!job.equals(pending==null?"":pending.optString("id"))||submitting||operation||transferActive||uploading())return;
+            if(!latest.optBoolean("ok")||!snapshot.optString("documentId").equals(latest.optString("documentId"))||!draft.equals(latest.optString("draft"))){setStatus("草稿已变化，继续编辑；需要时再恢复网页连接");return;}
+            retryCurrent();
+          });
+        });
+      });
+    });
+  }
   void reconnect(){manualAttention=false;recoveryAttempt=0;recoveryToken++;recoveryScheduled=false;invalidateConnection();if(offline){setStatus("当前离线，请先连接手机网络");return;}openConnection(true,internalNetwork()&&NativeNetwork.get(context).recoveryBlocked);}
   void openConnection(boolean recover,boolean force){if(offline||connecting)return;if(!privacy.canNavigate()){guard.setBlocked(true);manualAttention=true;setStatus("当前 WebView 无法完成所选网络保护，请更新 Android System WebView");return;}keepPageCandidate=recover&&!force&&pending==null&&!submitting&&!operation&&pageUsableAt>0&&MainActivity.chatUrl(web.getUrl())&&WebReplyObserver.same(web.getUrl(),resumeUrl());if(recover)pageMemory.capture(()->{});trace.begin();connecting=true;networkReady=false;updateBrowserActivity();connectionStarted=SystemClock.elapsedRealtime();proxyReadyAt=0;web.stopLoading();guard.setBlocked(true);pageError="";long epoch=++connectionEpoch;connectionStage=internalNetwork()?"检查应用专用代理":"检查网页连接";setStatus(recover?"正在恢复连接，草稿与发送记录已保留…":"正在连接…");
     try{new SecretStore(context).importPrivateProvision();}catch(Exception e){connectionFailed(epoch,"私有网络配置导入失败，请在设置中重新填写",false);return;}
@@ -156,7 +182,7 @@ final class ChatSession {
     if(LoginPagePolicy.login(web.getUrl()))return;
     if(inFlight||navigating&&!navigationDispatched)return;inFlight=true;long epoch=navigationEpoch,run=++syncRun;boolean optimized=webPerformance();
     runDriver(optimized?"web-inspect":"inspect",J.obj("navigationCheck",spaTransition),s->{
-      if(run!=syncRun)return;if(epoch!=navigationEpoch){inFlight=false;return;}if(navigating&&awaitNewDocument&&priorDocumentId.equals(s.optString("documentId"))){inFlight=false;return;}if(!s.optString("documentId").isEmpty()){lastDocumentId=s.optString("documentId");awaitNewDocument=false;}state=s;stateEpoch=epoch;
+      if(run!=syncRun)return;if(epoch!=navigationEpoch){inFlight=false;return;}if(navigating&&awaitNewDocument&&priorDocumentId.equals(s.optString("documentId"))){inFlight=false;return;}if(!s.optString("documentId").isEmpty()){lastDocumentId=s.optString("documentId");awaitNewDocument=false;}state=s;stateEpoch=epoch;if(WebReplyObserver.same(web.getUrl(),s.optString("url"))){websiteConnectionIssue=s.optBoolean("websiteSocketClosed");if(!s.optString("error").isEmpty())resetReplyStability();}
       if(pending==null&&!navigating&&!navigationFailed){if(!pageError.isEmpty())status=pageError;else if(!s.optString("error").isEmpty())status=s.optString("error");else if(s.optBoolean("modelKnown"))status="已连接 · "+s.optString("model")+(s.optString("effort").isEmpty()?"":" · "+s.optString("effort"));else status="请打开登录页面完成登录";}
       // During startup the page may be an empty shell. Inspect readiness cheaply;
       // defer transcript walks until the target composer/content is actually present.
@@ -198,8 +224,13 @@ final class ChatSession {
     if(pending==null){inFlight=false;changed();return;}JSONObject job=pending;
     runDriver("poll",optimized?webPollArguments(job):job,p->{
       if(run!=syncRun)return;if(pending!=job||epoch!=navigationEpoch){inFlight=false;return;}
-      if(!p.optString("error").isEmpty()){webObserver.mayComplete(job,p);delivery(job.optString("id"),"uncertain",p.optString("error"),true,"","");setStatus(p.optString("error"));inFlight=false;return;}
-      if(p.optBoolean("otherQuestion")||p.optBoolean("bindingLost")){webObserver.mayComplete(job,p);delivery(job.optString("id"),"uncertain","对话已改变，请核对原网页",true,"","");setStatus("对话已改变，请检查上次发送；不会自动重发");inFlight=false;return;}
+      String error=p.optString("error");
+      if((p.optBoolean("bindingPending")||p.optBoolean("pageLoading")||error.equals("页面尚未就绪"))&&(error.isEmpty()||error.equals("页面尚未就绪"))&&!p.optBoolean("otherQuestion")){
+        resetReplyStability();setStatus("网页正在加载，继续核对原回复…");inFlight=false;return;
+      }
+      if(!error.isEmpty()){resetReplyStability();websiteConnectionIssue=p.optBoolean("websiteSocketClosed");delivery(job.optString("id"),"uncertain",error,true,"","");setStatus(error);inFlight=false;return;}
+      if(p.optBoolean("otherQuestion")||p.optBoolean("bindingLost")){resetReplyStability();delivery(job.optString("id"),"uncertain","对话已改变，请核对原网页",true,"","");setStatus("对话已改变，请检查上次发送；不会自动重发");inFlight=false;return;}
+      if(p.optBoolean("submitted"))websiteConnectionIssue=false;
       // An omitted payload is valid only for this exact task, route, reply and
       // mutation revision. Completion still sees the last fully captured text.
       if(optimized&&p.optBoolean("contentUnchanged")){
@@ -232,6 +263,7 @@ final class ChatSession {
     });
   }
   void completeReply(JSONObject job,JSONObject poll){String id=job.optString("id","recovered"),url=poll.optString("url",conversation);delivery(id,"completed","回复已完成",true,poll.optString("userKey"),url);pending=null;activeDeliveryId="";prefs.edit().remove("pending").putString("lastCompletedId",id).putString("url",url).commit();status="回复完成";ChatService.completed(context,id,url);ChatService.end(context);}
+  void resetReplyStability(){stableReply="";stableTicks=0;webObserver.resetCompletion();}
   void abandonWait(){if(pending!=null)delivery(pending.optString("id"),"uncertain","已解除等待，发送结果仍需在网页核对",true,"","");pending=null;activeDeliveryId="";prefs.edit().remove("pending").commit();ChatService.end(context);setStatus("已解除等待，请自行核对是否需要发送");}
   void timeout(){setStatus("安卓后台等待时间已到，请打开应用继续检测；不会自动重发");ChatService.needsAttention(context,status);}
   void escape(){web.evaluateJavascript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true,cancelable:true}))",null);web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN,KeyEvent.KEYCODE_ESCAPE));web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP,KeyEvent.KEYCODE_ESCAPE));}

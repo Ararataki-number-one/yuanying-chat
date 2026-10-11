@@ -167,10 +167,11 @@ final class WebReplyObserver {
   boolean mayComplete(JSONObject job, JSONObject poll) {
     if (!webJob(job)) return true;
     if (!job.optBoolean("confirmed") || !poll.optBoolean("submitted") || !poll.optBoolean("terminal") ||
-        poll.optBoolean("busy") || poll.optBoolean("bindingLost") || poll.optBoolean("otherQuestion") ||
+        poll.optBoolean("busy") || poll.optBoolean("bindingLost") || poll.optBoolean("bindingPending") ||
+        poll.optBoolean("pageLoading") || poll.optBoolean("otherQuestion") ||
         !poll.optString("error").isEmpty() || !job.optString("userKey").equals(poll.optString("userKey")) ||
         !same(job.optString("confirmedUrl"), poll.optString("url"))) {
-      completionSamples = 0; completionSignature = ""; return false;
+      resetCompletion(); return false;
     }
     String signature = poll.optString("replyKey") + "|" + poll.optString("markdown") + "|" + poll.optBoolean("hasFiles");
     if (!job.optString("id").equals(completionJob) || !signature.equals(completionSignature)) {
@@ -178,5 +179,9 @@ final class WebReplyObserver {
       completionSince = System.currentTimeMillis(); completionSamples = 0;
     }
     return ++completionSamples >= 3 && System.currentTimeMillis() - completionSince >= 2000;
+  }
+
+  void resetCompletion() {
+    completionSamples = 0; completionSignature = ""; completionSince = 0;
   }
 }

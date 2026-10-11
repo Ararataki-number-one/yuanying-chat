@@ -16,5 +16,17 @@ final class ReplyState {
     return stage;
   }
   static long elapsedSeconds(JSONObject job){return Math.max(0,(System.currentTimeMillis()-job.optLong("startedAt",System.currentTimeMillis()))/1000);}
-  static void show(MainActivity a){ChatSession s=a.session;if(s.pending==null){if(!s.networkReady||s.offline)NetworkStatusUi.show(a);else a.status("当前没有等待中的回复");return;}long elapsed=elapsedSeconds(s.pending);String detail=s.status+"\n已等待 "+(elapsed>=60?elapsed/60+" 分 "+elapsed%60+" 秒":elapsed+" 秒")+"\n\n继续检查或恢复连接只读取已有结果，不会重新发送。";new android.app.AlertDialog.Builder(a).setTitle("回复状态").setMessage(detail).setPositiveButton("继续检查",(d,w)->{if(s.offline||!s.networkReady)s.reconnect();else s.sync();}).setNeutralButton("恢复连接",(d,w)->s.reconnect()).setNegativeButton("查看原网页",(d,w)->a.showPage(true)).show();}
+  static void show(MainActivity a){
+    ChatSession s=a.session;
+    if(s.websiteConnectionIssue){websiteConnection(a);return;}
+    if(s.pending==null){if(!s.networkReady||s.offline)NetworkStatusUi.show(a);else a.status("当前没有等待中的回复");return;}
+    long elapsed=elapsedSeconds(s.pending);String detail=s.status+"\n已等待 "+(elapsed>=60?elapsed/60+" 分 "+elapsed%60+" 秒":elapsed+" 秒")+"\n\n继续检查或恢复连接只读取已有结果，不会重新发送。";
+    new android.app.AlertDialog.Builder(a).setTitle("回复状态").setMessage(detail).setPositiveButton("继续检查",(d,w)->{if(s.offline||!s.networkReady)s.reconnect();else s.sync();}).setNeutralButton("恢复连接",(d,w)->s.reconnect()).setNegativeButton("查看原网页",(d,w)->a.showPage(true)).show();
+  }
+  static void websiteConnection(MainActivity a){
+    new android.app.AlertDialog.Builder(a).setTitle("网页连接中断")
+      .setMessage("网页报告连接已关闭。可以暂存当前草稿并重新打开这条对话；不会重新发送提问或自动重试网页任务。\n\n若恢复后仍报错，请在原网页核对工具任务的状态。")
+      .setPositiveButton("恢复网页连接",(d,w)->a.session.recoverWebsiteConnection())
+      .setNeutralButton("继续检查",(d,w)->a.session.sync()).setNegativeButton("暂不恢复",null).show();
+  }
 }

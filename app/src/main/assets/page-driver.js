@@ -127,20 +127,60 @@
     }
     return legacyKey(el,index);
   }
+  const socketClosedNotice='网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。';
+  const socketClosed=/Browser app server websocket closed|(?:websocket|web socket|实时连接).{0,64}(?:closed|disconnected|connection lost|断开|关闭)|(?:connection closed|connection lost).{0,64}(?:websocket|web socket)/i;
+  const errorMessageSelector='[data-message-author-role],article[data-turn],[data-chatgpt-search-unit-key$=":user"],[data-chatgpt-search-unit-key$=":assistant"],[data-content-search-unit-key$=":user"],[data-content-search-unit-key$=":assistant"]';
+  const errorContentSelector=errorMessageSelector+',.markdown,[data-markdown-text-style="assistant-message"],[data-is-reasoning="true"]';
+  const errorTurnSelector='[data-turn="user"],[data-turn="assistant"],[data-testid^="conversation-turn-"],[data-content-search-turn-key],[data-turn-key]';
   function siteError(scope,fast=false) {
     if(!fast&&/Unable to load site|无法加载网站/.test(document.body.innerText||''))return '网站拒绝当前访问。请检查应用专用代理和出口，或查看网站状态；尚未确认登录。';
     if (document.querySelector('#main-frame-error,.neterror,#error-information-popup'))
       return '浏览器无法连接 ChatGPT。请检查可用网络或专用代理；本次未确认发送成功。';
     const root=scope || document;
-    const alerts = [...root.querySelectorAll('[role="alert"]')].filter(rendered);
-    const retry = [...root.querySelectorAll('button,[role="button"]')].find(el => /^(重试|重新尝试|Retry|Try again)$/i.test((el.getAttribute('aria-label') || el.innerText || '').trim()) && rendered(el) && !el.closest('[role="menu"]') && (el.closest('[role="alert"]') || /Something went wrong|network error|failed|出现错误|出了点问题|网络错误|失败/i.test(el.parentElement?.innerText || '')));
+    const current=messages('assistant').filter(el=>!scope||scope.contains(el)).at(-1);
+    // Historical failure cards stay visible in a conversation. Only the
+    // current assistant turn or a toast outside all turns is active evidence.
+    const activeSurface=el=>{
+      if(!rendered(el)||el.closest('[role="menu"],pre,code,[data-markdown-copy="code-block"]'))return false;
+      if(el.closest('[data-message-author-role="user"],[data-turn="user"],[data-chatgpt-search-unit-key$=":user"],[data-content-search-unit-key$=":user"]'))return false;
+      const message=el.closest(errorMessageSelector);
+      if(message)return !!current&&(message===current||current.contains(message)||message.contains(current));
+      // Older layouts put actions beside a message in an unlabelled section.
+      // Use its nearest owner, without treating the shared main/body as a turn.
+      for(let turn=el;turn&&!turn.matches('main,body,html');turn=turn.parentElement)
+        if(turn.matches(errorTurnSelector)||turn.querySelector(errorMessageSelector))return !!current&&turn.contains(current);
+      return true;
+    };
+    const retryContext=el=>{
+      const parent=el.closest('[role="alert"]')||el.parentElement;
+      if(!parent||parent.matches('main,body,html'))return '';
+      if(!parent.querySelector(errorContentSelector))return parent.innerText||'';
+      // A sibling retry may share a wrapper with the response. Do not read
+      // ordinary or historical message bodies as if they were error text.
+      return [...parent.childNodes].map(node=>node.nodeType===Node.TEXT_NODE?node.nodeValue:node.nodeType!==Node.ELEMENT_NODE||!rendered(node)||node.matches(errorContentSelector+',pre,code,[data-markdown-copy="code-block"]')||node.querySelector(errorContentSelector)?'':node.innerText||'').join('\n');
+    };
+    const alerts = [...root.querySelectorAll('[role="alert"]')].filter(activeSurface);
+    let retryText='';
+    const retry = [...root.querySelectorAll('button,[role="button"]')].find(el=>{
+      if(!/^(重试|重新尝试|Retry|Try again)$/i.test((el.getAttribute('aria-label')||el.innerText||'').trim())||!activeSurface(el))return false;
+      const text=retryContext(el);
+      if(!el.closest('[role="alert"]')&&!/Something went wrong|network error|failed|出现错误|出了点问题|网络错误|失败/i.test(text)&&!socketClosed.test(text))return false;
+      retryText=text;return true;
+    });
     let text = alerts.map(el => el.innerText).join('\n');
-    if (retry) text += '\n' + (retry.parentElement ? retry.parentElement.innerText.slice(0,1600) : 'Retry');
+    if (retry) text += '\n' + retryText.slice(0,1600);
     if (/Enable JavaScript and cookies|verify you are human|验证您是人类|人机验证|unusual activity|cloudflare/i.test(text))
       return '网页需要手动验证。请在浏览器处理后点击“继续检测”；软件不会自动重发。';
+    if(socketClosed.test(text))return socketClosedNotice;
     if (retry || /Something went wrong|出现错误|出了点问题|已达到.*上限|reached.*limit|network error|网络错误/i.test(text))
       return 'ChatGPT 页面报告错误或使用限制，请检查浏览器。软件没有自动重发。';
     return '';
+  }
+  function siteObservation(scope,fast=false){
+    const error=siteError(scope,fast),websiteSocketClosed=error===socketClosedNotice;
+    const errorText=error&&!websiteSocketClosed?((scope||document.body).innerText||''):'';
+    const recoverable=websiteSocketClosed||!!error&&!/上限|限制|额度|limit|验证|verify|captcha|unusual activity/i.test(errorText)&&/网络|连接|重试|retry|went wrong|network|出了点|出现错误/i.test(errorText);
+    return {error,recoverable,...(websiteSocketClosed?{websiteSocketClosed:true,errorCode:'website_socket_closed'}:{})};
   }
   function ready() {
     const input = composer(), rawInput=composer(true), model = modelInfo();
@@ -248,7 +288,7 @@
   if (action === 'observe-install') return {ok:!!window.__pocketInstallWebReplyObserver?.({composer,draft,sendButton,busy,messages,key,userText,hasMessages})};
   if (action === 'inspect') return ready();
   function webModelInfo(){const saved=window.__pocketModelControls||(window.__pocketModelControls={});if(!saved.model?.isConnected||!visible(saved.model))saved.model=modelControl();if(!saved.effort?.isConnected||!visible(saved.effort)){saved.effort=[...document.querySelectorAll('button[aria-label],[role="button"][aria-label]')].find(el=>el!==saved.model&&/thinking effort|reasoning effort|思考强度|推理强度|思考时间|thinking time/i.test(el.getAttribute('aria-label')||'')&&visible(el))||null;}const text=saved.model?norm(saved.model.innerText||saved.model.getAttribute('aria-valuetext')||label(saved.model)):'';return {text,effort:saved.effort?norm(saved.effort.innerText||saved.effort.getAttribute('aria-label')):'',known:!!saved.model};}
-  if(action==='web-inspect'){const model=webModelInfo(),meta=window.__pocketWebPerformance?.meta();return {url:location.href,documentId:documentKey(),title:document.title,composer:!!composer(),hasMessages:hasMessages(),contentKey:arg.navigationCheck?contentKey():'',model:model.text,effort:model.effort,modelKnown:model.known,busy:busy(),error:siteError(null,true),transcriptDirty:!meta||meta.dirty,interacting:!!meta?.interacting};}
+  if(action==='web-inspect'){const model=webModelInfo(),meta=window.__pocketWebPerformance?.meta();return {url:location.href,documentId:documentKey(),title:document.title,composer:!!composer(),hasMessages:hasMessages(),contentKey:arg.navigationCheck?contentKey():'',model:model.text,effort:model.effort,modelKnown:model.known,busy:busy(),...siteObservation(null,true),transcriptDirty:!meta||meta.dirty,interacting:!!meta?.interacting};}
 
   function assistantScope(el){return el && (el.closest('[data-turn="assistant"],[data-testid^="conversation-turn-"],[data-content-search-turn-key],[data-turn-key],article')||el.closest('[data-conversation-screenshot-content]')||el.parentElement||el);}
   function entryNodes(){return [...messages('user'),...messages('assistant')].sort((a,b)=>(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1);}
@@ -350,12 +390,23 @@
     return {ok:true};
   }
   if (action === 'poll' || action === 'latest') {
-    if (action === 'poll' && arg.kind === 'web') {
-      if (!arg.confirmed) return {url:location.href,submitted:false,busy:busy(),terminal:false,
+    const bindingPending=reason=>({url:location.href,...siteObservation(null,!!arg.lightObservation),
+      submitted:false,bindingPending:true,bindingReason:reason,pageLoading:true,contentObserved:false,busy:busy(),terminal:false});
+    let assigningConversation=false;
+    if (action === 'poll') {
+      if (arg.kind==='web'&&!arg.confirmed) return {url:location.href,submitted:false,busy:busy(),terminal:false,
         error:arg.webSuspended?'这次网页发送缺少可核实的消息标识，请核对原网页；不会自动重发':''};
-      const expected = new URL(arg.confirmedUrl || arg.expectedUrl);
-      if (expected.origin !== location.origin || expected.pathname !== location.pathname)
-        return {url:location.href,submitted:false,bindingLost:true,terminal:false,error:'已离开原网页对话，请返回原对话继续核对'};
+      const boundUrl=arg.confirmedUrl||arg.expectedUrl,expected=boundUrl?new URL(boundUrl):null;
+      const home=path=>/^\/(?:g\/[^/]+\/?)?$/.test(path),conversation=path=>/^\/(?:g\/[^/]+\/)?c\/[^/]+\/?$/.test(path);
+      if (expected&&(arg.kind==='web'||conversation(expected.pathname))&&(expected.origin !== location.origin || expected.pathname !== location.pathname)){
+        // The first message can get its stable ID before the website assigns
+        // /c/id. Only that exact ID and prompt may bind the assigned route.
+        assigningConversation=expected.origin===location.origin&&home(expected.pathname)&&conversation(location.pathname)&&/^(id|unit):/.test(arg.userKey||'');
+        if(!assigningConversation){
+          if(expected.origin===location.origin&&conversation(expected.pathname)&&home(location.pathname)&&!composer(true)&&!hasMessages())return bindingPending('route-loading');
+          return {url:location.href,submitted:false,bindingLost:true,conversationChanged:true,contentObserved:false,terminal:false,error:'已离开原网页对话，请返回原对话继续核对'};
+        }
+      }
     }
     const users=messages('user'), assistants=messages('assistant');
     let user=null, userIndex=-1;
@@ -363,8 +414,13 @@
     if(action==='latest')userIndex=users.length-1;
     else if (arg.userKey) {
       userIndex=users.findIndex((el,i)=>key(el,i)===arg.userKey || (arg.kind!=='web'&&legacyKey(el,i)===arg.userKey));
-      if(userIndex<0)return {url:location.href,error:siteError(),submitted:false,bindingLost:true,pageLoading:document.readyState!=='complete'||users.length===0,busy:busy(),text:'',terminal:false};
-      if(!samePrompt(observedUserText(users[userIndex]),arg.prompt))return {url:location.href,error:'已绑定的提问正文发生变化，请检查网页。',submitted:false,bindingLost:true,text:'',terminal:false};
+      // A reload, hydration or virtualized scroll may temporarily remove the
+      // bound turn. Its absence is not evidence that another question was sent.
+      if(userIndex<0)return bindingPending(assigningConversation?'conversation-assigning':'message-not-rendered');
+      const boundUser=users[userIndex],boundText=observedUserText(boundUser);
+      if(!signature(boundText)&&signature(arg.prompt))return bindingPending('message-loading');
+      const matches=assigningConversation&&signature(arg.prompt)?signature(boundText)===signature(arg.prompt):samePrompt(boundText,arg.prompt);
+      if(!matches)return {url:location.href,error:'已绑定的提问正文发生变化，请检查网页。',submitted:false,bindingLost:true,contentObserved:false,text:'',terminal:false};
     }else if(Array.isArray(arg.beforeUserKeys)){
       const previous=new Set(arg.beforeUserKeys), newUsers=users.map((el,index)=>({el,index,key:key(el,index)})).filter(x=>!previous.has(x.key));
       if(newUsers.length>1)return {url:location.href,error:siteError(),submitted:false,otherQuestion:true,busy:busy(),text:'',terminal:false};
@@ -397,14 +453,17 @@
     }
     const working=!!scope && [...scope.querySelectorAll('button')].some(el=>visible(el) && /^(正在思考|正在搜索|Thinking|Searching)(\b|…|\.\.\.|$)/i.test(label(el)));
     const activeBusy=busy()||working;const liveLabels=scope?[...scope.querySelectorAll('button,[role="status"]')].filter(visible).map(label):[];const thinking=activeBusy&&liveLabels.some(t=>/^(?:Thinking|正在思考|思考中)(?:\b|…|\.\.\.|$)/i.test(t));const searching=activeBusy&&liveLabels.some(t=>/^(?:Searching|正在搜索|搜索中)(?:\b|…|\.\.\.|$)/i.test(t));
-    const error=siteError(scope,!!arg.lightObservation),errorText=error?((scope||document.body).innerText||''):'';
-    const recoverable=!!error && !/上限|限制|额度|limit|验证|verify|captcha|unusual activity/i.test(errorText) && /网络|连接|重试|retry|went wrong|network|出了点|出现错误/i.test(errorText);
+    const problem=siteObservation(scope,!!arg.lightObservation);
+    // Website connection notices can sit beside, rather than inside, the
+    // current assistant turn. Inspect only official alert/retry surfaces.
+    const globalProblem=scope?siteObservation(null,true):problem;
+    const websiteProblem=globalProblem.websiteSocketClosed?globalProblem:problem;
     const replyKey=reply?key(reply,assistants.indexOf(reply)):'';
     const incremental=!!arg.incrementalObservation&&!!window.__pocketWebPerformance;
     const contentRevision=incremental?window.__pocketWebPerformance.contentRevision([...replies,...bodies,...replies.map(assistantScope)]):'';
-    const result={url:location.href,error,recoverable,thinking,searching,busy:activeBusy,submitted:!!user,
+    const result={url:location.href,...websiteProblem,thinking,searching,busy:activeBusy,submitted:!!user,
       userKey:user?key(user,userIndex):'',userOrdinal:userIndex,boundByNewIdentity,otherQuestion:!!laterUser,
-      replyKey,terminal};
+      replyKey,terminal,...(assigningConversation&&user&&!laterUser?{routeAssigned:true}:{})};
     if(incremental){
       // Generation metadata is enough to observe progress. Reading the entire
       // growing answer here competes with the site's rendering and gestures.
