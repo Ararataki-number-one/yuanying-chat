@@ -33,6 +33,13 @@ def verify_performance_evidence(directory, source):
     gecko = android('gecko-performance-results.json')
     assert gecko['actualGeckoExecution'] and gecko['baselineSource'] == BASELINE
     assert gecko['actualAndroidTouchExecution'] and len(gecko['actualAndroidGestures']) == 3
+    routes = gecko['controlledProxyRoutes']
+    assert routes and all(route['accepted'] and route['host'] == '127.0.0.1' and route['port'] == 8767 for route in routes)
+    decisions = [item['value'] for item in gecko['browserDiagnostics']
+                 if item['kind'] == 'route' and item['value']['url'].startswith('http://127.0.0.1:8767/performance')]
+    assert len(decisions) >= 2 and all(item['guardAllowed'] and item['decision']['type'] == 'socks'
+                                     and item['decision']['host'] == '127.0.0.1' and item['decision']['port'] == 1087
+                                     for item in decisions), 'Both comparisons must use the existing protected proxy path.'
     assert gecko['checkCount'] == len(gecko['checks']) >= 65 and all(check['pass'] for check in gecko['checks'])
     names = {check['name'] for check in gecko['checks']}
     assert {
@@ -76,6 +83,12 @@ def verify_performance_evidence(directory, source):
         'Region and latency UI snapshots cause no main-thread disk reads or writes',
         'Cold profile metadata paths resolve without Android main-thread directory access',
         'Background cold-path resolution restores the correct eight environment snapshots',
+        'Deferred callback race reaches both real encrypted candidate writes',
+        'An older deferred callback does not clear the newer sealed candidate',
+        'An older deferred callback keeps the newer request saving state',
+        'An older deferred callback does not apply the replaced candidate',
+        'Intervening non-saving network operations preserve the newest save ownership',
+        'The latest network candidate is applied once after the stale callback is ignored',
     } <= passed, 'Multi-profile cache and main-thread disk regression is required.'
     for name, count in [('snapshot-host-results.json', 14), ('reply-observation-host-results.json', 37)]:
         report = json.loads((directory / name).read_text())

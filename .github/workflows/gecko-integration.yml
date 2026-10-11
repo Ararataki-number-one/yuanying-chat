@@ -93,6 +93,10 @@ jobs:
           adb shell input keyevent 82
           adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
           checks_failed=0
+          if ! python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          python3 tools/gecko/publish_ci.py
           if ! python3 tests/gecko/run_network_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
             checks_failed=1
           fi
@@ -100,9 +104,6 @@ jobs:
             checks_failed=1
           fi
           if ! python3 tests/gecko/run_ui_visuals.py --adb "$(command -v adb)" --serial emulator-5554; then
-            checks_failed=1
-          fi
-          if ! python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py

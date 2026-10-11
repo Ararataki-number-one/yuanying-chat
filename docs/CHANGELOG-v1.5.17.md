@@ -21,6 +21,7 @@
 | `EnvironmentAudit.java` | 周期性配置解密、核对和自动持久化在后台执行；只接收仍属于当前连接、环境和配置的结果。手动接受基线仍保持可确认的同步结果。 |
 | `NetworkRegion.java` / `FileSnapshotCache.java` | 地区和延迟快照按环境文件路径缓存，UI 不执行文件检查或解密；后台识别文件替换、删除，旧读取不能覆盖新写入。 |
 | `NetworkWorkspaceUi.java` | 网络列表在后台预读地区与待应用草稿标记，绘制卡片不逐个解密。 |
+| `NetworkUiProvider.java` | 每秒检查待应用网络配置时，数据库读取和草稿解密由后台线程执行；应用前重新核对环境身份和操作状态，避免空闲聊天被周期性磁盘访问打断。 |
 | `MainActivity.java` / `LoadingUi.java` / `WindowHomeActivity.java` | 内容没变化时不重复更新文字；隐藏进度区域不重复格式化；管理页恢复时刷新背景设置。 |
 | `SecretStore.java` / `UiPerfStats.java` | 增加默认关闭的本地回归计数，用于验证 UI 热路径没有同步数据库和加密文件工作。未改变加密格式或密钥。 |
 

@@ -34,6 +34,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     try(HttpFixture site=new HttpFixture(tlsContext());HttpFixture plain=new HttpFixture(null);Socks fixed=new Socks(0);Socks slow=new Socks(100);Socks fast=new Socks(5)){
       site.start();plain.start();fixed.start();slow.start();fast.start();
       regionCacheChecks();
+      deferredCandidateRaceChecks();
       JSONObject config=J.obj("subscriptionUrl","https://synthetic.invalid/unused-subscription","exitHost","127.0.0.1","exitPort",fixed.port(),"entryMode","latency","entryPool",J.arr("Entry|slow","Entry|fast"),"entry","");
       SecretStore vault=new SecretStore(this);vault.save(config);String yaml="proxies:\n  - {name: slow, type: socks5, server: 127.0.0.1, port: "+slow.port()+"}\n  - {name: fast, type: socks5, server: 127.0.0.1, port: "+fast.port()+"}\n";
       vault.put("subscription",yaml.getBytes(StandardCharsets.UTF_8));vault.put("subscription-meta",J.obj("urlHash",NativeNetwork.hash(config.getString("subscriptionUrl")),"updatedAt",System.currentTimeMillis()).toString().getBytes(StandardCharsets.UTF_8));
@@ -134,6 +135,55 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     check("Cold profile metadata paths resolve without Android main-thread directory access",coldComplete.await(10,TimeUnit.SECONDS)&&coldOk[0]&&disk.get()==0);
     NetworkRegion.snapshots.submit(()->{}).get(10,TimeUnit.SECONDS);boolean restored=true;for(int slot=0;slot<Profiles.MAX;slot++)restored&=NetworkRegion.read(Profiles.context(this,slot)).optString("region").equals(slot==Profiles.MAX-1?"韩国 · synthetic-new":"日本 · synthetic-"+slot);
     check("Background cold-path resolution restores the correct eight environment snapshots",restored);
+  }
+  /** Uses the real request worker and sealed records; only the final route operation is intercepted. */
+  static final class CandidateRaceProvider extends NetworkUiProvider {
+    final List<JSONObject> applied=new ArrayList<>();final CountDownLatch latestApplied=new CountDownLatch(1);final String latestProxy;int nonSavingOperations;
+    CandidateRaceProvider(Context context,String latestProxy){profile=context;this.latestProxy=latestProxy;}
+    @Override void operate(String id,String action,JSONObject candidate,String baseline){
+      if(!"apply".equals(action)&&!"external".equals(action)){nonSavingOperations++;jobs.put(id,J.obj("done",true,"ok",true));return;}
+      applied.add(J.obj("id",id,"action",action,"config",J.parse(candidate.toString())));jobs.put(id,J.obj("done",true,"ok",true));
+      if(latestProxy.equals(candidate.optString("proxy")))latestApplied.countDown();
+    }
+  }
+  void deferredCandidateRaceChecks()throws Exception{
+    // The manifest starts a real provider for profile 0. Keep its pending record
+    // empty and exercise the test provider in an unopened, separate private slot.
+    NativeNetwork.get(this);int slot=Profiles.MAX-1;Context scope=Profiles.context(this,slot);ProfileCatalog catalog=ProfileCatalog.get(this);boolean wasCreated=catalog.item(slot).optBoolean("created");catalog.created(slot);
+    String baseline=NetworkChanges.hash(scope),oldId="synthetic-deferred-old",newId="synthetic-candidate-new";
+    JSONObject oldCandidate=J.obj("proxy","http://127.0.0.1:41001","requireExternalVpn",true),newCandidate=J.obj("proxy","http://127.0.0.1:41002","requireExternalVpn",true);
+    NetworkChanges.save(scope,"external",oldCandidate,baseline);JSONObject queued=NetworkChanges.pending(scope);
+    CandidateRaceProvider provider=new CandidateRaceProvider(scope,newCandidate.optString("proxy"));
+    CountDownLatch oldWorkerFinished=new CountDownLatch(1),releaseNewWorker=new CountDownLatch(1),newWorkerFinished=new CountDownLatch(1),orchestrated=new CountDownLatch(1),inspected=new CountDownLatch(1);
+    java.util.concurrent.atomic.AtomicReference<Throwable> failure=new java.util.concurrent.atomic.AtomicReference<>();
+    final boolean[] oldWritten={false},newPreserved={false},savingPreserved={false},oldNotApplied={false};int generation=catalog.item(slot).optInt("generation");
+    try{
+      runOnUiThread(()->{try{
+        provider.jobs.put(oldId,J.obj("done",false));provider.request(oldId,"external",oldCandidate,baseline,true,generation,queued.toString());
+        // A's real worker posts its completion before this barrier. Keep B behind it
+        // until the inspector has been placed between the two main-thread callbacks.
+        provider.io.execute(()->{oldWorkerFinished.countDown();try{if(!releaseNewWorker.await(8,TimeUnit.SECONDS))failure.compareAndSet(null,new IOException("candidate race worker barrier timeout"));}catch(InterruptedException interrupted){Thread.currentThread().interrupt();failure.compareAndSet(null,interrupted);}});
+        if(!oldWorkerFinished.await(6,TimeUnit.SECONDS))throw new IOException("old candidate worker did not complete");
+        JSONObject storedOld=NetworkChanges.pending(scope).optJSONObject("config");oldWritten[0]=storedOld!=null&&storedOld.toString().equals(oldCandidate.toString());
+        provider.jobs.put(newId,J.obj("done",false));provider.request(newId,"external",newCandidate,baseline);
+        provider.request("synthetic-race-measure","measure",new JSONObject(),baseline);
+        provider.main.post(()->{try{
+          JSONObject stored=NetworkChanges.pending(scope).optJSONObject("config");newPreserved[0]=stored!=null&&stored.toString().equals(newCandidate.toString());
+          savingPreserved[0]=provider.saving;oldNotApplied[0]=provider.applied.isEmpty();
+        }catch(Throwable error){failure.compareAndSet(null,error);}finally{inspected.countDown();}});
+        provider.io.execute(newWorkerFinished::countDown);releaseNewWorker.countDown();
+        if(!newWorkerFinished.await(6,TimeUnit.SECONDS))throw new IOException("new candidate worker did not complete");
+        // Exiting this bounded test-only runnable now releases A callback, inspector,
+        // then B callback. Both sealed writes are already complete at that point.
+      }catch(Throwable error){failure.compareAndSet(null,error);}finally{releaseNewWorker.countDown();orchestrated.countDown();}});
+      check("Deferred callback race reaches both real encrypted candidate writes",orchestrated.await(15,TimeUnit.SECONDS)&&inspected.await(5,TimeUnit.SECONDS)&&failure.get()==null&&oldWritten[0]);
+      check("An older deferred callback does not clear the newer sealed candidate",newPreserved[0]);
+      check("An older deferred callback keeps the newer request saving state",savingPreserved[0]);
+      check("An older deferred callback does not apply the replaced candidate",oldNotApplied[0]);
+      boolean applied=provider.latestApplied.await(5,TimeUnit.SECONDS);
+      check("Intervening non-saving network operations preserve the newest save ownership",provider.nonSavingOperations==1&&applied&&!provider.saving);
+      check("The latest network candidate is applied once after the stale callback is ignored",applied&&provider.applied.size()==1&&newId.equals(provider.applied.get(0).optString("id"))&&newCandidate.toString().equals(provider.applied.get(0).optJSONObject("config").toString())&&!provider.saving&&NetworkChanges.pending(scope).length()==0);
+    }finally{releaseNewWorker.countDown();provider.main.removeCallbacks(provider.drain);provider.io.shutdownNow();NetworkChanges.clear(scope);if(!wasCreated){android.content.ContentValues restored=new android.content.ContentValues();restored.put("created",0);catalog.getWritableDatabase().update("environments",restored,"slot=?",new String[]{String.valueOf(slot)});}}
   }
   void testTransport(HttpFixture site,HttpFixture plain,JSONObject config,String yaml)throws Exception{
     TestNetwork first=null,second=null,adopted=null;

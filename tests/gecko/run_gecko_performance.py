@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compare production observation assets through real Gecko and the Android native bridge."""
-import argparse, hashlib, http.server, json, pathlib, subprocess, threading, time, urllib.parse
+import argparse, hashlib, http.server, json, pathlib, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'work/gecko-integration'
@@ -62,6 +62,63 @@ class Fixture(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+def exact(sock, size):
+    data = b''
+    while len(data) < size:
+        chunk = sock.recv(size - len(data))
+        if not chunk:
+            raise ConnectionError('Controlled SOCKS connection closed')
+        data += chunk
+    return data
+
+
+class Socks(socketserver.BaseRequestHandler):
+    """Same production proxy path as the existing Gecko suite, bounded to this fixture."""
+    routes = []
+
+    def handle(self):
+        client = self.request
+        client.settimeout(20)
+        try:
+            version, count = exact(client, 2)
+            assert version == 5 and 0 in exact(client, count)
+            client.sendall(b'\x05\x00')
+            version, command, _, address_type = exact(client, 4)
+            assert version == 5
+            if address_type == 1:
+                host = socket.inet_ntoa(exact(client, 4))
+            elif address_type == 3:
+                host = exact(client, exact(client, 1)[0]).decode('ascii')
+            elif address_type == 4:
+                host = socket.inet_ntop(socket.AF_INET6, exact(client, 16))
+            else:
+                return
+            port = struct.unpack('!H', exact(client, 2))[0]
+            accepted = command == 1 and host == '127.0.0.1' and port == 8767
+            self.routes.append({'host': host, 'port': port, 'addressType': address_type, 'accepted': accepted})
+            if not accepted:
+                client.sendall(b'\x05\x02\x00\x01' + b'\x00' * 6)
+                return
+            with socket.create_connection(('127.0.0.1', 8767), timeout=10) as upstream:
+                client.sendall(b'\x05\x00\x00\x01' + b'\x00' * 6)
+                while True:
+                    ready, _, _ = select.select([client, upstream], [], [], 20)
+                    if not ready:
+                        return
+                    for source in ready:
+                        chunk = source.recv(65536)
+                        if not chunk:
+                            return
+                        (upstream if source is client else client).sendall(chunk)
+        except (OSError, AssertionError, UnicodeError):
+            return
+
+
+class SocksServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--adb', required=True)
@@ -84,10 +141,13 @@ def main():
     def adb(*parts):
         return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
 
-    server = http.server.ThreadingHTTPServer(('127.0.0.1', 8767), Fixture)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    servers = [http.server.ThreadingHTTPServer(('127.0.0.1', 8767), Fixture), SocksServer(('127.0.0.1', 1087), Socks)]
+    for server in servers:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    report = None
     try:
-        adb('reverse', 'tcp:8767', 'tcp:8767')
+        for port in [8767, 1087]:
+            adb('reverse', 'tcp:' + str(port), 'tcp:' + str(port))
         package = 'local.pocketchat.test'
         adb('shell', 'am', 'force-stop', package)
         adb('shell', 'pm', 'clear', package)
@@ -102,7 +162,7 @@ def main():
                   'frameTimingInterpretation': 'Descriptive actual Gecko RAF and Android Choreographer gaps during the controlled polling and gesture workload; no claim of real-account FPS.'}
         adb('logcat', '-c')
         adb('shell', 'am', 'start', '-W', '-n', package + '/local.pocketchat.GeckoPerformanceIntegrationActivity')
-        checks, measurements, gestures = {}, {}, {}
+        checks, measurements, gestures, diagnostics = {}, {}, {}, {}
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             raw = adb('logcat', '-d', '-s', 'PocketGeckoPerformance:I', 'AndroidRuntime:E', '*:S')
@@ -131,9 +191,12 @@ def main():
                             raise AssertionError(gesture)
                 elif item['kind'] == 'report':
                     report = item['value']
+                elif item['kind'] in ['load', 'route', 'loadError']:
+                    diagnostics[line] = item
             if report:
                 report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                               checks=list(checks.values()), measurements=list(measurements.values()), fixtureRequests=Fixture.requests,
+                              controlledProxyRoutes=Socks.routes, browserDiagnostics=list(diagnostics.values()),
                               baselineAssetVerification=receipt, actualAndroidGestures=list(gestures.values()), device=device)
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
@@ -144,17 +207,25 @@ def main():
                 assert all(case['samples'] == 12 for case in measurements.values()), report
                 assert set(gestures) == {'baseline-scroll', 'current-scroll', 'current-input'}, report
                 assert len([request for request in Fixture.requests if request['path'] == '/performance']) == 2, report
+                assert Socks.routes and all(route['accepted'] for route in Socks.routes), report
+                decisions = [item['value'] for item in diagnostics.values() if item['kind'] == 'route' and item['value']['url'].startswith('http://127.0.0.1:8767/performance')]
+                assert len(decisions) >= 2 and all(item['guardAllowed'] and item['decision']['type'] == 'socks' and item['decision']['host'] == '127.0.0.1' and item['decision']['port'] == 1087 for item in decisions), report
                 image = subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30)
                 (OUT / 'gecko-performance-screen.png').write_bytes(image)
                 return
             time.sleep(1)
         raise TimeoutError('No completed real Gecko performance report')
-    except Exception:
+    except Exception as error:
+        if report is not None:
+            report['status'] = 'failed'
+            report['runnerError'] = str(error)
+            (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
         (OUT / 'gecko-performance-failure-log.txt').write_text(adb('logcat', '-d'))
         raise
     finally:
-        server.shutdown()
-        server.server_close()
+        for server in servers:
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == '__main__':

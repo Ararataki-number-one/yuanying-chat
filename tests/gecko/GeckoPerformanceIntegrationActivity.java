@@ -11,6 +11,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import org.mozilla.geckoview.*;
 import org.json.*;
 
 /** Integration-only comparison: actual Gecko document and native extension bridge, no account. */
@@ -23,12 +25,36 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   int checkCount,samples;boolean finished;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
-    boolean semanticRoute;JSONObject productionPoll;
+    boolean semanticRoute;JSONObject productionPoll;String navigationError="";
     FixtureView(Context c,ChatSession owner){super(c,owner);}
     @Override public String getUrl(){return semanticRoute?MainActivity.ORIGIN+"c/performance-fixture":super.getUrl();}
     @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){super.evaluateJavascript(code,raw->{if(semanticRoute&&code.contains("window.__pocketReadDriver(\"poll\","))productionPoll=J.parse(raw);if(callback!=null)callback.onReceiveValue(raw);});}
     @Override protected boolean allowedUrl(String target){return target!=null&&target.startsWith(ORIGIN+"/");}
     @Override boolean readingPage(String target){return target!=null&&target.startsWith(ORIGIN+PATH);}
+    @Override JSONObject route(String target){
+      // Observe the real guard/proxy decision; never substitute a permitted route.
+      JSONObject decision=super.route(target);
+      Log.i("PocketGeckoPerformance",J.obj("kind","route","value",J.obj("url",target,"decision",decision,"guardAllowed",owner.guard.allowed(),"offline",owner.offline,"networkReady",owner.networkReady)).toString());
+      return decision;
+    }
+    @Override GeckoSession newSession(){
+      GeckoSession sdk=super.newSession();GeckoSession.NavigationDelegate original=sdk.getNavigationDelegate();
+      sdk.setNavigationDelegate(new GeckoSession.NavigationDelegate(){
+        @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession s,LoadRequest r){return original.onLoadRequest(s,r);}
+        @Override public GeckoResult<AllowOrDeny> onSubframeLoadRequest(GeckoSession s,LoadRequest r){return original.onSubframeLoadRequest(s,r);}
+        @Override public void onLocationChange(GeckoSession s,String target,List<GeckoSession.PermissionDelegate.ContentPermission> permissions,Boolean gesture){original.onLocationChange(s,target,permissions,gesture);}
+        @Override public void onCanGoBack(GeckoSession s,boolean value){original.onCanGoBack(s,value);}
+        @Override public void onCanGoForward(GeckoSession s,boolean value){original.onCanGoForward(s,value);}
+        @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){return original.onNewSession(s,target);}
+        @Override public GeckoResult<String> onLoadError(GeckoSession s,String target,WebRequestError error){
+          if(target!=null&&target.startsWith(ORIGIN+PATH)){
+            navigationError="Controlled Gecko load error category="+error.category+" code="+error.code+" uri="+target;
+            Log.i("PocketGeckoPerformance",J.obj("kind","loadError","value",J.obj("url",target,"category",error.category,"code",error.code,"guardAllowed",owner.guard.allowed(),"offline",owner.offline,"networkReady",owner.networkReady)).toString());
+          }
+          return original.onLoadError(s,target,error);
+        }
+      });return sdk;
+    }
   }
   interface Step {void run()throws Exception;}
   interface Result {void accept(JSONObject value)throws Exception;}
@@ -41,7 +67,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   @Override public void onCreate(Bundle saved){super.onCreate(saved);attempt(()->{
     if(!getPackageName().endsWith(".test"))throw new SecurityException("Only isolated integration package may run this fixture");
     getSharedPreferences("chat",0).edit().putString("browserEngine","gecko").putString("networkMode","external")
-      .putString("proxy","").putBoolean("requireExternalVpn",false).putBoolean("networkConfigured",false)
+      .putString("proxy","socks://127.0.0.1:1087").putBoolean("requireExternalVpn",false).putBoolean("networkConfigured",false)
       .putBoolean("pageMode",true).putBoolean("desktopMode",true).putInt("privacyLevel",1)
       .putBoolean("backgroundWait",false).putBoolean("replyNotice",false).commit();
     ProfileCatalog.get(this).created(Profiles.slot(this));ChatSession.browserFactory=FixtureView::new;session=ChatSession.get(this);
@@ -67,6 +93,8 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     if(!driver.contains(guard))throw new IllegalStateException("Unexpected production origin guard");
     // Adapt only the HTTPS origin in this test copy. The shipped driver retains its original guard.
     driver=driver.replace(guard,"location.protocol !== 'http:' || location.hostname !== '127.0.0.1' || location.port !== '8767'");
+    ((FixtureView)session.web).navigationError="";
+    event("load",J.obj("variant",variant,"guardAllowed",session.guard.allowed(),"offline",session.offline,"networkReady",session.networkReady,"proxy",session.prefs.getString("proxy","")));
     session.web.loadUrl(ORIGIN+PATH+"?variant="+mode);deadline=SystemClock.elapsedRealtime()+30000;later(this::waitDocument,100);
   }
   void evaluate(String code,boolean measured,Result result){
@@ -78,6 +106,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     }));
   }
   void waitDocument(){attempt(()->{
+    if(!((FixtureView)session.web).navigationError.isEmpty())throw new IllegalStateException(((FixtureView)session.web).navigationError);
     if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Controlled Gecko document timeout");
     // An unavailable extension port briefly returns null before DOMContentLoaded.
     session.web.evaluateJavascript("(()=>({ready:location.pathname==='/performance'&&location.search==="+JSONObject.quote("?variant="+variant)+"&&!!document.getElementById('fixture-ready')}))()",raw->attempt(()->{
