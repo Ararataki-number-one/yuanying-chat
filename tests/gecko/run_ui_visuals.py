@@ -12,6 +12,20 @@ def dump():
 def click(xml,label):
     node=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text')==label)
     x1,y1,x2,y2=map(int,re.findall(r'\d+',node.attrib['bounds']));adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
+def click_editor_tab(xml,label):
+    deadline=time.monotonic()+20;swipes=0
+    while time.monotonic()<deadline:
+        tree=ET.fromstring(xml)
+        target=next((n for n in tree.iter('node') if n.attrib.get('text')==label and n.attrib.get('clickable')=='true' and n.attrib.get('enabled')=='true'),None)
+        if target is not None:
+            click(xml,label);return swipes
+        scroll=next((n for n in tree.iter('node') if n.attrib.get('class')=='android.widget.HorizontalScrollView' and any(child.attrib.get('text') in ['基本信息','网络配置','浏览器','使用偏好'] for child in n.iter('node'))),None)
+        if scroll is not None and swipes<6:
+            left,top,right,bottom=map(int,re.findall(r'\d+',scroll.attrib['bounds']));y=(top+bottom)//2
+            adb('shell','input','swipe',str(left+(right-left)*4//5),str(y),str(left+(right-left)//5),str(y),'350');swipes+=1
+        else:time.sleep(.2)
+        xml=dump()
+    raise TimeoutError(('Editor tab did not appear after horizontal scrolling',label,swipes,xml[-3000:]))
 def capture(variant,width,height,scale,scene):
     adb('shell','am','force-stop',package);adb('logcat','-c')
     if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
@@ -26,9 +40,9 @@ def capture(variant,width,height,scale,scene):
         if required in xml:break
         if time.monotonic()>deadline:raise AssertionError((variant,scene,'screen did not appear',xml[-2000:]))
         time.sleep(.5)
-    if scene=='browser':click(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
+    if scene=='browser':click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
     if scene=='preferences':
-        click(xml,'使用偏好');time.sleep(.5)
+        tab_scrolls=click_editor_tab(xml,'使用偏好');time.sleep(.5)
         expected={'自动同步可见历史会话','保存本机输入草稿','恢复网页滚动位置','后台检测回复','回复完成通知','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}
         seen=set();collected=[]
         for attempt in range(8):
@@ -40,7 +54,7 @@ def capture(variant,width,height,scale,scene):
             left,top,right,bottom=map(int,re.findall(r'\d+',scroll.attrib['bounds']));x=(left+right)//2
             adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350')
         assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))
-        preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected)}
+        preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected),'tabScrolls':tab_scrolls}
     if scene=='chat':time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置','原网页'])
     assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
     if variant=='current' and scene=='entries':
