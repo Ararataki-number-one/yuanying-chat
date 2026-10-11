@@ -87,6 +87,20 @@ try:
                     return value
             time.sleep(.2)
         raise TimeoutError(('No compact chrome event',command,event,raw[-5000:]))
+    def focus(activity):
+        deadline=time.monotonic()+20
+        while time.monotonic()<deadline:
+            state=adb('shell','dumpsys','activity','activities')
+            if any(activity in line for line in state.splitlines() if 'mResumedActivity' in line or 'topResumedActivity' in line):return
+            time.sleep(.2)
+        raise TimeoutError(('Activity did not resume',activity,state[-3000:]))
+    def visible(label,present=True):
+        deadline=time.monotonic()+20
+        while time.monotonic()<deadline:
+            xml=dump();found=any(n.attrib.get('text')==label or n.attrib.get('content-desc')==label for n in ET.fromstring(xml).iter('node'))
+            if found==present:return
+            time.sleep(.2)
+        raise TimeoutError(('Dialog visibility did not settle',label,present,xml[-3000:]))
     for width,scale in [(360,1),(412,1),(360,2)]:
         adb('shell','am','force-stop',package);adb('logcat','-c')
         adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
@@ -119,7 +133,15 @@ try:
             action=chrome_event(command,'action')
             expected='activity:local.pocketchat.WindowHomeActivity' if control['name']=='environment' else control['name']
             assert action['action']==expected and action['actions']==before['actions']+1 and action['page']==0,(control,action)
-            if control['name'] in ['drawer','environment','more']:adb('shell','input','keyevent','KEYCODE_BACK')
+            if control['name']=='environment':
+                focus('local.pocketchat.WindowHomeActivity')
+                adb('shell','input','keyevent','KEYCODE_BACK')
+                focus('local.pocketchat.CompactChromeIntegrationActivity')
+            elif control['name'] in ['drawer','more']:
+                label='最近聊天' if control['name']=='drawer' else '会话选项'
+                visible(label)
+                adb('shell','input','keyevent','KEYCODE_BACK')
+                visible(label,False)
             taps.append({'control':control['name'],'expandedRegion':True,'action':action['action']})
         compact.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','readOnlyStatus':True,'actualAndroidTaps':taps,'layout':sample})
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()

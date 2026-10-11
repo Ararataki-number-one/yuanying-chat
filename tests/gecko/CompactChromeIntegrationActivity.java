@@ -70,6 +70,8 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
 
   void snapshot(String event){
     try{
+      handler.removeCallbacks(ticker);
+      session.remove(sessionObserver);
       long now=System.currentTimeMillis();
       JSONObject config=J.obj("subscriptionUrl","https://example.test/compact-layout","exitHost","example.test","exitPort",1080,"exitRegion","日本 · Tokyo");
       JSONObject runtime=J.obj("at",now,"mode","internal","configured",true,"connected",true,"exitId",NetworkCatalog.exitId(config),"subscriptionId",NativeNetwork.hash(config.optString("subscriptionUrl")),"ip","203.0.113.25","entry","Entry|大阪 03","delayEntry","Entry|大阪 03","delay",42,"delayAt",now);

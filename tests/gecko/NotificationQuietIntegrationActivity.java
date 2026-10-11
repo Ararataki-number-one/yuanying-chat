@@ -4,6 +4,7 @@ import android.app.*;
 import android.content.*;
 import android.os.*;
 import android.service.notification.StatusBarNotification;
+import android.service.notification.NotificationListenerService;
 import android.util.Log;
 import android.widget.TextView;
 import org.json.*;
@@ -13,7 +14,7 @@ import java.util.*;
 public final class NotificationQuietIntegrationActivity extends Activity {
   final Handler handler=new Handler(Looper.getMainLooper());final JSONArray checks=new JSONArray();
   NotificationManager manager;ChatSession session;Context owner,other;JSONObject job;
-  boolean started,leftApp;long deadline;String prefix=UUID.randomUUID().toString();
+  boolean started,leftApp,finished;long deadline;String prefix=UUID.randomUUID().toString();
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test")||Profiles.processSlot()!=7)throw new SecurityException("Isolated test profile required");TextView label=new TextView(this);label.setText("后台通知与完成提醒回归");setContentView(label);manager=getSystemService(NotificationManager.class);}
   @Override protected void onResume(){super.onResume();if(!started){started=true;handler.postDelayed(this::begin,300);}}
@@ -22,6 +23,22 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   void event(String kind,JSONObject result){Log.i("PocketQuietNotifications",J.obj("kind",kind,"value",result).toString());}
   void report(String status,String error){Log.i("PocketQuietNotifications",J.obj("status",status,"actualAndroidExecution",true,"checkCount",checks.length(),"error",error,"scope","Android channels, real foreground services, real Home, production stable-terminal gate and persisted profile-local completion reminders; no real account").toString());}
   StatusBarNotification notice(int id){for(StatusBarNotification n:manager.getActiveNotifications())if(n.getId()==id)return n;return null;}
+  interface Condition {boolean ready()throws Exception;}
+  interface Step {void run()throws Exception;}
+  void await(String name,Condition condition,Step next){await(name,condition,next,false);}
+  void awaitQuiet(String name,Condition condition,Step next){await(name,condition,next,true);}
+  void await(String name,Condition condition,Step next,boolean stable){
+    long expires=SystemClock.elapsedRealtime()+5000;
+    handler.post(new Runnable(){long readySince;
+      @Override public void run(){if(finished)return;try{
+        long now=SystemClock.elapsedRealtime();boolean ready=condition.ready();
+        if(ready){if(readySince==0)readySince=now;if(!stable||now-readySince>=500){next.run();return;}}else readySince=0;
+        if(now>=expires)throw new IllegalStateException("Android notification state did not settle: "+name);
+        handler.postDelayed(this,100);
+      }catch(Exception e){fail(e);}}
+    });
+  }
+  boolean completionVisible(Context c,String id){StatusBarNotification n=notice(Profiles.notification(c,4102));return n!=null&&ChatService.open(c,job.optString("confirmedUrl"),"done:"+id).equals(n.getNotification().contentIntent);}
   void seed(String channel,int id){manager.createNotificationChannel(new NotificationChannel(channel,"旧版本状态提醒",NotificationManager.IMPORTANCE_DEFAULT));manager.notify(id,new Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("旧版提示").build());}
   void begin(){try{
     owner=Profiles.context(this,7);other=Profiles.context(this,6);
@@ -46,7 +63,9 @@ public final class NotificationQuietIntegrationActivity extends Activity {
     NotificationChannel c=manager.getNotificationChannel(channel);
     // Android may promote MIN foreground channels to LOW; never demand an
     // unsupported hidden-service trick merely to make this assertion pass.
-    check(channel+" remains silent at MIN or system-required LOW",c!=null&&c.getImportance()<=NotificationManager.IMPORTANCE_LOW&&c.getSound()==null&&!c.shouldVibrate()&&!c.canShowBadge()&&c.getLockscreenVisibility()==Notification.VISIBILITY_SECRET);
+    // Android resets app-supplied channel visibility to its app-wide default.
+    // The actual foreground notifications must still use SECRET (checked below).
+    check(channel+" remains silent at MIN or system-required LOW",c!=null&&c.getImportance()<=NotificationManager.IMPORTANCE_LOW&&c.getSound()==null&&!c.shouldVibrate()&&!c.canShowBadge()&&(c.getLockscreenVisibility()==Notification.VISIBILITY_SECRET||c.getLockscreenVisibility()==NotificationListenerService.Ranking.VISIBILITY_NO_OVERRIDE));
   }
   void waiting(){try{
     StatusBarNotification wait=notice(Profiles.notification(owner,4101)),network=notice(NetworkTransportService.NOTICE);
@@ -71,28 +90,60 @@ public final class NotificationQuietIntegrationActivity extends Activity {
     check("Stable terminal reply is accepted only after repeated observations",session.webObserver.mayComplete(job,poll));
     session.completeReply(job,poll);handler.postDelayed(this::completed,500);
   }catch(Exception e){fail(e);}}
-  void completed(){try{
+  void completed(){await("completed reply and stopped foreground service",()->completionVisible(owner,job.optString("id"))&&!ChatService.running&&notice(Profiles.notification(owner,4101))==null,this::firstCompletion);}
+  void firstCompletion()throws Exception{
     StatusBarNotification first=notice(Profiles.notification(owner,4102));
     check("A detected complete reply produces the one regular reminder",first!=null&&ChatService.DONE.equals(first.getNotification().getChannelId())&&(first.getNotification().flags&Notification.FLAG_ONGOING_EVENT)==0);
     check("Completion ends the waiting foreground service",session.pending==null&&!ChatService.running&&notice(Profiles.notification(owner,4101))==null);
-    String a=job.optString("id"),b=prefix+"-second";
-    ChatService.completed(owner,b,job.optString("confirmedUrl"));manager.cancel(Profiles.notification(owner,4102));ChatService.completed(owner,a,job.optString("confirmedUrl"));
+    String b=prefix+"-second";
+    ChatService.completed(owner,b,job.optString("confirmedUrl"));
+    await("second reply replaces the first notice",()->completionVisible(owner,b),()->{
+      manager.cancel(Profiles.notification(owner,4102));
+      await("second notice removed by Android",()->notice(Profiles.notification(owner,4102))==null,()->{
+        ChatService.completed(owner,job.optString("id"),job.optString("confirmedUrl"));
+        awaitQuiet("older reply remains deduplicated",()->notice(Profiles.notification(owner,4102))==null,this::olderCompletion);
+      });
+    });
+  }
+  void olderCompletion()throws Exception{
     check("An older completed reply cannot re-alert after another reply",notice(Profiles.notification(owner,4102))==null);
     ChatService.completed(owner,prefix+"-aggregate-legacy",MainActivity.ORIGIN);
+    awaitQuiet("aggregate legacy receipt remains quiet",()->notice(Profiles.notification(owner,4102))==null,this::aggregateLegacy);
+  }
+  void aggregateLegacy()throws Exception{
     check("Aggregate legacy receipts migrate to the indexed ledger without re-alerting",notice(Profiles.notification(owner,4102))==null&&ReplyNoticeLedger.notified(owner,prefix+"-aggregate-legacy")&&!owner.getSharedPreferences("chat",0).contains("notifiedJobs"));
     owner.getSharedPreferences("chat",0).edit().putString("notifiedJob",prefix+"-legacy").commit();ChatService.completed(owner,prefix+"-legacy",MainActivity.ORIGIN);
+    awaitQuiet("single-job legacy receipt remains quiet",()->notice(Profiles.notification(owner,4102))==null,this::singleLegacy);
+  }
+  void singleLegacy()throws Exception{
     check("Existing single-job notification records are respected",notice(Profiles.notification(owner,4102))==null);
+    String a=job.optString("id");
     ChatService.completed(other,a,job.optString("confirmedUrl"));
+    await("another environment posts its independent completion",()->completionVisible(other,a),this::independentCompletion);
+  }
+  void independentCompletion()throws Exception{
+    String a=job.optString("id");
     check("The same completion identity in another environment remains independent",notice(Profiles.notification(other,4102))!=null&&ReplyNoticeLedger.notified(other,a));
     AppPrefs.apply(owner,J.obj("replyNotice",false));String retry=prefix+"-retry";ChatService.completed(owner,retry,MainActivity.ORIGIN);
+    awaitQuiet("disabled reminders stay absent",()->notice(Profiles.notification(owner,4102))==null,this::disabledCompletion);
+  }
+  void disabledCompletion()throws Exception{
+    String retry=prefix+"-retry";
     check("A disabled reminder is not posted or incorrectly marked delivered",notice(Profiles.notification(owner,4102))==null&&!ReplyNoticeLedger.notified(owner,retry));
     AppPrefs.apply(owner,J.obj("replyNotice",true));ChatService.completed(owner,retry,MainActivity.ORIGIN);
+    // The retry uses the home URL, so match its actual PendingIntent separately.
+    await("enabled completion retry becomes visible",()->{StatusBarNotification n=notice(Profiles.notification(owner,4102));return n!=null&&ChatService.open(owner,MainActivity.ORIGIN,"done:"+retry).equals(n.getNotification().contentIntent);},this::retriedCompletion);
+  }
+  void retriedCompletion()throws Exception{
     check("A completion can be retried after reminders are enabled",notice(Profiles.notification(owner,4102))!=null);
     ChatService.needsAttention(owner,"synthetic attention");ChatService.networkLost(owner);ChatService.downloaded(owner,"synthetic-file","synthetic.png");
+    awaitQuiet("non-completion events remain quiet",()->notice(Profiles.notification(owner,4103))==null&&notice(Profiles.notification(owner,4104))==null&&notice(Profiles.notification(owner,4105))==null,this::quietEvents);
+  }
+  void quietEvents()throws Exception{
     check("Attention network and download events remain in-app without separate reminders",notice(Profiles.notification(owner,4103))==null&&notice(Profiles.notification(owner,4104))==null&&notice(Profiles.notification(owner,4105))==null);
     check("Background observation remains enabled by default",AppPrefs.enabled(owner,"backgroundWait"));
-    cleanup();report("passed","");
-  }catch(Exception e){fail(e);}}
+    finished=true;handler.removeCallbacksAndMessages(null);cleanup();report("passed","");
+  }
   void cleanup(){if(owner!=null)ChatService.end(owner);stopService(new Intent(this,NetworkTransportService.class));if(session!=null){session.pending=null;session.prefs.edit().remove("pending").commit();session.handler.removeCallbacks(session.tick);session.web.destroy();}for(Context c:new Context[]{owner,other})if(c!=null)manager.cancel(Profiles.notification(c,4102));}
-  void fail(Exception e){cleanup();report("failed",e.toString());}
+  void fail(Exception e){if(finished)return;finished=true;handler.removeCallbacksAndMessages(null);cleanup();report("failed",e.toString());}
 }
