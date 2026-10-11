@@ -4,7 +4,7 @@ import argparse,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as 
 
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
 p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()
-package='local.pocketchat.test';scenes=['chat','environments','network','proxy','entries','browser'];records=[]
+package='local.pocketchat.test';scenes=['chat','environments','network','proxy','entries','browser','preferences'];records=[]
 def adb(*values):return subprocess.check_output([args.adb,'-s',args.serial,*values],timeout=90).decode(errors='replace')
 def dump():
     adb('shell','uiautomator','dump','/sdcard/ui-visual.xml')
@@ -17,7 +17,7 @@ def capture(variant,width,height,scale,scene):
     if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
     adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
     adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene)
-    required={'chat':'原网页','environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息'}[scene]
+    required={'chat':'原网页','environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息'}[scene]
     deadline=time.monotonic()+35
     while True:
         xml=dump()
@@ -27,6 +27,20 @@ def capture(variant,width,height,scale,scene):
         if time.monotonic()>deadline:raise AssertionError((variant,scene,'screen did not appear',xml[-2000:]))
         time.sleep(.5)
     if scene=='browser':click(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
+    if scene=='preferences':
+        click(xml,'使用偏好');time.sleep(.5)
+        expected={'自动同步可见历史会话','保存本机输入草稿','恢复网页滚动位置','后台检测回复','回复完成通知','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}
+        seen=set();collected=[]
+        for attempt in range(8):
+            xml=dump();collected.append(xml)
+            seen.update(n.attrib.get('text','') for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.CheckBox')
+            assert not any(label in xml for label in ['文件保存完成通知','网络中断提醒','后台等待回复']),(variant,scene,xml)
+            if seen==expected:break
+            scroll=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView')
+            left,top,right,bottom=map(int,re.findall(r'\d+',scroll.attrib['bounds']));x=(left+right)//2
+            adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350')
+        assert seen==expected,(variant,scene,'Preference controls missing or unexpected',sorted(seen))
+        preference_check={'preferenceControls':sorted(seen),'removedNoticeControlsAbsent':True,'scrollFrames':len(collected)}
     if scene=='chat':time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置','原网页'])
     assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
     if variant=='current' and scene=='entries':
@@ -40,7 +54,9 @@ def capture(variant,width,height,scale,scene):
     pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3),(variant,scene,'Unexpected actual viewport',pixels)
     density=int(re.findall(r'density: (\d+)',adb('shell','wm','density'))[-1]);assert density==480,density
     (shots/(stem+'.png')).write_bytes(raw)
-    records.append({'variant':variant,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml'})
+    record={'variant':variant,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml'}
+    if scene=='preferences':record.update(preference_check)
+    records.append(record)
 try:
     for variant in ['baseline','current']:
         adb('shell','am','force-stop',package)
@@ -49,7 +65,7 @@ try:
         if int(adb('shell','getprop','ro.build.version.sdk').strip())>=33:adb('shell','pm','grant',package,'android.permission.POST_NOTIFICATIONS')
         for width,height in [(360,640),(412,640)]:
             for scene in scenes:capture(variant,width,height,1,scene)
-        for scene in ['proxy','entries','browser']+(['chat'] if variant=='current' else []):capture(variant,360,640,2,scene)
+        for scene in ['proxy','entries','browser','preferences']+(['chat'] if variant=='current' else []):capture(variant,360,640,2,scene)
     # Supplementary native screens for the new mode, with trusted Android taps.
     optimization=[]
     for width,scale in [(360,1),(412,1),(360,2)]:

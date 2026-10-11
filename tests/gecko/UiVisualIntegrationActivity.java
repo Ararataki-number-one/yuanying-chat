@@ -15,8 +15,8 @@ public final class UiVisualIntegrationActivity extends Activity {
     super.onCreate(state);String action=getIntent().getStringExtra("visualAction");
     try{seed();}catch(Exception e){Log.e("PocketUiVisual","fixture setup failed",e);finish();return;}
     if("environments".equals(action)){startActivity(new Intent(this,WindowHomeActivity.class));finish();return;}
-    if("browser".equals(action)||"chat".equals(action)){
-      Intent target=new Intent(this,MainActivity.class).putExtra("openWindowAction","browser".equals(action)?"edit":"native-smoke");
+    if("browser".equals(action)||"preferences".equals(action)||"chat".equals(action)){
+      Intent target=new Intent(this,MainActivity.class).putExtra("openWindowAction","chat".equals(action)?"native-smoke":"edit");
       startActivity(target);finish();return;
     }
     if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);

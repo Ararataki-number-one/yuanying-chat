@@ -9,15 +9,29 @@ if subprocess.run(['git','cat-file','-e',baseline+'^{commit}'],cwd=root,stdout=s
     subprocess.run(['git','fetch','--depth=1','origin',baseline],cwd=root,check=True)
 files=[root/'app/src/main/java/local/pocketchat'/name for name in ['DesignUi.java','ReferenceUi.java','WindowHomeActivity.java','DesignChrome.java','EnvironmentEditorUi.java','EntryPickerUi.java','NetworkWorkspaceUi.java','BrowserDisplayUi.java']]
 original={file:file.read_bytes() for file in files}
+editor=root/'app/src/main/java/local/pocketchat/EnvironmentEditorUi.java'
+preference_start=b'    CheckBox[] options=new CheckBox[AppPrefs.KEYS.length];'
+preference_end='    DesignUi.action(preferences,"下载位置与存储",false,()->storage(a));'.encode()
+def preference_binding(source):
+    start=source.index(preference_start);end=source.index(preference_end,start)
+    return start,end,source[start:end]
+_,_,current_preferences=preference_binding(original[editor])
 current=root/'app/build/outputs/apk/integration/app-x86_64-integration.apk'
 shutil.copy2(current,out/'ui-current.apk')
 try:
-    for file in files:file.write_bytes(subprocess.check_output(['git','show',baseline+':'+str(file.relative_to(root))],cwd=root))
+    for file in files:
+        source=subprocess.check_output(['git','show',baseline+':'+str(file.relative_to(root))],cwd=root)
+        if file==editor:
+            # Historical UI indexed nine settings. Bind it to the current semantic
+            # preferences without replaying old AppPrefs or restoring removed notices.
+            start,end,_=preference_binding(source)
+            source=source[:start]+current_preferences+source[end:]
+        file.write_bytes(source)
     subprocess.run([args.gradle,':app:assembleIntegration','-PtestSigningKey='+args.key,'--console=plain'],cwd=root,check=True)
     shutil.copy2(current,out/'ui-baseline.apk')
 finally:
     for file,content in original.items():file.write_bytes(content)
     shutil.copy2(out/'ui-current.apk',current)
 assert all(file.read_bytes()==content for file,content in original.items())
-record={'baselineStyleCommit':subprocess.check_output(['git','rev-parse',baseline],cwd=root,text=True).strip(),'coreSourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'changedForBaseline':[str(f.relative_to(root)) for f in files], 'currentSha256':hashlib.sha256((out/'ui-current.apk').read_bytes()).hexdigest(),'baselineSha256':hashlib.sha256((out/'ui-baseline.apk').read_bytes()).hexdigest()}
+record={'baselineStyleCommit':subprocess.check_output(['git','rev-parse',baseline],cwd=root,text=True).strip(),'coreSourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'changedForBaseline':[str(f.relative_to(root)) for f in files],'compatibility':{'environmentPreferences':'Current semantic bindings; AppPrefs and network/notification implementations remain current.'}, 'currentSha256':hashlib.sha256((out/'ui-current.apk').read_bytes()).hexdigest(),'baselineSha256':hashlib.sha256((out/'ui-baseline.apk').read_bytes()).hexdigest()}
 (out/'ui-build-comparison.json').write_text(json.dumps(record,indent=2)+'\n')

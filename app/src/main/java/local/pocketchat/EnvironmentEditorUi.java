@@ -61,10 +61,13 @@ final class EnvironmentEditorUi {
     }));
 
     CheckBox[] options=new CheckBox[AppPrefs.KEYS.length];
-    String[] headings={"会话与恢复","后台与通知","下载与存储"};int[][] ranges={{0,3},{3,7},{7,9}};
-    for(int section=0;section<ranges.length;section++){
+    String[] headings={"会话与恢复","后台与通知","下载与存储"};
+    String[][] preferenceGroups={{"autoHistory","saveDraft","restoreScroll"},{"backgroundWait","replyNotice"},{"wifiDownloads","cleanTemporaryCache"}};
+    List<String> preferenceKeys=Arrays.asList(AppPrefs.KEYS);
+    for(int section=0;section<preferenceGroups.length;section++){
       DesignUi.section(preferences,headings[section],"");LinearLayout card=DesignUi.card(a);
-      for(int i=ranges[section][0];i<ranges[section][1];i++){
+      for(String key:preferenceGroups[section]){
+        int i=preferenceKeys.indexOf(key);if(i<0)continue;
         options[i]=new CheckBox(a);options[i].setText(AppPrefs.LABELS[i]);options[i].setTextColor(DesignUi.TEXT);options[i].setTextSize(14);
         options[i].setChecked(initial.has(AppPrefs.KEYS[i])?initial.optBoolean(AppPrefs.KEYS[i]):AppPrefs.enabled(a,AppPrefs.KEYS[i]));card.addView(options[i]);
       }DesignUi.addCard(preferences,card);
@@ -73,7 +76,7 @@ final class EnvironmentEditorUi {
 
     java.util.function.Supplier<JSONObject> read=()->{
       JSONObject value=J.obj("name",name.getText().toString().trim(),"group",group.getText().toString().trim(),"notes",notes.getText().toString().trim(),"desktopSite",displayChoice.getSelectedItemPosition()==1,"privacyLevel",privacy.getSelectedItemPosition());
-      for(int i=0;i<options.length;i++)try{value.put(AppPrefs.KEYS[i],options[i].isChecked());}catch(Exception ignored){}return value;
+      for(int i=0;i<options.length;i++)if(options[i]!=null)try{value.put(AppPrefs.KEYS[i],options[i].isChecked());}catch(Exception ignored){}return value;
     };
     final JSONObject baseline=read.get();
     exit[0]=()->{
