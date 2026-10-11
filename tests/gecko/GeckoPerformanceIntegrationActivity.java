@@ -29,20 +29,30 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   int checkCount,samples,inputFocusSamples,directDeferredSamples,nativeDeferredSamples;boolean finished,inputRequested,directDeferralChecked,nativeDeferralChecked;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
   String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
   String inputReadinessKey="";long inputReadySince;int inputTraceOffset,inputReadinessSequence;boolean inputImeSettled;
+  GeckoInputTrace nativeInputTrace;
   CountDownLatch archiveEntered,archiveRelease;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
-    boolean semanticRoute,inspectPending;JSONObject productionPoll,productionInspect;int pageStateReads,stableBeforeInspectedPoll=-1,completionBeforeInspectedPoll=-1;String pageStateDraft="",navigationError="",semanticUrl=MainActivity.ORIGIN+"c/performance-fixture";
+    boolean semanticRoute,inspectPending,inputTracing;JSONObject productionPoll,productionInspect;int pageStateReads,stableBeforeInspectedPoll=-1,completionBeforeInspectedPoll=-1,inputEvaluateSequence;String pageStateDraft="",navigationError="",semanticUrl=MainActivity.ORIGIN+"c/performance-fixture";
     FixtureView(Context c,ChatSession owner){super(c,owner);}
     @Override public String getUrl(){return semanticRoute?semanticUrl:super.getUrl();}
     @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){
+      int inputSequence=inputTracing?inputEvaluateSequence++:-1;
+      if(inputSequence>=0)inputEvaluation("begin",inputSequence,code);
       if(semanticRoute&&inspectPending&&code.contains("window.__pocketReadDriver(\"poll\",")){inspectPending=false;stableBeforeInspectedPoll=owner.stableTicks;completionBeforeInspectedPoll=owner.webObserver.completionSamples;}
       super.evaluateJavascript(code,raw->{
+      if(inputSequence>=0)inputEvaluation("end",inputSequence,code);
       if(semanticRoute&&code.contains("window.__pocketReadDriver(\"poll\","))productionPoll=J.parse(raw);
       if(semanticRoute&&code.contains("window.__pocketReadDriver(\"web-inspect\","))productionInspect=J.parse(raw);
       if(semanticRoute&&code.contains("window.__pocketReadDriver(\"page-state\",")){pageStateReads++;pageStateDraft=J.parse(raw).optString("draft");}
       if(callback!=null)callback.onReceiveValue(raw);
     });}
+    void inputEvaluation(String phase,int sequence,String code){
+      String action=code.contains("__fixtureInputTrace={")?"input-trace-install":code.contains("trace?.events||[]")?"input-snapshot":
+        code.contains("__pocketReadDriver(\"page-state\"")?"page-state":code.contains("__pocketReadDriver(\"restore-draft\"")?"restore-draft":
+        code.contains("__pocketReadDriver(\"fill\"")?"fill":code.contains("scrollIntoView")?"reveal-focus":code.contains("setSelectionRange")?"selection-script":"other";
+      Log.i("PocketGeckoPerformance",J.obj("kind","inputEvaluation","value",J.obj("sequence",sequence,"phase",phase,"elapsedRealtime",SystemClock.elapsedRealtime(),"wallTimeMillis",System.currentTimeMillis(),"action",action,"characters",code.length(),"hash",Integer.toHexString(code.hashCode()),"prefix",action.equals("other")?code.substring(0,Math.min(180,code.length())):"","inFlight",owner.inFlight,"pending",owner.pending!=null,"thread",Thread.currentThread().getName())).toString());
+    }
     @Override protected boolean allowedUrl(String target){return target!=null&&target.startsWith(ORIGIN+"/");}
     @Override boolean readingPage(String target){return target!=null&&target.startsWith(ORIGIN+PATH);}
     @Override JSONObject route(String target){
@@ -76,7 +86,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   void later(Step step,long delay){handler.postDelayed(()->attempt(step),delay);}
   void event(String kind,JSONObject value){Log.i("PocketGeckoPerformance",J.obj("kind",kind,"value",value).toString());}
   void check(String name,boolean pass){checkCount++;event("check",J.obj("name",name,"pass",pass));if(!pass)throw new IllegalStateException(name);}
-  void fail(Exception error){if(finished)return;finished=true;frames.stop();if(archiveRelease!=null)archiveRelease.countDown();event("report",J.obj("status","failed","actualAndroidExecution",true,"actualGeckoExecution",true,"checkCount",checkCount,"error",error.toString()));}
+  void fail(Exception error){if(finished)return;finished=true;stopInputTrace();frames.stop();if(archiveRelease!=null)archiveRelease.countDown();event("report",J.obj("status","failed","actualAndroidExecution",true,"actualGeckoExecution",true,"checkCount",checkCount,"error",error.toString()));}
   String asset(String name)throws Exception{try(InputStream in=getAssets().open(name)){return J.text(in,512*1024);}}
   @Override public void onCreate(Bundle saved){super.onCreate(saved);attempt(()->{
     if(!getPackageName().endsWith(".test"))throw new SecurityException("Only isolated integration package may run this fixture");
@@ -321,25 +331,36 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     }));
   });}
   String inputTraceInstall(){return "(()=>{const composer=document.getElementById('prompt-textarea'),trace=window.__fixtureInputTrace={events:[],overflow:false};"+
-    "for(const type of ['focus','blur','keydown','keyup','beforeinput','input','compositionstart','compositionupdate','compositionend','select'])composer.addEventListener(type,event=>{"+
-    "if(trace.events.length>=256){trace.overflow=true;return;}trace.events.push({type:event.type,key:event.key||'',data:event.data??'',inputType:event.inputType||'',trusted:event.isTrusted,composing:!!event.isComposing,time:performance.now(),draft:composer.value,start:composer.selectionStart,end:composer.selectionEnd});});return {installed:true};})()";}
+    "const record=(type,extra={})=>{if(trace.events.length>=512){trace.overflow=true;return;}trace.events.push({type,time:performance.now(),timeOrigin:performance.timeOrigin,draft:composer.value,start:composer.selectionStart,end:composer.selectionEnd,...extra});};"+
+    "for(const type of ['focus','blur','keydown','keyup','beforeinput','input','compositionstart','compositionupdate','compositionend','select'])composer.addEventListener(type,event=>"+
+    "record(event.type,{key:event.key||'',data:event.data??'',inputType:event.inputType||'',trusted:event.isTrusted,composing:!!event.isComposing}));"+
+    "document.addEventListener('selectionchange',event=>{if(document.activeElement===composer||event.target===composer)record('selectionchange',{target:event.target===composer?'composer':'document',trusted:event.isTrusted});},true);"+
+    // Passive diagnostics around the original methods/setters: no focus or selection writes.
+    "const caller=()=>String(new Error().stack||'').slice(0,360);"+
+    "for(const name of ['setSelectionRange','setRangeText','select','focus','blur']){const original=composer[name];if(typeof original!=='function')continue;Object.defineProperty(composer,name,{configurable:true,writable:true,value:function(...args){record('script-call',{method:name,arguments:args.map(value=>typeof value==='string'?value.slice(0,90):typeof value==='object'?'[object]':value),stack:caller()});const value=original.apply(this,args);record('script-return',{method:name});return value;}});}"+
+    "for(const name of ['selectionStart','selectionEnd','selectionDirection','value']){let prototype=composer,descriptor;while(prototype&&!(descriptor=Object.getOwnPropertyDescriptor(prototype,name)))prototype=Object.getPrototypeOf(prototype);if(!descriptor?.get||!descriptor?.set||!descriptor.configurable)continue;Object.defineProperty(composer,name,{...descriptor,get(){return descriptor.get.call(this);},set(value){record('script-setter',{property:name,value:typeof value==='string'?value.slice(0,90):value,stack:caller()});descriptor.set.call(this,value);record('script-setter-return',{property:name});}});}"+
+    "return {installed:true};})()";}
   String inputSnapshot(){return "(()=>{const composer=document.getElementById('prompt-textarea'),r=composer.getBoundingClientRect(),vp=visualViewport,trace=window.__fixtureInputTrace;"+
     "return {draft:composer.value,composerFocused:document.activeElement===composer,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),"+
     "start:composer.selectionStart,end:composer.selectionEnd,x:r.left+r.width/2,y:r.top+r.height/2,width:innerWidth,height:innerHeight,"+
     "bounds:{left:r.left,top:r.top,width:r.width,height:r.height},viewport:{width:vp?.width??innerWidth,height:vp?.height??innerHeight,offsetLeft:vp?.offsetLeft??0,offsetTop:vp?.offsetTop??0,scale:vp?.scale??1,innerWidth,innerHeight},"+
     "inputEvents:trace?.events||[],traceOverflow:!!trace?.overflow};})()";}
-  void inputGesture(){evaluate(inputTraceInstall()+";\n"+inputSnapshot(),false,point->{
+  void inputGesture(){attempt(()->{
+    nativeInputTrace=GeckoInputTrace.attach(((FixtureView)session.web).current,value->event("nativeInputTrace",value));
+    ((FixtureView)session.web).inputTracing=true;
+    evaluate(inputTraceInstall()+";\n"+inputSnapshot(),false,point->{
     inputDraft=point.optString("draft");if(inputDraft.contains(INPUT_MARKER))throw new IllegalStateException("Input fixture draft already contains the synthetic marker");
     inputRequested=false;inputFocusSamples=0;inputReadinessKey="";inputReadySince=0;inputTraceOffset=inputReadinessSequence=0;inputImeSettled=false;
     int[] position=new int[2];session.web.getLocationOnScreen(position);
     int x=position[0]+(int)(point.optDouble("x")*session.web.getWidth()/point.optDouble("width"));
     int y=position[1]+(int)(point.optDouble("y")*session.web.getHeight()/point.optDouble("height"));
     event("gestureNeeded",J.obj("id","current-input","action","input","x",x,"y",y,"text",INPUT_MARKER));waitInput(SystemClock.elapsedRealtime()+30000);
-  });}
+  });});}
+  void stopInputTrace(){if(session!=null&&session.web instanceof FixtureView)((FixtureView)session.web).inputTracing=false;if(nativeInputTrace!=null){nativeInputTrace.stop();nativeInputTrace=null;}}
   void recordInputTrace(JSONObject value)throws Exception{
     JSONArray events=value.optJSONArray("inputEvents");if(events==null)return;
     while(inputTraceOffset<events.length()){
-      int offset=inputTraceOffset;JSONArray batch=new JSONArray();while(inputTraceOffset<events.length()&&batch.length()<4)batch.put(events.optJSONObject(inputTraceOffset++));
+      int offset=inputTraceOffset;JSONArray batch=new JSONArray();while(inputTraceOffset<events.length()&&batch.length()<2)batch.put(events.optJSONObject(inputTraceOffset++));
       event("inputEvents",J.obj("id","current-input","offset",offset,"events",batch));
     }
   }
@@ -378,7 +399,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     JSONArray recorded=value.optJSONArray("inputEvents");StringBuilder keys=new StringBuilder();int inputs=0;boolean trusted=recorded!=null&&!value.optBoolean("traceOverflow");
     if(recorded!=null)for(int i=0;i<recorded.length();i++){JSONObject item=recorded.optJSONObject(i);String type=item.optString("type");if(type.equals("keydown")&&item.optString("key").length()==1)keys.append(item.optString("key"));if(type.equals("input"))inputs++;if(type.equals("keydown")||type.equals("keyup")||type.equals("beforeinput")||type.equals("input"))trusted&=item.optBoolean("trusted");}
     check("The single Android input burst delivers exact ordered trusted keys and real input events",trusted&&inputs>0&&keys.toString().equals(INPUT_MARKER));
-    check("Actual user input neither sends a message nor changes the synthetic login",value.optInt("sendCount")==0&&value.optString("cookie").contains("session=synthetic-performance"));bindingLifecycle();
+    check("Actual user input neither sends a message nor changes the synthetic login",value.optInt("sendCount")==0&&value.optString("cookie").contains("session=synthetic-performance"));stopInputTrace();bindingLifecycle();
   });}
   // Run after both immutable measurements and all existing capture/gesture checks.
   // Preserve real SPA paths when adapting only the official host for the loopback copy.
@@ -565,5 +586,5 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     @Override public void doFrame(long time){if(!active)return;if(previous>0){long gap=time-previous;count++;sum+=gap;max=Math.max(max,gap);if(gap>32000000L)over32++;}previous=time;Choreographer.getInstance().postFrameCallback(this);}
     JSONObject stop(){active=false;Choreographer.getInstance().removeFrameCallback(this);return J.obj("frames",count,"averageGapMs",count>0?sum/1000000.0/count:0,"maxGapMs",max/1000000.0,"gapsOver32Ms",over32);}
   }
-  @Override protected void onDestroy(){frames.stop();if(archiveRelease!=null)archiveRelease.countDown();handler.removeCallbacksAndMessages(null);if(session!=null)session.handler.removeCallbacks(session.tick);super.onDestroy();}
+  @Override protected void onDestroy(){stopInputTrace();frames.stop();if(archiveRelease!=null)archiveRelease.countDown();handler.removeCallbacksAndMessages(null);if(session!=null)session.handler.removeCallbacks(session.tick);super.onDestroy();}
 }

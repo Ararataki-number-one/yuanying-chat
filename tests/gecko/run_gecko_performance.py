@@ -163,7 +163,7 @@ def main():
         adb('logcat', '-c')
         adb('shell', 'am', 'start', '-W', '-n', package + '/local.pocketchat.GeckoPerformanceIntegrationActivity')
         checks, measurements, gestures, text_inputs, diagnostics = {}, {}, {}, {}, {}
-        input_readiness, input_events = {}, {}
+        input_readiness, input_events, input_evaluations, native_input_events = {}, {}, {}, {}
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             raw = adb('logcat', '-d', '-s', 'PocketGeckoPerformance:I', 'AndroidRuntime:E', '*:S')
@@ -209,6 +209,12 @@ def main():
                 elif item['kind'] == 'inputEvents':
                     trace = item['value']
                     input_events[trace['offset']] = trace
+                elif item['kind'] == 'inputEvaluation':
+                    trace = item['value']
+                    input_evaluations[(trace['sequence'], trace['phase'])] = trace
+                elif item['kind'] == 'nativeInputTrace':
+                    trace = item['value']
+                    native_input_events[trace['seq']] = trace
                 elif item['kind'] == 'report':
                     report = item['value']
                 elif item['kind'] in ['load', 'route', 'loadError']:
@@ -220,7 +226,9 @@ def main():
                               baselineAssetVerification=receipt, actualAndroidGestures=list(gestures.values()),
                               actualAndroidTextInputs=list(text_inputs.values()), device=device)
                 report.update(actualInputReadinessTrace=[input_readiness[key] for key in sorted(input_readiness)],
-                              actualTrustedInputEvents=[event for key in sorted(input_events) for event in input_events[key]['events']])
+                              actualTrustedInputEvents=[event for key in sorted(input_events) for event in input_events[key]['events']],
+                              actualInputEvaluationTrace=[input_evaluations[key] for key in sorted(input_evaluations)],
+                              actualNativeInputTrace=[native_input_events[key] for key in sorted(native_input_events)])
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
                 assert report['status'] == 'passed' and report['actualAndroidExecution'] and report['actualGeckoExecution'] and report['actualAndroidTouchExecution'] and report['actualGeckoBindingRegressionExecution'], report
