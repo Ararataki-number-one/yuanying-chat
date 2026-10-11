@@ -117,9 +117,13 @@ final class DesignChrome {
   private void layoutTouchTargets(){
     if(a.toolbar.getWidth()<=0||networkRow.getHeight()<=0)return;
     Rect[] visible=new Rect[actions.length],expanded=new Rect[actions.length];
+    int[] toolbarAt=new int[2],actionAt=new int[2];
+    a.toolbar.getLocationOnScreen(toolbarAt);
     for(int i=0;i<actions.length;i++){
-      visible[i]=new Rect(0,0,actions[i].getWidth(),actions[i].getHeight());
-      a.toolbar.offsetDescendantRectToMyCoords(actions[i],visible[i]);
+      // Touch targets follow view frames, not TextView's internally scrolled text.
+      actions[i].getLocationOnScreen(actionAt);
+      int left=actionAt[0]-toolbarAt[0],top=actionAt[1]-toolbarAt[1];
+      visible[i]=new Rect(left,top,left+actions[i].getWidth(),top+actions[i].getHeight());
     }
     int touchBottom=Math.min(a.toolbar.getHeight(),networkRow.getTop()+networkRow.getHeight()/2);
     for(int i=0;i<actions.length;i++){

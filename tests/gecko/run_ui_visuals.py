@@ -150,6 +150,11 @@ try:
         for control in sample['controls']:
             assert control['widthDp']>=47.9 and control['heightDp']>=47.9,(sample,control)
             l,t,r,b=control['touch'];tl,tt,tr,tb=sample['toolbar'];assert tl<=l<r<=tr and tt<=t<b<=tb,(sample,control)
+            vl,vt,vr,vb=control['visible'];assert l<=(vl+vr)//2<r and t<=(vt+vb)//2<b,(sample,control,'Touch target misses visible view center')
+            assert l<=vl<vr<=r and t<=vt<vb<=b,(sample,control,'Touch target does not cover visible view frame')
+            assert b<=sample['networkTap'][1],(sample,control,'Touch target overlaps read-only network center')
+        for left_control,right_control in zip(sample['controls'],sample['controls'][1:]):
+            assert left_control['touch'][2]<=right_control['touch'][0],(sample,left_control,right_control,'Neighboring touch targets overlap')
         stem=f'compact-chrome-{width}-font{scale}'
         (shots/(stem+'.xml')).write_text(dump());(shots/(stem+'.png')).write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         for point in [sample['networkTap'],sample['stateTap']]:adb('shell','input','tap',str(point[0]),str(point[1]))
