@@ -304,7 +304,7 @@ class NativeNetwork {
     for(int depth=0;cause!=null&&depth<8;depth++,cause=cause.getCause()){
       if(cause instanceof InterruptedIOException||cause instanceof javax.net.ssl.SSLHandshakeException||cause instanceof javax.net.ssl.SSLPeerUnverifiedException||cause instanceof java.security.cert.CertificateException||cause instanceof UnknownHostException||cause instanceof ConnectException||cause instanceof NoRouteToHostException)return false;
       String message=cause.getMessage()==null?"":cause.getMessage().toLowerCase(Locale.ROOT);
-      interrupted|=cause instanceof EOFException||cause instanceof SocketException&&message.contains("connection reset")||message.startsWith("unexpected end of stream")||message.contains("unexpected eof");
+      interrupted|=cause instanceof EOFException||(cause instanceof SocketException||cause instanceof javax.net.ssl.SSLException)&&message.contains("connection reset")||message.startsWith("unexpected end of stream")||message.contains("unexpected eof");
     }
     return interrupted;
   }
