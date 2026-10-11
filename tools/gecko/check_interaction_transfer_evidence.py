@@ -16,6 +16,8 @@ UPDATE_CHECKS = {
     'chatResponsiveDuringTransfer',
     'queuedResumeCannotOverridePause', 'delayedPreparationKeepsPause',
     'queuedResumeCannotOverrideCancel',
+    'cancelledPartialClearedAfterProcessDeath',
+    'freshDownloadAfterKilledCancellation',
 }
 
 
@@ -32,6 +34,19 @@ def verify_interaction_transfer_evidence(directory, source):
     assert update['actualHttpTransfer'] and update['actualJobSchedulerExecution']
     assert len(update['checks']) >= len(UPDATE_CHECKS) and all(item['pass'] for item in update['checks'])
     assert UPDATE_CHECKS <= {item['name'] for item in update['checks']}
+    gestures = update['actualAndroidGestures']
+    assert len(gestures) == 2 and {item['label'] for item in gestures} == {'暂停下载', '继续下载'}
+    for item in gestures:
+        assert all(item[key] for key in ('actualNativeView', 'actualAndroidInput', 'enabled', 'clickable', 'windowFocused'))
+        bounds = item['bounds']
+        assert bounds['left'] < item['x'] < bounds['right'] and bounds['top'] < item['y'] < bounds['bottom']
+    cancellation = update['cancellationProcessDeath']
+    before, after = cancellation['before'], cancellation['after']
+    assert before['cleanupWorkerBlocked'] and before['durableDiscardPending'] and before['discardPending']
+    assert not before['writerWasActive'] and before['partialBytes'] > 0 and before['partialIdentity']
+    assert before['pid'] != after['pid'] and after['state'] == 'available'
+    assert not after['discardPending'] and not after['downloadRequested'] and not after['pendingTransferJob']
+    assert after['partialBytes'] == 0 and not after['partialIdentity'] and not after['uri']
     host = json.loads((directory / 'update-transfer-host-results.json').read_text())
     assert host['actualHttpRequests'] and host['passed'] == host['total'] >= 28
     assert all(item['passed'] for item in host['checks']) and len(host['checks']) == host['total']

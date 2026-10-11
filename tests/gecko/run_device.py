@@ -58,7 +58,7 @@ class Fixture(fixture.Fixture):
     update_transfer_counts={}
     update_transfer_lock=threading.Lock()
     def update_transfer(self,scenario):
-        if scenario not in {'cut','pause','ignore-range','bad-range','changed-etag','short-length','oversize','bad-hash','bad-signer','queued-cancel'}:
+        if scenario not in {'cut','pause','ignore-range','bad-range','changed-etag','short-length','oversize','bad-hash','bad-signer','queued-cancel','cancel-restart'}:
             self.send_error(404);return
         source=OUT/('update-wrong-signer.apk' if scenario=='bad-signer' else 'update-fixture.apk')
         original=source.read_bytes();body=bytearray(original)
@@ -89,7 +89,7 @@ class Fixture(fixture.Fixture):
         self.send_header('Accept-Ranges','bytes');self.send_header('ETag',etag);self.send_header('Cache-Control','no-store')
         if content_range:self.send_header('Content-Range',content_range)
         self.end_headers();trace.update(status=status,etag=etag,contentRange=content_range,responseBytes=len(response))
-        cut=index==1 and not incoming_range and scenario in {'cut','ignore-range','bad-range','changed-etag','queued-cancel'}
+        cut=index==1 and not incoming_range and scenario in {'cut','ignore-range','bad-range','changed-etag','queued-cancel','cancel-restart'}
         send_length=len(body)//2 if cut else len(response)
         try:
             for at in range(0,send_length,16384):
@@ -271,11 +271,12 @@ def main():
     def transfer_check(name,passed):
         item={'name':name,'pass':bool(passed)};update_report['checks'].append(item);assert passed,item
     def update_touch(label):
-        import xml.etree.ElementTree as ET,re
-        adb('shell','uiautomator','dump','/sdcard/update-transfer-ui.xml');raw=adb('shell','cat','/sdcard/update-transfer-ui.xml')
-        node=next(node for node in ET.fromstring(raw).iter('node') if node.attrib.get('text')==label and node.attrib.get('clickable')=='true')
-        x1,y1,x2,y2=map(int,re.findall(r'\d+',node.attrib['bounds']));assert x2>x1 and y2>y1,node.attrib
-        point=dict(label=label,x=(x1+x2)//2,y=(y1+y2)//2);update_report['actualAndroidGestures'].append(point);adb('shell','input','tap',str(point['x']),str(point['y']));return point
+        action={'暂停下载':'transferLocatePause','继续下载':'transferLocateResume'}[label]
+        point=transfer('pause',action,'inspect');bounds=point['bounds']
+        assert point['label']==label and all(point[key] for key in ['actualNativeView','enabled','clickable','windowFocused']),point
+        assert bounds['left']<point['x']<bounds['right'] and bounds['top']<point['y']<bounds['bottom'],point
+        adb('shell','input','tap',str(point['x']),str(point['y']))
+        update_report['actualAndroidGestures'].append(dict(point,actualAndroidInput=True));return point
     def active_update_job(stage):
         expires=time.monotonic()+6;raw=''
         while time.monotonic()<expires:
@@ -337,7 +338,16 @@ def main():
         cancel_partial=transfer('queued-cancel',target='waiting');before_cancel=len(Fixture.update_transfer_trace)
         cancelled=transfer('queued-cancel','transferQueuedCancel','available')
         transfer_check('queuedResumeCannotOverrideCancel',cancel_partial['partialBytes']==size//2 and cancelled['commandQueueDrained'] and cancelled['state']=='available' and not cancelled['downloadRequested'] and not cancelled['userPaused'] and cancelled['partialBytes']==0 and not cancelled['partialIdentity'] and not cancelled['uri'] and cancelled['finalApks']==0 and not cancelled['running'] and not cancelled['pendingTransferJob'] and len(Fixture.update_transfer_trace)==before_cancel)
-        assert len(update_report['checks'])==26,update_report
+        killed_partial=transfer('cancel-restart',target='waiting');killed_paused=transfer('cancel-restart','transferPause','paused')
+        before_death=transfer('cancel-restart','transferCancelBeforeCleanup','inspect')
+        assert before_death['cleanupWorkerBlocked'] and before_death['durableDiscardPending'] and before_death['discardPending'] and not before_death['writerWasActive'],before_death
+        adb('shell','am','force-stop',package)
+        after_death=transfer('cancel-restart','transferInspect','inspect')
+        transfer_check('cancelledPartialClearedAfterProcessDeath',killed_partial['partialBytes']==size//2 and killed_paused['partialSha']==hashlib.sha256(original[:size//2]).hexdigest() and before_death['partialBytes']==killed_paused['partialBytes'] and before_death['partialSha']==killed_paused['partialSha'] and before_death['partialIdentity'] and after_death['pid']!=before_death['pid'] and after_death['state']=='available' and not after_death['downloadRequested'] and not after_death['discardPending'] and after_death['partialBytes']==0 and not after_death['partialIdentity'] and not after_death['pendingTransferJob'] and not after_death['uri'])
+        after_cancel=transfer('cancel-restart','transferResume');requests=[x for x in Fixture.update_transfer_trace if x['scenario']=='cancel-restart']
+        transfer_check('freshDownloadAfterKilledCancellation',len(requests)==2 and requests[0]['forcedDisconnect'] and requests[0]['sentBytes']==size//2 and requests[1]['range']=='' and requests[1]['ifRange']=='' and requests[1]['status']==200 and requests[1]['sentBytes']==size and after_cancel['state']=='ready' and after_cancel['finalSha']==expected and after_cancel['sameSigner'] and after_cancel['finalBytes']==size and after_cancel['finalApks']==1 and after_cancel['partialBytes']==0 and not after_cancel['discardPending'])
+        update_report['cancellationProcessDeath']=dict(scope='Actual cancelled paused HTTP partial; real cleanup worker held until durable marker, then Android force-stop kills the process. No active-writer timing claim.',before=before_death,after=after_death)
+        assert len(update_report['checks'])==28,update_report
         update_report.update(status='passed',checkCount=len(update_report['checks']),actualJobSchedulerExecution=len(update_report['actualJobExecutions'])==2,chatInteraction=interaction)
         (OUT/'update-transfer-results.json').write_text(json.dumps(update_report,indent=2)+'\n')
     def management(action):

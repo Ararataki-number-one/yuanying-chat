@@ -44,13 +44,15 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
   void transferCommand(Intent intent){try{
     if(!getPackageName().endsWith(".test"))throw new SecurityException("Only isolated integration package may map a controlled update URL");
     transferScenario=intent.getStringExtra("transferScenario");transferToken=intent.getStringExtra("transferToken");
-    if(transferScenario==null||!transferScenario.matches("cut|pause|ignore-range|bad-range|changed-etag|short-length|oversize|bad-hash|bad-signer|queued-cancel"))throw new IOException("Unknown controlled update scenario");
+    if(transferScenario==null||!transferScenario.matches("cut|pause|ignore-range|bad-range|changed-etag|short-length|oversize|bad-hash|bad-signer|queued-cancel|cancel-restart"))throw new IOException("Unknown controlled update scenario");
     commandQueueDrained=false;preparationGuardReached=false;
     manager=AppUpdateManager.get(this);AppSettings.put(this,"updateAutoCheck","false");AppSettings.put(this,"updateWifiOnly","false");AppUpdates.schedule(this);
     final String target="http://127.0.0.1:8765/update-transfer/"+transferScenario;
     manager.transferFactory=official->{if(manager.info==null||!manager.info.url.equals(official))throw new IOException("Fixture refused a different official update identity");return (HttpURLConnection)new URL(target).openConnection();};
     if("transferQueuedPause".equals(action)||"transferQueuedCancel".equals(action)){queuedAdmission(intent,"transferQueuedCancel".equals(action));return;}
     if("transferDelayedPause".equals(action)){delayedPreparation(intent);return;}
+    if("transferCancelBeforeCleanup".equals(action)){cancelBeforeCleanup();return;}
+    if("transferLocatePause".equals(action)||"transferLocateResume".equals(action)){locateTransferAction("transferLocatePause".equals(action)?"暂停下载":"继续下载",SystemClock.elapsedRealtime()+5000);return;}
     if("transferRecreate".equals(action)){setIntent(new Intent(intent).putExtra("updateAction","transferInspect"));recreate();return;}
     if("transferStart".equals(action)){
       hash=intent.getStringExtra("updateHash");long bytes=intent.getLongExtra("updateBytes",0);if(hash==null||bytes<1024*1024)throw new IOException("Signed transfer fixture must contain at least one MiB");
@@ -58,6 +60,19 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
       manager.worker.execute(()->{try{AppUpdates.cancelTransfer(this);manager.generation.incrementAndGet();manager.removeDownload();manager.clearFiles();manager.info=new AppUpdateInfo(metadata);manager.raw=metadata.toString();manager.downloadRequested=false;manager.userPaused=false;manager.received=0;manager.total=bytes;manager.change("available","");manager.downloadNow(false);handler.post(()->{started=SystemClock.elapsedRealtime();waitTransfer(intent);});}catch(Exception error){handler.post(()->transferEvent(J.obj("token",transferToken,"error",error.toString())));}});return;
     }
     started=SystemClock.elapsedRealtime();if("transferResume".equals(action))manager.resume();else if("transferPause".equals(action))manager.pause();waitTransfer(intent);
+  }catch(Exception error){transferEvent(J.obj("token",transferToken,"error",error.toString()));}}
+  static android.view.View labelledAction(android.view.View view,String label){if(view instanceof TextView&&label.contentEquals(((TextView)view).getText())&&view.isClickable())return view;if(view instanceof android.view.ViewGroup){android.view.ViewGroup group=(android.view.ViewGroup)view;for(int i=0;i<group.getChildCount();i++){android.view.View found=labelledAction(group.getChildAt(i),label);if(found!=null)return found;}}return null;}
+  void locateTransferAction(String label,long deadline){try{
+    // Read the actual production button after its normal render/layout. Progress
+    // keeps refreshing; a usable button does not require the entire UI to idle.
+    refresh();android.view.View button=labelledAction(box,label);android.graphics.Rect visible=new android.graphics.Rect();Bundle status=manager.snapshot();String phase=status.getString("state","");
+    boolean expected="暂停下载".equals(label)?"downloading".equals(phase)||"waiting".equals(phase):"paused".equals(phase);
+    if(expected&&hasWindowFocus()&&button!=null&&button.isAttachedToWindow()&&button.isShown()&&button.isEnabled()&&button.isClickable()&&button.getGlobalVisibleRect(visible)&&visible.width()>0&&visible.height()>0){
+      int[] origin=new int[2];button.getRootView().getLocationOnScreen(origin);visible.offset(origin[0],origin[1]);
+      transferEvent(J.obj("token",transferToken,"action",action,"scenario",transferScenario,"state",phase,"label",label,"actualNativeView",true,"enabled",button.isEnabled(),"clickable",button.isClickable(),"windowFocused",hasWindowFocus(),"bounds",J.obj("left",visible.left,"top",visible.top,"right",visible.right,"bottom",visible.bottom),"x",visible.centerX(),"y",visible.centerY(),"pid",android.os.Process.myPid()));return;
+    }
+    if(SystemClock.elapsedRealtime()>deadline)throw new IOException("Actual visible update action not ready: "+label+" phase="+phase);
+    handler.postDelayed(()->locateTransferAction(label,deadline),50);
   }catch(Exception error){transferEvent(J.obj("token",transferToken,"error",error.toString()));}}
   void queuedAdmission(Intent intent,boolean cancel){final String token=transferToken;started=SystemClock.elapsedRealtime();java.util.concurrent.CountDownLatch released=new java.util.concurrent.CountDownLatch(1);
     manager.worker.execute(()->{handler.post(()->{try{
@@ -82,6 +97,30 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
       // callback pauses preparation before its final ownership/commit check.
       field.set(manager,controlledRoot);handler.post(()->{AppUpdates.call(this,"resume",null);manager.worker.execute(()->{try{field.set(manager,actualRoot);commandQueueDrained=true;handler.post(()->waitTransfer(intent));}catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}});});
     }catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}});
+  }
+  static boolean durableCancel(File prefs,long code)throws Exception{if(!prefs.isFile())return false;boolean discard=false,notRequested=false,available=false,identity=false;
+    try(InputStream in=new FileInputStream(prefs)){org.xmlpull.v1.XmlPullParser parser=android.util.Xml.newPullParser();parser.setInput(in,"UTF-8");int type;
+      while((type=parser.next())!=org.xmlpull.v1.XmlPullParser.END_DOCUMENT){if(type!=org.xmlpull.v1.XmlPullParser.START_TAG)continue;String name=parser.getAttributeValue(null,"name"),value=parser.getAttributeValue(null,"value");
+        if("discardPending".equals(name))discard="true".equals(value);else if("downloadRequested".equals(name))notRequested="false".equals(value);else if("cancelledCode".equals(name))identity=String.valueOf(code).equals(value);else if("state".equals(name))available="available".equals(parser.nextText());
+      }
+    }return discard&&notRequested&&available&&identity;
+  }
+  void cancelBeforeCleanup(){final String token=transferToken,scenario=transferScenario;final AppUpdateInfo release=manager.info;
+    // Hold the real cleanup queue after a real paused HTTP transfer. The runner
+    // kills the actual process only after the cancellation marker is on disk.
+    manager.worker.execute(()->{java.util.concurrent.CountDownLatch killedBeforeCleanup=new java.util.concurrent.CountDownLatch(1);handler.post(()->{try{
+      Bundle before=manager.snapshot();if(!"paused".equals(before.getString("state"))||manager.transferRunning)throw new IOException("Cancellation death fixture requires the real paused partial");
+      AppUpdates.call(this,"cancel",null);Bundle cancelled=manager.snapshot();
+      new Thread(()->{try{
+        File disk=new File(manager.context.getApplicationInfo().dataDir,"shared_prefs/app-updates.xml");long deadline=SystemClock.elapsedRealtime()+15000;boolean durable=false;
+        while(SystemClock.elapsedRealtime()<deadline){try{durable=durableCancel(disk,release.code);}catch(Exception writingInProgress){}if(durable)break;Thread.sleep(25);}
+        if(!durable)throw new IOException("Real cancellation marker was not persisted before process death");
+        File part=new File(manager.root,"transfer-"+release.code+"-"+release.sha+"-"+release.bytes+".part"),meta=new File(part.getPath().replace(".part",".resume"));long bytes=part.length();if(bytes<=0||!meta.isFile())throw new IOException("Blocked cleanup did not retain the real partial and metadata");
+        JSONObject result=J.obj("token",token,"action","transferCancelBeforeCleanup","scenario",scenario,"state",cancelled.getString("state"),"uri",cancelled.getString("uri",""),"downloadRequested",cancelled.getBoolean("downloadRequested"),"userPaused",manager.userPaused,"partialBytes",bytes,"partialSha",fileHash(part),"partialIdentity",meta.isFile(),"discardPending",manager.prefs.getBoolean("discardPending",false),"durableDiscardPending",durable,"cleanupWorkerBlocked",true,"writerWasActive",false,"pid",android.os.Process.myPid());transferEvent(result);
+      }catch(Exception error){transferEvent(J.obj("token",token,"error",error.toString()));}},"fixture-cancel-durability").start();
+    }catch(Exception error){transferEvent(J.obj("token",token,"error",error.toString()));}});
+      try{if(!killedBeforeCleanup.await(120,java.util.concurrent.TimeUnit.SECONDS))handler.post(()->transferEvent(J.obj("token",token,"error","Actual process was not killed before cleanup deadline")));}catch(InterruptedException error){Thread.currentThread().interrupt();}
+    });
   }
   Bundle measuredStatus(){StrictMode.ThreadPolicy previous=StrictMode.getThreadPolicy();
     if(Build.VERSION.SDK_INT>=28)StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder().detectDiskReads().detectDiskWrites().detectNetwork().penaltyListener(Runnable::run,violation->statusIo++).build());
@@ -108,7 +147,7 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
       File[] files=manager.root.listFiles();if(files!=null)for(File file:files)if(file.getName().endsWith(".apk"))apkCount++;
       if(ready){finalBytes=manager.file().length();finalSha=fileHash(manager.file());AppUpdateFiles.archive(this,manager.file(),info.code,info.version);signer=true;}
       JSONObject result=J.obj("token",token,"action",command,"scenario",scenario,"state",b.getString("state"),"message",b.getString("message"),"uri",b.getString("uri",""),"received",b.getLong("received"),"total",b.getLong("total"),"partialBytes",partialBytes,"partialSha",partialSha,"partialIdentity",identity,"finalBytes",finalBytes,"finalSha",finalSha,"finalApks",apkCount,"sameSigner",signer,"running",running,"downloadRequested",b.getBoolean("downloadRequested"),"userPaused",manager.userPaused,"statusReads",reads,"statusMainThreadIo",io,"maxStatusMs",maxNs/1000000.0,"nativeRenders",renderCount,"progressIdentityPairs",pairs,"pid",android.os.Process.myPid());
-      result.put("commandQueueDrained",commandQueueDrained);result.put("preparationGuardReached",preparationGuardReached);android.app.job.JobScheduler scheduler=(android.app.job.JobScheduler)getSystemService(JOB_SCHEDULER_SERVICE);result.put("pendingTransferJob",scheduler!=null&&scheduler.getPendingJob(AppUpdates.TRANSFER)!=null);
+      result.put("commandQueueDrained",commandQueueDrained);result.put("preparationGuardReached",preparationGuardReached);result.put("discardPending",manager.prefs.getBoolean("discardPending",false));android.app.job.JobScheduler scheduler=(android.app.job.JobScheduler)getSystemService(JOB_SCHEDULER_SERVICE);result.put("pendingTransferJob",scheduler!=null&&scheduler.getPendingJob(AppUpdates.TRANSFER)!=null);
       handler.post(()->transferEvent(result));
     }catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}});
   }
