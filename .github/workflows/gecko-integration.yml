@@ -87,14 +87,26 @@ jobs:
           timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
           adb shell input keyevent 82
           adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
-          python3 tests/gecko/run_network_performance.py --adb "$(command -v adb)" --serial emulator-5554
-          python3 tests/gecko/run_quiet_notifications.py --adb "$(command -v adb)" --serial emulator-5554
-          python3 tests/gecko/run_ui_visuals.py --adb "$(command -v adb)" --serial emulator-5554
+          checks_failed=0
+          if ! python3 tests/gecko/run_network_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          if ! python3 tests/gecko/run_quiet_notifications.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          if ! python3 tests/gecko/run_ui_visuals.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
           python3 tools/gecko/publish_ci.py
           adb shell am force-stop local.pocketchat.test
           adb shell pm clear local.pocketchat.test
-          python3 tests/gecko/run_device.py --adb "$(command -v adb)" --serial emulator-5554
+          if ! python3 tests/gecko/run_device.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
           adb exec-out screencap -p > work/gecko-integration/device-screen.png
+          if [ "$checks_failed" -ne 0 ]; then
+            exit 1
+          fi
       - name: Publish synthetic regression evidence
         if: always()
         run: python3 tools/gecko/publish_ci.py

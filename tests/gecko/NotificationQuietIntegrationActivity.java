@@ -46,7 +46,22 @@ public final class NotificationQuietIntegrationActivity extends Activity {
     owner.getSharedPreferences("chat",0).edit().putStringSet("notifiedJobs",Collections.singleton(prefix+"-aggregate-legacy")).commit();
     seed("chat-wait",Profiles.notification(owner,4101));seed("network-transport",NetworkTransportService.NOTICE);
     seed("chat-files",Profiles.notification(owner,4104));seed(ChatService.DONE,Profiles.notification(other,4103));seed(ChatService.DONE,Profiles.notification(owner,4105));
+    // notify/cancel return before Android's notification worker completes. Prove
+    // all old cards existed first, so an initially empty list cannot pass this
+    // upgrade test while the fixture posts are still waiting in Android's queue.
+    awaitQuiet("all legacy notification fixtures posted",()->legacyVisible(),this::migrateLegacy);
+  }catch(Exception e){fail(e);}}
+  int[] legacyIds(){return new int[]{Profiles.notification(owner,4101),NetworkTransportService.NOTICE,Profiles.notification(owner,4104),Profiles.notification(other,4103),Profiles.notification(owner,4105)};}
+  boolean legacyVisible(){
+    for(int id:legacyIds()){StatusBarNotification n=notice(id);if(n==null||!"旧版提示".contentEquals(n.getNotification().extras.getCharSequence(Notification.EXTRA_TITLE,"")))return false;}
+    return true;
+  }
+  boolean legacyRemoved(){for(int id:legacyIds())if(notice(id)!=null)return false;return true;}
+  void migrateLegacy()throws Exception{
     ChatService.channels(owner);QuietNotifications.backgroundChannel(this,QuietNotifications.NETWORK_BACKGROUND,"后台连接服务 · 静默");
+    awaitQuiet("all legacy cards removed after migration",()->legacyRemoved(),this::migratedLegacy);
+  }
+  void migratedLegacy()throws Exception{
     check("Upgrade removes old noisy foreground channels",manager.getNotificationChannel("chat-wait")==null&&manager.getNotificationChannel("network-transport")==null);
     check("Upgrade removes non-completion regular notifications across profiles",notice(Profiles.notification(owner,4104))==null&&notice(Profiles.notification(owner,4105))==null&&notice(Profiles.notification(other,4103))==null);
     owner.getSharedPreferences("chat",0).edit().putString("browserEngine","system").putString("networkMode","external").putBoolean("requireExternalVpn",false).putBoolean("pageMode",true).commit();
@@ -58,7 +73,7 @@ public final class NotificationQuietIntegrationActivity extends Activity {
     check("Waiting and disconnected states do not post completion alerts",notice(Profiles.notification(owner,4102))==null);
     ChatService.begin(owner);startForegroundService(new Intent(this,NetworkTransportService.class));
     deadline=SystemClock.elapsedRealtime()+15000;handler.postDelayed(this::waiting,200);
-  }catch(Exception e){fail(e);}}
+  }
   void quiet(String channel)throws Exception{
     NotificationChannel c=manager.getNotificationChannel(channel);
     // Android may promote MIN foreground channels to LOW; never demand an
