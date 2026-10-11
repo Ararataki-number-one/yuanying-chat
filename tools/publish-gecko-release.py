@@ -26,6 +26,13 @@ if version_code>=40:
 if version_code>=41:
     image=report.get('desktopImageUpload',{})
     assert all(image.get(k) for k in ['productionChooserOpened','imageMimeAndMultiple','pendingPreserved','noPhantomUpload','desktop']),'Desktop image upload regression is required.'
+if version_code>=42:
+    quiet=json.loads((args.evidence/'quiet-notification-results.json').read_text())
+    chrome=json.loads((args.evidence/'compact-chrome-results.json').read_text())
+    assert quiet['status']=='passed' and quiet['actualAndroidExecution'] and quiet['sourceCommit']==args.source and quiet['checkCount']>=24 and all(c['pass'] for c in quiet['checks']),'Quiet service and completion reminder regression is required.'
+    assert chrome['status']=='passed' and chrome['actualAndroidExecution'] and chrome['sourceCommit']==args.source and len(chrome['cases'])==3 and all(c['readOnlyStatus'] and len(c['actualAndroidTaps'])==5 for c in chrome['cases']),'Compact chrome and real Android touch regression is required.'
+    required={'The current route automatically gets a real first sample while reply is busy','External measured response is shown instead of permanently unmeasured','A blocked external route makes no test request or direct fallback'}
+    assert required<=set(c['name'] for c in network['checks'] if c['pass']),'Real latency refresh regression is required.'
 build=json.loads((args.evidence/'manifest.json').read_text())
 assert build['sourceCommit']==args.source,'Native evidence does not match the selected source.'
 receipt=json.loads((args.apk.parent/'gecko-apk-verification.json').read_text())
@@ -47,6 +54,8 @@ for number,offset in enumerate(range(0,len(raw),60_000_000)):
 (stage/'release-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 (stage/'device-results.json').write_text(json.dumps(report,indent=2)+'\n')
 if version_code>=40:shutil.copy2(args.evidence/'network-performance-results.json',stage/'network-performance-results.json')
+if version_code>=42:
+    for name in ['quiet-notification-results.json','compact-chrome-results.json']:shutil.copy2(args.evidence/name,stage/name)
 shutil.copy2(args.notes,stage/'RELEASE.md')
 workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkdir(parents=True)
 shutil.copy2(root/'.github/workflows/publish-gecko-release.yml',workflow)
@@ -62,7 +71,7 @@ if previous:
     subprocess.run(['git','fetch','origin','refs/heads/'+branch],cwd=root,check=True)
     parents+=['-p',previous[0]]
 subprocess.run(['git','read-tree','--empty'],cwd=root,env=env,check=True)
-subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*(['network-performance-results.json'] if version_code>=40 else []),*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
+subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
 tree=subprocess.check_output(['git','write-tree'],cwd=root,env=env,text=True).strip()
 commit=subprocess.check_output(['git','commit-tree',tree,*parents,'-m','Publish original-signed production Gecko APK'],cwd=root,env=env,text=True).strip()
 subprocess.run(['git','-c','http.postBuffer=524288000','push','origin',commit+':refs/heads/'+branch],cwd=root,check=True)

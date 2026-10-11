@@ -22,14 +22,13 @@ public final class NetworkTransportService extends Service {
     boolean alive(){java.lang.Process p=process;return p!=null&&p.isAlive();}
     JSONObject snapshot(){return J.obj("slot",slot,"state",state,"alive",alive(),"generation",generation,"pid",pid,"servicePid",android.os.Process.myPid(),"configuration",configHash,"controllerPort",controllerPort,"proxyPort",proxyPort,"webProbePort",webProbePort);}
   }
-  @Override public void onCreate(){super.onCreate();for(int slot=0;slot<nodes.length;slot++)nodes[slot]=new Node(slot);getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel("network-transport","独立环境网络",NotificationManager.IMPORTANCE_LOW));}
+  @Override public void onCreate(){super.onCreate();for(int slot=0;slot<nodes.length;slot++)nodes[slot]=new Node(slot);QuietNotifications.backgroundChannel(this,QuietNotifications.NETWORK_BACKGROUND,"后台连接服务 · 静默");}
   @Override public IBinder onBind(Intent intent){return endpoint.getBinder();}
   @Override public int onStartCommand(Intent intent,int flags,int startId){main.removeCallbacks(idleStop);notification();return START_NOT_STICKY;}
   void notification(){
     if(destroying)return;main.removeCallbacks(idleStop);
-    int count=0;for(Node n:nodes)if(n.alive())count++;
     PendingIntent open=PendingIntent.getActivity(this,NOTICE,new Intent(this,WindowHomeActivity.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-    Notification notice=new Notification.Builder(this,"network-transport").setSmallIcon(android.R.drawable.stat_sys_upload_done).setContentTitle("网络连接").setContentText(count==0?"正在连接…":count+" 个环境保持连接").setContentIntent(open).setOnlyAlertOnce(true).setOngoing(true).build();
+    Notification notice=QuietNotifications.background(this,QuietNotifications.NETWORK_BACKGROUND,"后台连接服务",open);
     if(Build.VERSION.SDK_INT>=34)startForeground(NOTICE,notice,ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);else startForeground(NOTICE,notice);
   }
   void updateNotification(){main.post(()->{boolean live=false;for(Node n:nodes)live|=n.alive();if(live)notification();else{main.removeCallbacks(idleStop);main.postDelayed(idleStop,1000);}});}

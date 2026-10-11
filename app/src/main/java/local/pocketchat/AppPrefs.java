@@ -8,8 +8,8 @@ import java.util.*;
 
 /** Profile-local preferences; defaults retain existing behavior. */
 final class AppPrefs {
-  static final String[] KEYS={"autoHistory","saveDraft","restoreScroll","backgroundWait","replyNotice","downloadNotice","networkNotice","wifiDownloads","cleanTemporaryCache"};
-  static final String[] LABELS={"自动同步可见历史会话","保存本机输入草稿","恢复网页滚动位置","后台等待回复","回复完成通知","文件保存完成通知","网络中断提醒","仅在 Wi-Fi 下载文件","自动清理 30 天以上的无引用中间文件"};
+  static final String[] KEYS={"autoHistory","saveDraft","restoreScroll","backgroundWait","replyNotice","wifiDownloads","cleanTemporaryCache"};
+  static final String[] LABELS={"自动同步可见历史会话","保存本机输入草稿","恢复网页滚动位置","后台检测回复","回复完成通知","仅在 Wi-Fi 下载文件","自动清理 30 天以上的无引用中间文件"};
   static boolean enabled(Context c,String key){return c.getSharedPreferences("chat",0).getBoolean(key,!key.equals("wifiDownloads")&&!key.equals("cleanTemporaryCache"));}
   static JSONObject values(Context c){JSONObject out=new JSONObject();for(String key:KEYS)try{out.put(key,enabled(c,key));}catch(Exception ignored){}return out;}
   static void apply(Context c,JSONObject options){SharedPreferences.Editor edit=c.getSharedPreferences("chat",0).edit();for(String key:KEYS)if(options.opt(key) instanceof Boolean)edit.putBoolean(key,options.optBoolean(key));edit.commit();}

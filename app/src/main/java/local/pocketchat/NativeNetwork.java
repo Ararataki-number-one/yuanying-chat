@@ -22,6 +22,7 @@ class NativeNetwork {
   volatile boolean recoveryBlocked=false;boolean restartQueued=false;final List<Callback> startWaiters=new ArrayList<>();volatile long lastVerified=0,lastObserved=0;
   java.lang.Process process;JSONObject settings;volatile int controllerPort,proxyPort;int failures;volatile String token="";String fingerprint="";List<String> names=new ArrayList<>();long lastScan=0;int totalEntries=0;volatile long startupDuration=0;volatile String startupPath="";volatile long startupBeganAt=0,coreDuration=0,providerDuration=0,exitCheckDuration=0;volatile boolean startupCached=false;
   static final String MEASUREMENT_PROFILE="unified-delay-v1";volatile long lastProbeDuration=0,lastProbeDurationAt=0;volatile String lastProbeEntry="";
+  volatile boolean latencyRefreshQueued;volatile JSONObject latencyReading=new JSONObject();long latencyRefreshAttempted=-60000;String latencyRefreshRoute="";
   static final String PROBE="https://www.gstatic.com/generate_204";
   NativeNetwork(Context c){this(c,new File(c.getNoBackupFilesDir(),"network-runtime"),true);}
   NativeNetwork(Context c,File directory,boolean monitor){context=c.getApplicationContext();quality=new RouteQuality(context);websiteQuality=new RouteQuality(context,"website-quality");dns=new NetworkDns(context);traffic=new TrafficMonitor(this);secrets=new SecretStore(c);root=directory;root.mkdirs();transport=root.getName().equals("network-runtime")?new NetworkTransportClient(context,this::transportChanged):null;if(monitor)worker.scheduleWithFixedDelay(()->runHealth(),30,30,TimeUnit.SECONDS);}
@@ -164,6 +165,22 @@ class NativeNetwork {
   void track(HttpURLConnection c)throws InterruptedIOException{NetworkWork work=maintenance.get();if(work!=null)work.add(c);}
   void untrack(HttpURLConnection c){NetworkWork work=maintenance.get();if(work!=null)work.remove(c);}
   boolean backgroundIdle(){ChatSession s=ChatSession.peek();return s!=null&&!s.uiVisible&&!s.browserWorkActive();}
+  /** One current-chain sample for the UI; never scans or changes the live route. */
+  synchronized void refreshLatency(){
+    if(!ready||starting||!coreAlive()||currentEntry.isEmpty()||latencyRefreshQueued)return;
+    long now=System.currentTimeMillis(),mono=android.os.SystemClock.elapsedRealtime();JSONObject sample=quality.stats(currentEntry,now);long at=sample.optLong("lastAt");JSONObject displayed=latencyReading;
+    if(currentEntry.equals(displayed.optString("entry"))&&token.equals(displayed.optString("generation")))at=Math.max(at,displayed.optLong("at"));
+    if(at>0&&now>=at-60000&&now-at<60000)return;
+    String route=token+"|"+currentEntry;
+    if(route.equals(latencyRefreshRoute)&&mono-latencyRefreshAttempted<(at>0?60000:10000))return;
+    latencyRefreshAttempted=mono;latencyRefreshRoute=route;latencyRefreshQueued=true;
+    final String entry=currentEntry,epoch=token;final long generation=maintenanceGeneration;
+    worker.execute(()->{NetworkWork work=beginMaintenance(generation,true);
+      try{if(work==null||!ready||starting||!entry.equals(currentEntry)||!epoch.equals(token))return;int delay=probe("FixedExit");maintenanceCheck();if(ready&&!starting&&entry.equals(currentEntry)&&epoch.equals(token)){long measured=System.currentTimeMillis();latencyReading=J.obj("entry",entry,"generation",epoch,"at",measured,"delay",delay);if(delay>0)quality.record(entry,delay,measured);}}
+      catch(Exception cancelled){/* A new user operation keeps priority; no failed sample is fabricated. */}
+      finally{if(work!=null)finishMaintenance(work);synchronized(this){latencyRefreshQueued=false;}ChatSession s=ChatSession.peek();WindowNetworkState.save(context,s,this);if(s!=null)main.post(s::changed);}
+    });
+  }
   void runHealth(){
     if(!ready||starting)return;
     if(!coreAlive()){stopNow();report("内置网络进程已退出，请重新连接");return;}

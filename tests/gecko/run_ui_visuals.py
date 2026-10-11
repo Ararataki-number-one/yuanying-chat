@@ -49,7 +49,7 @@ try:
         if int(adb('shell','getprop','ro.build.version.sdk').strip())>=33:adb('shell','pm','grant',package,'android.permission.POST_NOTIFICATIONS')
         for width,height in [(360,640),(412,640)]:
             for scene in scenes:capture(variant,width,height,1,scene)
-        for scene in ['proxy','entries','browser']:capture(variant,360,640,2,scene)
+        for scene in ['proxy','entries','browser']+(['chat'] if variant=='current' else []):capture(variant,360,640,2,scene)
     # Supplementary native screens for the new mode, with trusted Android taps.
     optimization=[]
     for width,scale in [(360,1),(412,1),(360,2)]:
@@ -70,7 +70,61 @@ try:
             click(xml,'手动指定');xml=dump();assert any(n.attrib.get('class')=='android.widget.RadioButton' for n in ET.fromstring(xml).iter('node'))
             click(xml,'低延迟优先');xml=dump();assert '勾选允许使用的入口' in xml and '重新随机' not in xml
         optimization.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','poolCheckboxes':len(choices)})
-    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'screenshots':records,'networkOptimizationScreens':optimization,'scope':'Production native UI and original widgets with local synthetic records; webpage, login and network core not replaced.'}
+    # Production chrome at narrow/large-font sizes, including real taps in the
+    # expanded touch regions rather than only calling performClick().
+    compact=[]
+    component=package+'/local.pocketchat.CompactChromeIntegrationActivity'
+    def chrome_event(command,event):
+        deadline=time.monotonic()+20
+        while time.monotonic()<deadline:
+            raw=adb('logcat','-d','-s','PocketCompactChrome:I','AndroidRuntime:E','*:S')
+            assert 'FATAL EXCEPTION' not in raw,raw[-5000:]
+            for line in raw.splitlines():
+                if 'PocketCompactChrome' not in line or '{' not in line:continue
+                value=json.loads(line[line.index('{'):])
+                if value.get('command')==command and value.get('event')==event:
+                    assert not value.get('error'),value
+                    return value
+            time.sleep(.2)
+        raise TimeoutError(('No compact chrome event',command,event,raw[-5000:]))
+    for width,scale in [(360,1),(412,1),(360,2)]:
+        adb('shell','am','force-stop',package);adb('logcat','-c')
+        adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
+        command=f'compact-{width}-{scale}'
+        adb('shell','am','start','-W','-n',component,'--es','compactCommand',command)
+        sample=chrome_event(command,'ready')
+        assert sample['latency']==sample['expectedLatency']=='42 ms',sample
+        assert not sample['networkClickable'] and not sample['networkFocusable'] and sample['networkBackground']=='none' and '点击' not in sample['networkDescription'],sample
+        assert sample['toolbarHeightDp']<= (59 if scale==1 else 100),sample
+        assert sample['topHeightDp']>=40 and sample['networkHeightDp']>=18,sample
+        for text in sample['texts']:
+            assert text['fontHeight']<=text['contentHeight']+1,(sample,text)
+            if text['text'] in ['简洁','原网页','42 ms','已连接']:assert not text['ellipsized'] and text['inkWidth']<=text['contentWidth']+1,(sample,text)
+        if scale==2:assert sample['texts'][0]['ellipsized'],sample
+        for control in sample['controls']:
+            assert control['widthDp']>=47.9 and control['heightDp']>=47.9,(sample,control)
+            l,t,r,b=control['touch'];tl,tt,tr,tb=sample['toolbar'];assert tl<=l<r<=tr and tt<=t<b<=tb,(sample,control)
+        stem=f'compact-chrome-{width}-font{scale}'
+        (shots/(stem+'.xml')).write_text(dump());(shots/(stem+'.png')).write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+        for point in [sample['networkTap'],sample['stateTap']]:adb('shell','input','tap',str(point[0]),str(point[1]))
+        command+='-status'
+        adb('shell','am','start','-W','--activity-single-top','-n',component,'--es','compactAction','snapshot','--es','compactCommand',command)
+        after=chrome_event(command,'snapshot');assert after['actions']==sample['actions']==0 and after['page']==0,after
+        taps=[]
+        for control in sample['controls']:
+            command+= '-'+control['name']
+            adb('shell','am','start','-W','--activity-single-top','-n',component,'--es','compactAction','snapshot','--es','compactCommand',command)
+            before=chrome_event(command,'snapshot')
+            adb('shell','input','tap',str(control['tap'][0]),str(control['tap'][1]))
+            action=chrome_event(command,'action')
+            expected='activity:local.pocketchat.WindowHomeActivity' if control['name']=='environment' else control['name']
+            assert action['action']==expected and action['actions']==before['actions']+1 and action['page']==0,(control,action)
+            if control['name'] in ['drawer','environment','more']:adb('shell','input','keyevent','KEYCODE_BACK')
+            taps.append({'control':control['name'],'expandedRegion':True,'action':action['action']})
+        compact.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','readOnlyStatus':True,'actualAndroidTaps':taps,'layout':sample})
+    source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
+    (out/'compact-chrome-results.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'cases':compact},ensure_ascii=False,indent=2)+'\n')
+    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'scope':'Production native UI and original widgets with local synthetic records; webpage, login and network core not replaced.'}
 except Exception as error:
     (out/'ui-visual-log.txt').write_text(adb('logcat','-d'))
     (out/'ui-visual-failure.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))

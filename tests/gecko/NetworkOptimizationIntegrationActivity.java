@@ -47,6 +47,30 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
 
       n=new TestNetwork(this,site,plain);getSharedPreferences("chat",0).edit().putString("lastGoodEntry","Entry|slow").commit();n.startNow();
       check("Production Mihomo starts with ARC DNS and TCP concurrency",n.ready&&n.coreAlive());check("Startup verifies the same controlled fixed exit",n.exitIp.equals("203.0.113.8")&&n.currentEntry.equals("Entry|slow"));
+      getSharedPreferences("chat",0).edit().putString("networkMode","internal").putBoolean("networkConfigured",true).commit();
+      check("Remembered route starts without an invented delay",n.quality.stats(n.currentEntry,System.currentTimeMillis()).optInt("samples")==0);
+      n.busy=true;String initialToken=n.token,initialEntry=n.currentEntry;WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(15,TimeUnit.SECONDS);
+      JSONObject initialRuntime=WindowNetworkState.live(null,n);JSONObject row=J.obj("slot",0,"name","synthetic window");WindowNetworkState initialState=new WindowNetworkState(this,row,n.settings,initialRuntime,true,System.currentTimeMillis());
+      check("The current route automatically gets a real first sample while reply is busy",initialRuntime.optLong("delayAt")>0&&initialRuntime.optInt("delay")>0&&initialState.latency.matches("[0-9]+ ms"));
+      check("Display sampling preserves entry core and fixed exit",n.ready&&n.token.equals(initialToken)&&n.currentEntry.equals(initialEntry)&&n.exitIp.equals("203.0.113.8")&&n.api("GET","/proxies/EntryChoice",null,3000).optString("now").equals(initialEntry));
+      int displayRequests=plain.requests;WindowNetworkState.live(null,n);WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(5,TimeUnit.SECONDS);check("Repeated UI reads do not repeatedly probe the route",plain.requests==displayRequests);
+      JSONObject staleRuntime=J.parse(initialRuntime.toString());long staleNow=System.currentTimeMillis();NetworkCatalog.put(staleRuntime,"at",staleNow);NetworkCatalog.put(staleRuntime,"delayAt",staleNow-90001);WindowNetworkState staleState=new WindowNetworkState(this,row,n.settings,staleRuntime,true,staleNow);check("A stale real sample remains visible and is explicitly marked previous",staleState.latency.equals(initialRuntime.getInt("delay")+" ms（上次）"));
+      NetworkCatalog.put(staleRuntime,"delayAt",staleNow);NetworkCatalog.put(staleRuntime,"delay",-1);check("A real failed sample is not mislabeled unmeasured",new WindowNetworkState(this,row,n.settings,staleRuntime,true,staleNow).latency.equals("探测未通过"));
+      NetworkCatalog.put(staleRuntime,"exitId","different-fixed-exit");check("Display does not reuse a different fixed exit's sample",new WindowNetworkState(this,row,n.settings,staleRuntime,true,staleNow).latency.equals("延迟未测"));n.busy=false;
+      n.quality.configure("synthetic-display-failure");NetworkCatalog.put(n.latencyReading,"at",staleNow-90001);n.latencyRefreshAttempted=-60000;plain.probeStatus=403;WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(15,TimeUnit.SECONDS);
+      WindowNetworkState failedDisplay=new WindowNetworkState(this,row,n.settings,WindowNetworkState.live(null,n),true,System.currentTimeMillis());
+      check("A blocked display probe reports its failure while preserving the usable connection",failedDisplay.connected&&failedDisplay.state.equals("正常")&&failedDisplay.latency.equals("探测未通过")&&n.ready&&n.currentEntry.equals(initialEntry));
+      check("Display-only failure does not poison route quality or trigger switching",n.quality.stats(initialEntry,System.currentTimeMillis()).optInt("samples")==0&&n.failures==0&&n.token.equals(initialToken));
+      n.quality.record(initialEntry,-1,n.latencyReading.optLong("at")-1);JSONObject independentlyFailed=WindowNetworkState.live(null,n);WindowNetworkState failedHealth=new WindowNetworkState(this,row,n.settings,independentlyFailed,true,System.currentTimeMillis());
+      check("A newer display-only sample cannot hide the original health failure",!independentlyFailed.optBoolean("delayHealth")&&independentlyFailed.optInt("healthDelay")==-1&&independentlyFailed.optLong("healthDelayAt")>0&&!failedHealth.connected&&failedHealth.state.equals("需检查"));
+      JSONObject legacyHealth=J.parse(independentlyFailed.toString());legacyHealth.remove("healthDelay");legacyHealth.remove("healthDelayAt");NetworkCatalog.put(legacyHealth,"delayHealth",true);check("Legacy saved runtime keeps its original health failure semantics",new WindowNetworkState(this,row,n.settings,legacyHealth,true,System.currentTimeMillis()).state.equals("需检查"));
+      plain.probeStatus=204;n.quality.configure("synthetic-display-recovered");n.latencyReading=new JSONObject();n.latencyRefreshAttempted=-60000;WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(15,TimeUnit.SECONDS);
+      Proxy exactProxy=new Proxy(Proxy.Type.HTTP,new InetSocketAddress("127.0.0.1",n.proxyPort));int responseDelay=RouteLatency.measure(plain.url("/probe"),exactProxy,null,()->{});
+      check("External connection response can be measured over an explicit existing proxy",responseDelay>0&&n.currentEntry.equals(initialEntry)&&n.token.equals(initialToken)&&n.exitIp.equals("203.0.113.8"));
+      JSONObject external=J.obj("at",staleNow,"mode","external","configured",true,"connected",true,"route","synthetic-proxy|network-1","delayRoute","synthetic-proxy|network-1","delayAt",staleNow,"delay",responseDelay,"delayKind","response");
+      check("External measured response is shown instead of permanently unmeasured",new WindowNetworkState(this,row,new JSONObject(),external,true,staleNow).latency.equals(responseDelay+" ms"));
+      NetworkCatalog.put(external,"route","synthetic-proxy|network-2");check("Switching the actual phone network invalidates the previous response",new WindowNetworkState(this,row,new JSONObject(),external,true,staleNow).latency.equals("延迟未测"));
+      int guardedRequests=plain.requests;boolean gateRejected=false;try{RouteLatency.measure(plain.url("/probe"),exactProxy,null,()->{throw new IOException("route unavailable");});}catch(IOException expected){gateRejected=true;}check("A blocked external route makes no test request or direct fallback",gateRejected&&plain.requests==guardedRequests);
       JSONObject core=n.api("GET","/configs",null,3000);check("TCP concurrency is enabled by the running core",core.optBoolean("tcp-concurrent"));
       JSONObject runningConfig=J.parse(new String(java.nio.file.Files.readAllBytes(new File(n.root,"config.json").toPath()),StandardCharsets.UTF_8));check("DNS nameservers remain guarded by the fixed exit",runningConfig.getJSONObject("dns").getJSONArray("nameserver").getString(0).endsWith("#FixedExit"));
       JSONObject first=n.measureWebsite("Entry|slow");check("First and repeat website headers are measured",first.getString("status").equals("ok")&&first.getLong("firstMs")>0&&first.getLong("warmMs")>0);
@@ -121,7 +145,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     static void copy(Socket from,Socket to){try{byte[] bytes=new byte[8192];int n;while((n=from.getInputStream().read(bytes))>=0){to.getOutputStream().write(bytes,0,n);to.getOutputStream().flush();}}catch(IOException ignored){}}
   }
   static final class HttpFixture extends LoopServer {
-    volatile int status=200,requests,websiteDelay;volatile CountDownLatch delayedRequest;volatile String ip="203.0.113.8";volatile boolean credentialsSeen,redirectSeen;final List<Integer> headConnections=Collections.synchronizedList(new ArrayList<>());
+    volatile int status=200,probeStatus=204,requests,websiteDelay;volatile CountDownLatch delayedRequest;volatile String ip="203.0.113.8";volatile boolean credentialsSeen,redirectSeen;final List<Integer> headConnections=Collections.synchronizedList(new ArrayList<>());
     HttpFixture(SSLContext tls)throws IOException{super(tls);}String url(String path){return (tls==null?"http":"https")+"://127.0.0.1:"+port()+path;}
     byte[] dnsAnswer(){byte[] q=NetworkDns.query(),answer=Arrays.copyOf(q,q.length+16);answer[2]=(byte)0x81;answer[3]=(byte)0x80;answer[7]=1;byte[] rr={(byte)0xc0,12,0,1,0,1,0,0,0,60,0,4,(byte)203,0,113,1};System.arraycopy(rr,0,answer,q.length,rr.length);return answer;}
     void handle(Socket socket)throws Exception{
@@ -131,7 +155,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
         if(path.startsWith("/website")){int wait=websiteDelay;if(wait>0){if(delayedRequest!=null)delayedRequest.countDown();Thread.sleep(wait);}code=status;headConnections.add(socket.getPort());if(code==302)extra="Location: "+url("/redirect")+"\r\n";}
         // A loopback HEAD can round down to 0 ms, which the real core rejects as a delay result.
         // Model a small target response time, while preserving the different entry hop delays.
-        else if(path.startsWith("/probe")){Thread.sleep(10);code=204;}
+        else if(path.startsWith("/probe")){Thread.sleep(10);code=probeStatus;}
         else if(path.startsWith("/ip"))body=("{\"ip\":\""+ip+"\"}").getBytes(StandardCharsets.UTF_8);
         else if(path.startsWith("/dns")){body=dnsAnswer();type="application/dns-message";}
         else if(path.startsWith("/redirect"))redirectSeen=true;
