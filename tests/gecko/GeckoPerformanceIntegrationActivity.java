@@ -25,7 +25,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   final Handler handler=new Handler(Looper.getMainLooper());
   final FrameSample frames=new FrameSample();
   ChatSession session;String variant,driver,performanceSource;JSONObject before,known,firstFull,baselineMetrics,currentMetrics,productionJob;
-  int checkCount,samples,inputFocusSamples;boolean finished,inputRequested;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
+  int checkCount,samples,inputFocusSamples,directDeferredSamples,nativeDeferredSamples;boolean finished,inputRequested,directDeferralChecked,nativeDeferralChecked;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
   String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
   CountDownLatch archiveEntered,archiveRelease;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
@@ -131,7 +131,29 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     }));
   });}
   JSONObject args(){JSONObject value=J.obj("kind","web","confirmed",true,"userKey","id:current-question","prompt","bound performance prompt", "confirmedUrl",ORIGIN+PATH+"?variant="+variant,"expectedUrl",ORIGIN+PATH+"?variant="+variant,"export",true,"lightObservation",true);if("current".equals(variant))try{value.put("incrementalObservation",true);}catch(Exception ignored){}return value;}
-  void poll(JSONObject arg,boolean measured,Result result){evaluate("window.__fixtureReadDriver('poll',"+arg+")",measured,result);}
+  void poll(JSONObject arg,boolean measured,Result result){pollObserved(arg,measured,result,SystemClock.elapsedRealtime()+10000);}
+  boolean deferredBodyless(JSONObject value){return !value.optBoolean("contentObserved")&&!value.optBoolean("contentUnchanged")&&!value.has("markdown")&&!value.has("text")&&!value.has("prompt");}
+  void pollObserved(JSONObject arg,boolean measured,Result result,long expires){
+    evaluate("window.__fixtureReadDriver('poll',"+arg+")",measured,value->{
+      if(!value.optBoolean("captureDeferred")){result.accept(value);return;}
+      boolean bodyless=deferredBodyless(value);directDeferredSamples++;
+      if(!directDeferralChecked){check("Actual Gecko idle deferral transfers no partial final body",bodyless);directDeferralChecked=true;}
+      else if(!bodyless)throw new IllegalStateException("A deferred actual Gecko poll carried completion content");
+      if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Gecko idle capture did not become observable");
+      // Preserve the real interaction clock and requestIdleCallback. Re-read
+      // the same driver arguments until its actual complete capture is ready.
+      later(()->pollObserved(arg,measured,result,expires),80);
+    });
+  }
+  void verifyNativeDeferral(JSONObject value)throws Exception{
+    nativeDeferredSamples++;
+    boolean safe=deferredBodyless(value)&&session.pending==productionJob&&session.prefs.contains("pending")&&
+      J.parse(session.prefs.getString("pending","{}")).optString("id").equals(productionJob.optString("id"))&&
+      session.stableTicks==0&&session.webObserver.completionSamples==0&&
+      !"completed".equals(session.deliveries.get(productionJob.optString("id")).optString("state"));
+    if(!nativeDeferralChecked){check("Actual native idle deferral preserves the persisted task with zero completion samples",safe);nativeDeferralChecked=true;}
+    else if(!safe)throw new IllegalStateException("A deferred native capture lost its task or accumulated terminal samples");
+  }
   void snapshot(JSONObject arg,Result result){evaluate("window.__fixtureReadDriver('web-transcript',"+arg+")",false,result);}
   void sample(){attempt(()->{
     poll(args(),true,value->{
@@ -257,9 +279,10 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       later(()->productionSample(0),100);
     });
   });}
-  void productionSample(int stage){attempt(()->{
+  void productionSample(int stage){productionSample(stage,SystemClock.elapsedRealtime()+10000);}
+  void productionSample(int stage,long expires){attempt(()->{
     session.inFlight=true;long serial=++session.syncRun;((FixtureView)session.web).productionPoll=null;
-    session.pollSync(session.navigationEpoch,serial,true);long expires=SystemClock.elapsedRealtime()+10000;
+    session.pollSync(session.navigationEpoch,serial,true);
     awaitProduction(stage,expires);
   });}
   void awaitProduction(int stage,long expires){attempt(()->{
@@ -268,6 +291,11 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     if(stage==0){
       check("Production ChatSession keeps a streaming task pending without retaining a partial body",session.pending==productionJob&&!result.optBoolean("contentObserved")&&session.observedReplyMarkdown.isEmpty());
       evaluate("document.getElementById('stop-button').remove();({stopped:true})",false,v->later(()->productionSample(1),100));return;
+    }
+    if(result.optBoolean("captureDeferred")){
+      verifyNativeDeferral(result);
+      if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Production idle capture timeout at stage "+stage);
+      later(()->productionSample(stage,expires),80);return;
     }
     if(stage==1){
       check("Production first terminal capture retains the entire actual Gecko body",session.pending==productionJob&&session.observedReplyMarkdown.length()>105000&&session.observedReplyMarkdown.contains("Java retained final tail")&&result.has("markdown"));
@@ -328,9 +356,10 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       }),100);
     });
   });}
-  void bindingPoll(Result result){attempt(()->{
+  void bindingPoll(Result result){bindingPoll(result,SystemClock.elapsedRealtime()+10000);}
+  void bindingPoll(Result result,long expires){attempt(()->{
     session.handler.removeCallbacks(session.tick);session.inFlight=true;long serial=++session.syncRun;((FixtureView)session.web).productionPoll=null;
-    session.pollSync(session.navigationEpoch,serial,true);awaitBinding(result,SystemClock.elapsedRealtime()+10000);
+    session.pollSync(session.navigationEpoch,serial,true);awaitBinding(result,expires);
   });}
   void bindingInspect(Result result){attempt(()->{
     session.handler.removeCallbacks(session.tick);session.inFlight=false;((FixtureView)session.web).productionPoll=null;((FixtureView)session.web).productionInspect=null;((FixtureView)session.web).inspectPending=true;
@@ -338,7 +367,13 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   });}
   void awaitBinding(Result result,long expires){attempt(()->{
     if(session.inFlight){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Binding regression production poll timeout");later(()->awaitBinding(result,expires),50);return;}
-    JSONObject poll=((FixtureView)session.web).productionPoll;if(poll==null)throw new IllegalStateException("Binding regression did not execute the real Gecko driver");result.accept(poll);
+    JSONObject poll=((FixtureView)session.web).productionPoll;if(poll==null)throw new IllegalStateException("Binding regression did not execute the real Gecko driver");
+    if(poll.optBoolean("captureDeferred")){
+      verifyNativeDeferral(poll);
+      if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Binding regression idle capture timeout");
+      later(()->bindingPoll(result,expires),80);return;
+    }
+    result.accept(poll);
   });}
   boolean awaitingBinding(JSONObject value){return value.optBoolean("bindingPending")&&!value.optBoolean("bindingLost")&&!value.optBoolean("otherQuestion")&&!value.optBoolean("submitted")&&!value.optBoolean("terminal")&&!value.optBoolean("contentObserved")&&session.pending==productionJob&&session.prefs.contains("pending")&&!session.status.contains("对话已改变")&&session.stableTicks==0&&session.webObserver.completionSamples==0;}
   void bindingMutate(String code,Result result){evaluate(code,false,unused->later(()->bindingPoll(result),100));}
@@ -475,7 +510,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       }));
     });
   });}
-  void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"baselineSource",BASELINE,"checkCount",checkCount,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
+  void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"baselineSource",BASELINE,"checkCount",checkCount,"directDeferredSamples",directDeferredSamples,"nativeDeferredSamples",nativeDeferredSamples,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
   String telemetryInstall(){return "(()=>{const data={readChars:0,readCalls:0,clones:0,started:performance.now(),rafCount:0,rafSum:0,rafMax:0,rafOver32:0,previous:0};"+
     "for(const [prototype,key] of [[HTMLElement.prototype,'innerText'],[Node.prototype,'textContent'],[Node.prototype,'nodeValue']]){const original=Object.getOwnPropertyDescriptor(prototype,key);if(original?.get&&original.configurable)Object.defineProperty(prototype,key,{...original,get(){const value=original.get.call(this);data.readCalls++;if(typeof value==='string')data.readChars+=value.length;return value;}});}"+
     "const clone=Node.prototype.cloneNode;Node.prototype.cloneNode=function(...args){data.clones++;return clone.apply(this,args);};"+

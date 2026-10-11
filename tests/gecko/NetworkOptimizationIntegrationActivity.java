@@ -21,7 +21,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
   void check(String name,boolean passed){JSONObject value=J.obj("name",name,"pass",passed);checks.put(value);Log.i("PocketNetworkPerformance",J.obj("kind","check","value",value).toString());if(!passed)throw new AssertionError(name);}
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test"))throw new SecurityException();new Thread(this::run,"network-optimization-fixture").start();}
   static class TestNetwork extends NativeNetwork {
-    final HttpFixture site,plain;final SSLSocketFactory trustFactory;boolean busy;volatile String exitFailureReason="";volatile boolean cancelOnMismatch;
+    final HttpFixture site,plain;final SSLSocketFactory trustFactory;volatile boolean busy;volatile String exitFailureReason="";volatile boolean cancelOnMismatch;
     TestNetwork(Context c,HttpFixture site,HttpFixture plain){this(c,site,plain,false);}
     TestNetwork(Context c,HttpFixture site,HttpFixture plain,boolean isolated){this(c,site,plain,new File(c.getNoBackupFilesDir(),isolated?"network-runtime":"network-performance-test"));}
     TestNetwork(Context c,HttpFixture site,HttpFixture plain,File directory){super(c,directory,false);this.site=site;this.plain=plain;trustFactory=site.tls.getSocketFactory();}
@@ -55,9 +55,13 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       check("Production Mihomo starts with ARC DNS and TCP concurrency",n.ready&&n.coreAlive());check("Startup verifies the same controlled fixed exit",n.exitIp.equals("203.0.113.8")&&n.currentEntry.equals("Entry|slow"));
       getSharedPreferences("chat",0).edit().putString("networkMode","internal").putBoolean("networkConfigured",true).commit();
       check("Remembered route starts without an invented delay",n.quality.stats(n.currentEntry,System.currentTimeMillis()).optInt("samples")==0);
-      n.busy=true;String initialToken=n.token,initialEntry=n.currentEntry;WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(15,TimeUnit.SECONDS);
+      n.busy=true;String initialToken=n.token,initialEntry=n.currentEntry;int initialRequests=plain.probeRequests.get();WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(5,TimeUnit.SECONDS);
+      NetworkCatalog.put(report,"initialDisplaySampling",J.obj("busyRequests",plain.probeRequests.get()-initialRequests));
+      check("Automatic display sampling makes no requests while a reply is busy",plain.probeRequests.get()==initialRequests&&n.ready&&!n.latencyRefreshQueued);
+      n.busy=false;WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(15,TimeUnit.SECONDS);
       JSONObject initialRuntime=WindowNetworkState.live(null,n);JSONObject row=J.obj("slot",0,"name","synthetic window");WindowNetworkState initialState=new WindowNetworkState(this,row,n.settings,initialRuntime,true,System.currentTimeMillis());
-      check("The current route automatically gets a real first sample while reply is busy",initialRuntime.optLong("delayAt")>0&&initialRuntime.optInt("delay")>0&&initialState.latency.matches("[0-9]+ ms"));
+      NetworkCatalog.put(report.optJSONObject("initialDisplaySampling"),"idleRequests",plain.probeRequests.get()-initialRequests);
+      check("The current route gets a real first sample after the reply becomes idle",initialRuntime.optLong("delayAt")>0&&initialRuntime.optInt("delay")>0&&initialState.latency.matches("[0-9]+ ms")&&plain.probeRequests.get()>initialRequests);
       check("Display sampling preserves entry core and fixed exit",n.ready&&n.token.equals(initialToken)&&n.currentEntry.equals(initialEntry)&&n.exitIp.equals("203.0.113.8")&&n.api("GET","/proxies/EntryChoice",null,3000).optString("now").equals(initialEntry));
       int displayRequests=plain.requests;WindowNetworkState.live(null,n);WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(5,TimeUnit.SECONDS);check("Repeated UI reads do not repeatedly probe the route",plain.requests==displayRequests);
       JSONObject staleRuntime=J.parse(initialRuntime.toString());long staleNow=System.currentTimeMillis();NetworkCatalog.put(staleRuntime,"at",staleNow);NetworkCatalog.put(staleRuntime,"delayAt",staleNow-90001);WindowNetworkState staleState=new WindowNetworkState(this,row,n.settings,staleRuntime,true,staleNow);check("A stale real sample remains visible and is explicitly marked previous",staleState.latency.equals(initialRuntime.getInt("delay")+" ms（上次）"));
@@ -102,7 +106,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       n.quality.configure("synthetic-old-modes");for(int i=0;i<5;i++){n.quality.record("Entry|slow",500,now+i);n.quality.record("Entry|fast",30,now+i);}n.quality.selected("Entry|slow",now-RouteQuality.COOLDOWN-1000);NetworkCatalog.put(n.settings,"entryMode","random");n.scanAndSelect(false);check("Healthy random mode is not silently optimized",n.currentEntry.equals("Entry|slow"));NetworkCatalog.put(n.settings,"entryMode","manual");n.scanSubset(Collections.singletonList("Entry|slow"),false,false);check("Manual mode keeps the specified entry",n.currentEntry.equals("Entry|slow"));
       NetworkCatalog.put(n.settings,"entryMode","latency");n.websiteQuality.configure("synthetic-low-latency");for(int i=0;i<5;i++){n.websiteQuality.record("Entry|slow",900,now+i);n.websiteQuality.record("Entry|fast",50,now+i);}n.websiteQuality.selected("Entry|slow",now-RouteQuality.COOLDOWN-1000);n.websiteQuality.choose(n.names,n.currentEntry,false,true,now);n.scanSubset(n.names,false,true);check("Low latency selects a proven better candidate",n.currentEntry.equals("Entry|fast"));check("Optimizing preserves the fixed exit IP",n.exitIp.equals("203.0.113.8"));
       n.ready=true;site.ip="203.0.113.9";boolean mismatch=false;try{n.verifyExit();}catch(NativeNetwork.ExitMismatch expected){mismatch=true;}check("Exit IP changes still trigger the original protection",mismatch&&n.recoveryBlocked);
-      site.ip="203.0.113.8";exitVerificationContinuityChecks(n,site,plain,fixed,slow,fast);testTransport(site,plain,config,yaml);
+      site.ip="203.0.113.8";exitVerificationContinuityChecks(n,site,plain,fixed,slow,fast);displaySchedulingChecks(n,site,plain,report);testTransport(site,plain,config,yaml);
       NetworkCatalog.put(report,"independentNetworkService","passed");NetworkCatalog.put(report,"status","passed");
     }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());}
     finally{if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
@@ -115,6 +119,34 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     if(!done.await(25,TimeUnit.SECONDS))throw new IOException("Controlled exit callback timed out");return result[0];
   }
   int corePid(TestNetwork n)throws Exception{return Integer.parseInt(new String(java.nio.file.Files.readAllBytes(new File(n.root,"core.pid").toPath()),StandardCharsets.US_ASCII).trim());}
+  void resetDisplay(TestNetwork n,String scope){n.quality.configure(scope);n.latencyReading=new JSONObject();n.latencyRefreshRoute="";n.latencyRefreshAttempted=-60000;}
+  void displaySchedulingChecks(TestNetwork n,HttpFixture site,HttpFixture plain,JSONObject report)throws Exception{
+    n.startNow();String entry=n.currentEntry,token=n.token;int pid=corePid(n),connections=site.webSocketConnections.get();JSONObject evidence=new JSONObject();
+    try(WebSocketStream stream=new WebSocketStream(n,site)){
+      check("Telemetry scheduling begins with a genuine persistent protected WebSocket",stream.awaitEchoes(0)&&n.verifiedRouteCurrent());
+      resetDisplay(n,"synthetic-queued-busy");CountDownLatch parked=new CountDownLatch(1),release=new CountDownLatch(1);
+      Future<?> held=n.worker.submit(()->{parked.countDown();if(!release.await(5,TimeUnit.SECONDS))throw new IOException("Display scheduling fixture timed out");return null;});
+      if(!parked.await(3,TimeUnit.SECONDS))throw new IOException("Display worker did not park");int before=plain.probeRequests.get(),echoes=stream.echoes.get();
+      try{n.refreshLatency();n.busy=true;}finally{release.countDown();}held.get(3,TimeUnit.SECONDS);n.worker.submit(()->{}).get(5,TimeUnit.SECONDS);
+      NetworkCatalog.put(evidence,"queuedBusyRequests",plain.probeRequests.get()-before);
+      check("Queued automatic sampling yields to a reply that started before execution",plain.probeRequests.get()==before&&!n.latencyRefreshQueued&&stream.awaitEchoes(echoes));
+      n.busy=false;n.refreshLatency();n.worker.submit(()->{}).get(15,TimeUnit.SECONDS);NetworkCatalog.put(evidence,"idleSampleRequests",plain.probeRequests.get()-before);
+      check("Deferred automatic sampling resumes idle without a fabricated failure or route change",plain.probeRequests.get()>before&&n.latencyReading.optInt("delay")>0&&entry.equals(n.currentEntry)&&token.equals(n.token)&&corePid(n)==pid);
+      resetDisplay(n,"synthetic-queued-newer-sample");CountDownLatch parkedAgain=new CountDownLatch(1),releaseAgain=new CountDownLatch(1);
+      held=n.worker.submit(()->{parkedAgain.countDown();if(!releaseAgain.await(5,TimeUnit.SECONDS))throw new IOException("Fresh sample fixture timed out");return null;});
+      if(!parkedAgain.await(3,TimeUnit.SECONDS))throw new IOException("Fresh sample worker did not park");before=plain.probeRequests.get();echoes=stream.echoes.get();
+      try{n.refreshLatency();n.quality.record(entry,77,System.currentTimeMillis());}finally{releaseAgain.countDown();}held.get(3,TimeUnit.SECONDS);n.worker.submit(()->{}).get(5,TimeUnit.SECONDS);
+      NetworkCatalog.put(evidence,"newerSampleDuplicateRequests",plain.probeRequests.get()-before);
+      check("Queued display sampling reuses a newer same-route health sample instead of probing twice",plain.probeRequests.get()==before&&n.quality.stats(entry,System.currentTimeMillis()).optInt("latest")==77&&n.latencyReading.length()==0&&stream.awaitEchoes(echoes));
+      check("Automatic telemetry deferral preserves one WebSocket and the exact core identity",site.webSocketConnections.get()==connections+1&&stream.failure==null&&entry.equals(n.currentEntry)&&token.equals(n.token)&&corePid(n)==pid&&n.verifiedRouteCurrent());
+      String mode=n.settings.optString("entryMode");NetworkCatalog.put(n.settings,"entryMode","random");n.failures=1;plain.forcedProbeFailures.set(2);site.ipDelay=250;int ipBefore=site.ipRequests.get();echoes=stream.echoes.get();long began=android.os.SystemClock.elapsedRealtime();
+      try{n.health();}finally{site.ipDelay=0;plain.forcedProbeFailures.set(0);NetworkCatalog.put(n.settings,"entryMode",mode);}
+      NetworkCatalog.put(evidence,"recoveryExitRequests",site.ipRequests.get()-ipBefore);NetworkCatalog.put(evidence,"recoveryMs",android.os.SystemClock.elapsedRealtime()-began);
+      check("Actual failed-chain recovery performs exactly one full exit verification for the new entry",site.ipRequests.get()==ipBefore+1&&!entry.equals(n.currentEntry)&&n.verifiedRouteCurrent()&&n.ready&&n.exitIp.equals("203.0.113.8"));
+      check("Removing duplicate recovery verification preserves the live WebSocket and fixed exit",stream.awaitEchoes(echoes)&&stream.failure==null&&site.webSocketConnections.get()==connections+1&&token.equals(n.token)&&corePid(n)==pid);
+      NetworkCatalog.put(evidence,"webSocketConnections",site.webSocketConnections.get()-connections);NetworkCatalog.put(evidence,"webSocketEchoes",stream.echoes.get());NetworkCatalog.put(report,"telemetryScheduling",evidence);
+    }finally{n.busy=false;site.ipDelay=0;plain.forcedProbeFailures.set(0);}
+  }
   void exitVerificationContinuityChecks(TestNetwork n,HttpFixture site,HttpFixture plain,Socks fixed,Socks slow,Socks fast)throws Exception{
     // Restore the real core after the earlier, intentional mismatch check. All faults
     // below affect only the synthetic IP service, never the actual WebSocket endpoint.
@@ -319,7 +351,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     static void copy(Socket from,Socket to){try{byte[] bytes=new byte[8192];int n;while((n=from.getInputStream().read(bytes))>=0){to.getOutputStream().write(bytes,0,n);to.getOutputStream().flush();}}catch(IOException ignored){}}
   }
   static final class HttpFixture extends LoopServer {
-    volatile int status=200,probeStatus=204,requests,websiteDelay,ipStatus=200,ipDelay;volatile CountDownLatch delayedRequest;volatile String ip="203.0.113.8",ipBody;volatile boolean credentialsSeen,redirectSeen;final AtomicInteger ipRequests=new AtomicInteger(),webSocketConnections=new AtomicInteger();final List<Integer> headConnections=Collections.synchronizedList(new ArrayList<>());
+    volatile int status=200,probeStatus=204,requests,websiteDelay,ipStatus=200,ipDelay;volatile CountDownLatch delayedRequest;volatile String ip="203.0.113.8",ipBody;volatile boolean credentialsSeen,redirectSeen;final AtomicInteger ipRequests=new AtomicInteger(),webSocketConnections=new AtomicInteger(),probeRequests=new AtomicInteger(),forcedProbeFailures=new AtomicInteger();final List<Integer> headConnections=Collections.synchronizedList(new ArrayList<>());
     HttpFixture(SSLContext tls)throws IOException{super(tls);}String url(String path){return (tls==null?"http":"https")+"://127.0.0.1:"+port()+path;}
     byte[] dnsAnswer(){byte[] q=NetworkDns.query(),answer=Arrays.copyOf(q,q.length+16);answer[2]=(byte)0x81;answer[3]=(byte)0x80;answer[7]=1;byte[] rr={(byte)0xc0,12,0,1,0,1,0,0,0,60,0,4,(byte)203,0,113,1};System.arraycopy(rr,0,answer,q.length,rr.length);return answer;}
     void handle(Socket socket)throws Exception{
@@ -330,7 +362,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
         else if(path.startsWith("/website")){int wait=websiteDelay;if(wait>0){if(delayedRequest!=null)delayedRequest.countDown();Thread.sleep(wait);}code=status;headConnections.add(socket.getPort());if(code==302)extra="Location: "+url("/redirect")+"\r\n";}
         // A loopback HEAD can round down to 0 ms, which the real core rejects as a delay result.
         // Model a small target response time, while preserving the different entry hop delays.
-        else if(path.startsWith("/probe")){Thread.sleep(10);code=probeStatus;}
+        else if(path.startsWith("/probe")){probeRequests.incrementAndGet();Thread.sleep(10);code=forcedProbeFailures.getAndUpdate(left->Math.max(0,left-1))>0?503:probeStatus;}
         else if(path.startsWith("/ip")){ipRequests.incrementAndGet();int wait=ipDelay;if(wait>0)Thread.sleep(wait);code=ipStatus;body=(ipBody==null?"{\"ip\":\""+ip+"\"}":ipBody).getBytes(StandardCharsets.UTF_8);}
         else if(path.startsWith("/dns")){body=dnsAnswer();type="application/dns-message";}
         else if(path.startsWith("/redirect"))redirectSeen=true;

@@ -26,7 +26,7 @@ class GeckoWebView extends FrameLayout {
   void setHost(android.app.Activity activity){displayContext.setBaseContext(activity==null?owner.context:activity);}
   OnTouchListener touches;
   @Override public void setOnTouchListener(OnTouchListener listener){touches=listener;}
-  @Override public boolean dispatchTouchEvent(MotionEvent event){if(zoomTarget!=null&&event.getActionMasked()==MotionEvent.ACTION_DOWN)cancelZoom();if(touches!=null&&touches.onTouch(this,event))return true;boolean handled=super.dispatchTouchEvent(event);syncSurfaceOrigin();return handled;}
+  @Override public boolean dispatchTouchEvent(MotionEvent event){if(zoomTarget!=null&&event.getActionMasked()==MotionEvent.ACTION_DOWN)cancelZoom();if(touches!=null&&touches.onTouch(this,event))return true;syncSurfaceOrigin();return super.dispatchTouchEvent(event);}
   void destroy(){
     if(destroyed)return;destroyed=true;
     cancelZoom();owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
@@ -62,6 +62,10 @@ class GeckoWebView extends FrameLayout {
   GeckoSession zoomTarget;long zoomStarted;float zoomX,zoomY,zoomRadius;
   final Runnable recovery=()->recoverClosed();
   final Runnable checkpoint=this::saveCheckpoint;
+  final int[] surfaceOrigin=new int[2];
+  private View originView;private GeckoSession originSession;
+  private boolean originKnown;private int originX,originY,insetTop,insetRight,insetBottom,insetLeft;
+  boolean nativePerfEnabled;long surfaceOriginChecks,surfaceOriginSyncs;
   final BrowserBridgeRequests callbacks,cookieCallbacks;WebExtension.Port routePort;String cookieStamp="";
   interface ResponseDownload {void receive(WebResponse response);}
   ResponseDownload responseDownload;
@@ -294,7 +298,7 @@ class GeckoWebView extends FrameLayout {
       else if(owner.uiVisible)failure(message);
     }
   }
-  private void saveCheckpoint(){GeckoSession.SessionState state=states.get(primary);if(state!=null)sessionStore.write(state.toString());}
+  private void saveCheckpoint(){GeckoSession.SessionState state=states.get(primary);if(state!=null)sessionStore.write(state::toString);}
   void checkpointState(){if(!enabled||destroyed)return;for(GeckoSession session:new ArrayList<>(locations.keySet()))if(session.isOpen())session.flushSessionState();saveCheckpoint();}
   private boolean canRecoverAutomatically(){long now=SystemClock.elapsedRealtime();if(now-recoveryWindow>60000){recoveryWindow=now;contentRecoveries=0;}return contentRecoveries<2;}
   boolean recoverClosed(){
@@ -417,6 +421,23 @@ class GeckoWebView extends FrameLayout {
   @Override protected void onFocusChanged(boolean gain,int direction,Rect previous){super.onFocusChanged(gain,direction,previous);if(enabled&&gain&&surface!=null)surface.requestFocus();}
   @Override public boolean onInterceptTouchEvent(MotionEvent event){return !enabled&&super.onInterceptTouchEvent(event);}
   @Override protected void onMeasure(int width,int height){super.onMeasure(width,height);if(surface!=null)surface.measure(MeasureSpec.makeMeasureSpec(Math.round(getMeasuredWidth()/readingLayout),MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(Math.round(getMeasuredHeight()/readingLayout),MeasureSpec.EXACTLY));}
-  private void syncSurfaceOrigin(){if(surface!=null&&surface.isAttachedToWindow()&&surface.getRootWindowInsets()!=null)surface.gatherTransparentRegion(null);}
+  private void syncSurfaceOrigin(){
+    if(surface==null||!surface.isAttachedToWindow())return;WindowInsets window=surface.getRootWindowInsets();if(window==null)return;
+    if(nativePerfEnabled)surfaceOriginChecks++;
+    // The SDK's manual gather updates both origin and safe-area native state.
+    // It does not deduplicate safe-area values, so doing it for every MOVE used
+    // to add a compositor call to every scroll sample. Use the same actual
+    // Surface/Texture child as the SDK and retain immediate geometry updates.
+    View child=surface.getChildCount()>0?surface.getChildAt(0):surface;child.getLocationOnScreen(surfaceOrigin);
+    int top=0,right=0,bottom=0,left=0;
+    if(Build.VERSION.SDK_INT>=30){android.graphics.Insets safe=window.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());top=safe.top;right=safe.right;bottom=safe.bottom;left=safe.left;}
+    else if(Build.VERSION.SDK_INT>=28){DisplayCutout cutout=window.getDisplayCutout();if(cutout!=null){top=cutout.getSafeInsetTop();right=cutout.getSafeInsetRight();bottom=cutout.getSafeInsetBottom();left=cutout.getSafeInsetLeft();}}
+    GeckoSession attached=surface.getSession();
+    if(originKnown&&originView==child&&originSession==attached&&originX==surfaceOrigin[0]&&originY==surfaceOrigin[1]&&insetTop==top&&insetRight==right&&insetBottom==bottom&&insetLeft==left)return;
+    originKnown=true;originView=child;originSession=attached;originX=surfaceOrigin[0];originY=surfaceOrigin[1];insetTop=top;insetRight=right;insetBottom=bottom;insetLeft=left;
+    if(nativePerfEnabled)surfaceOriginSyncs++;surface.gatherTransparentRegion(null);
+  }
+  @Override protected void onAttachedToWindow(){originKnown=false;super.onAttachedToWindow();}
+  @Override protected void onDetachedFromWindow(){originKnown=false;super.onDetachedFromWindow();}
   @Override protected void onLayout(boolean changed,int l,int t,int r,int b){super.onLayout(changed,l,t,r,b);if(surface!=null){surface.layout(0,0,surface.getMeasuredWidth(),surface.getMeasuredHeight());syncSurfaceOrigin();}}
 }

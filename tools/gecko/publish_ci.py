@@ -22,10 +22,10 @@ for abi in ['arm64-v8a']:
         (stage / name).write_bytes(part)
         artifact['chunks'].append({'file': name, 'bytes': len(part), 'sha256': hashlib.sha256(part).hexdigest()})
     manifest['artifacts'].append(artifact)
-for name in ['build.log', 'native-test.log', 'update-fixture-preparation.log', 'bridge-host-results.json', 'reading-host-results.json', 'cookie-host-results.json', 'update-host-results.json', 'region-host-results.json', 'update-ui.xml', 'update-installer-ui.xml', 'update-ui.png', 'device-results.json', 'device-route-trace.json', 'device-native-events.txt', 'device-screen.png', 'last-device-log.txt', 'production-ui.xml', 'failure-screen.png', 'failure-ui.xml']:
+for name in ['build.log', 'native-test.log', 'update-fixture-preparation.log', 'bridge-host-results.json', 'reading-host-results.json', 'cookie-host-results.json', 'update-host-results.json', 'update-transfer-host-results.json', 'update-transfer-results.json', 'region-host-results.json', 'update-ui.xml', 'update-installer-ui.xml', 'update-ui.png', 'device-results.json', 'device-route-trace.json', 'device-native-events.txt', 'device-screen.png', 'last-device-log.txt', 'production-ui.xml', 'failure-screen.png', 'failure-ui.xml']:
     if (out / name).exists():
         shutil.copy2(out / name, stage / name)
-for name in ['network-performance-results.json','network-performance-failure-log.txt','quiet-notification-results.json','quiet-notification-failure-log.txt','compact-chrome-results.json','ui-visual-results.json','ui-build-comparison.json','ui-visual-log.txt','ui-visual-failure.png','ui-visual-failure.xml','snapshot-host-results.json','reply-observation-host-results.json','reply-binding-host-results.json','gecko-performance-results.json','gecko-performance-failure-log.txt','gecko-performance-screen.png']:
+for name in ['network-performance-results.json','network-performance-failure-log.txt','quiet-notification-results.json','quiet-notification-failure-log.txt','compact-chrome-results.json','ui-visual-results.json','ui-build-comparison.json','ui-visual-log.txt','ui-visual-failure.png','ui-visual-failure.xml','snapshot-host-results.json','reply-observation-host-results.json','reply-binding-host-results.json','interaction-host-results.json','gecko-performance-results.json','gecko-performance-failure-log.txt','gecko-performance-screen.png']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 if (out/'ui-visuals').exists():shutil.copytree(out/'ui-visuals',stage/'ui-visuals',dirs_exist_ok=True)
 for screenshot in out.glob('reading-*.png'):

@@ -1,10 +1,13 @@
 package local.pocketchat;
 
 import android.app.job.*;
-import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import java.util.function.BooleanSupplier;
 
 public class AppUpdateJob extends JobService {
-  final Set<JobParameters> active=Collections.synchronizedSet(new HashSet<>());
-  @Override public boolean onStartJob(JobParameters params){active.add(params);AppUpdateManager.get(this).check(true,()->{if(active.remove(params))jobFinished(params,false);});return true;}
-  @Override public boolean onStopJob(JobParameters params){active.remove(params);return true;}
+  static final class Running {final AtomicBoolean stopped=new AtomicBoolean();final BooleanSupplier gate=stopped::get;}
+  final ConcurrentHashMap<JobParameters,Running> active=new ConcurrentHashMap<>();
+  @Override public boolean onStartJob(JobParameters params){Running running=new Running();active.put(params,running);Runnable done=()->{if(active.remove(params,running))jobFinished(params,false);};AppUpdateManager manager=AppUpdateManager.get(this);if(params.getJobId()==AppUpdates.TRANSFER)manager.runTransferJob(running.gate,done);else manager.check(true,done);return true;}
+  @Override public boolean onStopJob(JobParameters params){Running running=active.remove(params);if(running!=null){running.stopped.set(true);if(params.getJobId()==AppUpdates.TRANSFER)AppUpdateManager.get(this).stopTransferJob(running.gate);}return true;}
 }

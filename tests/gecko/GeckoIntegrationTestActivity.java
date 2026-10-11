@@ -14,13 +14,14 @@ public class GeckoIntegrationTestActivity extends Activity {
   long paintStarted,paintVisible,paintFinished;
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
-    boolean chooserOrigin;
+    boolean chooserOrigin;Runnable nativeGestureComplete;int nativeGestureCount;
     @Override public String getUrl(){return chooserOrigin?MainActivity.ORIGIN:super.getUrl();}
     FixtureView(Context context,ChatSession owner){super(context,owner);}
     @Override protected boolean allowedUrl(String target){
       return target.startsWith("http://127.0.0.1:8765/")||target.startsWith("http://remote-probe.invalid:8765/")||super.allowedUrl(target);
     }
     @Override boolean readingPage(String target){return target.startsWith("http://127.0.0.1:8765/browser-reading")||super.readingPage(target);}
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){boolean handled=super.dispatchTouchEvent(event);if(nativeGestureComplete!=null&&event.getActionMasked()==android.view.MotionEvent.ACTION_UP&&++nativeGestureCount==3){Runnable done=nativeGestureComplete;nativeGestureComplete=null;owner.handler.post(done);}return handled;}
   }
   @Override public void onCreate(Bundle state){
     super.onCreate(state);slot=Profiles.slot(this);ProfileCatalog.get(this).created(slot);
@@ -64,6 +65,8 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
     if("readingZoom".equals(action)){readingZoom(serial,0,new JSONArray(),SystemClock.elapsedRealtime()+20000);return;}
     if("readingInput".equals(action)){tapElement(serial,"composer");readingInput(serial,SystemClock.elapsedRealtime()+15000);return;}
+    if("nativeSurface".equals(action)){nativeSurface(serial);return;}
+    if("nativeCheckpoint".equals(action)){nativeCheckpoint(serial);return;}
     if("sessionSeed".equals(action)||"sessionRead".equals(action)||"sessionLive".equals(action)||"sessionLogout".equals(action)||"killRestore".equals(action)||"resumeSaved".equals(action)){
       if("killRestore".equals(action)){
         org.mozilla.geckoview.GeckoSession stopped=web.current;stopped.close();stopped.getContentDelegate().onKill(stopped);
@@ -348,6 +351,88 @@ public class GeckoIntegrationTestActivity extends Activity {
       session.handler.postDelayed(()->waitReadingZoom(serial,step,results,deadline,choice),150);
     });
   }
+  static java.lang.reflect.Field field(Object object,String name)throws ReflectiveOperationException{Class<?> type=object.getClass();while(type!=null){try{java.lang.reflect.Field found=type.getDeclaredField(name);found.setAccessible(true);return found;}catch(NoSuchFieldException missing){type=type.getSuperclass();}}throw new NoSuchFieldException(name);}
+  static long number(Object object,String name)throws ReflectiveOperationException{Object value=field(object,name).get(object);return value instanceof java.util.concurrent.atomic.AtomicLong?((java.util.concurrent.atomic.AtomicLong)value).get():((Number)value).longValue();}
+  JSONObject nativePage(String raw){return J.parse(raw);}
+  static boolean insertedInputPreserves(String before,String after){String added="native-input-ok";for(int at=after.indexOf(added);at>=0;at=after.indexOf(added,at+1))if((after.substring(0,at)+after.substring(at+added.length())).equals(before))return true;return false;}
+  void nativeSurface(long serial){
+    FixtureView web=(FixtureView)session.web;
+    web.evaluateJavascript("(()=>({document:performance.timeOrigin,draft:document.getElementById('composer')?.value,cookie:document.cookie}))()",raw->{
+      if(serial!=run)return;JSONObject before=nativePage(raw);if(!before.has("draft")){event("error",J.obj("error","native surface test needs the existing reading fixture"));return;}
+      try{field(web,"nativePerfEnabled").setBoolean(web,true);field(web,"surfaceOriginChecks").setLong(web,0);field(web,"surfaceOriginSyncs").setLong(web,0);}catch(ReflectiveOperationException missing){event("error",J.obj("error","native geometry instrumentation missing"));return;}
+      float x=web.getTranslationX(),y=web.getTranslationY();web.setTranslationX(x+7);web.setTranslationY(y+11);web.nativeGestureCount=0;
+      web.nativeGestureComplete=()->{
+        if(serial!=run)return;
+        try{
+          long checks=number(web,"surfaceOriginChecks"),syncs=number(web,"surfaceOriginSyncs");
+          JSONObject result=J.obj("originChecks",checks,"originSyncs",syncs,"actualGestureCount",web.nativeGestureCount,"stationaryGeometryDeduplicated",checks>=20&&syncs==1,"initialSurfaceMoveSynced",syncs==1);
+          // Move without a layout pass, then use the runner's real Android tap
+          // and hardware input. The first touch must see the new screen origin.
+          web.setTranslationX(x+13);web.setTranslationY(y+19);tapElement(serial,"composer");
+          nativeSurfaceInput(serial,SystemClock.elapsedRealtime()+20000,before,result,x,y);
+        }catch(ReflectiveOperationException error){event("error",J.obj("error",error.toString()));}
+      };
+      int[] at=new int[2];web.getLocationOnScreen(at);int touchX=at[0]+web.getWidth()/2,from=at[1]+Math.round(web.getHeight()*.7f),to=at[1]+Math.round(web.getHeight()*.35f);
+      for(int i=0;i<3;i++)event("swipeNeeded",J.obj("id","native-surface-"+serial+"-"+i,"x",touchX,"fromY",from,"toY",to,"duration",500));
+      session.handler.postDelayed(()->{if(serial==run&&web.nativeGestureComplete!=null){web.nativeGestureComplete=null;web.setTranslationX(x);web.setTranslationY(y);try{field(web,"nativePerfEnabled").setBoolean(web,false);}catch(Exception ignored){}event("error",J.obj("error","native surface real gestures not received","gestureCount",web.nativeGestureCount));}},25000);
+    });
+  }
+  void nativeSurfaceInput(long serial,long deadline,JSONObject before,JSONObject result,float originalX,float originalY){
+    if(serial!=run)return;FixtureView web=(FixtureView)session.web;
+    web.evaluateJavascript("(()=>({document:performance.timeOrigin,draft:document.getElementById('composer')?.value,focused:document.activeElement?.id,cookie:document.cookie}))()",raw->{
+      if(serial!=run)return;JSONObject after=nativePage(raw);
+      if(insertedInputPreserves(before.optString("draft"),after.optString("draft"))){
+        try{
+          long total=number(web,"surfaceOriginSyncs");result.put("movedSurfaceSyncs",total-result.optLong("originSyncs"));result.put("movedSurfaceAcceptsRealInput",total>result.optLong("originSyncs")&&"composer".equals(after.optString("focused")));
+          result.put("documentAndDraftPreserved",after.optDouble("document")==before.optDouble("document")&&after.optString("cookie").equals(before.optString("cookie"))&&insertedInputPreserves(before.optString("draft"),after.optString("draft")));
+          result.put("typedCharacters",after.optString("draft").length()-before.optString("draft").length());field(web,"nativePerfEnabled").setBoolean(web,false);
+        }catch(Exception error){event("error",J.obj("error",error.toString()));return;}
+        web.setTranslationX(originalX);web.setTranslationY(originalY);event("nativeSurface",result);return;
+      }
+      if(SystemClock.elapsedRealtime()>deadline){web.setTranslationX(originalX);web.setTranslationY(originalY);try{field(web,"nativePerfEnabled").setBoolean(web,false);}catch(Exception ignored){}event("error",J.obj("error","moved surface did not accept real keyboard input","result",result));return;}
+      session.handler.postDelayed(()->nativeSurfaceInput(serial,deadline,before,result,originalX,originalY),100);
+    });
+  }
+  void nativeCheckpoint(long serial){
+    org.mozilla.geckoview.GeckoSession.SessionState state=session.web.states.get(session.web.primary);
+    if(state==null){event("error",J.obj("error","checkpoint test needs a real SDK session state"));return;}
+    new Thread(()->{
+      try{
+        java.io.File own=new java.io.File(getNoBackupFilesDir(),"native-checkpoint-fixture"),other=new java.io.File(Profiles.context(this,slot==0?1:0).getNoBackupFilesDir(),"native-checkpoint-fixture");if(!own.isDirectory()&&!own.mkdirs()||!other.isDirectory()&&!other.mkdirs())throw new java.io.IOException("fixture directory unavailable");
+        BrowserSessionStore store=new BrowserSessionStore(new ContextWrapper(this){@Override public java.io.File getNoBackupFilesDir(){return own;}}),isolated=new BrowserSessionStore(new ContextWrapper(this){@Override public java.io.File getNoBackupFilesDir(){return other;}});
+        java.lang.reflect.Method offer=BrowserSessionStore.class.getDeclaredMethod("write",java.util.function.Supplier.class);offer.setAccessible(true);
+        Object probe=Class.forName("local.pocketchat.BrowserSessionStore$Probe").getDeclaredConstructor().newInstance();field(store,"probe").set(store,probe);
+        java.util.concurrent.CountDownLatch release=new java.util.concurrent.CountDownLatch(1);store.io.execute(()->await(release));
+        onMain(()->{for(int i=0;i<1000;i++){final int candidate=i;offer(offer,store,()->checkpointValue(state,candidate));}});release.countDown();String first=readCheckpoint(store);JSONObject firstValue=J.parse(first);
+        long firstSerialized=number(probe,"serialized"),firstCoalesced=number(probe,"coalesced");
+        java.util.concurrent.CountDownLatch started=new java.util.concurrent.CountDownLatch(1),finish=new java.util.concurrent.CountDownLatch(1);
+        onMain(()->offer(offer,store,()->{started.countDown();await(finish);return checkpointValue(state,-1);}));await(started);
+        onMain(()->{for(int i=0;i<200;i++){final int candidate=1000+i;offer(offer,store,()->checkpointValue(state,candidate));}});finish.countDown();String latest=readCheckpoint(store);JSONObject latestValue=J.parse(latest);long latestWrites=number(probe,"written");
+        onMain(()->offer(offer,store,()->"中".repeat(720000)));String afterOversize=readCheckpoint(store);
+        boolean[] invalidRetained=new boolean[3];String lastValid=latest;
+        for(int i=0;i<3;i++){
+          final int failure=i,candidate=2000+i;java.util.concurrent.CountDownLatch validStarted=new java.util.concurrent.CountDownLatch(1),validRelease=new java.util.concurrent.CountDownLatch(1);
+          onMain(()->offer(offer,store,()->{validStarted.countDown();await(validRelease);return checkpointValue(state,candidate);}));await(validStarted);
+          onMain(()->offer(offer,store,()->{if(failure==0)return null;if(failure==1)throw new IllegalStateException("synthetic invalid snapshot");return "中".repeat(720000);}));validRelease.countDown();lastValid=readCheckpoint(store);invalidRetained[i]=J.parse(lastValid).optInt("nativeFixtureCandidate",-2)==candidate;
+        }
+        int lastValidCandidate=J.parse(lastValid).optInt("nativeFixtureCandidate",-2);
+        final java.util.concurrent.atomic.AtomicInteger continuousOffered=new java.util.concurrent.atomic.AtomicInteger();final java.util.concurrent.atomic.AtomicBoolean offering=new java.util.concurrent.atomic.AtomicBoolean(true);final java.util.concurrent.CountDownLatch continuousDone=new java.util.concurrent.CountDownLatch(1);long writtenBeforeContinuous=number(probe,"written"),serializedBeforeContinuous=number(probe,"serialized");
+        onMain(new Runnable(){public void run(){int index=continuousOffered.getAndIncrement();if(index==200){offering.set(false);continuousDone.countDown();return;}offer(offer,store,()->{try{Thread.sleep(80);}catch(InterruptedException error){Thread.currentThread().interrupt();throw new IllegalStateException(error);}return checkpointValue(state,4000+index);});session.handler.postDelayed(this,20);}});
+        long continuousDeadline=SystemClock.elapsedRealtime()+10000,continuousWrites=0;boolean persistedWhileOffering=false;
+        while(SystemClock.elapsedRealtime()<continuousDeadline){continuousWrites=number(probe,"written")-writtenBeforeContinuous;if(continuousWrites>0&&offering.get()){persistedWhileOffering=true;break;}if(!offering.get())break;Thread.sleep(20);}
+        await(continuousDone);String continuousLast=readCheckpoint(store);int continuousCandidate=J.parse(continuousLast).optInt("nativeFixtureCandidate",-2);
+        onMain(()->offer(offer,isolated,()->"isolated-synthetic-environment"));String independent=readCheckpoint(isolated),unchanged=readCheckpoint(store);
+        org.mozilla.geckoview.GeckoSession.SessionState restored=org.mozilla.geckoview.GeckoSession.SessionState.fromString(latest);
+        JSONObject result=J.obj("offered",number(probe,"offered"),"coalesced",number(probe,"coalesced"),"serialized",number(probe,"serialized"),"mainSerialized",number(probe,"mainSerialized"),"written",number(probe,"written"),"serializeNanos",number(probe,"serializeNanos"),"encodedBytes",number(probe,"bytes"),"firstBurstSerialized",firstSerialized,"firstBurstCoalesced",firstCoalesced,"firstCandidate",firstValue.optInt("nativeFixtureCandidate",-2),"lastCandidate",latestValue.optInt("nativeFixtureCandidate",-2),"latestWrites",latestWrites,"lastValidCandidate",lastValidCandidate,"validAfterNullCandidate",invalidRetained[0],"validAfterThrowingCandidate",invalidRetained[1],"validAfterUtf8Oversize",invalidRetained[2],"invalidNewerKeepsValid",invalidRetained[0]&&invalidRetained[1]&&invalidRetained[2],"continuousOffered",Math.min(200,continuousOffered.get()),"continuousWritesDuringOffers",continuousWrites,"continuousOffersPersisted",persistedWhileOffering,"continuousLastCandidate",continuousCandidate,"continuousSerialized",number(probe,"serialized")-serializedBeforeContinuous,"mainSerializationZero",number(probe,"mainSerialized")==0,"pendingBounded",firstSerialized==1&&firstCoalesced==999&&firstValue.optInt("nativeFixtureCandidate",-2)==999,"latestWinsDuringSerialization",latestValue.optInt("nativeFixtureCandidate",-2)==1199&&latestWrites==2,"oversizeKeepsPrevious",latest.equals(afterOversize),"independentStore","isolated-synthetic-environment".equals(independent)&&continuousLast.equals(unchanged),"sdkSnapshotRestorable",restored!=null&&restored.size()==state.size()&&GeckoWebView.stateUrl(restored).equals(GeckoWebView.stateUrl(state)));
+        store.io.shutdown();isolated.io.shutdown();runOnUiThread(()->{if(serial==run)event("nativeCheckpoint",result);});
+      }catch(Exception error){runOnUiThread(()->event("error",J.obj("error","native checkpoint regression: "+error)));}
+    },"checkpoint-regression").start();
+  }
+  static String checkpointValue(org.mozilla.geckoview.GeckoSession.SessionState state,int candidate){if(Looper.myLooper()==Looper.getMainLooper())throw new IllegalStateException("serialization ran on UI");JSONObject value=J.parse(state.toString());try{value.put("nativeFixtureCandidate",candidate);value.put("nativeFixturePadding","x".repeat(300000));}catch(JSONException error){throw new IllegalStateException(error);}return value.toString();}
+  static void offer(java.lang.reflect.Method method,BrowserSessionStore store,java.util.function.Supplier<String> supplier){try{method.invoke(store,supplier);}catch(Exception error){throw new IllegalStateException(error);}}
+  static void await(java.util.concurrent.CountDownLatch latch){try{if(!latch.await(15,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("checkpoint fixture timed out");}catch(InterruptedException error){Thread.currentThread().interrupt();throw new IllegalStateException(error);}}
+  void onMain(Runnable task){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<RuntimeException> error=new java.util.concurrent.atomic.AtomicReference<>();runOnUiThread(()->{try{task.run();}catch(RuntimeException failure){error.set(failure);}finally{done.countDown();}});await(done);if(error.get()!=null)throw error.get();}
+  static String readCheckpoint(BrowserSessionStore store){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<String> value=new java.util.concurrent.atomic.AtomicReference<>();store.read(result->{value.set(result);done.countDown();});await(done);return value.get();}
   void event(String kind,JSONObject result){Log.i("PocketGeckoIntegration",J.obj("kind",kind,"result",result,"nativeContext","environment-"+(slot+1),"processSlot",slot).toString());}
   @Override protected void onResume(){super.onResume();activityResumed=true;if(session!=null)session.foreground(true);}
   @Override protected void onPause(){activityResumed=false;if(session!=null)session.foreground(false);super.onPause();}

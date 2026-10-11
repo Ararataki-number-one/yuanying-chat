@@ -14,9 +14,18 @@
       port.postMessage({kind:'result', id:message.id, result:result ?? 'null'});
     } catch (_) {port.postMessage({kind:'result', id:message.id, result:'null'});}
   });
-  const scale = () => port.postMessage({kind:'scale', value:devicePixelRatio*(visualViewport?.scale ?? 1), width:document.documentElement?.clientWidth ?? 0});
-  visualViewport?.addEventListener('resize',scale);
-  window.addEventListener('resize',scale);
+  let scaleFrame=0,lastScale=null,lastWidth=null;
+  const scale = () => {
+    const value=devicePixelRatio*(visualViewport?.scale??1),width=document.documentElement?.clientWidth??0;
+    if(value===lastScale&&width===lastWidth)return;
+    lastScale=value;lastWidth=width;port.postMessage({kind:'scale',value,width});
+  };
+  const scheduleScale=()=>{if(!scaleFrame)scaleFrame=requestAnimationFrame(()=>{scaleFrame=0;scale();});};
+  visualViewport?.addEventListener('resize',scheduleScale);
+  window.addEventListener('resize',scheduleScale);
+  const flushScale=()=>{if(scaleFrame){cancelAnimationFrame(scaleFrame);scaleFrame=0;scale();}};
+  window.addEventListener('pagehide',flushScale);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushScale();});
   document.addEventListener('DOMContentLoaded',scale,{once:true});
   let observedReady=false;
   const observer=new MutationObserver(()=>documentReady());

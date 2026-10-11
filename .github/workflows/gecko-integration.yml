@@ -12,7 +12,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Prepare locked toolchain
@@ -53,12 +53,15 @@ jobs:
           mkdir -p work/gecko-integration/update-host
           javac -encoding UTF-8 -d work/gecko-integration/update-host app/src/main/java/local/pocketchat/AppUpdatePolicy.java tests/browser-runtime/AppUpdatePolicyTest.java
           java -cp work/gecko-integration/update-host local.pocketchat.AppUpdatePolicyTest | tee work/gecko-integration/update-host-results.json
+          javac --add-modules jdk.httpserver -encoding UTF-8 -d work/gecko-integration/update-host app/src/main/java/local/pocketchat/AppUpdatePolicy.java app/src/main/java/local/pocketchat/AppUpdateTransfer.java tests/browser-runtime/AppUpdateTransferTest.java
+          java --add-modules jdk.httpserver -cp work/gecko-integration/update-host local.pocketchat.AppUpdateTransferTest | tee work/gecko-integration/update-transfer-host-results.json
           mkdir -p work/gecko-integration/snapshot-host
           javac -encoding UTF-8 -d work/gecko-integration/snapshot-host app/src/main/java/local/pocketchat/FileSnapshotCache.java tests/browser-runtime/FileSnapshotCacheTest.java
           java -cp work/gecko-integration/snapshot-host local.pocketchat.FileSnapshotCacheTest | tee work/gecko-integration/snapshot-host-results.json
           npm install --prefix work/browser-perf-host --ignore-scripts --no-audit --no-fund jsdom@26.1.0
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/reply-observation.test.cjs | tee work/gecko-integration/reply-observation-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/reply-binding-loading.test.cjs | tee work/gecko-integration/reply-binding-host-results.json
+          JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/interaction-scheduling.test.cjs | tee work/gecko-integration/interaction-host-results.json
       - name: Prepare synthetic signed upgrade archives
         shell: bash
         run: |
@@ -72,6 +75,11 @@ jobs:
           pathlib.Path('work/gecko-integration/update-fixture.xml').write_text(text)
           PYCODE
           "$tools/aapt2" link -I "$ANDROID_HOME/platforms/android-37.1/android.jar" --manifest work/gecko-integration/update-fixture.xml -o work/gecko-integration/update-fixture-unsigned.apk
+          python3 - <<'PYCODE'
+          import zipfile
+          with zipfile.ZipFile('work/gecko-integration/update-fixture-unsigned.apk','a',compression=zipfile.ZIP_STORED) as archive:
+              archive.writestr('assets/resume-fixture.bin', bytes(range(256)) * 4096)
+          PYCODE
           "$tools/apksigner" sign --ks work/gecko-integration/integration-test.jks --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-fixture.apk work/gecko-integration/update-fixture-unsigned.apk
           keytool -genkeypair -keystore work/gecko-integration/update-wrong-key.jks -alias fixture -storepass android -keypass android -dname CN=Synthetic -keyalg RSA -validity 2
           "$tools/apksigner" sign --ks work/gecko-integration/update-wrong-key.jks --ks-key-alias fixture --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-wrong-signer.apk work/gecko-integration/update-fixture-unsigned.apk

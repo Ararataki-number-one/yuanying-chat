@@ -198,20 +198,24 @@ class NativeNetwork {
   void track(HttpURLConnection c)throws InterruptedIOException{NetworkWork work=maintenance.get();if(work!=null)work.add(c);}
   void untrack(HttpURLConnection c){NetworkWork work=maintenance.get();if(work!=null)work.remove(c);}
   boolean backgroundIdle(){ChatSession s=ChatSession.peek();return s!=null&&!s.uiVisible&&!s.browserWorkActive();}
+  long latestLatencyAt(String entry,String epoch){long at=quality.stats(entry,System.currentTimeMillis()).optLong("lastAt");JSONObject displayed=latencyReading;if(entry.equals(displayed.optString("entry"))&&epoch.equals(displayed.optString("generation")))at=Math.max(at,displayed.optLong("at"));return at;}
+  static boolean freshLatency(long at,long now){return at>0&&now>=at-60000&&now-at<60000;}
   /** One current-chain sample for the UI; never scans or changes the live route. */
   synchronized void refreshLatency(){
-    if(!ready||starting||!coreAlive()||currentEntry.isEmpty()||latencyRefreshQueued)return;
-    long now=System.currentTimeMillis(),mono=android.os.SystemClock.elapsedRealtime();JSONObject sample=quality.stats(currentEntry,now);long at=sample.optLong("lastAt");JSONObject displayed=latencyReading;
-    if(currentEntry.equals(displayed.optString("entry"))&&token.equals(displayed.optString("generation")))at=Math.max(at,displayed.optLong("at"));
-    if(at>0&&now>=at-60000&&now-at<60000)return;
+    if(!ready||starting||!coreAlive()||currentEntry.isEmpty()||latencyRefreshQueued||routeBusy())return;
+    long now=System.currentTimeMillis(),mono=android.os.SystemClock.elapsedRealtime();long at=latestLatencyAt(currentEntry,token);
+    if(freshLatency(at,now))return;
     String route=token+"|"+currentEntry;
     if(route.equals(latencyRefreshRoute)&&mono-latencyRefreshAttempted<(at>0?60000:10000))return;
     latencyRefreshAttempted=mono;latencyRefreshRoute=route;latencyRefreshQueued=true;
     final String entry=currentEntry,epoch=token;final long generation=maintenanceGeneration;
-    worker.execute(()->{NetworkWork work=beginMaintenance(generation,true);
-      try{if(work==null||!ready||starting||!entry.equals(currentEntry)||!epoch.equals(token))return;int delay=probe("FixedExit");maintenanceCheck();if(ready&&!starting&&entry.equals(currentEntry)&&epoch.equals(token)){long measured=System.currentTimeMillis();latencyReading=J.obj("entry",entry,"generation",epoch,"at",measured,"delay",delay);if(delay>0)quality.record(entry,delay,measured);}}
+    worker.execute(()->{NetworkWork work=beginMaintenance(generation);boolean probed=false;
+      try{if(work==null||!ready||starting||!entry.equals(currentEntry)||!epoch.equals(token)||routeBusy())return;
+        // Health may have measured the same route while this display request waited.
+        if(freshLatency(latestLatencyAt(entry,epoch),System.currentTimeMillis()))return;
+        probed=true;int delay=probe("FixedExit");maintenanceCheck();if(ready&&!starting&&entry.equals(currentEntry)&&epoch.equals(token)){long measured=System.currentTimeMillis();latencyReading=J.obj("entry",entry,"generation",epoch,"at",measured,"delay",delay);if(delay>0)quality.record(entry,delay,measured);}}
       catch(Exception cancelled){/* A new user operation keeps priority; no failed sample is fabricated. */}
-      finally{if(work!=null)finishMaintenance(work);synchronized(this){latencyRefreshQueued=false;}ChatSession s=ChatSession.peek();WindowNetworkState.save(context,s,this);if(s!=null)main.post(s::changed);}
+      finally{if(work!=null)finishMaintenance(work);synchronized(this){if(!probed&&route.equals(latencyRefreshRoute)){latencyRefreshAttempted=-60000;latencyRefreshRoute="";}latencyRefreshQueued=false;}ChatSession s=ChatSession.peek();WindowNetworkState.save(context,s,this);if(s!=null)main.post(s::changed);}
     });
   }
   void runHealth(){
@@ -247,7 +251,7 @@ class NativeNetwork {
   String probeUrl(){return PROBE;}
   String exitCheckUrl(){return "https://api.ipify.org?format=json";}
   boolean lowLatency(){return settings!=null&&"latency".equals(settings.optString("entryMode"));}
-  boolean routeBusy(){ChatSession s=ChatSession.peek();return s!=null&&(s.pending!=null||s.submitting||s.operation||s.transferActive||s.uploading()||s.navigating||s.state.optBoolean("busy"));}
+  boolean routeBusy(){return NetworkRegion.backgroundBusy(ChatSession.peek());}
   List<String> rankedRoutes(){long now=System.currentTimeMillis();List<String> ordered=quality.ranked(names,now);if(lowLatency())ordered.sort(Comparator.comparingDouble(name->{JSONObject q=websiteQuality.stats(name,now);return q.optInt("samples")>=3&&q.optInt("latest")>0?q.optDouble("score"):1000000+quality.stats(name,now).optDouble("score");}));return ordered;}
   String websiteUrl(){return "https://chatgpt.com/";}
   void closeWebsiteConnections()throws Exception{
@@ -332,7 +336,7 @@ class NativeNetwork {
         verifyExit();
       }
       int delay=probe("FixedExit");maintenanceCheck();long now=System.currentTimeMillis();quality.record(currentEntry,delay,now);
-      if(delay<0){if(++failures>=2){if(settings!=null&&"manual".equals(settings.optString("entryMode")))throw new IOException("指定入口暂不可用，请重连或编辑网络");firstVerifiedRoute(currentEntry);maintenanceCheck();if(routeBusy())return;verifyExit();failures=0;report("已自动恢复入口 · "+display(currentEntry));}return;}
+      if(delay<0){if(++failures>=2){if(settings!=null&&"manual".equals(settings.optString("entryMode")))throw new IOException("指定入口暂不可用，请重连或编辑网络");firstVerifiedRoute(currentEntry);maintenanceCheck();if(routeBusy())return;failures=0;report("已自动恢复入口 · "+display(currentEntry));}return;}
       failures=0;if(now-lastVerified>=NetworkOptimizationPolicy.ACTIVE_INTERVAL)verifyExit();
       if((lowLatency()||settings!=null&&settings.optString("entryMode").isEmpty())&&now-lastScan>=NetworkOptimizationPolicy.SCAN_INTERVAL&&!backgroundIdle()){
         List<String> batch=NetworkOptimizationPolicy.batch(names,rankedRoutes(),currentEntry,scanCursor++);scanSubset(batch,false,true);

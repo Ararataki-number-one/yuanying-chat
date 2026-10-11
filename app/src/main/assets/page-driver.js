@@ -26,8 +26,8 @@
     return el.innerText;
   }
   function sendButton() {
-    return buttons().find(el => el.matches('[data-testid="send-button"]') ||
-      /^(发送|发送消息|Send|Send prompt|Send message)$/i.test((el.getAttribute('aria-label') || el.innerText || '').trim()));
+    return [...document.querySelectorAll('button,[role="button"]')].find(el => (el.matches('[data-testid="send-button"]') ||
+      /^(发送|发送消息|Send|Send prompt|Send message)$/i.test((el.getAttribute('aria-label') || el.innerText || '').trim()))&&visible(el));
   }
   function busy() {
     return [...document.querySelectorAll('button,[role="button"]')].some(el => (el.matches('[data-testid="stop-button"]') ||
@@ -472,6 +472,11 @@
       result.contentObserved=!activeBusy;
       if(activeBusy)return result;
       if(replyKey&&contentRevision===arg.knownReplyContentRevision&&replyKey===arg.knownReplyKey){result.contentUnchanged=true;return result;}
+      const captureNodes=[...replies,...bodies,...replies.map(assistantScope)],captureUrl=location.href;
+      if(window.__pocketWebPerformance.deferCapture(captureUrl+'|'+replyKey+'|'+contentRevision,()=>{
+        if(location.href!==captureUrl||captureNodes.some(node=>!node.isConnected)||window.__pocketWebPerformance.contentRevision(captureNodes)!==contentRevision)return false;
+        if(reply)observedFiles(reply);bodies.forEach(observedMarkdown);return true;
+      })){result.contentObserved=false;result.captureDeferred=true;return result;}
       result.hasFiles=!!reply&&observedFiles(reply).length>0;
       result.markdown=arg.export?bodies.map(observedMarkdown).join('\n\n'):'';
       return result;

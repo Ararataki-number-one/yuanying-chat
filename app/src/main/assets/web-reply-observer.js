@@ -9,7 +9,7 @@
       [...crypto.getRandomValues(new Uint8Array(16))].map(n => n.toString(16).padStart(2, '0')).join('');
     const documentId = uuid();
     let attempt = null, scheduled = false, timer = null;
-    let readyRoute = '', readinessScheduled = false;
+    let readyRoute = '', readyUrl = '', readinessScheduled = false;
     const normalized = text => String(text || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
     const address = url => new URL(url).origin + new URL(url).pathname;
     const stable = key => /^(id|unit):/.test(key);
@@ -56,13 +56,15 @@
     // One readiness signal per route; the host still checks composer and transcript.
     // This can run before window.load when an unrelated resource is slow.
     function scheduleReadiness() {
-      if (readinessScheduled || readyRoute === address(location.href)) return;
+      if (readinessScheduled || readyUrl === location.href) return;
+      if(readyRoute===address(location.href)){readyUrl=location.href;return;}
       readinessScheduled = true;
       setTimeout(() => {
         readinessScheduled = false;
         if (!api.composer()) return;
         if (!newChat(location.href) && !api.hasMessages()) return;
         readyRoute = address(location.href);
+        readyUrl=location.href;
         emit('ready');
       }, 50);
     }
@@ -96,7 +98,9 @@
         emit('stop', {token:attempt?.token || '', userKey:users.length ? api.key(users.at(-1), users.length - 1) : ''});
         return;
       }
-      if (button && button === api.sendButton()) { begin(); return; }
+      // Most clicks are model/actions/sidebar controls. Do not inspect every
+      // page button before the website handles an unrelated trusted gesture.
+      if (button && (button.matches('[data-testid="send-button"]')||/^(发送|发送消息|Send|Send prompt|Send message)$/i.test(text)) && button === api.sendButton()) { begin(); return; }
       const link = target?.closest('a[href]');
       if (link && attempt && !attempt.userKey) {
         try { if (address(link.href) !== address(location.href)) invalidate('发送核对期间打开了其他页面'); } catch (_) {}

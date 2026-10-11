@@ -54,12 +54,61 @@ class HttpProxy(socketserver.BaseRequestHandler):
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address=True;daemon_threads=True
 class Fixture(fixture.Fixture):
+    update_transfer_trace=[]
+    update_transfer_counts={}
+    update_transfer_lock=threading.Lock()
+    def update_transfer(self,scenario):
+        if scenario not in {'cut','pause','ignore-range','bad-range','changed-etag','short-length','oversize','bad-hash','bad-signer'}:
+            self.send_error(404);return
+        source=OUT/('update-wrong-signer.apk' if scenario=='bad-signer' else 'update-fixture.apk')
+        original=source.read_bytes();body=bytearray(original)
+        if scenario=='bad-hash':body[len(body)//2]^=1
+        if scenario=='oversize':body.extend(b'oversized-fixture')
+        if scenario=='short-length':body=body[:-1]
+        incoming_range=self.headers.get('Range','');incoming_validator=self.headers.get('If-Range','')
+        with self.update_transfer_lock:
+            index=self.update_transfer_counts.get(scenario,0)+1;self.update_transfer_counts[scenario]=index
+            trace={'scenario':scenario,'request':index,'range':incoming_range,'ifRange':incoming_validator,'sourceBytes':len(original),'sentBytes':0}
+            self.update_transfer_trace.append(trace)
+        offset=0
+        if incoming_range:
+            if not incoming_range.startswith('bytes=') or not incoming_range.endswith('-'):
+                self.send_error(416);return
+            try:offset=int(incoming_range[6:-1])
+            except ValueError:self.send_error(416);return
+            if offset<0 or offset>=len(body):self.send_error(416);return
+        ignores_range=bool(incoming_range) and scenario=='ignore-range'
+        status=206 if incoming_range and not ignores_range else 200
+        if ignores_range:offset=0
+        etag='"synthetic-update-v2"' if incoming_range and scenario=='changed-etag' else '"synthetic-update-v1"'
+        response=body[offset:];content_range=''
+        if status==206:
+            first=offset+1 if scenario=='bad-range' else offset
+            content_range=f'bytes {first}-{len(body)-1}/{len(body)}'
+        self.send_response(status);self.send_header('Content-Type','application/octet-stream');self.send_header('Content-Length',str(len(response)))
+        self.send_header('Accept-Ranges','bytes');self.send_header('ETag',etag);self.send_header('Cache-Control','no-store')
+        if content_range:self.send_header('Content-Range',content_range)
+        self.end_headers();trace.update(status=status,etag=etag,contentRange=content_range,responseBytes=len(response))
+        cut=index==1 and not incoming_range and scenario in {'cut','ignore-range','bad-range','changed-etag'}
+        send_length=len(body)//2 if cut else len(response)
+        try:
+            for at in range(0,send_length,16384):
+                chunk=response[at:min(at+16384,send_length)];self.wfile.write(chunk);self.wfile.flush();trace['sentBytes']+=len(chunk)
+                if scenario=='pause':time.sleep(.5)
+            if cut:
+                trace['forcedDisconnect']=True;self.close_connection=True
+                self.connection.shutdown(socket.SHUT_RDWR)
+        except (BrokenPipeError,ConnectionResetError,OSError):trace['clientDisconnected']=True
+        finally:trace['returnedBytes']=trace['sentBytes']
+        return
     def do_POST(self):
         body=self.rfile.read(int(self.headers.get('Content-Length','0')))
         ok=self.path=='/image-received' and b'filename="photo-123.png"' in body and b'Content-Type: image/png' in body and b'\x89PNG\r\n\x1a\n' in body
         self.send_response(200 if ok else 400);self.send_header('Content-Length','0');self.end_headers()
     def do_GET(self):
         address=urllib.parse.urlparse(self.path);query=urllib.parse.parse_qs(address.query)
+        if address.path.startswith('/update-transfer/'):
+            return self.update_transfer(address.path.removeprefix('/update-transfer/'))
         if address.path.startswith('/update-'):
             source=OUT/('update-wrong-signer.apk' if address.path=='/update-wrong-signer' else 'update-fixture.apk')
             body=bytearray(source.read_bytes())
@@ -130,10 +179,11 @@ def main():
         adb('shell','settings','put','global',setting,'0')
     launcher='com.google.android.apps.nexuslauncher'
     has_pixel_launcher=launcher in adb('shell','pm','list','packages',launcher)
-    steps=[];logs=[]
+    steps=[];logs=[];update_report=None;surface_gestures={}
     def run(context,action,kind='fixture'):
         adb('logcat','-c')
         tapped=set()
+        surface_gestures[(context,action)]=[]
         activity='GeckoIntegrationTestActivity' if context==1 else 'ProfileGeckoIntegrationActivity1'
         # This emulator image's Pixel Launcher can ANR during first-boot package
         # optimization and intercept otherwise correct trusted taps. Stop only
@@ -149,6 +199,13 @@ def main():
                 try:event=json.loads(line[line.index('{'):])
                 except json.JSONDecodeError:continue
                 if event.get('nativeContext')!=f'environment-{context}':continue
+                if event.get('kind')=='swipeNeeded':
+                    point=event['result'];identity=point['id']
+                    if identity not in tapped:
+                        tapped.add(identity)
+                        adb('shell','input','swipe',str(point['x']),str(point['fromY']),str(point['x']),str(point['toY']),str(point.get('duration',500)))
+                        surface_gestures[(context,action)].append(dict(point,context=context,action=action,actualAndroidInput=True))
+                    continue
                 if event.get('kind')=='homeNeeded':
                     marker=event['result']['id']
                     if marker not in tapped:tapped.add(marker);adb('shell','input','keyevent','KEYCODE_HOME')
@@ -194,6 +251,84 @@ def main():
                 steps.append(event);logs.append(output);print(json.dumps(event),flush=True);return result
             time.sleep(.5)
         raise TimeoutError('No native update result: '+action)
+    def transfer(scenario,action='transferStart',target='ready'):
+        adb('logcat','-c');token=str(time.monotonic_ns());source=OUT/('update-wrong-signer.apk' if scenario=='bad-signer' else 'update-fixture.apk');data=source.read_bytes()
+        adb('shell','am','start','-W','-n',package+'/local.pocketchat.AppUpdateIntegrationActivity','--es','updateAction',action,'--es','transferScenario',scenario,'--es','transferToken',token,'--es','transferTarget',target,'--es','updateHash',hashlib.sha256(data).hexdigest(),'--el','updateBytes',str(len(data)))
+        expires=time.monotonic()+100
+        while time.monotonic()<expires:
+            raw=adb('logcat','-d','-s','PocketUpdateTransfer:I','AndroidRuntime:E','*:S');assert 'FATAL EXCEPTION' not in raw,raw
+            for line in raw.splitlines():
+                if 'PocketUpdateTransfer' not in line or '{' not in line:continue
+                result=json.loads(line[line.index('{'):])
+                if result.get('token')!=token:continue
+                assert 'error' not in result,result
+                update_report['cases'].append(result);print(json.dumps(dict(kind='updateTransfer',result=result)),flush=True);return result
+            time.sleep(.25)
+        raise TimeoutError(f'Controlled transfer {scenario}/{action}/{target} timed out')
+    def transfer_check(name,passed):
+        item={'name':name,'pass':bool(passed)};update_report['checks'].append(item);assert passed,item
+    def update_touch(label):
+        import xml.etree.ElementTree as ET,re
+        adb('shell','uiautomator','dump','/sdcard/update-transfer-ui.xml');raw=adb('shell','cat','/sdcard/update-transfer-ui.xml')
+        node=next(node for node in ET.fromstring(raw).iter('node') if node.attrib.get('text')==label and node.attrib.get('clickable')=='true')
+        x1,y1,x2,y2=map(int,re.findall(r'\d+',node.attrib['bounds']));assert x2>x1 and y2>y1,node.attrib
+        point=dict(label=label,x=(x1+x2)//2,y=(y1+y2)//2);update_report['actualAndroidGestures'].append(point);adb('shell','input','tap',str(point['x']),str(point['y']));return point
+    def active_update_job(stage):
+        expires=time.monotonic()+6;raw=''
+        while time.monotonic()<expires:
+            raw=adb('shell','cmd','jobscheduler','get-job-state',package,'4103')
+            if 'active' in raw.split():break
+            time.sleep(.1)
+        assert 'active' in raw.split(),(stage,raw)
+        detail=adb('shell','dumpsys','jobscheduler');assert 'local.pocketchat.AppUpdateJob' in detail,detail
+        (OUT/('update-transfer-job-'+stage+'.txt')).write_text(detail);event=dict(stage=stage,jobId=4103,state=raw.strip(),service='local.pocketchat.AppUpdateJob');update_report['actualJobExecutions'].append(event);return event
+    def update_transfers():
+        nonlocal update_report
+        update_report=dict(status='running',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),actualAndroidExecution=True,actualHttpTransfer=True,actualJobSchedulerExecution=False,checks=[],cases=[],httpTransfers=Fixture.update_transfer_trace,actualAndroidGestures=[],actualJobExecutions=[],scope='Real signed synthetic APK over controlled HTTP through the production transfer and Android JobScheduler; no synthetic APK installed.')
+        original=(OUT/'update-fixture.apk').read_bytes();expected=hashlib.sha256(original).hexdigest();size=len(original)
+        cut=transfer('cut',target='waiting');transfer_check('disconnectPreservesPartial',cut['partialBytes']==size//2 and cut['partialSha']==hashlib.sha256(original[:size//2]).hexdigest() and cut['partialIdentity'] and not cut['uri'])
+        ready=transfer('cut','transferResume');trace=[x for x in Fixture.update_transfer_trace if x['scenario']=='cut']
+        transfer_check('rangeOnlyRemaining',len(trace)==2 and trace[0]['sentBytes']==size//2 and trace[1]['range']==f'bytes={size//2}-' and trace[1]['status']==206 and trace[1]['sentBytes']==size-size//2)
+        transfer_check('ifRangeValidator',trace[1]['ifRange']=='"synthetic-update-v1"')
+        transfer_check('resumedShaSigner',ready['state']=='ready' and ready['finalSha']==expected and ready['finalBytes']==size and ready['sameSigner'])
+        transfer_check('singleFinalApk',ready['finalApks']==1 and ready['partialBytes']==0)
+        run(2,'reading','reading')
+        live=transfer('pause',target='downloading');active_update_job('before-pause')
+        interaction=run(2,'nativeSurface','nativeSurface');assert all(interaction[k] for k in ['stationaryGeometryDeduplicated','movedSurfaceAcceptsRealInput','documentAndDraftPreserved']),interaction
+        update_report['transferNativeSurfaceGestures']=surface_gestures[(2,'nativeSurface')]
+        assert len(update_report['transferNativeSurfaceGestures'])==3 and interaction['actualGestureCount']==3,interaction
+        streaming=transfer('pause','transferInspect','downloading');transfer_check('chatResponsiveDuringTransfer',streaming['running'] and streaming['state']=='downloading' and streaming['partialBytes']>live['partialBytes'] and all(interaction[k] for k in ['movedSurfaceAcceptsRealInput','documentAndDraftPreserved']))
+        time.sleep(2.2);progress=transfer('pause','transferInspect','downloading')
+        transfer_check('streamingStatusReadable',progress['statusReads']>=2 and 0<progress['received']<size and progress['total']==size and isinstance(progress['message'],str))
+        transfer_check('mainThreadStatusNoIo',progress['statusMainThreadIo']==0)
+        transfer_check('progressKeepsViewIdentity',progress['progressIdentityPairs']>=1)
+        update_touch('暂停下载');paused=transfer('pause','transferWaitPaused','paused')
+        transfer_check('actualPauseTouch',paused['state']=='paused' and paused['userPaused'] and not paused['running'])
+        transfer_check('pauseKeepsPartial',0<paused['partialBytes']<size and paused['partialIdentity'] and not paused['uri'])
+        recreated=transfer('pause','transferRecreate','inspect');transfer_check('activityRecreationKeepsPartial',recreated['pid']==paused['pid'] and recreated['partialBytes']==paused['partialBytes'] and recreated['partialSha']==paused['partialSha'] and recreated['state']=='paused')
+        adb('shell','am','force-stop',package)
+        restarted=transfer('pause','transferInspect','inspect');transfer_check('processRestartKeepsPartial',restarted['pid']!=paused['pid'] and restarted['partialBytes']==paused['partialBytes'] and restarted['partialSha']==paused['partialSha'] and restarted['partialIdentity'] and restarted['state']=='paused')
+        update_touch('继续下载');active_update_job('after-restart');finished=transfer('pause','transferWaitReady','ready')
+        transfer_check('actualResumeTouch',finished['state']=='ready' and not finished['userPaused'])
+        ranges=[x for x in Fixture.update_transfer_trace if x['scenario']=='pause' and x['range']]
+        transfer_check('restartResumeRange',len(ranges)==1 and ranges[0]['range']==f"bytes={paused['partialBytes']}-" and ranges[0]['ifRange']=='"synthetic-update-v1"')
+        transfer_check('restartResumeComplete',finished['sameSigner'] and finished['finalSha']==expected and finished['finalBytes']==size and finished['finalApks']==1 and finished['partialBytes']==0)
+        ignored=transfer('ignore-range',target='waiting');again=transfer('ignore-range','transferResume');ranges=[x for x in Fixture.update_transfer_trace if x['scenario']=='ignore-range']
+        transfer_check('ignoredRangeRestartsCleanly',ignored['partialBytes']==size//2 and len(ranges)==2 and ranges[1]['status']==200 and ranges[1]['range']==f'bytes={size//2}-' and ranges[1]['sentBytes']==size and again['finalSha']==expected and again['finalBytes']==size and again['finalApks']==1)
+        for scenario,name in [('bad-range','invalidContentRangeRejected'),('changed-etag','changedETagRejected')]:
+            interrupted=transfer(scenario,target='waiting');invalid=transfer(scenario,'transferResume','available');requests=[x for x in Fixture.update_transfer_trace if x['scenario']==scenario]
+            bad_header=len(requests)==2 and requests[1]['range']==f"bytes={interrupted['partialBytes']}-" and requests[1]['status']==206
+            if bad_header:bad_header=requests[1]['contentRange'].startswith(f"bytes {interrupted['partialBytes']+1}-") if scenario=='bad-range' else requests[1]['etag']=='"synthetic-update-v2"'
+            transfer_check(name,bad_header and not invalid['uri'] and invalid['partialBytes']==0 and invalid['finalApks']==0 and not invalid['downloadRequested'])
+        for scenario,name in [('short-length','shortLengthRejected'),('oversize','oversizeRejected'),('bad-hash','badHashRejected'),('bad-signer','badSignerRejected')]:
+            invalid=transfer(scenario,target='available');requests=[x for x in Fixture.update_transfer_trace if x['scenario']==scenario]
+            reached_fixture=len(requests)==1 and requests[0]['status']==200
+            if reached_fixture:
+                reached_fixture=requests[0]['responseBytes']<size if scenario=='short-length' else requests[0]['responseBytes']>size if scenario=='oversize' else requests[0]['sentBytes']==requests[0]['sourceBytes']
+            transfer_check(name,reached_fixture and not invalid['uri'] and invalid['partialBytes']==0 and invalid['finalApks']==0 and not invalid['downloadRequested'])
+        assert len(update_report['checks'])==23,update_report
+        update_report.update(status='passed',checkCount=len(update_report['checks']),actualJobSchedulerExecution=len(update_report['actualJobExecutions'])==2,chatInteraction=interaction)
+        (OUT/'update-transfer-results.json').write_text(json.dumps(update_report,indent=2)+'\n')
     def management(action):
         adb('logcat','-c')
         adb('shell','am','start','-W','-n',package+'/local.pocketchat.EnvironmentManagementIntegrationActivity','--es','managementAction',action)
@@ -279,6 +414,14 @@ def main():
         (OUT/'reading-shrunk-80.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         typed=run(1,'readingInput','readingInput');assert typed['focused']=='composer' and 'native-input-ok' in typed['draft'] and abs(typed['choice']-.8)<.02,typed
         adb('shell','input','keyevent','KEYCODE_BACK')
+        surface=run(1,'nativeSurface','nativeSurface');assert all(surface[k] for k in ['stationaryGeometryDeduplicated','movedSurfaceAcceptsRealInput','documentAndDraftPreserved']),surface
+        report['nativeSurfacePerformance']=surface;report['nativeSurfaceGestures']=surface_gestures[(1,'nativeSurface')]
+        assert len(report['nativeSurfaceGestures'])==3 and surface['actualGestureCount']==3,surface
+        adb('shell','input','keyevent','KEYCODE_BACK')
+        checkpoint=run(1,'nativeCheckpoint','nativeCheckpoint')
+        assert all(checkpoint[k] for k in ['mainSerializationZero','pendingBounded','latestWinsDuringSerialization','oversizeKeepsPrevious','independentStore','validAfterNullCandidate','validAfterThrowingCandidate','validAfterUtf8Oversize','invalidNewerKeepsValid','continuousOffersPersisted','sdkSnapshotRestorable']),checkpoint
+        assert checkpoint['mainSerialized']==0 and checkpoint['firstBurstSerialized']==1 and checkpoint['firstBurstCoalesced']==999 and checkpoint['lastCandidate']==1199 and checkpoint['lastValidCandidate']==2002 and checkpoint['continuousLastCandidate']==4199 and checkpoint['continuousOffered']==200 and checkpoint['continuousWritesDuringOffers']>=1,checkpoint
+        report['nativeCheckpointPerformance']=checkpoint
         cancelled=run(1,'cancelLoad','cancelledLoad');assert not cancelled['reportedFailure'] and not cancelled['pageError'] and cancelled['visibleDocumentRetained'] and cancelled['documentReadyBeforeStop'],cancelled
         assert any(x['kind']=='socks' and x.get('route')=='environment-1-socks' for x in fixture.TRACE)
         assert any(x['kind']=='httpProxy' and x.get('route')=='environment-2-http' for x in fixture.TRACE)
@@ -336,6 +479,8 @@ def main():
         assert 'packageinstaller' in installer_ui and ('Update' in installer_ui or '更新' in installer_ui),installer_ui
         adb('shell','input','keyevent','KEYCODE_BACK') # Never install the synthetic replacement.
         report['appUpdates']=dict(downloadManager='passed (real system HTTP transfer)',good=good,failures=update_checks,provider=access,settingsUi='passed',androidInstaller='passed (opened; synthetic APK not installed)')
+        update_transfers()
+        report['appUpdateTransfer']='passed (real HTTP interruption, durable Range resume, Android JobScheduler, pause/resume touch and concurrent controlled browser input)'
         queued=run(2,'queuedChanges','queuedChanges');assert all(queued[key] for key in ['savedWhileReplying','oldRouteKept','browserSavedWithoutApplying','replyCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn']),queued
         foreign_before=run(1,'foreignPreferences','foreignPreferences');assert foreign_before['marker']=='prime-target',foreign_before
         deletion=management('deleteOne')
@@ -352,12 +497,17 @@ def main():
         report.update(sessionCookieRestartAndLogout='passed (synthetic HttpOnly session cookie)',automaticContentRecovery='passed (injected SDK onKill, native restoreState)',profileProcessLifecycle='passed (both RESUMED)',continuousEnvironmentSwitching='passed (12 foreground changes and Home return)',realShrinkAndMagnify='passed (80%, 60%, 130%, 80%; same document and draft)',scaledKeyboardInput='passed (trusted Android tap and keyboard text)')
     except Exception as error:
         report.update(status='failed',error=f'{type(error).__name__}: {error}')
+        if update_report is not None and update_report.get('status')!='passed':
+            update_report.update(status='failed',error=f'{type(error).__name__}: {error}',checkCount=len(update_report['checks']))
         (OUT/'failure-screen.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         adb('shell','uiautomator','dump','/sdcard/gecko-failure.xml')
         (OUT/'failure-ui.xml').write_text(adb('shell','cat','/sdcard/gecko-failure.xml'))
         raise
     finally:
         if report.get('status')!='passed':(OUT/'last-device-log.txt').write_text(adb('logcat','-d'))
+        if update_report is not None:
+            (OUT/'update-transfer-results.json').write_text(json.dumps(update_report,indent=2)+'\n')
+            if update_report.get('status')!='passed':(OUT/'update-transfer-failure-log.txt').write_text(adb('logcat','-d'))
         report['steps']=steps
         (OUT/'device-results.json').write_text(json.dumps(report,indent=2)+'\n')
         (OUT/'device-route-trace.json').write_text(json.dumps(fixture.TRACE,indent=2)+'\n')

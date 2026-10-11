@@ -31,7 +31,8 @@ if version_code>=42:
     chrome=json.loads((args.evidence/'compact-chrome-results.json').read_text())
     assert quiet['status']=='passed' and quiet['actualAndroidExecution'] and quiet['sourceCommit']==args.source and quiet['checkCount']>=24 and all(c['pass'] for c in quiet['checks']),'Quiet service and completion reminder regression is required.'
     assert chrome['status']=='passed' and chrome['actualAndroidExecution'] and chrome['sourceCommit']==args.source and len(chrome['cases'])==3 and all(c['readOnlyStatus'] and len(c['actualAndroidTaps'])==5 for c in chrome['cases']),'Compact chrome and real Android touch regression is required.'
-    required={'The current route automatically gets a real first sample while reply is busy','External measured response is shown instead of permanently unmeasured','A blocked external route makes no test request or direct fallback'}
+    current_sample={'Automatic display sampling makes no requests while a reply is busy','The current route gets a real first sample after the reply becomes idle'} if version_code>=45 else {'The current route automatically gets a real first sample while reply is busy'}
+    required=current_sample|{'External measured response is shown instead of permanently unmeasured','A blocked external route makes no test request or direct fallback'}
     assert required<=set(c['name'] for c in network['checks'] if c['pass']),'Real latency refresh regression is required.'
 if version_code>=43:
     from gecko.check_performance_evidence import verify_performance_evidence
@@ -39,6 +40,9 @@ if version_code>=43:
 if version_code>=44:
     from gecko.check_connection_evidence import verify_connection_evidence
     connection=verify_connection_evidence(args.evidence,args.source)
+if version_code>=45:
+    from gecko.check_interaction_transfer_evidence import verify_interaction_transfer_evidence
+    interaction_transfer=verify_interaction_transfer_evidence(args.evidence,args.source)
 build=json.loads((args.evidence/'manifest.json').read_text())
 assert build['sourceCommit']==args.source,'Native evidence does not match the selected source.'
 receipt=json.loads((args.apk.parent/'gecko-apk-verification.json').read_text())
@@ -55,6 +59,7 @@ manifest=dict(receipt,sourceCommit=args.source,filename=args.apk.name,parts=[],
               nativeRegression='passed',googleLogin='not-tested',physicalArmPhone='not-tested')
 if version_code>=43:manifest['performanceRegression']=performance
 if version_code>=44:manifest['connectionRecoveryRegression']=connection
+if version_code>=45:manifest['interactionTransferRegression']=interaction_transfer
 for number,offset in enumerate(range(0,len(raw),60_000_000)):
     part=raw[offset:offset+60_000_000];name=f'{args.apk.name}.part{number:02d}'
     (stage/name).write_bytes(part)
@@ -66,6 +71,7 @@ if version_code>=42:
     for name in ['quiet-notification-results.json','compact-chrome-results.json']:shutil.copy2(args.evidence/name,stage/name)
 performance_files=['gecko-performance-results.json','snapshot-host-results.json','reply-observation-host-results.json'] if version_code>=43 else []
 if version_code>=44:performance_files.append('reply-binding-host-results.json')
+if version_code>=45:performance_files.extend(['update-transfer-results.json','update-transfer-host-results.json','interaction-host-results.json'])
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
 shutil.copy2(args.notes,stage/'RELEASE.md')
 workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkdir(parents=True)
@@ -76,6 +82,7 @@ if version_code>=43:
     (stage/'tools/gecko').mkdir(exist_ok=True)
     shutil.copy2(root/'tools/gecko/check_performance_evidence.py',stage/'tools/gecko/check_performance_evidence.py')
 if version_code>=44:shutil.copy2(root/'tools/gecko/check_connection_evidence.py',stage/'tools/gecko/check_connection_evidence.py')
+if version_code>=45:shutil.copy2(root/'tools/gecko/check_interaction_transfer_evidence.py',stage/'tools/gecko/check_interaction_transfer_evidence.py')
 branch='apk/gecko-release-20261003'
 env=dict(os.environ,GIT_INDEX_FILE=str(root/'work/gecko-integration/signed-index'),GIT_WORK_TREE=str(stage),
     GIT_AUTHOR_NAME='PocketChat release',GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',

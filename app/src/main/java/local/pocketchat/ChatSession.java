@@ -192,7 +192,7 @@ final class ChatSession {
       }
       if(optimized&&spaTransition){String signature=s.optString("contentKey");boolean changed=!signature.equals(spaBefore)&&targetMatches(s.optString("url"))&&s.optBoolean("composer");if(changed&&signature.equals(spaSignature))spaStable++;else{spaSignature=signature;spaStable=changed?1:0;}if(spaStable<2){pollSync(epoch,run,optimized);return;}spaTransition=false;}
       long now=SystemClock.elapsedRealtime();boolean routeChanged=!lastWebUrl.equals(s.optString("url"));
-      boolean needed=!optimized||routeChanged||navigating||navigationFailed||webMirror.documentId.isEmpty()||(s.optBoolean("transcriptDirty")&&now-lastWebSnapshot>=2500&&(!s.optBoolean("interacting")||now-lastWebSnapshot>=15000));
+      boolean needed=!optimized||routeChanged||navigating||navigationFailed||webMirror.documentId.isEmpty()||(s.optBoolean("transcriptDirty")&&now-lastWebSnapshot>=2500&&!s.optBoolean("interacting"));
       if(!needed){pollSync(epoch,run,optimized);return;}
       runDriver(optimized?"web-transcript":"transcript",optimized?webMirror.arguments():new JSONObject(),data->{
         if(run!=syncRun)return;if(epoch!=navigationEpoch){inFlight=false;return;}
@@ -241,7 +241,9 @@ final class ChatSession {
       if(optimized&&contentObserved&&p.has("replyContentRevision")){
         observedReplyJob=job.optString("id");observedReplyUrl=p.optString("url");observedReplyKey=p.optString("replyKey");observedReplyRevision=p.optString("replyContentRevision");observedReplyMarkdown=p.optString("markdown");observedReplyHasFiles=p.optBoolean("hasFiles");
       }
-      boolean verifiedWebCompletion=webObserver.mayComplete(job,p);
+      boolean verifiedWebCompletion;
+      if(p.optBoolean("captureDeferred")){resetReplyStability();verifiedWebCompletion=false;}
+      else verifiedWebCompletion=webObserver.mayComplete(job,p);
       boolean jobChanged=false,previouslyConfirmed=job.optBoolean("confirmed");
       if(p.optBoolean("submitted")){
         delivery(job.optString("id"),previouslyConfirmed?"awaiting":"confirmed",previouslyConfirmed?"网页已显示提问，正在等待回复":"对应提问已出现在网页中",true,p.optString("userKey"),p.optString("url",conversation));
