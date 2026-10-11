@@ -5,6 +5,7 @@ import android.content.Context;
 import android.os.*;
 import android.util.Log;
 import android.view.Choreographer;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.LinearLayout;
@@ -24,7 +25,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   final Handler handler=new Handler(Looper.getMainLooper());
   final FrameSample frames=new FrameSample();
   ChatSession session;String variant,driver,performanceSource;JSONObject before,known,firstFull,baselineMetrics,currentMetrics,productionJob;
-  int checkCount,samples;boolean finished;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
+  int checkCount,samples,inputFocusSamples;boolean finished,inputRequested;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
   String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
   CountDownLatch archiveEntered,archiveRelease;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
@@ -291,17 +292,23 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   });}
   void inputGesture(){evaluate("(()=>{const composer=document.getElementById('prompt-textarea'),r=composer.getBoundingClientRect();return {draft:composer.value,x:r.left+r.width/2,y:r.top+r.height/2,width:innerWidth,height:innerHeight};})()",false,point->{
     inputDraft=point.optString("draft");if(inputDraft.contains(INPUT_MARKER))throw new IllegalStateException("Input fixture draft already contains the synthetic marker");
+    inputRequested=false;inputFocusSamples=0;
     int[] position=new int[2];session.web.getLocationOnScreen(position);
     int x=position[0]+(int)(point.optDouble("x")*session.web.getWidth()/point.optDouble("width"));
     int y=position[1]+(int)(point.optDouble("y")*session.web.getHeight()/point.optDouble("height"));
     event("gestureNeeded",J.obj("id","current-input","action","input","x",x,"y",y,"text",INPUT_MARKER));waitInput(SystemClock.elapsedRealtime()+20000);
   });}
-  void waitInput(long expires){evaluate("({draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent)})",false,value->{
+  void waitInput(long expires){evaluate("({draft:document.getElementById('prompt-textarea').value,composerFocused:document.activeElement===document.getElementById('prompt-textarea'),cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent)})",false,value->{
+    InputMethodManager keyboard=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+    boolean nativeFocused=session.web.hasFocus(),acceptingText=keyboard!=null&&keyboard.isAcceptingText();
+    boolean inputReady=value.optBoolean("composerFocused")&&nativeFocused&&acceptingText;
+    inputFocusSamples=inputReady?inputFocusSamples+1:0;
+    if(!inputRequested&&inputFocusSamples>=2){inputRequested=true;event("textNeeded",J.obj("id","current-input","text",INPUT_MARKER,"composerFocused",true,"nativeFocused",true,"acceptingText",true,"stableFocusSamples",inputFocusSamples));}
     String actual=value.optString("draft");int inserted=actual.indexOf(INPUT_MARKER);
-    if(inserted<0){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Android keyboard input did not reach Gecko: "+value);later(()->waitInput(expires),100);return;}
+    if(inserted<0){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Android keyboard input did not reach Gecko: "+value+" nativeFocused="+nativeFocused+" acceptingText="+acceptingText+" textRequested="+inputRequested);later(()->waitInput(expires),100);return;}
     // A real tap can put the caret anywhere. Require exactly one actual insertion
     // and every pre-existing character, rather than assuming an end-of-line caret.
-    check("Actual Android tap and keyboard input preserve the existing composer draft",actual.indexOf(INPUT_MARKER,inserted+INPUT_MARKER.length())<0&&(actual.substring(0,inserted)+actual.substring(inserted+INPUT_MARKER.length())).equals(inputDraft));
+    check("Actual Android tap and keyboard input preserve the existing composer draft",inputRequested&&actual.indexOf(INPUT_MARKER,inserted+INPUT_MARKER.length())<0&&(actual.substring(0,inserted)+actual.substring(inserted+INPUT_MARKER.length())).equals(inputDraft));
     check("Actual user input neither sends a message nor changes the synthetic login",value.optInt("sendCount")==0&&value.optString("cookie").contains("session=synthetic-performance"));bindingLifecycle();
   });}
   // Run after both immutable measurements and all existing capture/gesture checks.

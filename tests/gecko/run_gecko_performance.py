@@ -162,7 +162,7 @@ def main():
                   'frameTimingInterpretation': 'Descriptive actual Gecko RAF and Android Choreographer gaps during the controlled polling and gesture workload; no claim of real-account FPS.'}
         adb('logcat', '-c')
         adb('shell', 'am', 'start', '-W', '-n', package + '/local.pocketchat.GeckoPerformanceIntegrationActivity')
-        checks, measurements, gestures, diagnostics = {}, {}, {}, {}
+        checks, measurements, gestures, text_inputs, diagnostics = {}, {}, {}, {}, {}
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             raw = adb('logcat', '-d', '-s', 'PocketGeckoPerformance:I', 'AndroidRuntime:E', '*:S')
@@ -186,12 +186,20 @@ def main():
                         elif gesture['action'] == 'input':
                             assert gesture['text'] == '-user-typed', gesture
                             adb('shell', 'input', 'tap', str(gesture['x']), str(gesture['y']))
-                            # Accept the caret position chosen by the actual tap.
-                            # The activity removes exactly this marker and compares
-                            # every original draft character after real keyboard input.
-                            adb('shell', 'input', 'text', gesture['text'])
+                            # The DOM and Android InputConnection settle separately.
+                            # Wait for the activity's actual focus handshake before text.
                         else:
                             raise AssertionError(gesture)
+                elif item['kind'] == 'textNeeded':
+                    request = item['value']
+                    assert request['id'] == 'current-input' and request['id'] in gestures, request
+                    assert gestures[request['id']]['action'] == 'input' and request['text'] == gestures[request['id']]['text'], request
+                    assert request['composerFocused'] and request['nativeFocused'] and request['acceptingText'] and request['stableFocusSamples'] >= 2, request
+                    if request['id'] not in text_inputs:
+                        text_inputs[request['id']] = request
+                        # Keep the caret from the real tap. The activity removes
+                        # exactly one marker and checks every original character.
+                        adb('shell', 'input', 'text', request['text'])
                 elif item['kind'] == 'report':
                     report = item['value']
                 elif item['kind'] in ['load', 'route', 'loadError']:
@@ -200,7 +208,8 @@ def main():
                 report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                               checks=list(checks.values()), measurements=list(measurements.values()), fixtureRequests=Fixture.requests,
                               controlledProxyRoutes=Socks.routes, browserDiagnostics=list(diagnostics.values()),
-                              baselineAssetVerification=receipt, actualAndroidGestures=list(gestures.values()), device=device)
+                              baselineAssetVerification=receipt, actualAndroidGestures=list(gestures.values()),
+                              actualAndroidTextInputs=list(text_inputs.values()), device=device)
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
                 assert report['status'] == 'passed' and report['actualAndroidExecution'] and report['actualGeckoExecution'] and report['actualAndroidTouchExecution'] and report['actualGeckoBindingRegressionExecution'], report
@@ -209,6 +218,7 @@ def main():
                 assert set(measurements) == {'baseline', 'current'}, report
                 assert all(case['samples'] == 12 for case in measurements.values()), report
                 assert set(gestures) == {'baseline-scroll', 'current-scroll', 'current-input'}, report
+                assert set(text_inputs) == {'current-input'}, report
                 assert len([request for request in Fixture.requests if request['path'] == '/performance']) == 2, report
                 assert Socks.routes and all(route['accepted'] for route in Socks.routes), report
                 decisions = [item['value'] for item in diagnostics.values() if item['kind'] == 'route' and item['value']['url'].startswith('http://127.0.0.1:8767/performance')]

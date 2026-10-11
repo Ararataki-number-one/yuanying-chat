@@ -17,6 +17,10 @@ def verify_connection_evidence(directory, source):
 
     gecko = android('gecko-performance-results.json')
     assert gecko['actualGeckoExecution'] and gecko['actualGeckoBindingRegressionExecution']
+    inputs = gecko['actualAndroidTextInputs']
+    assert len(inputs) == 1 and inputs[0]['id'] == 'current-input'
+    assert inputs[0]['composerFocused'] and inputs[0]['nativeFocused'] and inputs[0]['acceptingText']
+    assert inputs[0]['stableFocusSamples'] >= 2
     assert gecko['checkCount'] == len(gecko['checks']) >= 125
     names = {check['name'] for check in gecko['checks']}
     assert {
