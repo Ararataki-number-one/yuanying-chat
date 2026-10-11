@@ -485,6 +485,13 @@ def main():
             if action=='badHash':assert '不完整' in result['message'],result
             if action=='badSigner':assert '签名' in result['message'],result
             if action=='cancel':assert '取消' in result['message'],result
+        held_cancel=update('cancelDuringQuery')
+        assert all(held_cancel[key] for key in ['actualSystemQuery','queryHeldAfterReturn','queryReturnedAfterCancel','productionProviderCancel','productionPollDrained','cleanupWorkerDrained','systemRecordRemoved','sameRelease']),held_cancel
+        assert held_cancel['ownedDownloadId']>0 and held_cancel['generationAfterCancel']>held_cancel['generationBeforeCancel'] and held_cancel['cancelledDownloadId']==-1,held_cancel
+        assert held_cancel['queriedUri']=='http://127.0.0.1:8765/update-wait' and held_cancel['systemRowId']==held_cancel['ownedDownloadId'] and held_cancel['cursorClass'] and held_cancel['cursorStatusBeforeCancel'] in [1,2,4],held_cancel
+        assert held_cancel['cancelState']=='available' and held_cancel['state']=='available' and '取消' in held_cancel['message'] and held_cancel['downloadId']==-1 and not held_cancel['uri'],held_cancel
+        assert held_cancel['received']==0 and not held_cancel['downloadRequested'] and not held_cancel['pendingTransferJob'] and not held_cancel['finalFilePresent'] and held_cancel['pid']==held_cancel['finalPid'],held_cancel
+        report['legacyDownloadCancelDuringQuery']=held_cancel
         good=update('good');assert good['state']=='ready' and good['uri'].startswith('content://'+package+'.app-updates/'),good
         access=update('verifyAccess');assert access['readOnly'] and access['traversalRejected'] and access['sameSigner'],access
         update('showUi');time.sleep(1)
@@ -499,7 +506,7 @@ def main():
         adb('shell','uiautomator','dump','/sdcard/update-installer-ui.xml');installer_ui=adb('shell','cat','/sdcard/update-installer-ui.xml');(OUT/'update-installer-ui.xml').write_text(installer_ui)
         assert 'packageinstaller' in installer_ui and ('Update' in installer_ui or '更新' in installer_ui),installer_ui
         adb('shell','input','keyevent','KEYCODE_BACK') # Never install the synthetic replacement.
-        report['appUpdates']=dict(downloadManager='passed (real system HTTP transfer)',good=good,failures=update_checks,provider=access,settingsUi='passed',androidInstaller='passed (opened; synthetic APK not installed)')
+        report['appUpdates']=dict(downloadManager='passed (real system HTTP transfer)',good=good,failures=update_checks,cancelDuringQuery=held_cancel,provider=access,settingsUi='passed',androidInstaller='passed (opened; synthetic APK not installed)')
         update_transfers()
         report['appUpdateTransfer']='passed (real HTTP interruption, durable Range resume, Android JobScheduler, pause/resume touch and concurrent controlled browser input)'
         queued=run(2,'queuedChanges','queuedChanges');assert all(queued[key] for key in ['savedWhileReplying','oldRouteKept','browserSavedWithoutApplying','replyCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn']),queued

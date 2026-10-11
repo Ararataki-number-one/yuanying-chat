@@ -88,6 +88,23 @@ def verify_interaction_transfer_evidence(directory, source):
 
     device = android('device-results.json')
     assert len(device['steps']) >= 78 and device['releaseMode']
+    held_cancel = device['appUpdates']['cancelDuringQuery']
+    assert all(held_cancel[key] for key in ('actualSystemQuery', 'queryHeldAfterReturn',
+                                          'queryReturnedAfterCancel', 'productionProviderCancel',
+                                          'productionPollDrained', 'cleanupWorkerDrained',
+                                          'systemRecordRemoved', 'sameRelease'))
+    assert held_cancel['action'] == 'cancelDuringQuery' and held_cancel['ownedDownloadId'] > 0
+    assert held_cancel['systemRowId'] == held_cancel['ownedDownloadId']
+    assert held_cancel['generationAfterCancel'] > held_cancel['generationBeforeCancel']
+    assert held_cancel['cancelledDownloadId'] == -1 and held_cancel['releaseCode'] > 0
+    assert len(held_cancel['releaseSha']) == 64 and held_cancel['cursorClass']
+    assert held_cancel['queriedUri'] == 'http://127.0.0.1:8765/update-wait'
+    assert held_cancel['cursorStatusBeforeCancel'] in (1, 2, 4)
+    assert held_cancel['cancelState'] == held_cancel['state'] == 'available'
+    assert '取消' in held_cancel['message'] and held_cancel['downloadId'] == -1
+    assert not held_cancel['uri'] and held_cancel['received'] == 0
+    assert not held_cancel['downloadRequested'] and not held_cancel['pendingTransferJob']
+    assert not held_cancel['finalFilePresent'] and held_cancel['pid'] == held_cancel['finalPid']
     surface = device['nativeSurfacePerformance']
     assert surface['actualGestureCount'] == 3 and surface['originChecks'] >= 20
     assert surface['originSyncs'] == 1 and surface['movedSurfaceSyncs'] > 0 and surface['typedCharacters'] > 0

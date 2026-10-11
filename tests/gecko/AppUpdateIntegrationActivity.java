@@ -34,11 +34,35 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
       hash=intent.getStringExtra("updateHash");long bytes=intent.getLongExtra("updateBytes",0);if(hash==null||bytes<=0)throw new IOException("Missing synthetic fixture identity");
       JSONObject metadata=J.obj("schema",1,"package","local.pocketchat","version","99.0.0","versionCode",AppUpdateFiles.installed(this)+1,"bytes",bytes,"sha256",hash,"signerSha256",AppUpdatePolicy.SIGNER,"downloadUrl",AppUpdatePolicy.asset("99.0.0"),"abi","arm64-v8a","minSdk",26,"notes","受控安装包；测试不会实际安装。");
       manager.worker.execute(()->{try{manager.removeDownload();manager.clearFiles();manager.info=new AppUpdateInfo(metadata);manager.raw=metadata.toString();File external=new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),"fixture-"+action+".download");external.delete();String path="good".equals(action)?"/update-apk":"badSigner".equals(action)?"/update-wrong-signer":"badHash".equals(action)?"/update-corrupt":"/update-wait";
-        DownloadManager.Request request=new DownloadManager.Request(Uri.parse("http://127.0.0.1:8765"+path)).setDestinationUri(Uri.fromFile(external)).setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE);manager.generation.incrementAndGet();manager.id=manager.downloads.enqueue(request);manager.change("downloading","");handler.post(()->{started=SystemClock.elapsedRealtime();if("cancel".equals(action))AppUpdates.call(this,"cancel",null);waitResult();});
+        DownloadManager.Request request=new DownloadManager.Request(Uri.parse("http://127.0.0.1:8765"+path)).setDestinationUri(Uri.fromFile(external)).setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE);manager.generation.incrementAndGet();manager.id=manager.downloads.enqueue(request);manager.change("downloading","");if("cancelDuringQuery".equals(action)){cancelDuringQuery();return;}handler.post(()->{started=SystemClock.elapsedRealtime();if("cancel".equals(action))AppUpdates.call(this,"cancel",null);waitResult();});
       }catch(Exception e){handler.post(()->event(J.obj("error",String.valueOf(e))));}});
     }catch(Exception e){event(J.obj("error",String.valueOf(e)));}
   }
   void waitResult(){Bundle status=AppUpdates.call(this,"status",null);String state=status.getString("state");if("ready".equals(state)||"available".equals(state)){event(J.obj("action",action,"state",state,"message",status.getString("message"),"uri",status.getString("uri",""),"downloadId",manager.downloadId()));return;}if(SystemClock.elapsedRealtime()-started>60000){event(J.obj("error","DownloadManager did not finish","state",state,"message",status.getString("message")));return;}handler.postDelayed(this::waitResult,200);}
+  void cancelDuringQuery(){final AppUpdateManager.LegacyQuery actualQuery=manager.legacyQuery;final long owned=manager.id,beforeGeneration=manager.generation.get();final AppUpdateInfo release=manager.info;
+    final java.util.concurrent.CountDownLatch cancelled=new java.util.concurrent.CountDownLatch(1);final JSONObject evidence=J.obj("action","cancelDuringQuery","actualSystemQuery",false,"ownedDownloadId",owned,"generationBeforeCancel",beforeGeneration,"releaseCode",release.code,"releaseSha",release.sha,"pid",android.os.Process.myPid());
+    manager.legacyQuery=queried->{android.database.Cursor cursor=actualQuery.query(queried);try{
+      // This is the real system DownloadManager cursor, already materialized.
+      // Hold its delivery to production until the real provider cancels its ID.
+      if(queried!=owned||cursor==null||!cursor.moveToFirst())throw new IllegalStateException("Actual owned DownloadManager row was not returned");
+      int status=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));String uri=cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_URI));long actualId=cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID));
+      if(actualId!=owned||!"http://127.0.0.1:8765/update-wait".equals(uri))throw new IllegalStateException("Real query did not describe the controlled legacy request");
+      evidence.put("actualSystemQuery",true);evidence.put("cursorClass",cursor.getClass().getName());evidence.put("cursorStatusBeforeCancel",status);evidence.put("systemRowId",actualId);evidence.put("queriedUri",uri);evidence.put("queryHeldAfterReturn",true);cursor.moveToPosition(-1);
+      handler.post(()->{try{Bundle result=AppUpdates.call(this,"cancel",null);evidence.put("productionProviderCancel","available".equals(result.getString("state"))&&result.getString("message","").contains("取消"));evidence.put("cancelState",result.getString("state"));evidence.put("generationAfterCancel",manager.generation.get());evidence.put("cancelledDownloadId",manager.downloadId());}catch(Exception error){try{evidence.put("error",error.toString());}catch(JSONException ignored){}}finally{cancelled.countDown();}});
+      if(!cancelled.await(20,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("Actual provider cancellation did not finish while query was held");
+      evidence.put("queryReturnedAfterCancel",true);return cursor;
+    }catch(Exception error){try{evidence.put("error",error.toString());}catch(JSONException ignored){}if(cursor!=null)cursor.close();throw new IllegalStateException(error);}finally{manager.legacyQuery=actualQuery;}};
+    try{manager.pollNow();evidence.put("productionPollDrained",true);
+      // cancel() queued actual cleanup while pollNow was blocked. This real
+      // worker checkpoint runs after both cursor consumption and that cleanup.
+      manager.worker.execute(()->{try{
+        manager.pollNow();Bundle status=manager.snapshot();boolean removed;try(android.database.Cursor cursor=actualQuery.query(owned)){removed=cursor==null||!cursor.moveToFirst();}
+        android.app.job.JobScheduler jobs=(android.app.job.JobScheduler)getSystemService(JOB_SCHEDULER_SERVICE);
+        evidence.put("cleanupWorkerDrained",true);evidence.put("systemRecordRemoved",removed);evidence.put("sameRelease",manager.info==release);evidence.put("finalPid",android.os.Process.myPid());evidence.put("state",status.getString("state"));evidence.put("message",status.getString("message"));evidence.put("uri",status.getString("uri",""));evidence.put("received",status.getLong("received"));evidence.put("downloadId",manager.downloadId());evidence.put("downloadRequested",status.getBoolean("downloadRequested"));evidence.put("pendingTransferJob",jobs!=null&&jobs.getPendingJob(AppUpdates.TRANSFER)!=null);evidence.put("finalFilePresent",manager.file().isFile());
+        handler.post(()->event(evidence));
+      }catch(Exception error){handler.post(()->event(J.obj("error",error.toString())));}});
+    }catch(Exception error){manager.legacyQuery=actualQuery;handler.post(()->event(J.obj("error",error.toString())));}
+  }
   void event(JSONObject result){Log.i("PocketAppUpdateIntegration",result.toString());}
   void transferEvent(JSONObject result){Log.i("PocketUpdateTransfer",result.toString());}
   void transferCommand(Intent intent){try{

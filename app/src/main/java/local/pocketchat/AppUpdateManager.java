@@ -16,17 +16,19 @@ import java.util.concurrent.atomic.*;
 
 /** One owner in the default process. Release-bound partial files survive jobs and process restarts. */
 final class AppUpdateManager {
+  interface LegacyQuery {Cursor query(long owned);}
   private static AppUpdateManager instance;
   static synchronized AppUpdateManager get(Context c){if(instance==null)instance=new AppUpdateManager(Profiles.global(c));return instance;}
   static ExecutorService backgroundExecutor(String name){return Executors.newSingleThreadExecutor(task->new Thread(()->{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);task.run();},name));}
   final Context context;final SharedPreferences prefs;final DownloadManager downloads;
+  volatile LegacyQuery legacyQuery;
   final ExecutorService worker=backgroundExecutor("app-update-status"),transferWorker=backgroundExecutor("app-update-transfer");final AtomicBoolean polling=new AtomicBoolean();
   final AtomicLong generation=new AtomicLong(),verifySerial=new AtomicLong();
   final File root;volatile long id;volatile AppUpdateInfo info;
   String state="idle",message="",raw="";long received,total,verifiedSerial,bytesPerSecond;
   volatile AppUpdateTransfer transfer;volatile AppUpdateTransfer.ConnectionFactory transferFactory=AppUpdateTransfer.OFFICIAL;
   boolean transferRunning,downloadRequested,userPaused,discardAfterTransfer;java.util.function.BooleanSupplier transferOwner;
-  AppUpdateManager(Context c){context=c;prefs=c.getSharedPreferences("app-updates",0);downloads=(DownloadManager)c.getSystemService(Context.DOWNLOAD_SERVICE);root=new File(c.getNoBackupFilesDir(),"app-updates");root.mkdirs();
+  AppUpdateManager(Context c){context=c;prefs=c.getSharedPreferences("app-updates",0);downloads=(DownloadManager)c.getSystemService(Context.DOWNLOAD_SERVICE);legacyQuery=owned->downloads.query(new DownloadManager.Query().setFilterById(owned));root=new File(c.getNoBackupFilesDir(),"app-updates");root.mkdirs();
     raw=prefs.getString("metadata","");try{info=new AppUpdateInfo(new JSONObject(raw));}catch(Exception ignored){raw="";}
     id=prefs.getLong("downloadId",-1);state=prefs.getString("state","idle");message=prefs.getString("message","");downloadRequested=prefs.getBoolean("downloadRequested",false);userPaused=prefs.getBoolean("userPaused",false);
     if(prefs.getBoolean("discardPending",false))try{clearCancelledFiles();}catch(IOException error){downloadRequested=false;userPaused=false;state=info==null?"idle":"available";message=error.getMessage();save();}
@@ -117,15 +119,23 @@ final class AppUpdateManager {
   void stopTransferJob(){stopTransferJob(null);}
   void stopTransferJob(java.util.function.BooleanSupplier owner){synchronized(this){if(!transferRunning||owner!=null&&transferOwner!=owner)return;AppUpdateTransfer current=transfer;if(current!=null&&current.cancelled)return;generation.incrementAndGet();if(current!=null){current.cancel();received=current.received();}bytesPerSecond=0;if(downloadRequested&&!userPaused)change("waiting","下载暂时中断，已保留进度，网络恢复后继续下载");}}
   void refresh(Runnable done){if(!polling.compareAndSet(false,true)){if(done!=null)done.run();return;}worker.execute(()->{try{pollNow();}finally{polling.set(false);if(done!=null)done.run();}});}
-  void pollNow(){if(id<=0||info==null)return;try(Cursor cursor=downloads.query(new DownloadManager.Query().setFilterById(id))){
-    if(cursor==null||!cursor.moveToFirst()){id=-1;change("available","下载记录已移除，请重新下载");return;}
-    int status=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));received=cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));total=info.bytes;
-    if(status==DownloadManager.STATUS_SUCCESSFUL){finalizeDownload();return;}
-    if(status==DownloadManager.STATUS_FAILED){int reason=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));removeDownload();change("available",reason==DownloadManager.ERROR_INSUFFICIENT_SPACE?"存储空间不足，请清理后重试":"下载失败，请检查网络后重新下载");return;}
-    int reason=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));change("downloading",status==DownloadManager.STATUS_PENDING?"等待下载开始":status==DownloadManager.STATUS_PAUSED?(reason==DownloadManager.PAUSED_WAITING_FOR_NETWORK||reason==DownloadManager.PAUSED_QUEUED_FOR_WIFI?"等待可用网络，连接后继续下载":"下载暂停，系统会自动重试"):"正在下载，可继续使用聊天");
-  }catch(Exception e){change("downloading","暂时无法读取下载进度，稍后会再次检查");}}
+  void pollNow(){final long serial,owned;final AppUpdateInfo release;
+    synchronized(this){serial=generation.get();owned=id;release=info;if(owned<=0||release==null)return;}
+    try(Cursor cursor=legacyQuery.query(owned)){
+      if(cursor==null||!cursor.moveToFirst()){synchronized(this){if(generation.get()==serial&&id==owned&&info==release){id=-1;change("available","下载记录已移除，请重新下载");}}return;}
+      int status=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),reason=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));long downloaded=cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+      synchronized(this){if(generation.get()!=serial||id!=owned||info!=release)return;received=downloaded;total=release.bytes;
+        if(status==DownloadManager.STATUS_FAILED){removeDownload();change("available",reason==DownloadManager.ERROR_INSUFFICIENT_SPACE?"存储空间不足，请清理后重试":"下载失败，请检查网络后重新下载");return;}
+        if(status!=DownloadManager.STATUS_SUCCESSFUL){change("downloading",status==DownloadManager.STATUS_PENDING?"等待下载开始":status==DownloadManager.STATUS_PAUSED?(reason==DownloadManager.PAUSED_WAITING_FOR_NETWORK||reason==DownloadManager.PAUSED_QUEUED_FOR_WIFI?"等待可用网络，连接后继续下载":"下载暂停，系统会自动重试"):"正在下载，可继续使用聊天");return;}
+      }
+      finalizeDownload(serial,owned,release);
+    }catch(Exception e){synchronized(this){if(generation.get()==serial&&id==owned&&info==release)change("downloading","暂时无法读取下载进度，稍后会再次检查");}}
+  }
   void finalizeDownload(){final long serial,owned;final AppUpdateInfo release;
-    synchronized(this){serial=generation.get();owned=id;release=info;if(owned<=0||release==null)return;change("verifying","下载完成，正在核验安装包");}
+    synchronized(this){serial=generation.get();owned=id;release=info;}finalizeDownload(serial,owned,release);
+  }
+  void finalizeDownload(long serial,long owned,AppUpdateInfo release){
+    synchronized(this){if(owned<=0||release==null||generation.get()!=serial||id!=owned||info!=release)return;change("verifying","下载完成，正在核验安装包");}
     File partial=new File(root,"verified-legacy-"+serial+".part");try{
       if(release.code<=AppUpdateFiles.installed(context))throw new IOException("当前应用已更新，无需重复安装");
       try(ParcelFileDescriptor descriptor=downloads.openDownloadedFile(owned);InputStream in=new ParcelFileDescriptor.AutoCloseInputStream(descriptor)){AppUpdatePolicy.copyVerified(in,partial,release.bytes,release.sha,()->generation.get()!=serial||id!=owned||info!=release);}
