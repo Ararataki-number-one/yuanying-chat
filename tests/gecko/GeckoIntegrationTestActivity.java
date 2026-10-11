@@ -12,7 +12,7 @@ import org.json.*;
 public class GeckoIntegrationTestActivity extends Activity {
   ChatSession session;int slot;long run;String action;boolean closedSessionRecovery,blockedRecoveryPreservesClosed,pendingFailureRetained,activityResumed;
   long paintStarted,paintVisible,paintFinished;
-  JSONArray readingZoomTrace=new JSONArray();final int[] readingZoomSamples=new int[4];String readingZoomLast="";long readingZoomLastSample;JSONObject readingZoomReadiness;
+  final int[] readingZoomSamples=new int[4];String readingZoomLast="";long readingZoomLastSample;JSONObject readingZoomReadiness;
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
     boolean chooserOrigin;Runnable nativeGestureComplete;int nativeGestureCount;
@@ -382,11 +382,11 @@ public class GeckoIntegrationTestActivity extends Activity {
   }catch(Exception ignored){return false;}}
   void readingZoom(long serial,int step,JSONArray results,long deadline){
     if(serial!=run)return;float[] choices={.8f,.6f,1.3f,.8f};
-    if(step==choices.length){event("readingZoom",J.obj("checks",results,"readiness",readingZoomReadiness,"trace",readingZoomTrace));return;}
+    if(step==choices.length){event("readingZoom",J.obj("checks",results,"readiness",readingZoomReadiness));return;}
     float choice=choices[step];readingZoomLast="";session.reading.choose(choice);waitReadingZoom(serial,step,results,deadline,choice);
   }
   void beginReadingZoom(long serial){
-    readingZoomTrace=new JSONArray();java.util.Arrays.fill(readingZoomSamples,0);readingZoomLast="";readingZoomLastSample=0;readingZoomReadiness=null;
+    java.util.Arrays.fill(readingZoomSamples,0);readingZoomLast="";readingZoomLastSample=0;readingZoomReadiness=null;
     // A foreground reading surface must finish the emulator's taskbar/inset
     // transition before the first actual choice. Each choice still has its
     // original 20-second deadline and exact visual-scale assertion below.
@@ -397,11 +397,11 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(serial!=run)return;FixtureView web=(FixtureView)session.web;NativeGeometry geometry=NativeGeometry.read(web);long now=SystemClock.elapsedRealtime();readiness.totalFrames++;
     boolean ready=activityResumed&&!session.browserPaused&&web.isShown()&&geometry!=null&&geometry.focused&&!geometry.imeVisible&&geometry.normalBarsReady()&&geometry.attached==web.current&&web.current.isOpen()&&geometry.webWidth>0&&geometry.webHeight>0;
     boolean unchanged=readiness.previous!=null&&readiness.previous.same(geometry);
-    if(!unchanged&&readiness.transitions.length()<16)readiness.transitions.put(J.obj("elapsedMs",now-readiness.started,"geometry",geometry==null?JSONObject.NULL:geometry.json()));
+    if(!unchanged&&readiness.transitions.length()<16){JSONObject transition=J.obj("elapsedMs",now-readiness.started,"geometry",geometry==null?JSONObject.NULL:geometry.json());readiness.transitions.put(transition);event("readingZoomGeometry",transition);}
     if(!ready||!unchanged){readiness.stableSince=now;readiness.stableFrames=ready?1:0;}else readiness.stableFrames++;
     readiness.previous=geometry;
-    if(ready&&readiness.stableFrames>=8&&now-readiness.stableSince>=1000){readingZoomReadiness=J.obj("stableMillis",now-readiness.stableSince,"stableFrames",readiness.stableFrames,"activityResumed",activityResumed,"browserPaused",session.browserPaused,"geometry",geometry.json(),"transitions",readiness.transitions);event("readingZoomReadiness",readingZoomReadiness);readingZoom(serial,0,new JSONArray(),now+20000);return;}
-    if(now>readiness.deadline){event("error",J.obj("error","reading zoom foreground/layout did not settle","activityResumed",activityResumed,"browserPaused",session.browserPaused,"geometry",geometry==null?JSONObject.NULL:geometry.json(),"transitions",readiness.transitions));return;}
+    if(ready&&readiness.stableFrames>=8&&now-readiness.stableSince>=1000){readingZoomReadiness=J.obj("stableMillis",now-readiness.stableSince,"stableFrames",readiness.stableFrames,"activityResumed",activityResumed,"browserPaused",session.browserPaused);event("readingZoomReadiness",J.obj("stableMillis",now-readiness.stableSince,"stableFrames",readiness.stableFrames,"activityResumed",activityResumed,"browserPaused",session.browserPaused,"geometry",geometry.json()));readingZoom(serial,0,new JSONArray(),now+20000);return;}
+    if(now>readiness.deadline){event("error",J.obj("error","reading zoom foreground/layout did not settle","activityResumed",activityResumed,"browserPaused",session.browserPaused,"geometry",geometry==null?JSONObject.NULL:geometry.json()));return;}
     web.postOnAnimation(()->awaitReadingZoomReady(serial,readiness));
   }
   JSONObject readingZoomSample(int step,float choice,JSONObject measurement){
@@ -411,7 +411,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   void readingZoomSample(int step,float choice,JSONObject measurement,boolean force){
     JSONObject sample=readingZoomSample(step,choice,measurement);long now=SystemClock.uptimeMillis();
     String signature=measurement.optDouble("scale")+"|"+session.web.getScale()+"|"+session.reading.restoreAttempts+"|"+(session.web.zoomTarget!=null)+"|"+activityResumed+"|"+session.browserPaused+"|"+hasWindowFocus()+"|"+session.web.getWidth()+"|"+session.web.getHeight()+"|"+measurement.optString("visibility");
-    if(readingZoomSamples[step]<24&&(force||!signature.equals(readingZoomLast)||now-readingZoomLastSample>=1000)){readingZoomSamples[step]++;readingZoomTrace.put(sample);event("readingZoomTrace",sample);readingZoomLast=signature;readingZoomLastSample=now;}
+    if(readingZoomSamples[step]<24&&(force||!signature.equals(readingZoomLast)||now-readingZoomLastSample>=1000)){readingZoomSamples[step]++;event("readingZoomTrace",sample);readingZoomLast=signature;readingZoomLastSample=now;}
   }
   void readingInput(long serial,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript("(()=>({focused:document.activeElement?.id,draft:document.getElementById('composer')?.value}))()",raw->{
@@ -430,7 +430,7 @@ public class GeckoIntegrationTestActivity extends Activity {
         try{result.put("choice",choice);result.put("layout",session.web.readingLayout);result.put("shownFontPixels",result.optDouble("font")*result.optDouble("density")*result.optDouble("scale")*session.web.readingLayout);result.put("nativeScale",session.web.getScale());result.put("nativeWidth",session.web.getWidth());}catch(Exception ignored){}
         results.put(result);session.handler.postDelayed(()->readingZoom(serial,step+1,results,SystemClock.elapsedRealtime()+20000),200);return;
       }
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","real reading zoom did not apply","choice",choice,"layout",session.web.readingLayout,"measurement",result,"ready",session.reading.ready,"checks",results,"readiness",readingZoomReadiness,"lastNative",readingZoomSample(step,choice,result),"trace",readingZoomTrace));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","real reading zoom did not apply","choice",choice,"layout",session.web.readingLayout,"measurement",result,"ready",session.reading.ready,"checks",results,"readiness",readingZoomReadiness,"lastNative",readingZoomSample(step,choice,result)));return;}
       session.handler.postDelayed(()->waitReadingZoom(serial,step,results,deadline,choice),150);
     });
   }

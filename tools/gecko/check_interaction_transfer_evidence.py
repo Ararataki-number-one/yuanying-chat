@@ -108,6 +108,15 @@ def verify_interaction_transfer_evidence(directory, source):
 
     device = android('device-results.json')
     assert len(device['steps']) >= 78 and device['releaseMode']
+    reading = device['nativeReadingZoom']
+    assert len(reading) == 4 and len({item['document'] for item in reading}) == 1
+    for item, choice in zip(reading, (.8, .6, 1.3, .8)):
+        assert abs(item['choice'] - choice) < .001 and abs(item['scale'] - max(1, choice)) < .05
+        assert item['draft'] == 'Unsent draft stays here'
+        assert abs(item['shownFontPixels'] / (18 * item['density']) - choice) < .06
+    reading_ready = device['readingZoomReadiness']
+    assert reading_ready['activityResumed'] and not reading_ready['browserPaused']
+    assert reading_ready['stableFrames'] >= 8 and reading_ready['stableMillis'] >= 1000
     held_cancel = device['appUpdates']['cancelDuringQuery']
     assert all(held_cancel[key] for key in ('actualSystemQuery', 'queryHeldAfterReturn',
                                           'queryReturnedAfterCancel', 'productionProviderCancel',

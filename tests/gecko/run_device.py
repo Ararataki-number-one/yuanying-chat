@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Release-mode SDK in the actual app: two live processes, distinct HTTP/SOCKS routes."""
 import argparse, hashlib, importlib.util, json, pathlib, select, socket, socketserver
-import subprocess, threading, time, urllib.parse
+import re, subprocess, threading, time, urllib.parse
 
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
+def missing_update_job(return_code, output, package):
+    """Only Android's exact not-yet-registered job response is transient."""
+    if return_code!=23:return False
+    lines=output.strip().splitlines()
+    expected=f'Could not find job 4103 in package {package} / user 0'
+    if lines==[expected]:return True
+    return len(lines)==2 and re.fullmatch(r'unknown\(u0a[0-9]+/jid4103\)',lines[0]) is not None and lines[1]==expected
 spec=importlib.util.spec_from_file_location('sdk_fixture',ROOT/'engine-probe/tests/run_device.py')
 fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
 thread_context=threading.local()
@@ -188,6 +195,7 @@ def main():
     def run(context,action,kind='fixture'):
         adb('logcat','-c')
         tapped=set()
+        reading_events=set();reading_trace=[];reading_lifecycle=[];reading_geometry=[];reading_readiness=None
         surface_gestures[(context,action)]=[]
         activity='GeckoIntegrationTestActivity' if context==1 else 'ProfileGeckoIntegrationActivity1'
         # This emulator image's Pixel Launcher can ANR during first-boot package
@@ -207,6 +215,16 @@ def main():
                 try:event=json.loads(line[line.index('{'):])
                 except json.JSONDecodeError:continue
                 if event.get('nativeContext')!=f'environment-{context}':continue
+                if action=='readingZoom' and event.get('kind') in {'readingZoomTrace','readingZoomLifecycle','readingZoomGeometry','readingZoomReadiness'}:
+                    identity=json.dumps(event,sort_keys=True,separators=(',',':'))
+                    if identity not in reading_events:
+                        reading_events.add(identity);payload=event['result'];event_kind=event['kind']
+                        if event_kind=='readingZoomTrace' and len(reading_trace)<96:reading_trace.append(payload)
+                        elif event_kind=='readingZoomLifecycle' and len(reading_lifecycle)<16:reading_lifecycle.append(payload)
+                        elif event_kind=='readingZoomGeometry' and len(reading_geometry)<16:reading_geometry.append(payload)
+                        elif event_kind=='readingZoomReadiness':reading_readiness=payload
+                        report.update(readingZoomTrace=reading_trace,readingZoomLifecycle=reading_lifecycle,readingZoomGeometry=reading_geometry,readingZoomReadiness=reading_readiness)
+                    continue
                 if event.get('kind')=='swipeNeeded':
                     point=event['result'];identity=point['id']
                     if identity not in tapped:
@@ -234,12 +252,13 @@ def main():
                     continue
                 if event.get('kind')=='error':
                     if action=='readingZoom':
-                        report['readingZoomFailure']=event['result'];report['readingZoomTrace']=event['result'].get('trace',[]);report['readingZoomReadiness']=event['result'].get('readiness')
+                        report['readingZoomFailure']=event['result']
                     logs.append(output);raise AssertionError(event)
                 if event.get('kind')==kind:
                     result=event['result']
                     assert 'error' not in result,event
                     if kind=='fixture' and (result.get('context')!=str(context) or result.get('action')!=action):continue
+                    if action=='readingZoom':result.update(trace=reading_trace,lifecycle=reading_lifecycle,geometryTransitions=reading_geometry,readiness=reading_readiness)
                     logs.append(output);steps.append(event);print(json.dumps(event),flush=True)
                     assert 'error' not in result,result
                     return result
@@ -295,7 +314,7 @@ def main():
             result=subprocess.run(command,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=30);raw=result.stdout
             sample=dict(stage=stage,elapsedMs=round((time.monotonic()-started)*1000),returnCode=result.returncode,output=raw.strip());attempts.append(sample)
             update_report.setdefault('jobReadinessTrace',[]).append(sample)
-            missing=result.returncode==23 and raw.strip()==f'Could not find job 4103 in package {package} / user 0'
+            missing=missing_update_job(result.returncode,raw,package)
             if result.returncode!=0 and not missing:raise subprocess.CalledProcessError(result.returncode,command,output=raw)
             if result.returncode==0 and 'active' in raw.split():break
             time.sleep(.1)
@@ -548,20 +567,45 @@ def main():
         report.update(status='failed',error=f'{type(error).__name__}: {error}')
         if update_report is not None and update_report.get('status')!='passed':
             update_report.update(status='failed',error=f'{type(error).__name__}: {error}',checkCount=len(update_report['checks']))
-        (OUT/'failure-screen.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
-        adb('shell','uiautomator','dump','/sdcard/gecko-failure.xml')
-        (OUT/'failure-ui.xml').write_text(adb('shell','cat','/sdcard/gecko-failure.xml'))
         raise
     finally:
+        import sys
+        primary_error=sys.exc_info()[1]
         prefix=f'diagnostic-{diagnostic}-' if diagnostic else ''
-        if report.get('status')!='passed':(OUT/(prefix+'last-device-log.txt')).write_text(adb('logcat','-d'))
-        if update_report is not None:
-            (OUT/update_report_name).write_text(json.dumps(update_report,indent=2)+'\n')
-            if update_report.get('status')!='passed':(OUT/(prefix+'update-transfer-failure-log.txt')).write_text(adb('logcat','-d'))
         report['steps']=steps
-        (OUT/device_report_name).write_text(json.dumps(report,indent=2)+'\n')
-        (OUT/(prefix+'device-route-trace.json')).write_text(json.dumps(fixture.TRACE,indent=2)+'\n')
-        (OUT/(prefix+'device-native-events.txt')).write_text('\n'.join(logs))
-        for server in servers:server.shutdown();server.server_close()
+        artifact_errors=report.setdefault('artifactErrors',[]);persistence_errors=[]
+        def artifact(name,save,required=False):
+            try:save()
+            except Exception as error:
+                artifact_errors.append(dict(artifact=name,error=f'{type(error).__name__}: {error}'))
+                if required:persistence_errors.append(error)
+        def write_reports():
+            artifact(device_report_name,lambda:(OUT/device_report_name).write_text(json.dumps(report,indent=2)+'\n'),True)
+            if update_report is not None:
+                update_report['artifactErrors']=artifact_errors
+                artifact(update_report_name,lambda:(OUT/update_report_name).write_text(json.dumps(update_report,indent=2)+'\n'),True)
+        # Preserve the source, original failure and completed steps before any
+        # optional ADB evidence: an unavailable phone must not hide an assertion.
+        write_reports()
+        if report.get('status')!='passed':
+            artifact('failure-screen.png',lambda:(OUT/'failure-screen.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30)))
+            def failure_ui():
+                adb('shell','uiautomator','dump','/sdcard/gecko-failure.xml')
+                (OUT/'failure-ui.xml').write_text(adb('shell','cat','/sdcard/gecko-failure.xml'))
+            artifact('failure-ui.xml',failure_ui)
+            artifact(prefix+'last-device-log.txt',lambda:(OUT/(prefix+'last-device-log.txt')).write_text(adb('logcat','-d')))
+        if update_report is not None and update_report.get('status')!='passed':
+            artifact(prefix+'update-transfer-failure-log.txt',lambda:(OUT/(prefix+'update-transfer-failure-log.txt')).write_text(adb('logcat','-d')))
+        artifact(prefix+'device-route-trace.json',lambda:(OUT/(prefix+'device-route-trace.json')).write_text(json.dumps(fixture.TRACE,indent=2)+'\n'))
+        artifact(prefix+'device-native-events.txt',lambda:(OUT/(prefix+'device-native-events.txt')).write_text('\n'.join(logs)))
+        for index,server in enumerate(servers):
+            artifact(f'fixture-server-{index}-shutdown',server.shutdown)
+            artifact(f'fixture-server-{index}-close',server.server_close)
+        # Record evidence-collection failures while re-raising the original
+        # exception. Missing required JSON still fails an otherwise passing run.
+        if persistence_errors and primary_error is None:
+            error=persistence_errors[0];report.update(status='failed',error=f'{type(error).__name__}: {error}')
+        write_reports()
+        if persistence_errors and primary_error is None:raise persistence_errors[0]
 
 if __name__=='__main__':main()
