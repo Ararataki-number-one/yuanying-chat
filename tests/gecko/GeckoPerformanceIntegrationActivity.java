@@ -80,7 +80,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   void waitDocument(){attempt(()->{
     if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Controlled Gecko document timeout");
     // An unavailable extension port briefly returns null before DOMContentLoaded.
-    session.web.evaluateJavascript("(()=>({ready:location.pathname==='/performance'&&!!document.getElementById('fixture-ready')}))()",raw->attempt(()->{
+    session.web.evaluateJavascript("(()=>({ready:location.pathname==='/performance'&&location.search==="+JSONObject.quote("?variant="+variant)+"&&!!document.getElementById('fixture-ready')}))()",raw->attempt(()->{
       if(!J.parse(raw).optBoolean("ready")){later(this::waitDocument,100);return;}
       String runtime=performanceSource+"\nwindow.__fixtureReadDriver=(action,arg)=>"+driver.replace("__ACTION__","action").replace("__ARG__","arg")+";\n({installed:true})";
       evaluate(runtime,false,v->{check(variant+" installs its real versioned observation assets",v.optBoolean("installed"));snapshot(new JSONObject(),value->{
