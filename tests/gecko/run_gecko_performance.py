@@ -123,8 +123,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--adb', required=True)
     parser.add_argument('--serial', default='emulator-5554')
-    parser.add_argument('--input-diagnostics', action='store_true',
+    observation = parser.add_mutually_exclusive_group()
+    observation.add_argument('--input-diagnostics', action='store_true',
                         help='Enable extra SDK/IME and JS selection observations; disabled for the normal release regression.')
+    observation.add_argument('--native-input-diagnostics', action='store_true',
+                        help='Buffer only primitive SDK/IME observations and flush after input; no extra JS observers. Diagnostic evidence cannot replace the normal regression.')
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
@@ -166,6 +169,8 @@ def main():
         activity = ['shell', 'am', 'start', '-W', '-n', package + '/local.pocketchat.GeckoPerformanceIntegrationActivity']
         if args.input_diagnostics:
             activity.extend(['--ez', 'inputDiagnostics', 'true'])
+        if args.native_input_diagnostics:
+            activity.extend(['--ez', 'inputNativeDiagnostics', 'true'])
         adb(*activity)
         checks, measurements, gestures, text_inputs, diagnostics = {}, {}, {}, {}, {}
         input_readiness, input_events, input_evaluations, native_input_events = {}, {}, {}, {}
@@ -226,6 +231,7 @@ def main():
                     diagnostics[line] = item
             if report:
                 report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+                              diagnosticOnly=bool(args.input_diagnostics or args.native_input_diagnostics),
                               checks=list(checks.values()), measurements=list(measurements.values()), fixtureRequests=Fixture.requests,
                               controlledProxyRoutes=Socks.routes, browserDiagnostics=list(diagnostics.values()),
                               baselineAssetVerification=receipt, actualAndroidGestures=list(gestures.values()),
@@ -237,10 +243,19 @@ def main():
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
                 assert report['inputDiagnosticsEnabled'] == args.input_diagnostics, report
+                assert report['inputNativeDiagnosticsEnabled'] == args.native_input_diagnostics, report
                 if not args.input_diagnostics:
-                    assert not native_input_events and not input_evaluations, 'Normal regression unexpectedly attached diagnostic observers'
+                    assert not input_evaluations, 'Normal/primitive-only regression unexpectedly traced JavaScript evaluation'
                     assert not any(event['type'] == 'selectionchange' or event['type'].startswith('script')
                                    for event in report['actualTrustedInputEvents']), 'Normal regression unexpectedly instrumented DOM selection'
+                if not args.input_diagnostics and not args.native_input_diagnostics:
+                    assert not native_input_events, 'Normal regression unexpectedly attached native diagnostic observers'
+                if args.native_input_diagnostics:
+                    assert native_input_events and all(event['mode'] == 'buffered-primitives' for event in native_input_events.values()), report
+                    summaries = [event for event in native_input_events.values() if event['api'] == 'trace.bufferedSummary']
+                    assert len(summaries) == 1 and not summaries[0]['overflow'] and not summaries[0]['restoreError'], summaries
+                    assert summaries[0]['published'] == summaries[0]['reserved'] == len(native_input_events) - 1, 'Buffered native event log is incomplete'
+                    assert summaries[0]['focusedChildAttached'] and not summaries[0]['focusedChildError'], summaries
                 assert report['status'] == 'passed' and report['actualAndroidExecution'] and report['actualGeckoExecution'] and report['actualAndroidTouchExecution'] and report['actualGeckoBindingRegressionExecution'], report
                 assert report['baselineSource'] == BASELINE and report['checkCount'] == len(checks), report
                 assert len(checks) >= 125 and all(check['pass'] for check in checks.values()), report

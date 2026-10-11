@@ -67,7 +67,10 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
                         raise ValueError('Attempt belongs to another run or trial')
                     manifest['attempts'].append(report)
                 else:
+                    if report.get('inputNativeDiagnosticsEnabled') is not True or report.get('inputDiagnosticsEnabled') is not False:
+                        raise ValueError('Expected native-only buffered diagnostics, without JS or evaluation tracing')
                     manifest['reports'][name.split('/')[0]] = {
+                        'inputNativeDiagnosticsEnabled': True, 'inputDiagnosticsEnabled': False,
                         'sourceCommit': source, 'status': report.get('status', 'unknown'),
                         'checkCount': report.get('checkCount', 0),
                         'actualAndroidExecution': report.get('actualAndroidExecution', False),

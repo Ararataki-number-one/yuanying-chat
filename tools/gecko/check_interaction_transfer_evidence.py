@@ -37,6 +37,7 @@ def verify_interaction_transfer_evidence(directory, source):
 
     gecko = android('gecko-performance-results.json')
     assert gecko['inputDiagnosticsEnabled'] is False
+    assert gecko.get('inputNativeDiagnosticsEnabled', False) is False, 'Buffered native diagnostics cannot replace normal acceptance.'
     assert gecko['actualNativeInputTrace'] == [] and gecko['actualInputEvaluationTrace'] == []
     assert not any(item['type'] == 'selectionchange' or item['type'].startswith('script')
                    for item in gecko['actualTrustedInputEvents'])

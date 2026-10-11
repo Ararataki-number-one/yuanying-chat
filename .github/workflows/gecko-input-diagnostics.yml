@@ -1,4 +1,4 @@
-name: Gecko input diagnostics
+name: Gecko native input diagnostics
 on:
   push:
     branches: [debug/gecko-ime]
@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           work/gecko-input-diagnostics/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-input-diagnostics/integration-test.jks" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-input-diagnostics/build.log
-      - name: Diagnose real Gecko input on Android 35
+      - name: Diagnose buffered native input on Android 35
         id: gecko
         shell: bash
         run: |
@@ -59,7 +59,7 @@ jobs:
             attempt="work/gecko-input-diagnostics/attempt-$trial"
             mkdir -p "$attempt"
             rm -f work/gecko-integration/gecko-performance-results.json work/gecko-integration/gecko-performance-failure-log.txt work/gecko-integration/gecko-performance-screen.png
-            if python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554 --input-diagnostics 2>&1 | tee "$attempt/runner.log"; then
+            if python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554 --native-input-diagnostics 2>&1 | tee "$attempt/runner.log"; then
               exit_code=0
             else
               exit_code=$?
