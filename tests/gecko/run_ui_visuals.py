@@ -111,6 +111,8 @@ try:
         assert not sample['networkClickable'] and not sample['networkFocusable'] and sample['networkBackground']=='none' and '点击' not in sample['networkDescription'],sample
         assert sample['toolbarHeightDp']<= (59 if scale==1 else 100),sample
         assert sample['topHeightDp']>=40 and sample['networkHeightDp']>=18,sample
+        dot=sample['decorativeDot']
+        assert abs(dot['textSizeDp']-9)<.01 and dot['inkWidth']<=dot['contentWidth']+1 and dot['fontHeight']<=dot['contentHeight']+1,(sample,dot)
         for text in sample['texts']:
             assert text['fontHeight']<=text['contentHeight']+1,(sample,text)
             if text['text'] in ['简洁','原网页','42 ms','已连接']:assert not text['ellipsized'] and text['inkWidth']<=text['contentWidth']+1,(sample,text)

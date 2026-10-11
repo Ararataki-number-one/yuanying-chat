@@ -64,6 +64,7 @@ final class DesignChrome {
     networkRow.setClickable(false);
     networkRow.setFocusable(false);
     dot=ReferenceUi.text(a,"●",9,ReferenceUi.MUTED,false);
+    dot.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,9);
     a.networkLine=ReferenceUi.text(a,"连接状态待确认",11,ReferenceUi.MUTED,false);
     latencyWord=ReferenceUi.text(a,"延迟未测",11,ReferenceUi.MUTED,false);
     stateWord=ReferenceUi.text(a,"未连接",11,ReferenceUi.MUTED,true);
