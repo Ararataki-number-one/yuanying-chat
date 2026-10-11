@@ -32,6 +32,7 @@ def verify_interaction_transfer_evidence(directory, source):
         report = json.loads((directory / name).read_text())
         assert report['status'] == 'passed' and report['sourceCommit'] == source, name
         assert report['actualAndroidExecution'], name
+        assert report.get('diagnosticOnly', False) is False, 'Diagnostic subsets cannot replace release acceptance: ' + name
         return report
 
     gecko = android('gecko-performance-results.json')
@@ -62,6 +63,17 @@ def verify_interaction_transfer_evidence(directory, source):
     assert update['actualHttpTransfer'] and update['actualJobSchedulerExecution']
     assert len(update['checks']) >= len(UPDATE_CHECKS) and all(item['pass'] for item in update['checks'])
     assert UPDATE_CHECKS <= {item['name'] for item in update['checks']}
+    progress_samples = [item for item in update['cases']
+                        if item.get('action') == 'transferInspect' and item.get('state') == 'downloading'
+                        and item.get('speedSamplePairs', 0) > 0]
+    assert progress_samples, 'Actual streaming speed and remaining-time evidence is required.'
+    progress = progress_samples[-1]
+    speed = progress['bytesPerSecond']
+    assert speed > 0 and 0 < progress['received'] < progress['total']
+    assert progress['remainingSeconds'] == (progress['total'] - progress['received'] + speed - 1) // speed
+    assert progress['speedSampleDeltaBytes'] == progress['speedLastReceived'] - progress['speedFirstReceived'] > 0
+    assert progress['speedSampleDurationMillis'] > 0 and progress['speedLastSampleNanos'] > progress['speedFirstSampleNanos']
+    assert '/s' in progress['downloadDetailsText'] and '约剩' in progress['downloadDetailsText']
     gestures = update['actualAndroidGestures']
     assert len(gestures) == 2 and {item['label'] for item in gestures} == {'暂停下载', '继续下载'}
     for item in gestures:

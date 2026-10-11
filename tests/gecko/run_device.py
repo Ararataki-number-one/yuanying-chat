@@ -163,7 +163,11 @@ class Fixture(fixture.Fixture):
         super().end_headers()
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',default='emulator-5554');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',default='emulator-5554')
+    modes=parser.add_mutually_exclusive_group();modes.add_argument('--reading-only',action='store_true',help='Diagnostic reading/zoom/input subset; cannot replace full device acceptance');modes.add_argument('--update-transfers-only',action='store_true',help='Diagnostic real 28-case transfer subset; cannot replace full device acceptance');args=parser.parse_args()
+    diagnostic='reading' if args.reading_only else 'update-transfers' if args.update_transfers_only else ''
+    device_report_name='diagnostic-reading-results.json' if args.reading_only else 'diagnostic-update-device-results.json' if args.update_transfers_only else 'device-results.json'
+    update_report_name='diagnostic-update-transfers-results.json' if diagnostic else 'update-transfer-results.json'
     OUT.mkdir(parents=True,exist_ok=True)
     def adb(*parts):return subprocess.check_output([args.adb,'-s',args.serial,*parts],text=True,timeout=30)
     package='local.pocketchat.test'
@@ -179,6 +183,7 @@ def main():
         adb('shell','settings','put','global',setting,'0')
     launcher='com.google.android.apps.nexuslauncher'
     has_pixel_launcher=launcher in adb('shell','pm','list','packages',launcher)
+    if diagnostic and has_pixel_launcher:adb('shell','am','force-stop',launcher) # First-boot workaround only once for a diagnostic subset.
     steps=[];logs=[];update_report=None;surface_gestures={}
     def run(context,action,kind='fixture'):
         adb('logcat','-c')
@@ -192,7 +197,7 @@ def main():
         # Killing the Launcher again during stationary geometry measurement
         # makes Android recreate its taskbar/navigation mode and resize the
         # already visible browser. Keep the first-boot workaround elsewhere.
-        if has_pixel_launcher and action not in {'nativeSurface','nativeCheckpoint'}:adb('shell','am','force-stop',launcher)
+        if has_pixel_launcher and action not in {'reading','readingZoom','readingInput','nativeSurface','nativeCheckpoint'}:adb('shell','am','force-stop',launcher)
         adb('shell','am','start','-W','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action)
         deadline=time.monotonic()+120
         while time.monotonic()<deadline:
@@ -227,7 +232,10 @@ def main():
                             for character in 'native-input-ok':
                                 adb('shell','input','text',character);time.sleep(.15)
                     continue
-                if event.get('kind')=='error':logs.append(output);raise AssertionError(event)
+                if event.get('kind')=='error':
+                    if action=='readingZoom':
+                        report['readingZoomFailure']=event['result'];report['readingZoomTrace']=event['result'].get('trace',[]);report['readingZoomReadiness']=event['result'].get('readiness')
+                    logs.append(output);raise AssertionError(event)
                 if event.get('kind')==kind:
                     result=event['result']
                     assert 'error' not in result,event
@@ -296,7 +304,7 @@ def main():
         (OUT/('update-transfer-job-'+stage+'.txt')).write_text(detail);event=dict(stage=stage,jobId=4103,state=raw.strip(),service='local.pocketchat.AppUpdateJob',readinessTrace=attempts);update_report['actualJobExecutions'].append(event);return event
     def update_transfers():
         nonlocal update_report
-        update_report=dict(status='running',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),actualAndroidExecution=True,actualHttpTransfer=True,actualJobSchedulerExecution=False,checks=[],cases=[],httpTransfers=Fixture.update_transfer_trace,actualAndroidGestures=[],actualJobExecutions=[],scope='Real signed synthetic APK over controlled HTTP through the production transfer and Android JobScheduler; no synthetic APK installed.')
+        update_report=dict(status='running',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),diagnosticOnly=bool(diagnostic),validationScope='Diagnostic update-transfers subset; cannot replace full acceptance' if diagnostic else 'Full device acceptance',actualAndroidExecution=True,actualHttpTransfer=True,actualJobSchedulerExecution=False,checks=[],cases=[],httpTransfers=Fixture.update_transfer_trace,actualAndroidGestures=[],actualJobExecutions=[],scope='Real signed synthetic APK over controlled HTTP through the production transfer and Android JobScheduler; no synthetic APK installed.')
         original=(OUT/'update-fixture.apk').read_bytes();expected=hashlib.sha256(original).hexdigest();size=len(original)
         cut=transfer('cut',target='waiting');transfer_check('disconnectPreservesPartial',cut['partialBytes']==size//2 and cut['partialSha']==hashlib.sha256(original[:size//2]).hexdigest() and cut['partialIdentity'] and not cut['uri'])
         ready=transfer('cut','transferResume');trace=[x for x in Fixture.update_transfer_trace if x['scenario']=='cut']
@@ -311,7 +319,8 @@ def main():
         assert len(update_report['transferNativeSurfaceGestures'])==3 and interaction['actualGestureCount']==3,interaction
         streaming=transfer('pause','transferInspect','downloading');transfer_check('chatResponsiveDuringTransfer',streaming['running'] and streaming['state']=='downloading' and streaming['partialBytes']>live['partialBytes'] and all(interaction[k] for k in ['movedSurfaceAcceptsRealInput','documentAndDraftPreserved']))
         time.sleep(2.2);progress=transfer('pause','transferInspect','downloading')
-        transfer_check('streamingStatusReadable',progress['statusReads']>=2 and 0<progress['received']<size and progress['total']==size and isinstance(progress['message'],str))
+        speed=progress['bytesPerSecond'];remaining=progress['remainingSeconds']
+        transfer_check('streamingStatusReadable',progress['statusReads']>=2 and 0<progress['received']<size and progress['total']==size and isinstance(progress['message'],str) and speed>0 and remaining>=0 and remaining==(progress['total']-progress['received']+speed-1)//speed and progress['speedSamplePairs']>0 and progress['speedSampleDeltaBytes']>0 and progress['speedSampleDurationMillis']>0 and progress['speedLastReceived']-progress['speedFirstReceived']==progress['speedSampleDeltaBytes'] and progress['speedLastSampleNanos']>progress['speedFirstSampleNanos'] and '/s' in progress['downloadDetailsText'] and '约剩' in progress['downloadDetailsText'])
         transfer_check('mainThreadStatusNoIo',progress['statusMainThreadIo']==0)
         transfer_check('progressKeepsViewIdentity',progress['progressIdentityPairs']>=1)
         update_touch('暂停下载');paused=transfer('pause','transferWaitPaused','paused')
@@ -357,7 +366,7 @@ def main():
         update_report['cancellationProcessDeath']=dict(scope='Actual cancelled paused HTTP partial; real cleanup worker held until durable marker, then Android force-stop kills the process. No active-writer timing claim.',before=before_death,after=after_death)
         assert len(update_report['checks'])==28,update_report
         update_report.update(status='passed',checkCount=len(update_report['checks']),actualJobSchedulerExecution=len(update_report['actualJobExecutions'])==2,chatInteraction=interaction)
-        (OUT/'update-transfer-results.json').write_text(json.dumps(update_report,indent=2)+'\n')
+        (OUT/update_report_name).write_text(json.dumps(update_report,indent=2)+'\n')
     def management(action):
         adb('logcat','-c')
         adb('shell','am','start','-W','-n',package+'/local.pocketchat.EnvironmentManagementIntegrationActivity','--es','managementAction',action)
@@ -382,8 +391,30 @@ def main():
         assert result.get('nativeCookies') is not None,result
         cookies=dict(part.split('=',1) for part in result['nativeCookies'].split('; ') if part)
         assert cookies==({'probe':expected,'nativeOnly':expected} if populated else {}),result
-    report={'actualAndroidExecution':True,'releaseMode':True,'androidSdk':sdk,'androidAbi':adb('shell','getprop','ro.product.cpu.abi').strip(),'viewport':'1080x2400 / 420 dpi','sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
+    report={'actualAndroidExecution':True,'releaseMode':True,'diagnosticOnly':bool(diagnostic),'validationScope':f'Diagnostic {diagnostic} subset; cannot replace full acceptance' if diagnostic else 'Full device acceptance','androidSdk':sdk,'androidAbi':adb('shell','getprop','ro.product.cpu.abi').strip(),'viewport':'1080x2400 / 420 dpi','sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'googleLogin':'not-tested','internalMihomoRoute':'reuses production API; no live subscription provided'}
+    def reading_checks():
+        reading=[]
+        for size in ['945x2100','1024x2240','1128x2400','1920x1080']:
+            adb('shell','wm','size',size)
+            result=run(1,'reading','reading');reading.append(dict(size=size,**result))
+            assert result['mobileViewport'] and result['desktopIdentity'] and 'Android' not in result['userAgent'],result
+            assert abs(result['viewport']*result['density']-result['nativeWidth'])<5 and abs(result['scale']-1)<.02,result
+            assert result['sidebarHidden'] and result['composerWidth']>=result['viewport']-34 and result['draft']=='Unsent draft stays here',result
+            (OUT/f'reading-{size}.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+        report['responsiveReading']=reading
+        adb('shell','wm','size','1080x2400');run(1,'reading','reading')
+        observed=run(1,'readingZoom','readingZoom');zoom=observed['checks'];report['nativeReadingZoom']=zoom;report['readingZoomTrace']=observed['trace'];report['readingZoomReadiness']=observed['readiness']
+        assert len(zoom)==4 and len({x['document'] for x in zoom})==1 and all(x['draft']=='Unsent draft stays here' for x in zoom),zoom
+        for x in zoom:assert abs(x['shownFontPixels']/(18*x['density'])-x['choice'])<.06,x
+        assert zoom[1]['shownFontPixels']<zoom[0]['shownFontPixels']<zoom[2]['shownFontPixels'],zoom
+        (OUT/'reading-shrunk-80.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+        typed=run(1,'readingInput','readingInput');assert typed['focused']=='composer' and 'native-input-ok' in typed['draft'] and abs(typed['choice']-.8)<.02,typed
+        report['scaledReadingInput']=typed;adb('shell','input','keyevent','KEYCODE_BACK')
     try:
+        if args.reading_only:
+            reading_checks();report.update(status='passed',checkCount=9,scope='Diagnostic subset only: four responsive widths, four exact zoom choices and one actual Android input. Not full release evidence.');return
+        if args.update_transfers_only:
+            update_transfers();report.update(status='passed',scope='Diagnostic subset only: all 28 real transfer checks. Not full release evidence.');return
         usability=run(1,'usability','usability');assert usability['documentPreserved'] and usability['mobileVisible'] and usability['upload']=='sample.txt:synthetic-upload' and usability['csv']=='name,value\nsynthetic,42\n' and usability['blob']==usability['csv'],usability
         report['browserUsability']=usability
         image=run(1,'desktopImage','desktopImage');assert all(image[k] for k in ['productionChooserOpened','imageMimeAndMultiple','pendingPreserved','noPhantomUpload','desktop']) and image['upload']=='ok:photo-123.png:image/png:4x3',image
@@ -424,25 +455,7 @@ def main():
         assert run(2,'sessionRead','session')['token']=='synthetic-session-2'
         report['sessionContinuity']=sessions
         paint=run(1,'earlyPaint','paint');assert paint['firstPaintBeforeComplete'],paint
-        reading=[]
-        for size in ['945x2100','1024x2240','1128x2400','1920x1080']:
-            adb('shell','wm','size',size)
-            result=run(1,'reading','reading');reading.append(dict(size=size,**result))
-            assert result['mobileViewport'] and result['desktopIdentity'] and 'Android' not in result['userAgent'],result
-            assert abs(result['viewport']*result['density']-result['nativeWidth'])<5 and abs(result['scale']-1)<.02,result
-            assert result['sidebarHidden'] and result['composerWidth']>=result['viewport']-34 and result['draft']=='Unsent draft stays here',result
-            (OUT/f'reading-{size}.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
-        report['responsiveReading']=reading
-        adb('shell','wm','size','1080x2400')
-        run(1,'reading','reading')
-        zoom=run(1,'readingZoom','readingZoom')['checks'];report['nativeReadingZoom']=zoom
-        assert len(zoom)==4 and len({x['document'] for x in zoom})==1 and all(x['draft']=='Unsent draft stays here' for x in zoom),zoom
-        for x in zoom:
-            assert abs(x['shownFontPixels']/(18*x['density'])-x['choice'])<.06,x
-        assert zoom[1]['shownFontPixels']<zoom[0]['shownFontPixels']<zoom[2]['shownFontPixels'],zoom
-        (OUT/'reading-shrunk-80.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
-        typed=run(1,'readingInput','readingInput');assert typed['focused']=='composer' and 'native-input-ok' in typed['draft'] and abs(typed['choice']-.8)<.02,typed
-        adb('shell','input','keyevent','KEYCODE_BACK')
+        reading_checks()
         surface=run(1,'nativeSurface','nativeSurface');assert all(surface[k] for k in ['stationaryGeometryDeduplicated','movedSurfaceAcceptsRealInput','documentAndDraftPreserved']),surface
         report['nativeSurfacePerformance']=surface;report['nativeSurfaceGestures']=surface_gestures[(1,'nativeSurface')]
         assert len(report['nativeSurfaceGestures'])==3 and surface['actualGestureCount']==3,surface
@@ -540,14 +553,15 @@ def main():
         (OUT/'failure-ui.xml').write_text(adb('shell','cat','/sdcard/gecko-failure.xml'))
         raise
     finally:
-        if report.get('status')!='passed':(OUT/'last-device-log.txt').write_text(adb('logcat','-d'))
+        prefix=f'diagnostic-{diagnostic}-' if diagnostic else ''
+        if report.get('status')!='passed':(OUT/(prefix+'last-device-log.txt')).write_text(adb('logcat','-d'))
         if update_report is not None:
-            (OUT/'update-transfer-results.json').write_text(json.dumps(update_report,indent=2)+'\n')
-            if update_report.get('status')!='passed':(OUT/'update-transfer-failure-log.txt').write_text(adb('logcat','-d'))
+            (OUT/update_report_name).write_text(json.dumps(update_report,indent=2)+'\n')
+            if update_report.get('status')!='passed':(OUT/(prefix+'update-transfer-failure-log.txt')).write_text(adb('logcat','-d'))
         report['steps']=steps
-        (OUT/'device-results.json').write_text(json.dumps(report,indent=2)+'\n')
-        (OUT/'device-route-trace.json').write_text(json.dumps(fixture.TRACE,indent=2)+'\n')
-        (OUT/'device-native-events.txt').write_text('\n'.join(logs))
+        (OUT/device_report_name).write_text(json.dumps(report,indent=2)+'\n')
+        (OUT/(prefix+'device-route-trace.json')).write_text(json.dumps(fixture.TRACE,indent=2)+'\n')
+        (OUT/(prefix+'device-native-events.txt')).write_text('\n'.join(logs))
         for server in servers:server.shutdown();server.server_close()
 
 if __name__=='__main__':main()

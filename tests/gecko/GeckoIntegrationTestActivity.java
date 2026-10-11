@@ -12,6 +12,7 @@ import org.json.*;
 public class GeckoIntegrationTestActivity extends Activity {
   ChatSession session;int slot;long run;String action;boolean closedSessionRecovery,blockedRecoveryPreservesClosed,pendingFailureRetained,activityResumed;
   long paintStarted,paintVisible,paintFinished;
+  JSONArray readingZoomTrace=new JSONArray();final int[] readingZoomSamples=new int[4];String readingZoomLast="";long readingZoomLastSample;JSONObject readingZoomReadiness;
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
     boolean chooserOrigin;Runnable nativeGestureComplete;int nativeGestureCount;
@@ -116,7 +117,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("desktopImage".equals(action)){desktopImage(serial);return;}
     if("usability".equals(action)){usability(serial);return;}
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
-    if("readingZoom".equals(action)){readingZoom(serial,0,new JSONArray(),SystemClock.elapsedRealtime()+20000);return;}
+    if("readingZoom".equals(action)){beginReadingZoom(serial);return;}
     if("readingInput".equals(action)){tapElement(serial,"composer");readingInput(serial,SystemClock.elapsedRealtime()+15000);return;}
     if("nativeSurface".equals(action)){nativeSurface(serial);return;}
     if("nativeCheckpoint".equals(action)){nativeCheckpoint(serial);return;}
@@ -381,8 +382,36 @@ public class GeckoIntegrationTestActivity extends Activity {
   }catch(Exception ignored){return false;}}
   void readingZoom(long serial,int step,JSONArray results,long deadline){
     if(serial!=run)return;float[] choices={.8f,.6f,1.3f,.8f};
-    if(step==choices.length){event("readingZoom",J.obj("checks",results));return;}
-    float choice=choices[step];session.reading.choose(choice);waitReadingZoom(serial,step,results,deadline,choice);
+    if(step==choices.length){event("readingZoom",J.obj("checks",results,"readiness",readingZoomReadiness,"trace",readingZoomTrace));return;}
+    float choice=choices[step];readingZoomLast="";session.reading.choose(choice);waitReadingZoom(serial,step,results,deadline,choice);
+  }
+  void beginReadingZoom(long serial){
+    readingZoomTrace=new JSONArray();java.util.Arrays.fill(readingZoomSamples,0);readingZoomLast="";readingZoomLastSample=0;readingZoomReadiness=null;
+    // A foreground reading surface must finish the emulator's taskbar/inset
+    // transition before the first actual choice. Each choice still has its
+    // original 20-second deadline and exact visual-scale assertion below.
+    if(Build.VERSION.SDK_INT>=30){android.view.WindowInsetsController bars=getWindow().getInsetsController();if(bars!=null){bars.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_DEFAULT);bars.show(android.view.WindowInsets.Type.systemBars());}}
+    awaitReadingZoomReady(serial,new NativeGeometryReadiness());
+  }
+  void awaitReadingZoomReady(long serial,NativeGeometryReadiness readiness){
+    if(serial!=run)return;FixtureView web=(FixtureView)session.web;NativeGeometry geometry=NativeGeometry.read(web);long now=SystemClock.elapsedRealtime();readiness.totalFrames++;
+    boolean ready=activityResumed&&!session.browserPaused&&web.isShown()&&geometry!=null&&geometry.focused&&!geometry.imeVisible&&geometry.normalBarsReady()&&geometry.attached==web.current&&web.current.isOpen()&&geometry.webWidth>0&&geometry.webHeight>0;
+    boolean unchanged=readiness.previous!=null&&readiness.previous.same(geometry);
+    if(!unchanged&&readiness.transitions.length()<16)readiness.transitions.put(J.obj("elapsedMs",now-readiness.started,"geometry",geometry==null?JSONObject.NULL:geometry.json()));
+    if(!ready||!unchanged){readiness.stableSince=now;readiness.stableFrames=ready?1:0;}else readiness.stableFrames++;
+    readiness.previous=geometry;
+    if(ready&&readiness.stableFrames>=8&&now-readiness.stableSince>=1000){readingZoomReadiness=J.obj("stableMillis",now-readiness.stableSince,"stableFrames",readiness.stableFrames,"activityResumed",activityResumed,"browserPaused",session.browserPaused,"geometry",geometry.json(),"transitions",readiness.transitions);event("readingZoomReadiness",readingZoomReadiness);readingZoom(serial,0,new JSONArray(),now+20000);return;}
+    if(now>readiness.deadline){event("error",J.obj("error","reading zoom foreground/layout did not settle","activityResumed",activityResumed,"browserPaused",session.browserPaused,"geometry",geometry==null?JSONObject.NULL:geometry.json(),"transitions",readiness.transitions));return;}
+    web.postOnAnimation(()->awaitReadingZoomReady(serial,readiness));
+  }
+  JSONObject readingZoomSample(int step,float choice,JSONObject measurement){
+    GeckoWebView web=session.web;BrowserReading reading=session.reading;
+    return J.obj("step",step,"uptimeMs",SystemClock.uptimeMillis(),"wallMs",System.currentTimeMillis(),"choice",choice,"layout",web.readingLayout,"measurement",measurement,"nativeScale",web.getScale(),"rawPageScale",web.pageScales.getOrDefault(web.current,0f),"readingWidth",reading.width,"viewportWidth",reading.viewportWidth,"restoreAttempts",reading.restoreAttempts,"zoomActive",web.zoomTarget!=null,"zoomEpoch",web.zoomEpoch,"activityResumed",activityResumed,"browserPaused",session.browserPaused,"webShown",web.isShown(),"windowFocused",hasWindowFocus(),"sessionOpen",web.current!=null&&web.current.isOpen(),"webWidth",web.getWidth(),"webHeight",web.getHeight(),"surfaceWidth",web.surface==null?0:web.surface.getWidth(),"surfaceHeight",web.surface==null?0:web.surface.getHeight());
+  }
+  void readingZoomSample(int step,float choice,JSONObject measurement,boolean force){
+    JSONObject sample=readingZoomSample(step,choice,measurement);long now=SystemClock.uptimeMillis();
+    String signature=measurement.optDouble("scale")+"|"+session.web.getScale()+"|"+session.reading.restoreAttempts+"|"+(session.web.zoomTarget!=null)+"|"+activityResumed+"|"+session.browserPaused+"|"+hasWindowFocus()+"|"+session.web.getWidth()+"|"+session.web.getHeight()+"|"+measurement.optString("visibility");
+    if(readingZoomSamples[step]<24&&(force||!signature.equals(readingZoomLast)||now-readingZoomLastSample>=1000)){readingZoomSamples[step]++;readingZoomTrace.put(sample);event("readingZoomTrace",sample);readingZoomLast=signature;readingZoomLastSample=now;}
   }
   void readingInput(long serial,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript("(()=>({focused:document.activeElement?.id,draft:document.getElementById('composer')?.value}))()",raw->{
@@ -393,14 +422,15 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   void waitReadingZoom(long serial,int step,JSONArray results,long deadline,float choice){
     if(serial!=run)return;
-    session.web.evaluateJavascript("(()=>{const e=document.getElementById('composer');if(!e)return null;return {viewport:document.documentElement.clientWidth,density:devicePixelRatio,scale:visualViewport.scale,draft:e.value,document:performance.timeOrigin,font:parseFloat(getComputedStyle(e).fontSize)}})()",raw->{
+    session.web.evaluateJavascript("(()=>{const e=document.getElementById('composer');if(!e)return null;return {viewport:document.documentElement.clientWidth,density:devicePixelRatio,scale:visualViewport.scale,draft:e.value,document:performance.timeOrigin,font:parseFloat(getComputedStyle(e).fontSize),visibility:document.visibilityState,documentFocused:document.hasFocus(),innerHeight,clientHeight:document.documentElement.clientHeight,scrollHeight:document.documentElement.scrollHeight,visualHeight:visualViewport.height,visualWidth:visualViewport.width}})()",raw->{
       if(serial!=run)return;JSONObject result=J.parse(raw);float factor=Math.min(1,choice);
+      readingZoomSample(step,choice,result,false);
       double expected=session.web.getWidth()/factor,resultWidth=result.optDouble("viewport")*result.optDouble("density");
       if(result.has("document")&&Math.abs(resultWidth-expected)<6&&Math.abs(result.optDouble("scale")-Math.max(1,choice))<.05){
         try{result.put("choice",choice);result.put("layout",session.web.readingLayout);result.put("shownFontPixels",result.optDouble("font")*result.optDouble("density")*result.optDouble("scale")*session.web.readingLayout);result.put("nativeScale",session.web.getScale());result.put("nativeWidth",session.web.getWidth());}catch(Exception ignored){}
         results.put(result);session.handler.postDelayed(()->readingZoom(serial,step+1,results,SystemClock.elapsedRealtime()+20000),200);return;
       }
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","real reading zoom did not apply","choice",choice,"layout",session.web.readingLayout,"measurement",result,"ready",session.reading.ready));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","real reading zoom did not apply","choice",choice,"layout",session.web.readingLayout,"measurement",result,"ready",session.reading.ready,"checks",results,"readiness",readingZoomReadiness,"lastNative",readingZoomSample(step,choice,result),"trace",readingZoomTrace));return;}
       session.handler.postDelayed(()->waitReadingZoom(serial,step,results,deadline,choice),150);
     });
   }
@@ -518,7 +548,8 @@ public class GeckoIntegrationTestActivity extends Activity {
   void onMain(Runnable task){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<RuntimeException> error=new java.util.concurrent.atomic.AtomicReference<>();runOnUiThread(()->{try{task.run();}catch(RuntimeException failure){error.set(failure);}finally{done.countDown();}});await(done);if(error.get()!=null)throw error.get();}
   static String readCheckpoint(BrowserSessionStore store){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<String> value=new java.util.concurrent.atomic.AtomicReference<>();store.read(result->{value.set(result);done.countDown();});await(done);return value.get();}
   void event(String kind,JSONObject result){Log.i("PocketGeckoIntegration",J.obj("kind",kind,"result",result,"nativeContext","environment-"+(slot+1),"processSlot",slot).toString());}
-  @Override protected void onResume(){super.onResume();activityResumed=true;if(session!=null)session.foreground(true);}
-  @Override protected void onPause(){activityResumed=false;if(session!=null)session.foreground(false);super.onPause();}
+  void readingLifecycle(String phase){if("readingZoom".equals(action)&&session!=null)event("readingZoomLifecycle",J.obj("phase",phase,"uptimeMs",SystemClock.uptimeMillis(),"wallMs",System.currentTimeMillis(),"activityResumed",activityResumed,"browserPaused",session.browserPaused,"nativeScale",session.web.getScale(),"zoomActive",session.web.zoomTarget!=null,"webShown",session.web.isShown(),"windowFocused",hasWindowFocus()));}
+  @Override protected void onResume(){super.onResume();activityResumed=true;if(session!=null)session.foreground(true);readingLifecycle("onResume");}
+  @Override protected void onPause(){activityResumed=false;if(session!=null)session.foreground(false);readingLifecycle("onPause");super.onPause();}
   @Override protected void onDestroy(){run++;super.onDestroy();}
 }

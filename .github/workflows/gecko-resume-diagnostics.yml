@@ -1,0 +1,220 @@
+name: Gecko reading and update resume diagnostics
+on:
+  push:
+    branches: [debug/gecko-resume]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: gecko-resume-diagnostics
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Prepare locked toolchain
+        id: setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          mkdir -p work/gecko-resume-diagnostics work/gecko-integration
+          "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore work/gecko-resume-diagnostics/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
+          curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-resume-diagnostics/gradle.zip
+          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-resume-diagnostics/gradle.zip' | sha256sum -c -
+          unzip -q work/gecko-resume-diagnostics/gradle.zip -d work/gecko-resume-diagnostics/gradle
+          curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20260924084938/geckoview-157.0.20260924084938.aar -o work/gecko-resume-diagnostics/geckoview.aar
+          echo '25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0  work/gecko-resume-diagnostics/geckoview.aar' | sha256sum -c -
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
+      - name: Compile the native integration package
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          work/gecko-resume-diagnostics/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-resume-diagnostics/integration-test.jks" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-resume-diagnostics/build.log
+      - name: Prepare synthetic signed upgrade archives
+        id: fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee work/gecko-resume-diagnostics/update-fixture-preparation.log) 2>&1
+          tools="$ANDROID_HOME/build-tools/37.0.0"
+          python3 - <<'PYCODE'
+          import pathlib,re
+          code=int(re.search(r'versionCode ([0-9]+)',pathlib.Path('app/build.gradle').read_text()).group(1))+1
+          text=pathlib.Path('tests/gecko/update-fixture.xml').read_text().replace('android:versionCode="1"',f'android:versionCode="{code}"')
+          pathlib.Path('work/gecko-integration/update-fixture.xml').write_text(text)
+          PYCODE
+          "$tools/aapt2" link -I "$ANDROID_HOME/platforms/android-37.1/android.jar" --manifest work/gecko-integration/update-fixture.xml -o work/gecko-integration/update-fixture-unsigned.apk
+          python3 - <<'PYCODE'
+          import zipfile
+          with zipfile.ZipFile('work/gecko-integration/update-fixture-unsigned.apk','a',compression=zipfile.ZIP_STORED) as archive:
+              archive.writestr('assets/resume-fixture.bin', bytes(range(256)) * 4096)
+          PYCODE
+          "$tools/apksigner" sign --ks work/gecko-resume-diagnostics/integration-test.jks --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-fixture.apk work/gecko-integration/update-fixture-unsigned.apk
+          keytool -genkeypair -keystore work/gecko-resume-diagnostics/update-wrong-key.jks -alias fixture -storepass android -keypass android -dname CN=Synthetic -keyalg RSA -validity 2
+          "$tools/apksigner" sign --ks work/gecko-resume-diagnostics/update-wrong-key.jks --ks-key-alias fixture --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-wrong-signer.apk work/gecko-integration/update-fixture-unsigned.apk
+      - name: Diagnose reading and zoom on a cold Android 35 phone
+        id: reading
+        if: ${{ always() && steps.setup.outcome == 'success' && steps.build.outcome == 'success' && steps.fixtures.outcome == 'success' }}
+        env:
+          DIAGNOSTIC_CASE: reading
+          DIAGNOSTIC_MODE: reading
+          DIAGNOSTIC_PORT: '5554'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case_dir="work/gecko-resume-diagnostics/$DIAGNOSTIC_CASE"
+          serial="emulator-$DIAGNOSTIC_PORT"
+          emulator_pid=''
+          mkdir -p "$case_dir"
+          exec > >(tee "$case_dir/test.log") 2>&1
+          finish() {
+            result=$1
+            set +e
+            python3 - "$DIAGNOSTIC_CASE" "$result" <<'PYCODE'
+          import importlib.util,json,os,pathlib,shutil,subprocess,sys
+          spec=importlib.util.spec_from_file_location('resume_publisher','tools/gecko/publish_resume_diagnostics.py')
+          publisher=importlib.util.module_from_spec(spec);spec.loader.exec_module(publisher)
+          case=sys.argv[1];target=publisher.OUT/case;origin=publisher.ROOT/'work/gecko-integration'
+          for name in publisher.RUNNER_ARTIFACTS[case]:
+              source=origin/name
+              if source.is_file() and not source.is_symlink():shutil.copyfile(source,target/name)
+          status={'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+                  'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ.get('GITHUB_RUN_ATTEMPT','1'),
+                  'mode':publisher.MODES[case],'exitCode':int(sys.argv[2]),
+                  'status':'passed' if sys.argv[2]=='0' else 'failed','diagnosticOnly':True}
+          (target/'status.json').write_text(json.dumps(status,indent=2)+'\n')
+          PYCODE
+            if adb -s "$serial" get-state >/dev/null 2>&1; then
+              timeout 30 adb -s "$serial" exec-out screencap -p > "$case_dir/screen.png" || rm -f "$case_dir/screen.png"
+              timeout 15 adb -s "$serial" emu kill || true
+            fi
+            if [ -n "$emulator_pid" ]; then
+              kill "$emulator_pid" 2>/dev/null || true
+              timeout 30 bash -c 'while kill -0 "$1" 2>/dev/null; do sleep 1; done' _ "$emulator_pid" || kill -9 "$emulator_pid" 2>/dev/null || true
+            fi
+            return "$result"
+          }
+          trap 'finish $?' EXIT
+          python3 - <<'PYCODE'
+          import importlib.util
+          spec=importlib.util.spec_from_file_location('resume_publisher','tools/gecko/publish_resume_diagnostics.py')
+          publisher=importlib.util.module_from_spec(spec);spec.loader.exec_module(publisher)
+          for names in publisher.RUNNER_ARTIFACTS.values():
+              for name in names:(publisher.ROOT/'work/gecko-integration'/name).unlink(missing_ok=True)
+          PYCODE
+          export ANDROID_AVD_HOME="$PWD/$case_dir/avd"
+          export ANDROID_USER_HOME="$PWD/$case_dir/android-user"
+          export ANDROID_EMULATOR_HOME="$PWD/$case_dir/emulator-home"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+          sudo chmod a+rw /dev/kvm
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n "gecko-$DIAGNOSTIC_CASE" -p "$ANDROID_AVD_HOME/gecko-$DIAGNOSTIC_CASE.avd" -k 'system-images;android-35;google_apis;x86_64'
+          "$ANDROID_HOME/emulator/emulator" -avd "gecko-$DIAGNOSTIC_CASE" -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port "$DIAGNOSTIC_PORT" -gpu swiftshader -memory 3072 -cores 2 > "$case_dir/emulator.log" 2>&1 &
+          emulator_pid=$!
+          timeout 180 adb -s "$serial" wait-for-device
+          timeout 300 bash -c 'until [ "$(adb -s "$1" shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done' _ "$serial"
+          adb -s "$serial" shell input keyevent 82
+          adb -s "$serial" install app/build/outputs/apk/integration/app-x86_64-integration.apk
+          python3 tests/gecko/run_device.py --adb "$(command -v adb)" --serial "$serial" "--$DIAGNOSTIC_MODE-only"
+      - name: Publish the reading diagnostic before transfer checks
+        if: always()
+        env:
+          DIAGNOSTIC_SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          DIAGNOSTIC_BUILD_OUTCOME: ${{ steps.build.outcome }}
+          DIAGNOSTIC_FIXTURES_OUTCOME: ${{ steps.fixtures.outcome }}
+          DIAGNOSTIC_READING_OUTCOME: ${{ steps.reading.outcome }}
+          DIAGNOSTIC_TRANSFERS_OUTCOME: skipped
+        run: python3 tools/gecko/publish_resume_diagnostics.py
+      - name: Diagnose all 28 update transfers on another cold Android 35 phone
+        id: transfers
+        if: ${{ always() && steps.setup.outcome == 'success' && steps.build.outcome == 'success' && steps.fixtures.outcome == 'success' }}
+        env:
+          DIAGNOSTIC_CASE: transfers
+          DIAGNOSTIC_MODE: update-transfers
+          DIAGNOSTIC_PORT: '5556'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case_dir="work/gecko-resume-diagnostics/$DIAGNOSTIC_CASE"
+          serial="emulator-$DIAGNOSTIC_PORT"
+          emulator_pid=''
+          mkdir -p "$case_dir"
+          exec > >(tee "$case_dir/test.log") 2>&1
+          finish() {
+            result=$1
+            set +e
+            python3 - "$DIAGNOSTIC_CASE" "$result" <<'PYCODE'
+          import importlib.util,json,os,pathlib,shutil,subprocess,sys
+          spec=importlib.util.spec_from_file_location('resume_publisher','tools/gecko/publish_resume_diagnostics.py')
+          publisher=importlib.util.module_from_spec(spec);spec.loader.exec_module(publisher)
+          case=sys.argv[1];target=publisher.OUT/case;origin=publisher.ROOT/'work/gecko-integration'
+          for name in publisher.RUNNER_ARTIFACTS[case]:
+              source=origin/name
+              if source.is_file() and not source.is_symlink():shutil.copyfile(source,target/name)
+          status={'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+                  'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ.get('GITHUB_RUN_ATTEMPT','1'),
+                  'mode':publisher.MODES[case],'exitCode':int(sys.argv[2]),
+                  'status':'passed' if sys.argv[2]=='0' else 'failed','diagnosticOnly':True}
+          (target/'status.json').write_text(json.dumps(status,indent=2)+'\n')
+          PYCODE
+            if adb -s "$serial" get-state >/dev/null 2>&1; then
+              timeout 30 adb -s "$serial" exec-out screencap -p > "$case_dir/screen.png" || rm -f "$case_dir/screen.png"
+              timeout 15 adb -s "$serial" emu kill || true
+            fi
+            if [ -n "$emulator_pid" ]; then
+              kill "$emulator_pid" 2>/dev/null || true
+              timeout 30 bash -c 'while kill -0 "$1" 2>/dev/null; do sleep 1; done' _ "$emulator_pid" || kill -9 "$emulator_pid" 2>/dev/null || true
+            fi
+            return "$result"
+          }
+          trap 'finish $?' EXIT
+          python3 - <<'PYCODE'
+          import importlib.util
+          spec=importlib.util.spec_from_file_location('resume_publisher','tools/gecko/publish_resume_diagnostics.py')
+          publisher=importlib.util.module_from_spec(spec);spec.loader.exec_module(publisher)
+          for names in publisher.RUNNER_ARTIFACTS.values():
+              for name in names:(publisher.ROOT/'work/gecko-integration'/name).unlink(missing_ok=True)
+          PYCODE
+          export ANDROID_AVD_HOME="$PWD/$case_dir/avd"
+          export ANDROID_USER_HOME="$PWD/$case_dir/android-user"
+          export ANDROID_EMULATOR_HOME="$PWD/$case_dir/emulator-home"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+          sudo chmod a+rw /dev/kvm
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n "gecko-$DIAGNOSTIC_CASE" -p "$ANDROID_AVD_HOME/gecko-$DIAGNOSTIC_CASE.avd" -k 'system-images;android-35;google_apis;x86_64'
+          "$ANDROID_HOME/emulator/emulator" -avd "gecko-$DIAGNOSTIC_CASE" -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port "$DIAGNOSTIC_PORT" -gpu swiftshader -memory 3072 -cores 2 > "$case_dir/emulator.log" 2>&1 &
+          emulator_pid=$!
+          timeout 180 adb -s "$serial" wait-for-device
+          timeout 300 bash -c 'until [ "$(adb -s "$1" shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done' _ "$serial"
+          adb -s "$serial" shell input keyevent 82
+          adb -s "$serial" install app/build/outputs/apk/integration/app-x86_64-integration.apk
+          python3 tests/gecko/run_device.py --adb "$(command -v adb)" --serial "$serial" "--$DIAGNOSTIC_MODE-only"
+      - name: Publish both diagnostic results, including failures
+        id: publish
+        if: always()
+        env:
+          DIAGNOSTIC_SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          DIAGNOSTIC_BUILD_OUTCOME: ${{ steps.build.outcome }}
+          DIAGNOSTIC_FIXTURES_OUTCOME: ${{ steps.fixtures.outcome }}
+          DIAGNOSTIC_READING_OUTCOME: ${{ steps.reading.outcome }}
+          DIAGNOSTIC_TRANSFERS_OUTCOME: ${{ steps.transfers.outcome }}
+        run: python3 tools/gecko/publish_resume_diagnostics.py
+      - name: Require both independent diagnostics to complete
+        if: always()
+        env:
+          READING_OUTCOME: ${{ steps.reading.outcome }}
+          TRANSFERS_OUTCOME: ${{ steps.transfers.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+        run: |
+          python3 - <<'PYCODE'
+          import json,os,pathlib
+          assert all(os.environ[name]=='success' for name in ['READING_OUTCOME','TRANSFERS_OUTCOME','PUBLISH_OUTCOME']), 'Both diagnostics and evidence publication must succeed'
+          manifest=json.loads(pathlib.Path('work/gecko-resume-diagnostics/public/manifest.json').read_text())
+          assert manifest['sourceCommit']==os.environ['GITHUB_SHA'] and manifest['runId']==os.environ['GITHUB_RUN_ID']
+          assert manifest['allDiagnosticsPassed'] is True and manifest['diagnosticOnly'] is True and manifest['releaseAcceptance'] is False
+          PYCODE

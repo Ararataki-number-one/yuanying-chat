@@ -15,6 +15,7 @@ import java.security.MessageDigest;
 public class AppUpdateIntegrationActivity extends AppUpdateActivity {
   final Handler handler=new Handler(Looper.getMainLooper());String action;AppUpdateManager manager;long started;String hash;
   String transferScenario,transferToken;long statusReads,statusIo,maxStatusNs,firstReceived=-1,lastReceived=-1,progressPairs;int renders,lastRender;TextView previousDetails;String previousProgress="";
+  long speedFirstReceived=-1,speedLastReceived=-1,speedFirstSampleNanos,speedLastSampleNanos,speedSamplePairs;boolean speedMeasuring;
   volatile boolean commandQueueDrained,preparationGuardReached;
   @Override public void onCreate(Bundle state){super.onCreate(state);command(getIntent());}
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);command(intent);}
@@ -79,6 +80,7 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
     if("transferLocatePause".equals(action)||"transferLocateResume".equals(action)){locateTransferAction("transferLocatePause".equals(action)?"暂停下载":"继续下载",SystemClock.elapsedRealtime()+5000);return;}
     if("transferRecreate".equals(action)){setIntent(new Intent(intent).putExtra("updateAction","transferInspect"));recreate();return;}
     if("transferStart".equals(action)){
+      speedFirstReceived=speedLastReceived=-1;speedFirstSampleNanos=speedLastSampleNanos=speedSamplePairs=0;speedMeasuring=false;
       hash=intent.getStringExtra("updateHash");long bytes=intent.getLongExtra("updateBytes",0);if(hash==null||bytes<1024*1024)throw new IOException("Signed transfer fixture must contain at least one MiB");
       JSONObject metadata=J.obj("schema",1,"package","local.pocketchat","version","99.0.0","versionCode",AppUpdateFiles.installed(this)+1,"bytes",bytes,"sha256",hash,"signerSha256",AppUpdatePolicy.SIGNER,"downloadUrl",AppUpdatePolicy.asset("99.0.0"),"abi","arm64-v8a","minSdk",26,"notes","受控真实 HTTP 续传；不实际安装。");
       manager.worker.execute(()->{try{AppUpdates.cancelTransfer(this);manager.generation.incrementAndGet();manager.removeDownload();manager.clearFiles();manager.info=new AppUpdateInfo(metadata);manager.raw=metadata.toString();manager.downloadRequested=false;manager.userPaused=false;manager.received=0;manager.total=bytes;manager.change("available","");manager.downloadNow(false);handler.post(()->{started=SystemClock.elapsedRealtime();waitTransfer(intent);});}catch(Exception error){handler.post(()->transferEvent(J.obj("token",transferToken,"error",error.toString())));}});return;
@@ -148,7 +150,15 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
   }
   Bundle measuredStatus(){StrictMode.ThreadPolicy previous=StrictMode.getThreadPolicy();
     if(Build.VERSION.SDK_INT>=28)StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder().detectDiskReads().detectDiskWrites().detectNetwork().penaltyListener(Runnable::run,violation->statusIo++).build());
-    long begin=System.nanoTime();try{Bundle b=AppUpdates.call(this,"status",null);statusReads++;maxStatusNs=Math.max(maxStatusNs,System.nanoTime()-begin);return b;}finally{StrictMode.setThreadPolicy(previous);}
+    long begin=System.nanoTime();try{Bundle b=AppUpdates.call(this,"status",null);long sampledAt=System.nanoTime();statusReads++;maxStatusNs=Math.max(maxStatusNs,sampledAt-begin);measureDownload(b,sampledAt);return b;}finally{StrictMode.setThreadPolicy(previous);}
+  }
+  void measureDownload(Bundle b,long sampledAt){long received=b.getLong("received"),total=b.getLong("total");
+    if(!"downloading".equals(b.getString("state"))||total<=0||received>=total){speedMeasuring=false;return;}
+    // Measure real provider byte counters against the monotonic clock. A new
+    // transfer, restart-from-zero or paused interval starts a separate window.
+    if(!speedMeasuring||speedLastReceived<0||received<speedLastReceived){speedFirstReceived=received;speedFirstSampleNanos=sampledAt;speedSamplePairs=0;speedMeasuring=true;}
+    else if(received>speedLastReceived)speedSamplePairs++;
+    speedLastReceived=received;speedLastSampleNanos=sampledAt;
   }
   void waitTransfer(Intent intent){try{
     Bundle b=measuredStatus();String state=b.getString("state","");String target=intent.getStringExtra("transferTarget");if(target==null)target="inspect";
@@ -163,6 +173,8 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
   static String fileHash(File file)throws Exception{MessageDigest digest=MessageDigest.getInstance("SHA-256");try(InputStream in=new FileInputStream(file)){byte[] buffer=new byte[65536];int n;while((n=in.read(buffer))!=-1)digest.update(buffer,0,n);}StringBuilder hex=new StringBuilder();for(byte value:digest.digest())hex.append(String.format(java.util.Locale.ROOT,"%02x",value&255));return hex.toString();}
   void emitTransferResult(Bundle b,boolean running){final String token=transferToken,scenario=transferScenario,command=action;
     final long reads=statusReads,io=statusIo,maxNs=maxStatusNs,pairs=progressPairs;final int renderCount=renders;
+    final long speedBeginBytes=speedFirstReceived,speedEndBytes=speedLastReceived,speedBeginNanos=speedFirstSampleNanos,speedEndNanos=speedLastSampleNanos,speedPairs=speedSamplePairs;
+    final String progressText=downloadDetails==null?"":downloadDetails.getText().toString();
     manager.worker.execute(()->{try{
       AppUpdateInfo info=manager.info;File part=new File(manager.root,"transfer-"+info.code+"-"+info.sha+"-"+info.bytes+".part"),meta=new File(part.getPath().replace(".part",".resume"));
       long partialBytes=part.isFile()?part.length():0;String partialSha=partialBytes>0?fileHash(part):"";boolean identity=false;
@@ -171,6 +183,9 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
       File[] files=manager.root.listFiles();if(files!=null)for(File file:files)if(file.getName().endsWith(".apk"))apkCount++;
       if(ready){finalBytes=manager.file().length();finalSha=fileHash(manager.file());AppUpdateFiles.archive(this,manager.file(),info.code,info.version);signer=true;}
       JSONObject result=J.obj("token",token,"action",command,"scenario",scenario,"state",b.getString("state"),"message",b.getString("message"),"uri",b.getString("uri",""),"received",b.getLong("received"),"total",b.getLong("total"),"partialBytes",partialBytes,"partialSha",partialSha,"partialIdentity",identity,"finalBytes",finalBytes,"finalSha",finalSha,"finalApks",apkCount,"sameSigner",signer,"running",running,"downloadRequested",b.getBoolean("downloadRequested"),"userPaused",manager.userPaused,"statusReads",reads,"statusMainThreadIo",io,"maxStatusMs",maxNs/1000000.0,"nativeRenders",renderCount,"progressIdentityPairs",pairs,"pid",android.os.Process.myPid());
+      result.put("bytesPerSecond",b.getLong("bytesPerSecond"));result.put("remainingSeconds",b.getLong("remainingSeconds",-1));result.put("downloadDetailsText",progressText);
+      result.put("speedFirstReceived",speedBeginBytes);result.put("speedLastReceived",speedEndBytes);result.put("speedFirstSampleNanos",speedBeginNanos);result.put("speedLastSampleNanos",speedEndNanos);result.put("speedSamplePairs",speedPairs);
+      result.put("speedSampleDeltaBytes",speedBeginBytes>=0?Math.max(0,speedEndBytes-speedBeginBytes):0);result.put("speedSampleDurationMillis",speedBeginBytes>=0?Math.max(0,speedEndNanos-speedBeginNanos)/1000000.0:0);
       result.put("commandQueueDrained",commandQueueDrained);result.put("preparationGuardReached",preparationGuardReached);result.put("discardPending",manager.prefs.getBoolean("discardPending",false));android.app.job.JobScheduler scheduler=(android.app.job.JobScheduler)getSystemService(JOB_SCHEDULER_SERVICE);result.put("pendingTransferJob",scheduler!=null&&scheduler.getPendingJob(AppUpdates.TRANSFER)!=null);
       handler.post(()->transferEvent(result));
     }catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}});
