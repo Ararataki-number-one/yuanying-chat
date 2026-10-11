@@ -20,12 +20,12 @@ import org.json.*;
 /** Integration-only comparison: actual Gecko document and native extension bridge, no account. */
 public final class GeckoPerformanceIntegrationActivity extends Activity {
   static final String ORIGIN="http://127.0.0.1:8767",PATH="/performance";
-  static final String BASELINE="835d59991218eda70c7a4fdd73ea9d7ae6052688";
+  static final String BASELINE="835d59991218eda70c7a4fdd73ea9d7ae6052688",INPUT_MARKER="-user-typed";
   final Handler handler=new Handler(Looper.getMainLooper());
   final FrameSample frames=new FrameSample();
   ChatSession session;String variant,driver,performanceSource;JSONObject before,known,firstFull,baselineMetrics,currentMetrics,productionJob;
   int checkCount,samples;boolean finished;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
-  String originalDriver,manualDraft;JSONObject manualJob;long manualEpoch,manualConnection;
+  String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
   CountDownLatch archiveEntered,archiveRelease;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
@@ -289,15 +289,19 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       evaluate("window.__fixtureTelemetry()",false,end->{check("Production completion preserves the document login, unsent draft and no-send invariant",end.optBoolean("draftPreserved")&&end.optBoolean("cookiePreserved")&&end.optInt("sendCount")==0);inputGesture();});
     }));
   });}
-  void inputGesture(){evaluate("(()=>{const r=document.getElementById('prompt-textarea').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,width:innerWidth,height:innerHeight};})()",false,point->{
+  void inputGesture(){evaluate("(()=>{const composer=document.getElementById('prompt-textarea'),r=composer.getBoundingClientRect();return {draft:composer.value,x:r.left+r.width/2,y:r.top+r.height/2,width:innerWidth,height:innerHeight};})()",false,point->{
+    inputDraft=point.optString("draft");if(inputDraft.contains(INPUT_MARKER))throw new IllegalStateException("Input fixture draft already contains the synthetic marker");
     int[] position=new int[2];session.web.getLocationOnScreen(position);
     int x=position[0]+(int)(point.optDouble("x")*session.web.getWidth()/point.optDouble("width"));
     int y=position[1]+(int)(point.optDouble("y")*session.web.getHeight()/point.optDouble("height"));
-    event("gestureNeeded",J.obj("id","current-input","action","input","x",x,"y",y));waitInput(SystemClock.elapsedRealtime()+20000);
+    event("gestureNeeded",J.obj("id","current-input","action","input","x",x,"y",y,"text",INPUT_MARKER));waitInput(SystemClock.elapsedRealtime()+20000);
   });}
   void waitInput(long expires){evaluate("({draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent)})",false,value->{
-    if(!value.optString("draft").endsWith("-user-typed")){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Android keyboard input did not reach Gecko: "+value);later(()->waitInput(expires),100);return;}
-    check("Actual Android tap and keyboard input preserve the existing composer draft",value.optString("draft").equals("unsent draft stays unchanged-user-typed"));
+    String actual=value.optString("draft");int inserted=actual.indexOf(INPUT_MARKER);
+    if(inserted<0){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Android keyboard input did not reach Gecko: "+value);later(()->waitInput(expires),100);return;}
+    // A real tap can put the caret anywhere. Require exactly one actual insertion
+    // and every pre-existing character, rather than assuming an end-of-line caret.
+    check("Actual Android tap and keyboard input preserve the existing composer draft",actual.indexOf(INPUT_MARKER,inserted+INPUT_MARKER.length())<0&&(actual.substring(0,inserted)+actual.substring(inserted+INPUT_MARKER.length())).equals(inputDraft));
     check("Actual user input neither sends a message nor changes the synthetic login",value.optInt("sendCount")==0&&value.optString("cookie").contains("session=synthetic-performance"));bindingLifecycle();
   });}
   // Run after both immutable measurements and all existing capture/gesture checks.

@@ -184,9 +184,12 @@ def main():
                         if gesture['action'] == 'scroll':
                             adb('shell', 'input', 'swipe', str(gesture['x']), str(gesture['startY']), str(gesture['x']), str(gesture['endY']), '300')
                         elif gesture['action'] == 'input':
+                            assert gesture['text'] == '-user-typed', gesture
                             adb('shell', 'input', 'tap', str(gesture['x']), str(gesture['y']))
-                            adb('shell', 'input', 'keyevent', 'KEYCODE_MOVE_END')
-                            adb('shell', 'input', 'text', '-user-typed')
+                            # Accept the caret position chosen by the actual tap.
+                            # The activity removes exactly this marker and compares
+                            # every original draft character after real keyboard input.
+                            adb('shell', 'input', 'text', gesture['text'])
                         else:
                             raise AssertionError(gesture)
                 elif item['kind'] == 'report':
