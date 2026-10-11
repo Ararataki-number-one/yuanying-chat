@@ -5,6 +5,7 @@ import android.content.Context;
 import android.os.*;
 import android.util.Log;
 import android.view.Choreographer;
+import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -27,6 +28,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   ChatSession session;String variant,driver,performanceSource;JSONObject before,known,firstFull,baselineMetrics,currentMetrics,productionJob;
   int checkCount,samples,inputFocusSamples,directDeferredSamples,nativeDeferredSamples;boolean finished,inputRequested,directDeferralChecked,nativeDeferralChecked;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
   String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
+  String inputReadinessKey="";long inputReadySince;int inputTraceOffset,inputReadinessSequence;boolean inputImeSettled;
   CountDownLatch archiveEntered,archiveRelease;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
@@ -318,25 +320,64 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       evaluate("window.__fixtureTelemetry()",false,end->{check("Production completion preserves the document login, unsent draft and no-send invariant",end.optBoolean("draftPreserved")&&end.optBoolean("cookiePreserved")&&end.optInt("sendCount")==0);inputGesture();});
     }));
   });}
-  void inputGesture(){evaluate("(()=>{const composer=document.getElementById('prompt-textarea'),r=composer.getBoundingClientRect();return {draft:composer.value,x:r.left+r.width/2,y:r.top+r.height/2,width:innerWidth,height:innerHeight};})()",false,point->{
+  String inputTraceInstall(){return "(()=>{const composer=document.getElementById('prompt-textarea'),trace=window.__fixtureInputTrace={events:[],overflow:false};"+
+    "for(const type of ['focus','blur','keydown','keyup','beforeinput','input','compositionstart','compositionupdate','compositionend','select'])composer.addEventListener(type,event=>{"+
+    "if(trace.events.length>=256){trace.overflow=true;return;}trace.events.push({type:event.type,key:event.key||'',data:event.data??'',inputType:event.inputType||'',trusted:event.isTrusted,composing:!!event.isComposing,time:performance.now(),draft:composer.value,start:composer.selectionStart,end:composer.selectionEnd});});return {installed:true};})()";}
+  String inputSnapshot(){return "(()=>{const composer=document.getElementById('prompt-textarea'),r=composer.getBoundingClientRect(),vp=visualViewport,trace=window.__fixtureInputTrace;"+
+    "return {draft:composer.value,composerFocused:document.activeElement===composer,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),"+
+    "start:composer.selectionStart,end:composer.selectionEnd,x:r.left+r.width/2,y:r.top+r.height/2,width:innerWidth,height:innerHeight,"+
+    "bounds:{left:r.left,top:r.top,width:r.width,height:r.height},viewport:{width:vp?.width??innerWidth,height:vp?.height??innerHeight,offsetLeft:vp?.offsetLeft??0,offsetTop:vp?.offsetTop??0,scale:vp?.scale??1,innerWidth,innerHeight},"+
+    "inputEvents:trace?.events||[],traceOverflow:!!trace?.overflow};})()";}
+  void inputGesture(){evaluate(inputTraceInstall()+";\n"+inputSnapshot(),false,point->{
     inputDraft=point.optString("draft");if(inputDraft.contains(INPUT_MARKER))throw new IllegalStateException("Input fixture draft already contains the synthetic marker");
-    inputRequested=false;inputFocusSamples=0;
+    inputRequested=false;inputFocusSamples=0;inputReadinessKey="";inputReadySince=0;inputTraceOffset=inputReadinessSequence=0;inputImeSettled=false;
     int[] position=new int[2];session.web.getLocationOnScreen(position);
     int x=position[0]+(int)(point.optDouble("x")*session.web.getWidth()/point.optDouble("width"));
     int y=position[1]+(int)(point.optDouble("y")*session.web.getHeight()/point.optDouble("height"));
-    event("gestureNeeded",J.obj("id","current-input","action","input","x",x,"y",y,"text",INPUT_MARKER));waitInput(SystemClock.elapsedRealtime()+20000);
+    event("gestureNeeded",J.obj("id","current-input","action","input","x",x,"y",y,"text",INPUT_MARKER));waitInput(SystemClock.elapsedRealtime()+30000);
   });}
-  void waitInput(long expires){evaluate("({draft:document.getElementById('prompt-textarea').value,composerFocused:document.activeElement===document.getElementById('prompt-textarea'),cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent)})",false,value->{
+  void recordInputTrace(JSONObject value)throws Exception{
+    JSONArray events=value.optJSONArray("inputEvents");if(events==null)return;
+    while(inputTraceOffset<events.length()){
+      int offset=inputTraceOffset;JSONArray batch=new JSONArray();while(inputTraceOffset<events.length()&&batch.length()<4)batch.put(events.optJSONObject(inputTraceOffset++));
+      event("inputEvents",J.obj("id","current-input","offset",offset,"events",batch));
+    }
+  }
+  void waitInput(long expires){evaluate(inputSnapshot(),false,value->{
     InputMethodManager keyboard=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
     boolean nativeFocused=session.web.hasFocus(),acceptingText=keyboard!=null&&keyboard.isAcceptingText();
-    boolean inputReady=value.optBoolean("composerFocused")&&nativeFocused&&acceptingText;
-    inputFocusSamples=inputReady?inputFocusSamples+1:0;
-    if(!inputRequested&&inputFocusSamples>=2){inputRequested=true;event("textNeeded",J.obj("id","current-input","text",INPUT_MARKER,"composerFocused",true,"nativeFocused",true,"acceptingText",true,"stableFocusSamples",inputFocusSamples));}
+    WindowInsets insets=session.web.getRootWindowInsets();boolean imeVisible=Build.VERSION.SDK_INT>=30&&insets!=null&&insets.isVisible(WindowInsets.Type.ime());
+    int imeBottom=Build.VERSION.SDK_INT>=30&&insets!=null?insets.getInsets(WindowInsets.Type.ime()).bottom:0;
+    int[] position=new int[2];session.web.getLocationOnScreen(position);
+    JSONObject nativeBounds=J.obj("left",position[0],"top",position[1],"width",session.web.getWidth(),"height",session.web.getHeight());
+    boolean inputReady=value.optBoolean("composerFocused")&&nativeFocused&&acceptingText&&imeVisible&&imeBottom>0&&value.optInt("start",-1)>=0&&value.optInt("start",-1)==value.optInt("end",-2);
+    String readiness=value.optInt("start")+"|"+value.optInt("end")+"|"+value.optJSONObject("bounds")+"|"+value.optJSONObject("viewport")+"|"+nativeBounds+"|"+imeBottom;
+    long now=SystemClock.elapsedRealtime();
+    if(!inputRequested){
+      if(!inputReady){inputFocusSamples=0;inputReadySince=0;inputReadinessKey="";}
+      else if(!readiness.equals(inputReadinessKey)){inputFocusSamples=1;inputReadySince=now;inputReadinessKey=readiness;}
+      else inputFocusSamples++;
+    }
+    recordInputTrace(value);
+    long settledMs=inputReadySince==0?0:now-inputReadySince;
+    event("inputReadiness",J.obj("id","current-input","sequence",inputReadinessSequence++,"requested",inputRequested,"composerFocused",value.optBoolean("composerFocused"),"nativeFocused",nativeFocused,"acceptingText",acceptingText,"imeVisible",imeVisible,"imeBottom",imeBottom,"stableFocusSamples",inputFocusSamples,"settledMs",settledMs,"start",value.optInt("start"),"end",value.optInt("end"),"draft",value.optString("draft"),"bounds",value.optJSONObject("bounds"),"viewport",value.optJSONObject("viewport"),"nativeBounds",nativeBounds));
+    if(!inputRequested&&inputReady&&inputFocusSamples>=3&&settledMs>=600){
+      if(!value.optString("draft").equals(inputDraft))throw new IllegalStateException("The draft changed before the single Android input burst");
+      inputRequested=true;inputImeSettled=true;
+      check("Actual Android input waits for visible IME and unchanged viewport, composer and caret",imeVisible&&imeBottom>0&&settledMs>=600&&inputFocusSamples>=3);
+      event("textNeeded",J.obj("id","current-input","text",INPUT_MARKER,"composerFocused",true,"nativeFocused",true,"acceptingText",true,"imeVisible",true,"imeBottom",imeBottom,"stableFocusSamples",inputFocusSamples,"settledMs",settledMs,"start",value.optInt("start"),"end",value.optInt("end"),"draft",inputDraft,"bounds",value.optJSONObject("bounds"),"viewport",value.optJSONObject("viewport"),"nativeBounds",nativeBounds));
+    }
     String actual=value.optString("draft");int inserted=actual.indexOf(INPUT_MARKER);
-    if(inserted<0){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Android keyboard input did not reach Gecko: "+value+" nativeFocused="+nativeFocused+" acceptingText="+acceptingText+" textRequested="+inputRequested);later(()->waitInput(expires),100);return;}
+    if(inserted<0){
+      if(SystemClock.elapsedRealtime()>expires){JSONObject failure=new JSONObject(value.toString());JSONArray recorded=failure.optJSONArray("inputEvents");failure.remove("inputEvents");failure.put("inputEventCount",recorded==null?0:recorded.length());throw new IllegalStateException("Actual Android keyboard input did not reach Gecko: "+failure+" nativeFocused="+nativeFocused+" acceptingText="+acceptingText+" imeVisible="+imeVisible+" textRequested="+inputRequested);}
+      later(()->waitInput(expires),100);return;
+    }
     // A real tap can put the caret anywhere. Require exactly one actual insertion
     // and every pre-existing character, rather than assuming an end-of-line caret.
     check("Actual Android tap and keyboard input preserve the existing composer draft",inputRequested&&actual.indexOf(INPUT_MARKER,inserted+INPUT_MARKER.length())<0&&(actual.substring(0,inserted)+actual.substring(inserted+INPUT_MARKER.length())).equals(inputDraft));
+    JSONArray recorded=value.optJSONArray("inputEvents");StringBuilder keys=new StringBuilder();int inputs=0;boolean trusted=recorded!=null&&!value.optBoolean("traceOverflow");
+    if(recorded!=null)for(int i=0;i<recorded.length();i++){JSONObject item=recorded.optJSONObject(i);String type=item.optString("type");if(type.equals("keydown")&&item.optString("key").length()==1)keys.append(item.optString("key"));if(type.equals("input"))inputs++;if(type.equals("keydown")||type.equals("keyup")||type.equals("beforeinput")||type.equals("input"))trusted&=item.optBoolean("trusted");}
+    check("The single Android input burst delivers exact ordered trusted keys and real input events",trusted&&inputs>0&&keys.toString().equals(INPUT_MARKER));
     check("Actual user input neither sends a message nor changes the synthetic login",value.optInt("sendCount")==0&&value.optString("cookie").contains("session=synthetic-performance"));bindingLifecycle();
   });}
   // Run after both immutable measurements and all existing capture/gesture checks.
@@ -510,7 +551,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       }));
     });
   });}
-  void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"baselineSource",BASELINE,"checkCount",checkCount,"directDeferredSamples",directDeferredSamples,"nativeDeferredSamples",nativeDeferredSamples,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
+  void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"actualInputImeSettled",inputImeSettled,"actualSingleInputBurst",true,"baselineSource",BASELINE,"checkCount",checkCount,"directDeferredSamples",directDeferredSamples,"nativeDeferredSamples",nativeDeferredSamples,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
   String telemetryInstall(){return "(()=>{const data={readChars:0,readCalls:0,clones:0,started:performance.now(),rafCount:0,rafSum:0,rafMax:0,rafOver32:0,previous:0};"+
     "for(const [prototype,key] of [[HTMLElement.prototype,'innerText'],[Node.prototype,'textContent'],[Node.prototype,'nodeValue']]){const original=Object.getOwnPropertyDescriptor(prototype,key);if(original?.get&&original.configurable)Object.defineProperty(prototype,key,{...original,get(){const value=original.get.call(this);data.readCalls++;if(typeof value==='string')data.readChars+=value.length;return value;}});}"+
     "const clone=Node.prototype.cloneNode;Node.prototype.cloneNode=function(...args){data.clones++;return clone.apply(this,args);};"+

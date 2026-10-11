@@ -30,6 +30,26 @@ def verify_interaction_transfer_evidence(directory, source):
         assert report['actualAndroidExecution'], name
         return report
 
+    gecko = android('gecko-performance-results.json')
+    assert gecko['actualInputImeSettled'] and gecko['actualSingleInputBurst']
+    assert {
+        'Actual Android input waits for visible IME and unchanged viewport, composer and caret',
+        'The single Android input burst delivers exact ordered trusted keys and real input events',
+    } <= {item['name'] for item in gecko['checks'] if item['pass']}
+    inputs = gecko['actualAndroidTextInputs']
+    assert len(inputs) == 1
+    request = inputs[0]
+    assert request['text'] == '-user-typed' and request['imeVisible'] and request['imeBottom'] > 0
+    assert request['stableFocusSamples'] >= 3 and request['settledMs'] >= 600
+    assert request['start'] == request['end'] and 0 <= request['start'] <= len(request['draft'])
+    events = gecko['actualTrustedInputEvents']
+    typed = [item for item in events if item['type'] in ('keydown', 'keyup', 'beforeinput', 'input')]
+    assert typed and all(item['trusted'] for item in typed) and any(item['type'] == 'input' for item in typed)
+    assert ''.join(item['key'] for item in typed if item['type'] == 'keydown' and len(item['key']) == 1) == request['text']
+    assert any(item['imeVisible'] and item['imeBottom'] > 0 and item['stableFocusSamples'] >= 3
+               and item['settledMs'] >= 600 and item['draft'] == request['draft']
+               for item in gecko['actualInputReadinessTrace'] if not item['requested'])
+
     update = android('update-transfer-results.json')
     assert update['actualHttpTransfer'] and update['actualJobSchedulerExecution']
     assert len(update['checks']) >= len(UPDATE_CHECKS) and all(item['pass'] for item in update['checks'])
@@ -76,6 +96,11 @@ def verify_interaction_transfer_evidence(directory, source):
     def stable_surface(report):
         ready = report['geometryReadiness']
         assert ready['imeHidden'] and ready['stableFrames'] >= 8 and ready['stableMillis'] >= 1000
+        assert ready['systemBarsRequested'] and ready['normalBarsVisible']
+        geometry = ready['geometry']
+        assert geometry['statusBarsVisible'] and geometry['navigationBarsVisible'] and geometry['navigationInsets'] > 0
+        assert all(geometry[side] == geometry['visibleSafe' + side.capitalize()]
+                   for side in ('top', 'right', 'bottom', 'left'))
         assert report['geometryStableDuringSwipes'] and report['unchangedTouchEvents'] >= 20
         assert report['redundantTouchSyncs'] == 0 and report['firstTouchSyncs'] == 1
         assert report['firstTouchOriginCorrect'] and report['originSyncs'] == 1

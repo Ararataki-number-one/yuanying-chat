@@ -163,6 +163,7 @@ def main():
         adb('logcat', '-c')
         adb('shell', 'am', 'start', '-W', '-n', package + '/local.pocketchat.GeckoPerformanceIntegrationActivity')
         checks, measurements, gestures, text_inputs, diagnostics = {}, {}, {}, {}, {}
+        input_readiness, input_events = {}, {}
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             raw = adb('logcat', '-d', '-s', 'PocketGeckoPerformance:I', 'AndroidRuntime:E', '*:S')
@@ -195,11 +196,19 @@ def main():
                     assert request['id'] == 'current-input' and request['id'] in gestures, request
                     assert gestures[request['id']]['action'] == 'input' and request['text'] == gestures[request['id']]['text'], request
                     assert request['composerFocused'] and request['nativeFocused'] and request['acceptingText'] and request['stableFocusSamples'] >= 2, request
+                    assert request['imeVisible'] and request['imeBottom'] > 0 and request['settledMs'] >= 600, request
+                    assert request['start'] == request['end'] and 0 <= request['start'] <= len(request['draft']), request
                     if request['id'] not in text_inputs:
                         text_inputs[request['id']] = request
                         # Keep the caret from the real tap. The activity removes
                         # exactly one marker and checks every original character.
                         adb('shell', 'input', 'text', request['text'])
+                elif item['kind'] == 'inputReadiness':
+                    trace = item['value']
+                    input_readiness[trace['sequence']] = trace
+                elif item['kind'] == 'inputEvents':
+                    trace = item['value']
+                    input_events[trace['offset']] = trace
                 elif item['kind'] == 'report':
                     report = item['value']
                 elif item['kind'] in ['load', 'route', 'loadError']:
@@ -210,6 +219,8 @@ def main():
                               controlledProxyRoutes=Socks.routes, browserDiagnostics=list(diagnostics.values()),
                               baselineAssetVerification=receipt, actualAndroidGestures=list(gestures.values()),
                               actualAndroidTextInputs=list(text_inputs.values()), device=device)
+                report.update(actualInputReadinessTrace=[input_readiness[key] for key in sorted(input_readiness)],
+                              actualTrustedInputEvents=[event for key in sorted(input_events) for event in input_events[key]['events']])
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
                 assert report['status'] == 'passed' and report['actualAndroidExecution'] and report['actualGeckoExecution'] and report['actualAndroidTouchExecution'] and report['actualGeckoBindingRegressionExecution'], report

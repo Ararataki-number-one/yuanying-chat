@@ -52,18 +52,25 @@ public class GeckoIntegrationTestActivity extends Activity {
   static final class NativeGeometry {
     android.view.View child;org.mozilla.geckoview.GeckoSession attached;
     int x,y,top,right,bottom,left,webWidth,webHeight,surfaceWidth,surfaceHeight,childWidth,childHeight,rootWidth,rootHeight,imeBottom;
-    boolean imeVisible,focused;
+    int visibleSafeTop,visibleSafeRight,visibleSafeBottom,visibleSafeLeft,navigationInsets;
+    boolean imeVisible,focused,statusBarsVisible,navigationBarsVisible;
     static NativeGeometry read(FixtureView web){
       if(web.surface==null||!web.surface.isAttachedToWindow())return null;
       android.view.WindowInsets window=web.surface.getRootWindowInsets();if(window==null)return null;
       NativeGeometry value=new NativeGeometry();value.child=web.surface.getChildCount()>0?web.surface.getChildAt(0):web.surface;value.attached=web.surface.getSession();
       int[] point=new int[2];value.child.getLocationOnScreen(point);value.x=point[0];value.y=point[1];
-      if(Build.VERSION.SDK_INT>=30){android.graphics.Insets safe=window.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout());value.top=safe.top;value.right=safe.right;value.bottom=safe.bottom;value.left=safe.left;value.imeVisible=window.isVisible(android.view.WindowInsets.Type.ime());value.imeBottom=window.getInsets(android.view.WindowInsets.Type.ime()).bottom;}
+      if(Build.VERSION.SDK_INT>=30){
+        int safeTypes=android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout();android.graphics.Insets safe=window.getInsets(safeTypes);value.top=safe.top;value.right=safe.right;value.bottom=safe.bottom;value.left=safe.left;
+        android.graphics.Insets normal=window.getInsetsIgnoringVisibility(safeTypes);value.visibleSafeTop=normal.top;value.visibleSafeRight=normal.right;value.visibleSafeBottom=normal.bottom;value.visibleSafeLeft=normal.left;
+        android.graphics.Insets navigation=window.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.navigationBars());value.navigationInsets=navigation.top+navigation.right+navigation.bottom+navigation.left;value.statusBarsVisible=window.isVisible(android.view.WindowInsets.Type.statusBars());value.navigationBarsVisible=window.isVisible(android.view.WindowInsets.Type.navigationBars());
+        value.imeVisible=window.isVisible(android.view.WindowInsets.Type.ime());value.imeBottom=window.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+      }
       else if(Build.VERSION.SDK_INT>=28){android.view.DisplayCutout cutout=window.getDisplayCutout();if(cutout!=null){value.top=cutout.getSafeInsetTop();value.right=cutout.getSafeInsetRight();value.bottom=cutout.getSafeInsetBottom();value.left=cutout.getSafeInsetLeft();}}
       value.webWidth=web.getWidth();value.webHeight=web.getHeight();value.surfaceWidth=web.surface.getWidth();value.surfaceHeight=web.surface.getHeight();value.childWidth=value.child.getWidth();value.childHeight=value.child.getHeight();value.rootWidth=web.getRootView().getWidth();value.rootHeight=web.getRootView().getHeight();value.focused=web.hasWindowFocus();return value;
     }
-    boolean same(NativeGeometry other){return other!=null&&child==other.child&&attached==other.attached&&x==other.x&&y==other.y&&top==other.top&&right==other.right&&bottom==other.bottom&&left==other.left&&webWidth==other.webWidth&&webHeight==other.webHeight&&surfaceWidth==other.surfaceWidth&&surfaceHeight==other.surfaceHeight&&childWidth==other.childWidth&&childHeight==other.childHeight&&rootWidth==other.rootWidth&&rootHeight==other.rootHeight&&imeVisible==other.imeVisible&&imeBottom==other.imeBottom&&focused==other.focused;}
-    JSONObject json(){return J.obj("child",System.identityHashCode(child),"session",System.identityHashCode(attached),"x",x,"y",y,"top",top,"right",right,"bottom",bottom,"left",left,"webWidth",webWidth,"webHeight",webHeight,"surfaceWidth",surfaceWidth,"surfaceHeight",surfaceHeight,"childWidth",childWidth,"childHeight",childHeight,"rootWidth",rootWidth,"rootHeight",rootHeight,"imeVisible",imeVisible,"imeBottom",imeBottom,"focused",focused);}
+    boolean normalBarsReady(){return Build.VERSION.SDK_INT<30||statusBarsVisible&&navigationBarsVisible&&navigationInsets>0&&top==visibleSafeTop&&right==visibleSafeRight&&bottom==visibleSafeBottom&&left==visibleSafeLeft;}
+    boolean same(NativeGeometry other){return other!=null&&child==other.child&&attached==other.attached&&x==other.x&&y==other.y&&top==other.top&&right==other.right&&bottom==other.bottom&&left==other.left&&webWidth==other.webWidth&&webHeight==other.webHeight&&surfaceWidth==other.surfaceWidth&&surfaceHeight==other.surfaceHeight&&childWidth==other.childWidth&&childHeight==other.childHeight&&rootWidth==other.rootWidth&&rootHeight==other.rootHeight&&imeVisible==other.imeVisible&&imeBottom==other.imeBottom&&focused==other.focused&&statusBarsVisible==other.statusBarsVisible&&navigationBarsVisible==other.navigationBarsVisible&&navigationInsets==other.navigationInsets&&visibleSafeTop==other.visibleSafeTop&&visibleSafeRight==other.visibleSafeRight&&visibleSafeBottom==other.visibleSafeBottom&&visibleSafeLeft==other.visibleSafeLeft;}
+    JSONObject json(){return J.obj("child",System.identityHashCode(child),"session",System.identityHashCode(attached),"x",x,"y",y,"top",top,"right",right,"bottom",bottom,"left",left,"webWidth",webWidth,"webHeight",webHeight,"surfaceWidth",surfaceWidth,"surfaceHeight",surfaceHeight,"childWidth",childWidth,"childHeight",childHeight,"rootWidth",rootWidth,"rootHeight",rootHeight,"imeVisible",imeVisible,"imeBottom",imeBottom,"focused",focused,"statusBarsVisible",statusBarsVisible,"navigationBarsVisible",navigationBarsVisible,"navigationInsets",navigationInsets,"visibleSafeTop",visibleSafeTop,"visibleSafeRight",visibleSafeRight,"visibleSafeBottom",visibleSafeBottom,"visibleSafeLeft",visibleSafeLeft);}
     static boolean cacheMatches(FixtureView web,NativeGeometry value){
       if(value==null)return false;
       try{return field(web,"originKnown").getBoolean(web)&&field(web,"originView").get(web)==value.child&&field(web,"originSession").get(web)==value.attached&&number(web,"originX")==value.x&&number(web,"originY")==value.y&&number(web,"insetTop")==value.top&&number(web,"insetRight")==value.right&&number(web,"insetBottom")==value.bottom&&number(web,"insetLeft")==value.left;}catch(ReflectiveOperationException missing){return false;}
@@ -408,6 +415,11 @@ public class GeckoIntegrationTestActivity extends Activity {
   void nativeGeometryDiagnostics(String phase,JSONArray entries,int from){for(int i=from;i<entries.length();i++)event("nativeSurfaceGeometry",J.obj("phase",phase,"entry",entries.optJSONObject(i)));}
   void nativeSurface(long serial){
     FixtureView web=(FixtureView)session.web;
+    // The emulator's launcher can recreate its taskbar long after returning to
+    // this Activity. Request ordinary visible system bars, then require their
+    // actual insets below; a temporarily absent navigation bar is not stable.
+    if(Build.VERSION.SDK_INT>=30){android.view.WindowInsetsController bars=getWindow().getInsetsController();if(bars==null){event("error",J.obj("error","native surface system bar controller unavailable"));return;}bars.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_DEFAULT);bars.show(android.view.WindowInsets.Type.systemBars());}
+    else getWindow().getDecorView().setSystemUiVisibility(0);
     web.evaluateJavascript("(()=>({document:performance.timeOrigin,draft:document.getElementById('composer')?.value,cookie:document.cookie}))()",raw->{
       if(serial!=run)return;JSONObject before=nativePage(raw);if(!before.has("draft")){event("error",J.obj("error","native surface test needs the existing reading fixture"));return;}
       awaitNativeGeometry(serial,before,new NativeGeometryReadiness());
@@ -417,13 +429,13 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(serial!=run)return;FixtureView web=(FixtureView)session.web;NativeGeometry geometry=NativeGeometry.read(web);long now=SystemClock.elapsedRealtime();readiness.totalFrames++;
     boolean unchanged=readiness.previous!=null&&readiness.previous.same(geometry);
     if(!unchanged){readiness.changes++;if(readiness.transitions.length()<16)readiness.transitions.put(J.obj("elapsed",now-readiness.started,"geometry",geometry==null?JSONObject.NULL:geometry.json()));}
-    boolean ready=geometry!=null&&geometry.focused&&!geometry.imeVisible&&geometry.imeBottom==0&&geometry.webWidth>0&&geometry.webHeight>0&&geometry.attached==web.current;
+    boolean ready=geometry!=null&&geometry.focused&&!geometry.imeVisible&&geometry.imeBottom==0&&geometry.normalBarsReady()&&geometry.webWidth>0&&geometry.webHeight>0&&geometry.attached==web.current;
     if(!ready||!unchanged){readiness.stableSince=now;readiness.stableFrames=ready?1:0;}else readiness.stableFrames++;
     readiness.previous=geometry;
     // A launcher/taskbar reconfiguration and the IME hide animation are legal
     // geometry changes. Isolate them before measuring an unchanged surface;
     // retain strict one-sync verification during the three real swipes.
-    if(ready&&readiness.stableFrames>=8&&now-readiness.stableSince>=1000){nativeGeometryDiagnostics("readiness",readiness.transitions,0);nativeSurfaceProbe(serial,before,geometry,J.obj("imeHidden",true,"stableFrames",readiness.stableFrames,"stableMillis",now-readiness.stableSince,"totalFrames",readiness.totalFrames,"waitMillis",now-readiness.started,"geometryChanges",readiness.changes,"geometry",geometry.json()));return;}
+    if(ready&&readiness.stableFrames>=8&&now-readiness.stableSince>=1000){nativeGeometryDiagnostics("readiness",readiness.transitions,0);nativeSurfaceProbe(serial,before,geometry,J.obj("imeHidden",true,"systemBarsRequested",true,"normalBarsVisible",geometry.normalBarsReady(),"stableFrames",readiness.stableFrames,"stableMillis",now-readiness.stableSince,"totalFrames",readiness.totalFrames,"waitMillis",now-readiness.started,"geometryChanges",readiness.changes,"geometry",geometry.json()));return;}
     if(now>readiness.deadline){nativeGeometryDiagnostics("readiness",readiness.transitions,0);event("error",J.obj("error","native surface geometry did not settle","stableFrames",readiness.stableFrames,"stableMillis",now-readiness.stableSince,"totalFrames",readiness.totalFrames,"geometry",geometry==null?JSONObject.NULL:geometry.json()));return;}
     web.postOnAnimation(()->awaitNativeGeometry(serial,before,readiness));
   }
