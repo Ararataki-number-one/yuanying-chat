@@ -15,13 +15,59 @@ public class GeckoIntegrationTestActivity extends Activity {
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
     boolean chooserOrigin;Runnable nativeGestureComplete;int nativeGestureCount;
+    boolean nativeGeometryActive,nativeGeometrySwipes,nativeGeometryStable;JSONArray nativeGeometryTrace=new JSONArray();NativeGeometry nativeGeometryPrevious,nativeGeometryExpected;
+    long nativeUnchangedTouchEvents,nativeRedundantTouchSyncs,nativeFirstTouchSyncs=-1;boolean nativeFirstTouchOriginCorrect;
     @Override public String getUrl(){return chooserOrigin?MainActivity.ORIGIN:super.getUrl();}
     FixtureView(Context context,ChatSession owner){super(context,owner);}
     @Override protected boolean allowedUrl(String target){
       return target.startsWith("http://127.0.0.1:8765/")||target.startsWith("http://remote-probe.invalid:8765/")||super.allowedUrl(target);
     }
     @Override boolean readingPage(String target){return target.startsWith("http://127.0.0.1:8765/browser-reading")||super.readingPage(target);}
-    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){boolean handled=super.dispatchTouchEvent(event);if(nativeGestureComplete!=null&&event.getActionMasked()==android.view.MotionEvent.ACTION_UP&&++nativeGestureCount==3){Runnable done=nativeGestureComplete;nativeGestureComplete=null;owner.handler.post(done);}return handled;}
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){
+      NativeGeometry before=nativeGeometryActive?NativeGeometry.read(this):null;long syncs=nativeGeometryActive?nativeSyncs():0;
+      boolean cached=nativeGeometryActive&&NativeGeometry.cacheMatches(this,before);
+      boolean handled=super.dispatchTouchEvent(event);
+      if(nativeGeometryActive){
+        NativeGeometry after=NativeGeometry.read(this);long added=nativeSyncs()-syncs;
+        if(cached){nativeUnchangedTouchEvents++;nativeRedundantTouchSyncs+=added;}
+        if(nativeFirstTouchSyncs<0&&event.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){nativeFirstTouchSyncs=added;nativeFirstTouchOriginCorrect=NativeGeometry.cacheMatches(this,after);}
+        recordNativeGeometry("touch-"+event.getActionMasked(),before,after,added,cached);
+      }
+      if(nativeGestureComplete!=null&&event.getActionMasked()==android.view.MotionEvent.ACTION_UP&&++nativeGestureCount==3){Runnable done=nativeGestureComplete;nativeGestureComplete=null;owner.handler.post(done);}return handled;
+    }
+    @Override protected void onLayout(boolean changed,int l,int t,int r,int b){
+      NativeGeometry before=nativeGeometryActive?NativeGeometry.read(this):null;long syncs=nativeGeometryActive?nativeSyncs():0;
+      boolean cached=nativeGeometryActive&&NativeGeometry.cacheMatches(this,before);super.onLayout(changed,l,t,r,b);
+      if(nativeGeometryActive)recordNativeGeometry("layout",before,NativeGeometry.read(this),nativeSyncs()-syncs,cached);
+    }
+    long nativeSyncs(){try{return number(this,"surfaceOriginSyncs");}catch(ReflectiveOperationException missing){return -1;}}
+    void recordNativeGeometry(String source,NativeGeometry before,NativeGeometry after,long added,boolean cached){
+      boolean changed=before==null||!before.same(after),sincePrevious=nativeGeometryPrevious==null||!nativeGeometryPrevious.same(before);
+      if(nativeGeometrySwipes&&(nativeGeometryExpected==null||!nativeGeometryExpected.same(before)||!nativeGeometryExpected.same(after)))nativeGeometryStable=false;
+      if(nativeGeometryTrace.length()<32&&(changed||sincePrevious||added!=0))nativeGeometryTrace.put(J.obj("source",source,"elapsed",SystemClock.elapsedRealtime(),"before",before==null?JSONObject.NULL:before.json(),"after",after==null?JSONObject.NULL:after.json(),"syncs",added,"cacheMatchedBefore",cached,"changedDuringCall",changed,"changedSincePrevious",sincePrevious));
+      nativeGeometryPrevious=after;
+    }
+  }
+  /** Controlled-test geometry only. No production hooks or per-touch logging. */
+  static final class NativeGeometry {
+    android.view.View child;org.mozilla.geckoview.GeckoSession attached;
+    int x,y,top,right,bottom,left,webWidth,webHeight,surfaceWidth,surfaceHeight,childWidth,childHeight,rootWidth,rootHeight,imeBottom;
+    boolean imeVisible,focused;
+    static NativeGeometry read(FixtureView web){
+      if(web.surface==null||!web.surface.isAttachedToWindow())return null;
+      android.view.WindowInsets window=web.surface.getRootWindowInsets();if(window==null)return null;
+      NativeGeometry value=new NativeGeometry();value.child=web.surface.getChildCount()>0?web.surface.getChildAt(0):web.surface;value.attached=web.surface.getSession();
+      int[] point=new int[2];value.child.getLocationOnScreen(point);value.x=point[0];value.y=point[1];
+      if(Build.VERSION.SDK_INT>=30){android.graphics.Insets safe=window.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout());value.top=safe.top;value.right=safe.right;value.bottom=safe.bottom;value.left=safe.left;value.imeVisible=window.isVisible(android.view.WindowInsets.Type.ime());value.imeBottom=window.getInsets(android.view.WindowInsets.Type.ime()).bottom;}
+      else if(Build.VERSION.SDK_INT>=28){android.view.DisplayCutout cutout=window.getDisplayCutout();if(cutout!=null){value.top=cutout.getSafeInsetTop();value.right=cutout.getSafeInsetRight();value.bottom=cutout.getSafeInsetBottom();value.left=cutout.getSafeInsetLeft();}}
+      value.webWidth=web.getWidth();value.webHeight=web.getHeight();value.surfaceWidth=web.surface.getWidth();value.surfaceHeight=web.surface.getHeight();value.childWidth=value.child.getWidth();value.childHeight=value.child.getHeight();value.rootWidth=web.getRootView().getWidth();value.rootHeight=web.getRootView().getHeight();value.focused=web.hasWindowFocus();return value;
+    }
+    boolean same(NativeGeometry other){return other!=null&&child==other.child&&attached==other.attached&&x==other.x&&y==other.y&&top==other.top&&right==other.right&&bottom==other.bottom&&left==other.left&&webWidth==other.webWidth&&webHeight==other.webHeight&&surfaceWidth==other.surfaceWidth&&surfaceHeight==other.surfaceHeight&&childWidth==other.childWidth&&childHeight==other.childHeight&&rootWidth==other.rootWidth&&rootHeight==other.rootHeight&&imeVisible==other.imeVisible&&imeBottom==other.imeBottom&&focused==other.focused;}
+    JSONObject json(){return J.obj("child",System.identityHashCode(child),"session",System.identityHashCode(attached),"x",x,"y",y,"top",top,"right",right,"bottom",bottom,"left",left,"webWidth",webWidth,"webHeight",webHeight,"surfaceWidth",surfaceWidth,"surfaceHeight",surfaceHeight,"childWidth",childWidth,"childHeight",childHeight,"rootWidth",rootWidth,"rootHeight",rootHeight,"imeVisible",imeVisible,"imeBottom",imeBottom,"focused",focused);}
+    static boolean cacheMatches(FixtureView web,NativeGeometry value){
+      if(value==null)return false;
+      try{return field(web,"originKnown").getBoolean(web)&&field(web,"originView").get(web)==value.child&&field(web,"originSession").get(web)==value.attached&&number(web,"originX")==value.x&&number(web,"originY")==value.y&&number(web,"insetTop")==value.top&&number(web,"insetRight")==value.right&&number(web,"insetBottom")==value.bottom&&number(web,"insetLeft")==value.left;}catch(ReflectiveOperationException missing){return false;}
+    }
   }
   @Override public void onCreate(Bundle state){
     super.onCreate(state);slot=Profiles.slot(this);ProfileCatalog.get(this).created(slot);
@@ -355,27 +401,53 @@ public class GeckoIntegrationTestActivity extends Activity {
   static long number(Object object,String name)throws ReflectiveOperationException{Object value=field(object,name).get(object);return value instanceof java.util.concurrent.atomic.AtomicLong?((java.util.concurrent.atomic.AtomicLong)value).get():((Number)value).longValue();}
   JSONObject nativePage(String raw){return J.parse(raw);}
   static boolean insertedInputPreserves(String before,String after){String added="native-input-ok";for(int at=after.indexOf(added);at>=0;at=after.indexOf(added,at+1))if((after.substring(0,at)+after.substring(at+added.length())).equals(before))return true;return false;}
+  static final class NativeGeometryReadiness {
+    final long started=SystemClock.elapsedRealtime(),deadline=started+25000;long stableSince;int stableFrames,totalFrames,changes;
+    NativeGeometry previous;final JSONArray transitions=new JSONArray();
+  }
+  void nativeGeometryDiagnostics(String phase,JSONArray entries,int from){for(int i=from;i<entries.length();i++)event("nativeSurfaceGeometry",J.obj("phase",phase,"entry",entries.optJSONObject(i)));}
   void nativeSurface(long serial){
     FixtureView web=(FixtureView)session.web;
     web.evaluateJavascript("(()=>({document:performance.timeOrigin,draft:document.getElementById('composer')?.value,cookie:document.cookie}))()",raw->{
       if(serial!=run)return;JSONObject before=nativePage(raw);if(!before.has("draft")){event("error",J.obj("error","native surface test needs the existing reading fixture"));return;}
-      try{field(web,"nativePerfEnabled").setBoolean(web,true);field(web,"surfaceOriginChecks").setLong(web,0);field(web,"surfaceOriginSyncs").setLong(web,0);}catch(ReflectiveOperationException missing){event("error",J.obj("error","native geometry instrumentation missing"));return;}
-      float x=web.getTranslationX(),y=web.getTranslationY();web.setTranslationX(x+7);web.setTranslationY(y+11);web.nativeGestureCount=0;
-      web.nativeGestureComplete=()->{
-        if(serial!=run)return;
-        try{
-          long checks=number(web,"surfaceOriginChecks"),syncs=number(web,"surfaceOriginSyncs");
-          JSONObject result=J.obj("originChecks",checks,"originSyncs",syncs,"actualGestureCount",web.nativeGestureCount,"stationaryGeometryDeduplicated",checks>=20&&syncs==1,"initialSurfaceMoveSynced",syncs==1);
-          // Move without a layout pass, then use the runner's real Android tap
-          // and hardware input. The first touch must see the new screen origin.
-          web.setTranslationX(x+13);web.setTranslationY(y+19);tapElement(serial,"composer");
-          nativeSurfaceInput(serial,SystemClock.elapsedRealtime()+20000,before,result,x,y);
-        }catch(ReflectiveOperationException error){event("error",J.obj("error",error.toString()));}
-      };
-      int[] at=new int[2];web.getLocationOnScreen(at);int touchX=at[0]+web.getWidth()/2,from=at[1]+Math.round(web.getHeight()*.7f),to=at[1]+Math.round(web.getHeight()*.35f);
-      for(int i=0;i<3;i++)event("swipeNeeded",J.obj("id","native-surface-"+serial+"-"+i,"x",touchX,"fromY",from,"toY",to,"duration",500));
-      session.handler.postDelayed(()->{if(serial==run&&web.nativeGestureComplete!=null){web.nativeGestureComplete=null;web.setTranslationX(x);web.setTranslationY(y);try{field(web,"nativePerfEnabled").setBoolean(web,false);}catch(Exception ignored){}event("error",J.obj("error","native surface real gestures not received","gestureCount",web.nativeGestureCount));}},25000);
+      awaitNativeGeometry(serial,before,new NativeGeometryReadiness());
     });
+  }
+  void awaitNativeGeometry(long serial,JSONObject before,NativeGeometryReadiness readiness){
+    if(serial!=run)return;FixtureView web=(FixtureView)session.web;NativeGeometry geometry=NativeGeometry.read(web);long now=SystemClock.elapsedRealtime();readiness.totalFrames++;
+    boolean unchanged=readiness.previous!=null&&readiness.previous.same(geometry);
+    if(!unchanged){readiness.changes++;if(readiness.transitions.length()<16)readiness.transitions.put(J.obj("elapsed",now-readiness.started,"geometry",geometry==null?JSONObject.NULL:geometry.json()));}
+    boolean ready=geometry!=null&&geometry.focused&&!geometry.imeVisible&&geometry.imeBottom==0&&geometry.webWidth>0&&geometry.webHeight>0&&geometry.attached==web.current;
+    if(!ready||!unchanged){readiness.stableSince=now;readiness.stableFrames=ready?1:0;}else readiness.stableFrames++;
+    readiness.previous=geometry;
+    // A launcher/taskbar reconfiguration and the IME hide animation are legal
+    // geometry changes. Isolate them before measuring an unchanged surface;
+    // retain strict one-sync verification during the three real swipes.
+    if(ready&&readiness.stableFrames>=8&&now-readiness.stableSince>=1000){nativeGeometryDiagnostics("readiness",readiness.transitions,0);nativeSurfaceProbe(serial,before,geometry,J.obj("imeHidden",true,"stableFrames",readiness.stableFrames,"stableMillis",now-readiness.stableSince,"totalFrames",readiness.totalFrames,"waitMillis",now-readiness.started,"geometryChanges",readiness.changes,"geometry",geometry.json()));return;}
+    if(now>readiness.deadline){nativeGeometryDiagnostics("readiness",readiness.transitions,0);event("error",J.obj("error","native surface geometry did not settle","stableFrames",readiness.stableFrames,"stableMillis",now-readiness.stableSince,"totalFrames",readiness.totalFrames,"geometry",geometry==null?JSONObject.NULL:geometry.json()));return;}
+    web.postOnAnimation(()->awaitNativeGeometry(serial,before,readiness));
+  }
+  void nativeSurfaceProbe(long serial,JSONObject before,NativeGeometry baseline,JSONObject readiness){
+    FixtureView web=(FixtureView)session.web;
+    try{field(web,"nativePerfEnabled").setBoolean(web,true);field(web,"surfaceOriginChecks").setLong(web,0);field(web,"surfaceOriginSyncs").setLong(web,0);}catch(ReflectiveOperationException missing){event("error",J.obj("error","native geometry instrumentation missing"));return;}
+    web.nativeGeometryTrace=new JSONArray();web.nativeGeometryPrevious=baseline;web.nativeUnchangedTouchEvents=web.nativeRedundantTouchSyncs=0;web.nativeFirstTouchSyncs=-1;web.nativeFirstTouchOriginCorrect=false;web.nativeGeometryActive=true;
+    float x=web.getTranslationX(),y=web.getTranslationY();web.setTranslationX(x+7);web.setTranslationY(y+11);web.nativeGestureCount=0;
+    NativeGeometry moved=NativeGeometry.read(web);web.nativeGeometrySwipes=false;web.recordNativeGeometry("test-translation-initial",baseline,moved,0,false);web.nativeGeometryExpected=moved;web.nativeGeometryStable=true;web.nativeGeometrySwipes=true;
+    web.nativeGestureComplete=()->{
+      if(serial!=run)return;
+      try{
+        long checks=number(web,"surfaceOriginChecks"),syncs=number(web,"surfaceOriginSyncs");
+        boolean stable=web.nativeGeometryStable&&moved!=null&&moved.same(NativeGeometry.read(web));web.nativeGeometrySwipes=false;nativeGeometryDiagnostics("swipes",web.nativeGeometryTrace,0);
+        JSONObject result=J.obj("originChecks",checks,"originSyncs",syncs,"actualGestureCount",web.nativeGestureCount,"stationaryGeometryDeduplicated",checks>=20&&syncs==1&&web.nativeRedundantTouchSyncs==0&&stable,"initialSurfaceMoveSynced",syncs==1&&web.nativeFirstTouchSyncs==1&&web.nativeFirstTouchOriginCorrect,"geometryReadiness",readiness,"unchangedTouchEvents",web.nativeUnchangedTouchEvents,"redundantTouchSyncs",web.nativeRedundantTouchSyncs,"firstTouchSyncs",web.nativeFirstTouchSyncs,"firstTouchOriginCorrect",web.nativeFirstTouchOriginCorrect,"stationaryGeometryTraceCount",web.nativeGeometryTrace.length(),"geometryStableDuringSwipes",stable);
+        // Move without a layout pass, then use the runner's real Android tap
+        // and hardware input. The first touch must see the new screen origin.
+        NativeGeometry old=NativeGeometry.read(web);web.setTranslationX(x+13);web.setTranslationY(y+19);web.recordNativeGeometry("test-translation-input",old,NativeGeometry.read(web),0,false);tapElement(serial,"composer");
+        nativeSurfaceInput(serial,SystemClock.elapsedRealtime()+20000,before,result,x,y);
+      }catch(Exception error){event("error",J.obj("error",error.toString()));}
+    };
+    int[] at=new int[2];web.getLocationOnScreen(at);int touchX=at[0]+web.getWidth()/2,from=at[1]+Math.round(web.getHeight()*.7f),to=at[1]+Math.round(web.getHeight()*.35f);
+    for(int i=0;i<3;i++)event("swipeNeeded",J.obj("id","native-surface-"+serial+"-"+i,"x",touchX,"fromY",from,"toY",to,"duration",500));
+    session.handler.postDelayed(()->{if(serial==run&&web.nativeGestureComplete!=null){web.nativeGestureComplete=null;web.nativeGeometryActive=false;web.setTranslationX(x);web.setTranslationY(y);try{field(web,"nativePerfEnabled").setBoolean(web,false);}catch(Exception ignored){}nativeGeometryDiagnostics("swipe-timeout",web.nativeGeometryTrace,0);event("error",J.obj("error","native surface real gestures not received","gestureCount",web.nativeGestureCount));}},25000);
   }
   void nativeSurfaceInput(long serial,long deadline,JSONObject before,JSONObject result,float originalX,float originalY){
     if(serial!=run)return;FixtureView web=(FixtureView)session.web;
@@ -385,11 +457,11 @@ public class GeckoIntegrationTestActivity extends Activity {
         try{
           long total=number(web,"surfaceOriginSyncs");result.put("movedSurfaceSyncs",total-result.optLong("originSyncs"));result.put("movedSurfaceAcceptsRealInput",total>result.optLong("originSyncs")&&"composer".equals(after.optString("focused")));
           result.put("documentAndDraftPreserved",after.optDouble("document")==before.optDouble("document")&&after.optString("cookie").equals(before.optString("cookie"))&&insertedInputPreserves(before.optString("draft"),after.optString("draft")));
-          result.put("typedCharacters",after.optString("draft").length()-before.optString("draft").length());field(web,"nativePerfEnabled").setBoolean(web,false);
+          result.put("typedCharacters",after.optString("draft").length()-before.optString("draft").length());nativeGeometryDiagnostics("input",web.nativeGeometryTrace,result.optInt("stationaryGeometryTraceCount"));result.put("finalGeometryTraceCount",web.nativeGeometryTrace.length());web.nativeGeometryActive=false;field(web,"nativePerfEnabled").setBoolean(web,false);
         }catch(Exception error){event("error",J.obj("error",error.toString()));return;}
         web.setTranslationX(originalX);web.setTranslationY(originalY);event("nativeSurface",result);return;
       }
-      if(SystemClock.elapsedRealtime()>deadline){web.setTranslationX(originalX);web.setTranslationY(originalY);try{field(web,"nativePerfEnabled").setBoolean(web,false);}catch(Exception ignored){}event("error",J.obj("error","moved surface did not accept real keyboard input","result",result));return;}
+      if(SystemClock.elapsedRealtime()>deadline){web.nativeGeometryActive=false;web.setTranslationX(originalX);web.setTranslationY(originalY);try{field(web,"nativePerfEnabled").setBoolean(web,false);}catch(Exception ignored){}nativeGeometryDiagnostics("input-timeout",web.nativeGeometryTrace,result.optInt("stationaryGeometryTraceCount"));event("error",J.obj("error","moved surface did not accept real keyboard input","result",result));return;}
       session.handler.postDelayed(()->nativeSurfaceInput(serial,deadline,before,result,originalX,originalY),100);
     });
   }

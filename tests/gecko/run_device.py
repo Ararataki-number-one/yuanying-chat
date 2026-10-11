@@ -189,7 +189,10 @@ def main():
         # optimization and intercept otherwise correct trusted taps. Stop only
         # that unrelated package before returning to the test Activity; never
         # dismiss an app ANR. The Home step still exercises real backgrounding.
-        if has_pixel_launcher:adb('shell','am','force-stop',launcher)
+        # Killing the Launcher again during stationary geometry measurement
+        # makes Android recreate its taskbar/navigation mode and resize the
+        # already visible browser. Keep the first-boot workaround elsewhere.
+        if has_pixel_launcher and action not in {'nativeSurface','nativeCheckpoint'}:adb('shell','am','force-stop',launcher)
         adb('shell','am','start','-W','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action)
         deadline=time.monotonic()+120
         while time.monotonic()<deadline:

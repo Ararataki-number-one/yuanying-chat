@@ -58,6 +58,14 @@ def verify_interaction_transfer_evidence(directory, source):
     assert surface['originSyncs'] == 1 and surface['movedSurfaceSyncs'] > 0 and surface['typedCharacters'] > 0
     assert all(surface[key] for key in ('stationaryGeometryDeduplicated', 'initialSurfaceMoveSynced',
                                       'movedSurfaceAcceptsRealInput', 'documentAndDraftPreserved'))
+    def stable_surface(report):
+        ready = report['geometryReadiness']
+        assert ready['imeHidden'] and ready['stableFrames'] >= 8 and ready['stableMillis'] >= 1000
+        assert report['geometryStableDuringSwipes'] and report['unchangedTouchEvents'] >= 20
+        assert report['redundantTouchSyncs'] == 0 and report['firstTouchSyncs'] == 1
+        assert report['firstTouchOriginCorrect'] and report['originSyncs'] == 1
+    stable_surface(surface)
+    stable_surface(update['chatInteraction'])
     checkpoint = device['nativeCheckpointPerformance']
     assert checkpoint['mainSerialized'] == 0 and checkpoint['firstBurstSerialized'] == 1
     assert checkpoint['firstBurstCoalesced'] == 999 and checkpoint['firstCandidate'] == 999
