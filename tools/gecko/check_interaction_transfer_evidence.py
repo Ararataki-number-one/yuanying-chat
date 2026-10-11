@@ -14,6 +14,8 @@ UPDATE_CHECKS = {
     'invalidContentRangeRejected', 'changedETagRejected', 'shortLengthRejected',
     'oversizeRejected', 'badHashRejected', 'badSignerRejected',
     'chatResponsiveDuringTransfer',
+    'queuedResumeCannotOverridePause', 'delayedPreparationKeepsPause',
+    'queuedResumeCannotOverrideCancel',
 }
 
 

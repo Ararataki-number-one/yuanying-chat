@@ -15,6 +15,7 @@ import java.security.MessageDigest;
 public class AppUpdateIntegrationActivity extends AppUpdateActivity {
   final Handler handler=new Handler(Looper.getMainLooper());String action;AppUpdateManager manager;long started;String hash;
   String transferScenario,transferToken;long statusReads,statusIo,maxStatusNs,firstReceived=-1,lastReceived=-1,progressPairs;int renders,lastRender;TextView previousDetails;String previousProgress="";
+  volatile boolean commandQueueDrained,preparationGuardReached;
   @Override public void onCreate(Bundle state){super.onCreate(state);command(getIntent());}
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);command(intent);}
   @Override void render(Bundle b){renders++;super.render(b);}
@@ -43,10 +44,13 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
   void transferCommand(Intent intent){try{
     if(!getPackageName().endsWith(".test"))throw new SecurityException("Only isolated integration package may map a controlled update URL");
     transferScenario=intent.getStringExtra("transferScenario");transferToken=intent.getStringExtra("transferToken");
-    if(transferScenario==null||!transferScenario.matches("cut|pause|ignore-range|bad-range|changed-etag|short-length|oversize|bad-hash|bad-signer"))throw new IOException("Unknown controlled update scenario");
+    if(transferScenario==null||!transferScenario.matches("cut|pause|ignore-range|bad-range|changed-etag|short-length|oversize|bad-hash|bad-signer|queued-cancel"))throw new IOException("Unknown controlled update scenario");
+    commandQueueDrained=false;preparationGuardReached=false;
     manager=AppUpdateManager.get(this);AppSettings.put(this,"updateAutoCheck","false");AppSettings.put(this,"updateWifiOnly","false");AppUpdates.schedule(this);
     final String target="http://127.0.0.1:8765/update-transfer/"+transferScenario;
     manager.transferFactory=official->{if(manager.info==null||!manager.info.url.equals(official))throw new IOException("Fixture refused a different official update identity");return (HttpURLConnection)new URL(target).openConnection();};
+    if("transferQueuedPause".equals(action)||"transferQueuedCancel".equals(action)){queuedAdmission(intent,"transferQueuedCancel".equals(action));return;}
+    if("transferDelayedPause".equals(action)){delayedPreparation(intent);return;}
     if("transferRecreate".equals(action)){setIntent(new Intent(intent).putExtra("updateAction","transferInspect"));recreate();return;}
     if("transferStart".equals(action)){
       hash=intent.getStringExtra("updateHash");long bytes=intent.getLongExtra("updateBytes",0);if(hash==null||bytes<1024*1024)throw new IOException("Signed transfer fixture must contain at least one MiB");
@@ -55,6 +59,30 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
     }
     started=SystemClock.elapsedRealtime();if("transferResume".equals(action))manager.resume();else if("transferPause".equals(action))manager.pause();waitTransfer(intent);
   }catch(Exception error){transferEvent(J.obj("token",transferToken,"error",error.toString()));}}
+  void queuedAdmission(Intent intent,boolean cancel){final String token=transferToken;started=SystemClock.elapsedRealtime();java.util.concurrent.CountDownLatch released=new java.util.concurrent.CountDownLatch(1);
+    manager.worker.execute(()->{handler.post(()->{try{
+      // This callback runs only once the actual production worker is blocked.
+      // Both commands still enter through the real cross-process provider API.
+      AppUpdates.call(this,"resume",null);AppUpdates.call(this,cancel?"cancel":"pause",null);
+      manager.worker.execute(()->{commandQueueDrained=true;handler.post(()->waitTransfer(intent));});
+    }catch(Exception error){transferEvent(J.obj("token",token,"error",error.toString()));}finally{released.countDown();}});
+      try{if(!released.await(20,java.util.concurrent.TimeUnit.SECONDS))throw new IOException("Actual queued command handshake timed out");}catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}
+    });
+  }
+  void delayedPreparation(Intent intent){final String token=transferToken;started=SystemClock.elapsedRealtime();final File actualRoot=manager.root;
+    manager.worker.execute(()->{try{java.lang.reflect.Field field=AppUpdateManager.class.getDeclaredField("root");field.setAccessible(true);
+      File controlledRoot=new File(actualRoot.getPath()){
+        final java.util.concurrent.atomic.AtomicBoolean once=new java.util.concurrent.atomic.AtomicBoolean();
+        @Override public long getUsableSpace(){if(once.compareAndSet(false,true)){preparationGuardReached=true;java.util.concurrent.CountDownLatch paused=new java.util.concurrent.CountDownLatch(1);
+          handler.post(()->{try{AppUpdates.call(AppUpdateIntegrationActivity.this,"pause",null);}finally{paused.countDown();}});
+          try{if(!paused.await(20,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("Actual preparation ownership handshake timed out");}catch(InterruptedException error){Thread.currentThread().interrupt();throw new IllegalStateException(error);}
+        }return actualRoot.getUsableSpace();}
+      };
+      // The exact same real files are used. Only this test-only filesystem
+      // callback pauses preparation before its final ownership/commit check.
+      field.set(manager,controlledRoot);handler.post(()->{AppUpdates.call(this,"resume",null);manager.worker.execute(()->{try{field.set(manager,actualRoot);commandQueueDrained=true;handler.post(()->waitTransfer(intent));}catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}});});
+    }catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}});
+  }
   Bundle measuredStatus(){StrictMode.ThreadPolicy previous=StrictMode.getThreadPolicy();
     if(Build.VERSION.SDK_INT>=28)StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder().detectDiskReads().detectDiskWrites().detectNetwork().penaltyListener(Runnable::run,violation->statusIo++).build());
     long begin=System.nanoTime();try{Bundle b=AppUpdates.call(this,"status",null);statusReads++;maxStatusNs=Math.max(maxStatusNs,System.nanoTime()-begin);return b;}finally{StrictMode.setThreadPolicy(previous);}
@@ -80,6 +108,7 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
       File[] files=manager.root.listFiles();if(files!=null)for(File file:files)if(file.getName().endsWith(".apk"))apkCount++;
       if(ready){finalBytes=manager.file().length();finalSha=fileHash(manager.file());AppUpdateFiles.archive(this,manager.file(),info.code,info.version);signer=true;}
       JSONObject result=J.obj("token",token,"action",command,"scenario",scenario,"state",b.getString("state"),"message",b.getString("message"),"uri",b.getString("uri",""),"received",b.getLong("received"),"total",b.getLong("total"),"partialBytes",partialBytes,"partialSha",partialSha,"partialIdentity",identity,"finalBytes",finalBytes,"finalSha",finalSha,"finalApks",apkCount,"sameSigner",signer,"running",running,"downloadRequested",b.getBoolean("downloadRequested"),"userPaused",manager.userPaused,"statusReads",reads,"statusMainThreadIo",io,"maxStatusMs",maxNs/1000000.0,"nativeRenders",renderCount,"progressIdentityPairs",pairs,"pid",android.os.Process.myPid());
+      result.put("commandQueueDrained",commandQueueDrained);result.put("preparationGuardReached",preparationGuardReached);android.app.job.JobScheduler scheduler=(android.app.job.JobScheduler)getSystemService(JOB_SCHEDULER_SERVICE);result.put("pendingTransferJob",scheduler!=null&&scheduler.getPendingJob(AppUpdates.TRANSFER)!=null);
       handler.post(()->transferEvent(result));
     }catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}});
   }

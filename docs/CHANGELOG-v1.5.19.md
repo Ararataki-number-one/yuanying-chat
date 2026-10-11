@@ -5,7 +5,7 @@
 | 文件 | 修改与作用 |
 | --- | --- |
 | `AppUpdateTransfer.java` | 将完整版本身份与持久化部分文件绑定，按 HTTP Range 续传；核对 Content-Range、大小、强 ETag 与编码，重新获取官方 HTTPS 跳转。完整文件仍必须通过 SHA-256 和 APK 身份核验。 |
-| `AppUpdateManager.java` / `AppUpdateJob.java` / `AppUpdates.java` / `AppUpdateProvider.java` | 将下载与状态控制分到不同线程；持久化下载意图和暂停状态，由系统任务处理网络约束与恢复；保护旧任务与新任务之间的所有权。保留旧 DownloadManager 完成路径。 |
+| `AppUpdateManager.java` / `AppUpdateJob.java` / `AppUpdates.java` / `AppUpdateProvider.java` | 将下载与状态控制分到不同线程；持久化下载意图和暂停状态，由系统任务处理网络约束与恢复；保护旧任务与新任务之间的所有权。暂停、取消会使已排队和正在准备的旧下载命令失效，旧系统停止回调不能作废新的继续命令。保留旧 DownloadManager 完成路径。 |
 | `AppUpdateActivity.java` | 提供暂停、继续、取消确认、实际速度与剩余时间。进度刷新保留原有控件，避免每秒重建整页。 |
 | `GeckoWebView.java` / `BrowserSessionStore.java` | 减少未改变位置和安全区时的重复原生表面同步；将 SDK 明确支持跨线程的会话序列化与文件保存移出主线程，合并等待写入的最新快照。后续无效快照仍保留最新有效候选，持续更新时也定期原子落盘。 |
 | `ChatSession.java` / 网页观察脚本 | 减少持续输入与滚动期间的长对话抓取；避免一次无关按钮点击扫描整页按钮；合并同批 DOM 失效与重复 resize 工作。保持真实发送捕获、完整回复和附件正确性。 |

@@ -58,7 +58,7 @@ class Fixture(fixture.Fixture):
     update_transfer_counts={}
     update_transfer_lock=threading.Lock()
     def update_transfer(self,scenario):
-        if scenario not in {'cut','pause','ignore-range','bad-range','changed-etag','short-length','oversize','bad-hash','bad-signer'}:
+        if scenario not in {'cut','pause','ignore-range','bad-range','changed-etag','short-length','oversize','bad-hash','bad-signer','queued-cancel'}:
             self.send_error(404);return
         source=OUT/('update-wrong-signer.apk' if scenario=='bad-signer' else 'update-fixture.apk')
         original=source.read_bytes();body=bytearray(original)
@@ -89,7 +89,7 @@ class Fixture(fixture.Fixture):
         self.send_header('Accept-Ranges','bytes');self.send_header('ETag',etag);self.send_header('Cache-Control','no-store')
         if content_range:self.send_header('Content-Range',content_range)
         self.end_headers();trace.update(status=status,etag=etag,contentRange=content_range,responseBytes=len(response))
-        cut=index==1 and not incoming_range and scenario in {'cut','ignore-range','bad-range','changed-etag'}
+        cut=index==1 and not incoming_range and scenario in {'cut','ignore-range','bad-range','changed-etag','queued-cancel'}
         send_length=len(body)//2 if cut else len(response)
         try:
             for at in range(0,send_length,16384):
@@ -305,6 +305,11 @@ def main():
         update_touch('暂停下载');paused=transfer('pause','transferWaitPaused','paused')
         transfer_check('actualPauseTouch',paused['state']=='paused' and paused['userPaused'] and not paused['running'])
         transfer_check('pauseKeepsPartial',0<paused['partialBytes']<size and paused['partialIdentity'] and not paused['uri'])
+        before_race=len(Fixture.update_transfer_trace)
+        queued_pause=transfer('pause','transferQueuedPause','paused')
+        transfer_check('queuedResumeCannotOverridePause',queued_pause['commandQueueDrained'] and queued_pause['state']=='paused' and queued_pause['userPaused'] and queued_pause['partialBytes']==paused['partialBytes'] and queued_pause['partialSha']==paused['partialSha'] and queued_pause['partialIdentity'] and not queued_pause['running'] and not queued_pause['pendingTransferJob'] and len(Fixture.update_transfer_trace)==before_race)
+        delayed_pause=transfer('pause','transferDelayedPause','paused')
+        transfer_check('delayedPreparationKeepsPause',delayed_pause['preparationGuardReached'] and delayed_pause['commandQueueDrained'] and delayed_pause['state']=='paused' and delayed_pause['userPaused'] and delayed_pause['partialBytes']==paused['partialBytes'] and delayed_pause['partialSha']==paused['partialSha'] and delayed_pause['partialIdentity'] and not delayed_pause['running'] and not delayed_pause['pendingTransferJob'] and len(Fixture.update_transfer_trace)==before_race)
         recreated=transfer('pause','transferRecreate','inspect');transfer_check('activityRecreationKeepsPartial',recreated['pid']==paused['pid'] and recreated['partialBytes']==paused['partialBytes'] and recreated['partialSha']==paused['partialSha'] and recreated['state']=='paused')
         adb('shell','am','force-stop',package)
         restarted=transfer('pause','transferInspect','inspect');transfer_check('processRestartKeepsPartial',restarted['pid']!=paused['pid'] and restarted['partialBytes']==paused['partialBytes'] and restarted['partialSha']==paused['partialSha'] and restarted['partialIdentity'] and restarted['state']=='paused')
@@ -326,7 +331,10 @@ def main():
             if reached_fixture:
                 reached_fixture=requests[0]['responseBytes']<size if scenario=='short-length' else requests[0]['responseBytes']>size if scenario=='oversize' else requests[0]['sentBytes']==requests[0]['sourceBytes']
             transfer_check(name,reached_fixture and not invalid['uri'] and invalid['partialBytes']==0 and invalid['finalApks']==0 and not invalid['downloadRequested'])
-        assert len(update_report['checks'])==23,update_report
+        cancel_partial=transfer('queued-cancel',target='waiting');before_cancel=len(Fixture.update_transfer_trace)
+        cancelled=transfer('queued-cancel','transferQueuedCancel','available')
+        transfer_check('queuedResumeCannotOverrideCancel',cancel_partial['partialBytes']==size//2 and cancelled['commandQueueDrained'] and cancelled['state']=='available' and not cancelled['downloadRequested'] and not cancelled['userPaused'] and cancelled['partialBytes']==0 and not cancelled['partialIdentity'] and not cancelled['uri'] and cancelled['finalApks']==0 and not cancelled['running'] and not cancelled['pendingTransferJob'] and len(Fixture.update_transfer_trace)==before_cancel)
+        assert len(update_report['checks'])==26,update_report
         update_report.update(status='passed',checkCount=len(update_report['checks']),actualJobSchedulerExecution=len(update_report['actualJobExecutions'])==2,chatInteraction=interaction)
         (OUT/'update-transfer-results.json').write_text(json.dumps(update_report,indent=2)+'\n')
     def management(action):
