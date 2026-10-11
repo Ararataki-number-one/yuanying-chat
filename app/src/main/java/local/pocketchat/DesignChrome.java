@@ -1,10 +1,14 @@
 package local.pocketchat;
 
 import android.graphics.*;
+import android.os.SystemClock;
+import android.text.TextUtils;
 import android.view.*;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.*;
 import java.util.*;
+import java.util.concurrent.*;
+import org.json.*;
 
 /** Only the native shell is styled; both existing web surfaces stay owned by MainActivity. */
 final class DesignChrome {
@@ -14,6 +18,11 @@ final class DesignChrome {
   final Button more;
   private final View[] actions;
   private ChromeTouchDelegate touchTargets;
+  private static final ExecutorService metadataReader=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"ChromeMetadata");t.setPriority(Thread.MIN_PRIORITY);return t;});
+  private final Runnable render=this::renderLatest;
+  private boolean queued,metadataPending,modeKnown,lastPageMode;
+  private long metadataAt;
+  private String profileName;
 
   DesignChrome(MainActivity a,LinearLayout root){
     this.a=a;
@@ -24,6 +33,7 @@ final class DesignChrome {
     a.navigation=new Ui.IconButton(a,"hamburger","打开会话列表",false);
     a.navigation.setOnClickListener(v->a.showDrawer());
     title=ReferenceUi.text(a,Profiles.display(a,Profiles.slot(a)),16,ReferenceUi.TEXT,true);
+    profileName=title.getText().toString();
     ReferenceUi.single(title);
     title.setGravity(Gravity.CENTER_VERTICAL);
     title.setPadding(a.dp(3),0,a.dp(6),0);
@@ -94,24 +104,50 @@ final class DesignChrome {
   }
 
   void update(){
-    title.setText(Profiles.display(a,Profiles.slot(a)));
-    title.setContentDescription("当前环境："+title.getText()+"，点击切换环境");
-    a.nativeTab.setBackground(Ui.ripple(a,a.pageMode?Color.TRANSPARENT:ReferenceUi.BLUE,8));
-    a.webTab.setBackground(Ui.ripple(a,a.pageMode?ReferenceUi.BLUE:Color.TRANSPARENT,8));
-    a.nativeTab.setTextColor(a.pageMode?0xff4d6384:Color.WHITE);
-    a.webTab.setTextColor(a.pageMode?Color.WHITE:0xff4d6384);
-    showNetwork(WindowNetworkState.current(a));
+    if(queued||a.destroyed)return;queued=true;a.handler.post(render);
   }
+
+  private void renderLatest(){
+    queued=false;if(a.destroyed)return;UiPerfStats.chromeUpdate();refreshMetadata();
+    text(title,profileName);
+    description(title,"当前环境："+profileName+"，点击切换环境");
+    if(!modeKnown||lastPageMode!=a.pageMode){
+      modeKnown=true;lastPageMode=a.pageMode;
+      a.nativeTab.setBackground(Ui.ripple(a,a.pageMode?Color.TRANSPARENT:ReferenceUi.BLUE,8));
+      a.webTab.setBackground(Ui.ripple(a,a.pageMode?ReferenceUi.BLUE:Color.TRANSPARENT,8));
+      UiPerfStats.backgroundChange();UiPerfStats.backgroundChange();
+      color(a.nativeTab,a.pageMode?0xff4d6384:Color.WHITE);
+      color(a.webTab,a.pageMode?Color.WHITE:0xff4d6384);
+    }
+    NativeNetwork network=NativeNetwork.get(a);
+    JSONObject config=network.settings==null?new JSONObject():network.settings;
+    // Only slot/name are needed for this strip. Catalog I/O is asynchronous;
+    // timestamps and latency continue to come from the current protected route.
+    showNetwork(new WindowNetworkState(a,J.obj("slot",Profiles.slot(a),"name",profileName),config,WindowNetworkState.live(a.session,network),true,System.currentTimeMillis()));
+  }
+
+  private void refreshMetadata(){
+    long now=SystemClock.elapsedRealtime();if(metadataPending||now-metadataAt<2000)return;
+    metadataPending=true;metadataAt=now;
+    metadataReader.execute(()->{
+      String next=profileName;try{next=Profiles.display(a,Profiles.slot(a));DesignUi.Stars.refresh(a);}catch(Exception ignored){}
+      final String value=next;a.handler.post(()->{metadataPending=false;if(!a.destroyed&&!value.equals(profileName)){profileName=value;update();}});
+    });
+  }
+
+  private static void text(TextView view,String value){if(!TextUtils.equals(view.getText(),value)){view.setText(value);UiPerfStats.textChange();}}
+  private static void color(TextView view,int color){if(view.getCurrentTextColor()!=color)view.setTextColor(color);}
+  private static void description(View view,String value){if(!TextUtils.equals(view.getContentDescription(),value))view.setContentDescription(value);}
 
   void showNetwork(WindowNetworkState state){
     String address=(state.region.isEmpty()?"地区未标注":state.region)+" · "+(state.ip.isEmpty()?"IP 未核验":state.connected?state.ip:"上次 "+state.ip);
-    a.networkLine.setText(address);
-    a.networkLine.setTextColor(ReferenceUi.TEXT);
-    dot.setTextColor(state.color());
-    latencyWord.setText(state.latency);
-    stateWord.setText(state.state.equals("正常")?"已连接":state.state);
-    stateWord.setTextColor(state.color());
-    networkRow.setContentDescription("当前环境网络："+state.strip());
+    text(a.networkLine,address);
+    color(a.networkLine,ReferenceUi.TEXT);
+    color(dot,state.color());
+    text(latencyWord,state.latency);
+    text(stateWord,state.state.equals("正常")?"已连接":state.state);
+    color(stateWord,state.color());
+    description(networkRow,"当前环境网络："+state.strip());
   }
 
   private void layoutTouchTargets(){

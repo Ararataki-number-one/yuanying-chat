@@ -23,15 +23,46 @@ class EnvironmentAudit {
   EnvironmentAudit(ChatSession s){session=s;store=new SecretStore(s.context);try{byte[] bytes=store.get("environment-audit");if(bytes!=null){JSONObject saved=J.parse(new String(bytes,StandardCharsets.UTF_8));baseline=saved.optJSONObject("baseline");report=saved.optJSONObject("report");observed=saved.optJSONObject("observed");if(baseline==null)baseline=new JSONObject();if(report==null)report=new JSONObject();if(observed==null)observed=new JSONObject();}}catch(Exception e){storageIssue="本地加密基线读取失败，尚未覆盖旧记录";}refresh(true);}
   static String hash(String value){try{return NativeNetwork.hash(value);}catch(Exception e){throw new IllegalStateException("Local SHA-256 unavailable",e);}}
   static String packageVersion(){try{return WebView.getCurrentWebViewPackage().versionName;}catch(Exception e){return "unknown";}}
-  JSONObject snapshot(){JSONObject o=J.obj("level",session.privacy.level(),"webview",GeckoWebView.active(session.web)?GeckoWebView.VERSION:packageVersion(),"android",Build.VERSION.RELEASE,"uaHash",hash(session.web.getSettings().getUserAgentString()),"timezone",TimeZone.getDefault().getID(),"locale",Locale.getDefault().toLanguageTag(),"networkMode",session.prefs.getString("networkMode","external"),"requireVpn",session.prefs.getBoolean("requireExternalVpn",true),"early",session.privacy.earlyInstalled,"workerGate",session.guard.workerProtection);
-    String config=session.internalNetwork()?store.settings().toString():session.prefs.getString("proxy","");try{o.put("routeHash",hash(config));NativeNetwork n=NativeNetwork.get(session.context);String ip=session.internalNetwork()&&n.lastVerified>0?n.exitIp:observed.optString("ipv4");if(AuditReport.v4(ip)&&(session.internalNetwork()||observed.optString("route").equals(routeStamp())))o.put("exitHash",hash(ip));}catch(Exception ignored){}return o;
+  JSONObject snapshotFields(){JSONObject o=J.obj("level",session.privacy.level(),"webview",GeckoWebView.active(session.web)?GeckoWebView.VERSION:packageVersion(),"android",Build.VERSION.RELEASE,"uaHash",hash(session.web.getSettings().getUserAgentString()),"timezone",TimeZone.getDefault().getID(),"locale",Locale.getDefault().toLanguageTag(),"networkMode",session.prefs.getString("networkMode","external"),"requireVpn",session.prefs.getBoolean("requireExternalVpn",true),"early",session.privacy.earlyInstalled,"workerGate",session.guard.workerProtection);
+    try{NativeNetwork n=NativeNetwork.get(session.context);String ip=session.internalNetwork()&&n.lastVerified>0?n.exitIp:observed.optString("ipv4");if(AuditReport.v4(ip)&&(session.internalNetwork()||observed.optString("route").equals(routeStamp())))o.put("exitHash",hash(ip));}catch(Exception ignored){}return o;
   }
+  JSONObject snapshot(){JSONObject current=snapshotFields();try{current.put("routeHash",hash(session.internalNetwork()?store.settings().toString():session.prefs.getString("proxy","")));}catch(Exception ignored){}return current;}
   static String label(String key){switch(key){case "level":return "保护等级";case "webview":return "浏览器内核版本";case "android":return "安卓版本";case "uaHash":return "浏览器 UA 设置";case "timezone":return "手机时区";case "locale":return "手机语言";case "networkMode":return "网络模式";case "requireVpn":return "VPN 断开保护";case "early":return "加载前保护能力";case "workerGate":return "后台请求保护能力";case "routeHash":return "网络配置";case "exitHash":return "已观察的 IPv4 出口";default:return key;}}
   static JSONArray differences(JSONObject old,JSONObject now){JSONArray out=new JSONArray();Iterator<String> keys=now.keys();while(keys.hasNext()){String key=keys.next();if(old.has(key)&&!Objects.equals(old.opt(key),now.opt(key)))out.put(J.obj("key",key,"name",label(key)));}return out;}
-  void refresh(boolean force){long now=SystemClock.elapsedRealtime();if(!force&&now-lastRefresh<5000)return;lastRefresh=now;JSONObject current=snapshot();if(baseline.length()==0&&storageIssue.isEmpty()&&session.prefs.getBoolean("networkConfigured",false)){baseline=current;save();}else if(baseline.length()>0){boolean added=false;Iterator<String> keys=current.keys();while(keys.hasNext()){String key=keys.next();if(!baseline.has(key)){try{baseline.put(key,current.get(key));added=true;}catch(Exception ignored){}}}if(added&&storageIssue.isEmpty())save();}changes=differences(baseline,current);}
+  long refreshTicket;boolean refreshQueued;volatile long saveTicket;final Object saveGate=new Object();
+  void refresh(boolean force){
+    long now=SystemClock.elapsedRealtime();
+    if(force){refreshTicket++;refreshQueued=false;lastRefresh=now;applySnapshot(snapshot(),false);return;}
+    if(running||refreshQueued||now-lastRefresh<5000)return;
+    lastRefresh=now;refreshQueued=true;long ticket=++refreshTicket,connection=session.connectionEpoch;
+    JSONObject current=snapshotFields();String fields=current.toString(),route=routeStamp(),proxy=session.prefs.getString("proxy","");boolean internal=session.internalNetwork();
+    worker.execute(()->{
+      try{current.put("routeHash",hash(internal?store.settings().toString():proxy));}catch(Exception ignored){}
+      session.handler.post(()->{
+        if(ticket!=refreshTicket)return;refreshQueued=false;
+        if(session.deleted||connection!=session.connectionEpoch||internal!=session.internalNetwork()||!route.equals(routeStamp())||!fields.equals(snapshotFields().toString()))return;
+        applySnapshot(current,true);
+      });
+    });
+  }
+  void applySnapshot(JSONObject current,boolean background){
+    boolean persist=false;
+    if(baseline.length()==0&&storageIssue.isEmpty()&&session.prefs.getBoolean("networkConfigured",false)){baseline=current;persist=true;}
+    else if(baseline.length()>0){Iterator<String> keys=current.keys();while(keys.hasNext()){String key=keys.next();if(!baseline.has(key)){try{baseline.put(key,current.get(key));persist=true;}catch(Exception ignored){}}}persist&=storageIssue.isEmpty();}
+    changes=differences(baseline,current);
+    if(persist){if(background)saveLater();else save();}
+  }
   boolean hasChanges(){return changes.length()>0;}
-  void acceptBaseline(){if(running)return;JSONObject old=baseline;JSONArray oldChanges=changes;baseline=snapshot();changes=new JSONArray();if(!save()){baseline=old;changes=oldChanges;}}
-  boolean save(){try{store.put("environment-audit",J.obj("baseline",baseline,"report",report,"observed",observed).toString().getBytes(StandardCharsets.UTF_8));storageIssue="";return true;}catch(Exception e){storageIssue="本地加密保存失败；旧基线未确认更新";return false;}}
+  void acceptBaseline(){if(running)return;refreshTicket++;refreshQueued=false;JSONObject old=baseline;JSONArray oldChanges=changes;baseline=snapshot();changes=new JSONArray();if(!save()){baseline=old;changes=oldChanges;}}
+  byte[] savedBytes(){return J.obj("baseline",baseline,"report",report,"observed",observed).toString().getBytes(StandardCharsets.UTF_8);}
+  boolean save(){long ticket=++saveTicket;byte[] bytes=savedBytes();synchronized(saveGate){if(ticket!=saveTicket)return false;try{store.put("environment-audit",bytes);storageIssue="";return true;}catch(Exception e){storageIssue="本地加密保存失败；旧基线未确认更新";return false;}}}
+  void saveLater(){
+    long ticket=++saveTicket;byte[] bytes=savedBytes();
+    worker.execute(()->{String issue="";
+      synchronized(saveGate){if(ticket!=saveTicket)return;try{store.put("environment-audit",bytes);}catch(Exception e){issue="本地加密保存失败；旧基线未确认更新";}}
+      String result=issue;session.handler.post(()->{if(ticket==saveTicket)storageIssue=result;});
+    });
+  }
   String routeStamp(){String route=session.internalNetwork()?NativeNetwork.get(session.context).token:session.prefs.getString("proxy","");return hash(session.prefs.getString("networkMode","external")+"|"+route+"|"+session.prefs.getBoolean("requireExternalVpn",true));}
   boolean current(long id){return running&&id==serial;}
   String policyStamp(){String agent=session.privacy.level()==0?session.privacy.originalAgent:BrowserPrivacy.reducedAgent(session.privacy.originalAgent);return hash((GeckoWebView.active(session.web)?GeckoWebView.VERSION:packageVersion())+"|"+session.privacy.level()+"|"+agent+"|"+TimeZone.getDefault().getID()+"|"+Locale.getDefault().toLanguageTag());}

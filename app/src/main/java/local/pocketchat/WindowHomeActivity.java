@@ -105,7 +105,7 @@ public class WindowHomeActivity extends Activity {
     state.putString("query",search.getText().toString());state.putBoolean("selecting",selecting);
     state.putIntArray("selectedIds",selectedIds.stream().mapToInt(Integer::intValue).toArray());
   }
-  @Override protected void onResume(){super.onResume();lastSignature="";handler.removeCallbacks(update);handler.post(update);}
+  @Override protected void onResume(){super.onResume();DesignUi.Stars.refresh(this);lastSignature="";handler.removeCallbacks(update);handler.post(update);}
   @Override protected void onPause(){handler.removeCallbacks(update);super.onPause();}
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);lastSignature="";refresh();}
   @Override public void onBackPressed(){if(selecting){setSelecting(false);return;}super.onBackPressed();}

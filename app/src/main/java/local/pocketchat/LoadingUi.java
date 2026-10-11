@@ -24,8 +24,7 @@ final class LoadingUi {
     }else if(coverShown){coverShown=false;cover.animate().alpha(0).setDuration(180).withEndAction(()->{if(!coverShown)cover.setVisibility(View.GONE);}).start();}
     String message=s.status;boolean error=message.matches(".*(失败|错误|超时|请|待确认|未完成|解除等待|已到).*"),working=!error&&(s.submitting||s.pending!=null||message.startsWith("正在")||message.startsWith("准备连接"));
     boolean small=(working||taskRunning)&&!show&&taskDialog==null;
-    bandText.setText(taskRunning?taskMessage+" · 点按查看":(s.submitting?"正在发送…":message)+(s.pending==null?"":" · "+ReplyState.elapsedSeconds(s.pending)+"秒 · 查看状态"));
-    band.setContentDescription(taskRunning?"任务仍在进行，点按查看":"回复状态，点按检查或恢复连接");
+    if(small){String value=taskRunning?taskMessage+" · 点按查看":(s.submitting?"正在发送…":message)+(s.pending==null?"":" · "+ReplyState.elapsedSeconds(s.pending)+"秒 · 查看状态");if(!value.contentEquals(bandText.getText()))bandText.setText(value);String description=taskRunning?"任务仍在进行，点按查看":"回复状态，点按检查或恢复连接";if(!android.text.TextUtils.equals(band.getContentDescription(),description))band.setContentDescription(description);}
     band.setVisibility(small?View.VISIBLE:View.GONE);if(small)a.status.setVisibility(View.GONE);
   }
   void task(String message){dismissTask();if(a.destroyed||a.isFinishing())return;taskMessage=message;taskRunning=true;showTask();}

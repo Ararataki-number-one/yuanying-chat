@@ -180,7 +180,11 @@ try:
                 adb('shell','input','keyevent','KEYCODE_BACK')
                 visible(label,False)
             taps.append({'control':control['name'],'expandedRegion':True,'action':action['action']})
-        compact.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','readOnlyStatus':True,'actualAndroidTaps':taps,'layout':sample})
+        command+='-performance'
+        adb('shell','am','start','-W','--activity-single-top','-n',component,'--es','compactAction','performance','--es','compactCommand',command)
+        performance=chrome_event(command,'performance')
+        assert performance['status']=='passed',performance
+        compact.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','readOnlyStatus':True,'actualAndroidTaps':taps,'layout':sample,'performance':performance['performance']})
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
     (out/'compact-chrome-results.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'cases':compact},ensure_ascii=False,indent=2)+'\n')
     report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'scope':'Production native UI and original widgets with local synthetic records; webpage, login and network core not replaced.'}

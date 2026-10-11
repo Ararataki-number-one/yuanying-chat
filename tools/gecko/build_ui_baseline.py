@@ -26,6 +26,11 @@ try:
             # preferences without replaying old AppPrefs or restoring removed notices.
             start,end,_=preference_binding(source)
             source=source[:start]+current_preferences+source[end:]
+        if file.name=='DesignUi.java':
+            # Keep the current background settings/cache bridge, while matching
+            # the old visual output. AppSettings must compile against Stars.setting.
+            stars=b'  static final class Stars'
+            source=source[:source.index(stars)]+original[file][original[file].index(stars):]
         file.write_bytes(source)
     subprocess.run([args.gradle,':app:assembleIntegration','-PtestSigningKey='+args.key,'--console=plain'],cwd=root,check=True)
     shutil.copy2(current,out/'ui-baseline.apk')

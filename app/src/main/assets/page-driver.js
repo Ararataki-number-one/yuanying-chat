@@ -87,8 +87,9 @@
     return state.pro;
   }
   function messages(role) {
-    const nodes = [...document.querySelectorAll('[data-message-author-role="' + role + '"],article[data-turn="' + role + '"],[data-chatgpt-search-unit-key$=":'+role+'"],[data-content-search-unit-key$=":'+role+'"]')];
-    const selector='[data-message-author-role="'+role+'"],article[data-turn="'+role+'"],[data-chatgpt-search-unit-key$=":'+role+'"],[data-content-search-unit-key$=":'+role+'"]';return nodes.filter(el=>!el.parentElement?.closest(selector));
+    const build=()=>{const nodes = [...document.querySelectorAll('[data-message-author-role="' + role + '"],article[data-turn="' + role + '"],[data-chatgpt-search-unit-key$=":'+role+'"],[data-content-search-unit-key$=":'+role+'"]')];
+      const selector='[data-message-author-role="'+role+'"],article[data-turn="'+role+'"],[data-chatgpt-search-unit-key$=":'+role+'"],[data-content-search-unit-key$=":'+role+'"]';return nodes.filter(el=>!el.parentElement?.closest(selector));};
+    return window.__pocketWebPerformance?.messageNodes(role,build) ?? build();
   }
   function hasMessages(){return !!document.querySelector('[data-message-author-role="user"],[data-message-author-role="assistant"],article[data-turn="user"],article[data-turn="assistant"],[data-chatgpt-search-unit-key$=":user"],[data-chatgpt-search-unit-key$=":assistant"],[data-content-search-unit-key$=":user"],[data-content-search-unit-key$=":assistant"]');}
   function userText(el) {
@@ -100,6 +101,10 @@
     const text=node=>node.nodeType===Node.TEXT_NODE?node.nodeValue:node.nodeType!==Node.ELEMENT_NODE?'':node.tagName==='BR'?'\n':[...node.childNodes].map(text).join('')+(/^(DIV|P|LI)$/.test(node.tagName)?'\n':'');
     return text(clone).trim();
   }
+  function observed(node,kind,build){return window.__pocketWebPerformance?.memo(node,kind,build) ?? build();}
+  function observedUserText(node){return observed(node,'userText',()=>userText(node));}
+  function observedMarkdown(node){return observed(node,'markdown',()=>markdown(node));}
+  function observedFiles(node){return observed(node,'files',()=>fileControls(node));}
   function ownMessageId(el) {
     return el.getAttribute('data-message-id') || el.getAttribute('data-chatgpt-selection-message-id') ||
       (el.getAttribute('data-chatgpt-search-message-ids')||'').trim().split(/\s+/)[0] || '';
@@ -264,12 +269,12 @@
   if(action==='message-regenerate-submit'){const saved=window.__pocketRegenerate;delete window.__pocketRegenerate;if(!saved||saved.token!==arg.token||saved.url!==location.href||!saved.button.isConnected||saved.button.disabled||saved.el!==messages('assistant').at(-1)||saved.user!==messages('user').at(-1)||saved.model!==modelInfo().text||busy())return {ok:false,notClicked:true,reason:'网页状态已改变，未重新生成'};saved.button.click();return {ok:true};}
 
   function transcriptEntry(el,index,userSet){
-      if(userSet.has(el)){const files=[];for(const n of el.querySelectorAll('[data-file-name],a[download],button[aria-label],img[alt]')){const label=n.getAttribute('aria-label')||'',match=/^Open image(?: \d+ of \d+)?: (.+)$/i.exec(label);const name=n.getAttribute('data-file-name')||n.getAttribute('download')||(match&&match[1]);if(name)files.push(name);}if(!files.length&&el.querySelector('img'))files.push('图片附件');return {id:key(el,index),role:'user',text:userText(el),attachments:[...new Set(files)]};}
+      if(userSet.has(el)){const files=[];for(const n of el.querySelectorAll('[data-file-name],a[download],button[aria-label],img[alt]')){const label=n.getAttribute('aria-label')||'',match=/^Open image(?: \d+ of \d+)?: (.+)$/i.exec(label);const name=n.getAttribute('data-file-name')||n.getAttribute('download')||(match&&match[1]);if(name)files.push(name);}if(!files.length&&el.querySelector('img'))files.push('图片附件');return {id:key(el,index),role:'user',text:observedUserText(el),attachments:[...new Set(files)]};}
       const excluded='[data-testid*="reasoning"],[data-testid*="thinking"],[data-is-reasoning="true"],[data-markdown-text-style="reasoning"]';
       let bodies=[...el.querySelectorAll('.markdown,[data-markdown-text-style="assistant-message"]')].filter(x=>!x.closest(excluded));
       bodies=bodies.filter(x=>!bodies.some(other=>other!==x&&other.contains(x)));
       if(!bodies.length&&el.matches('[data-message-author-role="assistant"],article[data-turn="assistant"]')&&!el.querySelector(excluded))bodies=[el];
-      return {id:key(el,index),role:'assistant',text:bodies.map(markdown).join('\n\n'),downloads:fileControls(el).map(x=>({name:x.name,key:x.key,kind:x.kind||"file"}))};
+      return {id:key(el,index),role:'assistant',text:bodies.map(observedMarkdown).join('\n\n'),downloads:observedFiles(el).map(x=>({name:x.name,key:x.key,kind:x.kind||"file"}))};
 
   }
   if(action==='transcript'||action==='web-transcript'){
@@ -359,14 +364,14 @@
     else if (arg.userKey) {
       userIndex=users.findIndex((el,i)=>key(el,i)===arg.userKey || (arg.kind!=='web'&&legacyKey(el,i)===arg.userKey));
       if(userIndex<0)return {url:location.href,error:siteError(),submitted:false,bindingLost:true,pageLoading:document.readyState!=='complete'||users.length===0,busy:busy(),text:'',terminal:false};
-      if(!samePrompt(userText(users[userIndex]),arg.prompt))return {url:location.href,error:'已绑定的提问正文发生变化，请检查网页。',submitted:false,bindingLost:true,text:'',terminal:false};
+      if(!samePrompt(observedUserText(users[userIndex]),arg.prompt))return {url:location.href,error:'已绑定的提问正文发生变化，请检查网页。',submitted:false,bindingLost:true,text:'',terminal:false};
     }else if(Array.isArray(arg.beforeUserKeys)){
       const previous=new Set(arg.beforeUserKeys), newUsers=users.map((el,index)=>({el,index,key:key(el,index)})).filter(x=>!previous.has(x.key));
       if(newUsers.length>1)return {url:location.href,error:siteError(),submitted:false,otherQuestion:true,busy:busy(),text:'',terminal:false};
-      if(newUsers.length===1 && samePrompt(userText(newUsers[0].el),arg.prompt)){userIndex=newUsers[0].index;boundByNewIdentity=true;}
+      if(newUsers.length===1 && samePrompt(observedUserText(newUsers[0].el),arg.prompt)){userIndex=newUsers[0].index;boundByNewIdentity=true;}
     }else{
       if(users.length>arg.beforeUserCount+1)return {url:location.href,error:siteError(),submitted:false,otherQuestion:true,busy:busy(),text:'',terminal:false};
-      if(users.length===arg.beforeUserCount+1 && samePrompt(userText(users[users.length-1]),arg.prompt))userIndex=users.length-1;
+      if(users.length===arg.beforeUserCount+1 && samePrompt(observedUserText(users[users.length-1]),arg.prompt))userIndex=users.length-1;
     }
     if (userIndex>=0) user=users[userIndex];
     const laterUser=user ? users.find(el=>el!==user && !!(user.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)) : null;
@@ -394,11 +399,26 @@
     const activeBusy=busy()||working;const liveLabels=scope?[...scope.querySelectorAll('button,[role="status"]')].filter(visible).map(label):[];const thinking=activeBusy&&liveLabels.some(t=>/^(?:Thinking|正在思考|思考中)(?:\b|…|\.\.\.|$)/i.test(t));const searching=activeBusy&&liveLabels.some(t=>/^(?:Searching|正在搜索|搜索中)(?:\b|…|\.\.\.|$)/i.test(t));
     const error=siteError(scope,!!arg.lightObservation),errorText=error?((scope||document.body).innerText||''):'';
     const recoverable=!!error && !/上限|限制|额度|limit|验证|verify|captcha|unusual activity/i.test(errorText) && /网络|连接|重试|retry|went wrong|network|出了点|出现错误/i.test(errorText);
-    return {url:location.href,error,recoverable,thinking,searching,hasFiles:!!reply&&fileControls(reply).length>0,busy:activeBusy,submitted:!!user,
-      userKey:user?key(user,userIndex):'',userOrdinal:userIndex,prompt:user?userText(user):'',boundByNewIdentity,otherQuestion:!!laterUser,
-      replyKey:reply?key(reply,assistants.indexOf(reply)):'',
-      text:bodies.map(el=>el.innerText).join('\n\n'),terminal,
-      markdown:arg.export?bodies.map(markdown).join('\n\n'):''};
+    const replyKey=reply?key(reply,assistants.indexOf(reply)):'';
+    const incremental=!!arg.incrementalObservation&&!!window.__pocketWebPerformance;
+    const contentRevision=incremental?window.__pocketWebPerformance.contentRevision([...replies,...bodies]):'';
+    const result={url:location.href,error,recoverable,thinking,searching,busy:activeBusy,submitted:!!user,
+      userKey:user?key(user,userIndex):'',userOrdinal:userIndex,boundByNewIdentity,otherQuestion:!!laterUser,
+      replyKey,terminal};
+    if(incremental){
+      // Generation metadata is enough to observe progress. Reading the entire
+      // growing answer here competes with the site's rendering and gestures.
+      result.hasReply=bodies.some(node=>node.childNodes.length>0);
+      result.replyContentRevision=contentRevision;
+      result.contentObserved=!activeBusy;
+      if(activeBusy)return result;
+      if(replyKey&&contentRevision===arg.knownReplyContentRevision&&replyKey===arg.knownReplyKey){result.contentUnchanged=true;return result;}
+      result.hasFiles=!!reply&&observedFiles(reply).length>0;
+      result.markdown=arg.export?bodies.map(observedMarkdown).join('\n\n'):'';
+      return result;
+    }
+    return {...result,hasFiles:!!reply&&observedFiles(reply).length>0,prompt:user?observedUserText(user):'',
+      text:bodies.map(el=>el.innerText).join('\n\n'),markdown:arg.export?bodies.map(observedMarkdown).join('\n\n'):''};
   }
   return {ok:false,reason:'Unknown command'};
 })(__ACTION__, __ARG__)

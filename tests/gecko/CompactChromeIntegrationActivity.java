@@ -14,6 +14,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   boolean reporting;
   String command="";
   int actionCount;
+  JSONObject performance=new JSONObject();
 
   @Override public void onCreate(Bundle state){
     if(!getPackageName().endsWith(".test"))throw new SecurityException();
@@ -41,6 +42,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     super.onNewIntent(intent);
     command=intent.getStringExtra("compactCommand");
     if("snapshot".equals(intent.getStringExtra("compactAction")))handler.post(()->snapshot("snapshot"));
+    if("performance".equals(intent.getStringExtra("compactAction")))handler.post(this::performance);
   }
 
   @Override void showDrawer(){
@@ -68,6 +70,77 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     Log.i("PocketCompactChrome",J.obj("command",command,"event","action","action",action,"actions",actionCount,"page",hub.page).toString());
   }
 
+  void performance(){
+    try{
+      handler.removeCallbacks(ticker);session.handler.removeCallbacks(session.tick);session.remove(sessionObserver);
+      // Settle legitimate initial state changes before measuring repeated updates.
+      NetworkMetricsUi.update(this);designChrome.update();
+      handler.postDelayed(()->{
+        UiPerfStats.begin();
+        for(int i=0;i<100;i++){NetworkMetricsUi.update(this);designChrome.update();}
+        handler.postDelayed(()->{
+          JSONObject burst=UiPerfStats.end();
+          try{
+            if(burst.optLong("metricsRefreshes")!=1||burst.optLong("chromeUpdates")!=1||burst.optLong("chromeTextChanges")!=0||burst.optLong("chromeBackgroundChanges")!=0)throw new AssertionError("Repeated chrome requests did not merge: "+burst);
+            noUiIo(burst);performance.put("burst",burst);
+            backgroundPerformance();
+            boolean oldMode=session.internalNetwork();
+            session.prefs.edit().putString("networkMode","internal").apply();
+            // A real encrypted configuration read must run on audit.worker,
+            // while UI counters stay free of that I/O.
+            NetworkMetricsUi.update(this);
+            handler.postDelayed(()->{session.audit.lastRefresh=0;UiPerfStats.begin();periodicPerformance(0,oldMode);},200);
+          }catch(Throwable error){performanceFailure(error);}
+        },200);
+      },200);
+    }catch(Throwable error){performanceFailure(error);}
+  }
+
+  void backgroundPerformance()throws Exception{
+    DesignUi.Stars background=new DesignUi.Stars(this);background.setBounds(0,0,16,32);background.enabled=true;
+    Bitmap pixels=Bitmap.createBitmap(16,32,Bitmap.Config.ARGB_8888);Canvas canvas=new Canvas(pixels);
+    background.draw(canvas);int[] first=new int[16*32],last=new int[16*32];pixels.getPixels(first,0,16,0,0,16,32);
+    UiPerfStats.begin();for(int i=0;i<100;i++)background.draw(canvas);JSONObject result=UiPerfStats.end();
+    pixels.getPixels(last,0,16,0,0,16,32);boolean same=java.util.Arrays.equals(first,last);
+    background.enabled=false;background.draw(canvas);boolean plain=pixels.getPixel(8,16)==DesignUi.BG;pixels.recycle();
+    noUiIo(result);if(result.optLong("starDraws")!=100||!same||!plain)throw new AssertionError("Background draw cache changed output: "+result);
+    performance.put("background",result.put("stablePixels",same).put("plainBackground",plain));
+  }
+
+  void periodicPerformance(int count,boolean oldMode){
+    if(count<5){NetworkMetricsUi.update(this);handler.postDelayed(()->periodicPerformance(count+1,oldMode),1200);return;}
+    try{
+      JSONObject result=UiPerfStats.end();noUiIo(result);
+      if(result.optLong("metricsRefreshes")!=5||result.optLong("chromeTextChanges")!=0||result.optLong("chromeBackgroundChanges")!=0)throw new AssertionError("Idle chrome performed repeated mutations: "+result);
+      performance.put("periodic",result.put("durationMs",6000));
+      session.prefs.edit().putString("networkMode",oldMode?"internal":"external").apply();
+      String original=designChrome.title.getText().toString();Profiles.rename(this,0,"性能回归新名称");
+      waitForRename(original,SystemClock.uptimeMillis()+6000);
+    }catch(Throwable error){performanceFailure(error);}
+  }
+
+  void waitForRename(String original,long deadline){
+    designChrome.update();
+    handler.postDelayed(()->{
+      if("性能回归新名称".contentEquals(designChrome.title.getText())){
+        try{performance.put("rename",true);}catch(Exception ignored){}
+        boolean old=pageMode;pageMode=!old;UiPerfStats.begin();designChrome.update();
+        handler.postDelayed(()->{
+          try{
+            JSONObject result=UiPerfStats.end();if(result.optLong("chromeBackgroundChanges")!=2)throw new AssertionError("Mode change did not update both controls: "+result);
+            if(nativeTab.getCurrentTextColor()!=(pageMode?0xff4d6384:Color.WHITE)||webTab.getCurrentTextColor()!=(pageMode?Color.WHITE:0xff4d6384))throw new AssertionError("Mode selection colors became stale");
+            performance.put("modeChange",result);pageMode=old;Profiles.rename(this,0,original);designChrome.update();
+            Log.i("PocketCompactChrome",J.obj("command",command,"event","performance","status","passed","performance",performance).toString());
+          }catch(Throwable error){performanceFailure(error);}
+        },200);
+      }else if(SystemClock.uptimeMillis()<deadline)waitForRename(original,deadline);
+      else performanceFailure(new AssertionError("Asynchronous environment name became stale"));
+    },100);
+  }
+
+  void noUiIo(JSONObject result){for(String key:new String[]{"mainSealedReads","mainSealedWrites","mainCatalogReads","mainHeartbeatWrites"})if(result.optLong(key)!=0)throw new AssertionError("UI hot path performed "+key+": "+result);}
+  void performanceFailure(Throwable error){UiPerfStats.end();Log.i("PocketCompactChrome",J.obj("command",command,"event","performance","error",error.toString(),"performance",performance).toString());}
+
   void snapshot(String event){
     try{
       handler.removeCallbacks(ticker);
@@ -78,8 +151,10 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       WindowNetworkState network=new WindowNetworkState(this,ProfileCatalog.get(this).item(0),config,runtime,true,now);
       // Reflection keeps this integration source compilable with the historical UI baseline.
       Method show=DesignChrome.class.getDeclaredMethod("showNetwork",WindowNetworkState.class);
-      show.setAccessible(true);show.invoke(designChrome,network);
-      toolbar.postDelayed(()->report(event,network),100);
+      show.setAccessible(true);
+      // onResume may have queued a real chrome render before this fixture took
+      // control. Let it settle, then render the explicitly synthetic layout state.
+      toolbar.postDelayed(()->{try{show.invoke(designChrome,network);toolbar.postDelayed(()->report(event,network),100);}catch(Exception error){Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"error",error.toString()).toString());}},200);
     }catch(Exception error){Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"error",error.toString()).toString());}
   }
 

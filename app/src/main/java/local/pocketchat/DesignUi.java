@@ -84,5 +84,29 @@ final class DesignUi {
     change.setTextSize(12);row.addView(change,new LinearLayout.LayoutParams(dp(a,64),dp(a,48)));box.addView(row);
   }
   static AlertDialog message(Activity a,String title,String text){return new AlertDialog.Builder(a).setTitle(title).setMessage(text).setPositiveButton("知道了",null).show();}
-  static final class Stars extends Drawable {final Paint p=new Paint(3);final Context c;Stars(Context c){this.c=c;}public void draw(Canvas canvas){canvas.drawColor(BG);if(!AppSettings.bool(c,"starBackground",false))return;Rect b=getBounds();Random r=new Random(87);for(int i=0;i<100;i++){float x=r.nextFloat()*b.width(),y=r.nextFloat()*b.height();p.setColor(i%4==0?0x552a78c7:0x222598dc);canvas.drawCircle(x,y,i%9==0?1.6f:.7f,p);}p.setShader(new LinearGradient(0,0,b.width(),b.height()/2f,new int[]{0x180453a2,0x000453a2},null,Shader.TileMode.CLAMP));canvas.drawRect(b,p);p.setShader(null);}public void setAlpha(int a){}public void setColorFilter(ColorFilter f){}public int getOpacity(){return PixelFormat.OPAQUE;}}
+  static final class Stars extends Drawable {
+    static final List<java.lang.ref.WeakReference<Stars>> instances=new ArrayList<>();
+    static final Handler main=new Handler(Looper.getMainLooper());
+    final Paint p=new Paint(3);final float[] xs=new float[100],ys=new float[100];
+    boolean enabled;LinearGradient gradient;
+    Stars(Context c){
+      // Settings and geometry are prepared outside draw; even a plain background
+      // must not wait for a SQLite reader while handling a frame.
+      enabled=AppSettings.bool(c,"starBackground",false);
+      Random random=new Random(87);for(int i=0;i<xs.length;i++){xs[i]=random.nextFloat();ys[i]=random.nextFloat();}
+      synchronized(instances){instances.removeIf(ref->ref.get()==null);instances.add(new java.lang.ref.WeakReference<>(this));}
+    }
+    static void refresh(Context c){setting(AppSettings.bool(c,"starBackground",false));}
+    static void setting(boolean value){
+      if(Looper.myLooper()!=Looper.getMainLooper()){main.post(()->setting(value));return;}
+      synchronized(instances){instances.removeIf(ref->ref.get()==null);for(java.lang.ref.WeakReference<Stars> ref:instances){Stars stars=ref.get();if(stars!=null&&stars.enabled!=value){stars.enabled=value;stars.invalidateSelf();}}}
+    }
+    @Override protected void onBoundsChange(Rect b){gradient=new LinearGradient(0,0,b.width(),b.height()/2f,new int[]{0x180453a2,0x000453a2},null,Shader.TileMode.CLAMP);}
+    public void draw(Canvas canvas){
+      UiPerfStats.starDraw();canvas.drawColor(BG);if(!enabled)return;
+      Rect b=getBounds();for(int i=0;i<xs.length;i++){p.setColor(i%4==0?0x552a78c7:0x222598dc);canvas.drawCircle(xs[i]*b.width(),ys[i]*b.height(),i%9==0?1.6f:.7f,p);}
+      p.setShader(gradient);canvas.drawRect(b,p);p.setShader(null);
+    }
+    public void setAlpha(int a){}public void setColorFilter(ColorFilter f){}public int getOpacity(){return PixelFormat.OPAQUE;}
+  }
 }

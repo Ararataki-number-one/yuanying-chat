@@ -10,13 +10,18 @@ import java.util.concurrent.*;
 /** Lookups use this environment's guarded route. Names never substitute for exit geolocation. */
 final class NetworkRegion {
   static final ExecutorService worker=Executors.newSingleThreadExecutor();
-  static volatile boolean running;static long attempted;static JSONObject cached;static long stamp=-1;static String cachePath="";
+  static volatile boolean running;static long attempted;
+  static final ExecutorService snapshots=Executors.newSingleThreadExecutor();
+  static final FileSnapshotCache<JSONObject> cache=new FileSnapshotCache<>(snapshots,JSONObject::new);
+  static final android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());
   static final ExecutorService latencyWorker=Executors.newSingleThreadExecutor();
-  static volatile boolean latencyRunning;static long latencyAttempted;static String latencyAttemptRoute="",latencyCachePath="";static long latencyStamp=-1;static JSONObject latencyCached;
-  static synchronized JSONObject read(Context c){SecretStore vault=new SecretStore(c);long modified=vault.file("exit-region").lastModified();if(cached==null||modified!=stamp||!vault.file("exit-region").getAbsolutePath().equals(cachePath)){try{byte[] raw=vault.get("exit-region");cached=raw==null?new JSONObject():J.parse(new String(raw,StandardCharsets.UTF_8));}catch(Exception e){cached=new JSONObject();}stamp=modified;cachePath=vault.file("exit-region").getAbsolutePath();}return cached;}
+  static volatile boolean latencyRunning;static long latencyAttempted;static String latencyAttemptRoute="";
+  static JSONObject snapshot(Context c,String name){SecretStore vault=new SecretStore(c);return cache.read(vault.file(name),android.os.Looper.myLooper()==android.os.Looper.getMainLooper(),()->{byte[] raw=vault.get(name);return raw==null?new JSONObject():J.parse(new String(raw,StandardCharsets.UTF_8));},()->main.post(()->{ChatSession s=ChatSession.peek();if(s!=null&&!s.deleted&&Profiles.slot(s.context)==Profiles.slot(c))s.changed();}));}
+  static boolean ready(Context c,String name){return cache.ready(new SecretStore(c).file(name));}
+  static JSONObject read(Context c){return snapshot(c,"exit-region");}
   static String region(Context c,String ip){JSONObject value=read(c);return ip.equals(value.optString("ip"))&&System.currentTimeMillis()-value.optLong("at")<7*86400000L?value.optString("region"):"";}
   static String exitIp(Context c,ChatSession s){JSONObject value=read(c);return s!=null&&s.networkIdentity().equals(value.optString("route"))&&System.currentTimeMillis()-value.optLong("at")<7*86400000L?value.optString("ip"):"";}
-  static synchronized JSONObject readLatency(Context c){SecretStore vault=new SecretStore(c);File file=vault.file("route-latency");long modified=file.lastModified();if(latencyCached==null||latencyStamp!=modified||!file.getAbsolutePath().equals(latencyCachePath)){try{byte[] raw=vault.get("route-latency");latencyCached=raw==null?new JSONObject():J.parse(new String(raw,StandardCharsets.UTF_8));}catch(Exception ignored){latencyCached=new JSONObject();}latencyStamp=modified;latencyCachePath=file.getAbsolutePath();}return latencyCached;}
+  static JSONObject readLatency(Context c){return snapshot(c,"route-latency");}
   static String latencyRoute(ChatSession s){return s.networkIdentity()+"|"+s.networkIdentity;}
   static JSONObject latency(Context c,ChatSession s){JSONObject value=readLatency(c);return s!=null&&latencyRoute(s).equals(value.optString("route"))?value:new JSONObject();}
   static Proxy proxy(String value)throws Exception{if(value.isEmpty())return Proxy.NO_PROXY;URI address=new URI(value);return new Proxy("socks".equals(address.getScheme())?Proxy.Type.SOCKS:Proxy.Type.HTTP,new InetSocketAddress(address.getHost(),address.getPort()));}
@@ -30,6 +35,8 @@ final class NetworkRegion {
     if(!BrowserNetworkGuard.publicHttps(s.web.getUrl()==null?null:android.net.Uri.parse(s.web.getUrl()))){if(callback!=null)s.handler.post(()->callback.done(false,"网页连接尚未就绪"));return;}
     if(latencyRunning){if(callback!=null)s.handler.post(()->callback.done(false,"正在测量，请稍后再试"));return;}
     long now=System.currentTimeMillis(),mono=android.os.SystemClock.elapsedRealtime();JSONObject old=latency(s.context,s);long at=old.optLong("at");
+    // The first UI read schedules a background cache load; do not probe over a valid saved sample.
+    if(callback==null&&!ready(s.context,"route-latency"))return;
     if(callback==null&&(at>0&&now>=at-60000&&now-at<60000||route.equals(latencyAttemptRoute)&&mono-latencyAttempted<(at>0?60000:10000)))return;
     android.net.Network bound=s.guard.requiresVpn()?s.context.getSystemService(android.net.ConnectivityManager.class).getActiveNetwork():null;
     if(s.guard.requiresVpn()&&bound==null){if(callback!=null)s.handler.post(()->callback.done(false,"请先连接手机 VPN"));return;}
@@ -37,7 +44,8 @@ final class NetworkRegion {
     latencyRunning=true;latencyAttempted=mono;latencyAttemptRoute=route;
     latencyWorker.execute(()->{int delay=-1;try{delay=RouteLatency.measure(NativeNetwork.PROBE,transport,bound,()->latencyGate(s,epoch,route));}catch(IOException ignored){}
       final int measured=delay;final JSONObject sample=J.obj("route",route,"at",System.currentTimeMillis(),"delay",measured,"kind","response","target",NativeNetwork.PROBE);
-      s.handler.post(()->{synchronized(NetworkRegion.class){latencyRunning=false;}try{latencyGate(s,epoch,route);new SecretStore(s.context).put("route-latency",sample.toString().getBytes(StandardCharsets.UTF_8));latencyCached=null;WindowNetworkState.save(s.context,s,NativeNetwork.get(s.context));s.changed();if(callback!=null)callback.done(measured>0,measured>0?"连接响应 "+measured+" ms":"线路暂未通过探测，可稍后再试");}catch(Exception changed){if(callback!=null)callback.done(false,"连接已变化，请重新测量");}});
+      boolean stored=false;try{latencyGate(s,epoch,route);SecretStore vault=new SecretStore(s.context);vault.put("route-latency",sample.toString().getBytes(StandardCharsets.UTF_8));cache.publish(vault.file("route-latency"),sample);stored=true;}catch(Exception changed){}
+      final boolean saved=stored;s.handler.post(()->{synchronized(NetworkRegion.class){latencyRunning=false;}try{latencyGate(s,epoch,route);if(!saved)throw new IOException();WindowNetworkState.save(s.context,s,NativeNetwork.get(s.context));s.changed();if(callback!=null)callback.done(measured>0,measured>0?"连接响应 "+measured+" ms":"线路暂未通过探测，可稍后再试");}catch(Exception changed){if(callback!=null)callback.done(false,"连接已变化，请重新测量");}});
     });
   }
   static void refresh(ChatSession s){
@@ -46,6 +54,7 @@ final class NetworkRegion {
     // Controlled integration fixtures and local routes must never contact public GeoIP services.
     if(!BrowserNetworkGuard.publicHttps(s.web.getUrl()==null?null:android.net.Uri.parse(s.web.getUrl())))return;
     NativeNetwork n=NativeNetwork.get(s.context);String ip=s.internalNetwork()?n.exitIp:"",route=s.networkIdentity();JSONObject old=read(s.context);
+    if(!ready(s.context,"exit-region"))return;
     if(route.equals(old.optString("route"))&&(ip.isEmpty()||ip.equals(old.optString("ip")))&&System.currentTimeMillis()-old.optLong("at")<7*86400000L)return;
     long epoch=s.connectionEpoch;String proxy=s.internalNetwork()?n.proxy():s.prefs.getString("proxy","");android.net.Network bound=s.guard.requiresVpn()?s.context.getSystemService(android.net.ConnectivityManager.class).getActiveNetwork():null;running=true;attempted=System.currentTimeMillis();
     worker.execute(()->{
@@ -57,7 +66,9 @@ final class NetworkRegion {
         if(!answer.optBoolean("success")||!actual.equals(answer.optString("ip")))return;String country=NodeRegion.country(answer.optString("country_code"));if(country.isEmpty())return;
         String city=answer.optString("city").trim();if(city.length()>64||city.matches(".*[\\p{Cntrl}].*"))city="";
         JSONObject value=J.obj("ip",actual,"region",country+(city.isEmpty()?"":" · "+city),"at",System.currentTimeMillis(),"route",route);
-        s.handler.post(()->{if(!s.deleted&&epoch==s.connectionEpoch&&route.equals(s.networkIdentity())&&s.guard.allowed()){try{new SecretStore(s.context).put("exit-region",value.toString().getBytes(StandardCharsets.UTF_8));cached=null;WindowNetworkState.save(s.context,s,n);s.changed();}catch(Exception ignored){}}});
+        if(s.deleted||epoch!=s.connectionEpoch||!route.equals(s.networkIdentity())||!s.guard.allowed())return;
+        SecretStore vault=new SecretStore(s.context);vault.put("exit-region",value.toString().getBytes(StandardCharsets.UTF_8));cache.publish(vault.file("exit-region"),value);
+        s.handler.post(()->{if(!s.deleted&&epoch==s.connectionEpoch&&route.equals(s.networkIdentity())&&s.guard.allowed()){WindowNetworkState.save(s.context,s,n);s.changed();}});
       }catch(Exception ignored){}finally{running=false;}
     });
   }

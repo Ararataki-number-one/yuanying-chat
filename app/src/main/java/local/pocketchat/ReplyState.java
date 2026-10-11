@@ -8,7 +8,7 @@ final class ReplyState {
     String stage;
     if(poll.optBoolean("searching"))stage="正在搜索资料…";
     else if(poll.optBoolean("thinking"))stage="正在思考…";
-    else if(poll.optBoolean("busy"))stage=poll.optString("markdown").trim().isEmpty()?"等待网页开始回复…":"正在生成回复…";
+    else if(poll.optBoolean("busy"))stage=poll.optString("markdown").trim().isEmpty()&&!poll.optBoolean("hasReply")?"等待网页开始回复…":"正在生成回复…";
     else if(poll.optBoolean("terminal"))stage="正在确认回复完成…";
     else if(!poll.optString("markdown").trim().isEmpty()&&stableTicks>=8)return "回复内容已稳定，结束状态待确认 · 点按检查";
     else stage="等待网页开始回复…";

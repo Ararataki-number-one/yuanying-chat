@@ -53,6 +53,11 @@ jobs:
           mkdir -p work/gecko-integration/update-host
           javac -encoding UTF-8 -d work/gecko-integration/update-host app/src/main/java/local/pocketchat/AppUpdatePolicy.java tests/browser-runtime/AppUpdatePolicyTest.java
           java -cp work/gecko-integration/update-host local.pocketchat.AppUpdatePolicyTest | tee work/gecko-integration/update-host-results.json
+          mkdir -p work/gecko-integration/snapshot-host
+          javac -encoding UTF-8 -d work/gecko-integration/snapshot-host app/src/main/java/local/pocketchat/FileSnapshotCache.java tests/browser-runtime/FileSnapshotCacheTest.java
+          java -cp work/gecko-integration/snapshot-host local.pocketchat.FileSnapshotCacheTest | tee work/gecko-integration/snapshot-host-results.json
+          npm install --prefix work/browser-perf-host --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+          JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/reply-observation.test.cjs | tee work/gecko-integration/reply-observation-host-results.json
       - name: Prepare synthetic signed upgrade archives
         shell: bash
         run: |
@@ -95,6 +100,9 @@ jobs:
             checks_failed=1
           fi
           if ! python3 tests/gecko/run_ui_visuals.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          if ! python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py

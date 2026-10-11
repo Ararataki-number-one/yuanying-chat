@@ -33,6 +33,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
   void run(){JSONObject report=J.obj("status","failed","actualAndroidExecution",true,"actualMihomoExecution",true);TestNetwork n=null;
     try(HttpFixture site=new HttpFixture(tlsContext());HttpFixture plain=new HttpFixture(null);Socks fixed=new Socks(0);Socks slow=new Socks(100);Socks fast=new Socks(5)){
       site.start();plain.start();fixed.start();slow.start();fast.start();
+      regionCacheChecks();
       JSONObject config=J.obj("subscriptionUrl","https://synthetic.invalid/unused-subscription","exitHost","127.0.0.1","exitPort",fixed.port(),"entryMode","latency","entryPool",J.arr("Entry|slow","Entry|fast"),"entry","");
       SecretStore vault=new SecretStore(this);vault.save(config);String yaml="proxies:\n  - {name: slow, type: socks5, server: 127.0.0.1, port: "+slow.port()+"}\n  - {name: fast, type: socks5, server: 127.0.0.1, port: "+fast.port()+"}\n";
       vault.put("subscription",yaml.getBytes(StandardCharsets.UTF_8));vault.put("subscription-meta",J.obj("urlHash",NativeNetwork.hash(config.getString("subscriptionUrl")),"updatedAt",System.currentTimeMillis()).toString().getBytes(StandardCharsets.UTF_8));
@@ -102,6 +103,32 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     finally{if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
     NetworkCatalog.put(report,"checks",checks);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
     report.remove("checks");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
+  }
+  void regionCacheChecks()throws Exception{
+    JSONObject[] first=new JSONObject[Profiles.MAX];long now=System.currentTimeMillis();
+    for(int slot=0;slot<Profiles.MAX;slot++){Context context=Profiles.context(this,slot);SecretStore vault=new SecretStore(context);vault.put("exit-region",J.obj("ip","203.0.113."+(64+slot),"region","日本 · synthetic-"+slot,"at",now,"route","synthetic-region-"+slot).toString().getBytes(StandardCharsets.UTF_8));first[slot]=NetworkRegion.read(context);}
+    boolean isolated=true,reused=true;
+    for(int round=0;round<16;round++)for(int slot=0;slot<Profiles.MAX;slot++){JSONObject value=NetworkRegion.read(Profiles.context(this,slot));isolated&=value.optString("region").equals("日本 · synthetic-"+slot);reused&=value==first[slot];}
+    check("Eight encrypted environment regions stay isolated across alternating reads",isolated);
+    check("Repeated multi-window reads reuse decrypted region snapshots",reused);
+    Context last=Profiles.context(this,Profiles.MAX-1);SecretStore vault=new SecretStore(last);JSONObject replacement=J.obj("ip","203.0.113.71","region","韩国 · synthetic-new","at",now,"route","synthetic-region-7");vault.put("exit-region",replacement.toString().getBytes(StandardCharsets.UTF_8));
+    check("Replacing one sealed region updates only that environment",NetworkRegion.read(last).optString("region").equals("韩国 · synthetic-new")&&NetworkRegion.read(Profiles.context(this,0))==first[0]);
+    if(!vault.file("exit-region").delete())throw new IOException("region fixture deletion failed");
+    check("Deleting a sealed region clears its cached identity",NetworkRegion.read(last).length()==0);
+    vault.put("exit-region",replacement.toString().getBytes(StandardCharsets.UTF_8));NetworkRegion.read(last);
+    // The visual comparison also compiles this fixture with historical UI sources.
+    // Current UI exposes the helper and must execute both unchanged assertions.
+    java.lang.reflect.Method uiMetadata=null;try{uiMetadata=NetworkWorkspaceUi.class.getDeclaredMethod("readUiMetadata",Context.class,JSONArray.class);}catch(NoSuchMethodException historicalUi){}
+    if(uiMetadata!=null){JSONArray list=new JSONArray();for(int slot=0;slot<Profiles.MAX;slot++)list.put(J.obj("row",J.obj("slot",slot)));
+      Context queued=Profiles.context(this,6);NetworkChanges.save(queued,"external",J.obj("proxy","http://127.0.0.1:1"),"synthetic-ui-only");uiMetadata.invoke(null,this,list);
+      check("Network list reads pending draft metadata on its background reader",list.optJSONObject(6).optBoolean("pendingNetwork")&&!list.optJSONObject(7).optBoolean("pendingNetwork"));
+      NetworkChanges.clear(queued);uiMetadata.invoke(null,this,list);
+      check("Network list refresh sees draft removal without a global pending cache",!list.optJSONObject(6).optBoolean("pendingNetwork"));
+    }
+    CountDownLatch complete=new CountDownLatch(1);java.util.concurrent.atomic.AtomicInteger disk=new java.util.concurrent.atomic.AtomicInteger();final boolean[] correct={true};
+    runOnUiThread(()->{android.os.StrictMode.ThreadPolicy previous=android.os.StrictMode.getThreadPolicy();try{android.os.StrictMode.setThreadPolicy(new android.os.StrictMode.ThreadPolicy.Builder().detectDiskReads().detectDiskWrites().penaltyListener(Runnable::run,violation->disk.incrementAndGet()).build());for(int round=0;round<16;round++)for(int slot=0;slot<Profiles.MAX;slot++){Context context=Profiles.context(this,slot);String expected=slot==Profiles.MAX-1?"韩国 · synthetic-new":"日本 · synthetic-"+slot;correct[0]&=NetworkRegion.region(context,"203.0.113."+(64+slot)).equals(expected);NetworkRegion.readLatency(context);}}catch(Throwable error){correct[0]=false;}finally{android.os.StrictMode.setThreadPolicy(previous);complete.countDown();}});
+    check("Actual Android main-thread region and cold latency reads complete",complete.await(10,TimeUnit.SECONDS)&&correct[0]);
+    check("Region and latency UI snapshots cause no main-thread disk reads or writes",disk.get()==0);
   }
   void testTransport(HttpFixture site,HttpFixture plain,JSONObject config,String yaml)throws Exception{
     TestNetwork first=null,second=null,adopted=null;
