@@ -17,8 +17,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Actual Android/Mihomo with two loopback SOCKS hops. Never uses personal or public routes. */
 public final class NetworkOptimizationIntegrationActivity extends Activity {
-  final JSONArray checks=new JSONArray();
+  final JSONArray checks=new JSONArray(),transportEvidence=new JSONArray();
   void check(String name,boolean passed){JSONObject value=J.obj("name",name,"pass",passed);checks.put(value);Log.i("PocketNetworkPerformance",J.obj("kind","check","value",value).toString());if(!passed)throw new AssertionError(name);}
+  void transportTrace(JSONObject value){transportEvidence.put(value);Log.i("PocketNetworkPerformance",J.obj("kind","exitTransportEvidence","value",value).toString());}
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test"))throw new SecurityException();new Thread(this::run,"network-optimization-fixture").start();}
   static class TestNetwork extends NativeNetwork {
     final HttpFixture site,plain;final SSLSocketFactory trustFactory;volatile boolean busy;volatile String exitFailureReason="";volatile boolean cancelOnMismatch;
@@ -106,12 +107,12 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       n.quality.configure("synthetic-old-modes");for(int i=0;i<5;i++){n.quality.record("Entry|slow",500,now+i);n.quality.record("Entry|fast",30,now+i);}n.quality.selected("Entry|slow",now-RouteQuality.COOLDOWN-1000);NetworkCatalog.put(n.settings,"entryMode","random");n.scanAndSelect(false);check("Healthy random mode is not silently optimized",n.currentEntry.equals("Entry|slow"));NetworkCatalog.put(n.settings,"entryMode","manual");n.scanSubset(Collections.singletonList("Entry|slow"),false,false);check("Manual mode keeps the specified entry",n.currentEntry.equals("Entry|slow"));
       NetworkCatalog.put(n.settings,"entryMode","latency");n.websiteQuality.configure("synthetic-low-latency");for(int i=0;i<5;i++){n.websiteQuality.record("Entry|slow",900,now+i);n.websiteQuality.record("Entry|fast",50,now+i);}n.websiteQuality.selected("Entry|slow",now-RouteQuality.COOLDOWN-1000);n.websiteQuality.choose(n.names,n.currentEntry,false,true,now);n.scanSubset(n.names,false,true);check("Low latency selects a proven better candidate",n.currentEntry.equals("Entry|fast"));check("Optimizing preserves the fixed exit IP",n.exitIp.equals("203.0.113.8"));
       n.ready=true;site.ip="203.0.113.9";boolean mismatch=false;try{n.verifyExit();}catch(NativeNetwork.ExitMismatch expected){mismatch=true;}check("Exit IP changes still trigger the original protection",mismatch&&n.recoveryBlocked);
-      site.ip="203.0.113.8";exitVerificationContinuityChecks(n,site,plain,fixed,slow,fast);displaySchedulingChecks(n,site,plain,report);testTransport(site,plain,config,yaml);
+      site.ip="203.0.113.8";exitVerificationContinuityChecks(n,site,plain,fixed,slow,fast);displaySchedulingChecks(n,site,plain,report);transportFailureRejectionChecks(n,site,plain);testTransport(site,plain,config,yaml);
       NetworkCatalog.put(report,"independentNetworkService","passed");NetworkCatalog.put(report,"status","passed");
     }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());}
     finally{if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
-    NetworkCatalog.put(report,"checks",checks);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
-    report.remove("checks");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
+    NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"exitTransportContinuity",transportEvidence);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
+    report.remove("checks");report.remove("exitTransportContinuity");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
   }
   boolean awaitNetworkCallback(TestNetwork n,boolean beforeSend)throws Exception{
     CountDownLatch done=new CountDownLatch(1);final boolean[] result={false};NativeNetwork.Callback callback=(ok,message)->{result[0]=ok;done.countDown();};
@@ -328,9 +329,40 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
         boolean same=after.optBoolean("alive");for(String field:new String[]{"pid","servicePid","generation","configuration","controllerPort","proxyPort"})same&=before.optString(field).equals(after.optString(field));
         check(names[fault],site.ipRequests.get()>requests&&reasons[fault].equals(n.exitFailureReason)&&n.ready&&n.verifiedRouteCurrent()&&same&&token.equals(n.token)&&entry.equals(n.currentEntry)&&ip.equals(n.exitIp)&&site.webSocketConnections.get()==connections+1&&stream.awaitEchoes(echoes));
       }
+      site.ipStatus=200;site.ipDelay=0;site.ipBody=null;
+      for(String fault:new String[]{"reset","eof"}){
+        site.ipTransportFailure=fault;n.lastVerified=0;n.nextExitCheckAt=0;int requests=site.ipRequests.get(),wire=site.transportFaults(fault),echoes=stream.echoes.get();JSONObject identity=transportIdentity(n);
+        n.health();JSONObject after=transportIdentity(n);
+        check("Independent network service retains the same WSS and core during detector "+fault,site.ipRequests.get()>requests&&site.transportFaults(fault)>wire&&n.exitFailureReason.equals("transport-reset-or-eof")&&n.ready&&n.verifiedRouteCurrent()&&identity.toString().equals(after.toString())&&site.webSocketConnections.get()==connections+1&&stream.awaitEchoes(echoes)&&n.lastVerified==0);
+        long retryIn=n.nextExitCheckAt-android.os.SystemClock.elapsedRealtime();int backedOff=site.ipRequests.get();n.health();boolean noRetry=site.ipRequests.get()==backedOff;
+        boolean accepted=awaitNetworkCallback(n,true);
+        check("Detector "+fault+" preflight refuses sending without replacing the verified WSS",!accepted&&n.ready&&n.verifiedRouteCurrent()&&identity.toString().equals(transportIdentity(n).toString())&&stream.awaitEchoes(echoes)&&site.webSocketConnections.get()==connections+1&&noRetry&&retryIn>0&&n.lastVerified==0);
+        transportTrace(J.obj("kind","verified","fault",fault,"serviceProcess",true,"before",identity,"after",transportIdentity(n),"classification",n.exitFailureReason,"detectorRequests",site.ipRequests.get()-requests,"wireFaultRequests",site.transportFaults(fault)-wire,"lastVerified",n.lastVerified,"retryInMs",retryIn,"backoffNoRequests",noRetry,"sendAccepted",accepted,"receiptCurrent",n.verifiedRouteCurrent(),"webSocketConnections",site.webSocketConnections.get()-connections,"echoesBefore",echoes,"echoesAfter",stream.echoes.get()));
+      }
+      site.ipTransportFailure="";
       site.ipStatus=200;site.ipDelay=0;site.ipBody=null;n.nextExitCheckAt=0;n.health();
       check("Independent network service renews exit proof without replacing the original WebSocket",n.verifiedRouteCurrent()&&n.lastVerified>0&&n.exitCheckFailures==0&&n.nextExitCheckAt==0&&site.webSocketConnections.get()==connections+1&&stream.failure==null&&before.optInt("pid")==n.transport.call("snapshot","").optInt("pid"));
-    }finally{site.ipStatus=200;site.ipDelay=0;site.ipBody=null;site.ip="203.0.113.8";NetworkCatalog.put(n.settings,"entryMode",mode);}
+    }finally{site.ipStatus=200;site.ipDelay=0;site.ipBody=null;site.ipTransportFailure="";site.ip="203.0.113.8";NetworkCatalog.put(n.settings,"entryMode",mode);}
+  }
+  JSONObject transportIdentity(TestNetwork n)throws Exception{JSONObject state=n.transport.call("snapshot","");return J.obj("pid",state.optInt("pid"),"servicePid",state.optInt("servicePid"),"generation",state.optString("generation"),"configuration",state.optString("configuration"),"controllerPort",state.optInt("controllerPort"),"proxyPort",state.optInt("proxyPort"),"entry",n.currentEntry,"tokenHash",NativeNetwork.hash(n.token),"exitIp",n.exitIp,"alive",state.optBoolean("alive"));}
+  void transportFailureRejectionChecks(TestNetwork n,HttpFixture site,HttpFixture plain)throws Exception{
+    SSLHandshakeException badIdentity=new SSLHandshakeException("certificate identity failure");badIdentity.initCause(new EOFException());
+    check("Detector transport classification excludes cancellation TLS identity and configuration failures",NativeNetwork.exitTransportInterrupted(new SocketException("Connection reset by peer"))&&NativeNetwork.exitTransportInterrupted(new EOFException())&&NativeNetwork.exitTransportInterrupted(new IOException("unexpected end of stream on controlled connection"))&&!NativeNetwork.exitTransportInterrupted(new InterruptedIOException())&&!NativeNetwork.exitTransportInterrupted(badIdentity)&&!NativeNetwork.exitTransportInterrupted(new SSLPeerUnverifiedException("wrong identity"))&&!NativeNetwork.exitTransportInterrupted(new ConnectException("Connection refused"))&&!NativeNetwork.exitTransportInterrupted(new UnknownHostException("invalid detector"))&&!NativeNetwork.exitTransportInterrupted(new IOException("unrelated configuration error")));
+    for(String fault:new String[]{"reset","eof"}){
+      n.startNow();String entry=n.currentEntry;int connections=site.webSocketConnections.get();
+      try(WebSocketStream stream=new WebSocketStream(n,site)){
+        if(!stream.awaitEchoes(0)||!n.verifiedRouteCurrent())throw new IOException("Unknown-route transport test needs a verified WSS");
+        n.selectNow(entry.equals("Entry|slow")?"Entry|fast":"Entry|slow");site.ipTransportFailure=fault;int requests=site.ipRequests.get(),wire=site.transportFaults(fault);boolean accepted=awaitNetworkCallback(n,true);
+        check("An unverified changed route rejects detector "+fault+" and closes its WSS",!accepted&&n.exitFailureReason.equals("transport-reset-or-eof")&&site.ipRequests.get()>requests&&site.transportFaults(fault)>wire&&!n.ready&&!n.coreAlive()&&!n.verifiedRouteCurrent()&&stream.awaitClosed());
+        transportTrace(J.obj("kind","changed-route","fault",fault,"detectorRequests",site.ipRequests.get()-requests,"wireFaultRequests",site.transportFaults(fault)-wire,"classification",n.exitFailureReason,"sendAccepted",accepted,"ready",n.ready,"coreAlive",n.coreAlive(),"receiptCurrent",n.verifiedRouteCurrent(),"entryChanged",!entry.equals(n.currentEntry),"webSocketClosed",stream.awaitClosed(),"webSocketConnections",site.webSocketConnections.get()-connections));
+      }finally{site.ipTransportFailure="";}
+      File directory=new File(getNoBackupFilesDir(),"network-unverified-"+fault);TestNetwork unverified=new TestNetwork(this,site,plain,directory){@Override long startupSearchBudgetMs(){return 2000;}};
+      try{
+        site.ipTransportFailure=fault;int requests=site.ipRequests.get(),wire=site.transportFaults(fault);CountDownLatch done=new CountDownLatch(1);final boolean[] accepted={true};unverified.start((ok,message)->{accepted[0]=ok;done.countDown();});
+        check("First connection rejects detector "+fault+" without inheriting a route receipt",done.await(20,TimeUnit.SECONDS)&&!accepted[0]&&unverified.exitFailureReason.equals("transport-reset-or-eof")&&site.ipRequests.get()>requests&&site.transportFaults(fault)>wire&&!unverified.ready&&!unverified.coreAlive()&&!unverified.verifiedRouteCurrent()&&unverified.startupBeganAt>0&&unverified.controllerPort>0);
+        transportTrace(J.obj("kind","first-route","fault",fault,"detectorRequests",site.ipRequests.get()-requests,"wireFaultRequests",site.transportFaults(fault)-wire,"classification",unverified.exitFailureReason,"startAccepted",accepted[0],"ready",unverified.ready,"coreAlive",unverified.coreAlive(),"receiptCurrent",unverified.verifiedRouteCurrent(),"startupBeganAt",unverified.startupBeganAt,"controllerPort",unverified.controllerPort));
+      }finally{site.ipTransportFailure="";unverified.stopNow();unverified.worker.shutdownNow();unverified.probes.shutdownNow();unverified.closers.shutdownNow();unverified.traffic.reader.shutdownNow();NativeNetwork.deletePreview(directory);}
+    }
   }
   SSLContext tlsContext()throws Exception{KeyStore store=KeyStore.getInstance("PKCS12");try(InputStream in=getAssets().open("network-fixture.p12")){store.load(in,"network-fixture".toCharArray());}KeyManagerFactory keys=KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());keys.init(store,"network-fixture".toCharArray());TrustManagerFactory trust=TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());trust.init(store);SSLContext tls=SSLContext.getInstance("TLS");tls.init(keys.getKeyManagers(),trust.getTrustManagers(),null);return tls;}
   static abstract class LoopServer implements AutoCloseable {
@@ -348,10 +380,11 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       client.setSoTimeout(12000);DataInputStream in=new DataInputStream(client.getInputStream());OutputStream out=client.getOutputStream();if(in.readUnsignedByte()!=5)return;byte[] methods=new byte[in.readUnsignedByte()];in.readFully(methods);out.write(new byte[]{5,0});out.flush();if(in.readUnsignedByte()!=5||in.readUnsignedByte()!=1)return;in.readByte();int type=in.readUnsignedByte();byte[] address=new byte[type==1?4:type==4?16:in.readUnsignedByte()];in.readFully(address);String host=type==3?new String(address,StandardCharsets.US_ASCII):InetAddress.getByAddress(address).getHostAddress();int port=in.readUnsignedShort();if(!host.equals("127.0.0.1"))return;Thread.sleep(delay);connections++;
       try(Socket upstream=new Socket(host,port)){sockets.add(upstream);out.write(new byte[]{5,0,0,1,127,0,0,1,0,0});out.flush();Future<?> back=pool.submit(()->copy(upstream,client));copy(client,upstream);back.cancel(true);sockets.remove(upstream);}
     }
-    static void copy(Socket from,Socket to){try{byte[] bytes=new byte[8192];int n;while((n=from.getInputStream().read(bytes))>=0){to.getOutputStream().write(bytes,0,n);to.getOutputStream().flush();}}catch(IOException ignored){}}
+    static void copy(Socket from,Socket to){try{byte[] bytes=new byte[8192];int n;while((n=from.getInputStream().read(bytes))>=0){to.getOutputStream().write(bytes,0,n);to.getOutputStream().flush();}}catch(IOException ignored){}finally{try{to.shutdownOutput();}catch(IOException ignored){}}}
   }
   static final class HttpFixture extends LoopServer {
-    volatile int status=200,probeStatus=204,requests,websiteDelay,ipStatus=200,ipDelay;volatile CountDownLatch delayedRequest;volatile String ip="203.0.113.8",ipBody;volatile boolean credentialsSeen,redirectSeen;final AtomicInteger ipRequests=new AtomicInteger(),webSocketConnections=new AtomicInteger(),probeRequests=new AtomicInteger(),forcedProbeFailures=new AtomicInteger();final List<Integer> headConnections=Collections.synchronizedList(new ArrayList<>());
+    volatile int status=200,probeStatus=204,requests,websiteDelay,ipStatus=200,ipDelay;volatile CountDownLatch delayedRequest;volatile String ip="203.0.113.8",ipBody,ipTransportFailure="";volatile boolean credentialsSeen,redirectSeen;final AtomicInteger ipRequests=new AtomicInteger(),ipResets=new AtomicInteger(),ipEofs=new AtomicInteger(),webSocketConnections=new AtomicInteger(),probeRequests=new AtomicInteger(),forcedProbeFailures=new AtomicInteger();final List<Integer> headConnections=Collections.synchronizedList(new ArrayList<>());
+    int transportFaults(String mode){return "reset".equals(mode)?ipResets.get():ipEofs.get();}
     HttpFixture(SSLContext tls)throws IOException{super(tls);}String url(String path){return (tls==null?"http":"https")+"://127.0.0.1:"+port()+path;}
     byte[] dnsAnswer(){byte[] q=NetworkDns.query(),answer=Arrays.copyOf(q,q.length+16);answer[2]=(byte)0x81;answer[3]=(byte)0x80;answer[7]=1;byte[] rr={(byte)0xc0,12,0,1,0,1,0,0,0,60,0,4,(byte)203,0,113,1};System.arraycopy(rr,0,answer,q.length,rr.length);return answer;}
     void handle(Socket socket)throws Exception{
@@ -363,7 +396,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
         // A loopback HEAD can round down to 0 ms, which the real core rejects as a delay result.
         // Model a small target response time, while preserving the different entry hop delays.
         else if(path.startsWith("/probe")){probeRequests.incrementAndGet();Thread.sleep(10);code=forcedProbeFailures.getAndUpdate(left->Math.max(0,left-1))>0?503:probeStatus;}
-        else if(path.startsWith("/ip")){ipRequests.incrementAndGet();int wait=ipDelay;if(wait>0)Thread.sleep(wait);code=ipStatus;body=(ipBody==null?"{\"ip\":\""+ip+"\"}":ipBody).getBytes(StandardCharsets.UTF_8);}
+        else if(path.startsWith("/ip")){ipRequests.incrementAndGet();String fault=ipTransportFailure;if("reset".equals(fault)){ipResets.incrementAndGet();socket.setSoLinger(true,0);return;}if("eof".equals(fault)){ipEofs.incrementAndGet();socket.shutdownOutput();return;}int wait=ipDelay;if(wait>0)Thread.sleep(wait);code=ipStatus;body=(ipBody==null?"{\"ip\":\""+ip+"\"}":ipBody).getBytes(StandardCharsets.UTF_8);}
         else if(path.startsWith("/dns")){body=dnsAnswer();type="application/dns-message";}
         else if(path.startsWith("/redirect"))redirectSeen=true;
         String response="HTTP/1.1 "+code+" Fixture\r\nContent-Length: "+body.length+"\r\nContent-Type: "+type+"\r\nConnection: keep-alive\r\n"+extra+"\r\n";out.write(response.getBytes(StandardCharsets.US_ASCII));if(!method.equals("HEAD"))out.write(body);out.flush();

@@ -59,7 +59,7 @@ jobs:
             attempt="work/gecko-input-diagnostics/attempt-$trial"
             mkdir -p "$attempt"
             rm -f work/gecko-integration/gecko-performance-results.json work/gecko-integration/gecko-performance-failure-log.txt work/gecko-integration/gecko-performance-screen.png
-            if python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554 2>&1 | tee "$attempt/runner.log"; then
+            if python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554 --input-diagnostics 2>&1 | tee "$attempt/runner.log"; then
               exit_code=0
             else
               exit_code=$?

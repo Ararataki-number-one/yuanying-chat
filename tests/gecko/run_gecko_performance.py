@@ -123,6 +123,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--adb', required=True)
     parser.add_argument('--serial', default='emulator-5554')
+    parser.add_argument('--input-diagnostics', action='store_true',
+                        help='Enable extra SDK/IME and JS selection observations; disabled for the normal release regression.')
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
@@ -161,7 +163,10 @@ def main():
                   'screen': adb('shell', 'wm', 'size').strip(), 'density': adb('shell', 'wm', 'density').strip(),
                   'frameTimingInterpretation': 'Descriptive actual Gecko RAF and Android Choreographer gaps during the controlled polling and gesture workload; no claim of real-account FPS.'}
         adb('logcat', '-c')
-        adb('shell', 'am', 'start', '-W', '-n', package + '/local.pocketchat.GeckoPerformanceIntegrationActivity')
+        activity = ['shell', 'am', 'start', '-W', '-n', package + '/local.pocketchat.GeckoPerformanceIntegrationActivity']
+        if args.input_diagnostics:
+            activity.extend(['--ez', 'inputDiagnostics', 'true'])
+        adb(*activity)
         checks, measurements, gestures, text_inputs, diagnostics = {}, {}, {}, {}, {}
         input_readiness, input_events, input_evaluations, native_input_events = {}, {}, {}, {}
         deadline = time.monotonic() + 180
@@ -231,6 +236,11 @@ def main():
                               actualNativeInputTrace=[native_input_events[key] for key in sorted(native_input_events)])
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
+                assert report['inputDiagnosticsEnabled'] == args.input_diagnostics, report
+                if not args.input_diagnostics:
+                    assert not native_input_events and not input_evaluations, 'Normal regression unexpectedly attached diagnostic observers'
+                    assert not any(event['type'] == 'selectionchange' or event['type'].startswith('script')
+                                   for event in report['actualTrustedInputEvents']), 'Normal regression unexpectedly instrumented DOM selection'
                 assert report['status'] == 'passed' and report['actualAndroidExecution'] and report['actualGeckoExecution'] and report['actualAndroidTouchExecution'] and report['actualGeckoBindingRegressionExecution'], report
                 assert report['baselineSource'] == BASELINE and report['checkCount'] == len(checks), report
                 assert len(checks) >= 125 and all(check['pass'] for check in checks.values()), report

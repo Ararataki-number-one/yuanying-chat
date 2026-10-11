@@ -3,6 +3,10 @@
 import argparse
 import json
 import pathlib
+if __package__:
+    from .check_connection_evidence import verify_detector_transport_evidence
+else:
+    from check_connection_evidence import verify_detector_transport_evidence
 
 UPDATE_CHECKS = {
     'disconnectPreservesPartial', 'rangeOnlyRemaining', 'ifRangeValidator',
@@ -31,6 +35,10 @@ def verify_interaction_transfer_evidence(directory, source):
         return report
 
     gecko = android('gecko-performance-results.json')
+    assert gecko['inputDiagnosticsEnabled'] is False
+    assert gecko['actualNativeInputTrace'] == [] and gecko['actualInputEvaluationTrace'] == []
+    assert not any(item['type'] == 'selectionchange' or item['type'].startswith('script')
+                   for item in gecko['actualTrustedInputEvents'])
     assert gecko['actualInputImeSettled'] and gecko['actualSingleInputBurst']
     assert {
         'Actual Android input waits for visible IME and unchanged viewport, composer and caret',
@@ -139,7 +147,7 @@ def verify_interaction_transfer_evidence(directory, source):
                                           'independentStore', 'sdkSnapshotRestorable'))
 
     network = android('network-performance-results.json')
-    assert network['actualMihomoExecution'] and len(network['checks']) >= 134
+    assert network['actualMihomoExecution'] and len(network['checks']) >= 143
     assert all(item['pass'] for item in network['checks'])
     assert {
         'Automatic display sampling makes no requests while a reply is busy',
@@ -155,11 +163,13 @@ def verify_interaction_transfer_evidence(directory, source):
     assert telemetry['queuedBusyRequests'] == telemetry['newerSampleDuplicateRequests'] == 0
     assert telemetry['idleSampleRequests'] > 0 and telemetry['recoveryExitRequests'] == 1
     assert telemetry['webSocketConnections'] == 1 and telemetry['webSocketEchoes'] > 0
+    detector_transport = verify_detector_transport_evidence(network)
     return {'actualAndroidExecution': True, 'actualHttpTransfer': True,
             'updateChecks': len(update['checks']), 'httpHostChecks': host['total'],
             'interactionHostChecks': interaction['total'],
             'nativeMainSerializations': checkpoint['mainSerialized'],
-            'surfaceOriginSyncs': surface['originSyncs'], 'networkChecks': len(network['checks'])}
+            'surfaceOriginSyncs': surface['originSyncs'], 'networkChecks': len(network['checks']),
+            'detectorTransport': detector_transport}
 
 
 if __name__ == '__main__':

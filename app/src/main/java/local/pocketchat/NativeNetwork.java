@@ -298,12 +298,24 @@ class NativeNetwork {
     try{InetAddress.getByName(ip);return true;}catch(UnknownHostException invalid){return false;}
   }
   static String exitResponse(InputStream in)throws IOException{ByteArrayOutputStream body=new ByteArrayOutputStream();byte[] bytes=new byte[1024];int count;while((count=in.read(bytes))!=-1){if(body.size()+count>4096)throw new ExitCheckUnavailable("invalid-response",null);body.write(bytes,0,count);}return new String(body.toByteArray(),StandardCharsets.UTF_8);}
+  /** Only an interrupted detector exchange, never cancellation or TLS identity failure. */
+  static boolean exitTransportInterrupted(IOException failure){
+    boolean interrupted=false;Throwable cause=failure;
+    for(int depth=0;cause!=null&&depth<8;depth++,cause=cause.getCause()){
+      if(cause instanceof InterruptedIOException||cause instanceof javax.net.ssl.SSLHandshakeException||cause instanceof javax.net.ssl.SSLPeerUnverifiedException||cause instanceof java.security.cert.CertificateException||cause instanceof UnknownHostException||cause instanceof ConnectException||cause instanceof NoRouteToHostException)return false;
+      String message=cause.getMessage()==null?"":cause.getMessage().toLowerCase(Locale.ROOT);
+      interrupted|=cause instanceof EOFException||cause instanceof SocketException&&message.contains("connection reset")||message.startsWith("unexpected end of stream")||message.contains("unexpected eof");
+    }
+    return interrupted;
+  }
   String verifyExitRequest()throws Exception{
     maintenanceCheck();ExitRouteReceipt attempted=exitRouteReceipt();HttpURLConnection c=openProbeConnection(exitCheckUrl(),proxyPort);track(c);c.setConnectTimeout(10000);c.setReadTimeout(10000);String ip;boolean reusable=false;
     try{int status=c.getResponseCode();if(status!=200)throw new ExitCheckUnavailable("http-"+status,null);
       try(InputStream in=c.getInputStream()){try{ip=new JSONObject(exitResponse(in)).optString("ip");}catch(JSONException invalid){throw new ExitCheckUnavailable("invalid-response",invalid);}}
       if(!validExitIp(ip))throw new ExitCheckUnavailable("invalid-response",null);reusable=true;
-    }catch(SocketTimeoutException timeout){throw new ExitCheckUnavailable("timeout",timeout);}finally{untrack(c);if(!reusable)c.disconnect();}
+    }catch(SocketTimeoutException timeout){maintenanceCheck();if(Thread.currentThread().isInterrupted())throw timeout;throw new ExitCheckUnavailable("timeout",timeout);}
+    catch(IOException interrupted){maintenanceCheck();if(Thread.currentThread().isInterrupted()||!exitTransportInterrupted(interrupted))throw interrupted;throw new ExitCheckUnavailable("transport-reset-or-eof",interrupted);}
+    finally{untrack(c);if(!reusable)c.disconnect();}
     maintenanceCheck();JSONObject state=transport==null?null:transport.state;if(!attempted.matches(this,state))throw new IOException("网络实例已变化，出口核验结果未应用");
     observedExitIp=ip;lastObserved=System.currentTimeMillis();byte[] stored=secrets.get("exit-baseline");JSONObject old=stored==null?new JSONObject():J.parse(new String(stored,StandardCharsets.UTF_8));
     if(fingerprint.equals(old.optString("fingerprint"))&&!ip.equals(old.optString("ip"))){verifiedRoute=null;recoveryBlocked=true;if(exitIp.isEmpty())exitIp=old.optString("ip");throw new ExitMismatch();}

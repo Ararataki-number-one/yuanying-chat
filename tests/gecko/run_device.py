@@ -278,14 +278,22 @@ def main():
         adb('shell','input','tap',str(point['x']),str(point['y']))
         update_report['actualAndroidGestures'].append(dict(point,actualAndroidInput=True));return point
     def active_update_job(stage):
-        expires=time.monotonic()+6;raw=''
+        started=time.monotonic();expires=started+6;raw='';attempts=[]
+        command=[args.adb,'-s',args.serial,'shell','cmd','jobscheduler','get-job-state',package,'4103']
         while time.monotonic()<expires:
-            raw=adb('shell','cmd','jobscheduler','get-job-state',package,'4103')
-            if 'active' in raw.split():break
+            # A trusted resume tap queues metadata preparation before Android
+            # registers its Job. The shell reports that brief absence as 23;
+            # it must still become an actually active Job within this deadline.
+            result=subprocess.run(command,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=30);raw=result.stdout
+            sample=dict(stage=stage,elapsedMs=round((time.monotonic()-started)*1000),returnCode=result.returncode,output=raw.strip());attempts.append(sample)
+            update_report.setdefault('jobReadinessTrace',[]).append(sample)
+            missing=result.returncode==23 and raw.strip()==f'Could not find job 4103 in package {package} / user 0'
+            if result.returncode!=0 and not missing:raise subprocess.CalledProcessError(result.returncode,command,output=raw)
+            if result.returncode==0 and 'active' in raw.split():break
             time.sleep(.1)
-        assert 'active' in raw.split(),(stage,raw)
+        assert result.returncode==0 and 'active' in raw.split(),(stage,attempts)
         detail=adb('shell','dumpsys','jobscheduler');assert 'local.pocketchat.AppUpdateJob' in detail,detail
-        (OUT/('update-transfer-job-'+stage+'.txt')).write_text(detail);event=dict(stage=stage,jobId=4103,state=raw.strip(),service='local.pocketchat.AppUpdateJob');update_report['actualJobExecutions'].append(event);return event
+        (OUT/('update-transfer-job-'+stage+'.txt')).write_text(detail);event=dict(stage=stage,jobId=4103,state=raw.strip(),service='local.pocketchat.AppUpdateJob',readinessTrace=attempts);update_report['actualJobExecutions'].append(event);return event
     def update_transfers():
         nonlocal update_report
         update_report=dict(status='running',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),actualAndroidExecution=True,actualHttpTransfer=True,actualJobSchedulerExecution=False,checks=[],cases=[],httpTransfers=Fixture.update_transfer_trace,actualAndroidGestures=[],actualJobExecutions=[],scope='Real signed synthetic APK over controlled HTTP through the production transfer and Android JobScheduler; no synthetic APK installed.')

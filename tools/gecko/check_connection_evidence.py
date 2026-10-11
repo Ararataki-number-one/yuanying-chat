@@ -5,6 +5,37 @@ import json
 import pathlib
 
 
+def verify_detector_transport_evidence(network):
+    """Wire failures and the exact protected service identity, rather than check labels alone."""
+    evidence = network['exitTransportContinuity']
+    assert len(evidence) == 6
+    cases = {(item['kind'], item['fault']): item for item in evidence}
+    assert set(cases) == {(kind, fault) for kind in ('verified', 'changed-route', 'first-route')
+                          for fault in ('reset', 'eof')}
+    for (kind, fault), item in cases.items():
+        assert item['classification'] == 'transport-reset-or-eof', (kind, fault)
+        assert item['detectorRequests'] == item['wireFaultRequests'] > 0
+        if kind == 'verified':
+            before, after = item['before'], item['after']
+            assert item['serviceProcess'] and before == after and before['alive']
+            assert before['pid'] > 1 and before['servicePid'] > 1
+            assert before['controllerPort'] > 0 and before['proxyPort'] > 0
+            assert before['generation'] and before['configuration'] and before['entry'] and before['exitIp']
+            assert len(before['tokenHash']) == 64
+            assert item['receiptCurrent'] and not item['sendAccepted'] and item['lastVerified'] == 0
+            assert item['retryInMs'] > 0 and item['backoffNoRequests']
+            assert item['webSocketConnections'] == 1 and item['echoesAfter'] > item['echoesBefore']
+        else:
+            assert not item['ready'] and not item['coreAlive'] and not item['receiptCurrent']
+            if kind == 'changed-route':
+                assert not item['sendAccepted'] and item['entryChanged']
+                assert item['webSocketClosed'] and item['webSocketConnections'] == 1
+            else:
+                assert not item['startAccepted'] and item['startupBeganAt'] > 0 and item['controllerPort'] > 0
+    return {'actualDetectorReset': True, 'actualDetectorEof': True,
+            'sameVerifiedServiceWebSocket': True, 'unknownRouteFailClosed': True}
+
+
 def verify_connection_evidence(directory, source):
     directory = pathlib.Path(directory)
 
@@ -44,7 +75,7 @@ def verify_connection_evidence(directory, source):
 
     network = android('network-performance-results.json')
     assert network['actualMihomoExecution']
-    assert len(network['checks']) >= 126
+    assert len(network['checks']) >= 143
     names = {check['name'] for check in network['checks']}
     assert {
         'The live core and selected route have a successful exit verification receipt',
@@ -68,7 +99,17 @@ def verify_connection_evidence(directory, source):
         'Independent network service renews exit proof without replacing the original WebSocket',
         'Cancelled maintenance fails closed after an actual unverified entry change',
         'A confirmed service exit mismatch still stops the core when maintenance is concurrently cancelled',
+        'Independent network service retains the same WSS and core during detector reset',
+        'Independent network service retains the same WSS and core during detector eof',
+        'Detector reset preflight refuses sending without replacing the verified WSS',
+        'Detector eof preflight refuses sending without replacing the verified WSS',
+        'An unverified changed route rejects detector reset and closes its WSS',
+        'An unverified changed route rejects detector eof and closes its WSS',
+        'First connection rejects detector reset without inheriting a route receipt',
+        'First connection rejects detector eof without inheriting a route receipt',
+        'Detector transport classification excludes cancellation TLS identity and configuration failures',
     } <= names, 'Real protected WebSocket continuity and unknown-route rejection are required.'
+    transport = verify_detector_transport_evidence(network)
 
     host = json.loads((directory / 'reply-binding-host-results.json').read_text())
     assert host['passed'] == host['total'] >= 41 and all(check['pass'] for check in host['checks'])
@@ -81,7 +122,8 @@ def verify_connection_evidence(directory, source):
     } <= names, 'Current website errors must remain distinct from historical or quoted content.'
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True,
             'actualMihomoExecution': True, 'geckoChecks': gecko['checkCount'],
-            'networkChecks': len(network['checks']), 'bindingHostChecks': host['total']}
+            'networkChecks': len(network['checks']), 'bindingHostChecks': host['total'],
+            'detectorTransport': transport}
 
 
 if __name__ == '__main__':
