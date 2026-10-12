@@ -4,7 +4,7 @@
 
 ## 工具与构建
 
-使用 JDK 17、Android SDK Platform 37.1、Build Tools 37.0.0。最低 Android 8，独立环境需要 Android 9。Gradle Wrapper 固定 9.8.0 并校验发行包 SHA-256；AGP 9.4.1、GeckoView 157.0.20260924084938 固定在构建文件。
+使用 JDK 17、Android SDK Platform 37.1、Build Tools 37.0.0。最低 Android 8，独立环境需要 Android 9。Gradle Wrapper 固定 9.8.0 并校验发行包 SHA-256；AGP 9.4.1、Mozilla 官方 GeckoView `157.0.20261005135250`（Firefox 157.0.1）固定在构建文件。[官方 SDK 来源收据](../third-party/sdk/geckoview-157.0.1-official.json) 记录 AAR、POM、源码包和准确上游 revision。
 
 ```bash
 # ANDROID_HOME 指向已安装的 Android SDK，JAVA_HOME 指向 JDK 17。
@@ -30,10 +30,12 @@ python3 tools/sign-apk.py app/build/outputs/apk/release/app-arm64-v8a-release-un
 
 ## 云环境
 
-已准备工具位于 `work/cloud-setup/jdk/` 与 `work/gecko-sdk-validation/`。`python3 engine-probe/tools/setup.py` 用官方地址与固定校验和准备 SDK 37.1、Build Tools 37、Gradle 和 Gecko AAR；它只写忽略目录。该脚本名称来自早期验证包，工具也用于正式构建。
+已准备工具位于 `work/cloud-setup/jdk/` 与 `work/gecko-sdk-validation/`。`python3 engine-probe/tools/setup.py` 用官方地址与固定校验和准备 SDK 37.1、Build Tools 37、Gradle 和早期验证包所用的 Gecko AAR；它只写忽略目录。该独立验证包保留历史 SDK pin，正式应用 SDK 以 `app/build.gradle` 与上述来源收据为准。
 
 本云容器的 Maven Central 返回 429，完整 Gradle 构建通过 `.github/workflows/gecko-integration.yml` 在 GitHub runner 执行。该工作流先校验官方 SDK 和 Gradle，再运行发布编译、发布版 LintVital、回调生命周期检查和 Android 15 KVM 回归。不要将本地 javac 成功描述为完整 APK 构建成功。
 
 无需常驻服务即可进行编译。设备回归需要 Android 设备或带 KVM 的模拟器，受控样本与 HTTP/SOCKS 服务由 `tests/gecko/run_device.py` 启动并结束。真实 Google/ChatGPT 登录需要在手机上验收，不在合成样本测试范围内。
 
 正式源码只使用官方 GeckoView；不再依赖 AndroidX WebKit，不打包旧简洁页面及其渲染库。正常验收保留原网页输入、存储、上传、下载和环境线路检查，并追加仅原网页、前台安静／后台选用以及更新线路续传检查。公开 SDK AAR 校验和固定，未使用输入实验补丁。
+
+工作流在构建前核验官方 AAR/POM/源码包，构建后再次核验 Gradle 实际解析到的完整 AAR。`tools/gecko/verify_official_sdk.py` 只读取并比对，不重写 AAR、SDK 类或原生库。SDK 来源核验和编译通过不代表输入问题已修复；仍需保留原单次 Android 硬件输入、草稿与选择范围断言，全部正常设备验收通过后才能发布。

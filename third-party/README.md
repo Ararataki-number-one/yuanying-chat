@@ -17,11 +17,11 @@ Mihomo 从 1.5.20 起使用本项目的探测补丁，不再将二进制描述�
 
 ## Mozilla GeckoView
 
-正式包使用未经修改的官方预编译 `org.mozilla.geckoview:geckoview:157.0.20260924084938`。AAR SHA-256：`25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0`。
+正式构建使用未经修改的官方预编译 `org.mozilla.geckoview:geckoview:157.0.20261005135250`（Firefox 157.0.1）。AAR SHA-256：`15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268`。[固定 SDK 来源收据](sdk/geckoview-157.0.1-official.json) 包含原始 AAR、POM、源码包和内部类哈希；来源核验不替代真实 Android 输入与环境隔离验收。
 
-- [官方 Maven SDK](https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20260924084938/)
-- [该发行包 POM 所指的准确上游源码](https://hg.mozilla.org/releases/mozilla-release/rev/8eb25af4acf031ab1e06abf1a912275083c820ed)
-- [对应源码目录](https://hg.mozilla.org/releases/mozilla-release/file/8eb25af4acf031ab1e06abf1a912275083c820ed/)
+- [官方 Maven SDK](https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/)
+- [该发行包 POM 所指的准确上游源码](https://hg.mozilla.org/releases/mozilla-release/rev/737ec77d798755890b062aab541a90d6c75afd19)
+- [对应源码目录](https://hg.mozilla.org/releases/mozilla-release/file/737ec77d798755890b062aab541a90d6c75afd19/)
 - [Mozilla 原始许可汇总，包含 MPL 2.0](licenses/Mozilla-Gecko-License.html)（汇总文本来自官方 gecko-dev 镜像；准确发行源码以上述 revision 为准）
 
 SDK 的原生库、内部网页和许可材料保留原样。应用仅加入独立的 Java 适配层和内置路由扩展，没有改动 Mozilla 引擎源文件。AndroidX 的传递依赖使用各自 Apache 2.0 许可。Mozilla、Firefox 的商标不属于本项目。

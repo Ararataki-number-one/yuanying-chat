@@ -38,7 +38,7 @@ class GeckoWebView extends FrameLayout {
     uploadWorker.execute(()->{for(GeckoUploadFiles.Selection files:uploadFiles)files.delete();uploadFiles.clear();});uploadWorker.shutdown();
   }
 
-  static final String VERSION="GeckoView 157.0";
+  static final String VERSION="GeckoView 157.0.1";
   final ChatSession owner;
   GeckoView surface;GeckoRuntime runtime;WebExtension extension;GeckoSession primary,current;
   final ArrayList<GeckoSession> popups=new ArrayList<>();
