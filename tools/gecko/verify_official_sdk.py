@@ -6,6 +6,7 @@ import io
 import json
 import pathlib
 import re
+import struct
 import subprocess
 import xml.etree.ElementTree as ET
 import zipfile
@@ -22,6 +23,45 @@ def digest(path, algorithm='sha256'):
     return result.hexdigest()
 
 
+def class_constants(data):
+    """Read ConstantValue fields without executing or rewriting the SDK class."""
+    stream = io.BytesIO(data)
+    assert stream.read(4) == b'\xca\xfe\xba\xbe'
+    stream.read(4)  # minor/major version
+    u2 = lambda: struct.unpack('>H', stream.read(2))[0]
+    pool = [None] * u2()
+    index = 1
+    while index < len(pool):
+        tag = stream.read(1)[0]
+        if tag == 1:
+            pool[index] = stream.read(u2()).decode('utf-8')
+        elif tag == 3:
+            pool[index] = struct.unpack('>i', stream.read(4))[0]
+        elif tag == 8:
+            pool[index] = ('string', u2())
+        else:
+            length = {4: 4, 5: 8, 6: 8, 7: 2, 9: 4, 10: 4, 11: 4, 12: 4,
+                      15: 3, 16: 2, 17: 4, 18: 4, 19: 2, 20: 2}[tag]
+            stream.read(length)
+            if tag in (5, 6):
+                index += 1
+        index += 1
+    stream.read(6)  # access flags, this/super class
+    stream.read(2 * u2())  # interfaces
+    values = {}
+    for _ in range(u2()):
+        u2()  # field access flags
+        name = pool[u2()]
+        u2()  # descriptor
+        for _ in range(u2()):
+            attribute = pool[u2()]
+            content = stream.read(struct.unpack('>I', stream.read(4))[0])
+            if attribute == 'ConstantValue':
+                value = pool[struct.unpack('>H', content)[0]]
+                values[name] = pool[value[1]] if isinstance(value, tuple) else value
+    return values
+
+
 def verify(aar, pom, sources, gradle_cache=None):
     receipt = json.loads(RECEIPT.read_text())
     assert receipt['schema'] == 1 and receipt['releaseChannel'] == 'release'
@@ -36,6 +76,8 @@ def verify(aar, pom, sources, gradle_cache=None):
         expected_url = ('https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/'
                         + receipt['version'] + '/geckoview-' + receipt['version'] + suffix)
         assert pin['url'] == expected_url
+        if name == 'aar':
+            assert pin['officialSha256Url'] == expected_url + '.sha256'
         assert pathlib.Path(file).stat().st_size == pin['bytes'], name + ' byte count changed.'
         assert digest(file) == pin['sha256'], name + ' differs from the pinned official artifact.'
     assert digest(aar, 'sha1') == receipt['aar']['sha1']
@@ -49,6 +91,9 @@ def verify(aar, pom, sources, gradle_cache=None):
         assert hashlib.sha256(classes).hexdigest() == receipt['classesJarSha256']
         with zipfile.ZipFile(io.BytesIO(classes)) as jar:
             assert hashlib.sha256(jar.read('org/mozilla/geckoview/GeckoEditable.class')).hexdigest() == receipt['geckoEditableClassSha256']
+            build = class_constants(jar.read('org/mozilla/geckoview/BuildConfig.class'))
+            assert build['MOZILLA_OFFICIAL'] == 1 and build['MOZ_UPDATE_CHANNEL'] == receipt['releaseChannel']
+            assert build['MOZILLA_VERSION'] == receipt['firefoxVersion'], 'Receipt differs from the actual SDK Firefox version.'
     with zipfile.ZipFile(sources) as archive:
         assert hashlib.sha256(archive.read('org/mozilla/geckoview/GeckoEditable.java')).hexdigest() == receipt['geckoEditableSourceSha256']
     resolved = []
