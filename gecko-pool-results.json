@@ -1,0 +1,783 @@
+{
+  "status": "failed",
+  "actualAndroidExecution": true,
+  "actualGeckoExecution": true,
+  "actualMihomoExecution": true,
+  "protocol": "h2",
+  "defaultNetworkCases": "Injected event values through the production DefaultNetwork state, not a physical Wi-Fi handover",
+  "environmentCase": "Separate pool instance with slot 1 in the same Gecko runtime; private-profile/login isolation is exercised by the existing multi-process suite",
+  "recoveryCase": "Real NativeNetwork.recover with an advanced asynchronous ChatSession epoch; no document navigation or resend",
+  "testOnlyCertificateException": true,
+  "publicNetworkTraffic": false,
+  "requestRealm": "page-content-fetch",
+  "webSocketRealm": "page-content-WebSocket",
+  "webSocketBefore": {
+    "echoes": 6,
+    "connection": 2,
+    "closed": false
+  },
+  "webSocketAfter": {
+    "echoes": 10,
+    "connection": 2,
+    "closed": false
+  },
+  "error": "java.io.IOException: \u5185\u7f6e\u7f51\u7edc\u63a7\u5236\u8bf7\u6c42\u5931\u8d25",
+  "checks": [
+    {
+      "name": "The formal managed service starts a genuinely verified two-hop chain",
+      "pass": true
+    },
+    {
+      "name": "A fresh runtime obtains the real Android default-network snapshot",
+      "pass": true
+    },
+    {
+      "name": "The test certificate exception is scoped to one localhost document",
+      "pass": true
+    },
+    {
+      "name": "The official MV2 sandbox exposes page-bound fetch and WebSocket",
+      "pass": true
+    },
+    {
+      "name": "initial starts one explicit actual Gecko request",
+      "pass": true
+    },
+    {
+      "name": "initial completes with the expected guarded outcome",
+      "pass": true
+    },
+    {
+      "name": "initial negotiates genuine HTTP/2 and preserves the entire response",
+      "pass": true
+    },
+    {
+      "name": "warm starts one explicit actual Gecko request",
+      "pass": true
+    },
+    {
+      "name": "warm completes with the expected guarded outcome",
+      "pass": true
+    },
+    {
+      "name": "warm negotiates genuine HTTP/2 and preserves the entire response",
+      "pass": true
+    },
+    {
+      "name": "Warm actual Gecko HTTP/2 requests reuse one TLS/TCP connection",
+      "pass": true
+    },
+    {
+      "name": "The existing asynchronous network recovery succeeds",
+      "pass": true
+    },
+    {
+      "name": "Healthy actual recovery preserves the verified core lifetime, entry and browser pool",
+      "pass": true
+    },
+    {
+      "name": "healthy-recovery starts one explicit actual Gecko request",
+      "pass": true
+    },
+    {
+      "name": "healthy-recovery completes with the expected guarded outcome",
+      "pass": true
+    },
+    {
+      "name": "healthy-recovery negotiates genuine HTTP/2 and preserves the entire response",
+      "pass": true
+    },
+    {
+      "name": "The new pool identity reuses the same actual HTTP/2 TLS connection after healthy recovery",
+      "pass": true
+    },
+    {
+      "name": "Actual WSS frames survive recovery without reconnect or resend",
+      "pass": true
+    },
+    {
+      "name": "legacy-before starts one explicit actual Gecko request",
+      "pass": true
+    },
+    {
+      "name": "legacy-before completes with the expected guarded outcome",
+      "pass": true
+    },
+    {
+      "name": "legacy-before negotiates genuine HTTP/2 and preserves the entire response",
+      "pass": true
+    },
+    {
+      "name": "The existing asynchronous network recovery succeeds",
+      "pass": true
+    },
+    {
+      "name": "legacy-after starts one explicit actual Gecko request",
+      "pass": true
+    },
+    {
+      "name": "legacy-after completes with the expected guarded outcome",
+      "pass": true
+    },
+    {
+      "name": "legacy-after negotiates genuine HTTP/2 and preserves the entire response",
+      "pass": true
+    },
+    {
+      "name": "The legacy counterfactual recovery changes only the asynchronous epoch",
+      "pass": true
+    },
+    {
+      "name": "The exact old epoch-key counterfactual opens another real TLS connection for the same route",
+      "pass": true
+    },
+    {
+      "name": "route-a starts one explicit actual Gecko request",
+      "pass": true
+    },
+    {
+      "name": "route-a completes with the expected guarded outcome",
+      "pass": true
+    },
+    {
+      "name": "route-a negotiates genuine HTTP/2 and preserves the entire response",
+      "pass": true
+    }
+  ],
+  "requests": [
+    {
+      "id": "initial",
+      "ok": true,
+      "protocol": "h2",
+      "connection": 1,
+      "streamId": 5,
+      "durationMs": 50,
+      "bodyBytes": 9100,
+      "bodyHash": "75a46a86b20d61aa10f5417e1586026547019f0625e23abd8649e457dbc0fdd4",
+      "error": "",
+      "requestRealm": "page-content-fetch",
+      "entry": "Entry|a",
+      "proxyPort": 41273,
+      "fixedConnectionsBefore": 3,
+      "fixedConnectionsAfter": 3,
+      "entryAConnectionsBefore": 3,
+      "entryAConnectionsAfter": 3,
+      "entryBConnectionsBefore": 0,
+      "entryBConnectionsAfter": 0
+    },
+    {
+      "id": "warm",
+      "ok": true,
+      "protocol": "h2",
+      "connection": 1,
+      "streamId": 7,
+      "durationMs": 38,
+      "bodyBytes": 9100,
+      "bodyHash": "75a46a86b20d61aa10f5417e1586026547019f0625e23abd8649e457dbc0fdd4",
+      "error": "",
+      "requestRealm": "page-content-fetch",
+      "entry": "Entry|a",
+      "proxyPort": 41273,
+      "fixedConnectionsBefore": 3,
+      "fixedConnectionsAfter": 3,
+      "entryAConnectionsBefore": 3,
+      "entryAConnectionsAfter": 3,
+      "entryBConnectionsBefore": 0,
+      "entryBConnectionsAfter": 0
+    },
+    {
+      "id": "healthy-recovery",
+      "ok": true,
+      "protocol": "h2",
+      "connection": 1,
+      "streamId": 9,
+      "durationMs": 24,
+      "bodyBytes": 9100,
+      "bodyHash": "75a46a86b20d61aa10f5417e1586026547019f0625e23abd8649e457dbc0fdd4",
+      "error": "",
+      "requestRealm": "page-content-fetch",
+      "entry": "Entry|a",
+      "proxyPort": 41273,
+      "fixedConnectionsBefore": 4,
+      "fixedConnectionsAfter": 4,
+      "entryAConnectionsBefore": 4,
+      "entryAConnectionsAfter": 4,
+      "entryBConnectionsBefore": 0,
+      "entryBConnectionsAfter": 0
+    },
+    {
+      "id": "legacy-before",
+      "ok": true,
+      "protocol": "h2",
+      "connection": 3,
+      "streamId": 3,
+      "durationMs": 110,
+      "bodyBytes": 9100,
+      "bodyHash": "75a46a86b20d61aa10f5417e1586026547019f0625e23abd8649e457dbc0fdd4",
+      "error": "",
+      "requestRealm": "page-content-fetch",
+      "entry": "Entry|a",
+      "proxyPort": 41273,
+      "fixedConnectionsBefore": 4,
+      "fixedConnectionsAfter": 5,
+      "entryAConnectionsBefore": 4,
+      "entryAConnectionsAfter": 5,
+      "entryBConnectionsBefore": 0,
+      "entryBConnectionsAfter": 0
+    },
+    {
+      "id": "legacy-after",
+      "ok": true,
+      "protocol": "h2",
+      "connection": 4,
+      "streamId": 3,
+      "durationMs": 90,
+      "bodyBytes": 9100,
+      "bodyHash": "75a46a86b20d61aa10f5417e1586026547019f0625e23abd8649e457dbc0fdd4",
+      "error": "",
+      "requestRealm": "page-content-fetch",
+      "entry": "Entry|a",
+      "proxyPort": 41273,
+      "fixedConnectionsBefore": 5,
+      "fixedConnectionsAfter": 6,
+      "entryAConnectionsBefore": 5,
+      "entryAConnectionsAfter": 6,
+      "entryBConnectionsBefore": 0,
+      "entryBConnectionsAfter": 0
+    },
+    {
+      "id": "route-a",
+      "ok": true,
+      "protocol": "h2",
+      "connection": 1,
+      "streamId": 11,
+      "durationMs": 58,
+      "bodyBytes": 9100,
+      "bodyHash": "75a46a86b20d61aa10f5417e1586026547019f0625e23abd8649e457dbc0fdd4",
+      "error": "",
+      "requestRealm": "page-content-fetch",
+      "entry": "Entry|a",
+      "proxyPort": 41273,
+      "fixedConnectionsBefore": 6,
+      "fixedConnectionsAfter": 6,
+      "entryAConnectionsBefore": 6,
+      "entryAConnectionsAfter": 6,
+      "entryBConnectionsBefore": 0,
+      "entryBConnectionsAfter": 0
+    }
+  ],
+  "routes": [
+    {
+      "url": "https://127.0.0.1:9877/pool",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 76605
+    },
+    {
+      "url": "https://127.0.0.1:9877/pool",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 76605
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/bundles/startup.json.mozlz4",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 76605
+    },
+    {
+      "url": "http://firefox-portal-detection.com/success.txt?ipv4",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 76660
+    },
+    {
+      "url": "http://firefox-portal-detection.com/success.txt?ipv6",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 76664
+    },
+    {
+      "url": "https://127.0.0.1:9877/pool",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 77465
+    },
+    {
+      "url": "https://127.0.0.1:9877/bytes?id=initial",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 77906
+    },
+    {
+      "url": "https://127.0.0.1:9877/bytes?id=warm",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 78051
+    },
+    {
+      "url": "wss://127.0.0.1:9877/ws",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 78152
+    },
+    {
+      "url": "wss://127.0.0.1:9877/ws",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 78167
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 78263
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 78600
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 78752
+    },
+    {
+      "url": "https://127.0.0.1:9877/bytes?id=healthy-recovery",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "guardAllowed": true,
+      "epoch": 1,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 78937
+    },
+    {
+      "url": "https://127.0.0.1:9877/bytes?id=legacy-before",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-0-1"
+      },
+      "guardAllowed": true,
+      "epoch": 1,
+      "legacyEpochCounterfactual": true,
+      "alternatePoolInstance": false,
+      "at": 79201
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 1,
+      "legacyEpochCounterfactual": true,
+      "alternatePoolInstance": false,
+      "at": 79349
+    },
+    {
+      "url": "https://127.0.0.1:9877/bytes?id=legacy-after",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-0-2"
+      },
+      "guardAllowed": true,
+      "epoch": 2,
+      "legacyEpochCounterfactual": true,
+      "alternatePoolInstance": false,
+      "at": 79452
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 2,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 79560
+    },
+    {
+      "url": "https://127.0.0.1:9877/bytes?id=route-a",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41273,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "guardAllowed": true,
+      "epoch": 2,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 79567
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": false,
+      "epoch": 2,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 79936
+    }
+  ],
+  "transitions": [
+    {
+      "name": "healthy-managed-recovery",
+      "before": {
+        "pid": 3812,
+        "servicePid": 3794,
+        "generation": "8d27758d-c290-494c-8e43-b8fea3cbbff4",
+        "configuration": "cccaf8909261887ffaa93ccaca968d555f3f23d3732ed63f9abfb0910f649aba",
+        "proxyPort": 41273,
+        "controllerPort": 35921,
+        "entry": "Entry|a",
+        "routeSerial": 2,
+        "fixedExitHash": "862afe3d0bc15e65f8ac54b13beb9a35d7b485ed5bb0aa41bfacccbb196d4cc7",
+        "verified": true,
+        "epoch": 0,
+        "poolKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "after": {
+        "pid": 3812,
+        "servicePid": 3794,
+        "generation": "8d27758d-c290-494c-8e43-b8fea3cbbff4",
+        "configuration": "cccaf8909261887ffaa93ccaca968d555f3f23d3732ed63f9abfb0910f649aba",
+        "proxyPort": 41273,
+        "controllerPort": 35921,
+        "entry": "Entry|a",
+        "routeSerial": 2,
+        "fixedExitHash": "862afe3d0bc15e65f8ac54b13beb9a35d7b485ed5bb0aa41bfacccbb196d4cc7",
+        "verified": true,
+        "epoch": 1,
+        "poolKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      }
+    },
+    {
+      "name": "legacy-counterfactual-healthy-recovery",
+      "before": {
+        "pid": 3812,
+        "servicePid": 3794,
+        "generation": "8d27758d-c290-494c-8e43-b8fea3cbbff4",
+        "configuration": "cccaf8909261887ffaa93ccaca968d555f3f23d3732ed63f9abfb0910f649aba",
+        "proxyPort": 41273,
+        "controllerPort": 35921,
+        "entry": "Entry|a",
+        "routeSerial": 2,
+        "fixedExitHash": "862afe3d0bc15e65f8ac54b13beb9a35d7b485ed5bb0aa41bfacccbb196d4cc7",
+        "verified": true,
+        "epoch": 1,
+        "poolKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      },
+      "after": {
+        "pid": 3812,
+        "servicePid": 3794,
+        "generation": "8d27758d-c290-494c-8e43-b8fea3cbbff4",
+        "configuration": "cccaf8909261887ffaa93ccaca968d555f3f23d3732ed63f9abfb0910f649aba",
+        "proxyPort": 41273,
+        "controllerPort": 35921,
+        "entry": "Entry|a",
+        "routeSerial": 2,
+        "fixedExitHash": "862afe3d0bc15e65f8ac54b13beb9a35d7b485ed5bb0aa41bfacccbb196d4cc7",
+        "verified": true,
+        "epoch": 2,
+        "poolKey": "environment-pool-5c877a4f-2cce-467b-991c-908dc03afe18-1"
+      }
+    }
+  ],
+  "sourceCommit": "6a85e37384949a15c48e74352a6512b1e5199b99",
+  "androidSdk": 35,
+  "server": {
+    "protocol": "h2",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/pool",
+        "id": "",
+        "protocol": "h2",
+        "connection": 1,
+        "streamId": 3,
+        "responseBytes": 301,
+        "responseSha256": "205d90fe235c42d51d6c65457a0979a60f3fa0d87f8083dad4b81690ef023712",
+        "closed": true
+      },
+      {
+        "method": "GET",
+        "path": "/bytes",
+        "id": "initial",
+        "protocol": "h2",
+        "connection": 1,
+        "streamId": 5,
+        "responseBytes": 9170,
+        "responseSha256": "42690d7c874fc138dc02013e26cf2d19c4e8a3ac0a1924bd018b68b42e8295cc",
+        "closed": true
+      },
+      {
+        "method": "GET",
+        "path": "/bytes",
+        "id": "warm",
+        "protocol": "h2",
+        "connection": 1,
+        "streamId": 7,
+        "responseBytes": 9167,
+        "responseSha256": "dd8016a7bfc00d15e88baabb7ebab6df411d60c2f8edd9485dd72c308426d86a",
+        "closed": true
+      },
+      {
+        "method": "GET",
+        "path": "/bytes",
+        "id": "healthy-recovery",
+        "protocol": "h2",
+        "connection": 1,
+        "streamId": 9,
+        "responseBytes": 9179,
+        "responseSha256": "ddd2a75254dae8a039569fca98e23f198e93021f34677457732d50ca242e2d74",
+        "closed": true
+      },
+      {
+        "method": "GET",
+        "path": "/bytes",
+        "id": "legacy-before",
+        "protocol": "h2",
+        "connection": 3,
+        "streamId": 3,
+        "responseBytes": 9176,
+        "responseSha256": "224c683b481368a48140aaa1fa7d58f4bfeb7e4a418c073b069e5195c7c2faaf",
+        "closed": true
+      },
+      {
+        "method": "GET",
+        "path": "/bytes",
+        "id": "legacy-after",
+        "protocol": "h2",
+        "connection": 4,
+        "streamId": 3,
+        "responseBytes": 9175,
+        "responseSha256": "0f0cb27db111e63082f4361969eb4481f809f2d3df7deffb638336dbfa9cd3e7",
+        "closed": true
+      },
+      {
+        "method": "GET",
+        "path": "/bytes",
+        "id": "route-a",
+        "protocol": "h2",
+        "connection": 1,
+        "streamId": 11,
+        "responseBytes": 9171,
+        "responseSha256": "7977da4e23a1ab359d2f743444caf25683699683f29187567a9d9114346fef92",
+        "closed": true
+      }
+    ],
+    "connections": [
+      {
+        "connection": 1,
+        "alpn": "h2",
+        "remote": "127.0.0.1",
+        "remotePort": 60473,
+        "tls": "TLSv1.3"
+      },
+      {
+        "connection": 2,
+        "alpn": "http/1.1",
+        "remote": "127.0.0.1",
+        "remotePort": 38947,
+        "tls": "TLSv1.3"
+      },
+      {
+        "connection": 3,
+        "alpn": "h2",
+        "remote": "127.0.0.1",
+        "remotePort": 58721,
+        "tls": "TLSv1.3"
+      },
+      {
+        "connection": 4,
+        "alpn": "h2",
+        "remote": "127.0.0.1",
+        "remotePort": 52673,
+        "tls": "TLSv1.3"
+      }
+    ],
+    "webSockets": [
+      {
+        "connection": 2,
+        "protocol": "http/1.1",
+        "frames": 19,
+        "payloads": [
+          "frame-1",
+          "frame-2",
+          "frame-3",
+          "frame-4",
+          "frame-5",
+          "frame-6",
+          "frame-7",
+          "frame-8",
+          "frame-9",
+          "frame-10",
+          "frame-11",
+          "frame-12",
+          "frame-13",
+          "frame-14",
+          "frame-15",
+          "frame-16",
+          "frame-17",
+          "frame-18",
+          "frame-19"
+        ],
+        "closed": true
+      }
+    ],
+    "publicTraffic": false
+  },
+  "diagnosticOnly": true,
+  "releaseAcceptance": false,
+  "runId": "38189613883",
+  "runAttempt": "1"
+}
