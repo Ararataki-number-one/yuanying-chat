@@ -5,7 +5,7 @@ from chain_runtime_contract import verify_native_probe,verify_gecko_pool
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
 BRANCH='apk/gecko-chain-diagnostics'
-BASE='e4a4a08'
+BASE='e4a4a08202cf50ce60d36dd86a625366de9bb2f4'
 REPORTS={'native':'native-probe-results.json','pool':'gecko-pool-results.json'}
 ARTIFACTS=('build.log','integration-badging.txt','native-probe-results.json','native-probe-log.txt','native-probe-failure-log.txt','native-probe-runner.log','gecko-pool-results.json','gecko-pool-log.txt','gecko-pool-failure-log.txt','gecko-pool-runner.log','gecko-pool-server.json','gecko-pool-server-failure.json','chain-native-status.json','chain-pool-status.json')
 
@@ -22,7 +22,11 @@ def stamp_case(case,exit_code,source,run_id,attempt):
 
 def stage_evidence(source,run_id,attempt,outcomes):
  assert re.fullmatch(r'[0-9a-f]{40}',source) and run_id.isdecimal() and attempt.isdecimal()
- base=git('rev-parse',BASE+'^{commit}')
+ try:
+  base=git('rev-parse','--verify',BASE+'^{commit}')
+ except subprocess.CalledProcessError:
+  git('fetch','--no-tags','--depth=1','origin',BASE)
+  base=git('rev-parse','--verify',BASE+'^{commit}')
  assert not git('diff','--name-only',base,source,'--','app','libs','third-party','build.gradle','settings.gradle','gradle.properties'),'Diagnostic changes must not alter production code or SDK'
  stage=OUT/'chain-public'
  if stage.exists():shutil.rmtree(stage)
