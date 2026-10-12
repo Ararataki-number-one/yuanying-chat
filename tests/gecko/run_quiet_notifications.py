@@ -42,6 +42,7 @@ try:
                 'Opting out removes completion cards across environments',
                 'A visible Activity is proved by real started lifecycle count',
                 'A private visibility endpoint rejects an obsolete process PID',
+                'An already running default process exposes real zero-Activity lifecycle over private IPC',
                 'Real Home is proved by stopped Activity lifecycle despite browser process priority',
             }
             assert required<=set(checks),result

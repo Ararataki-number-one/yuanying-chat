@@ -68,7 +68,14 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   void migratedLegacy()throws Exception{
     check("Upgrade removes old noisy foreground channels",manager.getNotificationChannel("chat-wait")==null&&manager.getNotificationChannel("network-transport")==null);
     check("Upgrade removes non-completion regular notifications across profiles",notice(Profiles.notification(owner,4104))==null&&notice(Profiles.notification(owner,4105))==null&&notice(Profiles.notification(other,4103))==null);
+    // Start the normal app-wide status owner explicitly. Visibility discovery
+    // must query this already-running process, never create all eight profiles.
+    AppUpdates.call(owner,"status",null);await("default process lifecycle ready",()->defaultProcessKnown(QuietNotifications.foregroundEvidence(owner)),this::foregroundCompletions);
+  }
+  boolean defaultProcessKnown(JSONObject proof){JSONArray rows=proof.optJSONArray("processes");if(!proof.optBoolean("known")||rows==null)return false;for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(getPackageName().equals(row.optString("process")))return row.optBoolean("known")&&row.optInt("pid")>0&&row.optInt("pid")!=android.os.Process.myPid()&&row.optInt("actualActivityStartedCount",-1)==0&&!row.optBoolean("visible");}return false;}
+  void foregroundCompletions()throws Exception{
     foregroundProof=QuietNotifications.foregroundEvidence(owner);check("A real visible app Activity suppresses completion reminders",foregroundProof.optBoolean("known")&&foregroundProof.optBoolean("foreground")&&QuietNotifications.appForeground(owner));
+    check("An already running default process exposes real zero-Activity lifecycle over private IPC",defaultProcessKnown(foregroundProof));
     check("A visible Activity is proved by real started lifecycle count",foregroundProof.optInt("actualActivityStartedCount")>0&&"activity-start-stop".equals(foregroundProof.optString("visibilitySource"))&&AppVisibility.snapshot().getInt("actualActivityStartedCount")>0);
     Bundle wrongPid=new Bundle();wrongPid.putInt("expectedPid",android.os.Process.myPid()+1);Bundle refused=getContentResolver().call(android.net.Uri.parse("content://"+getPackageName()+".lifecycle7"),"appVisibility",null,wrongPid);check("A private visibility endpoint rejects an obsolete process PID",refused!=null&&!refused.getBoolean("known")&&refused.getInt("pid")==android.os.Process.myPid());
     AppSettings.put(owner,"backgroundCompletionNotice","true");ChatService.completed(owner,prefix+"-foreground",MainActivity.ORIGIN);ChatService.downloaded(owner,prefix+"-foreground-file","visible-file.txt");
@@ -111,7 +118,7 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   void background(){try{
     if(!leftApp){if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Runner did not send Home");handler.postDelayed(this::background,200);return;}
     homeProof=QuietNotifications.foregroundEvidence(owner);if((!homeProof.optBoolean("known")||homeProof.optBoolean("foreground"))&&SystemClock.elapsedRealtime()<deadline){handler.postDelayed(this::background,100);return;}check("Real Home leaves the UI in background while required services keep running",homeProof.optBoolean("known")&&!homeProof.optBoolean("foreground")&&!QuietNotifications.appForeground(owner));
-    check("Real Home is proved by stopped Activity lifecycle despite browser process priority",homeProof.optInt("actualActivityStartedCount",-1)==0&&AppVisibility.snapshot().getInt("actualActivityStartedCount")==0&&AppVisibility.snapshot().getLong("activityStops")>0&&"activity-start-stop".equals(homeProof.optString("visibilitySource")));
+    check("Real Home is proved by stopped Activity lifecycle despite browser process priority",homeProof.optInt("actualActivityStartedCount",-1)==0&&AppVisibility.snapshot().getInt("actualActivityStartedCount")==0&&AppVisibility.snapshot().getLong("activityStops")>0&&"activity-start-stop".equals(homeProof.optString("visibilitySource"))&&defaultProcessKnown(homeProof));
     check("Home preserves the pending reply and background observation service",session.pending==job&&ChatService.running&&session.browserWorkActive()&&!session.browserPaused);
     ChatService.completed(owner,prefix+"-disabled",MainActivity.ORIGIN);ChatService.downloaded(owner,prefix+"-disabled-file","disabled-file.txt");
     awaitQuiet("background default remains quiet",()->notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(owner,4104))==null,()->{
