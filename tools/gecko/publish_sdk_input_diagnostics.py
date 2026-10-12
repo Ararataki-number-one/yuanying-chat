@@ -10,12 +10,16 @@ import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'work/gecko-input-diagnostics'
-BRANCH = 'apk/gecko-sdk-input-diagnostics'
+BRANCH = 'apk/gecko-hardware-caret-candidate'
 PRODUCTION_SOURCE = 'e4a4a08202cf50ce60d36dd86a625366de9bb2f4'
 TRIALS = tuple(range(1, 11))
 ARTIFACTS = tuple((OUT, name) for name in (
     'build.log', 'input-test.log', 'emulator.log', 'input-diagnostic-screen.png',
-    'sdk-instrumentation-receipt.json',
+    'sdk-instrumentation-receipt.json', 'hardware-candidate-receipt.json', 'observer-free-build.log',
+    'observer-free/runner.log', 'observer-free/gecko-performance-results.json',
+    'observer-free/gecko-performance-failure-log.txt', 'observer-free/gecko-performance-screen.png',
+    'compatibility/runner.log', 'compatibility/gecko-caret-compat-results.json',
+    'compatibility/gecko-caret-compat-failure-log.txt', 'compatibility/gecko-caret-compat-screen.png',
 )) + tuple((OUT, f'attempt-{trial}/{name}') for trial in TRIALS for name in (
     'status.json', 'runner.log', 'gecko-performance-results.json',
     'gecko-performance-failure-log.txt', 'gecko-performance-screen.png', 'screen.png',
@@ -41,7 +45,9 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
         'sourceCommit': source, 'productionSourceCommit': PRODUCTION_SOURCE,
         'runId': run_id, 'runAttempt': run_attempt,
         'diagnosticOnly': True, 'releaseAcceptance': False, 'partial': os.environ.get('SDK_DIAGNOSTIC_PARTIAL') == '1',
-        'observation': 'Pinned SDK same-class primitive transaction instrumentation; original single hardware burst per trial.',
+        'observation': 'Scoped hardware-only SDK candidate: ten identical single-burst diagnostics, followed by the original observer-free gate and actual soft-input compatibility.',
+        'oldSdkComparison': {'sourceCommit': '8f61060f7968b6798060947009310fc1f14e69f1', 'evidenceCommit': '6eb6d06655bbda116db20975f7fcf70d874c7b70', 'trials': 10, 'failedTrials': [1]},
+        'observerFreeOriginalGate': {}, 'compatibility': {},
         'stepOutcomes': outcomes, 'expectedTrials': list(TRIALS),
         'artifacts': [], 'warnings': [], 'attempts': [], 'reports': {},
     }
@@ -50,7 +56,23 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
         if original.is_symlink() or original.parent.is_symlink() or not original.is_file():
             continue
         data = original.read_bytes()
-        if name.endswith('/status.json') or name.endswith('/gecko-performance-results.json'):
+        if name in ('observer-free/gecko-performance-results.json', 'compatibility/gecko-caret-compat-results.json'):
+            try:
+                report = json.loads(data)
+                if report.get('sourceCommit') != source:
+                    raise ValueError('Observer-free or compatibility report belongs to another source')
+                if name.startswith('observer-free/'):
+                    if any(report.get(key) is not False for key in ('diagnosticOnly', 'inputSdkDiagnosticsEnabled', 'inputNativeDiagnosticsEnabled', 'inputDiagnosticsEnabled')):
+                        raise ValueError('Original gate unexpectedly used diagnostic instrumentation')
+                    if report.get('actualSdkInputTrace') or report.get('actualNativeInputTrace') or report.get('actualInputEvaluationTrace'):
+                        raise ValueError('Original gate contains observer events')
+                    manifest['observerFreeOriginalGate'] = {'sourceCommit': source, 'status': report.get('status'), 'checkCount': report.get('checkCount'), 'actualAndroidExecution': report.get('actualAndroidExecution'), 'actualGeckoExecution': report.get('actualGeckoExecution'), 'diagnosticOnly': False}
+                else:
+                    manifest['compatibility'] = {'sourceCommit': source, 'status': report.get('status'), 'checkCount': report.get('checkCount'), 'actualAndroidExecution': report.get('actualAndroidExecution'), 'actualGeckoExecution': report.get('actualGeckoExecution')}
+            except (ValueError, TypeError, AttributeError) as error:
+                manifest['warnings'].append(name + ': ' + str(error))
+                continue
+        elif name.endswith('/status.json') or name.endswith('/gecko-performance-results.json'):
             try:
                 report = json.loads(data)
                 if report.get('sourceCommit') != source:
@@ -99,6 +121,8 @@ def main():
     if os.environ.get('GITHUB_SHA') != source:
         raise ValueError('Checked-out diagnostic source differs from run source')
     outcomes = {name: os.environ['DIAGNOSTIC_' + name.upper() + '_OUTCOME'] for name in ('setup', 'build', 'gecko')}
+    outcomes.update({name: os.environ.get('DIAGNOSTIC_' + name.upper() + '_OUTCOME', 'skipped')
+                     for name in ('plain_build', 'original_gate', 'compatibility')})
     stage, manifest = stage_evidence(source, os.environ['GITHUB_RUN_ID'], os.environ.get('GITHUB_RUN_ATTEMPT', '1'), outcomes)
     env = dict(os.environ, GIT_INDEX_FILE=str(OUT / 'public-sdk-index'), GIT_WORK_TREE=str(stage),
                GIT_AUTHOR_NAME='PocketChat SDK diagnostics', GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',

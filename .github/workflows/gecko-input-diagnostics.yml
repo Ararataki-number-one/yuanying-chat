@@ -1,12 +1,12 @@
-name: Gecko SDK transaction input diagnostics
+name: Gecko scoped hardware caret candidate validation
 on:
   push:
-    branches: [debug/gecko-ime-trace]
+    branches: [debug/gecko-ime-candidate]
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
-  group: gecko-sdk-input-diagnostics
+  group: gecko-sdk-hardware-candidate
   cancel-in-progress: false
 jobs:
   diagnose:
@@ -31,11 +31,16 @@ jobs:
           echo '25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0  work/gecko-input-diagnostics/geckoview.aar' | sha256sum -c -
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
-      - name: Instrument the pinned SDK for diagnostics only
+      - name: Build the pinned scoped hardware-only SDK candidate
         shell: bash
         run: |
           set -euo pipefail
-          python3 tools/build-gecko-ime-trace.py --aar work/gecko-input-diagnostics/geckoview.aar --gradle work/gecko-input-diagnostics/gradle/gradle-9.8.0 --android-jar "$ANDROID_HOME/platforms/android-37.1/android.jar" --out work/gecko-input-diagnostics/geckoview-sdk-trace.aar --receipt work/gecko-input-diagnostics/sdk-instrumentation-receipt.json
+          python3 tools/build-gecko-hardware-caret.py --aar work/gecko-input-diagnostics/geckoview.aar --android-jar "$ANDROID_HOME/platforms/android-37.1/android.jar" --out work/gecko-input-diagnostics/geckoview-hardware-candidate.aar --receipt work/gecko-input-diagnostics/hardware-candidate-receipt.json
+      - name: Instrument the reproducible candidate for diagnosis only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/build-gecko-ime-trace.py --aar work/gecko-input-diagnostics/geckoview-hardware-candidate.aar --candidate-receipt work/gecko-input-diagnostics/hardware-candidate-receipt.json --official-aar work/gecko-input-diagnostics/geckoview.aar --gradle work/gecko-input-diagnostics/gradle/gradle-9.8.0 --android-jar "$ANDROID_HOME/platforms/android-37.1/android.jar" --out work/gecko-input-diagnostics/geckoview-sdk-trace.aar --receipt work/gecko-input-diagnostics/sdk-instrumentation-receipt.json
       - name: Compile the isolated diagnostic integration package
         id: build
         shell: bash
@@ -92,6 +97,41 @@ jobs:
           if [ "$checks_failed" -ne 0 ]; then
             exit 1
           fi
+      - name: Compile the candidate SDK without any observer
+        if: always() && steps.build.outcome == 'success'
+        id: plain_build
+        shell: bash
+        run: |
+          set -euo pipefail
+          work/gecko-input-diagnostics/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-input-diagnostics/integration-test.jks" -PimeSdkTraceAar="$PWD/work/gecko-input-diagnostics/geckoview-hardware-candidate.aar" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-input-diagnostics/observer-free-build.log
+          adb -s emulator-5554 install -r app/build/outputs/apk/integration/app-x86_64-integration.apk
+      - name: Execute the original observer-free single-burst gate
+        if: always() && steps.plain_build.outcome == 'success'
+        id: original_gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/gecko-input-diagnostics/observer-free
+          rm -f work/gecko-integration/gecko-performance-results.json work/gecko-integration/gecko-performance-failure-log.txt work/gecko-integration/gecko-performance-screen.png
+          exit_code=0
+          python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554 > work/gecko-input-diagnostics/observer-free/runner.log 2>&1 || exit_code=$?
+          for name in gecko-performance-results.json gecko-performance-failure-log.txt gecko-performance-screen.png; do
+            if [ -f "work/gecko-integration/$name" ]; then cp "work/gecko-integration/$name" "work/gecko-input-diagnostics/observer-free/$name"; fi
+          done
+          exit "$exit_code"
+      - name: Exercise actual hardware and unchanged soft-input semantics
+        if: always() && steps.plain_build.outcome == 'success'
+        id: compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/gecko-input-diagnostics/compatibility
+          exit_code=0
+          python3 tests/gecko/run_gecko_caret_compat.py --adb "$(command -v adb)" --serial emulator-5554 > work/gecko-input-diagnostics/compatibility/runner.log 2>&1 || exit_code=$?
+          for name in gecko-caret-compat-results.json gecko-caret-compat-failure-log.txt gecko-caret-compat-screen.png; do
+            if [ -f "work/gecko-integration/$name" ]; then cp "work/gecko-integration/$name" "work/gecko-input-diagnostics/compatibility/$name"; fi
+          done
+          exit "$exit_code"
       - name: Capture the final synthetic screen
         if: always()
         shell: bash
@@ -106,4 +146,7 @@ jobs:
           DIAGNOSTIC_SETUP_OUTCOME: ${{ steps.setup.outcome }}
           DIAGNOSTIC_BUILD_OUTCOME: ${{ steps.build.outcome }}
           DIAGNOSTIC_GECKO_OUTCOME: ${{ steps.gecko.outcome }}
+          DIAGNOSTIC_PLAIN_BUILD_OUTCOME: ${{ steps.plain_build.outcome }}
+          DIAGNOSTIC_ORIGINAL_GATE_OUTCOME: ${{ steps.original_gate.outcome }}
+          DIAGNOSTIC_COMPATIBILITY_OUTCOME: ${{ steps.compatibility.outcome }}
         run: python3 tools/gecko/publish_sdk_input_diagnostics.py
