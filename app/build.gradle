@@ -1,5 +1,10 @@
 plugins { id 'com.android.application' }
 
+def imeSdkTraceAar = providers.gradleProperty('imeSdkTraceAar')
+if (imeSdkTraceAar.isPresent() && !gradle.startParameter.taskNames.every { it.toLowerCase().contains('integration') }) {
+    throw new GradleException('Instrumented Gecko SDK is restricted to the isolated integration build')
+}
+
 def generatedManifest = layout.buildDirectory.file('generated/gecko/AndroidManifest.xml')
 tasks.register('prepareGeckoManifest') {
     inputs.file('src/main/AndroidManifest.xml')
@@ -41,5 +46,22 @@ tasks.named('preBuild').configure { dependsOn 'prepareGeckoManifest' }
 dependencies {
     implementation 'androidx.startup:startup-runtime:1.2.0'
     implementation files('../libs/webkit-1.12.1.jar')
-    implementation 'org.mozilla.geckoview:geckoview:157.0.20260924084938'
+    if (imeSdkTraceAar.isPresent()) {
+        implementation files(imeSdkTraceAar.get())
+        // The exact upstream 157.0 POM dependencies survive the local AAR replacement.
+        implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.4.20'
+        runtimeOnly 'androidx.annotation:annotation:1.10.0'
+        runtimeOnly 'androidx.annotation:annotation-experimental:1.6.0'
+        runtimeOnly 'androidx.collection:collection:1.6.0'
+        runtimeOnly 'androidx.core:core:1.19.0'
+        runtimeOnly 'androidx.lifecycle:lifecycle-common:2.11.0'
+        runtimeOnly 'androidx.lifecycle:lifecycle-process:2.11.0'
+        runtimeOnly 'com.google.android.gms:play-services-fido:21.3.1'
+        runtimeOnly 'org.yaml:snakeyaml:2.2'
+        runtimeOnly 'androidx.media3:media3-common:1.11.0'
+        runtimeOnly 'androidx.media3:media3-datasource:1.11.0'
+        runtimeOnly 'androidx.media3:media3-decoder:1.11.0'
+        runtimeOnly 'androidx.media3:media3-exoplayer:1.11.0'
+        runtimeOnly 'androidx.media3:media3-exoplayer-hls:1.11.0'
+    } else implementation 'org.mozilla.geckoview:geckoview:157.0.20260924084938'
 }

@@ -128,6 +128,8 @@ def main():
                         help='Enable extra SDK/IME and JS selection observations; disabled for the normal release regression.')
     observation.add_argument('--native-input-diagnostics', action='store_true',
                         help='Buffer only primitive SDK/IME observations and flush after input; no extra JS observers. Diagnostic evidence cannot replace the normal regression.')
+    observation.add_argument('--sdk-input-diagnostics', action='store_true',
+                        help='Test-only same-class SDK primitive instrumentation; original single input burst unchanged. Never release acceptance.')
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
@@ -171,9 +173,12 @@ def main():
             activity.extend(['--ez', 'inputDiagnostics', 'true'])
         if args.native_input_diagnostics:
             activity.extend(['--ez', 'inputNativeDiagnostics', 'true'])
+        if args.sdk_input_diagnostics:
+            activity.extend(['--ez', 'inputSdkDiagnostics', 'true'])
         adb(*activity)
         checks, measurements, gestures, text_inputs, diagnostics = {}, {}, {}, {}, {}
         input_readiness, input_events, input_evaluations, native_input_events = {}, {}, {}, {}
+        sdk_input_events, sdk_input_summary = {}, None
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             raw = adb('logcat', '-d', '-s', 'PocketGeckoPerformance:I', 'AndroidRuntime:E', '*:S')
@@ -225,13 +230,18 @@ def main():
                 elif item['kind'] == 'nativeInputTrace':
                     trace = item['value']
                     native_input_events[trace['seq']] = trace
+                elif item['kind'] == 'sdkInputTrace':
+                    trace = item['value']
+                    sdk_input_events[trace['offset']] = trace
+                elif item['kind'] == 'sdkInputSummary':
+                    sdk_input_summary = item['value']
                 elif item['kind'] == 'report':
                     report = item['value']
                 elif item['kind'] in ['load', 'route', 'loadError']:
                     diagnostics[line] = item
             if report:
                 report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-                              diagnosticOnly=bool(args.input_diagnostics or args.native_input_diagnostics),
+                              diagnosticOnly=bool(args.input_diagnostics or args.native_input_diagnostics or args.sdk_input_diagnostics),
                               checks=list(checks.values()), measurements=list(measurements.values()), fixtureRequests=Fixture.requests,
                               controlledProxyRoutes=Socks.routes, browserDiagnostics=list(diagnostics.values()),
                               baselineAssetVerification=receipt, actualAndroidGestures=list(gestures.values()),
@@ -239,11 +249,24 @@ def main():
                 report.update(actualInputReadinessTrace=[input_readiness[key] for key in sorted(input_readiness)],
                               actualTrustedInputEvents=[event for key in sorted(input_events) for event in input_events[key]['events']],
                               actualInputEvaluationTrace=[input_evaluations[key] for key in sorted(input_evaluations)],
-                              actualNativeInputTrace=[native_input_events[key] for key in sorted(native_input_events)])
+                              actualNativeInputTrace=[native_input_events[key] for key in sorted(native_input_events)],
+                              actualSdkInputTrace=[row for key in sorted(sdk_input_events) for row in sdk_input_events[key]['rows']],
+                              actualSdkInputSummary=sdk_input_summary)
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
                 assert report['inputDiagnosticsEnabled'] == args.input_diagnostics, report
                 assert report['inputNativeDiagnosticsEnabled'] == args.native_input_diagnostics, report
+                assert report['inputSdkDiagnosticsEnabled'] == args.sdk_input_diagnostics, report
+                if args.sdk_input_diagnostics:
+                    assert not native_input_events and not input_evaluations, 'Same-class SDK diagnostic unexpectedly attached proxy/JS observers'
+                    rows = report['actualSdkInputTrace']; summary = report['actualSdkInputSummary']
+                    assert summary and not summary.get('error') and summary['mode'] == 'same-class-primitives', summary
+                    assert summary['overflow'] == 0 and summary['reserved'] == summary['published'] == summary['rowCount'] == len(rows), summary
+                    assert rows and all(len(row) == 14 for row in rows), 'SDK primitive trace is absent or malformed'
+                    assert [row[13] for row in rows] == list(range(len(rows))), 'SDK primitive trace sequence is incomplete'
+                    assert any(row[0] == 14 for row in rows) and any(row[0] == 11 for row in rows), 'Missing actual replace/selection writers'
+                else:
+                    assert not sdk_input_events and sdk_input_summary is None, 'Normal SDK unexpectedly emitted same-class diagnostic data'
                 if not args.input_diagnostics:
                     assert not input_evaluations, 'Normal/primitive-only regression unexpectedly traced JavaScript evaluation'
                     assert not any(event['type'] == 'selectionchange' or event['type'].startswith('script')

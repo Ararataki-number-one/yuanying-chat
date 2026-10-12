@@ -1,17 +1,17 @@
-name: Gecko native input diagnostics
+name: Gecko SDK transaction input diagnostics
 on:
   push:
-    branches: [debug/gecko-ime]
+    branches: [debug/gecko-ime-trace]
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
-  group: gecko-input-diagnostics
+  group: gecko-sdk-input-diagnostics
   cancel-in-progress: false
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Prepare locked toolchain
@@ -31,13 +31,18 @@ jobs:
           echo '25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0  work/gecko-input-diagnostics/geckoview.aar' | sha256sum -c -
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
-      - name: Compile the native integration package
+      - name: Instrument the pinned SDK for diagnostics only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/build-gecko-ime-trace.py --aar work/gecko-input-diagnostics/geckoview.aar --gradle work/gecko-input-diagnostics/gradle/gradle-9.8.0 --android-jar "$ANDROID_HOME/platforms/android-37.1/android.jar" --out work/gecko-input-diagnostics/geckoview-sdk-trace.aar --receipt work/gecko-input-diagnostics/sdk-instrumentation-receipt.json
+      - name: Compile the isolated diagnostic integration package
         id: build
         shell: bash
         run: |
           set -euo pipefail
-          work/gecko-input-diagnostics/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-input-diagnostics/integration-test.jks" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-input-diagnostics/build.log
-      - name: Diagnose buffered native input on Android 35
+          work/gecko-input-diagnostics/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-input-diagnostics/integration-test.jks" -PimeSdkTraceAar="$PWD/work/gecko-input-diagnostics/geckoview-sdk-trace.aar" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-input-diagnostics/build.log
+      - name: Record ten independent original input bursts on Android 35
         id: gecko
         shell: bash
         run: |
@@ -55,11 +60,11 @@ jobs:
           adb -s emulator-5554 shell input keyevent 82
           adb -s emulator-5554 install app/build/outputs/apk/integration/app-x86_64-integration.apk
           checks_failed=0
-          for trial in 1 2 3; do
+          for trial in 1 2 3 4 5 6 7 8 9 10; do
             attempt="work/gecko-input-diagnostics/attempt-$trial"
             mkdir -p "$attempt"
             rm -f work/gecko-integration/gecko-performance-results.json work/gecko-integration/gecko-performance-failure-log.txt work/gecko-integration/gecko-performance-screen.png
-            if python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554 --native-input-diagnostics 2>&1 | tee "$attempt/runner.log"; then
+            if python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554 --sdk-input-diagnostics 2>&1 | tee "$attempt/runner.log"; then
               exit_code=0
             else
               exit_code=$?
@@ -80,6 +85,9 @@ jobs:
                   'status':'passed' if sys.argv[2]=='0' else 'failed','diagnosticOnly':True}
           (attempt/'status.json').write_text(json.dumps(status,indent=2)+'\n')
           PYCODE
+            if ! DIAGNOSTIC_SETUP_OUTCOME=success DIAGNOSTIC_BUILD_OUTCOME=success DIAGNOSTIC_GECKO_OUTCOME=skipped SDK_DIAGNOSTIC_PARTIAL=1 python3 tools/gecko/publish_sdk_input_diagnostics.py; then
+              echo 'Partial evidence publication failed; the fixed ten-trial series continues'
+            fi
           done
           if [ "$checks_failed" -ne 0 ]; then
             exit 1
@@ -98,4 +106,4 @@ jobs:
           DIAGNOSTIC_SETUP_OUTCOME: ${{ steps.setup.outcome }}
           DIAGNOSTIC_BUILD_OUTCOME: ${{ steps.build.outcome }}
           DIAGNOSTIC_GECKO_OUTCOME: ${{ steps.gecko.outcome }}
-        run: python3 tools/gecko/publish_input_diagnostics.py
+        run: python3 tools/gecko/publish_sdk_input_diagnostics.py
