@@ -17,6 +17,27 @@ def verify_performance_evidence(directory, source):
         return value
 
     chrome = android('compact-chrome-results.json')
+    reload = chrome['reloadConfirmation']
+    assert reload['sourceCommit'] == source and reload['actualAndroidExecution'] and reload['actualGeckoExecution']
+    assert len(reload['checks']) == 8 and all(item['pass'] for item in reload['checks'])
+    assert all(reload[key] for key in ('cancelMatched', 'noStopNoLoad', 'noSend', 'fullDraftCookieUnchanged', 'explicitConfirmCurrentURI', 'notOldURI', 'idleNoModal'))
+    assert [tap['label'] for tap in reload['actualAndroidTaps']] == ['取消', '重新加载', '重新加载']
+    for tap in reload['actualAndroidTaps']:
+        left, top, right, bottom = tap['bounds']
+        assert tap['actualAndroidTap'] and tap['enabled'] and tap['clickable']
+        assert left <= tap['x'] < right and top <= tap['y'] < bottom
+    initial, cancelled, stale, confirmed, idle = (reload[key] for key in ('initial', 'cancelled', 'stale', 'confirmed', 'idle'))
+    assert initial['documents'] == 1 and initial['loads'] == initial['stops'] == 0
+    assert all(cancelled[key] == initial[key] for key in ('body', 'draft', 'cookie', 'sendCount', 'document', 'path', 'stops', 'loads'))
+    assert stale['path'] == '/c/reload-C' and stale['stops'] == stale['loads'] == 0
+    assert all(stale[key] == initial[key] for key in ('body', 'draft', 'cookie', 'sendCount', 'document'))
+    assert confirmed['documents'] == 2 and confirmed['loads'] == 1 and confirmed['document'] != initial['document']
+    assert confirmed['draftArchived'] and confirmed['cookie'] == initial['cookie']
+    assert confirmed['requested'] == initial['currentUrl'] != initial['cachedResumeUrl']
+    assert idle['documents'] == 3 and idle['loads'] == 2 and not idle['modal']
+    assert idle['requested'] == confirmed['requested'] and confirmed['sendCount'] == idle['sendCount'] == 0
+    assert [row['path'] for row in reload['fixtureRequests']] == ['/c/reload-A', '/c/reload-B', '/c/reload-B']
+    assert reload['controlledProxyRoutes'] and all(row['accepted'] and row['host'] == '127.0.0.1' and row['port'] == 8765 for row in reload['controlledProxyRoutes'])
     assert len(chrome['cases']) == 3, 'All compact and large-font cases are required.'
     for case in chrome['cases']:
         assert case['readOnlyStatus'] and len(case['actualAndroidTaps']) == 3
@@ -133,7 +154,8 @@ def verify_performance_evidence(directory, source):
         report = json.loads((directory / name).read_text())
         assert report['passed'] == report['total'] >= count, name
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True, 'geckoChecks': gecko['checkCount'],
-            'compactCases': len(chrome['cases']), 'currentVisualScreens': len(captures), 'historicalUIRebuilt': False,
+            'compactCases': len(chrome['cases']), 'reloadConfirmationChecks': len(reload['checks']),
+            'currentVisualScreens': len(captures), 'historicalUIRebuilt': False,
             'bridgeResponseBytes': {'baseline': baseline['bridgeResponseBytes'], 'current': current['bridgeResponseBytes']},
             'domReadChars': {'baseline': baseline['domReadChars'], 'current': current['domReadChars']}}
 

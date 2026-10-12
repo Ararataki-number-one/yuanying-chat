@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Actual Android screenshots of production UI; never touches the formal app."""
 import argparse,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET
+import http.server,importlib.util,threading
 
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
 p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()
@@ -191,11 +192,57 @@ try:
         performance=chrome_event(command,'performance')
         assert performance['status']=='passed',performance
         compact.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','readOnlyStatus':True,'actualAndroidTaps':taps,'layout':sample,'performance':performance['performance']})
-    (out/'compact-chrome-results.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'cases':compact},ensure_ascii=False,indent=2)+'\n')
+    # Real Gecko document + real protected loopback SOCKS, isolated synthetic login.
+    # The ordinary three chrome cases and their trusted touch assertions remain intact.
+    spec=importlib.util.spec_from_file_location('reload_loopback',root/'engine-probe/tests/run_device.py')
+    reload_loopback=importlib.util.module_from_spec(spec);spec.loader.exec_module(reload_loopback)
+    class ReloadHttp(reload_loopback.Fixture):
+        def do_GET(self):
+            if not self.path.startswith('/c/reload-'):self.send_error(404);return
+            reload_loopback.TRACE.append({'kind':'http','path':self.path})
+            body=b'''<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:18px sans-serif}#composer{position:fixed;bottom:0;background:white;width:90%}textarea{width:95%;height:70px}</style><main><article data-message-author-role="user" data-message-id="reload-user"><div data-user-message-bubble>already sent fixture question</div></article><section><div data-message-author-role="assistant" data-message-id="reload-reply"><div class="markdown"><p>Preserved controlled reply body.</p></div></div></section></main><form id="composer"><textarea id="prompt-textarea">unsent controlled browser draft</textarea><button type="button" data-testid="send-button" aria-label="Send" onclick="document.getElementById('send-count').textContent=Number(document.getElementById('send-count').textContent)+1">Send</button></form><span id="send-count">0</span><script>document.cookie='session=synthetic-reload; Path=/';window.__reloadDocument=crypto.randomUUID();</script>'''
+            self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(body)
+    reload_http=http.server.ThreadingHTTPServer(('127.0.0.1',8765),ReloadHttp)
+    reload_socks=reload_loopback.ThreadedSocks(('127.0.0.1',1080),reload_loopback.Socks)
+    for server in [reload_http,reload_socks]:threading.Thread(target=server.serve_forever,daemon=True).start()
+    adb('reverse','tcp:8765','tcp:8765');adb('reverse','tcp:1080','tcp:1080')
+    reload_checks=[];reload_taps=[]
+    def reload_check(name,value):
+        reload_checks.append({'name':name,'pass':bool(value)})
+        assert value,('Reload confirmation regression',name)
+    def reload_command(action,event):
+        global command
+        command='reload-'+action+'-'+str(time.monotonic_ns())
+        adb('shell','am','start','-W','--activity-single-top','-n',component,'--es','compactAction',action,'--es','compactCommand',command)
+        return chrome_event(command,event)['reload']
+    def reload_tap(modal,label):
+        control=next(c for c in modal['controls'] if c['label']==label);left,top,right,bottom=control['bounds']
+        assert control['enabled'] and control['clickable'] and left<=control['x']<right and top<=control['y']<bottom,control
+        adb('shell','input','tap',str(control['x']),str(control['y']));reload_taps.append({'actualAndroidTap':True,**control})
+    try:
+        adb('shell','am','force-stop',package);adb('logcat','-c');adb('shell','wm','size','1080x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale','1')
+        initial=reload_command('reloadStart','reloadReady')
+        reload_check('Controlled current SPA route and synthetic draft login are ready',initial['path']=='/c/reload-B' and initial['cachedResumeUrl']=='https://chatgpt.com/c/reload-A' and initial['draft']=='unsent controlled browser draft' and 'session=synthetic-reload' in initial['cookie'] and initial['sendCount']==0 and initial['loads']==initial['stops']==0)
+        modal=reload_command('requestReload','reloadModal');reload_check('Actual website reply requires a centered native reload confirmation',modal['centered'])
+        reload_tap(modal,'取消');cancelled=reload_command('reloadSnapshot','reloadSnapshot')
+        reload_check('Actual cancel preserves the document body draft login and native load counters',all(cancelled[k]==initial[k] for k in ['body','draft','cookie','sendCount','document','path','stops','loads']) and not cancelled['modal'])
+        modal=reload_command('requestReload','reloadModal');changed=reload_command('changeRoute','routeChanged');reload_tap(modal,'重新加载');stale=reload_command('reloadSnapshot','reloadSnapshot')
+        reload_check('Changing the actual current route makes an old confirmation harmless',stale['path']=='/c/reload-C' and stale['stops']==stale['loads']==0 and all(stale[k]==initial[k] for k in ['body','draft','cookie','sendCount','document']))
+        reload_command('restoreRoute','routeRestored');modal=reload_command('requestReload','reloadModal');reload_tap(modal,'重新加载');confirmed=chrome_event(command,'reloaded')['reload']
+        reload_check('Only explicit confirmation reloads the captured current conversation',confirmed['documents']==2 and confirmed['loads']==1 and confirmed['requested']=='https://chatgpt.com/c/reload-B' and confirmed['path']=='/c/reload-B' and confirmed['document']!=initial['document'])
+        reload_check('Confirmed reload durably archives the draft without resubmission or login loss',confirmed['draftArchived'] and confirmed['sendCount']==0 and confirmed['cookie']==initial['cookie'])
+        idle=reload_command('idleReload','reloaded')
+        reload_check('An idle empty current page reloads directly without a confirmation',idle['documents']==3 and idle['loads']==2 and not idle['modal'] and idle['requested']=='https://chatgpt.com/c/reload-B' and idle['sendCount']==0)
+        requests=[r for r in reload_loopback.TRACE if r['kind']=='http'];routes=[r for r in reload_loopback.TRACE if r['kind']=='socks' and r['accepted']];blocked=[r for r in reload_loopback.TRACE if r['kind']=='socks' and not r['accepted']]
+        reload_check('All reload documents use the actual controlled SOCKS route without extra loads',len(requests)==3 and [r['path'] for r in requests]==['/c/reload-A','/c/reload-B','/c/reload-B'] and routes and all(r['port']==8765 and r['host']=='127.0.0.1' for r in routes))
+        reload_confirmation={'actualAndroidExecution':True,'actualGeckoExecution':True,'sourceCommit':source,'checks':reload_checks,'actualAndroidTaps':reload_taps,'cancelMatched':all(cancelled[k]==initial[k] for k in ['body','draft','cookie','document']),'noStopNoLoad':cancelled['stops']==cancelled['loads']==0,'noSend':confirmed['sendCount']==idle['sendCount']==0,'fullDraftCookieUnchanged':cancelled['draft']==initial['draft'] and cancelled['cookie']==initial['cookie'],'explicitConfirmCurrentURI':confirmed['requested']==initial['currentUrl'],'notOldURI':confirmed['requested']!=initial['cachedResumeUrl'],'idleNoModal':not idle['modal'],'initial':initial,'cancelled':cancelled,'stale':stale,'confirmed':confirmed,'idle':idle,'fixtureRequests':requests,'controlledProxyRoutes':routes,'blockedRequests':blocked}
+    finally:
+        reload_http.shutdown();reload_socks.shutdown()
+    (out/'compact-chrome-results.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'cases':compact,'reloadConfirmation':reload_confirmation},ensure_ascii=False,indent=2)+'\n')
     assert len(records)==19 and all(record['variant']=='current' for record in records),records
     build=json.loads((out/'ui-build-comparison.json').read_text())
     assert build['comparisonMode']=='current-only' and not build['historicalUIRebuilt'] and build['coreSourceCommit']==source,build
-    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'scope':'Current GeckoView-only production UI with local synthetic records, 19 current-source captures; historical UI is not rebuilt. Website content, login and network core are not replaced.'}
+    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'scope':'Current GeckoView-only production UI with local synthetic records, 19 current-source captures; historical UI is not rebuilt. Website content, login and network core are not replaced.'}
 except Exception as error:
     report={'status':'failed','actualAndroidExecution':True,'sourceCommit':source,'diagnosticOnly':False,'error':repr(error),'screenshots':records}
     (out/'ui-visual-log.txt').write_text(adb('logcat','-d'))

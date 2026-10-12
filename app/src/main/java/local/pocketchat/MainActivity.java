@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
   LoadingUi loading; Attachments attachments; FileDownloads downloads;
   TextView status,exitIpLine,networkLine; LinearLayout toolbar;
   AlertDialog networkDialog; Ui.IconButton navigation; Dialog drawer;
+  ReferenceUi.Modal reloadDialog;boolean reloadChecking;
   interface Result {void accept(JSONObject value);}
   int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+.5f);}
 
@@ -116,15 +117,62 @@ public class MainActivity extends Activity {
   void moreSheet(){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项");
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
-    option(d,"重新加载网页",()->session.retryCurrent());
+    option(d,"重新加载网页",this::requestReload);
     option(d,"编辑当前环境",()->EnvironmentEditorUi.show(this));
     option(d,"当前环境网络",()->hub.networkFor(Profiles.slot(this)));
     option(d,"管理全部环境",()->ProfileUi.show(this));
     option(d,"下载管理",()->hub.select(AppHub.DOWNLOADS));
     option(d,"应用设置",()->hub.select(AppHub.SETTINGS));
-    option(d,"复制旧版暂存草稿",()->copyLegacyDraft());
+    option(d,"暂存草稿",()->copyLegacyDraft());
     if(LoginPagePolicy.google(remote.getUrl()))option(d,"登录帮助",()->LoginHelpUi.show(this));
     d.show();
+  }
+  void requestReload(){
+    if(reloadChecking||reloadDialog!=null||destroyed)return;
+    String url=remote.getUrl();long epoch=session.navigationEpoch;
+    boolean known=ProfileUi.working(session)||session.state.optBoolean("busy");
+    if(!remote.hasVisibleDocument()||!MainActivity.chatUrl(url)){confirmReload(url,epoch,known||remote.hasVisibleDocument(),false);return;}
+    reloadChecking=true;
+    session.asyncDriver("web-inspect",new JSONObject(),2500,state->{
+      if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl())){reloadChecking=false;return;}
+      if(!WebReplyObserver.same(url,state.optString("url"))){confirmReload(url,epoch,true,false);return;}
+      session.archiveWebsiteNavigation(state);
+      boolean busy=ProfileUi.working(session)||state.optBoolean("busy");
+      // Capture the browser's own draft; never fill or send its composer.
+      session.asyncDriver("page-state",J.obj("expectedUrl",url),2500,page->{
+        if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl())){reloadChecking=false;return;}
+        boolean draft=page.optBoolean("ok")&&!page.optString("draft").trim().isEmpty();
+        confirmReload(url,epoch,busy||ProfileUi.working(session)||!page.optBoolean("ok"),draft);
+      });
+    });
+  }
+  void confirmReload(String url,long epoch,boolean interrupted,boolean draft){
+    reloadChecking=false;
+    if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl()))return;
+    if(!interrupted&&!draft){reloadCurrent(url,epoch);return;}
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"重新加载网页？");reloadDialog=d;
+    d.note(!MainActivity.chatUrl(url)?"重新加载会关闭当前网页，未提交的登录信息或表单内容可能丢失。":interrupted?"重新加载可能中断正在生成的回复、上传或其他网页操作；未发送的输入可能无法自动恢复。它不会自动重发提问。":"重新加载会关闭当前网页，未发送的输入可能无法自动恢复。");
+    if(draft)d.note("当前输入会先暂存。正在回复时，恢复后的网页不会自动填入这份草稿，可从暂存草稿中复制。");
+    d.setOnDismissListener(unused->{if(reloadDialog==d)reloadDialog=null;});
+    d.buttons("取消",d::dismiss,"重新加载",()->{d.dismiss();reloadCurrent(url,epoch);});d.show();
+  }
+  void reloadCurrent(String url,long epoch){
+    if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl()))return;
+    if(!MainActivity.chatUrl(url)){session.retryCurrent(url);return;}
+    session.asyncDriver("page-state",J.obj("expectedUrl",url),2500,page->{
+      if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl()))return;
+      if(!page.optBoolean("ok")){session.setStatus("暂时无法读取当前输入，请先复制草稿再重新加载");return;}
+      String draft=page.optString("draft");
+      if(draft.trim().isEmpty()){session.retryCurrent(url);return;}
+      session.webStore.worker.execute(()->{boolean saved=DraftArchive.get(session.context).save(url,draft,"重新加载网页前草稿");handler.post(()->{
+        if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl()))return;
+        if(!saved){session.setStatus("草稿暂存失败，请先复制当前输入再重新加载");return;}
+        session.asyncDriver("page-state",J.obj("expectedUrl",url),2500,latest->{
+          if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl()))return;
+          if(!latest.optBoolean("ok")||!page.optString("documentId").equals(latest.optString("documentId"))||!draft.equals(latest.optString("draft"))){session.setStatus("当前输入已变化，请保留草稿，需要时再重新加载");return;}session.retryCurrent(url);
+        });
+      });});
+    });
   }
   void option(ReferenceUi.Modal d,String title,Runnable action){Button button=ReferenceUi.link(this,title,()->{d.dismiss();action.run();});button.setTextColor(ReferenceUi.TEXT);button.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);d.body.addView(button,new LinearLayout.LayoutParams(-1,dp(48)));}
   void showDrawer(){ProfileUi.show(this);}
@@ -169,6 +217,6 @@ public class MainActivity extends Activity {
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(session==null){finish();return;}openNotification(intent);}
   @Override protected void onResume(){super.onResume();if(!ProfileCatalog.get(this).item(Profiles.slot(this)).optBoolean("created")){finish();return;}AppUpdates.schedule(this);active=true;AppPrefs.maintainCache(this);if(session!=null){session.add(sessionObserver);session.audit.refresh(true);session.foreground(true);session.connect();}if(hub!=null&&hub.page!=AppHub.CHAT){hub.refresh();handler.removeCallbacks(hub.tick);handler.postDelayed(hub.tick,2500);}handler.removeCallbacks(ticker);handler.post(ticker);}
   @Override protected void onPause(){super.onPause();active=false;handler.removeCallbacks(ticker);if(session==null||session.deleted)return;NativeNetwork.get(this).traffic.watch(false);session.remove(sessionObserver);session.audit.cancel();session.reading.keyboard(false);session.foreground(false);}
-  @Override protected void onDestroy(){destroyed=true;if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);if(remote!=null&&remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);if(remote!=null)remote.setHost(null);super.onDestroy();}
+  @Override protected void onDestroy(){destroyed=true;if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);if(remote!=null&&remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);if(remote!=null)remote.setHost(null);super.onDestroy();}
   @Override public void onBackPressed(){if(hub!=null&&hub.page!=AppHub.CHAT){hub.select(AppHub.CHAT);return;}if(remote!=null&&remote.canGoBack()){remote.goBack();return;}moveTaskToBack(true);}
 }

@@ -15,9 +15,22 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   String command="";
   int actionCount;
   JSONObject performance=new JSONObject();
+  boolean reloadFixture;String reloadBefore="",reloadArchivedDraft="";int reloadDocuments;
+  static final class ReloadView extends GeckoWebView {
+    static final String LOCAL="http://127.0.0.1:8765/";boolean tracking;int stops,loads;String requested="";
+    ReloadView(Context c,ChatSession owner){super(c,owner);}
+    @Override protected boolean allowedUrl(String target){return target!=null&&target.startsWith(LOCAL+"c/reload-");}
+    @Override public String getUrl(){String raw=super.getUrl();return raw!=null&&raw.startsWith(LOCAL)?MainActivity.ORIGIN+raw.substring(LOCAL.length()):raw;}
+    @Override public void loadUrl(String target){if(tracking){loads++;requested=target;}super.loadUrl(target.startsWith(MainActivity.ORIGIN)?LOCAL+target.substring(MainActivity.ORIGIN.length()):target);}
+    @Override public void stopLoading(){if(tracking)stops++;super.stopLoading();}
+    @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){super.evaluateJavascript(code.replace(MainActivity.ORIGIN,LOCAL).replace("location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'","location.protocol !== 'http:' || location.hostname !== '127.0.0.1' || location.port !== '8765'"),raw->{
+      String output=raw;try{JSONObject value=new JSONObject(raw);String url=value.optString("url");if(url.startsWith(LOCAL)){value.put("url",MainActivity.ORIGIN+url.substring(LOCAL.length()));output=value.toString();}}catch(Exception ignored){}if(callback!=null)callback.onReceiveValue(output);
+    });}
+  }
 
   @Override public void onCreate(Bundle state){
     if(!getPackageName().endsWith(".test"))throw new SecurityException();
+    reloadFixture="reloadStart".equals(getIntent().getStringExtra("compactAction"));if(reloadFixture)ChatSession.browserFactory=ReloadView::new;
     ProfileCatalog.get(this).created(0);
     Profiles.rename(this,0,getIntent().getBooleanExtra("longName",true)?"长文阅读与文件整理和日常会话测试环境":"默认环境");
     getSharedPreferences("chat",0).edit().putString("browserEngine","system").putString("networkMode","external").putBoolean("networkConfigured",false).putBoolean("environmentInitialized",true).putBoolean("pageMode",false).remove("pending").commit();
@@ -28,6 +41,12 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     ChatSession.get(this).manualAttention=true;
     super.onCreate(state);
     command=getIntent().getStringExtra("compactCommand");
+    if(reloadFixture){
+      handler.removeCallbacks(ticker);session.remove(sessionObserver);session.handler.removeCallbacks(session.tick);
+      session.prefs.edit().putBoolean("networkConfigured",true).putString("proxy","socks://127.0.0.1:1080").putBoolean("requireExternalVpn",false).commit();session.networkReady=true;session.offline=false;session.guard.setBlocked(false);
+      android.webkit.WebViewClient original=remote.client;remote.setWebViewClient(new android.webkit.WebViewClient(){@Override public void onPageFinished(android.webkit.WebView view,String url){if(original!=null)original.onPageFinished(view,url);if(url.startsWith(ReloadView.LOCAL)){session.handler.removeCallbacks(session.tick);session.navigating=false;session.navigationFailed=false;reloadDocuments++;waitReloadDocument(SystemClock.elapsedRealtime()+15000);}}});
+      remote.loadUrl(ReloadView.LOCAL+"c/reload-A");return;
+    }
     handler.postDelayed(()->{
       handler.removeCallbacks(ticker);
       session.remove(sessionObserver);
@@ -41,9 +60,40 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   @Override protected void onNewIntent(Intent intent){
     super.onNewIntent(intent);
     command=intent.getStringExtra("compactCommand");
+    if(reloadFixture){reloadCommand(intent.getStringExtra("compactAction"));return;}
     if("snapshot".equals(intent.getStringExtra("compactAction")))handler.post(()->snapshot("snapshot"));
     if("performance".equals(intent.getStringExtra("compactAction")))handler.post(this::performance);
   }
+  void waitReloadDocument(long deadline){
+    remote.evaluateJavascript("({ready:!!document.getElementById('prompt-textarea'),path:location.pathname})",raw->{JSONObject ready=J.parse(raw);if(!ready.optBoolean("ready")){if(SystemClock.elapsedRealtime()>deadline){reloadEvent("error",J.obj("error","Controlled reload document timeout"));return;}handler.postDelayed(()->waitReloadDocument(deadline),100);return;}
+      String script=session.driver.replace("__ACTION__","action").replace("__ARG__","arg");remote.evaluateJavascript("window.__pocketReadDriver=(action,arg)=>"+script+";({installed:true})",unused->{session.handler.removeCallbacks(session.tick);if(reloadDocuments==1){((ReloadView)remote).tracking=true;reloadCommand("prepareBusy");}else reloadSnapshot("reloaded");});
+    });
+  }
+  void reloadCommand(String action){
+    session.handler.removeCallbacks(session.tick);handler.removeCallbacks(ticker);
+    if("prepareBusy".equals(action)){
+      String url=MainActivity.ORIGIN+"c/reload-A",id=session.deliveries.begin(url,"already sent fixture question",new JSONArray(),"web",null);session.pending=J.obj("id",id,"kind","web","engine","gecko","confirmed",true,"userKey","id:reload-user","prompt","already sent fixture question","confirmedUrl",url,"expectedUrl",url);session.conversation=url;session.prefs.edit().putString("pending",session.pending.toString()).putString("conversation",url).commit();
+      remote.evaluateJavascript("history.replaceState(null,'','/c/reload-B');document.getElementById('composer').insertAdjacentHTML('beforeend','<button id=\"stop-button\" data-testid=\"stop-button\" aria-label=\"Stop\">Stop</button>');({ready:true})",raw->reloadSnapshot("reloadReady"));return;
+    }
+    if("requestReload".equals(action)){requestReload();waitReloadModal(SystemClock.elapsedRealtime()+10000);return;}
+    if("reloadSnapshot".equals(action)){reloadSnapshot("reloadSnapshot");return;}
+    if("changeRoute".equals(action)){remote.evaluateJavascript("history.replaceState(null,'','/c/reload-C');({changed:true})",raw->reloadSnapshot("routeChanged"));return;}
+    if("restoreRoute".equals(action)){remote.evaluateJavascript("history.replaceState(null,'','/c/reload-B');({changed:true})",raw->reloadSnapshot("routeRestored"));return;}
+    if("idleReload".equals(action)){session.pending=null;session.prefs.edit().remove("pending").commit();session.state=new JSONObject();remote.evaluateJavascript("document.getElementById('stop-button')?.remove();document.getElementById('prompt-textarea').value='   ';({idle:true})",raw->{requestReload();});}
+  }
+  void waitReloadModal(long deadline){
+    if(reloadDialog!=null&&reloadDialog.isShowing()){
+      JSONArray controls=new JSONArray();for(int i=0;i<reloadDialog.footer.getChildCount();i++){View view=reloadDialog.footer.getChildAt(i);if(view instanceof Button){android.graphics.Rect bounds=new android.graphics.Rect();view.getGlobalVisibleRect(bounds);controls.put(J.obj("label",((Button)view).getText().toString(),"bounds",J.arr(bounds.left,bounds.top,bounds.right,bounds.bottom),"x",bounds.centerX(),"y",bounds.centerY(),"enabled",view.isEnabled(),"clickable",view.isClickable()));}}
+      reloadEvent("reloadModal",J.obj("centered",reloadDialog.getWindow().getAttributes().gravity==Gravity.CENTER,"controls",controls));return;
+    }
+    if(SystemClock.elapsedRealtime()>deadline){reloadEvent("error",J.obj("error","Reload confirmation did not appear"));return;}handler.postDelayed(()->waitReloadModal(deadline),50);
+  }
+  void reloadSnapshot(String event){remote.evaluateJavascript("({body:document.documentElement.outerHTML,draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:window.__reloadDocument})",raw->{
+    JSONObject result=J.parse(raw);ReloadView web=(ReloadView)remote;try{result.put("documents",reloadDocuments).put("stops",web.stops).put("loads",web.loads).put("requested",web.requested).put("currentUrl",web.getUrl()).put("cachedResumeUrl",session.resumeUrl()).put("modal",reloadDialog!=null&&reloadDialog.isShowing());}catch(Exception ignored){}
+    if("reloadReady".equals(event)){reloadBefore=result.toString();reloadArchivedDraft=result.optString("draft");}
+    if("reloaded".equals(event))session.webStore.worker.execute(()->{boolean saved=false;JSONArray rows=DraftArchive.get(session.context).list(MainActivity.ORIGIN+"c/reload-B");for(int i=0;i<rows.length();i++)saved|=reloadArchivedDraft.equals(rows.optJSONObject(i).optString("body"));boolean archived=saved;handler.post(()->{try{result.put("draftArchived",archived);}catch(Exception ignored){}reloadEvent(event,result);});});else reloadEvent(event,result);
+  });}
+  void reloadEvent(String event,JSONObject value){Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"reload",value).toString());}
 
   @Override void showDrawer(){
     super.showDrawer();

@@ -117,6 +117,16 @@ final class ChatSession {
   void networkStatus(String text,boolean ready){if(audit!=null)audit.refresh(false);if(!internalNetwork())return;NativeNetwork n=NativeNetwork.get(context);if(!ready&&!n.starting&&!connecting){if(networkReady)ChatService.networkLost(context);networkReady=false;guard.setBlocked(true);networkIssue=text;connectionStage="代理连接中断";setStatus(text);if(uiVisible||ChatService.running)scheduleRecovery();}else if(!ready||pending==null)setStatus(text);}
   void connect(){if(offline){setStatus("当前离线 · 草稿与附件已保留");return;}if(connecting||recoveryScheduled||manualAttention)return;if(networkReady&&(!internalNetwork()||NativeNetwork.get(context).ready&&NativeNetwork.get(context).coreAlive())){changed();return;}openConnection(false,false);}
   void retryCurrent(){manualAttention=false;recoveryAttempt=0;recoveryToken++;recoveryScheduled=false;if(!networkReady||offline||!guard.allowed())reconnect();else if(!web.recoverClosed())navigate(resumeUrl(),"正在重新加载…");}
+  /** Explicit user reload stays on the captured current document, not an older pending chat. */
+  void retryCurrent(String target){
+    if(target==null||target.isEmpty()){retryCurrent();return;}
+    if(!WebReplyObserver.same(target,web.getUrl()))return;
+    if(!networkReady||offline||!guard.allowed()){setStatus("当前环境网络未就绪，请先检查网络后重新加载");return;}
+    manualAttention=false;recoveryAttempt=0;recoveryToken++;recoveryScheduled=false;
+    if(web.recoverClosed())return;
+    if(MainActivity.chatUrl(target))navigate(target,"正在重新加载…");
+    else if(web.current!=null&&web.current.isOpen())web.current.reload();
+  }
   void recoverWebsiteConnection(){
     if(websiteRecovering)return;
     if(submitting||operation||transferActive||uploading()){setStatus("正在处理文件或发送，请稍后恢复网页连接");return;}
