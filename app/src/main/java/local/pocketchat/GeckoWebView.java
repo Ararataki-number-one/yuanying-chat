@@ -34,7 +34,7 @@ class GeckoWebView extends FrameLayout {
     if(surface!=null&&surface.getSession()!=null)surface.releaseSession();
     for(GeckoSession session:new ArrayList<>(locations.keySet()))if(session.isOpen())session.close();
     if(primary!=null&&primary.isOpen())primary.close();
-    ports.clear();popups.clear();locations.clear();backStates.clear();pageScales.clear();viewportWidths.clear();loadingTargets.clear();pendingLoads.clear();painted.clear();usable.clear();crashed.clear();states.clear();
+    ports.clear();popups.clear();locations.clear();backStates.clear();pageScales.clear();measuredCompositors.clear();viewportWidths.clear();loadingTargets.clear();pendingLoads.clear();painted.clear();usable.clear();crashed.clear();states.clear();
     routePort=null;ready=false;
     uploadWorker.execute(()->{for(GeckoUploadFiles.Selection files:uploadFiles)files.delete();uploadFiles.clear();});uploadWorker.shutdown();
   }
@@ -47,6 +47,9 @@ class GeckoWebView extends FrameLayout {
   final Map<GeckoSession,String> locations=new IdentityHashMap<>();
   final Map<GeckoSession,Boolean> backStates=new IdentityHashMap<>();
   final Map<GeckoSession,Float> pageScales=new IdentityHashMap<>(),viewportWidths=new IdentityHashMap<>();
+  // Native scale belongs to the open compositor, not a DOM document. A new
+  // document at the same scale need not produce another scroll notification.
+  final Set<GeckoSession> measuredCompositors=Collections.newSetFromMap(new IdentityHashMap<>());
   final Map<GeckoSession,String> loadingTargets=new IdentityHashMap<>();
   final Set<GeckoSession> pendingLoads=Collections.newSetFromMap(new IdentityHashMap<>());
   final Set<GeckoSession> painted=Collections.newSetFromMap(new IdentityHashMap<>());
@@ -178,6 +181,7 @@ class GeckoWebView extends FrameLayout {
     session.setCompositorScrollDelegate(new GeckoSession.CompositorScrollDelegate(){
       @Override public void onScrollChanged(GeckoSession source,GeckoSession.ScrollPositionUpdate update){
         if(destroyed||!locations.containsKey(source)||!Float.isFinite(update.zoom)||update.zoom<=0)return;
+        measuredCompositors.add(source);
         Float measured=pageScales.get(source);boolean first=measured==null;
         if(!first&&Math.abs(measured-update.zoom)<.00001f)return;
         pageScales.put(source,update.zoom);
@@ -335,6 +339,7 @@ class GeckoWebView extends FrameLayout {
     return true;
   }
   private boolean reopenCurrent(){try{
+    measuredCompositors.remove(current);pageScales.remove(current);
     if(surface.getSession()!=null)surface.releaseSession();if(current.isOpen())current.close();current.open(runtime);surface.setSession(current);
     current.setActive(!owner.browserPaused);crashed.remove(current);failed=false;configure(desktop,owner.privacy.level());return true;
   }catch(Exception error){failure("网页暂未恢复，请重新打开当前环境");return false;}}
@@ -366,7 +371,7 @@ class GeckoWebView extends FrameLayout {
     if(destroyed||!popups.remove(old))return false;
     if(old==current){activate(popups.isEmpty()?primary:popups.get(popups.size()-1));owner.pageError="";if(crashed.contains(current))contentStopped(current,"上一页被系统关闭，点按重新加载可恢复");else{owner.beginNavigation(url,"正在返回上一页…");if(client!=null&&painted.contains(current)){client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}}}
     WebExtension.Port port=ports.remove(old);if(port!=null)callbacks.cancel(port);
-    locations.remove(old);backStates.remove(old);pageScales.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);
+    locations.remove(old);backStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);
     if(old.isOpen())old.close();return true;
   }
   public void loadUrl(String target){
@@ -398,14 +403,14 @@ class GeckoWebView extends FrameLayout {
   public boolean canGoBack(){return canBack||!popups.isEmpty();}
   public void goBack(){if(canBack&&current!=null)current.goBack();else closePopup();}
   public float getScale(){
-    if(current!=null&&current.isOpen()&&pageScales.containsKey(current)){
+    if(current!=null&&current.isOpen()&&measuredCompositors.contains(current)){
       current.getClientToSurfaceMatrix(readingMatrix);readingMatrix.getValues(readingValues);
       float value=readingValues[Matrix.MSCALE_X];
       if(Float.isFinite(value)&&value>0){pageScales.put(current,value);scale=value*readingLayout;}
     }
     return scale;
   }
-  boolean readingScaleMeasured(){return current!=null&&pageScales.containsKey(current);}
+  boolean readingScaleMeasured(){return current!=null&&measuredCompositors.contains(current);}
   boolean readingZoomActive(){return zoomTarget!=null;}
   float readingScrollY(){
     if(destroyed||failed||current==null||!current.isOpen()||!readingScaleMeasured())return Float.NaN;
