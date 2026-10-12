@@ -45,7 +45,7 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   void begin(){try{
     owner=Profiles.context(this,7);other=Profiles.context(this,6);
     check("Background completion reminders are off by default",!AppSettings.backgroundCompletionNotice(owner));
-    check("Browser and network child processes cannot count as visible UI",!QuietNotifications.uiProcess(getPackageName()+":tab0",getPackageName())&&!QuietNotifications.uiProcess(getPackageName()+":network",getPackageName())&&QuietNotifications.uiProcess(getPackageName()+":profile7",getPackageName())&&!QuietNotifications.visibleImportance(ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE));
+    check("Browser and network child processes cannot count as visible UI",!QuietNotifications.uiProcess(getPackageName()+":gecko_env7_tab0_disable_art_image_",getPackageName())&&!QuietNotifications.uiProcess(getPackageName()+":network",getPackageName())&&QuietNotifications.uiProcess(getPackageName()+":profile7",getPackageName()));
     for(int slot:new int[]{6,7}){Context c=Profiles.context(this,slot);c.getSharedPreferences("chat",0).edit().putBoolean("replyNotice",true).commit();manager.cancel(Profiles.notification(c,4102));}
     owner.getSharedPreferences("chat",0).edit().putStringSet("notifiedJobs",Collections.singleton(prefix+"-aggregate-legacy")).commit();
     seed("chat-wait",Profiles.notification(owner,4101));seed("network-transport",NetworkTransportService.NOTICE);
@@ -69,6 +69,8 @@ public final class NotificationQuietIntegrationActivity extends Activity {
     check("Upgrade removes old noisy foreground channels",manager.getNotificationChannel("chat-wait")==null&&manager.getNotificationChannel("network-transport")==null);
     check("Upgrade removes non-completion regular notifications across profiles",notice(Profiles.notification(owner,4104))==null&&notice(Profiles.notification(owner,4105))==null&&notice(Profiles.notification(other,4103))==null);
     foregroundProof=QuietNotifications.foregroundEvidence(owner);check("A real visible app Activity suppresses completion reminders",foregroundProof.optBoolean("known")&&foregroundProof.optBoolean("foreground")&&QuietNotifications.appForeground(owner));
+    check("A visible Activity is proved by real started lifecycle count",foregroundProof.optInt("actualActivityStartedCount")>0&&"activity-start-stop".equals(foregroundProof.optString("visibilitySource"))&&AppVisibility.snapshot().getInt("actualActivityStartedCount")>0);
+    Bundle wrongPid=new Bundle();wrongPid.putInt("expectedPid",android.os.Process.myPid()+1);Bundle refused=getContentResolver().call(android.net.Uri.parse("content://"+getPackageName()+".lifecycle7"),"appVisibility",null,wrongPid);check("A private visibility endpoint rejects an obsolete process PID",refused!=null&&!refused.getBoolean("known")&&refused.getInt("pid")==android.os.Process.myPid());
     AppSettings.put(owner,"backgroundCompletionNotice","true");ChatService.completed(owner,prefix+"-foreground",MainActivity.ORIGIN);ChatService.downloaded(owner,prefix+"-foreground-file","visible-file.txt");
     awaitQuiet("foreground reply and download stay absent",()->notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(owner,4104))==null,()->{
       check("Foreground replies and downloads stay quiet even after opting in",notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(owner,4104))==null);
@@ -108,7 +110,8 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   }catch(Exception e){fail(e);}}
   void background(){try{
     if(!leftApp){if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Runner did not send Home");handler.postDelayed(this::background,200);return;}
-    homeProof=QuietNotifications.foregroundEvidence(owner);check("Real Home leaves the UI in background while required services keep running",homeProof.optBoolean("known")&&!homeProof.optBoolean("foreground")&&!QuietNotifications.appForeground(owner));
+    homeProof=QuietNotifications.foregroundEvidence(owner);if((!homeProof.optBoolean("known")||homeProof.optBoolean("foreground"))&&SystemClock.elapsedRealtime()<deadline){handler.postDelayed(this::background,100);return;}check("Real Home leaves the UI in background while required services keep running",homeProof.optBoolean("known")&&!homeProof.optBoolean("foreground")&&!QuietNotifications.appForeground(owner));
+    check("Real Home is proved by stopped Activity lifecycle despite browser process priority",homeProof.optInt("actualActivityStartedCount",-1)==0&&AppVisibility.snapshot().getInt("actualActivityStartedCount")==0&&AppVisibility.snapshot().getLong("activityStops")>0&&"activity-start-stop".equals(homeProof.optString("visibilitySource")));
     check("Home preserves the pending reply and background observation service",session.pending==job&&ChatService.running&&session.browserWorkActive()&&!session.browserPaused);
     ChatService.completed(owner,prefix+"-disabled",MainActivity.ORIGIN);ChatService.downloaded(owner,prefix+"-disabled-file","disabled-file.txt");
     awaitQuiet("background default remains quiet",()->notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(owner,4104))==null,()->{

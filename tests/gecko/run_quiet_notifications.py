@@ -40,11 +40,16 @@ try:
                 'Opted-in background file completion opens the exact saved task',
                 'The notified local file is fully published and readable',
                 'Opting out removes completion cards across environments',
+                'A visible Activity is proved by real started lifecycle count',
+                'A private visibility endpoint rejects an obsolete process PID',
+                'Real Home is proved by stopped Activity lifecycle despite browser process priority',
             }
             assert required<=set(checks),result
             foreground,home=result['foregroundEvidence'],result['homeEvidence']
             assert foreground['known'] and foreground['foreground'] and any(row['visible'] and row['process']==package+':profile7' for row in foreground['processes']),foreground
             assert home['known'] and not home['foreground'] and all(not row['visible'] for row in home['processes']),home
+            assert foreground['visibilitySource']==home['visibilitySource']=='activity-start-stop' and foreground['actualActivityStartedCount']>0 and home['actualActivityStartedCount']==0
+            assert all(row['known'] and row['visible']==(row['actualActivityStartedCount']>0) for proof in [foreground,home] for row in proof['processes'])
             raise SystemExit(0)
         time.sleep(1)
     raise TimeoutError('No notification regression result from Android')

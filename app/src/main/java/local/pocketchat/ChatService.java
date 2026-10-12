@@ -28,7 +28,7 @@ public class ChatService extends Service {
       ledger.migrate(p);if(ledger.contains(id))return;
       // A foreground completion was already visible to the user. Record it so
       // later page polling cannot turn it into a delayed background reminder.
-      if(QuietNotifications.appForeground(c)){ledger.record(id);return;}
+      if(QuietNotifications.actualForeground(c)){ledger.record(id);return;}
       if(!AppPrefs.enabled(c,"replyNotice")||!QuietNotifications.backgroundCompletionAllowed(c))return;
       channels(c);NotificationManager manager=c.getSystemService(NotificationManager.class);
       if(manager.getNotificationChannel(DONE).getImportance()==NotificationManager.IMPORTANCE_NONE)return;
@@ -44,7 +44,7 @@ public class ChatService extends Service {
     if(id==null||id.isEmpty())return;QuietNotifications.migrate(c);
     try(ReplyNoticeLedger ledger=new ReplyNoticeLedger(c)){
       String identity="download:"+id;if(ledger.contains(identity))return;
-      if(QuietNotifications.appForeground(c)){ledger.record(identity);return;}
+      if(QuietNotifications.actualForeground(c)){ledger.record(identity);return;}
       if(!QuietNotifications.backgroundCompletionAllowed(c))return;
       channels(c);NotificationManager manager=c.getSystemService(NotificationManager.class);if(manager.getNotificationChannel(FILES).getImportance()==NotificationManager.IMPORTANCE_NONE)return;
       manager.notify(Profiles.notification(c,4104),new Notification.Builder(c,FILES).setSmallIcon(android.R.drawable.stat_sys_download_done).setContentTitle("文件已下载").setContentText(name+" · 点击查看").setContentIntent(downloadIntent(c,id)).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).build());ledger.record(identity);

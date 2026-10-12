@@ -4,6 +4,7 @@ import android.app.*;
 import android.content.Context;
 import android.os.Build;
 import android.os.Process;
+import android.os.Bundle;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.List;
@@ -17,14 +18,20 @@ final class QuietNotifications {
   // Only these processes host our Activities. Gecko child processes and the
   // managed network service must not masquerade as a visible application.
   static boolean uiProcess(String name,String app){if(app.equals(name))return true;for(int slot=1;slot<Profiles.MAX;slot++)if((app+":profile"+slot).equals(name))return true;return false;}
-  static boolean visibleImportance(int importance){return importance==ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND||importance==ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE;}
   static JSONObject foregroundEvidence(Context c){
-    JSONArray owners=new JSONArray();boolean foreground=false;
+    JSONArray owners=new JSONArray();boolean foreground=false,known=true;int started=0;
     try{ActivityManager manager=c.getSystemService(ActivityManager.class);List<ActivityManager.RunningAppProcessInfo> processes=manager==null?null:manager.getRunningAppProcesses();if(processes==null)return J.obj("known",false,"foreground",true,"processes",owners);
-      for(ActivityManager.RunningAppProcessInfo process:processes)if(process.uid==Process.myUid()&&uiProcess(process.processName,c.getPackageName())){boolean visible=visibleImportance(process.importance);foreground|=visible;owners.put(J.obj("process",process.processName,"pid",process.pid,"importance",process.importance,"visible",visible));}
-      return J.obj("known",owners.length()>0,"foreground",owners.length()==0||foreground,"processes",owners);
+      for(ActivityManager.RunningAppProcessInfo process:processes)if(process.uid==Process.myUid()&&uiProcess(process.processName,c.getPackageName())){
+        int slot=process.processName.equals(c.getPackageName())?0:Integer.parseInt(process.processName.substring((c.getPackageName()+":profile").length()));
+        Bundle state;if(process.pid==Process.myPid())state=AppVisibility.snapshot();else{Bundle request=new Bundle();request.putInt("expectedPid",process.pid);state=c.getContentResolver().call(android.net.Uri.parse("content://"+c.getPackageName()+".lifecycle"+slot),"appVisibility",null,request);}
+        boolean valid=state!=null&&state.getBoolean("known")&&state.getInt("schema")==1&&state.getInt("pid")==process.pid&&state.getInt("uid")==Process.myUid()&&state.getInt("slot",-1)==slot;
+        int count=valid?state.getInt("actualActivityStartedCount",-1):-1;valid&=count>=0;known&=valid;boolean visible=valid&&count>0;foreground|=visible;if(valid)started+=count;
+        owners.put(J.obj("process",process.processName,"pid",process.pid,"importance",process.importance,"known",valid,"actualActivityStartedCount",count,"visible",visible,"activityStarts",valid?state.getLong("activityStarts"):-1,"activityStops",valid?state.getLong("activityStops"):-1,"revision",valid?state.getLong("revision"):-1,"lastEventAt",valid?state.getLong("lastEventAt"):-1));
+      }
+      known&=owners.length()>0;return J.obj("known",known,"foreground",!known||foreground,"actualActivityStartedCount",started,"visibilitySource","activity-start-stop","processes",owners);
     }catch(Exception unavailable){return J.obj("known",false,"foreground",true,"processes",owners);}
   }
+  static boolean actualForeground(Context c){JSONObject state=foregroundEvidence(c);return state.optBoolean("known")&&state.optBoolean("foreground");}
   static boolean appForeground(Context c){return foregroundEvidence(c).optBoolean("foreground",true);}
   static boolean backgroundCompletionAllowed(Context c){
     if(!AppSettings.backgroundCompletionNotice(c)||appForeground(c))return false;
