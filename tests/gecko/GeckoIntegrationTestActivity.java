@@ -12,14 +12,17 @@ import org.json.*;
 public class GeckoIntegrationTestActivity extends Activity {
   ChatSession session;int slot;long run;String action;boolean closedSessionRecovery,blockedRecoveryPreservesClosed,pendingFailureRetained,activityResumed;
   long paintStarted,paintVisible,paintFinished;
+  String initialRouteNetwork="";long initialRouteStableSince;int initialRouteSamples;
   final int[] readingZoomSamples=new int[4];String readingZoomLast="";long readingZoomLastSample;JSONObject readingZoomReadiness;
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
     boolean chooserOrigin;Runnable nativeGestureComplete;int nativeGestureCount;
+    boolean initialRouteReady;java.util.function.Consumer<String> initialRouteReporter;
     boolean nativeGeometryActive,nativeGeometrySwipes,nativeGeometryStable;JSONArray nativeGeometryTrace=new JSONArray();NativeGeometry nativeGeometryPrevious,nativeGeometryExpected;
     long nativeUnchangedTouchEvents,nativeRedundantTouchSyncs,nativeFirstTouchSyncs=-1;boolean nativeFirstTouchOriginCorrect;
     @Override public String getUrl(){return chooserOrigin?MainActivity.ORIGIN:super.getUrl();}
     FixtureView(Context context,ChatSession owner){super(context,owner);}
+    @Override public void loadUrl(String target){java.util.function.Consumer<String> reporter=initialRouteReporter;if(reporter!=null){initialRouteReporter=null;reporter.accept(target);}super.loadUrl(target);}
     @Override protected boolean allowedUrl(String target){
       return target.startsWith("http://127.0.0.1:8765/")||target.startsWith("http://remote-probe.invalid:8765/")||super.allowedUrl(target);
     }
@@ -90,7 +93,7 @@ public class GeckoIntegrationTestActivity extends Activity {
       @Override public void onPageCommitVisible(WebView view,String target){if(target.contains("/browser-loading")&&paintVisible==0)paintVisible=SystemClock.elapsedRealtime();original.onPageCommitVisible(view,target);}
       @Override public void onPageFinished(WebView view,String target){if(target.contains("/browser-loading"))paintFinished=SystemClock.elapsedRealtime();if(target.startsWith("http://127.0.0.1:8765/")){session.navigating=false;session.navigationFailed=false;session.reading.visible(target);}else original.onPageFinished(view,target);}
     });
-    session.guard.setBlocked(false);session.networkReady=true;session.foreground(true);
+    session.foreground(true);
     LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setFitsSystemWindows(true);
     TextView label=new TextView(this);label.setText("正式应用内核回归 · 环境 "+(slot+1));label.setTextSize(16);root.addView(label);
     if(session.web.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)session.web.getParent()).removeView(session.web);
@@ -109,6 +112,24 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("foreignPreferences".equals(action)){event("foreignPreferences",J.obj("marker",Profiles.context(this,1).getSharedPreferences("chat",0).getString("managementMarker","")));return;}
     if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
+    FixtureView controlled=(FixtureView)web;
+    if(!controlled.initialRouteReady){
+      android.net.ConnectivityManager manager=getSystemService(android.net.ConnectivityManager.class);
+      android.net.Network network=manager==null?null:manager.getActiveNetwork();android.net.NetworkCapabilities caps=network==null?null:manager.getNetworkCapabilities(network);
+      String identity=network==null?"":network.toString();long now=SystemClock.elapsedRealtime();
+      boolean available=caps!=null&&caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)&&!session.offline&&identity.equals(session.networkIdentity);
+      if(!available){initialRouteNetwork="";initialRouteStableSince=0;initialRouteSamples=0;}
+      else if(!identity.equals(initialRouteNetwork)){initialRouteNetwork=identity;initialRouteStableSince=now;initialRouteSamples=1;}
+      else initialRouteSamples++;
+      if(!available||initialRouteSamples<3||now-initialRouteStableSince<500){session.handler.postDelayed(()->waitReady(serial),100);return;}
+      String expected=(slot==0?"socks":"http")+"://127.0.0.1:"+(1080+slot);
+      if(session.internalNetwork()||!expected.equals(session.prefs.getString("proxy",""))||session.prefs.getBoolean("requireExternalVpn",true)){event("error",J.obj("error","Initial controlled fixture route configuration mismatch"));return;}
+      // Admit this synthetic route once after the real observer has caught up.
+      // Later loss/block/kill/clear behavior continues through production guards.
+      session.guard.setBlocked(false);session.networkReady=true;controlled.initialRouteReady=true;
+      JSONObject evidence=J.obj("actualNetwork",identity,"internet",true,"observerNetwork",session.networkIdentity,"observerOffline",session.offline,"stableMillis",now-initialRouteStableSince,"stableSamples",initialRouteSamples,"proxy",expected);
+      controlled.initialRouteReporter=target->{try{evidence.put("initialTarget",target).put("startupCheckpointUri",GeckoWebView.stateUrl(web.startupState)).put("guardAllowed",session.guard.allowed()).put("networkReady",session.networkReady).put("route",web.route(target));}catch(JSONException error){throw new IllegalStateException(error);}event("initialRouteReady",evidence);};
+    }
     if("backgroundSettings".equals(action)){backgroundSettings(serial);return;}
     if("queuedChanges".equals(action)){queuedChanges(serial);return;}
     if("privacy".equals(action)){privacy(serial,0);return;}
