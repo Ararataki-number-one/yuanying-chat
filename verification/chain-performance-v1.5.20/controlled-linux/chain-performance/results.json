@@ -1,0 +1,7568 @@
+{
+  "coreReceipt": {
+    "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.31/mihomo-linux-amd64-v1.19.31.gz",
+    "gzipBytes": 22789792,
+    "gzipSha256": "d5e74bbddbdfff49a1aef7775bf5911da59f0d7196ed509a0ac914b3653dd5f1",
+    "binaryBytes": 61825150,
+    "binarySha256": "08787faafea19c1ab0f83fa5a1b22363b7d03ea78da18091a4c883aecaaa5979"
+  },
+  "sourceTarSha256": "676732158479254de38ea5a78aa32ff650ce2d3a78156a0edc2ff0cb5c2ddfd8",
+  "method": "AB/BA same official Mihomo, same local authenticated two-hop SOCKS, same fixed exit, same targets, same artificial waits",
+  "limits": [
+    "Linux loopback, not Android/device/provider throughput",
+    "No DNS workload: literal IP fixture endpoints",
+    "No actual Clash Verge GUI or browser engine",
+    "Controlled RTT adds waits per SOCKS reply and relay chunk, not packet-accurate WAN simulation"
+  ],
+  "delaysMs": {
+    "socksReply": 20.0,
+    "relayChunkOneWayPerHop": 10.0,
+    "httpResponse": 20.0
+  },
+  "summary": {
+    "app": {
+      "coldHead-http": {
+        "n": 16,
+        "medianMs": 253.9792465,
+        "minMs": 248.004805,
+        "maxMs": 621.043399
+      },
+      "persistentColdHead-http": {
+        "n": 2,
+        "medianMs": 250.8882245,
+        "minMs": 250.660196,
+        "maxMs": 251.116253
+      },
+      "warmHead-http": {
+        "n": 16,
+        "medianMs": 253.8257985,
+        "minMs": 249.990088,
+        "maxMs": 262.392225
+      },
+      "unifiedDelay-http-/ok": {
+        "n": 12,
+        "medianMs": 62.0,
+        "minMs": 61,
+        "maxMs": 84
+      },
+      "unifiedDelay-http-/close": {
+        "n": 12,
+        "medianMs": 249.5,
+        "minMs": 247,
+        "maxMs": 252
+      },
+      "coldHead-https": {
+        "n": 16,
+        "medianMs": 301.434569,
+        "minMs": 293.616653,
+        "maxMs": 309.476476
+      },
+      "persistentColdHead-https": {
+        "n": 2,
+        "medianMs": 298.1861535,
+        "minMs": 292.35769,
+        "maxMs": 304.014617
+      },
+      "warmHead-https": {
+        "n": 16,
+        "medianMs": 62.4817065,
+        "minMs": 61.775296,
+        "maxMs": 64.52687
+      },
+      "unifiedDelay-https-/ok": {
+        "n": 12,
+        "medianMs": 61.5,
+        "minMs": 61,
+        "maxMs": 62
+      },
+      "unifiedDelay-https-/close": {
+        "n": 12,
+        "medianMs": 302.5,
+        "minMs": 291,
+        "maxMs": 454
+      }
+    },
+    "clashEquivalent": {
+      "coldHead-http": {
+        "n": 16,
+        "medianMs": 251.215686,
+        "minMs": 249.642728,
+        "maxMs": 255.189982
+      },
+      "persistentColdHead-http": {
+        "n": 2,
+        "medianMs": 251.64042,
+        "minMs": 250.533652,
+        "maxMs": 252.747188
+      },
+      "warmHead-http": {
+        "n": 16,
+        "medianMs": 249.9350325,
+        "minMs": 247.855141,
+        "maxMs": 256.404061
+      },
+      "unifiedDelay-http-/ok": {
+        "n": 12,
+        "medianMs": 62.0,
+        "minMs": 61,
+        "maxMs": 63
+      },
+      "unifiedDelay-http-/close": {
+        "n": 12,
+        "medianMs": 248.0,
+        "minMs": 246,
+        "maxMs": 309
+      },
+      "coldHead-https": {
+        "n": 16,
+        "medianMs": 300.0595495,
+        "minMs": 292.668892,
+        "maxMs": 350.126
+      },
+      "persistentColdHead-https": {
+        "n": 2,
+        "medianMs": 305.447849,
+        "minMs": 299.32622,
+        "maxMs": 311.569478
+      },
+      "warmHead-https": {
+        "n": 16,
+        "medianMs": 63.9370225,
+        "minMs": 61.822535,
+        "maxMs": 93.128249
+      },
+      "unifiedDelay-https-/ok": {
+        "n": 12,
+        "medianMs": 63.0,
+        "minMs": 61,
+        "maxMs": 283
+      },
+      "unifiedDelay-https-/close": {
+        "n": 12,
+        "medianMs": 306.0,
+        "minMs": 293,
+        "maxMs": 523
+      }
+    }
+  },
+  "routeConnectionCounts": {
+    "entry": 200,
+    "fixedExit": 200
+  },
+  "samples": [
+    {
+      "variant": "app",
+      "round": 0,
+      "pid": 264307,
+      "configSha256": "bc2d83a1c3c03d2b806dbcd82712e98ba35c90edf040aafe71e73596721a686d",
+      "rows": [
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 255.407248
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 253.68391
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 249.965014
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 248.004805
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 248.646412
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 248.910141
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 251.314373
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 259.676425
+        },
+        {
+          "measure": "persistentColdHead",
+          "scheme": "http",
+          "ms": 250.660196
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 255.823895
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 252.203524
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 250.323966
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 262.392225
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 251.769012
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 251.762054
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 251.10839
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 252.821858
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 311.150897
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 312.798855
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 340.203528
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 63,
+          "totalMs": 320.545172
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 65,
+          "totalMs": 318.066988
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 314.86394
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 247,
+          "totalMs": 248.876478
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 251,
+          "totalMs": 253.654588
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 251,
+          "totalMs": 252.090815
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 248,
+          "totalMs": 249.814991
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 248,
+          "totalMs": 251.355174
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 249,
+          "totalMs": 250.662472
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 303.90485
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 302.294679
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 302.897533
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 303.374713
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 293.912863
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 306.096229
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 300.574459
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 303.348587
+        },
+        {
+          "measure": "persistentColdHead",
+          "scheme": "https",
+          "ms": 292.35769
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 62.312602
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 63.120959
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 63.155794
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 62.143984
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 62.234919
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 61.896704
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 62.761019
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 62.220348
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 366.076515
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 364.398972
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 365.894913
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 355.940604
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 362.461284
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 366.463487
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 291,
+          "totalMs": 292.239956
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 302,
+          "totalMs": 303.290566
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 362,
+          "totalMs": 364.024052
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 301,
+          "totalMs": 303.241671
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 300,
+          "totalMs": 301.588781
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 302,
+          "totalMs": 303.902411
+        }
+      ]
+    },
+    {
+      "variant": "clashEquivalent",
+      "round": 0,
+      "pid": 264466,
+      "configSha256": "c17d4850dd11b2cac95ae491934b25ae164dd74068f9a173181dcb229547d572",
+      "rows": [
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 250.82902
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 251.274266
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 251.332502
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 253.745745
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 253.210703
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 251.157106
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 255.189982
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 250.204992
+        },
+        {
+          "measure": "persistentColdHead",
+          "scheme": "http",
+          "ms": 252.747188
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 256.178606
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 253.212299
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 250.27128
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 248.892595
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 249.922585
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 248.411032
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 250.146731
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 248.752863
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 325.238186
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 319.446419
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 311.91125
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 311.1308
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 63,
+          "totalMs": 314.038416
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 310.111151
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 252,
+          "totalMs": 252.985781
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 259,
+          "totalMs": 260.244938
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 250,
+          "totalMs": 251.959286
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 247,
+          "totalMs": 248.798771
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 248,
+          "totalMs": 250.121965
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 247,
+          "totalMs": 251.549898
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 292.668892
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 300.213534
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 297.377691
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 301.016492
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 302.106222
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 295.394371
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 294.076139
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 350.126
+        },
+        {
+          "measure": "persistentColdHead",
+          "scheme": "https",
+          "ms": 311.569478
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 62.800031
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 63.001816
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 67.540619
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 67.851909
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 64.676062
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 61.822535
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 63.015631
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 63.96308
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 378.900121
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 63,
+          "totalMs": 365.191633
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 363.615323
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 65,
+          "totalMs": 369.305557
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 356.281134
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 361.681014
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 306,
+          "totalMs": 307.781902
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 293,
+          "totalMs": 294.932609
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 300,
+          "totalMs": 301.4186
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 302,
+          "totalMs": 304.228119
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 299,
+          "totalMs": 301.590846
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 295,
+          "totalMs": 296.201033
+        }
+      ]
+    },
+    {
+      "variant": "clashEquivalent",
+      "round": 1,
+      "pid": 264713,
+      "configSha256": "f12b324ff756b4c91a0b356af512ef0edf671e2221cee7694c2d3aed7c33ca8f",
+      "rows": [
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 249.642728
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 253.669774
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 250.243884
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 249.792988
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 253.89246
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 249.926
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 252.288603
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 249.893717
+        },
+        {
+          "measure": "persistentColdHead",
+          "scheme": "http",
+          "ms": 250.533652
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 247.940267
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 256.295729
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 256.404061
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 252.221309
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 249.94748
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 249.191855
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 247.855141
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 249.36019
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 310.74837
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 310.577394
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 310.216876
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 317.758181
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 311.107323
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 63,
+          "totalMs": 314.815026
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 309,
+          "totalMs": 311.533981
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 247,
+          "totalMs": 248.981905
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 248,
+          "totalMs": 249.680463
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 246,
+          "totalMs": 247.890917
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 246,
+          "totalMs": 249.573363
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 251,
+          "totalMs": 254.02947
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 309.179725
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 325.362195
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 295.588685
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 293.733642
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 297.372462
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 302.709915
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 299.905565
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 303.048774
+        },
+        {
+          "measure": "persistentColdHead",
+          "scheme": "https",
+          "ms": 299.32622
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 63.910965
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 64.176729
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 63.326297
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 65.818681
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 93.128249
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 63.28562
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 64.494954
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 63.506608
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 372.341697
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 70,
+          "totalMs": 379.050199
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 63,
+          "totalMs": 370.613094
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 283,
+          "totalMs": 882.365198
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 64,
+          "totalMs": 401.172019
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 64,
+          "totalMs": 399.475356
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 316,
+          "totalMs": 318.18337
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 306,
+          "totalMs": 309.590269
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 320,
+          "totalMs": 322.942892
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 316,
+          "totalMs": 317.949617
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 476,
+          "totalMs": 479.5658
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 523,
+          "totalMs": 526.312584
+        }
+      ]
+    },
+    {
+      "variant": "app",
+      "round": 1,
+      "pid": 264996,
+      "configSha256": "2c0aca3a06ef74ca1cc3a5064a75309491b37a7791a30d45638455d784a6ffc2",
+      "rows": [
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 256.95896
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 345.969478
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 293.662554
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 254.274583
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 261.96316
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 621.043399
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 251.649527
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "http",
+          "ms": 251.090023
+        },
+        {
+          "measure": "persistentColdHead",
+          "scheme": "http",
+          "ms": 251.116253
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 259.492724
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 257.520694
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 253.685603
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 249.990088
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 258.922699
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 253.965994
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 256.087824
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "http",
+          "ms": 255.651803
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 318.181282
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 84,
+          "totalMs": 336.96803
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 313.489095
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 63,
+          "totalMs": 314.809324
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 316.920064
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 314.973983
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 251,
+          "totalMs": 255.005784
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 251,
+          "totalMs": 252.422883
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 250,
+          "totalMs": 251.955818
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 248,
+          "totalMs": 250.346624
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 252,
+          "totalMs": 253.566708
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "http",
+          "path": "/close",
+          "ms": 249,
+          "totalMs": 250.586624
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 308.534544
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 295.342893
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 299.015495
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 293.616653
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 299.539214
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 309.476476
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 296.456193
+        },
+        {
+          "measure": "coldHead",
+          "scheme": "https",
+          "ms": 295.39658
+        },
+        {
+          "measure": "persistentColdHead",
+          "scheme": "https",
+          "ms": 304.014617
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 62.564567
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 62.962712
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 61.775296
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 62.568446
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 63.740939
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 64.52687
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 62.398846
+        },
+        {
+          "measure": "warmHead",
+          "scheme": "https",
+          "ms": 61.98755
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 366.380334
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 356.473723
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 363.459773
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 369.064242
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 62,
+          "totalMs": 370.805937
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/ok",
+          "ms": 61,
+          "totalMs": 391.312201
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 323,
+          "totalMs": 333.234332
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 339,
+          "totalMs": 352.402268
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 303,
+          "totalMs": 307.425433
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 454,
+          "totalMs": 457.154817
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 302,
+          "totalMs": 302.8814
+        },
+        {
+          "measure": "unifiedDelay",
+          "scheme": "https",
+          "path": "/close",
+          "ms": 419,
+          "totalMs": 420.297046
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "kind": "socksConnect",
+      "at": 506916.119930174,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506916.234604253,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506916.309942155,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53766
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506916.374355829,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506916.48822985,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506916.563359422,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53768
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506916.628679878,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506916.741334981,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506916.813903828,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53772
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506916.877651257,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506916.989700327,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506917.061561524,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53774
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506917.125537199,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506917.238531623,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506917.31032322,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53778
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506917.374930712,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506917.487560516,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506917.559515363,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53794
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506917.624225411,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506917.737116752,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506917.809443398,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53806
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506917.880411237,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506917.994775646,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506918.0665668,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53814
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506918.135176551,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506918.249241837,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506918.321218564,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53824
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506918.385925671,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506918.504185939,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506918.576603831,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53828
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506918.641367019,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506918.756700081,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506918.829131423,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53832
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506918.893464401,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506919.005682158,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506919.078735001,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53840
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506919.157357878,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506919.269485941,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506919.341542097,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53854
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506919.407748612,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506919.520987435,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506919.593209173,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53866
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506919.658428294,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506919.771569731,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506919.844574836,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53874
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506919.90970716,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506920.023576722,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506920.096963365,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53886
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506920.164370636,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506920.277553279,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506920.349835659,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53888
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506920.414228367,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506920.527122753,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506920.598789936,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53890
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506920.660338187,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53890
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506920.727015931,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506920.840232811,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506920.91375317,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53904
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506920.975512688,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53904
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506921.043296276,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506921.158200553,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506921.232068268,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54434
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506921.317763347,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54434
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506921.385660573,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506921.499925736,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506921.575815603,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54444
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506921.639439688,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54444
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506921.708133577,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506921.820939854,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506921.894555286,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54450
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506921.956810171,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54450
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506922.0259415,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506922.139196303,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506922.213990283,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54454
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506922.276194736,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54454
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506922.342234685,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506922.454953311,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506922.527204735,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        54468
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506922.592860547,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506922.708757509,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506922.781687313,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        54482
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506922.846474431,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506922.962599475,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506923.034813538,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        54484
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506923.100635813,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506923.213463415,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506923.286080433,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        54490
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506923.353196569,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506923.466705127,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506923.538622711,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        54500
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506923.604949682,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506923.719106451,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506923.791089918,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        54506
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506923.8582401,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506923.971226782,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506924.098316713,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53822
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506924.162800808,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506924.276205674,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506924.401968696,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53830
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506924.466850601,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506924.579345917,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506924.706075563,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53832
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506924.771533966,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506924.883873093,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506925.009994941,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53834
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506925.077654828,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506925.190426535,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506925.306567098,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53838
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506925.371719856,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506925.485894829,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506925.613356971,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53848
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506925.68443097,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506925.797708329,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506925.91557653,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53852
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506925.981321857,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506926.093465924,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506926.220238417,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53858
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506926.284749538,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506926.397895107,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506926.514198463,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53860
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506926.576746881,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53860
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506926.639225794,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53860
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506926.70212006,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53860
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506926.764982039,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53860
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506926.827302527,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53860
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506926.889488909,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53860
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506926.952056597,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53860
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506927.014102425,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        53860
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506927.078688578,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506927.191793661,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506927.317656624,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53862
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506927.38019436,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53862
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506927.445594412,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506927.558583111,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506927.683758211,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53878
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506927.745701216,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53878
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506927.810944813,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506927.923693861,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506928.05066961,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53892
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506928.112561153,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53892
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506928.178023619,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506928.290471219,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506928.40818208,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53898
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506928.469759627,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53898
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506928.534700673,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506928.647254317,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506928.772477632,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53912
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506928.833889602,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53912
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506928.899789805,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506929.012839902,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506929.13968716,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53926
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506929.201809775,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        53926
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506929.266960817,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506929.379635254,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506929.495575935,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        53940
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506929.559931397,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506929.673486972,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506929.799448769,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        53942
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506929.865654976,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506929.978684446,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506930.1166866,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        53952
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506930.231190171,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506930.343323687,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506930.469929581,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        53960
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506930.534743338,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506930.647415318,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506930.771878195,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        53968
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506930.838065549,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506930.951237841,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506931.075956434,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        36556
+      ],
+      "tls": true
+    },
+    {
+      "kind": "sampleComplete",
+      "at": 506931.101092736,
+      "variant": "app",
+      "round": 0,
+      "pid": 264307
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506931.207895696,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506931.321691757,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506931.395595096,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36552
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506931.46133293,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506931.574703227,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506931.64697672,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36564
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506931.710956911,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506931.823579108,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506931.897828312,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36576
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506931.962529563,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506932.077110954,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506932.151470741,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36584
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506932.219048731,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506932.332971506,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506932.404923815,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36594
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506932.470759013,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506932.584304106,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506932.656546364,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36600
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506932.720101326,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506932.837570702,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506932.910784669,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36608
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506932.975464268,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506933.088841387,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506933.162023384,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36618
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506933.225267784,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506933.343068016,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506933.414954688,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36630
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506933.479258226,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506933.598039251,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506933.670211611,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36644
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506933.735428906,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506933.852461367,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506933.924236025,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36646
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506933.98904506,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506934.102803027,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506934.174517085,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36650
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506934.238145425,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506934.350746869,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506934.42301845,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36654
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506934.488640349,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506934.60162042,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506934.673468038,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36662
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506934.737374425,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506934.850148,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506934.922002207,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36666
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506934.98621842,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506935.099560407,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506935.171995589,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36672
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506935.235778245,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506935.348862402,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506935.420391755,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36688
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506935.486962905,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506935.608809333,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506935.682066977,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36694
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506935.744597155,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36694
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506935.817576222,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506935.931982697,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506936.00807364,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36710
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506936.069775482,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36710
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506936.135585525,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506936.248356131,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506936.321011252,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36722
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506936.383660173,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36722
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506936.449309526,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506936.562627062,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506936.634517374,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36730
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506936.696802575,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36730
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506936.762213057,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506936.875814469,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506936.94809276,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36738
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506937.012038218,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36738
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506937.077453937,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506937.18999799,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506937.261856572,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36746
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506937.323549503,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        36746
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506937.389964494,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506937.504222824,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506937.576957433,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        36750
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506937.643857239,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506937.757406265,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506937.840241455,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        36754
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506937.905630625,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506938.020783139,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506938.093569406,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        36758
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506938.158806939,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506938.271089228,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506938.344026382,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        36770
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506938.410709287,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506938.524780396,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506938.596599826,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        36786
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506938.665135051,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506938.777723169,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506938.850031016,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        36798
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506938.919480298,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506939.031786959,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506939.148166498,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        36566
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506939.212690438,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506939.32512315,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506939.448441894,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        36582
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506939.517980186,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506939.631247364,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506939.749620536,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        36598
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506939.815861596,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506939.928351559,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506940.053251683,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        36612
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506940.11848085,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506940.230523798,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506940.356928434,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        36628
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506940.422048907,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506940.537739438,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506940.653350654,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        36636
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506940.718909951,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506940.832301186,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506940.94915457,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        36644
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506941.014489784,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506941.127790806,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506941.299841703,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        45472
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506941.370365112,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506941.485593557,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506941.614331155,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        45476
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506941.678931039,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        45476
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506941.741960868,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        45476
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506941.805508169,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        45476
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506941.873496591,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        45476
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506941.942798796,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        45476
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506942.00449551,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        45476
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506942.067197207,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        45476
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506942.130523282,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        45476
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506942.19852747,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506942.311551841,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506942.447505566,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45490
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506942.509851953,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45490
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506942.575550116,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506942.6883061,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506942.813082583,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45494
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506942.877052815,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45494
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506942.950916336,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506943.06346363,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506943.179558087,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45500
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506943.241954811,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45500
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506943.308171044,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506943.420970397,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506943.54645367,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45504
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506943.612496481,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45504
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506943.681032465,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506943.793747674,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506943.910263824,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45514
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506943.972064358,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45514
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506944.039145877,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506944.15122869,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506944.275576893,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45518
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506944.336916885,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        45518
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506944.402923476,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506944.518143876,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506944.645008157,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        45524
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506944.712822111,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506944.825484403,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506944.943468788,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        45526
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506945.009654431,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506945.1221545,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506945.247339773,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        45528
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506945.313440275,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506945.426476645,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506945.55294092,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        45532
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506945.61886541,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506945.731356456,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506945.855777772,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        45546
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506945.92196218,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506946.035808659,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506946.153340361,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        45548
+      ],
+      "tls": true
+    },
+    {
+      "kind": "sampleComplete",
+      "at": 506946.178159324,
+      "variant": "clashEquivalent",
+      "round": 0,
+      "pid": 264466
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506946.280989362,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506946.394718429,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506946.466322527,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54506
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506946.530453076,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506946.643084547,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506946.716361795,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54516
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506946.785385718,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506946.89839087,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506946.97009147,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54524
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506947.035720902,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506947.148683996,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506947.220518741,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54534
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506947.284910781,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506947.401905264,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506947.47401952,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54538
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506947.538851317,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506947.651162401,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506947.723375192,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54546
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506947.788379001,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506947.90197949,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506947.974406141,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54548
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506948.04290762,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506948.155090938,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506948.226664768,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54550
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506948.290907825,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506948.404360147,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506948.477346293,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54558
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506948.541331764,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506948.65342587,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506948.724963472,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54570
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506948.790734448,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506948.905838698,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506948.978218047,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54582
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506949.050759628,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506949.165557025,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506949.237544742,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54596
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506949.304144269,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506949.418590342,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506949.490334616,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54608
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506949.554482946,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506949.667381736,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506949.738977472,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54620
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506949.804990258,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506949.917417815,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506949.988914532,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54636
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506950.053641357,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506950.165743548,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506950.237193752,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54642
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506950.302108419,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506950.414098332,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506950.486739713,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54658
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506950.550422728,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506950.663116666,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506950.736343444,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54670
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506950.797528936,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        54670
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506950.861654082,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506950.974012539,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506951.046336679,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47162
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506951.108720658,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47162
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506951.174934705,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506951.287316696,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506951.359269576,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47168
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506951.420986663,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47168
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506951.486010421,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506951.602649893,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506951.676623259,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47170
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506951.738242378,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47170
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506951.806117044,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506951.919183816,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506951.990981921,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47184
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506952.05271722,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47184
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506952.119214905,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506952.232916784,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506952.307256204,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47196
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506952.370356437,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47196
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506952.437014932,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506952.549551819,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506952.621699759,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47208
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506952.747856251,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506952.861207569,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506952.933266212,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47216
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506952.998503827,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506953.112187789,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506953.183993483,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47226
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506953.248551369,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506953.36087039,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506953.433006512,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47240
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506953.497905761,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506953.609899285,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506953.682396947,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47252
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506953.751773498,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506953.867711425,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506953.940703808,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47254
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506954.025060239,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506954.138466204,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506954.266128853,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38446
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506954.332195821,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506954.44836072,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506954.592952066,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38452
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506954.660615998,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506954.77318042,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506954.891362455,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38454
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506954.95812973,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506955.070438595,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506955.187264329,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38464
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506955.26124314,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506955.375608764,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506955.491646556,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38478
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506955.559395575,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506955.671359606,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506955.797369289,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38484
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506955.8614266,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506955.977881234,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506956.097778213,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38500
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506956.164473865,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506956.276957072,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506956.403840011,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38506
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506956.470188235,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506956.585795825,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506956.703871207,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38522
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506956.768912062,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38522
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506956.831514668,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38522
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506956.895803285,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38522
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506956.959794352,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38522
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506957.025047533,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38522
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506957.118729999,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38522
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506957.182325441,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38522
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506957.247250638,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        38522
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506957.311726856,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506957.426231917,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506957.555506561,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38530
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506957.618123514,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38530
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506957.689257439,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506957.804654005,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506957.930445324,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38542
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506957.992220279,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38542
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506958.069508064,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506958.183591655,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506958.309254214,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38556
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506958.372263978,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38556
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506958.442226808,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506958.560909898,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506958.803741989,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38566
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506959.243049162,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38566
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506959.339547724,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506959.464840197,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506959.60060998,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38574
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506959.6650368,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38574
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506959.73450749,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506959.861596973,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506959.997348829,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38576
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506960.067356731,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        38576
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506960.137233826,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506960.253431489,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506960.389079402,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        38586
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506960.464697444,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506960.578225114,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506960.70586177,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        38594
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506960.773069769,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506960.891015029,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506961.024130994,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        38606
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506961.09944665,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506961.221020493,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506961.349222753,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        39996
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506961.418925301,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506961.575671528,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506961.812146669,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        40010
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506961.908644064,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506962.107157955,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506962.359721982,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        40016
+      ],
+      "tls": true
+    },
+    {
+      "kind": "sampleComplete",
+      "at": 506962.386186513,
+      "variant": "clashEquivalent",
+      "round": 1,
+      "pid": 264713
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506962.537079528,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506962.649839533,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506962.724032543,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33032
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506962.798311387,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506962.913416234,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506963.030206927,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33044
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506963.17639289,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506963.294635017,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506963.368054376,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33050
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506963.43314969,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506963.548679457,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506963.621104033,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33058
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506963.688969084,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506963.802737815,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506963.877110789,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33070
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506963.970961738,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506964.287038114,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506964.50501284,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33078
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506964.571034158,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506964.685472368,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506964.757135532,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33090
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506964.821987973,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506964.936167479,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506965.008512254,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33104
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506965.073593299,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506965.187463396,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506965.260083366,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33108
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506965.330785035,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506965.444950911,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506965.518318943,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33122
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506965.586385208,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506965.704717622,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506965.77614983,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33130
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506965.841445637,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506965.958465986,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506966.030745118,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33144
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506966.094217435,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506966.206686367,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506966.278331786,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33160
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506966.348036542,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506966.464837337,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506966.538685935,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33162
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506966.603730406,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506966.717600238,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506966.792860446,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33170
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506966.858391387,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506966.973611688,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506967.049114766,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33184
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506967.11855251,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506967.231632973,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506967.305123389,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33192
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506967.372087447,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506967.486335607,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506967.560057627,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33208
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506967.623417613,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33208
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506967.690047422,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506967.804859065,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506967.877247776,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33216
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506967.950229665,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33216
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506968.030624992,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506968.144727404,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506968.216586513,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33232
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506968.278454362,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33232
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506968.343238233,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506968.456809346,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506968.530648067,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33238
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506968.594129212,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33238
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506968.661931822,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506968.775779395,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506968.849482438,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33242
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506968.911834713,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33242
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506968.979569468,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506969.093585912,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506969.166856635,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33244
+      ],
+      "tls": false
+    },
+    {
+      "kind": "head",
+      "at": 506969.228903854,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        33244
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506969.298635674,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506969.412952246,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506969.485320869,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        33246
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506969.553676175,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506969.667836602,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506969.73967156,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        33256
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506969.805484832,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506969.918853593,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506969.990731482,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        33272
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506970.058487137,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506970.170791019,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506970.243131435,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        33274
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506970.314080556,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506970.430618236,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506970.502647894,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        33278
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506970.5697567,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506970.682575845,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 41923,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506970.754319371,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        33288
+      ],
+      "tls": false
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506970.823784022,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506970.940806711,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506971.067504603,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47052
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506971.135091164,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506971.247839221,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506971.365606044,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47056
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506971.431237208,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506971.544872584,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506971.66557216,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47068
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506971.733762946,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506971.846059245,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506971.962552326,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47082
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506972.032932795,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506972.147454579,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506972.266526025,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47084
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506972.331811026,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506972.449432005,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506972.577521478,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47086
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506972.642496615,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506972.755428522,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506972.874799109,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47090
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506972.942091347,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506973.055555973,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506973.173200852,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47106
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506973.237632105,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506973.350915314,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506973.478791751,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47112
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506973.540819411,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47112
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506973.604365049,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47112
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506973.666308768,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47112
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506973.728040083,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47112
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506973.791496746,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47112
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506973.854599866,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47112
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506973.919369566,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47112
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506973.981265829,
+      "path": "/",
+      "client": [
+        "127.0.0.1",
+        47112
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506974.046323743,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506974.159334465,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506974.284083802,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47118
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506974.347218701,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47118
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506974.412363043,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506974.525657449,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506974.642770401,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47130
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506974.704755354,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47130
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506974.771231281,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506974.884624243,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506975.008903074,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47138
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506975.070742114,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47138
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506975.138024993,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506975.251886131,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506975.379074313,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47148
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506975.44122772,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47148
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506975.506991204,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506975.621042013,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506975.75022477,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47158
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506975.812690653,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47158
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506975.884895608,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506976.003315837,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506976.14563569,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47162
+      ],
+      "tls": true
+    },
+    {
+      "kind": "head",
+      "at": 506976.207335908,
+      "path": "/ok",
+      "client": [
+        "127.0.0.1",
+        47162
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506976.273988947,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506976.389197424,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506976.529717938,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47174
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506976.623482316,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506976.755875402,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506976.895510109,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47188
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506977.010547849,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506977.122889564,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506977.250010322,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47200
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506977.32093754,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506977.434735917,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506977.709933414,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47212
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506977.776178048,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506977.889923466,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506978.014860904,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47214
+      ],
+      "tls": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506978.081199846,
+      "role": "entry",
+      "host": "127.0.0.1",
+      "port": 39253,
+      "permitted": true
+    },
+    {
+      "kind": "socksConnect",
+      "at": 506978.308950493,
+      "role": "fixedExit",
+      "host": "127.0.0.1",
+      "port": 43485,
+      "permitted": true
+    },
+    {
+      "kind": "head",
+      "at": 506978.437163573,
+      "path": "/close",
+      "client": [
+        "127.0.0.1",
+        47220
+      ],
+      "tls": true
+    },
+    {
+      "kind": "sampleComplete",
+      "at": 506978.462429147,
+      "variant": "app",
+      "round": 1,
+      "pid": 264996
+    }
+  ]
+}

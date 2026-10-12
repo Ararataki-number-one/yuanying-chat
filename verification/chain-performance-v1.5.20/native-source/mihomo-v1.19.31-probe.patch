@@ -1,0 +1,645 @@
+--- a/adapter/adapter.go
++++ b/adapter/adapter.go
+@@ -7,6 +7,8 @@
+ 	"net"
+ 	"net/url"
+ 	"strings"
++	"sync"
++	stdatomic "sync/atomic"
+ 	"time"
+ 
+ 	"github.com/metacubex/mihomo/common/atomic"
+@@ -14,10 +16,12 @@
+ 	"github.com/metacubex/mihomo/common/utils"
+ 	"github.com/metacubex/mihomo/common/xsync"
+ 	"github.com/metacubex/mihomo/component/ca"
++	"github.com/metacubex/mihomo/component/urltesttrace"
+ 	C "github.com/metacubex/mihomo/constant"
+ 	"github.com/metacubex/mihomo/log"
+ 
+ 	"github.com/metacubex/http"
++	"github.com/metacubex/http/httptrace"
+ )
+ 
+ var UnifiedDelay = atomic.NewBool(false)
+@@ -165,6 +169,20 @@
+ // implements C.Proxy
+ func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.IntRanges[uint16]) (t uint16, err error) {
+ 	var satisfied bool
++	trace := urltesttrace.FromContext(ctx)
++	var dialCount, attempts stdatomic.Int32
++	if trace != nil {
++		began := time.Now()
++		defer func() {
++			trace.TotalMs = time.Since(began).Milliseconds()
++			trace.DialCount = int(dialCount.Load())
++			trace.Attempts = int(attempts.Load())
++			trace.Error = urltesttrace.ErrorKind(err)
++			if err == nil && !satisfied {
++				trace.Error = "unexpected-status"
++			}
++		}()
++	}
+ 
+ 	defer func() {
+ 		alive := err == nil
+@@ -207,7 +225,9 @@
+ 	}
+ 
+ 	start := time.Now()
+-	instance, err := p.DialContext(ctx, &addr)
++	dialCount.Add(1)
++	firstMetadata := addr
++	instance, err := p.DialContext(ctx, &firstMetadata)
+ 	if err != nil {
+ 		return
+ 	}
+@@ -220,15 +240,71 @@
+ 		return
+ 	}
+ 	req = req.WithContext(ctx)
++	if trace != nil {
++		req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
++			WroteHeaders: func() { attempts.Add(1) },
++		}))
++	}
+ 
+ 	tlsConfig, err := ca.GetTLSConfig(ca.Option{})
+ 	if err != nil {
+ 		return
+ 	}
+ 
++	// Only this probe owns these connections. Redial the same proxy chain when
++	// a server closes the first socket; never return that already-closed socket.
++	// Retain both the HTTP attempt's cancellation and the controller's total
++	// budget, even when the HTTP transport detaches its own dialing context.
++	type probeConnection struct {
++		conn   net.Conn
++		cancel context.CancelFunc
++		stop   func() bool
++	}
++	var claimed stdatomic.Bool
++	var ownedMu sync.Mutex
++	var owned []probeConnection
++	ownedClosed := false
++	defer func() {
++		ownedMu.Lock()
++		ownedClosed = true
++		closing := owned
++		owned = nil
++		ownedMu.Unlock()
++		for _, item := range closing {
++			item.stop()
++			item.cancel()
++			_ = item.conn.Close()
++		}
++	}()
+ 	transport := &http.Transport{
+-		DialContext: func(context.Context, string, string) (net.Conn, error) {
+-			return instance, nil
++		DialContext: func(requestCtx context.Context, _, _ string) (net.Conn, error) {
++			if err := ctx.Err(); err != nil {
++				return nil, err
++			}
++			if claimed.CompareAndSwap(false, true) {
++				return instance, nil
++			}
++			dialCtx, cancel := context.WithCancel(requestCtx)
++			stop := context.AfterFunc(ctx, cancel)
++			dialCount.Add(1)
++			nextMetadata := addr
++			next, err := p.DialContext(dialCtx, &nextMetadata)
++			if err != nil {
++				stop()
++				cancel()
++				return nil, err
++			}
++			ownedMu.Lock()
++			if ownedClosed {
++				ownedMu.Unlock()
++				stop()
++				cancel()
++				_ = next.Close()
++				return nil, net.ErrClosed
++			}
++			owned = append(owned, probeConnection{next, cancel, stop})
++			ownedMu.Unlock()
++			return next, nil
+ 		},
+ 		// from http.DefaultTransport
+ 		MaxIdleConns:          100,
+@@ -255,17 +331,51 @@
+ 	}
+ 
+ 	_ = resp.Body.Close()
++	firstElapsed := time.Since(start)
++	var fallbackElapsed time.Duration
++	if trace != nil {
++		trace.FirstMs = firstElapsed.Milliseconds()
++		trace.FirstStatus = resp.StatusCode
++		trace.Kind = "first"
++	}
+ 
+ 	if unifiedDelay {
+ 		second := time.Now()
+ 		var ignoredErr error
+ 		var secondResp *http.Response
+-		secondResp, ignoredErr = client.Do(req)
++		secondReq := req
++		var secondReused stdatomic.Bool
++		if trace != nil {
++			trace.WarmAttempted = true
++			secondReq = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
++				GotConn: func(info httptrace.GotConnInfo) { secondReused.Store(info.Reused) },
++			}))
++		}
++		secondResp, ignoredErr = client.Do(secondReq)
++		if trace != nil {
++			trace.WarmMs = time.Since(second).Milliseconds()
++			trace.WarmSucceeded = ignoredErr == nil && (expectedStatus == nil || expectedStatus.Check(uint16(secondResp.StatusCode)))
++			trace.SecondConnectionReused = secondReused.Load()
++			trace.WarmError = urltesttrace.ErrorKind(ignoredErr)
++		}
+ 		if ignoredErr == nil {
+ 			resp = secondResp
+ 			_ = resp.Body.Close()
+ 			start = second
++			if trace != nil {
++				trace.SecondStatus = resp.StatusCode
++				trace.Kind = "cold-retest"
++				if trace.SecondConnectionReused {
++					trace.Kind = "warm"
++				}
++			}
+ 		} else {
++			// Keep the successful first response, but never count time spent
++			// waiting for a failed second request as its latency.
++			fallbackElapsed = firstElapsed
++			if trace != nil {
++				trace.Kind = "cold-fallback"
++			}
+ 			if strings.HasPrefix(url, "http://") {
+ 				log.Errorln("%s failed to get the second response from %s: %v", p.Name(), url, ignoredErr)
+ 				log.Warnln("It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests.")
+@@ -275,6 +385,12 @@
+ 
+ 	satisfied = resp != nil && (expectedStatus == nil || expectedStatus.Check(uint16(resp.StatusCode)))
+ 	t = uint16(time.Since(start) / time.Millisecond)
++	if fallbackElapsed > 0 {
++		t = uint16(fallbackElapsed / time.Millisecond)
++	}
++	if trace != nil && trace.SecondStatus > 0 {
++		trace.WarmMs = int64(t)
++	}
+ 	return
+ }
+ 
+--- a/component/urltesttrace/trace.go
++++ b/component/urltesttrace/trace.go
+@@ -0,0 +1,60 @@
++// Package urltesttrace records one optional controller probe, without changing
++// the Proxy.URLTest interface or retaining URLs, credentials or connection pools.
++package urltesttrace
++
++import (
++	"context"
++	"errors"
++	"net"
++)
++
++type key struct{}
++
++// Probe timings use monotonic durations. firstMs includes chain establishment;
++// warmMs is the second attempt's elapsed time, not a valid latency when it fails.
++// A successful second request is warm only when the HTTP transport proves reuse.
++type Probe struct {
++	Schema                 int    `json:"schema"`
++	DialCount              int    `json:"dialCount"`
++	Attempts               int    `json:"attempts"`
++	FirstMs                int64  `json:"firstMs"`
++	WarmMs                 int64  `json:"warmMs"`
++	TotalMs                int64  `json:"totalMs"`
++	WarmAttempted          bool   `json:"warmAttempted"`
++	WarmSucceeded          bool   `json:"warmSucceeded"`
++	SecondConnectionReused bool   `json:"secondConnectionReused"`
++	Kind                   string `json:"kind"`
++	FirstStatus            int    `json:"firstStatus"`
++	SecondStatus           int    `json:"secondStatus"`
++	WarmError              string `json:"warmError"`
++	Error                  string `json:"error,omitempty"`
++}
++
++func WithContext(ctx context.Context) (context.Context, *Probe) {
++	p := &Probe{Schema: 1, FirstMs: -1, WarmMs: -1, Kind: "first"}
++	return context.WithValue(ctx, key{}, p), p
++}
++
++func FromContext(ctx context.Context) *Probe {
++	p, _ := ctx.Value(key{}).(*Probe)
++	return p
++}
++
++// ErrorKind is a deliberately closed vocabulary: raw transport error strings
++// can contain a URL or proxy credentials and must never be copied into a trace.
++func ErrorKind(err error) string {
++	if err == nil {
++		return ""
++	}
++	if errors.Is(err, context.Canceled) {
++		return "cancelled"
++	}
++	if errors.Is(err, context.DeadlineExceeded) {
++		return "timeout"
++	}
++	var timeout net.Error
++	if errors.As(err, &timeout) && timeout.Timeout() {
++		return "timeout"
++	}
++	return "transport"
++}
+--- a/hub/route/proxies.go
++++ b/hub/route/proxies.go
+@@ -9,6 +9,7 @@
+ 	"github.com/metacubex/mihomo/adapter/outboundgroup"
+ 	"github.com/metacubex/mihomo/common/utils"
+ 	"github.com/metacubex/mihomo/component/profile/cachefile"
++	"github.com/metacubex/mihomo/component/urltesttrace"
+ 	C "github.com/metacubex/mihomo/constant"
+ 	"github.com/metacubex/mihomo/tunnel"
+ 
+@@ -122,28 +123,26 @@
+ 
+ 	proxy := r.Context().Value(CtxKeyProxy).(C.Proxy)
+ 
+-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*time.Duration(timeout))
++	ctx, cancel := context.WithTimeout(r.Context(), time.Millisecond*time.Duration(timeout))
+ 	defer cancel()
+ 
++	ctx, probe := urltesttrace.WithContext(ctx)
+ 	delay, err := proxy.URLTest(ctx, url, expectedStatus)
+ 	if ctx.Err() != nil {
+ 		render.Status(r, http.StatusGatewayTimeout)
+-		render.JSON(w, r, ErrRequestTimeout)
++		render.JSON(w, r, render.M{"message": ErrRequestTimeout.Message, "probe": probe})
+ 		return
+ 	}
+ 
+ 	if err != nil || delay == 0 {
+ 		render.Status(r, http.StatusServiceUnavailable)
+-		if err != nil && delay != 0 {
+-			render.JSON(w, r, err)
+-		} else {
+-			render.JSON(w, r, newError("An error occurred in the delay test"))
+-		}
++		render.JSON(w, r, render.M{"message": "An error occurred in the delay test", "probe": probe})
+ 		return
+ 	}
+ 
+ 	render.JSON(w, r, render.M{
+ 		"delay": delay,
++		"probe": probe,
+ 	})
+ }
+ 
+--- a/adapter/urltest_probe_test.go
++++ b/adapter/urltest_probe_test.go
+@@ -0,0 +1,339 @@
++package adapter
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"io"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"sync"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/metacubex/mihomo/adapter/outbound"
++	"github.com/metacubex/mihomo/common/utils"
++	"github.com/metacubex/mihomo/component/urltesttrace"
++	C "github.com/metacubex/mihomo/constant"
++)
++
++func probeExpected(t *testing.T) utils.IntRanges[uint16] {
++	t.Helper()
++	r, err := utils.NewUnsignedRanges[uint16]("204")
++	if err != nil {
++		t.Fatal(err)
++	}
++	return r
++}
++
++func probeUnified(t *testing.T) {
++	t.Helper()
++	previous := UnifiedDelay.Load()
++	UnifiedDelay.Store(true)
++	t.Cleanup(func() { UnifiedDelay.Store(previous) })
++}
++
++func probeProxy() *Proxy { return NewProxy(outbound.NewDirect()) }
++
++func TestPocketProbeWarmIsActualReusedConnection(t *testing.T) {
++	probeUnified(t)
++	var mu sync.Mutex
++	var peers []string
++	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		mu.Lock()
++		peers = append(peers, r.RemoteAddr)
++		mu.Unlock()
++		time.Sleep(35 * time.Millisecond)
++		w.Header().Set("Content-Length", "0")
++		w.WriteHeader(204)
++	}))
++	defer s.Close()
++	ctx, trace := urltesttrace.WithContext(context.Background())
++	p := probeProxy()
++	delay, err := p.URLTest(ctx, s.URL, probeExpected(t))
++	if err != nil || delay == 0 {
++		t.Fatalf("delay=%d err=%v", delay, err)
++	}
++	mu.Lock()
++	defer mu.Unlock()
++	if len(peers) != 2 || peers[0] != peers[1] || !trace.SecondConnectionReused || !trace.WarmSucceeded || trace.Kind != "warm" {
++		t.Fatalf("Not actual same-connection warm response: peers=%v trace=%+v", peers, trace)
++	}
++	if delta := int64(delay) - trace.WarmMs; delta < 0 || delta > 3 {
++		t.Fatalf("delay does not match real second request: %+v delay=%d", trace, delay)
++	}
++	if trace.DialCount != 1 || trace.Attempts != 2 {
++		t.Fatalf("warm probe unexpectedly redialled: %+v", trace)
++	}
++	if !p.AliveForTestUrl(s.URL) || trace.FirstStatus != 204 || trace.SecondStatus != 204 || trace.WarmError != "" {
++		t.Fatalf("trace=%+v", trace)
++	}
++}
++
++func TestPocketProbeConnectionCloseMakesARealColdRetest(t *testing.T) {
++	probeUnified(t)
++	var received atomic.Int32
++	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		received.Add(1)
++		time.Sleep(20 * time.Millisecond)
++		w.Header().Set("Connection", "close")
++		w.Header().Set("Content-Length", "0")
++		w.WriteHeader(204)
++	}))
++	defer s.Close()
++	ctx, trace := urltesttrace.WithContext(context.Background())
++	p := probeProxy()
++	delay, err := p.URLTest(ctx, s.URL, probeExpected(t))
++	if err != nil || received.Load() != 2 || trace.Kind != "cold-retest" || !trace.WarmSucceeded || trace.SecondConnectionReused || !trace.WarmAttempted || trace.DialCount != 2 || trace.Attempts != 2 {
++		t.Fatalf("delay=%d err=%v received=%d trace=%+v", delay, err, received.Load(), trace)
++	}
++	if int64(delay) != trace.WarmMs || !p.AliveForTestUrl(s.URL) {
++		t.Fatalf("cold retest's actual time changed: delay=%d trace=%+v", delay, trace)
++	}
++}
++
++func TestPocketProbeSecondResetCannotInflateFirstLatency(t *testing.T) {
++	probeUnified(t)
++	var received atomic.Int32
++	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if received.Add(1) >= 2 {
++			conn, _, err := w.(http.Hijacker).Hijack()
++			if err != nil {
++				panic(err)
++			}
++			time.Sleep(180 * time.Millisecond)
++			_ = conn.(*net.TCPConn).SetLinger(0)
++			_ = conn.Close()
++			return
++		}
++		time.Sleep(20 * time.Millisecond)
++		w.Header().Set("Content-Length", "0")
++		w.WriteHeader(204)
++	}))
++	defer s.Close()
++	ctx, trace := urltesttrace.WithContext(context.Background())
++	p := probeProxy()
++	delay, err := p.URLTest(ctx, s.URL, probeExpected(t))
++	if err != nil || received.Load() < 2 || trace.Kind != "cold-fallback" || trace.WarmSucceeded || trace.WarmError != "transport" {
++		t.Fatalf("delay=%d err=%v trace=%+v", delay, err, trace)
++	}
++	if int64(delay) != trace.FirstMs || trace.WarmMs < 170 || trace.TotalMs < trace.FirstMs+170 || !p.AliveForTestUrl(s.URL) {
++		t.Fatalf("failed second wait leaked into valid first latency: delay=%d trace=%+v", delay, trace)
++	}
++}
++
++func TestPocketProbeDeadlineIsNotWarmSuccess(t *testing.T) {
++	probeUnified(t)
++	var received atomic.Int32
++	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if received.Add(1) == 2 {
++			<-r.Context().Done()
++			return
++		}
++		time.Sleep(15 * time.Millisecond)
++		w.Header().Set("Content-Length", "0")
++		w.WriteHeader(204)
++	}))
++	defer s.Close()
++	base, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
++	defer cancel()
++	ctx, trace := urltesttrace.WithContext(base)
++	delay, err := probeProxy().URLTest(ctx, s.URL, probeExpected(t))
++	if err != nil || !errors.Is(ctx.Err(), context.DeadlineExceeded) || trace.WarmError != "timeout" || trace.WarmSucceeded || trace.Kind != "cold-fallback" || int64(delay) != trace.FirstMs {
++		t.Fatalf("timeout became a successful warm sample: delay=%d err=%v trace=%+v", delay, err, trace)
++	}
++}
++
++func TestPocketProbeCancellationStopsInFlightSecondRequest(t *testing.T) {
++	probeUnified(t)
++	var received atomic.Int32
++	secondStarted := make(chan struct{})
++	serverCancelled := make(chan struct{})
++	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if received.Add(1) == 2 {
++			close(secondStarted)
++			<-r.Context().Done()
++			close(serverCancelled)
++			return
++		}
++		time.Sleep(15 * time.Millisecond)
++		w.Header().Set("Content-Length", "0")
++		w.WriteHeader(204)
++	}))
++	defer s.Close()
++	base, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	ctx, trace := urltesttrace.WithContext(base)
++	done := make(chan error, 1)
++	go func() { _, err := probeProxy().URLTest(ctx, s.URL, probeExpected(t)); done <- err }()
++	select {
++	case <-secondStarted:
++	case <-time.After(time.Second):
++		t.Fatal("second HEAD never started")
++	}
++	cancel()
++	select {
++	case err := <-done:
++		if err != nil {
++			t.Fatal(err)
++		}
++	case <-time.After(time.Second):
++		t.Fatal("URLTest ignored context cancellation")
++	}
++	select {
++	case <-serverCancelled:
++	case <-time.After(time.Second):
++		t.Fatal("actual HTTP exchange did not cancel")
++	}
++	if trace.WarmSucceeded || trace.WarmError != "cancelled" || trace.Kind != "cold-fallback" {
++		t.Fatalf("trace=%+v", trace)
++	}
++}
++
++func TestPocketProbeUntrustedTlsCannotCreateAHealthySample(t *testing.T) {
++	probeUnified(t)
++	var received atomic.Int32
++	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { received.Add(1); w.WriteHeader(204) }))
++	defer s.Close()
++	ctx, trace := urltesttrace.WithContext(context.Background())
++	p := probeProxy()
++	delay, err := p.URLTest(ctx, s.URL, probeExpected(t))
++	if err == nil || delay != 0 || p.AliveForTestUrl(s.URL) || received.Load() != 0 || trace.WarmAttempted || trace.FirstMs != -1 || trace.Error != "transport" {
++		t.Fatalf("TLS rejection was weakened: delay=%d err=%v trace=%+v", delay, err, trace)
++	}
++}
++
++func TestPocketProbeUnexpectedStatusStillFailsHealth(t *testing.T) {
++	probeUnified(t)
++	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { time.Sleep(5 * time.Millisecond); w.WriteHeader(403) }))
++	defer s.Close()
++	ctx, trace := urltesttrace.WithContext(context.Background())
++	p := probeProxy()
++	_, err := p.URLTest(ctx, s.URL, probeExpected(t))
++	if err != nil || p.AliveForTestUrl(s.URL) || trace.FirstStatus != 403 || trace.SecondStatus != 403 || trace.WarmSucceeded || trace.Error != "unexpected-status" {
++		t.Fatalf("expected status protection changed: err=%v trace=%+v", err, trace)
++	}
++}
++
++func TestPocketProbeSecondExpectedStatusKeepsOriginalHealthSemantics(t *testing.T) {
++	probeUnified(t)
++	var received atomic.Int32
++	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		time.Sleep(5 * time.Millisecond)
++		if received.Add(1) == 1 {
++			w.WriteHeader(403)
++		} else {
++			w.WriteHeader(204)
++		}
++	}))
++	defer s.Close()
++	ctx, trace := urltesttrace.WithContext(context.Background())
++	p := probeProxy()
++	delay, err := p.URLTest(ctx, s.URL, probeExpected(t))
++	if err != nil || delay == 0 || !p.AliveForTestUrl(s.URL) || !trace.WarmSucceeded || trace.Kind != "warm" || trace.FirstStatus != 403 || trace.SecondStatus != 204 {
++		t.Fatalf("successful second expected response stopped being healthy: delay=%d err=%v trace=%+v", delay, err, trace)
++	}
++}
++
++type lateProbeAdapter struct {
++	C.ProxyAdapter
++	calls   atomic.Int32
++	started chan struct{}
++	release chan struct{}
++	closed  chan struct{}
++}
++
++type closingProbeConn struct {
++	C.Conn
++	closed chan struct{}
++	once   sync.Once
++}
++
++func (c *closingProbeConn) Close() error {
++	c.once.Do(func() { close(c.closed) })
++	return c.Conn.Close()
++}
++
++func (p *lateProbeAdapter) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
++	if p.calls.Add(1) == 1 {
++		return p.ProxyAdapter.DialContext(ctx, metadata)
++	}
++	close(p.started)
++	<-p.release
++	// Deliberately violate cancellation in this fixture to reproduce a tardy
++	// asynchronous HTTP dial completion. Ownership must still close the socket.
++	conn, err := p.ProxyAdapter.DialContext(context.Background(), metadata)
++	if err != nil {
++		return nil, err
++	}
++	return &closingProbeConn{Conn: conn, closed: p.closed}, nil
++}
++
++func TestPocketProbeLateRedialCompletionCannotLeakAConnection(t *testing.T) {
++	probeUnified(t)
++	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		time.Sleep(5 * time.Millisecond)
++		w.Header().Set("Connection", "close")
++		w.WriteHeader(204)
++	}))
++	defer s.Close()
++	proxy := &lateProbeAdapter{ProxyAdapter: outbound.NewDirect(), started: make(chan struct{}), release: make(chan struct{}), closed: make(chan struct{})}
++	base, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	ctx, trace := urltesttrace.WithContext(base)
++	expected := probeExpected(t)
++	done := make(chan struct{})
++	go func() { _, _ = NewProxy(proxy).URLTest(ctx, s.URL, expected); close(done) }()
++	select {
++	case <-proxy.started:
++	case <-time.After(time.Second):
++		t.Fatal("redial never started")
++	}
++	cancel()
++	select {
++	case <-done:
++	case <-time.After(time.Second):
++		t.Fatal("probe could not cancel the held redial")
++	}
++	close(proxy.release)
++	select {
++	case <-proxy.closed:
++	case <-time.After(time.Second):
++		t.Fatal("late native connection was leaked after probe ended")
++	}
++	if trace.WarmSucceeded || trace.WarmError != "cancelled" {
++		t.Fatalf("trace=%+v", trace)
++	}
++}
++
++func TestPocketProbeOptionalTraceNeverLeaksRawErrors(t *testing.T) {
++	if urltesttrace.FromContext(context.Background()) != nil {
++		t.Fatal("untraced callers gained global trace state")
++	}
++	for _, sample := range []struct {
++		err  error
++		kind string
++	}{
++		{nil, ""}, {context.Canceled, "cancelled"}, {context.DeadlineExceeded, "timeout"},
++		{io.ErrUnexpectedEOF, "transport"}, {errors.New("https://user:secret@private.example/secret"), "transport"},
++	} {
++		if got := urltesttrace.ErrorKind(sample.err); got != sample.kind {
++			t.Fatalf("kind=%q want=%q", got, sample.kind)
++		}
++	}
++	_, trace := urltesttrace.WithContext(context.Background())
++	trace.WarmError = urltesttrace.ErrorKind(errors.New("https://user:secret@private.example/secret"))
++	data, err := json.Marshal(trace)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var value map[string]any
++	if err := json.Unmarshal(data, &value); err != nil {
++		t.Fatal(err)
++	}
++	if value["schema"] != float64(1) || value["warmError"] != "transport" {
++		t.Fatalf("unexpected trace: %s", data)
++	}
++}
