@@ -12,7 +12,7 @@ import java.util.*;
 /** Native environment workspace. Metadata management never needs an account session. */
 public class WindowHomeActivity extends Activity {
   LinearLayout root,cards,filters,selectionBar;
-  TextView count,selectionCount;
+  TextView count,selectionCount,problem;
   EditText search;
   Button groupButton,sortButton,selectionButton,visibleSelectionButton;
   Button batchGroupButton,favoriteSelectedButton,unfavoriteSelectedButton;
@@ -27,6 +27,7 @@ public class WindowHomeActivity extends Activity {
   String lastSignature="";
   final Runnable update=()->{refresh();handler.postDelayed(this.update,3000);};
   int dp(int n){return DesignUi.dp(this,n);}
+  void showProblem(String message){problem.setText(message);problem.setVisibility(message.isEmpty()?View.GONE:View.VISIBLE);}
 
   @Override public void onCreate(Bundle state){
     super.onCreate(state);
@@ -63,6 +64,7 @@ public class WindowHomeActivity extends Activity {
     filters=DesignUi.row(this);filterScroll.addView(filters);
     LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,dp(48));
     fp.topMargin=dp(8);box.addView(filterScroll,fp);
+    problem=DesignUi.text(this,"",13,DesignUi.RED);problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);problem.setVisibility(View.GONE);box.addView(problem);
     cards=DesignUi.column(this);box.addView(cards);
     selectionBar=DesignUi.column(this);
     selectionBar.setPadding(dp(14),dp(8),dp(14),dp(10));
@@ -277,8 +279,8 @@ public class WindowHomeActivity extends Activity {
   }
   void batchFavorite(boolean favorite){
     if(selectedIds.isEmpty())return;
-    int changed=ProfileCatalog.get(this).favorites(new ArrayList<>(selectedIds),favorite);
-    lastSignature="";refresh();SavedFileActions.toast(this,changed+" 个环境已"+(favorite?"收藏":"取消收藏"));
+    ProfileCatalog.get(this).favorites(new ArrayList<>(selectedIds),favorite);
+    lastSignature="";refresh();
   }
   AlertDialog batchGroup(){
     if(selectedIds.isEmpty())return null;
@@ -302,8 +304,7 @@ public class WindowHomeActivity extends Activity {
       .setPositiveButton("保存分组",null).setNegativeButton("取消",null).create();
     dialog.show();
     dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-      int changed=catalog.group(ids,group.getText().toString());dialog.dismiss();lastSignature="";refresh();
-      SavedFileActions.toast(this,"已更新 "+changed+" 个环境的分组");
+      catalog.group(ids,group.getText().toString());dialog.dismiss();lastSignature="";refresh();
     });
     return dialog;
   }
@@ -320,7 +321,7 @@ public class WindowHomeActivity extends Activity {
   void deleteEnvironment(int id){
     JSONObject row=ProfileCatalog.get(this).item(id);AlertDialog dialog=new AlertDialog.Builder(this).setTitle("删除 "+row.optString("name")+"？")
       .setMessage("将关闭此环境，清理它的登录、草稿、聊天缓存和网络配置。正在进行的回复和文件操作会中断。其他环境、订阅与固定出口，以及已保存到下载目录的文件会保留。")
-      .setNegativeButton("取消",null).setPositiveButton("删除环境",(d,w)->{try{ProfileCatalog.get(this).beginDelete(id);startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Exception e){SavedFileActions.toast(this,e.getMessage());}}).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
+      .setNegativeButton("取消",null).setPositiveButton("删除环境",(d,w)->{try{ProfileCatalog.get(this).beginDelete(id);startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Exception e){showProblem(e.getMessage());}}).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
   }
   void metadata(int id){
     JSONObject row=ProfileCatalog.get(this).item(id);LinearLayout box=DesignUi.column(this);
@@ -331,23 +332,23 @@ public class WindowHomeActivity extends Activity {
     notes.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
     AlertDialog dialog=new AlertDialog.Builder(this).setTitle("分组与备注 · "+row.optString("name")).setView(box)
       .setPositiveButton("保存",(d,w)->{
-        ProfileCatalog.get(this).details(id,group.getText().toString(),notes.getText().toString());lastSignature="";refresh();DesignUi.feedback(this,"分组与备注已保存");
+        ProfileCatalog.get(this).details(id,group.getText().toString(),notes.getText().toString());lastSignature="";refresh();
       }).setNegativeButton("取消",null).show();
     DesignUi.protectEdits(this,dialog,()->!group.getText().toString().equals(row.optString("group"))||!notes.getText().toString().equals(row.optString("notes")));
   }
   void openWindow(int id,String action){
     if(id<0||id>=Profiles.MAX)return;
-    if(id>0&&Build.VERSION.SDK_INT<28){SavedFileActions.toast(this,"独立环境需要 Android 9 或更新版本");return;}
+    if(id>0&&Build.VERSION.SDK_INT<28){showProblem("独立环境需要 Android 9 或更新版本");return;}
     ProfileCatalog.get(this).opened(id);
     startActivity(new Intent(this,Profiles.activity(id)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action))
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
   }
   void createWindow(){
     if(preparing)return;
-    if(Build.VERSION.SDK_INT<28){SavedFileActions.toast(this,"独立环境需要 Android 9 或更新版本");return;}
+    if(Build.VERSION.SDK_INT<28){showProblem("独立环境需要 Android 9 或更新版本");return;}
     JSONArray rows=ProfileCatalog.get(this).list();int next=-1;
     for(int i=0;i<rows.length();i++)if(!rows.optJSONObject(i).optBoolean("created")&&!rows.optJSONObject(i).optBoolean("deleting")){next=i;break;}
-    if(next<0){SavedFileActions.toast(this,"已达到 8 个环境");return;}
+    if(next<0){showProblem("已达到 8 个环境");return;}
     new Wizard(next,rows).show();
   }
   final class Wizard {
@@ -437,8 +438,8 @@ public class WindowHomeActivity extends Activity {
       if(step<2){step++;render();}else create();
     }
     void create(){
-      // New environments use Firefox; System compatibility is checked in that environment on opening.
-      if(preparing)return;preparing=true;createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);
+      // Every new environment uses its own persistent Gecko profile.
+      if(preparing)return;showProblem("");preparing=true;createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);
       Context source=Profiles.context(WindowHomeActivity.this,sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot);
       boolean clone=sourceType!=2;dialog.dismiss();
       final boolean desktopSetting=desktop;
@@ -447,7 +448,7 @@ public class WindowHomeActivity extends Activity {
         catch(Exception e){error="环境准备失败，请重试";}
         String failure=error;handler.post(()->{
           preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);lastSignature="";refresh();
-          if(failure.isEmpty())openWindow(id,sourceType==2?"network":"chat");else DesignUi.feedback(WindowHomeActivity.this,failure);
+          if(failure.isEmpty())openWindow(id,sourceType==2?"network":"chat");else showProblem(failure);
         });
       },"window-create").start();
     }

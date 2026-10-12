@@ -72,7 +72,7 @@ final class ProfileCatalog extends SQLiteOpenHelper {
   void heartbeat(ChatSession s,boolean force){
     String mode=s.internalNetwork()?"内置网络":s.prefs.getString("proxy","").isEmpty()?"手机网络":"应用代理";
     String problem=s.offline?"网络已断开":s.navigationFailed?"网页加载失败":!s.networkIssue.isEmpty()?"连接需处理":"";
-    String page=s.prefs.getBoolean("pageMode",false)?"原网页":"简洁";
+    String page="原网页";
     int slot=Profiles.slot(s.context);long now=System.currentTimeMillis();
     String signature=s.environmentGeneration+"|"+s.networkReady+"|"+(s.pending!=null)+"|"+mode+"|"+s.privacy.level()+"|"+problem+"|"+page;
     ContentValues values=new ContentValues();values.put("pid",android.os.Process.myPid());values.put("seen",now);

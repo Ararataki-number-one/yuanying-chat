@@ -33,7 +33,7 @@ final class DesignUi {
     b.setOnClickListener(v->action.run());return b;
   }
   static void action(LinearLayout box,String label,boolean primary,Runnable run){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(box.getContext(),48));p.topMargin=dp(box.getContext(),10);box.addView(button(box.getContext(),label,primary,run),p);}
-  static void feedback(Activity a,String message){if(a instanceof MainActivity)((MainActivity)a).status(message);else Toast.makeText(a,message,Toast.LENGTH_SHORT).show();}
+  static void feedback(Activity a,String message){if(a instanceof MainActivity)((MainActivity)a).status(message);else SavedFileActions.problem(a,message);}
   static Runnable protectEdits(Activity a,AlertDialog dialog,java.util.function.BooleanSupplier dirty){
     final AlertDialog[] prompt={null};
     Runnable close=()->{
