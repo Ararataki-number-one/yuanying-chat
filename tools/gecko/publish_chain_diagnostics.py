@@ -27,13 +27,17 @@ def stage_evidence(source,run_id,attempt,outcomes):
  except subprocess.CalledProcessError:
   git('fetch','--no-tags','--depth=1','origin',BASE)
   base=git('rev-parse','--verify',BASE+'^{commit}')
- assert not git('diff','--name-only',base,source,'--','app','libs','third-party','build.gradle','settings.gradle','gradle.properties'),'Diagnostic changes must not alter production code or SDK'
+ changed=git('diff','--name-only',base,source,'--','app','libs','third-party','build.gradle','settings.gradle','gradle.properties').splitlines()
+ mutation='app/src/main/java/local/pocketchat/NativeNetwork.java'
+ assert changed==[mutation],'Only the explicit Java startup cancellation candidate may change; SDK and native core remain pinned'
+ original=subprocess.check_output(['git','show',base+':'+mutation],cwd=ROOT)
+ candidate=subprocess.check_output(['git','show',source+':'+mutation],cwd=ROOT)
  stage=OUT/'chain-public'
  if stage.exists():shutil.rmtree(stage)
  stage.mkdir(parents=True)
  core=json.loads((ROOT/'third-party/patches/mihomo-v1.19.31-probe-build.json').read_text());core['sourceCommit']=source
  (stage/'network-core-build.json').write_text(json.dumps(core,indent=2)+'\n')
- manifest={'sourceCommit':source,'productionBaseCommit':base,'runId':run_id,'runAttempt':attempt,'diagnosticOnly':True,'releaseAcceptance':False,'productionCodeAndOfficialSdkUnchanged':True,'stepOutcomes':outcomes,'cases':{},'reports':{},'artifacts':[],'warnings':[]}
+ manifest={'sourceCommit':source,'productionBaseCommit':base,'runId':run_id,'runAttempt':attempt,'diagnosticOnly':True,'releaseAcceptance':False,'productionCodeAndOfficialSdkUnchanged':False,'productionCodeUnchanged':False,'officialSdkAndNativeCoreUnchanged':True,'productionMutation':{'file':mutation,'baseSha256':hashlib.sha256(original).hexdigest(),'sourceSha256':hashlib.sha256(candidate).hexdigest()},'stepOutcomes':outcomes,'cases':{},'reports':{},'artifacts':[],'warnings':[]}
  complete={}
  for name in ARTIFACTS:
   path=OUT/name

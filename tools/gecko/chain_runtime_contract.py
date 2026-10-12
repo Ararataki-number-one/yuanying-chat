@@ -66,6 +66,42 @@ def verify_native_probe(report, receipt):
     tls = readings['untrusted-tls']
     assert tls['httpStatus'] >= 400 and 'delay' not in tls['response'], tls
     assert tls['response']['probe']['firstMs'] == -1 and not report['untrustedTlsWire'], tls
+    # The original 57 checks above stay required. These additionally exercise
+    # the production startup search, rather than only a single probe's scope.
+    assert len(report['checks']) >= 69
+    searches = {row['name']: row for row in report['startupSearches']}
+    assert len(report['startupSearches']) == 2 and set(searches) == {'winner-cleanup', 'parent-cancellation'}
+    winner, cancelled = searches['winner-cleanup'], searches['parent-cancellation']
+    for search in searches.values():
+        assert search['mechanism'] == 'production-firstVerifiedRoute' and not search['parentFutureCancelled'], search
+        assert search['before']['pid'] == search['after']['pid'] > 1 and search['after']['verified'], search
+    result = winner['result']
+    assert not result['parentMaintenancePresent'] and not result['parentInterrupted'], winner
+    assert result['selectedEntry'] == winner['after']['entry'] == 'Entry|winner', winner
+    assert winner['after']['routeSerial'] > winner['before']['routeSerial'], winner
+    assert winner['winnerPath'] == '/startup-win' and winner['winnerHeads'] == 2, winner
+    assert cancelled['parentMaintenancePresent'] and cancelled['result']['cancelled'], cancelled
+    assert cancelled['result']['cause'] in {'InterruptedException', 'InterruptedIOException'}, cancelled
+    assert 0 <= cancelled['result']['endedAt'] - cancelled['cancelRequestedAt'] < 1500, cancelled
+    assert cancelled['before'] == cancelled['after'], cancelled
+    blocked = {'winner-cleanup': ['/startup-loser'],
+               'parent-cancellation': ['/startup-cancel-a', '/startup-cancel-b']}
+    for name, paths in blocked.items():
+        search = searches[name]
+        assert [row['path'] for row in search['losers']] == paths, search
+        for row in search['losers']:
+            assert row['actualHeads'] == row['expectedHeads'] == 1 and not row['serverClosedSocketBeforeEof'], row
+            assert 0 <= row['nativeCloseMs'] < 1500 < row['nativeTimeoutMs'], row
+            assert row['targetObservedNativeEofAt'] - row['cleanupRequestedAt'] == row['nativeCloseMs'], row
+            if name == 'parent-cancellation':
+                assert row['cleanupRequestedAt'] == search['cancelRequestedAt'], row
+            heads = [r for r in report['startupWire'] if r['kind'] == 'head' and r['path'] == row['path']]
+            eof = [r for r in report['startupWire'] if r['kind'] == 'blocked-read-ended' and r['path'] == row['path']]
+            assert len(heads) == len(eof) == 1 and eof[0]['next'] == -1, (heads, eof)
+            assert eof[0]['connection'] == heads[0]['connection'] > 0 and eof[0]['at'] == row['targetObservedNativeEofAt'], row
+    winning_heads = [r for r in report['startupWire'] if r['kind'] == 'head' and r['path'] == '/startup-win']
+    assert len(winning_heads) == 2 and winning_heads[0]['connection'] == winning_heads[1]['connection'] > 0
+    assert report['startupEntryCircuits'] == report['startupFixedExitCircuits'] >= 4
 
 
 def verify_gecko_pool(report, server):

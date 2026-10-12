@@ -62,7 +62,8 @@ def main():
             print(json.dumps({'status': report['status'], 'sourceCommit': report['sourceCommit'],
                               'checkCount': len(report['checks']),
                               'webSocketEchoes': report['webSocketEchoes'],
-                              'cancellations': report['cancellations']}, indent=2), flush=True)
+                              'cancellations': report['cancellations'],
+                              'startupSearches': report['startupSearches']}, indent=2), flush=True)
             return
         log = adb('logcat', '-d', '-s', 'PocketNativeProbe:I', 'AndroidRuntime:E', '*:S')
         if 'FATAL EXCEPTION' in log:

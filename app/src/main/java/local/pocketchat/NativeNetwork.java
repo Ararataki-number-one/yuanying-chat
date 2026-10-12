@@ -156,13 +156,17 @@ class NativeNetwork {
   void firstVerifiedRoute(String rejected)throws Exception{
     report("正在寻找可用入口并核实固定出口…");
     final List<String> candidates=new ArrayList<>(names);final String epoch=token;
+    // Startup normally has no parent maintenance scope. Own every candidate's
+    // controller socket until the search ends, including successful searches.
+    final NetworkWork parent=maintenance.get(),search=new NetworkWork(true);search.owner=null;
     CompletionService<RouteProbe> completed=new ExecutorCompletionService<>(probes);List<Future<RouteProbe>> active=new ArrayList<>();
     JSONArray measured=new JSONArray();int next=0,running=0;long deadline=android.os.SystemClock.elapsedRealtime()+startupSearchBudgetMs();
     try{
       while(next<candidates.size()||running>0){maintenanceCheck();
         while(running<4&&next<candidates.size()){
           final int index=next++;final String name=candidates.get(index);if(name.equals(rejected))continue;
-          Future<RouteProbe> task=completed.submit(()->startupProbe(name,index,epoch));active.add(task);NetworkWork work=maintenance.get();if(work!=null)work.add(task);running++;
+          Future<RouteProbe> task=completed.submit(()->{maintenance.set(search);try{return startupProbe(name,index,epoch);}finally{maintenance.remove();}});
+          active.add(task);search.add(task);if(parent!=null)parent.add(task);running++;
         }
         if(running==0)break;
         long remaining=deadline-android.os.SystemClock.elapsedRealtime();Future<RouteProbe> finished=remaining>0?completed.poll(remaining,TimeUnit.MILLISECONDS):null;
@@ -177,7 +181,7 @@ class NativeNetwork {
         catch(Exception unavailable){quality.record(r.name,-1,System.currentTimeMillis());}
       }
       throw new IOException("全部入口的完整代理链均不可用；不会改为直连");
-    }finally{for(Future<RouteProbe> task:active)task.cancel(true);}
+    }finally{search.cancel(closers);search.finish();}
   }
   long startupSearchBudgetMs(){return 45000;}
   void writeTransportMetadata(boolean active)throws IOException{
