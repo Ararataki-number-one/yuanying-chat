@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "diagnosticOnly": true,
+  "releaseAcceptance": false,
+  "officialVersion": "157.0.20260924084938",
+  "officialAarSha256": "25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0",
+  "officialJarSha256": "ef426e105fd4e65efdc45d41671d57c4a0c34d64bad15d5b70b82fccb30c7595",
+  "officialEditableSha256": "608461e22cae3ed19572aa43a0dc38d4926d48709bd456c91853935462f5fa54",
+  "instrumentedAarSha256": "aa2f6d9e1d85c44b256ab102f2e35f99357b62e4228b0853c12b79b20a5e64ba",
+  "instrumentedJarSha256": "02b0241d51226d93eb483e9829313851ded85fbc3575587d404a65565c39369a",
+  "instrumentedEditableSha256": "262a356476390e53108d7119ce1430a3954a71d6a289b14fa6315806464fce6a",
+  "helperSha256": "84861bf5dac2a0013fccaf31528a4ec1a2edbe51860dfb1e15e6aed0df1d57e0",
+  "asmVersion": "9.8",
+  "asmSha256": {
+    "asm": "876eab6a83daecad5ca67eb9fcabb063c97b5aeb8cf1fca7a989ecde17522051",
+    "asm-tree": "14b7880cb7c85eed101e2710432fc3ffb83275532a6a894dc4c4095d49ad59f1"
+  },
+  "transform": {
+    "incomingMethods": 6,
+    "replaceCallsites": 2,
+    "compositionCallsites": 2,
+    "diagnosticOnly": true
+  },
+  "jvmAndPrimitiveRingVerification": {
+    "jvmBytecodeVerification": true,
+    "concurrentRows": 400,
+    "boundedCapacity": 4096,
+    "overflowRows": 104,
+    "actualAndroidExecution": false
+  },
+  "sourceSha256": {
+    "InstrumentEditable.java": "bafe831468b03bef16744d74706a78f124d1512e6c5f2ba8062863ecb7323b65",
+    "PocketGeckoEditableTrace.java": "ffe5da0a77d1e5832ddf3cd8c3e5bb21665eb6ed2d690d90f63b7a81096c7d53",
+    "VerifyTrace.java": "24552e7f6a000f37223a3071a77956f0a0f9ae509a7af8307735b55d715505f6"
+  },
+  "unchangedRawJarEntries": 1286,
+  "unchangedRawAarEntries": 66,
+  "allNativeAndResourceEntriesUnchanged": true,
+  "rowFields": [
+    "code",
+    "edge",
+    "nanoTime",
+    "threadId",
+    "argStart",
+    "argEnd",
+    "argFlags",
+    "argTextLength",
+    "currentStart",
+    "currentEnd",
+    "shadowStart",
+    "shadowEnd",
+    "actionQueueSize",
+    "sequence"
+  ],
+  "codes": {
+    "10": "onTextChange",
+    "11": "onSelectionChange",
+    "12": "notifyIME(type in argStart)",
+    "13": "icSyncShadowText",
+    "14": "outgoing onImeReplaceText",
+    "15": "outgoing onImeUpdateComposition",
+    "18": "geckoActionReply",
+    "19": "icOfferAction"
+  },
+  "flags": {
+    "1": "mNeedSync",
+    "2": "mInBatchMode",
+    "4": "mActions.isEmpty",
+    "8": "mIgnoreSelectionChange",
+    "16": "mLastTextChangeReplacedSelection",
+    "32": "Original causedOnlyByComposition for codes10/11",
+    "shift8": "Original composition update flags/action type for codes15/18/19"
+  },
+  "edges": {
+    "0": "entry/before actual original call",
+    "1": "normal return/after actual original call",
+    "2": "explicit original ATHROW"
+  },
+  "capacity": 4096,
+  "selectionReadPolicy": "Current and shadow only on original IC looper; current read holds existing AsyncText monitor. Other callbacks keep selection -1. No cross-thread shadow reads.",
+  "observerEffect": "Primitive observation, Atomic counters, queue size and IC current-text monitor can perturb timing. This is diagnostic-only evidence, never a fix or release acceptance.",
+  "originalCallsPreservedOnce": true,
+  "productionSdkChanged": false,
+  "actualAndroidExecution": false
+}
