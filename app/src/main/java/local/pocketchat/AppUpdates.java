@@ -10,7 +10,10 @@ final class AppUpdates {
   static final int ON_OPEN=4100,PERIODIC=4101,TRANSFER=4103;
   static Uri uri(Context c){return Uri.parse("content://"+c.getPackageName()+".app-updates");}
   static Bundle call(Context c,String action,Bundle extras){try{Bundle out=c.getContentResolver().call(uri(c),action,null,extras);return out==null?new Bundle():out;}catch(Exception e){Bundle out=new Bundle();out.putString("state","error");out.putString("message","更新服务暂时无法打开，请重新进入更新页");return out;}}
-  static void schedule(Context context){Context c=Profiles.global(context);try{
+  static boolean validSlot(int slot){return slot>=0&&slot<Profiles.MAX;}
+  static final java.util.concurrent.ExecutorService origins=AppUpdateManager.backgroundExecutor("update-origin");
+  static void remember(Context c,int slot){if(!validSlot(slot))return;Context root=Profiles.global(c);origins.execute(()->{Bundle extras=new Bundle();extras.putInt("originSlot",slot);call(root,"origin",extras);});}
+  static void schedule(Context context){if(context instanceof MainActivity)remember(context,Profiles.slot(context));else if(context instanceof BrandLaunchActivity)remember(context,AppSettings.defaultSlot(context));Context c=Profiles.global(context);try{
     JobScheduler jobs=(JobScheduler)c.getSystemService(Context.JOB_SCHEDULER_SERVICE);if(jobs==null)return;
     if(!AppSettings.bool(c,"updateAutoCheck",true)){jobs.cancel(ON_OPEN);jobs.cancel(PERIODIC);return;}
     ComponentName service=new ComponentName(c,AppUpdateJob.class);
@@ -19,5 +22,5 @@ final class AppUpdates {
   }catch(Exception ignored){/* Manual checks remain available if the OS restricts scheduled work. */}}
   static void scheduleTransfer(Context context,boolean wifiOnly,long delay){Context c=Profiles.global(context);try{JobScheduler jobs=(JobScheduler)c.getSystemService(Context.JOB_SCHEDULER_SERVICE);if(jobs==null)return;JobInfo.Builder job=new JobInfo.Builder(TRANSFER,new ComponentName(c,AppUpdateJob.class)).setRequiredNetworkType(wifiOnly?JobInfo.NETWORK_TYPE_UNMETERED:JobInfo.NETWORK_TYPE_ANY).setPersisted(true).setBackoffCriteria(10000,JobInfo.BACKOFF_POLICY_EXPONENTIAL);if(delay>0)job.setMinimumLatency(delay);jobs.schedule(job.build());}catch(Exception ignored){/* The persisted partial remains available for manual resume. */}}
   static void cancelTransfer(Context context){try{JobScheduler jobs=(JobScheduler)Profiles.global(context).getSystemService(Context.JOB_SCHEDULER_SERVICE);if(jobs!=null)jobs.cancel(TRANSFER);}catch(Exception ignored){}}
-  static void open(android.app.Activity a){a.startActivity(new Intent(a,AppUpdateActivity.class));}
+  static void open(android.app.Activity a){int slot=a instanceof MainActivity?Profiles.slot(a):a instanceof AppUpdateActivity?((AppUpdateActivity)a).originSlot:Profiles.global(a).getSharedPreferences("app-updates",0).getInt("originSlot",-1);if(!validSlot(slot))slot=AppSettings.defaultSlot(a);a.startActivity(new Intent(a,AppUpdateActivity.class).putExtra("originSlot",slot));}
 }

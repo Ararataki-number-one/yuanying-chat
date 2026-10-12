@@ -26,7 +26,7 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
     previousProgress=signature;lastReceived=received;previousDetails=downloadDetails;lastRender=renders;
   }
   void command(Intent intent){handler.removeCallbacksAndMessages(null);action=intent.getStringExtra("updateAction");if(action!=null&&action.startsWith("transfer")){transferCommand(intent);return;}if("showUi".equals(action)){AppUpdates.open(this);event(J.obj("opened",true));return;}
-    manager=AppUpdateManager.get(this);AppSettings.put(this,"updateAutoCheck","false");AppUpdates.schedule(this);
+    manager=AppUpdateManager.get(this);manager.setOrigin(0);AppSettings.put(this,"updateAutoCheck","false");AppUpdates.schedule(this);
     if("verifyAccess".equals(action)){try{Bundle status=AppUpdates.call(this,"status",null);Uri uri=Uri.parse(status.getString("uri"));try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);if(!AppUpdatePolicy.hash(out.toByteArray()).equals(manager.info.sha))throw new IOException("Provider bytes differ");}
       boolean readOnly=false,traversal=false;try{getContentResolver().openFileDescriptor(uri,"rw");}catch(FileNotFoundException e){readOnly=true;}try{getContentResolver().openFileDescriptor(AppUpdates.uri(this).buildUpon().appendPath("..").appendPath("chat.db").build(),"r");}catch(FileNotFoundException e){traversal=true;}
       event(J.obj("readOnly",readOnly,"traversalRejected",traversal,"sameSigner",true,"installedVersion",AppVersion.name(this),"packageVersion",AppUpdateFiles.installed(this)));
@@ -71,7 +71,7 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
     transferScenario=intent.getStringExtra("transferScenario");transferToken=intent.getStringExtra("transferToken");
     if(transferScenario==null||!transferScenario.matches("cut|pause|ignore-range|bad-range|changed-etag|short-length|oversize|bad-hash|bad-signer|queued-cancel|cancel-restart"))throw new IOException("Unknown controlled update scenario");
     commandQueueDrained=false;preparationGuardReached=false;
-    manager=AppUpdateManager.get(this);AppSettings.put(this,"updateAutoCheck","false");AppSettings.put(this,"updateWifiOnly","false");AppUpdates.schedule(this);
+    manager=AppUpdateManager.get(this);manager.setOrigin(0);AppSettings.put(this,"updateAutoCheck","false");AppSettings.put(this,"updateWifiOnly","false");AppUpdates.schedule(this);
     final String target="http://127.0.0.1:8765/update-transfer/"+transferScenario;
     manager.transferFactory=official->{if(manager.info==null||!manager.info.url.equals(official))throw new IOException("Fixture refused a different official update identity");return (HttpURLConnection)new URL(target).openConnection();};
     if("transferQueuedPause".equals(action)||"transferQueuedCancel".equals(action)){queuedAdmission(intent,"transferQueuedCancel".equals(action));return;}
