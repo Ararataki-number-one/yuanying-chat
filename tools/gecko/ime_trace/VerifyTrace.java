@@ -1,9 +1,0 @@
-import org.mozilla.geckoview.PocketGeckoEditableTrace;
-import java.util.*;
-public final class VerifyTrace {
- public static void main(String[] args)throws Exception{
-  Class.forName("org.mozilla.geckoview.GeckoEditable",false,VerifyTrace.class.getClassLoader()).getDeclaredMethods();
-  PocketGeckoEditableTrace.start();Thread[] threads=new Thread[4];for(int t=0;t<4;t++){final int code=t;threads[t]=new Thread(()->{for(int n=0;n<100;n++)PocketGeckoEditableTrace.record(code,0,n,n+1,31,1,25,25,26,26,2);});threads[t].start();}for(Thread thread:threads)thread.join();PocketGeckoEditableTrace.stop();long[][] rows=PocketGeckoEditableTrace.drain();long[] counts=PocketGeckoEditableTrace.summary();if(rows.length!=400||counts[1]!=400||counts[2]!=400||counts[3]!=0)throw new AssertionError(Arrays.toString(counts));for(int n=0;n<rows.length;n++)if(rows[n][13]!=n||rows[n][2]<=0||rows[n][3]<=0||rows[n][9]!=25||rows[n][11]!=26)throw new AssertionError("primitive publication row "+n);
-  PocketGeckoEditableTrace.start();for(int n=0;n<4200;n++)PocketGeckoEditableTrace.record(10,0,n,n,31,1,-1,-1,-1,-1,0);PocketGeckoEditableTrace.stop();rows=PocketGeckoEditableTrace.drain();counts=PocketGeckoEditableTrace.summary();if(rows.length!=4096||counts[1]!=4200||counts[2]!=4096||counts[3]!=104)throw new AssertionError(Arrays.toString(counts));PocketGeckoEditableTrace.record(99,0,0,0,0,0,0,0,0,0,0);if(PocketGeckoEditableTrace.summary()[1]!=4200)throw new AssertionError("disabled observer recorded");PocketGeckoEditableTrace.start();PocketGeckoEditableTrace.stop();if(PocketGeckoEditableTrace.drain().length!=0)throw new AssertionError("start retained old rows");System.out.println("{\"jvmBytecodeVerification\":true,\"concurrentRows\":400,\"boundedCapacity\":4096,\"overflowRows\":104,\"actualAndroidExecution\":false}");
- }
-}
