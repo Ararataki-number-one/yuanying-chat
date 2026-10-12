@@ -20,8 +20,8 @@ import javax.net.ssl.*;
 /** Real patched Mihomo HEAD telemetry and native request cancellation, never personal routes. */
 public final class NativeProbeIntegrationActivity extends Activity {
   static final String TAG="PocketNativeProbe",USER="fixture",PASSWORD="local-only";
-  final JSONArray checks=new JSONArray(),measurements=new JSONArray(),cancellations=new JSONArray();
-  ProbeFixture runningTarget,runningUntrusted;
+  final JSONArray checks=new JSONArray(),measurements=new JSONArray(),cancellations=new JSONArray(),startupSearches=new JSONArray();
+  ProbeFixture runningTarget,runningUntrusted,runningStartupTarget;
   void check(String name,boolean passed){JSONObject value=J.obj("name",name,"pass",passed);checks.put(value);Log.i(TAG,J.obj("kind","check","value",value).toString());if(!passed)throw new AssertionError(name);}
   @Override public void onCreate(Bundle saved){super.onCreate(saved);if(!getPackageName().endsWith(".test"))throw new SecurityException("Only the isolated integration APK may run local probe fixtures");new Thread(this::run,"native-probe-fixture").start();}
 
@@ -36,11 +36,23 @@ public final class NativeProbeIntegrationActivity extends Activity {
     }
   }
   /** Only changes controlled URLs and test CA; probe(), api(), routing and selection stay real. */
-  static final class ProbeNetwork extends NetworkOptimizationIntegrationActivity.TestNetwork {
+  static class ProbeNetwork extends NetworkOptimizationIntegrationActivity.TestNetwork {
     final String certificate;volatile String controlledProbeUrl="";
-    ProbeNetwork(Context c,NetworkOptimizationIntegrationActivity.HttpFixture site,NetworkOptimizationIntegrationActivity.HttpFixture plain,String cert){super(c,site,plain,new File(c.getNoBackupFilesDir(),"native-probe-test"));certificate=cert;}
+    ProbeNetwork(Context c,NetworkOptimizationIntegrationActivity.HttpFixture site,NetworkOptimizationIntegrationActivity.HttpFixture plain,String cert){this(c,site,plain,cert,new File(c.getNoBackupFilesDir(),"native-probe-test"));}
+    ProbeNetwork(Context c,NetworkOptimizationIntegrationActivity.HttpFixture site,NetworkOptimizationIntegrationActivity.HttpFixture plain,String cert,File directory){super(c,site,plain,directory);certificate=cert;}
     @Override JSONObject config(boolean bootstrap,boolean download){JSONObject result=super.config(bootstrap,download);NetworkCatalog.put(result,"tls",J.obj("custom-certifactes",J.arr(certificate)));return result;}
     @Override String probeUrl(){return controlledProbeUrl==null||controlledProbeUrl.isEmpty()?super.probeUrl():controlledProbeUrl;}
+  }
+  /** URL selection and timestamps only: both production search methods execute unchanged. */
+  static final class StartupNetwork extends ProbeNetwork {
+    final ProbeFixture target;final ThreadLocal<String> childTarget=new ThreadLocal<>();volatile String mode="";volatile long verifiedWinnerAt;
+    StartupNetwork(Context c,NetworkOptimizationIntegrationActivity.HttpFixture site,NetworkOptimizationIntegrationActivity.HttpFixture plain,String cert,ProbeFixture target){super(c,site,plain,cert,new File(c.getNoBackupFilesDir(),"native-startup-test"));this.target=target;}
+    @Override RouteProbe startupProbe(String name,int index,String epoch){
+      String path="winner-cleanup".equals(mode)?("Entry|winner".equals(name)?"/startup-win":"/startup-loser"):("Entry|winner".equals(name)?"/startup-cancel-a":"/startup-cancel-b");
+      childTarget.set(target.url(path));try{return super.startupProbe(name,index,epoch);}finally{childTarget.remove();}
+    }
+    @Override String probeUrl(){String value=childTarget.get();return value==null?super.probeUrl():value;}
+    @Override String verifyExit()throws Exception{String ip=super.verifyExit();if("winner-cleanup".equals(mode))verifiedWinnerAt=SystemClock.elapsedRealtime();return ip;}
   }
   /** Both authentication and destination restrictions must succeed before any relay. */
   static final class AuthSocks extends NetworkOptimizationIntegrationActivity.LoopServer {
@@ -60,7 +72,7 @@ public final class NativeProbeIntegrationActivity extends Activity {
     final AtomicInteger serial=new AtomicInteger(),resetCount=new AtomicInteger();final List<JSONObject> wire=Collections.synchronizedList(new ArrayList<>());
     final ConcurrentHashMap<String,AtomicInteger> requests=new ConcurrentHashMap<>();final ConcurrentHashMap<String,CountDownLatch> reached=new ConcurrentHashMap<>(),nativeClosed=new ConcurrentHashMap<>();
     final ConcurrentHashMap<String,Long> closedAt=new ConcurrentHashMap<>();volatile boolean credentialsSeen;
-    ProbeFixture(SSLContext tls)throws IOException{super(tls);for(String path:new String[]{"/cancel-first","/cancel-second","/cancel-java-first","/cancel-java-second"}){reached.put(path,new CountDownLatch(1));nativeClosed.put(path,new CountDownLatch(1));}}
+    ProbeFixture(SSLContext tls)throws IOException{super(tls);for(String path:new String[]{"/cancel-first","/cancel-second","/cancel-java-first","/cancel-java-second","/startup-loser","/startup-cancel-a","/startup-cancel-b"}){reached.put(path,new CountDownLatch(1));nativeClosed.put(path,new CountDownLatch(1));}}
     String url(String path){return "https://127.0.0.1:"+port()+path;}
     int count(String path){AtomicInteger count=requests.get(path);return count==null?0:count.get();}
     List<Integer> connectionIds(String path){List<Integer> ids=new ArrayList<>();synchronized(wire){for(JSONObject event:wire)if(path.equals(event.optString("path"))&&event.optString("kind").equals("head"))ids.add(event.optInt("connection"));}return ids;}
@@ -70,9 +82,10 @@ public final class NativeProbeIntegrationActivity extends Activity {
       while((line=in.readLine())!=null){String[] parts=line.split(" ");if(parts.length<2)return;String method=parts[0],path=parts[1],header;while((header=in.readLine())!=null&&!header.isEmpty()){String lower=header.toLowerCase(Locale.ROOT);if(lower.startsWith("cookie:")||lower.startsWith("authorization:"))credentialsSeen=true;}
         int total=requests.computeIfAbsent(path,key->new AtomicInteger()).incrementAndGet();requestIndex++;wire.add(J.obj("kind","head","path",path,"connection",connection,"requestOnConnection",requestIndex,"totalForPath",total,"method",method,"at",SystemClock.elapsedRealtime()));
         if(!"HEAD".equals(method))throw new IOException("The native telemetry fixture accepts HEAD only");
-        if((path.startsWith("/cancel-")&&path.endsWith("first")&&requestIndex==1)||(path.startsWith("/cancel-")&&path.endsWith("second")&&requestIndex==2)){
+        if((path.startsWith("/cancel-")&&path.endsWith("first")&&requestIndex==1)||(path.startsWith("/cancel-")&&path.endsWith("second")&&requestIndex==2)||(path.startsWith("/startup-")&&!path.equals("/startup-win")&&requestIndex==1)){
           reached.get(path).countDown();int next=in.read();long ended=SystemClock.elapsedRealtime();wire.add(J.obj("kind","blocked-read-ended","path",path,"connection",connection,"next",next,"at",ended));if(next==-1){closedAt.put(path,ended);nativeClosed.get(path).countDown();}return;
         }
+        if(path.equals("/startup-win")&&!reached.get("/startup-loser").await(5,TimeUnit.SECONDS))throw new IOException("The real losing startup request did not arrive");
         // net/http may retry an idempotent HEAD after a reused socket fails. Every
         // subsequent request for this route must fail, including a fresh retry.
         if(path.equals("/reset-second")&&total>=2){Thread.sleep(250);resetCount.incrementAndGet();wire.add(J.obj("kind","wire-reset","path",path,"connection",connection,"waitMs",250,"at",SystemClock.elapsedRealtime()));socket.setSoLinger(true,0);return;}
@@ -123,6 +136,40 @@ public final class NativeProbeIntegrationActivity extends Activity {
     check(name+" does not continue a second or extra native HEAD",fixture.count(name)==expectedHeads);
     cancellations.put(J.obj("path",name,"mechanism","production-maintenance","expectedHeads",expectedHeads,"actualHeads",fixture.count(name),"controllerClosedAt",cancelAt,"targetObservedNativeEofAt",fixture.closedAt.getOrDefault(name,0L),"nativeCloseMs",nativeElapsed,"nativeTimeoutMs",8000,"serverClosedSocketBeforeEof",false,"javaFutureCancelled",completed.isCancelled(),"javaProbeDelay",result.delay));sameRoute(name,original,n,stream,site,echoes);
   }
+  JSONObject startupClosure(ProbeFixture target,String path,long requestedAt){long ended=target.closedAt.getOrDefault(path,0L);return J.obj("path",path,"expectedHeads",1,"actualHeads",target.count(path),"cleanupRequestedAt",requestedAt,"targetObservedNativeEofAt",ended,"nativeCloseMs",ended-requestedAt,"nativeTimeoutMs",8000,"serverClosedSocketBeforeEof",false);}
+  JSONObject startupIdentity(StartupNetwork n)throws Exception{JSONObject value=identity(n);NetworkCatalog.put(value,"routeSerial",n.routeSerial);return value;}
+  void startupSearchCases(TlsFixture trusted,JSONObject report)throws Exception{
+    StartupNetwork n=null;
+    try(NetworkOptimizationIntegrationActivity.HttpFixture site=new NetworkOptimizationIntegrationActivity.HttpFixture(trusted.context);NetworkOptimizationIntegrationActivity.HttpFixture plain=new NetworkOptimizationIntegrationActivity.HttpFixture(null);ProbeFixture target=new ProbeFixture(trusted.context);AuthSocks fixed=new AuthSocks("startup-fixed-exit",site.port(),plain.port(),target.port());AuthSocks entry=new AuthSocks("startup-entry",fixed.port())){
+      runningStartupTarget=target;site.start();plain.start();target.start();fixed.start();entry.start();
+      JSONObject config=J.obj("subscriptionUrl","https://synthetic.invalid/native-startup-unused-subscription","exitHost","127.0.0.1","exitPort",fixed.port(),"exitUser",USER,"exitPassword",PASSWORD,"entryMode","random","entryPool",J.arr("Entry|winner","Entry|loser"),"entry","Entry|winner");
+      SecretStore vault=new SecretStore(this);vault.save(config);String yaml="proxies:\n  - {name: winner, type: socks5, server: 127.0.0.1, port: "+entry.port()+", username: "+USER+", password: "+PASSWORD+"}\n  - {name: loser, type: socks5, server: 127.0.0.1, port: "+entry.port()+", username: "+USER+", password: "+PASSWORD+"}\n";
+      vault.put("subscription",yaml.getBytes(StandardCharsets.UTF_8));vault.put("subscription-meta",J.obj("urlHash",NativeNetwork.hash(config.getString("subscriptionUrl")),"updatedAt",System.currentTimeMillis()).toString().getBytes(StandardCharsets.UTF_8));getSharedPreferences("chat",0).edit().putString("lastGoodEntry","Entry|winner").commit();
+      n=new StartupNetwork(this,site,plain,trusted.certificate,target);n.startNow();final StartupNetwork active=n;
+      check("An independent real startup core begins with two allowed synthetic entries",n.ready&&n.coreAlive()&&n.names.size()==2&&n.names.containsAll(Arrays.asList("Entry|winner","Entry|loser"))&&n.verifiedRouteCurrent());
+      JSONObject winnerBefore=startupIdentity(n);n.mode="winner-cleanup";
+      Future<JSONObject> winner=n.worker.submit(()->{boolean parentPresent=active.maintenance.get()!=null;active.starting=true;try{active.firstVerifiedRoute("");return J.obj("parentMaintenancePresent",parentPresent,"parentInterrupted",Thread.currentThread().isInterrupted(),"selectedEntry",active.currentEntry,"endedAt",SystemClock.elapsedRealtime());}finally{active.starting=false;}});
+      check("The actual losing startup request is blocked before winner selection",target.reached.get("/startup-loser").await(5,TimeUnit.SECONDS)&&target.count("/startup-loser")==1);
+      JSONObject result=winner.get(6,TimeUnit.SECONDS);boolean closed=target.nativeClosed.get("/startup-loser").await(1500,TimeUnit.MILLISECONDS);JSONObject closure=startupClosure(target,"/startup-loser",n.verifiedWinnerAt);JSONObject winnerAfter=startupIdentity(n);
+      JSONObject success=J.obj("name","winner-cleanup","mechanism","production-firstVerifiedRoute","result",result,"parentFutureCancelled",winner.isCancelled(),"before",winnerBefore,"after",winnerAfter,"winnerPath","/startup-win","winnerHeads",target.count("/startup-win"),"losers",J.arr(closure));startupSearches.put(success);
+      check("Successful startup cleanup closes the actual losing native socket before timeout",closed&&n.verifiedWinnerAt>0&&closure.optLong("nativeCloseMs")>=0&&closure.optLong("nativeCloseMs")<1500);
+      check("Normal startup without parent maintenance selects its real winning entry",!result.optBoolean("parentMaintenancePresent")&&"Entry|winner".equals(result.optString("selectedEntry"))&&target.count("/startup-win")==2&&!winner.isCancelled());
+      check("Winner cleanup leaves the parent worker un-interrupted and the core verified",!result.optBoolean("parentInterrupted")&&winnerBefore.optInt("pid")==winnerAfter.optInt("pid")&&winnerAfter.optBoolean("verified")&&winnerAfter.optLong("routeSerial")>winnerBefore.optLong("routeSerial"));
+      Thread.sleep(400);check("A cleaned losing startup candidate sends no extra HEAD",target.count("/startup-loser")==1);
+      n.mode="parent-cancellation";JSONObject cancelBefore=startupIdentity(n);long generation=n.maintenanceGeneration;CountDownLatch began=new CountDownLatch(1);
+      Future<JSONObject> cancelled=n.worker.submit(()->{NetworkWork parent=active.beginMaintenance(generation,true);if(parent==null)throw new IOException("Startup parent maintenance did not begin");began.countDown();try{active.firstVerifiedRoute("");return J.obj("cancelled",false);}catch(InterruptedException|InterruptedIOException expected){return J.obj("cancelled",true,"cause",expected.getClass().getSimpleName(),"endedAt",SystemClock.elapsedRealtime());}finally{active.finishMaintenance(parent);}});
+      check("Parent maintenance drives both actual blocking startup requests",began.await(3,TimeUnit.SECONDS)&&target.reached.get("/startup-cancel-a").await(5,TimeUnit.SECONDS)&&target.reached.get("/startup-cancel-b").await(5,TimeUnit.SECONDS));
+      long cancelAt=SystemClock.elapsedRealtime();n.cancelMaintenance();JSONObject cancelledResult=cancelled.get(3,TimeUnit.SECONDS);JSONArray closures=new JSONArray();boolean bothClosed=true;
+      for(String path:new String[]{"/startup-cancel-a","/startup-cancel-b"}){bothClosed&=target.nativeClosed.get(path).await(1500,TimeUnit.MILLISECONDS);closures.put(startupClosure(target,path,cancelAt));}
+      JSONObject cancelAfter=startupIdentity(n);startupSearches.put(J.obj("name","parent-cancellation","mechanism","production-firstVerifiedRoute","parentMaintenancePresent",true,"parentFutureCancelled",cancelled.isCancelled(),"result",cancelledResult,"cancelRequestedAt",cancelAt,"before",cancelBefore,"after",cancelAfter,"losers",closures));
+      check("Cancelling parent search terminates the real search without cancelling its parent Future",cancelledResult.optBoolean("cancelled")&&!cancelled.isCancelled()&&cancelledResult.optLong("endedAt")-cancelAt<1500);
+      check("Parent cancellation closes both actual losing native sockets before timeout",bothClosed&&closures.getJSONObject(0).optLong("nativeCloseMs")>=0&&closures.getJSONObject(0).optLong("nativeCloseMs")<1500&&closures.getJSONObject(1).optLong("nativeCloseMs")>=0&&closures.getJSONObject(1).optLong("nativeCloseMs")<1500);
+      check("Cancelled startup search preserves its verified core and route",cancelBefore.toString().equals(cancelAfter.toString())&&n.ready&&n.coreAlive());Thread.sleep(400);
+      check("Cancelled startup candidates send no second or extra HEAD",target.count("/startup-cancel-a")==1&&target.count("/startup-cancel-b")==1);
+      check("Startup probes retain authenticated two-hop routing and no personal headers",entry.authenticated.get()==entry.connections.get()&&fixed.authenticated.get()==fixed.connections.get()&&entry.connections.get()==fixed.connections.get()&&entry.denied.get()==0&&fixed.denied.get()==0&&!target.credentialsSeen);
+      NetworkCatalog.put(report,"startupWire",target.evidence());NetworkCatalog.put(report,"startupEntryCircuits",entry.connections.get());NetworkCatalog.put(report,"startupFixedExitCircuits",fixed.connections.get());
+    }finally{if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
+  }
   void run(){JSONObject report=J.obj("status","failed","actualAndroidExecution",true,"actualMihomoExecution",true,"actualAuthenticatedSocksChain",true,"probeSchema",1);ProbeNetwork n=null;
     try{
       TlsFixture trusted=new TlsFixture(this,"network-fixture.p12"),untrusted=new TlsFixture(this,"native-probe-untrusted.p12");
@@ -153,9 +200,10 @@ public final class NativeProbeIntegrationActivity extends Activity {
           NetworkCatalog.put(report,"finalRoute",identity(n));NetworkCatalog.put(report,"webSocketConnections",site.webSocketConnections.get());NetworkCatalog.put(report,"webSocketEchoes",stream.echoes.get());NetworkCatalog.put(report,"entryCircuits",entry.connections.get());NetworkCatalog.put(report,"fixedExitCircuits",fixed.connections.get());NetworkCatalog.put(report,"nativeWire",target.evidence());NetworkCatalog.put(report,"untrustedTlsWire",wrongCertificate.evidence());
         }
       }
+      n.stopNow();startupSearchCases(trusted,report);
       NetworkCatalog.put(report,"status","passed");
     }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());Log.e(TAG,"Native probe fixture failed",error);}
-    finally{if(runningTarget!=null)NetworkCatalog.put(report,"nativeWire",runningTarget.evidence());if(runningUntrusted!=null)NetworkCatalog.put(report,"untrustedTlsWire",runningUntrusted.evidence());if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
-    NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"measurements",measurements);NetworkCatalog.put(report,"cancellations",cancellations);try{File candidate=new File(getFilesDir(),"native-probe-results.json.tmp");J.write(candidate,report.toString(2));if(!candidate.renameTo(new File(getFilesDir(),"native-probe-results.json")))throw new IOException("Could not publish complete native probe report");}catch(Exception error){Log.e(TAG,"Could not persist complete native probe evidence",error);}Log.i(TAG,J.obj("kind","complete","status",report.optString("status"),"checkCount",checks.length(),"error",report.optString("error")).toString());runOnUiThread(this::finish);
+    finally{if(runningTarget!=null)NetworkCatalog.put(report,"nativeWire",runningTarget.evidence());if(runningUntrusted!=null)NetworkCatalog.put(report,"untrustedTlsWire",runningUntrusted.evidence());if(runningStartupTarget!=null)NetworkCatalog.put(report,"startupWire",runningStartupTarget.evidence());if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
+    NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"measurements",measurements);NetworkCatalog.put(report,"cancellations",cancellations);NetworkCatalog.put(report,"startupSearches",startupSearches);try{File candidate=new File(getFilesDir(),"native-probe-results.json.tmp");J.write(candidate,report.toString(2));if(!candidate.renameTo(new File(getFilesDir(),"native-probe-results.json")))throw new IOException("Could not publish complete native probe report");}catch(Exception error){Log.e(TAG,"Could not persist complete native probe evidence",error);}Log.i(TAG,J.obj("kind","complete","status",report.optString("status"),"checkCount",checks.length(),"error",report.optString("error")).toString());runOnUiThread(this::finish);
   }
 }

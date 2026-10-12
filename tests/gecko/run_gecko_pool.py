@@ -138,7 +138,8 @@ def main():
                         if value.get('kind') == 'report':
                             done.append(value['value'])
                 if done:
-                    report = json.loads(adb('exec-out', 'run-as', PACKAGE, 'cat', 'files/gecko-pool-results.json'))
+                    report = json.loads(adb('exec-out', 'content', 'read', '--uri',
+                        'content://local.pocketchat.test.evidence/gecko-pool'))
                     assert done[-1]['status'] == report['status'] and done[-1]['checkCount'] == len(report['checks'])
                     break
                 time.sleep(1)
