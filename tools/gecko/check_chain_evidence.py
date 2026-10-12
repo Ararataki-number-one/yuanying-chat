@@ -33,7 +33,11 @@ def verify_chain_evidence(directory, source):
         assert manifest['sourceCommit'] == source
         if manifest['versionCode'] >= 47:
             assert preconnect_enabled, 'This release requires the real preauthentication pool build'
-    assert core['recipe']['version'] == ('v1.19.31-pocket-preconnect1' if preconnect_enabled else 'v1.19.31-pocket-probe1')
+    subscriptions_enabled = core['recipe'].get('roleSpecificExitProvider', False)
+    assert isinstance(subscriptions_enabled, bool)
+    if manifest_path.is_file() and manifest['versionCode'] >= 49:
+        assert subscriptions_enabled and core['recipe'].get('nodeFingerprint') is True, 'This release requires independent subscription providers and native node identities'
+    assert core['recipe']['version'] == ('v1.19.31-pocket-subscriptions1' if subscriptions_enabled else 'v1.19.31-pocket-preconnect1' if preconnect_enabled else 'v1.19.31-pocket-probe1')
     assert core['recipe']['androidApi'] == 26 and core['recipe']['goModuleFlags'] == 'readonly'
     verify_native_probe(native, core)
     pool = android('gecko-pool-results.json')
@@ -55,6 +59,12 @@ def verify_chain_evidence(directory, source):
         else:
             from preconnect_contract import verify_preconnect
         result['fixedExitPreauthentication'] = verify_preconnect(android('preconnect-results.json'), core)
+    if subscriptions_enabled:
+        if __package__:
+            from .network_sources_contract import verify_network_sources
+        else:
+            from network_sources_contract import verify_network_sources
+        result['independentNetworkSources'] = verify_network_sources(directory, source, core)
     return result
 
 

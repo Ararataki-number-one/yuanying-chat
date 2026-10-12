@@ -2,7 +2,7 @@ name: Production Gecko integration
 on:
   push:
     branches: [feature/android-engine-probe]
-    paths: ['app/**', 'tests/gecko/**', 'tests/browser-runtime/**', 'tests/browser-reading-host/**', 'tools/gecko/**', 'tools/publish-update-feed.py', 'tools/build-mihomo.py', 'third-party/patches/**', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
+    paths: ['app/**', 'tests/gecko/**', 'tests/browser-runtime/**', 'tests/browser-reading-host/**', 'tests/network-catalog-host/**', 'tests/network-source-host/**', 'tests/network-lineage-host/**', 'tools/gecko/**', 'tools/publish-update-feed.py', 'tools/build-mihomo.py', 'third-party/patches/**', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -85,6 +85,22 @@ jobs:
               report['sourceCommit']=source
               path.write_text(json.dumps(report,indent=2)+'\n')
           PYCODE
+      - name: Verify independent subscription catalogues and candidate snapshots
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar -o work/gecko-integration/catalog-json.jar
+          echo '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed  work/gecko-integration/catalog-json.jar' | sha256sum -c -
+          python3 tests/network-catalog-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-catalog-host-results.json
+          python3 tests/network-source-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-source-host-results.json
+          python3 tests/network-lineage-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-lineage-host-results.json
+          python3 - <<'PYCODE'
+          import json,pathlib,subprocess
+          source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          for name in ['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json']:
+              path=pathlib.Path('work/gecko-integration')/name
+              report=json.loads(path.read_text()); report['sourceCommit']=source
+              path.write_text(json.dumps(report,indent=2)+'\n')
+          PYCODE
       - name: Prepare synthetic signed upgrade archives
         shell: bash
         run: |
@@ -158,6 +174,22 @@ jobs:
           fi
           python3 tools/gecko/publish_ci.py
           if ! python3 tests/gecko/run_preconnect.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          python3 tools/gecko/publish_ci.py
+          if ! python3 tests/gecko/run_network_sources.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          python3 tools/gecko/publish_ci.py
+          if ! python3 tests/gecko/run_network_sources_ui.py --adb "$(command -v adb)" --serial emulator-5554 --expected-apk-sha "$(python3 -c 'import hashlib,pathlib;print(hashlib.sha256(pathlib.Path("app/build/outputs/apk/integration/app-x86_64-integration.apk").read_bytes()).hexdigest())')"; then
+            checks_failed=1
+          fi
+          python3 tools/gecko/publish_ci.py
+          if ! python3 tests/gecko/run_network_sources_route.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          python3 tools/gecko/publish_ci.py
+          if ! python3 tests/gecko/run_network_safe_idle.py --adb "$(command -v adb)" --serial emulator-5554 --expected-apk-sha "$(python3 -c 'import hashlib,pathlib;print(hashlib.sha256(pathlib.Path("app/build/outputs/apk/integration/app-x86_64-integration.apk").read_bytes()).hexdigest())')"; then
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py

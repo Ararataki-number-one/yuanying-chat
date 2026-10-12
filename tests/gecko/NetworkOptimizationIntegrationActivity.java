@@ -248,6 +248,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     CandidateRaceProvider(Context context,String latestProxy){profile=context;this.latestProxy=latestProxy;}
     @Override void operate(String id,String action,JSONObject candidate,String baseline){
       if(!"apply".equals(action)&&!"external".equals(action)){nonSavingOperations++;jobs.put(id,J.obj("done",true,"ok",true));return;}
+      NetworkChanges.clear(profile); // The intercepted successful commit owns candidate removal.
       applied.add(J.obj("id",id,"action",action,"config",J.parse(candidate.toString())));jobs.put(id,J.obj("done",true,"ok",true));
       if(latestProxy.equals(candidate.optString("proxy")))latestApplied.countDown();
     }

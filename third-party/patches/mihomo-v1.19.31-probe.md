@@ -1,8 +1,39 @@
-# Mihomo v1.19.31 探测与固定出口预认证补丁
+# Mihomo v1.19.31 探测、预认证与独立出口订阅补丁
 
 基于 [MetaCubeX/mihomo v1.19.31](https://github.com/MetaCubeX/mihomo/tree/v1.19.31)，准确 revision 为 `ab405bad5beeeac8b003bb01f60f134f6df54471`。原始源码归档 [mihomo-v1.19.31.tar.gz](../source/mihomo-v1.19.31.tar.gz) 保持原样，SHA-256 为 `676732158479254de38ea5a78aa32ff650ce2d3a78156a0edc2ff0cb5c2ddfd8`。修改以 [独立补丁](mihomo-v1.19.31-probe.patch) 分发，继续适用上游 GPL-3.0。
 
-此版本标记为 `v1.19.31-pocket-preconnect1`。保留 `pocket-probe1` 的探测逻辑，另增加显式启用的固定出口预认证连接池及严格的 SOCKS 命令回复校验。入口、固定出口、凭据和 TLS 证书验证沿用用户配置。不能据此宣称用户真实线路从 400 ms 降至 100 ms。
+此版本标记为 `v1.19.31-pocket-subscriptions1`。保留 `pocket-probe1` 的探测逻辑，另增加显式启用的固定出口预认证连接池及严格的 SOCKS 命令回复校验。入口、固定出口、凭据和 TLS 证书验证沿用用户配置。不能据此宣称用户真实线路从 400 ms 降至 100 ms。
+
+## 入口与出口订阅身份
+
+继续使用原 Mihomo provider/parser。每个叶子代理的私有控制 API JSON 增加 `configFingerprint`（完整 64 位 SHA-256）和 `configFingerprintVersion: 1`，不包含原始配置、密码或订阅地址。它基于原协议的 typed options 进行 canonical JSON 编码，保留服务器、端口、真实认证 UUID/密码、TLS、传输和启用的 mux 配置；名称、程序生成的 dialer/pocket 参数及运行时随机 ID 不参与身份。map 插入顺序不影响身份，数组和真实 HTTP/WS header 保持原样。原随机 `id` 与预认证运行时指针身份继续使用，不能用持久指纹替换路线失效代次。
+
+应用管理的出口 provider 可设置以下受信 override；订阅行中的所有 `pocket-*` 大小写/下划线别名均清除，表达式结束后再次清除，然后仅注入显式 override。入口 provider 和 catalog 默认没有连接池。
+
+```yaml
+proxy-providers:
+  ExitSource:
+    type: file
+    path: private-exit-snapshot.yaml
+    override:
+      pocket-config-fingerprint: <所选源节点的完整 SHA-256>
+      dialer-proxy: EntryChoice
+      proxy-name:
+        - pattern: '^.*$'
+          target: FixedExit
+      pocket-preconnect: true
+      pocket-preconnect-epoch-file: /应用私有环境目录/network-epoch
+proxy-groups:
+  - name: FixedExit
+    type: select
+    use: [ExitSource]
+    filter: '^FixedExit$'
+    empty-fallback: REJECT
+```
+
+按所选原配置的指纹筛选，必须恰好匹配一个 SOCKS5 节点，且不启用 smux。缺失、凭据/线路配置变化、多个相同配置别名或不支持的协议都拒绝，不能转用另一出口或直连；可同时加安全原名 filter 来明确选择重复配置中的指定别名。所选模式忽略无关的坏节点，仍对真正缺失的所选节点失败关闭。普通 provider 保持原同名去重与合法 override 兼容。
+
+`ProbeExitN`/`WebProbeExit` 使用独立 provider 与同名顶层 selector，显式关闭预认证。真实 URLTest trace 仍绕过池，并且不会取用或补充业务 ready socket。此版本不开放其他协议作为订阅固定出口，不更换 TLS/QUIC/代理协议实现。
 
 ## 固定出口预认证
 
@@ -67,6 +98,6 @@ python3 tools/build-mihomo.py --build --target all --test --install
 
 [构建 receipt](mihomo-v1.19.31-probe-build.json) 记录归档、补丁、模块校验和、构建参数和两 ABI 的 SHA-256。`--verify` 核验 source/recipe、文件路径白名单、当前二进制及 Android PIE/linker64/16 KiB 页对齐。独立源码重建后比较二进制 SHA 才能证明构建一致性；receipt 本身不代替运行验收。
 
-补丁保留十项原 HTTP/TLS/取消主测试，另增加 36 项协议、实际选择器、池并发与监听器重试主测试。重建时全部 46 项必须通过一次；测试源码和二进制来自同一份补丁，独立构建日志绑定所有通过记录。
+补丁保留十项原 HTTP/TLS/取消主测试及 36 项协议、实际选择器、池并发与监听器重试主测试，并增加 7 项稳定身份与 11 项出口选择/真实 provider-group-listener/API 线路测试。重建时全部 64 项必须通过一次；测试源码和二进制来自同一份补丁，独立构建日志绑定所有通过记录。
 
 Linux 双 SOCKS fixture 验证探测机制，不代表 Android 上已验收，也不代表用户节点的实际速度。正式版本还必须通过真实 Android 双 SOCKS、受保护浏览器连接连续性和对应源码的应用回归。

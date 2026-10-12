@@ -20,7 +20,7 @@ public final class EnvironmentDeleteActivity extends Activity {
     Context profile=Profiles.context(c,slot);DownloadLibrary.get(c).migrate();NetworkCatalog library=new NetworkCatalog(c);library.save();
     // A subscription may be cached only in the environment being removed. Keep
     // the user-owned shared subscription library available to all remaining environments.
-    for(int i=0;i<library.subscriptions().length();i++){JSONObject sub=library.subscriptions().optJSONObject(i);if(sub.optInt("owner",-1)==slot){byte[] bytes=library.cache(sub);if(bytes!=null)library.parsed(sub.optString("id"),sub.optJSONArray("nodes"),bytes,sub.optLong("updatedAt"));}}
+    for(String role:new String[]{NetworkCatalog.ENTRY,NetworkCatalog.EXIT})for(int i=0;i<library.subscriptions(role).length();i++){JSONObject sub=library.subscriptions(role).optJSONObject(i);if(sub.optInt("owner",-1)==slot&&sub.optString("cacheSlot").isEmpty()){byte[] bytes=library.cache(sub);if(bytes!=null){NetworkCatalog.RefreshToken token=library.beginRefresh(role,sub.optString("id"));JSONObject current=library.subscription(role,sub.optString("id"));if(!token.url.equals(sub.optString("url"))||token.addressRevision!=sub.optLong("addressRevision")||current.optLong("revision")!=sub.optLong("revision")+1||!current.optString("cacheSlot").isEmpty()){library.failed(token,"订阅已更新，请重试删除环境",System.currentTimeMillis());throw new IOException("订阅缓存正在变化");}library.parsed(token,sub.optJSONArray("nodes"),sub.optJSONArray("nodeDetails"),bytes,sub.optLong("updatedAt"));}}}
     Bundle stopped=c.getContentResolver().call(NetworkBridge.uri(c,slot),"stopForDelete",null,null);if(stopped==null||!stopped.getBoolean("stopped"))throw new IOException();
     String owner=c.getPackageName()+(slot==0?"":":profile"+slot),children=c.getPackageName()+":gecko_env"+slot+"_";
     ActivityManager manager=c.getSystemService(ActivityManager.class);long deadline=SystemClock.elapsedRealtime()+10000;
@@ -31,9 +31,9 @@ public final class EnvironmentDeleteActivity extends Activity {
     if(slot>0){File files=new File(data,"files/profiles/env"+slot);File[] personal=files.listFiles();if(personal!=null)for(File f:personal)if(!f.getName().equals("saved-downloads"))erase(f);erase(new File(data,"cache/profiles/env"+slot));erase(new File(data,"no_backup/profiles/env"+slot));}
     else{
       for(String name:new String[]{"gecko-browser","gecko-browser.yaml","gecko-session.json","gecko-session.json.bak","gecko-session.json.new","network-runtime"})erase(new File(profile.getNoBackupFilesDir(),name));
-      for(String name:new String[]{"network","network-ui","exit-baseline","exit-region","subscription","subscription-meta","subscription-ui","pending-network"}){android.util.AtomicFile f=new android.util.AtomicFile(new SecretStore(profile).file(name));f.delete();}
+      for(String name:new String[]{"network","network-ui","exit-baseline","exit-region","subscription","subscription-meta","subscription-ui","exit-subscription","exit-subscription-meta","exit-subscription-ui","pending-network"}){android.util.AtomicFile f=new android.util.AtomicFile(new SecretStore(profile).file(name));f.delete();}
       erase(new File(profile.getFilesDir(),"network-import.json"));erase(new File(profile.getCacheDir(),"gecko-uploads"));
-      File[] previews=profile.getNoBackupFilesDir().listFiles();if(previews!=null)for(File f:previews)if(f.getName().startsWith("subscription-preview-"))erase(f);
+      File[] previews=profile.getNoBackupFilesDir().listFiles();if(previews!=null)for(File f:previews)if((f.getName().startsWith("subscription-preview-")||f.getName().startsWith("pending-entry-subscription-")||f.getName().startsWith("pending-exit-subscription-")))erase(f);
       File[] temporary=profile.getCacheDir().listFiles();if(temporary!=null)for(File f:temporary)if(f.getName().matches("download-.*[.]part")||f.getName().startsWith("subscription-preview-"))erase(f);
     }
     // System WebView data is private to this process suffix, even if Gecko is selected.

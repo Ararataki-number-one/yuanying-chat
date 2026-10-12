@@ -77,6 +77,8 @@ if version_code>=46:
     chain_files=['native-probe-results.json','gecko-pool-results.json','network-core-build.json','network-pool-host-results.json','latency-probe-host-results.json']
     if chain_performance.get('fixedExitPreauthentication'):
         chain_files.append('preconnect-results.json')
+    if chain_performance.get('independentNetworkSources'):
+        chain_files.extend(['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','network-source-results.json','network-source-ui-results.json','network-source-route-results.json','network-safe-idle-results.json'])
     for name in chain_files:
         assert json.loads((args.evidence/name).read_text())['sourceCommit']==args.source,'Chain evidence belongs to a different source: '+name
 build=json.loads((args.evidence/'manifest.json').read_text())
@@ -125,7 +127,7 @@ if version_code>=43:
 if version_code>=44:shutil.copy2(root/'tools/gecko/check_connection_evidence.py',stage/'tools/gecko/check_connection_evidence.py')
 if version_code>=45:shutil.copy2(root/'tools/gecko/check_interaction_transfer_evidence.py',stage/'tools/gecko/check_interaction_transfer_evidence.py')
 if version_code>=46:
-    for name in ['check_chain_evidence.py','chain_runtime_contract.py','preconnect_contract.py','check_client_evidence.py','update_route_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    for name in ['check_chain_evidence.py','chain_runtime_contract.py','preconnect_contract.py','network_sources_contract.py','check_client_evidence.py','update_route_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 branch='apk/gecko-release-20261003'
 env=dict(os.environ,GIT_INDEX_FILE=str(root/'work/gecko-integration/signed-index'),GIT_WORK_TREE=str(stage),
     GIT_AUTHOR_NAME='PocketChat release',GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',

@@ -29,6 +29,8 @@ for name in ['network-performance-results.json','network-performance-failure-log
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['preconnect-results.json','preconnect-log.txt','preconnect-failure-log.txt','preconnect-server.json','preconnect-server-failure.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
+for pattern in ['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','network-source-*.json','network-source-*.txt','network-source-*.png','network-source-*.xml','network-safe-idle-*.json','network-safe-idle-*.txt','network-safe-idle-*.png','network-safe-idle-*.xml']:
+    for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 if (out/'ui-visuals').exists():shutil.copytree(out/'ui-visuals',stage/'ui-visuals',dirs_exist_ok=True)
 if (out/'official-sdk-verification.json').exists():shutil.copy2(out/'official-sdk-verification.json',stage/'official-sdk-verification.json')
 sdk_receipt=root/'third-party/sdk/geckoview-157.0.1-official.json'

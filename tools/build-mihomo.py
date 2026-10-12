@@ -31,7 +31,7 @@ NDK_VERSION = '29.0.13113456'
 NDK_ARCHIVE = 'android-ndk-r29-beta1-linux.zip'
 NDK_SHA = '0bbaf4d0632152dcdcf3d0a5d385c760949898c88488375b18971dd669094388'
 NDK_BYTES = 773995428
-VERSION = 'v1.19.31-pocket-preconnect1'
+VERSION = 'v1.19.31-pocket-subscriptions1'
 BUILD_TIME = 'source-2026-09-14T11:59:30Z'
 FLAGS = ['-mod=readonly', '-p=4', '-tags=with_gvisor', '-trimpath', '-buildvcs=false']
 LDFLAGS = ('-X github.com/metacubex/mihomo/constant.Version=' + VERSION +
@@ -48,7 +48,11 @@ PATCH_FILES = {'adapter/adapter.go', 'adapter/urltest_probe_test.go',
                'adapter/outboundgroup/selector.go', 'adapter/outboundgroup/selector_preconnect_test.go',
                'component/proxydialer/pocket_route.go', 'component/proxydialer/pocket_route_test.go',
                'transport/socks5/socks5.go', 'transport/socks5/socks5_preconnect_test.go',
-               'tunnel/tunnel.go', 'tunnel/pocket_export_test.go', 'tunnel/pocket_preconnect_test.go'}
+               'tunnel/tunnel.go', 'tunnel/pocket_export_test.go', 'tunnel/pocket_preconnect_test.go',
+               'adapter/parser.go', 'adapter/pocket_config_fingerprint.go',
+               'adapter/pocket_config_fingerprint_test.go', 'adapter/provider/provider.go',
+               'adapter/provider/override.go', 'adapter/provider/pocket_selected_exit_test.go',
+               'hub/route/pocket_provider_chain_test.go'}
 
 
 def digest(path):
@@ -137,7 +141,7 @@ def source_inputs():
     patch_text = PATCH.read_text('utf-8')
     touched = {line[6:] for line in patch_text.splitlines() if line.startswith('+++ b/')}
     if touched != PATCH_FILES:
-        raise ValueError('Patch files differ from the reviewed probe and fixed-exit whitelist.')
+        raise ValueError('Patch files differ from the reviewed probe, fixed-exit and subscription whitelist.')
     return {'upstreamVersion': 'v1.19.31', 'upstreamRevision': UPSTREAM_REVISION,
             'archive': str(SOURCE.relative_to(REPO)), 'archiveSha256': SOURCE_SHA,
             'patch': str(PATCH.relative_to(REPO)), 'patchSha256': digest(PATCH),
@@ -149,6 +153,7 @@ def recipe():
             'ndkVersion': NDK_VERSION, 'ndkArchiveSha256': NDK_SHA,
             'androidApi': 26, 'version': VERSION, 'buildTime': BUILD_TIME,
             'fixedExitPreconnect': True,
+            'nodeFingerprint': True, 'roleSpecificExitProvider': True,
             'flags': FLAGS, 'ldflags': LDFLAGS,
             'androidExternalLdflags': '-Wl,--build-id=none,-z,max-page-size=16384',
             'cgoFlags': {'CFLAGS': '-O2 -g', 'CPPFLAGS': '', 'CXXFLAGS': '-O2 -g',
@@ -225,11 +230,19 @@ def build(args):
     run([str(go), 'mod', 'verify'], cwd=source, env=env)
     if args.test:
         run([str(go), 'test', '-mod=readonly', '-p=4', '-tags=with_gvisor',
-             './adapter', './component/urltesttrace', './adapter/outbound',
+             './adapter', './adapter/provider', './hub/route', './component/urltesttrace', './adapter/outbound',
              './adapter/outboundgroup', './component/proxydialer', './transport/socks5', './tunnel',
              '-run=Test(Pocket|Preconnect|SelectorPreconnect)', '-count=1', '-v'], cwd=source, env=env)
     built = {}
     for name in target_names:
+        if args.clean_cache_between_targets:
+            # Only regenerable build cache in the explicitly supplied workspace;
+            # source archives, modules, tools and build evidence remain intact.
+            cache = work / 'cache'
+            if cache.is_symlink():
+                raise ValueError('Refusing to clear a symlinked build cache.')
+            shutil.rmtree(cache)
+            cache.mkdir()
         options = env.copy()
         flags = LDFLAGS
         if name in TARGETS:
@@ -267,10 +280,11 @@ def main():
     parser.add_argument('--target', choices=['all', 'linux-amd64', *TARGETS], default='all')
     parser.add_argument('--work-dir', type=Path, default=REPO / 'work/mihomo-build')
     parser.add_argument('--test', action='store_true', help='Run the actual socket/TLS/context-cancellation Go regression before building.')
+    parser.add_argument('--clean-cache-between-targets', action='store_true', help='Bound workspace usage by dropping only regenerable object cache before each target.')
     parser.add_argument('--install', action='store_true', help='Install both rebuilt Android binaries and write their receipt.')
     args = parser.parse_args()
     if args.verify:
-        if args.install or args.test or args.target != 'all':
+        if args.install or args.test or args.clean_cache_between_targets or args.target != 'all':
             parser.error('--verify does not accept build, test or install options')
         verify()
     else:

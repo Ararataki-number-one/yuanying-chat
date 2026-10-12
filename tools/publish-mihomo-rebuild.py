@@ -74,11 +74,18 @@ def prepare():
         probe = [name for name in passed if name.startswith('TestPocketProbe')]
         if len(probe) != 10 or len(expected) < 46 or set(passed) != expected or len(passed) != len(expected):
             raise ValueError('Every reviewed native regression must pass exactly once, including the ten original probe tests')
+        fingerprint = [name for name in passed if name.startswith('TestPocketNodeFingerprint')]
+        selected_exit = [name for name in passed if name.startswith('TestPocketSelectedExit')]
+        subscription_patch = value['recipe'].get('nodeFingerprint') or value['recipe'].get('roleSpecificExitProvider')
+        if subscription_patch and (len(fingerprint) != 7 or len(selected_exit) != 11 or len(expected) < 64):
+            raise ValueError('Every node identity and selected exit regression must pass exactly once')
         result.update(status='passed', independentNativeRebuild=True,
                       inputs=value['inputs'], recipe=value['recipe'],
                       rebuiltBinaries=rebuilt, nativeRegressionCount=len(passed),
                       nativeRegressions=passed, nativeProbeRegressionCount=len(probe),
-                      preconnectRegressionCount=len(passed)-len(probe),
+                      preconnectRegressionCount=len(passed)-len(probe)-len(fingerprint)-len(selected_exit),
+                      nodeFingerprintRegressionCount=len(fingerprint),
+                      selectedExitRegressionCount=len(selected_exit),
                       receiptSha256=hashlib.sha256(original).hexdigest(),
                       exactCommittedBytes=True)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:

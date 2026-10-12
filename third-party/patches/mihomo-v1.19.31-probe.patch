@@ -22,7 +22,26 @@
  )
  
  var UnifiedDelay = atomic.NewBool(false)
-@@ -165,6 +169,20 @@
+@@ -32,6 +36,7 @@
+ }
+ 
+ type Proxy struct {
++	configFingerprint string
+ 	C.ProxyAdapter
+ 	alive   atomic.Bool
+ 	history *queue.Queue[C.DelayHistory]
+@@ -141,6 +146,10 @@
+ 
+ 	mapping := map[string]any{}
+ 	_ = json.Unmarshal(inner, &mapping)
++	if p.configFingerprint != "" {
++		mapping["configFingerprint"] = p.configFingerprint
++		mapping["configFingerprintVersion"] = 1
++	}
+ 	mapping["history"] = p.DelayHistory()
+ 	mapping["extra"] = p.ExtraDelayHistories()
+ 	mapping["alive"] = p.alive.Load()
+@@ -165,6 +174,20 @@
  // implements C.Proxy
  func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.IntRanges[uint16]) (t uint16, err error) {
  	var satisfied bool
@@ -43,7 +62,7 @@
  
  	defer func() {
  		alive := err == nil
-@@ -207,7 +225,9 @@
+@@ -207,7 +230,9 @@
  	}
  
  	start := time.Now()
@@ -54,7 +73,7 @@
  	if err != nil {
  		return
  	}
-@@ -220,15 +240,71 @@
+@@ -220,15 +245,71 @@
  		return
  	}
  	req = req.WithContext(ctx)
@@ -128,7 +147,7 @@
  		},
  		// from http.DefaultTransport
  		MaxIdleConns:          100,
-@@ -255,17 +331,51 @@
+@@ -255,17 +336,51 @@
  	}
  
  	_ = resp.Body.Close()
@@ -181,7 +200,7 @@
  			if strings.HasPrefix(url, "http://") {
  				log.Errorln("%s failed to get the second response from %s: %v", p.Name(), url, ignoredErr)
  				log.Warnln("It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests.")
-@@ -275,6 +385,12 @@
+@@ -275,6 +390,12 @@
  
  	satisfied = resp != nil && (expectedStatus == nil || expectedStatus.Check(uint16(resp.StatusCode)))
  	t = uint16(time.Since(start) / time.Millisecond)
@@ -261,7 +280,7 @@
 +	}
 +	return ss.Base.Close()
 +}
---- /dev/null
+--- a/adapter/outbound/socks5_preconnect.go
 +++ b/adapter/outbound/socks5_preconnect.go
 @@ -0,0 +1,383 @@
 +package outbound
@@ -647,7 +666,7 @@
 +	}
 +	return nil, err, true
 +}
---- /dev/null
+--- a/adapter/outbound/socks5_preconnect_test.go
 +++ b/adapter/outbound/socks5_preconnect_test.go
 @@ -0,0 +1,615 @@
 +package outbound
@@ -1373,7 +1392,7 @@
 +		testUrl:        option.URL,
  	}, nil
  }
---- /dev/null
+--- a/adapter/outboundgroup/selector_preconnect_test.go
 +++ b/adapter/outboundgroup/selector_preconnect_test.go
 @@ -0,0 +1,146 @@
 +package outboundgroup_test
@@ -1522,7 +1541,1001 @@
 +		t.Fatal("final stable selection is inconsistent")
 +	}
 +}
---- /dev/null
+--- a/adapter/parser.go
++++ b/adapter/parser.go
+@@ -16,6 +16,14 @@
+ 	}
+ 
+ 	opt := applyProxyOptions(options...)
++	fingerprint := opt.ConfigFingerprint
++	if fingerprint == "" {
++		var fingerprintErr error
++		fingerprint, fingerprintErr = ProxyConfigFingerprint(mapping)
++		if fingerprintErr != nil {
++			return nil, fingerprintErr
++		}
++	}
+ 	basicOption := outbound.BasicOption{
+ 		DialerForAPI: opt.DialerForAPI,
+ 		TunnelForAPI: opt.TunnelForAPI,
+@@ -246,13 +254,16 @@
+ 	}
+ 
+ 	proxy = outbound.NewAutoCloseProxyAdapter(proxy)
+-	return NewProxy(proxy), nil
++	wrapped := NewProxy(proxy)
++	wrapped.configFingerprint = fingerprint
++	return wrapped, nil
+ }
+ 
+ type proxyOption struct {
+-	DialerForAPI C.Dialer
+-	TunnelForAPI C.Tunnel
+-	ProviderName string
++	ConfigFingerprint string
++	DialerForAPI      C.Dialer
++	TunnelForAPI      C.Tunnel
++	ProviderName      string
+ }
+ 
+ func applyProxyOptions(options ...ProxyOption) proxyOption {
+--- a/adapter/pocket_config_fingerprint.go
++++ b/adapter/pocket_config_fingerprint.go
+@@ -0,0 +1,283 @@
++package adapter
++
++import (
++	"crypto/sha256"
++	"encoding"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"reflect"
++	"strings"
++
++	"github.com/metacubex/mihomo/adapter/outbound"
++	"github.com/metacubex/mihomo/common/structure"
++)
++
++// ProxyConfigFingerprint identifies source connection settings, never runtime
++// adapter identity. Names, app generated routing/pool fields and provider labels
++// are excluded. Protocol authentication uuid/password and all transport/TLS
++// settings remain included. Only the versioned digest is exposed to the API.
++func ProxyConfigFingerprint(mapping map[string]any) (string, error) {
++	proxyType, ok := mapping["type"].(string)
++	if !ok {
++		return "", errors.New("missing proxy fingerprint type")
++	}
++	var option any
++	switch proxyType {
++	case "ss":
++		option = &outbound.ShadowSocksOption{}
++	case "ssr":
++		option = &outbound.ShadowSocksROption{}
++	case "socks5":
++		option = &outbound.Socks5Option{}
++	case "http":
++		option = &outbound.HttpOption{}
++	case "vmess":
++		option = &outbound.VmessOption{}
++	case "vless":
++		option = &outbound.VlessOption{}
++	case "snell":
++		option = &outbound.SnellOption{}
++	case "trojan":
++		option = &outbound.TrojanOption{}
++	case "hysteria":
++		option = &outbound.HysteriaOption{}
++	case "hysteria2":
++		option = &outbound.Hysteria2Option{}
++	case "wireguard":
++		option = &outbound.WireGuardOption{}
++	case "tuic":
++		option = &outbound.TuicOption{}
++	case "shadowquic":
++		option = &outbound.ShadowQuicOption{}
++	case "gost-relay":
++		option = &outbound.GostRelayOption{}
++	case "direct":
++		option = &outbound.DirectOption{}
++	case "dns":
++		option = &outbound.DnsOption{}
++	case "reject":
++		option = &outbound.RejectOption{}
++	case "rematch":
++		option = &outbound.RematchOption{}
++	case "ssh":
++		option = &outbound.SshOption{}
++	case "mieru":
++		option = &outbound.MieruOption{}
++	case "anytls":
++		option = &outbound.AnyTLSOption{}
++	case "sudoku":
++		option = &outbound.SudokuOption{}
++	case "masque":
++		option = &outbound.MasqueOption{}
++	case "trusttunnel":
++		option = &outbound.TrustTunnelOption{}
++	case "openvpn":
++		option = &outbound.OpenVPNOption{}
++	case "tailscale":
++		option = &outbound.TailscaleOption{}
++	case "zerotier":
++		option = &outbound.ZeroTierOption{}
++	case "easytier":
++		option = &outbound.EasyTierOption{}
++	default:
++		return "", errors.New("unsupported proxy fingerprint type")
++	}
++	decoder := structure.NewDecoder(structure.Option{TagName: "proxy", WeaklyTypedInput: true, KeyReplacer: structure.DefaultKeyReplacer})
++	if err := pocketFingerprintCheckAliases(mapping, reflect.TypeOf(option)); err != nil {
++		return "", err
++	}
++	// These are the exact upstream typed options, so e.g. a quoted port and an
++	// integer port agree, but a quoted password keeps its exact bytes.
++	if err := decoder.Decode(mapping, option); err != nil {
++		return "", errors.New("invalid proxy fingerprint configuration")
++	}
++	canonical, err := pocketFingerprintValue(reflect.ValueOf(option), true)
++	if err != nil {
++		return "", err
++	}
++	config := map[string]any{"version": 1, "type": proxyType, "options": canonical}
++	if muxMapping, muxExist := mapping["smux"].(map[string]any); muxExist {
++		muxOption := &outbound.SingMuxOption{}
++		if err := pocketFingerprintCheckAliases(muxMapping, reflect.TypeOf(muxOption)); err != nil {
++			return "", err
++		}
++		if err := decoder.Decode(muxMapping, muxOption); err != nil {
++			return "", errors.New("invalid proxy fingerprint mux")
++		}
++		if muxOption.Enabled {
++			config["smux"], err = pocketFingerprintValue(reflect.ValueOf(muxOption), false)
++			if err != nil {
++				return "", err
++			}
++		}
++	}
++	data, err := json.Marshal(config)
++	if err != nil {
++		return "", errors.New("invalid proxy fingerprint value")
++	}
++	digest := sha256.Sum256(data)
++	return hex.EncodeToString(digest[:]), nil
++}
++
++func pocketFingerprintValue(value reflect.Value, root bool) (any, error) {
++	if !value.IsValid() {
++		return nil, nil
++	}
++	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
++		if value.IsNil() {
++			return nil, nil
++		}
++		value = value.Elem()
++	}
++	if value.CanInterface() {
++		if text, ok := value.Interface().(encoding.TextMarshaler); ok {
++			data, err := text.MarshalText()
++			if err != nil {
++				return nil, errors.New("invalid proxy fingerprint text")
++			}
++			return string(data), nil
++		}
++	}
++	switch value.Kind() {
++	case reflect.Struct:
++		out := map[string]any{}
++		kind := value.Type()
++		for i := 0; i < value.NumField(); i++ {
++			field := kind.Field(i)
++			if !field.IsExported() {
++				continue
++			}
++			tag := strings.Split(field.Tag.Get("proxy"), ",")[0]
++			if tag == "-" {
++				continue
++			} // internal Dialer/Tunnel/provider objects
++			if field.Anonymous && value.Field(i).Kind() == reflect.Struct {
++				embedded, err := pocketFingerprintValue(value.Field(i), root)
++				if err != nil {
++					return nil, err
++				}
++				for key, item := range embedded.(map[string]any) {
++					out[key] = item
++				}
++				continue
++			}
++			if tag == "" {
++				tag = field.Name
++			}
++			if root && (tag == "name" || tag == "id" || tag == "dialer-proxy" || strings.HasPrefix(tag, "pocket-")) {
++				continue
++			}
++			item, err := pocketFingerprintValue(value.Field(i), false)
++			if err != nil {
++				return nil, err
++			}
++			out[tag] = item
++		}
++		return out, nil
++	case reflect.Map:
++		if value.Type().Key().Kind() != reflect.String {
++			return nil, errors.New("invalid proxy fingerprint map key")
++		}
++		if value.IsNil() {
++			return nil, nil
++		}
++		out := map[string]any{}
++		iterator := value.MapRange()
++		for iterator.Next() {
++			item, err := pocketFingerprintValue(iterator.Value(), false)
++			if err != nil {
++				return nil, err
++			}
++			out[iterator.Key().String()] = item
++		}
++		return out, nil
++	case reflect.Array, reflect.Slice:
++		if value.Kind() == reflect.Slice && value.IsNil() {
++			return nil, nil
++		}
++		out := make([]any, value.Len())
++		for i := range out {
++			item, err := pocketFingerprintValue(value.Index(i), false)
++			if err != nil {
++				return nil, err
++			}
++			out[i] = item
++		}
++		return out, nil
++	case reflect.String, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
++		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
++		return value.Interface(), nil
++	default:
++		return nil, errors.New("unsupported proxy fingerprint value")
++	}
++}
++
++// WithConfigFingerprint supplies the already validated source identity when a
++// provider applies app owned routing/rename overrides. It never changes Id().
++func WithConfigFingerprint(fingerprint string) ProxyOption {
++	return func(option *proxyOption) { option.ConfigFingerprint = fingerprint }
++}
++
++// Upstream falls back to case-insensitive/underscore matching. Two such aliases
++// can otherwise decode differently in successive map iterations. Refuse that
++// ambiguity for typed option fields, while keeping arbitrary HTTP/header keys
++// intact (case and order are real transport data).
++func pocketFingerprintCheckAliases(mapping map[string]any, option reflect.Type) error {
++	for option.Kind() == reflect.Pointer {
++		option = option.Elem()
++	}
++	if option.Kind() != reflect.Struct {
++		return nil
++	}
++	for index := 0; index < option.NumField(); index++ {
++		field := option.Field(index)
++		if !field.IsExported() {
++			continue
++		}
++		tag := strings.Split(field.Tag.Get("proxy"), ",")[0]
++		if tag == "-" {
++			continue
++		}
++		fieldType := field.Type
++		for fieldType.Kind() == reflect.Pointer {
++			fieldType = fieldType.Elem()
++		}
++		if field.Anonymous && fieldType.Kind() == reflect.Struct {
++			if err := pocketFingerprintCheckAliases(mapping, field.Type); err != nil {
++				return err
++			}
++			continue
++		}
++		if tag == "" {
++			tag = field.Name
++		}
++		tag = strings.ToLower(strings.ReplaceAll(tag, "_", "-"))
++		matches := 0
++		var raw any
++		for key, value := range mapping {
++			if strings.ToLower(strings.ReplaceAll(key, "_", "-")) == tag {
++				matches++
++				raw = value
++			}
++		}
++		if matches > 1 {
++			return errors.New("ambiguous proxy fingerprint option aliases")
++		}
++		if nested, ok := raw.(map[string]any); ok && fieldType.Kind() == reflect.Struct {
++			if err := pocketFingerprintCheckAliases(nested, field.Type); err != nil {
++				return err
++			}
++		}
++		if items, ok := raw.([]any); ok && (fieldType.Kind() == reflect.Array || fieldType.Kind() == reflect.Slice) {
++			for _, item := range items {
++				if nested, ok := item.(map[string]any); ok {
++					if err := pocketFingerprintCheckAliases(nested, fieldType.Elem()); err != nil {
++						return err
++					}
++				}
++			}
++		}
++	}
++	return nil
++}
+--- a/adapter/pocket_config_fingerprint_test.go
++++ b/adapter/pocket_config_fingerprint_test.go
+@@ -0,0 +1,158 @@
++package adapter
++
++import (
++	"encoding/json"
++	"regexp"
++	"strings"
++	"testing"
++)
++
++func pocketFingerprintFixture() map[string]any {
++	return map[string]any{"name": "Japan", "type": "socks5", "server": "127.0.0.1", "port": 1080, "username": "fixture-user", "password": "fixture-secret-only"}
++}
++func pocketFingerprint(t *testing.T, config map[string]any) string {
++	t.Helper()
++	fingerprint, err := ProxyConfigFingerprint(config)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(fingerprint) {
++		t.Fatalf("invalid digest: %q", fingerprint)
++	}
++	return fingerprint
++}
++
++func TestPocketNodeFingerprintSurvivesRenameAndGeneratedFields(t *testing.T) {
++	source := pocketFingerprintFixture()
++	expected := pocketFingerprint(t, source)
++	source["name"] = "Exit|Renamed Tokyo"
++	source["id"] = "c3078f73-7493-4298-92d0-f7c8433162d6"
++	source["dialer-proxy"] = "EntryChoice"
++	source["pocket-preconnect"] = true
++	source["pocket-preconnect-epoch-file"] = "/private/app/epoch"
++	source["provider-name"] = "display-only"
++	if got := pocketFingerprint(t, source); got != expected {
++		t.Fatal("generated route/display changed source identity")
++	}
++}
++
++func TestPocketNodeFingerprintAuthenticationAndTLSChanges(t *testing.T) {
++	original := pocketFingerprint(t, pocketFingerprintFixture())
++	for key, value := range map[string]any{"type": "http", "server": "127.0.0.2", "port": 1081, "username": "different-user", "password": "different-secret", "tls": true, "skip-cert-verify": true, "name-cert-verify": "exit.example", "certificate": "fixture-certificate", "private-key": "fixture-private-key", "fingerprint": "sha256:fixture"} {
++		t.Run(key, func(t *testing.T) {
++			source := pocketFingerprintFixture()
++			source[key] = value
++			if got := pocketFingerprint(t, source); got == original {
++				t.Fatal("real connection change retained identity")
++			}
++		})
++	}
++}
++
++func TestPocketNodeFingerprintKeepsProtocolUUIDAndTransport(t *testing.T) {
++	source := map[string]any{"type": "vless", "name": "Entry", "server": "entry.example", "port": 443, "uuid": "0c8f8db3-dca5-4a88-86a8-f12954bcb1a2", "tls": true, "network": "ws", "ws-opts": map[string]any{"path": "/ws", "headers": map[string]any{"name": "real-header-value", "X-Authorization": "fixture-token"}}, "alpn": []any{"h2", "http/1.1"}}
++	baseline := pocketFingerprint(t, source)
++	source["uuid"] = "f0955e8c-a116-4b34-aa0c-cd791e3fd9f9"
++	if pocketFingerprint(t, source) == baseline {
++		t.Fatal("authentication uuid was ignored")
++	}
++	source["uuid"] = "0c8f8db3-dca5-4a88-86a8-f12954bcb1a2"
++	source["ws-opts"].(map[string]any)["headers"].(map[string]any)["name"] = "changed-real-header"
++	if pocketFingerprint(t, source) == baseline {
++		t.Fatal("nested header named name was ignored")
++	}
++	source["ws-opts"].(map[string]any)["headers"].(map[string]any)["name"] = "real-header-value"
++	source["ws-opts"].(map[string]any)["path"] = "/different-path"
++	if pocketFingerprint(t, source) == baseline {
++		t.Fatal("transport path was ignored")
++	}
++	source["ws-opts"].(map[string]any)["path"] = "/ws"
++	source["alpn"] = []any{"http/1.1", "h2"}
++	if pocketFingerprint(t, source) == baseline {
++		t.Fatal("ordered alpn preference was ignored")
++	}
++}
++
++func TestPocketNodeFingerprintUsesUpstreamTypedCanonicalOptions(t *testing.T) {
++	source := pocketFingerprintFixture()
++	expected := pocketFingerprint(t, source)
++	source["port"] = "1080"
++	source["tls"] = false
++	if got := pocketFingerprint(t, source); got != expected {
++		t.Fatal("equivalent typed port/defaults changed identity")
++	}
++	a := map[string]any{"type": "vless", "name": "Entry", "server": "entry.example", "port": 443, "uuid": "0c8f8db3-dca5-4a88-86a8-f12954bcb1a2", "network": "ws", "ws-opts": map[string]any{"path": "/ws", "headers": map[string]any{"Host": "entry.example", "X-Token": "fixture-token"}}}
++	b := map[string]any{"ws-opts": map[string]any{"headers": map[string]any{"X-Token": "fixture-token", "Host": "entry.example"}, "path": "/ws"}, "network": "ws", "uuid": "0c8f8db3-dca5-4a88-86a8-f12954bcb1a2", "port": "443", "server": "entry.example", "name": "Different", "type": "vless"}
++	if pocketFingerprint(t, a) != pocketFingerprint(t, b) {
++		t.Fatal("map insertion order changed identity")
++	}
++}
++
++func TestPocketNodeFingerprintJSONDoesNotLeakCredentialsOrReplaceRuntimeID(t *testing.T) {
++	source := pocketFingerprintFixture()
++	first, err := ParseProxy(source)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer first.Close()
++	second, err := ParseProxy(source)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer second.Close()
++	firstJSON, _ := first.MarshalJSON()
++	secondJSON, _ := second.MarshalJSON()
++	var firstInfo, secondInfo map[string]any
++	_ = json.Unmarshal(firstJSON, &firstInfo)
++	_ = json.Unmarshal(secondJSON, &secondInfo)
++	if firstInfo["id"] == nil || firstInfo["id"] == secondInfo["id"] {
++		t.Fatal("runtime identity stopped being fresh")
++	}
++	for _, proxy := range []*Proxy{first.(*Proxy), second.(*Proxy)} {
++		data, err := proxy.MarshalJSON()
++		if err != nil {
++			t.Fatal(err)
++		}
++		for _, secret := range []string{"fixture-user", "fixture-secret-only", "127.0.0.1:1080", "password", "username"} {
++			if strings.Contains(string(data), secret) {
++				t.Fatal("API leaked connection credential/address field")
++			}
++		}
++		var info map[string]any
++		if err = json.Unmarshal(data, &info); err != nil {
++			t.Fatal(err)
++		}
++		if info["configFingerprint"] != pocketFingerprint(t, source) || info["configFingerprintVersion"] != float64(1) || info["id"] == nil {
++			t.Fatal("API source/runtime identities were confused")
++		}
++	}
++}
++
++func TestPocketNodeFingerprintErrorsAreRedacted(t *testing.T) {
++	source := pocketFingerprintFixture()
++	source["port"] = "credential-private-marker"
++	fingerprint, err := ProxyConfigFingerprint(source)
++	if err == nil || fingerprint != "" || strings.Contains(err.Error(), "credential-private-marker") {
++		t.Fatal("invalid config failed to return a redacted failure")
++	}
++	source["type"] = "credential-private-marker"
++	if _, err = ProxyConfigFingerprint(source); err == nil || strings.Contains(err.Error(), "credential-private-marker") {
++		t.Fatal("invalid protocol leaked raw config")
++	}
++}
++
++func TestPocketNodeFingerprintRejectsAmbiguousDecoderAliases(t *testing.T) {
++	source := pocketFingerprintFixture()
++	source["Password"] = "different-fixture-password"
++	if fingerprint, err := ProxyConfigFingerprint(source); err == nil || fingerprint != "" {
++		t.Fatal("ambiguous authentication aliases were accepted")
++	}
++	source = map[string]any{"type": "vless", "name": "Entry", "server": "entry.example", "port": 443, "uuid": "0c8f8db3-dca5-4a88-86a8-f12954bcb1a2", "network": "ws", "ws-opts": map[string]any{"path": "/ws", "headers": map[string]any{"Host": "entry.example", "host": "different-real-header"}}}
++	if _, err := ProxyConfigFingerprint(source); err != nil {
++		t.Fatal("real header names were normalized as option aliases")
++	}
++	source["ws-opts"].(map[string]any)["Path"] = "/different"
++	if _, err := ProxyConfigFingerprint(source); err == nil {
++		t.Fatal("ambiguous nested transport option accepted")
++	}
++}
+--- a/adapter/provider/override.go
++++ b/adapter/provider/override.go
+@@ -3,23 +3,28 @@
+ import (
+ 	"encoding"
+ 	"fmt"
++	"strings"
+ 
+ 	"github.com/dlclark/regexp2"
+ )
+ 
+ type overrideSchema struct {
+-	TFO            *bool   `provider:"tfo,omitempty"`
+-	MPTcp          *bool   `provider:"mptcp,omitempty"`
+-	UDP            *bool   `provider:"udp,omitempty"`
+-	UDPOverTCP     *bool   `provider:"udp-over-tcp,omitempty"`
+-	Up             *string `provider:"up,omitempty"`
+-	Down           *string `provider:"down,omitempty"`
+-	DialerProxy    *string `provider:"dialer-proxy,omitempty"`
+-	SkipCertVerify *bool   `provider:"skip-cert-verify,omitempty"`
+-	NameCertVerify *string `provider:"name-cert-verify,omitempty"`
+-	Interface      *string `provider:"interface-name,omitempty"`
+-	RoutingMark    *int    `provider:"routing-mark,omitempty"`
+-	IPVersion      *string `provider:"ip-version,omitempty"`
++	// App owned provider options; these are never accepted from subscription rows.
++	PocketConfigFingerprint   *string `provider:"pocket-config-fingerprint,omitempty"`
++	PocketPreconnect          *bool   `provider:"pocket-preconnect,omitempty"`
++	PocketPreconnectEpochFile *string `provider:"pocket-preconnect-epoch-file,omitempty"`
++	TFO                       *bool   `provider:"tfo,omitempty"`
++	MPTcp                     *bool   `provider:"mptcp,omitempty"`
++	UDP                       *bool   `provider:"udp,omitempty"`
++	UDPOverTCP                *bool   `provider:"udp-over-tcp,omitempty"`
++	Up                        *string `provider:"up,omitempty"`
++	Down                      *string `provider:"down,omitempty"`
++	DialerProxy               *string `provider:"dialer-proxy,omitempty"`
++	SkipCertVerify            *bool   `provider:"skip-cert-verify,omitempty"`
++	NameCertVerify            *string `provider:"name-cert-verify,omitempty"`
++	Interface                 *string `provider:"interface-name,omitempty"`
++	RoutingMark               *int    `provider:"routing-mark,omitempty"`
++	IPVersion                 *string `provider:"ip-version,omitempty"`
+ 
+ 	AdditionalPrefix *string                   `provider:"additional-prefix,omitempty"`
+ 	AdditionalSuffix *string                   `provider:"additional-suffix,omitempty"`
+@@ -94,5 +99,18 @@
+ 		}
+ 	}
+ 
++	for key := range mapping {
++		if strings.HasPrefix(strings.ToLower(strings.ReplaceAll(key, "_", "-")), "pocket-") {
++			delete(mapping, key)
++		}
++	}
++	// Apply after expressions so subscription/expressions cannot replace these
++	// trusted pool controls. The parser validates the selected SOCKS5 route.
++	if o.PocketPreconnect != nil {
++		mapping["pocket-preconnect"] = *o.PocketPreconnect
++	}
++	if o.PocketPreconnectEpochFile != nil {
++		mapping["pocket-preconnect-epoch-file"] = *o.PocketPreconnectEpochFile
++	}
+ 	return nil
+ }
+--- a/adapter/provider/pocket_selected_exit_test.go
++++ b/adapter/provider/pocket_selected_exit_test.go
+@@ -0,0 +1,273 @@
++package provider
++
++import (
++	"encoding/json"
++	"fmt"
++	"testing"
++
++	"github.com/dlclark/regexp2"
++	"github.com/metacubex/mihomo/adapter"
++	C "github.com/metacubex/mihomo/constant"
++)
++
++func pocketProviderFixture(name string) map[string]any {
++	return map[string]any{"type": "socks5", "name": name, "server": "127.0.0.1", "port": 1080, "username": "fixture-user", "password": "fixture-only-secret"}
++}
++func pocketProviderFingerprint(t *testing.T, node map[string]any) string {
++	t.Helper()
++	hash, err := adapter.ProxyConfigFingerprint(node)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return hash
++}
++func pocketProviderDocument(t *testing.T, nodes ...map[string]any) []byte {
++	t.Helper()
++	data, err := json.Marshal(map[string]any{"proxies": nodes})
++	if err != nil {
++		t.Fatal(err)
++	}
++	return data
++}
++func pocketProviderOverride(hash, name string, pool bool) overrideSchema {
++	route := "EntryChoice"
++	epoch := "/private/pocketchat/profile/exit-epoch"
++	override := overrideSchema{PocketConfigFingerprint: &hash, DialerProxy: &route, PocketPreconnect: &pool, ProxyName: []overrideProxyNameSchema{{Pattern: regexp2.MustCompile(`^.*$`, regexp2.None), Target: name}}}
++	if pool {
++		override.PocketPreconnectEpochFile = &epoch
++	}
++	return override
++}
++func pocketParseProvider(t *testing.T, override overrideSchema, filter string, nodes ...map[string]any) ([]C.Proxy, error) {
++	t.Helper()
++	parser, err := NewProxiesParser("ExitSource", nil, filter, "", "", "", override, "")
++	if err != nil {
++		return nil, err
++	}
++	proxies, err := parser(pocketProviderDocument(t, nodes...))
++	for _, proxy := range proxies {
++		t.Cleanup(func() { _ = proxy.Close() })
++	}
++	return proxies, err
++}
++
++func TestPocketSelectedExitExactFingerprintSurvivesRefreshRename(t *testing.T) {
++	node := pocketProviderFixture("Original Tokyo")
++	hash := pocketProviderFingerprint(t, node)
++	node["name"] = "Refreshed Tokyo"
++	other := pocketProviderFixture("Other Exit")
++	other["server"] = "127.0.0.2"
++	proxies, err := pocketParseProvider(t, pocketProviderOverride(hash, "FixedExit", true), "", other, node)
++	if err != nil || len(proxies) != 1 {
++		t.Fatalf("selected source rejected: %v", err)
++	}
++	if proxies[0].Name() != "FixedExit" || proxies[0].ProxyInfo().DialerProxy != "EntryChoice" {
++		t.Fatal("fixed exit was not attached to its environment entry")
++	}
++	data, _ := proxies[0].MarshalJSON()
++	var info map[string]any
++	_ = json.Unmarshal(data, &info)
++	if info["configFingerprint"] != hash {
++		t.Fatal("generated override changed source fingerprint")
++	}
++}
++
++func TestPocketSelectedExitRejectsMissingAndCredentialRotation(t *testing.T) {
++	node := pocketProviderFixture("Tokyo")
++	hash := pocketProviderFingerprint(t, node)
++	for _, key := range []string{"password", "server"} {
++		t.Run(key, func(t *testing.T) {
++			changed := pocketProviderFixture("Tokyo")
++			changed[key] = "changed-fixture"
++			if proxies, err := pocketParseProvider(t, pocketProviderOverride(hash, "FixedExit", true), "", changed); err == nil || len(proxies) != 0 {
++				t.Fatal("missing fixed exit silently changed route")
++			}
++		})
++	}
++}
++
++func TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames(t *testing.T) {
++	node := pocketProviderFixture("Tokyo")
++	hash := pocketProviderFingerprint(t, node)
++	for _, name := range []string{"Tokyo", "Alias Tokyo"} {
++		t.Run(name, func(t *testing.T) {
++			if proxies, err := pocketParseProvider(t, pocketProviderOverride(hash, "FixedExit", true), "", node, pocketProviderFixture(name)); err == nil || len(proxies) != 0 {
++				t.Fatal("ambiguous fingerprint selected an arbitrary row")
++			}
++		})
++	}
++	proxies, err := pocketParseProvider(t, pocketProviderOverride(hash, "FixedExit", true), "^Tokyo$", node, pocketProviderFixture("Alias Tokyo"))
++	if err != nil || len(proxies) != 1 {
++		t.Fatal("explicit original-name filter did not resolve alias ambiguity")
++	}
++}
++
++func TestPocketSelectedExitRejectsUnsupportedProtocolAndMux(t *testing.T) {
++	for _, kind := range []string{"http", "mux", "mux-quoted-bool"} {
++		t.Run(kind, func(t *testing.T) {
++			node := pocketProviderFixture("Exit")
++			if kind == "http" {
++				node["type"] = "http"
++			} else {
++				var enabled any = true
++				if kind == "mux-quoted-bool" {
++					enabled = "true"
++				}
++				node["smux"] = map[string]any{"enabled": enabled}
++			}
++			hash := pocketProviderFingerprint(t, pocketProviderFixture("Exit"))
++			if kind != "mux-quoted-bool" {
++				hash = pocketProviderFingerprint(t, node)
++			}
++			if proxies, err := pocketParseProvider(t, pocketProviderOverride(hash, "FixedExit", true), "", node); err == nil || len(proxies) != 0 {
++				t.Fatal("unsupported fixed exit was accepted")
++			}
++		})
++	}
++}
++
++func TestPocketSelectedExitValidatesTrustedPrivateRoute(t *testing.T) {
++	node := pocketProviderFixture("Tokyo")
++	hash := pocketProviderFingerprint(t, node)
++	for _, caseName := range []string{"no-selected", "bad-sha", "wrong-name", "wrong-entry", "relative-epoch"} {
++		t.Run(caseName, func(t *testing.T) {
++			override := pocketProviderOverride(hash, "FixedExit", true)
++			switch caseName {
++			case "no-selected":
++				override.PocketConfigFingerprint = nil
++			case "bad-sha":
++				bad := "fixture-not-a-sha"
++				override.PocketConfigFingerprint = &bad
++			case "wrong-name":
++				override.ProxyName[0].Target = "SomeExit"
++			case "wrong-entry":
++				route := "OtherEntry"
++				override.DialerProxy = &route
++			case "relative-epoch":
++				epoch := "relative/epoch"
++				override.PocketPreconnectEpochFile = &epoch
++			}
++			if proxies, err := pocketParseProvider(t, override, "", node); err == nil || len(proxies) != 0 {
++				t.Fatal("untrusted pool route accepted")
++			}
++		})
++	}
++}
++
++func TestPocketSelectedExitStripsSubscriptionPoolAliasesAndPreservesNestedData(t *testing.T) {
++	source := pocketProviderFixture("FixedExit")
++	source["pocket-preconnect"] = true
++	source["Pocket_Preconnect"] = true
++	source["POCKET-PRECONNECT-EPOCH-FILE"] = "/malicious/private/epoch"
++	source["ws-opts"] = map[string]any{"headers": map[string]any{"pocket-real-header": "unchanged"}}
++	clean := pocketProviderMapping(source)
++	if clean["pocket-preconnect"] != nil || clean["Pocket_Preconnect"] != nil || clean["POCKET-PRECONNECT-EPOCH-FILE"] != nil {
++		t.Fatal("subscription enabled generated pool controls")
++	}
++	clean["ws-opts"].(map[string]any)["headers"].(map[string]any)["pocket-real-header"] = "changed"
++	if source["ws-opts"].(map[string]any)["headers"].(map[string]any)["pocket-real-header"] != "unchanged" {
++		t.Fatal("override mutated source refresh identity")
++	}
++	if proxies, err := pocketParseProvider(t, overrideSchema{}, "", source); err != nil || len(proxies) != 1 {
++		t.Fatal("normal entry/catalog provider rejected stripped source")
++	}
++}
++
++func TestPocketSelectedExitProbeRolesNeverEnablePreconnect(t *testing.T) {
++	source := pocketProviderFixture("FixedExit")
++	hash := pocketProviderFingerprint(t, source)
++	source["pocket-preconnect"] = true
++	source["pocket-preconnect-epoch-file"] = "/malicious/epoch"
++	for _, role := range []string{"ProbeExit", "WebProbeExit"} {
++		t.Run(role, func(t *testing.T) {
++			override := pocketProviderOverride(hash, role, false)
++			mapping := pocketProviderMapping(source)
++			if err := override.Apply(mapping); err != nil {
++				t.Fatal(err)
++			}
++			if mapping["pocket-preconnect"] != false || mapping["pocket-preconnect-epoch-file"] != nil {
++				t.Fatal("probe inherited pool controls")
++			}
++			proxies, err := pocketParseProvider(t, override, "", source)
++			if err != nil || len(proxies) != 1 || proxies[0].Name() != role {
++				t.Fatal("probe source selection did not remain separate")
++			}
++		})
++	}
++}
++
++func TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions(t *testing.T) {
++	node := pocketProviderFixture("Exit")
++	hash := pocketProviderFingerprint(t, node)
++	override := pocketProviderOverride(hash, "FixedExit", true)
++	var expr OverrideExpr
++	if err := expr.UnmarshalText([]byte(`.pocket-preconnect = false`)); err != nil {
++		t.Fatal(err)
++	}
++	override.OverrideExpr = []OverrideExpr{expr}
++	mapping := pocketProviderMapping(node)
++	if err := override.Apply(mapping); err != nil {
++		t.Fatal(err)
++	}
++	if mapping["pocket-preconnect"] != true || mapping["pocket-preconnect-epoch-file"] != "/private/pocketchat/profile/exit-epoch" {
++		t.Fatal("expression replaced app pool control")
++	}
++
++	for _, alias := range []string{"pocket-preconnect", "POCKET_PRECONNECT"} {
++		exprs := mustOverrideExprs(t, `.`+alias+` = true`, `.pocket-preconnect-epoch-file = "/malicious/epoch"`)
++		untrusted := overrideSchema{OverrideExpr: exprs}
++		mapping := pocketProviderMapping(node)
++		if err := untrusted.Apply(mapping); err != nil {
++			t.Fatal(err)
++		}
++		if mapping[alias] != nil || mapping["pocket-preconnect-epoch-file"] != nil {
++			t.Fatal("expression enabled pool without trusted selected route")
++		}
++	}
++	for _, expression := range []string{`.type = "http"`, `.smux.enabled = true`} {
++		t.Run(expression, func(t *testing.T) {
++			var expr OverrideExpr
++			if err := expr.UnmarshalText([]byte(expression)); err != nil {
++				t.Fatal(err)
++			}
++			override.OverrideExpr = []OverrideExpr{expr}
++			if proxies, err := pocketParseProvider(t, override, "", node); err == nil || len(proxies) != 0 {
++				t.Fatal("expression changed selected exit protocol/mux")
++			}
++		})
++	}
++}
++
++func TestPocketSelectedExitMultipleNameFiltersCountSourceOnce(t *testing.T) {
++	node := pocketProviderFixture("Tokyo")
++	hash := pocketProviderFingerprint(t, node)
++	proxies, err := pocketParseProvider(t, pocketProviderOverride(hash, "FixedExit", true), fmt.Sprintf("^Tokyo$`%s", "Tokyo"), node)
++	if err != nil || len(proxies) != 1 {
++		t.Fatal("overlapping name filters counted a single node as duplicate")
++	}
++}
++
++func TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes(t *testing.T) {
++	node := pocketProviderFixture("Tokyo")
++	hash := pocketProviderFingerprint(t, node)
++	for _, kind := range []string{"unknown-protocol", "malformed-port", "ambiguous-auth-alias"} {
++		t.Run(kind, func(t *testing.T) {
++			bad := pocketProviderFixture("Unrelated Entry")
++			switch kind {
++			case "unknown-protocol":
++				bad["type"] = "unknown-fixture"
++			case "malformed-port":
++				bad["port"] = "invalid-fixture"
++			case "ambiguous-auth-alias":
++				bad["Password"] = "different-fixture"
++			}
++			proxies, err := pocketParseProvider(t, pocketProviderOverride(hash, "FixedExit", true), "", bad, node)
++			if err != nil || len(proxies) != 1 || proxies[0].Name() != "FixedExit" {
++				t.Fatal("unrelated malformed node prevented valid fixed selection")
++			}
++			if proxies, err = pocketParseProvider(t, overrideSchema{}, "", bad, node); err == nil || len(proxies) != 0 {
++				t.Fatal("ordinary provider validation was weakened")
++			}
++		})
++	}
++}
+--- a/adapter/provider/provider.go
++++ b/adapter/provider/provider.go
+@@ -1,16 +1,20 @@
+ package provider
+ 
+ import (
++	"encoding/hex"
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"path/filepath"
+ 	"runtime"
+ 	"strings"
+ 	"sync"
+ 	"time"
+ 
+ 	"github.com/metacubex/mihomo/adapter"
++	"github.com/metacubex/mihomo/adapter/outbound"
+ 	"github.com/metacubex/mihomo/common/convert"
++	"github.com/metacubex/mihomo/common/structure"
+ 	"github.com/metacubex/mihomo/common/utils"
+ 	"github.com/metacubex/mihomo/common/yaml"
+ 	"github.com/metacubex/mihomo/component/age"
+@@ -341,6 +345,16 @@
+ }
+ 
+ func NewProxiesParser(pdName string, tunnel C.Tunnel, filter string, excludeFilter string, excludeType string, dialerProxy string, override overrideSchema, ageSecretKey string) (resource.Parser[[]C.Proxy], error) {
++	selected := override.PocketConfigFingerprint != nil
++	if selected {
++		digest, err := hex.DecodeString(*override.PocketConfigFingerprint)
++		if err != nil || len(digest) != 32 || strings.ToLower(*override.PocketConfigFingerprint) != *override.PocketConfigFingerprint {
++			return nil, errors.New("invalid selected exit fingerprint")
++		}
++	}
++	if !selected && (override.PocketPreconnect != nil && *override.PocketPreconnect || override.PocketPreconnectEpochFile != nil) {
++		return nil, errors.New("provider preconnect requires one selected exit fingerprint")
++	}
+ 	var excludeTypeArray []string
+ 	if excludeType != "" {
+ 		excludeTypeArray = strings.Split(excludeType, "|")
+@@ -393,6 +407,7 @@
+ 			return nil, errors.New("file must have a `proxies` field")
+ 		}
+ 
++		selectedRows := map[int]struct{}{}
+ 		proxies := []C.Proxy{}
+ 		proxiesSet := map[string]struct{}{}
+ 		for _, filterReg := range filterRegs {
+@@ -433,6 +448,36 @@
+ 						continue
+ 					}
+ 				}
++				if !selected {
++					if _, seen := proxiesSet[name]; seen {
++						continue
++					}
++				}
++				// Strip all aliases before parsing source identity or trusted override.
++				// The subscription supplies nodes only, never app pool control.
++				mapping = pocketProviderMapping(mapping)
++				fingerprint, err := adapter.ProxyConfigFingerprint(mapping)
++				if err != nil {
++					if selected {
++						continue
++					} // unrelated malformed rows cannot replace a selected valid exit
++					fingerprint = "" // ordinary trusted override may repair a source option; ParseProxy hashes its resulting valid config
++				}
++				if selected {
++					if fingerprint != *override.PocketConfigFingerprint {
++						continue
++					}
++					if mapping["type"] != "socks5" {
++						return nil, errors.New("selected exit must be SOCKS5")
++					}
++					if !pocketSelectedSocks(mapping) {
++						return nil, errors.New("selected exit cannot enable mux")
++					}
++					selectedRows[idx] = struct{}{}
++					if len(selectedRows) > 1 {
++						return nil, errors.New("selected exit fingerprint is ambiguous")
++					}
++				}
+ 				if _, ok := proxiesSet[name]; ok {
+ 					continue
+ 				}
+@@ -441,12 +486,22 @@
+ 					mapping["dialer-proxy"] = dialerProxy
+ 				}
+ 
+-				err := override.Apply(mapping)
++				err = override.Apply(mapping)
+ 				if err != nil {
+ 					return nil, fmt.Errorf("proxy %d override error: %w", idx, err)
+ 				}
+ 
+-				proxy, err := adapter.ParseProxy(mapping, adapter.WithTunnelForAPI(tunnel), adapter.WithProviderName(pdName))
++				if selected {
++					if !pocketSelectedSocks(mapping) {
++						return nil, errors.New("selected exit override changed protocol or mux")
++					}
++					if override.PocketPreconnect != nil && *override.PocketPreconnect {
++						if mapping["name"] != "FixedExit" || mapping["dialer-proxy"] != "EntryChoice" || override.PocketPreconnectEpochFile == nil || !filepath.IsAbs(*override.PocketPreconnectEpochFile) {
++							return nil, errors.New("selected exit preconnect requires the private fixed exit route")
++						}
++					}
++				}
++				proxy, err := adapter.ParseProxy(mapping, adapter.WithTunnelForAPI(tunnel), adapter.WithProviderName(pdName), adapter.WithConfigFingerprint(fingerprint))
+ 				if err != nil {
+ 					return nil, fmt.Errorf("proxy %d error: %w", idx, err)
+ 				}
+@@ -456,6 +511,9 @@
+ 			}
+ 		}
+ 
++		if selected && (len(selectedRows) != 1 || len(proxies) != 1) {
++			return nil, errors.New("selected exit is unavailable")
++		}
+ 		if len(proxies) == 0 {
+ 			if len(filter) > 0 {
+ 				return nil, errors.New("doesn't match any proxy, please check your filter")
+@@ -466,3 +524,50 @@
+ 		return proxies, nil
+ 	}, nil
+ }
++
++// Copy source maps so filters/overrides cannot mutate the next refresh identity.
++// Strip generated controls recursively only at the node top-level; nested HTTP
++// headers named "name"/"pocket-*" remain real connection data.
++func pocketProviderMapping(source map[string]any) map[string]any {
++	clone := make(map[string]any, len(source))
++	for key, value := range source {
++		normalized := strings.ToLower(strings.ReplaceAll(key, "_", "-"))
++		if strings.HasPrefix(normalized, "pocket-") {
++			continue
++		}
++		clone[key] = pocketProviderCopy(value)
++	}
++	return clone
++}
++
++func pocketProviderCopy(value any) any {
++	switch value := value.(type) {
++	case map[string]any:
++		clone := make(map[string]any, len(value))
++		for key, item := range value {
++			clone[key] = pocketProviderCopy(item)
++		}
++		return clone
++	case []any:
++		clone := make([]any, len(value))
++		for index, item := range value {
++			clone[index] = pocketProviderCopy(item)
++		}
++		return clone
++	default:
++		return value
++	}
++}
++
++func pocketSelectedSocks(mapping map[string]any) bool {
++	if mapping["type"] != "socks5" {
++		return false
++	}
++	mux, ok := mapping["smux"].(map[string]any)
++	if !ok {
++		return true
++	}
++	decoder := structure.NewDecoder(structure.Option{TagName: "proxy", WeaklyTypedInput: true, KeyReplacer: structure.DefaultKeyReplacer})
++	option := &outbound.SingMuxOption{}
++	return decoder.Decode(mux, option) == nil && !option.Enabled
++}
+--- a/adapter/urltest_probe_test.go
 +++ b/adapter/urltest_probe_test.go
 @@ -0,0 +1,339 @@
 +package adapter
@@ -1864,7 +2877,7 @@
 +		t.Fatalf("unexpected trace: %s", data)
 +	}
 +}
---- /dev/null
+--- a/component/proxydialer/pocket_route.go
 +++ b/component/proxydialer/pocket_route.go
 @@ -0,0 +1,123 @@
 +package proxydialer
@@ -1990,7 +3003,7 @@
 +func (e *PocketDialError) Error() string       { return e.Cause.Error() }
 +func (e *PocketDialError) Unwrap() error       { return e.Cause }
 +func (e *PocketDialError) PocketNoRetry() bool { return true }
---- /dev/null
+--- a/component/proxydialer/pocket_route_test.go
 +++ b/component/proxydialer/pocket_route_test.go
 @@ -0,0 +1,333 @@
 +package proxydialer_test
@@ -2326,7 +3339,7 @@
 +		t.Fatal("same-name actual parent replacement reused the captured generation")
 +	}
 +}
---- /dev/null
+--- a/component/urltesttrace/trace.go
 +++ b/component/urltesttrace/trace.go
 @@ -0,0 +1,60 @@
 +// Package urltesttrace records one optional controller probe, without changing
@@ -2388,6 +3401,287 @@
 +		return "timeout"
 +	}
 +	return "transport"
++}
+--- a/hub/route/pocket_provider_chain_test.go
++++ b/hub/route/pocket_provider_chain_test.go
+@@ -0,0 +1,278 @@
++package route
++
++import (
++	"context"
++	"encoding/json"
++	"io"
++	"net"
++	stdhttp "net/http"
++	stdhttptest "net/http/httptest"
++	"net/url"
++	"os"
++	"path/filepath"
++	"strconv"
++	"sync"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/metacubex/http/httptest"
++	"github.com/metacubex/mihomo/adapter"
++	"github.com/metacubex/mihomo/component/auth"
++	"github.com/metacubex/mihomo/config"
++	C "github.com/metacubex/mihomo/constant"
++	"github.com/metacubex/mihomo/hub/executor"
++	"github.com/metacubex/mihomo/transport/socks5"
++)
++
++type pocketChainWire struct {
++	listener                   net.Listener
++	accepted, authed, commands atomic.Int32
++	mu                         sync.Mutex
++	targets                    []string
++	connections                map[net.Conn]struct{}
++	username, password         string
++}
++
++func (w *pocketChainWire) Verify(user, password string) bool {
++	if user != w.username || password != w.password {
++		return false
++	}
++	w.authed.Add(1)
++	return true
++}
++func (w *pocketChainWire) Users() []string { return []string{w.username} }
++func newPocketChainWire(t *testing.T, username, password string) *pocketChainWire {
++	t.Helper()
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	wire := &pocketChainWire{listener: listener, connections: map[net.Conn]struct{}{}, username: username, password: password}
++	var _ auth.Authenticator = wire
++	go func() {
++		for {
++			connection, err := listener.Accept()
++			if err != nil {
++				return
++			}
++			wire.accepted.Add(1)
++			wire.mu.Lock()
++			wire.connections[connection] = struct{}{}
++			wire.mu.Unlock()
++			go func() {
++				defer connection.Close()
++				_ = connection.SetDeadline(time.Now().Add(10 * time.Second))
++				address, command, _, err := socks5.ServerHandshake(connection, wire)
++				if err != nil || command != socks5.CmdConnect {
++					return
++				}
++				wire.commands.Add(1)
++				wire.mu.Lock()
++				wire.targets = append(wire.targets, address.String())
++				wire.mu.Unlock()
++				remote, err := net.DialTimeout("tcp", address.String(), time.Second)
++				if err != nil {
++					return
++				}
++				defer remote.Close()
++				go func() { _, _ = io.Copy(remote, connection); _ = remote.Close() }()
++				_, _ = io.Copy(connection, remote)
++			}()
++		}
++	}()
++	t.Cleanup(func() {
++		_ = listener.Close()
++		wire.mu.Lock()
++		for connection := range wire.connections {
++			_ = connection.Close()
++		}
++		wire.mu.Unlock()
++	})
++	return wire
++}
++func pocketChainNode(w *pocketChainWire, name string) map[string]any {
++	host, p, _ := net.SplitHostPort(w.listener.Addr().String())
++	port, _ := strconv.Atoi(p)
++	return map[string]any{"name": name, "type": "socks5", "server": host, "port": port, "username": w.username, "password": w.password}
++}
++func pocketChainWait(t *testing.T, condition func() bool) {
++	t.Helper()
++	deadline := time.Now().Add(2 * time.Second)
++	for !condition() {
++		if time.Now().After(deadline) {
++			t.Fatal("controlled chain condition timed out")
++		}
++		time.Sleep(5 * time.Millisecond)
++	}
++}
++
++// This uses the actual config parser, provider objects, global tunnel, forced
++// mixed listener and protected controller routes, not a synthetic group mock.
++func TestPocketSelectedExitActualSameNamedGroupTunnelAndProbeAPI(t *testing.T) {
++	private := t.TempDir()
++	oldHome := C.Path.HomeDir()
++	C.SetHomeDir(private)
++	t.Cleanup(func() { C.SetHomeDir(oldHome) })
++	entry := newPocketChainWire(t, "fixture-entry", "fixture-entry-password")
++	exit := newPocketChainWire(t, "fixture-exit", "fixture-exit-password")
++	target := stdhttptest.NewServer(stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
++		time.Sleep(5 * time.Millisecond)
++		w.Header().Set("Connection", "close")
++		w.WriteHeader(204)
++	}))
++	defer target.Close()
++	epoch := filepath.Join(private, "exit-epoch")
++	if err := os.WriteFile(epoch, []byte("ready:provider-test-network-1\n"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	exitNode := pocketChainNode(exit, "Original Tokyo")
++	aliasNode := pocketChainNode(exit, "Duplicate Tokyo Alias")
++	fingerprint, err := adapter.ProxyConfigFingerprint(exitNode)
++	if err != nil {
++		t.Fatal(err)
++	}
++	providers := map[string]any{"EntrySource": map[string]any{"type": "inline", "payload": []any{pocketChainNode(entry, "Entry Fixture")}, "health-check": map[string]any{"enable": false}}}
++	groups := []any{map[string]any{"name": "EntryChoice", "type": "select", "use": []any{"EntrySource"}, "empty-fallback": "REJECT"}}
++	for _, role := range []string{"FixedExit", "ProbeExit0", "WebProbeExit"} {
++		override := map[string]any{"pocket-config-fingerprint": fingerprint, "dialer-proxy": "EntryChoice", "proxy-name": []any{map[string]any{"pattern": "^.*$", "target": role}}, "pocket-preconnect": role == "FixedExit"}
++		if role == "FixedExit" {
++			override["pocket-preconnect-epoch-file"] = epoch
++		}
++		providers[role+"Source"] = map[string]any{"type": "inline", "payload": []any{exitNode, aliasNode}, "filter": "^Original Tokyo$", "override": override, "health-check": map[string]any{"enable": false}}
++		groups = append(groups, map[string]any{"name": role, "type": "select", "use": []any{role + "Source"}, "filter": "^" + role + "$", "empty-fallback": "REJECT"})
++	}
++	// Port zero is an actual OS allocated listener, so parallel fixture runs do
++	// not reserve-and-release a port and risk connecting to an unrelated service.
++	raw := map[string]any{"mode": "rule", "log-level": "silent", "ipv6": false, "unified-delay": false, "dns": map[string]any{"enable": false}, "ntp": map[string]any{"enable": false}, "proxy-providers": providers, "proxy-groups": groups, "rules": []any{"MATCH,REJECT"}, "listeners": []any{map[string]any{"name": "BusinessFixture", "type": "mixed", "listen": "127.0.0.1", "port": 0, "proxy": "FixedExit"}}}
++	encoded, err := json.Marshal(raw)
++	if err != nil {
++		t.Fatal(err)
++	}
++	cfg, err := config.Parse(encoded)
++	if err != nil {
++		t.Fatal(err)
++	}
++	executor.ApplyConfig(cfg, true)
++	t.Cleanup(func() {
++		executor.Shutdown()
++		for _, provider := range cfg.Providers {
++			if closer, ok := provider.(io.Closer); ok {
++				_ = closer.Close()
++			}
++		}
++		for _, proxy := range cfg.Proxies {
++			_ = proxy.Close()
++		}
++	})
++	// A same named provider leaf must be the actual private object, never a
++	// lookup back to the global selector (which would recurse on FixedExit).
++	for _, role := range []string{"FixedExit", "ProbeExit0", "WebProbeExit"} {
++		global := cfg.Proxies[role]
++		children := cfg.Providers[role+"Source"].Proxies()
++		if global == nil || global.Type() != C.Selector || len(children) != 1 || children[0].Type() != C.Socks5 || children[0].Name() != role || global == children[0] || global.Unwrap(&C.Metadata{}, false) != children[0] {
++			t.Fatal("same named provider leaf became a global selector cycle")
++		}
++	}
++	listener := cfg.Listeners["BusinessFixture"]
++	if listener == nil {
++		t.Fatal("actual forced listener missing")
++	}
++	proxyURL, err := url.Parse("http://" + listener.Address())
++	if err != nil {
++		t.Fatal(err)
++	}
++	request := func() {
++		t.Helper()
++		transport := &stdhttp.Transport{Proxy: stdhttp.ProxyURL(proxyURL), DisableKeepAlives: true}
++		defer transport.CloseIdleConnections()
++		client := &stdhttp.Client{Transport: transport, Timeout: 2 * time.Second}
++		response, err := client.Get(target.URL + "/business")
++		if err != nil {
++			t.Fatal(err)
++		}
++		_ = response.Body.Close()
++		if response.StatusCode != 204 {
++			t.Fatal("actual chain did not return target reply")
++		}
++	}
++	request()
++	pocketChainWait(t, func() bool { return exit.authed.Load() == 2 })
++	if exit.accepted.Load() != 2 || exit.commands.Load() != 1 {
++		t.Fatal("provider business route failed auth-only bounded preconnect")
++	}
++	request()
++	pocketChainWait(t, func() bool { return exit.authed.Load() == 3 })
++	if exit.accepted.Load() != 3 || exit.commands.Load() != 2 {
++		t.Fatal("provider business route did not consume ready socket once and refill once")
++	}
++	controller := httptest.NewServer(router(false, "fixture-controller-secret", "", Cors{}))
++	defer controller.Close()
++	api := func(path string) map[string]any {
++		t.Helper()
++		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
++		defer cancel()
++		request, err := stdhttp.NewRequestWithContext(ctx, "GET", controller.URL+path, nil)
++		if err != nil {
++			t.Fatal(err)
++		}
++		request.Header.Set("Authorization", "Bearer fixture-controller-secret")
++		response, err := stdhttp.DefaultClient.Do(request)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer response.Body.Close()
++		var result map[string]any
++		if err = json.NewDecoder(response.Body).Decode(&result); err != nil {
++			t.Fatal(err)
++		}
++		if response.StatusCode != 200 {
++			t.Fatalf("actual controller rejected role %s: status=%d", path, response.StatusCode)
++		}
++		return result
++	}
++	top := api("/proxies/FixedExit")
++	if top["type"] != "Selector" || top["now"] != "FixedExit" || top["emptyFallback"] != "REJECT" {
++		t.Fatal("top-level legacy FixedExit API did not remain a protected selector")
++	}
++	for _, role := range []string{"FixedExit", "ProbeExit0", "WebProbeExit"} {
++		beforeAccept, beforeCommand := exit.accepted.Load(), exit.commands.Load()
++		query := url.Values{"url": {target.URL + "/probe"}, "timeout": {"1500"}, "expected": {"204"}}
++		result := api("/proxies/" + role + "/delay?" + query.Encode())
++		probe, ok := result["probe"].(map[string]any)
++		if !ok || probe["kind"] != "first" || probe["dialCount"] != float64(1) || probe["firstStatus"] != float64(204) || probe["warmAttempted"] != false {
++			t.Fatal("actual group URLTest lost cold/bypass trace")
++		}
++		if exit.accepted.Load() != beforeAccept+1 || exit.commands.Load() != beforeCommand+1 {
++			t.Fatal("probe consumed/refilled business ready exit or changed chain")
++		}
++	}
++	// The three probes did not consume the original business-ready socket: the
++	// next business request causes exactly one additional preparation, not two.
++	before := exit.accepted.Load()
++	request()
++	pocketChainWait(t, func() bool { return exit.authed.Load() == before+1 })
++	if exit.accepted.Load() != before+1 {
++		t.Fatal("probes destroyed business preconnect ownership")
++	}
++	entry.mu.Lock()
++	targets := append([]string(nil), entry.targets...)
++	entry.mu.Unlock()
++	if len(targets) == 0 {
++		t.Fatal("entry saw no chain traffic")
++	}
++	for _, destination := range targets {
++		if destination != exit.listener.Addr().String() {
++			t.Fatal("entry bypassed fixed exit")
++		}
++	}
++	exit.mu.Lock()
++	targets = append([]string(nil), exit.targets...)
++	exit.mu.Unlock()
++	expected := target.Listener.Addr().String()
++	for _, destination := range targets {
++		if destination != expected {
++			t.Fatal("fixed exit was not the final target hop")
++		}
++	}
 +}
 --- a/hub/route/proxies.go
 +++ b/hub/route/proxies.go
@@ -2537,7 +3831,7 @@
  	}
  
  	return ReadAddr(rw, buf)
---- /dev/null
+--- a/transport/socks5/socks5_preconnect_test.go
 +++ b/transport/socks5/socks5_preconnect_test.go
 @@ -0,0 +1,241 @@
 +package socks5
@@ -2781,7 +4075,7 @@
 +		t.Fatal(err)
 +	}
 +}
---- /dev/null
+--- a/tunnel/pocket_export_test.go
 +++ b/tunnel/pocket_export_test.go
 @@ -0,0 +1,11 @@
 +package tunnel
@@ -2795,7 +4089,7 @@
 +	return retry(ctx, ft, nil)
 +}
 +func PocketShouldStopRetryForTest(err error) bool { return shouldStopRetry(err) }
---- /dev/null
+--- a/tunnel/pocket_preconnect_test.go
 +++ b/tunnel/pocket_preconnect_test.go
 @@ -0,0 +1,169 @@
 +package tunnel_test
