@@ -1,0 +1,98 @@
+{
+  "status": "failed",
+  "actualAndroidExecution": true,
+  "checkCount": 16,
+  "error": "java.lang.IllegalStateException: Real Home leaves the UI in background while required services keep running",
+  "foregroundEvidence": {
+    "known": true,
+    "foreground": true,
+    "processes": [
+      {
+        "process": "local.pocketchat.test:profile7",
+        "pid": 5115,
+        "importance": 100,
+        "visible": true
+      }
+    ]
+  },
+  "homeEvidence": {
+    "known": true,
+    "foreground": true,
+    "processes": [
+      {
+        "process": "local.pocketchat.test:profile7",
+        "pid": 5115,
+        "importance": 100,
+        "visible": true
+      }
+    ]
+  },
+  "scope": "Android activity-process importance, channels, real foreground services, real Home, production stable-terminal gate, opt-in completion reminders and a real local MediaStore save; no account or network download",
+  "checks": [
+    {
+      "name": "Background completion reminders are off by default",
+      "pass": true
+    },
+    {
+      "name": "Browser and network child processes cannot count as visible UI",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes old noisy foreground channels",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes non-completion regular notifications across profiles",
+      "pass": true
+    },
+    {
+      "name": "A real visible app Activity suppresses completion reminders",
+      "pass": true
+    },
+    {
+      "name": "Foreground replies and downloads stay quiet even after opting in",
+      "pass": true
+    },
+    {
+      "name": "Already visible completions are remembered without posting",
+      "pass": true
+    },
+    {
+      "name": "Waiting and disconnected states do not post completion alerts",
+      "pass": true
+    },
+    {
+      "name": "reply-background-quiet-v2 remains silent at MIN or system-required LOW",
+      "pass": true
+    },
+    {
+      "name": "network-background-quiet-v2 remains silent at MIN or system-required LOW",
+      "pass": true
+    },
+    {
+      "name": "Reply service keeps a legitimate foreground notification",
+      "pass": true
+    },
+    {
+      "name": "Network service keeps a legitimate foreground notification",
+      "pass": true
+    },
+    {
+      "name": "Foreground statuses no longer contain waiting or environment-count messages",
+      "pass": true
+    },
+    {
+      "name": "Both foreground notices stay off the lock screen",
+      "pass": true
+    },
+    {
+      "name": "Progress polling does not repost a notification",
+      "pass": true
+    },
+    {
+      "name": "Real Home leaves the UI in background while required services keep running",
+      "pass": false
+    }
+  ],
+  "sourceCommit": "2fe665c422e57c0f2b91c531505ef4aac8a56a3a"
+}
