@@ -1,10 +1,7 @@
 package local.pocketchat;
 
 import android.net.Uri;
-import androidx.webkit.WebViewCompat;
-import androidx.webkit.WebViewFeature;
 import java.io.InputStream;
-import java.util.Collections;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -26,17 +23,7 @@ final class WebReplyObserver {
       }
       try (InputStream in = session.context.getAssets().open("web-performance.js")) { script = J.text(in, 128 * 1024) + "\n" + script; }
       script += "\nwindow.__pocketReadDriver=(action,arg)=>" + session.driver.replace("__ACTION__", "action").replace("__ARG__", "arg") + ";\nwindow.__pocketReadDriver('observe-install',{});";
-      if(GeckoWebView.active(session.web)){supported=true;return;}
-      if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return;
-      WebViewCompat.addWebMessageListener(session.web.system(), "PocketWebReply", Collections.singleton("https://chatgpt.com"),
-        (view, message, origin, mainFrame, reply) -> {
-          if (!mainFrame || !MainActivity.chatUrl(origin.toString())) return;
-          String text = message.getData();
-          if (text != null && text.length() <= 2 * 1024 * 1024) receive(J.parse(text));
-        });
       supported = true;
-      if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT))
-        WebViewCompat.addDocumentStartJavaScript(session.web.system(), script, Collections.singleton("https://chatgpt.com"));
     } catch (Exception ignored) { supported = false; }
   }
 
@@ -91,7 +78,7 @@ final class WebReplyObserver {
     }
     try {
       if ("intent".equals(type)) {
-        if (!session.prefs.getBoolean("pageMode", false) || session.submitting || session.operation && !session.configurationCapture ||
+        if (!session.webPerformance() || session.submitting || session.operation && !session.configurationCapture ||
             !token.matches("[a-zA-Z0-9-]{16,80}") || event.optString("prompt").length() > 300000 ||
             Math.abs(System.currentTimeMillis() - event.optLong("capturedAt")) > 60000) return;
         JSONArray before = event.optJSONArray("beforeKeys");
@@ -104,7 +91,7 @@ final class WebReplyObserver {
         JSONArray names = new JSONArray();
         for (int i = 0; i < session.attachments.length(); i++) names.put(session.attachments.optJSONObject(i).optString("name"));
         String id = session.deliveries.begin(url, event.optString("prompt"), names, "web", null);
-        JSONObject job = J.obj("id", id, "kind", "web", "webToken", token, "webDocument", document,
+        JSONObject job = J.obj("id", id, "kind", "web", "engine", "gecko", "webToken", token, "webDocument", document,
           "prompt", event.optString("prompt"), "beforeUserKeys", before, "attachmentNames", names,
           "attachmentOnly", event.optString("prompt").trim().isEmpty(), "expectedUrl", url,
           "export", true, "attempted", true, "startedAt", System.currentTimeMillis());

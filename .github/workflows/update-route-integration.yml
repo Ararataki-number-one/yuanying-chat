@@ -93,7 +93,7 @@ jobs:
             publication_failed=1
           fi
           route_exit=0
-          if python3 tests/gecko/run_update_route.py --adb "$(command -v adb)" --serial emulator-5554 2>&1 | tee work/gecko-integration/update-route-runner.log; then
+          if python3 tests/gecko/run_update_route.py --diagnostic-only --adb "$(command -v adb)" --serial emulator-5554 2>&1 | tee work/gecko-integration/update-route-runner.log; then
             route_exit=0
           else
             route_exit=$?

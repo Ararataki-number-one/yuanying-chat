@@ -18,11 +18,10 @@ import java.util.concurrent.*;
 /** Keeps the existing session/business API while Gecko owns the real remote page. */
 @SuppressWarnings("deprecation")
 class GeckoWebView extends FrameLayout {
-  WebView legacy; final GeckoSettings metadata=new GeckoSettings();
+  final GeckoSettings metadata=new GeckoSettings();
   final MutableContextWrapper displayContext;
-  static boolean wantsGecko(ChatSession session){return !"system".equals(session.prefs.getString("browserEngine","gecko"))&&(session.pending==null||session.prefs.contains("browserEngine"));}
-  WebView system(){if(enabled)throw new IllegalStateException("系统内核未启用");return legacy;}
-  WebSettings getSettings(){return enabled?metadata:system().getSettings();}
+  static boolean wantsGecko(ChatSession session){return BrowserRuntimePolicy.usesGecko();}
+  GeckoSettings getSettings(){return metadata;}
   void setHost(android.app.Activity activity){displayContext.setBaseContext(activity==null?owner.context:activity);}
   OnTouchListener touches;
   @Override public void setOnTouchListener(OnTouchListener listener){touches=listener;}
@@ -37,7 +36,6 @@ class GeckoWebView extends FrameLayout {
     ports.clear();popups.clear();locations.clear();backStates.clear();pageScales.clear();viewportWidths.clear();loadingTargets.clear();pendingLoads.clear();painted.clear();usable.clear();crashed.clear();states.clear();
     routePort=null;ready=false;
     uploadWorker.execute(()->{for(GeckoUploadFiles.Selection files:uploadFiles)files.delete();uploadFiles.clear();});uploadWorker.shutdown();
-    if(legacy!=null)legacy.destroy();
   }
 
   static final String VERSION="GeckoView 157.0";
@@ -70,7 +68,8 @@ class GeckoWebView extends FrameLayout {
   interface ResponseDownload {void receive(WebResponse response);}
   ResponseDownload responseDownload;
   WebViewClient client;WebChromeClient chrome;DownloadListener download;
-  boolean enabled,ready,failed,desktop,canBack,destroyed,privacyReady,fingerprintingProtected;int protectionLevel=-1;String url="",queued="";float scale=1;
+  final boolean enabled=true;
+  boolean ready,failed,desktop,canBack,destroyed,privacyReady,fingerprintingProtected;int protectionLevel=-1;String url="",queued="";float scale=1;
 
   GeckoWebView(Context context,ChatSession session){
     super(context);owner=session;displayContext=new MutableContextWrapper(context);sessionStore=new BrowserSessionStore(context);
@@ -79,12 +78,7 @@ class GeckoWebView extends FrameLayout {
       public void cancel(Runnable task){owner.handler.removeCallbacks(task);}
     };
     callbacks=new BrowserBridgeRequests(timer,"null");cookieCallbacks=new BrowserBridgeRequests(timer,null);
-    enabled=wantsGecko(session);
-    // Legacy pending tasks belong to the old engine; new tasks retain their actual engine.
-    owner.prefs.edit().putString("browserEngine",enabled?"gecko":"system").commit();
-    // The retained System WebView is only loaded when explicitly selected.
-    if(!enabled){legacy=new WebView(context);legacy.getSettings().setBlockNetworkLoads(true);addView(legacy,new FrameLayout.LayoutParams(-1,-1));}
-    if(enabled)owner.handler.post(this::initialize);
+    owner.handler.post(this::initialize);
   }
   static boolean active(Object web){return web instanceof GeckoWebView&&((GeckoWebView)web).enabled;}
   private void initialize(){
@@ -106,8 +100,8 @@ class GeckoWebView extends FrameLayout {
         .remoteDebuggingEnabled(false).consoleOutput(false).trustedRecursiveResolverMode(5)
         .forceUserScalableEnabled(true).inputAutoZoomEnabled(true).build());
       runtime.getWebExtensionController().ensureBuiltIn("resource://android/assets/gecko/","browser@pocketchat.local")
-        .accept(value->{if(destroyed)return;extension=value;extension.setMessageDelegate(routeMessages,"pocketroute");maybeOpen();},error->{if(!destroyed)failure("浏览器初始化失败，可切换系统内核重试");});
-    }catch(Exception error){failure("新内核未能启动，可切换系统内核重试");}
+        .accept(value->{if(destroyed)return;extension=value;extension.setMessageDelegate(routeMessages,"pocketroute");maybeOpen();},error->{if(!destroyed)failure("浏览器初始化失败，请重新打开当前环境重试");});
+    }catch(Exception error){failure("新内核未能启动，请重新打开当前环境重试");}
   }
   private final WebExtension.MessageDelegate routeMessages=new WebExtension.MessageDelegate(){
     @Override public void onConnect(WebExtension.Port port){
@@ -352,7 +346,7 @@ class GeckoWebView extends FrameLayout {
     for(GeckoSession session:new ArrayList<>(locations.keySet())){session.getSettings().setUserAgentMode(desktop?GeckoSessionSettings.USER_AGENT_MODE_DESKTOP:GeckoSessionSettings.USER_AGENT_MODE_MOBILE);session.getSettings().setViewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE);session.getSettings().setUseTrackingProtection(protection>0);}
     if(current!=null&&current.isOpen()){GeckoSession source=current;source.getUserAgent().accept(value->{if(!destroyed&&source==current&&this.desktop==desktop)metadata.userAgent=value;},error->{});}
   }
-  void useEngine(boolean value){if(value!=enabled)throw new IllegalStateException("切换内核需要重新打开当前环境");}
+  void useEngine(boolean value){if(!value)throw new IllegalStateException("正式应用仅使用 Firefox 内核");}
   boolean closePopup(){
     return closePopup(current);
   }
@@ -364,7 +358,7 @@ class GeckoWebView extends FrameLayout {
     if(old.isOpen())old.close();return true;
   }
   public void loadUrl(String target){
-    if(destroyed)return;if(!enabled){system().loadUrl(target);return;}queued=target;
+    if(destroyed)return;queued=target;
     if(!ready||!privacyReady||current==null||!owner.guard.allowed())return;
     if(crashed.contains(current)){
       if(!reopenCurrent())return;
@@ -374,31 +368,26 @@ class GeckoWebView extends FrameLayout {
     queued="";current.loadUri(target);
   }
   static String stateUrl(GeckoSession.SessionState state){try{return state.get(state.getCurrentIndex()).getUri();}catch(Exception ignored){return "";}}
-  public String getUrl(){return enabled?url:system().getUrl();}
+  public String getUrl(){return url;}
   public void evaluateJavascript(String code,ValueCallback<String> callback){
     if(destroyed){if(callback!=null)callback.onReceiveValue("null");return;}
-    if(!enabled){system().evaluateJavascript(code,callback);return;}
     WebExtension.Port port=ports.get(current);if(port==null){if(callback!=null)callback.onReceiveValue("null");return;}
     int id=callbacks.add(port,callback==null?null:callback::onReceiveValue,10000);
     try{port.postMessage(J.obj("kind","evaluate","id",id,"code",code));}catch(Exception error){callbacks.complete(port,id,"null");}
   }
-  public void stopLoading(){
-    if(enabled){queued="";if(current!=null){loadingTargets.remove(current);pendingLoads.remove(current);current.stop();}}
-    else system().stopLoading();
-  }
-  public void setWebViewClient(WebViewClient value){client=value;if(!enabled)system().setWebViewClient(value);}
-  public void setWebChromeClient(WebChromeClient value){chrome=value;if(!enabled)system().setWebChromeClient(value);}
-  public void setDownloadListener(DownloadListener value){download=value;if(!enabled)system().setDownloadListener(value);}
-  public void onPause(){if(enabled){checkpointState();if(current!=null&&current.isOpen())current.setActive(false);}else system().onPause();}
-  public void onResume(){if(enabled){if(current!=null&&crashed.contains(current)&&canRecoverAutomatically())owner.handler.post(recovery);else if(current!=null&&current.isOpen())current.setActive(true);}else system().onResume();}
-  public void pauseTimers(){if(!enabled)system().pauseTimers();}
-  public void resumeTimers(){if(!enabled)system().resumeTimers();}
-  public boolean canGoBack(){return enabled?canBack||!popups.isEmpty():system().canGoBack();}
-  public void goBack(){if(enabled){if(canBack)current.goBack();else closePopup();}else system().goBack();}
-  public float getScale(){return enabled?scale:system().getScale();}
-  boolean requiresViewportMeasurement(){return enabled;}
-  public void setInitialScale(int percent){if(!enabled)system().setInitialScale(percent);}
-  /** Below native fit, reflow the same document into a larger, uniformly scaled surface. */
+  public void stopLoading(){queued="";if(current!=null){loadingTargets.remove(current);pendingLoads.remove(current);current.stop();}}
+  public void setWebViewClient(WebViewClient value){client=value;}
+  public void setWebChromeClient(WebChromeClient value){chrome=value;}
+  public void setDownloadListener(DownloadListener value){download=value;}
+  public void onPause(){checkpointState();if(current!=null&&current.isOpen())current.setActive(false);}
+  public void onResume(){if(current!=null&&crashed.contains(current)&&canRecoverAutomatically())owner.handler.post(recovery);else if(current!=null&&current.isOpen())current.setActive(true);}
+  public void pauseTimers(){}
+  public void resumeTimers(){}
+  public boolean canGoBack(){return canBack||!popups.isEmpty();}
+  public void goBack(){if(canBack&&current!=null)current.goBack();else closePopup();}
+  public float getScale(){return scale;}
+  boolean requiresViewportMeasurement(){return true;}
+  public void setInitialScale(int percent){}
   boolean setReadingLayout(float choice){
     if(!enabled)return false;float next=Math.min(1,BrowserReadingPolicy.bounded(choice));if(Math.abs(next-readingLayout)<.001f)return false;
     cancelZoom();float previous=readingLayout;readingLayout=next;scale=scale/previous*next;
@@ -406,7 +395,6 @@ class GeckoWebView extends FrameLayout {
     requestLayout();return true;
   }
   public void zoomBy(float factor){
-    if(!enabled){system().zoomBy(factor);return;}
     if(destroyed||failed||current==null||!current.isOpen()||surface==null||factor<=0||!Float.isFinite(factor))return;
     cancelZoom();final GeckoSession target=current;final long started=SystemClock.uptimeMillis(),epoch=zoomEpoch;
     final float x=surface.getWidth()/2f,y=surface.getHeight()/2f,radius=Math.min(surface.getWidth()/5f,48*getResources().getDisplayMetrics().density);

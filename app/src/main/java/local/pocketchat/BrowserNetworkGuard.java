@@ -11,14 +11,9 @@ import java.util.*;
 final class BrowserNetworkGuard {
   final ChatSession session;
   volatile boolean blocked=true;
-  ServiceWorkerWebSettings workers;
-  boolean workerProtection;
-  BrowserNetworkGuard(ChatSession s){session=s;if(GeckoWebView.wantsGecko(s)){workerProtection=true;return;}
-    try{ServiceWorkerController controller=ServiceWorkerController.getInstance();workers=controller.getServiceWorkerWebSettings();workers.setBlockNetworkLoads(true);workers.setAllowFileAccess(false);workers.setAllowContentAccess(false);controller.setServiceWorkerClient(new ServiceWorkerClient(){
-      @Override public WebResourceResponse shouldInterceptRequest(WebResourceRequest request){return intercept(request.getUrl());}
-    });workerProtection=true;}catch(Exception ignored){}
-  }
-  void setBlocked(boolean value){blocked=value;session.web.getSettings().setBlockNetworkLoads(value);if(workers!=null)try{workers.setBlockNetworkLoads(value);}catch(Exception e){workerProtection=false;if(session.privacy.level()>0){blocked=true;session.web.getSettings().setBlockNetworkLoads(true);}}}
+  final boolean workerProtection=true;
+  BrowserNetworkGuard(ChatSession s){session=s;}
+  void setBlocked(boolean value){blocked=value;session.web.getSettings().setBlockNetworkLoads(value);}
   static boolean needsVpn(boolean internal,String proxy,boolean required){return !internal&&proxy.trim().isEmpty()&&required;}
   boolean requiresVpn(){return needsVpn(session.internalNetwork(),session.prefs.getString("proxy",""),session.prefs.getBoolean("requireExternalVpn",true));}
   boolean vpnActive(){try{ConnectivityManager cm=(ConnectivityManager)session.context.getSystemService(Context.CONNECTIVITY_SERVICE);Network n=cm.getActiveNetwork();NetworkCapabilities caps=n==null?null:cm.getNetworkCapabilities(n);return caps!=null&&caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)&&caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);}catch(Exception e){return false;}}

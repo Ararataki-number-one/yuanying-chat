@@ -2,7 +2,6 @@ package local.pocketchat;
 
 import android.os.Build;
 import android.os.SystemClock;
-import android.webkit.WebView;
 import org.json.*;
 import java.util.Locale;
 
@@ -27,7 +26,7 @@ final class ConnectionTrace {
     if(!mode.isEmpty())text+="\n进入方式："+mode;if(!source.isEmpty())text+="\n订阅来源："+source;
     return text+"\n\n以上是阶段耗时，不是线路带宽。缓存或复用连接时，DNS / TLS 可能为零；网页内切换不会产生完整页面请求。";
   }
-  String copyText(android.content.Context context,boolean gecko){String webVersion=gecko?GeckoWebView.VERSION:"未知";if(!gecko)try{android.content.pm.PackageInfo p=WebView.getCurrentWebViewPackage();if(p!=null)webVersion=p.versionName;}catch(Exception ignored){}return "元婴期院士 "+AppVersion.name(context)+"\nAndroid "+Build.VERSION.RELEASE+" · "+webVersion+"\n\n"+text()+routeDiagnostics(context);}
+  String copyText(android.content.Context context,boolean gecko){String webVersion=GeckoWebView.VERSION;return "元婴期院士 "+AppVersion.name(context)+"\nAndroid "+Build.VERSION.RELEASE+" · "+webVersion+"\n\n"+text()+routeDiagnostics(context);}
   static String routeDiagnostics(android.content.Context context){
     String network="尚未确认";
     try{

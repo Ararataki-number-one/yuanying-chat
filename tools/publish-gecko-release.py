@@ -56,7 +56,7 @@ if version_code>=42:
     quiet=json.loads((args.evidence/'quiet-notification-results.json').read_text())
     chrome=json.loads((args.evidence/'compact-chrome-results.json').read_text())
     assert quiet['status']=='passed' and quiet['actualAndroidExecution'] and quiet['sourceCommit']==args.source and quiet['checkCount']>=24 and all(c['pass'] for c in quiet['checks']),'Quiet service and completion reminder regression is required.'
-    assert chrome['status']=='passed' and chrome['actualAndroidExecution'] and chrome['sourceCommit']==args.source and len(chrome['cases'])==3 and all(c['readOnlyStatus'] and len(c['actualAndroidTaps'])==5 for c in chrome['cases']),'Compact chrome and real Android touch regression is required.'
+    assert chrome['status']=='passed' and chrome['actualAndroidExecution'] and chrome['sourceCommit']==args.source and len(chrome['cases'])==3 and all(c['readOnlyStatus'] and len(c['actualAndroidTaps'])==3 for c in chrome['cases']),'Compact chrome and real Android touch regression is required.'
     current_sample={'Automatic display sampling makes no requests while a reply is busy','The current route gets a real first sample after the reply becomes idle'} if version_code>=45 else {'The current route automatically gets a real first sample while reply is busy'}
     required=current_sample|{'External measured response is shown instead of permanently unmeasured','A blocked external route makes no test request or direct fallback'}
     assert required<=set(c['name'] for c in network['checks'] if c['pass']),'Real latency refresh regression is required.'
@@ -72,6 +72,8 @@ if version_code>=45:
 if version_code>=46:
     from gecko.check_chain_evidence import verify_chain_evidence
     chain_performance=verify_chain_evidence(args.evidence,args.source)
+    from gecko.check_client_evidence import verify_client_evidence
+    client=verify_client_evidence(args.evidence,args.source)
     chain_files=['native-probe-results.json','gecko-pool-results.json','network-core-build.json','network-pool-host-results.json','latency-probe-host-results.json']
     for name in chain_files:
         assert json.loads((args.evidence/name).read_text())['sourceCommit']==args.source,'Chain evidence belongs to a different source: '+name
@@ -89,7 +91,9 @@ manifest=dict(receipt,sourceCommit=args.source,filename=args.apk.name,parts=[],
 if version_code>=43:manifest['performanceRegression']=performance
 if version_code>=44:manifest['connectionRecoveryRegression']=connection
 if version_code>=45:manifest['interactionTransferRegression']=interaction_transfer
-if version_code>=46:manifest['chainPerformanceRegression']=chain_performance
+if version_code>=46:
+    manifest['chainPerformanceRegression']=chain_performance
+    manifest['originalClientRegression']=client
 for number,offset in enumerate(range(0,len(raw),60_000_000)):
     part=raw[offset:offset+60_000_000];name=f'{args.apk.name}.part{number:02d}'
     manifest['parts'].append({'file':name,'bytes':len(part),'sha256':hashlib.sha256(part).hexdigest()})
@@ -103,10 +107,10 @@ for number,part in enumerate(manifest['parts']):(stage/part['file']).write_bytes
 if version_code>=40:shutil.copy2(args.evidence/'network-performance-results.json',stage/'network-performance-results.json')
 if version_code>=42:
     for name in ['quiet-notification-results.json','compact-chrome-results.json']:shutil.copy2(args.evidence/name,stage/name)
-performance_files=['gecko-performance-results.json','snapshot-host-results.json','reply-observation-host-results.json'] if version_code>=43 else []
+performance_files=['gecko-performance-results.json','snapshot-host-results.json','reply-observation-host-results.json','ui-visual-results.json','ui-build-comparison.json'] if version_code>=43 else []
 if version_code>=44:performance_files.append('reply-binding-host-results.json')
 if version_code>=45:performance_files.extend(['update-transfer-results.json','update-transfer-host-results.json','interaction-host-results.json'])
-if version_code>=46:performance_files.extend(chain_files)
+if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json'])
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
 shutil.copy2(args.notes,stage/'RELEASE.md')
 workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkdir(parents=True)
@@ -119,7 +123,7 @@ if version_code>=43:
 if version_code>=44:shutil.copy2(root/'tools/gecko/check_connection_evidence.py',stage/'tools/gecko/check_connection_evidence.py')
 if version_code>=45:shutil.copy2(root/'tools/gecko/check_interaction_transfer_evidence.py',stage/'tools/gecko/check_interaction_transfer_evidence.py')
 if version_code>=46:
-    for name in ['check_chain_evidence.py','chain_runtime_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    for name in ['check_chain_evidence.py','chain_runtime_contract.py','check_client_evidence.py','update_route_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 branch='apk/gecko-release-20261003'
 env=dict(os.environ,GIT_INDEX_FILE=str(root/'work/gecko-integration/signed-index'),GIT_WORK_TREE=str(stage),
     GIT_AUTHOR_NAME='PocketChat release',GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',

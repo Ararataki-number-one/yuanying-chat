@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
   // These references remain null; recovery reads data without creating editors.
   WebView reader; EditText input; Button send; LinearLayout composer;
   TextView nativeTab,webTab;
-  DesignChrome designChrome; AppHub hub; ChatSession session; ConversationStore conversations;
+  DesignChrome designChrome; AppHub hub; ChatSession session;
   final ChatSession.Observer sessionObserver=()->applySession();
   SharedPreferences prefs; JSONObject pending; JSONArray entries=new JSONArray();
   String conversation="";
@@ -58,7 +58,7 @@ public class MainActivity extends Activity {
     // Migrate only the display preference. Cookies, old drafts and engine stores
     // stay untouched, including profiles previously opened in simple mode.
     pageMode=true;if(!prefs.getBoolean("pageMode",false))prefs.edit().putBoolean("pageMode",true).apply();
-    session=ChatSession.get(this);pending=session.pending;entries=session.entries;conversation=session.conversation;conversations=new ConversationStore(this);
+    session=ChatSession.get(this);pending=session.pending;entries=session.entries;conversation=session.conversation;
     LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(ReferenceUi.CHAT_BG);DesignUi.chrome(this);
     ReferenceUi.insets(this,root,visible->{keyboardVisible=visible;updateReadingLayout();});
     designChrome=new DesignChrome(this,root);
@@ -113,8 +113,6 @@ public class MainActivity extends Activity {
     status(session.status);NetworkMetricsUi.update(this);if(loading!=null)loading.update();if(designChrome!=null)designChrome.update();
   }
   TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(color);return v;}
-  LinearLayout sheetRow(String glyph,String text,Runnable action){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(14),dp(4),dp(14),dp(4));row.setBackground(Ui.ripple(this,Color.TRANSPARENT,14));TextView title=label(text,16,Ui.INK);title.setGravity(Gravity.CENTER_VERTICAL);title.setSingleLine(true);title.setEllipsize(TextUtils.TruncateAt.END);row.addView(title,new LinearLayout.LayoutParams(0,dp(48),1));row.setOnClickListener(v->action.run());row.setContentDescription(text);return row;}
-  void sheet(String title,String[] glyphs,String[] rows,Runnable[] actions){ReferenceUi.Modal d=new ReferenceUi.Modal(this,title);for(int i=0;i<rows.length;i++){final int n=i;d.body.addView(sheetRow(glyphs[i],rows[i],()->{d.dismiss();actions[n].run();}));}d.show();}
   void moreSheet(){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项");
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
@@ -137,6 +135,7 @@ public class MainActivity extends Activity {
     Thread read=new Thread(()->{
       JSONArray drafts=new JSONArray();Set<String> bodies=new LinkedHashSet<>();boolean failed=false;
       addLegacyDraft(drafts,bodies,"旧版输入草稿",prefs.getString("draft",""));
+      JSONObject oldRequest=J.parse(prefs.getString("legacyPending","{}"));addLegacyDraft(drafts,bodies,"旧版待核对提问",oldRequest.optString("prompt"));
       try(ConversationStore store=new ConversationStore(this);Cursor rows=store.getReadableDatabase().query("conversations",new String[]{"title","draft"},null,null,null,null,"touched DESC,rank ASC")){while(rows.moveToNext())addLegacyDraft(drafts,bodies,rows.getString(0),rows.getString(1));}catch(Exception ignored){failed=true;}
       try(Cursor rows=DraftArchive.get(this).getReadableDatabase().query("drafts",new String[]{"origin","body"},null,null,null,null,"created DESC")){while(rows.moveToNext())addLegacyDraft(drafts,bodies,rows.getString(0),rows.getString(1));}catch(Exception ignored){failed=true;}
       for(Map.Entry<String,?> entry:prefs.getAll().entrySet())if(entry.getKey().startsWith("draftBackup:")&&entry.getValue() instanceof String)addLegacyDraft(drafts,bodies,"此前暂存草稿",(String)entry.getValue());
@@ -170,6 +169,6 @@ public class MainActivity extends Activity {
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(session==null){finish();return;}openNotification(intent);}
   @Override protected void onResume(){super.onResume();if(!ProfileCatalog.get(this).item(Profiles.slot(this)).optBoolean("created")){finish();return;}AppUpdates.schedule(this);active=true;AppPrefs.maintainCache(this);if(session!=null){session.add(sessionObserver);session.audit.refresh(true);session.foreground(true);session.connect();}if(hub!=null&&hub.page!=AppHub.CHAT){hub.refresh();handler.removeCallbacks(hub.tick);handler.postDelayed(hub.tick,2500);}handler.removeCallbacks(ticker);handler.post(ticker);}
   @Override protected void onPause(){super.onPause();active=false;handler.removeCallbacks(ticker);if(session==null||session.deleted)return;NativeNetwork.get(this).traffic.watch(false);session.remove(sessionObserver);session.audit.cancel();session.reading.keyboard(false);session.foreground(false);}
-  @Override protected void onDestroy(){destroyed=true;if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);if(remote!=null&&remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);if(remote!=null)remote.setHost(null);if(conversations!=null)conversations.close();super.onDestroy();}
+  @Override protected void onDestroy(){destroyed=true;if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);if(remote!=null&&remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);if(remote!=null)remote.setHost(null);super.onDestroy();}
   @Override public void onBackPressed(){if(hub!=null&&hub.page!=AppHub.CHAT){hub.select(AppHub.CHAT);return;}if(remote!=null&&remote.canGoBack()){remote.goBack();return;}moveTaskToBack(true);}
 }

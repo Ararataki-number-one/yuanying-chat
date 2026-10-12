@@ -120,7 +120,6 @@ final class EnvironmentEditorUi {
     boolean displayChange=value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
     boolean deferred=(change||displayChange)&&browserBusy(s);
 
-    if(change&&level>0&&!GeckoWebView.active(s.web)&&(!s.privacy.earlySupported()||!s.guard.workerProtection)){a.status("请更新 Android System WebView，设置未应用");return false;}
     if(deferred&&!DeferredBrowserSettings.save(s,level,value.optBoolean("desktopSite"))){a.status("设置暂时无法保存，请重试");return false;}Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));if(!deferred){DeferredBrowserSettings.cancel(s);ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));s.prefs.edit().putInt("privacyLevel",level).commit();}AppPrefs.apply(a,value);ProfileCatalog.get(a).draft(Profiles.slot(a),null);
     if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(!deferred&&(change||displayChange))s.applyBrowserSettings(change);
     s.audit.refresh(true);ProfileCatalog.get(a).heartbeat(s,true);if(a.hub!=null)a.hub.refresh();if(a.designChrome!=null)a.designChrome.update();a.status(deferred?"环境已保存，当前回复结束后自动应用网页设置":displayChange&&!s.networkReady?"环境配置已保存，加载网页时应用显示方式":"环境配置已保存");return true;

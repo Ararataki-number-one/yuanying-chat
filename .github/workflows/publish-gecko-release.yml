@@ -36,6 +36,8 @@ jobs:
           if m['versionCode']>=46:
               from tools.gecko.check_chain_evidence import verify_chain_evidence
               assert verify_chain_evidence(pathlib.Path('.'),m['sourceCommit'])==m['chainPerformanceRegression']
+              from tools.gecko.check_client_evidence import verify_client_evidence
+              assert verify_client_evidence(pathlib.Path('.'),m['sourceCommit'])==m['originalClientRegression']
               for name in ['native-probe-results.json','gecko-pool-results.json','network-core-build.json','network-pool-host-results.json','latency-probe-host-results.json']:
                   assert json.loads(pathlib.Path(name).read_text())['sourceCommit']==m['sourceCommit'],name
           data=bytearray()
