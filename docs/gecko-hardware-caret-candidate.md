@@ -1,4 +1,4 @@
-# Isolated Gecko hardware caret candidate
+# Isolated Gecko synthesized insertion candidate
 
 This branch is an experiment against the hash-pinned official GeckoView
 157.0.20260924084938 AAR. It does not replace the production browser SDK or
@@ -20,36 +20,53 @@ character at explicit offset 23 rather than 24. The DOM log contained every
 expected original trusted key in order. This is evidence of an actual writer
 using a stale caret, rather than a delayed selection notification alone.
 
+## First scoped candidate
+
+The first View-origin scoped candidate source is
+`860a6777ab4dd09d110f603de8754f2e76fefc50`; its immutable evidence is
+`407600ef334e18734f4b38e72e32bb974bec60cc`. Ten fixed attempts were retained:
+trial 2 failed when ADB logcat returned 255, and the nine SDK reports passed
+without using the candidate predicate. All 99 observed replacements were
+batched and retained explicit offsets, so those passes cannot establish a
+repair. The observer-free original gate passed 128 checks. The additional
+fixture could not read its first page-defined global from Gecko's isolated
+evaluation world and completed zero scenarios. The corrected fixture installs
+read-only observations in that same world; response HTML still seeds the
+initial draft.
+
 ## Candidate boundary
 
-The candidate builder preserves the original input thread, posting order,
-queues, native library and resource records. It changes the collapsed
-selection predicate only while the original View `processKey` Runnable is
-handling keyboard-source `ACTION_DOWN`, without `FLAG_SOFT_KEYBOARD`, and
-after exactly one original nonmodifier synthesized down event actually ran
-outside a batch. Multiple down events, including dead-key sequences, retain
-the original predicate. The replacement must be an unstyled single character and must
-satisfy the existing no-composition and collapsed-selection checks. Only
-then can the original negative-offset native-caret path be used. All other
-paths use the original predicate.
+The new candidate scopes only the original no-composition
+`TYPE_REPLACE_TEXT` branch around `sendCharKeyEvents`, the existing shadow
+predicate and the actual original child replacement call. Exactly one
+successful original nonmodifier synthesized DOWN and an unstyled single
+character can change the predicate operand from length 1 to -1. Existing
+collapsed action/shadow checks remain. Multiple synthesized DOWN events,
+no emitted down, styled or multicharacter input, composition and noncollapsed
+replacement retain the original predicate. Both batched and nonbatched
+single-character insertion are admitted; no View-origin assumption is made.
 
-The helper uses an input-thread scope restored by `finally`; it neither
-waits for notifications nor corrects DOM text. The pinned builder verifies
-the method and instruction shape, original call counts, bytecode and helper
-negative cases. The trace builder reconstructs the entire candidate from
-the official AAR before accepting it as diagnostic input.
+The original posting, handlers, queues and calls are unchanged. An input-thread
+scope is restored by `finally` on normal return and exceptions, without waits,
+resend or DOM correction. The builder pins the official AAR and verifies
+bytecode, unique instruction shape, original call preservation, scope negative
+cases and unchanged native/resource records. The diagnostic builder fully
+reconstructs the candidate before accepting its input.
 
 ## Validation sequence
 
 The candidate workflow retains every attempt and publishes partial evidence
-after each of ten fixed original single-burst diagnostic trials. It then
+after each of ten fixed original single-burst diagnostic trials. Each requires the successful synthesized DOWN count,
+original action/shadow range, predicate input/output and actual negative-offset
+native writer for all eleven original characters. Original key action/source/
+flags and batch transitions are recorded as bounded primitive metadata. It then
 rebuilds the same candidate without any SDK observer and executes the
 original performance/input gate with no diagnostic flags. A separate real
 Gecko fixture exercises Android touch and keyboard actions, different
 carets, selected replacement, navigation/deletion, undo, clipboard paste,
 and the original InputConnection's commit, composition and batch paths.
 
-`apk/gecko-hardware-caret-candidate` contains whitelisted synthetic reports,
+`apk/gecko-synthetic-caret-candidate` contains whitelisted synthetic reports,
 logs, screens and transformation receipts, never an APK, signing key or
 browser profile. Its manifest records exact source and run identities,
 failed trials, skipped steps and observer-free results. A diagnostic pass

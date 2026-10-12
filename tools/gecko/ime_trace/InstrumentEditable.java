@@ -15,6 +15,21 @@ public final class InstrumentEditable implements Opcodes {
     if(text<0)integer(i,-1);else{i.add(new VarInsnNode(ALOAD,text));i.add(new MethodInsnNode(INVOKESTATIC,TRACE,"length","(Ljava/lang/CharSequence;)I",false));}
     i.add(new MethodInsnNode(INVOKESPECIAL,EDIT,HELPER,"(IIIIII)V",false));
   }
+  static void primitiveCall(InsnList i,int code,int edge,int start,int end,int flags,int length){
+    i.add(new VarInsnNode(ALOAD,0));integer(i,code);integer(i,edge);
+    for(int value:new int[]{start,end,flags,length}){if(value<0)integer(i,-1);else i.add(new VarInsnNode(ILOAD,value));}
+    i.add(new MethodInsnNode(INVOKESPECIAL,EDIT,HELPER,"(IIIIII)V",false));
+  }
+  static void keyMetadata(InsnList i,int event,int source,int flags,int key){
+    for(Object[] field:new Object[][]{{"getSource",source},{"getFlags",flags},{"getKeyCode",key}}){
+      i.add(new VarInsnNode(ALOAD,event));i.add(new MethodInsnNode(INVOKEVIRTUAL,"android/view/KeyEvent",(String)field[0],"()I",false));i.add(new VarInsnNode(ISTORE,(Integer)field[1]));
+    }
+  }
+  static void synthesizedCall(InsnList i,int edge,int count,int start,int end,int length){
+    for(Object[] field:new Object[][]{{"mStart",start},{"mEnd",end}}){i.add(new VarInsnNode(ALOAD,1));i.add(new FieldInsnNode(GETFIELD,ACTION,(String)field[0],"I"));i.add(new VarInsnNode(ISTORE,(Integer)field[1]));}
+    i.add(new VarInsnNode(ALOAD,1));i.add(new FieldInsnNode(GETFIELD,ACTION,"mSequence","Ljava/lang/CharSequence;"));i.add(new MethodInsnNode(INVOKESTATIC,TRACE,"length","(Ljava/lang/CharSequence;)I",false));i.add(new VarInsnNode(ISTORE,length));
+    primitiveCall(i,17,edge,start,end,count,length);
+  }
   static MethodNode observer(){
     MethodNode m=new MethodNode(ACC_PRIVATE,HELPER,"(IIIIII)V",null,null);InsnList i=m.instructions;
     LabelNode end=new LabelNode(),record=new LabelNode(),start=new LabelNode(),finish=new LabelNode(),caught=new LabelNode(),after=new LabelNode();
@@ -46,7 +61,7 @@ public final class InstrumentEditable implements Opcodes {
   }
   public static void main(String[] args)throws Exception {
     ClassNode c=new ClassNode();new ClassReader(Files.readAllBytes(Paths.get(args[0]))).accept(c,0);if(!c.name.equals(EDIT))throw new IllegalStateException("Wrong official class");
-    int incoming=0,replaces=0,compositions=0;
+    int incoming=0,replaces=0,compositions=0,origins=0,synthesized=0,offsets=0,actions=0;
     for(MethodNode m:c.methods){
       if(m.name.equals(HELPER))throw new IllegalStateException("SDK already instrumented");
       int code=0,s=-1,e=-1,f=-1,t=-1;
@@ -58,12 +73,44 @@ public final class InstrumentEditable implements Opcodes {
       if(m.name.equals("icOfferAction")&&m.desc.equals("(L"+ACTION+";)V"))code=19;
       AbstractInsnNode[] original=m.instructions.toArray();
       if(code!=0){incoming++;InsnList entry=new InsnList();if(code>=18)actionCall(entry,code,0);else callTrace(entry,code,0,s,e,f,t);m.instructions.insert(entry);for(AbstractInsnNode n:original)if(n.getOpcode()==RETURN||n.getOpcode()==ATHROW){InsnList leave=new InsnList();if(code>=18)actionCall(leave,code,n.getOpcode()==ATHROW?2:1);else callTrace(leave,code,n.getOpcode()==ATHROW?2:1,s,e,f,t);m.instructions.insertBefore(n,leave);}}
+      int origin=0,event=-1;
+      if(m.name.equals("processKey")&&m.desc.equals("(Landroid/view/View;IILandroid/view/KeyEvent;)Z")){origin=20;event=4;}
+      if(m.name.equals("sendKeyEvent")&&m.desc.equals("(Landroid/view/View;ILandroid/view/KeyEvent;)V")){origin=21;event=3;}
+      if(origin!=0){
+        origins++;int base=m.maxLocals;m.maxLocals+=3;InsnList entry=new InsnList();keyMetadata(entry,event,base,base+1,base+2);primitiveCall(entry,origin,0,2,base,base+2,base+1);m.instructions.insert(entry);
+        for(AbstractInsnNode n:original)if(n.getOpcode()==RETURN||n.getOpcode()==IRETURN||n.getOpcode()==ATHROW){InsnList leave=new InsnList();primitiveCall(leave,origin,n.getOpcode()==ATHROW?2:1,2,base,base+2,base+1);m.instructions.insertBefore(n,leave);}
+      }
+      if(m.name.equals("setBatchMode")&&m.desc.equals("(Z)V")){
+        origins++;InsnList entry=new InsnList();callTrace(entry,22,0,1,-1,-1,-1);m.instructions.insert(entry);
+        for(AbstractInsnNode n:original)if(n.getOpcode()==RETURN||n.getOpcode()==ATHROW){InsnList leave=new InsnList();callTrace(leave,22,n.getOpcode()==ATHROW?2:1,1,-1,-1,-1);m.instructions.insertBefore(n,leave);}
+      }
+      if(m.name.equals("icPerformAction")&&m.desc.equals("(L"+ACTION+";)V")){
+        actions++;InsnList entry=new InsnList();actionCall(entry,23,0);m.instructions.insert(entry);
+        for(AbstractInsnNode n:original)if(n.getOpcode()==RETURN||n.getOpcode()==ATHROW){InsnList leave=new InsnList();actionCall(leave,23,n.getOpcode()==ATHROW?2:1);m.instructions.insertBefore(n,leave);}
+      }
+      if(m.name.equals("sendCharKeyEvents")&&m.desc.equals("(L"+ACTION+";)V")){
+        synthesized++;int base=m.maxLocals;m.maxLocals+=4;InsnList entry=new InsnList();integer(entry,0);entry.add(new VarInsnNode(ISTORE,base));synthesizedCall(entry,0,base,base+1,base+2,base+3);m.instructions.insert(entry);int downCall=0;
+        for(AbstractInsnNode n:original){
+          if(n instanceof MethodInsnNode){MethodInsnNode invoke=(MethodInsnNode)n;if(invoke.owner.equals(EDIT)&&invoke.name.equals("onKeyEvent")&&invoke.desc.equals("(L"+CHILD+";Landroid/view/KeyEvent;IIZ)V")){
+            downCall++;InsnList post=new InsnList();LabelNode notDown=new LabelNode();post.add(new VarInsnNode(ALOAD,6));post.add(new MethodInsnNode(INVOKEVIRTUAL,"android/view/KeyEvent","getAction","()I",false));post.add(new JumpInsnNode(IFNE,notDown));post.add(new IincInsnNode(base,1));post.add(notDown);m.instructions.insert(n,post);
+          }}
+          if(n.getOpcode()==RETURN||n.getOpcode()==ATHROW){InsnList leave=new InsnList();synthesizedCall(leave,n.getOpcode()==ATHROW?2:1,base,base+1,base+2,base+3);m.instructions.insertBefore(n,leave);}
+        }
+        if(downCall!=1)throw new IllegalStateException("Synthesized dispatch callsite changed");
+      }
+      for(AbstractInsnNode n:original)if(n instanceof MethodInsnNode){MethodInsnNode invoke=(MethodInsnNode)n;
+        if(invoke.owner.equals("org/mozilla/geckoview/PocketSynthesizedInsertionScope")&&invoke.name.equals("offset")&&invoke.desc.equals("(I)I")){
+          offsets++;int base=m.maxLocals;m.maxLocals+=2;InsnList before=new InsnList();before.add(new InsnNode(DUP));before.add(new VarInsnNode(ISTORE,base));primitiveCall(before,16,0,base,base,-1,base);m.instructions.insertBefore(n,before);
+          InsnList after=new InsnList();after.add(new InsnNode(DUP));after.add(new VarInsnNode(ISTORE,base+1));primitiveCall(after,16,1,base,base+1,-1,base);m.instructions.insert(n,after);
+        }
+      }
       for(AbstractInsnNode n:original)if(n instanceof MethodInsnNode){MethodInsnNode invoke=(MethodInsnNode)n;if(!invoke.owner.equals(CHILD))continue;
         boolean replace=invoke.name.equals("onImeReplaceText")&&invoke.desc.equals("(IILjava/lang/String;)V"),compose=invoke.name.equals("onImeUpdateComposition")&&invoke.desc.equals("(III)V");if(!replace&&!compose)continue;
         if(replace)replaces++;else compositions++;int base=m.maxLocals;m.maxLocals+=4;InsnList pre=new InsnList();pre.add(new VarInsnNode(replace?ASTORE:ISTORE,base+3));pre.add(new VarInsnNode(ISTORE,base+2));pre.add(new VarInsnNode(ISTORE,base+1));pre.add(new VarInsnNode(ASTORE,base));callTrace(pre,replace?14:15,0,base+1,base+2,replace?-1:base+3,replace?base+3:-1);pre.add(new VarInsnNode(ALOAD,base));pre.add(new VarInsnNode(ILOAD,base+1));pre.add(new VarInsnNode(ILOAD,base+2));pre.add(new VarInsnNode(replace?ALOAD:ILOAD,base+3));m.instructions.insertBefore(n,pre);InsnList post=new InsnList();callTrace(post,replace?14:15,1,base+1,base+2,replace?-1:base+3,replace?base+3:-1);m.instructions.insert(n,post);
       }
     }
     if(incoming!=6||replaces!=2||compositions!=2)throw new IllegalStateException("Official callsite shape changed: "+incoming+","+replaces+","+compositions);
-    c.methods.add(observer());c.methods.add(actionObserver());Frames writer=new Frames();c.accept(writer);Files.write(Paths.get(args[1]),writer.toByteArray());System.out.println("{\"incomingMethods\":6,\"replaceCallsites\":2,\"compositionCallsites\":2,\"diagnosticOnly\":true}");
+    if(origins!=3||synthesized!=1||actions!=1||offsets>1)throw new IllegalStateException("Origin/action/candidate trace shape changed");
+    c.methods.add(observer());c.methods.add(actionObserver());Frames writer=new Frames();c.accept(writer);Files.write(Paths.get(args[1]),writer.toByteArray());System.out.println("{\"incomingMethods\":6,\"replaceCallsites\":2,\"compositionCallsites\":2,\"sourceMetadataMethods\":3,\"synthesizedDownCountMethods\":1,\"actionMethods\":1,\"candidateOffsetCallsites\":"+offsets+",\"diagnosticOnly\":true}");
   }
 }

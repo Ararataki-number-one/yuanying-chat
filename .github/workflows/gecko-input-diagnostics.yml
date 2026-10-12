@@ -1,12 +1,12 @@
-name: Gecko scoped hardware caret candidate validation
+name: Gecko per-action synthesized insertion candidate validation
 on:
   push:
-    branches: [debug/gecko-ime-candidate]
+    branches: [debug/gecko-ime-synthetic-candidate]
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
-  group: gecko-sdk-hardware-candidate
+  group: gecko-sdk-synthetic-candidate
   cancel-in-progress: false
 jobs:
   diagnose:
@@ -31,7 +31,7 @@ jobs:
           echo '25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0  work/gecko-input-diagnostics/geckoview.aar' | sha256sum -c -
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
-      - name: Build the pinned scoped hardware-only SDK candidate
+      - name: Build the pinned per-action synthesized insertion candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -53,6 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           exec > >(tee work/gecko-input-diagnostics/input-test.log) 2>&1
+          work/gecko-input-diagnostics/gradle/gradle-9.8.0/bin/gradle --stop
           export ANDROID_AVD_HOME="$PWD/work/gecko-input-diagnostics/avd"
           export ANDROID_USER_HOME="$PWD/work/gecko-input-diagnostics/android-user"
           export ANDROID_EMULATOR_HOME="$PWD/work/gecko-input-diagnostics/emulator-home"
@@ -69,7 +70,7 @@ jobs:
             attempt="work/gecko-input-diagnostics/attempt-$trial"
             mkdir -p "$attempt"
             rm -f work/gecko-integration/gecko-performance-results.json work/gecko-integration/gecko-performance-failure-log.txt work/gecko-integration/gecko-performance-screen.png
-            if python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554 --sdk-input-diagnostics 2>&1 | tee "$attempt/runner.log"; then
+            if python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554 --sdk-input-diagnostics --require-caret-activation 2>&1 | tee "$attempt/runner.log"; then
               exit_code=0
             else
               exit_code=$?
@@ -104,6 +105,7 @@ jobs:
         run: |
           set -euo pipefail
           work/gecko-input-diagnostics/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-input-diagnostics/integration-test.jks" -PimeSdkTraceAar="$PWD/work/gecko-input-diagnostics/geckoview-hardware-candidate.aar" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-input-diagnostics/observer-free-build.log
+          work/gecko-input-diagnostics/gradle/gradle-9.8.0/bin/gradle --stop
           adb -s emulator-5554 install -r app/build/outputs/apk/integration/app-x86_64-integration.apk
       - name: Execute the original observer-free single-burst gate
         if: always() && steps.plain_build.outcome == 'success'
@@ -127,7 +129,7 @@ jobs:
           set -euo pipefail
           mkdir -p work/gecko-input-diagnostics/compatibility
           exit_code=0
-          python3 tests/gecko/run_gecko_caret_compat.py --adb "$(command -v adb)" --serial emulator-5554 > work/gecko-input-diagnostics/compatibility/runner.log 2>&1 || exit_code=$?
+          python3 tests/gecko/run_gecko_caret_compat.py --adb "$(command -v adb)" --serial emulator-5554 --installed-apk-sha256 "$(sha256sum app/build/outputs/apk/integration/app-x86_64-integration.apk | cut -d' ' -f1)" --sdk-receipt work/gecko-input-diagnostics/hardware-candidate-receipt.json > work/gecko-input-diagnostics/compatibility/runner.log 2>&1 || exit_code=$?
           for name in gecko-caret-compat-results.json gecko-caret-compat-failure-log.txt gecko-caret-compat-screen.png; do
             if [ -f "work/gecko-integration/$name" ]; then cp "work/gecko-integration/$name" "work/gecko-input-diagnostics/compatibility/$name"; fi
           done

@@ -130,7 +130,11 @@ def main():
                         help='Buffer only primitive SDK/IME observations and flush after input; no extra JS observers. Diagnostic evidence cannot replace the normal regression.')
     observation.add_argument('--sdk-input-diagnostics', action='store_true',
                         help='Test-only same-class SDK primitive instrumentation; original single input burst unchanged. Never release acceptance.')
+    parser.add_argument('--require-caret-activation', action='store_true',
+                        help='Diagnostic-only: require all original typed characters to use the observed per-action native-caret writer.')
     args = parser.parse_args()
+    if args.require_caret_activation and not args.sdk_input_diagnostics:
+        parser.error('--require-caret-activation requires the isolated SDK diagnostic mode')
     OUT.mkdir(parents=True, exist_ok=True)
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
     receipt = json.loads((baseline_root / 'source.json').read_text())
@@ -252,6 +256,23 @@ def main():
                               actualNativeInputTrace=[native_input_events[key] for key in sorted(native_input_events)],
                               actualSdkInputTrace=[row for key in sorted(sdk_input_events) for row in sdk_input_events[key]['rows']],
                               actualSdkInputSummary=sdk_input_summary)
+                if args.require_caret_activation:
+                    rows=report['actualSdkInputTrace']; observed=[]; pending=None
+                    for row in rows:
+                        if row[0]==17 and row[1]==1:
+                            pending={'sequence':row[13], 'actionRange':row[4:6], 'successfulDownCount':row[6]>>8,
+                                     'batch':bool(row[6]&2), 'length':row[7], 'shadowRange':row[10:12],
+                                     'originalPredicate':row[4]==row[5] and row[10]==row[11] and row[4]==row[10]+row[7]}
+                        elif row[0]==16 and row[1]==1 and pending is not None:
+                            pending['offsetInput']=row[4]; pending['offsetOutput']=row[5]
+                        elif row[0]==14 and row[1]==0:
+                            if pending is not None:
+                                pending['actualNativeRange']=row[4:6]; observed.append(pending); pending=None
+                    requested=list(text_inputs.values())
+                    expected_count=len(requested[0]['text']) if len(requested)==1 else -1
+                    report['actualCandidateActivation']={'required':True, 'expectedCharacters':expected_count,
+                                                        'observedActions':observed,
+                                                        'nativeCaretWriterCount':sum(x.get('actualNativeRange')==[-1,-1] for x in observed)}
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
                 assert report['inputDiagnosticsEnabled'] == args.input_diagnostics, report
@@ -265,6 +286,13 @@ def main():
                     assert rows and all(len(row) == 14 for row in rows), 'SDK primitive trace is absent or malformed'
                     assert [row[13] for row in rows] == list(range(len(rows))), 'SDK primitive trace sequence is incomplete'
                     assert any(row[0] == 14 for row in rows) and any(row[0] == 11 for row in rows), 'Missing actual replace/selection writers'
+                    if args.require_caret_activation:
+                        activation=report['actualCandidateActivation']; actions=activation['observedActions']
+                        assert activation['expectedCharacters']>0 and len(actions)==activation['nativeCaretWriterCount']==activation['expectedCharacters'], activation
+                        assert all(x['successfulDownCount']==1 and x['length']==x['offsetInput']==1 and x['offsetOutput']==-1
+                                   and x['actionRange'][0]==x['actionRange'][1] and x['shadowRange'][0]==x['shadowRange'][1]
+                                   and x['actionRange'][0]==x['shadowRange'][0]+x['offsetOutput']
+                                   and x['actualNativeRange']==[-1,-1] for x in actions), activation
                 else:
                     assert not sdk_input_events and sdk_input_summary is None, 'Normal SDK unexpectedly emitted same-class diagnostic data'
                 if not args.input_diagnostics:

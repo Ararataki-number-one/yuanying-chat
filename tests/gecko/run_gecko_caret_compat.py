@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Additional editing semantics over real Gecko/Android, always diagnostic evidence."""
 import argparse
+import hashlib
 import html
 import http.server
 import json
 import pathlib
+import os
+import re
 import select
 import socket
 import socketserver
@@ -31,15 +34,7 @@ def document(case):
 body{margin:0;padding:12px;background:white;font:18px monospace}textarea{box-sizing:border-box;width:100%;height:96px;padding:10px;border:1px solid #888;font:26px monospace;white-space:pre;resize:none}#other-draft{height:58px;margin-top:22px}button{margin-top:16px}h2{font:18px sans-serif}
 </style><h2>''' + html.escape(IDS[case]) + '''</h2><textarea id="prompt-textarea" rows="2" spellcheck="false" autocorrect="off">''' +
             html.escape(SEEDS[case]) + '''</textarea><textarea id="other-draft" tabindex="-1">untouched independent draft</textarea>
-<button id="send" onclick="window.sendCount++">Send</button><script>
-window.sendCount=0;const composer=document.getElementById('prompt-textarea');const events=[];let overflow=false;
-const caseNumber=''' + str(case) + ''';
-for(const type of ['keydown','keyup','beforeinput','input','compositionstart','compositionupdate','compositionend']){
-composer.addEventListener(type,e=>{if(events.length>=512){overflow=true;return}events.push({type,key:e.key||'',data:e.data||'',inputType:e.inputType||'',trusted:e.isTrusted,ctrl:!!e.ctrlKey,shift:!!e.shiftKey,composing:!!e.isComposing,start:composer.selectionStart,end:composer.selectionEnd});if(type==='beforeinput'&&caseNumber===10)e.preventDefault()});}
-window.__caretSnapshot=()=>{const r=composer.getBoundingClientRect(),style=getComputedStyle(composer),canvas=document.createElement('canvas'),context=canvas.getContext('2d');context.font=style.font;const points=[];
-for(let i=0;i<=composer.value.length;i++)points.push({x:r.left+parseFloat(style.borderLeftWidth)+parseFloat(style.paddingLeft)+context.measureText(composer.value.slice(0,i)).width-composer.scrollLeft,y:r.top+parseFloat(style.borderTopWidth)+parseFloat(style.paddingTop)+parseFloat(style.fontSize)*.6});
-return {ready:true,case:caseNumber,draft:composer.value,otherDraft:document.getElementById('other-draft').value,focused:document.activeElement===composer,start:composer.selectionStart,end:composer.selectionEnd,direction:composer.selectionDirection,cookie:document.cookie,sendCount:window.sendCount,width:innerWidth,height:innerHeight,bounds:{x:r.x,y:r.y,width:r.width,height:r.height},points,events,overflow,eventCount:events.length,keyCount:events.filter(e=>e.type==='keydown').length,inputCount:events.filter(e=>e.type==='input').length,beforeCount:events.filter(e=>e.type==='beforeinput').length,compositionCount:events.filter(e=>e.type==='compositionstart').length,compositionEndCount:events.filter(e=>e.type==='compositionend').length,allTrusted:events.every(e=>e.trusted)}};
-</script>''').encode('utf-8')
+<button id="send">Send</button>''').encode('utf-8')
 
 
 class Fixture(http.server.BaseHTTPRequestHandler):
@@ -129,13 +124,35 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--adb', required=True)
     parser.add_argument('--serial', default='emulator-5554')
+    parser.add_argument('--installed-apk-sha256', required=True)
+    parser.add_argument('--sdk-receipt', required=True, type=pathlib.Path)
     args = parser.parse_args()
+    assert re.fullmatch('[0-9a-f]{64}', args.installed_apk_sha256), 'Expected installed APK SHA256 is required'
+    sdk_raw = args.sdk_receipt.read_bytes()
+    sdk_receipt = json.loads(sdk_raw)
+    assert sdk_receipt['normalCandidateContainsObserver'] is False
+    assert sdk_receipt['transform']['observerIncluded'] is False
+    assert sdk_receipt['allNativeAndResourceEntriesUnchanged'] is True
+    assert hashlib.sha256((ROOT / 'tools/build-gecko-hardware-caret.py').read_bytes()).hexdigest() == sdk_receipt['builderSha256']
+    for name, digest in sdk_receipt['sourceSha256'].items():
+        assert pathlib.Path(name).name == name and re.fullmatch('[0-9a-f]{64}', digest)
+        source = ROOT / 'tools/gecko/hardware_caret' / name
+        assert hashlib.sha256(source.read_bytes()).hexdigest() == digest, 'SDK receipt belongs to different candidate tools: ' + name
+    sdk_identity = {key: sdk_receipt[key] for key in ['officialVersion', 'officialAarSha256', 'officialJarSha256',
+                    'officialEditableSha256', 'candidateAarSha256', 'candidateJarSha256', 'candidateEditableSha256',
+                    'helperSha256', 'builderSha256']}
+    for key, value in sdk_identity.items():
+        if key.endswith('Sha256'):
+            assert re.fullmatch('[0-9a-f]{64}', value), key
+    sdk_identity.update(receiptSha256=hashlib.sha256(sdk_raw).hexdigest(),
+                        sourceSha256=sdk_receipt['sourceSha256'],
+                        normalCandidateContainsObserver=False, allNativeAndResourceEntriesUnchanged=True)
     OUT.mkdir(parents=True, exist_ok=True)
 
     def adb(*parts):
         return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
 
-    checks, scenarios, steps, api, trusted = {}, {}, {}, {}, {}
+    checks, scenarios, steps, api, trusted, checkpoints = {}, {}, {}, {}, {}, {}
     seen = set()
     report = None
     servers = [http.server.ThreadingHTTPServer(('127.0.0.1', 8771), Fixture), SocksServer(('127.0.0.1', 1088), Socks)]
@@ -144,7 +161,10 @@ def main():
 
     def save(value):
         value.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+                     runId=os.environ.get('GITHUB_RUN_ID', ''), runAttempt=os.environ.get('GITHUB_RUN_ATTEMPT', ''),
+                     expectedInstalledApkSha256=args.installed_apk_sha256, sdkBuildIdentity=sdk_identity,
                      checks=[checks[k] for k in sorted(checks)], scenarios=[scenarios[k] for k in IDS if k in scenarios],
+                     actualCheckpoints=[checkpoints[k] for k in sorted(checkpoints)],
                      actualAndroidActions=list(steps.values()), actualInputConnectionCalls=list(api.values()),
                      actualTrustedEvents={key: [e for offset in sorted(parts) for e in parts[offset]] for key, parts in trusted.items()},
                      fixtureRequests=Fixture.requests, controlledProxyRoutes=Socks.routes,
@@ -192,28 +212,61 @@ def main():
                         else:
                             raise AssertionError(command)
                 elif kind == 'check':
+                    assert value['index'] not in checks, 'Duplicate check index'
                     checks[value['index']] = value
                 elif kind == 'scenario':
                     scenarios[value['id']] = value
                 elif kind == 'api':
+                    assert value['index'] not in api, 'Duplicate InputConnection call index'
                     api[value['index']] = value
+                elif kind == 'checkpoint':
+                    assert value['index'] not in checkpoints, 'Duplicate checkpoint index'
+                    checkpoints[value['index']] = value
                 elif kind == 'trustedEvents':
+                    assert value['offset'] not in trusted.get(value['id'], {}), 'Duplicate trusted event chunk'
                     trusted.setdefault(value['id'], {})[value['offset']] = value['events']
                 elif kind == 'report':
                     report = value
             if report is not None:
                 save(report)
                 assert report['diagnosticOnly'] and not report['releaseAcceptance'], report
-                assert report['sdkObserverEnabled'] is False and report['domTextWrites'] == 0, report
+                assert report['sdkObserverEnabled'] is False and report['sdkObserverAbsenceVerified'] is True
+                assert report['sdkObserverClass'] == 'org.mozilla.geckoview.PocketGeckoEditableTrace'
+                installed = report['installedApk']
+                assert installed['actualInstalledPackageRead'] is True and installed['packageName'] == PACKAGE
+                assert installed['sha256'] == args.installed_apk_sha256 and installed['bytes'] > 0
+                assert installed['source'] == 'applicationInfo.sourceDir' and installed['debuggable'] is False
+                assert report['domTextWrites'] == 0, report
                 assert report['status'] == 'passed' and report['scenarioCount'] == len(IDS) == len(scenarios), report
                 assert report['checkCount'] == len(checks) and all(x['pass'] for x in checks.values()), report
+                assert list(sorted(checks)) == list(range(report['checkCount']))
+                assert report['apiCount'] == len(api) and list(sorted(api)) == list(range(report['apiCount']))
+                assert all(x['accepted'] and x['origin'] == 'original-sdk-inputconnection' for x in api.values())
+                assert report['checkpointCount'] == len(checkpoints)
+                assert list(sorted(checkpoints)) == list(range(report['checkpointCount']))
+                assert {x['scenario'] for x in checkpoints.values()} == set(IDS)
+                for checkpoint in checkpoints.values():
+                    expected, actual = checkpoint['expected'], checkpoint['actual']
+                    assert actual['draft'] == expected['draft'] and actual['start'] == expected['start'] and actual['end'] == expected['end']
+                    assert actual['keyCount'] >= expected['minimumKeys'] and actual['inputCount'] >= expected['minimumInputs'] and actual['beforeCount'] >= expected['minimumBefore']
+                    assert actual['sendCount'] == 0 and actual['otherDraft'] == 'untouched independent draft'
+                    assert 'session=synthetic-caret' in actual['cookie'] and actual['allTrusted'] and not actual['overflow']
+                    assert checkpoint['stableMillis'] >= (600 if checkpoint['phase'] == 'focus' else 350)
                 assert Fixture.requests and {x['case'] for x in Fixture.requests} == set(range(len(IDS))), report
                 assert Socks.routes and all(x['accepted'] for x in Socks.routes), report
                 for case in scenarios.values():
                     actual = case['actual']
                     assert actual['allTrusted'] and not actual['overflow'] and actual['sendCount'] == 0, case
                     assert actual['otherDraft'] == 'untouched independent draft' and 'session=synthetic-caret' in actual['cookie'], case
-                    assert len(trusted.get(case['id'], {})) or actual['eventCount'] == 0, case
+                    parts, offset, events = trusted.get(case['id'], {}), 0, []
+                    for position in sorted(parts):
+                        assert position == offset and 1 <= len(parts[position]) <= 4, case
+                        events.extend(parts[position])
+                        offset += len(parts[position])
+                    assert offset == actual['eventCount'] and all(e['trusted'] for e in events), case
+                    for key, kind in [('keyCount', 'keydown'), ('inputCount', 'input'), ('beforeCount', 'beforeinput'),
+                                      ('compositionCount', 'compositionstart'), ('compositionEndCount', 'compositionend')]:
+                        assert actual[key] == sum(e['type'] == kind for e in events), case
                 (OUT / 'gecko-caret-compat-screen.png').write_bytes(subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30))
                 print(json.dumps({'status': report['status'], 'scenarioCount': len(scenarios), 'checkCount': len(checks), 'diagnosticOnly': True}), flush=True)
                 return

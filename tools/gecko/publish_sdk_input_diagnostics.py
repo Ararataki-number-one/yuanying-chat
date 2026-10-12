@@ -10,7 +10,7 @@ import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'work/gecko-input-diagnostics'
-BRANCH = 'apk/gecko-hardware-caret-candidate'
+BRANCH = 'apk/gecko-synthetic-caret-candidate'
 PRODUCTION_SOURCE = 'e4a4a08202cf50ce60d36dd86a625366de9bb2f4'
 TRIALS = tuple(range(1, 11))
 ARTIFACTS = tuple((OUT, name) for name in (
@@ -45,8 +45,11 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
         'sourceCommit': source, 'productionSourceCommit': PRODUCTION_SOURCE,
         'runId': run_id, 'runAttempt': run_attempt,
         'diagnosticOnly': True, 'releaseAcceptance': False, 'partial': os.environ.get('SDK_DIAGNOSTIC_PARTIAL') == '1',
-        'observation': 'Scoped hardware-only SDK candidate: ten identical single-burst diagnostics, followed by the original observer-free gate and actual soft-input compatibility.',
+        'observation': 'Per-action synthesized insertion candidate: ten identical single-burst diagnostics with actual input/output predicate and native writer activation, followed by original observer-free gate and actual soft-input compatibility.',
         'oldSdkComparison': {'sourceCommit': '8f61060f7968b6798060947009310fc1f14e69f1', 'evidenceCommit': '6eb6d06655bbda116db20975f7fcf70d874c7b70', 'trials': 10, 'failedTrials': [1]},
+        'infrastructure': {'gradleDaemonStoppedBeforeEmulator': True, 'gradleDaemonStoppedAfterBareBuild': True,
+                           'fixedTrials':10, 'automaticTrialRetries':0, 'originalInputBurstUnchanged':True},
+        'firstScopedCandidate': {'sourceCommit': '860a6777ab4dd09d110f603de8754f2e76fefc50', 'evidenceCommit': '5768483fc256edad73491e024e0e7328bb9a1f17', 'trials':10, 'failedTrials':[2], 'failure':'ADB logcat exited255; no SDK report in trial2', 'activated':False},
         'observerFreeOriginalGate': {}, 'compatibility': {},
         'stepOutcomes': outcomes, 'expectedTrials': list(TRIALS),
         'artifacts': [], 'warnings': [], 'attempts': [], 'reports': {},
@@ -97,6 +100,9 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
                         'actualAndroidExecution': report.get('actualAndroidExecution', False),
                         'actualGeckoExecution': report.get('actualGeckoExecution', False),
                         'sameClassTraceComplete': complete, 'sdkTraceRows': len(rows),
+                        'candidateActivationRequired': report.get('actualCandidateActivation',{}).get('required') is True,
+                        'actualNativeCaretWriters': report.get('actualCandidateActivation',{}).get('nativeCaretWriterCount',0),
+                        'expectedTypedCharacters': report.get('actualCandidateActivation',{}).get('expectedCharacters',0),
                         'error': report.get('error', ''),
                     }
             except (ValueError, TypeError, AttributeError, KeyError) as error:
