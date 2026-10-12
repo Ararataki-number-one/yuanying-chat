@@ -45,8 +45,8 @@ def main():
         'local.pocketchat.test/local.pocketchat.NativeProbeIntegrationActivity')
     until = time.monotonic() + args.timeout
     while time.monotonic() < until:
-        raw = adb('shell', 'run-as', 'local.pocketchat.test', 'cat',
-                  'files/native-probe-results.json', check=False)
+        raw = adb('exec-out', 'content', 'read', '--uri',
+                  'content://local.pocketchat.test.evidence/native-probe', check=False)
         if raw.strip().startswith('{'):
             report = json.loads(raw)
             report['sourceCommit'] = subprocess.check_output(

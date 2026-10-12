@@ -1,0 +1,91 @@
+name: Independent native chain and Gecko HTTP2 diagnostics
+on:
+  push:
+    branches: [debug/gecko-chain-check]
+permissions:
+  contents: write
+concurrency:
+  group: gecko-chain-diagnostics
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Verify the unchanged pinned network core
+        run: python3 tools/build-mihomo.py --verify
+      - name: Prepare locked official Gecko toolchain
+        id: setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          mkdir -p work/gecko-integration
+          "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore work/gecko-integration/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
+          curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip
+          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-integration/gradle.zip' | sha256sum -c -
+          unzip -q work/gecko-integration/gradle.zip -d work/gecko-integration/gradle
+          curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20260924084938/geckoview-157.0.20260924084938.aar -o work/gecko-integration/geckoview.aar
+          echo '25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0  work/gecko-integration/geckoview.aar' | sha256sum -c -
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
+      - name: Compile only the non-debuggable integration package
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-integration/build.log
+          "$ANDROID_HOME/build-tools/37.0.0/aapt2" dump badging app/build/outputs/apk/integration/app-x86_64-integration.apk > work/gecko-integration/integration-badging.txt
+          python3 - <<'PYCODE'
+          import pathlib
+          text=pathlib.Path('work/gecko-integration/integration-badging.txt').read_text()
+          assert "package: name='local.pocketchat.test'" in text and 'application-debuggable' not in text
+          PYCODE
+      - name: Execute both independent network cases on Android 35
+        id: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_AVD_HOME="$PWD/work/gecko-integration/chain-avd"
+          export ANDROID_USER_HOME="$PWD/work/gecko-integration/chain-android-user"
+          export ANDROID_EMULATOR_HOME="$PWD/work/gecko-integration/chain-emulator-home"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+          sudo chmod a+rw /dev/kvm
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckochain -p "$ANDROID_AVD_HOME/geckochain.avd" -k 'system-images;android-35;google_apis;x86_64'
+          "$ANDROID_HOME/emulator/emulator" -avd geckochain -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/gecko-integration/chain-emulator.log 2>&1 &
+          timeout 180 adb -s emulator-5554 wait-for-device
+          timeout 300 bash -c 'until [ "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+          adb -s emulator-5554 shell input keyevent 82
+          adb -s emulator-5554 install app/build/outputs/apk/integration/app-x86_64-integration.apk
+          publication_failed=0
+          native_exit=0
+          if python3 tests/gecko/run_native_probe.py --adb "$(command -v adb)" --serial emulator-5554 2>&1 | tee work/gecko-integration/native-probe-runner.log; then
+            native_exit=0
+          else
+            native_exit=$?
+          fi
+          if ! python3 tools/gecko/publish_chain_diagnostics.py --case native --exit-code "$native_exit"; then
+            publication_failed=1
+          fi
+          pool_exit=0
+          if python3 tests/gecko/run_gecko_pool.py --adb "$(command -v adb)" --serial emulator-5554 2>&1 | tee work/gecko-integration/gecko-pool-runner.log; then
+            pool_exit=0
+          else
+            pool_exit=$?
+          fi
+          if ! python3 tools/gecko/publish_chain_diagnostics.py --case pool --exit-code "$pool_exit"; then
+            publication_failed=1
+          fi
+          if [ "$native_exit" -ne 0 ] || [ "$pool_exit" -ne 0 ] || [ "$publication_failed" -ne 0 ]; then
+            exit 1
+          fi
+      - name: Publish bounded diagnostic evidence only
+        if: always()
+        env:
+          CHAIN_SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          CHAIN_BUILD_OUTCOME: ${{ steps.build.outcome }}
+          CHAIN_ANDROID_OUTCOME: ${{ steps.android.outcome }}
+        run: python3 tools/gecko/publish_chain_diagnostics.py

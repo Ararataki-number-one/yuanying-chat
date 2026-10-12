@@ -107,16 +107,22 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
   JSONObject fetch(String id,boolean expected)throws Exception{
     int fixedBefore=fixed.connections,aBefore=entryA.connections,bBefore=entryB.connections;
     String actualEntry=network.currentEntry;int proxyPort=network.proxyPort;
-    String quoted=JSONObject.quote(id);JSONObject begun=eval("(()=>{window.__poolResults??={};const began=performance.now();fetch('/bytes?id='+encodeURIComponent("+quoted+"),{cache:'no-store',credentials:'same-origin'})"
+    // The formal bridge evaluates in the MV2 extension sandbox. Gecko's official
+    // content.fetch is bound to the page window, preserving its TLS exception,
+    // cookies and browser pool; extension-global fetch has different semantics.
+    String quoted=JSONObject.quote(id),target=JSONObject.quote(ORIGIN+"/bytes?id="+id);JSONObject begun=eval("(()=>{window.__poolResults??={};if(typeof content==='undefined'||typeof content.fetch!=='function')return {started:false,error:'page content.fetch unavailable'};const began=performance.now();content.fetch("+target+",{cache:'no-store',credentials:'same-origin'})"
       +".then(async r=>{const v=await r.json();window.__poolResults["+quoted+"]={ok:r.ok,...v,durationMs:performance.now()-began}})"
       +".catch(e=>window.__poolResults["+quoted+"]={ok:false,error:String(e)});return {started:true}})()");
     check(id+" starts one explicit actual Gecko request",begun.optBoolean("started"));
     final JSONObject[] result={null};await(id+" real response",()->{JSONObject value=eval("window.__poolResults?.["+quoted+"]||({})");if(!value.has("ok"))return false;result[0]=value;return true;},15000);
-    JSONObject value=result[0];check(id+" completes with the expected guarded outcome",value.optBoolean("ok")==expected);
-    if(expected){check(id+" negotiates genuine HTTP/2 and preserves the entire response",value.optString("protocol").equals("h2")&&value.optLong("streamId")>0&&value.optInt("connection")>0&&PAYLOAD.equals(value.optString("body"))&&id.equals(value.optString("id")));}
+    JSONObject value=result[0];
     JSONObject safe=J.obj("id",id,"ok",value.optBoolean("ok"),"protocol",value.optString("protocol"),"connection",value.optInt("connection"),"streamId",value.optLong("streamId"),"durationMs",value.optDouble("durationMs",-1),"bodyBytes",value.optString("body").getBytes(StandardCharsets.UTF_8).length,"bodyHash",NativeNetwork.hash(value.optString("body")),"error",value.optString("error"),
-      "entry",actualEntry,"proxyPort",proxyPort,"fixedConnectionsBefore",fixedBefore,"fixedConnectionsAfter",fixed.connections,"entryAConnectionsBefore",aBefore,"entryAConnectionsAfter",entryA.connections,"entryBConnectionsBefore",bBefore,"entryBConnectionsAfter",entryB.connections);
-    requests.put(safe);event("request",safe);return safe;
+      "requestRealm","page-content-fetch","entry",actualEntry,"proxyPort",proxyPort,"fixedConnectionsBefore",fixedBefore,"fixedConnectionsAfter",fixed.connections,"entryAConnectionsBefore",aBefore,"entryAConnectionsAfter",entryA.connections,"entryBConnectionsBefore",bBefore,"entryBConnectionsAfter",entryB.connections);
+    // Preserve actual failure details before an assertion terminates the run.
+    requests.put(safe);event("request",safe);
+    check(id+" completes with the expected guarded outcome",value.optBoolean("ok")==expected);
+    if(expected){check(id+" negotiates genuine HTTP/2 and preserves the entire response",value.optString("protocol").equals("h2")&&value.optLong("streamId")>0&&value.optInt("connection")>0&&PAYLOAD.equals(value.optString("body"))&&id.equals(value.optString("id")));}
+    return safe;
   }
   void callbackRecover()throws Exception{
     CountDownLatch done=new CountDownLatch(1);final boolean[] success={false};ui(()->{network.recover((ok,message)->{success[0]=ok;done.countDown();});return null;});
@@ -129,7 +135,7 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
       "protocol","h2","defaultNetworkCases","Injected event values through the production DefaultNetwork state, not a physical Wi-Fi handover",
       "environmentCase","Separate pool instance with slot 1 in the same Gecko runtime; private-profile/login isolation is exercised by the existing multi-process suite",
       "recoveryCase","Real NativeNetwork.recover with an advanced asynchronous ChatSession epoch; no document navigation or resend",
-      "testOnlyCertificateException",true,"publicNetworkTraffic",false);
+      "testOnlyCertificateException",true,"publicNetworkTraffic",false,"requestRealm","page-content-fetch","webSocketRealm","page-content-WebSocket");
     try{
       site=new NetworkOptimizationIntegrationActivity.HttpFixture(fixtureTls());plain=new NetworkOptimizationIntegrationActivity.HttpFixture(null);
       fixed=new NetworkOptimizationIntegrationActivity.Socks(0);entryA=new NetworkOptimizationIntegrationActivity.Socks(0);entryB=new NetworkOptimizationIntegrationActivity.Socks(0);
@@ -155,8 +161,11 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
       ui(()->{view.loadUrl(ORIGIN+"/pool");return null;});
       await("Actual controlled TLS document",()->eval("({ready:location.href==="+JSONObject.quote(ORIGIN+"/pool")+"&&!!document.getElementById('pool-ready')})").optBoolean("ready"),35000);
       check("The test certificate exception is scoped to one localhost document",view.certificateExceptions==1);
+      JSONObject pageApis=eval("({pageFetch:typeof content!=='undefined'&&typeof content.fetch==='function',pageWebSocket:typeof content!=='undefined'&&typeof content.WebSocket==='function'})");
+      event("pageApis",pageApis);
+      check("The official MV2 sandbox exposes page-bound fetch and WebSocket",pageApis.optBoolean("pageFetch")&&pageApis.optBoolean("pageWebSocket"));
       JSONObject first=fetch("initial",true),warm=fetch("warm",true);check("Warm actual Gecko HTTP/2 requests reuse one TLS/TCP connection",first.optInt("connection")==warm.optInt("connection")&&warm.optLong("streamId")>first.optLong("streamId"));
-      eval("(()=>{window.__poolSocket={echoes:0,connection:0,closed:false};const ws=new WebSocket("+JSONObject.quote("wss://127.0.0.1:9877/ws")+");window.__poolSocket.ws=ws;let n=0;ws.onopen=()=>{window.__poolSocket.timer=setInterval(()=>{if(ws.readyState===1)ws.send('frame-'+(++n))},80)};ws.onmessage=e=>{const v=JSON.parse(e.data);window.__poolSocket.echoes++;window.__poolSocket.connection=v.connection;window.__poolSocket.last=v.payload};ws.onclose=()=>window.__poolSocket.closed=true;return {started:true}})()");
+      eval("(()=>{window.__poolSocket={echoes:0,connection:0,closed:false};const ws=new content.WebSocket("+JSONObject.quote("wss://127.0.0.1:9877/ws")+");window.__poolSocket.ws=ws;let n=0;ws.onopen=()=>{window.__poolSocket.timer=setInterval(()=>{if(ws.readyState===1)ws.send('frame-'+(++n))},80)};ws.onmessage=e=>{const v=JSON.parse(e.data);window.__poolSocket.echoes++;window.__poolSocket.connection=v.connection;window.__poolSocket.last=v.payload};ws.onclose=()=>window.__poolSocket.closed=true;return {started:true}})()");
       await("Actual protected WSS frames",()->eval("({echoes:window.__poolSocket?.echoes||0})").optInt("echoes")>=5,15000);
       JSONObject framesBefore=eval("({echoes:window.__poolSocket.echoes,connection:window.__poolSocket.connection,closed:window.__poolSocket.closed})");
       JSONObject stableBefore=identity();ui(()->{session.connectionEpoch++;return null;});callbackRecover();JSONObject stableAfter=identity();trace("healthy-managed-recovery",stableBefore,stableAfter);
