@@ -23,6 +23,9 @@ RUNNER_ARTIFACTS = {
         'reading-945x2100.png', 'reading-1024x2240.png',
         'reading-1128x2400.png', 'reading-1920x1080.png',
         'reading-shrunk-80.png', 'failure-screen.png', 'failure-ui.xml',
+        'reading-fit-privacy-0.png', 'reading-fit-privacy-2.png',
+        'reading-fit-landscape.png', 'reading-fit-portrait.png',
+        'reading-fit-keyboard.png',
     ),
     'transfers': (
         'diagnostic-update-transfers-results.json',
@@ -63,10 +66,19 @@ def passed_report(case, name, report):
     if report.get('status') != 'passed' or report.get('actualAndroidExecution') is not True:
         return False
     if case == 'reading':
-        return (report.get('androidSdk') == 35 and report.get('checkCount') == 9
+        bounds = report.get('nativeReadingBounds', {})
+        cases = bounds.get('cases', [])
+        return (report.get('androidSdk') == 35 and report.get('checkCount') == 14
                 and len(report.get('responsiveReading', [])) == 4
                 and len(report.get('nativeReadingZoom', [])) == 4
-                and isinstance(report.get('scaledReadingInput'), dict))
+                and isinstance(report.get('scaledReadingInput'), dict)
+                and bounds.get('schema') == 1
+                and len(cases) == 2 and [item.get('privacyLevel') for item in cases] == [0, 2]
+                and all(item.get('actualGeckoExecution') is True for item in cases)
+                and len(bounds.get('rotation', [])) == 2
+                and bounds.get('input', {}).get('imeVisible') is True
+                and bounds.get('productionDelegateRestored') is True
+                and bounds.get('privacyRestored') is True)
     if name == 'diagnostic-update-device-results.json':
         return report.get('androidSdk') == 35
     checks = report.get('checks', [])

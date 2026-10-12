@@ -14,6 +14,11 @@ public class GeckoIntegrationTestActivity extends Activity {
   long paintStarted,paintVisible,paintFinished;
   String initialRouteNetwork="";long initialRouteStableSince;int initialRouteSamples;
   final int[] readingZoomSamples=new int[4];String readingZoomLast="";long readingZoomLastSample;JSONObject readingZoomReadiness;
+  ReadingBoundsCase readingBoundsCase;JSONObject readingBoundsFitResult;
+  static final class ReadingBoundsCase {
+    int privacy;long command;boolean fingerprintingProtected;JSONObject before,pan;org.mozilla.geckoview.GeckoSession nativeSession;android.view.View surface;
+    org.mozilla.geckoview.GeckoSession.CompositorScrollDelegate priorDelegate;float scrollX,scrollY,zoom;int updates;long stableSince;int stableSamples;
+  }
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
     boolean chooserOrigin;Runnable nativeGestureComplete;int nativeGestureCount;
@@ -138,6 +143,10 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("usability".equals(action)){usability(serial);return;}
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
     if("readingZoom".equals(action)){beginReadingZoom(serial);return;}
+    if("readingBounds".equals(action)||"readingBoundsProtected".equals(action)){beginReadingBounds(serial,"readingBoundsProtected".equals(action)?2:0);return;}
+    if("readingBoundsGeometry".equals(action)){readingBoundsGeometry(serial,SystemClock.elapsedRealtime()+20000);return;}
+    if("readingBoundsInput".equals(action)){session.web.evaluateJavascript("document.getElementById('composer').scrollIntoView({block:'center',behavior:'instant'})",unused->session.handler.postDelayed(()->{readingBoundsTap(serial);readingBoundsInput(serial,SystemClock.elapsedRealtime()+20000);},500));return;}
+    if("readingBoundsEnd".equals(action)){session.web.current.setCompositorScrollDelegate(readingBoundsCase.priorDelegate);session.prefs.edit().putInt("privacyLevel",readingBoundsCase.privacy).commit();session.web.configure(true,readingBoundsCase.privacy);readingBoundsEnd(serial,SystemClock.elapsedRealtime()+20000);return;}
     if("readingInput".equals(action)){tapElement(serial,"composer");readingInput(serial,SystemClock.elapsedRealtime()+15000);return;}
     if("nativeSurface".equals(action)){nativeSurface(serial);return;}
     if("nativeCheckpoint".equals(action)){nativeCheckpoint(serial);return;}
@@ -463,6 +472,88 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","real reading zoom did not apply","choice",choice,"layout",session.web.readingLayout,"measurement",result,"ready",session.reading.ready,"checks",results,"readiness",readingZoomReadiness,"lastNative",readingZoomSample(step,choice,result)));return;}
       session.handler.postDelayed(()->waitReadingZoom(serial,step,results,deadline,choice),150);
     });
+  }
+  static String readingBoundsScript(){return "(()=>{const e=document.getElementById('composer'),v=visualViewport;if(!e||!v)return null;const rect=id=>{const r=document.getElementById(id).getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}};let hash=2166136261;for(const c of document.getElementById('reading-main').textContent)hash=Math.imul(hash^c.charCodeAt(0),16777619);const code=document.getElementById('reading-code');return {command:new URL(location.href).searchParams.get('command'),document:performance.timeOrigin,draft:e.value,cookie:document.cookie,bodyHash:(hash>>>0).toString(16),sends:window.readingSends,viewport:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth,dpr:devicePixelRatio,scale:v.scale,visualWidth:v.width,visualHeight:v.height,offsetLeft:v.offsetLeft,pageLeft:v.pageLeft,scrollX,scrollY,focused:document.activeElement?.id,blocks:[rect('reading-main'),rect('reading-paragraph'),rect('composer')],codeWidth:code.clientWidth,codeScrollWidth:code.scrollWidth,codeLeft:code.scrollLeft}})()";}
+  JSONObject readingBoundsNative(JSONObject value){
+    GeckoWebView web=session.web;android.graphics.Matrix matrix=new android.graphics.Matrix();web.current.getClientToSurfaceMatrix(matrix);float[] numbers=new float[9];matrix.getValues(numbers);
+    try{value.put("matrixScale",numbers[android.graphics.Matrix.MSCALE_X]).put("matrixScaleY",numbers[android.graphics.Matrix.MSCALE_Y]).put("matrixX",numbers[android.graphics.Matrix.MTRANS_X]).put("nativeWidth",web.getWidth()).put("nativeHeight",web.getHeight()).put("layout",web.readingLayout).put("choice",session.reading.choice()).put("nativeScrollX",readingBoundsCase.scrollX).put("nativeScrollY",readingBoundsCase.scrollY).put("nativeUpdateZoom",readingBoundsCase.zoom).put("nativeUpdates",readingBoundsCase.updates).put("sessionIdentity",System.identityHashCode(web.current)).put("surfaceIdentity",System.identityHashCode(web.surface)).put("activityIdentity",System.identityHashCode(this)).put("privacyLevel",session.privacy.level()).put("fingerprintingProtected",web.fingerprintingProtected);}catch(JSONException error){throw new IllegalStateException(error);}return value;
+  }
+  void beginReadingBounds(long serial,int level){
+    GeckoWebView web=session.web;ReadingBoundsCase test=new ReadingBoundsCase();test.privacy=session.privacy.level();test.command=serial;test.nativeSession=web.current;test.surface=web.surface;test.priorDelegate=web.current.getCompositorScrollDelegate();readingBoundsCase=test;
+    // Forward every real SDK update to the unmodified production delegate.
+    web.current.setCompositorScrollDelegate(new org.mozilla.geckoview.GeckoSession.CompositorScrollDelegate(){@Override public void onScrollChanged(org.mozilla.geckoview.GeckoSession own,org.mozilla.geckoview.GeckoSession.ScrollPositionUpdate update){test.scrollX=update.scrollX;test.scrollY=update.scrollY;test.zoom=update.zoom;test.updates++;if(test.priorDelegate!=null)test.priorDelegate.onScrollChanged(own,update);}});
+    session.prefs.edit().putInt("privacyLevel",level).putFloat(BrowserReadingPolicy.ZOOM_KEY,4.2f).commit();session.reading.configure(true);web.configure(true,level);
+    readingBoundsConfigured(serial,level,SystemClock.elapsedRealtime()+20000);
+  }
+  void readingBoundsConfigured(long serial,int level,long deadline){
+    if(serial!=run)return;GeckoWebView web=session.web;
+    if(web.privacyReady&&web.protectionLevel==level&&(level!=2||web.fingerprintingProtected)){readingBoundsCase.fingerprintingProtected=web.fingerprintingProtected;web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial+"&bounds=1");session.handler.postDelayed(()->readingBoundsMagnified(serial,level,SystemClock.elapsedRealtime()+20000),100);return;}
+    if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","reading bounds protection acknowledgment missing","level",level));return;}session.handler.postDelayed(()->readingBoundsConfigured(serial,level,deadline),100);
+  }
+  void readingBoundsMagnified(long serial,int level,long deadline){
+    if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
+      if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));double relative=value.optDouble("matrixScale")*value.optDouble("layout")*value.optDouble("viewport")/value.optInt("nativeWidth");
+      if(String.valueOf(serial).equals(value.optString("command"))&&session.reading.ready&&session.web.painted.contains(session.web.current)&&Math.abs(relative-4.2)<.05&&session.web.zoomTarget==null){
+        readingBoundsCase.before=value;event("readingBoundsBefore",value);session.web.current.getPanZoomController().scrollTo(org.mozilla.geckoview.ScreenLength.fromPixels(48),org.mozilla.geckoview.ScreenLength.fromPixels(320),org.mozilla.geckoview.PanZoomController.SCROLL_BEHAVIOR_AUTO);readingBoundsPanned(serial,level,SystemClock.elapsedRealtime()+20000);return;
+      }
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","stored large reading zoom was not restored by real SDK","level",level,"measurement",value));return;}session.handler.postDelayed(()->readingBoundsMagnified(serial,level,deadline),100);
+    });
+  }
+  void readingBoundsPanned(long serial,int level,long deadline){
+    if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
+      if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));
+      if(value.optDouble("nativeScrollX")>32&&value.optDouble("pageLeft")>32&&value.optDouble("nativeScrollY")>200){readingBoundsCase.pan=value;event("readingBoundsPan",value);session.reading.fit();readingBoundsFitted(serial,level,SystemClock.elapsedRealtime()+20000);return;}
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","real SDK horizontal pan did not occur","measurement",value));return;}session.handler.postDelayed(()->readingBoundsPanned(serial,level,deadline),100);
+    });
+  }
+  static boolean readingFits(JSONObject value){
+    if(!value.has("document")||Math.abs(value.optDouble("choice")-1)>.001||Math.abs(value.optDouble("scale")-1)>.02||Math.abs(value.optDouble("matrixScale")-value.optDouble("matrixScaleY"))>.001||Math.abs(value.optInt("nativeWidth")-value.optDouble("matrixScale")*value.optDouble("layout")*value.optDouble("viewport"))>=6)return false;
+    if(Math.abs(value.optDouble("nativeScrollX"))>1||Math.abs(value.optDouble("scrollX"))>1||Math.abs(value.optDouble("pageLeft"))>1||Math.abs(value.optDouble("offsetLeft"))>1||value.optInt("scrollWidth")>value.optInt("viewport")+1)return false;
+    JSONArray blocks=value.optJSONArray("blocks");if(blocks==null||blocks.length()!=3)return false;double left=value.optDouble("offsetLeft"),right=left+value.optDouble("visualWidth");
+    for(int i=0;i<blocks.length();i++){JSONObject block=blocks.optJSONObject(i);if(block==null||block.optDouble("left")<left-1||block.optDouble("right")>right+1||block.optDouble("right")<=block.optDouble("left"))return false;}return true;
+  }
+  static boolean readingIdentity(JSONObject before,JSONObject after){return before.optDouble("document")==after.optDouble("document")&&before.optString("draft").equals(after.optString("draft"))&&before.optString("cookie").equals(after.optString("cookie"))&&before.optString("bodyHash").equals(after.optString("bodyHash"))&&before.optInt("sessionIdentity")==after.optInt("sessionIdentity")&&before.optInt("surfaceIdentity")==after.optInt("surfaceIdentity")&&before.optInt("sends")==0&&after.optInt("sends")==0;}
+  void readingBoundsFitted(long serial,int level,long deadline){
+    if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
+      if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));ReadingBoundsCase test=readingBoundsCase;
+      boolean fit=readingFits(value)&&readingIdentity(test.before,value)&&Math.abs(value.optDouble("nativeScrollY")-test.pan.optDouble("nativeScrollY"))<=1&&session.web.zoomTarget==null;
+      long now=SystemClock.elapsedRealtime();if(!fit){test.stableSamples=0;test.stableSince=now;}else {if(test.stableSamples++==0)test.stableSince=now;}
+      if(fit&&test.stableSamples>=5&&now-test.stableSince>=500){
+        session.web.evaluateJavascript("document.getElementById('reading-code').scrollLeft=96",unused->session.web.evaluateJavascript(readingBoundsScript(),rawCode->{
+          if(serial!=run)return;JSONObject after=readingBoundsNative(J.parse(rawCode));if(!readingFits(after)||!readingIdentity(test.before,after)||after.optDouble("codeScrollWidth")<=after.optDouble("codeWidth")||after.optDouble("codeLeft")<=0){event("error",J.obj("error","fit changed content or prevented independent code scrolling","measurement",after));return;}
+          boolean acknowledged=session.web.privacyReady&&session.web.protectionLevel==level;readingBoundsFitResult=after;if(level!=2){session.web.current.setCompositorScrollDelegate(test.priorDelegate);session.prefs.edit().putInt("privacyLevel",test.privacy).commit();session.web.configure(true,test.privacy);}
+          event("readingBounds",J.obj("schema",1,"privacyLevel",level,"actualGeckoExecution",true,"protectionAcknowledged",acknowledged,"fingerprintingProtected",test.fingerprintingProtected,"fitUsedProductionController",true,"stableSamples",test.stableSamples,"stableMillis",now-test.stableSince,"after",after));
+        }));return;
+      }
+      if(now>deadline){event("error",J.obj("error","fit did not restore both edges and preserve vertical reading position","measurement",value,"panY",test.pan.optDouble("nativeScrollY")));return;}session.handler.postDelayed(()->readingBoundsFitted(serial,level,deadline),100);
+    });
+  }
+  void readingBoundsGeometry(long serial,long deadline){
+    if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
+      if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));NativeGeometry geometry=NativeGeometry.read((FixtureView)session.web);String requested=getIntent().getStringExtra("geometryPhase");boolean landscape="landscape".equals(requested);
+      if(readingBoundsFitResult!=null&&geometry!=null&&!geometry.imeVisible&&geometry.normalBarsReady()&&readingFits(value)&&readingIdentity(readingBoundsFitResult,value)&&landscape==(geometry.webWidth>geometry.webHeight)){event("readingBoundsGeometry",J.obj("phase",requested,"measurement",value,"geometry",geometry.json()));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","reading fit did not survive actual Android rotation","phase",requested,"measurement",value));return;}session.handler.postDelayed(()->readingBoundsGeometry(serial,deadline),100);
+    });
+  }
+  void readingBoundsTap(long serial){
+    // Native matrix is used here too: RFP can deliberately mask page DPR.
+    session.web.evaluateJavascript("(()=>{const r=document.getElementById('composer').getBoundingClientRect();return {x:r.left+r.width/2+scrollX,y:r.top+r.height/2+scrollY}})()",raw->{
+      if(serial!=run)return;JSONObject box=J.parse(raw);android.graphics.Matrix matrix=new android.graphics.Matrix();session.web.current.getPageToSurfaceMatrix(matrix);float[] point={(float)box.optDouble("x"),(float)box.optDouble("y")};matrix.mapPoints(point);int[] origin=new int[2];session.web.surface.getLocationOnScreen(origin);point[0]=origin[0]+point[0]*session.web.readingLayout;point[1]=origin[1]+point[1]*session.web.readingLayout;
+      if(point[0]<=origin[0]||point[0]>=origin[0]+session.web.getWidth()||point[1]<=origin[1]||point[1]>=origin[1]+session.web.getHeight()){event("error",J.obj("error","reading bounds native tap is outside the actual surface","x",point[0],"y",point[1]));return;}
+      event("tapNeeded",J.obj("id","composer-bounds-"+serial,"x",Math.round(point[0]),"y",Math.round(point[1]),"nativeMatrix",true));
+    });
+  }
+  void readingBoundsInput(long serial,long deadline){
+    if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
+      if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));NativeGeometry geometry=NativeGeometry.read((FixtureView)session.web);JSONObject input=value.optJSONArray("blocks")==null?null:value.optJSONArray("blocks").optJSONObject(2);
+      if(geometry!=null&&geometry.imeVisible&&geometry.imeBottom>0&&readingFits(value)&&value.optString("draft").contains("native-input-ok")&&"composer".equals(value.optString("focused"))&&input!=null&&input.optDouble("top")>=-1&&input.optDouble("bottom")<=value.optDouble("visualHeight")+1){event("readingBoundsInput",J.obj("measurement",value,"imeVisible",true,"imeBottom",geometry.imeBottom,"sameDocument",value.optDouble("document")==readingBoundsFitResult.optDouble("document"),"sameCookie",value.optString("cookie").equals(readingBoundsFitResult.optString("cookie")),"draftPreserved",insertedInputPreserves(readingBoundsFitResult.optString("draft"),value.optString("draft"))));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","fit composer did not stay inside the real IME viewport","measurement",value,"geometry",geometry==null?JSONObject.NULL:geometry.json()));return;}session.handler.postDelayed(()->readingBoundsInput(serial,deadline),100);
+    });
+  }
+  void readingBoundsEnd(long serial,long deadline){
+    if(serial!=run)return;boolean restored=session.web.privacyReady&&session.web.protectionLevel==readingBoundsCase.privacy&&session.privacy.level()==readingBoundsCase.privacy;
+    if(restored){event("readingBoundsEnd",J.obj("productionDelegateRestored",session.web.current.getCompositorScrollDelegate()==readingBoundsCase.priorDelegate,"privacyRestored",true,"privacyLevel",session.privacy.level()));return;}
+    if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","reading bounds did not restore the original privacy configuration"));return;}session.handler.postDelayed(()->readingBoundsEnd(serial,deadline),100);
   }
   static java.lang.reflect.Field field(Object object,String name)throws ReflectiveOperationException{Class<?> type=object.getClass();while(type!=null){try{java.lang.reflect.Field found=type.getDeclaredField(name);found.setAccessible(true);return found;}catch(NoSuchFieldException missing){type=type.getSuperclass();}}throw new NoSuchFieldException(name);}
   static long number(Object object,String name)throws ReflectiveOperationException{Object value=field(object,name).get(object);return value instanceof java.util.concurrent.atomic.AtomicLong?((java.util.concurrent.atomic.AtomicLong)value).get():((Number)value).longValue();}

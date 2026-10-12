@@ -2,6 +2,7 @@ package local.pocketchat;
 
 import android.content.*;
 import android.graphics.Rect;
+import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.*;
 import android.view.*;
@@ -61,6 +62,7 @@ class GeckoWebView extends FrameLayout {
   final Runnable recovery=()->recoverClosed();
   final Runnable checkpoint=this::saveCheckpoint;
   final int[] surfaceOrigin=new int[2];
+  final Matrix readingMatrix=new Matrix();final float[] readingValues=new float[9];
   private View originView;private GeckoSession originSession;
   private boolean originKnown;private int originX,originY,insetTop,insetRight,insetBottom,insetLeft;
   boolean nativePerfEnabled;long surfaceOriginChecks,surfaceOriginSyncs;
@@ -173,6 +175,15 @@ class GeckoWebView extends FrameLayout {
       .userAgentMode(desktop?GeckoSessionSettings.USER_AGENT_MODE_DESKTOP:GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
       .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE).build());
     locations.put(session,"");backStates.put(session,false);
+    session.setCompositorScrollDelegate(new GeckoSession.CompositorScrollDelegate(){
+      @Override public void onScrollChanged(GeckoSession source,GeckoSession.ScrollPositionUpdate update){
+        if(destroyed||!locations.containsKey(source)||!Float.isFinite(update.zoom)||update.zoom<=0)return;
+        Float measured=pageScales.get(source);boolean first=measured==null;
+        if(!first&&Math.abs(measured-update.zoom)<.00001f)return;
+        pageScales.put(source,update.zoom);
+        if(source==current){float previous=scale;scale=update.zoom*readingLayout;if(client!=null&&Math.abs(scale-previous)>.0001f)client.onScaleChanged(null,previous,scale);if(first)owner.reading.nativeScaleMeasured();}
+      }
+    });
     session.getWebExtensionController().setMessageDelegate(extension,pageMessages,"pocketpage");
     session.setNavigationDelegate(new GeckoSession.NavigationDelegate(){
       @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession s,LoadRequest request){
@@ -258,10 +269,11 @@ class GeckoWebView extends FrameLayout {
           if(!(message instanceof JSONObject)||incoming!=ports.get(source))return;
           JSONObject data=(JSONObject)message;String kind=data.optString("kind");
           if("scale".equals(kind)){
-            float next=(float)data.optDouble("value",0),width=(float)data.optDouble("width",0);
-            if(Float.isFinite(next)&&next>0)pageScales.put(source,next);
+            // Page DPR can be masked by Firefox privacy protection. Only the
+            // compositor's CSS-to-surface ratio may drive native zoom.
+            float width=(float)data.optDouble("width",0);
             if(Float.isFinite(width)&&width>0)viewportWidths.put(source,width);
-            if(source==current&&Float.isFinite(next)&&next>0){float old=scale;scale=next*readingLayout;owner.reading.viewportMeasured(width*readingLayout);if(client!=null)client.onScaleChanged(null,old,scale);}return;
+            if(source==current){getScale();owner.reading.viewportMeasured(width*readingLayout);}return;
           }
           if(source!=current)return;
           if("documentReady".equals(kind)&&data.optString("url").equals(getUrl())&&!crashed.contains(source)){
@@ -385,7 +397,31 @@ class GeckoWebView extends FrameLayout {
   public void resumeTimers(){}
   public boolean canGoBack(){return canBack||!popups.isEmpty();}
   public void goBack(){if(canBack&&current!=null)current.goBack();else closePopup();}
-  public float getScale(){return scale;}
+  public float getScale(){
+    if(current!=null&&current.isOpen()&&pageScales.containsKey(current)){
+      current.getClientToSurfaceMatrix(readingMatrix);readingMatrix.getValues(readingValues);
+      float value=readingValues[Matrix.MSCALE_X];
+      if(Float.isFinite(value)&&value>0){pageScales.put(current,value);scale=value*readingLayout;}
+    }
+    return scale;
+  }
+  boolean readingScaleMeasured(){return current!=null&&pageScales.containsKey(current);}
+  boolean readingZoomActive(){return zoomTarget!=null;}
+  float readingScrollY(){
+    if(destroyed||failed||current==null||!current.isOpen()||!readingScaleMeasured())return Float.NaN;
+    current.getClientToSurfaceMatrix(readingMatrix);readingMatrix.getValues(readingValues);
+    float zoom=readingValues[Matrix.MSCALE_X],clientTop=readingValues[Matrix.MTRANS_Y];
+    if(!Float.isFinite(zoom)||zoom<=0)return Float.NaN;
+    current.getPageToSurfaceMatrix(readingMatrix);readingMatrix.getValues(readingValues);
+    return (clientTop-readingValues[Matrix.MTRANS_Y])/zoom;
+  }
+  void alignReadingLeft(float savedY){
+    if(destroyed||failed||current==null||!current.isOpen()||surface==null)return;
+    float y=Float.isFinite(savedY)?savedY:readingScrollY();if(!Float.isFinite(y))return;
+    // This public API scrolls Gecko's visual viewport, including APZ offsets.
+    // Retain the current reading position rather than returning to page top.
+    current.getPanZoomController().scrollTo(ScreenLength.zero(),ScreenLength.fromPixels(Math.max(0,y)),PanZoomController.SCROLL_BEHAVIOR_AUTO);
+  }
   boolean requiresViewportMeasurement(){return true;}
   public void setInitialScale(int percent){}
   boolean setReadingLayout(float choice){

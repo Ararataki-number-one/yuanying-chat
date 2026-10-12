@@ -25,6 +25,67 @@ UPDATE_CHECKS = {
 }
 
 
+def verify_reading_bounds(report):
+    """Check measured native geometry, never substitute page-visible DPR."""
+    assert report['schema'] == 1 and report['productionDelegateRestored'] is True and report['privacyRestored'] is True
+    cases = report['cases']
+    assert len(cases) == 2 and [item['privacyLevel'] for item in cases] == [0, 2]
+
+    def fit(value):
+        assert value['nativeWidth'] > 0 and value['viewport'] > 0 and value['matrixScale'] > 0
+        assert abs(value['matrixScale'] - value['matrixScaleY']) < .001
+        assert abs(value['nativeWidth'] - value['matrixScale'] * value['layout'] * value['viewport']) < 6
+        assert abs(value['choice'] - 1) < .001 and abs(value['scale'] - 1) < .02
+        assert all(abs(value[key]) <= 1 for key in ('nativeScrollX', 'scrollX', 'pageLeft', 'offsetLeft'))
+        assert value['scrollWidth'] <= value['viewport'] + 1
+        assert len(value['blocks']) == 3
+        for block in value['blocks']:
+            assert value['offsetLeft'] - 1 <= block['left'] < block['right'] <= value['offsetLeft'] + value['visualWidth'] + 1
+        assert value['sends'] == 0 and value['nativeUpdates'] > 0
+
+    for case in cases:
+        assert all(case[key] is True for key in ('actualGeckoExecution', 'protectionAcknowledged', 'fitUsedProductionController'))
+        assert case['fingerprintingProtected'] is (case['privacyLevel'] == 2)
+        assert case['stableSamples'] >= 5 and case['stableMillis'] >= 500
+        before, pan, after = (case[key] for key in ('before', 'pan', 'after'))
+        assert all(value['privacyLevel'] == case['privacyLevel'] and value['fingerprintingProtected'] is case['fingerprintingProtected']
+                   for value in (before, pan, after))
+        assert abs(before['choice'] - 4.2) < .001
+        assert abs(before['matrixScale'] * before['layout'] * before['viewport'] / before['nativeWidth'] - 4.2) < .05
+        assert pan['nativeScrollX'] > 32 and pan['pageLeft'] > 32 and pan['nativeScrollY'] > 200
+        assert abs(after['nativeScrollY'] - pan['nativeScrollY']) <= 1
+        assert 'readingBounds=controlled-fixture' in before['cookie']
+        for key in ('document', 'draft', 'cookie', 'bodyHash', 'sessionIdentity', 'surfaceIdentity', 'activityIdentity'):
+            assert len({value[key] for value in (before, pan, after)}) == 1, key
+        assert after['draft'] == 'Unsent draft stays here'
+        assert after['codeScrollWidth'] > after['codeWidth'] and after['codeLeft'] > 0
+        fit(after)
+    reference = cases[-1]['after']
+    assert [item['phase'] for item in report['rotation']] == ['landscape', 'portrait']
+    for item in report['rotation']:
+        value, geometry = item['measurement'], item['geometry']
+        assert value['privacyLevel'] == 2 and value['fingerprintingProtected'] is True
+        fit(value)
+        for key in ('document', 'draft', 'cookie', 'bodyHash', 'sessionIdentity', 'surfaceIdentity', 'activityIdentity'):
+            assert value[key] == reference[key], key
+        assert geometry['statusBarsVisible'] and geometry['navigationBarsVisible'] and not geometry['imeVisible']
+        assert (geometry['webWidth'] > geometry['webHeight']) is (item['phase'] == 'landscape')
+    keyboard = report['input']
+    assert keyboard['imeVisible'] and keyboard['imeBottom'] > 0
+    assert all(keyboard[key] is True for key in ('sameDocument', 'sameCookie', 'draftPreserved'))
+    value = keyboard['measurement']
+    assert value['privacyLevel'] == 2 and value['fingerprintingProtected'] is True
+    fit(value)
+    assert value['focused'] == 'composer' and 'native-input-ok' in value['draft']
+    composer = value['blocks'][2]
+    assert composer['top'] >= -1 and composer['bottom'] <= value['visualHeight'] + 1
+    assert value['document'] == reference['document'] and value['cookie'] == reference['cookie']
+    assert value['bodyHash'] == reference['bodyHash'] and value['sessionIdentity'] == reference['sessionIdentity']
+    assert value['surfaceIdentity'] == reference['surfaceIdentity'] and value['activityIdentity'] == reference['activityIdentity']
+    assert value['draft'].replace('native-input-ok', '', 1) == reference['draft']
+    return {'nativeFitCases': len(cases), 'actualRotationCases': len(report['rotation']), 'actualImeFit': True}
+
+
 def verify_interaction_transfer_evidence(directory, source):
     directory = pathlib.Path(directory)
 
@@ -124,6 +185,18 @@ def verify_interaction_transfer_evidence(directory, source):
     reading_ready = device['readingZoomReadiness']
     assert reading_ready['activityResumed'] and not reading_ready['browserPaused']
     assert reading_ready['stableFrames'] >= 8 and reading_ready['stableMillis'] >= 1000
+    native_fit = None
+    manifest_path = directory / 'manifest.json'
+    if not manifest_path.is_file():
+        manifest_path = directory / 'release-manifest.json'
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest['sourceCommit'] == source
+        assert isinstance(manifest['versionCode'], int) and manifest['versionCode'] > 0
+        if manifest['versionCode'] >= 48:
+            assert 'nativeReadingBounds' in device, 'This release requires native fit, privacy, rotation and IME bounds evidence.'
+    if 'nativeReadingBounds' in device:
+        native_fit = verify_reading_bounds(device['nativeReadingBounds'])
     held_cancel = device['appUpdates']['cancelDuringQuery']
     assert all(held_cancel[key] for key in ('actualSystemQuery', 'queryHeldAfterReturn',
                                           'queryReturnedAfterCancel', 'productionProviderCancel',
@@ -192,12 +265,15 @@ def verify_interaction_transfer_evidence(directory, source):
     assert telemetry['idleSampleRequests'] > 0 and telemetry['recoveryExitRequests'] == 1
     assert telemetry['webSocketConnections'] == 1 and telemetry['webSocketEchoes'] > 0
     detector_transport = verify_detector_transport_evidence(network)
-    return {'actualAndroidExecution': True, 'actualHttpTransfer': True,
+    result = {'actualAndroidExecution': True, 'actualHttpTransfer': True,
             'updateChecks': len(update['checks']), 'httpHostChecks': host['total'],
             'interactionHostChecks': interaction['total'],
             'nativeMainSerializations': checkpoint['mainSerialized'],
             'surfaceOriginSyncs': surface['originSyncs'], 'networkChecks': len(network['checks']),
             'detectorTransport': detector_transport}
+    if native_fit is not None:
+        result['nativeReadingFitRegression'] = native_fit
+    return result
 
 
 if __name__ == '__main__':

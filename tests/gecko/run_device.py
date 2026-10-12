@@ -143,8 +143,8 @@ class Fixture(fixture.Fixture):
             body=b'<!doctype html><meta charset="utf-8"><h1>Visible before slow resource</h1><img src="/slow-resource">'
         elif address.path=='/browser-reading':
             body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-            <title>Controlled responsive reading fixture</title><style>body{margin:0;font:18px sans-serif}main{padding:16px;box-sizing:border-box}#sidebar{width:260px;float:left}textarea{width:100%;box-sizing:border-box;font:inherit}pre{overflow:auto}@media(max-width:760px){#sidebar{display:none}}</style>
-            <aside id="sidebar">Controlled sidebar</aside><main><h1>Controlled readable content</h1><p>This fixture checks native viewport settings; it does not replace ChatGPT.</p><pre>Long code remains horizontally scrollable.........................................................................................</pre><textarea id="composer">Unsent draft stays here</textarea></main>'''
+            <title>Controlled responsive reading fixture</title><style>body{margin:0;font:18px sans-serif}main{padding:16px;box-sizing:border-box}#sidebar{width:260px;float:left}textarea{width:100%;height:72px;box-sizing:border-box;font:inherit}pre{overflow:auto}@media(max-width:760px){#sidebar{display:none}}</style>
+            <aside id="sidebar">Controlled sidebar</aside><main id="reading-main"><h1>Controlled readable content</h1><p id="reading-paragraph">This fixture checks native viewport settings; it does not replace ChatGPT. Both left and right edges must remain readable at fit.</p><pre id="reading-code">Long code remains horizontally scrollable.........................................................................................</pre><textarea id="composer">Unsent draft stays here</textarea><div id="reading-long"></div></main><script>window.readingSends=0;document.cookie='readingBounds=controlled-fixture; Path=/';if(new URL(location.href).searchParams.has('bounds'))for(let i=0;i<50;i++){const p=document.createElement('p');p.textContent='Controlled long reply paragraph '+i+' remains readable across fit, rotation and Android keyboard changes.';document.getElementById('reading-long').appendChild(p);}</script>'''
         elif address.path=='/browser-session':
             token='none'
             for cookie in self.headers.get('Cookie','').split(';'):
@@ -193,10 +193,10 @@ def main():
     has_pixel_launcher=launcher in adb('shell','pm','list','packages',launcher)
     if diagnostic and has_pixel_launcher:adb('shell','am','force-stop',launcher) # First-boot workaround only once for a diagnostic subset.
     steps=[];logs=[];update_report=None;surface_gestures={}
-    def run(context,action,kind='fixture'):
+    def run(context,action,kind='fixture',extra=()):
         adb('logcat','-c')
         tapped=set()
-        reading_events=set();reading_trace=[];reading_lifecycle=[];reading_geometry=[];reading_readiness=None
+        reading_events=set();reading_trace=[];reading_lifecycle=[];reading_geometry=[];reading_readiness=None;bounds_before=None;bounds_pan=None
         surface_gestures[(context,action)]=[]
         activity='GeckoIntegrationTestActivity' if context==1 else 'ProfileGeckoIntegrationActivity1'
         # This emulator image's Pixel Launcher can ANR during first-boot package
@@ -206,8 +206,8 @@ def main():
         # Killing the Launcher again during stationary geometry measurement
         # makes Android recreate its taskbar/navigation mode and resize the
         # already visible browser. Keep the first-boot workaround elsewhere.
-        if has_pixel_launcher and action not in {'reading','readingZoom','readingInput','nativeSurface','nativeCheckpoint'}:adb('shell','am','force-stop',launcher)
-        adb('shell','am','start','-W','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action)
+        if has_pixel_launcher and action not in {'reading','readingZoom','readingInput','readingBounds','readingBoundsProtected','readingBoundsGeometry','readingBoundsInput','readingBoundsEnd','nativeSurface','nativeCheckpoint'}:adb('shell','am','force-stop',launcher)
+        adb('shell','am','start','-W','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action,*extra)
         deadline=time.monotonic()+120
         while time.monotonic()<deadline:
             output=adb('logcat','-d','-s','PocketGeckoIntegration:I','*:S')
@@ -216,6 +216,10 @@ def main():
                 try:event=json.loads(line[line.index('{'):])
                 except json.JSONDecodeError:continue
                 if event.get('nativeContext')!=f'environment-{context}':continue
+                if action in {'readingBounds','readingBoundsProtected'} and event.get('kind') in {'readingBoundsBefore','readingBoundsPan'}:
+                    if event['kind']=='readingBoundsBefore':bounds_before=event['result']
+                    else:bounds_pan=event['result']
+                    continue
                 if action=='readingZoom' and event.get('kind') in {'readingZoomTrace','readingZoomLifecycle','readingZoomGeometry','readingZoomReadiness'}:
                     identity=json.dumps(event,sort_keys=True,separators=(',',':'))
                     if identity not in reading_events:
@@ -260,6 +264,9 @@ def main():
                     assert 'error' not in result,event
                     if kind=='fixture' and (result.get('context')!=str(context) or result.get('action')!=action):continue
                     if action=='readingZoom':result.update(trace=reading_trace,lifecycle=reading_lifecycle,geometryTransitions=reading_geometry,readiness=reading_readiness)
+                    if action in {'readingBounds','readingBoundsProtected'}:
+                        assert bounds_before is not None and bounds_pan is not None,event
+                        result.update(before=bounds_before,pan=bounds_pan)
                     logs.append(output);steps.append(event);print(json.dumps(event),flush=True)
                     assert 'error' not in result,result
                     return result
@@ -430,9 +437,48 @@ def main():
         (OUT/'reading-shrunk-80.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         typed=run(1,'readingInput','readingInput');assert typed['focused']=='composer' and 'native-input-ok' in typed['draft'] and abs(typed['choice']-.8)<.02,typed
         report['scaledReadingInput']=typed;adb('shell','input','keyevent','KEYCODE_BACK')
+        cases=[]
+        for action,level in [('readingBounds',0),('readingBoundsProtected',2)]:
+            result=run(1,action,'readingBounds');assert result['schema']==1 and result['privacyLevel']==level and result['actualGeckoExecution'] and result['protectionAcknowledged'] and result['fitUsedProductionController'],result
+            before,pan,after=(result[key] for key in ('before','pan','after'))
+            assert abs(before['choice']-4.2)<.001 and abs(before['matrixScale']*before['layout']*before['viewport']/before['nativeWidth']-4.2)<.05,before
+            assert pan['nativeScrollX']>32 and pan['pageLeft']>32 and pan['nativeScrollY']>200,pan
+            assert abs(after['nativeScrollY']-pan['nativeScrollY'])<=1 and result['stableSamples']>=5 and result['stableMillis']>=500,result
+            assert after['codeScrollWidth']>after['codeWidth'] and after['codeLeft']>0,after
+            assert result['fingerprintingProtected']==(level==2),result
+            assert len({item['document'] for item in (before,pan,after)})==1 and len({item['sessionIdentity'] for item in (before,pan,after)})==1 and len({item['surfaceIdentity'] for item in (before,pan,after)})==1,result
+            assert all(item['draft']=='Unsent draft stays here' and item['cookie']==before['cookie'] and item['bodyHash']==before['bodyHash'] and item['sends']==0 for item in (pan,after)),result
+            assert 'readingBounds=controlled-fixture' in before['cookie'],before
+            cases.append(result)
+            (OUT/f'reading-fit-privacy-{level}.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+        report['nativeReadingBounds']=dict(schema=1,cases=cases)
+        prior_accelerometer=adb('shell','settings','get','system','accelerometer_rotation').strip();prior_rotation=adb('shell','settings','get','system','user_rotation').strip()
+        try:
+            adb('shell','settings','put','system','accelerometer_rotation','0')
+            geometry=[]
+            for phase,rotation in [('landscape','1'),('portrait','0')]:
+                adb('shell','settings','put','system','user_rotation',rotation)
+                value=run(1,'readingBoundsGeometry','readingBoundsGeometry',('--es','geometryPhase',phase));geometry.append(value)
+                assert value['phase']==phase and value['measurement']['document']==cases[-1]['after']['document'] and value['measurement']['activityIdentity']==cases[-1]['after']['activityIdentity'],value
+                (OUT/f'reading-fit-{phase}.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+            report['nativeReadingBounds']['rotation']=geometry
+            input_result=run(1,'readingBoundsInput','readingBoundsInput');assert input_result['imeVisible'] and input_result['imeBottom']>0 and all(input_result[key] for key in ('sameDocument','sameCookie','draftPreserved')),input_result
+            report['nativeReadingBounds']['input']=input_result
+            (OUT/'reading-fit-keyboard.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+            adb('shell','input','keyevent','KEYCODE_BACK');ended=run(1,'readingBoundsEnd','readingBoundsEnd');assert ended['productionDelegateRestored'] and ended['privacyRestored'],ended
+            report['nativeReadingBounds']['productionDelegateRestored']=True
+            report['nativeReadingBounds']['privacyRestored']=True
+        finally:
+            for key,value in [('user_rotation',prior_rotation),('accelerometer_rotation',prior_accelerometer)]:
+                if value=='null':adb('shell','settings','delete','system',key)
+                else:adb('shell','settings','put','system',key,value)
+        # The completed new cases retain their own same-document evidence.
+        # Return to the original short fixture for its independent stationary
+        # surface benchmark; its three swipes must not move the composer away.
+        run(1,'reading','reading')
     try:
         if args.reading_only:
-            reading_checks();report.update(status='passed',checkCount=9,scope='Diagnostic subset only: four responsive widths, four exact zoom choices and one actual Android input. Not full release evidence.');return
+            reading_checks();report.update(status='passed',checkCount=14,scope='Diagnostic subset only: four responsive widths, four exact zoom choices, actual Android input, two native fit cases, two actual rotations and an IME fit case. Not full release evidence.');return
         if args.update_transfers_only:
             update_transfers();report.update(status='passed',scope='Diagnostic subset only: all 28 real transfer checks. Not full release evidence.');return
         usability=run(1,'usability','usability');assert usability['documentPreserved'] and usability['mobileVisible'] and usability['upload']=='sample.txt:synthetic-upload' and usability['csv']=='name,value\nsynthetic,42\n' and usability['blob']==usability['csv'],usability

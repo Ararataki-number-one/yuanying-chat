@@ -52,6 +52,17 @@ public final class BrowserReadingHostTest {
     check("Migration retains the earlier setting for rollback",legacy.getFloat(BrowserReadingPolicy.LEGACY_ZOOM_KEY,0)==4&&legacy.contains(BrowserReadingPolicy.ZOOM_KEY));
     legacy.putFloat(BrowserReadingPolicy.LEGACY_ZOOM_KEY,8);check("Legacy conversion runs only once",near(migrated.choice(),4f*1080/(1024*3)));
     check("Old whole-desktop fit becomes readable natural fit",BrowserReadingPolicy.migrate(1080,3,1)==1);
+    ChatSession fitSession=new ChatSession(new ChatSession.Prefs());BrowserReading fitted=make(fitSession);fitted.choose(4.2f);fitSession.handler.drain();
+    check("Stored large reading choices still restore intentionally",near(fitted.choice(),4.2f)&&near(fitSession.web.scale,12.6f));
+    int priorAligned=fitSession.web.alignCalls;fitSession.web.scrollY=320;fitted.fit();fitSession.handler.drain();check("The controlled compositor changes vertical position during pinch",fitSession.web.scrollY!=320);fitSession.handler.drain();
+    check("Explicit fit stores one hundred percent and aligns the same surface once",fitted.choice()==1&&near(fitSession.web.scale,3)&&fitSession.web.alignCalls==priorAligned+1);
+    check("Fit restores the vertical position captured before shrinking",fitSession.web.scrollY==320&&fitSession.web.lastAlignedY==320);
+    int beforeZoom=fitSession.web.zoomCalls;fitSession.web.nativeZoomActive=true;fitted.choose(1.5f);fitSession.handler.drain();
+    check("An in flight programmatic pinch does not start an overlapping pinch",fitSession.web.zoomCalls==beforeZoom&&fitted.restoreAttempts==0);
+    fitSession.web.nativeZoomActive=false;fitSession.handler.drain();check("The saved choice applies after its native pinch finishes",fitSession.web.zoomCalls==beforeZoom+1&&near(fitSession.web.scale,4.5f));
+    ChatSession nativeLate=new ChatSession(new ChatSession.Prefs());nativeLate.web.nativeMeasured=false;BrowserReading waitingNative=make(nativeLate);waitingNative.choose(1.5f);nativeLate.handler.drain();
+    check("A page supplied DPR cannot substitute for missing native compositor metrics",nativeLate.web.zoomCalls==0);
+    nativeLate.web.nativeMeasured=true;waitingNative.nativeScaleMeasured();nativeLate.handler.drain();check("A native compositor update unlocks restoration without replacing the browser",near(nativeLate.web.scale,4.5f)&&waitingNative.choice()==1.5f);
     if(args.length>0)Files.write(Paths.get(args[0]),BrowserReadingPolicy.focusScript().getBytes(StandardCharsets.UTF_8));
     StringBuilder out=new StringBuilder("{\"passed\":"+checks.size()+",\"total\":"+checks.size()+",\"scope\":\"Production controller with host doubles; no Android renderer\",\"checks\":[");for(int i=0;i<checks.size();i++){if(i>0)out.append(',');out.append("{\"name\":\"").append(checks.get(i)).append("\",\"pass\":true}");}System.out.println(out.append("]}"));
   }

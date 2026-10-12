@@ -10,6 +10,6 @@ final class BrowserReadingUi {
     Button minus=ReferenceUi.button(a,"−",false,()->{reading.choose(reading.choice()-.1f);refresh.run();});minus.setContentDescription("缩小网页");row.addView(minus,new LinearLayout.LayoutParams(a.dp(56),a.dp(48)));
     row.addView(amount,new LinearLayout.LayoutParams(0,a.dp(48),1));Button plus=ReferenceUi.button(a,"+",false,()->{reading.choose(reading.choice()+.1f);refresh.run();});plus.setContentDescription("放大网页");row.addView(plus,new LinearLayout.LayoutParams(a.dp(56),a.dp(48)));d.body.addView(row);refresh.run();
     d.note("可缩小至 60%，显示更多内容；100% 按手机宽度正常显示。双指可继续放大阅读。\n会记住当前环境的选择，不会重新加载网页。");
-    d.buttons("适应屏幕",()->{reading.choose(1);refresh.run();},"完成",d::dismiss);d.show();
+    d.buttons("适应屏幕",()->{reading.fit();refresh.run();},"完成",d::dismiss);d.show();
   }
 }
