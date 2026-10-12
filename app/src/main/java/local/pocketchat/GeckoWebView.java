@@ -54,7 +54,7 @@ class GeckoWebView extends FrameLayout {
   final Set<GeckoSession> usable=Collections.newSetFromMap(new IdentityHashMap<>());
   final Set<GeckoSession> crashed=Collections.newSetFromMap(new IdentityHashMap<>());
   final Map<GeckoSession,GeckoSession.SessionState> states=new IdentityHashMap<>();
-  final BrowserSessionStore sessionStore;
+  final BrowserSessionStore sessionStore;final NetworkPoolIdentity connectionPool=new NetworkPoolIdentity();
   final ExecutorService uploadWorker=Executors.newSingleThreadExecutor();
   final List<GeckoUploadFiles.Selection> uploadFiles=new ArrayList<>();
   GeckoSession.SessionState startupState;
@@ -139,14 +139,29 @@ class GeckoWebView extends FrameLayout {
   JSONObject blocked(){return J.obj("type","socks","host","127.0.0.1","port",9,"proxyDNS",true,"failoverTimeout",1);}
   JSONObject route(String target){
     if(destroyed||!enabled||owner.guard==null||!owner.guard.allowed()||!allowedUrl(target.startsWith("wss://")?"https"+target.substring(3):target.startsWith("ws://")?"http"+target.substring(2):target))return blocked();
-    String proxy=owner.internalNetwork()?NativeNetwork.get(owner.context).proxy():owner.prefs.getString("proxy","").trim();
+    if(owner.internalNetwork()){
+      NativeNetwork n=NativeNetwork.get(owner.context);NativeNetwork.ExitRouteReceipt receipt=n.verifiedRoute;String pool=internalPoolKey(n);
+      if(pool==null||receipt==null||receipt!=n.verifiedRoute||!n.ready||n.starting||n.recoveryBlocked||n.transport==null||!receipt.matches(n,n.transport.state))return blocked();
+      return J.obj("type","http","host","127.0.0.1","port",receipt.proxy,"failoverTimeout",1,"connectionIsolationKey",pool);
+    }
+    String proxy=owner.prefs.getString("proxy","").trim();
     if(proxy.isEmpty())return J.obj("type","direct");
     if(!MainActivity.validProxy(proxy))return blocked();
     Uri address=Uri.parse(proxy);String scheme=address.getScheme();
-    JSONObject result=J.obj("type","socks".equals(scheme)?"socks":scheme,"host",address.getHost(),"port",address.getPort(),
-      "failoverTimeout",1,"connectionIsolationKey","environment-"+Profiles.slot(owner.context)+"-"+owner.connectionEpoch);
+    String pool="environment-"+Profiles.slot(owner.context)+"-"+owner.connectionEpoch;
+    JSONObject result=J.obj("type","socks".equals(scheme)?"socks":scheme,"host",address.getHost(),"port",address.getPort(),"failoverTimeout",1,"connectionIsolationKey",pool);
     if("socks".equals(scheme))try{result.put("proxyDNS",true);}catch(Exception ignored){}
     return result;
+  }
+  String internalPoolKey(NativeNetwork n){
+    NativeNetwork.ExitRouteReceipt receipt=n.verifiedRoute;JSONObject state=n.transport==null?null:n.transport.state;
+    // Only the already verified, currently pushed service lifetime is admitted.
+    // This path neither waits for service IPC nor opens a diagnostic connection.
+    if(!n.ready||n.starting||n.recoveryBlocked||receipt==null||state==null||!receipt.matches(n,state))return connectionPool.key(null,owner.browserDefaultNetwork.snapshot());
+    NetworkPoolIdentity.Route route=new NetworkPoolIdentity.Route(Profiles.slot(owner.context),receipt.generation,receipt.pid,receipt.servicePid,receipt.configuration,receipt.entry,receipt.fingerprint,receipt.serial,receipt.controller,receipt.proxy,receipt.token);
+    String pool=connectionPool.key(route,owner.browserDefaultNetwork.snapshot());
+    if(n.verifiedRoute!=receipt||!n.ready||n.starting||n.recoveryBlocked||!receipt.matches(n,n.transport.state))return connectionPool.key(null,owner.browserDefaultNetwork.snapshot());
+    return pool;
   }
   private void open(){
     if(!enabled||destroyed)return;

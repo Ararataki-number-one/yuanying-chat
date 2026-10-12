@@ -21,7 +21,33 @@ class NativeNetwork {
   final NetworkTransportClient transport;final RouteQuality quality,websiteQuality;final NetworkDns dns;volatile JSONObject websiteResult=new JSONObject();volatile int webProbePort;int scanCursor;volatile String activeDns="";final TrafficMonitor traffic;volatile boolean measuringLatency=false;volatile long lastManualProbe=-5000;final File root;volatile boolean ready=false,starting=false;volatile String message="未连接",currentEntry="",exitIp="",observedExitIp="";volatile JSONArray results=new JSONArray();
   volatile boolean recoveryBlocked=false;boolean restartQueued=false;final List<Callback> startWaiters=new ArrayList<>();volatile long lastVerified=0,lastObserved=0;
   java.lang.Process process;JSONObject settings;volatile int controllerPort,proxyPort;int failures;volatile String token="";String fingerprint="";List<String> names=new ArrayList<>();long lastScan=0;int totalEntries=0;volatile long startupDuration=0;volatile String startupPath="";volatile long startupBeganAt=0,coreDuration=0,providerDuration=0,exitCheckDuration=0;volatile boolean startupCached=false;
-  static final String MEASUREMENT_PROFILE="unified-delay-v1";volatile long lastProbeDuration=0,lastProbeDurationAt=0;volatile String lastProbeEntry="";
+  static final String MEASUREMENT_PROFILE="unified-delay-trace-v2";volatile long lastProbeDuration=0,lastProbeDurationAt=0;volatile String lastProbeEntry="";
+  final java.util.concurrent.atomic.AtomicLong probeSequence=new java.util.concurrent.atomic.AtomicLong();final ThreadLocal<ProbeTicket> probeTicket=new ThreadLocal<>();volatile ProbeResult currentProbe;
+  static final class ProbeTicket {final LatencyProbePolicy.Binding binding;LatencyProbePolicy.Trace trace;long duration;ProbeTicket(LatencyProbePolicy.Binding binding){this.binding=binding;}}
+  static final class ProbeResult {
+    final LatencyProbePolicy.Binding binding;final int delay;final long at,duration;final LatencyProbePolicy.Trace trace;
+    ProbeResult(LatencyProbePolicy.Binding binding,int delay,long at,long duration,LatencyProbePolicy.Trace trace){this.binding=binding;this.delay=delay;this.at=at;this.duration=duration;this.trace=trace;}
+    String kind(){return trace==null?"unknown":trace.kind;}
+    JSONObject publicSummary(){return J.obj("schema",1,"measurement",binding.measurement,"routeSerial",binding.route,"at",at,"delay",delay,"kind",kind(),"comparable",trace!=null&&trace.comparable(),"probe",trace==null?new JSONObject():new JSONObject(trace.values()));}
+  }
+  ProbeResult probeMeasured(String proxy,String exactEntry){
+    LatencyProbePolicy.Binding binding=new LatencyProbePolicy.Binding(proxy,exactEntry,token,routeSerial,probeSequence.incrementAndGet(),controllerPort);ProbeTicket ticket=new ProbeTicket(binding);probeTicket.set(ticket);
+    try{int delay=probe(proxy);if(!binding.matches(token,routeSerial,controllerPort,currentEntry)||Thread.currentThread().isInterrupted())delay=-1;return new ProbeResult(binding,delay,System.currentTimeMillis(),ticket.duration,delay>0?ticket.trace:null);}finally{probeTicket.remove();}
+  }
+  static LatencyProbePolicy.Trace probeTrace(JSONObject value,int delay){
+    if(value==null)return null;Map<String,Object> safe=new LinkedHashMap<>();for(String key:LatencyProbePolicy.FIELDS)if(value.has(key))safe.put(key,value.opt(key));return LatencyProbePolicy.parse(safe,delay);
+  }
+  boolean probeCurrent(ProbeResult result){return result!=null&&result.binding.matches(token,routeSerial,controllerPort,currentEntry);}
+  synchronized void publishCurrentProbe(ProbeResult result){
+    if(!probeCurrent(result)||!result.binding.current||currentProbe!=null&&currentProbe.binding.measurement>result.binding.measurement)return;
+    currentProbe=result;latencyReading=J.obj("entry",result.binding.entry,"generation",result.binding.epoch,"routeSerial",result.binding.route,"measurement",result.binding.measurement,"at",result.at,"delay",result.delay,"kind",result.kind(),"probe",result.trace==null?new JSONObject():new JSONObject(result.trace.values()));
+    lastProbeEntry=result.binding.entry;lastProbeDuration=result.duration;lastProbeDurationAt=result.at;
+  }
+  private String probeRouteEpoch="",cachedProbeRoute="";private long probeRouteSerial=-1;private int probeRouteController=-1;
+  synchronized String probeRouteKey(){String epoch=token;long serial=routeSerial;int controller=controllerPort;if(!epoch.equals(probeRouteEpoch)||serial!=probeRouteSerial||controller!=probeRouteController){probeRouteEpoch=epoch;probeRouteSerial=serial;probeRouteController=controller;cachedProbeRoute=hash(epoch+"|"+serial+"|"+controller);}return cachedProbeRoute;}
+  void recordProbe(ProbeResult result,long now){if(probeCurrent(result))quality.record(result.binding.entry,result.delay,now,result.kind(),result.trace==null?new JSONObject():new JSONObject(result.trace.values()),J.obj("route",hash(result.binding.epoch+"|"+result.binding.route+"|"+result.binding.controller),"measurement",result.binding.measurement,"origin",result.binding.current?"current":"candidate"));}
+  /** Already sanitized immutable values; no controller secret, URL, node or raw error. */
+  JSONObject probeSnapshot(){ProbeResult result=currentProbe;if(!probeCurrent(result)||!result.binding.current)return new JSONObject();JSONObject value=result.publicSummary();return probeCurrent(result)?value:new JSONObject();}
   volatile boolean latencyRefreshQueued;volatile JSONObject latencyReading=new JSONObject();long latencyRefreshAttempted=-60000;String latencyRefreshRoute="";
   // A detector outage can retain connections only for this exact, previously
   // verified route and core lifetime. A saved IP alone is never admission proof.
@@ -122,10 +148,10 @@ class NativeNetwork {
     }
     firstVerifiedRoute(remembered);
   }
-  static final class RouteProbe{final String name;final int delay;RouteProbe(String n,int d){name=n;delay=d;}}
+  static final class RouteProbe{final String name;final int delay;final ProbeResult sample;RouteProbe(String n,int d){name=n;delay=d;sample=null;}RouteProbe(String n,ProbeResult result){name=n;delay=result.delay;sample=result;}}
   RouteProbe startupProbe(String name,int index,String epoch){
     if(!epoch.equals(token)||Thread.currentThread().isInterrupted())return new RouteProbe(name,-1);
-    try{api("PUT","/proxies/ProbeEntry"+index,J.obj("name",name),3000);if(!epoch.equals(token)||Thread.currentThread().isInterrupted())return new RouteProbe(name,-1);return new RouteProbe(name,probe("ProbeExit"+index));}catch(Exception unavailable){return new RouteProbe(name,-1);}
+    try{api("PUT","/proxies/ProbeEntry"+index,J.obj("name",name),3000);if(!epoch.equals(token)||Thread.currentThread().isInterrupted())return new RouteProbe(name,-1);return new RouteProbe(name,probeMeasured("ProbeExit"+index,name));}catch(Exception unavailable){return new RouteProbe(name,-1);}
   }
   void firstVerifiedRoute(String rejected)throws Exception{
     report("正在寻找可用入口并核实固定出口…");
@@ -143,7 +169,7 @@ class NativeNetwork {
         if(finished==null)throw new IOException("入口检查超时，请重试；不会改为直连");
         active.remove(finished);RouteProbe r=finished.get();running--;maintenanceCheck();
         if(!epoch.equals(token))throw new IOException("网络连接已改变，请重试");
-        long now=System.currentTimeMillis();quality.record(r.name,r.delay,now);measured.put(J.obj("name",display(r.name),"internalName",r.name,"delay",r.delay));results=measured;
+        long now=System.currentTimeMillis();if(r.sample!=null)recordProbe(r.sample,now);else quality.record(r.name,r.delay,now,"unknown",new JSONObject());measured.put(J.obj("name",display(r.name),"internalName",r.name,"delay",r.delay,"probe",r.sample==null?new JSONObject():r.sample.publicSummary()));results=measured;
         if(r.delay<=0)continue;
         try{selectNow(r.name);verifyExit();startupPath="first-verified";lastScan=System.currentTimeMillis();return;}
         catch(ExitMismatch mismatch){throw mismatch;}
@@ -198,7 +224,7 @@ class NativeNetwork {
   void track(HttpURLConnection c)throws InterruptedIOException{NetworkWork work=maintenance.get();if(work!=null)work.add(c);}
   void untrack(HttpURLConnection c){NetworkWork work=maintenance.get();if(work!=null)work.remove(c);}
   boolean backgroundIdle(){ChatSession s=ChatSession.peek();return s!=null&&!s.uiVisible&&!s.browserWorkActive();}
-  long latestLatencyAt(String entry,String epoch){long at=quality.stats(entry,System.currentTimeMillis()).optLong("lastAt");JSONObject displayed=latencyReading;if(entry.equals(displayed.optString("entry"))&&epoch.equals(displayed.optString("generation")))at=Math.max(at,displayed.optLong("at"));return at;}
+  long latestLatencyAt(String entry,String epoch){long at=quality.currentSample(entry,System.currentTimeMillis(),probeRouteKey()).optLong("at");JSONObject displayed=latencyReading;if(entry.equals(displayed.optString("entry"))&&epoch.equals(displayed.optString("generation"))&&routeSerial==displayed.optLong("routeSerial"))at=Math.max(at,displayed.optLong("at"));return at;}
   static boolean freshLatency(long at,long now){return at>0&&now>=at-60000&&now-at<60000;}
   /** One current-chain sample for the UI; never scans or changes the live route. */
   synchronized void refreshLatency(){
@@ -213,7 +239,7 @@ class NativeNetwork {
       try{if(work==null||!ready||starting||!entry.equals(currentEntry)||!epoch.equals(token)||routeBusy())return;
         // Health may have measured the same route while this display request waited.
         if(freshLatency(latestLatencyAt(entry,epoch),System.currentTimeMillis()))return;
-        probed=true;int delay=probe("FixedExit");maintenanceCheck();if(ready&&!starting&&entry.equals(currentEntry)&&epoch.equals(token)){long measured=System.currentTimeMillis();latencyReading=J.obj("entry",entry,"generation",epoch,"at",measured,"delay",delay);if(delay>0)quality.record(entry,delay,measured);}}
+        probed=true;ProbeResult result=probeMeasured("FixedExit",entry);maintenanceCheck();if(ready&&!starting&&probeCurrent(result)){publishCurrentProbe(result);if(result.delay>0)recordProbe(result,result.at);}}
       catch(Exception cancelled){/* A new user operation keeps priority; no failed sample is fabricated. */}
       finally{if(work!=null)finishMaintenance(work);synchronized(this){if(!probed&&route.equals(latencyRefreshRoute)){latencyRefreshAttempted=-60000;latencyRefreshRoute="";}latencyRefreshQueued=false;}ChatSession s=ChatSession.peek();WindowNetworkState.save(context,s,this);if(s!=null)main.post(s::changed);}
     });
@@ -246,7 +272,22 @@ class NativeNetwork {
       int code=c.getResponseCode();maintenanceCheck();if(code<200||code>=300)throw new IOException("内置网络控制请求失败");try(InputStream in=c.getInputStream()){return J.parse(J.text(in,8*1024*1024));}
     }finally{untrack(c);c.disconnect();}
   }
-  int probe(String name){long began=System.currentTimeMillis(),monotonic=android.os.SystemClock.elapsedRealtime();String entry=currentEntry,epoch=token,target=probeUrl();try{int delay=api("GET","/proxies/"+URLEncoder.encode(name,"UTF-8")+"/delay?timeout=8000&expected=204&url="+URLEncoder.encode(target,"UTF-8"),null,11000).optInt("delay",-1);if(!epoch.equals(token)||Thread.currentThread().isInterrupted())return -1;long duration=android.os.SystemClock.elapsedRealtime()-monotonic;JSONObject info=api("GET","/proxies/"+URLEncoder.encode(name,"UTF-8"),null,3000).optJSONObject("extra");JSONObject p=info==null?null:info.optJSONObject(target);JSONArray history=p==null?null:p.optJSONArray("history");if(delay<=0||p==null||!p.optBoolean("alive")||history==null||history.length()==0)return -1;JSONObject latest=history.getJSONObject(history.length()-1);if(Instant.parse(latest.getString("time")).toEpochMilli()<began-1500)return -1;if(name.equals("FixedExit")&&entry.equals(currentEntry)&&epoch.equals(token)){lastProbeEntry=entry;lastProbeDuration=duration;lastProbeDurationAt=System.currentTimeMillis();}return delay;}catch(Exception e){return -1;}}
+  int probe(String name){
+    long began=System.currentTimeMillis(),monotonic=android.os.SystemClock.elapsedRealtime();String entry=currentEntry,epoch=token,target=probeUrl();long serial=routeSerial;int controller=controllerPort;ProbeTicket ticket=probeTicket.get();
+    try{
+      JSONObject response=api("GET","/proxies/"+URLEncoder.encode(name,"UTF-8")+"/delay?timeout=8000&expected=204&url="+URLEncoder.encode(target,"UTF-8"),null,11000);int delay=response.optInt("delay",-1);
+      if(!epoch.equals(token)||serial!=routeSerial||controller!=controllerPort||Thread.currentThread().isInterrupted())return -1;
+      long duration=android.os.SystemClock.elapsedRealtime()-monotonic;
+      JSONObject info=api("GET","/proxies/"+URLEncoder.encode(name,"UTF-8"),null,3000).optJSONObject("extra");JSONObject state=info==null?null:info.optJSONObject(target);JSONArray history=state==null?null:state.optJSONArray("history");
+      if(delay<=0||state==null||!state.optBoolean("alive")||history==null||history.length()==0)return -1;
+      JSONObject latest=history.getJSONObject(history.length()-1);if(Instant.parse(latest.getString("time")).toEpochMilli()<began-1500)return -1;
+      if(!epoch.equals(token)||serial!=routeSerial||controller!=controllerPort||Thread.currentThread().isInterrupted())return -1;
+      // The trace is from this exact controller response, not a matching history value.
+      if(ticket!=null&&ticket.binding.proxy.equals(name)&&ticket.binding.matches(token,routeSerial,controllerPort,currentEntry)){ticket.trace=probeTrace(response.optJSONObject("probe"),delay);ticket.duration=duration;}
+      if(name.equals("FixedExit")&&entry.equals(currentEntry)&&epoch.equals(token)){lastProbeEntry=entry;lastProbeDuration=duration;lastProbeDurationAt=System.currentTimeMillis();}
+      return delay;
+    }catch(Exception e){return -1;}
+  }
   HttpURLConnection openProbeConnection(String target,int port)throws IOException{return (HttpURLConnection)new URL(target).openConnection(new Proxy(Proxy.Type.HTTP,new InetSocketAddress("127.0.0.1",port)));}
   String probeUrl(){return PROBE;}
   String exitCheckUrl(){return "https://api.ipify.org?format=json";}
@@ -275,10 +316,10 @@ class NativeNetwork {
     maintenanceCheck();if(!background)report("正在检查线路稳定性 · "+batch.size()+" 个入口");
     JSONArray measured=new JSONArray();int good=0;final NetworkWork work=maintenance.get();
     for(int offset=0;offset<batch.size();offset+=2){
-      maintenanceCheck();List<Future<Integer>> tasks=new ArrayList<>();List<String> round=batch.subList(offset,Math.min(offset+2,batch.size()));
-      try{for(String name:round){final int index=names.indexOf(name);if(index<0)throw new IOException("入口池已变化");api("PUT","/proxies/ProbeEntry"+index,J.obj("name",name),3000);Future<Integer> task=probes.submit(()->{if(work!=null)maintenance.set(work);try{return probe("ProbeExit"+index);}finally{maintenance.remove();}});tasks.add(task);if(work!=null)work.add(task);}
-        for(int i=0;i<tasks.size();i++){int delay=tasks.get(i).get();maintenanceCheck();String name=round.get(i);long now=System.currentTimeMillis();quality.record(name,delay,now);JSONObject stats=quality.stats(name,now);measured.put(J.obj("name",display(name),"internalName",name,"delay",delay,"samples",stats.optInt("samples"),"successRate",stats.optDouble("rate"),"mean",stats.optLong("mean"),"jitter",stats.optLong("jitter"),"score",stats.optDouble("score")));if(delay>0)good++;}
-      }finally{for(Future<Integer> task:tasks)if(!task.isDone())task.cancel(true);}
+      maintenanceCheck();List<Future<ProbeResult>> tasks=new ArrayList<>();List<String> round=batch.subList(offset,Math.min(offset+2,batch.size()));
+      try{for(String name:round){final int index=names.indexOf(name);if(index<0)throw new IOException("入口池已变化");api("PUT","/proxies/ProbeEntry"+index,J.obj("name",name),3000);Future<ProbeResult> task=probes.submit(()->{if(work!=null)maintenance.set(work);try{return probeMeasured("ProbeExit"+index,name);}finally{maintenance.remove();}});tasks.add(task);if(work!=null)work.add(task);}
+        for(int i=0;i<tasks.size();i++){ProbeResult result=tasks.get(i).get();maintenanceCheck();String name=round.get(i);if(!probeCurrent(result)||!name.equals(result.binding.entry))throw new IOException("测速线路已变化");int delay=result.delay;long now=System.currentTimeMillis();recordProbe(result,now);JSONObject stats=quality.stats(name,now);measured.put(J.obj("name",display(name),"internalName",name,"delay",delay,"samples",stats.optInt("samples"),"successRate",stats.optDouble("rate"),"mean",stats.optLong("mean"),"jitter",stats.optLong("jitter"),"score",stats.optDouble("score"),"kind",result.kind(),"probe",result.publicSummary()));if(delay>0)good++;}
+      }finally{for(Future<ProbeResult> task:tasks)if(!task.isDone())task.cancel(true);}
     }
     maintenanceCheck();results=measured;lastScan=System.currentTimeMillis();if(good==0&&background)return;if(good==0)throw new IOException("本轮入口的完整代理链均不可用；不会改为直连");
     if(lowLatency()&&!force)for(String name:batch){maintenanceCheck();if(quality.stats(name,lastScan).optInt("latest")>0)measureWebsite(name);}
@@ -326,7 +367,7 @@ class NativeNetwork {
     long now=android.os.SystemClock.elapsedRealtime();if(measuringLatency||now-lastManualProbe<5000){main.post(()->cb.done(false,"请稍后再测"));return;}if(!ready||starting||!coreAlive()){main.post(()->cb.done(false,"请先恢复应用网络"));return;}
     measuringLatency=true;lastManualProbe=now;cancelMaintenance();long generation=maintenanceGeneration;
     worker.execute(()->{boolean ok=false;String text="线路暂未通过探测，可稍后再试";NetworkWork work=beginMaintenance(generation,true);
-      try{if(work==null)throw new IOException("连接已变化");if(ready&&!starting&&coreAlive()){String entry=currentEntry,epoch=token;int delay=probe("FixedExit");maintenanceCheck();if(ready&&entry.equals(currentEntry)&&epoch.equals(token)){quality.record(entry,delay,System.currentTimeMillis());ok=delay>0;if(ok){JSONObject site=measureWebsite(entry);text="线路 "+delay+" ms · "+WebsiteProbe.line(site,System.currentTimeMillis());}}}}
+      try{if(work==null)throw new IOException("连接已变化");if(ready&&!starting&&coreAlive()){String entry=currentEntry;ProbeResult result=probeMeasured("FixedExit",entry);maintenanceCheck();if(ready&&probeCurrent(result)){publishCurrentProbe(result);recordProbe(result,result.at);ok=result.delay>0;if(ok){JSONObject site=measureWebsite(entry);text="线路 "+LatencyProbePolicy.label(result.kind(),result.delay)+" · "+WebsiteProbe.line(site,System.currentTimeMillis());}}}}
       catch(Exception cancelled){ok=false;text="测速已暂停，当前操作继续进行";}finally{if(work!=null)finishMaintenance(work);measuringLatency=false;WindowNetworkState.save(context,ChatSession.peek(),this);}
       final boolean success=ok;final String message=text;main.post(()->cb.done(success,message));});
   }
@@ -335,7 +376,7 @@ class NativeNetwork {
   void rescan(Callback cb){long generation=maintenanceGeneration;worker.execute(()->{NetworkWork work=beginMaintenance(generation);if(work==null){main.post(()->cb.done(false,"测速已让位于连接恢复，请稍后再测"));return;}try{if(!ready)throw new IOException("请先连接内置网络");scanAndSelect(false);verifyExit();report("测速完成 · "+display(currentEntry));main.post(()->cb.done(true,message));}catch(Exception e){if(work.cancelled&&!(e instanceof ExitMismatch)&&cancelledVerifiedRouteCurrent()){main.post(()->cb.done(false,"测速已让位于连接恢复，请稍后再测"));}else{if(!retainVerifiedRoute(e)){stopNow();if(e instanceof ExitMismatch)recoveryBlocked=true;report("测速或出口验证失败，连接已停止；不会改为直连");}main.post(()->cb.done(false,message));}}finally{finishMaintenance(work);}});}
 
   void refresh(Callback cb){cancelMaintenance();worker.execute(()->{try{JSONObject current=secrets.settings();validate(current);HttpURLConnection c=(HttpURLConnection)new URL(current.optString("subscriptionUrl")).openConnection(Proxy.NO_PROXY);c.setConnectTimeout(15000);c.setReadTimeout(20000);c.setRequestProperty("User-Agent","mihomo");byte[] data;try{if(c.getResponseCode()!=200)throw new IOException();try(InputStream in=c.getInputStream()){data=J.read(in,16*1024*1024);}}finally{c.disconnect();}String text=new String(data,StandardCharsets.UTF_8);if(!text.contains("proxies:")&&!text.trim().startsWith("{"))throw new IOException();byte[] old=secrets.get("subscription");secrets.put("subscription",data);secrets.put("subscription-meta",J.obj("urlHash",hash(current.optString("subscriptionUrl"))).toString().getBytes(StandardCharsets.UTF_8));stopNow();try{startNow();main.post(()->cb.done(true,"订阅更新成功，独立网络已连接"));}catch(Exception error){if(old!=null)secrets.put("subscription",old);stopNow();throw error;}}catch(Exception e){main.post(()->cb.done(false,"订阅更新失败；旧缓存已保留，请重新连接"));}});}
-  void select(String name,Callback cb){cancelMaintenance();worker.execute(()->{String old=currentEntry;try{if(!ready||!names.contains(name))throw new IOException();selectNow(name);if(probe("FixedExit")<0)throw new IOException();verifyExit();report("已切换入口 · "+display(currentEntry));main.post(()->cb.done(true,message));}catch(Exception e){try{if(old.isEmpty())throw new IOException();selectNow(old);verifyExit();report("该入口不可用，已恢复原入口");}catch(Exception restore){stopNow();report("出口无法通过核实，连接已停止");}main.post(()->cb.done(false,message));}});}
+  void select(String name,Callback cb){cancelMaintenance();worker.execute(()->{String old=currentEntry;try{if(!ready||!names.contains(name))throw new IOException();selectNow(name);ProbeResult result=probeMeasured("FixedExit",name);if(result.delay<0||!probeCurrent(result))throw new IOException();publishCurrentProbe(result);verifyExit();report("已切换入口 · "+display(currentEntry));main.post(()->cb.done(true,message));}catch(Exception e){try{if(old.isEmpty())throw new IOException();selectNow(old);verifyExit();report("该入口不可用，已恢复原入口");}catch(Exception restore){stopNow();report("出口无法通过核实，连接已停止");}main.post(()->cb.done(false,message));}});}
   void health(){
     if(!ready||starting)return;
     try{
@@ -347,7 +388,7 @@ class NativeNetwork {
         if(android.os.SystemClock.elapsedRealtime()<nextExitCheckAt)return;
         verifyExit();
       }
-      int delay=probe("FixedExit");maintenanceCheck();long now=System.currentTimeMillis();quality.record(currentEntry,delay,now);
+      ProbeResult result=probeMeasured("FixedExit",currentEntry);maintenanceCheck();if(!probeCurrent(result))return;int delay=result.delay;long now=System.currentTimeMillis();publishCurrentProbe(result);recordProbe(result,now);
       if(delay<0){if(++failures>=2){if(settings!=null&&"manual".equals(settings.optString("entryMode")))throw new IOException("指定入口暂不可用，请重连或编辑网络");firstVerifiedRoute(currentEntry);maintenanceCheck();if(routeBusy())return;failures=0;report("已自动恢复入口 · "+display(currentEntry));}return;}
       failures=0;if(now-lastVerified>=NetworkOptimizationPolicy.ACTIVE_INTERVAL)verifyExit();
       if((lowLatency()||settings!=null&&settings.optString("entryMode").isEmpty())&&now-lastScan>=NetworkOptimizationPolicy.SCAN_INTERVAL&&!backgroundIdle()){
@@ -357,7 +398,7 @@ class NativeNetwork {
     }catch(Exception e){if(maintenanceCancelled()&&!(e instanceof ExitMismatch)&&cancelledVerifiedRouteCurrent())return;if(!retainVerifiedRoute(e)){stopNow();if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException?e.getMessage():"内置网络已停止；请检查节点与固定出口");}}
   }
   void stop(){cancelMaintenance();worker.execute(()->stopNow());}
-  boolean stopNow(){if(maintenanceCancelled())Thread.interrupted();invalidateVerifiedRoute();ready=false;websiteResult=new JSONObject();lastProbeDuration=0;lastProbeDurationAt=0;lastProbeEntry="";if(transport!=null){try{return !transport.call("stop","").optBoolean("alive");}catch(Exception e){message="独立网络停止尚未确认";return false;}}else{if(process!=null){process.destroy();process=null;}cleanupOwnedPid();return !coreAlive();}}
+  boolean stopNow(){if(maintenanceCancelled())Thread.interrupted();invalidateVerifiedRoute();ready=false;currentProbe=null;latencyReading=new JSONObject();websiteResult=new JSONObject();lastProbeDuration=0;lastProbeDurationAt=0;lastProbeEntry="";if(transport!=null){try{return !transport.call("stop","").optBoolean("alive");}catch(Exception e){message="独立网络停止尚未确认";return false;}}else{if(process!=null){process.destroy();process=null;}cleanupOwnedPid();return !coreAlive();}}
   void cleanupOwnedPid(){try{File pidFile=new File(root,"core.pid");if(!pidFile.exists())return;int pid;try(FileInputStream in=new FileInputStream(pidFile)){pid=Integer.parseInt(J.text(in,32).trim());}if(pid<=1||pid==android.os.Process.myPid())return;String cmd,status;try(FileInputStream in=new FileInputStream("/proc/"+pid+"/cmdline")){cmd=J.text(in,8192);}try(FileInputStream in=new FileInputStream("/proc/"+pid+"/status")){status=J.text(in,8192);}if(cmd.contains("libmihomo.so")&&cmd.contains(root.getAbsolutePath())&&status.matches("(?s).*Uid:\\s+"+android.os.Process.myUid()+"\\s+.*"))android.os.Process.killProcess(pid);pidFile.delete();}catch(Exception ignored){}}
   static String display(String name){return name.startsWith("Entry|")?name.substring(6):name;}
   static String hash(String s){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.ROOT,"%02x",x&255));return out.toString();}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}}

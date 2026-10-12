@@ -2,7 +2,7 @@ name: Production Gecko integration
 on:
   push:
     branches: [feature/android-engine-probe]
-    paths: ['app/**', 'tests/gecko/**', 'tests/browser-runtime/**', 'tests/browser-reading-host/**', 'tools/gecko/**', 'tools/publish-update-feed.py', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
+    paths: ['app/**', 'tests/gecko/**', 'tests/browser-runtime/**', 'tests/browser-reading-host/**', 'tools/gecko/**', 'tools/publish-update-feed.py', 'tools/build-mihomo.py', 'third-party/patches/**', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Verify pinned network core and source patch
+        run: python3 tools/build-mihomo.py --verify
       - name: Prepare locked toolchain
         shell: bash
         run: |
@@ -62,6 +64,19 @@ jobs:
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/reply-observation.test.cjs | tee work/gecko-integration/reply-observation-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/reply-binding-loading.test.cjs | tee work/gecko-integration/reply-binding-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/interaction-scheduling.test.cjs | tee work/gecko-integration/interaction-host-results.json
+          mkdir -p work/gecko-integration/network-policy-host
+          javac -encoding UTF-8 -d work/gecko-integration/network-policy-host app/src/main/java/local/pocketchat/NetworkPoolIdentity.java tests/browser-runtime/NetworkPoolIdentityTest.java app/src/main/java/local/pocketchat/LatencyProbePolicy.java tests/browser-runtime/LatencyProbePolicyTest.java
+          java -cp work/gecko-integration/network-policy-host local.pocketchat.NetworkPoolIdentityTest | tee work/gecko-integration/network-pool-host-results.json
+          java -cp work/gecko-integration/network-policy-host local.pocketchat.LatencyProbePolicyTest | tee work/gecko-integration/latency-probe-host-results.json
+          python3 - <<'PYCODE'
+          import json,pathlib,subprocess
+          source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          for name in ['network-pool-host-results.json','latency-probe-host-results.json']:
+              path=pathlib.Path('work/gecko-integration')/name
+              report=json.loads(path.read_text())
+              report['sourceCommit']=source
+              path.write_text(json.dumps(report,indent=2)+'\n')
+          PYCODE
       - name: Prepare synthetic signed upgrade archives
         shell: bash
         run: |
@@ -122,6 +137,14 @@ jobs:
             checks_failed=1
           fi
           adb exec-out screencap -p > work/gecko-integration/device-screen.png
+          python3 tools/gecko/publish_ci.py
+          if ! python3 tests/gecko/run_native_probe.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          python3 tools/gecko/publish_ci.py
+          if ! python3 tests/gecko/run_gecko_pool.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
           if [ "$checks_failed" -ne 0 ]; then
             exit 1
           fi

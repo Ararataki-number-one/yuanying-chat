@@ -14,7 +14,7 @@ Only one new stable message identity matching the observed gesture can confirm a
 
 Run the test build only in its separate test package; its fixtures intercept the ChatGPT origin locally and do not contact an account. Added activities: WebReplyTestActivity, WebReplyBackgroundTestActivity and WebReplyRecoveryTestActivity. The result files record actual checks. Production remains non-debuggable and has no test activities.
 
-Mihomo v1.19.31 is bundled as an unmodified executable for Android arm64 and amd64, under GPL-3.0. Upstream: https://github.com/MetaCubeX/mihomo/tree/v1.19.31 . Corresponding upstream source is included in third-party/source/mihomo-v1.19.31.tar.gz; license text in third-party/licenses and the APK assets. Other bundled libraries retain their notices in the license folder. Android binaries use upstream release assets mihomo-android-arm64-v1.19.31.gz and mihomo-android-amd64-v1.19.31.gz.
+Through 1.5.19, Mihomo v1.19.31 was bundled as an unmodified executable for Android arm64 and amd64, under GPL-3.0. Upstream: https://github.com/MetaCubeX/mihomo/tree/v1.19.31 . Corresponding upstream source is included in third-party/source/mihomo-v1.19.31.tar.gz; license text in third-party/licenses and the APK assets. Other bundled libraries retain their notices in the license folder. Those Android binaries used upstream release assets mihomo-android-arm64-v1.19.31.gz and mihomo-android-amd64-v1.19.31.gz. Version 1.5.20 introduces the source-distributed probe patch described below.
 
 
 
@@ -94,3 +94,17 @@ FunctionalHubTestActivity exercises actual native module views and existing loca
 ## 1.5.0 designed native interface
 
 BrandLaunchActivity routes to the selected default window in webpage mode after the first brand screen. Five native destinations, shared UI-only catalog options, and cross-window sanitized download progress preserve existing account and storage scopes. Unsupported controls use FutureFeatures.Adapter development slots rather than fake operational settings. Website content, fingerprint policy and network backend are not replaced by design-board sample data. See docs/UI-FUNCTIONS.md for the complete mapping.
+
+## 1.5.20 连接池与探测生命周期
+
+浏览器连接池现在按已核验的数据路线保持身份，包含环境、核心与独立服务生命周期、配置、入口、固定出口、端口及默认网络状态。健康同路线恢复保留池；核心、路线或默认网络改变、保护凭据失效时重新隔离或拒绝请求。异步操作的 `connectionEpoch` 继续拒绝旧回调，不再单独决定内置网络的池身份。外部代理仍沿用已有处理。未修改官方 GeckoView SDK，也没有清除环境登录数据。
+
+Mihomo `v1.19.31-pocket-probe1` 仅修探测路径：控制请求的取消与总预算传入 `URLTest`；首次预拨连接只领取一次，后续探测拨号使用同一代理与目标重新建链；所有新连接归本次探测所有，取消后迟到完成的拨号也关闭。第二阶段失败时返回首次有效响应耗时，失败等待另外记录。网站连接与 WSS 不属于探测连接，HTTP transport 的既有 HEAD 重试不等同于聊天重发。
+
+控制 API 保留原 `delay` 并增加 schema-1 `probe`，记录首次、第二阶段、总耗时、真实连接复用、拨号/请求次数和固定错误类别。应用将测量绑定到准确核心、路线及请求身份，只有成功且实际复用连接的 warm 结果参与同类低延迟排名。首次/冷复测显示对应标签；HTTP 预期状态、新鲜 history、TLS 验证和固定出口保护继续生效。
+
+原始上游归档、独立补丁、模块校验与构建参数一起保留。两个 Android ABI 固定使用 Go 1.26.8、NDK 29.0.13113456、API 26、`CGO_ENABLED=1` 和 16 KiB 页对齐。构建 receipt 绑定输入及最终字节；独立重建比较 SHA 才能证明一致，receipt 本身不证明运行正确。详见 [探测补丁说明](../third-party/patches/mihomo-v1.19.31-probe.md)。
+
+本地证据包括 200 条真实双 SOCKS 配置基线与 52 项原版/补丁对照。前者没有测出应用配置天然增加约 300 ms；后者控制请求取消后，原版目标连接约 7.55–7.79 秒才关闭，补丁为约 1.26–4.73 ms。这是 Linux 回环控制请求取消的测量，不是用户 WAN 延迟、Android 取消耗时或手机帧率。真实 Android HTTP/2 复用、原生取消、固定路线 WSS 连续性与同源码常规回归仍待 CI 验收，原签名 APK 和公网校验也待完成。
+
+正式版本为 1.5.20 / code 46。既有环境账户、上传/下载、更新续传和拒绝直连保护保留；没有自动重发聊天。1.5.19 正常硬件按键回归曾出现的 SDK 原生光标回退尚未归因，本版没有加入未经验证的 SDK 修补，也不能据网络优化宣称该输入问题已修复。

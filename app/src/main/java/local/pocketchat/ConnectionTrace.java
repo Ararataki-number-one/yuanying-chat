@@ -27,5 +27,20 @@ final class ConnectionTrace {
     if(!mode.isEmpty())text+="\n进入方式："+mode;if(!source.isEmpty())text+="\n订阅来源："+source;
     return text+"\n\n以上是阶段耗时，不是线路带宽。缓存或复用连接时，DNS / TLS 可能为零；网页内切换不会产生完整页面请求。";
   }
-  String copyText(android.content.Context context,boolean gecko){String webVersion=gecko?GeckoWebView.VERSION:"未知";if(!gecko)try{android.content.pm.PackageInfo p=WebView.getCurrentWebViewPackage();if(p!=null)webVersion=p.versionName;}catch(Exception ignored){}return "元婴期院士 "+AppVersion.name(context)+"\nAndroid "+Build.VERSION.RELEASE+" · "+webVersion+"\n\n"+text();}
+  String copyText(android.content.Context context,boolean gecko){String webVersion=gecko?GeckoWebView.VERSION:"未知";if(!gecko)try{android.content.pm.PackageInfo p=WebView.getCurrentWebViewPackage();if(p!=null)webVersion=p.versionName;}catch(Exception ignored){}return "元婴期院士 "+AppVersion.name(context)+"\nAndroid "+Build.VERSION.RELEASE+" · "+webVersion+"\n\n"+text()+routeDiagnostics(context);}
+  static String routeDiagnostics(android.content.Context context){
+    String network="尚未确认";
+    try{
+      android.net.ConnectivityManager cm=context.getSystemService(android.net.ConnectivityManager.class);
+      android.net.Network active=cm.getActiveNetwork();android.net.NetworkCapabilities caps=active==null?null:cm.getNetworkCapabilities(active);
+      network=caps==null?"不可用":caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)?"手机 VPN":caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)?"Wi-Fi":caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)?"移动数据":"其他网络";
+    }catch(Exception ignored){}
+    String value="\n\n手机网络："+network;ChatSession session=ChatSession.peek();
+    if(session==null||!session.internalNetwork())return value+"\n线路模式：手机网络 / 外部代理";
+    value+="\n线路模式：应用内置入口 → 固定出口";
+    JSONObject sample=NativeNetwork.get(context).probeSnapshot();long now=System.currentTimeMillis(),at=sample.optLong("at");
+    if(at<=0||now<at-60000||now-at>90000)return value+"\n当前线路测速：尚无近期记录";
+    JSONObject display=new JSONObject();try{display.put("latest",sample.optInt("delay",-1));display.put("lastAt",at);display.put("probe",sample.optJSONObject("probe"));}catch(Exception ignored){}
+    return value+"\n当前线路测速："+(sample.optInt("delay",-1)>0?LatencyProbePolicy.label(sample.optString("kind","unknown"),sample.optInt("delay")):"未通过")+NetworkMetricsUi.probeDetail(display);
+  }
 }

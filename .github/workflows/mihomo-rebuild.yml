@@ -1,0 +1,34 @@
+name: Reproducible Mihomo probe core
+on:
+  push:
+    branches: [main, feature/android-engine-probe]
+    paths: ['app/**', 'tests/**', 'tools/**', 'third-party/**', '.github/workflows/mihomo-rebuild.yml', 'settings.gradle', 'build.gradle', 'gradle.properties']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: mihomo-rebuild-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  rebuild:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Verify checked-in core and input receipt
+        id: pinned
+        run: python3 tools/build-mihomo.py --verify
+      - name: Independently rebuild both Android ABIs and run native regressions
+        id: rebuilt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/mihomo-rebuild
+          python3 tools/build-mihomo.py --build --target all --test --install 2>&1 | tee work/mihomo-rebuild/build.log
+          git diff --exit-code -- app/src/main/jniLibs/arm64-v8a/libmihomo.so app/src/main/jniLibs/x86_64/libmihomo.so third-party/patches/mihomo-v1.19.31-probe-build.json 2>&1 | tee -a work/mihomo-rebuild/build.log
+      - name: Publish only source-matched build proof and public native test log
+        if: always()
+        env:
+          NATIVE_PINNED_OUTCOME: ${{ steps.pinned.outcome }}
+          NATIVE_REBUILT_OUTCOME: ${{ steps.rebuilt.outcome }}
+        run: python3 tools/publish-mihomo-rebuild.py

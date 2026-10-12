@@ -4,7 +4,7 @@
 
 | 组件 | 版本或说明 | 许可材料 |
 | --- | --- | --- |
-| Mihomo | v1.19.31，未修改的 Android ARM64、x86_64 二进制 | [GPL-3.0](licenses/Mihomo-GPL-3.0.txt)、[对应上游源码](source/mihomo-v1.19.31.tar.gz) |
+| Mihomo | v1.19.31-pocket-probe1，基于 v1.19.31 的探测补丁，Android ARM64、x86_64 | [GPL-3.0](licenses/Mihomo-GPL-3.0.txt)、[原始上游源码](source/mihomo-v1.19.31.tar.gz)、[修改补丁](patches/mihomo-v1.19.31-probe.patch)、[构建与行为说明](patches/mihomo-v1.19.31-probe.md) |
 | AndroidX WebKit | 1.12.1 | [POM](licenses/AndroidX-WebKit.pom)、[Apache-2.0](licenses/Apache-2.0.txt) |
 | AndroidX Core | Gradle 发布使用 Gecko 的传递依赖；旧手工构建保留 1.1.0 | [Apache-2.0](licenses/Apache-2.0.txt) |
 | DOMPurify | 保留本仓库捆绑的版本 | [原始许可](licenses/DOMPurify.txt) |
@@ -12,6 +12,8 @@
 | KaTeX | 保留本仓库捆绑的版本 | [原始许可](licenses/KaTeX.txt) |
 
 Mihomo 上游：[MetaCubeX/mihomo v1.19.31](https://github.com/MetaCubeX/mihomo/tree/v1.19.31)。二进制位于 `app/src/main/jniLibs/`，GPL 文本同时保留在 APK 资源中。其他组件的捆绑文件与原有说明也保留在 `libs/` 和 `app/src/main/assets/vendor/`。
+
+Mihomo 从 1.5.20 起使用本项目的探测补丁，不再将二进制描述为“未经修改”。原始源码归档保留原样；补丁修复测速取消、重新拨号和第二次请求失败后的耗时计算，不改变网页流量转发或 TLS 验证。两个 Android ABI 使用 Go 1.26.8、NDK 29.0.13113456、API 26、CGO 和 16 KiB 页对齐构建。[构建 receipt](patches/mihomo-v1.19.31-probe-build.json) 记录输入、参数和二进制 SHA-256；[构建脚本](../tools/build-mihomo.py) 提供重建与只读核验。构建核验不能替代实际 Android 验收。
 
 ## Mozilla GeckoView
 
