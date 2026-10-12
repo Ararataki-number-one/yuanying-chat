@@ -53,16 +53,15 @@ final class EnvironmentEditorUi {
     privacy.setSelection(Math.max(0,Math.min(2,initial.optInt("privacyLevel",a.session.privacy.level()))));protection.addView(privacy);
     DesignUi.note(protection,"强化保护可能影响验证和音视频。");
     DesignUi.action(protection,"保护详情",false,()->DesignUi.message(a,"隐私保护",a.session.privacy.summary()));DesignUi.addCard(browser,protection);
-    DesignUi.action(browser,"浏览器内核",false,()->BrowserEngineUi.show(a));
     DesignUi.action(browser,"查看环境自检",false,()->EnvironmentAuditUi.show(a));
-    DesignUi.addCard(browser,DesignUi.setting(a,"settings","浏览器信息",(GeckoWebView.active(a.remote)?GeckoWebView.VERSION:EnvironmentAudit.packageVersion()),"",()->{
+    DesignUi.addCard(browser,DesignUi.setting(a,"settings","浏览器信息",GeckoWebView.VERSION,"",()->{
       android.util.DisplayMetrics metrics=a.getResources().getDisplayMetrics();
-      DesignUi.message(a,"浏览器信息","内核："+(GeckoWebView.active(a.remote)?GeckoWebView.VERSION:EnvironmentAudit.packageVersion())+"\n网页显示："+BrowserDisplay.label(a.session.privacy.desktop)+"\n系统：Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT+"\n屏幕："+metrics.widthPixels+" × "+metrics.heightPixels+"\n语言："+Locale.getDefault().toLanguageTag()+"\n时区："+TimeZone.getDefault().getID()+"\n定位：不向网页授权\n\nUser-Agent\n"+a.remote.getSettings().getUserAgentString()+"\n\n网页显示方式支持手机版 / 电脑版；自定义 UA、语言、时区和指纹参数尚未开放。");
+      DesignUi.message(a,"浏览器信息","内核："+GeckoWebView.VERSION+"\n网页显示："+BrowserDisplay.label(a.session.privacy.desktop)+"\n系统：Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT+"\n屏幕："+metrics.widthPixels+" × "+metrics.heightPixels+"\n语言："+Locale.getDefault().toLanguageTag()+"\n时区："+TimeZone.getDefault().getID()+"\n定位：不向网页授权\n\nUser-Agent\n"+a.remote.getSettings().getUserAgentString()+"\n\n网页显示方式支持手机版 / 电脑版；自定义 UA、语言、时区和指纹参数尚未开放。");
     }));
 
     CheckBox[] options=new CheckBox[AppPrefs.KEYS.length];
     String[] headings={"会话与恢复","后台与通知","下载与存储"};
-    String[][] preferenceGroups={{"autoHistory","saveDraft","restoreScroll"},{"backgroundWait","replyNotice"},{"wifiDownloads","cleanTemporaryCache"}};
+    String[][] preferenceGroups={{"saveDraft","restoreScroll"},{"backgroundWait","replyNotice"},{"wifiDownloads","cleanTemporaryCache"}};
     List<String> preferenceKeys=Arrays.asList(AppPrefs.KEYS);
     for(int section=0;section<preferenceGroups.length;section++){
       DesignUi.section(preferences,headings[section],"");LinearLayout card=DesignUi.card(a);

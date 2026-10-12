@@ -10,17 +10,18 @@ import java.util.*;
 import java.util.concurrent.*;
 import org.json.*;
 
-/** Only the native shell is styled; both existing web surfaces stay owned by MainActivity. */
+/** Compact environment controls outside the untouched official ChatGPT document. */
 final class DesignChrome {
   final MainActivity a;
   final TextView title,dot,stateWord,latencyWord;
-  final LinearLayout top,modes,networkRow;
+  final LinearLayout top,networkRow;
+  final LinearLayout modes=null; // Historical tests may inspect the retired control.
   final Button more;
   private final View[] actions;
   private ChromeTouchDelegate touchTargets;
   private static final ExecutorService metadataReader=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"ChromeMetadata");t.setPriority(Thread.MIN_PRIORITY);return t;});
   private final Runnable render=this::renderLatest;
-  private boolean queued,metadataPending,modeKnown,lastPageMode;
+  private boolean queued,metadataPending;
   private long metadataAt;
   private String profileName;
 
@@ -30,7 +31,7 @@ final class DesignChrome {
     a.toolbar.setBackgroundColor(ReferenceUi.CHAT_BG);
     a.toolbar.setPadding(a.dp(10),0,a.dp(10),0);
     top=DesignUi.row(a);
-    a.navigation=new Ui.IconButton(a,"hamburger","打开会话列表",false);
+    a.navigation=new Ui.IconButton(a,"hamburger","管理环境",false);
     a.navigation.setOnClickListener(v->a.showDrawer());
     title=ReferenceUi.text(a,Profiles.display(a,Profiles.slot(a)),16,ReferenceUi.TEXT,true);
     profileName=title.getText().toString();
@@ -40,31 +41,14 @@ final class DesignChrome {
     title.setBackground(Ui.ripple(a,Color.TRANSPARENT,9));
     title.setOnClickListener(v->ProfileUi.show(a));
 
-    modes=DesignUi.row(a);
-    modes.setPadding(a.dp(2),a.dp(2),a.dp(2),a.dp(2));
-    modes.setBackground(ReferenceUi.surface(a,ReferenceUi.BLUE_SOFT,9,Color.TRANSPARENT));
-    a.nativeTab=a.modeTab("简洁","简洁聊天模式",()->a.showPage(false));
-    a.webTab=a.modeTab("原网页","原网页模式",()->a.showPage(true));
-    int modeHeight=a.dp(30);
-    for(TextView mode:new TextView[]{a.nativeTab,a.webTab}){
-      mode.setTextSize(12);
-      mode.setSingleLine(true);
-      mode.setPadding(a.dp(4),0,a.dp(4),0);
-      modeHeight=Math.max(modeHeight,textHeight(mode)+a.dp(4));
-    }
-    for(TextView mode:new TextView[]{a.nativeTab,a.webTab}){
-      int width=Math.max(a.dp(mode==a.nativeTab?50:60),(int)Math.ceil(mode.getPaint().measureText(mode.getText().toString()))+mode.getPaddingLeft()+mode.getPaddingRight());
-      modes.addView(mode,new LinearLayout.LayoutParams(width,modeHeight));
-    }
     more=ReferenceUi.more(a,()->a.moreSheet());
     // The shared button style reserves 48 dp; this compact shell expands touch separately.
     more.setMinHeight(0);
     more.setMinimumHeight(0);
     more.setPadding(a.dp(4),0,a.dp(4),0);
-    int topHeight=Math.max(a.dp(40),Math.max(textHeight(title)+a.dp(4),modeHeight+a.dp(4)));
+    int topHeight=Math.max(a.dp(40),textHeight(title)+a.dp(4));
     top.addView(a.navigation,new LinearLayout.LayoutParams(a.dp(44),topHeight));
     top.addView(title,new LinearLayout.LayoutParams(0,topHeight,1));
-    top.addView(modes);
     top.addView(more,new LinearLayout.LayoutParams(a.dp(42),topHeight));
     a.toolbar.addView(top,new LinearLayout.LayoutParams(-1,topHeight));
 
@@ -93,7 +77,7 @@ final class DesignChrome {
     networkRow.addView(stateWord,new LinearLayout.LayoutParams(-2,lineHeight));
     a.toolbar.addView(networkRow,new LinearLayout.LayoutParams(-1,lineHeight));
     root.addView(a.toolbar,new LinearLayout.LayoutParams(-1,-2));
-    actions=new View[]{a.navigation,title,a.nativeTab,a.webTab,more};
+    actions=new View[]{a.navigation,title,more};
     a.toolbar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutTouchTargets());
     a.toolbar.post(this::layoutTouchTargets);
   }
@@ -111,14 +95,6 @@ final class DesignChrome {
     queued=false;if(a.destroyed)return;UiPerfStats.chromeUpdate();refreshMetadata();
     text(title,profileName);
     description(title,"当前环境："+profileName+"，点击切换环境");
-    if(!modeKnown||lastPageMode!=a.pageMode){
-      modeKnown=true;lastPageMode=a.pageMode;
-      a.nativeTab.setBackground(Ui.ripple(a,a.pageMode?Color.TRANSPARENT:ReferenceUi.BLUE,8));
-      a.webTab.setBackground(Ui.ripple(a,a.pageMode?ReferenceUi.BLUE:Color.TRANSPARENT,8));
-      UiPerfStats.backgroundChange();UiPerfStats.backgroundChange();
-      color(a.nativeTab,a.pageMode?0xff4d6384:Color.WHITE);
-      color(a.webTab,a.pageMode?Color.WHITE:0xff4d6384);
-    }
     NativeNetwork network=NativeNetwork.get(a);
     JSONObject config=network.settings==null?new JSONObject():network.settings;
     // Only slot/name are needed for this strip. Catalog I/O is asynchronous;
