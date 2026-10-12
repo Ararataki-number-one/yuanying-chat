@@ -551,7 +551,6 @@ def main():
         for label in ['应用更新','当前版本','安装更新','自动检查更新','Wi-Fi 下自动下载新版']:assert label in update_ui,(label,update_ui)
         (OUT/'update-ui.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         adb('shell','appops','set',package,'REQUEST_INSTALL_PACKAGES','allow')
-        import xml.etree.ElementTree as ET,re
         button=next(node for node in ET.fromstring(update_ui).iter('node') if node.attrib.get('text')=='安装更新')
         x1,y1,x2,y2=map(int,re.findall(r'\d+',button.attrib['bounds']))
         adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2));time.sleep(3)

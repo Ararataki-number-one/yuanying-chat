@@ -4,6 +4,7 @@ import argparse,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as 
 
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
 p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()
+source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
 package='local.pocketchat.test';scenes=['chat','environments','network','proxy','entries','browser','preferences'];records=[]
 def adb(*values):return subprocess.check_output([args.adb,'-s',args.serial,*values],timeout=90).decode(errors='replace')
 def dump():
@@ -43,12 +44,12 @@ def capture(variant,width,height,scale,scene):
     if scene=='browser':click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
     if scene=='preferences':
         tab_scrolls=click_editor_tab(xml,'使用偏好');time.sleep(.5)
-        expected={'自动同步可见历史会话','保存本机输入草稿','恢复网页滚动位置','后台检测回复','回复完成通知','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}
+        expected={'保存本机输入草稿','恢复网页滚动位置','后台检测回复','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}
         seen=set();collected=[]
         for attempt in range(8):
             xml=dump();collected.append(xml)
             seen.update(n.attrib.get('text','') for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.CheckBox')
-            assert not any(label in xml for label in ['文件保存完成通知','网络中断提醒','后台等待回复']),(variant,scene,xml)
+            assert not any(label in xml for label in ['自动同步可见历史会话','文件保存完成通知','网络中断提醒','后台等待回复']),(variant,scene,xml)
             if seen==expected:break
             scroll=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView')
             left,top,right,bottom=map(int,re.findall(r'\d+',scroll.attrib['bounds']));x=(left+right)//2
@@ -190,17 +191,17 @@ try:
         performance=chrome_event(command,'performance')
         assert performance['status']=='passed',performance
         compact.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','readOnlyStatus':True,'actualAndroidTaps':taps,'layout':sample,'performance':performance['performance']})
-    source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
     (out/'compact-chrome-results.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'cases':compact},ensure_ascii=False,indent=2)+'\n')
     assert len(records)==19 and all(record['variant']=='current' for record in records),records
     build=json.loads((out/'ui-build-comparison.json').read_text())
     assert build['comparisonMode']=='current-only' and not build['historicalUIRebuilt'] and build['coreSourceCommit']==source,build
     report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'scope':'Current GeckoView-only production UI with local synthetic records, 19 current-source captures; historical UI is not rebuilt. Website content, login and network core are not replaced.'}
 except Exception as error:
+    report={'status':'failed','actualAndroidExecution':True,'sourceCommit':source,'diagnosticOnly':False,'error':repr(error),'screenshots':records}
     (out/'ui-visual-log.txt').write_text(adb('logcat','-d'))
     (out/'ui-visual-failure.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
     (out/'ui-visual-failure.xml').write_text(dump())
-    report={'status':'failed','error':repr(error),'screenshots':records};raise
+    raise
 finally:
     (out/'ui-visual-results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     adb('shell','settings','put','system','font_scale','1');adb('shell','wm','size','reset');adb('shell','wm','density','reset')
