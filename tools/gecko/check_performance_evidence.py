@@ -19,7 +19,11 @@ def verify_performance_evidence(directory, source):
     chrome = android('compact-chrome-results.json')
     assert len(chrome['cases']) == 3, 'All compact and large-font cases are required.'
     for case in chrome['cases']:
-        assert case['readOnlyStatus'] and len(case['actualAndroidTaps']) == 5
+        assert case['readOnlyStatus'] and len(case['actualAndroidTaps']) == 3
+        assert {tap['control'] for tap in case['actualAndroidTaps']} == {'drawer', 'environment', 'more'}
+        layout = case['layout']
+        assert layout['geckoOnly'] and layout['pageMode'] and layout['noNativeChat'] and layout['systemWebViews'] == 0
+        assert [control['name'] for control in layout['controls']] == ['drawer', 'environment', 'more']
         perf = case['performance']
         for phase in ('burst', 'background', 'periodic'):
             assert all(perf[phase][key] == 0 for key in MAIN_IO), (phase, perf[phase])
@@ -28,7 +32,24 @@ def verify_performance_evidence(directory, source):
             assert perf[phase]['chromeTextChanges'] == perf[phase]['chromeBackgroundChanges'] == 0
         assert perf['background']['starDraws'] == 100 and perf['background']['stablePixels'] and perf['background']['plainBackground']
         assert perf['periodic']['metricsRefreshes'] == 5 and perf['periodic']['durationMs'] >= 6000
-        assert perf['rename'] and perf['modeChange']['chromeBackgroundChanges'] == 2
+        original = perf['originalOnly']
+        assert perf['rename'] and original['chromeBackgroundChanges'] == 0
+        assert all(original[key] for key in ('sameSurface', 'sameSdkSession', 'sameUrl', 'pageMode', 'noNativeChat'))
+        assert all(original[key] == 0 for key in MAIN_IO)
+
+    visual = android('ui-visual-results.json')
+    assert visual['comparisonMode'] == 'current-only' and visual['historicalUIRebuilt'] is False
+    captures = visual['screenshots']
+    assert len(captures) == 19 and all(item['variant'] == 'current' for item in captures)
+    assert {(item['logicalViewport'], item['fontScale'], item['scene']) for item in captures} == {
+        (viewport, 1, scene)
+        for viewport in ('360x640', '412x640')
+        for scene in ('chat', 'environments', 'network', 'proxy', 'entries', 'browser', 'preferences')
+    } | {('360x640', 2, scene) for scene in ('chat', 'proxy', 'entries', 'browser', 'preferences')}
+    build = json.loads((directory / 'ui-build-comparison.json').read_text())
+    assert build['coreSourceCommit'] == source and build['comparisonMode'] == 'current-only'
+    assert build['historicalUIRebuilt'] is False and build['changedForBaseline'] == []
+    assert len(build['currentSha256']) == 64
 
     gecko = android('gecko-performance-results.json')
     assert gecko['actualGeckoExecution'] and gecko['baselineSource'] == BASELINE
@@ -40,7 +61,7 @@ def verify_performance_evidence(directory, source):
     assert len(decisions) >= 2 and all(item['guardAllowed'] and item['decision']['type'] == 'socks'
                                      and item['decision']['host'] == '127.0.0.1' and item['decision']['port'] == 1087
                                      for item in decisions), 'Both comparisons must use the existing protected proxy path.'
-    assert gecko['checkCount'] == len(gecko['checks']) >= 65 and all(check['pass'] for check in gecko['checks'])
+    assert gecko['checkCount'] == len(gecko['checks']) >= 142 and all(check['pass'] for check in gecko['checks'])
     names = {check['name'] for check in gecko['checks']}
     assert {
         'Actual Gecko streaming bridge payload is reduced by at least 95 percent',
@@ -61,7 +82,12 @@ def verify_performance_evidence(directory, source):
         'Renaming a sibling file card refreshes actual Gecko metadata and transcript downloads',
         'Removing a sibling file card invalidates the actual Gecko reply metadata',
         'Reattaching an edited cached body refreshes actual Gecko terminal text and transcript',
+        'Original-only bridge starts with the actual existing Gecko document',
+        'Retired native actions leave the entire website DOM, composer, selection, route and login unchanged',
     } <= names, 'Long-reply correctness regression is required.'
+    for action in ('fill', 'submit', 'model-open', 'model-select', 'message-regenerate-submit', 'page-navigate'):
+        assert 'Public native bridge rejects retired action ' + action in names
+        assert 'Actual Gecko observation asset rejects retired action ' + action in names
     measurements = {case['variant']: case for case in gecko['measurements']}
     assert set(measurements) == {'baseline', 'current'}
     assert all(case['samples'] == 12 for case in measurements.values())
@@ -94,7 +120,8 @@ def verify_performance_evidence(directory, source):
         report = json.loads((directory / name).read_text())
         assert report['passed'] == report['total'] >= count, name
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True, 'geckoChecks': gecko['checkCount'],
-            'compactCases': len(chrome['cases']), 'bridgeResponseBytes': {'baseline': baseline['bridgeResponseBytes'], 'current': current['bridgeResponseBytes']},
+            'compactCases': len(chrome['cases']), 'currentVisualScreens': len(captures), 'historicalUIRebuilt': False,
+            'bridgeResponseBytes': {'baseline': baseline['bridgeResponseBytes'], 'current': current['bridgeResponseBytes']},
             'domReadChars': {'baseline': baseline['domReadChars'], 'current': current['domReadChars']}}
 
 

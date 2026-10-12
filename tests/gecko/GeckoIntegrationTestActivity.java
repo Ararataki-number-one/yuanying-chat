@@ -79,9 +79,10 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   @Override public void onCreate(Bundle state){
     super.onCreate(state);slot=Profiles.slot(this);ProfileCatalog.get(this).created(slot);
-    getSharedPreferences("chat",0).edit().putString("browserEngine","systemProbe".equals(getIntent().getStringExtra("fixtureAction"))?"system":"gecko").putString("networkMode","external")
+    boolean legacyDisplay="legacyEnginePreference".equals(getIntent().getStringExtra("fixtureAction"));
+    getSharedPreferences("chat",0).edit().putString("browserEngine",legacyDisplay?"system":"gecko").putString("networkMode","external")
       .putString("proxy",(slot==0?"socks":"http")+"://127.0.0.1:"+(1080+slot)).putBoolean("requireExternalVpn",false)
-      .putBoolean("networkConfigured",false).putBoolean("pageMode",true).commit();
+      .putBoolean("networkConfigured",false).putBoolean("pageMode",!legacyDisplay).commit();
     ChatSession.browserFactory=FixtureView::new;session=ChatSession.get(this);
     android.webkit.WebViewClient original=session.client();
     session.web.setWebViewClient(new android.webkit.WebViewClient(){
@@ -106,9 +107,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     // AndroidX publishes RESUMED in onActivityPostResumed, after Activity.onResume.
     if(!activityResumed||!processForeground()){session.handler.postDelayed(()->waitReady(serial),50);return;}
     if("foreignPreferences".equals(action)){event("foreignPreferences",J.obj("marker",Profiles.context(this,1).getSharedPreferences("chat",0).getString("managementMarker","")));return;}
-    if("systemProbe".equals(action)){event("engineSwitch",J.obj("gecko",web.enabled));return;}
     if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
-    if("switchGecko".equals(action)&&!web.enabled){web.useEngine(true);action="read";}
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
     if("backgroundSettings".equals(action)){backgroundSettings(serial);return;}
     if("queuedChanges".equals(action)){queuedChanges(serial);return;}
@@ -264,11 +263,21 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(serial!=run)return;JSONObject result=J.parse(raw);
       if(result.length()>0&&action.equals(result.optString("action"))&&String.valueOf(slot+1).equals(result.optString("context"))&&String.valueOf(serial).equals(result.optString("command"))){((GeckoWebView)session.web).readCookies("http://127.0.0.1:8765/fixture",value->{
         if(serial!=run)return;
-        try{result.put("nativeCookies",value==null?JSONObject.NULL:value);if("closedSession".equals(action)){result.put("closedSessionRecovery",closedSessionRecovery&&((GeckoWebView)session.web).current.isOpen()&&!((GeckoWebView)session.web).failed);result.put("blockedRecoveryPreservesClosed",blockedRecoveryPreservesClosed);result.put("pendingFailureRetained",pendingFailureRetained);result.put("recoveryMethod","injected SDK onKill contract; real close/open/render");}}catch(Exception ignored){}event("fixture",result);
+        try{result.put("nativeCookies",value==null?JSONObject.NULL:value);if("legacyEnginePreference".equals(action))result.put("legacyEngineCompatibility",legacyEngineCompatibility());if("closedSession".equals(action)){result.put("closedSessionRecovery",closedSessionRecovery&&((GeckoWebView)session.web).current.isOpen()&&!((GeckoWebView)session.web).failed);result.put("blockedRecoveryPreservesClosed",blockedRecoveryPreservesClosed);result.put("pendingFailureRetained",pendingFailureRetained);result.put("recoveryMethod","injected SDK onKill contract; real close/open/render");}}catch(Exception error){event("error",J.obj("error",error.toString()));return;}event("fixture",result);
       });return;}
       if(session.navigationFailed)event("loadError",J.obj("failed",true,"url",session.web.getUrl(),"error",session.pageError,"guard",session.guard.allowed()));
       else session.handler.postDelayed(()->poll(serial),300);
     });
+  }
+  JSONObject legacyEngineCompatibility(){
+    GeckoWebView web=session.web;org.mozilla.geckoview.GeckoSession sdk=web.current;
+    String url=web.getUrl(),route=web.route(url).toString();boolean refused=false;
+    try{web.useEngine(false);}catch(IllegalStateException expected){refused=true;}
+    return J.obj("actualGecko",web.enabled&&web.runtime!=null&&sdk!=null&&sdk.isOpen()&&web.surface.getSession()==sdk,
+      "oldPreferencesPreserved","system".equals(session.prefs.getString("browserEngine",""))&&!session.prefs.getBoolean("pageMode",true),
+      "systemEngineRefused",refused,"sameSdkSession",web.current==sdk,"sameSurface",session.web==web,
+      "sameDocument",java.util.Objects.equals(url,web.getUrl()),"sameProtectedRoute",route.equals(web.route(url).toString()),
+      "systemWebViews",CompactChromeIntegrationActivity.systemWebViews(getWindow().getDecorView()));
   }
   void blockedProbe(long serial,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript("window.__guardProbe||null",raw->{

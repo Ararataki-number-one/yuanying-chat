@@ -2,6 +2,7 @@
 """Release-mode SDK in the actual app: two live processes, distinct HTTP/SOCKS routes."""
 import argparse, hashlib, importlib.util, json, pathlib, select, socket, socketserver
 import re, subprocess, threading, time, urllib.parse
+import xml.etree.ElementTree as ET
 
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
@@ -494,9 +495,19 @@ def main():
         check(run(2,'read'),2,True)
         adb('shell','am','force-stop',package)
         check(run(1,'read'),1,True);check(run(2,'read'),2,True)
-        # Switching engines restarts the environment; native runtimes never coexist.
+        # Historical system/simple preferences must open the existing official
+        # Gecko profiles without changing their stored environment data.
         adb('shell','am','force-stop',package)
-        switch=run(1,'systemProbe','engineSwitch');assert switch['gecko'] is False
+        legacy=[]
+        for context in [1,2]:
+            result=run(context,'legacyEnginePreference');check(result,context,True)
+            proof=result['legacyEngineCompatibility']
+            assert all(proof[key] for key in ['actualGecko','oldPreferencesPreserved','systemEngineRefused','sameSdkSession','sameSurface','sameDocument','sameProtectedRoute']),proof
+            assert proof['systemWebViews']==0,proof
+            legacy.append(dict(context=context,**proof))
+        assert run(1,'sessionRead','session')['token']=='none'
+        assert run(2,'sessionRead','session')['token']=='synthetic-session-2'
+        report['legacyEngineCompatibility']=legacy
         adb('shell','am','force-stop',package)
         check(run(1,'read'),1,True);check(run(2,'read'),2,True)
         assert run(1,'sessionSeed','session')['token']=='synthetic-session-1'
@@ -516,7 +527,8 @@ def main():
         adb('shell','uiautomator','dump','/sdcard/gecko-production.xml')
         hierarchy=adb('shell','cat','/sdcard/gecko-production.xml')
         (OUT/'production-ui.xml').write_text(hierarchy)
-        for label in ['会话','环境','下载','网络','设置','原网页']:assert label in hierarchy,(label,hierarchy)
+        for label in ['会话','环境','下载','网络','设置']:assert label in hierarchy,(label,hierarchy)
+        assert not any(node.attrib.get('text') in ['简洁','原网页'] for node in ET.fromstring(hierarchy).iter('node')),hierarchy
         assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         update_checks=[]
         for action in ['badHash','badSigner','cancel']:
@@ -559,7 +571,7 @@ def main():
         report['environmentManagement']=dict(queued=queued,backgroundSettings=background_settings,deleteOne=deletion,deleteZero=deletion_zero,foreignPreferenceCache='passed (live parent sees cleared preferences)',slotReuseLogin='passed (old controlled cookie absent)',privacy=privacy,completion=completion)
         report.update(status='passed',liveEnvironmentProcesses='passed',storageIsolation='passed',restartPersistence='passed',
             distinctHttpSocksRoutes='passed',workersAndWebSocket='passed',remoteDns='passed',guardBlocksRequests='passed',
-            nativeContextClear='passed',systemEngineFallback='passed',closedBootstrapWithoutExtension='passed',productionActivityShell='passed',
+            nativeContextClear='passed',legacyEnginePreferenceCompatibility='passed (official Gecko, stored preferences and isolated data retained; system engine refused)',closedBootstrapWithoutExtension='passed',productionActivityShell='passed',
             popupParentHistory='passed',closedSessionRecovery='passed (injected SDK onKill contract, real close/open/render)',
             closedParentRecovery='passed',firstPaintBeforeSlowResource='passed',cancelledLoadNotReportedAsFailure='passed',responsiveDesktopViewport='passed (controlled responsive fixture, portrait and landscape)')
         report.update(sessionCookieRestartAndLogout='passed (synthetic HttpOnly session cookie)',automaticContentRecovery='passed (injected SDK onKill, native restoreState)',profileProcessLifecycle='passed (both RESUMED)',continuousEnvironmentSwitching='passed (12 foreground changes and Home return)',realShrinkAndMagnify='passed (80%, 60%, 130%, 80%; same document and draft)',scaledKeyboardInput='passed (trusted Android tap and keyboard text)')

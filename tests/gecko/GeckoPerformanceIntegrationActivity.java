@@ -582,13 +582,31 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
             session.driver=originalDriver;session.pending=null;session.prefs.edit().remove("pending").commit();
             session.stableTicks=2;session.stableReply="pre-disconnect terminal";session.webObserver.completionSamples=2;session.invalidateConnection();
             evaluate("({draft:document.getElementById('prompt-textarea').value,sendCount:Number(document.getElementById('send-count').textContent),cookie:document.cookie})",false,after->{
-              check("Connection invalidation resets native terminal samples without submitting or clearing browser data",session.stableTicks==0&&session.stableReply.isEmpty()&&session.webObserver.completionSamples==0&&after.optInt("sendCount")==0&&after.optString("draft").equals(captured)&&after.optString("cookie").contains("session=synthetic-performance"));success();
+              check("Connection invalidation resets native terminal samples without submitting or clearing browser data",session.stableTicks==0&&session.stableReply.isEmpty()&&session.webObserver.completionSamples==0&&after.optInt("sendCount")==0&&after.optString("draft").equals(captured)&&after.optString("cookie").contains("session=synthetic-performance"));originalOnlyBridge();
             });
           }
         });
       }));
     });
   });}
+  // Additional scope checks run only after every existing capture, exact input
+  // burst and recovery assertion. Neither input pacing nor its oracle changes.
+  final String[] retiredActions={"fill","submit","model-open","model-select","message-regenerate-submit","page-navigate"};
+  void originalOnlyBridge(){evaluate("(()=>{const e=document.getElementById('prompt-textarea');window.__originalOnlyWebsite={dom:document.documentElement.outerHTML,url:location.href,draft:e.value,start:e.selectionStart,end:e.selectionEnd,cookie:document.cookie,sent:Number(document.getElementById('send-count').textContent)};return {captured:true};})()",false,value->{
+    check("Original-only bridge starts with the actual existing Gecko document",value.optBoolean("captured")&&session.web.enabled&&session.web.current.isOpen());originalOnlyAction(0);
+  });}
+  void originalOnlyAction(int index){
+    if(index==retiredActions.length){evaluate("(()=>{const e=document.getElementById('prompt-textarea'),s=window.__originalOnlyWebsite;return {dom:s.dom===document.documentElement.outerHTML,url:s.url===location.href,draft:s.draft===e.value,selection:s.start===e.selectionStart&&s.end===e.selectionEnd,cookie:s.cookie===document.cookie,noSend:s.sent===Number(document.getElementById('send-count').textContent)&&s.sent===0};})()",false,value->{
+      check("Retired native actions leave the entire website DOM, composer, selection, route and login unchanged",value.optBoolean("dom")&&value.optBoolean("url")&&value.optBoolean("draft")&&value.optBoolean("selection")&&value.optBoolean("cookie")&&value.optBoolean("noSend"));success();
+    });return;}
+    String action=retiredActions[index];JSONObject args=J.obj("text","must remain unsent","prompt","must remain unsent","url",MainActivity.ORIGIN+"c/must-not-navigate");
+    session.runDriver(action,args,nativeResult->attempt(()->{
+      check("Public native bridge rejects retired action "+action,!nativeResult.optBoolean("ok")&&"请在 ChatGPT 原网页中操作".equals(nativeResult.optString("reason")));
+      evaluate("window.__fixtureReadDriver("+JSONObject.quote(action)+","+args+")",false,direct->{
+        check("Actual Gecko observation asset rejects retired action "+action,!direct.optBoolean("ok")&&"请在 ChatGPT 原网页中操作".equals(direct.optString("reason")));originalOnlyAction(index+1);
+      });
+    }));
+  }
   void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"actualInputImeSettled",inputImeSettled,"actualSingleInputBurst",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"baselineSource",BASELINE,"checkCount",checkCount,"directDeferredSamples",directDeferredSamples,"nativeDeferredSamples",nativeDeferredSamples,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
   String telemetryInstall(){return "(()=>{const data={readChars:0,readCalls:0,clones:0,started:performance.now(),rafCount:0,rafSum:0,rafMax:0,rafOver32:0,previous:0};"+
     "for(const [prototype,key] of [[HTMLElement.prototype,'innerText'],[Node.prototype,'textContent'],[Node.prototype,'nodeValue']]){const original=Object.getOwnPropertyDescriptor(prototype,key);if(original?.get&&original.configurable)Object.defineProperty(prototype,key,{...original,get(){const value=original.get.call(this);data.readCalls++;if(typeof value==='string')data.readChars+=value.length;return value;}});}"+

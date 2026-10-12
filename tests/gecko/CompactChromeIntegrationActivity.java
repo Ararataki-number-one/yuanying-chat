@@ -47,7 +47,8 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
 
   @Override void showDrawer(){
     super.showDrawer();
-    if(reporting)event("drawer");
+    // The environment menu now opens the real environment Activity. Its
+    // startActivity event is the single observable action, not a second drawer.
   }
 
   @Override void moreSheet(){
@@ -57,7 +58,6 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
 
   @Override void showPage(boolean show){
     super.showPage(show);
-    if(reporting)event(show?"web":"native");
   }
 
   @Override public void startActivity(Intent intent){
@@ -124,12 +124,14 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     handler.postDelayed(()->{
       if("性能回归新名称".contentEquals(designChrome.title.getText())){
         try{performance.put("rename",true);}catch(Exception ignored){}
-        boolean old=pageMode;pageMode=!old;UiPerfStats.begin();designChrome.update();
+        GeckoWebView originalSurface=remote;org.mozilla.geckoview.GeckoSession sdk=remote.current;
+        String url=remote.getUrl();UiPerfStats.begin();showPage(false);designChrome.update();
         handler.postDelayed(()->{
           try{
-            JSONObject result=UiPerfStats.end();if(result.optLong("chromeBackgroundChanges")!=2)throw new AssertionError("Mode change did not update both controls: "+result);
-            if(nativeTab.getCurrentTextColor()!=(pageMode?0xff4d6384:Color.WHITE)||webTab.getCurrentTextColor()!=(pageMode?Color.WHITE:0xff4d6384))throw new AssertionError("Mode selection colors became stale");
-            performance.put("modeChange",result);pageMode=old;Profiles.rename(this,0,original);designChrome.update();
+            JSONObject result=UiPerfStats.end();noUiIo(result);
+            boolean originalOnly=pageMode&&remote==originalSurface&&remote.current==sdk&&java.util.Objects.equals(url,remote.getUrl())&&noNativeChat();
+            if(result.optLong("chromeBackgroundChanges")!=0||!originalOnly)throw new AssertionError("Legacy display request changed the original-only surface: "+result);
+            performance.put("originalOnly",result.put("sameSurface",remote==originalSurface).put("sameSdkSession",remote.current==sdk).put("sameUrl",java.util.Objects.equals(url,remote.getUrl())).put("pageMode",pageMode).put("noNativeChat",noNativeChat()));Profiles.rename(this,0,original);designChrome.update();
             Log.i("PocketCompactChrome",J.obj("command",command,"event","performance","status","passed","performance",performance).toString());
           }catch(Throwable error){performanceFailure(error);}
         },200);
@@ -149,7 +151,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       JSONObject config=J.obj("subscriptionUrl","https://example.test/compact-layout","exitHost","example.test","exitPort",1080,"exitRegion","日本 · Tokyo");
       JSONObject runtime=J.obj("at",now,"mode","internal","configured",true,"connected",true,"exitId",NetworkCatalog.exitId(config),"subscriptionId",NativeNetwork.hash(config.optString("subscriptionUrl")),"ip","203.0.113.25","entry","Entry|大阪 03","delayEntry","Entry|大阪 03","delay",42,"delayAt",now);
       WindowNetworkState network=new WindowNetworkState(this,ProfileCatalog.get(this).item(0),config,runtime,true,now);
-      // Reflection keeps this integration source compilable with the historical UI baseline.
+      // Invoke the production renderer with explicitly synthetic layout data.
       Method show=DesignChrome.class.getDeclaredMethod("showNetwork",WindowNetworkState.class);
       show.setAccessible(true);
       // onResume may have queued a real chrome render before this fixture took
@@ -165,8 +167,8 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       View top=(View)field("top");
       Method touch=DesignChrome.class.getDeclaredMethod("touchBounds",View.class);
       touch.setAccessible(true);
-      String[] names={"drawer","environment","native","web","more"};
-      View[] views={navigation,designChrome.title,nativeTab,webTab,more};
+      String[] names={"drawer","environment","more"};
+      View[] views={navigation,designChrome.title,more};
       int[] origin=new int[2];toolbar.getLocationOnScreen(origin);
       JSONArray controls=new JSONArray();
       for(int i=0;i<views.length;i++){
@@ -174,7 +176,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
         controls.put(J.obj("name",names[i],"visible",bounds(views[i]),"touch",rect(hit),"widthDp",hit.width()/density(),"heightDp",hit.height()/density(),"tap",J.arr(hit.centerX(),hit.bottom-1)));
       }
       JSONArray texts=new JSONArray();
-      for(TextView text:new TextView[]{designChrome.title,nativeTab,webTab,networkLine,latency,designChrome.stateWord}){
+      for(TextView text:new TextView[]{designChrome.title,networkLine,latency,designChrome.stateWord}){
         Paint.FontMetrics font=text.getPaint().getFontMetrics();
         texts.put(J.obj("text",text.getText().toString(),"bounds",bounds(text),"fontHeight",font.bottom-font.top,"contentHeight",text.getHeight()-text.getPaddingTop()-text.getPaddingBottom(),"inkWidth",text.getPaint().measureText(text.getText().toString()),"contentWidth",text.getWidth()-text.getPaddingLeft()-text.getPaddingRight(),"ellipsized",text.getLayout()!=null&&text.getLayout().getLineCount()>0&&text.getLayout().getEllipsisCount(0)>0,"clickable",text.isClickable()));
       }
@@ -183,9 +185,12 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       TextView dot=designChrome.dot;
       Paint.FontMetrics dotFont=dot.getPaint().getFontMetrics();
       JSONObject decorativeDot=J.obj("textSizeDp",dot.getTextSize()/density(),"inkWidth",dot.getPaint().measureText(dot.getText().toString()),"contentWidth",dot.getWidth()-dot.getPaddingLeft()-dot.getPaddingRight(),"fontHeight",dotFont.bottom-dotFont.top,"contentHeight",dot.getHeight()-dot.getPaddingTop()-dot.getPaddingBottom());
-      Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"actions",actionCount,"page",hub.page,"pageMode",pageMode,"viewportDp",getResources().getDisplayMetrics().widthPixels/density(),"fontScale",getResources().getConfiguration().fontScale,"toolbar",rect(toolbarBounds),"toolbarHeightDp",toolbar.getHeight()/density(),"topHeightDp",top.getHeight()/density(),"networkHeightDp",designChrome.networkRow.getHeight()/density(),"networkBounds",rect(networkBounds),"networkTap",J.arr(networkBounds.centerX(),networkBounds.centerY()),"stateTap",center(designChrome.stateWord),"networkClickable",designChrome.networkRow.isClickable(),"networkFocusable",designChrome.networkRow.isFocusable(),"networkBackground",designChrome.networkRow.getBackground()==null?"none":designChrome.networkRow.getBackground().getClass().getName(),"networkDescription",String.valueOf(designChrome.networkRow.getContentDescription()),"latency",latency.getText().toString(),"expectedLatency",network.latency,"controls",controls,"texts",texts,"decorativeDot",decorativeDot).toString());
+      Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"actions",actionCount,"page",hub.page,"pageMode",pageMode,"geckoOnly",remote.enabled,"noNativeChat",noNativeChat(),"systemWebViews",systemWebViews(getWindow().getDecorView()),"viewportDp",getResources().getDisplayMetrics().widthPixels/density(),"fontScale",getResources().getConfiguration().fontScale,"toolbar",rect(toolbarBounds),"toolbarHeightDp",toolbar.getHeight()/density(),"topHeightDp",top.getHeight()/density(),"networkHeightDp",designChrome.networkRow.getHeight()/density(),"networkBounds",rect(networkBounds),"networkTap",J.arr(networkBounds.centerX(),networkBounds.centerY()),"stateTap",center(designChrome.stateWord),"networkClickable",designChrome.networkRow.isClickable(),"networkFocusable",designChrome.networkRow.isFocusable(),"networkBackground",designChrome.networkRow.getBackground()==null?"none":designChrome.networkRow.getBackground().getClass().getName(),"networkDescription",String.valueOf(designChrome.networkRow.getContentDescription()),"latency",latency.getText().toString(),"expectedLatency",network.latency,"controls",controls,"texts",texts,"decorativeDot",decorativeDot).toString());
     }catch(Exception error){Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"error",error.toString()).toString());}
   }
+
+  boolean noNativeChat(){return reader==null&&input==null&&composer==null&&nativeTab==null&&webTab==null;}
+  static int systemWebViews(View view){int count=view instanceof android.webkit.WebView?1:0;if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)count+=systemWebViews(group.getChildAt(i));}return count;}
 
   Object field(String name)throws Exception{Field field=DesignChrome.class.getDeclaredField(name);field.setAccessible(true);return field.get(designChrome);}
   float density(){return getResources().getDisplayMetrics().density;}

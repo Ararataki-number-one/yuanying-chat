@@ -109,6 +109,12 @@ def verify_interaction_transfer_evidence(directory, source):
 
     device = android('device-results.json')
     assert len(device['steps']) >= 78 and device['releaseMode']
+    legacy = device['legacyEngineCompatibility']
+    assert len(legacy) == 2 and {item['context'] for item in legacy} == {1, 2}
+    for item in legacy:
+        assert item['systemWebViews'] == 0
+        assert all(item[key] for key in ('actualGecko', 'oldPreferencesPreserved', 'systemEngineRefused',
+                                        'sameSdkSession', 'sameSurface', 'sameDocument', 'sameProtectedRoute'))
     reading = device['nativeReadingZoom']
     assert len(reading) == 4 and len({item['document'] for item in reading}) == 1
     for item, choice in zip(reading, (.8, .6, 1.3, .8)):

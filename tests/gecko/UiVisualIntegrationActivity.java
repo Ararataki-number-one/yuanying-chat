@@ -44,7 +44,7 @@ public final class UiVisualIntegrationActivity extends Activity {
     for(int slot=0;slot<names.length;slot++){
       catalog.created(slot);Profiles.rename(this,slot,names[slot]);catalog.details(slot,slot<4?"工作":"个人","");
       catalog.favorite(slot,slot==0||slot==4);catalog.browserDisplay(slot,slot==0||slot==3);
-      Profiles.context(this,slot).getSharedPreferences("chat",0).edit().putString("browserEngine","system").putString("networkMode","external").putBoolean("networkConfigured",false).putBoolean("pageMode",true).putBoolean("environmentInitialized",true).commit();
+      Profiles.context(this,slot).getSharedPreferences("chat",0).edit().putString("browserEngine","gecko").putString("networkMode","external").putBoolean("networkConfigured",false).putBoolean("pageMode",true).putBoolean("environmentInitialized",true).commit();
     }
     AppSettings.defaultSlot(this,0);AppSettings.put(this,"brandSeen","true");AppSettings.put(this,"updateAutoCheck","false");
     NetworkCatalog library=new NetworkCatalog(this);
