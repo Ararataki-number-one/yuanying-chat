@@ -134,13 +134,13 @@ public class MainActivity extends Activity {
     if(!remote.hasVisibleDocument()||!MainActivity.chatUrl(url)){confirmReload(url,epoch,known||remote.hasVisibleDocument(),false);return;}
     reloadChecking=true;
     session.asyncDriver("web-inspect",new JSONObject(),2500,state->{
-      if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl())){reloadChecking=false;return;}
+      if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl())){reloadChecking=false;return;}
       if(!WebReplyObserver.same(url,state.optString("url"))){confirmReload(url,epoch,true,false);return;}
       session.archiveWebsiteNavigation(state);
       boolean busy=ProfileUi.working(session)||state.optBoolean("busy");
       // Capture the browser's own draft; never fill or send its composer.
       session.asyncDriver("page-state",J.obj("expectedUrl",url),2500,page->{
-        if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl())){reloadChecking=false;return;}
+        if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl())){reloadChecking=false;return;}
         boolean draft=page.optBoolean("ok")&&!page.optString("draft").trim().isEmpty();
         confirmReload(url,epoch,busy||ProfileUi.working(session)||!page.optBoolean("ok"),draft);
       });
@@ -148,7 +148,7 @@ public class MainActivity extends Activity {
   }
   void confirmReload(String url,long epoch,boolean interrupted,boolean draft){
     reloadChecking=false;
-    if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl()))return;
+    if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl()))return;
     if(!interrupted&&!draft){reloadCurrent(url,epoch);return;}
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"重新加载网页？");reloadDialog=d;
     d.note(!MainActivity.chatUrl(url)?"重新加载会关闭当前网页，未提交的登录信息或表单内容可能丢失。":interrupted?"重新加载可能中断正在生成的回复、上传或其他网页操作；未发送的输入可能无法自动恢复。它不会自动重发提问。":"重新加载会关闭当前网页，未发送的输入可能无法自动恢复。");
@@ -157,18 +157,18 @@ public class MainActivity extends Activity {
     d.buttons("取消",d::dismiss,"重新加载",()->{d.dismiss();reloadCurrent(url,epoch);});d.show();
   }
   void reloadCurrent(String url,long epoch){
-    if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl()))return;
+    if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl()))return;
     if(!MainActivity.chatUrl(url)){session.retryCurrent(url);return;}
     session.asyncDriver("page-state",J.obj("expectedUrl",url),2500,page->{
-      if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl()))return;
+      if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl()))return;
       if(!page.optBoolean("ok")){session.setStatus("暂时无法读取当前输入，请先复制草稿再重新加载");return;}
       String draft=page.optString("draft");
       if(draft.trim().isEmpty()){session.retryCurrent(url);return;}
       session.webStore.worker.execute(()->{boolean saved=DraftArchive.get(session.context).save(url,draft,"重新加载网页前草稿");handler.post(()->{
-        if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl()))return;
+        if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl()))return;
         if(!saved){session.setStatus("草稿暂存失败，请先复制当前输入再重新加载");return;}
         session.asyncDriver("page-state",J.obj("expectedUrl",url),2500,latest->{
-          if(destroyed||epoch!=session.navigationEpoch||!WebReplyObserver.same(url,remote.getUrl()))return;
+          if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl()))return;
           if(!latest.optBoolean("ok")||!page.optString("documentId").equals(latest.optString("documentId"))||!draft.equals(latest.optString("draft"))){session.setStatus("当前输入已变化，请保留草稿，需要时再重新加载");return;}session.retryCurrent(url);
         });
       });});

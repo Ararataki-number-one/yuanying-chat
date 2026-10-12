@@ -22,6 +22,11 @@ public final class BrowserRuntimePolicyTest {
     check("Unknown historical website tasks remain unresolved",!BrowserRuntimePolicy.restoresPending("","","web"));
     check("Native send and regeneration tasks are never replayed",!BrowserRuntimePolicy.restoresPending("gecko","","send")&&!BrowserRuntimePolicy.restoresPending("gecko","","regenerate"));
     String a="https://chatgpt.com/c/A";
+    check("An unchanged login document can be explicitly reloaded",BrowserRuntimePolicy.sameDocument("https://accounts.google.com/signin","https://accounts.google.com/signin"));
+    check("A login redirect invalidates its old reload confirmation",!BrowserRuntimePolicy.sameDocument("https://accounts.google.com/signin","https://accounts.google.com/challenge"));
+    check("A changed query invalidates a captured reload document",!BrowserRuntimePolicy.sameDocument(a+"?step=1",a+"?step=2"));
+    check("An unknown document cannot authorize a reload",!BrowserRuntimePolicy.sameDocument(null,null));
+    check("An empty initial browser document can use normal retry",BrowserRuntimePolicy.sameDocument("",""));
     check("Verified different official conversation ends the old observation",BrowserRuntimePolicy.leftConversation(a,"https://chatgpt.com/c/B",false,false));
     check("The same conversation query does not end observation",!BrowserRuntimePolicy.leftConversation(a,a+"?view=1#reply",true,true));
     check("GPT wrapper aliases retain the same conversation identity",!BrowserRuntimePolicy.leftConversation(a,"https://chatgpt.com/g/example/c/A",true,true));

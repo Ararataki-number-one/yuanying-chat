@@ -120,7 +120,7 @@ final class ChatSession {
   /** Explicit user reload stays on the captured current document, not an older pending chat. */
   void retryCurrent(String target){
     if(target==null||target.isEmpty()){retryCurrent();return;}
-    if(!WebReplyObserver.same(target,web.getUrl()))return;
+    if(!BrowserRuntimePolicy.sameDocument(target,web.getUrl()))return;
     if(!networkReady||offline||!guard.allowed()){setStatus("当前环境网络未就绪，请先检查网络后重新加载");return;}
     manualAttention=false;recoveryAttempt=0;recoveryToken++;recoveryScheduled=false;
     if(web.recoverClosed())return;
