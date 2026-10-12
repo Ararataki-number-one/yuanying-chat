@@ -8,7 +8,7 @@ import java.util.regex.*;
 
 /** A release-bound resumable transfer. It never decides whether an APK is safe to install. */
 final class AppUpdateTransfer {
-  interface ConnectionFactory { HttpURLConnection open(String url)throws IOException; }
+  interface ConnectionFactory { HttpURLConnection open(String url)throws IOException;default void check()throws IOException{}default void finished(){} }
   interface Listener { void progress(long received,long total,long bytesPerSecond); }
   static final ConnectionFactory OFFICIAL=url->(HttpURLConnection)new URL(url).openConnection();
   static final class Request {
@@ -29,7 +29,9 @@ final class AppUpdateTransfer {
   }
   File partial(){return part;}
   long received(){return part.isFile()?part.length():0;}
-  void cancel(){cancelled=true;HttpURLConnection connection=active;if(connection!=null)connection.disconnect();}
+  static final java.util.concurrent.ExecutorService closers=java.util.concurrent.Executors.newCachedThreadPool(task->{Thread t=new Thread(task,"app-update-close");t.setDaemon(true);t.setPriority(Thread.MIN_PRIORITY);return t;});
+  static void disconnectLater(HttpURLConnection connection){closers.execute(connection::disconnect);}
+  void cancel(){cancelled=true;factory.finished();HttpURLConnection connection=active;if(connection!=null)disconnectLater(connection);}
   void clear(){part.delete();meta.delete();new File(meta.getPath()+".tmp").delete();etag="";}
   void load()throws IOException {
     boolean valid=false;
@@ -44,7 +46,7 @@ final class AppUpdateTransfer {
   static boolean strong(String value){if(value==null||value.length()<2||value.charAt(0)!='"'||value.charAt(value.length()-1)!='"')return false;for(int i=1;i<value.length()-1;i++){char c=value.charAt(i);if(c=='"'||c<0x21||c==0x7f)return false;}return true;}
   static boolean officialOrigin(String url){if(url==null)return false;Matcher release=Pattern.compile("https://github[.]com/"+AppUpdatePolicy.REPO+"/releases/download/v([0-9]+[.][0-9]+[.][0-9]+)-gecko/PocketChat-.*").matcher(url);return release.matches()&&AppUpdatePolicy.asset(release.group(1)).equals(url);}
   static boolean trusted(String url,String origin){try{URI u=new URI(url);if(!"https".equals(u.getScheme())||u.getUserInfo()!=null||u.getFragment()!=null||u.getPort()!=-1&&u.getPort()!=443)return false;String host=u.getHost();return "github.com".equals(host)?url.equals(origin):("release-assets.githubusercontent.com".equals(host)||"objects.githubusercontent.com".equals(host))&&u.getRawPath()!=null&&u.getRawPath().startsWith("/github-production-release-asset");}catch(Exception e){return false;}}
-  void checkStopped(BooleanSupplier stopped)throws Stopped {if(cancelled||stopped.getAsBoolean()||Thread.currentThread().isInterrupted())throw new Stopped();}
+  void checkStopped(BooleanSupplier stopped)throws IOException {if(cancelled||stopped.getAsBoolean()||Thread.currentThread().isInterrupted())throw new Stopped();factory.check();}
   HttpURLConnection connect(long offset,BooleanSupplier stopped)throws IOException {
     String url=request.url;for(int redirects=0;redirects<5;redirects++){
       checkStopped(stopped);if(!trusted(url,request.url))throw new InvalidResponse("更新下载地址不受信任，已停止下载");
@@ -56,7 +58,7 @@ final class AppUpdateTransfer {
     }throw new InvalidResponse("更新服务器跳转次数过多");
   }
   static long number(String value)throws InvalidResponse {try{return Long.parseLong(value);}catch(Exception e){throw new InvalidResponse("更新服务器续传范围无效");}}
-  void run(BooleanSupplier stopped)throws IOException {
+  void run(BooleanSupplier stopped)throws IOException {try{
     long sampleTime=System.nanoTime(),sampleBytes=received(),lastSync=sampleTime;long speed=0;
     if(listener!=null)listener.progress(received(),request.bytes,0);
     while(received()<request.bytes){
@@ -90,9 +92,9 @@ final class AppUpdateTransfer {
           }}finally{out.getFD().sync();if(listener!=null)listener.progress(count,request.bytes,speed);}
         }
         checkStopped(stopped);if(count!=expectedEnd+1)throw new EOFException("网络中断，已保留进度，连接恢复后继续下载");
-      }catch(IOException error){if(cancelled||stopped.getAsBoolean()||Thread.currentThread().isInterrupted())throw new Stopped();throw error;}
+      }catch(IOException error){if(cancelled||stopped.getAsBoolean()||Thread.currentThread().isInterrupted())throw new Stopped();factory.check();throw error;}
       finally{HttpURLConnection opened=active;if(connection!=null)connection.disconnect();if(opened!=null&&opened!=connection)opened.disconnect();active=null;}
     }
     checkStopped(stopped);
-  }
+  }finally{factory.finished();}}
 }
