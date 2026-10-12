@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Actual Android screenshots of production UI; never touches the formal app."""
 import argparse,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET
-import http.server,importlib.util,threading
+import http.server,importlib.util,threading,uuid
 
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
 p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()
@@ -199,8 +199,9 @@ try:
     class ReloadHttp(reload_loopback.Fixture):
         def do_GET(self):
             if not self.path.startswith('/c/reload-'):self.send_error(404);return
-            reload_loopback.TRACE.append({'kind':'http','path':self.path})
-            body=b'''<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:18px sans-serif}#composer{position:fixed;bottom:0;background:white;width:90%}textarea{width:95%;height:70px}</style><main><article data-message-author-role="user" data-message-id="reload-user"><div data-user-message-bubble>already sent fixture question</div></article><section><div data-message-author-role="assistant" data-message-id="reload-reply"><div class="markdown"><p>Preserved controlled reply body.</p></div></div></section></main><form id="composer"><textarea id="prompt-textarea">unsent controlled browser draft</textarea><button type="button" data-testid="send-button" aria-label="Send" onclick="document.getElementById('send-count').textContent=Number(document.getElementById('send-count').textContent)+1">Send</button></form><span id="send-count">0</span><script>document.cookie='session=synthetic-reload; Path=/';window.__reloadDocument=crypto.randomUUID();</script>'''
+            document_marker=uuid.uuid4().hex
+            reload_loopback.TRACE.append({'kind':'http','path':self.path,'documentMarker':document_marker})
+            body=b'''<!doctype html><html data-reload-document="__RELOAD_DOCUMENT__"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:18px sans-serif}#composer{position:fixed;bottom:0;background:white;width:90%}textarea{width:95%;height:70px}</style><main><article data-message-author-role="user" data-message-id="reload-user"><div data-user-message-bubble>already sent fixture question</div></article><section><div data-message-author-role="assistant" data-message-id="reload-reply"><div class="markdown"><p>Preserved controlled reply body.</p></div></div></section></main><form id="composer"><textarea id="prompt-textarea">unsent controlled browser draft</textarea><button type="button" data-testid="send-button" aria-label="Send" onclick="document.getElementById('send-count').textContent=Number(document.getElementById('send-count').textContent)+1">Send</button></form><span id="send-count">0</span><script>document.cookie='session=synthetic-reload; Path=/';</script></html>'''.replace(b'__RELOAD_DOCUMENT__',document_marker.encode('ascii'))
             self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(body)
     reload_http=http.server.ThreadingHTTPServer(('127.0.0.1',8765),ReloadHttp)
     reload_socks=reload_loopback.ThreadedSocks(('127.0.0.1',1080),reload_loopback.Socks)
@@ -222,7 +223,7 @@ try:
     try:
         adb('shell','am','force-stop',package);adb('logcat','-c');adb('shell','wm','size','1080x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale','1')
         initial=reload_command('reloadStart','reloadReady')
-        reload_check('Controlled current SPA route and synthetic draft login are ready',initial['path']=='/c/reload-B' and initial['cachedResumeUrl']=='https://chatgpt.com/c/reload-A' and initial['draft']=='unsent controlled browser draft' and 'session=synthetic-reload' in initial['cookie'] and initial['sendCount']==0 and initial['loads']==initial['stops']==0)
+        reload_check('Controlled current SPA route and synthetic draft login are ready',len(initial.get('document',''))==32 and initial['path']=='/c/reload-B' and initial['cachedResumeUrl']=='https://chatgpt.com/c/reload-A' and initial['draft']=='unsent controlled browser draft' and 'session=synthetic-reload' in initial['cookie'] and initial['sendCount']==0 and initial['loads']==initial['stops']==0)
         modal=reload_command('requestReload','reloadModal');reload_check('Actual website reply requires a centered native reload confirmation',modal['centered'])
         reload_tap(modal,'取消');cancelled=reload_command('reloadSnapshot','reloadSnapshot')
         reload_check('Actual cancel preserves the document body draft login and native load counters',all(cancelled[k]==initial[k] for k in ['body','draft','cookie','sendCount','document','path','stops','loads']) and not cancelled['modal'])
@@ -234,7 +235,7 @@ try:
         idle=reload_command('idleReload','reloaded')
         reload_check('An idle empty current page reloads directly without a confirmation',idle['documents']==3 and idle['loads']==2 and not idle['modal'] and idle['requested']=='https://chatgpt.com/c/reload-B' and idle['sendCount']==0)
         requests=[r for r in reload_loopback.TRACE if r['kind']=='http'];routes=[r for r in reload_loopback.TRACE if r['kind']=='socks' and r['accepted']];blocked=[r for r in reload_loopback.TRACE if r['kind']=='socks' and not r['accepted']]
-        reload_check('All reload documents use the actual controlled SOCKS route without extra loads',len(requests)==3 and [r['path'] for r in requests]==['/c/reload-A','/c/reload-B','/c/reload-B'] and routes and all(r['port']==8765 and r['host']=='127.0.0.1' for r in routes))
+        reload_check('All reload documents use the actual controlled SOCKS route without extra loads',len(requests)==3 and [r['documentMarker'] for r in requests]==[initial['document'],confirmed['document'],idle['document']] and len({r['documentMarker'] for r in requests})==3 and [r['path'] for r in requests]==['/c/reload-A','/c/reload-B','/c/reload-B'] and routes and all(r['port']==8765 and r['host']=='127.0.0.1' for r in routes))
         reload_confirmation={'actualAndroidExecution':True,'actualGeckoExecution':True,'sourceCommit':source,'checks':reload_checks,'actualAndroidTaps':reload_taps,'cancelMatched':all(cancelled[k]==initial[k] for k in ['body','draft','cookie','document']),'noStopNoLoad':cancelled['stops']==cancelled['loads']==0,'noSend':confirmed['sendCount']==idle['sendCount']==0,'fullDraftCookieUnchanged':cancelled['draft']==initial['draft'] and cancelled['cookie']==initial['cookie'],'explicitConfirmCurrentURI':confirmed['requested']==initial['currentUrl'],'notOldURI':confirmed['requested']!=initial['cachedResumeUrl'],'idleNoModal':not idle['modal'],'initial':initial,'cancelled':cancelled,'stale':stale,'confirmed':confirmed,'idle':idle,'fixtureRequests':requests,'controlledProxyRoutes':routes,'blockedRequests':blocked}
     finally:
         reload_http.shutdown();reload_socks.shutdown()
