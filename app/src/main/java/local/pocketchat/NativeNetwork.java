@@ -257,7 +257,7 @@ class NativeNetwork {
     try{health();}finally{finishMaintenance(work);WindowNetworkState.save(context,ChatSession.peek(),this);}
   }
   JSONObject group(String name,String filter){JSONObject g=J.obj("name",name,"type","select","proxies",J.arr("REJECT"),"use",J.arr("Subscription"),"empty-fallback","REJECT","interval",0,"hidden",true);if(filter!=null)try{g.put("filter",filter);}catch(Exception ignored){}return g;}
-  JSONObject exit(String name,String group){return J.obj("name",name,"type","socks5","server",settings.optString("exitHost"),"port",settings.optInt("exitPort"),"username",settings.optString("exitUser"),"password",settings.optString("exitPassword"),"udp",false,"dialer-proxy",group);}
+  JSONObject exit(String name,String group){JSONObject result=J.obj("name",name,"type","socks5","server",settings.optString("exitHost"),"port",settings.optInt("exitPort"),"username",settings.optString("exitUser"),"password",settings.optString("exitPassword"),"udp",false,"dialer-proxy",group);if("FixedExit".equals(name)){NetworkCatalog.put(result,"pocket-preconnect",true);NetworkCatalog.put(result,"pocket-preconnect-epoch-file",new File(root,ExitPreconnectEpoch.FILE).getAbsolutePath());}return result;}
   static String literalRegex(String s){StringBuilder b=new StringBuilder();for(char c:s.toCharArray()){if("\\.+*?()|[]{}^$".indexOf(c)>=0)b.append('\\');b.append(c);}return b.toString();}
   JSONObject config(boolean bootstrap,boolean download){
     JSONObject provider=J.obj("type",download?"http":"file","path","./subscription.yaml","health-check",J.obj("enable",false),"override",J.obj("additional-prefix","Entry|"));

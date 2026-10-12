@@ -1,8 +1,20 @@
-# Mihomo v1.19.31 探测补丁
+# Mihomo v1.19.31 探测与固定出口预认证补丁
 
 基于 [MetaCubeX/mihomo v1.19.31](https://github.com/MetaCubeX/mihomo/tree/v1.19.31)，准确 revision 为 `ab405bad5beeeac8b003bb01f60f134f6df54471`。原始源码归档 [mihomo-v1.19.31.tar.gz](../source/mihomo-v1.19.31.tar.gz) 保持原样，SHA-256 为 `676732158479254de38ea5a78aa32ff650ce2d3a78156a0edc2ff0cb5c2ddfd8`。修改以 [独立补丁](mihomo-v1.19.31-probe.patch) 分发，继续适用上游 GPL-3.0。
 
-此版本标记为 `v1.19.31-pocket-probe1`。它修改控制端的线路探测，不修改网站流量转发、代理协议、入口选择、固定出口或 TLS 证书验证。不能据此宣称用户真实线路从 400 ms 降至 100 ms。
+此版本标记为 `v1.19.31-pocket-preconnect1`。保留 `pocket-probe1` 的探测逻辑，另增加显式启用的固定出口预认证连接池及严格的 SOCKS 命令回复校验。入口、固定出口、凭据和 TLS 证书验证沿用用户配置。不能据此宣称用户真实线路从 400 ms 降至 100 ms。
+
+## 固定出口预认证
+
+仅 `FixedExit` 的 `pocket-preconnect: true` 和有效私有 `pocket-preconnect-epoch-file` 同时存在时启用。捕获实际入口叶子、选择器修订号、内核配置代次及默认网络代号；复杂或不可冻结的路线、缺失或 blocked 代号使用原受保护建连方式。
+
+真实 TCP 连接成功后最多准备一个未发目标 CONNECT 的认证 socket；最多一个准备任务，含准备的总期限 8 秒。没有定时补满。借出只使用一次，进入网站 TLS/HTTP 后从池所有权中移除，池失效不会关闭已交给调用方的连接。
+
+旧闲置 socket 的 EOF/reset 仅在调用方尚未获得连接时，允许一次原冻结路线重建。认证拒绝、非零 SOCKS REP、协议异常及路线失效不重试；这些池路线的终止错误也会停止上游监听器的外层拨号重试。原普通路线和 URLTest 保持原重试策略。任何已交给调用方的浏览器数据都不自动重放。
+
+`ClientHandshake` 顺序调用分拆的 `ClientAuthenticate` 与 `ClientCommand`；合法握手字节保持兼容。命令回复验证 VER、RSV 和 REP，避免把服务器拒绝当作成功。未更改 UDP 路径、目标证书校验或认证字段长度策略。详细身份、失效及实测边界见 [架构方案](../../docs/NETWORK-PRECONNECT-ARCHITECTURE.md)。
+
+URLTest trace 显式绕过池的取用和补充，不让提前准备改变原测速口径。
 
 ## 修复行为
 
@@ -55,6 +67,6 @@ python3 tools/build-mihomo.py --build --target all --test --install
 
 [构建 receipt](mihomo-v1.19.31-probe-build.json) 记录归档、补丁、模块校验和、构建参数和两 ABI 的 SHA-256。`--verify` 核验 source/recipe、文件路径白名单、当前二进制及 Android PIE/linker64/16 KiB 页对齐。独立源码重建后比较二进制 SHA 才能证明构建一致性；receipt 本身不代替运行验收。
 
-补丁包含十项真实本地 HTTP/TLS/取消测试，覆盖正常同连接 warm、Connection close 后的真实冷复测、第二阶段 RST 回退、deadline、主动取消、TLS 拒绝、错误状态、首次错误而第二次成功、迟到 redial 连接的关闭，以及错误类别的隐私边界。
+补丁保留十项原 HTTP/TLS/取消主测试，另增加 36 项协议、实际选择器、池并发与监听器重试主测试。重建时全部 46 项必须通过一次；测试源码和二进制来自同一份补丁，独立构建日志绑定所有通过记录。
 
 Linux 双 SOCKS fixture 验证探测机制，不代表 Android 上已验收，也不代表用户节点的实际速度。正式版本还必须通过真实 Android 双 SOCKS、受保护浏览器连接连续性和对应源码的应用回归。

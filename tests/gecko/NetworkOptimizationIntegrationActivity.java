@@ -26,6 +26,10 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     TestNetwork(Context c,HttpFixture site,HttpFixture plain){this(c,site,plain,false);}
     TestNetwork(Context c,HttpFixture site,HttpFixture plain,boolean isolated){this(c,site,plain,new File(c.getNoBackupFilesDir(),isolated?"network-runtime":"network-performance-test"));}
     TestNetwork(Context c,HttpFixture site,HttpFixture plain,File directory){super(c,directory,false);this.site=site;this.plain=plain;trustFactory=site.tls.getSocketFactory();}
+    // Preserve the original strong socket/auth counters in existing baselines.
+    // The dedicated real preconnect fixture explicitly opts into the production flag.
+    boolean exercisePreconnect(){return false;}
+    @Override JSONObject config(boolean bootstrap,boolean download){JSONObject result=super.config(bootstrap,download);if(!exercisePreconnect()){JSONArray exits=result.optJSONArray("proxies");if(exits!=null)for(int i=0;i<exits.length();i++){JSONObject exit=exits.optJSONObject(i);if(exit!=null&&"FixedExit".equals(exit.optString("name")))NetworkCatalog.put(exit,"pocket-preconnect",false);}}return result;}
     @Override HttpURLConnection openProbeConnection(String target,int port)throws IOException{HttpURLConnection c=super.openProbeConnection(target,port);if(c instanceof HttpsURLConnection){if(!target.startsWith(site.url("/")))throw new IOException("Only controlled TLS endpoints are allowed");((HttpsURLConnection)c).setSSLSocketFactory(trustFactory);}return c;}
     @Override String websiteUrl(){return site.url("/website");}
     @Override String probeUrl(){return plain.url("/probe");}

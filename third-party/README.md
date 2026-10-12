@@ -4,7 +4,7 @@
 
 | 组件 | 版本或说明 | 许可材料 |
 | --- | --- | --- |
-| Mihomo | v1.19.31-pocket-probe1，基于 v1.19.31 的探测补丁，Android ARM64、x86_64 | [GPL-3.0](licenses/Mihomo-GPL-3.0.txt)、[原始上游源码](source/mihomo-v1.19.31.tar.gz)、[修改补丁](patches/mihomo-v1.19.31-probe.patch)、[构建与行为说明](patches/mihomo-v1.19.31-probe.md) |
+| Mihomo | v1.19.31-pocket-preconnect1，基于 v1.19.31 的探测与固定出口预认证补丁，Android ARM64、x86_64 | [GPL-3.0](licenses/Mihomo-GPL-3.0.txt)、[原始上游源码](source/mihomo-v1.19.31.tar.gz)、[修改补丁](patches/mihomo-v1.19.31-probe.patch)、[构建与行为说明](patches/mihomo-v1.19.31-probe.md) |
 | AndroidX WebKit（历史） | 1.12.1，1.5.20 已移除正式依赖 | [POM](licenses/AndroidX-WebKit.pom)、[Apache-2.0](licenses/Apache-2.0.txt) |
 | AndroidX Core | Gradle 发布使用 Gecko 的传递依赖；旧手工构建保留 1.1.0 | [Apache-2.0](licenses/Apache-2.0.txt) |
 | DOMPurify | 仅保留历史许可，1.5.20 不再打包 | [原始许可](licenses/DOMPurify.txt) |

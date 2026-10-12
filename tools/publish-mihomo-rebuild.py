@@ -68,13 +68,17 @@ def prepare():
             rebuilt[abi] = {'bytes': item['bytes'], 'sha256': item['sha256'],
                             'goos': item['goos'], 'goarch': item['goarch'], 'elf': item['elf']}
         test_log = (stage / 'build.log').read_text('utf-8')
-        passed = re.findall(r'^--- PASS: (TestPocketProbe\w+) ', test_log, re.MULTILINE)
-        if len(passed) != 10 or len(set(passed)) != 10:
-            raise ValueError('All ten real native HTTP, TLS and cancellation regressions are required')
+        passed = re.findall(r'^--- PASS: (Test(?:Pocket|Preconnect|SelectorPreconnect)\w+) ', test_log, re.MULTILINE)
+        patch = (ROOT / value['inputs']['patch']).read_text('utf-8')
+        expected = set(re.findall(r'^\+func (Test(?:Pocket|Preconnect|SelectorPreconnect)\w+)\(', patch, re.MULTILINE))
+        probe = [name for name in passed if name.startswith('TestPocketProbe')]
+        if len(probe) != 10 or len(expected) < 46 or set(passed) != expected or len(passed) != len(expected):
+            raise ValueError('Every reviewed native regression must pass exactly once, including the ten original probe tests')
         result.update(status='passed', independentNativeRebuild=True,
                       inputs=value['inputs'], recipe=value['recipe'],
                       rebuiltBinaries=rebuilt, nativeRegressionCount=len(passed),
-                      nativeRegressions=passed,
+                      nativeRegressions=passed, nativeProbeRegressionCount=len(probe),
+                      preconnectRegressionCount=len(passed)-len(probe),
                       receiptSha256=hashlib.sha256(original).hexdigest(),
                       exactCommittedBytes=True)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:

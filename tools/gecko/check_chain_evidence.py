@@ -23,7 +23,17 @@ def verify_chain_evidence(directory, source):
     core = json.loads((directory / 'network-core-build.json').read_text())
     assert core['sourceCommit'] == source, 'native build evidence belongs to another source'
     assert core['schema'] == 1 and set(core['binaries']) == {'arm64-v8a', 'x86_64'}
-    assert core['recipe']['version'] == 'v1.19.31-pocket-probe1'
+    preconnect_enabled = core['recipe'].get('fixedExitPreconnect', False)
+    assert isinstance(preconnect_enabled, bool)
+    manifest_path = directory / 'manifest.json'
+    if not manifest_path.is_file():
+        manifest_path = directory / 'release-manifest.json'
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest['sourceCommit'] == source
+        if manifest['versionCode'] >= 47:
+            assert preconnect_enabled, 'This release requires the real preauthentication pool build'
+    assert core['recipe']['version'] == ('v1.19.31-pocket-preconnect1' if preconnect_enabled else 'v1.19.31-pocket-probe1')
     assert core['recipe']['androidApi'] == 26 and core['recipe']['goModuleFlags'] == 'readonly'
     verify_native_probe(native, core)
     pool = android('gecko-pool-results.json')
@@ -32,13 +42,20 @@ def verify_chain_evidence(directory, source):
         report = json.loads((directory / name).read_text())
         assert report['sourceCommit'] == source, name
         assert report['passed'] >= minimum, name
-    return {'actualAndroidExecution': True, 'actualMihomoExecution': True,
+    result = {'actualAndroidExecution': True, 'actualMihomoExecution': True,
             'actualGeckoHttp2Execution': True, 'nativeProbeChecks': len(native['checks']),
             'poolChecks': len(pool['checks']), 'actualNativeCancellationCases': len(native['cancellations']),
             'executedNativeSha256': native['coreSha256'],
             'healthyRecoveryReusesSameHttp2Connection': True,
             'changedRoutePartitionsConnections': True,
             'unknownNetworkAndMissingReceiptBlockRequests': True}
+    if preconnect_enabled:
+        if __package__:
+            from .preconnect_contract import verify_preconnect
+        else:
+            from preconnect_contract import verify_preconnect
+        result['fixedExitPreauthentication'] = verify_preconnect(android('preconnect-results.json'), core)
+    return result
 
 
 if __name__ == '__main__':

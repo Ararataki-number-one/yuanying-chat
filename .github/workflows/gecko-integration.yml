@@ -156,6 +156,14 @@ jobs:
           if ! python3 tests/gecko/run_gecko_pool.py --adb "$(command -v adb)" --serial emulator-5554; then
             checks_failed=1
           fi
+          python3 tools/gecko/publish_ci.py
+          if ! python3 tests/gecko/run_preconnect.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          python3 tools/gecko/publish_ci.py
+          if ! python3 tools/gecko/check_chain_evidence.py work/gecko-integration --source "$GITHUB_SHA"; then
+            checks_failed=1
+          fi
           if ! python3 tools/gecko/check_client_evidence.py work/gecko-integration --source "$GITHUB_SHA"; then
             checks_failed=1
           fi

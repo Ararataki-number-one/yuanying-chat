@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild or verify the small, source-distributed Mihomo probe patch.
+"""Rebuild or verify the source-distributed Mihomo probe and fixed-exit patch.
 
 Normal APK builds only use --verify. Native rebuilds use the exact upstream
 archive, Go 1.26.8 and NDK r29-beta1; all caches stay in the supplied workspace.
@@ -31,7 +31,7 @@ NDK_VERSION = '29.0.13113456'
 NDK_ARCHIVE = 'android-ndk-r29-beta1-linux.zip'
 NDK_SHA = '0bbaf4d0632152dcdcf3d0a5d385c760949898c88488375b18971dd669094388'
 NDK_BYTES = 773995428
-VERSION = 'v1.19.31-pocket-probe1'
+VERSION = 'v1.19.31-pocket-preconnect1'
 BUILD_TIME = 'source-2026-09-14T11:59:30Z'
 FLAGS = ['-mod=readonly', '-p=4', '-tags=with_gvisor', '-trimpath', '-buildvcs=false']
 LDFLAGS = ('-X github.com/metacubex/mihomo/constant.Version=' + VERSION +
@@ -42,7 +42,13 @@ TARGETS = {
     'android-amd64': ('x86_64', 'amd64', 'x86_64-linux-android26-clang', 62),
 }
 PATCH_FILES = {'adapter/adapter.go', 'adapter/urltest_probe_test.go',
-               'component/urltesttrace/trace.go', 'hub/route/proxies.go'}
+               'component/urltesttrace/trace.go', 'hub/route/proxies.go',
+               'adapter/outbound/socks5.go', 'adapter/outbound/socks5_preconnect.go',
+               'adapter/outbound/socks5_preconnect_test.go',
+               'adapter/outboundgroup/selector.go', 'adapter/outboundgroup/selector_preconnect_test.go',
+               'component/proxydialer/pocket_route.go', 'component/proxydialer/pocket_route_test.go',
+               'transport/socks5/socks5.go', 'transport/socks5/socks5_preconnect_test.go',
+               'tunnel/tunnel.go', 'tunnel/pocket_export_test.go', 'tunnel/pocket_preconnect_test.go'}
 
 
 def digest(path):
@@ -131,7 +137,7 @@ def source_inputs():
     patch_text = PATCH.read_text('utf-8')
     touched = {line[6:] for line in patch_text.splitlines() if line.startswith('+++ b/')}
     if touched != PATCH_FILES:
-        raise ValueError('Patch files exceed the reviewed probe-only whitelist.')
+        raise ValueError('Patch files differ from the reviewed probe and fixed-exit whitelist.')
     return {'upstreamVersion': 'v1.19.31', 'upstreamRevision': UPSTREAM_REVISION,
             'archive': str(SOURCE.relative_to(REPO)), 'archiveSha256': SOURCE_SHA,
             'patch': str(PATCH.relative_to(REPO)), 'patchSha256': digest(PATCH),
@@ -142,6 +148,7 @@ def recipe():
     return {'goVersion': GO_VERSION, 'goArchiveSha256': GO_SHA,
             'ndkVersion': NDK_VERSION, 'ndkArchiveSha256': NDK_SHA,
             'androidApi': 26, 'version': VERSION, 'buildTime': BUILD_TIME,
+            'fixedExitPreconnect': True,
             'flags': FLAGS, 'ldflags': LDFLAGS,
             'androidExternalLdflags': '-Wl,--build-id=none,-z,max-page-size=16384',
             'cgoFlags': {'CFLAGS': '-O2 -g', 'CPPFLAGS': '', 'CXXFLAGS': '-O2 -g',
@@ -218,7 +225,9 @@ def build(args):
     run([str(go), 'mod', 'verify'], cwd=source, env=env)
     if args.test:
         run([str(go), 'test', '-mod=readonly', '-p=4', '-tags=with_gvisor',
-             './adapter', './component/urltesttrace', '-run=TestPocketProbe', '-v'], cwd=source, env=env)
+             './adapter', './component/urltesttrace', './adapter/outbound',
+             './adapter/outboundgroup', './component/proxydialer', './transport/socks5', './tunnel',
+             '-run=Test(Pocket|Preconnect|SelectorPreconnect)', '-count=1', '-v'], cwd=source, env=env)
     built = {}
     for name in target_names:
         options = env.copy()
@@ -254,7 +263,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument('--verify', action='store_true', help='Check installed bytes and source receipt without downloads or rebuilding.')
-    action.add_argument('--build', action='store_true', help='Rebuild the pinned upstream source plus the reviewed probe patch.')
+    action.add_argument('--build', action='store_true', help='Rebuild the pinned source plus the reviewed probe and fixed-exit patch.')
     parser.add_argument('--target', choices=['all', 'linux-amd64', *TARGETS], default='all')
     parser.add_argument('--work-dir', type=Path, default=REPO / 'work/mihomo-build')
     parser.add_argument('--test', action='store_true', help='Run the actual socket/TLS/context-cancellation Go regression before building.')

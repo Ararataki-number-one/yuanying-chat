@@ -21,6 +21,7 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
     String name;
     if("/native-probe".equals(uri.getPath()))name="native-probe-results.json";
     else if("/gecko-pool".equals(uri.getPath()))name="gecko-pool-results.json";
+    else if("/preconnect".equals(uri.getPath()))name="preconnect-results.json";
     else throw new FileNotFoundException("Unknown synthetic report");
     try{
       File base=getContext().getFilesDir().getCanonicalFile(),file=new File(base,name).getCanonicalFile();

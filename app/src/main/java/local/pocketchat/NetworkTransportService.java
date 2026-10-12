@@ -13,7 +13,7 @@ import java.util.concurrent.*;
 /** Data-plane ownership is independent of every browser and its control process. */
 public final class NetworkTransportService extends Service {
   static final int COMMAND=1,REPLY=2,EVENT=3,NOTICE=23000;
-  volatile boolean destroying;final Handler main=new Handler(Looper.getMainLooper());final Node[] nodes=new Node[Profiles.MAX];final Runnable idleStop=()->{if(destroying)return;for(Node n:nodes)if(n.alive()||n.pendingLaunches.get()>0)return;stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();};
+  volatile boolean destroying;volatile ExitPreconnectEpoch preconnectEpoch;final Handler main=new Handler(Looper.getMainLooper());final Node[] nodes=new Node[Profiles.MAX];final Runnable idleStop=()->{if(destroying)return;for(Node n:nodes)if(n.alive()||n.pendingLaunches.get()>0)return;stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();};
   final Messenger endpoint=new Messenger(new Handler(Looper.getMainLooper()){public void handleMessage(Message message){receive(message);}});
   static final class Node {
     final java.util.concurrent.atomic.AtomicInteger pendingLaunches=new java.util.concurrent.atomic.AtomicInteger();final int slot;final ExecutorService commands=Executors.newSingleThreadExecutor();final Map<IBinder,Messenger> subscribers=new ConcurrentHashMap<>();
@@ -22,7 +22,8 @@ public final class NetworkTransportService extends Service {
     boolean alive(){java.lang.Process p=process;return p!=null&&p.isAlive();}
     JSONObject snapshot(){return J.obj("slot",slot,"state",state,"alive",alive(),"generation",generation,"pid",pid,"servicePid",android.os.Process.myPid(),"configuration",configHash,"controllerPort",controllerPort,"proxyPort",proxyPort,"webProbePort",webProbePort);}
   }
-  @Override public void onCreate(){super.onCreate();for(int slot=0;slot<nodes.length;slot++)nodes[slot]=new Node(slot);QuietNotifications.backgroundChannel(this,QuietNotifications.NETWORK_BACKGROUND,"后台连接服务 · 静默");}
+  @Override public void onCreate(){super.onCreate();for(int slot=0;slot<nodes.length;slot++)nodes[slot]=new Node(slot);preconnectEpoch=new ExitPreconnectEpoch(this,this::writePreconnectEpochs);QuietNotifications.backgroundChannel(this,QuietNotifications.NETWORK_BACKGROUND,"后台连接服务 · 静默");}
+  void writePreconnectEpochs(){ExitPreconnectEpoch epoch=preconnectEpoch;if(epoch==null)return;File base=Profiles.global(this).getNoBackupFilesDir();for(Node n:nodes){File profile=n.slot==0?base:new File(base,"profiles/env"+n.slot);File directory=new File(profile,"network-runtime");android.util.AtomicFile file=new android.util.AtomicFile(new File(directory,ExitPreconnectEpoch.FILE));try{if(file.getBaseFile().isFile())epoch.writeExisting(directory);}catch(Exception unavailable){file.delete();}}}
   @Override public IBinder onBind(Intent intent){return endpoint.getBinder();}
   @Override public int onStartCommand(Intent intent,int flags,int startId){main.removeCallbacks(idleStop);notification();return START_NOT_STICKY;}
   void notification(){
@@ -51,7 +52,7 @@ public final class NetworkTransportService extends Service {
   }
   File root(Node n){return new File(Profiles.context(this,n.slot).getNoBackupFilesDir(),"network-runtime");}
   void launch(Node n,String configuration)throws Exception{
-    if(destroying)throw new IOException("网络服务正在结束");stop(n,false);File directory=root(n),configFile=new File(directory,"config.json");JSONObject config=J.parse(new String(java.nio.file.Files.readAllBytes(configFile.toPath()),StandardCharsets.UTF_8));
+    if(destroying)throw new IOException("网络服务正在结束");stop(n,false);File directory=root(n),configFile=new File(directory,"config.json");ExitPreconnectEpoch epoch=preconnectEpoch;synchronized(epoch){if(destroying||epoch.closed)throw new IOException("网络服务正在结束");try{epoch.write(directory);}catch(IOException unavailable){new android.util.AtomicFile(new File(directory,ExitPreconnectEpoch.FILE)).delete();}}JSONObject config=J.parse(new String(java.nio.file.Files.readAllBytes(configFile.toPath()),StandardCharsets.UTF_8));
     if(config.optString("secret").isEmpty()||!config.optString("external-controller").startsWith("127.0.0.1:"))throw new IOException("网络配置尚未就绪");
     n.controllerPort=Integer.parseInt(config.getString("external-controller").substring("127.0.0.1:".length()));n.proxyPort=n.webProbePort=0;
     JSONArray listeners=config.optJSONArray("listeners");if(listeners!=null)for(int i=0;i<listeners.length();i++){JSONObject listener=listeners.getJSONObject(i);if(!"127.0.0.1".equals(listener.optString("listen")))throw new IOException("网络监听器必须为本机回环");if("PocketOnly".equals(listener.optString("name")))n.proxyPort=listener.getInt("port");if("WebsiteCheck".equals(listener.optString("name")))n.webProbePort=listener.getInt("port");}
@@ -86,5 +87,5 @@ public final class NetworkTransportService extends Service {
     }
   }
   void event(Node n){Message message=Message.obtain(null,EVENT);Bundle data=new Bundle();data.putString("json",n.snapshot().toString());message.setData(data);for(Map.Entry<IBinder,Messenger> entry:n.subscribers.entrySet())try{entry.getValue().send(Message.obtain(message));}catch(RemoteException dead){n.subscribers.remove(entry.getKey());}}
-  @Override public void onDestroy(){destroying=true;main.removeCallbacks(idleStop);for(Node n:nodes){n.commands.execute(()->{try{stop(n,false);}catch(Exception ignored){}});n.commands.shutdown();}super.onDestroy();}
+  @Override public void onDestroy(){destroying=true;if(preconnectEpoch!=null)preconnectEpoch.close();main.removeCallbacks(idleStop);for(Node n:nodes){n.commands.execute(()->{try{stop(n,false);}catch(Exception ignored){}});n.commands.shutdown();}super.onDestroy();}
 }
