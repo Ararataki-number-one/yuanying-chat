@@ -1,0 +1,72 @@
+{
+  "log-level": "warning",
+  "mode": "rule",
+  "ipv6": false,
+  "tcp-concurrent": true,
+  "external-controller": "127.0.0.1:37225",
+  "secret": "fixture-control",
+  "allow-lan": false,
+  "sniffer": {
+    "enable": false
+  },
+  "tun": {
+    "enable": false
+  },
+  "dns": {
+    "enable": false
+  },
+  "tls": {
+    "custom-certifactes": [
+      "-----BEGIN CERTIFICATE-----\nMIIDKzCCAhOgAwIBAgIUR11Ck9BaecGr6aJzLQZFho7LFo8wDQYJKoZIhvcNAQEL\nBQAwGDEWMBQGA1UEAwwNYmVuY2guaW52YWxpZDAeFw0yNjEwMTIwODMwMzZaFw0y\nNjEwMTQwODMwMzZaMBgxFjAUBgNVBAMMDWJlbmNoLmludmFsaWQwggEiMA0GCSqG\nSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCXhhURTbbubWhvQDHiF6aO14q3wUxZN9d8\n2gqHadIXvqPwd9szbhYY7UUk/KjNFOKy0hhKiKUN8A5T2Cowlj5ma7ip5XAsxM+v\nYETRUWTYvNME3Oh5A08WZLNKUyp/dG29/NK04ymiF+FP8PFMnFiQe6AJDybkOD3h\njuDU+EG7hwwB3/rz5Z10Q3CXFFdi3N5oVuPW9V90igNgkB7zce4uEC1XsJvYPrSz\nTZ27EeNFRWuxAvtFaJ82phksypGTt7bWGatofcEQutoUjGY1OcLW2xjw5zBpHDR2\nABWw+QWCIKnFEnxcNp0TA1e+KlW8kF6JCqgS3zj6FmDYmhjhrljxAgMBAAGjbTBr\nMB0GA1UdDgQWBBQLQ9RVLkddZquj9ZDODN3zE0NzLDAfBgNVHSMEGDAWgBQLQ9RV\nLkddZquj9ZDODN3zE0NzLDAPBgNVHRMBAf8EBTADAQH/MBgGA1UdEQQRMA+CDWJl\nbmNoLmludmFsaWQwDQYJKoZIhvcNAQELBQADggEBAC9aXMQu2zuQOhKQnzSQQbFQ\nDlyDrkctO508YiX6mvr0rpAvi59O5Yoc+vUXP7BMngDBxN6lGnvYKnTxaTw2NH8p\nesXj+SscVrNUdV8htfv08vyDcnjSQPGgRvwZdeSvnE3d4TArgUgTMSBwwKhe8xY2\nCt8LWdNCfZpNYUJmxJJakMcbtVG3Ku4LZKfGn5L1T1A8uCcc6f3XShfi6RpdvwNz\njqKi34gbuMPA7qpbuJcoSG5wMyv0CK3zWfR4QtLCIv/afGwHnaalgB2qjN9xCZig\nlA2MQfExiUyjyZjcTSxFg8fCeVenwq3wDVfwAXBa2jnNR1sUvPuR1rlbe1d9ODQ=\n-----END CERTIFICATE-----\n"
+    ]
+  },
+  "proxy-providers": {
+    "Subscription": {
+      "type": "file",
+      "path": "subscription.yaml",
+      "override": {
+        "additional-prefix": "Entry|"
+      },
+      "health-check": {
+        "enable": false
+      }
+    }
+  },
+  "proxies": [
+    {
+      "name": "FixedExit",
+      "port": 48163,
+      "username": "exit-fixture-user",
+      "password": "exit-fixture-password",
+      "type": "socks5",
+      "server": "127.0.0.1",
+      "udp": false,
+      "dialer-proxy": "EntryChoice",
+      "pocket-preconnect": true,
+      "pocket-preconnect-epoch-file": "/workspace/yuanying-chat/work/native-preconnect-process-benchmark/focused-unified/production-true/network.epoch"
+    }
+  ],
+  "proxy-groups": [
+    {
+      "name": "EntryChoice",
+      "type": "select",
+      "use": [
+        "Subscription"
+      ]
+    }
+  ],
+  "rules": [
+    "MATCH,REJECT"
+  ],
+  "listeners": [
+    {
+      "name": "PocketOnly",
+      "type": "mixed",
+      "listen": "127.0.0.1",
+      "port": 33321,
+      "udp": false,
+      "proxy": "FixedExit"
+    }
+  ],
+  "unified-delay": true
+}

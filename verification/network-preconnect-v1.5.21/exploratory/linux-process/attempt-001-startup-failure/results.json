@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "fullActualLinuxCoreProcess": true,
+  "androidAcceptance": false,
+  "wanClaim": false,
+  "fixtureTransport": "two-authenticated-SOCKS5-hops",
+  "preparationIsRealNetworkWork": true,
+  "sourceCommit": "140a9d840d42af21754d6791c1e6e2dde8a01559",
+  "core": {
+    "path": "work/mihomo-build/bin/mihomo-linux-amd64",
+    "sha256": "b65e4021cee05e3d60a3e86fd9cd61839d3d8fb77784ce5f56a04547fff3f6a7",
+    "bytes": 61759614,
+    "version": "Mihomo Meta v1.19.31-pocket-preconnect1 linux amd64 with go1.26.8 source-2026-09-14T11:59:30Z\nUse tags: with_gvisor"
+  },
+  "checks": [],
+  "samples": [],
+  "nativeInputs": {
+    "upstreamVersion": "v1.19.31",
+    "upstreamRevision": "ab405bad5beeeac8b003bb01f60f134f6df54471",
+    "archive": "third-party/source/mihomo-v1.19.31.tar.gz",
+    "archiveSha256": "676732158479254de38ea5a78aa32ff650ce2d3a78156a0edc2ff0cb5c2ddfd8",
+    "patch": "third-party/patches/mihomo-v1.19.31-probe.patch",
+    "patchSha256": "24f9b3a5db65265bc719107bc1eb79752c4e115e1babdfc79838237abc849ef9",
+    "goModSha256": "ef07d50791a4f23f642050359d2de243d97af53d3e91c8210b066b085d2d2f38",
+    "goSumSha256": "23d34cf622f4e864fe63b8b48e9f097551b2e82d752b5adb3ee3ac0a2d6f743c"
+  },
+  "nativeRecipe": {
+    "goVersion": "go1.26.8",
+    "goArchiveSha256": "d0f743b33e8d8945e6b1f432edd15785c70507121d6e2a723b21285eddf8b57b",
+    "ndkVersion": "29.0.13113456",
+    "ndkArchiveSha256": "0bbaf4d0632152dcdcf3d0a5d385c760949898c88488375b18971dd669094388",
+    "androidApi": 26,
+    "version": "v1.19.31-pocket-preconnect1",
+    "buildTime": "source-2026-09-14T11:59:30Z",
+    "fixedExitPreconnect": true,
+    "flags": [
+      "-mod=readonly",
+      "-p=4",
+      "-tags=with_gvisor",
+      "-trimpath",
+      "-buildvcs=false"
+    ],
+    "ldflags": "-X github.com/metacubex/mihomo/constant.Version=v1.19.31-pocket-preconnect1 -X github.com/metacubex/mihomo/constant.BuildTime=source-2026-09-14T11:59:30Z -w -s -buildid=",
+    "androidExternalLdflags": "-Wl,--build-id=none,-z,max-page-size=16384",
+    "cgoFlags": {
+      "CFLAGS": "-O2 -g",
+      "CPPFLAGS": "",
+      "CXXFLAGS": "-O2 -g",
+      "FFLAGS": "-O2 -g",
+      "LDFLAGS": "-O2 -g"
+    },
+    "goExperiment": "",
+    "goToolchainSelection": "local",
+    "goModuleFlags": "readonly",
+    "goModuleVerification": "go mod verify; original go.mod and go.sum unchanged"
+  },
+  "androidReceiptSha256": "d655dacb0f1696b5f9ee024bd54159809d01f554a6e2f3e1a1c2983a3a580cc5",
+  "passed": false,
+  "failure": "Traceback (most recent call last):\n  File \"/workspace/yuanying-chat/work/native-preconnect-process-benchmark/run.py\", line 91, in main\n    base=Core(fixture,'baseline-false',False);cores.append(base);candidate=Core(fixture,'production-true',True);cores.append(candidate);out['coreControllers']={c.name:{'version':c.version,'selection':c.selection,'configSha256':sha(c.root/'config.json')} for c in cores}\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/yuanying-chat/work/native-preconnect-process-benchmark/run.py\", line 48, in __init__\n    self.version=until(ready);self.selection=self.api('/proxies/EntryChoice');assert self.selection['now']=='Entry|'+self.entry,(self.selection,self.root/'core.log')\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/yuanying-chat/work/native-preconnect-process-benchmark/run.py\", line 51, in api\n    with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req,timeout=10) as r:return json.load(r)\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/urllib/request.py\", line 521, in open\n    response = meth(req, response)\n               ^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/urllib/request.py\", line 630, in http_response\n    response = self.parent.error(\n               ^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/urllib/request.py\", line 559, in error\n    return self._call_chain(*args)\n           ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/urllib/request.py\", line 492, in _call_chain\n    result = func(*args)\n             ^^^^^^^^^^^\n  File \"/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/urllib/request.py\", line 639, in http_error_default\n    raise HTTPError(req.full_url, code, msg, hdrs, fp)\nurllib.error.HTTPError: HTTP Error 404: Not Found\n",
+  "allWireEvents": []
+}

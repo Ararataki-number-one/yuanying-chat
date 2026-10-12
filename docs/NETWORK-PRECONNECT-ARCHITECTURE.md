@@ -2,7 +2,7 @@
 
 目标是在不改变入口、固定出口、环境隔离和断网保护的前提下，减少**后续新连接**重复等待入口建连和出口认证的时间。准备工作提前进行；目标网站的 CONNECT、TLS 和响应等待仍然保留。
 
-本文记录 2026-10-12 的方案与实现边界。Java 控制面已加入私有网络代号及配置字段，native 池已整合并构建两个 Android ABI；当前源码仍待实际 Android 或用户线路的性能验收。协议测试和 Python 实验不能替代这些验收。已有服务分层见 [网络架构](NETWORK-ARCHITECTURE.md)，现有测速策略见 [网络性能方案](NETWORK-PERFORMANCE-PLAN.md)。
+本文记录 2026-10-12 的方案与实现边界。Java 控制面及 native 池已整合，两个 Android ABI 已独立重建核对，当前源码的实际 Android 受控线路验收已通过；用户真实公网及真机长期性能仍待验证。协议测试和 Python 实验与实际 Android 验收分别记录。已有服务分层见 [网络架构](NETWORK-ARCHITECTURE.md)，现有测速策略见 [网络性能方案](NETWORK-PERFORMANCE-PLAN.md)。
 
 ## 先区分当前读数
 
@@ -38,11 +38,11 @@ flowchart LR
   O --> C
 ```
 
-协议依据是 [RFC 1928 方法选择与请求](https://www.rfc-editor.org/rfc/rfc1928.html#section-3) 和 [RFC 1929 用户名/密码认证](https://www.rfc-editor.org/rfc/rfc1929.html#section-2)。实验源码把 `ClientHandshake` 拆为顺序执行的 `ClientAuthenticate` 与 `ClientCommand`，不合并阶段，不提前发网站请求。成功握手的字节与顺序保持兼容；命令回复检查版本、保留字段和 REP，非零 REP 返回对应 SOCKS 错误，不把拒绝视为成功，也不重试拒绝的命令。凭据长度策略沿用既有实现，不能宣称本轮新增了完整的认证字段验证。
+协议依据是 [RFC 1928 方法选择与请求](https://www.rfc-editor.org/rfc/rfc1928.html#section-3) 和 [RFC 1929 用户名/密码认证](https://www.rfc-editor.org/rfc/rfc1929.html#section-2)。源码把 `ClientHandshake` 拆为顺序执行的 `ClientAuthenticate` 与 `ClientCommand`，不合并阶段，不提前发网站请求。成功握手的字节与顺序保持兼容；命令回复检查版本、保留字段和 REP，非零 REP 返回对应 SOCKS 错误，不把拒绝视为成功。进入预认证池的可冻结路由尝试不会重试拒绝的命令；不可预热线路保留原有保护与重试策略。凭据长度策略沿用既有实现，不能宣称本轮新增了完整的认证字段验证。
 
 ## Native 池的约束
 
-以下实现合同已经过原生本地测试，实际 Android 与发布验收另行记录：
+以下实现合同已经过原生测试及实际 Android 回归，证据见本文后面的验收记录：
 
 - 只对程序生成的 `FixedExit` 开启；候选 `ProbeExit*`、`WebProbeExit`、普通外部代理及 UDP 路径保持原行为。
 - 每个环境的内核独立持有池。最多一个待取 socket、一个有限准备任务；总期限最多 8 秒，从准备开始计时，包含认证等待。没有定时补满、合成保活或无限后台重试。
@@ -53,7 +53,7 @@ flowchart LR
 - 在准备完成、取出和 CONNECT 返回前重新核对身份。晚到的准备结果必须关闭真实 socket，不能进入新代次的池。
 - 取消、过期、网络变化、核心重启、环境删除和配置变化清理未交付的 socket 及准备任务。已经交给浏览器的 H2/WSS 流继续沿用已有生命周期，不能因池失效而误关闭。
 
-未命中或无效准备资源走原有受保护的冷建连路径。若实现允许关闭的预备 socket 触发一次冷建连补救，必须证明它发生在交付应用连接及应用数据前；REP 拒绝不得重试。交付后绝不重放 HTTP 请求或 Read/Write，不替换固定出口，不回退 DIRECT。调用方原有取消和 deadline 不能被准备任务覆盖。
+未命中或无效准备资源走受保护的冷建连路径。关闭的预备 socket 只允许在交付应用连接及应用数据前进行一次同路线重建；进入预认证池的可冻结路由尝试遇到认证、REP 或路由拒绝即结束。不可预热线路保留原有保护与重试策略。交付后绝不重放 HTTP 请求或 Read/Write，不替换固定出口，不回退 DIRECT。调用方原有取消和 deadline 不能被准备任务覆盖。
 
 ## Java 默认网络代号与私有许可文件
 
@@ -80,7 +80,7 @@ Native URLTest 必须通过明确的内部 bypass 标记，既不取用池，也
 - [Hysteria2](https://github.com/MetaCubeX/mihomo/blob/v1.19.32/adapter/outbound/hysteria2.go#L128) / [TUIC](https://github.com/MetaCubeX/mihomo/blob/v1.19.32/adapter/outbound/tuic.go#L113) 可以在手机到入口这一段使用 QUIC，前提是有真实匹配的入口服务器、凭据及可用 UDP。入口 QUIC 仍能承载 TCP 到固定 SOCKS 出口，入口优化本身不要求出口支持 UDP。
 - 网站端到端 HTTP/3 是另一件事，需要真实出口 UDP ASSOCIATE、入口 UDP 转发和浏览器实际 UDP 路径。[SOCKS UDP 路径](https://github.com/MetaCubeX/mihomo/blob/v1.19.32/adapter/outbound/socks5.go#L89) 与当前 TCP CONNECT 分开；设置一个 UDP/XUDP 开关不能证明全链支持。
 
-## 已有证据与尚未完成的验收
+## 实验与正式验收
 
 ### 独立 Python 协议实验
 
@@ -103,15 +103,49 @@ Native URLTest 必须通过明确的内部 bypass 标记，既不取用池，也
 
 这仅证明协议辅助方法及其测试，不能宣称 adapter 池、整个 Mihomo、Android 或用户网络已通过。
 
-### Native 与发布证明：待补充
+### 正式原生构建与测试
 
-当前没有可引用的正式池性能通过记录。发布前需由真实 native 实现补充并绑定源码、构建产物和运行：
+正式源码为 `a6c60f38fa51c107706626bae6707d2bd317c803`。16 个文件的合并补丁 SHA-256 为 `24f9b3a5db65265bc719107bc1eb79752c4e115e1babdfc79838237abc849ef9`，核心版本为 `v1.19.31-pocket-preconnect1`。独立构建运行 [38224535603](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/38224535603) 中，46 项顶层原生测试各运行一次并全部通过，arm64 与 x86_64 产物逐字节匹配已提交的构建记录。
 
-1. 同一个核心构建、入口、固定出口、目标、DNS/IP 家族与 TLS 条件，交替比较关闭/开启；分别保留准备耗时、提前量、冷请求、命中和未命中结果。
-2. 用 native 连接 ID 与服务端实际 socket 事件关联认证完成、取出、目标 CONNECT、TLS 和响应。准备期间目标 CONNECT/HEAD 为零，单次取出只有一个目标请求。
-3. 验证容量、8 秒过期、取消、延迟发布、选择器 A → B → A、同名 provider 更新、网络/VPN 变化、核心重启、删除环境、错误认证、REP 拒绝及目标 TLS 失败。
-4. 明确证明 URLTest bypass；独立候选与网站探测不冒充业务命中，不改变原有测量口径。
-5. 在 Android 验证环境之间不借用 socket、固定出口未变、失败不直连，已有 WSS/H2、上传和下载不中断；比较 CPU、内存、空闲 socket/电量、失败率及并发负载下的 p50/p95。
-6. 发布证据列出真实 `sourceCommit`、源码/patch/核心 SHA、运行 ID/attempt、目标 ABI、测试报告 SHA 和实际执行标记。构建成功、host 协议检查或 Python 结果不能代填 Android/native 验收。
+测试覆盖认证与 SOCKS 回复、有限容量、期限与取消、入口选择器修订、网络代次、旧配置晚到结果、测速 bypass、拒绝不重试以及已有连接不受池失效影响。早期 scratch 测试及 Python 实验保留为探索记录，不替代本次正式结果。
+
+### 实际 Android 受控线路
+
+运行 [38224535553](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/38224535553) 对同一源码完成 11 组 Android 回归。新增预认证套件有 147 项检查，使用正式 GeckoView 与实际 Mihomo，记录服务端 socket、认证、目标 CONNECT、HTTP/2 与 WebSocket 事件。
+
+同一个核心、入口、固定出口、目标及 TLS 条件下，关闭与开启优化的三组新 HTTP/2 请求结果为：
+
+| 配对 | 普通建立 | 已准备资源取用 | 请求阶段少等待 |
+| --- | --- | --- | --- |
+| 1 | 474 ms | 112 ms | 362 ms |
+| 2 | 461 ms | 98 ms | 363 ms |
+| 3 | 473 ms | 155 ms | 318 ms |
+
+fixture 为出口方法选择与认证各加入 180 ms 等待。准备阶段没有目标 CONNECT 或网站请求；取出后才发真实目标请求。结果证明这些阶段能提前完成，不说明物理 RTT、网站响应或模型生成速度发生相同比例变化。
+
+额外检查验证了注入网络代次状态与真实入口 A → B → A、blocked 代号、8 秒期限、认证拒绝、关闭的备用连接、测速旁路和取消。网络代次测试调用正式 helper 并注入网络事件值；服务启动读取实际 ConnectivityManager，但这不等于已实测真机 Wi-Fi/VPN 切换。并发需求最多一个准备任务；取消后实际服务端 socket 结束。已有 WebSocket 保持 connection 9，帧数由 5 增至 136，未因准备池变化重连。原有上传、下载、环境隔离、页面状态与升级回归继续通过。
+
+### 仍需真实使用验证
+
+这次 Android 验收使用模拟器和受控服务，尚未测得用户节点在同一手机上的前后对照，也未证明真机滚动帧率、长时间 CPU/内存、电量或真实网站失败率改善。Google 登录、用户公网长连接以及手机与电脑同条件完整链路比较仍需实际使用记录。1.5.21 的 APK 与发布证据绑定正式源码，不能把历史失败运行或探索结果当成本次通过结果。
 
 这项方案能减少命中时新请求的建连等待；首次冷连接、网站服务处理和物理线路延迟仍需单独测量。是否能改善用户当前线路，只能由同条件实测决定。
+
+## 本轮主要修改
+
+| 文件 | 目的 |
+| --- | --- |
+| `app/src/main/java/local/pocketchat/NativeNetwork.java` | 仅对实际业务固定出口生成预认证配置，测速出口保持旁路。 |
+| `app/src/main/java/local/pocketchat/ExitPreconnectEpoch.java` | 观察默认网络状态，原子写入环境私有代号，使未使用连接随网络变化失效。 |
+| `app/src/main/java/local/pocketchat/NetworkTransportService.java` | 接入代号生命周期、启动及关闭处理；元数据不可用时关闭可选优化并保留原受保护路线。 |
+| `third-party/patches/mihomo-v1.19.31-probe.patch` 与构建记录 | 实现有限连接池、实际入口快照、严格 SOCKS 回复和池路径的有限重试，保留测速 trace。 |
+| `app/src/main/jniLibs/` 与 `tools/build-mihomo.py` | 更新两个 ABI 的核心产物及可重建配方，校验输入、补丁与原生回归。 |
+| `tests/gecko/PreconnectIntegrationActivity.java`、`run_preconnect.py` | 实际 Android/Gecko/Mihomo 与受控服务的对照、隔离、错误、容量及长连接测试。 |
+| `tools/gecko/preconnect_contract.py`、`check_chain_evidence.py` 与 CI/发布流程 | 将本次新增测试加入源码与产物一致性门槛。 |
+| `app/build.gradle` 与发布说明 | 升级至 1.5.21/code 47，使用既有包名、原签名及升级渠道。 |
+
+## 已发布安装包
+
+[下载 1.5.21 ARM64 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.21-gecko/PocketChat-1.5.21-gecko-arm64.apk)。完整匿名下载核验为 118,938,646 字节，SHA-256 为 `709dd0525f7a13deb23cd955078304fcdd82163db68ee6860ca3265039b73937`。更新源与原签名一致，CDN 两次真实 Range/If-Range 请求返回 206，字节和同一强 ETag 均核对通过。
+
+完整原始报告、独立重建证明、历史失败与探索记录分开保存在 [1.5.21 验证记录](../verification/network-preconnect-v1.5.21/README.md)。正式 Android、原生构建和 APK 的源码均为上述 `a6c60f38…`；之后的文档与证据归档提交不改变安装包身份。

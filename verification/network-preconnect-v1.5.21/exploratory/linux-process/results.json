@@ -1,0 +1,3460 @@
+{
+  "schema": 1,
+  "fullActualLinuxCoreProcess": true,
+  "androidAcceptance": false,
+  "wanClaim": false,
+  "fixtureTransport": "two-authenticated-SOCKS5-hops",
+  "preparationIsRealNetworkWork": true,
+  "sourceCommit": "140a9d840d42af21754d6791c1e6e2dde8a01559",
+  "core": {
+    "path": "work/mihomo-build/bin/mihomo-linux-amd64",
+    "sha256": "b65e4021cee05e3d60a3e86fd9cd61839d3d8fb77784ce5f56a04547fff3f6a7",
+    "bytes": 61759614,
+    "version": "Mihomo Meta v1.19.31-pocket-preconnect1 linux amd64 with go1.26.8 source-2026-09-14T11:59:30Z\nUse tags: with_gvisor"
+  },
+  "checks": [
+    "actual-parser-provider-prefix-selector-auto-close-first-cold",
+    "four-paired-AB-BA-cold-target-TLS-HEAD",
+    "eight-new-target-TLS-sockets",
+    "single-use-preauthenticated-exit-sockets",
+    "same-fixed-exit-actual-entry-chain-no-direct-fallback",
+    "auth-only-before-target-connect",
+    "actual-controller-URLTest-does-not-consume-or-refill"
+  ],
+  "samples": [
+    {
+      "startNs": 539379101938370,
+      "endNs": 539379363676921,
+      "durationMs": 261.738551,
+      "proxyConnectMs": 1.312886,
+      "targetTlsMs": 257.816373,
+      "firstByteAfterTlsMs": 2.609292,
+      "status": 204,
+      "alpn": "http/1.1",
+      "tlsSessionReused": false,
+      "entrySocket": "entryA-5",
+      "exitSocket": "exit-7",
+      "targetSocket": "target-8",
+      "exitPreauthenticatedBeforeRequest": false,
+      "targetConnectAbsentBeforeRequest": true,
+      "sameFixedExit": true,
+      "authToConnectDelayMs": 2.341757,
+      "preparationWireMs": 207.981499,
+      "wirePhases": {
+        "entry": [
+          {
+            "socket": "entryA-5",
+            "phase": "accepted",
+            "atNs": 3370978679,
+            "peerPort": 49246,
+            "localPort": 33613
+          },
+          {
+            "socket": "entryA-5",
+            "phase": "entry-setup-ready",
+            "atNs": 3451283539
+          },
+          {
+            "socket": "entryA-5",
+            "phase": "method-received",
+            "atNs": 3451309593,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "entryA-5",
+            "phase": "method-sent",
+            "atNs": 3466782413,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "entryA-5",
+            "phase": "auth-received",
+            "atNs": 3466955871,
+            "bytes": 45,
+            "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+          },
+          {
+            "socket": "entryA-5",
+            "phase": "auth-sent",
+            "atNs": 3482488720,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "entryA-5",
+            "phase": "connect-received",
+            "atNs": 3482722284,
+            "host": "127.0.0.1",
+            "port": 59797,
+            "bytes": 10,
+            "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+          },
+          {
+            "socket": "entryA-5",
+            "phase": "upstream-opened",
+            "atNs": 3486032008,
+            "peerPort": 59797,
+            "localPort": 39202
+          },
+          {
+            "socket": "entryA-5",
+            "phase": "connect-sent",
+            "atNs": 3502194867,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "exit": [
+          {
+            "socket": "exit-7",
+            "phase": "accepted",
+            "atNs": 3485907363,
+            "peerPort": 39202,
+            "localPort": 59797
+          },
+          {
+            "socket": "exit-7",
+            "phase": "method-received",
+            "atNs": 3503755894,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "exit-7",
+            "phase": "method-sent",
+            "atNs": 3539289581,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "exit-7",
+            "phase": "auth-received",
+            "atNs": 3543795334,
+            "bytes": 41,
+            "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+          },
+          {
+            "socket": "exit-7",
+            "phase": "auth-sent",
+            "atNs": 3578960178,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "exit-7",
+            "phase": "connect-received",
+            "atNs": 3581301935,
+            "host": "bench.invalid",
+            "port": 34591,
+            "bytes": 20,
+            "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+          },
+          {
+            "socket": "exit-7",
+            "phase": "upstream-opened",
+            "atNs": 3581598988,
+            "peerPort": 34591,
+            "localPort": 58902
+          },
+          {
+            "socket": "exit-7",
+            "phase": "connect-sent",
+            "atNs": 3616756866,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "target": [
+          {
+            "socket": "target-8",
+            "phase": "accepted",
+            "atNs": 3582723561,
+            "peerPort": 58902,
+            "localPort": 34591
+          },
+          {
+            "socket": "target-8",
+            "phase": "target-tls-ready",
+            "atNs": 3627287986,
+            "alpn": "http/1.1"
+          },
+          {
+            "socket": "target-8",
+            "phase": "target-head-received",
+            "atNs": 3627927590,
+            "bytes": 64,
+            "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+          },
+          {
+            "socket": "target-8",
+            "phase": "target-head-sent",
+            "atNs": 3627966222,
+            "bytes": 65,
+            "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+          }
+        ]
+      },
+      "pair": 0,
+      "scenario": "baseline-false"
+    },
+    {
+      "startNs": 539379447222197,
+      "endNs": 539379526694238,
+      "durationMs": 79.472041,
+      "proxyConnectMs": 1.639264,
+      "targetTlsMs": 70.914329,
+      "firstByteAfterTlsMs": 6.918448,
+      "status": 204,
+      "alpn": "http/1.1",
+      "tlsSessionReused": false,
+      "entrySocket": "entryA-4",
+      "exitSocket": "exit-6",
+      "targetSocket": "target-9",
+      "exitPreauthenticatedBeforeRequest": true,
+      "targetConnectAbsentBeforeRequest": true,
+      "sameFixedExit": true,
+      "authToConnectDelayMs": 162.831517,
+      "preparationWireMs": 205.019027,
+      "wirePhases": {
+        "entry": [
+          {
+            "socket": "entryA-4",
+            "phase": "accepted",
+            "atNs": 3346391651,
+            "peerPort": 49240,
+            "localPort": 33613
+          },
+          {
+            "socket": "entryA-4",
+            "phase": "entry-setup-ready",
+            "atNs": 3428536901
+          },
+          {
+            "socket": "entryA-4",
+            "phase": "method-received",
+            "atNs": 3429336535,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "entryA-4",
+            "phase": "method-sent",
+            "atNs": 3444518137,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "entryA-4",
+            "phase": "auth-received",
+            "atNs": 3445354205,
+            "bytes": 45,
+            "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+          },
+          {
+            "socket": "entryA-4",
+            "phase": "auth-sent",
+            "atNs": 3460503075,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "entryA-4",
+            "phase": "connect-received",
+            "atNs": 3460972577,
+            "host": "127.0.0.1",
+            "port": 59797,
+            "bytes": 10,
+            "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+          },
+          {
+            "socket": "entryA-4",
+            "phase": "upstream-opened",
+            "atNs": 3461335706,
+            "peerPort": 59797,
+            "localPort": 39200
+          },
+          {
+            "socket": "entryA-4",
+            "phase": "connect-sent",
+            "atNs": 3479733167,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "exit": [
+          {
+            "socket": "exit-6",
+            "phase": "accepted",
+            "atNs": 3461824926,
+            "peerPort": 39200,
+            "localPort": 59797
+          },
+          {
+            "socket": "exit-6",
+            "phase": "method-received",
+            "atNs": 3480204740,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "exit-6",
+            "phase": "method-sent",
+            "atNs": 3515400116,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "exit-6",
+            "phase": "auth-received",
+            "atNs": 3516170432,
+            "bytes": 41,
+            "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+          },
+          {
+            "socket": "exit-6",
+            "phase": "auth-sent",
+            "atNs": 3551410678,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "exit-6",
+            "phase": "connect-received",
+            "atNs": 3714242195,
+            "host": "bench.invalid",
+            "port": 34591,
+            "bytes": 20,
+            "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+          },
+          {
+            "socket": "exit-6",
+            "phase": "upstream-opened",
+            "atNs": 3714793456,
+            "peerPort": 34591,
+            "localPort": 58914
+          },
+          {
+            "socket": "exit-6",
+            "phase": "connect-sent",
+            "atNs": 3749980607,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "target": [
+          {
+            "socket": "target-9",
+            "phase": "accepted",
+            "atNs": 3716378954,
+            "peerPort": 58914,
+            "localPort": 34591
+          },
+          {
+            "socket": "target-9",
+            "phase": "target-tls-ready",
+            "atNs": 3789789379,
+            "alpn": "http/1.1"
+          },
+          {
+            "socket": "target-9",
+            "phase": "target-head-received",
+            "atNs": 3789963902,
+            "bytes": 64,
+            "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+          },
+          {
+            "socket": "target-9",
+            "phase": "target-head-sent",
+            "atNs": 3790017848,
+            "bytes": 65,
+            "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+          }
+        ]
+      },
+      "pair": 0,
+      "scenario": "production-true"
+    },
+    {
+      "startNs": 539379731717976,
+      "endNs": 539379806679704,
+      "durationMs": 74.961728,
+      "proxyConnectMs": 6.266635,
+      "targetTlsMs": 61.281791,
+      "firstByteAfterTlsMs": 7.413302,
+      "status": 204,
+      "alpn": "http/1.1",
+      "tlsSessionReused": false,
+      "entrySocket": "entryA-10",
+      "exitSocket": "exit-11",
+      "targetSocket": "target-12",
+      "exitPreauthenticatedBeforeRequest": true,
+      "targetConnectAbsentBeforeRequest": true,
+      "sameFixedExit": true,
+      "authToConnectDelayMs": 50.245802,
+      "preparationWireMs": 199.978027,
+      "wirePhases": {
+        "entry": [
+          {
+            "socket": "entryA-10",
+            "phase": "accepted",
+            "atNs": 3754415013,
+            "peerPort": 49262,
+            "localPort": 33613
+          },
+          {
+            "socket": "entryA-10",
+            "phase": "entry-setup-ready",
+            "atNs": 3834524426
+          },
+          {
+            "socket": "entryA-10",
+            "phase": "method-received",
+            "atNs": 3834554370,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "entryA-10",
+            "phase": "method-sent",
+            "atNs": 3849754197,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "entryA-10",
+            "phase": "auth-received",
+            "atNs": 3850343324,
+            "bytes": 45,
+            "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+          },
+          {
+            "socket": "entryA-10",
+            "phase": "auth-sent",
+            "atNs": 3865504553,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "entryA-10",
+            "phase": "connect-received",
+            "atNs": 3865916662,
+            "host": "127.0.0.1",
+            "port": 59797,
+            "bytes": 10,
+            "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+          },
+          {
+            "socket": "entryA-10",
+            "phase": "upstream-opened",
+            "atNs": 3866912866,
+            "peerPort": 59797,
+            "localPort": 39204
+          },
+          {
+            "socket": "entryA-10",
+            "phase": "connect-sent",
+            "atNs": 3882061039,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "exit": [
+          {
+            "socket": "exit-11",
+            "phase": "accepted",
+            "atNs": 3867618627,
+            "peerPort": 39204,
+            "localPort": 59797
+          },
+          {
+            "socket": "exit-11",
+            "phase": "method-received",
+            "atNs": 3882841555,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "exit-11",
+            "phase": "method-sent",
+            "atNs": 3918110027,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "exit-11",
+            "phase": "auth-received",
+            "atNs": 3919162555,
+            "bytes": 41,
+            "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+          },
+          {
+            "socket": "exit-11",
+            "phase": "auth-sent",
+            "atNs": 3954393040,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "exit-11",
+            "phase": "connect-received",
+            "atNs": 4004638842,
+            "host": "bench.invalid",
+            "port": 34591,
+            "bytes": 20,
+            "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+          },
+          {
+            "socket": "exit-11",
+            "phase": "upstream-opened",
+            "atNs": 4005707145,
+            "peerPort": 34591,
+            "localPort": 58930
+          },
+          {
+            "socket": "exit-11",
+            "phase": "connect-sent",
+            "atNs": 4040937805,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "target": [
+          {
+            "socket": "target-12",
+            "phase": "accepted",
+            "atNs": 4011740537,
+            "peerPort": 58930,
+            "localPort": 34591
+          },
+          {
+            "socket": "target-12",
+            "phase": "target-tls-ready",
+            "atNs": 4066582911,
+            "alpn": "http/1.1"
+          },
+          {
+            "socket": "target-12",
+            "phase": "target-head-received",
+            "atNs": 4066826395,
+            "bytes": 64,
+            "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+          },
+          {
+            "socket": "target-12",
+            "phase": "target-head-sent",
+            "atNs": 4066849223,
+            "bytes": 65,
+            "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+          }
+        ]
+      },
+      "pair": 1,
+      "scenario": "production-true"
+    },
+    {
+      "startNs": 539379825259810,
+      "endNs": 539380085931746,
+      "durationMs": 260.671936,
+      "proxyConnectMs": 4.114791,
+      "targetTlsMs": 252.74339,
+      "firstByteAfterTlsMs": 3.813755,
+      "status": 204,
+      "alpn": "http/1.1",
+      "tlsSessionReused": false,
+      "entrySocket": "entryA-14",
+      "exitSocket": "exit-16",
+      "targetSocket": "target-17",
+      "exitPreauthenticatedBeforeRequest": false,
+      "targetConnectAbsentBeforeRequest": true,
+      "sameFixedExit": true,
+      "authToConnectDelayMs": 0.158171,
+      "preparationWireMs": 199.907245,
+      "wirePhases": {
+        "entry": [
+          {
+            "socket": "entryA-14",
+            "phase": "accepted",
+            "atNs": 4095016564,
+            "peerPort": 49284,
+            "localPort": 33613
+          },
+          {
+            "socket": "entryA-14",
+            "phase": "entry-setup-ready",
+            "atNs": 4175168765
+          },
+          {
+            "socket": "entryA-14",
+            "phase": "method-received",
+            "atNs": 4175192477,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "entryA-14",
+            "phase": "method-sent",
+            "atNs": 4190569995,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "entryA-14",
+            "phase": "auth-received",
+            "atNs": 4191800623,
+            "bytes": 45,
+            "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+          },
+          {
+            "socket": "entryA-14",
+            "phase": "auth-sent",
+            "atNs": 4207041242,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "entryA-14",
+            "phase": "connect-received",
+            "atNs": 4207166370,
+            "host": "127.0.0.1",
+            "port": 59797,
+            "bytes": 10,
+            "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+          },
+          {
+            "socket": "entryA-14",
+            "phase": "upstream-opened",
+            "atNs": 4207731401,
+            "peerPort": 59797,
+            "localPort": 39220
+          },
+          {
+            "socket": "entryA-14",
+            "phase": "connect-sent",
+            "atNs": 4223048997,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "exit": [
+          {
+            "socket": "exit-16",
+            "phase": "accepted",
+            "atNs": 4209108916,
+            "peerPort": 39220,
+            "localPort": 59797
+          },
+          {
+            "socket": "exit-16",
+            "phase": "method-received",
+            "atNs": 4223236881,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "exit-16",
+            "phase": "method-sent",
+            "atNs": 4258555432,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "exit-16",
+            "phase": "auth-received",
+            "atNs": 4258807406,
+            "bytes": 41,
+            "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+          },
+          {
+            "socket": "exit-16",
+            "phase": "auth-sent",
+            "atNs": 4294923809,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "exit-16",
+            "phase": "connect-received",
+            "atNs": 4295081980,
+            "host": "bench.invalid",
+            "port": 34591,
+            "bytes": 20,
+            "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+          },
+          {
+            "socket": "exit-16",
+            "phase": "upstream-opened",
+            "atNs": 4299330819,
+            "peerPort": 34591,
+            "localPort": 58940
+          },
+          {
+            "socket": "exit-16",
+            "phase": "connect-sent",
+            "atNs": 4334758684,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "target": [
+          {
+            "socket": "target-17",
+            "phase": "accepted",
+            "atNs": 4300522698,
+            "peerPort": 58940,
+            "localPort": 34591
+          },
+          {
+            "socket": "target-17",
+            "phase": "target-tls-ready",
+            "atNs": 4348192316,
+            "alpn": "http/1.1"
+          },
+          {
+            "socket": "target-17",
+            "phase": "target-head-received",
+            "atNs": 4348371211,
+            "bytes": 64,
+            "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+          },
+          {
+            "socket": "target-17",
+            "phase": "target-head-sent",
+            "atNs": 4348397900,
+            "bytes": 65,
+            "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+          }
+        ]
+      },
+      "pair": 1,
+      "scenario": "baseline-false"
+    },
+    {
+      "startNs": 539380097788440,
+      "endNs": 539380377986566,
+      "durationMs": 280.198126,
+      "proxyConnectMs": 3.585312,
+      "targetTlsMs": 269.343885,
+      "firstByteAfterTlsMs": 7.268929,
+      "status": 204,
+      "alpn": "http/1.1",
+      "tlsSessionReused": false,
+      "entrySocket": "entryA-18",
+      "exitSocket": "exit-19",
+      "targetSocket": "target-20",
+      "exitPreauthenticatedBeforeRequest": false,
+      "targetConnectAbsentBeforeRequest": true,
+      "sameFixedExit": true,
+      "authToConnectDelayMs": 2.00407,
+      "preparationWireMs": 205.893373,
+      "wirePhases": {
+        "entry": [
+          {
+            "socket": "entryA-18",
+            "phase": "accepted",
+            "atNs": 4368520323,
+            "peerPort": 49300,
+            "localPort": 33613
+          },
+          {
+            "socket": "entryA-18",
+            "phase": "entry-setup-ready",
+            "atNs": 4449817891
+          },
+          {
+            "socket": "entryA-18",
+            "phase": "method-received",
+            "atNs": 4449868442,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "entryA-18",
+            "phase": "method-sent",
+            "atNs": 4465177634,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "entryA-18",
+            "phase": "auth-received",
+            "atNs": 4466071326,
+            "bytes": 45,
+            "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+          },
+          {
+            "socket": "entryA-18",
+            "phase": "auth-sent",
+            "atNs": 4481303186,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "entryA-18",
+            "phase": "connect-received",
+            "atNs": 4483897943,
+            "host": "127.0.0.1",
+            "port": 59797,
+            "bytes": 10,
+            "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+          },
+          {
+            "socket": "entryA-18",
+            "phase": "upstream-opened",
+            "atNs": 4484370394,
+            "peerPort": 59797,
+            "localPort": 39236
+          },
+          {
+            "socket": "entryA-18",
+            "phase": "connect-sent",
+            "atNs": 4499545567,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "exit": [
+          {
+            "socket": "exit-19",
+            "phase": "accepted",
+            "atNs": 4488337256,
+            "peerPort": 39236,
+            "localPort": 59797
+          },
+          {
+            "socket": "exit-19",
+            "phase": "method-received",
+            "atNs": 4502369210,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "exit-19",
+            "phase": "method-sent",
+            "atNs": 4537572370,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "exit-19",
+            "phase": "auth-received",
+            "atNs": 4539214716,
+            "bytes": 41,
+            "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+          },
+          {
+            "socket": "exit-19",
+            "phase": "auth-sent",
+            "atNs": 4574413696,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "exit-19",
+            "phase": "connect-received",
+            "atNs": 4576417766,
+            "host": "bench.invalid",
+            "port": 34591,
+            "bytes": 20,
+            "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+          },
+          {
+            "socket": "exit-19",
+            "phase": "upstream-opened",
+            "atNs": 4577695961,
+            "peerPort": 34591,
+            "localPort": 58942
+          },
+          {
+            "socket": "exit-19",
+            "phase": "connect-sent",
+            "atNs": 4613203037,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "target": [
+          {
+            "socket": "target-20",
+            "phase": "accepted",
+            "atNs": 4580782770,
+            "peerPort": 58942,
+            "localPort": 34591
+          },
+          {
+            "socket": "target-20",
+            "phase": "target-tls-ready",
+            "atNs": 4638723183,
+            "alpn": "http/1.1"
+          },
+          {
+            "socket": "target-20",
+            "phase": "target-head-received",
+            "atNs": 4640687598,
+            "bytes": 64,
+            "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+          },
+          {
+            "socket": "target-20",
+            "phase": "target-head-sent",
+            "atNs": 4640734221,
+            "bytes": 65,
+            "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+          }
+        ]
+      },
+      "pair": 2,
+      "scenario": "baseline-false"
+    },
+    {
+      "startNs": 539380427946328,
+      "endNs": 539380530092983,
+      "durationMs": 102.146655,
+      "proxyConnectMs": 6.188683,
+      "targetTlsMs": 76.206409,
+      "firstByteAfterTlsMs": 19.751563,
+      "status": 204,
+      "alpn": "http/1.1",
+      "tlsSessionReused": false,
+      "entrySocket": "entryA-13",
+      "exitSocket": "exit-15",
+      "targetSocket": "target-21",
+      "exitPreauthenticatedBeforeRequest": true,
+      "targetConnectAbsentBeforeRequest": true,
+      "sameFixedExit": true,
+      "authToConnectDelayMs": 442.886269,
+      "preparationWireMs": 209.17225,
+      "wirePhases": {
+        "entry": [
+          {
+            "socket": "entryA-13",
+            "phase": "accepted",
+            "atNs": 4050975111,
+            "peerPort": 49278,
+            "localPort": 33613
+          },
+          {
+            "socket": "entryA-13",
+            "phase": "entry-setup-ready",
+            "atNs": 4131308094
+          },
+          {
+            "socket": "entryA-13",
+            "phase": "method-received",
+            "atNs": 4132233629,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "entryA-13",
+            "phase": "method-sent",
+            "atNs": 4147547118,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "entryA-13",
+            "phase": "auth-received",
+            "atNs": 4148362119,
+            "bytes": 45,
+            "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+          },
+          {
+            "socket": "entryA-13",
+            "phase": "auth-sent",
+            "atNs": 4164100296,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "entryA-13",
+            "phase": "connect-received",
+            "atNs": 4164865245,
+            "host": "127.0.0.1",
+            "port": 59797,
+            "bytes": 10,
+            "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+          },
+          {
+            "socket": "entryA-13",
+            "phase": "upstream-opened",
+            "atNs": 4168005387,
+            "peerPort": 59797,
+            "localPort": 39212
+          },
+          {
+            "socket": "entryA-13",
+            "phase": "connect-sent",
+            "atNs": 4183170754,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "exit": [
+          {
+            "socket": "exit-15",
+            "phase": "accepted",
+            "atNs": 4170888850,
+            "peerPort": 39212,
+            "localPort": 59797
+          },
+          {
+            "socket": "exit-15",
+            "phase": "method-received",
+            "atNs": 4185623476,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "exit-15",
+            "phase": "method-sent",
+            "atNs": 4222416068,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "exit-15",
+            "phase": "auth-received",
+            "atNs": 4224786927,
+            "bytes": 41,
+            "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+          },
+          {
+            "socket": "exit-15",
+            "phase": "auth-sent",
+            "atNs": 4260147361,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "exit-15",
+            "phase": "connect-received",
+            "atNs": 4703033630,
+            "host": "bench.invalid",
+            "port": 34591,
+            "bytes": 20,
+            "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+          },
+          {
+            "socket": "exit-15",
+            "phase": "upstream-opened",
+            "atNs": 4710887900,
+            "peerPort": 34591,
+            "localPort": 58948
+          },
+          {
+            "socket": "exit-15",
+            "phase": "connect-sent",
+            "atNs": 4747047957,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "target": [
+          {
+            "socket": "target-21",
+            "phase": "accepted",
+            "atNs": 4710391015,
+            "peerPort": 58948,
+            "localPort": 34591
+          },
+          {
+            "socket": "target-21",
+            "phase": "target-tls-ready",
+            "atNs": 4780099913,
+            "alpn": "http/1.1"
+          },
+          {
+            "socket": "target-21",
+            "phase": "target-head-received",
+            "atNs": 4780207925,
+            "bytes": 64,
+            "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+          },
+          {
+            "socket": "target-21",
+            "phase": "target-head-sent",
+            "atNs": 4780230644,
+            "bytes": 65,
+            "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+          }
+        ]
+      },
+      "pair": 2,
+      "scenario": "production-true"
+    },
+    {
+      "startNs": 539380746078877,
+      "endNs": 539380820383419,
+      "durationMs": 74.304542,
+      "proxyConnectMs": 5.584232,
+      "targetTlsMs": 58.858565,
+      "firstByteAfterTlsMs": 9.861745,
+      "status": 204,
+      "alpn": "http/1.1",
+      "tlsSessionReused": false,
+      "entrySocket": "entryA-22",
+      "exitSocket": "exit-23",
+      "targetSocket": "target-24",
+      "exitPreauthenticatedBeforeRequest": true,
+      "targetConnectAbsentBeforeRequest": true,
+      "sameFixedExit": true,
+      "authToConnectDelayMs": 58.337531,
+      "preparationWireMs": 203.461349,
+      "wirePhases": {
+        "entry": [
+          {
+            "socket": "entryA-22",
+            "phase": "accepted",
+            "atNs": 4760188791,
+            "peerPort": 49304,
+            "localPort": 33613
+          },
+          {
+            "socket": "entryA-22",
+            "phase": "entry-setup-ready",
+            "atNs": 4840516755
+          },
+          {
+            "socket": "entryA-22",
+            "phase": "method-received",
+            "atNs": 4840549052,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "entryA-22",
+            "phase": "method-sent",
+            "atNs": 4855745116,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "entryA-22",
+            "phase": "auth-received",
+            "atNs": 4856002695,
+            "bytes": 45,
+            "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+          },
+          {
+            "socket": "entryA-22",
+            "phase": "auth-sent",
+            "atNs": 4872567498,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "entryA-22",
+            "phase": "connect-received",
+            "atNs": 4872678117,
+            "host": "127.0.0.1",
+            "port": 59797,
+            "bytes": 10,
+            "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+          },
+          {
+            "socket": "entryA-22",
+            "phase": "upstream-opened",
+            "atNs": 4873760357,
+            "peerPort": 59797,
+            "localPort": 39238
+          },
+          {
+            "socket": "entryA-22",
+            "phase": "connect-sent",
+            "atNs": 4889635489,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "exit": [
+          {
+            "socket": "exit-23",
+            "phase": "accepted",
+            "atNs": 4874088538,
+            "peerPort": 39238,
+            "localPort": 59797
+          },
+          {
+            "socket": "exit-23",
+            "phase": "method-received",
+            "atNs": 4890372529,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "exit-23",
+            "phase": "method-sent",
+            "atNs": 4925875804,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "exit-23",
+            "phase": "auth-received",
+            "atNs": 4928179880,
+            "bytes": 41,
+            "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+          },
+          {
+            "socket": "exit-23",
+            "phase": "auth-sent",
+            "atNs": 4963650140,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "exit-23",
+            "phase": "connect-received",
+            "atNs": 5021987671,
+            "host": "bench.invalid",
+            "port": 34591,
+            "bytes": 20,
+            "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+          },
+          {
+            "socket": "exit-23",
+            "phase": "upstream-opened",
+            "atNs": 5022788011,
+            "peerPort": 34591,
+            "localPort": 58960
+          },
+          {
+            "socket": "exit-23",
+            "phase": "connect-sent",
+            "atNs": 5058000484,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "target": [
+          {
+            "socket": "target-24",
+            "phase": "accepted",
+            "atNs": 5026378065,
+            "peerPort": 58960,
+            "localPort": 34591
+          },
+          {
+            "socket": "target-24",
+            "phase": "target-tls-ready",
+            "atNs": 5079496740,
+            "alpn": "http/1.1"
+          },
+          {
+            "socket": "target-24",
+            "phase": "target-head-received",
+            "atNs": 5080356905,
+            "bytes": 64,
+            "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+          },
+          {
+            "socket": "target-24",
+            "phase": "target-head-sent",
+            "atNs": 5080392119,
+            "bytes": 65,
+            "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+          }
+        ]
+      },
+      "pair": 3,
+      "scenario": "production-true"
+    },
+    {
+      "startNs": 539380838360530,
+      "endNs": 539381130961760,
+      "durationMs": 292.60123,
+      "proxyConnectMs": 4.823152,
+      "targetTlsMs": 276.854782,
+      "firstByteAfterTlsMs": 10.923296,
+      "status": 204,
+      "alpn": "http/1.1",
+      "tlsSessionReused": false,
+      "entrySocket": "entryA-26",
+      "exitSocket": "exit-28",
+      "targetSocket": "target-29",
+      "exitPreauthenticatedBeforeRequest": false,
+      "targetConnectAbsentBeforeRequest": true,
+      "sameFixedExit": true,
+      "authToConnectDelayMs": 3.138657,
+      "preparationWireMs": 211.044756,
+      "wirePhases": {
+        "entry": [
+          {
+            "socket": "entryA-26",
+            "phase": "accepted",
+            "atNs": 5109815562,
+            "peerPort": 49308,
+            "localPort": 33613
+          },
+          {
+            "socket": "entryA-26",
+            "phase": "entry-setup-ready",
+            "atNs": 5190865304
+          },
+          {
+            "socket": "entryA-26",
+            "phase": "method-received",
+            "atNs": 5190890344,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "entryA-26",
+            "phase": "method-sent",
+            "atNs": 5206574837,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "entryA-26",
+            "phase": "auth-received",
+            "atNs": 5208470853,
+            "bytes": 45,
+            "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+          },
+          {
+            "socket": "entryA-26",
+            "phase": "auth-sent",
+            "atNs": 5225035443,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "entryA-26",
+            "phase": "connect-received",
+            "atNs": 5226840525,
+            "host": "127.0.0.1",
+            "port": 59797,
+            "bytes": 10,
+            "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+          },
+          {
+            "socket": "entryA-26",
+            "phase": "upstream-opened",
+            "atNs": 5230018370,
+            "peerPort": 59797,
+            "localPort": 37532
+          },
+          {
+            "socket": "entryA-26",
+            "phase": "connect-sent",
+            "atNs": 5245889391,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "exit": [
+          {
+            "socket": "exit-28",
+            "phase": "accepted",
+            "atNs": 5231162388,
+            "peerPort": 37532,
+            "localPort": 59797
+          },
+          {
+            "socket": "exit-28",
+            "phase": "method-received",
+            "atNs": 5248069626,
+            "bytes": 3,
+            "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+          },
+          {
+            "socket": "exit-28",
+            "phase": "method-sent",
+            "atNs": 5283817322,
+            "bytes": 2,
+            "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+          },
+          {
+            "socket": "exit-28",
+            "phase": "auth-received",
+            "atNs": 5285201363,
+            "bytes": 41,
+            "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+          },
+          {
+            "socket": "exit-28",
+            "phase": "auth-sent",
+            "atNs": 5320860318,
+            "bytes": 2,
+            "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+          },
+          {
+            "socket": "exit-28",
+            "phase": "connect-received",
+            "atNs": 5323998975,
+            "host": "bench.invalid",
+            "port": 34591,
+            "bytes": 20,
+            "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+          },
+          {
+            "socket": "exit-28",
+            "phase": "upstream-opened",
+            "atNs": 5330825364,
+            "peerPort": 34591,
+            "localPort": 41334
+          },
+          {
+            "socket": "exit-28",
+            "phase": "connect-sent",
+            "atNs": 5366611994,
+            "bytes": 10,
+            "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+          }
+        ],
+        "target": [
+          {
+            "socket": "target-29",
+            "phase": "accepted",
+            "atNs": 5331947375,
+            "peerPort": 41334,
+            "localPort": 34591
+          },
+          {
+            "socket": "target-29",
+            "phase": "target-tls-ready",
+            "atNs": 5388024583,
+            "alpn": "http/1.1"
+          },
+          {
+            "socket": "target-29",
+            "phase": "target-head-received",
+            "atNs": 5391639766,
+            "bytes": 64,
+            "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+          },
+          {
+            "socket": "target-29",
+            "phase": "target-head-sent",
+            "atNs": 5391681841,
+            "bytes": 65,
+            "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+          }
+        ]
+      },
+      "pair": 3,
+      "scenario": "baseline-false"
+    }
+  ],
+  "nativeInputs": {
+    "upstreamVersion": "v1.19.31",
+    "upstreamRevision": "ab405bad5beeeac8b003bb01f60f134f6df54471",
+    "archive": "third-party/source/mihomo-v1.19.31.tar.gz",
+    "archiveSha256": "676732158479254de38ea5a78aa32ff650ce2d3a78156a0edc2ff0cb5c2ddfd8",
+    "patch": "third-party/patches/mihomo-v1.19.31-probe.patch",
+    "patchSha256": "24f9b3a5db65265bc719107bc1eb79752c4e115e1babdfc79838237abc849ef9",
+    "goModSha256": "ef07d50791a4f23f642050359d2de243d97af53d3e91c8210b066b085d2d2f38",
+    "goSumSha256": "23d34cf622f4e864fe63b8b48e9f097551b2e82d752b5adb3ee3ac0a2d6f743c"
+  },
+  "nativeRecipe": {
+    "goVersion": "go1.26.8",
+    "goArchiveSha256": "d0f743b33e8d8945e6b1f432edd15785c70507121d6e2a723b21285eddf8b57b",
+    "ndkVersion": "29.0.13113456",
+    "ndkArchiveSha256": "0bbaf4d0632152dcdcf3d0a5d385c760949898c88488375b18971dd669094388",
+    "androidApi": 26,
+    "version": "v1.19.31-pocket-preconnect1",
+    "buildTime": "source-2026-09-14T11:59:30Z",
+    "fixedExitPreconnect": true,
+    "flags": [
+      "-mod=readonly",
+      "-p=4",
+      "-tags=with_gvisor",
+      "-trimpath",
+      "-buildvcs=false"
+    ],
+    "ldflags": "-X github.com/metacubex/mihomo/constant.Version=v1.19.31-pocket-preconnect1 -X github.com/metacubex/mihomo/constant.BuildTime=source-2026-09-14T11:59:30Z -w -s -buildid=",
+    "androidExternalLdflags": "-Wl,--build-id=none,-z,max-page-size=16384",
+    "cgoFlags": {
+      "CFLAGS": "-O2 -g",
+      "CPPFLAGS": "",
+      "CXXFLAGS": "-O2 -g",
+      "FFLAGS": "-O2 -g",
+      "LDFLAGS": "-O2 -g"
+    },
+    "goExperiment": "",
+    "goToolchainSelection": "local",
+    "goModuleFlags": "readonly",
+    "goModuleVerification": "go mod verify; original go.mod and go.sum unchanged"
+  },
+  "androidReceiptSha256": "d655dacb0f1696b5f9ee024bd54159809d01f554a6e2f3e1a1c2983a3a580cc5",
+  "coreControllers": {
+    "baseline-false": {
+      "version": {
+        "meta": true,
+        "version": "v1.19.31-pocket-preconnect1"
+      },
+      "selection": {
+        "alive": true,
+        "all": [
+          "Entry|entryA",
+          "Entry|entryB"
+        ],
+        "dialer-proxy": "",
+        "emptyFallback": "COMPATIBLE",
+        "extra": {},
+        "hidden": false,
+        "history": [],
+        "icon": "",
+        "interface": "",
+        "mptcp": false,
+        "name": "EntryChoice",
+        "now": "Entry|entryA",
+        "provider-name": "",
+        "routing-mark": 0,
+        "smux": false,
+        "testUrl": "",
+        "tfo": false,
+        "type": "Selector",
+        "udp": false,
+        "uot": false,
+        "xudp": false
+      },
+      "configSha256": "5add0defadefc7945040fb3cacaee818fd6cd68d6c2b04b8f7155d4ef729c193",
+      "startupObservations": [
+        {
+          "atNs": 539376104802253,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539376307678867,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539376469308618,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539376791987431,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539377054554413,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539377185497702,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539377318187163,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539377477219585,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539377571356168,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539377655552646,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        }
+      ]
+    },
+    "production-true": {
+      "version": {
+        "meta": true,
+        "version": "v1.19.31-pocket-preconnect1"
+      },
+      "selection": {
+        "alive": true,
+        "all": [
+          "Entry|entryA",
+          "Entry|entryB"
+        ],
+        "dialer-proxy": "",
+        "emptyFallback": "COMPATIBLE",
+        "extra": {},
+        "hidden": false,
+        "history": [],
+        "icon": "",
+        "interface": "",
+        "mptcp": false,
+        "name": "EntryChoice",
+        "now": "Entry|entryA",
+        "provider-name": "",
+        "routing-mark": 0,
+        "smux": false,
+        "testUrl": "",
+        "tfo": false,
+        "type": "Selector",
+        "udp": false,
+        "uot": false,
+        "xudp": false
+      },
+      "configSha256": "858df6841626343c5ece37602255590a44d57bb23a2e3ec7f850da5bae608a51",
+      "startupObservations": [
+        {
+          "atNs": 539377888860979,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539377990801913,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539378085707140,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539378187428828,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539378306569593,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539378393348472,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539378486670353,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539378575475557,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539378678255053,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        },
+        {
+          "atNs": 539378771835935,
+          "selection": "Entry|entryA",
+          "nodeCount": 2
+        }
+      ]
+    }
+  },
+  "seed": {
+    "startNs": 539378824782938,
+    "endNs": 539379099014159,
+    "durationMs": 274.231221,
+    "proxyConnectMs": 2.187787,
+    "targetTlsMs": 262.263114,
+    "firstByteAfterTlsMs": 9.78032,
+    "status": 204,
+    "alpn": "http/1.1",
+    "tlsSessionReused": false,
+    "entrySocket": "entryA-1",
+    "exitSocket": "exit-2",
+    "targetSocket": "target-3",
+    "exitPreauthenticatedBeforeRequest": false,
+    "targetConnectAbsentBeforeRequest": true,
+    "sameFixedExit": true,
+    "authToConnectDelayMs": 2.620439,
+    "preparationWireMs": 209.298824,
+    "wirePhases": {
+      "entry": [
+        {
+          "socket": "entryA-1",
+          "phase": "accepted",
+          "atNs": 3094590072,
+          "peerPort": 49228,
+          "localPort": 33613
+        },
+        {
+          "socket": "entryA-1",
+          "phase": "entry-setup-ready",
+          "atNs": 3174754888
+        },
+        {
+          "socket": "entryA-1",
+          "phase": "method-received",
+          "atNs": 3174825997,
+          "bytes": 3,
+          "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+        },
+        {
+          "socket": "entryA-1",
+          "phase": "method-sent",
+          "atNs": 3190108027,
+          "bytes": 2,
+          "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+        },
+        {
+          "socket": "entryA-1",
+          "phase": "auth-received",
+          "atNs": 3190725770,
+          "bytes": 45,
+          "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+        },
+        {
+          "socket": "entryA-1",
+          "phase": "auth-sent",
+          "atNs": 3206493259,
+          "bytes": 2,
+          "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+        },
+        {
+          "socket": "entryA-1",
+          "phase": "connect-received",
+          "atNs": 3206703172,
+          "host": "127.0.0.1",
+          "port": 59797,
+          "bytes": 10,
+          "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+        },
+        {
+          "socket": "entryA-1",
+          "phase": "upstream-opened",
+          "atNs": 3216791991,
+          "peerPort": 59797,
+          "localPort": 39198
+        },
+        {
+          "socket": "entryA-1",
+          "phase": "connect-sent",
+          "atNs": 3232239159,
+          "bytes": 10,
+          "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+        }
+      ],
+      "exit": [
+        {
+          "socket": "exit-2",
+          "phase": "accepted",
+          "atNs": 3217814468,
+          "peerPort": 39198,
+          "localPort": 59797
+        },
+        {
+          "socket": "exit-2",
+          "phase": "method-received",
+          "atNs": 3232713317,
+          "bytes": 3,
+          "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+        },
+        {
+          "socket": "exit-2",
+          "phase": "method-sent",
+          "atNs": 3267979467,
+          "bytes": 2,
+          "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+        },
+        {
+          "socket": "exit-2",
+          "phase": "auth-received",
+          "atNs": 3268668942,
+          "bytes": 41,
+          "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+        },
+        {
+          "socket": "exit-2",
+          "phase": "auth-sent",
+          "atNs": 3303888896,
+          "bytes": 2,
+          "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+        },
+        {
+          "socket": "exit-2",
+          "phase": "connect-received",
+          "atNs": 3306509335,
+          "host": "bench.invalid",
+          "port": 34591,
+          "bytes": 20,
+          "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+        },
+        {
+          "socket": "exit-2",
+          "phase": "upstream-opened",
+          "atNs": 3307734519,
+          "peerPort": 34591,
+          "localPort": 58890
+        },
+        {
+          "socket": "exit-2",
+          "phase": "connect-sent",
+          "atNs": 3343119495,
+          "bytes": 10,
+          "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+        }
+      ],
+      "target": [
+        {
+          "socket": "target-3",
+          "phase": "accepted",
+          "atNs": 3309831707,
+          "peerPort": 58890,
+          "localPort": 34591
+        },
+        {
+          "socket": "target-3",
+          "phase": "target-tls-ready",
+          "atNs": 3356051616,
+          "alpn": "http/1.1"
+        },
+        {
+          "socket": "target-3",
+          "phase": "target-head-received",
+          "atNs": 3359872113,
+          "bytes": 64,
+          "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+        },
+        {
+          "socket": "target-3",
+          "phase": "target-head-sent",
+          "atNs": 3360200888,
+          "bytes": 65,
+          "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+        }
+      ]
+    }
+  },
+  "urlTest": {
+    "response": {
+      "delay": 276,
+      "probe": {
+        "schema": 1,
+        "dialCount": 1,
+        "attempts": 1,
+        "firstMs": 276,
+        "warmMs": -1,
+        "totalMs": 276,
+        "warmAttempted": false,
+        "warmSucceeded": false,
+        "secondConnectionReused": false,
+        "kind": "first",
+        "firstStatus": 204,
+        "secondStatus": 0,
+        "warmError": ""
+      }
+    },
+    "readySocketsBefore": [
+      "exit-27"
+    ],
+    "readySocketsAfter": [
+      "exit-27"
+    ],
+    "wireEventsBefore": 203,
+    "wireEventsAfter": 224
+  },
+  "summary": {
+    "baseline-false": {
+      "count": 4,
+      "p50Ms": 270.96833849999996,
+      "minMs": 260.671936,
+      "maxMs": 292.60123
+    },
+    "production-true": {
+      "count": 4,
+      "p50Ms": 77.21688449999999,
+      "minMs": 74.304542,
+      "maxMs": 102.146655
+    }
+  },
+  "preparationSamplesMs": [
+    205.019027,
+    199.978027,
+    209.17225,
+    203.461349
+  ],
+  "scope": "Actual full Linux core plus real loopback wire. Delays injected by fixture. Preparation moved ahead of demand; no WAN/Android/browser performance claim.",
+  "passed": true,
+  "allWireEvents": [
+    {
+      "socket": "entryA-1",
+      "phase": "accepted",
+      "atNs": 3094590072,
+      "peerPort": 49228,
+      "localPort": 33613
+    },
+    {
+      "socket": "entryA-1",
+      "phase": "entry-setup-ready",
+      "atNs": 3174754888
+    },
+    {
+      "socket": "entryA-1",
+      "phase": "method-received",
+      "atNs": 3174825997,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-1",
+      "phase": "method-sent",
+      "atNs": 3190108027,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-1",
+      "phase": "auth-received",
+      "atNs": 3190725770,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-1",
+      "phase": "auth-sent",
+      "atNs": 3206493259,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-1",
+      "phase": "connect-received",
+      "atNs": 3206703172,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "entryA-1",
+      "phase": "upstream-opened",
+      "atNs": 3216791991,
+      "peerPort": 59797,
+      "localPort": 39198
+    },
+    {
+      "socket": "exit-2",
+      "phase": "accepted",
+      "atNs": 3217814468,
+      "peerPort": 39198,
+      "localPort": 59797
+    },
+    {
+      "socket": "entryA-1",
+      "phase": "connect-sent",
+      "atNs": 3232239159,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-2",
+      "phase": "method-received",
+      "atNs": 3232713317,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "exit-2",
+      "phase": "method-sent",
+      "atNs": 3267979467,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "exit-2",
+      "phase": "auth-received",
+      "atNs": 3268668942,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "exit-2",
+      "phase": "auth-sent",
+      "atNs": 3303888896,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-2",
+      "phase": "connect-received",
+      "atNs": 3306509335,
+      "host": "bench.invalid",
+      "port": 34591,
+      "bytes": 20,
+      "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+    },
+    {
+      "socket": "exit-2",
+      "phase": "upstream-opened",
+      "atNs": 3307734519,
+      "peerPort": 34591,
+      "localPort": 58890
+    },
+    {
+      "socket": "target-3",
+      "phase": "accepted",
+      "atNs": 3309831707,
+      "peerPort": 58890,
+      "localPort": 34591
+    },
+    {
+      "socket": "exit-2",
+      "phase": "connect-sent",
+      "atNs": 3343119495,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "entryA-4",
+      "phase": "accepted",
+      "atNs": 3346391651,
+      "peerPort": 49240,
+      "localPort": 33613
+    },
+    {
+      "socket": "target-3",
+      "phase": "target-tls-ready",
+      "atNs": 3356051616,
+      "alpn": "http/1.1"
+    },
+    {
+      "socket": "target-3",
+      "phase": "target-head-received",
+      "atNs": 3359872113,
+      "bytes": 64,
+      "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+    },
+    {
+      "socket": "target-3",
+      "phase": "target-head-sent",
+      "atNs": 3360200888,
+      "bytes": 65,
+      "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+    },
+    {
+      "socket": "entryA-5",
+      "phase": "accepted",
+      "atNs": 3370978679,
+      "peerPort": 49246,
+      "localPort": 33613
+    },
+    {
+      "socket": "entryA-4",
+      "phase": "entry-setup-ready",
+      "atNs": 3428536901
+    },
+    {
+      "socket": "entryA-4",
+      "phase": "method-received",
+      "atNs": 3429336535,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-4",
+      "phase": "method-sent",
+      "atNs": 3444518137,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-4",
+      "phase": "auth-received",
+      "atNs": 3445354205,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-5",
+      "phase": "entry-setup-ready",
+      "atNs": 3451283539
+    },
+    {
+      "socket": "entryA-5",
+      "phase": "method-received",
+      "atNs": 3451309593,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-4",
+      "phase": "auth-sent",
+      "atNs": 3460503075,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-4",
+      "phase": "connect-received",
+      "atNs": 3460972577,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "entryA-4",
+      "phase": "upstream-opened",
+      "atNs": 3461335706,
+      "peerPort": 59797,
+      "localPort": 39200
+    },
+    {
+      "socket": "exit-6",
+      "phase": "accepted",
+      "atNs": 3461824926,
+      "peerPort": 39200,
+      "localPort": 59797
+    },
+    {
+      "socket": "entryA-5",
+      "phase": "method-sent",
+      "atNs": 3466782413,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-5",
+      "phase": "auth-received",
+      "atNs": 3466955871,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-4",
+      "phase": "connect-sent",
+      "atNs": 3479733167,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-6",
+      "phase": "method-received",
+      "atNs": 3480204740,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-5",
+      "phase": "auth-sent",
+      "atNs": 3482488720,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-5",
+      "phase": "connect-received",
+      "atNs": 3482722284,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "exit-7",
+      "phase": "accepted",
+      "atNs": 3485907363,
+      "peerPort": 39202,
+      "localPort": 59797
+    },
+    {
+      "socket": "entryA-5",
+      "phase": "upstream-opened",
+      "atNs": 3486032008,
+      "peerPort": 59797,
+      "localPort": 39202
+    },
+    {
+      "socket": "entryA-5",
+      "phase": "connect-sent",
+      "atNs": 3502194867,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-7",
+      "phase": "method-received",
+      "atNs": 3503755894,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "exit-6",
+      "phase": "method-sent",
+      "atNs": 3515400116,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "exit-6",
+      "phase": "auth-received",
+      "atNs": 3516170432,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "exit-7",
+      "phase": "method-sent",
+      "atNs": 3539289581,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "exit-7",
+      "phase": "auth-received",
+      "atNs": 3543795334,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "exit-6",
+      "phase": "auth-sent",
+      "atNs": 3551410678,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-7",
+      "phase": "auth-sent",
+      "atNs": 3578960178,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-7",
+      "phase": "connect-received",
+      "atNs": 3581301935,
+      "host": "bench.invalid",
+      "port": 34591,
+      "bytes": 20,
+      "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+    },
+    {
+      "socket": "exit-7",
+      "phase": "upstream-opened",
+      "atNs": 3581598988,
+      "peerPort": 34591,
+      "localPort": 58902
+    },
+    {
+      "socket": "target-8",
+      "phase": "accepted",
+      "atNs": 3582723561,
+      "peerPort": 58902,
+      "localPort": 34591
+    },
+    {
+      "socket": "exit-7",
+      "phase": "connect-sent",
+      "atNs": 3616756866,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "target-8",
+      "phase": "target-tls-ready",
+      "atNs": 3627287986,
+      "alpn": "http/1.1"
+    },
+    {
+      "socket": "target-8",
+      "phase": "target-head-received",
+      "atNs": 3627927590,
+      "bytes": 64,
+      "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+    },
+    {
+      "socket": "target-8",
+      "phase": "target-head-sent",
+      "atNs": 3627966222,
+      "bytes": 65,
+      "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+    },
+    {
+      "socket": "exit-6",
+      "phase": "connect-received",
+      "atNs": 3714242195,
+      "host": "bench.invalid",
+      "port": 34591,
+      "bytes": 20,
+      "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+    },
+    {
+      "socket": "exit-6",
+      "phase": "upstream-opened",
+      "atNs": 3714793456,
+      "peerPort": 34591,
+      "localPort": 58914
+    },
+    {
+      "socket": "target-9",
+      "phase": "accepted",
+      "atNs": 3716378954,
+      "peerPort": 58914,
+      "localPort": 34591
+    },
+    {
+      "socket": "exit-6",
+      "phase": "connect-sent",
+      "atNs": 3749980607,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "entryA-10",
+      "phase": "accepted",
+      "atNs": 3754415013,
+      "peerPort": 49262,
+      "localPort": 33613
+    },
+    {
+      "socket": "target-9",
+      "phase": "target-tls-ready",
+      "atNs": 3789789379,
+      "alpn": "http/1.1"
+    },
+    {
+      "socket": "target-9",
+      "phase": "target-head-received",
+      "atNs": 3789963902,
+      "bytes": 64,
+      "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+    },
+    {
+      "socket": "target-9",
+      "phase": "target-head-sent",
+      "atNs": 3790017848,
+      "bytes": 65,
+      "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+    },
+    {
+      "socket": "entryA-10",
+      "phase": "entry-setup-ready",
+      "atNs": 3834524426
+    },
+    {
+      "socket": "entryA-10",
+      "phase": "method-received",
+      "atNs": 3834554370,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-10",
+      "phase": "method-sent",
+      "atNs": 3849754197,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-10",
+      "phase": "auth-received",
+      "atNs": 3850343324,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-10",
+      "phase": "auth-sent",
+      "atNs": 3865504553,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-10",
+      "phase": "connect-received",
+      "atNs": 3865916662,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "entryA-10",
+      "phase": "upstream-opened",
+      "atNs": 3866912866,
+      "peerPort": 59797,
+      "localPort": 39204
+    },
+    {
+      "socket": "exit-11",
+      "phase": "accepted",
+      "atNs": 3867618627,
+      "peerPort": 39204,
+      "localPort": 59797
+    },
+    {
+      "socket": "entryA-10",
+      "phase": "connect-sent",
+      "atNs": 3882061039,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-11",
+      "phase": "method-received",
+      "atNs": 3882841555,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "exit-11",
+      "phase": "method-sent",
+      "atNs": 3918110027,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "exit-11",
+      "phase": "auth-received",
+      "atNs": 3919162555,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "exit-11",
+      "phase": "auth-sent",
+      "atNs": 3954393040,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-11",
+      "phase": "connect-received",
+      "atNs": 4004638842,
+      "host": "bench.invalid",
+      "port": 34591,
+      "bytes": 20,
+      "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+    },
+    {
+      "socket": "exit-11",
+      "phase": "upstream-opened",
+      "atNs": 4005707145,
+      "peerPort": 34591,
+      "localPort": 58930
+    },
+    {
+      "socket": "target-12",
+      "phase": "accepted",
+      "atNs": 4011740537,
+      "peerPort": 58930,
+      "localPort": 34591
+    },
+    {
+      "socket": "exit-11",
+      "phase": "connect-sent",
+      "atNs": 4040937805,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "entryA-13",
+      "phase": "accepted",
+      "atNs": 4050975111,
+      "peerPort": 49278,
+      "localPort": 33613
+    },
+    {
+      "socket": "target-12",
+      "phase": "target-tls-ready",
+      "atNs": 4066582911,
+      "alpn": "http/1.1"
+    },
+    {
+      "socket": "target-12",
+      "phase": "target-head-received",
+      "atNs": 4066826395,
+      "bytes": 64,
+      "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+    },
+    {
+      "socket": "target-12",
+      "phase": "target-head-sent",
+      "atNs": 4066849223,
+      "bytes": 65,
+      "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+    },
+    {
+      "socket": "entryA-14",
+      "phase": "accepted",
+      "atNs": 4095016564,
+      "peerPort": 49284,
+      "localPort": 33613
+    },
+    {
+      "socket": "entryA-13",
+      "phase": "entry-setup-ready",
+      "atNs": 4131308094
+    },
+    {
+      "socket": "entryA-13",
+      "phase": "method-received",
+      "atNs": 4132233629,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-13",
+      "phase": "method-sent",
+      "atNs": 4147547118,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-13",
+      "phase": "auth-received",
+      "atNs": 4148362119,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-13",
+      "phase": "auth-sent",
+      "atNs": 4164100296,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-13",
+      "phase": "connect-received",
+      "atNs": 4164865245,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "entryA-13",
+      "phase": "upstream-opened",
+      "atNs": 4168005387,
+      "peerPort": 59797,
+      "localPort": 39212
+    },
+    {
+      "socket": "exit-15",
+      "phase": "accepted",
+      "atNs": 4170888850,
+      "peerPort": 39212,
+      "localPort": 59797
+    },
+    {
+      "socket": "entryA-14",
+      "phase": "entry-setup-ready",
+      "atNs": 4175168765
+    },
+    {
+      "socket": "entryA-14",
+      "phase": "method-received",
+      "atNs": 4175192477,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-13",
+      "phase": "connect-sent",
+      "atNs": 4183170754,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-15",
+      "phase": "method-received",
+      "atNs": 4185623476,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-14",
+      "phase": "method-sent",
+      "atNs": 4190569995,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-14",
+      "phase": "auth-received",
+      "atNs": 4191800623,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-14",
+      "phase": "auth-sent",
+      "atNs": 4207041242,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-14",
+      "phase": "connect-received",
+      "atNs": 4207166370,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "entryA-14",
+      "phase": "upstream-opened",
+      "atNs": 4207731401,
+      "peerPort": 59797,
+      "localPort": 39220
+    },
+    {
+      "socket": "exit-16",
+      "phase": "accepted",
+      "atNs": 4209108916,
+      "peerPort": 39220,
+      "localPort": 59797
+    },
+    {
+      "socket": "exit-15",
+      "phase": "method-sent",
+      "atNs": 4222416068,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-14",
+      "phase": "connect-sent",
+      "atNs": 4223048997,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-16",
+      "phase": "method-received",
+      "atNs": 4223236881,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "exit-15",
+      "phase": "auth-received",
+      "atNs": 4224786927,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "exit-16",
+      "phase": "method-sent",
+      "atNs": 4258555432,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "exit-16",
+      "phase": "auth-received",
+      "atNs": 4258807406,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "exit-15",
+      "phase": "auth-sent",
+      "atNs": 4260147361,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-16",
+      "phase": "auth-sent",
+      "atNs": 4294923809,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-16",
+      "phase": "connect-received",
+      "atNs": 4295081980,
+      "host": "bench.invalid",
+      "port": 34591,
+      "bytes": 20,
+      "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+    },
+    {
+      "socket": "exit-16",
+      "phase": "upstream-opened",
+      "atNs": 4299330819,
+      "peerPort": 34591,
+      "localPort": 58940
+    },
+    {
+      "socket": "target-17",
+      "phase": "accepted",
+      "atNs": 4300522698,
+      "peerPort": 58940,
+      "localPort": 34591
+    },
+    {
+      "socket": "exit-16",
+      "phase": "connect-sent",
+      "atNs": 4334758684,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "target-17",
+      "phase": "target-tls-ready",
+      "atNs": 4348192316,
+      "alpn": "http/1.1"
+    },
+    {
+      "socket": "target-17",
+      "phase": "target-head-received",
+      "atNs": 4348371211,
+      "bytes": 64,
+      "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+    },
+    {
+      "socket": "target-17",
+      "phase": "target-head-sent",
+      "atNs": 4348397900,
+      "bytes": 65,
+      "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+    },
+    {
+      "socket": "entryA-18",
+      "phase": "accepted",
+      "atNs": 4368520323,
+      "peerPort": 49300,
+      "localPort": 33613
+    },
+    {
+      "socket": "entryA-18",
+      "phase": "entry-setup-ready",
+      "atNs": 4449817891
+    },
+    {
+      "socket": "entryA-18",
+      "phase": "method-received",
+      "atNs": 4449868442,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-18",
+      "phase": "method-sent",
+      "atNs": 4465177634,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-18",
+      "phase": "auth-received",
+      "atNs": 4466071326,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-18",
+      "phase": "auth-sent",
+      "atNs": 4481303186,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-18",
+      "phase": "connect-received",
+      "atNs": 4483897943,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "entryA-18",
+      "phase": "upstream-opened",
+      "atNs": 4484370394,
+      "peerPort": 59797,
+      "localPort": 39236
+    },
+    {
+      "socket": "exit-19",
+      "phase": "accepted",
+      "atNs": 4488337256,
+      "peerPort": 39236,
+      "localPort": 59797
+    },
+    {
+      "socket": "entryA-18",
+      "phase": "connect-sent",
+      "atNs": 4499545567,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-19",
+      "phase": "method-received",
+      "atNs": 4502369210,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "exit-19",
+      "phase": "method-sent",
+      "atNs": 4537572370,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "exit-19",
+      "phase": "auth-received",
+      "atNs": 4539214716,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "exit-19",
+      "phase": "auth-sent",
+      "atNs": 4574413696,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-19",
+      "phase": "connect-received",
+      "atNs": 4576417766,
+      "host": "bench.invalid",
+      "port": 34591,
+      "bytes": 20,
+      "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+    },
+    {
+      "socket": "exit-19",
+      "phase": "upstream-opened",
+      "atNs": 4577695961,
+      "peerPort": 34591,
+      "localPort": 58942
+    },
+    {
+      "socket": "target-20",
+      "phase": "accepted",
+      "atNs": 4580782770,
+      "peerPort": 58942,
+      "localPort": 34591
+    },
+    {
+      "socket": "exit-19",
+      "phase": "connect-sent",
+      "atNs": 4613203037,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "target-20",
+      "phase": "target-tls-ready",
+      "atNs": 4638723183,
+      "alpn": "http/1.1"
+    },
+    {
+      "socket": "target-20",
+      "phase": "target-head-received",
+      "atNs": 4640687598,
+      "bytes": 64,
+      "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+    },
+    {
+      "socket": "target-20",
+      "phase": "target-head-sent",
+      "atNs": 4640734221,
+      "bytes": 65,
+      "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+    },
+    {
+      "socket": "exit-15",
+      "phase": "connect-received",
+      "atNs": 4703033630,
+      "host": "bench.invalid",
+      "port": 34591,
+      "bytes": 20,
+      "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+    },
+    {
+      "socket": "target-21",
+      "phase": "accepted",
+      "atNs": 4710391015,
+      "peerPort": 58948,
+      "localPort": 34591
+    },
+    {
+      "socket": "exit-15",
+      "phase": "upstream-opened",
+      "atNs": 4710887900,
+      "peerPort": 34591,
+      "localPort": 58948
+    },
+    {
+      "socket": "exit-15",
+      "phase": "connect-sent",
+      "atNs": 4747047957,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "entryA-22",
+      "phase": "accepted",
+      "atNs": 4760188791,
+      "peerPort": 49304,
+      "localPort": 33613
+    },
+    {
+      "socket": "target-21",
+      "phase": "target-tls-ready",
+      "atNs": 4780099913,
+      "alpn": "http/1.1"
+    },
+    {
+      "socket": "target-21",
+      "phase": "target-head-received",
+      "atNs": 4780207925,
+      "bytes": 64,
+      "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+    },
+    {
+      "socket": "target-21",
+      "phase": "target-head-sent",
+      "atNs": 4780230644,
+      "bytes": 65,
+      "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+    },
+    {
+      "socket": "entryA-22",
+      "phase": "entry-setup-ready",
+      "atNs": 4840516755
+    },
+    {
+      "socket": "entryA-22",
+      "phase": "method-received",
+      "atNs": 4840549052,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-22",
+      "phase": "method-sent",
+      "atNs": 4855745116,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-22",
+      "phase": "auth-received",
+      "atNs": 4856002695,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-22",
+      "phase": "auth-sent",
+      "atNs": 4872567498,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-22",
+      "phase": "connect-received",
+      "atNs": 4872678117,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "entryA-22",
+      "phase": "upstream-opened",
+      "atNs": 4873760357,
+      "peerPort": 59797,
+      "localPort": 39238
+    },
+    {
+      "socket": "exit-23",
+      "phase": "accepted",
+      "atNs": 4874088538,
+      "peerPort": 39238,
+      "localPort": 59797
+    },
+    {
+      "socket": "entryA-22",
+      "phase": "connect-sent",
+      "atNs": 4889635489,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-23",
+      "phase": "method-received",
+      "atNs": 4890372529,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "exit-23",
+      "phase": "method-sent",
+      "atNs": 4925875804,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "exit-23",
+      "phase": "auth-received",
+      "atNs": 4928179880,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "exit-23",
+      "phase": "auth-sent",
+      "atNs": 4963650140,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-23",
+      "phase": "connect-received",
+      "atNs": 5021987671,
+      "host": "bench.invalid",
+      "port": 34591,
+      "bytes": 20,
+      "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+    },
+    {
+      "socket": "exit-23",
+      "phase": "upstream-opened",
+      "atNs": 5022788011,
+      "peerPort": 34591,
+      "localPort": 58960
+    },
+    {
+      "socket": "target-24",
+      "phase": "accepted",
+      "atNs": 5026378065,
+      "peerPort": 58960,
+      "localPort": 34591
+    },
+    {
+      "socket": "exit-23",
+      "phase": "connect-sent",
+      "atNs": 5058000484,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "entryA-25",
+      "phase": "accepted",
+      "atNs": 5068802279,
+      "peerPort": 49306,
+      "localPort": 33613
+    },
+    {
+      "socket": "target-24",
+      "phase": "target-tls-ready",
+      "atNs": 5079496740,
+      "alpn": "http/1.1"
+    },
+    {
+      "socket": "target-24",
+      "phase": "target-head-received",
+      "atNs": 5080356905,
+      "bytes": 64,
+      "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+    },
+    {
+      "socket": "target-24",
+      "phase": "target-head-sent",
+      "atNs": 5080392119,
+      "bytes": 65,
+      "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+    },
+    {
+      "socket": "entryA-26",
+      "phase": "accepted",
+      "atNs": 5109815562,
+      "peerPort": 49308,
+      "localPort": 33613
+    },
+    {
+      "socket": "entryA-25",
+      "phase": "entry-setup-ready",
+      "atNs": 5148975716
+    },
+    {
+      "socket": "entryA-25",
+      "phase": "method-received",
+      "atNs": 5149029878,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-25",
+      "phase": "method-sent",
+      "atNs": 5164190458,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-25",
+      "phase": "auth-received",
+      "atNs": 5164336589,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-25",
+      "phase": "auth-sent",
+      "atNs": 5179491911,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-25",
+      "phase": "connect-received",
+      "atNs": 5179671089,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "entryA-25",
+      "phase": "upstream-opened",
+      "atNs": 5180067356,
+      "peerPort": 59797,
+      "localPort": 37528
+    },
+    {
+      "socket": "exit-27",
+      "phase": "accepted",
+      "atNs": 5183655089,
+      "peerPort": 37528,
+      "localPort": 59797
+    },
+    {
+      "socket": "entryA-26",
+      "phase": "entry-setup-ready",
+      "atNs": 5190865304
+    },
+    {
+      "socket": "entryA-26",
+      "phase": "method-received",
+      "atNs": 5190890344,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-25",
+      "phase": "connect-sent",
+      "atNs": 5196516336,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-27",
+      "phase": "method-received",
+      "atNs": 5196965085,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-26",
+      "phase": "method-sent",
+      "atNs": 5206574837,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-26",
+      "phase": "auth-received",
+      "atNs": 5208470853,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-26",
+      "phase": "auth-sent",
+      "atNs": 5225035443,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-26",
+      "phase": "connect-received",
+      "atNs": 5226840525,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "entryA-26",
+      "phase": "upstream-opened",
+      "atNs": 5230018370,
+      "peerPort": 59797,
+      "localPort": 37532
+    },
+    {
+      "socket": "exit-28",
+      "phase": "accepted",
+      "atNs": 5231162388,
+      "peerPort": 37532,
+      "localPort": 59797
+    },
+    {
+      "socket": "exit-27",
+      "phase": "method-sent",
+      "atNs": 5232513619,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "exit-27",
+      "phase": "auth-received",
+      "atNs": 5232712800,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "entryA-26",
+      "phase": "connect-sent",
+      "atNs": 5245889391,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-28",
+      "phase": "method-received",
+      "atNs": 5248069626,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "exit-27",
+      "phase": "auth-sent",
+      "atNs": 5267863433,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-28",
+      "phase": "method-sent",
+      "atNs": 5283817322,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "exit-28",
+      "phase": "auth-received",
+      "atNs": 5285201363,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "exit-28",
+      "phase": "auth-sent",
+      "atNs": 5320860318,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-28",
+      "phase": "connect-received",
+      "atNs": 5323998975,
+      "host": "bench.invalid",
+      "port": 34591,
+      "bytes": 20,
+      "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+    },
+    {
+      "socket": "exit-28",
+      "phase": "upstream-opened",
+      "atNs": 5330825364,
+      "peerPort": 34591,
+      "localPort": 41334
+    },
+    {
+      "socket": "target-29",
+      "phase": "accepted",
+      "atNs": 5331947375,
+      "peerPort": 41334,
+      "localPort": 34591
+    },
+    {
+      "socket": "exit-28",
+      "phase": "connect-sent",
+      "atNs": 5366611994,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "target-29",
+      "phase": "target-tls-ready",
+      "atNs": 5388024583,
+      "alpn": "http/1.1"
+    },
+    {
+      "socket": "target-29",
+      "phase": "target-head-received",
+      "atNs": 5391639766,
+      "bytes": 64,
+      "sha256": "970c42401ac5f37c453525fb76905a9713c9a1f1fad9d885c3c2bd90acdb39a7"
+    },
+    {
+      "socket": "target-29",
+      "phase": "target-head-sent",
+      "atNs": 5391681841,
+      "bytes": 65,
+      "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+    },
+    {
+      "socket": "entryA-30",
+      "phase": "accepted",
+      "atNs": 5522648809,
+      "peerPort": 44128,
+      "localPort": 33613
+    },
+    {
+      "socket": "entryA-30",
+      "phase": "entry-setup-ready",
+      "atNs": 5603379009
+    },
+    {
+      "socket": "entryA-30",
+      "phase": "method-received",
+      "atNs": 5603427452,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "entryA-30",
+      "phase": "method-sent",
+      "atNs": 5618745663,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "entryA-30",
+      "phase": "auth-received",
+      "atNs": 5619069271,
+      "bytes": 45,
+      "sha256": "3e33eb00960c0ee92848f2e5c2d357128dbbb4231d8260594b69ce95bbb2da9c"
+    },
+    {
+      "socket": "entryA-30",
+      "phase": "auth-sent",
+      "atNs": 5635024330,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "entryA-30",
+      "phase": "connect-received",
+      "atNs": 5636477775,
+      "host": "127.0.0.1",
+      "port": 59797,
+      "bytes": 10,
+      "sha256": "71ef13be84d9285cda89ebee852e11dca480e3cff21daf17a592747fdda26e76"
+    },
+    {
+      "socket": "entryA-30",
+      "phase": "upstream-opened",
+      "atNs": 5643556771,
+      "peerPort": 59797,
+      "localPort": 37548
+    },
+    {
+      "socket": "exit-31",
+      "phase": "accepted",
+      "atNs": 5644180154,
+      "peerPort": 37548,
+      "localPort": 59797
+    },
+    {
+      "socket": "entryA-30",
+      "phase": "connect-sent",
+      "atNs": 5658803667,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "exit-31",
+      "phase": "method-received",
+      "atNs": 5659137699,
+      "bytes": 3,
+      "sha256": "f7ab358897fa93329b77806b54c970462ec6f17ef6a3acef12dc9a0a7151de1a"
+    },
+    {
+      "socket": "exit-31",
+      "phase": "method-sent",
+      "atNs": 5694834497,
+      "bytes": 2,
+      "sha256": "7c2f2290b282a9630f38a2449df18d5595dd88a3e9c9ca138fc5d3a72266211c"
+    },
+    {
+      "socket": "exit-31",
+      "phase": "auth-received",
+      "atNs": 5696794064,
+      "bytes": 41,
+      "sha256": "bfb67b4865ce8091bc31953816b495d673e0872dadd76b785a94e5d7d007f8b0"
+    },
+    {
+      "socket": "exit-31",
+      "phase": "auth-sent",
+      "atNs": 5732902094,
+      "bytes": 2,
+      "sha256": "47dc540c94ceb704a23875c11273e16bb0b8a87aed84de911f2133568115f254"
+    },
+    {
+      "socket": "exit-31",
+      "phase": "connect-received",
+      "atNs": 5736321595,
+      "host": "bench.invalid",
+      "port": 34591,
+      "bytes": 20,
+      "sha256": "5d9e3f76d5c687fb045bb7e2d4c42f11ac46f924afdb122a7e3240f6e38e2b0b"
+    },
+    {
+      "socket": "exit-31",
+      "phase": "upstream-opened",
+      "atNs": 5740870454,
+      "peerPort": 34591,
+      "localPort": 41338
+    },
+    {
+      "socket": "target-32",
+      "phase": "accepted",
+      "atNs": 5742926955,
+      "peerPort": 41338,
+      "localPort": 34591
+    },
+    {
+      "socket": "exit-31",
+      "phase": "connect-sent",
+      "atNs": 5777277639,
+      "bytes": 10,
+      "sha256": "294eb8cbfe8c6dd28243e75ccfbbd5d510692863788afee94b24ffa0060cf7bb"
+    },
+    {
+      "socket": "target-32",
+      "phase": "target-tls-ready",
+      "atNs": 5791789596,
+      "alpn": null
+    },
+    {
+      "socket": "target-32",
+      "phase": "target-head-received",
+      "atNs": 5792329047,
+      "bytes": 83,
+      "sha256": "89c2445648708ff2988e38fe52b2019cace9825659033fe7d68bbe087eb699c3"
+    },
+    {
+      "socket": "target-32",
+      "phase": "target-head-sent",
+      "atNs": 5793356621,
+      "bytes": 65,
+      "sha256": "0b08949642b04219d93f38b9822add4de6a4d1ee7cbd1ba82d7af6d877d104d4"
+    }
+  ]
+}
