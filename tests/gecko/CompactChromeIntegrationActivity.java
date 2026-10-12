@@ -84,7 +84,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   void waitReloadModal(long deadline){
     if(reloadDialog!=null&&reloadDialog.isShowing()){
       JSONArray controls=new JSONArray();boolean laidOut=true;
-      for(int i=0;i<reloadDialog.footer.getChildCount();i++){View view=reloadDialog.footer.getChildAt(i);if(view instanceof Button){android.graphics.Rect bounds=new android.graphics.Rect();laidOut&=view.isShown()&&view.getGlobalVisibleRect(bounds)&&bounds.width()>0&&bounds.height()>0&&view.isEnabled()&&view.isClickable();controls.put(J.obj("label",((Button)view).getText().toString(),"bounds",J.arr(bounds.left,bounds.top,bounds.right,bounds.bottom),"x",bounds.centerX(),"y",bounds.centerY(),"enabled",view.isEnabled(),"clickable",view.isClickable()));}}
+      for(int i=0;i<reloadDialog.footer.getChildCount();i++){View view=reloadDialog.footer.getChildAt(i);if(view instanceof Button){Rect visible=new Rect();Rect bounds=screenBounds(view);laidOut&=view.isShown()&&view.getGlobalVisibleRect(visible)&&visible.width()>0&&visible.height()>0&&bounds.width()>0&&bounds.height()>0&&view.isEnabled()&&view.isClickable();controls.put(J.obj("label",((Button)view).getText().toString(),"bounds",J.arr(bounds.left,bounds.top,bounds.right,bounds.bottom),"x",bounds.centerX(),"y",bounds.centerY(),"enabled",view.isEnabled(),"clickable",view.isClickable()));}}
       if(laidOut&&controls.length()==2){reloadEvent("reloadModal",J.obj("centered",reloadDialog.getWindow().getAttributes().gravity==Gravity.CENTER,"controls",controls));return;}
     }
     if(SystemClock.elapsedRealtime()>deadline){reloadEvent("error",J.obj("error","Reload confirmation did not appear"));return;}handler.postDelayed(()->waitReloadModal(deadline),50);
