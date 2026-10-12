@@ -8,6 +8,7 @@ import android.service.notification.NotificationListenerService;
 import android.util.Log;
 import android.widget.TextView;
 import org.json.*;
+import java.io.*;
 import java.util.*;
 
 /** Real Android channels and foreground services; only synthetic completion data. */
@@ -15,13 +16,14 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   final Handler handler=new Handler(Looper.getMainLooper());final JSONArray checks=new JSONArray();
   NotificationManager manager;ChatSession session;Context owner,other;JSONObject job;
   boolean started,leftApp,finished;long deadline;String prefix=UUID.randomUUID().toString();
+  JSONObject foregroundProof,homeProof;DefaultDownloads.Target savedFile;JSONObject savedTask;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test")||Profiles.processSlot()!=7)throw new SecurityException("Isolated test profile required");TextView label=new TextView(this);label.setText("后台通知与完成提醒回归");setContentView(label);manager=getSystemService(NotificationManager.class);}
   @Override protected void onResume(){super.onResume();if(!started){started=true;handler.postDelayed(this::begin,300);}}
   @Override protected void onPause(){super.onPause();leftApp=true;}
   void check(String name,boolean pass)throws Exception{JSONObject value=J.obj("name",name,"pass",pass);checks.put(value);event("check",value);if(!pass)throw new IllegalStateException(name);}
   void event(String kind,JSONObject result){Log.i("PocketQuietNotifications",J.obj("kind",kind,"value",result).toString());}
-  void report(String status,String error){Log.i("PocketQuietNotifications",J.obj("status",status,"actualAndroidExecution",true,"checkCount",checks.length(),"error",error,"scope","Android channels, real foreground services, real Home, production stable-terminal gate and persisted profile-local completion reminders; no real account").toString());}
+  void report(String status,String error){Log.i("PocketQuietNotifications",J.obj("status",status,"actualAndroidExecution",true,"checkCount",checks.length(),"error",error,"foregroundEvidence",foregroundProof,"homeEvidence",homeProof,"scope","Android activity-process importance, channels, real foreground services, real Home, production stable-terminal gate, opt-in completion reminders and a real local MediaStore save; no account or network download").toString());}
   StatusBarNotification notice(int id){for(StatusBarNotification n:manager.getActiveNotifications())if(n.getId()==id)return n;return null;}
   interface Condition {boolean ready()throws Exception;}
   interface Step {void run()throws Exception;}
@@ -42,6 +44,8 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   void seed(String channel,int id){manager.createNotificationChannel(new NotificationChannel(channel,"旧版本状态提醒",NotificationManager.IMPORTANCE_DEFAULT));manager.notify(id,new Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("旧版提示").build());}
   void begin(){try{
     owner=Profiles.context(this,7);other=Profiles.context(this,6);
+    check("Background completion reminders are off by default",!AppSettings.backgroundCompletionNotice(owner));
+    check("Browser and network child processes cannot count as visible UI",!QuietNotifications.uiProcess(getPackageName()+":tab0",getPackageName())&&!QuietNotifications.uiProcess(getPackageName()+":network",getPackageName())&&QuietNotifications.uiProcess(getPackageName()+":profile7",getPackageName())&&!QuietNotifications.visibleImportance(ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE));
     for(int slot:new int[]{6,7}){Context c=Profiles.context(this,slot);c.getSharedPreferences("chat",0).edit().putBoolean("replyNotice",true).commit();manager.cancel(Profiles.notification(c,4102));}
     owner.getSharedPreferences("chat",0).edit().putStringSet("notifiedJobs",Collections.singleton(prefix+"-aggregate-legacy")).commit();
     seed("chat-wait",Profiles.notification(owner,4101));seed("network-transport",NetworkTransportService.NOTICE);
@@ -64,7 +68,16 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   void migratedLegacy()throws Exception{
     check("Upgrade removes old noisy foreground channels",manager.getNotificationChannel("chat-wait")==null&&manager.getNotificationChannel("network-transport")==null);
     check("Upgrade removes non-completion regular notifications across profiles",notice(Profiles.notification(owner,4104))==null&&notice(Profiles.notification(owner,4105))==null&&notice(Profiles.notification(other,4103))==null);
-    owner.getSharedPreferences("chat",0).edit().putString("browserEngine","system").putString("networkMode","external").putBoolean("requireExternalVpn",false).putBoolean("pageMode",true).commit();
+    foregroundProof=QuietNotifications.foregroundEvidence(owner);check("A real visible app Activity suppresses completion reminders",foregroundProof.optBoolean("known")&&foregroundProof.optBoolean("foreground")&&QuietNotifications.appForeground(owner));
+    AppSettings.put(owner,"backgroundCompletionNotice","true");ChatService.completed(owner,prefix+"-foreground",MainActivity.ORIGIN);ChatService.downloaded(owner,prefix+"-foreground-file","visible-file.txt");
+    awaitQuiet("foreground reply and download stay absent",()->notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(owner,4104))==null,()->{
+      check("Foreground replies and downloads stay quiet even after opting in",notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(owner,4104))==null);
+      check("Already visible completions are remembered without posting",ReplyNoticeLedger.notified(owner,prefix+"-foreground")&&ReplyNoticeLedger.notified(owner,"download:"+prefix+"-foreground-file"));
+      AppSettings.put(owner,"backgroundCompletionNotice","false");prepareWaiting();
+    });
+  }
+  void prepareWaiting()throws Exception{
+    owner.getSharedPreferences("chat",0).edit().putString("browserEngine","gecko").putString("networkMode","external").putBoolean("requireExternalVpn",false).putBoolean("pageMode",true).commit();
     session=ChatSession.get(owner);session.networkReady=false;session.guard.setBlocked(true);session.foreground(false);
     String url=MainActivity.ORIGIN+"c/synthetic-notification";
     String id=session.deliveries.begin(url,"synthetic waiting question",new JSONArray(),"web",null);
@@ -95,12 +108,22 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   }catch(Exception e){fail(e);}}
   void background(){try{
     if(!leftApp){if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Runner did not send Home");handler.postDelayed(this::background,200);return;}
+    homeProof=QuietNotifications.foregroundEvidence(owner);check("Real Home leaves the UI in background while required services keep running",homeProof.optBoolean("known")&&!homeProof.optBoolean("foreground")&&!QuietNotifications.appForeground(owner));
     check("Home preserves the pending reply and background observation service",session.pending==job&&ChatService.running&&session.browserWorkActive()&&!session.browserPaused);
+    ChatService.completed(owner,prefix+"-disabled",MainActivity.ORIGIN);ChatService.downloaded(owner,prefix+"-disabled-file","disabled-file.txt");
+    awaitQuiet("background default remains quiet",()->notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(owner,4104))==null,()->{
+      check("Background completion stays quiet until the user opts in",!QuietNotifications.backgroundCompletionAllowed(owner)&&notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(owner,4104))==null&&!ReplyNoticeLedger.notified(owner,prefix+"-disabled")&&!ReplyNoticeLedger.notified(owner,"download:"+prefix+"-disabled-file"));
+      AppSettings.put(owner,"backgroundCompletionNotice","true");check("Explicit opt-in admits completion only after real Home",QuietNotifications.backgroundCompletionAllowed(owner));
+      ChatService.completed(owner,prefix+"-foreground",MainActivity.ORIGIN);ChatService.downloaded(owner,prefix+"-foreground-file","visible-file.txt");
+      awaitQuiet("visible completions cannot re-alert after Home",()->notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(owner,4104))==null,()->{check("Foreground completions never become delayed background alerts",notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(owner,4104))==null);observeTerminal();});
+    });
+  }catch(Exception e){fail(e);}}
+  void observeTerminal()throws Exception{
     JSONObject poll=J.obj("submitted",true,"terminal",true,"busy",true,"userKey",job.optString("userKey"),"url",job.optString("confirmedUrl"),"replyKey","id:synthetic-reply","markdown","synthetic completed reply");
     check("Busy replies cannot trigger a completion notice",!session.webObserver.mayComplete(job,poll)&&notice(Profiles.notification(owner,4102))==null);
     poll.put("busy",false);check("A first terminal observation cannot alert early",!session.webObserver.mayComplete(job,poll));
     handler.postDelayed(()->{try{check("A second terminal observation remains quiet",!session.webObserver.mayComplete(job,poll));handler.postDelayed(()->finishReply(poll),1200);}catch(Exception e){fail(e);}},1200);
-  }catch(Exception e){fail(e);}}
+  }
   void finishReply(JSONObject poll){try{
     check("Stable terminal reply is accepted only after repeated observations",session.webObserver.mayComplete(job,poll));
     session.completeReply(job,poll);handler.postDelayed(this::completed,500);
@@ -151,14 +174,29 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   }
   void retriedCompletion()throws Exception{
     check("A completion can be retried after reminders are enabled",notice(Profiles.notification(owner,4102))!=null);
-    ChatService.needsAttention(owner,"synthetic attention");ChatService.networkLost(owner);ChatService.downloaded(owner,"synthetic-file","synthetic.png");
+    ChatService.needsAttention(owner,"synthetic attention");ChatService.networkLost(owner);
     awaitQuiet("non-completion events remain quiet",()->notice(Profiles.notification(owner,4103))==null&&notice(Profiles.notification(owner,4104))==null&&notice(Profiles.notification(owner,4105))==null,this::quietEvents);
   }
   void quietEvents()throws Exception{
-    check("Attention network and download events remain in-app without separate reminders",notice(Profiles.notification(owner,4103))==null&&notice(Profiles.notification(owner,4104))==null&&notice(Profiles.notification(owner,4105))==null);
+    check("Attention and network events remain in-app without separate reminders",notice(Profiles.notification(owner,4103))==null&&notice(Profiles.notification(owner,4105))==null);
     check("Background observation remains enabled by default",AppPrefs.enabled(owner,"backgroundWait"));
-    finished=true;handler.removeCallbacksAndMessages(null);cleanup();report("passed","");
+    savedFile=DefaultDownloads.create(owner,"quiet-completion-"+prefix+".txt","text/plain");try(OutputStream out=savedFile.output()){out.write("complete local file".getBytes(java.nio.charset.StandardCharsets.UTF_8));}savedFile.publish();
+    DownloadTasks tasks=new DownloadTasks(owner);savedTask=tasks.add("","",MainActivity.ORIGIN);DownloadTasks.put(savedTask,"state","saved","name",savedFile.name,"uri",savedFile.uri.toString(),"location",savedFile.location,"received",19,"total",19);tasks.save();
+    ChatService.downloaded(owner,savedTask.optString("id"),savedFile.name);await("opted-in saved download completion",()->notice(Profiles.notification(owner,4104))!=null,this::downloadCompleted);
   }
-  void cleanup(){if(owner!=null)ChatService.end(owner);stopService(new Intent(this,NetworkTransportService.class));if(session!=null){session.pending=null;session.prefs.edit().remove("pending").commit();session.handler.removeCallbacks(session.tick);session.web.destroy();}for(Context c:new Context[]{owner,other})if(c!=null)manager.cancel(Profiles.notification(c,4102));}
+  void downloadCompleted()throws Exception{
+    StatusBarNotification n=notice(Profiles.notification(owner,4104));check("Opted-in background file completion opens the exact saved task",n!=null&&ChatService.FILES.equals(n.getNotification().getChannelId())&&ChatService.downloadIntent(owner,savedTask.optString("id")).equals(n.getNotification().contentIntent));
+    try(InputStream in=owner.getContentResolver().openInputStream(savedFile.uri)){check("The notified local file is fully published and readable",in!=null&&"complete local file".equals(new String(J.read(in,1024),java.nio.charset.StandardCharsets.UTF_8)));}
+    manager.cancel(Profiles.notification(owner,4104));awaitQuiet("download completion cleared",()->notice(Profiles.notification(owner,4104))==null,()->{
+      ChatService.downloaded(owner,savedTask.optString("id"),savedFile.name);awaitQuiet("saved download remains deduplicated",()->notice(Profiles.notification(owner,4104))==null,()->{
+        check("A saved download cannot re-alert after dismissal",notice(Profiles.notification(owner,4104))==null&&ReplyNoticeLedger.notified(owner,"download:"+savedTask.optString("id")));
+        AppSettings.put(owner,"backgroundCompletionNotice","false");awaitQuiet("opting out clears old completion cards",()->notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(other,4102))==null,()->{
+          check("Opting out removes completion cards across environments",!QuietNotifications.backgroundCompletionAllowed(owner)&&notice(Profiles.notification(owner,4102))==null&&notice(Profiles.notification(other,4102))==null);
+          finished=true;handler.removeCallbacksAndMessages(null);cleanup();report("passed","");
+        });
+      });
+    });
+  }
+  void cleanup(){if(owner!=null)ChatService.end(owner);stopService(new Intent(this,NetworkTransportService.class));if(savedFile!=null)savedFile.abort();if(session!=null){session.pending=null;session.prefs.edit().remove("pending").commit();session.handler.removeCallbacks(session.tick);session.web.destroy();}for(Context c:new Context[]{owner,other})if(c!=null){manager.cancel(Profiles.notification(c,4102));manager.cancel(Profiles.notification(c,4104));}}
   void fail(Exception e){if(finished)return;finished=true;handler.removeCallbacksAndMessages(null);cleanup();report("failed",e.toString());}
 }
