@@ -1,0 +1,399 @@
+{
+  "status": "failed",
+  "error": "java.lang.IllegalStateException: Real focus/caret failed: {\"ready\":true,\"case\":1,\"documentUrl\":\"http:\\/\\/127.0.0.1:8771\\/caret?case=1\",\"draft\":\"abcdefghij\",\"otherDraft\":\"untouched independent draft\",\"focused\":true,\"start\":0,\"end\":0,\"direction\":\"forward\",\"cookie\":\"session=synthetic-caret\",\"sendCount\":0,\"width\":414,\"height\":989,\"bounds\":{\"x\":12,\"y\":65.63333129882812,\"width\":390,\"height\":96},\"points\":[{\"x\":22.766666999999998,\"y\":91.99999829882812},{\"x\":38.41884099597168,\"y\":91.99999829882812},{\"x\":54.07101499194336,\"y\":91.99999829882812},{\"x\":69.7231870805664,\"y\":91.99999829882812},{\"x\":85.37536298388672,\"y\":91.99999829882812},{\"x\":101.02753888720703,\"y\":91.99999829882812},{\"x\":116.67970716113281,\"y\":91.99999829882812},{\"x\":132.3318830644531,\"y\":91.99999829882812},{\"x\":147.98405896777342,\"y\":91.99999829882812},{\"x\":163.63623487109373,\"y\":91.99999829882812},{\"x\":179.28841077441405,\"y\":91.99999829882812}],\"events\":[],\"overflow\":false,\"eventCount\":0,\"keyCount\":0,\"inputCount\":0,\"beforeCount\":0,\"compositionCount\":0,\"compositionEndCount\":0,\"allTrusted\":true}",
+  "diagnosticOnly": true,
+  "releaseAcceptance": false,
+  "actualAndroidExecution": true,
+  "actualGeckoExecution": true,
+  "sdkObserverEnabled": false,
+  "sdkObserverAbsenceVerified": true,
+  "sdkObserverClass": "org.mozilla.geckoview.PocketGeckoEditableTrace",
+  "installedApk": {
+    "packageName": "local.pocketchat.test",
+    "sha256": "55aa638f3234d83e16c63dcb8e44c82dec52a86fc47f0a8cb30121c77fd634d5",
+    "bytes": 127180171,
+    "versionName": "1.5.20",
+    "versionCode": 46,
+    "debuggable": false,
+    "source": "applicationInfo.sourceDir",
+    "actualInstalledPackageRead": true
+  },
+  "domTextWrites": 0,
+  "scenarioCount": 1,
+  "checkCount": 6,
+  "apiCount": 0,
+  "checkpointCount": 2,
+  "scope": "Controlled fixture initial HTML seeds; subsequent edits use original SDK InputConnection and real adb keyboard/touch. No real account, vendor touch-keyboard UI, hardware device or production acceptance claim.",
+  "sourceCommit": "921ca61240307dcc2f6d4e9cb89cd5ff01a4e42e",
+  "runId": "38192886073",
+  "runAttempt": "1",
+  "expectedInstalledApkSha256": "55aa638f3234d83e16c63dcb8e44c82dec52a86fc47f0a8cb30121c77fd634d5",
+  "sdkBuildIdentity": {
+    "officialVersion": "157.0.20260924084938",
+    "officialAarSha256": "25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0",
+    "officialJarSha256": "ef426e105fd4e65efdc45d41671d57c4a0c34d64bad15d5b70b82fccb30c7595",
+    "officialEditableSha256": "608461e22cae3ed19572aa43a0dc38d4926d48709bd456c91853935462f5fa54",
+    "candidateAarSha256": "fb60f9d5181039ddae0183ccc5234687175f1644123eb7e4145ae7bac2c4ed1b",
+    "candidateJarSha256": "a84ec85ac1139300844d266b8fcefcd95d094d829e59e1acb3cf40cf9940711b",
+    "candidateEditableSha256": "46fdc662383b704386e50744da2b5ffb6c1d29ff15a32788107aeb4618bbfb0f",
+    "helperSha256": "9619db2ca4d540f4917c094231032fea8d665094fb63e64368150f03babbab7b",
+    "builderSha256": "ac6d6555f55fc89c66a1ddf0d14811237edf3fb2fcab443f924dac15056a6f4e",
+    "receiptSha256": "d31ea5912bacdbc59484dbd85b84d4fc3519ac5e21761ebc877fe254ac0faaba",
+    "sourceSha256": {
+      "TransformHardwareCaret.java": "2a8ea6f3649e0ceaf0c454bf43cf162aac5866e7c784691b4281df9f10d7f251",
+      "PocketSynthesizedInsertionScope.java": "41e3672cbd04131abeaf427e12e71c6c3879554676ed3bc1462d9b1fc4fd256f",
+      "VerifyHardwareCaretScope.java": "bbb1965ce115863dd1e1a592ebd2f4bb0be256e91aa6c2e8ea3f6b7c535169c8"
+    },
+    "normalCandidateContainsObserver": false,
+    "allNativeAndResourceEntriesUnchanged": true
+  },
+  "checks": [
+    {
+      "index": 0,
+      "scenario": "rapid-taps",
+      "name": "Controlled initial draft is intact",
+      "pass": true
+    },
+    {
+      "index": 1,
+      "scenario": "rapid-taps",
+      "name": "Real tap establishes the exact caret and visible IME",
+      "pass": true
+    },
+    {
+      "index": 2,
+      "scenario": "rapid-taps",
+      "name": "Exact draft and selection after original input",
+      "pass": true
+    },
+    {
+      "index": 3,
+      "scenario": "rapid-taps",
+      "name": "Preserved other draft, synthetic cookie and no send",
+      "pass": true
+    },
+    {
+      "index": 4,
+      "scenario": "rapid-taps",
+      "name": "Input events are trusted and bounded",
+      "pass": true
+    },
+    {
+      "index": 5,
+      "scenario": "selected-replace",
+      "name": "Controlled initial draft is intact",
+      "pass": true
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "rapid-taps",
+      "initialDraft": "abcdefghij",
+      "actual": {
+        "ready": true,
+        "case": 0,
+        "documentUrl": "http://127.0.0.1:8771/caret?case=0",
+        "draft": "abcdefghiQj",
+        "otherDraft": "untouched independent draft",
+        "focused": true,
+        "start": 10,
+        "end": 10,
+        "direction": "forward",
+        "cookie": "session=synthetic-caret",
+        "sendCount": 0,
+        "width": 414,
+        "height": 667,
+        "bounds": {
+          "x": 12,
+          "y": 65.63333129882812,
+          "width": 390,
+          "height": 96
+        },
+        "overflow": false,
+        "eventCount": 5,
+        "keyCount": 1,
+        "inputCount": 1,
+        "beforeCount": 1,
+        "compositionCount": 0,
+        "compositionEndCount": 0,
+        "allTrusted": true
+      },
+      "actions": [
+        {
+          "id": "rapid-taps-focus-0",
+          "scenario": "rapid-taps",
+          "origin": "adb-input-keyboard-and-touch",
+          "commands": [
+            {
+              "op": "tap",
+              "x": 264,
+              "y": 357,
+              "expectedCaret": 5
+            }
+          ]
+        },
+        {
+          "id": "rapid-taps-two-rapid-taps-and-type-1",
+          "scenario": "rapid-taps",
+          "origin": "adb-input-keyboard-and-touch",
+          "commands": [
+            {
+              "op": "tap",
+              "x": 141,
+              "y": 357,
+              "expectedCaret": 2
+            },
+            {
+              "op": "tap",
+              "x": 427,
+              "y": 357,
+              "expectedCaret": 9
+            },
+            {
+              "op": "text",
+              "text": "Q"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "actualCheckpoints": [
+    {
+      "index": 0,
+      "scenario": "rapid-taps",
+      "phase": "focus",
+      "expected": {
+        "draft": "abcdefghij",
+        "start": 5,
+        "end": 5,
+        "minimumKeys": 0,
+        "minimumInputs": 0,
+        "minimumBefore": 0
+      },
+      "actual": {
+        "ready": true,
+        "case": 0,
+        "documentUrl": "http://127.0.0.1:8771/caret?case=0",
+        "draft": "abcdefghij",
+        "otherDraft": "untouched independent draft",
+        "focused": true,
+        "start": 5,
+        "end": 5,
+        "direction": "forward",
+        "cookie": "session=synthetic-caret",
+        "sendCount": 0,
+        "width": 414,
+        "height": 667,
+        "bounds": {
+          "x": 12,
+          "y": 65.63333129882812,
+          "width": 390,
+          "height": 96
+        },
+        "overflow": false,
+        "eventCount": 0,
+        "keyCount": 0,
+        "inputCount": 0,
+        "beforeCount": 0,
+        "compositionCount": 0,
+        "compositionEndCount": 0,
+        "allTrusted": true
+      },
+      "stableMillis": 624
+    },
+    {
+      "index": 1,
+      "scenario": "rapid-taps",
+      "phase": "expect",
+      "expected": {
+        "draft": "abcdefghiQj",
+        "start": 10,
+        "end": 10,
+        "minimumKeys": 1,
+        "minimumInputs": 1,
+        "minimumBefore": 1
+      },
+      "actual": {
+        "ready": true,
+        "case": 0,
+        "documentUrl": "http://127.0.0.1:8771/caret?case=0",
+        "draft": "abcdefghiQj",
+        "otherDraft": "untouched independent draft",
+        "focused": true,
+        "start": 10,
+        "end": 10,
+        "direction": "forward",
+        "cookie": "session=synthetic-caret",
+        "sendCount": 0,
+        "width": 414,
+        "height": 667,
+        "bounds": {
+          "x": 12,
+          "y": 65.63333129882812,
+          "width": 390,
+          "height": 96
+        },
+        "overflow": false,
+        "eventCount": 5,
+        "keyCount": 1,
+        "inputCount": 1,
+        "beforeCount": 1,
+        "compositionCount": 0,
+        "compositionEndCount": 0,
+        "allTrusted": true
+      },
+      "stableMillis": 457
+    }
+  ],
+  "actualAndroidActions": [
+    {
+      "id": "rapid-taps-focus-0",
+      "scenario": "rapid-taps",
+      "origin": "adb-input-keyboard-and-touch",
+      "commands": [
+        {
+          "op": "tap",
+          "x": 264,
+          "y": 357,
+          "expectedCaret": 5
+        }
+      ]
+    },
+    {
+      "id": "rapid-taps-two-rapid-taps-and-type-1",
+      "scenario": "rapid-taps",
+      "origin": "adb-input-keyboard-and-touch",
+      "commands": [
+        {
+          "op": "tap",
+          "x": 141,
+          "y": 357,
+          "expectedCaret": 2
+        },
+        {
+          "op": "tap",
+          "x": 427,
+          "y": 357,
+          "expectedCaret": 9
+        },
+        {
+          "op": "text",
+          "text": "Q"
+        }
+      ]
+    },
+    {
+      "id": "selected-replace-focus-2",
+      "scenario": "selected-replace",
+      "origin": "adb-input-keyboard-and-touch",
+      "commands": [
+        {
+          "op": "tap",
+          "x": 386,
+          "y": 279,
+          "expectedCaret": 8
+        }
+      ]
+    }
+  ],
+  "actualInputConnectionCalls": [],
+  "actualTrustedEvents": {
+    "rapid-taps": [
+      {
+        "type": "keyup",
+        "key": "Q",
+        "data": "",
+        "inputType": "",
+        "trusted": true,
+        "ctrl": false,
+        "shift": true,
+        "composing": false,
+        "start": 9,
+        "end": 9
+      },
+      {
+        "type": "keydown",
+        "key": "Q",
+        "data": "",
+        "inputType": "",
+        "trusted": true,
+        "ctrl": false,
+        "shift": true,
+        "composing": false,
+        "start": 9,
+        "end": 9
+      },
+      {
+        "type": "beforeinput",
+        "key": "",
+        "data": "Q",
+        "inputType": "insertText",
+        "trusted": true,
+        "ctrl": false,
+        "shift": false,
+        "composing": false,
+        "start": 9,
+        "end": 9
+      },
+      {
+        "type": "input",
+        "key": "",
+        "data": "Q",
+        "inputType": "insertText",
+        "trusted": true,
+        "ctrl": false,
+        "shift": false,
+        "composing": false,
+        "start": 10,
+        "end": 10
+      },
+      {
+        "type": "keyup",
+        "key": "Q",
+        "data": "",
+        "inputType": "",
+        "trusted": true,
+        "ctrl": false,
+        "shift": true,
+        "composing": false,
+        "start": 10,
+        "end": 10
+      }
+    ]
+  },
+  "fixtureRequests": [
+    {
+      "case": 0,
+      "id": "rapid-taps",
+      "method": "GET",
+      "path": "/caret"
+    },
+    {
+      "case": 1,
+      "id": "selected-replace",
+      "method": "GET",
+      "path": "/caret"
+    }
+  ],
+  "controlledProxyRoutes": [
+    {
+      "host": "127.0.0.1",
+      "port": 8771,
+      "addressType": 3,
+      "accepted": true
+    },
+    {
+      "host": "127.0.0.1",
+      "port": 8771,
+      "addressType": 3,
+      "accepted": true
+    }
+  ],
+  "device": {
+    "sdk": "35",
+    "screen": "Physical size: 320x640\nOverride size: 1080x1920",
+    "density": "Physical density: 160\nOverride density: 420"
+  },
+  "runnerError": "{'status': 'failed', 'error': 'java.lang.IllegalStateException: Real focus/caret failed: {\"ready\":true,\"case\":1,\"documentUrl\":\"http:\\\\/\\\\/127.0.0.1:8771\\\\/caret?case=1\",\"draft\":\"abcdefghij\",\"otherDraft\":\"untouched independent draft\",\"focused\":true,\"start\":0,\"end\":0,\"direction\":\"forward\",\"cookie\":\"session=synthetic-caret\",\"sendCount\":0,\"width\":414,\"height\":989,\"bounds\":{\"x\":12,\"y\":65.63333129882812,\"width\":390,\"height\":96},\"points\":[{\"x\":22.766666999999998,\"y\":91.99999829882812},{\"x\":38.41884099597168,\"y\":91.99999829882812},{\"x\":54.07101499194336,\"y\":91.99999829882812},{\"x\":69.7231870805664,\"y\":91.99999829882812},{\"x\":85.37536298388672,\"y\":91.99999829882812},{\"x\":101.02753888720703,\"y\":91.99999829882812},{\"x\":116.67970716113281,\"y\":91.99999829882812},{\"x\":132.3318830644531,\"y\":91.99999829882812},{\"x\":147.98405896777342,\"y\":91.99999829882812},{\"x\":163.63623487109373,\"y\":91.99999829882812},{\"x\":179.28841077441405,\"y\":91.99999829882812}],\"events\":[],\"overflow\":false,\"eventCount\":0,\"keyCount\":0,\"inputCount\":0,\"beforeCount\":0,\"compositionCount\":0,\"compositionEndCount\":0,\"allTrusted\":true}', 'diagnosticOnly': True, 'releaseAcceptance': False, 'actualAndroidExecution': True, 'actualGeckoExecution': True, 'sdkObserverEnabled': False, 'sdkObserverAbsenceVerified': True, 'sdkObserverClass': 'org.mozilla.geckoview.PocketGeckoEditableTrace', 'installedApk': {'packageName': 'local.pocketchat.test', 'sha256': '55aa638f3234d83e16c63dcb8e44c82dec52a86fc47f0a8cb30121c77fd634d5', 'bytes': 127180171, 'versionName': '1.5.20', 'versionCode': 46, 'debuggable': False, 'source': 'applicationInfo.sourceDir', 'actualInstalledPackageRead': True}, 'domTextWrites': 0, 'scenarioCount': 1, 'checkCount': 6, 'apiCount': 0, 'checkpointCount': 2, 'scope': 'Controlled fixture initial HTML seeds; subsequent edits use original SDK InputConnection and real adb keyboard/touch. No real account, vendor touch-keyboard UI, hardware device or production acceptance claim.', 'sourceCommit': '921ca61240307dcc2f6d4e9cb89cd5ff01a4e42e', 'runId': '38192886073', 'runAttempt': '1', 'expectedInstalledApkSha256': '55aa638f3234d83e16c63dcb8e44c82dec52a86fc47f0a8cb30121c77fd634d5', 'sdkBuildIdentity': {'officialVersion': '157.0.20260924084938', 'officialAarSha256': '25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0', 'officialJarSha256': 'ef426e105fd4e65efdc45d41671d57c4a0c34d64bad15d5b70b82fccb30c7595', 'officialEditableSha256': '608461e22cae3ed19572aa43a0dc38d4926d48709bd456c91853935462f5fa54', 'candidateAarSha256': 'fb60f9d5181039ddae0183ccc5234687175f1644123eb7e4145ae7bac2c4ed1b', 'candidateJarSha256': 'a84ec85ac1139300844d266b8fcefcd95d094d829e59e1acb3cf40cf9940711b', 'candidateEditableSha256': '46fdc662383b704386e50744da2b5ffb6c1d29ff15a32788107aeb4618bbfb0f', 'helperSha256': '9619db2ca4d540f4917c094231032fea8d665094fb63e64368150f03babbab7b', 'builderSha256': 'ac6d6555f55fc89c66a1ddf0d14811237edf3fb2fcab443f924dac15056a6f4e', 'receiptSha256': 'd31ea5912bacdbc59484dbd85b84d4fc3519ac5e21761ebc877fe254ac0faaba', 'sourceSha256': {'TransformHardwareCaret.java': '2a8ea6f3649e0ceaf0c454bf43cf162aac5866e7c784691b4281df9f10d7f251', 'PocketSynthesizedInsertionScope.java': '41e3672cbd04131abeaf427e12e71c6c3879554676ed3bc1462d9b1fc4fd256f', 'VerifyHardwareCaretScope.java': 'bbb1965ce115863dd1e1a592ebd2f4bb0be256e91aa6c2e8ea3f6b7c535169c8'}, 'normalCandidateContainsObserver': False, 'allNativeAndResourceEntriesUnchanged': True}, 'checks': [{'index': 0, 'scenario': 'rapid-taps', 'name': 'Controlled initial draft is intact', 'pass': True}, {'index': 1, 'scenario': 'rapid-taps', 'name': 'Real tap establishes the exact caret and visible IME', 'pass': True}, {'index': 2, 'scenario': 'rapid-taps', 'name': 'Exact draft and selection after original input', 'pass': True}, {'index': 3, 'scenario': 'rapid-taps', 'name': 'Preserved other draft, synthetic cookie and no send', 'pass': True}, {'index': 4, 'scenario': 'rapid-taps', 'name': 'Input events are trusted and bounded', 'pass': True}, {'index': 5, 'scenario': 'selected-replace', 'name': 'Controlled initial draft is intact', 'pass': True}], 'scenarios': [{'id': 'rapid-taps', 'initialDraft': 'abcdefghij', 'actual': {'ready': True, 'case': 0, 'documentUrl': 'http://127.0.0.1:8771/caret?case=0', 'draft': 'abcdefghiQj', 'otherDraft': 'untouched independent draft', 'focused': True, 'start': 10, 'end': 10, 'direction': 'forward', 'cookie': 'session=synthetic-caret', 'sendCount': 0, 'width': 414, 'height': 667, 'bounds': {'x': 12, 'y': 65.63333129882812, 'width': 390, 'height': 96}, 'overflow': False, 'eventCount': 5, 'keyCount': 1, 'inputCount': 1, 'beforeCount': 1, 'compositionCount': 0, 'compositionEndCount': 0, 'allTrusted': True}, 'actions': [{'id': 'rapid-taps-focus-0', 'scenario': 'rapid-taps', 'origin': 'adb-input-keyboard-and-touch', 'commands': [{'op': 'tap', 'x': 264, 'y': 357, 'expectedCaret': 5}]}, {'id': 'rapid-taps-two-rapid-taps-and-type-1', 'scenario': 'rapid-taps', 'origin': 'adb-input-keyboard-and-touch', 'commands': [{'op': 'tap', 'x': 141, 'y': 357, 'expectedCaret': 2}, {'op': 'tap', 'x': 427, 'y': 357, 'expectedCaret': 9}, {'op': 'text', 'text': 'Q'}]}]}], 'actualCheckpoints': [{'index': 0, 'scenario': 'rapid-taps', 'phase': 'focus', 'expected': {'draft': 'abcdefghij', 'start': 5, 'end': 5, 'minimumKeys': 0, 'minimumInputs': 0, 'minimumBefore': 0}, 'actual': {'ready': True, 'case': 0, 'documentUrl': 'http://127.0.0.1:8771/caret?case=0', 'draft': 'abcdefghij', 'otherDraft': 'untouched independent draft', 'focused': True, 'start': 5, 'end': 5, 'direction': 'forward', 'cookie': 'session=synthetic-caret', 'sendCount': 0, 'width': 414, 'height': 667, 'bounds': {'x': 12, 'y': 65.63333129882812, 'width': 390, 'height': 96}, 'overflow': False, 'eventCount': 0, 'keyCount': 0, 'inputCount': 0, 'beforeCount': 0, 'compositionCount': 0, 'compositionEndCount': 0, 'allTrusted': True}, 'stableMillis': 624}, {'index': 1, 'scenario': 'rapid-taps', 'phase': 'expect', 'expected': {'draft': 'abcdefghiQj', 'start': 10, 'end': 10, 'minimumKeys': 1, 'minimumInputs': 1, 'minimumBefore': 1}, 'actual': {'ready': True, 'case': 0, 'documentUrl': 'http://127.0.0.1:8771/caret?case=0', 'draft': 'abcdefghiQj', 'otherDraft': 'untouched independent draft', 'focused': True, 'start': 10, 'end': 10, 'direction': 'forward', 'cookie': 'session=synthetic-caret', 'sendCount': 0, 'width': 414, 'height': 667, 'bounds': {'x': 12, 'y': 65.63333129882812, 'width': 390, 'height': 96}, 'overflow': False, 'eventCount': 5, 'keyCount': 1, 'inputCount': 1, 'beforeCount': 1, 'compositionCount': 0, 'compositionEndCount': 0, 'allTrusted': True}, 'stableMillis': 457}], 'actualAndroidActions': [{'id': 'rapid-taps-focus-0', 'scenario': 'rapid-taps', 'origin': 'adb-input-keyboard-and-touch', 'commands': [{'op': 'tap', 'x': 264, 'y': 357, 'expectedCaret': 5}]}, {'id': 'rapid-taps-two-rapid-taps-and-type-1', 'scenario': 'rapid-taps', 'origin': 'adb-input-keyboard-and-touch', 'commands': [{'op': 'tap', 'x': 141, 'y': 357, 'expectedCaret': 2}, {'op': 'tap', 'x': 427, 'y': 357, 'expectedCaret': 9}, {'op': 'text', 'text': 'Q'}]}, {'id': 'selected-replace-focus-2', 'scenario': 'selected-replace', 'origin': 'adb-input-keyboard-and-touch', 'commands': [{'op': 'tap', 'x': 386, 'y': 279, 'expectedCaret': 8}]}], 'actualInputConnectionCalls': [], 'actualTrustedEvents': {'rapid-taps': [{'type': 'keyup', 'key': 'Q', 'data': '', 'inputType': '', 'trusted': True, 'ctrl': False, 'shift': True, 'composing': False, 'start': 9, 'end': 9}, {'type': 'keydown', 'key': 'Q', 'data': '', 'inputType': '', 'trusted': True, 'ctrl': False, 'shift': True, 'composing': False, 'start': 9, 'end': 9}, {'type': 'beforeinput', 'key': '', 'data': 'Q', 'inputType': 'insertText', 'trusted': True, 'ctrl': False, 'shift': False, 'composing': False, 'start': 9, 'end': 9}, {'type': 'input', 'key': '', 'data': 'Q', 'inputType': 'insertText', 'trusted': True, 'ctrl': False, 'shift': False, 'composing': False, 'start': 10, 'end': 10}, {'type': 'keyup', 'key': 'Q', 'data': '', 'inputType': '', 'trusted': True, 'ctrl': False, 'shift': True, 'composing': False, 'start': 10, 'end': 10}]}, 'fixtureRequests': [{'case': 0, 'id': 'rapid-taps', 'method': 'GET', 'path': '/caret'}, {'case': 1, 'id': 'selected-replace', 'method': 'GET', 'path': '/caret'}], 'controlledProxyRoutes': [{'host': '127.0.0.1', 'port': 8771, 'addressType': 3, 'accepted': True}, {'host': '127.0.0.1', 'port': 8771, 'addressType': 3, 'accepted': True}], 'device': {'sdk': '35', 'screen': 'Physical size: 320x640\\nOverride size: 1080x1920', 'density': 'Physical density: 160\\nOverride density: 420'}}"
+}
