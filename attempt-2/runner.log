@@ -1,0 +1,16 @@
+- waiting for device -
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_performance.py", line 312, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_performance.py", line 184, in main
+    raw = adb('logcat', '-d', '-s', 'PocketGeckoPerformance:I', 'AndroidRuntime:E', '*:S')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_performance.py", line 149, in adb
+    return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 466, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/local/lib/android/sdk/platform-tools/adb', '-s', 'emulator-5554', 'logcat', '-d', '-s', 'PocketGeckoPerformance:I', 'AndroidRuntime:E', '*:S']' returned non-zero exit status 255.
