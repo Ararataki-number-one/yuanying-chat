@@ -52,7 +52,7 @@ def verify_reading_bounds(report):
                    for value in (before, pan, after))
         assert abs(before['choice'] - 4.2) < .001
         assert abs(before['matrixScale'] * before['layout'] * before['viewport'] / before['nativeWidth'] - 4.2) < .05
-        assert pan['nativeScrollX'] > 32 and pan['pageLeft'] > 32 and pan['nativeScrollY'] > 200
+        assert abs(pan['nativeScrollX'] - 48) <= 1 and abs(pan['pageLeft'] - 48) <= 1 and abs(pan['nativeScrollY'] - 320) <= 1
         assert abs(after['nativeScrollY'] - pan['nativeScrollY']) <= 1
         assert 'readingBounds=controlled-fixture' in before['cookie']
         for key in ('document', 'draft', 'cookie', 'bodyHash', 'sessionIdentity', 'surfaceIdentity', 'activityIdentity'):

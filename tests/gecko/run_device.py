@@ -144,7 +144,7 @@ class Fixture(fixture.Fixture):
         elif address.path=='/browser-reading':
             body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
             <title>Controlled responsive reading fixture</title><style>body{margin:0;font:18px sans-serif}main{padding:16px;box-sizing:border-box}#sidebar{width:260px;float:left}textarea{width:100%;height:72px;box-sizing:border-box;font:inherit}pre{overflow:auto}@media(max-width:760px){#sidebar{display:none}}</style>
-            <aside id="sidebar">Controlled sidebar</aside><main id="reading-main"><h1>Controlled readable content</h1><p id="reading-paragraph">This fixture checks native viewport settings; it does not replace ChatGPT. Both left and right edges must remain readable at fit.</p><pre id="reading-code">Long code remains horizontally scrollable.........................................................................................</pre><textarea id="composer">Unsent draft stays here</textarea><div id="reading-long"></div></main><script>window.readingSends=0;document.cookie='readingBounds=controlled-fixture; Path=/';if(new URL(location.href).searchParams.has('bounds'))for(let i=0;i<50;i++){const p=document.createElement('p');p.textContent='Controlled long reply paragraph '+i+' remains readable across fit, rotation and Android keyboard changes.';document.getElementById('reading-long').appendChild(p);}</script>'''
+            <aside id="sidebar">Controlled sidebar</aside><main id="reading-main"><h1>Controlled readable content</h1><p id="reading-paragraph">This fixture checks native viewport settings; it does not replace ChatGPT. Both left and right edges must remain readable at fit.</p><pre id="reading-code">Long code remains horizontally scrollable.........................................................................................</pre><textarea id="composer">Unsent draft stays here</textarea><div id="reading-long"></div></main><output id="reading-send-count" hidden>0</output><script>document.cookie='readingBounds=controlled-fixture; Path=/';if(new URL(location.href).searchParams.has('bounds'))for(let i=0;i<50;i++){const p=document.createElement('p');p.textContent='Controlled long reply paragraph '+i+' remains readable across fit, rotation and Android keyboard changes.';document.getElementById('reading-long').appendChild(p);}</script>'''
         elif address.path=='/browser-session':
             token='none'
             for cookie in self.headers.get('Cookie','').split(';'):
@@ -442,7 +442,7 @@ def main():
             result=run(1,action,'readingBounds');assert result['schema']==1 and result['privacyLevel']==level and result['actualGeckoExecution'] and result['protectionAcknowledged'] and result['fitUsedProductionController'],result
             before,pan,after=(result[key] for key in ('before','pan','after'))
             assert abs(before['choice']-4.2)<.001 and abs(before['matrixScale']*before['layout']*before['viewport']/before['nativeWidth']-4.2)<.05,before
-            assert pan['nativeScrollX']>32 and pan['pageLeft']>32 and pan['nativeScrollY']>200,pan
+            assert abs(pan['nativeScrollX']-48)<=1 and abs(pan['pageLeft']-48)<=1 and abs(pan['nativeScrollY']-320)<=1,pan
             assert abs(after['nativeScrollY']-pan['nativeScrollY'])<=1 and result['stableSamples']>=5 and result['stableMillis']>=500,result
             assert after['codeScrollWidth']>after['codeWidth'] and after['codeLeft']>0,after
             assert result['fingerprintingProtected']==(level==2),result
