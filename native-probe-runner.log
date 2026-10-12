@@ -1,0 +1,163 @@
+{
+  "status": "passed",
+  "sourceCommit": "d8787141c360ebfedf465f36fc87a3bfc6713008",
+  "checkCount": 69,
+  "webSocketEchoes": 26,
+  "cancellations": [
+    {
+      "path": "/cancel-first",
+      "mechanism": "raw-controller-client",
+      "expectedHeads": 1,
+      "actualHeads": 1,
+      "controllerClosedAt": 62196,
+      "targetObservedNativeEofAt": 62198,
+      "nativeCloseMs": 2,
+      "nativeTimeoutMs": 6000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false
+    },
+    {
+      "path": "/cancel-second",
+      "mechanism": "raw-controller-client",
+      "expectedHeads": 2,
+      "actualHeads": 2,
+      "controllerClosedAt": 62813,
+      "targetObservedNativeEofAt": 62813,
+      "nativeCloseMs": 0,
+      "nativeTimeoutMs": 6000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false
+    },
+    {
+      "path": "/cancel-java-first",
+      "mechanism": "production-maintenance",
+      "expectedHeads": 1,
+      "actualHeads": 1,
+      "controllerClosedAt": 63332,
+      "targetObservedNativeEofAt": 63333,
+      "nativeCloseMs": 1,
+      "nativeTimeoutMs": 8000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false,
+      "javaProbeDelay": -1
+    },
+    {
+      "path": "/cancel-java-second",
+      "mechanism": "production-maintenance",
+      "expectedHeads": 2,
+      "actualHeads": 2,
+      "controllerClosedAt": 63910,
+      "targetObservedNativeEofAt": 63912,
+      "nativeCloseMs": 2,
+      "nativeTimeoutMs": 8000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false,
+      "javaProbeDelay": -1
+    }
+  ],
+  "startupSearches": [
+    {
+      "name": "winner-cleanup",
+      "mechanism": "production-firstVerifiedRoute",
+      "result": {
+        "parentMaintenancePresent": false,
+        "parentInterrupted": false,
+        "selectedEntry": "Entry|winner",
+        "endedAt": 65604
+      },
+      "parentFutureCancelled": false,
+      "before": {
+        "pid": 3653,
+        "entry": "Entry|winner",
+        "generationHash": "bd15268c5f090acb135f16780eb51ea338c81feefac1aa4efc3da23cc6777308",
+        "exitFingerprint": "d8a1ac20926faf77839b8f1fb0bb32d8c3c5d2ca06cedbd4244c21b7d7375e69",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 34869,
+        "controllerPort": 39769,
+        "verified": true,
+        "routeSerial": 2
+      },
+      "after": {
+        "pid": 3653,
+        "entry": "Entry|winner",
+        "generationHash": "bd15268c5f090acb135f16780eb51ea338c81feefac1aa4efc3da23cc6777308",
+        "exitFingerprint": "d8a1ac20926faf77839b8f1fb0bb32d8c3c5d2ca06cedbd4244c21b7d7375e69",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 34869,
+        "controllerPort": 39769,
+        "verified": true,
+        "routeSerial": 3
+      },
+      "winnerPath": "/startup-win",
+      "winnerHeads": 2,
+      "losers": [
+        {
+          "path": "/startup-loser",
+          "expectedHeads": 1,
+          "actualHeads": 1,
+          "cleanupRequestedAt": 65604,
+          "targetObservedNativeEofAt": 65605,
+          "nativeCloseMs": 1,
+          "nativeTimeoutMs": 8000,
+          "serverClosedSocketBeforeEof": false
+        }
+      ]
+    },
+    {
+      "name": "parent-cancellation",
+      "mechanism": "production-firstVerifiedRoute",
+      "parentMaintenancePresent": true,
+      "parentFutureCancelled": false,
+      "result": {
+        "cancelled": true,
+        "cause": "InterruptedException",
+        "endedAt": 66137
+      },
+      "cancelRequestedAt": 66136,
+      "before": {
+        "pid": 3653,
+        "entry": "Entry|winner",
+        "generationHash": "bd15268c5f090acb135f16780eb51ea338c81feefac1aa4efc3da23cc6777308",
+        "exitFingerprint": "d8a1ac20926faf77839b8f1fb0bb32d8c3c5d2ca06cedbd4244c21b7d7375e69",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 34869,
+        "controllerPort": 39769,
+        "verified": true,
+        "routeSerial": 3
+      },
+      "after": {
+        "pid": 3653,
+        "entry": "Entry|winner",
+        "generationHash": "bd15268c5f090acb135f16780eb51ea338c81feefac1aa4efc3da23cc6777308",
+        "exitFingerprint": "d8a1ac20926faf77839b8f1fb0bb32d8c3c5d2ca06cedbd4244c21b7d7375e69",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 34869,
+        "controllerPort": 39769,
+        "verified": true,
+        "routeSerial": 3
+      },
+      "losers": [
+        {
+          "path": "/startup-cancel-a",
+          "expectedHeads": 1,
+          "actualHeads": 1,
+          "cleanupRequestedAt": 66136,
+          "targetObservedNativeEofAt": 66139,
+          "nativeCloseMs": 3,
+          "nativeTimeoutMs": 8000,
+          "serverClosedSocketBeforeEof": false
+        },
+        {
+          "path": "/startup-cancel-b",
+          "expectedHeads": 1,
+          "actualHeads": 1,
+          "cleanupRequestedAt": 66136,
+          "targetObservedNativeEofAt": 66139,
+          "nativeCloseMs": 3,
+          "nativeTimeoutMs": 8000,
+          "serverClosedSocketBeforeEof": false
+        }
+      ]
+    }
+  ]
+}
