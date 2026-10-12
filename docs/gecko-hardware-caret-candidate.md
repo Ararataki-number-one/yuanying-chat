@@ -72,3 +72,24 @@ browser profile. Its manifest records exact source and run identities,
 failed trials, skipped steps and observer-free results. A diagnostic pass
 does not substitute for the observer-free original gate or establish real
 phone, touch-keyboard, account-login or production acceptance.
+
+## Geometry follow-up
+
+The immutable `921ca61240307dcc2f6d4e9cb89cd5ff01a4e42e` evidence at
+`31a24140089504063893ad22ba3a15d1aa150992` retains all ten passing diagnostic
+trials with 110 actual negative-offset writers and the passing observer-free
+128-check gate. Its compatibility fixture completed the first scenario but
+the next page's single focus tap did not establish the required caret; no
+character was submitted in that failed scenario. These results remain
+historical evidence, not fourteen passing scenarios.
+
+The geometry follow-up rebuilds the same bare SDK, runs the unchanged original
+observer-free gate and the fourteen scenarios after settling actual DOM and
+native view geometry before the unique focus tap. It does not repeat the
+already completed ten SDK diagnostic trials. The new manifest explicitly
+records `actualTrialCount: 0` and `diagnosticSeriesExecuted: false`; it checks
+all four SDK tool source files against the immutable prior source and verifies
+the rebuilt candidate AAR hash before referencing the historical activation
+evidence. New-source performance and compatibility results keep their own
+source, run and installed APK identities. No SDK, original burst, typed-text
+oracle or send invariant changes in this follow-up.

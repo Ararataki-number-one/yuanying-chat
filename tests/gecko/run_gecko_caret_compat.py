@@ -152,7 +152,7 @@ def main():
     def adb(*parts):
         return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
 
-    checks, scenarios, steps, api, trusted, checkpoints = {}, {}, {}, {}, {}, {}
+    checks, scenarios, steps, api, trusted, checkpoints, geometry = {}, {}, {}, {}, {}, {}, {}
     seen = set()
     report = None
     servers = [http.server.ThreadingHTTPServer(('127.0.0.1', 8771), Fixture), SocksServer(('127.0.0.1', 1088), Socks)]
@@ -165,6 +165,7 @@ def main():
                      expectedInstalledApkSha256=args.installed_apk_sha256, sdkBuildIdentity=sdk_identity,
                      checks=[checks[k] for k in sorted(checks)], scenarios=[scenarios[k] for k in IDS if k in scenarios],
                      actualCheckpoints=[checkpoints[k] for k in sorted(checkpoints)],
+                     actualGeometrySamples=[geometry[k] for k in sorted(geometry)],
                      actualAndroidActions=list(steps.values()), actualInputConnectionCalls=list(api.values()),
                      actualTrustedEvents={key: [e for offset in sorted(parts) for e in parts[offset]] for key, parts in trusted.items()},
                      fixtureRequests=Fixture.requests, controlledProxyRoutes=Socks.routes,
@@ -222,6 +223,9 @@ def main():
                 elif kind == 'checkpoint':
                     assert value['index'] not in checkpoints, 'Duplicate checkpoint index'
                     checkpoints[value['index']] = value
+                elif kind == 'geometry':
+                    assert value['index'] not in geometry, 'Duplicate geometry evidence index'
+                    geometry[value['index']] = value
                 elif kind == 'trustedEvents':
                     assert value['offset'] not in trusted.get(value['id'], {}), 'Duplicate trusted event chunk'
                     trusted.setdefault(value['id'], {})[value['offset']] = value['events']
@@ -245,6 +249,11 @@ def main():
                 assert report['checkpointCount'] == len(checkpoints)
                 assert list(sorted(checkpoints)) == list(range(report['checkpointCount']))
                 assert {x['scenario'] for x in checkpoints.values()} == set(IDS)
+                assert report['geometryCount'] == len(geometry) and list(sorted(geometry)) == list(range(len(geometry)))
+                for identifier in IDS:
+                    for phase in ['before-unique-focus-tap', 'after-unique-focus-tap']:
+                        ready = [x for x in geometry.values() if x['scenario'] == identifier and x['phase'] == phase and x['settled']]
+                        assert len(ready) == 1 and ready[0]['consistent'] and ready[0]['stableMillis'] >= 600 and ready[0]['stableSamples'] >= 5
                 for checkpoint in checkpoints.values():
                     expected, actual = checkpoint['expected'], checkpoint['actual']
                     assert actual['draft'] == expected['draft'] and actual['start'] == expected['start'] and actual['end'] == expected['end']
@@ -267,6 +276,17 @@ def main():
                     for key, kind in [('keyCount', 'keydown'), ('inputCount', 'input'), ('beforeCount', 'beforeinput'),
                                       ('compositionCount', 'compositionstart'), ('compositionEndCount', 'compositionend')]:
                         assert actual[key] == sum(e['type'] == kind for e in events), case
+                for action in steps.values():
+                    for command in action['commands']:
+                        if command['op'] != 'tap':
+                            continue
+                        source = command['coordinateSource']
+                        assert source['mapping'] == 'uniform-visual-viewport' and source['stableMillis'] >= 600 and source['stableSamples'] >= 5
+                        viewport, point = source['viewport'], source['cssPoint']
+                        scale = source['nativeWidth'] / viewport['width']
+                        assert abs(source['uniformScale'] - scale) < 1e-9
+                        assert command['x'] == source['nativeX'] + int((point['x'] - viewport['offsetLeft']) * scale + .5)
+                        assert command['y'] == source['nativeY'] + int((point['y'] - viewport['offsetTop']) * scale + .5)
                 (OUT / 'gecko-caret-compat-screen.png').write_bytes(subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30))
                 print(json.dumps({'status': report['status'], 'scenarioCount': len(scenarios), 'checkCount': len(checks), 'diagnosticOnly': True}), flush=True)
                 return

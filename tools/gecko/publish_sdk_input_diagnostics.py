@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish all ten synthetic SDK transaction trials; never a release APK or account data."""
+"""Publish observer-free geometry results; reference historical SDK trials separately."""
 import hashlib
 import json
 import os
@@ -10,9 +10,9 @@ import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'work/gecko-input-diagnostics'
-BRANCH = 'apk/gecko-synthetic-caret-candidate'
+BRANCH = 'apk/gecko-geometry-caret-candidate'
 PRODUCTION_SOURCE = 'e4a4a08202cf50ce60d36dd86a625366de9bb2f4'
-TRIALS = tuple(range(1, 11))
+TRIALS = ()
 ARTIFACTS = tuple((OUT, name) for name in (
     'build.log', 'input-test.log', 'emulator.log', 'input-diagnostic-screen.png',
     'sdk-instrumentation-receipt.json', 'hardware-candidate-receipt.json', 'observer-free-build.log',
@@ -45,11 +45,13 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
         'sourceCommit': source, 'productionSourceCommit': PRODUCTION_SOURCE,
         'runId': run_id, 'runAttempt': run_attempt,
         'diagnosticOnly': True, 'releaseAcceptance': False, 'partial': os.environ.get('SDK_DIAGNOSTIC_PARTIAL') == '1',
-        'observation': 'Per-action synthesized insertion candidate: ten identical single-burst diagnostics with actual input/output predicate and native writer activation, followed by original observer-free gate and actual soft-input compatibility.',
+        'observation': 'This source executes the original observer-free gate and fourteen input semantics scenarios only. No SDK diagnostic trial executes here; historical ten-trial activation evidence is referenced separately.',
         'oldSdkComparison': {'sourceCommit': '8f61060f7968b6798060947009310fc1f14e69f1', 'evidenceCommit': '6eb6d06655bbda116db20975f7fcf70d874c7b70', 'trials': 10, 'failedTrials': [1]},
         'infrastructure': {'gradleDaemonStoppedBeforeEmulator': True, 'gradleDaemonStoppedAfterBareBuild': True,
-                           'fixedTrials':10, 'automaticTrialRetries':0, 'originalInputBurstUnchanged':True},
+                           'fixedTrials':0, 'automaticTrialRetries':0, 'originalInputBurstUnchanged':True},
         'firstScopedCandidate': {'sourceCommit': '860a6777ab4dd09d110f603de8754f2e76fefc50', 'evidenceCommit': '5768483fc256edad73491e024e0e7328bb9a1f17', 'trials':10, 'failedTrials':[2], 'failure':'ADB logcat exited255; no SDK report in trial2', 'activated':False},
+        'actualTrialCount':0, 'diagnosticSeriesExecuted':False,
+        'historicalPerActionProof': {'sourceCommit':'921ca61240307dcc2f6d4e9cb89cd5ff01a4e42e', 'evidenceCommit':'31a24140089504063893ad22ba3a15d1aa150992', 'fixedTrials':10, 'actualNativeCaretWriters':110, 'passedTrials':list(range(1,11)), 'candidateAarSha256':'fb60f9d5181039ddae0183ccc5234687175f1644123eb7e4145ae7bac2c4ed1b', 'sameSourceSdkToolsVerified':False},
         'observerFreeOriginalGate': {}, 'compatibility': {},
         'stepOutcomes': outcomes, 'expectedTrials': list(TRIALS),
         'artifacts': [], 'warnings': [], 'attempts': [], 'reports': {},
@@ -59,7 +61,23 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
         if original.is_symlink() or original.parent.is_symlink() or not original.is_file():
             continue
         data = original.read_bytes()
-        if name in ('observer-free/gecko-performance-results.json', 'compatibility/gecko-caret-compat-results.json'):
+        if name == 'hardware-candidate-receipt.json':
+            recipe=json.loads(data)
+            historical='921ca61240307dcc2f6d4e9cb89cd5ff01a4e42e'
+            if subprocess.run(['git','cat-file','-e',historical+'^{commit}'],cwd=ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode:
+                git('fetch','--depth=1','origin',historical)
+            files=['tools/build-gecko-hardware-caret.py']+['tools/gecko/hardware_caret/'+name for name in ('TransformHardwareCaret.java','PocketSynthesizedInsertionScope.java','VerifyHardwareCaretScope.java')]
+            for filename in files:
+                historical_bytes=subprocess.check_output(['git','show',historical+':'+filename],cwd=ROOT)
+                current=(ROOT/filename).read_bytes()
+                if historical_bytes!=current: raise ValueError('SDK tools differ from the historical activation source: '+filename)
+                digest=hashlib.sha256(current).hexdigest()
+                expected=recipe.get('builderSha256') if filename.endswith('build-gecko-hardware-caret.py') else recipe.get('sourceSha256',{}).get(pathlib.Path(filename).name)
+                if digest!=expected: raise ValueError('SDK receipt does not match current source: '+filename)
+            if recipe.get('candidateAarSha256')!=manifest['historicalPerActionProof']['candidateAarSha256'] or recipe.get('normalCandidateContainsObserver')is not False:
+                raise ValueError('Bare SDK differs from historical activated candidate')
+            manifest['historicalPerActionProof']['sameSourceSdkToolsVerified']=True
+        elif name in ('observer-free/gecko-performance-results.json', 'compatibility/gecko-caret-compat-results.json'):
             try:
                 report = json.loads(data)
                 if report.get('sourceCommit') != source:
@@ -112,11 +130,11 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
         manifest['artifacts'].append({'file': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
-    manifest['allAttemptsRecorded'] = ({item.get('trial') for item in manifest['attempts']} == set(TRIALS)
+    manifest['allAttemptsRecorded'] = (bool(TRIALS) and {item.get('trial') for item in manifest['attempts']} == set(TRIALS)
                                        and len(manifest['attempts']) == len(TRIALS))
     manifest['passedTrials'] = [item['trial'] for item in manifest['attempts'] if item.get('exitCode') == 0 and item.get('status') == 'passed']
     manifest['failedTrials'] = [item['trial'] for item in manifest['attempts'] if item.get('exitCode') != 0 or item.get('status') != 'passed']
-    manifest['allSdkTracesComplete'] = (set(manifest['reports']) == {f'attempt-{trial}' for trial in TRIALS}
+    manifest['allSdkTracesComplete'] = (bool(TRIALS) and set(manifest['reports']) == {f'attempt-{trial}' for trial in TRIALS}
                                        and all(item['sameClassTraceComplete'] for item in manifest['reports'].values()))
     (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     return stage, manifest
@@ -142,7 +160,7 @@ def main():
     names = [artifact['file'] for artifact in manifest['artifacts']] + ['manifest.json']
     git('add', '-f', '--', *names, env=env)
     tree = git('write-tree', env=env)
-    commit = git('commit-tree', tree, *parents, '-m', 'Record every synthetic SDK transaction input diagnostic trial', env=env)
+    commit = git('commit-tree', tree, *parents, '-m', 'Record observer-free input geometry and editing semantics', env=env)
     git('push', 'origin', commit + ':refs/heads/' + BRANCH)
     print(json.dumps({'sourceCommit': source, 'productionSourceCommit': PRODUCTION_SOURCE, 'runId': manifest['runId'],
                       'branch': BRANCH, 'evidenceCommit': commit, 'allAttemptsRecorded': manifest['allAttemptsRecorded'],

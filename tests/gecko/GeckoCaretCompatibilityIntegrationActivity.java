@@ -2,6 +2,7 @@ package local.pocketchat;
 
 import android.app.Activity;
 import android.content.*;
+import android.graphics.Rect;
 import android.os.*;
 import android.util.Log;
 import android.view.WindowInsets;
@@ -19,6 +20,8 @@ public final class GeckoCaretCompatibilityIntegrationActivity extends Activity {
   final Handler handler=new Handler(Looper.getMainLooper());final JSONArray checks=new JSONArray(),cases=new JSONArray(),apiCalls=new JSONArray(),checkpoints=new JSONArray();
   ChatSession session;int scenario,sequence;long deadline,stableSince;String stable="";boolean finished;JSONObject before,observed;JSONArray currentActions;
   JSONObject installedApk;boolean sdkObserverPresent,observerAbsenceVerified,identityReady;
+  boolean seedChecked;long geometryStableSince;int geometryStableFrames,geometrySequence;
+  JSONObject geometryAnchor,focusGeometryAnchor,lastGeometryValue;String lastGeometryPhase="";boolean lastGeometryConsistent,lastGeometrySettled;
   static final String[] IDS={"rapid-taps","selected-replace","arrow-delete","undo","ime-multiword","clipboard-paste","chinese-composition","finish-composition","batch-commit","reversed-selection","rejected-input","soft-single-char","codepoint-delete","noop-composition"};
   static final String[] SEEDS={"abcdefghij","abcdefghij","abcdef","undo draft","left-right","clipboard tail","seed tail","seed tail","batch tail","abcdef","rejected draft","soft tail","A😀B","noop tail"};
   static final int[] CARETS={5,8,3,4,5,9,4,4,5,5,4,4,3,4};
@@ -33,7 +36,7 @@ public final class GeckoCaretCompatibilityIntegrationActivity extends Activity {
   void attempt(Step step){if(finished)return;try{step.run();}catch(Exception error){fail(error);}}
   void later(Step step,long delay){handler.postDelayed(()->attempt(step),delay);}
   void check(String name,boolean pass){JSONObject item=J.obj("index",checks.length(),"scenario",IDS[scenario],"name",name,"pass",pass);checks.put(item);event("check",item);if(!pass)throw new IllegalStateException(name);}
-  void report(String status,String error){if(finished)return;finished=true;event("report",J.obj("status",status,"error",error,"diagnosticOnly",true,"releaseAcceptance",false,"actualAndroidExecution",true,"actualGeckoExecution",true,"sdkObserverEnabled",sdkObserverPresent,"sdkObserverAbsenceVerified",observerAbsenceVerified,"sdkObserverClass","org.mozilla.geckoview.PocketGeckoEditableTrace","installedApk",installedApk,"domTextWrites",0,"scenarioCount",cases.length(),"checkCount",checks.length(),"apiCount",apiCalls.length(),"checkpointCount",checkpoints.length(),"scope","Controlled fixture initial HTML seeds; subsequent edits use original SDK InputConnection and real adb keyboard/touch. No real account, vendor touch-keyboard UI, hardware device or production acceptance claim."));}
+  void report(String status,String error){if(finished)return;finished=true;event("report",J.obj("status",status,"error",error,"diagnosticOnly",true,"releaseAcceptance",false,"actualAndroidExecution",true,"actualGeckoExecution",true,"sdkObserverEnabled",sdkObserverPresent,"sdkObserverAbsenceVerified",observerAbsenceVerified,"sdkObserverClass","org.mozilla.geckoview.PocketGeckoEditableTrace","installedApk",installedApk,"domTextWrites",0,"scenarioCount",cases.length(),"checkCount",checks.length(),"apiCount",apiCalls.length(),"checkpointCount",checkpoints.length(),"geometryCount",geometrySequence,"scope","Controlled fixture initial HTML seeds; subsequent edits use original SDK InputConnection and real adb keyboard/touch. No real account, vendor touch-keyboard UI, hardware device or production acceptance claim."));}
   void fail(Exception error){if(observed!=null)event("failureSnapshot",compact(observed));report("failed",error.toString());}
   @Override public void onCreate(Bundle saved){super.onCreate(saved);attempt(()->{
     if(!getPackageName().endsWith(".test"))throw new SecurityException("Only the isolated integration package may run this fixture");
@@ -59,23 +62,78 @@ public final class GeckoCaretCompatibilityIntegrationActivity extends Activity {
     }catch(Exception error){handler.post(()->fail(error));}},"caret-installed-apk-sha256").start();
   }
   void waitRuntime(){attempt(()->{if(session.web.failed)throw new IllegalStateException("Gecko runtime failed");if(!identityReady||!session.web.ready||!session.web.privacyReady){if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Runtime or installed identity timeout");later(this::waitRuntime,100);return;}session.web.configure(true,session.privacy.level());load();});}
-  void load(){attempt(()->{currentActions=new JSONArray();stable="";stableSince=0;before=null;session.web.loadUrl(ORIGIN+"/caret?case="+scenario);deadline=SystemClock.elapsedRealtime()+25000;later(this::waitDocument,100);});}
+  void load(){attempt(()->{currentActions=new JSONArray();stable="";stableSince=0;before=null;seedChecked=false;geometryStableSince=0;geometryStableFrames=0;geometryAnchor=null;focusGeometryAnchor=null;lastGeometryValue=null;lastGeometryPhase="";session.web.loadUrl(ORIGIN+"/caret?case="+scenario);deadline=SystemClock.elapsedRealtime()+25000;later(this::waitDocument,100);});}
   String snapshotScript(){return "(()=>{const address=new URL(location.href),composer=document.getElementById('prompt-textarea'),other=document.getElementById('other-draft'),send=document.getElementById('send');"+
     "if(address.origin!=="+JSONObject.quote(ORIGIN)+"||address.pathname!=='/caret'||Number(address.searchParams.get('case'))!=="+scenario+"||!composer||!other||!send)return {ready:false,documentUrl:location.href,documentState:document.readyState};"+
     "let trace=window.__caretCompatibilityTrace;if(!trace||trace.composer!==composer||trace.caseNumber!=="+scenario+"){trace=window.__caretCompatibilityTrace={composer,caseNumber:"+scenario+",events:[],overflow:false,sendCount:0};const caseNumber="+scenario+";"+
     "for(const type of ['keydown','keyup','beforeinput','input','compositionstart','compositionupdate','compositionend'])composer.addEventListener(type,e=>{if(trace.events.length>=512){trace.overflow=true;return}trace.events.push({type,key:e.key||'',data:e.data||'',inputType:e.inputType||'',trusted:e.isTrusted,ctrl:!!e.ctrlKey,shift:!!e.shiftKey,composing:!!e.isComposing,start:composer.selectionStart,end:composer.selectionEnd});if(type==='beforeinput'&&caseNumber===10)e.preventDefault()});send.addEventListener('click',()=>trace.sendCount++);}"+
-    "const r=composer.getBoundingClientRect(),style=getComputedStyle(composer),canvas=document.createElement('canvas'),context=canvas.getContext('2d');context.font=style.font;const points=[];"+
+    "const r=composer.getBoundingClientRect(),vp=visualViewport,style=getComputedStyle(composer),canvas=document.createElement('canvas'),context=canvas.getContext('2d');context.font=style.font;const points=[];"+
     "for(let i=0;i<=composer.value.length;i++)points.push({x:r.left+parseFloat(style.borderLeftWidth)+parseFloat(style.paddingLeft)+context.measureText(composer.value.slice(0,i)).width-composer.scrollLeft,y:r.top+parseFloat(style.borderTopWidth)+parseFloat(style.paddingTop)+parseFloat(style.fontSize)*.6});"+
-    "const events=trace.events;return {ready:true,case:"+scenario+",documentUrl:location.href,draft:composer.value,otherDraft:other.value,focused:document.activeElement===composer,start:composer.selectionStart,end:composer.selectionEnd,direction:composer.selectionDirection,cookie:document.cookie,sendCount:trace.sendCount,width:innerWidth,height:innerHeight,bounds:{x:r.x,y:r.y,width:r.width,height:r.height},points,events,overflow:trace.overflow,eventCount:events.length,keyCount:events.filter(e=>e.type==='keydown').length,inputCount:events.filter(e=>e.type==='input').length,beforeCount:events.filter(e=>e.type==='beforeinput').length,compositionCount:events.filter(e=>e.type==='compositionstart').length,compositionEndCount:events.filter(e=>e.type==='compositionend').length,allTrusted:events.every(e=>e.trusted)}})()";}
-  void read(Result result){if(finished)return;session.web.evaluateJavascript(snapshotScript(),raw->attempt(()->{observed=J.parse(raw);result.accept(observed);}));}
-  void waitDocument(){read(value->{if(!value.optBoolean("ready")||value.optInt("case",-1)!=scenario){if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Document timeout");later(this::waitDocument,100);return;}check("Controlled initial draft is intact",value.optString("draft").equals(SEEDS[scenario]));before=value;hardware("focus",J.arr(tap(value,CARETS[scenario])));deadline=SystemClock.elapsedRealtime()+20000;waitFocus();});}
-  JSONObject tap(JSONObject value,int index)throws Exception{JSONArray points=value.getJSONArray("points");JSONObject point=points.getJSONObject(index);int[] position=new int[2];session.web.getLocationOnScreen(position);return J.obj("op","tap","x",position[0]+Math.round((float)point.getDouble("x")*session.web.getWidth()/value.getInt("width")),"y",position[1]+Math.round((float)point.getDouble("y")*session.web.getHeight()/value.getInt("height")),"expectedCaret",index);}
+    "const events=trace.events;return {ready:true,case:"+scenario+",documentUrl:location.href,draft:composer.value,otherDraft:other.value,focused:document.activeElement===composer,start:composer.selectionStart,end:composer.selectionEnd,direction:composer.selectionDirection,cookie:document.cookie,sendCount:trace.sendCount,width:innerWidth,height:innerHeight,viewport:{width:vp?.width??innerWidth,height:vp?.height??innerHeight,offsetLeft:vp?.offsetLeft??0,offsetTop:vp?.offsetTop??0,scale:vp?.scale??1,innerWidth,innerHeight},bounds:{x:r.x,y:r.y,width:r.width,height:r.height},points,events,overflow:trace.overflow,eventCount:events.length,keyCount:events.filter(e=>e.type==='keydown').length,inputCount:events.filter(e=>e.type==='input').length,beforeCount:events.filter(e=>e.type==='beforeinput').length,compositionCount:events.filter(e=>e.type==='compositionstart').length,compositionEndCount:events.filter(e=>e.type==='compositionend').length,allTrusted:events.every(e=>e.trusted)}})()";}
+  JSONObject nativeGeometry(){
+    int[] position=new int[2];session.web.getLocationOnScreen(position);Rect visible=new Rect();session.web.getWindowVisibleDisplayFrame(visible);
+    WindowInsets insets=session.web.getRootWindowInsets();android.graphics.Insets system=insets==null?android.graphics.Insets.NONE:insets.getInsets(WindowInsets.Type.systemBars()),ime=insets==null?android.graphics.Insets.NONE:insets.getInsets(WindowInsets.Type.ime());
+    JSONObject surface=J.obj("available",false);if(session.web.surface!=null){int[] origin=new int[2];session.web.surface.getLocationOnScreen(origin);surface=J.obj("available",true,"x",origin[0],"y",origin[1],"width",session.web.surface.getWidth(),"height",session.web.surface.getHeight(),"scaleX",session.web.surface.getScaleX(),"scaleY",session.web.surface.getScaleY(),"layoutRequested",session.web.surface.isLayoutRequested());}
+    return J.obj("x",position[0],"y",position[1],"width",session.web.getWidth(),"height",session.web.getHeight(),"laidOut",session.web.isLaidOut(),"layoutRequested",session.web.isLayoutRequested(),"windowFocused",session.web.hasWindowFocus(),"insetsAvailable",insets!=null,"statusBarsVisible",insets!=null&&insets.isVisible(WindowInsets.Type.statusBars()),"navigationBarsVisible",insets!=null&&insets.isVisible(WindowInsets.Type.navigationBars()),"imeVisible",insets!=null&&insets.isVisible(WindowInsets.Type.ime()),"imeBottom",ime.bottom,"systemTop",system.top,"systemBottom",system.bottom,"visible",J.obj("left",visible.left,"top",visible.top,"right",visible.right,"bottom",visible.bottom),"surface",surface);
+  }
+  void read(Result result){if(finished)return;JSONObject nativeBefore=nativeGeometry();session.web.evaluateJavascript(snapshotScript(),raw->attempt(()->{observed=J.parse(raw);observed.put("nativeBefore",nativeBefore);observed.put("nativeAfter",nativeGeometry());result.accept(observed);}));}
+  boolean geometryConsistent(JSONObject value)throws Exception{
+    JSONObject n=value.getJSONObject("nativeAfter"),s=n.getJSONObject("surface"),v=value.getJSONObject("viewport");
+    if(!nativeEquivalent(value.getJSONObject("nativeBefore"),n)||!n.getBoolean("laidOut")||n.getBoolean("layoutRequested")||!n.getBoolean("windowFocused")||!n.getBoolean("insetsAvailable")||!n.getBoolean("statusBarsVisible")||!s.getBoolean("available")||s.getBoolean("layoutRequested"))return false;
+    double width=v.getDouble("width"),height=v.getDouble("height"),scale=v.getDouble("scale");if(width<=0||height<=0||scale<=0||n.getInt("width")<=0||n.getInt("height")<=0)return false;
+    for(String name:new String[]{"x","y","width","height"})if(Math.abs(n.getInt(name)-s.getInt(name))>1)return false;
+    if(Math.abs(s.getDouble("scaleX")-1)>.001||Math.abs(s.getDouble("scaleY")-1)>.001)return false;
+    double pixels=n.getDouble("width")/width;
+    return n.getInt("y")>=n.getInt("systemTop")&&Math.abs(height*pixels-n.getDouble("height"))<=Math.max(3,pixels*2);
+  }
+  boolean nativeEquivalent(JSONObject a,JSONObject b)throws Exception{
+    for(String name:new String[]{"x","y","width","height","imeBottom","systemTop","systemBottom"})if(Math.abs(a.getDouble(name)-b.getDouble(name))>1)return false;
+    for(String name:new String[]{"laidOut","layoutRequested","windowFocused","insetsAvailable","statusBarsVisible","navigationBarsVisible","imeVisible"})if(a.getBoolean(name)!=b.getBoolean(name))return false;
+    JSONObject av=a.getJSONObject("visible"),bv=b.getJSONObject("visible");for(String name:new String[]{"left","top","right","bottom"})if(Math.abs(av.getDouble(name)-bv.getDouble(name))>1)return false;
+    JSONObject as=a.getJSONObject("surface"),bs=b.getJSONObject("surface");if(as.getBoolean("available")!=bs.getBoolean("available"))return false;if(!as.getBoolean("available"))return true;
+    if(as.getBoolean("layoutRequested")!=bs.getBoolean("layoutRequested"))return false;
+    for(String name:new String[]{"x","y","width","height"})if(Math.abs(as.getDouble(name)-bs.getDouble(name))>1)return false;
+    for(String name:new String[]{"scaleX","scaleY"})if(Math.abs(as.getDouble(name)-bs.getDouble(name))*Math.max(1,as.getDouble("width"))>1)return false;
+    return true;
+  }
+  boolean geometryEquivalent(JSONObject a,JSONObject b)throws Exception{
+    if(a==null||b==null||!nativeEquivalent(a.getJSONObject("nativeBefore"),b.getJSONObject("nativeBefore"))||!nativeEquivalent(a.getJSONObject("nativeAfter"),b.getJSONObject("nativeAfter")))return false;
+    JSONObject av=a.getJSONObject("viewport"),bv=b.getJSONObject("viewport");double pixels=a.getJSONObject("nativeAfter").getDouble("width")/Math.max(1,av.getDouble("width"));
+    for(String name:new String[]{"width","height","offsetLeft","offsetTop","innerWidth","innerHeight"})if(Math.abs(av.getDouble(name)-bv.getDouble(name))*pixels>1)return false;
+    if(Math.abs(av.getDouble("scale")-bv.getDouble("scale"))*a.getJSONObject("nativeAfter").getDouble("width")>1)return false;
+    JSONObject ar=a.getJSONObject("bounds"),br=b.getJSONObject("bounds");for(String name:new String[]{"x","y","width","height"})if(Math.abs(ar.getDouble(name)-br.getDouble(name))*pixels>1)return false;
+    return true;
+  }
+  void geometryEvent(String phase,JSONObject value,boolean consistent,long stableMillis,int frames,boolean settled)throws Exception{
+    if(lastGeometryValue!=null&&phase.equals(lastGeometryPhase)&&consistent==lastGeometryConsistent&&settled==lastGeometrySettled&&geometryEquivalent(lastGeometryValue,value))return;
+    lastGeometryValue=value;lastGeometryPhase=phase;lastGeometryConsistent=consistent;lastGeometrySettled=settled;
+    if(geometrySequence>=256)throw new IllegalStateException("Read-only geometry evidence overflow");
+    event("geometry",J.obj("index",geometrySequence++,"scenario",IDS[scenario],"phase",phase,"nativeBefore",value.optJSONObject("nativeBefore"),"nativeAfter",value.optJSONObject("nativeAfter"),"viewport",value.optJSONObject("viewport"),"bounds",value.optJSONObject("bounds"),"consistent",consistent,"stableMillis",stableMillis,"stableSamples",frames,"settled",settled));
+  }
+  void waitDocument(){read(value->{
+    long now=SystemClock.elapsedRealtime();if(!value.optBoolean("ready")||value.optInt("case",-1)!=scenario){if(now>deadline)throw new IllegalStateException("Document timeout");later(this::waitDocument,100);return;}
+    if(!seedChecked){check("Controlled initial draft is intact",value.optString("draft").equals(SEEDS[scenario]));seedChecked=true;}
+    boolean consistent=geometryConsistent(value);if(!consistent){geometryStableSince=0;geometryStableFrames=0;geometryAnchor=null;}else if(!geometryEquivalent(geometryAnchor,value)){geometryAnchor=value;geometryStableSince=now;geometryStableFrames=1;}else geometryStableFrames++;
+    long elapsed=geometryStableSince==0?0:now-geometryStableSince;boolean settled=consistent&&geometryStableFrames>=5&&elapsed>=600;geometryEvent("before-unique-focus-tap",value,consistent,elapsed,geometryStableFrames,settled);
+    if(!settled){if(now>deadline)throw new IllegalStateException("Native/CSS viewport geometry did not settle before the unique focus tap");later(this::waitDocument,100);return;}
+    value.put("geometryStableMillis",elapsed);value.put("geometryStableSamples",geometryStableFrames);before=value;hardware("focus",J.arr(tap(value,CARETS[scenario])));deadline=SystemClock.elapsedRealtime()+20000;waitFocus();
+  });}
+  JSONObject tap(JSONObject value,int index)throws Exception{
+    JSONObject n=nativeGeometry();if(!geometryConsistent(value)||!nativeEquivalent(n,value.getJSONObject("nativeAfter")))throw new IllegalStateException("Geometry changed before the unique physical tap");
+    JSONObject point=value.getJSONArray("points").getJSONObject(index),viewport=value.getJSONObject("viewport");double pixels=n.getDouble("width")/viewport.getDouble("width");
+    int x=n.getInt("x")+(int)Math.floor((point.getDouble("x")-viewport.getDouble("offsetLeft"))*pixels+.5),y=n.getInt("y")+(int)Math.floor((point.getDouble("y")-viewport.getDouble("offsetTop"))*pixels+.5);
+    JSONObject visible=n.getJSONObject("visible");if(x<=visible.getInt("left")||x>=visible.getInt("right")||y<=visible.getInt("top")||y>=visible.getInt("bottom"))throw new IllegalStateException("Physical tap target is outside the actual visible window");
+    JSONObject source=J.obj("mapping","uniform-visual-viewport","uniformScale",pixels,"nativeX",n.getInt("x"),"nativeY",n.getInt("y"),"nativeWidth",n.getInt("width"),"nativeHeight",n.getInt("height"),"imeVisible",n.getBoolean("imeVisible"),"imeBottom",n.getInt("imeBottom"),"systemTop",n.getInt("systemTop"),"systemBottom",n.getInt("systemBottom"),"viewport",viewport,"cssPoint",point,"cssBounds",value.getJSONObject("bounds"),"stableMillis",value.optLong("geometryStableMillis"),"stableSamples",value.optInt("geometryStableSamples"));
+    return J.obj("op","tap","x",x,"y",y,"expectedCaret",index,"coordinateSource",source);
+  }
   void hardware(String name,JSONArray commands){String id=IDS[scenario]+"-"+name+"-"+(sequence++);JSONObject action=J.obj("id",id,"scenario",IDS[scenario],"origin","adb-input-keyboard-and-touch","commands",commands);currentActions.put(action);event("stepNeeded",action);}
   void waitFocus(){read(value->{
     InputMethodManager manager=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);WindowInsets insets=session.web.getRootWindowInsets();boolean ime=Build.VERSION.SDK_INT>=30&&insets!=null&&insets.isVisible(WindowInsets.Type.ime());
-    boolean ready=value.optBoolean("focused")&&session.web.hasFocus()&&manager!=null&&manager.isAcceptingText()&&ime&&value.optInt("start",-1)==CARETS[scenario]&&value.optInt("end",-1)==CARETS[scenario];
-    String key=value.optInt("start")+"|"+value.optInt("end")+"|"+value.optJSONObject("bounds")+"|"+value.optInt("width")+"|"+value.optInt("height");long now=SystemClock.elapsedRealtime();if(!ready){stable="";stableSince=0;}else if(!key.equals(stable)){stable=key;stableSince=now;}
-    if(ready&&now-stableSince>=600){before=value;check("Real tap establishes the exact caret and visible IME",true);checkpoint("focus",SEEDS[scenario],CARETS[scenario],CARETS[scenario],0,0,0,value,now-stableSince);execute();return;}if(now>deadline)throw new IllegalStateException("Real focus/caret failed: "+value);later(this::waitFocus,100);
+    boolean consistent=value.optBoolean("ready")&&geometryConsistent(value),ready=consistent&&value.optBoolean("focused")&&session.web.hasFocus()&&manager!=null&&manager.isAcceptingText()&&ime&&value.optInt("start",-1)==CARETS[scenario]&&value.optInt("end",-1)==CARETS[scenario];
+    long now=SystemClock.elapsedRealtime();if(!ready){focusGeometryAnchor=null;stableSince=0;geometryStableFrames=0;}else if(!geometryEquivalent(focusGeometryAnchor,value)){focusGeometryAnchor=value;stableSince=now;geometryStableFrames=1;}else geometryStableFrames++;
+    boolean settled=ready&&geometryStableFrames>=5&&now-stableSince>=600;geometryEvent("after-unique-focus-tap",value,consistent,stableSince==0?0:now-stableSince,geometryStableFrames,settled);
+    if(settled){value.put("geometryStableMillis",now-stableSince);value.put("geometryStableSamples",geometryStableFrames);before=value;check("Real tap establishes the exact caret and visible IME",true);checkpoint("focus",SEEDS[scenario],CARETS[scenario],CARETS[scenario],0,0,0,value,now-stableSince);execute();return;}
+    if(now>deadline)throw new IllegalStateException("Real focus/caret failed: "+J.obj("case",scenario,"expectedCaret",CARETS[scenario],"start",value.optInt("start",-1),"end",value.optInt("end",-1),"focused",value.optBoolean("focused"),"consistent",consistent));later(this::waitFocus,100);
   });}
   void input(String label,Edit edit,Step next)throws Exception{
     Object sdk=((FixtureView)session.web).current.getTextInput();Field connectionField=sdk.getClass().getDeclaredField("mInputConnection");connectionField.setAccessible(true);Object existing=connectionField.get(sdk);if(!(existing instanceof InputConnection))throw new IllegalStateException("Original SDK input connection unavailable");InputConnection input=(InputConnection)existing;
