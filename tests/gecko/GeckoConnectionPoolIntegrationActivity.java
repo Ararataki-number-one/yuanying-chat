@@ -142,7 +142,7 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
       site.start();plain.start();fixed.start();entryA.start();entryB.start();
       // Pool mode admits both test entries; manual mode exposes only A.
       // TestNetwork has no health monitor, so every transition below is explicit.
-      JSONObject config=J.obj("subscriptionUrl","https://synthetic.invalid/gecko-pool","exitHost","127.0.0.1","exitPort",fixed.port(),"entryMode","random","entryPool",J.arr("Entry|a","Entry|b"),"entry","");
+      JSONObject config=J.obj("subscriptionUrl","https://synthetic.invalid/gecko-pool","exitHost","127.0.0.1","exitPort",fixed.port(),"entryMode","random","entryPool",J.arr("Entry|a","Entry|b"),"entry","Entry|a");
       String yaml="proxies:\n  - {name: a, type: socks5, server: 127.0.0.1, port: "+entryA.port()+"}\n  - {name: b, type: socks5, server: 127.0.0.1, port: "+entryB.port()+"}\n";
       SecretStore vault=new SecretStore(this);vault.save(config);vault.put("subscription",yaml.getBytes(StandardCharsets.UTF_8));vault.put("subscription-meta",J.obj("urlHash",NativeNetwork.hash(config.getString("subscriptionUrl")),"updatedAt",System.currentTimeMillis()).toString().getBytes(StandardCharsets.UTF_8));
       getSharedPreferences("chat",0).edit().putString("lastGoodEntry","Entry|a").putString("browserEngine","gecko").putString("networkMode","internal")
