@@ -1,0 +1,74 @@
+patching file adapter/adapter.go
+patching file component/urltesttrace/trace.go
+patching file hub/route/proxies.go
+patching file adapter/urltest_probe_test.go
+all modules verified
+=== RUN   TestPocketProbeWarmIsActualReusedConnection
+--- PASS: TestPocketProbeWarmIsActualReusedConnection (0.08s)
+=== RUN   TestPocketProbeConnectionCloseMakesARealColdRetest
+--- PASS: TestPocketProbeConnectionCloseMakesARealColdRetest (0.04s)
+=== RUN   TestPocketProbeSecondResetCannotInflateFirstLatency
+time="2026-10-12T04:47:42.548800807Z" level=error msg="DIRECT failed to get the second response from http://127.0.0.1:40557: Head \"http://127.0.0.1:40557\": read tcp 127.0.0.1:45220->127.0.0.1:40557: read: connection reset by peer"
+time="2026-10-12T04:47:42.548839005Z" level=warning msg="It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests."
+--- PASS: TestPocketProbeSecondResetCannotInflateFirstLatency (0.38s)
+=== RUN   TestPocketProbeDeadlineIsNotWarmSuccess
+time="2026-10-12T04:47:42.700070672Z" level=error msg="DIRECT failed to get the second response from http://127.0.0.1:38507: Head \"http://127.0.0.1:38507\": context deadline exceeded"
+time="2026-10-12T04:47:42.700103271Z" level=warning msg="It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests."
+--- PASS: TestPocketProbeDeadlineIsNotWarmSuccess (0.15s)
+=== RUN   TestPocketProbeCancellationStopsInFlightSecondRequest
+time="2026-10-12T04:47:42.715892961Z" level=error msg="DIRECT failed to get the second response from http://127.0.0.1:35447: Head \"http://127.0.0.1:35447\": context canceled"
+time="2026-10-12T04:47:42.715914503Z" level=warning msg="It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests."
+--- PASS: TestPocketProbeCancellationStopsInFlightSecondRequest (0.02s)
+=== RUN   TestPocketProbeUntrustedTlsCannotCreateAHealthySample
+2026/10/12 04:47:42 http: TLS handshake error from 127.0.0.1:35198: remote error: tls: bad certificate
+--- PASS: TestPocketProbeUntrustedTlsCannotCreateAHealthySample (0.00s)
+=== RUN   TestPocketProbeUnexpectedStatusStillFailsHealth
+--- PASS: TestPocketProbeUnexpectedStatusStillFailsHealth (0.01s)
+=== RUN   TestPocketProbeSecondExpectedStatusKeepsOriginalHealthSemantics
+--- PASS: TestPocketProbeSecondExpectedStatusKeepsOriginalHealthSemantics (0.01s)
+=== RUN   TestPocketProbeLateRedialCompletionCannotLeakAConnection
+time="2026-10-12T04:47:42.745000178Z" level=error msg="DIRECT failed to get the second response from http://127.0.0.1:40967: Head \"http://127.0.0.1:40967\": context canceled"
+time="2026-10-12T04:47:42.745017594Z" level=warning msg="It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests."
+--- PASS: TestPocketProbeLateRedialCompletionCannotLeakAConnection (0.01s)
+=== RUN   TestPocketProbeOptionalTraceNeverLeaksRawErrors
+--- PASS: TestPocketProbeOptionalTraceNeverLeaksRawErrors (0.00s)
+PASS
+ok  	github.com/metacubex/mihomo/adapter	0.703s
+?   	github.com/metacubex/mihomo/component/urltesttrace	[no test files]
+{
+  "status": "passed",
+  "nativeBuildReceipt": "third-party/patches/mihomo-v1.19.31-probe-build.json",
+  "patchSha256": "bcfa51ba6b711779a2a720b70b904b9940c7cd6e44d190ac597501cf1799af4f",
+  "binaries": {
+    "arm64-v8a": {
+      "path": "app/src/main/jniLibs/arm64-v8a/libmihomo.so",
+      "sha256": "dcf99f9a865e48a5bd1b88c3fa9e9fec509fd123a2ee3862e743339be344e992",
+      "bytes": 63696624,
+      "goos": "android",
+      "goarch": "arm64",
+      "cgo": 1,
+      "compiler": "aarch64-linux-android26-clang",
+      "elf": {
+        "machine": 183,
+        "type": "PIE",
+        "interpreter": "/system/bin/linker64",
+        "minimumLoadAlignment": 16384
+      }
+    },
+    "x86_64": {
+      "path": "app/src/main/jniLibs/x86_64/libmihomo.so",
+      "sha256": "7cc52a04165ea5fd2ffc83231c314469b01e9843aed2f2382d0072dc97946556",
+      "bytes": 68395664,
+      "goos": "android",
+      "goarch": "amd64",
+      "cgo": 1,
+      "compiler": "x86_64-linux-android26-clang",
+      "elf": {
+        "machine": 62,
+        "type": "PIE",
+        "interpreter": "/system/bin/linker64",
+        "minimumLoadAlignment": 16384
+      }
+    }
+  }
+}
