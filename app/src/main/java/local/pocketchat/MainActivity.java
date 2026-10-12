@@ -17,19 +17,17 @@ import java.util.*;
 
 /** The app manages environments; Gecko displays the official ChatGPT document. */
 public class MainActivity extends Activity {
-  static final String ORIGIN="https://chatgpt.com/", LOCAL="https://appassets.androidplatform.net/";
+  static final String ORIGIN="https://chatgpt.com/";
   final Handler handler=new Handler(Looper.getMainLooper());
   GeckoWebView remote;
-  // Legacy feature classes still compile against these fields. They are never
-  // allocated or mounted: old recovery data is read explicitly, never rendered.
-  WebView reader; EditText input; Button send,webButton; LinearLayout composer;
-  TextView nativeTab,webTab,modelTitle,effortChip,webNotice;
-  boolean readerReady,readerLoaded,readerDirty;
-  MessageActions messageActions; DraftUi draftUi;
+  // The Android regression asserts that retired native surfaces are absent.
+  // These references remain null; recovery reads data without creating editors.
+  WebView reader; EditText input; Button send; LinearLayout composer;
+  TextView nativeTab,webTab;
   DesignChrome designChrome; AppHub hub; ChatSession session; ConversationStore conversations;
   final ChatSession.Observer sessionObserver=()->applySession();
   SharedPreferences prefs; JSONObject pending; JSONArray entries=new JSONArray();
-  String driver="",conversation="";
+  String conversation="";
   boolean keyboardVisible,active,submitting,destroyed,networkReady,legacyDraftLoading;
   boolean pageMode=true;
   String pageError="",lastUiStatus="";
@@ -51,10 +49,6 @@ public class MainActivity extends Activity {
     status.setVisibility(error&&hub!=null&&hub.page==AppHub.CHAT?View.VISIBLE:View.GONE);
     if(error&&hub!=null&&hub.page!=AppHub.CHAT)hub.feedback(message,true);
   }
-  String asset(String path)throws IOException {try(InputStream in=getAssets().open(path)){ByteArrayOutputStream b=new ByteArrayOutputStream();byte[] buf=new byte[8192];int n;while((n=in.read(buf))>0)b.write(buf,0,n);return b.toString("UTF-8");}}
-  JSONObject object(String s){try{return new JSONObject(s);}catch(Exception e){return new JSONObject();}}
-  JSONObject fields(Object... p){JSONObject o=new JSONObject();try{for(int i=0;i<p.length;i+=2)o.put((String)p[i],p[i+1]);}catch(Exception ignored){}return o;}
-  Button button(String title,LinearLayout row,View.OnClickListener cb){Button b=new Button(this);b.setText(title);b.setAllCaps(false);b.setTextSize(14);b.setMinWidth(0);b.setMinimumWidth(0);row.addView(b,new LinearLayout.LayoutParams(0,dp(46),1));b.setOnClickListener(cb);return b;}
   @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}
   @Override public void onCreate(Bundle state){
     super.onCreate(state);
@@ -113,17 +107,6 @@ public class MainActivity extends Activity {
   void updateReadingLayout(){if(hub!=null)hub.keyboard();if(session!=null)session.reading.keyboard(keyboardVisible&&hub!=null&&hub.page==AppHub.CHAT);}
   void hideKeyboard(){if(remote!=null)((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(remote.getWindowToken(),0);}
   void runDriver(String action,JSONObject args,Result cb){session.runDriver(action,args,r->cb.accept(r));}
-  // Old feature entry points cannot resurrect a native editor or send a message.
-  void sendPrompt(){showPage(true);}
-  void sync(){session.sync();}
-  void render(boolean ignored){}
-  void newChat(){showPage(true);}
-  void searchConversation(){showPage(true);}
-  void loadOlder(){showPage(true);}
-  void addSheet(){showPage(true);}
-  void modelSheet(){showPage(true);}
-  void openModel(){showPage(true);}
-  void ensureReader(){}
   final Runnable ticker=new Runnable(){public void run(){if(!active||destroyed)return;NetworkMetricsUi.update(MainActivity.this);handler.postDelayed(this,1200);}};
   void applySession(){
     if(session==null||destroyed)return;pending=session.pending;networkReady=session.networkReady;submitting=session.submitting;entries=session.entries;conversation=session.conversation;
@@ -132,7 +115,6 @@ public class MainActivity extends Activity {
   TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(color);return v;}
   LinearLayout sheetRow(String glyph,String text,Runnable action){LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(14),dp(4),dp(14),dp(4));row.setBackground(Ui.ripple(this,Color.TRANSPARENT,14));TextView title=label(text,16,Ui.INK);title.setGravity(Gravity.CENTER_VERTICAL);title.setSingleLine(true);title.setEllipsize(TextUtils.TruncateAt.END);row.addView(title,new LinearLayout.LayoutParams(0,dp(48),1));row.setOnClickListener(v->action.run());row.setContentDescription(text);return row;}
   void sheet(String title,String[] glyphs,String[] rows,Runnable[] actions){ReferenceUi.Modal d=new ReferenceUi.Modal(this,title);for(int i=0;i<rows.length;i++){final int n=i;d.body.addView(sheetRow(glyphs[i],rows[i],()->{d.dismiss();actions[n].run();}));}d.show();}
-  void menu(){moreSheet();}
   void moreSheet(){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项");
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
@@ -163,7 +145,7 @@ public class MainActivity extends Activity {
   }
   void showLegacyDrafts(JSONArray drafts,boolean incomplete){
     if(drafts.length()==0){DesignUi.message(this,"旧版暂存草稿",incomplete?"部分暂存草稿暂时无法读取，请稍后重试。原数据未修改。":"没有找到旧版暂存草稿。网页里的草稿仍由当前网页保存。");return;}
-    String[] labels=new String[drafts.length()];for(int i=0;i<labels.length;i++){JSONObject row=drafts.optJSONObject(i);labels[i]=row.optString("origin")+"\n"+DraftUi.preview(row.optString("body"));}
+    String[] labels=new String[drafts.length()];for(int i=0;i<labels.length;i++){JSONObject row=drafts.optJSONObject(i);labels[i]=row.optString("origin")+"\n"+draftPreview(row.optString("body"));}
     new AlertDialog.Builder(this).setTitle("复制旧版暂存草稿").setItems(labels,(dialog,index)->{
       JSONObject row=drafts.optJSONObject(index);ReferenceUi.Modal detail=new ReferenceUi.Modal(this,"暂存草稿");
       TextView body=label(row.optString("body"),14,ReferenceUi.TEXT);body.setTextIsSelectable(true);detail.body.addView(body,new LinearLayout.LayoutParams(-1,-2));
@@ -171,10 +153,8 @@ public class MainActivity extends Activity {
       detail.buttons("关闭",detail::dismiss,"复制",()->{((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("暂存草稿",row.optString("body")));detail.dismiss();});detail.show();
     }).setNegativeButton("关闭",null).show();
   }
+  static String draftPreview(String value){String text=value.replaceAll("\\s+"," ").trim();return text.codePointCount(0,text.length())>160?text.substring(0,text.offsetByCodePoints(0,160))+"…":text;}
   static void addLegacyDraft(JSONArray rows,Set<String> bodies,String origin,String body){if(body!=null&&!body.isEmpty()&&bodies.add(body))rows.put(J.obj("origin",origin==null||origin.isEmpty()?"暂存草稿":origin,"body",body));}
-  JSONArray recentChats(){return conversations.list();}
-  void mergeChats(JSONArray incoming){}
-  void rememberConversation(){}
   void switchConversation(String url){if(!chatUrl(url))return;if(session.pending!=null||session.submitting||session.operation){status("当前有未完成请求，请先完成等待再打开其他对话");return;}session.navigate(url,"正在打开对话…");showPage(true);}
   @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==74&&attachments!=null)attachments.result(result,data);if(request==FileDownloads.SAVE&&downloads!=null)downloads.result(result,data);if(request==SavedFileActions.EXPORT&&downloads!=null)downloads.savedActions.result(result,data);}
   void openNotification(Intent intent){
