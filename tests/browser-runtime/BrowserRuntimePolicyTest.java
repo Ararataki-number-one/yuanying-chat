@@ -21,6 +21,16 @@ public final class BrowserRuntimePolicyTest {
     check("A system website task cannot bind to a different browser profile",!BrowserRuntimePolicy.restoresPending("system","","web"));
     check("Unknown historical website tasks remain unresolved",!BrowserRuntimePolicy.restoresPending("","","web"));
     check("Native send and regeneration tasks are never replayed",!BrowserRuntimePolicy.restoresPending("gecko","","send")&&!BrowserRuntimePolicy.restoresPending("gecko","","regenerate"));
+    String a="https://chatgpt.com/c/A";
+    check("Verified different official conversation ends the old observation",BrowserRuntimePolicy.leftConversation(a,"https://chatgpt.com/c/B",false,false));
+    check("The same conversation query does not end observation",!BrowserRuntimePolicy.leftConversation(a,a+"?view=1#reply",true,true));
+    check("GPT wrapper aliases retain the same conversation identity",!BrowserRuntimePolicy.leftConversation(a,"https://chatgpt.com/g/example/c/A",true,true));
+    check("Homepage conversation allocation retains its original observation",!BrowserRuntimePolicy.leftConversation("https://chatgpt.com/","https://chatgpt.com/c/A",true,true));
+    check("An empty homepage hydration shell retains the observation",!BrowserRuntimePolicy.leftConversation(a,"https://chatgpt.com/",false,false));
+    check("An interactive empty homepage ends the old observation",BrowserRuntimePolicy.leftConversation(a,"https://chatgpt.com/",true,false));
+    check("Old homepage messages do not prove a new empty conversation",!BrowserRuntimePolicy.leftConversation(a,"https://chatgpt.com/",true,true));
+    for(String url:new String[]{"https://chatgpt.com/auth/login","https://example.org/c/B","http://chatgpt.com/c/B","https://user@chatgpt.com/c/B","https://chatgpt.com:444/c/B","not a URL"})
+      check("Unverified destination does not discard observation: "+url,!BrowserRuntimePolicy.leftConversation(a,url,true,false));
     if(args.length>0){
       Path java=Path.of(args[0],"app/src/main/java/local/pocketchat");
       String view=Files.readString(java.resolve("GeckoWebView.java")),session=Files.readString(java.resolve("ChatSession.java"));

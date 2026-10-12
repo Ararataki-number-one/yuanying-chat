@@ -151,6 +151,21 @@ final class WebReplyObserver {
     session.setStatus("已停止等待这条网页回复");
   }
 
+  /** Ends this device's observation after the website actually changes chats. */
+  boolean archiveNavigation(JSONObject job){
+    if(session.pending!=job||!webJob(job))return false;
+    if(!session.prefs.edit().putString("archivedWebObservation",job.toString()).remove("pending").commit()){
+      session.setStatus("本地等待记录保存失败，请保留原网页核对");return false;
+    }
+    String url=job.optString("confirmedUrl");if(url.isEmpty())url=job.optString("expectedUrl");String prompt=job.optString("prompt");
+    session.delivery(job.optString("id"),"uncertain","已离开原对话，本机完成提醒已停止；原网页发送状态未改动",true,job.optString("userKey"),url);
+    session.pending=null;session.activeDeliveryId="";session.resetReplyStability();
+    session.observedReplyJob=session.observedReplyUrl=session.observedReplyKey=session.observedReplyRevision=session.observedReplyMarkdown="";
+    session.observedReplyHasFiles=false;
+    final String archivedUrl=url;if(!prompt.isEmpty())session.webStore.worker.execute(()->DraftArchive.get(session.context).save(archivedUrl,prompt,"切换对话前待核对提问"));
+    ChatService.end(session.context);session.status="已切换对话";return true;
+  }
+
   boolean mayComplete(JSONObject job, JSONObject poll) {
     if (!webJob(job)) return true;
     if (!job.optBoolean("confirmed") || !poll.optBoolean("submitted") || !poll.optBoolean("terminal") ||

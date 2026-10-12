@@ -33,8 +33,10 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   CountDownLatch archiveEntered,archiveRelease;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
-    boolean semanticRoute,inspectPending,inputTracing;JSONObject productionPoll,productionInspect;int pageStateReads,stableBeforeInspectedPoll=-1,completionBeforeInspectedPoll=-1,inputEvaluateSequence;String pageStateDraft="",navigationError="",semanticUrl=MainActivity.ORIGIN+"c/performance-fixture";
+    boolean semanticRoute,inspectPending,inputTracing,quietTracking;JSONObject productionPoll,productionInspect;int pageStateReads,stableBeforeInspectedPoll=-1,completionBeforeInspectedPoll=-1,inputEvaluateSequence,quietStops,quietLoads;String pageStateDraft="",navigationError="",semanticUrl=MainActivity.ORIGIN+"c/performance-fixture";
     FixtureView(Context c,ChatSession owner){super(c,owner);}
+    @Override public void stopLoading(){if(quietTracking)quietStops++;super.stopLoading();}
+    @Override public void loadUrl(String url){if(quietTracking)quietLoads++;super.loadUrl(url);}
     @Override public String getUrl(){return semanticRoute?semanticUrl:super.getUrl();}
     @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){
       int inputSequence=inputTracing?inputEvaluateSequence++:-1;
@@ -597,7 +599,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   });}
   void originalOnlyAction(int index){
     if(index==retiredActions.length){evaluate("(()=>{const e=document.getElementById('prompt-textarea'),s=window.__originalOnlyWebsite;return {dom:s.dom===document.documentElement.outerHTML,url:s.url===location.href,draft:s.draft===e.value,selection:s.start===e.selectionStart&&s.end===e.selectionEnd,cookie:s.cookie===document.cookie,noSend:s.sent===Number(document.getElementById('send-count').textContent)&&s.sent===0};})()",false,value->{
-      check("Retired native actions leave the entire website DOM, composer, selection, route and login unchanged",value.optBoolean("dom")&&value.optBoolean("url")&&value.optBoolean("draft")&&value.optBoolean("selection")&&value.optBoolean("cookie")&&value.optBoolean("noSend"));success();
+      check("Retired native actions leave the entire website DOM, composer, selection, route and login unchanged",value.optBoolean("dom")&&value.optBoolean("url")&&value.optBoolean("draft")&&value.optBoolean("selection")&&value.optBoolean("cookie")&&value.optBoolean("noSend"));quietNavigation();
     });return;}
     String action=retiredActions[index];JSONObject args=J.obj("text","must remain unsent","prompt","must remain unsent","url",MainActivity.ORIGIN+"c/must-not-navigate");
     session.runDriver(action,args,nativeResult->attempt(()->{
@@ -607,6 +609,64 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       });
     }));
   }
+  JSONObject quietJob(String path)throws Exception{
+    String route=MainActivity.ORIGIN.substring(0,MainActivity.ORIGIN.length()-1)+path,id=session.deliveries.begin(route,"bound performance prompt",new JSONArray(),"web",null);
+    JSONObject job=J.obj("id",id,"kind","web","engine","gecko","confirmed",true,"userKey","id:current-question","prompt","bound performance prompt","confirmedUrl",route,"expectedUrl",route,"export",true,"startedAt",System.currentTimeMillis());
+    productionJob=job;session.pending=job;session.activeDeliveryId=id;session.prefs.edit().putString("pending",job.toString()).commit();return job;
+  }
+  void quietInspect(String path,Result result){
+    ((FixtureView)session.web).semanticUrl=MainActivity.ORIGIN.substring(0,MainActivity.ORIGIN.length()-1)+path;
+    evaluate("history.replaceState(null,'',"+JSONObject.quote(path)+");({path:location.pathname})",false,actual->{
+      if(!path.equals(actual.optString("path")))throw new IllegalStateException("Quiet navigation did not reach the actual Gecko SPA route");
+      evaluate("window.__pocketReadDriver('web-inspect',{})",false,result);
+    });
+  }
+  void quietNavigation()throws Exception{
+    session.handler.removeCallbacks(session.tick);((FixtureView)session.web).quietTracking=true;session.inFlight=false;
+    JSONObject old=quietJob("/c/quiet-A");session.stableReply="old terminal body";session.stableTicks=2;session.webObserver.completionSamples=2;
+    quietInspect("/c/quiet-B",actual->{
+      ((FixtureView)session.web).productionInspect=null;session.sync();waitQuietSync(old,SystemClock.elapsedRealtime()+10000);
+    });
+  }
+  void waitQuietSync(JSONObject old,long expires){attempt(()->{
+    if(session.inFlight){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Quiet navigation sync timeout");later(()->waitQuietSync(old,expires),50);return;}
+    JSONObject actual=((FixtureView)session.web).productionInspect,stored=session.deliveries.get(old.optString("id"));
+    check("Actual different official SPA conversation quietly archives its native observation",actual!=null&&actual.optString("url").endsWith("/c/quiet-B")&&session.pending==null&&!session.prefs.contains("pending")&&session.activeDeliveryId.isEmpty());
+    check("Quiet conversation archive retains full pending body and original delivery binding",J.parse(session.prefs.getString("archivedWebObservation","{}")).toString().equals(old.toString())&&stored!=null&&stored.optString("body").equals(old.optString("prompt"))&&stored.optString("user_key").equals(old.optString("userKey"))&&stored.optString("url").equals(old.optString("confirmedUrl"))&&stored.optString("state").equals("uncertain"));
+    check("Quiet conversation archive clears stale completion samples and settings busy state",session.stableTicks==0&&session.stableReply.isEmpty()&&session.webObserver.completionSamples==0&&!ProfileUi.working(session)&&!old.optString("id").equals(session.prefs.getString("lastCompletedId","")));
+    quietInspect("/c/quiet-A",back->{
+      check("Returning to an archived official conversation does not resurrect its old task",!session.archiveWebsiteNavigation(back)&&session.pending==null&&!session.prefs.contains("pending"));
+      quietJob("/c/quiet-B");quietInspect("/c/quiet-B",same->{
+        check("Matching current official conversation retains a new observation",!session.archiveWebsiteNavigation(same)&&session.pending==productionJob);
+        JSONObject stale=J.parse(same.toString());stale.put("url",MainActivity.ORIGIN+"c/quiet-C");
+        check("A stale inspected URL cannot archive the current task",!session.archiveWebsiteNavigation(stale)&&session.pending==productionJob);
+        evaluate("document.getElementById('composer').insertAdjacentHTML('beforeend','<button id=\"stop-button\" data-testid=\"stop-button\" aria-label=\"Stop\">Stop</button>');({busy:true})",false,unused->bindingPoll(poll->{
+          check("A new official conversation still monitors its exact bound user without native submission",poll.optBoolean("submitted")&&poll.optBoolean("busy")&&session.pending==productionJob&&poll.optString("userKey").equals("id:current-question"));quietLoginAndHome();
+        }));
+      });
+    });
+  });}
+  void quietLoginAndHome(){quietInspect("/auth/login",login->{
+    check("An actual login route retains unresolved observation and its original binding",!session.archiveWebsiteNavigation(login)&&session.pending==productionJob);
+    evaluate("(()=>{window.__quietMain=document.querySelector('main');window.__quietChildren=[...window.__quietMain.childNodes];window.__quietMain.replaceChildren();document.getElementById('composer').hidden=true;return {shell:true};})()",false,unused->quietInspect("/",shell->{
+      check("An actual empty homepage hydration shell does not archive a bound conversation",!shell.optBoolean("composer")&&!shell.optBoolean("hasMessages")&&!session.archiveWebsiteNavigation(shell)&&session.pending==productionJob);
+      evaluate("document.getElementById('composer').hidden=false;({busyHome:true})",false,ready->quietInspect("/",busy->{
+        check("An interactive homepage still displaying a busy operation retains its bound observation",busy.optBoolean("composer")&&busy.optBoolean("busy")&&!session.archiveWebsiteNavigation(busy)&&session.pending==productionJob);
+        evaluate("document.getElementById('stop-button')?.remove();({idleHome:true})",false,idle->quietInspect("/",home->{
+        check("An actual interactive empty official homepage quietly ends the old observation",home.optBoolean("composer")&&!home.optBoolean("hasMessages")&&session.archiveWebsiteNavigation(home)&&session.pending==null);
+        evaluate("window.__quietMain.replaceChildren(...window.__quietChildren);document.getElementById('stop-button')?.remove();({restored:true})",false,restored->{
+          quietJob("/c/quiet-B");quietInspect("/c/quiet-B",same->quietSameRouteError());
+        });
+      }));}));
+    }));
+  });}
+  void quietSameRouteError(){bindingMutate("document.querySelector('[data-message-id=\"current-question\"] [data-user-message-bubble]').textContent='a real edited question in the same conversation';({edited:true})",error->{
+    check("A genuine same-conversation edited question stays unresolved with its error",session.pending==productionJob&&session.prefs.contains("pending")&&!error.optString("error").isEmpty()&&!session.status.isEmpty()&&session.stableTicks==0&&session.webObserver.completionSamples==0);
+    evaluate("document.querySelector('[data-message-id=\"current-question\"] [data-user-message-bubble]').textContent='bound performance prompt';({draft:document.getElementById('prompt-textarea').value,saved:window.__originalOnlyWebsite.draft,cookie:document.cookie,sent:Number(document.getElementById('send-count').textContent)})",false,end->{
+      check("Quiet navigation never stops reloads resubmits or changes the browser draft and login",((FixtureView)session.web).quietStops==0&&((FixtureView)session.web).quietLoads==0&&end.optInt("sent")==0&&end.optString("draft").equals(end.optString("saved"))&&end.optString("cookie").contains("session=synthetic-performance"));
+      session.pending=null;session.prefs.edit().remove("pending").commit();success();
+    });
+  });}
   void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"actualInputImeSettled",inputImeSettled,"actualSingleInputBurst",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"baselineSource",BASELINE,"checkCount",checkCount,"directDeferredSamples",directDeferredSamples,"nativeDeferredSamples",nativeDeferredSamples,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
   String telemetryInstall(){return "(()=>{const data={readChars:0,readCalls:0,clones:0,started:performance.now(),rafCount:0,rafSum:0,rafMax:0,rafOver32:0,previous:0};"+
     "for(const [prototype,key] of [[HTMLElement.prototype,'innerText'],[Node.prototype,'textContent'],[Node.prototype,'nodeValue']]){const original=Object.getOwnPropertyDescriptor(prototype,key);if(original?.get&&original.configurable)Object.defineProperty(prototype,key,{...original,get(){const value=original.get.call(this);data.readCalls++;if(typeof value==='string')data.readChars+=value.length;return value;}});}"+

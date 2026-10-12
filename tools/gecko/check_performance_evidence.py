@@ -61,7 +61,7 @@ def verify_performance_evidence(directory, source):
     assert len(decisions) >= 2 and all(item['guardAllowed'] and item['decision']['type'] == 'socks'
                                      and item['decision']['host'] == '127.0.0.1' and item['decision']['port'] == 1087
                                      for item in decisions), 'Both comparisons must use the existing protected proxy path.'
-    assert gecko['checkCount'] == len(gecko['checks']) >= 142 and all(check['pass'] for check in gecko['checks'])
+    assert gecko['checkCount'] == len(gecko['checks']) >= 155 and all(check['pass'] for check in gecko['checks'])
     names = {check['name'] for check in gecko['checks']}
     assert {
         'Actual Gecko streaming bridge payload is reduced by at least 95 percent',
@@ -84,6 +84,19 @@ def verify_performance_evidence(directory, source):
         'Reattaching an edited cached body refreshes actual Gecko terminal text and transcript',
         'Original-only bridge starts with the actual existing Gecko document',
         'Retired native actions leave the entire website DOM, composer, selection, route and login unchanged',
+        'Actual different official SPA conversation quietly archives its native observation',
+        'Quiet conversation archive retains full pending body and original delivery binding',
+        'Quiet conversation archive clears stale completion samples and settings busy state',
+        'Returning to an archived official conversation does not resurrect its old task',
+        'Matching current official conversation retains a new observation',
+        'A stale inspected URL cannot archive the current task',
+        'A new official conversation still monitors its exact bound user without native submission',
+        'An actual login route retains unresolved observation and its original binding',
+        'An actual empty homepage hydration shell does not archive a bound conversation',
+        'An interactive homepage still displaying a busy operation retains its bound observation',
+        'An actual interactive empty official homepage quietly ends the old observation',
+        'A genuine same-conversation edited question stays unresolved with its error',
+        'Quiet navigation never stops reloads resubmits or changes the browser draft and login',
     } <= names, 'Long-reply correctness regression is required.'
     for action in ('fill', 'submit', 'model-open', 'model-select', 'message-regenerate-submit', 'page-navigate'):
         assert 'Public native bridge rejects retired action ' + action in names

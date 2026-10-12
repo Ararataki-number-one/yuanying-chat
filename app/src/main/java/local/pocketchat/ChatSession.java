@@ -197,6 +197,7 @@ final class ChatSession {
     if(inFlight||navigating&&!navigationDispatched)return;inFlight=true;long epoch=navigationEpoch,run=++syncRun;boolean optimized=webPerformance();
     runDriver(optimized?"web-inspect":"inspect",J.obj("navigationCheck",spaTransition),s->{
       if(run!=syncRun)return;if(epoch!=navigationEpoch){inFlight=false;return;}if(navigating&&awaitNewDocument&&priorDocumentId.equals(s.optString("documentId"))){inFlight=false;return;}if(!s.optString("documentId").isEmpty()){lastDocumentId=s.optString("documentId");awaitNewDocument=false;}state=s;stateEpoch=epoch;if(WebReplyObserver.same(web.getUrl(),s.optString("url"))){websiteConnectionIssue=s.optBoolean("websiteSocketClosed");if(!s.optString("error").isEmpty())resetReplyStability();}
+      archiveWebsiteNavigation(s);
       if(pending==null&&!navigating&&!navigationFailed){if(!pageError.isEmpty())status=pageError;else if(!s.optString("error").isEmpty())status=s.optString("error");else if(s.optBoolean("modelKnown"))status="已连接 · "+s.optString("model")+(s.optString("effort").isEmpty()?"":" · "+s.optString("effort"));else status="请打开登录页面完成登录";}
       // During startup the page may be an empty shell. Inspect readiness cheaply;
       // defer transcript walks until the target composer/content is actually present.
@@ -215,6 +216,13 @@ final class ChatSession {
         pollSync(epoch,run,optimized);
       });
     });
+  }
+  boolean archiveWebsiteNavigation(JSONObject inspected){
+    JSONObject job=pending;String current=web.getUrl(),observed=inspected.optString("url");
+    if(!WebReplyObserver.webJob(job)||!WebReplyObserver.same(current,observed)||LoginPagePolicy.login(current))return false;
+    String bound=job.optString("confirmedUrl");if(bound.isEmpty())bound=job.optString("expectedUrl");
+    if(BrowserRuntimePolicy.conversationId(android.net.Uri.parse(current).getEncodedPath()).isEmpty()&&(inspected.optBoolean("busy")||!inspected.optString("error").isEmpty()))return false;
+    return BrowserRuntimePolicy.leftConversation(bound,current,inspected.optBoolean("composer"),inspected.optBoolean("hasMessages"))&&webObserver.archiveNavigation(job);
   }
   void acceptTranscript(JSONObject data,JSONObject inspect,boolean optimized){
     if(!data.optBoolean("ok"))return;String url=data.optString("url");
