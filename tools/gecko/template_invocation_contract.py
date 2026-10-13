@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Controlled-template observations only. No device execution or full fingerprint attestation."""
 import re
+from urllib.parse import parse_qsl, urlsplit
 
 SDK='org.mozilla.geckoview:geckoview:157.0.20261005135250'
 AAR='15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268'
@@ -46,6 +47,7 @@ def complete_signal(signal):
 
 
 def verify_template_report(report):
+    if report.get('schema')!=1:raise ValueError('Template report schema is unsupported')
     if report.get('fixtureType')!='production-template-controlled-contexts-v1' or report.get('diagnosticOnly') is not False or report.get('controlledTemplateAcceptance') is not True:
         raise ValueError('A distinct production template fixture is required, not the SDK prototype')
     if report.get('status')!='passed' or report.get('actualAndroidExecution') is not True or report.get('actualGeckoExecution') is not True or report.get('synthetic') is not True or report.get('publicNetworkTraffic') is not False:
@@ -112,9 +114,25 @@ def verify_template_report(report):
             wire=session.get('requestHeaders',[])
             if len(wire)!=len(ROLES) or set(item.get('role') for item in wire)!=set(ROLES):raise ValueError('All document and actual worker/page request headers are required')
             for header in wire:
+                sequence=header.get('sequence')
+                if type(sequence) is not int or sequence<1 or sequence>30 or header.get('method')!='GET':raise ValueError('Actual controlled server sequence or HTTP method is invalid')
+                path=header.get('path')
+                if not isinstance(path,str):raise ValueError('Actual controlled request path is missing')
+                parsed=urlsplit(path)
+                if parsed.scheme or parsed.netloc or parsed.fragment:raise ValueError('Controlled request path is not a relative first-party target')
+                try:pairs=parse_qsl(parsed.query,strict_parsing=True,keep_blank_values=True)
+                except ValueError as error:raise ValueError('Controlled query is invalid') from error
+                query=dict(pairs)
+                if len(query)!=len(pairs):raise ValueError('Controlled query keys are duplicated')
+                role=header.get('role')
+                wanted_path={'page':'/page','frame':'/frame','worker-script':'/worker'}.get(role,'/echo')
+                wanted_query={'run':nonce,'case':str(index+1),'session':name}
+                if role in ['page-fetch','worker-fetch','blob-worker-fetch']:wanted_query['kind']=role
+                if parsed.path!=wanted_path or query!=wanted_query:raise ValueError('Actual HTTP headers belong to another endpoint or invocation')
                 if header.get('case')!=index+1 or header.get('session')!=name or header.get('userAgent')!=ua or header.get('acceptLanguage','').split(',')[0].split(';')[0].strip().lower()!=NORMALIZED[index].lower():
                     raise ValueError('Actual server-observed request headers disagree with the page')
             all_wire.extend(wire)
         if observation.get('controlledRequestHeaders')!=sessions[0].get('requestHeaders'):raise ValueError('Persisted observation omits real controlled HTTP evidence')
+    if sorted(row.get('sequence') for row in all_wire)!=list(range(1,31)):raise ValueError('Every actual server sequence must occur once')
     if report.get('allRequestHeaders')!=sorted(all_wire,key=lambda row:row.get('sequence',-1)):raise ValueError('Complete actual first-party wire records are required')
     return {'controlledTemplateAcceptance':True,'fingerprintTemplateAcceptance':False,'realAccountLogin':False,'safeIdleApplicationAcceptance':False,'templateIds':TEMPLATES,'assertions':len(names),'sessions':5,'uncovered':UNCOVERED,'scope':'Production adapter/controller acknowledgements and actual controlled page/frame/Dedicated Workers/document and fetch request headers; separate process isolation, restart, real ChatGPT and experimental RFP remain separate acceptance.'}

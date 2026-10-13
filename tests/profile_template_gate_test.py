@@ -27,7 +27,8 @@ def metadata_only_report():
         for name in ['primary']+(['secondary'] if index==3 else []):
             wire=[]
             for role in contract.ROLES:
-                header=dict(sequence=len(report['allRequestHeaders'])+1,case=index+1,session=name,role=role,userAgent=ua,acceptLanguage=contract.NORMALIZED[index],method='GET',path='/fixture?run='+report['runNonce'])
+                target={'page':'/page','frame':'/frame','worker-script':'/worker'}.get(role,'/echo');query='run='+report['runNonce']+'&case='+str(index+1)+'&session='+name+('&kind='+role if role.endswith('-fetch') else '')
+                header=dict(sequence=len(report['allRequestHeaders'])+1,case=index+1,session=name,role=role,userAgent=ua,acceptLanguage=contract.NORMALIZED[index],method='GET',path=target+'?'+query)
                 wire.append(header);report['allRequestHeaders'].append(header)
             raw=dict(run=report['runNonce'],case=index+1,session=name,provenance='controlled-page-main-world',**{context:copy.deepcopy(signal) for context in ['parent','frame','worker','blobWorker']})
             native=dict(userAgent=ua,requestedLocales=contract.REQUESTS[index],getterLocales=contract.REQUESTS[index],expectedSdkNormalizedLanguage=contract.NORMALIZED[index])
@@ -54,6 +55,13 @@ class TemplateContractTest(unittest.TestCase):
     def test_normalized_getter_cannot_replace_requested_descriptor(self):self.rejects(lambda r:r['cases'][2]['sessions'][0]['native'].update(getterLocales=['zh-TW']))
     def test_document_header_is_required(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'].__delitem__(0))
     def test_wrong_http_ua_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][0].update(userAgent='Java simulator'))
+    def test_old_header_path_nonce_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][0].update(path='/page?run='+('f'*32)+'&case=1&session=primary'))
+    def test_duplicate_query_key_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][0].update(path=r['cases'][0]['sessions'][0]['requestHeaders'][0]['path']+'&run='+r['runNonce']))
+    def test_wrong_method_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][0].update(method='POST'))
+    def test_duplicate_sequence_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][1].update(sequence=1))
+    def test_zero_sequence_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][0].update(sequence=0))
+    def test_wrong_fetch_role_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][3].update(path='/echo?run='+r['runNonce']+'&case=1&session=primary&kind=worker-fetch'))
+    def test_unknown_schema_cannot_pass(self):self.rejects(lambda r:r.update(schema=2))
     def test_new_invocation_cannot_reuse_old_signals(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['observed'].update(run='f'*32))
     def test_unapplied_configuration_cannot_be_observed(self):self.rejects(lambda r:r['appliedCases'][0].update(appliedRevision=0))
     def test_slot_reuse_cannot_cross_observed_cases(self):self.rejects(lambda r:r['appliedCases'][3]['identity'].update(generation=1))
