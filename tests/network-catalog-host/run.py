@@ -31,7 +31,7 @@ result = subprocess.run([java, '-cp', f'{classes}:{jar}',
                          'local.pocketchat.NetworkCatalogHostTest'],
                         check=True, stdout=subprocess.PIPE, text=True)
 receipt = json.loads(result.stdout)
-assert receipt['passed'] == receipt['total'] >= 51
+assert receipt['passed'] == receipt['total'] >= 112
 assert receipt['actualCrossProcessFileLocks']
 assert not receipt['actualAndroidExecution']
 output = args.output or work / 'results.json'

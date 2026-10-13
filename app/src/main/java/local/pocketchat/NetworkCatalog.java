@@ -23,7 +23,7 @@ final class NetworkCatalog {
   }
   NetworkCatalog(Context c){
     this.c=c;store=new SecretStore(Profiles.context(c,0));JSONObject loaded;
-    try{loaded=saved();}catch(Exception error){loaded=new JSONObject();readError="网络库暂时无法读取，请稍后再试";}
+    try{loaded=saved();}catch(Exception error){loaded=new JSONObject();readError="网络库无法读取或版本较新，已保留原加密文件；请使用匹配版本检查";}
     data=normalize(loaded);if(readError.isEmpty())collect();
   }
   static void put(JSONObject o,String key,Object value){try{o.put(key,value);}catch(JSONException e){throw new IllegalArgumentException(e);}}
@@ -45,6 +45,9 @@ final class NetworkCatalog {
   String readError(){return readError;}
   JSONObject subscription(String role,String id){return lookup(subscriptions(role),id);}
   JSONObject exit(String id){return lookup(exits(),id);}
+  static String endpointFingerprint(JSONObject row){return NativeNetwork.hash(row.optString("host")+":"+row.optInt("port")+":"+row.optString("user")+":"+row.optString("password"));}
+  /** Historical aliases resolve old references; only current endpoints deduplicate edits. */
+  static JSONObject currentExit(JSONArray rows,String fingerprint){for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&fingerprint.equals(endpointFingerprint(row)))return row;}return null;}
   static boolean removed(JSONObject catalog,String role,String id){JSONArray all=catalog.optJSONArray("subscriptionTombstones");if(all!=null)for(int i=0;i<all.length();i++){JSONObject t=all.optJSONObject(i);if(t!=null&&role.equals(t.optString("role"))&&(id.equals(t.optString("id"))||contains(t.optJSONArray("aliases"),id)))return true;}return false;}
   static boolean exitRemoved(JSONObject catalog,String id){return lookup(catalog.optJSONArray("exitTombstones"),id)!=null;}
   static JSONObject normalize(JSONObject value){
@@ -82,7 +85,43 @@ final class NetworkCatalog {
   }
   static File lockFile(Context c){return new File(Profiles.context(c,0).getNoBackupFilesDir(),"network-catalog.lock");}
   File lockFile(){return lockFile(c);}
-  JSONObject saved()throws Exception{byte[] raw=store.get("network-catalog");return normalize(raw==null?new JSONObject():new JSONObject(new String(raw,StandardCharsets.UTF_8)));}
+  static IOException invalidCatalog(){return new IOException("网络库格式或版本不受支持，原加密文件已保留");}
+  static boolean integer(Object value){return value instanceof Integer||value instanceof Long||value instanceof Short||value instanceof Byte;}
+  static void textFields(JSONObject row,String... fields)throws IOException{for(String field:fields)if(row.has(field)&&!(row.opt(field) instanceof String))throw invalidCatalog();}
+  static void numbers(JSONObject row,long minimum,String... fields)throws IOException{for(String field:fields)if(row.has(field)&&(!integer(row.opt(field))||((Number)row.opt(field)).longValue()<minimum))throw invalidCatalog();}
+  static void stringList(JSONObject row,String field)throws IOException{if(!row.has(field))return;JSONArray values=row.optJSONArray(field);if(values==null)throw invalidCatalog();Set<String> seen=new HashSet<>();for(int i=0;i<values.length();i++){Object value=values.opt(i);if(!(value instanceof String)||((String)value).isEmpty()||!seen.add((String)value))throw invalidCatalog();}}
+  /** Validate persisted data before normalization can add legacy defaults. */
+  static JSONObject strictCatalog(byte[] raw)throws Exception{
+    if(raw.length==0||raw.length>32*1024*1024)throw invalidCatalog();
+    String text=StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT).onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(raw)).toString();
+    JSONTokener parser=new JSONTokener(text);Object parsed=parser.nextValue();if(!(parsed instanceof JSONObject)||parser.nextClean()!=0)throw invalidCatalog();JSONObject value=(JSONObject)parsed;
+    Object version=value.opt("schemaVersion");if(value.has("schemaVersion")&&(!integer(version)||((Number)version).longValue()<1||((Number)version).longValue()>2))throw invalidCatalog();
+    // Published legacy catalogues have no marker (or version 1); schema 2 always
+    // writes all five lists. The earlier draft exitSources format is unrelated.
+    if(value.has("schema")||value.has("exitSources"))throw invalidCatalog();
+    boolean current=version!=null&&((Number)version).longValue()==2;
+    for(String name:new String[]{"subscriptions","exitSubscriptions","exits","subscriptionTombstones","exitTombstones"}){
+      if(!value.has(name)){if(current||"subscriptions".equals(name)||"exits".equals(name))throw invalidCatalog();continue;}
+      JSONArray rows=value.optJSONArray(name);if(rows==null)throw invalidCatalog();Set<String> identities=new HashSet<>();
+      for(int i=0;i<rows.length();i++){
+        JSONObject row=rows.optJSONObject(i);if(row==null||!(row.opt("id") instanceof String)||row.optString("id").isEmpty()||!identities.add(row.optString("id")))throw invalidCatalog();
+        textFields(row,"name","role","url","urlHash","host","user","password","region","verifiedIp","cacheSlot","previousCacheSlot","cacheUrl","cacheUrlHash","refreshToken","lastError");
+        numbers(row,1,"revision","addressRevision");numbers(row,0,"cacheAddressRevision","updatedAt","cacheUpdatedAt","lastSuccessAt","lastAttemptAt","lastFailureAt","deletedAt");
+        for(String field:new String[]{"stale","updating"})if(row.has(field)&&!(row.opt(field) instanceof Boolean))throw invalidCatalog();
+        for(String field:new String[]{"cacheSlot","previousCacheSlot"})if(row.has(field)&&!row.optString(field).matches("[a-z-]+"))throw invalidCatalog();
+        stringList(row,"aliases");
+        if("subscriptions".equals(name)||"exitSubscriptions".equals(name)){
+          String role="subscriptions".equals(name)?ENTRY:EXIT;if(!(row.opt("url") instanceof String)||row.optString("url").isEmpty()||row.has("role")&&!role.equals(row.optString("role")))throw invalidCatalog();
+          stringList(row,"nodes");if(row.has("nodeDetails")){JSONArray details=row.optJSONArray("nodeDetails");if(details==null)throw invalidCatalog();for(int n=0;n<details.length();n++)if(details.optJSONObject(n)==null)throw invalidCatalog();}
+          if(row.has("owner")&&(!integer(row.opt("owner"))||row.optInt("owner",-1)<0||row.optInt("owner",8)>7))throw invalidCatalog();
+        }else if("exits".equals(name)){
+          if(!(row.opt("host") instanceof String)||row.optString("host").isEmpty()||!integer(row.opt("port"))||((Number)row.opt("port")).longValue()<1||((Number)row.opt("port")).longValue()>65535)throw invalidCatalog();
+        }else if("subscriptionTombstones".equals(name)&&!ENTRY.equals(row.optString("role"))&&!EXIT.equals(row.optString("role")))throw invalidCatalog();
+      }
+    }
+    return value;
+  }
+  JSONObject saved()throws Exception{byte[] raw=store.get("network-catalog");return normalize(raw==null?new JSONObject():strictCatalog(raw));}
   interface Edit<T>{T run(JSONObject latest)throws Exception;}
   private <T>T write(Edit<T> action)throws Exception{
     if(!readError.isEmpty())throw new IOException(readError);
@@ -99,7 +138,7 @@ final class NetworkCatalog {
     for(int i=0;i<exits().length();i++){JSONObject row=exits().optJSONObject(i);if(row==null)continue;boolean tombstone=exitRemoved(latest,row.optString("id"));JSONArray aliases=row.optJSONArray("aliases");if(aliases!=null)for(int n=0;n<aliases.length();n++)tombstone|=exitRemoved(latest,aliases.optString(n));if(!tombstone&&lookup(latest.optJSONArray("exits"),row.optString("id"))==null)latest.optJSONArray("exits").put(copy(row));}
   }
   void save()throws Exception{write(latest->null);}
-  void saveLocked(JSONObject latest)throws Exception{if(!readError.isEmpty())throw new IOException(readError);mergeImports(normalize(latest));store.put("network-catalog",latest.toString().getBytes(StandardCharsets.UTF_8));replace(latest);}
+  void saveLocked(JSONObject latest)throws Exception{if(!readError.isEmpty())throw new IOException(readError);mergeImports(normalize(strictCatalog(latest.toString().getBytes(StandardCharsets.UTF_8))));store.put("network-catalog",latest.toString().getBytes(StandardCharsets.UTF_8));replace(latest);}
   static JSONObject require(JSONObject latest,String role,String id)throws IOException{JSONObject row=lookup(latest.optJSONArray(key(role)),id);if(row==null)throw new IOException("订阅已删除，请重新选择");return row;}
   static void bump(JSONObject row){put(row,"revision",row.optLong("revision")+1);}
   static void remove(JSONArray rows,String id){for(int i=rows.length()-1;i>=0;i--)if(id.equals(rows.optJSONObject(i).optString("id")))rows.remove(i);}
@@ -167,11 +206,11 @@ final class NetworkCatalog {
   }
   JSONObject addExit(String name,String region,String host,int port,String user,String password)throws Exception{
     JSONObject value=J.obj("subscriptionUrl","https://localhost/","exitHost",host,"exitPort",port,"exitUser",user,"exitPassword",password);NativeNetwork.validate(value);String fingerprint=exitId(value);
-    return write(latest->{JSONObject row=lookup(latest.optJSONArray("exits"),fingerprint);if(row==null){row=J.obj("id",exitRemoved(latest,fingerprint)?UUID.randomUUID().toString():fingerprint,"name",name,"region",region,"host",host,"port",port,"user",user,"password",password,"revision",1L);alias(row,fingerprint);latest.optJSONArray("exits").put(row);}else{put(row,"name",name);put(row,"region",region);bump(row);}return copy(row);});
+    return write(latest->{JSONArray rows=latest.optJSONArray("exits");JSONObject row=currentExit(rows,fingerprint);if(row==null){row=J.obj("id",find(rows,fingerprint)!=null||exitRemoved(latest,fingerprint)?UUID.randomUUID().toString():fingerprint,"name",name,"region",region,"host",host,"port",port,"user",user,"password",password,"revision",1L);alias(row,fingerprint);rows.put(row);}else{put(row,"name",name);put(row,"region",region);bump(row);}return copy(row);});
   }
   JSONObject editExit(String id,String name,String region,String host,int port,String user,String password)throws Exception{
     JSONObject value=J.obj("subscriptionUrl","https://localhost/","exitHost",host,"exitPort",port,"exitUser",user,"exitPassword",password);NativeNetwork.validate(value);String fingerprint=exitId(value);
-    return write(latest->{JSONObject row=lookup(latest.optJSONArray("exits"),id);if(row==null)throw new IOException("出口已删除");JSONObject duplicate=lookup(latest.optJSONArray("exits"),fingerprint);if(duplicate!=null&&duplicate!=row)throw new IOException("此出口已存在");String previous=NativeNetwork.hash(row.optString("host")+":"+row.optInt("port")+":"+row.optString("user")+":"+row.optString("password"));alias(row,previous);alias(row,fingerprint);if(!previous.equals(fingerprint))row.remove("verifiedIp");put(row,"name",name);put(row,"region",region);put(row,"host",host);put(row,"port",port);put(row,"user",user);put(row,"password",password);bump(row);return copy(row);});
+    return write(latest->{JSONObject row=lookup(latest.optJSONArray("exits"),id);if(row==null)throw new IOException("出口已删除");JSONObject duplicate=currentExit(latest.optJSONArray("exits"),fingerprint);if(duplicate!=null&&duplicate!=row)throw new IOException("此出口已存在");String previous=endpointFingerprint(row);alias(row,previous);alias(row,fingerprint);if(!previous.equals(fingerprint))row.remove("verifiedIp");put(row,"name",name);put(row,"region",region);put(row,"host",host);put(row,"port",port);put(row,"user",user);put(row,"password",password);bump(row);return copy(row);});
   }
   void deleteExit(String id)throws Exception{write(latest->{JSONObject row=lookup(latest.optJSONArray("exits"),id);if(row==null)throw new IOException("出口已删除");latest.optJSONArray("exitTombstones").put(J.obj("id",row.optString("id"),"aliases",copy(row.optJSONArray("aliases")),"deletedAt",System.currentTimeMillis()));remove(latest.optJSONArray("exits"),row.optString("id"));return null;});}
 }

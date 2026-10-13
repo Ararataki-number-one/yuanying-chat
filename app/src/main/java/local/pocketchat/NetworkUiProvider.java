@@ -36,7 +36,8 @@ public class NetworkUiProvider extends ContentProvider {
         // A queued read must not put an older candidate back after a newer save.
         superseded=deferred&&!pendingSnapshot.isEmpty()&&!pendingSnapshot.equals(NetworkChanges.pending(profile).toString());
         if(!superseded){if(!baseline.equals(NetworkChanges.hash(profile)))throw new java.io.IOException("此窗口配置已变化，请重新编辑");
-          NetworkChanges.validate(profile,action,candidate);Transition parent=activeTransition;JSONObject lineage=parent!=null&&!parent.confirmed&&!parent.publishedHash.isEmpty()&&parent.generation==row.optInt("generation")&&baseline.equals(parent.publishedHash)?NetworkChanges.lineage(parent.id,parent.publishedHash,parent.baseline,parent.generation):new JSONObject();NetworkChanges.save(profile,action,candidate,baseline,lineage);}
+          NetworkChanges.validate(profile,action,candidate);Transition parent=activeTransition;JSONObject lineage=parent!=null&&!parent.confirmed&&!parent.publishedHash.isEmpty()&&parent.generation==row.optInt("generation")&&baseline.equals(parent.publishedHash)?NetworkChanges.lineage(parent.id,parent.publishedHash,parent.baseline,parent.generation):new JSONObject();NetworkChanges.save(profile,action,candidate,baseline,lineage);
+          EnvironmentSpecRuntime.desireNetwork(profile,action,candidate);}
       }catch(Exception e){error=e.getMessage()==null?"配置未能保存":e.getMessage();}
       if(!error.isEmpty()&&deferred&&sameGeneration)try{JSONObject current=NetworkChanges.pending(profile);boolean unchanged=pendingSnapshot.isEmpty()?baseline.equals(current.optString("baseline"))&&candidate.toString().equals(String.valueOf(current.optJSONObject("config"))):pendingSnapshot.equals(current.toString());if(unchanged)NetworkChanges.clear(profile);}catch(Exception unavailable){/* Keep an unreadable candidate for the next idle retry. */}
       String failure=error;boolean replaced=superseded;main.post(()->{
@@ -68,6 +69,7 @@ public class NetworkUiProvider extends ContentProvider {
     io.execute(()->{String error="";try{
       if(transition!=null&&transition.cancelledByUser){rollbackTransition(transition);if(transition.rollbackFailed)throw new java.io.IOException("原网络设置未能完整恢复，请重新编辑网络");}
       NetworkChanges.clear(profile);
+      EnvironmentSpecRuntime.desireActiveNetwork(profile);
     }catch(Exception failure){error=failure.getMessage()==null?"待应用网络设置未能取消":failure.getMessage();}
       String failure=error;main.post(()->{if(transition!=null&&transition.cancelledByUser&&activeTransition==transition)deferTransition(transition);finish(id,failure.isEmpty(),failure.isEmpty()?"待应用设置已取消，当前连接保持不变":failure);});
     });
