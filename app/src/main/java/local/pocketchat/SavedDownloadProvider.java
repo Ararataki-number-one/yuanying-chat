@@ -17,5 +17,11 @@ public class SavedDownloadProvider extends ContentProvider {
   public ParcelFileDescriptor openFile(Uri uri,String mode)throws FileNotFoundException {if(!"r".equals(mode))throw new FileNotFoundException("只允许读取已保存文件");try{File f=resolve(getContext(),uri);return ParcelFileDescriptor.open(f,ParcelFileDescriptor.MODE_READ_ONLY);}catch(IOException e){throw new FileNotFoundException("已保存文件不存在");}}
   public String getType(Uri uri){try{return FileDownloads.type(resolve(getContext(),uri).getName(),null);}catch(IOException e){return "application/octet-stream";}}
   public Cursor query(Uri uri,String[] projection,String selection,String[] args,String order){try{File file=resolve(getContext(),uri);String[] cols=projection==null?new String[]{OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE}:projection;MatrixCursor row=new MatrixCursor(cols);Object[] values=new Object[cols.length];for(int i=0;i<cols.length;i++)values[i]=cols[i].equals(OpenableColumns.DISPLAY_NAME)?file.getName():cols[i].equals(OpenableColumns.SIZE)?file.length():null;row.addRow(values);return row;}catch(IOException e){return null;}}
-  public Uri insert(Uri uri,ContentValues v){throw new UnsupportedOperationException();}public int update(Uri uri,ContentValues v,String s,String[] args){throw new UnsupportedOperationException();}public int delete(Uri uri,String s,String[] args){throw new UnsupportedOperationException();}
+  public Uri insert(Uri uri,ContentValues v){throw new UnsupportedOperationException();}public int update(Uri uri,ContentValues v,String s,String[] args){throw new UnsupportedOperationException();}
+  public int delete(Uri uri,String selection,String[] args){
+    if(Binder.getCallingUid()!=android.os.Process.myUid())throw new SecurityException("仅应用可删除已保存文件");
+    if(selection!=null||args!=null)throw new IllegalArgumentException("只允许删除一个已保存文件");
+    try{File file=resolve(getContext(),uri);if(!file.isFile())return 0;if(!file.delete())throw new IllegalStateException("文件无法删除");file.getParentFile().delete();return 1;}
+    catch(IOException error){throw new IllegalArgumentException("文件地址无效",error);}
+  }
 }

@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
 sys.path.insert(0,str(ROOT/'tools/gecko'))
-from check_interaction_transfer_evidence import verify_paint_case
+from check_interaction_transfer_evidence import verify_paint_case, verify_saved_file_deletion
 def missing_update_job(return_code, output, package):
     """Only Android's exact not-yet-registered job response is transient."""
     if return_code!=23:return False
@@ -394,6 +394,21 @@ def main():
         transfer_check('freshDownloadAfterKilledCancellation',len(requests)==2 and requests[0]['forcedDisconnect'] and requests[0]['sentBytes']==size//2 and requests[1]['range']=='' and requests[1]['ifRange']=='' and requests[1]['status']==200 and requests[1]['sentBytes']==size and after_cancel['state']=='ready' and after_cancel['finalSha']==expected and after_cancel['sameSigner'] and after_cancel['finalBytes']==size and after_cancel['finalApks']==1 and after_cancel['partialBytes']==0 and not after_cancel['discardPending'])
         update_report['cancellationProcessDeath']=dict(scope='Actual cancelled paused HTTP partial; real cleanup worker held until durable marker, then Android force-stop kills the process. No active-writer timing claim.',before=before_death,after=after_death)
         assert len(update_report['checks'])==28,update_report
+        kept=transfer('cancel-restart','transferKeepPackage');keep=kept['packageDeletion']
+        transfer_check('readyDeletionConfirmationRetainsPackage',keep['actualProductionDialog'] and keep['nativeButtonClicked'] and keep['dialogDismissed'] and keep['dialogLabel']=='保留安装包' and not keep['actualAndroidGesture'] and keep['phaseAfterDialog']=='ready' and keep['beforeBytes']==keep['afterBytes']==keep['beforeStoredBytes']==keep['afterStoredBytes']==size and keep['beforeSha']==keep['afterSha']==expected and keep['generationBefore']==keep['generationAfter'] and kept['state']=='ready' and kept['sameSigner'])
+        stale=transfer('cancel-restart','transferStaleDelete');stale_delete=stale['packageDeletion']
+        transfer_check('staleReadyDeletionRejected',stale_delete['wrongCodeRejected'] and stale_delete['wrongUriRejected'] and stale_delete['generationBefore']==stale_delete['generationAfter'] and stale_delete['beforeBytes']==stale_delete['afterBytes']==size and stale_delete['afterSha']==expected and stale['state']=='ready' and stale['finalApks']==1)
+        deleted=transfer('cancel-restart','transferDeleteReady','available');delete=deleted['packageDeletion']
+        transfer_check('confirmedReadyPackageRemoved',delete['actualProductionDialog'] and delete['nativeButtonClicked'] and delete['dialogDismissed'] and delete['dialogLabel']=='删除安装包' and not delete['actualAndroidGesture'] and delete['phaseAfterDialog']=='deleting' and delete['beforeBytes']==delete['beforeStoredBytes']==size and delete['beforeSha']==expected and delete['afterBytes']==delete['afterStoredBytes']==delete['ownedFiles']==0 and delete['oldUriRejected'] and delete['generationAfter']>delete['generationBefore'] and deleted['state']=='available' and not deleted['uri'] and not deleted['discardPending'] and not deleted['downloadRequested'] and not deleted['pendingTransferJob'] and deleted['received']==deleted['partialBytes']==deleted['finalApks']==0)
+        transfer_check('deletionCancelsQueuedVerification',delete['queuedVerifyRequest']>0 and delete['verifyRequestedSerial']>delete['queuedVerifyRequest'] and delete['verifiedSerial']==0 and delete['pendingInstallCleared'] and deleted['state']=='available')
+        transfer_check('readyDeletionPreservesPreferences',delete['sameMetadata'] and delete['sameSettings'] and not delete['packageDeleteRetry'] and delete['cancelledCode']==delete['releaseCode'])
+        requests_before_auto=len(Fixture.update_transfer_trace);suppressed=transfer('cancel-restart','transferAutomaticSuppression','available');automatic=suppressed['packageDeletion']
+        transfer_check('deletedReleaseDoesNotAutoDownload',automatic['automaticAdmissionAttempted'] and len(Fixture.update_transfer_trace)==requests_before_auto and automatic['beforeBytes']==automatic['afterBytes']==automatic['afterStoredBytes']==0 and automatic['cancelledCode']==automatic['releaseCode'] and automatic['sameMetadata'] and automatic['sameSettings'] and suppressed['state']=='available' and not suppressed['downloadRequested'] and not suppressed['pendingTransferJob'] and not suppressed['uri'])
+        transfer_check('packageDeletionStatusNoIo',deleted['statusMainThreadIo']==suppressed['statusMainThreadIo']==0)
+        redownloaded=transfer('cancel-restart','transferResume');requests=[x for x in Fixture.update_transfer_trace if x['scenario']=='cancel-restart']
+        transfer_check('explicitRedownloadAfterPackageDeletion',len(requests)==3 and requests[-1]['range']==requests[-1]['ifRange']=='' and requests[-1]['status']==200 and requests[-1]['sentBytes']==size and redownloaded['state']=='ready' and redownloaded['finalSha']==expected and redownloaded['sameSigner'] and redownloaded['finalBytes']==size and redownloaded['finalApks']==1 and redownloaded['partialBytes']==0 and not redownloaded['discardPending'])
+        update_report['readyPackageDeletion']=dict(scope='Real signed ready APK and actual production confirmation buttons via native performClick; no Android input-gesture claim. Existing worker holds queued verification until confirmation, then actual owned byte/URI cleanup and automatic/manual admission are measured.',kept=kept,stale=stale,deleted=deleted,suppressed=suppressed,redownloaded=redownloaded)
+        assert len(update_report['checks'])==36,update_report
         update_report.update(status='passed',checkCount=len(update_report['checks']),actualJobSchedulerExecution=len(update_report['actualJobExecutions'])==2,chatInteraction=interaction)
         (OUT/update_report_name).write_text(json.dumps(update_report,indent=2)+'\n')
     def management(action):
@@ -605,7 +620,7 @@ def main():
         access=update('verifyAccess');assert access['readOnly'] and access['traversalRejected'] and access['sameSigner'],access
         update('showUi');time.sleep(1)
         adb('shell','uiautomator','dump','/sdcard/update-ui.xml');update_ui=adb('shell','cat','/sdcard/update-ui.xml');(OUT/'update-ui.xml').write_text(update_ui)
-        for label in ['应用更新','当前版本','安装更新','自动检查更新','Wi-Fi 下自动下载新版']:assert label in update_ui,(label,update_ui)
+        for label in ['应用更新','当前版本','安装更新','删除安装包','自动检查更新','Wi-Fi 下自动下载新版']:assert label in update_ui,(label,update_ui)
         (OUT/'update-ui.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         adb('shell','appops','set',package,'REQUEST_INSTALL_PACKAGES','allow')
         button=next(node for node in ET.fromstring(update_ui).iter('node') if node.attrib.get('text')=='安装更新')
@@ -615,6 +630,9 @@ def main():
         assert 'packageinstaller' in installer_ui and ('Update' in installer_ui or '更新' in installer_ui),installer_ui
         adb('shell','input','keyevent','KEYCODE_BACK') # Never install the synthetic replacement.
         report['appUpdates']=dict(downloadManager='passed (real system HTTP transfer)',good=good,failures=update_checks,cancelDuringQuery=held_cancel,provider=access,settingsUi='passed',androidInstaller='passed (opened; synthetic APK not installed)')
+        deleted_files=run(1,'deleteDownloads','downloadDeletion')
+        verify_saved_file_deletion(deleted_files)
+        report['savedFileDeletion']=deleted_files
         update_transfers()
         report['appUpdateTransfer']='passed (real HTTP interruption, durable Range resume, Android JobScheduler, pause/resume touch and concurrent controlled browser input)'
         queued=run(2,'queuedChanges','queuedChanges');assert all(queued[key] for key in ['savedWhileReplying','oldRouteKept','browserSavedWithoutApplying','replyCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn']),queued

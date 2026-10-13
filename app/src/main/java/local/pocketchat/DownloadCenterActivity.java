@@ -6,7 +6,7 @@ import android.app.*;import android.content.*;import android.os.*;import android
 public class DownloadCenterActivity extends Activity {
   LinearLayout root,box;TextView problem;SavedFileActions actions;int filter;String last="";
   final Handler handler=new Handler(Looper.getMainLooper());
-  final Runnable tick=()->{String next=DesignDownloads.rows(this).toString();if(!next.equals(last)){last=next;refresh();}handler.postDelayed(this.tick,2000);};
+  final Runnable tick=()->{String next=DesignDownloads.rows(this).toString()+"|"+DesignDownloads.updateKey(this);if(!next.equals(last)){last=next;refresh();}handler.postDelayed(this.tick,2000);};
   @Override public void onCreate(Bundle state){
     super.onCreate(state);filter=state==null?0:Math.max(0,Math.min(3,state.getInt("filter")));
     actions=new SavedFileActions(this);root=DesignUi.screen(this);box=DesignUi.body(this,root,"下载中心",()->finish());

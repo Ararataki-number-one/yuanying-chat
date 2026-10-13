@@ -17,6 +17,7 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
   String transferScenario,transferToken;long statusReads,statusIo,maxStatusNs,firstReceived=-1,lastReceived=-1,progressPairs;int renders,lastRender;TextView previousDetails;String previousProgress="";
   long speedFirstReceived=-1,speedLastReceived=-1,speedFirstSampleNanos,speedLastSampleNanos,speedSamplePairs;boolean speedMeasuring;
   volatile boolean commandQueueDrained,preparationGuardReached;
+  JSONObject packageDeletion;
   @Override public void onCreate(Bundle state){super.onCreate(state);command(getIntent());}
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);command(intent);}
   @Override void render(Bundle b){renders++;super.render(b);}
@@ -70,13 +71,14 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
     if(!getPackageName().endsWith(".test"))throw new SecurityException("Only isolated integration package may map a controlled update URL");
     transferScenario=intent.getStringExtra("transferScenario");transferToken=intent.getStringExtra("transferToken");
     if(transferScenario==null||!transferScenario.matches("cut|pause|ignore-range|bad-range|changed-etag|short-length|oversize|bad-hash|bad-signer|queued-cancel|cancel-restart"))throw new IOException("Unknown controlled update scenario");
-    commandQueueDrained=false;preparationGuardReached=false;
+    commandQueueDrained=false;preparationGuardReached=false;packageDeletion=null;
     manager=AppUpdateManager.get(this);manager.setOrigin(0);AppSettings.put(this,"updateAutoCheck","false");AppSettings.put(this,"updateWifiOnly","false");AppUpdates.schedule(this);
     final String target="http://127.0.0.1:8765/update-transfer/"+transferScenario;
     manager.transferFactory=official->{if(manager.info==null||!manager.info.url.equals(official))throw new IOException("Fixture refused a different official update identity");return (HttpURLConnection)new URL(target).openConnection();};
     if("transferQueuedPause".equals(action)||"transferQueuedCancel".equals(action)){queuedAdmission(intent,"transferQueuedCancel".equals(action));return;}
     if("transferDelayedPause".equals(action)){delayedPreparation(intent);return;}
     if("transferCancelBeforeCleanup".equals(action)){cancelBeforeCleanup();return;}
+    if("transferKeepPackage".equals(action)||"transferStaleDelete".equals(action)||"transferDeleteReady".equals(action)||"transferAutomaticSuppression".equals(action)){packageControls(intent);return;}
     if("transferLocatePause".equals(action)||"transferLocateResume".equals(action)){locateTransferAction("transferLocatePause".equals(action)?"暂停下载":"继续下载",SystemClock.elapsedRealtime()+5000);return;}
     if("transferRecreate".equals(action)){setIntent(new Intent(intent).putExtra("updateAction","transferInspect"));recreate();return;}
     if("transferStart".equals(action)){
@@ -87,6 +89,35 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
     }
     started=SystemClock.elapsedRealtime();if("transferResume".equals(action))manager.resume();else if("transferPause".equals(action))manager.pause();waitTransfer(intent);
   }catch(Exception error){transferEvent(J.obj("token",transferToken,"error",error.toString()));}}
+  void packageControls(Intent intent){final String token=transferToken,command=action;started=SystemClock.elapsedRealtime();
+    manager.worker.execute(()->{java.util.concurrent.CountDownLatch released=new java.util.concurrent.CountDownLatch(1);try{
+      manager.refreshStoredBytes();Bundle before=manager.snapshot();AppUpdateInfo release=manager.info;File apk=manager.file();long bytes=apk.isFile()?apk.length():0,generation=manager.generation.get();String originalRaw=manager.raw,originalSha=bytes>0?fileHash(apk):"";String oldUri=before.getString("uri","");
+      boolean automatic="transferAutomaticSuppression".equals(command);if(release==null||(automatic?!"available".equals(before.getString("state"))||bytes!=0:!"ready".equals(before.getString("state"))||bytes!=release.bytes||!originalSha.equals(release.sha)||manager.transferRunning))throw new IOException("Package control requires the actual completed signed fixture or its verified deletion");
+      JSONObject evidence=J.obj("actualOwnedFile",apk.getName(),"beforeBytes",bytes,"beforeSha",originalSha,"beforeStoredBytes",before.getLong("packageStoredBytes"),"releaseCode",release.code,"oldUri",oldUri,"generationBefore",generation);
+      boolean autoCheck=AppSettings.bool(this,"updateAutoCheck",true),autoDownload=AppSettings.bool(this,"updateAutoDownload",false),wifiOnly=AppSettings.bool(this,"updateWifiOnly",true);
+      Runnable checkpoint=()->manager.worker.execute(()->{try{
+        manager.refreshStoredBytes();Bundle after=manager.snapshot();File[] files=manager.root.listFiles();if(files==null)throw new IOException("Actual package directory could not be inspected");int count=0;for(File owned:files)if(owned.isFile())count++;
+        boolean rejected=false;if(!oldUri.isEmpty()&&!"ready".equals(after.getString("state")))try(ParcelFileDescriptor ignored=getContentResolver().openFileDescriptor(Uri.parse(oldUri),"r")){}catch(FileNotFoundException expected){rejected=true;}
+        evidence.put("afterBytes",apk.isFile()?apk.length():0).put("afterSha",apk.isFile()?fileHash(apk):"").put("afterStoredBytes",after.getLong("packageStoredBytes")).put("oldUriRejected",rejected).put("ownedFiles",count).put("generationAfter",manager.generation.get()).put("cancelledCode",manager.prefs.getLong("cancelledCode",0)).put("packageDeleteRetry",after.getBoolean("packageDeleteRetry")).put("sameMetadata",manager.info==release&&manager.raw.equals(originalRaw)).put("sameSettings",autoCheck==AppSettings.bool(this,"updateAutoCheck",true)&&autoDownload==AppSettings.bool(this,"updateAutoDownload",false)&&wifiOnly==AppSettings.bool(this,"updateWifiOnly",true)).put("verifiedSerial",after.getLong("verifiedSerial")).put("verifyRequestedSerial",after.getLong("verifyRequestedSerial"));
+        packageDeletion=evidence;handler.post(()->waitTransfer(intent));
+      }catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}});
+      if(automatic){manager.downloadNow(true);evidence.put("automaticAdmissionAttempted",true);checkpoint.run();return;}
+      handler.post(()->{try{
+        if("transferStaleDelete".equals(command)){
+          Bundle extras=new Bundle();extras.putLong("code",release.code+1);extras.putString("packageUri",before.getString("packageUri"));Bundle wrongCode=AppUpdates.call(this,"deletePackage",extras);
+          extras.putLong("code",release.code);extras.putString("packageUri",before.getString("packageUri")+"-stale");Bundle wrongUri=AppUpdates.call(this,"deletePackage",extras);
+          evidence.put("wrongCodeRejected",!wrongCode.getBoolean("deleteAccepted")&&!wrongCode.getString("deleteError","").isEmpty()).put("wrongUriRejected",!wrongUri.getBoolean("deleteAccepted")&&!wrongUri.getString("deleteError","").isEmpty());checkpoint.run();released.countDown();return;
+        }
+        boolean deleting="transferDeleteReady".equals(command);if(deleting){pendingInstall=AppUpdates.call(this,"verify",null).getLong("requestedSerial");evidence.put("queuedVerifyRequest",pendingInstall);}
+        AlertDialog dialog=confirmDeletePackage(before);int which=deleting?AlertDialog.BUTTON_POSITIVE:AlertDialog.BUTTON_NEGATIVE;android.widget.Button button=dialog.getButton(which);
+        if(button==null||!dialog.isShowing()||!button.isEnabled())throw new IOException("Actual production package confirmation button unavailable");
+        evidence.put("actualProductionDialog",true).put("dialogLabel",button.getText().toString()).put("actualAndroidGesture",false);
+        dialog.setOnDismissListener(ignored->{try{evidence.put("dialogDismissed",!dialog.isShowing()).put("pendingInstallCleared",pendingInstall==0).put("phaseAfterDialog",manager.snapshot().getString("state"));checkpoint.run();}catch(Exception error){transferEvent(J.obj("token",token,"error",error.toString()));}finally{released.countDown();}});
+        evidence.put("nativeButtonClicked",button.performClick());
+      }catch(Exception error){transferEvent(J.obj("token",token,"error",error.toString()));released.countDown();}});
+      if(!released.await(20,java.util.concurrent.TimeUnit.SECONDS))throw new IOException("Actual package confirmation handshake timed out");
+    }catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}});
+  }
   static android.view.View labelledAction(android.view.View view,String label){if(view instanceof TextView&&label.contentEquals(((TextView)view).getText())&&view.isClickable())return view;if(view instanceof android.view.ViewGroup){android.view.ViewGroup group=(android.view.ViewGroup)view;for(int i=0;i<group.getChildCount();i++){android.view.View found=labelledAction(group.getChildAt(i),label);if(found!=null)return found;}}return null;}
   void locateTransferAction(String label,long deadline){try{
     // Read the actual production button after its normal render/layout. Progress
@@ -172,6 +203,7 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
   }catch(Exception error){transferEvent(J.obj("token",transferToken,"error",error.toString()));}}
   static String fileHash(File file)throws Exception{MessageDigest digest=MessageDigest.getInstance("SHA-256");try(InputStream in=new FileInputStream(file)){byte[] buffer=new byte[65536];int n;while((n=in.read(buffer))!=-1)digest.update(buffer,0,n);}StringBuilder hex=new StringBuilder();for(byte value:digest.digest())hex.append(String.format(java.util.Locale.ROOT,"%02x",value&255));return hex.toString();}
   void emitTransferResult(Bundle b,boolean running){final String token=transferToken,scenario=transferScenario,command=action;
+    final JSONObject deletion=packageDeletion;
     final long reads=statusReads,io=statusIo,maxNs=maxStatusNs,pairs=progressPairs;final int renderCount=renders;
     final long speedBeginBytes=speedFirstReceived,speedEndBytes=speedLastReceived,speedBeginNanos=speedFirstSampleNanos,speedEndNanos=speedLastSampleNanos,speedPairs=speedSamplePairs;
     final String progressText=downloadDetails==null?"":downloadDetails.getText().toString();
@@ -187,6 +219,7 @@ public class AppUpdateIntegrationActivity extends AppUpdateActivity {
       result.put("speedFirstReceived",speedBeginBytes);result.put("speedLastReceived",speedEndBytes);result.put("speedFirstSampleNanos",speedBeginNanos);result.put("speedLastSampleNanos",speedEndNanos);result.put("speedSamplePairs",speedPairs);
       result.put("speedSampleDeltaBytes",speedBeginBytes>=0?Math.max(0,speedEndBytes-speedBeginBytes):0);result.put("speedSampleDurationMillis",speedBeginBytes>=0?Math.max(0,speedEndNanos-speedBeginNanos)/1000000.0:0);
       result.put("commandQueueDrained",commandQueueDrained);result.put("preparationGuardReached",preparationGuardReached);result.put("discardPending",manager.prefs.getBoolean("discardPending",false));android.app.job.JobScheduler scheduler=(android.app.job.JobScheduler)getSystemService(JOB_SCHEDULER_SERVICE);result.put("pendingTransferJob",scheduler!=null&&scheduler.getPendingJob(AppUpdates.TRANSFER)!=null);
+      if(deletion!=null)result.put("packageDeletion",deletion);
       handler.post(()->transferEvent(result));
     }catch(Exception error){handler.post(()->transferEvent(J.obj("token",token,"error",error.toString())));}});
   }

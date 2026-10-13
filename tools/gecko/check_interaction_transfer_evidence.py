@@ -25,6 +25,33 @@ UPDATE_CHECKS = {
     'freshDownloadAfterKilledCancellation',
 }
 
+PACKAGE_DELETE_CHECKS = {
+    'readyDeletionConfirmationRetainsPackage', 'staleReadyDeletionRejected',
+    'confirmedReadyPackageRemoved', 'deletionCancelsQueuedVerification',
+    'readyDeletionPreservesPreferences', 'deletedReleaseDoesNotAutoDownload',
+    'packageDeletionStatusNoIo', 'explicitRedownloadAfterPackageDeletion',
+}
+
+
+def verify_saved_file_deletion(report):
+    assert report['schema'] == 1 and report['status'] == 'passed'
+    assert all(report[key] is True for key in ('actualAndroidExecution',
+        'actualMediaStoreExecution', 'actualPrivateProviderExecution',
+        'actualWorkerThreadDeletion', 'actualSameUriPublicationBarrier',
+        'staleDeleteWaitedForWriter', 'newPublishedBytesPreserved',
+        'ownSyntheticDestinationsCleaned', 'lateOldSlotSuppressed'))
+    assert report['actualAdbTouchExecution'] is False and report['profileSlot'] == 7
+    assert report['writerProfileSlot'] == 0 and report['oldSelectionProfileSlot'] == 7
+    assert report['checkCount'] == len(report['checks']) >= 20
+    assert all(item['pass'] is True for item in report['checks'])
+    assert report['freedMediaStoreBytes'] == 5127 and report['freedPrivateBytes'] == 8197
+    assert all(report[key] == 0 for key in ('alreadyAbsentPrivateFreedBytes',
+        'alreadyAbsentMediaStoreFreedBytes', 'staleMenuFreedBytes'))
+    return {'actualAndroidExecution': True, 'checks': report['checkCount'],
+            'mediaStoreBytesRemoved': report['freedMediaStoreBytes'],
+            'privateBytesRemoved': report['freedPrivateBytes'],
+            'sameUriPublicationProtected': True}
+
 
 def verify_paint_case(result, cancelled=False):
     """Require actual current-command callbacks, never a prior page's counters."""
@@ -255,6 +282,14 @@ def verify_interaction_transfer_evidence(directory, source):
                 host = json.loads((directory / name).read_text())
                 assert host['sourceCommit'] == source and host['passed'] == host['total'] == len(host['checks']) >= minimum
                 assert all(row['pass'] is True for row in host['checks'])
+        if manifest['versionCode'] >= 50:
+            verify_saved_file_deletion(device['savedFileDeletion'])
+            assert PACKAGE_DELETE_CHECKS <= {item['name'] for item in update['checks']}
+            assert len(update['checks']) >= 36
+            deleted = update['readyPackageDeletion']['deleted']
+            assert deleted['state'] == 'available' and not deleted['uri']
+            assert deleted['finalBytes'] == deleted['partialBytes'] == deleted['finalApks'] == 0
+            assert deleted['packageDeletion']['afterStoredBytes'] == 0
     if 'nativeReadingBounds' in device:
         native_fit = verify_reading_bounds(device['nativeReadingBounds'])
     held_cancel = device['appUpdates']['cancelDuringQuery']
@@ -333,6 +368,8 @@ def verify_interaction_transfer_evidence(directory, source):
             'detectorTransport': detector_transport}
     if native_fit is not None:
         result['nativeReadingFitRegression'] = native_fit
+    if 'savedFileDeletion' in device:
+        result['savedFileDeletion'] = verify_saved_file_deletion(device['savedFileDeletion'])
     return result
 
 

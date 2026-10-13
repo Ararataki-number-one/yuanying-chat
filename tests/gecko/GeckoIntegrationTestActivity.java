@@ -143,6 +143,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("completion".equals(action)){completion(serial);return;}
     if("desktopImage".equals(action)){desktopImage(serial);return;}
     if("usability".equals(action)){usability(serial);return;}
+    if("deleteDownloads".equals(action)){DownloadDeletionIntegration.run(this,result->{if(serial==run)event("downloadDeletion",result);});return;}
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
     if("readingZoom".equals(action)){beginReadingZoom(serial);return;}
     if("readingBounds".equals(action)||"readingBoundsProtected".equals(action)){beginReadingBounds(serial,"readingBoundsProtected".equals(action)?2:0);return;}
