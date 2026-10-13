@@ -39,7 +39,7 @@ jobs:
       - name: Compile release and native regression package
         run: |
           set -euo pipefail
-          work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-integration/build.log
+          work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain 2>&1 | tee work/gecko-integration/build.log
           python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --gradle-cache "${GRADLE_USER_HOME:-$HOME/.gradle}" | tee work/gecko-integration/official-sdk-verification.json
           python3 tools/gecko/check_safe_idle_trust.py --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk | tee work/gecko-integration/network-safe-idle-trust-host-results.json
           python3 - <<'PYCODE'
