@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "sourceCommit": "7ced0920a34bf221e6dc0656ae73a3b6a9e52f26",
+  "status": "passed",
+  "serial": "emulator-5554",
+  "exactSetupPackage": "com.google.android.googlesdksetup",
+  "commands": [
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "getprop",
+        "ro.kernel.qemu"
+      ],
+      "exitCode": 0,
+      "output": "1\n",
+      "observedAt": 449.64753346
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "pm",
+        "list",
+        "packages",
+        "com.google.android.googlesdksetup"
+      ],
+      "exitCode": 0,
+      "output": "package:com.google.android.googlesdksetup\n",
+      "observedAt": 449.753246641
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "am",
+        "force-stop",
+        "com.google.android.googlesdksetup"
+      ],
+      "exitCode": 0,
+      "output": "",
+      "observedAt": 449.941035587
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "pm",
+        "disable-user",
+        "--user",
+        "0",
+        "com.google.android.googlesdksetup"
+      ],
+      "exitCode": 0,
+      "output": "Package com.google.android.googlesdksetup new state: disabled-user\n",
+      "observedAt": 450.053550924
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "pm",
+        "list",
+        "packages",
+        "-d",
+        "com.google.android.googlesdksetup"
+      ],
+      "exitCode": 0,
+      "output": "package:com.google.android.googlesdksetup\n",
+      "observedAt": 450.148402437
+    }
+  ],
+  "actualAndroidCommands": true,
+  "actualApplicationExecution": false,
+  "physicalPhone": false,
+  "applicationOrInputPolicyModified": false,
+  "gestureReplayed": false,
+  "scope": "Fixed synthetic Android emulator bootstrap only; no app or phone acceptance",
+  "packagePresent": true,
+  "disabledStateConfirmed": true
+}
