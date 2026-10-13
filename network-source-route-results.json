@@ -1,0 +1,4836 @@
+{
+  "schema": 1,
+  "status": "failed",
+  "actualAndroidExecution": true,
+  "actualMihomoExecution": true,
+  "actualGeckoExecution": true,
+  "actualAuthenticatedSocksChain": true,
+  "actualKeystoreEncryption": true,
+  "actualRouteApplication": true,
+  "publicNetworkTraffic": false,
+  "coreAbi": "x86_64",
+  "protocol": "h2",
+  "scope": "Production source snapshots/config/startNow and guarded Gecko H2 with real authenticated local entry/fixed-exit sockets. Only detector URLs/test CA differ; no mocked probe, fingerprints, config or network state.",
+  "sourceRefs": {
+    "entryMode": "random",
+    "entry": "Entry|a",
+    "entryPool": [
+      "Entry|a",
+      "Entry|b"
+    ],
+    "exitSource": "subscription",
+    "exitNodeName": "Exit|Tokyo",
+    "exitNodeKey": "56054b13699f6fbd202d3b0a8d25918b88e05cf5f2a3821bf45671c5514b75e1",
+    "entrySubscriptionId": "3246bde8-03ea-44a5-9b24-107735bae3df",
+    "entrySubscriptionAddressRevision": 1,
+    "subscriptionUrl": "https://synthetic.invalid/sources",
+    "subscriptionName": "Fixture entry source",
+    "exitSubscriptionId": "41d535e7-a708-4a70-ad34-99f20cd0d6ed",
+    "exitSubscriptionAddressRevision": 1,
+    "exitSubscriptionUrl": "https://synthetic.invalid/sources",
+    "exitSubscriptionName": "Fixture exit source",
+    "entryPoolKeys": [
+      "079a2e3763cc2a5bd5b9c4972e5eff99a612d513a4f0a557acb8c870039be73d",
+      "b9ed8301c6cb2a1f38d64d592b8e15152fe90e92702ee63127f56a450898c2a3"
+    ],
+    "entryPoolNodeKeys": {
+      "Entry|a": "079a2e3763cc2a5bd5b9c4972e5eff99a612d513a4f0a557acb8c870039be73d",
+      "Entry|b": "b9ed8301c6cb2a1f38d64d592b8e15152fe90e92702ee63127f56a450898c2a3"
+    },
+    "entryNodeKey": "079a2e3763cc2a5bd5b9c4972e5eff99a612d513a4f0a557acb8c870039be73d"
+  },
+  "sealedSnapshots": {
+    "entry": {
+      "ivBytes": 12,
+      "sealedBytes": 282,
+      "plainBytes": 253,
+      "matchesPlaintext": false,
+      "decryptedMatches": true,
+      "nonExportableKeystoreKey": true
+    },
+    "exit": {
+      "ivBytes": 12,
+      "sealedBytes": 290,
+      "plainBytes": 261,
+      "matchesPlaintext": false,
+      "decryptedMatches": true,
+      "nonExportableKeystoreKey": true
+    }
+  },
+  "coreSha256": "9346271d67c0d82ea3910dc03771427809003189a5e832d6699eda1cc399c7c9",
+  "coreVersion": "v1.19.31-pocket-subscriptions1",
+  "generatedConfig": {
+    "port": 0,
+    "socks-port": 0,
+    "mixed-port": 0,
+    "redir-port": 0,
+    "tproxy-port": 0,
+    "allow-lan": false,
+    "bind-address": "127.0.0.1",
+    "mode": "rule",
+    "unified-delay": true,
+    "tcp-concurrent": true,
+    "log-level": "silent",
+    "ipv6": false,
+    "external-controller": "127.0.0.1:36153",
+    "external-controller-cors": {
+      "allow-origins": [],
+      "allow-private-network": false
+    },
+    "profile": {
+      "store-selected": false,
+      "store-fake-ip": false
+    },
+    "tun": {
+      "enable": false
+    },
+    "sniffer": {
+      "enable": false
+    },
+    "geo-auto-update": false,
+    "dns": {
+      "enable": true,
+      "listen": "127.0.0.1:0",
+      "ipv6": false,
+      "enhanced-mode": "redir-host",
+      "cache-algorithm": "arc",
+      "default-nameserver": [
+        "https://223.5.5.5/dns-query",
+        "https://223.6.6.6/dns-query"
+      ],
+      "nameserver": [
+        "https://dns.alidns.com/dns-query#FixedExit",
+        "https://doh.pub/dns-query#FixedExit"
+      ],
+      "proxy-server-nameserver": [
+        "https://dns.alidns.com/dns-query",
+        "https://doh.pub/dns-query"
+      ]
+    },
+    "proxy-providers": {
+      "Subscription": {
+        "type": "file",
+        "path": "./subscription.yaml",
+        "health-check": {
+          "enable": false
+        },
+        "override": {
+          "additional-prefix": "Entry|",
+          "dialer-proxy": ""
+        }
+      },
+      "ExitSource": {
+        "type": "file",
+        "path": "./exit-subscription.yaml",
+        "filter": "^(?:Tokyo)$",
+        "health-check": {
+          "enable": false
+        },
+        "override": {
+          "pocket-config-fingerprint": "56054b13699f6fbd202d3b0a8d25918b88e05cf5f2a3821bf45671c5514b75e1",
+          "dialer-proxy": "EntryChoice",
+          "udp": false,
+          "proxy-name": [
+            {
+              "pattern": "^.*$",
+              "target": "FixedExit"
+            }
+          ],
+          "pocket-preconnect": true,
+          "pocket-preconnect-epoch-file": "/data/user/0/local.pocketchat.test/no_backup/network-runtime/preconnect-network-epoch"
+        }
+      },
+      "WebExitSource": {
+        "type": "file",
+        "path": "./exit-subscription.yaml",
+        "filter": "^(?:Tokyo)$",
+        "health-check": {
+          "enable": false
+        },
+        "override": {
+          "pocket-config-fingerprint": "56054b13699f6fbd202d3b0a8d25918b88e05cf5f2a3821bf45671c5514b75e1",
+          "dialer-proxy": "WebProbeEntry",
+          "udp": false,
+          "proxy-name": [
+            {
+              "pattern": "^.*$",
+              "target": "WebProbeExit"
+            }
+          ],
+          "pocket-preconnect": false
+        }
+      },
+      "ProbeExitSource0": {
+        "type": "file",
+        "path": "./exit-subscription.yaml",
+        "filter": "^(?:Tokyo)$",
+        "health-check": {
+          "enable": false
+        },
+        "override": {
+          "pocket-config-fingerprint": "56054b13699f6fbd202d3b0a8d25918b88e05cf5f2a3821bf45671c5514b75e1",
+          "dialer-proxy": "ProbeEntry0",
+          "udp": false,
+          "proxy-name": [
+            {
+              "pattern": "^.*$",
+              "target": "ProbeExit0"
+            }
+          ],
+          "pocket-preconnect": false
+        }
+      },
+      "ProbeExitSource1": {
+        "type": "file",
+        "path": "./exit-subscription.yaml",
+        "filter": "^(?:Tokyo)$",
+        "health-check": {
+          "enable": false
+        },
+        "override": {
+          "pocket-config-fingerprint": "56054b13699f6fbd202d3b0a8d25918b88e05cf5f2a3821bf45671c5514b75e1",
+          "dialer-proxy": "ProbeEntry1",
+          "udp": false,
+          "proxy-name": [
+            {
+              "pattern": "^.*$",
+              "target": "ProbeExit1"
+            }
+          ],
+          "pocket-preconnect": false
+        }
+      }
+    },
+    "proxies": [],
+    "proxy-groups": [
+      {
+        "name": "EntryChoice",
+        "type": "select",
+        "proxies": [
+          "REJECT"
+        ],
+        "use": [
+          "Subscription"
+        ],
+        "empty-fallback": "REJECT",
+        "interval": 0,
+        "hidden": true,
+        "filter": "^(?:Entry\\|a|Entry\\|b)$"
+      },
+      {
+        "name": "FixedExit",
+        "type": "select",
+        "proxies": [],
+        "use": [
+          "ExitSource"
+        ],
+        "filter": "^(?:FixedExit)$",
+        "empty-fallback": "REJECT",
+        "interval": 0,
+        "hidden": true
+      },
+      {
+        "name": "WebProbeEntry",
+        "type": "select",
+        "proxies": [
+          "REJECT"
+        ],
+        "use": [
+          "Subscription"
+        ],
+        "empty-fallback": "REJECT",
+        "interval": 0,
+        "hidden": true,
+        "filter": "^(?:Entry\\|a|Entry\\|b)$"
+      },
+      {
+        "name": "WebProbeExit",
+        "type": "select",
+        "proxies": [],
+        "use": [
+          "WebExitSource"
+        ],
+        "filter": "^(?:WebProbeExit)$",
+        "empty-fallback": "REJECT",
+        "interval": 0,
+        "hidden": true
+      },
+      {
+        "name": "ProbeEntry0",
+        "type": "select",
+        "proxies": [
+          "REJECT"
+        ],
+        "use": [
+          "Subscription"
+        ],
+        "empty-fallback": "REJECT",
+        "interval": 0,
+        "hidden": true,
+        "filter": "^(?:Entry\\|a)$"
+      },
+      {
+        "name": "ProbeExit0",
+        "type": "select",
+        "proxies": [],
+        "use": [
+          "ProbeExitSource0"
+        ],
+        "filter": "^(?:ProbeExit0)$",
+        "empty-fallback": "REJECT",
+        "interval": 0,
+        "hidden": true
+      },
+      {
+        "name": "ProbeEntry1",
+        "type": "select",
+        "proxies": [
+          "REJECT"
+        ],
+        "use": [
+          "Subscription"
+        ],
+        "empty-fallback": "REJECT",
+        "interval": 0,
+        "hidden": true,
+        "filter": "^(?:Entry\\|b)$"
+      },
+      {
+        "name": "ProbeExit1",
+        "type": "select",
+        "proxies": [],
+        "use": [
+          "ProbeExitSource1"
+        ],
+        "filter": "^(?:ProbeExit1)$",
+        "empty-fallback": "REJECT",
+        "interval": 0,
+        "hidden": true
+      }
+    ],
+    "rules": [
+      "MATCH,REJECT"
+    ],
+    "listeners": [
+      {
+        "name": "PocketOnly",
+        "type": "mixed",
+        "listen": "127.0.0.1",
+        "port": 41539,
+        "udp": false,
+        "proxy": "FixedExit"
+      },
+      {
+        "name": "WebsiteCheck",
+        "type": "mixed",
+        "listen": "127.0.0.1",
+        "port": 37799,
+        "udp": false,
+        "proxy": "WebProbeExit"
+      }
+    ]
+  },
+  "initial": {
+    "pid": 23223,
+    "servicePid": 23208,
+    "generation": "ed3ec546-6b34-4365-afd9-92d1b016c188",
+    "currentEntry": "Entry|a",
+    "routeSerial": 2,
+    "fixedIdentity": "55b7dbdf07c5c0f15c3f25787df96715b66b4dcf67018af46288a534a166548c",
+    "fixedNodeFingerprint": "56054b13699f6fbd202d3b0a8d25918b88e05cf5f2a3821bf45671c5514b75e1",
+    "fixedNodeName": "FixedExit",
+    "verified": true
+  },
+  "switched": {
+    "pid": 23223,
+    "servicePid": 23208,
+    "generation": "ed3ec546-6b34-4365-afd9-92d1b016c188",
+    "currentEntry": "Entry|b",
+    "routeSerial": 3,
+    "fixedIdentity": "55b7dbdf07c5c0f15c3f25787df96715b66b4dcf67018af46288a534a166548c",
+    "fixedNodeFingerprint": "56054b13699f6fbd202d3b0a8d25918b88e05cf5f2a3821bf45671c5514b75e1",
+    "fixedNodeName": "FixedExit",
+    "verified": true
+  },
+  "probeWire": {
+    "before": {
+      "entryA": 5,
+      "entryB": 2,
+      "fixedPlain": 1,
+      "fixedSite": 1,
+      "fixedBrowser": 3,
+      "decoy": 0
+    },
+    "afterCandidate": {
+      "entryA": 6,
+      "entryB": 2,
+      "fixedPlain": 2,
+      "fixedSite": 1,
+      "fixedBrowser": 3,
+      "decoy": 0
+    },
+    "afterWebsite": {
+      "entryA": 7,
+      "entryB": 2,
+      "fixedPlain": 2,
+      "fixedSite": 2,
+      "fixedBrowser": 3,
+      "decoy": 0
+    }
+  },
+  "afterProbes": {
+    "pid": 23223,
+    "servicePid": 23208,
+    "generation": "ed3ec546-6b34-4365-afd9-92d1b016c188",
+    "currentEntry": "Entry|b",
+    "routeSerial": 3,
+    "fixedIdentity": "55b7dbdf07c5c0f15c3f25787df96715b66b4dcf67018af46288a534a166548c",
+    "fixedNodeFingerprint": "56054b13699f6fbd202d3b0a8d25918b88e05cf5f2a3821bf45671c5514b75e1",
+    "fixedNodeName": "FixedExit",
+    "verified": true
+  },
+  "probe": {
+    "schema": 1,
+    "measurement": 2,
+    "routeSerial": 3,
+    "at": 1791856055592,
+    "delay": 10,
+    "kind": "warm",
+    "comparable": true,
+    "probe": {
+      "schema": 1,
+      "kind": "warm",
+      "firstMs": 39,
+      "warmMs": 10,
+      "totalMs": 50,
+      "warmAttempted": true,
+      "warmSucceeded": true,
+      "secondConnectionReused": true,
+      "warmError": "",
+      "firstStatus": 204,
+      "secondStatus": 204,
+      "dialCount": 1,
+      "attempts": 2
+    }
+  },
+  "websiteProbe": {
+    "entry": "Entry|a",
+    "at": 1791856055663,
+    "firstMs": 64,
+    "warmMs": 2,
+    "code": 200,
+    "status": "ok"
+  },
+  "error": "java.io.IOException: restored-subscription ChatSession reconnect callback timed out",
+  "fixedWire": [
+    {
+      "id": 1,
+      "acceptedAtNs": 929490989100,
+      "methodAtNs": 929491018454,
+      "authAtNs": 929491161446,
+      "connectAtNs": 929491317787,
+      "eofAtNs": 0,
+      "closedAtNs": 931438653268,
+      "holdingAuthAtNs": 0,
+      "targetPort": 43751,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 2,
+      "acceptedAtNs": 929493376288,
+      "methodAtNs": 929495009799,
+      "authAtNs": 929495300890,
+      "connectAtNs": 930232551109,
+      "eofAtNs": 0,
+      "closedAtNs": 930254811086,
+      "holdingAuthAtNs": 0,
+      "targetPort": 9879,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 3,
+      "acceptedAtNs": 929591659586,
+      "methodAtNs": 929591723741,
+      "authAtNs": 929592782390,
+      "connectAtNs": 929592882458,
+      "eofAtNs": 0,
+      "closedAtNs": 929617240645,
+      "holdingAuthAtNs": 0,
+      "targetPort": 41451,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 4,
+      "acceptedAtNs": 930242467594,
+      "methodAtNs": 930242498760,
+      "authAtNs": 930242618077,
+      "connectAtNs": 930672520108,
+      "eofAtNs": 0,
+      "closedAtNs": 931436708677,
+      "holdingAuthAtNs": 0,
+      "targetPort": 9879,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 5,
+      "acceptedAtNs": 930683000980,
+      "methodAtNs": 930683022321,
+      "authAtNs": 930683308476,
+      "connectAtNs": 0,
+      "eofAtNs": 930980356058,
+      "closedAtNs": 930980357460,
+      "holdingAuthAtNs": 0,
+      "targetPort": 0,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 6,
+      "acceptedAtNs": 930996399133,
+      "methodAtNs": 930996413193,
+      "authAtNs": 930996723373,
+      "connectAtNs": 930996905853,
+      "eofAtNs": 0,
+      "closedAtNs": 931438204884,
+      "holdingAuthAtNs": 0,
+      "targetPort": 9879,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 7,
+      "acceptedAtNs": 930999953199,
+      "methodAtNs": 931000800365,
+      "authAtNs": 931001365171,
+      "connectAtNs": 0,
+      "eofAtNs": 931437699265,
+      "closedAtNs": 931437699826,
+      "holdingAuthAtNs": 0,
+      "targetPort": 0,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 8,
+      "acceptedAtNs": 931101584568,
+      "methodAtNs": 931101646110,
+      "authAtNs": 931102828402,
+      "connectAtNs": 931102991523,
+      "eofAtNs": 0,
+      "closedAtNs": 931126127079,
+      "holdingAuthAtNs": 0,
+      "targetPort": 41451,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 9,
+      "acceptedAtNs": 931134401310,
+      "methodAtNs": 931134762666,
+      "authAtNs": 931134993989,
+      "connectAtNs": 931135030523,
+      "eofAtNs": 0,
+      "closedAtNs": 931431922594,
+      "holdingAuthAtNs": 0,
+      "targetPort": 43751,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 10,
+      "acceptedAtNs": 933131833942,
+      "methodAtNs": 933131852610,
+      "authAtNs": 933132046006,
+      "connectAtNs": 933132434212,
+      "eofAtNs": 0,
+      "closedAtNs": 978374108371,
+      "holdingAuthAtNs": 0,
+      "targetPort": 43751,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 11,
+      "acceptedAtNs": 933142607448,
+      "methodAtNs": 933142628228,
+      "authAtNs": 933144998481,
+      "connectAtNs": 0,
+      "eofAtNs": 941137082678,
+      "closedAtNs": 941137083299,
+      "holdingAuthAtNs": 0,
+      "targetPort": 0,
+      "authRejected": false,
+      "serverClosed": false
+    }
+  ],
+  "decoyWire": [],
+  "entryAWire": [
+    {
+      "id": 1,
+      "acceptedAtNs": 929490181904,
+      "methodAtNs": 929490233571,
+      "authAtNs": 929490348711,
+      "connectAtNs": 929490412986,
+      "eofAtNs": 0,
+      "closedAtNs": 931437947452,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 2,
+      "acceptedAtNs": 929492594419,
+      "methodAtNs": 929492662029,
+      "authAtNs": 929492799173,
+      "connectAtNs": 929492855276,
+      "eofAtNs": 0,
+      "closedAtNs": 930253329200,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 3,
+      "acceptedAtNs": 929590290758,
+      "methodAtNs": 929590370656,
+      "authAtNs": 929590594237,
+      "connectAtNs": 929590627286,
+      "eofAtNs": 0,
+      "closedAtNs": 929617333673,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 4,
+      "acceptedAtNs": 930239097314,
+      "methodAtNs": 930239142481,
+      "authAtNs": 930239466011,
+      "connectAtNs": 930239505199,
+      "eofAtNs": 0,
+      "closedAtNs": 931436263247,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 5,
+      "acceptedAtNs": 930678967242,
+      "methodAtNs": 930679004427,
+      "authAtNs": 930679193507,
+      "connectAtNs": 930679248759,
+      "eofAtNs": 0,
+      "closedAtNs": 930980568132,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 6,
+      "acceptedAtNs": 931080450569,
+      "methodAtNs": 931080483789,
+      "authAtNs": 931080639069,
+      "connectAtNs": 931080720359,
+      "eofAtNs": 0,
+      "closedAtNs": 931126481043,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 7,
+      "acceptedAtNs": 931133625280,
+      "methodAtNs": 931133689906,
+      "authAtNs": 931133812017,
+      "connectAtNs": 931133883072,
+      "eofAtNs": 0,
+      "closedAtNs": 931431796066,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    }
+  ],
+  "entryBWire": [
+    {
+      "id": 1,
+      "acceptedAtNs": 930991451100,
+      "methodAtNs": 930991522946,
+      "authAtNs": 930991987895,
+      "connectAtNs": 930992092971,
+      "eofAtNs": 0,
+      "closedAtNs": 931438545118,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 2,
+      "acceptedAtNs": 930997905024,
+      "methodAtNs": 930997973516,
+      "authAtNs": 930998791016,
+      "connectAtNs": 930998909822,
+      "eofAtNs": 0,
+      "closedAtNs": 931437463986,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 3,
+      "acceptedAtNs": 933129142032,
+      "methodAtNs": 933129179528,
+      "authAtNs": 933129342619,
+      "connectAtNs": 933129475777,
+      "eofAtNs": 0,
+      "closedAtNs": 978373876438,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    },
+    {
+      "id": 4,
+      "acceptedAtNs": 933138964353,
+      "methodAtNs": 933138984614,
+      "authAtNs": 933139100325,
+      "connectAtNs": 933139165882,
+      "eofAtNs": 0,
+      "closedAtNs": 941136872887,
+      "holdingAuthAtNs": 0,
+      "targetPort": 36137,
+      "authRejected": false,
+      "serverClosed": false
+    }
+  ],
+  "replacementEntryWire": [],
+  "checks": [
+    {
+      "name": "Actual native parses entry cached source without downloading",
+      "pass": true
+    },
+    {
+      "name": "Native entry node has versioned fingerprint 0",
+      "pass": true
+    },
+    {
+      "name": "Native entry node has versioned fingerprint 1",
+      "pass": true
+    },
+    {
+      "name": "Actual native parses exit cached source without downloading",
+      "pass": true
+    },
+    {
+      "name": "Native exit node has versioned fingerprint 0",
+      "pass": true
+    },
+    {
+      "name": "Native exit node has versioned fingerprint 1",
+      "pass": true
+    },
+    {
+      "name": "Identical source URLs retain separate role identities",
+      "pass": true
+    },
+    {
+      "name": "Two active sources retain their independently encrypted bytes",
+      "pass": true
+    },
+    {
+      "name": "entry source is genuinely sealed with a non-exportable Android Keystore key",
+      "pass": true
+    },
+    {
+      "name": "exit source is genuinely sealed with a non-exportable Android Keystore key",
+      "pass": true
+    },
+    {
+      "name": "Subscribed settings contain no stale manual exit credentials",
+      "pass": true
+    },
+    {
+      "name": "Production startNow starts a genuinely verified subscribed-exit route",
+      "pass": true
+    },
+    {
+      "name": "Production config uses independent private entry and exit files",
+      "pass": true
+    },
+    {
+      "name": "Fixed-exit provider pins the saved fingerprint and live entry group",
+      "pass": true
+    },
+    {
+      "name": "Actual subscribed provider exposes exactly the selected fixed node",
+      "pass": true
+    },
+    {
+      "name": "The unused subscribed exit has no authenticated wire contacts",
+      "pass": true
+    },
+    {
+      "name": "The sole browser certificate exception is the isolated localhost page",
+      "pass": true
+    },
+    {
+      "name": "subscribed-a starts actual official Gecko fetch",
+      "pass": true
+    },
+    {
+      "name": "subscribed-a has expected protected outcome",
+      "pass": true
+    },
+    {
+      "name": "subscribed-a receives complete H2 payload through the selected exit",
+      "pass": true
+    },
+    {
+      "name": "First Gecko request traverses entry A and the fixed subscribed exit",
+      "pass": true
+    },
+    {
+      "name": "subscribed-b starts actual official Gecko fetch",
+      "pass": true
+    },
+    {
+      "name": "subscribed-b has expected protected outcome",
+      "pass": true
+    },
+    {
+      "name": "subscribed-b receives complete H2 payload through the selected exit",
+      "pass": true
+    },
+    {
+      "name": "Entry switch keeps the fixed exit fingerprint and core lifetime",
+      "pass": true
+    },
+    {
+      "name": "Entry B opens the same fixed exit and partitions real browser TLS",
+      "pass": true
+    },
+    {
+      "name": "Candidate probe traverses its own real entry and retained fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Website probe uses the subscribed fixed exit and controlled TLS",
+      "pass": true
+    },
+    {
+      "name": "Independent probes do not switch the live business entry or fixed identity",
+      "pass": true
+    },
+    {
+      "name": "after-probes starts actual official Gecko fetch",
+      "pass": true
+    },
+    {
+      "name": "after-probes has expected protected outcome",
+      "pass": true
+    },
+    {
+      "name": "after-probes receives complete H2 payload through the selected exit",
+      "pass": true
+    },
+    {
+      "name": "Probe selection preserves the business H2 connection",
+      "pass": true
+    },
+    {
+      "name": "invalid-entry-snapshot-sha begins with the managed core stopped",
+      "pass": true
+    },
+    {
+      "name": "invalid-entry-snapshot-sha rejects production startup and closes the core",
+      "pass": true
+    },
+    {
+      "name": "invalid-entry-snapshot-sha contacts no verification, probe or website target",
+      "pass": true
+    },
+    {
+      "name": "invalid-entry-snapshot-sha starts actual official Gecko fetch",
+      "pass": true
+    },
+    {
+      "name": "invalid-entry-snapshot-sha has expected protected outcome",
+      "pass": true
+    },
+    {
+      "name": "invalid-entry-snapshot-sha cannot contact either exit target",
+      "pass": true
+    },
+    {
+      "name": "invalid-exit-snapshot-sha begins with the managed core stopped",
+      "pass": true
+    },
+    {
+      "name": "invalid-exit-snapshot-sha rejects production startup and closes the core",
+      "pass": true
+    },
+    {
+      "name": "invalid-exit-snapshot-sha contacts no verification, probe or website target",
+      "pass": true
+    },
+    {
+      "name": "invalid-exit-snapshot-sha starts actual official Gecko fetch",
+      "pass": true
+    },
+    {
+      "name": "invalid-exit-snapshot-sha has expected protected outcome",
+      "pass": true
+    },
+    {
+      "name": "invalid-exit-snapshot-sha cannot contact either exit target",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-exit begins with the managed core stopped",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-exit rejects production startup and closes the core",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-exit contacts no verification, probe or website target",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-exit starts actual official Gecko fetch",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-exit has expected protected outcome",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-exit cannot contact either exit target",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-entry begins with the managed core stopped",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-entry rejects production startup and closes the core",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-entry contacts no verification, probe or website target",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-entry starts actual official Gecko fetch",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-entry has expected protected outcome",
+      "pass": true
+    },
+    {
+      "name": "same-name-changed-entry cannot contact either exit target",
+      "pass": true
+    },
+    {
+      "name": "Original valid sources can restart after rejected candidates",
+      "pass": true
+    }
+  ],
+  "requests": [
+    {
+      "id": "subscribed-a",
+      "expected": true,
+      "ok": true,
+      "protocol": "h2",
+      "connection": 1,
+      "streamId": 5,
+      "bodyHash": "75a46a86b20d61aa10f5417e1586026547019f0625e23abd8649e457dbc0fdd4",
+      "before": {
+        "fixedTarget": 2,
+        "decoyTarget": 0,
+        "ip": 1,
+        "plainProbe": 2,
+        "fixedAllConnected": 4,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 2,
+        "decoyTarget": 0,
+        "ip": 1,
+        "plainProbe": 2,
+        "fixedAllConnected": 4,
+        "decoyAllConnected": 0
+      },
+      "beganAtNs": 930889445234,
+      "endedAtNs": 930977468738,
+      "currentEntry": "Entry|a",
+      "error": ""
+    },
+    {
+      "id": "subscribed-b",
+      "expected": true,
+      "ok": true,
+      "protocol": "h2",
+      "connection": 2,
+      "streamId": 3,
+      "bodyHash": "75a46a86b20d61aa10f5417e1586026547019f0625e23abd8649e457dbc0fdd4",
+      "before": {
+        "fixedTarget": 2,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 2,
+        "fixedAllConnected": 4,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 2,
+        "fixedAllConnected": 5,
+        "decoyAllConnected": 0
+      },
+      "beganAtNs": 930984942264,
+      "endedAtNs": 931071164949,
+      "currentEntry": "Entry|b",
+      "error": ""
+    },
+    {
+      "id": "after-probes",
+      "expected": true,
+      "ok": true,
+      "protocol": "h2",
+      "connection": 2,
+      "streamId": 5,
+      "bodyHash": "75a46a86b20d61aa10f5417e1586026547019f0625e23abd8649e457dbc0fdd4",
+      "before": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "beganAtNs": 931200514475,
+      "endedAtNs": 931252362209,
+      "currentEntry": "Entry|b",
+      "error": ""
+    },
+    {
+      "id": "invalid-entry-snapshot-sha",
+      "expected": false,
+      "ok": false,
+      "protocol": "",
+      "connection": 0,
+      "streamId": 0,
+      "bodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "before": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "beganAtNs": 931552056523,
+      "endedAtNs": 931599162561,
+      "currentEntry": "Entry|b",
+      "error": "TypeError: NetworkError when attempting to fetch resource."
+    },
+    {
+      "id": "invalid-exit-snapshot-sha",
+      "expected": false,
+      "ok": false,
+      "protocol": "",
+      "connection": 0,
+      "streamId": 0,
+      "bodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "before": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "beganAtNs": 931669656667,
+      "endedAtNs": 931717026796,
+      "currentEntry": "Entry|b",
+      "error": "TypeError: NetworkError when attempting to fetch resource."
+    },
+    {
+      "id": "same-name-changed-exit",
+      "expected": false,
+      "ok": false,
+      "protocol": "",
+      "connection": 0,
+      "streamId": 0,
+      "bodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "before": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "beganAtNs": 932061998628,
+      "endedAtNs": 932109982937,
+      "currentEntry": "Entry|b",
+      "error": "TypeError: NetworkError when attempting to fetch resource."
+    },
+    {
+      "id": "same-name-changed-entry",
+      "expected": false,
+      "ok": false,
+      "protocol": "",
+      "connection": 0,
+      "streamId": 0,
+      "bodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "before": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "beganAtNs": 932568266959,
+      "endedAtNs": 932628984408,
+      "currentEntry": "Entry|b",
+      "error": "TypeError: NetworkError when attempting to fetch resource."
+    }
+  ],
+  "negativeCases": [
+    {
+      "name": "invalid-entry-snapshot-sha",
+      "started": false,
+      "coreAliveAfter": false,
+      "readyAfter": false,
+      "entrySnapshotHashValid": false,
+      "exitSnapshotHashValid": true,
+      "before": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "request": {
+        "id": "invalid-entry-snapshot-sha",
+        "expected": false,
+        "ok": false,
+        "protocol": "",
+        "connection": 0,
+        "streamId": 0,
+        "bodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "before": {
+          "fixedTarget": 3,
+          "decoyTarget": 0,
+          "ip": 2,
+          "plainProbe": 4,
+          "fixedAllConnected": 7,
+          "decoyAllConnected": 0
+        },
+        "after": {
+          "fixedTarget": 3,
+          "decoyTarget": 0,
+          "ip": 2,
+          "plainProbe": 4,
+          "fixedAllConnected": 7,
+          "decoyAllConnected": 0
+        },
+        "beganAtNs": 931552056523,
+        "endedAtNs": 931599162561,
+        "currentEntry": "Entry|b",
+        "error": "TypeError: NetworkError when attempting to fetch resource."
+      },
+      "message": "\u5165\u53e3\u7f13\u5b58\u4e0e\u6240\u9009\u8ba2\u9605\u4e0d\u4e00\u81f4\uff0c\u8bf7\u91cd\u65b0\u4fdd\u5b58\u7f51\u7edc"
+    },
+    {
+      "name": "invalid-exit-snapshot-sha",
+      "started": false,
+      "coreAliveAfter": false,
+      "readyAfter": false,
+      "entrySnapshotHashValid": true,
+      "exitSnapshotHashValid": false,
+      "before": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "request": {
+        "id": "invalid-exit-snapshot-sha",
+        "expected": false,
+        "ok": false,
+        "protocol": "",
+        "connection": 0,
+        "streamId": 0,
+        "bodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "before": {
+          "fixedTarget": 3,
+          "decoyTarget": 0,
+          "ip": 2,
+          "plainProbe": 4,
+          "fixedAllConnected": 7,
+          "decoyAllConnected": 0
+        },
+        "after": {
+          "fixedTarget": 3,
+          "decoyTarget": 0,
+          "ip": 2,
+          "plainProbe": 4,
+          "fixedAllConnected": 7,
+          "decoyAllConnected": 0
+        },
+        "beganAtNs": 931669656667,
+        "endedAtNs": 931717026796,
+        "currentEntry": "Entry|b",
+        "error": "TypeError: NetworkError when attempting to fetch resource."
+      },
+      "message": "\u56fa\u5b9a\u51fa\u53e3\u7f13\u5b58\u4e0e\u6240\u9009\u8ba2\u9605\u4e0d\u4e00\u81f4\uff0c\u8bf7\u91cd\u65b0\u4fdd\u5b58\u7f51\u7edc"
+    },
+    {
+      "name": "same-name-changed-exit",
+      "started": false,
+      "coreAliveAfter": false,
+      "readyAfter": false,
+      "entrySnapshotHashValid": true,
+      "exitSnapshotHashValid": true,
+      "before": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "request": {
+        "id": "same-name-changed-exit",
+        "expected": false,
+        "ok": false,
+        "protocol": "",
+        "connection": 0,
+        "streamId": 0,
+        "bodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "before": {
+          "fixedTarget": 3,
+          "decoyTarget": 0,
+          "ip": 2,
+          "plainProbe": 4,
+          "fixedAllConnected": 7,
+          "decoyAllConnected": 0
+        },
+        "after": {
+          "fixedTarget": 3,
+          "decoyTarget": 0,
+          "ip": 2,
+          "plainProbe": 4,
+          "fixedAllConnected": 7,
+          "decoyAllConnected": 0
+        },
+        "beganAtNs": 932061998628,
+        "endedAtNs": 932109982937,
+        "currentEntry": "Entry|b",
+        "error": "TypeError: NetworkError when attempting to fetch resource."
+      },
+      "message": "\u56fa\u5b9a\u51fa\u53e3\u4e0d\u662f\u552f\u4e00\u8282\u70b9\uff0c\u8bf7\u91cd\u65b0\u9009\u62e9"
+    },
+    {
+      "name": "same-name-changed-entry",
+      "started": false,
+      "coreAliveAfter": false,
+      "readyAfter": false,
+      "entrySnapshotHashValid": true,
+      "exitSnapshotHashValid": true,
+      "before": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "after": {
+        "fixedTarget": 3,
+        "decoyTarget": 0,
+        "ip": 2,
+        "plainProbe": 4,
+        "fixedAllConnected": 7,
+        "decoyAllConnected": 0
+      },
+      "request": {
+        "id": "same-name-changed-entry",
+        "expected": false,
+        "ok": false,
+        "protocol": "",
+        "connection": 0,
+        "streamId": 0,
+        "bodyHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "before": {
+          "fixedTarget": 3,
+          "decoyTarget": 0,
+          "ip": 2,
+          "plainProbe": 4,
+          "fixedAllConnected": 7,
+          "decoyAllConnected": 0
+        },
+        "after": {
+          "fixedTarget": 3,
+          "decoyTarget": 0,
+          "ip": 2,
+          "plainProbe": 4,
+          "fixedAllConnected": 7,
+          "decoyAllConnected": 0
+        },
+        "beganAtNs": 932568266959,
+        "endedAtNs": 932628984408,
+        "currentEntry": "Entry|b",
+        "error": "TypeError: NetworkError when attempting to fetch resource."
+      },
+      "message": "\u5f53\u524d\u5165\u53e3\u4e0e\u4fdd\u5b58\u7684\u8282\u70b9\u4e0d\u540c\uff0c\u8bf7\u91cd\u65b0\u9009\u62e9"
+    }
+  ],
+  "sessionRestorations": [],
+  "routes": [
+    {
+      "url": "https://127.0.0.1:9879/pool",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41539,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-918d54e4-dfb7-43c8-9b0e-60fbd46bb792-1"
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 930220997367
+    },
+    {
+      "url": "https://127.0.0.1:9879/pool",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41539,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-918d54e4-dfb7-43c8-9b0e-60fbd46bb792-1"
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 930221329810
+    },
+    {
+      "url": "http://firefox-portal-detection.com/success.txt?ipv4",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 930263178196
+    },
+    {
+      "url": "http://firefox-portal-detection.com/success.txt?ipv6",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 930263388217
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/bundles/startup.json.mozlz4",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 930599991106
+    },
+    {
+      "url": "https://127.0.0.1:9879/pool",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41539,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-918d54e4-dfb7-43c8-9b0e-60fbd46bb792-1"
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 930667134687
+    },
+    {
+      "url": "https://127.0.0.1:9879/bytes?id=subscribed-a",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41539,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-918d54e4-dfb7-43c8-9b0e-60fbd46bb792-1"
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 930907681540
+    },
+    {
+      "url": "https://127.0.0.1:9879/bytes?id=subscribed-b",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41539,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-918d54e4-dfb7-43c8-9b0e-60fbd46bb792-2"
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 930987581104
+    },
+    {
+      "url": "https://127.0.0.1:9879/bytes?id=after-probes",
+      "route": {
+        "type": "http",
+        "host": "127.0.0.1",
+        "port": 41539,
+        "failoverTimeout": 1,
+        "connectionIsolationKey": "environment-pool-918d54e4-dfb7-43c8-9b0e-60fbd46bb792-2"
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 931208315015
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 931514554007
+    },
+    {
+      "url": "https://127.0.0.1:9879/bytes?id=invalid-entry-snapshot-sha",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 931557610714
+    },
+    {
+      "url": "https://127.0.0.1:9879/bytes?id=invalid-exit-snapshot-sha",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 931675287512
+    },
+    {
+      "url": "https://127.0.0.1:9879/bytes?id=same-name-changed-exit",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932065880721
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932103534261
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932135190352
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932187763201
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932264652245
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932455782641
+    },
+    {
+      "url": "https://127.0.0.1:9879/bytes?id=same-name-changed-entry",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932578901794
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932709641535
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932748602047
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932771894314
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932942453905
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932987437848
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 932997769849
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933017006636
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933032332368
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933041319216
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933064220544
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933071353905
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933077483438
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/monitor/collections/changes/changeset?collection=moz-essential-domain-fallbacks&bucket=main&_expected=0",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933087637776
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/monitor/collections/changes/changeset?collection=url-parser-default-unknown-schemes-interventions&bucket=main&_expected=0",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933088173961
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/monitor/collections/changes/changeset?collection=anti-tracking-url-decoration&bucket=main&_expected=0",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933089075176
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011015--ads-track-digest256--5491f3fc-8de7-4391-9c74-9ee64852a0c5",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933219964294
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/main/collections/moz-essential-domain-fallbacks/changeset?_expected=1776861681298",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933235244558
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/main/collections/anti-tracking-url-decoration/changeset?_expected=1564511755134",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933235337426
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/main/collections/url-parser-default-unknown-schemes-interventions/changeset?_expected=1743513175300",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": false,
+        "offline": false,
+        "coreReady": false,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933235421981
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": true,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933326487689
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011020--social-track-digest256--f2a441f9-7432-45f8-b82c-0157e356923b",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": true,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933326639393
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": true,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933326763577
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": false,
+        "guardBlocked": true,
+        "guardAllowed": false,
+        "connecting": true,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": true,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933326867602
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011017--analytics-track-digest256--62010be1-8f8b-4881-8a66-e909e79cd672",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933381267909
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011012--content-track-digest256--735bbbbe-f5d5-4f1e-8bc7-38cadb5ce39d",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933419812829
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011035--mozstd-trackwhite-digest256--74ae066d-3663-4c43-a7a4-9adf0f0ff90d",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933444988032
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011038--google-trackwhite-digest256--3939952d-23f9-43d9-bd44-ee2d40f66d2b",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933618419494
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011041--base-fingerprinting-track-digest256--de24de6f-addc-441c-b6c5-d0cdaeb7a0fa",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 933977495667
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011046--base-cryptomining-track-digest256--58771c7e-3ae4-444f-bef5-59818896f851",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 934003867728
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011051--base-email-track-digest256--d509dc47-342f-4f84-a112-5a98c841e954",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 934033269775
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011054--content-email-track-digest256--30ffcaff-d4bf-43a6-8aaf-5e1539caa739",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 934061286919
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011056--consent-manager-track-digest256--7ee83161-1c1c-4623-996d-3608575391db",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 934144345716
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/tracking-protection-lists/20260929011059--anti-fraud-track-digest256--019e7844-9057-407c-8047-a892b275a595",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 934187631973
+    },
+    {
+      "url": "https://safebrowsing.googleapis.com/v5/hashLists:batchGet?key=AIzaSyC7jsptDS3am4tPx4r3nxis7IMjBc5Dovo&names=se-4b&names=mw-4b&names=uwsa-4b&version=&version=&version=",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 947164319824
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/monitor/collections/changes/changeset?_expected=0",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 960211146734
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/blocklists/collections/addons-bloomfilters/changeset?_expected=1791851834002",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 960259595616
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 960359533011
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/staging/addons-bloomfilters/20260919183858--b88221f4-87d8-4b4a-9545-266a68b895ed--f71462e5-db33-4ebe-b142-cc70bcad0435.bin",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 960395961210
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/staging/addons-bloomfilters/20260919183859--ba53053b-0b00-429b-b682-d714f67f2a4d--9e1757c7-ab25-46f6-937f-e2f723b3cec7.bin",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 960396157160
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/main/collections/nimbus-desktop-experiments/changeset?_expected=1791842868772&_since=1791833964391",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 960569526180
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 960740877419
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/security-state/collections/cert-revocations/changeset?_expected=1791820623814",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 960769018678
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/onecrl.content-signature.mozilla.org-2026-11-25-18-04-25.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 960851282926
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/security-state/collections/intermediates/changeset?_expected=1791644222687",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 960886103258
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/onecrl.content-signature.mozilla.org-2026-11-25-18-04-25.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 961449207094
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/security-state/collections/onecrl/changeset?_expected=1791573428759&_since=1781825227560",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 961812493296
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/onecrl.content-signature.mozilla.org-2026-11-25-18-04-25.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 962009113121
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/blocklists/collections/gfx/changeset?_expected=1787185519530&_since=1787185519530",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 962110604489
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 962165505798
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/main/collections/addons-manager-settings/changeset?_expected=1688747728721",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 962260476652
+    },
+    {
+      "url": "https://content-signature-2.cdn.mozilla.net/g/chains/202402/remote-settings.content-signature.mozilla.org-2026-11-23-21-33-13.chain",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 962299182186
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/main/collections/password-recipes/changeset?_expected=1674595048726&_since=1674595048726",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 962373482103
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260902025328--566d24ab-112a-4263-ba0a-5068ab3d6ee9--8a8e122e-03f1-4786-bc30-d6d8bf94d60c.filter",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 962468362653
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/bundles/security-state--intermediates.zip",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 962480533475
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260921054712--019e785c-2f2f-4dd1-bc01-37fe5eab8303--f3472a8f-310e-4997-abbd-8b1e2f95ea15.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963051837348
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260917144712--03421667-2bf2-40a7-be9e-5ef093c548c6--7c126a60-ff5f-4669-aa73-7469232702a8.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963159985425
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261004034711--0701fc0c-6ac7-4ec0-8d98-37dffe542413--0271023b-d360-494b-86e6-016243ba0dc8.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963212553056
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261004154712--0b790ce7-70f8-453e-8a56-96c3a0fa77f6--fb4218a8-c9d9-4954-8c8b-529ec19ca1ef.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963259270818
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260904024712--0d0cae68-06e8-434b-9425-b60b396e8d56--5baaf1d2-ce01-4b28-976f-bca4b905c619.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963309109541
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260922144716--0ee918f5-5a16-479e-92a5-cfffec9d64d2--ad04bdce-21da-43d4-9916-5eaf1f7a41e4.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963353719995
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261008154712--1ff53383-a2f9-4709-9d1a-92b7dc795ac9--392a2ade-2bb6-4a03-8042-ae8830ef9371.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963402570307
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260926154712--22ea961a-64aa-4e2b-ae65-c3c506afa714--d5b01195-223f-4b5b-8060-7ace9aeadbe7.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963459465702
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260915034711--23a073d6-1a8f-4375-94aa-965190dac616--8a6a345b-a4a9-46cb-89f3-1eb2766fba9e.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963515141128
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260918145144--23e20bbc-3437-4f3d-b6b0-58bb803f8ad9--066c09fe-823c-4226-8559-4e334308b2f7.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963568149923
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260920144712--2bae6b03-e9ae-4574-b8a3-571345181976--394878fa-2585-41d2-bc7d-93966ed324b6.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963629555922
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260907024710--31b44776-41b2-4002-a46f-5ec23928154d--bd292527-a466-41da-91bc-211cc3eca6a4.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963693260828
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261003154711--330aceb3-72d9-4543-8e77-22769cfb4a77--26870e9a-7ef6-4f33-8b75-adbe785d7c6b.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963750553381
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260916034712--359efcf8-6de7-46bf-9b72-e488babfecd6--cfc41a83-4b7c-47e0-a6b9-9e6f32acd747.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963796346879
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261008034712--38b414b2-2a8a-4494-b4d4-389aa2b2cd5f--4db9724f-7c25-41b9-bbea-16fd445ce92c.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963895699306
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260927144813--45969894-1946-4e0b-bed3-445a07ee5c9b--912e9044-e3ca-4c3c-8b3d-368de51aba95.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 963950176217
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261001034711--4689877a-155f-4f6f-b15d-ed6d7114ad2b--d255c48c-ebf3-475d-ad52-9e98715da559.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964028308363
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260930145611--47fcae98-25f8-4761-bb1d-30da339d5874--57cce59d-eb2e-4821-a564-b1554f1d7da1.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964093010025
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260912024711--4b36f35e-c990-4704-a2b2-1c14a89f9220--a9ec7e56-465f-4db5-af8c-6b3b0c629dee.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964145559820
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260930034711--4c7370dd-9933-44ef-9b17-b731d88914e6--51d7f8a0-d7c5-47a4-a522-e64e11a2c74a.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964194633689
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261002034712--4c9ce533-4d0b-4e2a-b643-f7d69af86bed--6265d6fd-775a-46b5-affc-96d4de446032.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964293330305
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261012154711--4d3a066a-1453-49d0-b0b5-d60e36082a67--c0d2cccb-d2f1-498f-a681-69e32ab35700.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964342184132
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260909024712--526411af-45e6-428a-972b-c6fb371049f3--1b55d1ee-d7ef-43bd-bfd1-e0b0f03539e2.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964393885260
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260923024712--5c92ae8e-634a-44b7-b6ee-f7d72eb7ee05--3ceb6603-bf78-4c59-a7bd-09090290ed57.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964440835567
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260914024710--5fd522bf-92e4-455e-8863-c240c6f0a877--fe25378c-e598-4e0f-ade8-b650563b588d.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964493888602
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260928034711--62136164-f36d-4962-9a8d-3aa534987318--a8802e0c-05ad-488f-b7cb-652fc204538c.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964547101875
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260903024711--656c64a8-221b-47f3-a8d0-217ec201adcf--74a53d19-d23d-47fc-a4f1-4cbd6ada1ac2.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964598249081
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260904154712--68f9313f-b4dd-4987-8e75-bdd361ba7b54--c92719a2-02a8-4e73-a97d-d5df0a35f5d0.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964650719559
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261006154712--6bc851fc-013a-4cf5-a3d3-82209c7386ea--2f5064c8-95c7-45f2-9708-5901a40f689c.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964694202516
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260929025340--6c3a0b32-5265-4980-bacb-39b64f4558e0--9802fffa-0206-48d5-ab15-d322f5198883.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964742287810
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260926034711--6d1a8425-f2cc-4dfa-a770-f75b4dbedfa5--27e4a783-633f-4625-ac1f-549435d13aab.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964793041389
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261005034712--711af3f9-570f-4613-8a1b-fe70945fbab3--25bb6785-9e1e-4e48-9d60-27caa4680e59.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964847337300
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260913024711--7182b887-68ca-4397-b4d9-0dff6db094f3--fb7d7d1e-a50b-4a5d-bba5-b615364acbe8.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964892230819
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260925034712--787c42df-0e70-4893-885b-84a17408411c--5bd72f8c-3c6a-49ed-b029-53761e1111fa.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 964993377606
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261007145712--7c2adca5-c780-493d-9497-68e9a7584a08--f99d3c04-68ac-4f6e-8a2c-77b04334ce64.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965067204007
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260913154711--7debed45-e0f2-4227-9d11-98d15541dc21--362067e4-864a-4d62-bc83-3af5d5a3f671.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965127063188
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260927034712--7f39ce82-7cb9-4ec5-b007-871060691059--0981d676-ac9b-42a8-a158-4bac7037ebe8.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965189388970
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261012034712--84e249ff-2d2d-4fa2-a714-c99e37f88d3e--9889a7ca-2cd2-4527-9a9e-72832596540d.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965249712810
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260919144711--860f4045-3d5e-427d-8f9b-baa92db9fe33--b2ddeea6-3f8b-4bd5-abb9-c20baf5683f9.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965300533748
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260917034711--86126bd5-00d1-43e4-a107-47896dc28593--db01d8cd-a85e-42e2-92b7-c45419082ede.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965350367072
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261009144944--865a2809-d1ba-422e-b66d-ecf13430824b--a27f7c26-6b01-47f0-add8-3bc688cea9cf.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965393721801
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260918024913--8a3768c5-55f6-410e-ad5b-0c0b7bf1a98c--a6f03573-20ef-449f-8cb1-b33ced3ac799.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965496274305
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260923154712--8c1512cf-d0fb-43d7-89ff-cc61f64490d9--f012e018-4417-429c-9894-26403c5bc9ef.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965530680492
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260925154712--92b334ad-2449-4d94-a54b-6acefd95704c--0ca2c3ea-66b8-44e1-accc-f9e56a1aee22.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965625954901
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260910144711--9323a424-d869-4419-8079-bc1a406c1248--467d76ea-4c0c-4050-9a9c-a0067e4a744a.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965682679544
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260905154712--978ff1d5-532f-499d-baba-d766a3be78e1--06acc6ad-4ccb-42dc-9190-274387a96b6c.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965726739562
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260916145442--9a27c195-b9f4-4b3d-a19a-ff3d7c30566c--073d508f-3270-452c-a3e1-e9f6ac4277f7.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965797595014
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260929154712--9aa26907-797a-4f18-90ea-b25902e6eabb--383fe9fa-1724-487d-ba8b-2a63c2903c44.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965828246077
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261011025643--9f130ddb-d766-4a86-8a08-f60eccc01cbf--e78fefe1-f65f-43fd-a572-af5f20822f82.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965932457935
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261002154712--a0c2fc1d-7bb8-4a52-84ed-efe08448c596--fe7caca9-8919-4c32-8bc0-9fa1f2ca94bc.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 965998878736
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260906024712--a2641263-763b-4df2-8c4f-053cfc49e7e6--95f18e49-82bd-4d0f-82c9-180e4edb3713.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966050557430
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261005154712--aa8c1a85-4ce9-486b-98ce-08ac4af93cbe--597c2787-3ef2-455c-b4f5-c54f6887a9eb.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966098223788
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260911024711--ab8331a6-e1a2-477a-a95c-105fb42dd527--e05c1e1c-6295-4b6a-b68e-c76cf0cabec2.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966143592992
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260919024743--b6003de5-85f8-4ab6-a550-0b311560eb4b--88b9cc53-a57a-49b1-8e11-ebb9849f10b3.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966228440659
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261006034711--b6a25351-ad30-46ca-a3a6-fe50c47fbeb4--a8b5a838-d0b8-4e66-92af-116dfb56e273.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966282941460
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261007034712--bbb1d74d-8557-497c-954f-b85c2b86d522--2694171a-ad12-428c-9ea1-1472dbbc6cf3.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966341668689
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260912144711--bd4d1d72-db62-4363-8fed-8d06241f63aa--59051fd6-90cb-491c-83be-d0cff62b767f.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966421307963
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261001154712--bf66133d-b024-49b2-b288-bea01942e35b--a0776004-3720-476e-a271-4e4e986cc290.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966470565094
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261009024712--c13e5581-4d0d-492c-9b16-eb4e517ebb1b--0a1771cb-dce3-4d1d-bfc0-8606c2017c41.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966555086088
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260928145642--c4b17df5-fa40-4b55-bfed-e545e5813171--f6dfb09d-9f6f-4a5e-9854-eeef479f483f.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966597376543
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260903154711--c507a5af-8985-41c7-b3d2-f16e44424a83--6a70186e-5ad1-4683-82c9-579ec269e816.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966650165543
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260924154713--ca797126-e0a6-4241-9a47-d4a9ee21d99a--7bfbc118-a5ca-4fc1-9a43-8f935a6d5198.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966726533910
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260908144712--cc3a4b86-0303-411b-8000-e43b37ff24ff--ec34d844-fcc0-4654-a723-74ac1fabed46.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966804186049
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260921144711--d8bfaada-bf44-4a8e-8bd4-221e3b261ccd--e4f2ed8b-f666-4d0f-81f0-deb2efcb8c25.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966851102311
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260914154712--da4596b6-98df-43aa-885f-063e170396e5--b0d2eebf-8798-4c7a-a294-483514b41bca.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966901506326
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260907144713--dab21d91-689b-43ff-a2a9-e11373792977--4e55f628-3787-4ef8-b5cc-07b602064747.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966945273891
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261010145341--decc3fd0-7f3e-4a96-80f1-3a102dc05025--31ea0b95-bd09-4d2c-b74f-1f92cf0fd82b.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 966985165397
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261003034712--e459767d-16f2-471d-a70b-23435ef486a2--0d39a712-063f-4fd7-9d8e-ec90907a5da3.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967028663518
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260922025613--e49f4b2e-0aa6-4a64-8ef0-ea5484e5a21d--4da2b39f-a29e-45c6-9c1e-ba14ee4241a8.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967082090923
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260908024711--e554cdf8-163b-499c-b943-09a13a551d7d--843655e1-a146-40d1-9fdb-6cd204997a32.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967166320470
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260906144711--e677b1bf-fb56-410d-b57b-4f160d5a53fa--b3f5f9e2-ae42-4cfa-ac69-5056503c05dc.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967209416910
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260910024711--e71ba346-01e5-4600-90c5-b596ab4b07f9--843ab27d-cb3c-40b0-8141-d6d42f704dea.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967270691674
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260920024712--e85db88d-2968-4a47-8f07-6eb08a1faf25--31cef437-9264-4b1d-a326-72435bf54283.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967331229933
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260911154711--ed852ab1-ea50-4f98-aaab-93ce4e1f3704--57433828-1733-4494-962a-e77231c94a48.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967398626554
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260909144712--f12dfb41-e538-46fb-b37b-a165ad834460--0f6f0614-9a37-49c5-87be-274598dc7448.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967437739196
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260924024741--f1c16c66-2707-4047-a3cc-b2588920c5fb--e87d2d01-981f-4dcf-b0e5-5f5c9ca08afc.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967480558711
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260905025441--f5354c64-1af9-4e90-85fd-bcc74d4ac595--bfe5aaee-74c5-47af-a9d2-a1c069bd1ac2.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967539261374
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261011154712--f7435c5b-60e2-48c6-b4f2-cd6486f68905--27afa842-22a8-43a1-94de-be435e56422e.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967589586052
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260915154710--fa0148a4-bd5e-4c1e-8020-a009edce8f4f--1b871a96-fda4-4864-8e55-78723bc0d96c.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967663551453
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20261010024712--fa66c934-83fc-4549-800a-f30ed9abe28d--3f13b7a2-21fa-4072-8caf-49e512eb51a3.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967725175986
+    },
+    {
+      "url": "https://firefox-settings-attachments.cdn.mozilla.net/security-state-staging/cert-revocations/20260902154710--fb4e2a3e-a83d-4542-b076-806d7a9792c8--95163a10-5dfe-44cc-aefb-716e0a8cc9b4.delta",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "session": {
+        "networkReady": true,
+        "guardBlocked": false,
+        "guardAllowed": true,
+        "connecting": false,
+        "offline": false,
+        "coreReady": true,
+        "coreStarting": false,
+        "nativeReceiptCurrent": false,
+        "defaultNetworkUsable": true
+      },
+      "atNs": 967767210512
+    }
+  ],
+  "sourceCommit": "cc0bcee8ad37e7a6330967b9bdc0265bf40923e2",
+  "androidSdk": 35,
+  "server": {
+    "protocol": "h2",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/pool",
+        "id": "",
+        "protocol": "h2",
+        "connection": 1,
+        "streamId": 3,
+        "responseBytes": 301,
+        "responseSha256": "205d90fe235c42d51d6c65457a0979a60f3fa0d87f8083dad4b81690ef023712",
+        "closed": true
+      },
+      {
+        "method": "GET",
+        "path": "/bytes",
+        "id": "subscribed-a",
+        "protocol": "h2",
+        "connection": 1,
+        "streamId": 5,
+        "responseBytes": 9175,
+        "responseSha256": "b62ee0df4eb0dbf4d84555763d57d9644155422379b77052a01df7eb73d27e9c",
+        "closed": true
+      },
+      {
+        "method": "GET",
+        "path": "/bytes",
+        "id": "subscribed-b",
+        "protocol": "h2",
+        "connection": 2,
+        "streamId": 3,
+        "responseBytes": 9175,
+        "responseSha256": "aabb77170c2a05457afb2bfdaeab801af3187382f09007cbc8aa6472bbfa7955",
+        "closed": true
+      },
+      {
+        "method": "GET",
+        "path": "/bytes",
+        "id": "after-probes",
+        "protocol": "h2",
+        "connection": 2,
+        "streamId": 5,
+        "responseBytes": 9175,
+        "responseSha256": "a5c4c0b17e99dcf883a31e6d9b55c51268a4572ebbbd5b5ff21f9cd83f285ba7",
+        "closed": true
+      }
+    ],
+    "connections": [
+      {
+        "connection": 1,
+        "alpn": "h2",
+        "remote": "127.0.0.1",
+        "remotePort": 59017,
+        "tls": "TLSv1.3"
+      },
+      {
+        "connection": 2,
+        "alpn": "h2",
+        "remote": "127.0.0.1",
+        "remotePort": 40435,
+        "tls": "TLSv1.3"
+      }
+    ],
+    "webSockets": [],
+    "publicTraffic": false
+  }
+}

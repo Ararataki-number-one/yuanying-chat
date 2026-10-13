@@ -1,0 +1,180 @@
+{
+  "status": "failed",
+  "sourceCommit": "cc0bcee8ad37e7a6330967b9bdc0265bf40923e2",
+  "error": "{'kind': 'result', 'value': {'status': 'failed', 'checkCount': 11, 'file': 'network-safe-idle-results.json', 'error': 'java.lang.AssertionError: prepare-send: candidate still separate before release'}}",
+  "events": [
+    {
+      "kind": "testTrustPrepared",
+      "value": {
+        "schema": 1,
+        "method": "NSS SQL public-root profile preload",
+        "assetDirectory": "network-safe-idle-trust/",
+        "hostname": "chatgpt.com",
+        "testCaSha256": "794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226",
+        "testLeafSha256": "66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c",
+        "profileDbSha256": "a3114642d39ee1f3bc23c4428b08035abeb101de367547dcfe32680af6286023",
+        "profilePath": "/data/data/local.pocketchat.test/no_backup/gecko-browser",
+        "preparedBeforeRuntime": true,
+        "databaseCopyShaVerified": true,
+        "serverChainShaVerified": true,
+        "certificateValidityChecked": true,
+        "certificateHostnameSanMatches": true,
+        "productionTrustChanged": false,
+        "certificateExceptionUsed": false
+      }
+    },
+    {
+      "kind": "check",
+      "value": {
+        "name": "Packaged native ELF exposes its actual ABI, streamed SHA and controller version",
+        "pass": true
+      }
+    },
+    {
+      "kind": "check",
+      "value": {
+        "name": "Real native parser returns entry fingerprint",
+        "pass": true
+      }
+    },
+    {
+      "kind": "check",
+      "value": {
+        "name": "Real native parser returns exit fingerprint",
+        "pass": true
+      }
+    },
+    {
+      "kind": "security",
+      "value": {
+        "callback": "GeckoSession.ProgressDelegate.onSecurityChange",
+        "isSecure": true,
+        "isException": false,
+        "host": "chatgpt.com",
+        "origin": "https://chatgpt.com",
+        "certificateSha256": "66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c",
+        "testCaSha256": "794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226",
+        "certificateSignedByTestCa": true,
+        "certificateValidityChecked": true,
+        "certificateHostnameSanMatches": true,
+        "certificateMatchesPackagedLeaf": true,
+        "accepted": true,
+        "verificationError": ""
+      }
+    },
+    {
+      "kind": "check",
+      "value": {
+        "name": "Public test CA database prepared in the isolated profile before Gecko runtime",
+        "pass": true
+      }
+    },
+    {
+      "kind": "check",
+      "value": {
+        "name": "Controlled ChatGPT certificate has the exact valid CA signed SAN and server chain",
+        "pass": true
+      }
+    },
+    {
+      "kind": "check",
+      "value": {
+        "name": "Official Gecko security callback trusts the controlled ChatGPT origin without an exception",
+        "pass": true
+      }
+    },
+    {
+      "kind": "check",
+      "value": {
+        "name": "Production observer uses the actual controlled HTTPS origin",
+        "pass": true
+      }
+    },
+    {
+      "kind": "check",
+      "value": {
+        "name": "Only the test origin is proxied",
+        "pass": true
+      }
+    },
+    {
+      "kind": "ready",
+      "value": {
+        "cases": [
+          "prepare-send",
+          "capture-send",
+          "prepare-transfer",
+          "capture-navigation",
+          "capture-delete",
+          "complete-delete",
+          "complete-late-save"
+        ],
+        "actualAndroidExecution": true,
+        "actualGeckoExecution": true,
+        "actualNativeParsing": true,
+        "actualPublicWebsite": false,
+        "actualRouteApplication": false
+      }
+    },
+    {
+      "kind": "phase",
+      "value": {
+        "case": "prepare-send",
+        "phase": "prepare",
+        "operation": false,
+        "configurationCapture": false,
+        "pendingCandidateHash": "ea503aaa40208fc671b24a6ab1d4f98b835816cece8d494d9f4d9b38b41d650a",
+        "activeHash": "d8dc43ccb83756b03c8fc06ad194ece9689d58ee9d9a22f45ea506e894db29cd",
+        "connectionEpoch": 0
+      }
+    },
+    {
+      "kind": "tapNeeded",
+      "value": {
+        "case": "prepare-send",
+        "css": {
+          "x": 58.93333435058594,
+          "y": 308.6499938964844,
+          "width": 414,
+          "height": 668
+        },
+        "native": {
+          "x": 0,
+          "y": 114,
+          "width": 1080,
+          "height": 1743
+        }
+      }
+    }
+  ],
+  "gestures": [
+    {
+      "case": "prepare-send",
+      "command": [
+        "shell",
+        "input",
+        "tap",
+        "154",
+        "919"
+      ],
+      "x": 154,
+      "y": 919,
+      "bounds": {
+        "case": "prepare-send",
+        "css": {
+          "x": 58.93333435058594,
+          "y": 308.6499938964844,
+          "width": 414,
+          "height": 668
+        },
+        "native": {
+          "x": 0,
+          "y": 114,
+          "width": 1080,
+          "height": 1743
+        }
+      },
+      "oneAttempt": true
+    }
+  ]
+}
