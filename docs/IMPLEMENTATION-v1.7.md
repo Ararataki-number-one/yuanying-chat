@@ -1,6 +1,6 @@
 # 1.7 implementation — verified Firefox environment templates
 
-This is mergeable source work on top of the 1.5.21 official GeckoView baseline and the 1.6 environment/network foundation. It is not a claim that an Android release has passed all acceptance checks. The browser remains one official GeckoView runtime per existing Android environment process, using the original ChatGPT webpage.
+This is mergeable source work on top of the 1.5.23 released source baseline and the 1.6 environment/network foundation. It is not a claim that an Android release has passed all acceptance checks. The browser remains one official GeckoView runtime per existing Android environment process, using the original ChatGPT webpage.
 
 ## Delivered code
 
@@ -44,7 +44,7 @@ All three extension scripts pass JavaScript syntax checks. The shipped-SDK signa
 3. A→B→A changes while a protection request and a UA callback are delayed; only the final configuration can be acknowledged. Test extension disconnect/reconnect and native setting API failures.
 4. Browser templates applied while reply/upload/download is active: defer without losing draft or replaying a submission.
 5. CSP-blocked main-world/iframe/Worker paths remain uncovered; forged page observations cannot invoke privileged integration code or create diagnostic requests.
-6. Deletion/reused slot, upgrade from 1.5.21 and earlier versions, stored cookies/IndexedDB/CacheStorage/Service Workers, and old async callbacks cannot cross environment generations.
+6. Deletion/reused slot, upgrade from 1.5.23 and earlier versions, stored cookies/IndexedDB/CacheStorage/Service Workers, and old async callbacks cannot cross environment generations.
 7. Standard and experimental RFP modes are tested separately. Failed real ChatGPT compatibility or unproven context coverage keeps the affected mode experimental.
 
 Cross-origin/shared/service-worker probing and a controlled-server document-request header harness remain planned validation work; this source does not pretend these are already covered.
