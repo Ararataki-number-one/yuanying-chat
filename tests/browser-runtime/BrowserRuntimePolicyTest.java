@@ -27,6 +27,13 @@ public final class BrowserRuntimePolicyTest {
     check("A changed query invalidates a captured reload document",!BrowserRuntimePolicy.sameDocument(a+"?step=1",a+"?step=2"));
     check("An unknown document cannot authorize a reload",!BrowserRuntimePolicy.sameDocument(null,null));
     check("An empty initial browser document can use normal retry",BrowserRuntimePolicy.sameDocument("",""));
+    check("An unchanged blank document retains its captured identity",BrowserRuntimePolicy.sameDocument("about:blank","about:blank"));
+    String fixture="http://127.0.0.1:8765/fixture?context=2";
+    check("An unchanged nonofficial document retains its exact captured identity",BrowserRuntimePolicy.sameDocument(fixture,fixture));
+    check("An empty captured URL rejects a newly initialized blank document",!BrowserRuntimePolicy.sameDocument("","about:blank"));
+    check("An empty captured URL rejects a newly loaded document",!BrowserRuntimePolicy.sameDocument("",fixture));
+    check("A blank captured document rejects a newly loaded page",!BrowserRuntimePolicy.sameDocument("about:blank",fixture));
+    check("A changed nonofficial fragment invalidates its captured document",!BrowserRuntimePolicy.sameDocument(fixture+"#one",fixture+"#two"));
     check("Verified different official conversation ends the old observation",BrowserRuntimePolicy.leftConversation(a,"https://chatgpt.com/c/B",false,false));
     check("The same conversation query does not end observation",!BrowserRuntimePolicy.leftConversation(a,a+"?view=1#reply",true,true));
     check("GPT wrapper aliases retain the same conversation identity",!BrowserRuntimePolicy.leftConversation(a,"https://chatgpt.com/g/example/c/A",true,true));
