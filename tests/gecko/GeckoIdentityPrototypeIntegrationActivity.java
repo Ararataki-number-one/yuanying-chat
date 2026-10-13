@@ -22,14 +22,14 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
   static final String AAR="15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268";
   final Handler handler=new Handler(Looper.getMainLooper());
   final ExecutorService storage=Executors.newSingleThreadExecutor();
-  final JSONArray checks=new JSONArray(),cases=new JSONArray(),routes=new JSONArray();
+  final JSONArray checks=new JSONArray(),cases=new JSONArray(),routes=new JSONArray(),navigation=new JSONArray();
   final Map<String,JSONObject> received=new LinkedHashMap<>(),nativeAgents=new LinkedHashMap<>();
   final Map<String,JSONObject> rawObservations=new LinkedHashMap<>();
   final Map<String,GeckoSession> targets=new LinkedHashMap<>();
   JSONObject buildIdentity=new JSONObject();ChatSession owner;FixtureView view;LocalSite site;
   String source,run,origin;int caseIndex=-1,serial;boolean finished,announced;
   String[] requestedLocales;String normalizedLanguage;boolean desktop;
-  long requestedAt;Runnable caseDeadline;
+  long requestedAt;Runnable caseDeadline;int navigationDropped;
 
   static final class PrivateContext extends ContextWrapper {
     final File directory;
@@ -47,9 +47,31 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
     }
     @Override GeckoSession newSession(){
       GeckoSession sdk=super.newSession();
+      GeckoSession.NavigationDelegate original=sdk.getNavigationDelegate();
+      sdk.setNavigationDelegate(new GeckoSession.NavigationDelegate(){
+        @Override public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession s,LoadRequest request){navigation(s,"loadRequest",request.uri,J.obj("directNavigation",request.isDirectNavigation,"redirect",request.isRedirect,"guardAllowed",owner.guard.allowed(),"fixtureAllowed",allowedUrl(request.uri)));return original.onLoadRequest(s,request);}
+        @Override public GeckoResult<AllowOrDeny> onSubframeLoadRequest(GeckoSession s,LoadRequest request){navigation(s,"subframeLoadRequest",request.uri,null);return original.onSubframeLoadRequest(s,request);}
+        @Override public void onLocationChange(GeckoSession s,String target,List<GeckoSession.PermissionDelegate.ContentPermission> permissions,Boolean gesture){original.onLocationChange(s,target,permissions,gesture);navigation(s,"locationChange",target,null);}
+        @Override public void onCanGoBack(GeckoSession s,boolean value){original.onCanGoBack(s,value);}
+        @Override public void onCanGoForward(GeckoSession s,boolean value){original.onCanGoForward(s,value);}
+        @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String target){return original.onNewSession(s,target);}
+        @Override public GeckoResult<String> onLoadError(GeckoSession s,String target,WebRequestError error){navigation(s,"loadError",target,J.obj("code",error.code,"category",error.category,"message",error.getMessage()));return original.onLoadError(s,target,error);}
+      });
+      GeckoSession.PermissionDelegate permissions=sdk.getPermissionDelegate();
+      sdk.setPermissionDelegate(new GeckoSession.PermissionDelegate(){
+        @Override public void onAndroidPermissionsRequest(GeckoSession s,String[] requested,Callback callback){navigation(s,"androidPermissions",null,J.obj("permissions",requested==null?JSONObject.NULL:new JSONArray(Arrays.asList(requested))));permissions.onAndroidPermissionsRequest(s,requested,callback);}
+        @Override public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s,ContentPermission permission){navigation(s,"contentPermission",permission.uri,J.obj("permission",permission.permission,"value",permission.value,"privateMode",permission.privateMode,"thirdPartyOrigin",permission.thirdPartyOrigin));return permissions.onContentPermissionRequest(s,permission);}
+        @Override public void onMediaPermissionRequest(GeckoSession s,String target,MediaSource[] video,MediaSource[] audio,MediaCallback callback){navigation(s,"mediaPermission",target,null);permissions.onMediaPermissionRequest(s,target,video,audio,callback);}
+      });
       if(!announced){announced=true;handler.post(()->{if(!finished)beginCase();});}
       return sdk;
     }
+  }
+  void navigation(GeckoSession sdk,String kind,String target,JSONObject detail){
+    if(finished)return;
+    if(navigation.length()>=64){navigationDropped++;return;}
+    String name="unowned";for(Map.Entry<String,GeckoSession> item:targets.entrySet())if(item.getValue()==sdk){name=item.getKey();break;}
+    navigation.put(J.obj("kind",kind,"url",target,"session",System.identityHashCode(sdk),"name",name,"case",serial,"at",SystemClock.elapsedRealtime(),"detail",detail));
   }
   void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
   @Override public void onCreate(Bundle state){
@@ -141,7 +163,11 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
   void finish(Throwable failure){
     if(finished)return;finished=true;if(caseDeadline!=null)handler.removeCallbacks(caseDeadline);
     JSONObject report=J.obj("schema",1,"status",failure==null?"passed":"failed","diagnosticOnly",true,"releaseAcceptance",false,"synthetic",true,"actualAndroidExecution",true,"actualGeckoExecution",view!=null&&view.ready,"publicNetworkTraffic",false,"sourceCommit",source,"runNonce",run,"buildIdentity",buildIdentity,"sdkCoordinate",SDK,"sdkAarSha256",AAR,"engineVersion",GeckoWebView.VERSION,"androidSdk",Build.VERSION.SDK_INT,"abis",new JSONArray(Arrays.asList(Build.SUPPORTED_ABIS)),"pid",android.os.Process.myPid(),"origin",origin,"cases",cases,"checks",checks,"passed",passedChecks(),"total",checks.length(),"routes",routes,"nativeRuntimeScope","Locale settings belong to one runtime shared by these sessions","environmentIsolation","Separate Android process/profile isolation is unverified by this prototype","independentTimezone","unsupported; no timezone override requested or applied","deepCustomControls","Independent timezone/Canvas/WebGL/audio/font controls not implemented","uncovered",J.arr("cross-origin frame","Shared Worker","Service Worker","RFP compatibility","real account login","native IME","separate environment isolation","restart persistence"),"scope","Actual controlled page-main/same-origin frame/Dedicated HTTP and Blob Worker readings plus first-party server request headers through the production guarded bridge. No template applied/observed repository acknowledgement.");
-    if(site!=null)reportPut(report,"allRequestHeaders",site.allRecords());
+    reportPut(report,"nativeNavigation",navigation);reportPut(report,"nativeNavigationDropped",navigationDropped);
+    if(view!=null&&view.runtime!=null){GeckoRuntimeSettings settings=view.runtime.getSettings();reportPut(report,"runtimeNetworkRequests",J.obj("lnaEnabled",settings.getLnaEnabled()==null?JSONObject.NULL:settings.getLnaEnabled(),"lnaBlocking",settings.getLnaBlocking()==null?JSONObject.NULL:settings.getLnaBlocking(),"scope","Java requested values; null means no requested override and does not establish native defaults"));}
+    android.security.NetworkSecurityPolicy policy=android.security.NetworkSecurityPolicy.getInstance();
+    reportPut(report,"androidCleartextPolicy",J.obj("globalPermitted",policy.isCleartextTrafficPermitted(),"loopbackPermitted",policy.isCleartextTrafficPermitted("127.0.0.1"),"localhostPermitted",policy.isCleartextTrafficPermitted("localhost"),"scope","Observed Android policy only; no policy override"));
+    if(site!=null){reportPut(report,"allRequestHeaders",site.allRecords());reportPut(report,"localServer",site.diagnostics());}
     if(failure!=null){reportPut(report,"error",String.valueOf(failure));reportPut(report,"failureType",failure.getClass().getName());reportPut(report,"currentCase",caseIndex);reportPut(report,"partialObservations",new JSONObject(rawObservations));reportPut(report,"nativeRequests",new JSONObject(nativeAgents));}
     Log.i(TAG,report.toString());
     if(view!=null)view.destroy();if(owner!=null){owner.handler.removeCallbacks(owner.tick);owner.deleted=true;}if(site!=null)site.close();
@@ -155,17 +181,24 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
     final ServerSocket socket=new ServerSocket(0,8,InetAddress.getByName("127.0.0.1"));
     final ExecutorService clients=new ThreadPoolExecutor(4,4,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(8));final List<JSONObject> wire=new ArrayList<>();
     final Set<Socket> live=Collections.synchronizedSet(new HashSet<>());volatile boolean closed;
+    final List<JSONObject> failures=new ArrayList<>();int accepted,parsed,completed,rejected,failuresDropped;
     LocalSite()throws IOException{}
-    void start(){new Thread(()->{while(!closed)try{Socket client=socket.accept();synchronized(live){if(closed||live.size()>=12){client.close();continue;}live.add(client);}try{clients.execute(()->serve(client));}catch(RejectedExecutionException rejected){live.remove(client);client.close();}}catch(IOException ignored){if(!closed)handler.post(()->finish(new IOException("Local fixture accept failed")));}},"identity-local-server").start();}
+    void start(){new Thread(()->{while(!closed)try{Socket client=socket.accept();int connection;synchronized(this){connection=++accepted;}synchronized(live){if(closed||live.size()>=12){synchronized(this){rejected++;}client.close();continue;}live.add(client);}try{clients.execute(()->serve(client,connection));}catch(RejectedExecutionException failure){synchronized(this){rejected++;}serverFailure(connection,"dispatch","",failure);live.remove(client);client.close();}}catch(IOException failure){if(!closed){serverFailure(0,"accept","",failure);handler.post(()->finish(new IOException("Local fixture accept failed",failure)));}}},"identity-local-server").start();}
     synchronized JSONArray records(int ticket,String name){JSONArray result=new JSONArray();for(JSONObject row:wire)if(row.optInt("case")==ticket&&name.equals(row.optString("session")))result.put(row);return result;}
     synchronized JSONArray allRecords(){JSONArray result=new JSONArray();for(JSONObject row:wire)result.put(row);return result;}
-    void serve(Socket client){
+    synchronized JSONObject diagnostics(){return J.obj("address",socket.getInetAddress().getHostAddress(),"port",socket.getLocalPort(),"bound",socket.isBound(),"closed",closed,"acceptedConnections",accepted,"parsedRequests",parsed,"completedConnections",completed,"rejectedConnections",rejected,"failures",new JSONArray(failures),"failuresDropped",failuresDropped,"scope","Bounded actual listener/protocol state; accepted TCP does not imply a Gecko request or context observation");}
+    synchronized void serverFailure(int connection,String stage,String request,Throwable failure){if(failures.size()>=16){failuresDropped++;return;}String message=String.valueOf(failure);failures.add(J.obj("connection",connection,"stage",stage,"request",request.substring(0,Math.min(1024,request.length())),"failureType",failure.getClass().getName(),"error",message.substring(0,Math.min(1024,message.length())),"at",SystemClock.elapsedRealtime()));}
+    void serve(Socket client,int connection){
+      String stage="requestLine",first="";
       try(Socket ignored=client){
-        client.setSoTimeout(5000);InputStream in=client.getInputStream();String first=line(in);String[] request=first.split(" ");if(request.length!=3)throw new IOException("Malformed HTTP request");
+        client.setSoTimeout(5000);InputStream in=client.getInputStream();first=line(in);String[] request=first.split(" ");if(request.length!=3)throw new IOException("Malformed HTTP request");
         URI uri=URI.create(request[1]);Map<String,String> query=query(uri.getRawQuery()),headers=new LinkedHashMap<>();int headerBytes=first.length();
+        stage="headers";
         for(String value;(value=line(in)).length()>0;){headerBytes+=value.length();if(headerBytes>16384)throw new IOException("Oversized request headers");int split=value.indexOf(':');if(split<1)throw new IOException("Malformed header");headers.put(value.substring(0,split).toLowerCase(Locale.ROOT),value.substring(split+1).trim());}
         if(headers.containsKey("transfer-encoding"))throw new IOException("Chunked fixture request unsupported");
+        stage="body";
         int count=Integer.parseInt(headers.getOrDefault("content-length","0"));if(count<0||count>32768)throw new IOException("Oversized observation");byte[] body=new byte[count];new DataInputStream(in).readFully(body);
+        synchronized(this){parsed++;}stage="response";
         if("/favicon.ico".equals(uri.getPath())){respond(client,404,"text/plain","");return;}
         if(!run.equals(query.get("run"))||!query.getOrDefault("case","").matches("[1-4]")||!Arrays.asList("primary","secondary").contains(query.get("session"))){respond(client,403,"text/plain","Unknown fixture case");return;}
         int ticket=Integer.parseInt(query.get("case"));String name=query.get("session"),path=uri.getPath();
@@ -178,7 +211,7 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
         else if("GET".equals(request[0])&&"/echo".equals(path))respond(client,200,"application/json","{\"ok\":true}");
         else if("POST".equals(request[0])&&"/report".equals(path)){JSONObject value=new JSONObject(new String(body,StandardCharsets.UTF_8));respond(client,200,"application/json","{\"ok\":true}");handler.post(()->observed(ticket,name,value));}
         else respond(client,404,"text/plain","");
-      }catch(Throwable failure){if(!closed)handler.post(()->finish(failure));}finally{live.remove(client);}
+      }catch(Throwable failure){if(!closed){serverFailure(connection,stage,first,failure);handler.post(()->finish(failure));}}finally{synchronized(this){completed++;}live.remove(client);}
     }
     void close(){closed=true;try{socket.close();}catch(IOException ignored){}synchronized(live){for(Socket client:live)try{client.close();}catch(IOException ignored){}}clients.shutdownNow();}
   }
