@@ -19,7 +19,19 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
   @Override public ParcelFileDescriptor openFile(Uri uri,String mode)throws FileNotFoundException {
     if(!"r".equals(mode)||Binder.getCallingUid()!=2000)throw new SecurityException("Read-only shell evidence");
     String name;
-    if("/native-probe".equals(uri.getPath()))name="native-probe-results.json";
+    if("/build-identity".equals(uri.getPath())){
+      name="integration-build-identity.json";
+      try{
+        android.util.AtomicFile identity=new android.util.AtomicFile(new File(getContext().getFilesDir(),name));
+        java.io.FileOutputStream out=null;
+        try{out=identity.startWrite();out.write((IntegrationBuildIdentity.read(getContext()).toString()+"\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));identity.finishWrite(out);}
+        catch(Exception failure){if(out!=null)identity.failWrite(out);throw failure;}
+      }catch(Exception failure){throw new FileNotFoundException("Installed synthetic build identity unavailable");}
+    }
+    else if("/environment-spec".equals(uri.getPath()))name="environment-spec-results.json";
+    else if("/environment-intent".equals(uri.getPath()))name="environment-intent-results.json";
+    else if("/gecko-identity-prototype".equals(uri.getPath()))name="gecko-identity-prototype-results.json";
+    else if("/native-probe".equals(uri.getPath()))name="native-probe-results.json";
     else if("/gecko-pool".equals(uri.getPath()))name="gecko-pool-results.json";
     else if("/preconnect".equals(uri.getPath()))name="preconnect-results.json";
     else if("/network-source-route".equals(uri.getPath()))name="network-source-route-results.json";

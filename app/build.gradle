@@ -42,3 +42,54 @@ dependencies {
     implementation 'androidx.startup:startup-runtime:1.2.0'
     implementation 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
 }
+
+// Test provenance is generated only for the integration variant.
+@org.gradle.work.DisableCachingByDefault(because = 'Every test build must check its committed source identity')
+abstract class PrepareIntegrationIdentity extends org.gradle.api.DefaultTask {
+    @org.gradle.api.tasks.OutputDirectory
+    abstract org.gradle.api.file.DirectoryProperty getOutputDirectory()
+    @org.gradle.api.tasks.Internal
+    abstract org.gradle.api.file.DirectoryProperty getSourceDirectory()
+    @org.gradle.api.tasks.Input
+    abstract org.gradle.api.provider.Property<String> getApplicationVersionName()
+    @org.gradle.api.tasks.Input
+    abstract org.gradle.api.provider.Property<Integer> getApplicationVersionCode()
+    @javax.inject.Inject
+    abstract org.gradle.process.ExecOperations getExecOperations()
+    @org.gradle.api.tasks.TaskAction
+    void prepare() {
+        def sourceGit = { List<String> arguments ->
+            def output = new ByteArrayOutputStream()
+            execOperations.exec { spec ->
+                spec.workingDir(sourceDirectory.get().asFile)
+                spec.commandLine(['git'] + arguments)
+                spec.standardOutput = output
+            }
+            output.toString('UTF-8').trim()
+        }
+        def source = sourceGit(['rev-parse', 'HEAD'])
+        def tree = sourceGit(['rev-parse', 'HEAD^{tree}'])
+        if (!(source ==~ /[0-9a-f]{40}/) || !(tree ==~ /[0-9a-f]{40}/)
+            || !sourceGit(['status', '--porcelain', '--untracked-files=normal']).isEmpty())
+            throw new org.gradle.api.GradleException('Integration evidence requires a clean committed source tree')
+        def directory = outputDirectory.get().asFile
+        directory.mkdirs()
+        new File(directory, 'pocketchat-integration-build.json').setText(groovy.json.JsonOutput.toJson([
+            schema: 1, sourceCommit: source, sourceTree: tree, dirtySource: false,
+            version: applicationVersionName.get(), versionCode: applicationVersionCode.get(),
+            sdkCoordinate: 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
+        ]) + '\n', 'UTF-8')
+    }
+}
+def prepareIntegrationIdentity = tasks.register('prepareIntegrationIdentity', PrepareIntegrationIdentity) {
+    outputDirectory.set(layout.buildDirectory.dir('generated/integration-identity/assets'))
+    sourceDirectory.set(rootProject.layout.projectDirectory)
+    applicationVersionName.set(android.defaultConfig.versionName)
+    applicationVersionCode.set(android.defaultConfig.versionCode)
+    outputs.upToDateWhen { false }
+}
+androidComponents {
+    onVariants(selector().withBuildType('integration')) { variant ->
+        variant.sources.assets.addGeneratedSourceDirectory(prepareIntegrationIdentity) { it.outputDirectory }
+    }
+}

@@ -1,7 +1,7 @@
 name: Production Gecko integration
 on:
   push:
-    branches: [feature/android-engine-probe]
+    branches: [feature/android-engine-probe, feature/profile-upgrades-1_6]
     paths: ['app/**', 'tests/gecko/**', 'tests/browser-runtime/**', 'tests/browser-reading-host/**', 'tests/browser-reading-focus.cjs', 'tests/network-catalog-host/**', 'tests/network-source-host/**', 'tests/network-lineage-host/**', 'tests/sealed-file-host/**', 'tools/gecko/**', 'tools/publish-update-feed.py', 'tools/build-mihomo.py', 'third-party/patches/**', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
   workflow_dispatch:
 permissions:
@@ -111,6 +111,16 @@ jobs:
               report=json.loads(path.read_text()); report['sourceCommit']=source
               path.write_text(json.dumps(report,indent=2)+'\n')
           PYCODE
+      - name: Verify versioned environment models and authoritative intents
+        run: |
+          set -euo pipefail
+          python3 tools/gecko/run_profile_host_checks.py --json-jar work/gecko-integration/catalog-json.jar --network-reports work/gecko-integration
+          cp work/profile-host/results.json work/gecko-integration/profile-host-results.json
+          cp work/profile-host/environment-intent-host-results.json work/gecko-integration/environment-intent-host-results.json
+          python3 -m unittest discover -s tests -p 'profile_*_test.py'
+          if [ -f tools/gecko/release_channel_contract_test.py ]; then
+            python3 tools/gecko/release_channel_contract_test.py
+          fi
       - name: Prepare synthetic signed upgrade archives
         shell: bash
         run: |
@@ -203,6 +213,13 @@ jobs:
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py
+          if ! python3 tests/gecko/run_profile_features.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk; then
+            checks_failed=1
+          fi
+          python3 tools/gecko/publish_ci.py
+          if ! python3 tools/gecko/check_profile_evidence.py work/gecko-integration --source "$GITHUB_SHA"; then
+            checks_failed=1
+          fi
           if ! python3 tools/gecko/check_chain_evidence.py work/gecko-integration --source "$GITHUB_SHA"; then
             checks_failed=1
           fi

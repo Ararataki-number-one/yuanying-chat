@@ -9,6 +9,71 @@ import java.util.*;
 final class NetworkChanges {
   static String hash(Context c){SharedPreferences p=c.getSharedPreferences("chat",0);return NativeNetwork.hash(new SecretStore(c).settings()+"|"+p.getString("networkMode","external")+"|"+p.getString("proxy","")+"|"+p.getBoolean("requireExternalVpn",true));}
   static JSONObject pending(Context c){try{byte[] value=new SecretStore(c).get("pending-network");return value==null?new JSONObject():J.parse(new String(value,StandardCharsets.UTF_8));}catch(Exception e){return new JSONObject();}}
+  /** Transaction code must distinguish an absent intent from unreadable data. */
+  static JSONObject pendingStrict(Context c)throws Exception{
+    byte[] value=new SecretStore(c).get("pending-network");if(value==null)return new JSONObject();
+    if(value.length==0||value.length>16*1024*1024)throw new java.io.IOException("待应用网络设置无法读取，原文件已保留");
+    String text=StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT).onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(value)).toString();
+    JSONTokener parser=new JSONTokener(text);Object parsed=parser.nextValue();if(!(parsed instanceof JSONObject)||parser.nextClean()!=0)throw new java.io.IOException("待应用网络设置无法读取，原文件已保留");return (JSONObject)parsed;
+  }
+  interface IntentGuard{void verify()throws Exception;}
+  static final class IntentReceipt {
+    final String staged;final JSONObject previous;String ready="";
+    IntentReceipt(JSONObject record){staged=record.toString();previous=J.parse(record.optJSONObject("previousPending").toString());}
+    boolean matches(JSONObject current){String value=current.toString();return staged.equals(value)||!ready.isEmpty()&&ready.equals(value);}
+  }
+  static JSONObject intent(JSONObject record)throws java.io.IOException{
+    if(!record.has("environmentIntent"))return null;JSONObject value=record.optJSONObject("environmentIntent");
+    if(value==null||!Integer.valueOf(1).equals(value.opt("schema"))||!value.optString("id").matches("[0-9a-f]{32}")||value.optJSONObject("identity")==null||!("staged".equals(value.optString("state"))||"ready".equals(value.optString("state"))))throw new java.io.IOException("网络意图版本无效，原文件已保留");
+    JSONObject identity=value.optJSONObject("identity");if(!NetworkCatalog.integer(identity.opt("slot"))||identity.optInt("slot",-1)<0||identity.optLong("slot",8)>=8||!NetworkCatalog.integer(identity.opt("generation"))||identity.optLong("generation",-1)<0||identity.optLong("generation")>Integer.MAX_VALUE||!(identity.opt("environmentId") instanceof String)||!identity.optString("environmentId").matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))throw new java.io.IOException("网络意图身份无效，原文件已保留");return value;
+  }
+  static boolean identityMatches(JSONObject record,JSONObject identity)throws java.io.IOException{
+    JSONObject marker=intent(record);if(marker==null)return true;JSONObject saved=marker.optJSONObject("identity");return saved.optInt("slot",-1)==identity.optInt("slot",-2)&&saved.optInt("generation",-1)==identity.optInt("generation",-2)&&saved.optString("environmentId").equals(identity.optString("environmentId"));
+  }
+  /** Staging keeps the prior intent and its private snapshots until promotion.
+   * A crash therefore never turns an unacknowledged model write into an apply. */
+  static IntentReceipt stageIntent(Context c,String action,JSONObject config,String baseline,JSONObject lineage,JSONObject identity,IntentGuard guard)throws Exception{
+    if("apply".equals(action))return NetworkSourceSelection.withSources(c,config,sources->stageIntent(c,action,config,baseline,lineage,identity,guard,sources));
+    return stageIntent(c,action,config,baseline,lineage,identity,guard,null);
+  }
+  private static IntentReceipt stageIntent(Context c,String action,JSONObject config,String baseline,JSONObject lineage,JSONObject identity,IntentGuard guard,NetworkSourceSelection.Sources sources)throws Exception{
+    return NetworkSourceSelection.withActiveSnapshot(c,()->{
+      guard.verify();JSONObject before=pendingStrict(c);JSONObject oldMarker=intent(before);if(oldMarker!=null&&"staged".equals(oldMarker.optString("state")))throw new java.io.IOException("上次网络保存尚未恢复");
+      JSONObject record=J.obj("action",action,"config",config,"baseline",baseline,"savedAt",System.currentTimeMillis(),"previousPending",before,"environmentIntent",J.obj("schema",1,"id",UUID.randomUUID().toString().replace("-",""),"identity",J.parse(identity.toString()),"state","staged"));
+      if(lineage!=null&&lineage.length()>0)NetworkCatalog.put(record,"baselineLineage",J.parse(lineage.toString()));SecretStore vault=new SecretStore(c);List<String> written=new ArrayList<>();IntentReceipt receipt=null;
+      try{
+        if(sources!=null){String suffix=snapshotId(),entry="pending-entry-subscription-"+suffix;vault.put(entry,sources.entryBytes);written.add(entry);NetworkCatalog.put(record,"entrySnapshot",entry);NetworkCatalog.put(record,"entrySnapshotMeta",NetworkSourceSelection.metadata(sources.entry,sources.entryBytes));if(sources.exit!=null){String exit="pending-exit-subscription-"+suffix;vault.put(exit,sources.exitBytes);written.add(exit);NetworkCatalog.put(record,"exitSnapshot",exit);NetworkCatalog.put(record,"exitSnapshotMeta",NetworkSourceSelection.metadata(sources.exit,sources.exitBytes));}}
+        guard.verify();receipt=new IntentReceipt(record);byte[] encoded=receipt.staged.getBytes(StandardCharsets.UTF_8);if(encoded.length>16*1024*1024)throw new java.io.IOException("网络候选和恢复记录过大，旧设置已保留");vault.put("pending-network",encoded);return receipt;
+      }catch(Exception failure){
+        // Publication may have completed before an AtomicFile error was reported.
+        // Only this exact receipt is withdrawn, even in that case.
+        if(receipt!=null)try{rollbackIntent(c,receipt,guard);}catch(Exception rollback){failure.addSuppressed(rollback);}
+        for(String slot:written)try{if(receipt==null||!receipt.matches(pendingStrict(c)))vault.remove(slot);}catch(Exception cleanup){failure.addSuppressed(cleanup);}throw failure;
+      }
+    });
+  }
+  static String promoteIntent(Context c,IntentReceipt receipt,IntentGuard guard)throws Exception{return NetworkSourceSelection.withActiveSnapshot(c,()->{
+    guard.verify();JSONObject current=pendingStrict(c);if(!receipt.staged.equals(current.toString()))throw new java.io.IOException("网络设置已由较新的候选替换");JSONObject marker=intent(current);marker.put("state","ready");current.remove("previousPending");receipt.ready=current.toString();new SecretStore(c).put("pending-network",receipt.ready.getBytes(StandardCharsets.UTF_8));guard.verify();
+    // Cleanup cannot turn a successfully committed intent into a reported failure.
+    try{deleteSnapshots(new SecretStore(c),receipt.previous);}catch(Exception ignored){}return receipt.ready;
+  });}
+  static boolean readyReceipt(Context c,IntentReceipt receipt,IntentGuard guard)throws Exception{return NetworkSourceSelection.withActiveSnapshot(c,()->{guard.verify();return !receipt.ready.isEmpty()&&receipt.ready.equals(pendingStrict(c).toString());});}
+  /** Use only after verifying the corresponding model outside all source/active
+   * leases. A durable ready commit can succeed even if its write lost the ack. */
+  static String confirmIntent(Context c,IntentReceipt receipt,IntentGuard guard)throws Exception{return NetworkSourceSelection.withActiveSnapshot(c,()->{guard.verify();if(receipt.ready.isEmpty()||!receipt.ready.equals(pendingStrict(c).toString()))throw new java.io.IOException("网络候选已变化，旧保存结果未确认");try{deleteSnapshots(new SecretStore(c),receipt.previous);}catch(Exception ignored){}return receipt.ready;});}
+  static boolean rollbackIntent(Context c,IntentReceipt receipt,IntentGuard guard)throws Exception{return NetworkSourceSelection.withActiveSnapshot(c,()->{
+    guard.verify();JSONObject current=pendingStrict(c);if(!receipt.matches(current))return false;restoreIntent(c,current,receipt.previous);return true;
+  });}
+  static void restoreIntent(Context c,JSONObject staged,JSONObject previous)throws Exception{
+    SecretStore vault=new SecretStore(c);if(previous.length()==0)vault.remove("pending-network");else vault.put("pending-network",previous.toString().getBytes(StandardCharsets.UTF_8));try{deleteSnapshots(vault,staged);}catch(Exception ignored){}
+  }
+  /** Caller owns the per-profile intent lease, so a live stage cannot be mistaken
+   * for an interrupted save. Legacy v24 intents remain committed candidates. */
+  static void recoverIntent(Context c,JSONObject identity,IntentGuard guard)throws Exception{NetworkSourceSelection.withActiveSnapshot(c,()->{
+    guard.verify();JSONObject current=pendingStrict(c),marker=intent(current);if(marker==null)return null;
+    if(!identityMatches(current,identity)){restoreIntent(c,current,new JSONObject());JSONObject previous=current.optJSONObject("previousPending");if(previous!=null)try{deleteSnapshots(new SecretStore(c),previous);}catch(Exception ignored){}return null;}
+    if("staged".equals(marker.optString("state"))){JSONObject previous=current.optJSONObject("previousPending");if(previous==null||intent(previous)!=null&&"staged".equals(intent(previous).optString("state")))throw new java.io.IOException("网络意图恢复记录无效，原文件已保留");if(!identityMatches(previous,identity))previous=new JSONObject();restoreIntent(c,current,previous);}return null;
+  });}
   static String snapshotId(){String value=UUID.randomUUID().toString().replace("-","");StringBuilder encoded=new StringBuilder();for(char x:value.toCharArray())encoded.append("abcdefghijklmnop".charAt(Character.digit(x,16)));return encoded.toString();}
   static void save(Context c,String action,JSONObject config,String baseline)throws Exception{save(c,action,config,baseline,new JSONObject());}
   static void save(Context c,String action,JSONObject config,String baseline,JSONObject lineage)throws Exception{

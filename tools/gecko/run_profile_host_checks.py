@@ -15,10 +15,20 @@ ROOT = Path(__file__).resolve().parents[2]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--json-jar", type=Path, default=os.environ.get("PROFILE_JSON_JAR"))
+    parser.add_argument("--network-reports", type=Path, help="Reuse already executed, same-source network host receipts from this pipeline")
     args = parser.parse_args()
     if args.json_jar is None or not Path(args.json_jar).is_file():
         parser.error("--json-jar must name a JSON-java jar for JVM model tests (not a production dependency)")
     json_jar = Path(args.json_jar).resolve()
+    source_id = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    source_tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
+    source_status = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)
+    input_paths = set((ROOT / "app/src/main/java").rglob("*.java"))
+    input_paths.update((ROOT / "tests").rglob("*.java"))
+    input_paths.update((ROOT / "tests").rglob("*.py"))
+    input_paths.update((ROOT / "tests").rglob("*.cjs"))
+    input_paths.add(Path(__file__).resolve())
+    before_hashes = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in input_paths}
     java = os.environ.get("PROFILE_JAVA") or shutil.which("java")
     if not java:
         parser.error("JDK 17+ with jdk.compiler is required")
@@ -59,10 +69,17 @@ def main():
     for directory in ("network-catalog-host", "network-source-host", "network-lineage-host", "sealed-file-host"):
         receipt = output / (directory + "-results.json")
         receipt.unlink(missing_ok=True)
-        command = [sys.executable, str(ROOT / "tests" / directory / "run.py"), "--output", str(receipt)]
-        if directory != "sealed-file-host":
-            command += ["--json-jar", str(json_jar)]
-        subprocess.run(command, cwd=ROOT, check=True)
+        if args.network_reports is not None:
+            previous = args.network_reports / (directory + "-results.json")
+            report = json.loads(previous.read_text())
+            if report.get("sourceCommit") != source_id or report.get("actualAndroidExecution") is not False or not isinstance(report.get("passed"), int) or report["passed"] < 1:
+                raise ValueError("Reusable host receipt must be executed against this exact source: " + directory)
+            shutil.copyfile(previous, receipt)
+        else:
+            command = [sys.executable, str(ROOT / "tests" / directory / "run.py"), "--output", str(receipt)]
+            if directory != "sealed-file-host":
+                command += ["--json-jar", str(json_jar)]
+            subprocess.run(command, cwd=ROOT, check=True)
         report = json.loads(receipt.read_text())
         if report.get("actualAndroidExecution") is not False:
             raise ValueError("Host fixtures cannot claim Android execution")
@@ -71,19 +88,37 @@ def main():
         files.update((ROOT / "tests" / directory).rglob("*.java"))
     files.update(source / name for name in ("NetworkCatalog.java", "NetworkSubscriptionCatalogPolicy.java",
         "NetworkSourceSelection.java", "EntrySelection.java", "NetworkDraft.java", "NetworkChanges.java",
-        "NetworkOptimizationPolicy.java", "SealedFileIo.java"))
+        "NetworkOptimizationPolicy.java", "SealedFileIo.java", "ProfileCatalog.java",
+        "EnvironmentSpecRepository.java", "EnvironmentSpecRuntime.java", "EnvironmentApplyCoordinator.java",
+        "NativeNetwork.java", "NetworkUiProvider.java"))
     subprocess.run(["node", "tests/browser-runtime/session-cookies.test.cjs"], cwd=ROOT, check=True)
     bridges = sorted((ROOT / "tests/review-host").glob("*.cjs"))
     for bridge in bridges:
         subprocess.run(["node", str(bridge)], cwd=ROOT, check=True)
+    intent = ROOT / "tests/environment-intent-host/run.py"
+    if intent.is_file():
+        intent_receipt = output / "environment-intent-host-results.json"
+        subprocess.run([sys.executable, str(intent), "--json-jar", str(json_jar), "--output", str(intent_receipt)], cwd=ROOT, check=True)
+        value = json.loads(intent_receipt.read_text())
+        if value.get("actualAndroidExecution") is not False:
+            raise ValueError("Intent host checks cannot claim Android execution")
+        results.append({"test":"environment-intent-host","report":str(intent_receipt.relative_to(ROOT)),"passed":value.get("passed"),"actualAndroidExecution":False})
+        files.update((ROOT / "tests/environment-intent-host").rglob("*.java"))
     controller = ROOT / "tests/review-host/run_identity_controller_host.py"
     if controller.is_file():
         subprocess.run([sys.executable, str(controller), "--json-jar", str(json_jar)], cwd=ROOT, check=True)
+    if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
+            or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
+            or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest
+                   for path, digest in before_hashes.items())
+            or any(path not in before_hashes for path in files)):
+        raise ValueError("Source changed during host checks; discard this execution")
     report = {"schema": 1, "status": "passed", "actualAndroidExecution": False,
               "scope": "JVM production environment/network models and storage/protocol fixtures only; no Gecko or Android execution",
-              "sourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-              "sourceTree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip(),
-              "sourceDirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()),
+              "sourceCommit": source_id,
+              "sourceTree": source_tree,
+              "sourceDirty": bool(source_status.strip()),
+              "sourceUnchangedDuringChecks": True,
               "jsonJarSha256": hashlib.sha256(json_jar.read_bytes()).hexdigest(),
               "results": results,
               "files": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(files)}}

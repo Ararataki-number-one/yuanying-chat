@@ -1,7 +1,7 @@
 name: Profile upgrade host and official SDK build checks
 on:
   push:
-    branches: ['codex/v1.6-network-environments', 'codex/v1.7-templates-audit', 'codex/v2.0-maintenance-capabilities']
+    branches: ['feature/profile-upgrades-1_6', 'feature/android-engine-probe', 'codex/v1.6-network-environments', 'codex/v1.7-templates-audit', 'codex/v2.0-maintenance-capabilities']
     paths: ['app/**', 'tests/**', 'tools/gecko/**', 'tools/export-profile-upgrades.py', 'third-party/sdk/**', 'third-party/patches/**', 'build.gradle', 'settings.gradle', 'gradle.properties', '.github/workflows/profile-upgrade-checks.yml']
   pull_request:
     paths: ['app/**', 'tests/**', 'tools/gecko/**', 'tools/export-profile-upgrades.py', 'third-party/sdk/**', 'third-party/patches/**', 'build.gradle', 'settings.gradle', 'gradle.properties', '.github/workflows/profile-upgrade-checks.yml']
@@ -34,6 +34,9 @@ jobs:
           fi
           if compgen -G 'tests/profile_*_test.py' >/dev/null; then
             python3 -m unittest discover -s tests -p 'profile_*_test.py'
+          fi
+          if [ -f tools/gecko/release_channel_contract_test.py ]; then
+            python3 tools/gecko/release_channel_contract_test.py
           fi
       - name: State host verification scope
         run: |

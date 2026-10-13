@@ -15,22 +15,34 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Arrays;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /** Synthetic integration variant only. Exercises real SQLite migration, Android
  * Keystore/AtomicFile, and production deletion/reuse. Never run against user data. */
 public final class EnvironmentSpecIntegrationActivity extends Activity {
   int checks;
+  final JSONArray assertions=new JSONArray();
   interface Work{void run()throws Exception;}
-  void check(String message,boolean valid){if(!valid)throw new AssertionError(message);checks++;}
+  void check(String message,boolean valid){assertions.put(J.obj("name",message,"pass",valid));if(!valid)throw new AssertionError(message);checks++;}
   void rejects(String message,Work work)throws Exception{boolean rejected=false;try{work.run();}catch(Exception expected){rejected=true;}check(message,rejected);}
   @Override public void onCreate(Bundle state){super.onCreate(state);new Thread(()->{
-    JSONObject result;
+    JSONObject result=J.obj("schema",1,"status","failed","synthetic",true,"actualAndroidExecution",true,
+      "syntheticAcknowledgementsOnly",true,"realAccountLogin",false,"webpageFingerprintAcceptance",false,
+      "scope","Android SQLite v6→v7, sealed config migration and deletion/reuse; synthetic repository acknowledgements, no webpage fingerprint or real account/WAN claim");
     try{
-      if(!getPackageName().endsWith(".test"))throw new IOException("Synthetic integration package required");
+      if(!getPackageName().equals("local.pocketchat.test"))throw new IOException("Synthetic integration package required");
+      new File(getFilesDir(),"environment-spec-results.json").delete();
+      JSONObject identity=IntegrationBuildIdentity.read(this);String source=getIntent().getStringExtra("sourceCommit"),nonce=getIntent().getStringExtra("runNonce");
+      if(source==null||!source.equals(identity.optString("sourceCommit"))||nonce==null||!nonce.matches("[0-9a-f]{32}"))throw new IOException("Exact source and fresh invocation nonce required");
+      NetworkCatalog.put(result,"sourceCommit",source);NetworkCatalog.put(result,"runNonce",nonce);NetworkCatalog.put(result,"buildIdentity",identity);
+      NetworkCatalog.put(result,"androidSdk",android.os.Build.VERSION.SDK_INT);NetworkCatalog.put(result,"deviceAbi",android.os.Build.SUPPORTED_ABIS[0]);
       schemaUpgrade();runtimeReceiptBinding();repositoryLifecycle();
-      result=J.obj("passed",checks,"scope","Android SQLite v6→v7, sealed config migration and deletion/reuse; no webpage fingerprint or WAN claim");
-    }catch(Throwable failure){result=J.obj("passed",checks,"error",failure.toString());}
+      NetworkCatalog.put(result,"status","passed");
+    }catch(Throwable failure){NetworkCatalog.put(result,"error",failure.toString());}
+    NetworkCatalog.put(result,"passed",checks);NetworkCatalog.put(result,"total",assertions.length());NetworkCatalog.put(result,"checks",assertions);
+    try{AtomicFile report=new AtomicFile(new File(getFilesDir(),"environment-spec-results.json"));java.io.FileOutputStream out=report.startWrite();try{out.write((result.toString()+"\n").getBytes(StandardCharsets.UTF_8));report.finishWrite(out);}catch(Throwable failure){report.failWrite(out);throw failure;}}
+    catch(Throwable failure){Log.e("PocketEnvironmentSpec","Synthetic report publication failed",failure);}
     Log.i("PocketEnvironmentSpec",result.toString());
   },"environment-spec-fixture").start();}
 

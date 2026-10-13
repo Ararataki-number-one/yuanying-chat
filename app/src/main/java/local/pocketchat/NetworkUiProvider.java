@@ -5,7 +5,7 @@ import org.json.*;import java.util.*;import java.util.concurrent.*;import java.n
 
 /** Private UI-to-profile bridge. Each provider runs in the existing profile's own process. */
 public class NetworkUiProvider extends ContentProvider {
-  Context profile;AppUpdateRoute.Server updateRoutes;final Handler main=new Handler(Looper.getMainLooper());final Map<String,JSONObject> jobs=new ConcurrentHashMap<>();boolean applying,saving,drainReading;long drainRevision,saveRevision;String activeApply="";volatile Transition activeTransition;final Runnable drain=()->{drainPending();main.postDelayed(this.drain,1000);};final ExecutorService io=Executors.newSingleThreadExecutor();
+  Context profile;AppUpdateRoute.Server updateRoutes;final Handler main=new Handler(Looper.getMainLooper());final Map<String,JSONObject> jobs=new ConcurrentHashMap<>();boolean applying,saving,drainReading;long drainRevision,saveRevision;String activeApply="";volatile String modelProof="";volatile Transition activeTransition;final Runnable drain=()->{drainPending();main.postDelayed(this.drain,1000);};final ExecutorService io=Executors.newSingleThreadExecutor();
   public static class Profile1 extends NetworkUiProvider{}public static class Profile2 extends NetworkUiProvider{}public static class Profile3 extends NetworkUiProvider{}public static class Profile4 extends NetworkUiProvider{}public static class Profile5 extends NetworkUiProvider{}public static class Profile6 extends NetworkUiProvider{}public static class Profile7 extends NetworkUiProvider{}
   @Override public boolean onCreate(){profile=Profiles.context(getContext(),Profiles.processSlot());updateRoutes=new AppUpdateRoute.Server(profile);main.post(drain);return true;}
   @Override public Bundle call(String method,String arg,Bundle extras){
@@ -28,23 +28,24 @@ public class NetworkUiProvider extends ContentProvider {
   void request(String id,String action,JSONObject candidate,String baseline,boolean deferred,int generation,String pendingSnapshot){
     drainRevision++;
     if(!"apply".equals(action)&&!"external".equals(action)){operate(id,action,candidate,baseline);return;}
+    final EnvironmentSpec.Identity expected;try{expected=ProfileCatalog.get(profile).identity(Profiles.slot(profile));if(generation>=0&&generation!=expected.generation)throw new java.io.IOException("此环境已删除或重新创建");}catch(Exception invalid){finish(id,false,invalid.getMessage());return;}
     long requestRevision=++saveRevision;saving=true;
+    modelProof="";
     io.execute(()->{
-      String error="";boolean superseded=false,sameGeneration=false;try{
+      String error="";boolean superseded=false,sameGeneration=false,uncertain=false;try{
         JSONObject row=ProfileCatalog.get(profile).item(Profiles.slot(profile));sameGeneration=generation<0||generation==row.optInt("generation");
-        if(!row.optBoolean("created")||!sameGeneration)throw new java.io.IOException("此环境已删除或重新创建");
+        EnvironmentSpecRuntime.requireIdentity(profile,expected);if(!row.optBoolean("created")||!sameGeneration)throw new java.io.IOException("此环境已删除或重新创建");
         // A queued read must not put an older candidate back after a newer save.
         superseded=deferred&&!pendingSnapshot.isEmpty()&&!pendingSnapshot.equals(NetworkChanges.pending(profile).toString());
         if(!superseded){if(!baseline.equals(NetworkChanges.hash(profile)))throw new java.io.IOException("此窗口配置已变化，请重新编辑");
-          NetworkChanges.validate(profile,action,candidate);Transition parent=activeTransition;JSONObject lineage=parent!=null&&!parent.confirmed&&!parent.publishedHash.isEmpty()&&parent.generation==row.optInt("generation")&&baseline.equals(parent.publishedHash)?NetworkChanges.lineage(parent.id,parent.publishedHash,parent.baseline,parent.generation):new JSONObject();NetworkChanges.save(profile,action,candidate,baseline,lineage);
-          EnvironmentSpecRuntime.desireNetwork(profile,action,candidate);}
-      }catch(Exception e){error=e.getMessage()==null?"配置未能保存":e.getMessage();}
-      if(!error.isEmpty()&&deferred&&sameGeneration)try{JSONObject current=NetworkChanges.pending(profile);boolean unchanged=pendingSnapshot.isEmpty()?baseline.equals(current.optString("baseline"))&&candidate.toString().equals(String.valueOf(current.optJSONObject("config"))):pendingSnapshot.equals(current.toString());if(unchanged){NetworkChanges.clear(profile);EnvironmentSpecRuntime.desireActiveNetwork(profile);}}catch(Exception unavailable){/* Retain the validation failure; unreadable candidates stay queued, and failed model reconciliation cannot acknowledge a route. */}
-      String failure=error;boolean replaced=superseded;main.post(()->{
+          NetworkChanges.validate(profile,action,candidate);Transition parent=activeTransition;JSONObject lineage=parent!=null&&!parent.confirmed&&!parent.publishedHash.isEmpty()&&parent.generation==row.optInt("generation")&&baseline.equals(parent.publishedHash)?NetworkChanges.lineage(parent.id,parent.publishedHash,parent.baseline,parent.generation):new JSONObject();EnvironmentSpecRuntime.saveNetworkIntent(profile,expected,action,candidate,baseline,lineage);}
+      }catch(Exception e){error=e.getMessage()==null?"配置未能保存":e.getMessage();uncertain=e instanceof EnvironmentSpecRuntime.IntentRecoveryRequired;}
+      if(!error.isEmpty()&&!uncertain&&deferred&&sameGeneration&&!pendingSnapshot.isEmpty())try{EnvironmentSpecRuntime.cancelNetworkIntent(profile,expected,pendingSnapshot);}catch(Exception unavailable){/* Exact receipt/identity guards keep newer intents and unreadable records intact. */}
+      String failure=error;boolean replaced=superseded,recoveryRequired=uncertain;main.post(()->{
         // A newer save owns this flag and its pending candidate. Older completion
         // must neither clear that candidate nor switch back to an older route.
         if(requestRevision!=saveRevision){if(deferred)jobs.remove(id);else jobs.put(id,J.obj("done",true,"ok",true,"message","已由较新的网络设置替换"));return;}
-        saving=false;if(replaced){jobs.remove(id);return;}if(!failure.isEmpty()){if(deferred){ChatSession waiting=ChatSession.peek();if(waiting!=null)waiting.setStatus("已保存的网络设置需要重新编辑："+failure);}finish(id,false,failure);return;}
+        saving=false;if(replaced){jobs.remove(id);return;}if(!failure.isEmpty()){if(deferred){ChatSession waiting=ChatSession.peek();if(waiting!=null)waiting.setStatus(recoveryRequired?failure:"已保存的网络设置需要重新编辑："+failure);}finish(id,false,failure);if(recoveryRequired)NetworkCatalog.put(jobs.get(id),"recoveryRequired",true);return;}
         ChatSession s=ChatSession.peek();NativeNetwork n=NativeNetwork.get(profile);
         if(saving||busy(s,n)||s!=null&&(s.navigating||s.state.optBoolean("busy"))){finish(id,true,"网络设置已保存，当前回复和文件操作结束后自动应用");return;}
         operate(id,action,candidate,baseline);
@@ -64,12 +65,12 @@ public class NetworkUiProvider extends ContentProvider {
   }
   /** Cancellation and confirmation share the main actor; storage work stays on IO. */
   void cancelPending(String id){
+    final EnvironmentSpec.Identity expected;try{expected=ProfileCatalog.get(profile).identity(Profiles.slot(profile));}catch(Exception invalid){finish(id,false,invalid.getMessage());return;}
     ++saveRevision;saving=false;Transition transition=activeTransition;
+    modelProof="";
     if(transition!=null&&!transition.confirmed){transition.cancelledByUser=true;transition.cancelled=true;}
     io.execute(()->{String error="";try{
-      if(transition!=null&&transition.cancelledByUser){rollbackTransition(transition);if(transition.rollbackFailed)throw new java.io.IOException("原网络设置未能完整恢复，请重新编辑网络");}
-      NetworkChanges.clear(profile);
-      EnvironmentSpecRuntime.desireActiveNetwork(profile);
+      EnvironmentSpecRuntime.withIntent(profile,()->{EnvironmentSpecRuntime.requireIdentity(profile,expected);if(transition!=null&&transition.cancelledByUser){rollbackTransition(transition);if(transition.rollbackFailed)throw new java.io.IOException("原网络设置未能完整恢复，请重新编辑网络");}String snapshot=NetworkChanges.pendingStrict(profile).toString();EnvironmentSpecRuntime.cancelNetworkIntent(profile,expected,snapshot);return null;});
     }catch(Exception failure){error=failure.getMessage()==null?"待应用网络设置未能取消":failure.getMessage();}
       String failure=error;main.post(()->{if(transition!=null&&transition.cancelledByUser&&activeTransition==transition)deferTransition(transition);finish(id,failure.isEmpty(),failure.isEmpty()?"待应用设置已取消，当前连接保持不变":failure);});
     });
@@ -80,7 +81,7 @@ public class NetworkUiProvider extends ContentProvider {
     if(busy(s,null)||s!=null&&(s.deleted||s.navigating||s.recoveryScheduled||s.state.optBoolean("busy")))return;
     drainReading=true;long revision=drainRevision;
     io.execute(()->{
-      JSONObject readRow=new JSONObject(),readQueued=new JSONObject();try{readRow=ProfileCatalog.get(profile).item(Profiles.slot(profile));if(readRow.optBoolean("created"))readQueued=NetworkChanges.pending(profile);}catch(Exception unavailable){/* Retry on the next idle tick without changing or announcing the saved candidate. */}
+      JSONObject readRow=new JSONObject(),readQueued=new JSONObject();try{readRow=ProfileCatalog.get(profile).item(Profiles.slot(profile));if(readRow.optBoolean("created")){EnvironmentSpec.Identity identity=ProfileCatalog.get(profile).identity(Profiles.slot(profile));EnvironmentSpecRuntime.Reconciled current=EnvironmentSpecRuntime.reconcileNetwork(profile,identity,modelProof);modelProof=current.proof;readQueued=current.pending;}}catch(Exception unavailable){/* No apply is admitted until the authoritative intent/model can be reconciled. Retry quietly. */}
       JSONObject row=readRow,queued=readQueued;
       main.post(()->{
         drainReading=false;if(revision!=drainRevision||!row.optBoolean("created")||queued.length()==0||saving||applying)return;
