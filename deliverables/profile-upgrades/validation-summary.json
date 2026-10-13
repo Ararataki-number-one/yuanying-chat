@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "actualAndroidExecution": false,
+  "fullApkBuild": false,
+  "physicalArmPhone": false,
+  "realChatGPTLogin": false,
+  "source": {
+    "baseline": "a6c60f38fa51c107706626bae6707d2bd317c803",
+    "releases": [
+      {
+        "ref": "codex/v1.6-network-environments",
+        "commit": "c1b11e1dce6ef05d72e5ea986d3ed53961fbd17a",
+        "tree": "2b7dcd35150640036df036e79ee2c62ec6b2e1c3"
+      },
+      {
+        "ref": "codex/v1.7-templates-audit",
+        "commit": "e4e0b3d4cfdaca353105c8ba417cacfed34caedd",
+        "tree": "70948bb53f0a8c1f445f2d296e7a055ac968a66c"
+      },
+      {
+        "ref": "codex/v2.0-maintenance-capabilities",
+        "commit": "137113caa86cfd9375b3c9ecba8d6325e3188114",
+        "tree": "561dcc6ef305a5b47250befa89ceeebf237f133b"
+      }
+    ]
+  },
+  "verification": {
+    "javaCompilation": "All app and Android integration Java sources compile against Android API35 and interfaces reconstructed from byte-verified shipped v1.5.21 APK. Temporary compile aid only; no official AAR/APK build claim.",
+    "hostChecks": {
+      "networkHealth": 27,
+      "networkStatus": 16,
+      "poolIdentity": 54,
+      "latencyParser": 70,
+      "environmentModel": 88,
+      "exitParser": 54,
+      "fingerprintTemplateReport": 50,
+      "identityController": 33,
+      "cookieFixture": 10,
+      "auditBridge": 6,
+      "privacyHandshake": 3,
+      "resourcePolicy": 34,
+      "nativeInventory": 13,
+      "pythonInventorySuites": 6,
+      "originalWebsiteDom": 25,
+      "replyObservationDom": 37,
+      "replyBindingDom": 41,
+      "interactionSchedulingDom": 36
+    }
+  },
+  "compileInputs": {
+    "shippedApkSha256": "709dd0525f7a13deb23cd955078304fcdd82163db68ee6860ca3265039b73937",
+    "scope": "Only interface/source compilation; SDK Java reconstruction never goes into repository or APK."
+  },
+  "remaining": [
+    "Official AAR/Gradle APK build and lint",
+    "Actual Android fixture execution and real ARM phone",
+    "ChatGPT/Google login and uploads/downloads/IME compatibility",
+    "Measured network/resource and long-duration tests",
+    "Independent native timezone/Canvas/WebGL/Audio/font controls"
+  ]
+}
