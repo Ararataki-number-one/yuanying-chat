@@ -36,6 +36,8 @@ public final class FingerprintTemplateTest {
     check("Matching language observation",state(observed,"language",AuditReport.VERIFIED));
     check("Complete same-origin fields can be compared",state(observed,"frame",AuditReport.VERIFIED));
     check("Complete Dedicated Worker fields can be compared",state(observed,"worker",AuditReport.VERIFIED));
+    check("Matching Worker JS fields do not certify Worker HTTP headers",state(observed,"worker",AuditReport.VERIFIED)&&state(observed,"worker-header",AuditReport.UNCOVERED));
+    check("Matching browser fields cannot claim full desktop UA or fingerprint acceptance",Boolean.FALSE.equals(observed.opt("fullDesktopUaConsistency"))&&Boolean.FALSE.equals(observed.opt("fingerprintTemplateAcceptance")));
     for(String context:Arrays.asList("frame","worker")){
       JSONObject onlyUa=new JSONObject(sample.toString());onlyUa.put(context,J.obj("ua",ua));
       check("UA-only context cannot verify "+context,state(AuditReport.build(onlyUa,new JSONObject(),expected,false,true),context,AuditReport.UNCOVERED));
@@ -55,6 +57,9 @@ public final class FingerprintTemplateTest {
     JSONObject workerDifference=new JSONObject(sample.toString());workerDifference.getJSONObject("worker").put("language","ja-JP");check("Cross-context language difference remains visible",state(AuditReport.build(workerDifference,new JSONObject(),expected,false,true),"worker",AuditReport.ISSUE));
     JSONObject network=new JSONObject(sample.toString());network.put("network",J.obj("headers",J.obj("headers",J.obj("User-Agent",ua,"Accept-Language","en-US,en;q=0.5"))));
     JSONObject headerReport=AuditReport.build(network,new JSONObject(),expected,true,true);check("Real echo UA compared only when main-world known",state(headerReport,"header",AuditReport.VERIFIED));check("Echo language compared",state(headerReport,"header-language",AuditReport.VERIFIED));check("Headers scope admits content request limitation",row(headerReport,"header-language").optString("detail").contains("Gecko 内容脚本"));
+    check("Matching echo does not cover Worker HTTP or complete desktop UA",state(headerReport,"header",AuditReport.VERIFIED)&&state(headerReport,"worker-header",AuditReport.UNCOVERED)&&Boolean.FALSE.equals(headerReport.opt("fullDesktopUaConsistency")));
+    JSONObject differingEcho=new JSONObject(network.toString());differingEcho.getJSONObject("network").getJSONObject("headers").getJSONObject("headers").put("User-Agent","Observed different HTTP UA");
+    check("A real HTTP echo difference stays visible rather than inheriting matching JS",state(AuditReport.build(differingEcho,new JSONObject(),expected,true,true),"header",AuditReport.ISSUE));
     System.out.println(J.obj("schema",1,"status","passed","passed",checks,"total",checks,"checks",assertions,"actualAndroidExecution",false,"scope","Production template validation and AuditReport on JVM; no Gecko or Android execution").toString());
   }
 }
