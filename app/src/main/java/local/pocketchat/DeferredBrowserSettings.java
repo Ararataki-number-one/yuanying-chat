@@ -12,7 +12,7 @@ final class DeferredBrowserSettings {
   static void apply(ChatSession s){JSONObject value=desired(s);boolean protection=value.optInt("privacyLevel")!=s.privacy.level();ProfileCatalog.get(s.context).browserDisplay(Profiles.slot(s.context),value.optBoolean("desktopSite"));s.prefs.edit().putInt("privacyLevel",value.optInt("privacyLevel")).remove("nextPrivacyLevel").remove("nextDesktopSite").commit();s.identityApplicationPending=false;s.applyBrowserSettings(protection);s.setStatus("已应用保存的网页显示和保护设置");}
   static void release(ChatSession s){s.configurationCapture=false;s.operation=false;}
   static void drain(ChatSession s){
-    if(!pending(s)||!idle(s)||android.os.SystemClock.elapsedRealtime()-s.lastDeferredBrowserAttempt<10000)return;
+    if(!pending(s)||s.identity!=null&&s.identity.queueUnavailable||!idle(s)||android.os.SystemClock.elapsedRealtime()-s.lastDeferredBrowserAttempt<10000)return;
     s.lastDeferredBrowserAttempt=android.os.SystemClock.elapsedRealtime();String url=s.web.getUrl();long epoch=s.navigationEpoch;String scope=s.pageMemory.scope();
     if(!MainActivity.chatUrl(url)){apply(s);return;}
     s.operation=true;s.configurationCapture=true;

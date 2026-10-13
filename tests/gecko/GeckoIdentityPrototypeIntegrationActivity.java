@@ -16,7 +16,7 @@ import org.json.*;
 import org.mozilla.geckoview.*;
 
 /** Test-only official-SDK observations; never an applied fingerprint-template receipt. */
-public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
+public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
   static final String TAG="PocketIdentityPrototype",FILE="gecko-identity-prototype-results.json";
   static final String SDK="org.mozilla.geckoview:geckoview:157.0.20261005135250";
   static final String AAR="15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268";
@@ -121,6 +121,18 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
     }catch(Throwable failure){finish(failure);}
   }
   static String normalize(String tag){Locale value=Locale.forLanguageTag(tag);return value.getLanguage()+(value.getCountry().isEmpty()?"":"-"+value.getCountry());}
+  String reportFile(){return FILE;}
+  String reportTag(){return TAG;}
+  boolean caseDesktop(){return caseIndex==1;}
+  void prepareCase(int ticket,Runnable prepared){
+    // configure() may prepare production locales in 1.7. The prototype then
+    // makes its own explicit SDK request, without claiming production template
+    // application. The separate template fixture overrides this hook.
+    view.configure(desktop,0);view.runtime.getSettings().setLocales(requestedLocales.clone());
+    check("Case "+caseIndex+" retains the Java locale request",Arrays.equals(requestedLocales,view.runtime.getSettings().getLocales()));prepared.run();
+  }
+  void completeCase(JSONArray sessions,Runnable next){next.run();}
+  void configureReport(JSONObject report){}
   void beginCase(){
     if(finished)return;
     try{
@@ -128,13 +140,17 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
       caseIndex++;if(caseIndex==4){beginGuard();return;}
       final int ticket=++serial;requestedAt=SystemClock.elapsedRealtime();received.clear();nativeAgents.clear();rawObservations.clear();targets.clear();
       requestedLocales=new String[]{caseIndex==0||caseIndex==3?"en-US":caseIndex==1?"ja-JP":"zh-Hant-TW"};
-      normalizedLanguage=normalize(requestedLocales[0]);desktop=caseIndex==1;
+      normalizedLanguage=normalize(requestedLocales[0]);desktop=caseDesktop();
       check("Case "+caseIndex+" uses the open production Gecko bridge",view.ready&&view.privacyReady&&view.current!=null&&view.current.isOpen());
-      view.runtime.getSettings().setLocales(requestedLocales.clone());
-      check("Case "+caseIndex+" retains the Java locale request",Arrays.equals(requestedLocales,view.runtime.getSettings().getLocales()));
-      view.configure(desktop,0);targets.put("primary",view.current);
-      if(caseIndex==3){GeckoSession second=view.newSession();second.open(view.runtime);second.getSettings().setUserAgentMode(GeckoSessionSettings.USER_AGENT_MODE_DESKTOP);targets.put("secondary",second);}
       caseDeadline=()->{if(!finished&&serial==ticket)finish(new IOException("Case "+caseIndex+" did not return complete actual context/header observations"));};handler.postDelayed(caseDeadline,15000);
+      prepareCase(ticket,()->beginObservations(ticket));
+    }catch(Throwable failure){finish(failure);}
+  }
+  void beginObservations(int ticket){
+    if(finished||serial!=ticket)return;
+    try{
+      targets.put("primary",view.current);
+      if(caseIndex==3){GeckoSession second=view.newSession();second.open(view.runtime);second.getSettings().setUserAgentMode(GeckoSessionSettings.USER_AGENT_MODE_DESKTOP);targets.put("secondary",second);}
       for(Map.Entry<String,GeckoSession> item:new ArrayList<>(targets.entrySet())){
         String name=item.getKey();GeckoSession sdk=item.getValue();
         sdk.getUserAgent().accept(ua->{
@@ -150,9 +166,19 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
     if(finished||ticket!=serial||!targets.containsKey(name)||received.containsKey(name))return;
     try{
       if(!run.equals(value.optString("run"))||value.optInt("case")!=ticket||!name.equals(value.optString("session")))throw new IOException("Observation ownership mismatch");
-      rawObservations.put(name,value);
-      JSONObject nativeValue=nativeAgents.get(name);if(nativeValue==null)throw new IOException("Native session request was not captured");
-      JSONArray wire=site.records(ticket,name);JSONObject parent=value.getJSONObject("parent");String ua=nativeValue.getString("userAgent");
+      rawObservations.put(name,value);JSONObject nativeValue=nativeAgents.get(name);if(nativeValue==null)throw new IOException("Native session request was not captured");
+      received.put(name,J.obj("name",name,"native",nativeValue,"observed",value,"requestHeaders",site.records(ticket,name)));
+      if(received.size()!=targets.size())return;
+      // Network/Worker completion order is nondeterministic. Preserve the raw
+      // arrival records, then run the same strict checks once in target order.
+      JSONArray sessions=new JSONArray(),mismatches=new JSONArray();for(String targetName:targets.keySet()){JSONObject row=received.get(targetName);validateSession(row);sessions.put(row);if(row.getJSONObject("userAgentScope").getBoolean("workerFetchHeaderMismatch"))mismatches.put(targetName);}
+      if(caseIndex==3)check("Two sessions share this runtime locale, not separate environment evidence",received.get("primary").getJSONObject("observed").getJSONObject("parent").getString("language").equals(received.get("secondary").getJSONObject("observed").getJSONObject("parent").getString("language")));
+      cases.put(J.obj("index",caseIndex,"serial",ticket,"requestedAt",requestedAt,"completedAt",SystemClock.elapsedRealtime(),"sessions",sessions,"status","passed","workerFetchMismatchSessions",mismatches,"fullTemplateAcceptance",false));
+      completeCase(sessions,()->handler.post(this::beginCase));
+    }catch(Throwable failure){finish(failure);}
+  }
+  void validateSession(JSONObject observationRow)throws Exception{
+    String name=observationRow.getString("name");JSONObject value=observationRow.getJSONObject("observed"),nativeValue=observationRow.getJSONObject("native");JSONArray wire=observationRow.getJSONArray("requestHeaders");JSONObject parent=value.getJSONObject("parent");String ua=nativeValue.getString("userAgent");
       boolean expectedDesktop=desktop||"secondary".equals(name);
       check("Case "+caseIndex+" "+name+" observes the requested official UA mode",expectedDesktop?!ua.contains("Android"):ua.contains("Android"));
       check("Case "+caseIndex+" "+name+" has all main/frame/worker fields",complete(parent)&&complete(value.getJSONObject("frame"))&&complete(value.getJSONObject("worker"))&&complete(value.getJSONObject("blobWorker")));
@@ -172,13 +198,7 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
         if(workerFetch)workerMatchesSession&=ua.equals(header.getString("userAgent"));
       }
       JSONObject userAgentScope=J.obj("documentHeadersMatchSession",true,"workerFetchHeadersMatchSdkDefault",true,"workerFetchHeadersMatchSession",workerMatchesSession,"workerFetchHeaderMismatch",!workerMatchesSession,"observedUserAgentUniform",workerMatchesSession,"fullTemplateAcceptance",false);
-      received.put(name,J.obj("name",name,"native",nativeValue,"observed",value,"requestHeaders",wire,"userAgentScope",userAgentScope));
-      if(received.size()!=targets.size())return;
-      if(caseIndex==3)check("Two sessions share this runtime locale, not separate environment evidence",received.get("primary").getJSONObject("observed").getJSONObject("parent").getString("language").equals(received.get("secondary").getJSONObject("observed").getJSONObject("parent").getString("language")));
-      JSONArray sessions=new JSONArray(),mismatches=new JSONArray();for(JSONObject observation:received.values()){sessions.put(observation);if(observation.getJSONObject("userAgentScope").getBoolean("workerFetchHeaderMismatch"))mismatches.put(observation.getString("name"));}
-      cases.put(J.obj("index",caseIndex,"serial",ticket,"requestedAt",requestedAt,"completedAt",SystemClock.elapsedRealtime(),"sessions",sessions,"status","passed","workerFetchMismatchSessions",mismatches,"fullTemplateAcceptance",false));
-      handler.post(this::beginCase);
-    }catch(Throwable failure){finish(failure);}
+      observationRow.put("userAgentScope",userAgentScope);
   }
   static boolean complete(JSONObject signal){
     return signal.opt("ua") instanceof String&&!signal.optString("ua").isEmpty()&&signal.opt("language") instanceof String&&!signal.optString("language").isEmpty()&&signal.optJSONArray("languages")!=null&&signal.optJSONArray("languages").length()>0&&signal.opt("cpu") instanceof Number&&signal.optInt("cpu")>0&&signal.opt("offset") instanceof Number&&signal.opt("zone") instanceof String&&!signal.optString("zone").isEmpty()&&signal.opt("intlLocale") instanceof String&&!signal.optString("intlLocale").isEmpty();
@@ -227,9 +247,9 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
     reportPut(report,"androidCleartextPolicy",J.obj("globalPermitted",policy.isCleartextTrafficPermitted(),"loopbackPermitted",policy.isCleartextTrafficPermitted("127.0.0.1"),"localhostPermitted",policy.isCleartextTrafficPermitted("localhost"),"scope","Observed Android policy only; no policy override"));
     if(site!=null){reportPut(report,"allRequestHeaders",site.allRecords());reportPut(report,"localServer",site.diagnostics());}
     if(failure!=null){reportPut(report,"error",String.valueOf(failure));reportPut(report,"failureType",failure.getClass().getName());reportPut(report,"currentCase",caseIndex);reportPut(report,"partialObservations",new JSONObject(rawObservations));reportPut(report,"nativeRequests",new JSONObject(nativeAgents));}
-    Log.i(TAG,report.toString());
+    configureReport(report);Log.i(reportTag(),report.toString());
     if(view!=null)view.destroy();if(owner!=null){owner.handler.removeCallbacks(owner.tick);owner.deleted=true;}if(site!=null)site.close();
-    storage.execute(()->{try{File file=new File(getFilesDir(),FILE),tmp=new File(getFilesDir(),FILE+".tmp");try(FileOutputStream out=new FileOutputStream(tmp)){out.write(report.toString().getBytes(StandardCharsets.UTF_8));out.getFD().sync();}if(!tmp.renameTo(file))throw new IOException("Atomic report publication failed");}catch(Throwable error){Log.e(TAG,"Report export failed",error);}finally{storage.shutdown();}});
+    storage.execute(()->{try{File file=new File(getFilesDir(),reportFile()),tmp=new File(getFilesDir(),reportFile()+".tmp");try(FileOutputStream out=new FileOutputStream(tmp)){out.write(report.toString().getBytes(StandardCharsets.UTF_8));out.getFD().sync();}if(!tmp.renameTo(file))throw new IOException("Atomic report publication failed");}catch(Throwable error){Log.e(reportTag(),"Report export failed",error);}finally{storage.shutdown();}});
   }
   int passedChecks(){int count=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))count++;return count;}
   static void reportPut(JSONObject object,String key,Object value){try{object.put(key,value);}catch(JSONException impossible){throw new IllegalStateException(impossible);}}

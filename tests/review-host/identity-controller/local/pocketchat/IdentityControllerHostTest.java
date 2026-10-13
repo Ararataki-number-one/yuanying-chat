@@ -5,11 +5,11 @@ import org.json.JSONObject;
 
 /** Actual controller execution with deterministic Android/UI/I/O doubles. */
 public final class IdentityControllerHostTest {
-  static int checks;
-  static void check(boolean condition,String message){checks++;if(!condition)throw new AssertionError(message);}
+  static int checks;static final org.json.JSONArray assertions=new org.json.JSONArray();
+  static void check(boolean condition,String message){checks++;assertions.put(J.obj("name",message,"pass",condition));if(!condition)throw new AssertionError(message);}
   static EnvironmentSpec.NetworkBinding route(String id){return new EnvironmentSpec.NetworkBinding("external","","","",id,"manual","", "", "");}
   static ChatSession fixture() {
-    ChatSession session=new ChatSession();EnvironmentSpec.NetworkBinding route=route("fixed");session.context.actual=route;
+    ChatSession session=new ChatSession();session.context.writer=session.environmentIo;EnvironmentSpec.NetworkBinding route=route("fixed");session.context.actual=route;
     BrowserIdentitySpec browser=BrowserIdentitySpec.preset(BrowserIdentitySpec.MOBILE);
     EnvironmentSpec.Identity id=new EnvironmentSpec.Identity(0,0,"00000000-0000-0000-0000-000000000001");
     EnvironmentSpecRepository.value=EnvironmentSpec.initial(id,new EnvironmentSpec.Configuration(browser.json(),route));
@@ -23,11 +23,10 @@ public final class IdentityControllerHostTest {
   static void staleEditorCompletion(){
     ChatSession session=fixture();MainActivity activity=new MainActivity(session);
     session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.DESKTOP),issue->{});settle(session);
-    EnvironmentEditorUi.Pending older=EnvironmentEditorUi.pending.get(0);
+    check(session.deferred&&session.queuedDesktop,"first template is saved as a deferred intent");
     session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.RFP),issue->{});settle(session);
-    check(!older.current.getAsBoolean(),"new desired configuration revokes old precommit guard");older.finish();
-    check(EnvironmentEditorUi.writes==0,"old draft capture completion cannot write browser preferences");
-    EnvironmentEditorUi.pending.get(1).finish();check(EnvironmentEditorUi.writes==1,"latest guarded edit can commit");
+    check(session.queuedLevel==2&&!session.queuedDesktop,"newer template replaces the earlier target before safe application");
+    check(EnvironmentEditorUi.pending.isEmpty()&&EnvironmentEditorUi.writes==0,"template save never rewrites editor metadata or starts inline draft application");
   }
   static void newerEditBeforeMainCallback(){
     ChatSession session=fixture();MainActivity activity=new MainActivity(session);
@@ -35,21 +34,20 @@ public final class IdentityControllerHostTest {
     session.environmentIo.run();
     session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.RFP),issue->{});
     session.environmentIo.run();session.handler.run();
-    check(EnvironmentEditorUi.pending.size()==1,"stale UI completion never starts application");
+    check(EnvironmentEditorUi.pending.isEmpty(),"template completions do not mutate profile metadata");
     check(session.queuedSaves==1,"stale worker completion never overwrites deferred preferences");
     check(session.queuedLevel==2&&!session.queuedDesktop,"deferred queue contains the latest desired browser policy");
   }
   static void legacyAndSessionSupersession(){
     ChatSession session=fixture();MainActivity activity=new MainActivity(session);
-    session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.DESKTOP),issue->{});settle(session);
-    EnvironmentEditorUi.Pending old=EnvironmentEditorUi.pending.get(0);
-    session.identity.legacySaved(0,false);check(!old.current.getAsBoolean(),"legacy settings invalidate prior template capture");old.finish();
-    check(EnvironmentEditorUi.writes==0,"superseded template cannot commit after legacy edit");
+    session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.DESKTOP),issue->{});session.environmentIo.run();
+    session.identity.legacySaved(0,false);session.handler.run();
+    check(session.queuedSaves==0,"legacy edit invalidates prior template before deferred preference publication");
     settle(session);
     check("compatibility".equals(EnvironmentSpecRepository.value.desired().browser().optString("privacy")),"latest legacy settings become desired configuration");
     session=fixture();activity=new MainActivity(session);
     session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.DESKTOP),issue->{});session.environmentIo.run();activity.session=new ChatSession();session.handler.run();
-    check(EnvironmentEditorUi.pending.isEmpty(),"changed activity session cannot receive an old environment edit");
+    check(session.queuedSaves==0&&EnvironmentEditorUi.pending.isEmpty(),"changed activity session cannot receive an old environment edit");
   }
   static void pendingStartupPolicy()throws Exception{
     ChatSession session=fixture();EnvironmentSpec base=EnvironmentSpecRepository.value;
@@ -92,6 +90,8 @@ public final class IdentityControllerHostTest {
     session.failQueue=true;session.identity.cached=null;session.identity.load();settle(session);
     check(session.web.identityPrepared&&BrowserIdentitySpec.MOBILE.equals(session.web.configured.templateId),"failed queue restoration opens only the actual applied browser policy");
     check(BrowserIdentitySpec.DESKTOP.equals(session.identity.cached.desired().browser().optString("templateId")),"failed queue restoration retains desired configuration for later retry");
+    check(!session.identityApplicationPending&&!session.identity.pendingWork(),"failed queue restoration cannot leave a maintenance flag without runnable work");
+    check(session.identity.queueUnavailable,"failed durable queue remains blocked and explicitly retryable");
   }
   static void acknowledgements()throws Exception{
     ChatSession session=fixture();session.context.actual=route("different");session.identity.acknowledge();settle(session);
@@ -102,14 +102,16 @@ public final class IdentityControllerHostTest {
     check(EnvironmentSpecRepository.appliedWrites==0,"changed native policy generation rejects queued acknowledgement");
     session=fixture();session.prefs.mode="internal";NativeNetwork.instance.exactReceipt=false;session.identity.acknowledge();settle(session);
     check(EnvironmentSpecRepository.appliedWrites==0,"unverified service route never receives full environment acknowledgement");
-    session=fixture();session.identity.acknowledge();settle(session);
+    session=fixture();session.identity.acknowledge();check(session.context.bindingReads==0,"acknowledgement defers catalog reads until worker execution");settle(session);
+    check(session.context.bindingReads==1,"acknowledgement performs binding read on environment writer");
     check(EnvironmentSpecRepository.appliedWrites==1&&session.identity.appliedRevision()==1,"matching admitted route and accepted browser are acknowledged");
     session.guard.allowed=false;session.identity.acknowledge();settle(session);check(EnvironmentSpecRepository.appliedWrites==1,"blocked route cannot add acknowledgement");
   }
   static void observations()throws Exception{
     ChatSession session=fixture();session.identity.acknowledge();settle(session);
     JSONObject report=J.obj("identityAppliedRevision",1,"policy","policy","route","route","fresh",true);
-    session.identity.observe(report);settle(session);check(EnvironmentSpecRepository.observedWrites==1,"matching observation records its captured applied revision");
+    session.identity.observe(report);check(session.context.bindingReads==1,"observation cannot read catalog on caller UI thread");settle(session);check(EnvironmentSpecRepository.observedWrites==1,"matching observation records its captured applied revision");
+    report.put("fresh",false);session.identity.observe(report);settle(session);check(EnvironmentSpecRepository.observedWrites==1,"stale observation cannot be persisted as current");report.put("fresh",true);
     report.put("identityAppliedRevision",2);session.identity.observe(report);settle(session);check(EnvironmentSpecRepository.observedWrites==1,"observation cannot invent a newer applied revision");
     report.put("identityAppliedRevision",1);report.put("policy","old-policy");session.identity.observe(report);settle(session);check(EnvironmentSpecRepository.observedWrites==1,"stale page policy observation is rejected");
     report.put("policy","policy");session.identity.observe(report);session.connectionEpoch++;settle(session);check(EnvironmentSpecRepository.observedWrites==1,"connection changes reject queued observation persistence");
@@ -159,8 +161,30 @@ public final class IdentityControllerHostTest {
     check(last[0].desktop()&&last[0].locales.equals(Collections.singletonList("ja-JP")),"unreadable current language does not overwrite prior desired settings");
     check(dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).enabled,"read failure re-enables template editing");EnvironmentSpecRepository.readFailure=false;
   }
+  static void failedQueueDoesNotApplyOlderIntent()throws Exception{
+    ChatSession session=acknowledgedFixture();MainActivity activity=new MainActivity(session);session.deferred=true;session.queuedLevel=0;session.queuedDesktop=false;session.failQueue=true;
+    final String[] issue={""};session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.DESKTOP),value->issue[0]=value);settle(session);
+    check(!issue[0].isEmpty()&&session.identity.queueUnavailable,"failed new queue is actionable and cannot drain an older entry");
+    check(!session.identityApplicationPending&&!session.identity.pendingWork()&&!session.tickQueued,"failed persistence does not keep idle background maintenance running");
+    check(BrowserIdentitySpec.DESKTOP.equals(session.identity.cached.desired().browser().optString("templateId")),"successful desired write remains available for explicit retry");
+    session.identity.prepareRuntime();check(BrowserIdentitySpec.MOBILE.equals(session.web.configured.templateId),"unqueued desired configuration never replaces actual applied policy");
+    check(EnvironmentEditorUi.pending.isEmpty(),"queue failure cannot begin draft capture or webpage reconfiguration");
+    session.failQueue=false;session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.DESKTOP),value->issue[0]=value);settle(session);
+    check(!session.identity.queueUnavailable&&session.identity.pendingWork()&&session.queuedDesktop&&session.queuedLevel==1,"explicit retry restores only the latest durable target");
+  }
+  static void reusedIdentityAndReceiptFences()throws Exception{
+    ChatSession session=fixture();session.identity.acknowledge();EnvironmentSpec old=EnvironmentSpecRepository.value;
+    EnvironmentSpecRepository.value=EnvironmentSpec.initial(new EnvironmentSpec.Identity(0,1,"00000000-0000-0000-0000-000000000002"),old.desired());settle(session);
+    check(EnvironmentSpecRepository.appliedWrites==0,"old session cannot acknowledge a reused environment generation");
+    session=fixture();session.identity.acknowledge();settle(session);
+    JSONObject report=J.obj("identityAppliedRevision",1,"policy","policy","route","route","fresh",true);
+    session.prefs.mode="internal";NativeNetwork.instance.exactReceipt=false;session.identity.observe(report);settle(session);
+    check(EnvironmentSpecRepository.observedWrites==0,"observation requires the actual current internal route receipt");
+    session=fixture();session.identity.acknowledge();settle(session);session.identity.observe(report);session.deleted=true;settle(session);
+    check(EnvironmentSpecRepository.observedWrites==0,"deleted session cannot persist a queued observation");
+  }
   public static void main(String[] arguments)throws Exception{
-    finishedActivityPublishesAndWakes(false);finishedActivityPublishesAndWakes(true);unchangedTemplateRequiresActualAcknowledgement();templateDialogKeepsLatestLanguage();staleEditorCompletion();newerEditBeforeMainCallback();legacyAndSessionSupersession();pendingStartupPolicy();interruptedDesiredPersistence();startupConfigurationGate();failedQueueRestoration();acknowledgements();observations();
-    System.out.println("{\"passed\":"+checks+",\"actualAndroidExecution\":false,\"scope\":\"Production IdentityTemplateController and FingerprintTemplateUi/model with queued UI, widgets, binder and persistence doubles; no Android device, Gecko, Keystore or real draft capture\"}");
+    failedQueueDoesNotApplyOlderIntent();reusedIdentityAndReceiptFences();finishedActivityPublishesAndWakes(false);finishedActivityPublishesAndWakes(true);unchangedTemplateRequiresActualAcknowledgement();templateDialogKeepsLatestLanguage();staleEditorCompletion();newerEditBeforeMainCallback();legacyAndSessionSupersession();pendingStartupPolicy();interruptedDesiredPersistence();startupConfigurationGate();failedQueueRestoration();acknowledgements();observations();
+    System.out.println(J.obj("schema",1,"status","passed","passed",checks,"total",checks,"checks",assertions,"actualAndroidExecution",false,"scope","Production IdentityTemplateController and FingerprintTemplateUi/model with queued UI/widgets/binder/persistence doubles; no Android, Gecko, Keystore or real draft capture").toString());
   }
 }

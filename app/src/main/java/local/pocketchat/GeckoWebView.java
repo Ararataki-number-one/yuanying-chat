@@ -369,8 +369,8 @@ class GeckoWebView extends FrameLayout {
     if(current!=null&&current.isOpen()){GeckoSession source=current;source.getUserAgent().accept(value->{if(!destroyed&&source==current&&this.desktop==desktop&&identityPolicyRevision==revision){metadata.userAgent=value;acknowledgeIdentity();}},error->{});}
   }
   void acknowledgeIdentity(){
-    metadata.policyAcknowledged=runtime!=null&&current!=null&&current.isOpen()&&privacyReady&&protectionLevel==configuredProtection&&!metadata.userAgent.isEmpty()&&metadata.rfpAcknowledged&&metadata.localesAcknowledged&&(protectionLevel<2||fingerprintingProtected);
-    metadata.policyError=metadata.policyAcknowledged?"":protectionLevel>=2&&!fingerprintingProtected?"原生强化设置尚未确认生效":"等待内核确认";
+    metadata.policyAcknowledged=runtime!=null&&current!=null&&current.isOpen()&&privacyReady&&protectionLevel==configuredProtection&&!metadata.userAgent.isEmpty()&&metadata.rfpAcknowledged&&metadata.localesRequestAcknowledged&&(protectionLevel<2||fingerprintingProtected);
+    metadata.policyError=metadata.policyAcknowledged?"":protectionLevel>=2&&!fingerprintingProtected?"原生强化请求尚未取得设置回读":"等待 SDK 请求或设置回读";
     if(metadata.policyAcknowledged){metadata.acceptedBrowserIdentity=BrowserIdentitySpec.legacy(desktop,configuredProtection).withLocales(identityPolicy==null?Collections.emptyList():identityPolicy.locales).json();owner.identityPolicyAcknowledged();}
   }
   private void requestProtection(WebExtension.Port port,String kind,int level){
@@ -387,10 +387,11 @@ class GeckoWebView extends FrameLayout {
     else{android.os.LocaleList system=owner.context.getResources().getConfiguration().getLocales();for(int i=0;i<system.size()&&i<3;i++)selected.add(system.get(i).toLanguageTag());}
     if(selected.isEmpty())selected.add(Locale.getDefault().toLanguageTag());
     String[] locales=selected.toArray(new String[0]);
-    try{metadata.localesAcknowledged=GeckoPolicyAdapter.applyLocales(runtime,locales);metadata.appliedLocales=metadata.localesAcknowledged?runtime.getSettings().getLocales().clone():new String[0];}
-    catch(Exception failure){metadata.localesAcknowledged=false;metadata.appliedLocales=new String[0];}
+    metadata.expectedSdkLocales=BrowserIdentitySpec.expectedSdkLocales(selected).toArray(new String[0]);
+    try{metadata.localesRequestAcknowledged=GeckoPolicyAdapter.applyLocales(runtime,locales);metadata.requestedLocales=metadata.localesRequestAcknowledged?runtime.getSettings().getLocales().clone():new String[0];}
+    catch(Exception failure){metadata.localesRequestAcknowledged=false;metadata.requestedLocales=new String[0];}
   }
-  String identityLanguage(){return metadata.appliedLocales.length>0?metadata.appliedLocales[0]:Locale.getDefault().toLanguageTag();}
+  String identityLanguage(){return metadata.localesRequestAcknowledged&&metadata.expectedSdkLocales.length>0?metadata.expectedSdkLocales[0]:"";}
   void useEngine(boolean value){if(!value)throw new IllegalStateException("正式应用仅使用 Firefox 内核");}
   boolean closePopup(){
     return closePopup(current);

@@ -25,7 +25,8 @@ final class BrowserIdentitySpec {
   static BrowserIdentitySpec from(JSONObject value){
     if(value==null)return preset(MOBILE);
     if(value.has("schema")&&value.optInt("schema",-1)!=SCHEMA)throw new IllegalArgumentException("当前版本不支持此指纹配置版本");
-    for(String field:Arrays.asList("ua","userAgent","timezone","canvas","webgl","audio","fonts","hardware"))if(value.has(field))throw new IllegalArgumentException("当前官方内核不支持自定义 "+field);
+    for(String field:Arrays.asList("ua","userAgent"))if(value.has(field))throw new IllegalArgumentException("本版仅开放经过验证的 Firefox 模板，暂不开放自定义 UA");
+    for(String field:Arrays.asList("timezone","canvas","webgl","audio","fonts","hardware"))if(value.has(field))throw new IllegalArgumentException("本版尚未提供自定义 "+field+" 能力");
     ArrayList<String> locales=new ArrayList<>();JSONArray array=value.optJSONArray("locales");
     if(array!=null)for(int i=0;i<array.length();i++)locales.add(array.optString(i));
     return new BrowserIdentitySpec(value.optString("templateId",MOBILE),value.optString("display","mobile"),value.optString("privacy","standard"),locales,value.optString("timezoneStrategy","system"));
@@ -33,6 +34,18 @@ final class BrowserIdentitySpec {
   static BrowserIdentitySpec legacy(boolean desktop,int level){
     String privacy=level>=2?"native-rfp":level==0?"compatibility":"standard";
     return new BrowserIdentitySpec(level>=2?desktop?RFP_DESKTOP:RFP:level==0?desktop?COMPATIBLE_DESKTOP:COMPATIBLE:desktop?DESKTOP:MOBILE,desktop?"desktop":"mobile",privacy,Collections.emptyList(),level>=2?"native-standardized":"system");
+  }
+  /** Prediction of official 157 commitLocales, never a native/page acknowledgement.
+   * GeckoRuntimeSettings.getLocales returns the original request, including script
+   * and variants; LocaleUtils sends only language-region to content. */
+  static List<String> expectedSdkLocales(List<String> requested){
+    ArrayList<String> result=new ArrayList<>();
+    for(String tag:requested){
+      Locale locale=Locale.forLanguageTag(tag);String language=locale.getLanguage();
+      if("in".equals(language))language="id";else if("iw".equals(language))language="he";else if("ji".equals(language))language="yi";
+      String country=locale.getCountry();result.add(language+(country.isEmpty()?"":"-"+country));
+    }
+    return Collections.unmodifiableList(result);
   }
   boolean desktop(){return "desktop".equals(display);}
   int protectionLevel(){return "native-rfp".equals(privacy)?2:"compatibility".equals(privacy)?0:1;}
@@ -43,6 +56,7 @@ final class BrowserIdentitySpec {
     if(locales.size()>3)return "语言列表最多三项";
     for(String locale:locales)if(locale==null||locale.length()>64||!locale.matches("[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*")||Locale.forLanguageTag(locale).getLanguage().isEmpty())return "语言必须使用有效 BCP 47 标签，例如 zh-CN";
     Set<String> distinct=new HashSet<>();for(String locale:locales)if(!distinct.add(locale.toLowerCase(Locale.ROOT)))return "语言列表包含重复项";
+    Set<String> nativeDistinct=new HashSet<>();for(String locale:expectedSdkLocales(locales))if(!nativeDistinct.add(locale.toLowerCase(Locale.ROOT)))return "语言标签在当前 Firefox 规范化后重复，请保留一项";
     if(!"system".equals(timezoneStrategy)&&!"native-standardized".equals(timezoneStrategy))return "独立时区尚未实现；本版使用系统或原生标准化策略";
     if("native-standardized".equals(timezoneStrategy)&&!"native-rfp".equals(privacy))return "原生标准化时区仅随原生抗指纹策略启用";
     BrowserIdentitySpec expected=preset(templateId);

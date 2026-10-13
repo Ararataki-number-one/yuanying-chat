@@ -11,12 +11,13 @@ import org.json.JSONObject;
 /** Host doubles for Android/UI, persistence I/O and service access. The controller,
  * immutable model and template validation under test are production sources. */
 final class WorkQueue implements Executor {
+  static WorkQueue current;
   final ArrayDeque<Runnable> tasks=new ArrayDeque<>();
   public void execute(Runnable work){tasks.add(work);}
   boolean post(Runnable work){tasks.add(work);return true;}
-  void run(){while(!tasks.isEmpty())tasks.remove().run();}
+  void run(){WorkQueue old=current;current=this;try{while(!tasks.isEmpty())tasks.remove().run();}finally{current=old;}}
 }
-final class FakeContext {EnvironmentSpec.NetworkBinding actual;}
+final class FakeContext {EnvironmentSpec.NetworkBinding actual;WorkQueue writer;int bindingReads;}
 final class FakePrefs {
   String mode="external",proxy="";
   String getString(String name,String fallback){return "networkMode".equals(name)?mode:"proxy".equals(name)?proxy:fallback;}
@@ -45,7 +46,7 @@ final class ChatSession {
   int environmentGeneration,queuedLevel,queuedSaves;boolean queuedDesktop;
   long connectionEpoch=1;String environmentSpecIssue="";IdentityTemplateController identity;
   int activityUpdates;boolean paused,tickQueued;
-  void updateBrowserActivity(){activityUpdates++;if(deferred){paused=false;tickQueued=true;}}
+  void updateBrowserActivity(){activityUpdates++;if(identity!=null&&identity.pendingWork()){paused=false;tickQueued=true;}else{paused=true;tickQueued=false;}}
   final WebStore webStore=new WebStore(environmentIo);
   void applyIdentityTemplate(MainActivity activity,BrowserIdentitySpec specification,Consumer<String> done){identity.apply(activity,specification,done);}
   boolean internalNetwork(){return "internal".equals(prefs.mode);}
@@ -69,6 +70,7 @@ final class NativeNetwork {
 }
 final class DeferredBrowserSettings {
   static boolean pending(ChatSession session){return session.deferred;}
+  static JSONObject desired(ChatSession session){return J.obj("privacyLevel",session.deferred?session.queuedLevel:session.privacy.level(),"desktopSite",session.deferred?session.queuedDesktop:session.privacy.wantsDesktop());}
   static boolean save(ChatSession session,int level,boolean desktop){if(session.failQueue)return false;session.deferred=true;session.queuedLevel=level;session.queuedDesktop=desktop;session.queuedSaves++;return true;}
 }
 final class EnvironmentSpecRepository {
@@ -94,7 +96,7 @@ final class EnvironmentSpecRuntime {
     EnvironmentSpec before=EnvironmentSpecRepository.value;
     return new EnvironmentSpecRepository(context).updateDesired(before.identity,before.desiredRevision,new EnvironmentSpec.Configuration(browser,before.desired().network));
   }
-  static EnvironmentSpec.NetworkBinding binding(FakeContext context,String mode,JSONObject settings,String proxy){return context.actual;}
+  static EnvironmentSpec.NetworkBinding binding(FakeContext context,String mode,JSONObject settings,String proxy){if(WorkQueue.current!=context.writer)throw new AssertionError("Catalog binding I/O outside environment writer");context.bindingReads++;return context.actual;}
 }
 final class EnvironmentEditorUi {
   static int writes;static final List<Pending> pending=new ArrayList<>();

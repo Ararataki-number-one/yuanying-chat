@@ -32,6 +32,7 @@ def main():
     proxy_test = ROOT / 'tests/browser-runtime/gecko-proxy-route.test.cjs'
     if proxy_test.is_file():
         input_paths.add(proxy_script)
+    input_paths.update((ROOT / "app/src/main/assets/gecko").glob("*.js"))
     before_hashes = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in input_paths}
     java = os.environ.get("PROFILE_JAVA") or shutil.which("java")
     if not java:
@@ -112,8 +113,18 @@ def main():
                         'passed':proxy_value.get('passed'),'actualAndroidExecution':False})
         files.update([proxy_script, proxy_test])
     bridges = sorted((ROOT / "tests/review-host").glob("*.cjs"))
+    bridge_results=[]
     for bridge in bridges:
-        subprocess.run(["node", str(bridge)], cwd=ROOT, check=True)
+        run=subprocess.run(["node","--test","--test-reporter=tap",str(bridge)],cwd=ROOT,text=True,capture_output=True)
+        print(run.stdout)
+        if run.returncode:print(run.stderr,file=sys.stderr);raise subprocess.CalledProcessError(run.returncode,run.args)
+        passed=re.search(r"^# pass (\d+)$",run.stdout,re.M);total=re.search(r"^# tests (\d+)$",run.stdout,re.M);failed=re.search(r"^# fail (\d+)$",run.stdout,re.M)
+        if not passed or not total or not failed or passed.group(1)!=total.group(1) or failed.group(1)!="0":raise ValueError("Incomplete source bridge host suite: "+bridge.name)
+        bridge_results.append({"test":bridge.name,"passed":int(passed.group(1)),"total":int(total.group(1)),"output":run.stdout})
+        files.add(bridge)
+    files.update((ROOT / "app/src/main/assets/gecko").glob("*.js"))
+    bridge_inputs=set(bridges)|set((ROOT / "app/src/main/assets/gecko").glob("*.js"))
+    (output / "identity-bridge-host-results.json").write_text(json.dumps({"schema":1,"status":"passed","actualAndroidExecution":False,"sourceCommit":source_id,"sourceTree":source_tree,"sourceDirty":bool(source_status.strip()),"sourceUnchangedDuringChecks":True,"results":bridge_results,"files":{str(path.relative_to(ROOT)):before_hashes[path] for path in sorted(bridge_inputs)}},indent=2)+"\n")
     intent = ROOT / "tests/environment-intent-host/run.py"
     if intent.is_file():
         intent_receipt = output / "environment-intent-host-results.json"
@@ -125,7 +136,10 @@ def main():
         files.update((ROOT / "tests/environment-intent-host").rglob("*.java"))
     controller = ROOT / "tests/review-host/run_identity_controller_host.py"
     if controller.is_file():
-        subprocess.run([sys.executable, str(controller), "--json-jar", str(json_jar)], cwd=ROOT, check=True)
+        controller_receipt=output / "identity-controller-host-results.json"
+        subprocess.run([sys.executable,str(controller),"--json-jar",str(json_jar),"--output",str(controller_receipt)],cwd=ROOT,check=True)
+        receipt=json.loads(controller_receipt.read_text());results.append({"test":"identity-controller-host","report":str(controller_receipt.relative_to(ROOT)),"passed":receipt["passed"],"actualAndroidExecution":False})
+        files.update(ROOT/path for path in receipt["files"])
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest

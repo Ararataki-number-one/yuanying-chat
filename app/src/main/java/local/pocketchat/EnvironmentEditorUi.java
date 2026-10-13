@@ -58,8 +58,8 @@ final class EnvironmentEditorUi {
       FingerprintTemplateUi.show(a,(spec,done)->edited.applyIdentityTemplate(a,spec,issue->{
         // The parent editor remains open under the template dialog. Refresh its
         // browser fields so a later name/preferences save cannot revert a template.
-        if(!a.isDestroyed()&&a.session==edited&&dialog.isShowing()){
-          JSONObject latest=current(a);boolean desktop=latest.optBoolean("desktopSite");int level=latest.optInt("privacyLevel");
+        if((issue==null||issue.isEmpty())&&!a.isDestroyed()&&a.session==edited&&dialog.isShowing()){
+          boolean desktop=spec.desktop();int level=spec.protectionLevel();
           displayChoice.setSelection(desktop?1:0);privacy.setSelection(Math.max(0,Math.min(2,level)));
           if(browserBaseline[0]!=null)try{browserBaseline[0].put("desktopSite",desktop);browserBaseline[0].put("privacyLevel",level);}catch(Exception ignored){}
         }
@@ -131,10 +131,11 @@ final class EnvironmentEditorUi {
     if(value.optString("group").length()>12||value.optString("notes").length()>120){a.status("分组最多 12 字，备注最多 120 字");return false;}
     ChatSession s=a.session;int level=value.optInt("privacyLevel",s.privacy.level());if(level<0||level>2){a.status("请选择有效的保护等级");return false;}boolean change=level!=s.privacy.level();
     boolean displayChange=value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
+    boolean browserIntent=change||displayChange||s.identityApplicationPending;
     boolean deferred=(change||displayChange||s.identityApplicationPending)&&browserBusy(s);
 
     if(deferred&&!DeferredBrowserSettings.save(s,level,value.optBoolean("desktopSite"))){a.status("设置暂时无法保存，请重试");return false;}Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));if(!deferred){DeferredBrowserSettings.cancel(s);ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));s.prefs.edit().putInt("privacyLevel",level).commit();}AppPrefs.apply(a,value);ProfileCatalog.get(a).draft(Profiles.slot(a),null);
-    s.browserIdentitySaved(level,value.optBoolean("desktopSite",s.privacy.wantsDesktop()));if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(!deferred&&(change||displayChange||s.identityApplicationPending))s.applyBrowserSettings(change);
+    if(browserIntent)s.browserIdentitySaved(level,value.optBoolean("desktopSite",s.privacy.wantsDesktop()));if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(!deferred&&(change||displayChange||s.identityApplicationPending))s.applyBrowserSettings(change);
     s.audit.refresh(true);ProfileCatalog.get(a).heartbeat(s,true);if(a.hub!=null)a.hub.refresh();if(a.designChrome!=null)a.designChrome.update();a.status(deferred?"环境已保存，当前回复结束后自动应用网页设置":displayChange&&!s.networkReady?"环境配置已保存，加载网页时应用显示方式":"环境配置已保存");return true;
   }
   static String browserTaskReason(ChatSession s){return BrowserSettingsPolicy.reason(s.pending!=null,s.submitting,s.operation,s.transferActive,s.uploading(),false);}

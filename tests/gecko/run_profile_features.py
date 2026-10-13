@@ -20,6 +20,7 @@ import sys
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 from profile_invocation_contract import (verify, expected_build, verify_installed,
     bind_report, verify_invocation, verify_diagnostic)
+from template_invocation_contract import verify_template_report, expected_check_names
 
 
 def main():
@@ -51,6 +52,7 @@ def main():
         ('EnvironmentSpecIntegrationActivity','environment-spec',20,True),
         ('EnvironmentIntentIntegrationActivity','environment-intent',1,True),
         ('GeckoIdentityPrototypeIntegrationActivity','gecko-identity-prototype',1,True),
+        ('GeckoTemplateIntegrationActivity','gecko-template',len(expected_check_names()),True),
     ]:
         path = output / (endpoint + '-results.json')
         path.unlink(missing_ok=True)
@@ -75,6 +77,8 @@ def main():
                     verify_installed(installed_build(),identity)
                     if endpoint=='gecko-identity-prototype':
                         verify_diagnostic(report)
+                    if endpoint=='gecko-template':
+                        verify_template_report(report)
                     sdk=int(adb('shell','getprop','ro.build.version.sdk').strip())
                     if report.get('androidSdk')!=sdk:
                         raise ValueError('Device SDK observation does not match report')

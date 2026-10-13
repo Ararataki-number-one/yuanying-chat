@@ -1,21 +1,21 @@
-# 1.7 implementation — verified Firefox environment templates
+# 1.7 candidate — template requests and verifiable browser observations
 
-This is mergeable source work on top of the 1.5.23 released source baseline and the 1.6 environment/network foundation. It is not a claim that an Android release has passed all acceptance checks. The browser remains one official GeckoView runtime per existing Android environment process, using the original ChatGPT webpage.
+This is source work on top of v1.5.23 plus the v1.5.24 downloaded-file deletion changes and the frozen 1.6 network/environment foundation (6076b2b). It is not a claim that an Android release has passed all acceptance checks. The browser remains one official GeckoView runtime per existing Android environment process, using the original ChatGPT webpage.
 
 ## Delivered code
 
-- `BrowserIdentitySpec`: six coherent standard/compatibility/native-RFP mobile/desktop combinations. RFP variants are explicitly experimental. Template ID, display, protection and timezone strategy must agree. Existing desktop + compatibility/strong settings migrate without normalization. Unsupported custom UA/hardware/timezone controls and unknown schemas are rejected.
-- `GeckoPolicyAdapter`: actual SDK calls for native mobile/desktop UA and the v1.5.23 mobile-fit viewport, existing native tracking-list protection, and per-runtime locale requests/readback. There is no JavaScript timezone, Canvas, font, GPU or audio replacement.
+- `BrowserIdentitySpec`: six coherent standard/compatibility/native-RFP mobile/desktop combinations. RFP variants are explicitly experimental. Template ID, display, protection and timezone strategy must agree. Existing desktop + compatibility/strong settings migrate without normalization. Arbitrary UA is restricted by the product to tested templates even though the SDK has a public UA override. Unimplemented custom hardware/timezone controls and unknown schemas are rejected.
+- `GeckoPolicyAdapter`: actual SDK calls for native mobile/desktop UA and the v1.5.23 mobile-fit viewport, existing native tracking-list protection, and per-runtime locale request/readback. The stored request, SDK language-region normalization prediction, and actual page/header readings remain separate. There is no JavaScript timezone, Canvas, font, GPU or audio replacement.
 - `FingerprintTemplateUi`: quiet editor with persisted desired/applied/observed revisions, native status and a selfcheck entry. Opening/saving does not reset an existing language list by default. Database and encrypted repository loads run on the session worker.
 - `GeckoSettings`: accepted-browser snapshot, locale readback and native privacy acknowledgment are kept separate from desired configuration and page observations.
-- `GeckoWebView`: locale preparation gates opening the first session; async UA results have configuration revisions; privacy commands have a monotonically increasing token echoed by the extension to prevent A→B→A stale acknowledgment. The exact accepted coherent browser configuration is available to the root environment coordinator.
+- `GeckoWebView`: locale preparation gates opening the first session; async UA results have configuration revisions; privacy commands have a monotonically increasing token echoed by the extension to prevent A→B→A stale acknowledgment. The exact SDK-accepted coherent browser request is available to the environment coordinator; a getter is not webpage verification.
 - `main-world-audit.js`: fixed code observes public page-main-world signals, a same-origin srcdoc iframe and a dedicated Blob Worker. Content-Security-Policy may prevent any of these paths; the resulting report explicitly leaves them uncovered.
 - Extension bridge: a typed native `audit` operation injects only the packaged observer. Page events can submit bounded observations for one nonce; they cannot select a URL, submit code, invoke native evaluation or receive the existing privileged integration port.
 - `AuditReport`: provenance and scope are explicit; extension-isolated fallback cannot verify actual webpage fields. Cross-origin frames, Shared Workers, Service Workers, DNS and UDP/TLS remain uncovered. Native RFP standardized time is not falsely compared with the phone offset. HTTP UA/Accept-Language evidence is from an actual Gecko content-script fetch to the permitted public echo service, not Java header emulation and not ChatGPT's server logs.
 
 ## Exact SDK evidence and limits
 
-The shipped 1.5.21 APK (same GeckoView 157 SDK as 1.5.23) was checked against its published SHA-256. Its extracted SDK class signatures confirm `GeckoRuntimeSettings.setLocales(String[])` / `getLocales()` and native mobile/desktop viewport constants in GeckoView 157. The getter returns the requested locale descriptor; this is request/readback evidence, **not proof that every content process, worker and HTTP path has applied it**. Those require Android runtime tests and the observation report. The current implementation does not use unsupported private prefs for independent timezones.
+The shipped 1.5.21 APK (same GeckoView 157 SDK as 1.5.23) was checked against its published SHA-256. Its extracted SDK class signatures confirm `GeckoRuntimeSettings.setLocales(String[])` / `getLocales()` and native mobile/desktop viewport constants in GeckoView 157. The getter returns the requested locale descriptor; tags such as zh-Hant-TW are sent to content as language-region zh-TW. Duplicate tags after SDK normalization are rejected. this is request/readback evidence, **not proof that every content process, worker and HTTP path has applied it**. Those require Android runtime tests and the observation report. The current implementation does not use unsupported private prefs for independent timezones.
 
 Native `browser.privacy.websites.resistFingerprinting` is set and read by the background extension; native configuration acknowledgment requires matching request token, protection level and returned value. Settings readback does not certify protection of all APIs or website compatibility. Advanced RFP is therefore not presented as a verified production preset.
 
@@ -29,7 +29,7 @@ Native `browser.privacy.websites.resistFingerprinting` is set and read by the ba
 
 ## Verification included
 
-`tests/browser-runtime/FingerprintTemplateTest.java` exercises production configuration validation and report semantics: all presets and legacy combinations, coherent fields, native language lists and immutable snapshots, unsupported custom UA/timezone, future schema rejection, main-world vs isolated fallback provenance, RFP timezone semantics, cross-context differences, actual header scope and stale observations. The local host run passed 50 assertions.
+`tests/browser-runtime/FingerprintTemplateTest.java` exercises production configuration validation and report semantics: all presets and legacy combinations, coherent fields, native language lists and immutable snapshots, unsupported custom UA/timezone, future schema rejection, main-world vs isolated fallback provenance, RFP timezone semantics, cross-context differences, actual header scope and stale observations. The source includes 91 host assertions; their result must come from a clean source-bound host execution, not this document.
 
 `tests/review-host/audit-bridge.test.cjs` exercises the actual extension source with a controlled host: CSP fallback, bounded nonce/replay/cancel handling, static network endpoints and omission of credentials, untrusted page signal disclosure, and absence of page-driven native code/URL execution. It is not an Android browser test.
 
@@ -47,7 +47,7 @@ All three extension scripts pass JavaScript syntax checks. The shipped-SDK signa
 6. Deletion/reused slot, upgrade from 1.5.23 and earlier versions, stored cookies/IndexedDB/CacheStorage/Service Workers, and old async callbacks cannot cross environment generations.
 7. Standard and experimental RFP modes are tested separately. Failed real ChatGPT compatibility or unproven context coverage keeps the affected mode experimental.
 
-Cross-origin/shared/service-worker probing and a controlled-server document-request header harness remain planned validation work; this source does not pretend these are already covered.
+Cross-origin/Shared/Service Worker probes remain uncovered. A separate controlled-server document/header harness is now implemented as test source, pending actual Android execution. It cannot certify ChatGPT headers or those other contexts.
 
 ## 已接入的配置协调流程
 
@@ -60,10 +60,31 @@ IdentityTemplateController 是实际应用桥接：期望配置先 CAS 保存；
 的 appliedRevision，旧观测不能确认后来应用的新版本。网络恢复在门禁
 解除后再触发完整环境确认。
 
-完整源码和 Android 测试 Activity 的接口编译已可执行；未运行 Android
-设备测试、完整官方 AAR/Gradle APK 构建或真实 ChatGPT 登录。
+源码已接入官方 SDK 编译；实际 Android 执行、正式候选构建和真实 ChatGPT 验收仍须独立完成。
 
 
 ## 1.5.23 基线复查
 
 保留新版本手机自适应视口、原生缩放适配、键盘焦点滚动及草稿恢复。桌面模板切换 Firefox 原生桌面 UA，视口继续使用移动适配，避免重新引入横向裁切；不会伪装成实际桌面硬件。模板应用覆盖 Activity 结束后的后台队列、父编辑页控件同步、重复保存语言与真正无变化的保存。
+
+
+## Current application and failure boundaries
+
+Template saving now publishes only the desired configuration and the existing deferred browser queue. It does not rewrite the environment name, other preferences or an open editor draft. `DeferredBrowserSettings.drain` remains the owner of safe draft capture and runtime reconfiguration. Saving during a live task does not interrupt it.
+
+Controller route/catalogue reads in acknowledgement and observation run on `environmentIo`, with connection, policy and environment-generation fences. Template UI callbacks no longer read SQLite metadata. A failed deferred preference write sets a retryable queue-unavailable state; it preserves the last applied policy and does not invent runnable work or keep a background browser awake indefinitely. The sealed desired edit is retained for explicit retry. Saving unrelated environment metadata does not overwrite such a browser edit.
+
+`AuditReport` requires presence and valid types for UA, CPU, memory API result (explicit null is an observed unavailable API), language, full language list, timezone offset and timezone ID in both compared contexts. UA-only and filtered malformed arrays cannot become verified. Known differences remain visible even when another field is uncovered. The bounded isolated-world fetch reads at most 12,000 accepted response bytes through a stream and cancels oversized bodies; it never falls back to unbounded response.text().
+
+## Separate 1.7 controlled Android fixture
+
+`GeckoTemplateIntegrationActivity` applies four standard/compatibility mobile/desktop templates through the production adapter, then checks the production controller's desired/SDK-request-applied/observed acknowledgement. It records real main-world, same-origin iframe, Dedicated HTTP Worker and Blob Worker values, plus actual server-observed document, frame, worker-script and page/worker fetch headers. The zh-Hant-TW request is retained while actual content is compared with SDK-normalized zh-TW. Standard tracking-list enablement and compatibility disablement are checked separately from the experimental native-RFP mode.
+
+The shared local HTTP harness preserves raw arrival records and validates them once in deterministic target order. The distinct template contract requires all 181 ordered assertions and all five session/header records. Source commit, clean build tree, installed APK bytes, invocation nonce and raw report hash are checked by the runner and public evidence gate. The 1.6 prototype remains diagnostic-only and cannot satisfy the 1.7 template gate.
+
+The fixture deliberately uses an idle local document and directly prepares the candidate. It does not certify real-task safe-idle application, a real ChatGPT account, separate Android process/profile isolation, restart persistence, native IME, experimental RFP or cross-origin/Shared/Service Worker coverage. Those remain explicit acceptance requirements. The gate's `controlledTemplateAcceptance` is separate from `fingerprintTemplateAcceptance` and `releaseAcceptance`, which remain false.
+
+Both candidate and stable release pipelines require the original 1.6 gates plus this source-bound template gate for version 1.7 or later. Host bridge/controller receipts are retained with their production-source hashes. Metadata-only negative tests verify rejection behavior; they are not Android execution evidence.
+
+
+The UI labels the applied revision as the network plus SDK-request confirmation revision. Locale setter/getter equality confirms only request acceptance/readback; the public SDK has no independent asynchronous locale-content completion callback. The persisted applied snapshot is not a claim that every webpage or Worker adopted it. The actual-observation revision and context/header evidence provide that narrower proof. Standard or compatibility privacy-setting readback does not imply native RFP was enabled.

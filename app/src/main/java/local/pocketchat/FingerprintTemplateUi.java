@@ -23,7 +23,7 @@ final class FingerprintTemplateUi {
     String[] labels=new String[ids.length];for(int i=0;i<ids.length;i++)labels[i]=BrowserIdentitySpec.preset(ids[i]).label();
     choices.setAdapter(DesignUi.spinnerAdapter(a,labels));for(int i=0;i<ids.length;i++)if(ids[i].equals(current.templateId))choices.setSelection(i);box.addView(choices);
     Spinner language=new Spinner(a);language.setAdapter(DesignUi.spinnerAdapter(a,new String[]{"保持当前语言配置","跟随系统语言","中文 zh-CN","English en-US","日本語 ja-JP"}));box.addView(language);
-    TextView note=a.label("模板只使用当前真实 Firefox 能力。原生语言设置有当前 SDK 签名及回读检查，具体网页、Worker 和请求头仍需自检。原生强化模式可能改变时区和图形表现，尚未完成 ChatGPT 真机兼容性验证。独立时区及硬件伪装暂未开放。",13,Ui.MUTED);box.addView(note);
+    TextView note=a.label("模板只使用当前真实 Firefox 能力。语言已提交给 SDK；回读只表示请求。网页、Worker 和请求头是否采用该语言，以实际自检为准。原生强化模式可能改变时区和图形表现，尚待接受或回读 ChatGPT 真机兼容性验证。独立时区及硬件伪装暂未开放。",13,Ui.MUTED);box.addView(note);
     TextView result=a.label("",13,Ui.MUTED);box.addView(result);
     ScrollView scroll=new ScrollView(a);scroll.addView(box);
     AlertDialog dialog=new AlertDialog.Builder(a).setTitle("环境模板").setView(scroll).setPositiveButton("保存模板",null).setNeutralButton("查看环境自检",(d,w)->EnvironmentAuditUi.show(a)).setNegativeButton("关闭",null).create();
@@ -54,10 +54,10 @@ final class FingerprintTemplateUi {
   }
   static String summary(ChatSession session,EnvironmentSpec spec){
     StringBuilder out=new StringBuilder("当前内核：").append(GeckoWebView.VERSION).append("\n").append(GeckoPolicyAdapter.summary());
-    if(spec!=null)out.append("\n\n期望环境配置版本：").append(spec.desiredRevision).append("\n完整环境确认版本：").append(spec.appliedRevision).append("\n最近观测版本：").append(spec.observedRevision);
+    if(spec!=null)out.append("\n\n期望环境配置版本：").append(spec.desiredRevision).append("\n线路与 SDK 请求确认版本：").append(spec.appliedRevision).append("\n实际观测对应版本：").append(spec.observedRevision);
     else out.append("\n环境配置暂未读取");
-    GeckoSettings metadata=session.web.getSettings();out.append("\n当前内核确认：").append(metadata.policyAcknowledged?"已确认当前设置":"尚未完成");
+    GeckoSettings metadata=session.web.getSettings();out.append("\n当前 SDK 请求：").append(metadata.policyAcknowledged?"请求接受与回读一致":"尚待接受或回读");
     if(!metadata.policyError.isEmpty())out.append("（").append(metadata.policyError).append("）");
-    out.append("\n\n内核确认只代表设置接受；具体网页字段请运行自检。");return out.toString();
+    out.append("\n\nSDK 确认只表示请求接受或公开设置回读。语言内容进程没有独立完成回执；网页字段和请求头以实际观测为准。");return out.toString();
   }
 }

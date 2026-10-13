@@ -30,6 +30,7 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
     }
     else if("/environment-spec".equals(uri.getPath()))name="environment-spec-results.json";
     else if("/environment-intent".equals(uri.getPath()))name="environment-intent-results.json";
+    else if("/gecko-template".equals(uri.getPath()))name="gecko-template-results.json";
     else if("/gecko-identity-prototype".equals(uri.getPath()))name="gecko-identity-prototype-results.json";
     else if("/native-probe".equals(uri.getPath()))name="native-probe-results.json";
     else if("/gecko-pool".equals(uri.getPath()))name="gecko-pool-results.json";

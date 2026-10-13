@@ -9,7 +9,7 @@
     const clean={};
     for(const key of ['ua','appVersion','platform','language','zone','renderer','rtc','error'])if(typeof value[key]==='string')clean[key]=text(value[key]);
     for(const key of ['cpu','memory','offset'])if(value[key]===null||typeof value[key]==='number'&&Number.isFinite(value[key]))clean[key]=value[key];
-    if(Array.isArray(value.languages))clean.languages=value.languages.slice(0,8).filter(item=>typeof item==='string').map(text);
+    if(Array.isArray(value.languages)&&value.languages.length>0&&value.languages.length<=8&&value.languages.every(item=>typeof item==='string'&&item.length>0&&item.length<=2048))clean.languages=value.languages.map(text);
     for(const group of ['screen','viewport'])if(value[group]&&typeof value[group]==='object'){clean[group]={};for(const key of ['width','height','availWidth','availHeight','depth','pixelRatio','touch'])if(typeof value[group][key]==='number'&&Number.isFinite(value[group][key]))clean[group][key]=value[group][key];}
     return clean;
   };
@@ -34,7 +34,7 @@
     });
     const get=async url=>{
       const control=new AbortController();stops.push(()=>control.abort());const timer=setTimeout(()=>control.abort(),6500);
-      try{const response=await fetch(url,{credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',signal:control.signal});if(!response.ok)throw Error();const text=await response.text();if(text.length>12000)throw Error();return JSON.parse(text);}catch{return {error:'No verifiable response'};}finally{clearTimeout(timer);}
+      try{const response=await fetch(url,{credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',signal:control.signal});if(!response.ok)throw Error();if(!response.body||typeof response.body.getReader!=='function')throw Error();const reader=response.body.getReader(),decoder=new TextDecoder('utf-8',{fatal:true});let bytes=0,body='';try{while(true){const part=await reader.read();if(part.done)break;if(!(part.value instanceof Uint8Array))throw Error();bytes+=part.value.byteLength;if(bytes>12000)throw Error();body+=decoder.decode(part.value,{stream:true});}body+=decoder.decode();return JSON.parse(body);}finally{await reader.cancel().catch(()=>{});reader.releaseLock();}}catch{return {error:'No verifiable response'};}finally{clearTimeout(timer);}
     };
     // Endpoint allowlist is static. Page events cannot request native evaluation or a URL.
     const networkJob=cfg.network===true?Promise.all([get('https://api.ipify.org/?format=json'),get('https://api6.ipify.org/?format=json'),get('https://httpbin.org/headers')]):Promise.resolve([]);

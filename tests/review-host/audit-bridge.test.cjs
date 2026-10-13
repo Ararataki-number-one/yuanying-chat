@@ -21,7 +21,7 @@ class Target {
     return true;
   }
 }
-function harness() {
+function harness(options = {}) {
   const window = new Target(), document = new Target();
   const messages = [], scripts = [], fetched = [], timers = new Map();
   let nativeReceive, serial = 0, nonceSerial = 0, evaluated = 0;
@@ -44,8 +44,8 @@ function harness() {
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     setTimeout(callback) { const id = ++serial; timers.set(id, callback); return id; },
     clearTimeout(id) { timers.delete(id); }, requestAnimationFrame() { return ++serial; }, cancelAnimationFrame() {},
-    AbortController,
-    fetch: async (url, options) => { fetched.push({url, options}); return {ok: true, text: async () => JSON.stringify({ip: '203.0.113.9'})}; },
+    AbortController, TextDecoder, Uint8Array,
+    fetch: async (url, requestOptions) => { fetched.push({url, options: requestOptions});const chunks=options.chunks||[new TextEncoder().encode(JSON.stringify({ip:'203.0.113.9'}))];let index=0;return {ok:true,body:options.noReader?null:{getReader(){return {read:async()=>index<chunks.length?{value:chunks[index++],done:false}:{done:true},cancel:async()=>{options.cancelled=(options.cancelled||0)+1;},releaseLock(){options.released=(options.released||0)+1;}};}},text:async()=>{throw Error('Unbounded response.text must not run');}}; },
     eval() { evaluated++; throw new Error('Unexpected privileged evaluation'); },
   });
   vm.runInContext(source, context, {filename: 'content.js'});
@@ -57,7 +57,7 @@ function harness() {
     nonce: () => JSON.parse(scripts.at(-1).attributes['data-pocket-audit']).nonce,
   };
 }
-async function flush() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
+async function flush() { await new Promise(resolve=>setImmediate(resolve)); }
 function observed(nonce, extra = {}) {
   return JSON.stringify({nonce, provenance: 'page-main-world', parent: {ua: 'Mozilla/5.0 Firefox/157.0'},
     frame: {ua: 'Mozilla/5.0 Firefox/157.0'}, worker: {ua: 'Mozilla/5.0 Firefox/157.0'},
@@ -123,7 +123,7 @@ test('deep attacker fields and non-scalar signals never cross the native JSON bo
   assert.equal(result.parent.cpu, undefined);
   assert.equal(result.parent.language, undefined);
   assert.equal(result.parent.renderer, undefined);
-  assert.deepEqual(result.parent.languages, ['zh-CN']);
+  assert.equal(result.parent.languages, undefined);
   assert.deepEqual(result.parent.screen, {width: 360});
   assert.equal(result.coverage.crossOriginFrame, false);
   assert.equal(result.coverage.serviceWorker, false);
@@ -156,4 +156,22 @@ test('network audit uses only static endpoints and strips credentials and referr
   }
   assert.equal(bridge.result().length, 1);
   assert.equal(bridge.evaluated, 0);
+});
+
+
+test('oversized network bodies are cancelled while streaming and never accepted', async () => {
+  const options={chunks:[new Uint8Array(8000).fill(32),new Uint8Array(8000).fill(32)]};const bridge=harness(options);
+  bridge.send({kind:'audit',id:40,configuration:{id:'large-body',network:true}});bridge.event(observed(bridge.nonce()));await flush();await flush();
+  assert.equal(bridge.result().length,1);const result=JSON.parse(bridge.result()[0].result);
+  assert.equal(result.network.ipv4.ip,undefined);assert.equal(options.cancelled,3);assert.equal(options.released,3);
+});
+
+test('a missing body reader remains uncovered without unbounded text fallback', async () => {
+  const bridge=harness({noReader:true});bridge.send({kind:'audit',id:41,configuration:{id:'missing-reader',network:true}});bridge.event(observed(bridge.nonce()));await flush();
+  assert.equal(bridge.result().length,1);assert.equal(JSON.parse(bridge.result()[0].result).network.ipv4.ip,undefined);
+});
+
+test('malformed language arrays stay absent instead of silently becoming complete',async()=>{
+  const bridge=harness();bridge.send({kind:'audit',id:42,configuration:{id:'language-coverage',network:false}});bridge.event(observed(bridge.nonce(),{parent:{ua:'Firefox/157.0',languages:['en-US',null]}}));await flush();
+  assert.equal(JSON.parse(bridge.result()[0].result).parent.languages,undefined);
 });
