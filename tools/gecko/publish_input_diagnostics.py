@@ -24,6 +24,7 @@ ARTIFACTS = (
     'gecko-performance-failure-window.txt', 'gecko-performance-failure-activity.txt',
     'gecko-native-ime-snapshot.log', 'gecko-native-ime-snapshot.json',
     'gecko-native-ime-logcat.txt', 'gecko-native-ime-logcat-diagnostic.json',
+    'gecko-view-input-snapshot.json', 'gecko-view-input-logcat.txt', 'gecko-view-input-diagnostic.json',
     'gecko-scroll-diagnostics.json', 'gecko-scroll-diagnostic-log.json',
 ))
 
@@ -57,13 +58,14 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
         'attempts': [],
         'reports': {},
         'nativeLogcatDiagnostics': {},
+        'viewInputDiagnostics': {},
     }
     for directory, name in ARTIFACTS:
         original = directory / name
         if original.is_symlink() or original.parent.is_symlink() or not original.is_file():
             continue
         data = original.read_bytes()
-        if name.endswith('/status.json') or name.endswith('/gecko-performance-results.json') or name.endswith('/gecko-native-ime-logcat-diagnostic.json'):
+        if name.endswith('/status.json') or name.endswith('/gecko-performance-results.json') or name.endswith('/gecko-native-ime-logcat-diagnostic.json') or name.endswith('/gecko-view-input-diagnostic.json'):
             try:
                 report = json.loads(data)
                 if report.get('sourceCommit') != source:
@@ -103,11 +105,47 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
                         'matchedNativeRecords': report.get('matchedNativeRecords', 0),
                         'nativeFileCapturedPayloadBytes': report.get('nativeFileCapturedPayloadBytes'),
                     }
+                elif name.endswith('/gecko-view-input-diagnostic.json'):
+                    if report.get('schema') != 1 or report.get('diagnosticOnly') is not True or report.get('releaseAcceptance') is not False or report.get('mode') != 'original-super-view-keys' or report.get('nativeLoggingEnabled') is not False:
+                        raise ValueError('Expected separate View-only diagnostic evidence')
+                    if not re.fullmatch(r'[0-9a-f]{32}', report.get('runNonce', '')):
+                        raise ValueError('Missing actual View invocation nonce')
+                    if report.get('actualAndroidLogcatRead'):
+                        raw = (original.parent / 'gecko-view-input-logcat.txt').read_bytes()
+                        if len(raw) != report.get('logcatBytes') or hashlib.sha256(raw).hexdigest() != report.get('logcatSha256'):
+                            raise ValueError('View receipt differs from actual raw logcat bytes')
+                        actual = (original.parent / 'gecko-performance-results.json').read_bytes()
+                        if hashlib.sha256(actual).hexdigest() != report.get('rawPerformanceReportSha256'):
+                            raise ValueError('View receipt differs from final raw report bytes')
+                        if 'viewInputTraceSha256' in report:
+                            trace_raw = (original.parent / 'gecko-view-input-snapshot.json').read_bytes()
+                            trace = json.loads(trace_raw)
+                            if hashlib.sha256(trace_raw).hexdigest() != report['viewInputTraceSha256'] or trace.get('sourceCommit') != source or trace.get('runNonce') != report['runNonce']:
+                                raise ValueError('Actual View trace differs from this invocation')
+                            if len(trace.get('buffer', {}).get('events', [])) > 256:
+                                raise ValueError('Actual View events exceed fixed capacity')
+                            expected = report.get('expectedBuildApk', {})
+                            installed = trace.get('installedApk', {})
+                            matches = installed.get('bytes') == expected.get('bytes') and installed.get('sha256') == expected.get('sha256') and bool(expected.get('sha256'))
+                            if report.get('installedApkMatchesBuild') != matches:
+                                raise ValueError('Installed APK match summary differs from actual byte evidence')
+                    manifest['viewInputDiagnostics'][name.split('/')[0]] = {
+                        'sha256': hashlib.sha256(data).hexdigest(),
+                        'actualAndroidLogcatRead': report.get('actualAndroidLogcatRead', False),
+                        'boundedInputPhase': report.get('boundedInputPhase', False),
+                        'observedMozImeLogRecords': report.get('observedMozImeLogRecords'),
+                        'installedApkMatchesBuild': report.get('installedApkMatchesBuild', False),
+                        'viewApiCounts': report.get('viewApiCounts', {}),
+                        'overflow': report.get('overflow'),
+                    }
                 else:
-                    if report.get('inputNativeDiagnosticsEnabled') is not True or report.get('inputDiagnosticsEnabled') is not False:
-                        raise ValueError('Expected native-only diagnostics, without extra JS or evaluation tracing')
+                    missing_activity = report.get('observedActivityReport') is False and report.get('status') == 'failed'
+                    if not missing_activity and (report.get('inputNativeDiagnosticsEnabled') is not False or report.get('inputDiagnosticsEnabled') is not False or report.get('inputViewDiagnosticsEnabled') is not True):
+                        raise ValueError('Expected View-only diagnostics, without native logs or extra JS tracing')
                     manifest['reports'][name.split('/')[0]] = {
-                        'inputNativeDiagnosticsEnabled': True, 'inputDiagnosticsEnabled': False,
+                        'inputNativeDiagnosticsEnabled': report.get('inputNativeDiagnosticsEnabled', False),
+                        'inputDiagnosticsEnabled': report.get('inputDiagnosticsEnabled', False),
+                        'inputViewDiagnosticsEnabled': report.get('inputViewDiagnosticsEnabled', False),
                         'sourceCommit': source, 'status': report.get('status', 'unknown'),
                         'checkCount': report.get('checkCount', 0),
                         'actualAndroidExecution': report.get('actualAndroidExecution', False),
@@ -127,9 +165,9 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
         and set(manifest['reports']) == {'attempt-1'}
         and all(item['status'] == 'passed' and item['actualAndroidExecution'] and item['actualGeckoExecution']
                 for item in manifest['reports'].values())
-        and set(manifest['nativeLogcatDiagnostics']) == {'attempt-1'}
-        and all(item['actualAndroidLogcatRead'] and item['boundedInputPhase'] and item['matchedNativeRecords'] > 0
-                for item in manifest['nativeLogcatDiagnostics'].values())
+        and set(manifest['viewInputDiagnostics']) == {'attempt-1'}
+        and all(item['actualAndroidLogcatRead'] and item['boundedInputPhase'] and item['observedMozImeLogRecords'] == 0 and item['installedApkMatchesBuild'] and item['overflow'] is False
+                for item in manifest['viewInputDiagnostics'].values())
         and outcomes['gecko'] == 'success' and not manifest['warnings'])
     (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     return stage, manifest

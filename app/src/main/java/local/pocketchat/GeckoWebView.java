@@ -99,15 +99,7 @@ class GeckoWebView extends FrameLayout {
         +"  network.proxy.allow_hijacking_localhost: true\n  network.trr.mode: 5\n  network.dns.disablePrefetch: true\n"
         +"  network.prefetch-next: false\n  network.http.speculative-parallel-limit: 0\n  media.peerconnection.enabled: false\n";
       Files.write(config.toPath(),prefs.getBytes(StandardCharsets.UTF_8));
-      // This isolated diagnostic branch changes only logging configuration in
-      // the .test process; it never replaces an input client or connection.
-      Bundle runtimeExtras=new Bundle();String nativeImeLog=System.getProperty("pocketchat.gecko.nativeImeLog","");
-      if("local.pocketchat.test".equals(owner.context.getPackageName())&&!nativeImeLog.isEmpty()){
-        runtimeExtras.putString("env0","MOZ_LOG="+nativeImeLog);
-        runtimeExtras.putString("env1","MOZ_LOG_FILE="+new File(owner.context.getFilesDir(),"gecko-native-ime.log").getAbsolutePath());
-      }
       runtime=GeckoRuntime.create(new GeckoEnvironmentContext(owner.context),new GeckoRuntimeSettings.Builder()
-        .extras(runtimeExtras)
         .arguments(new String[]{"-profile",directory.getAbsolutePath()}).configFilePath(config.getAbsolutePath())
         .isolatedProcessEnabled(Build.VERSION.SDK_INT>=29).appZygoteProcessEnabled(false)
         .remoteDebuggingEnabled(false).consoleOutput(false).trustedRecursiveResolverMode(5)
@@ -174,11 +166,12 @@ class GeckoWebView extends FrameLayout {
     if(!enabled||destroyed)return;
     // Choose the official transform-capable backend once. Changing a live SDK
     // surface backend can leave its surface callback detached (157.0 SDK).
-    if(surface==null){surface=new GeckoView(displayContext);surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
+    if(surface==null){surface=newSurface(displayContext);surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
     primary=newSession();current=primary;primary.open(runtime);surface.setSession(primary);configure(desktop,owner.privacy.level());ready=true;
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
   }
   private void maybeOpen(){if(!destroyed&&!failed&&!ready&&extension!=null&&checkpointReady&&routePrepared&&privacyReady)open();}
+  GeckoView newSurface(Context context){return new GeckoView(context);}
   GeckoSession newSession(){
     // Isolation comes from existing Android processes and distinct profile directories.
     // Default cookie storage remains usable by the official cookie API in this runtime.

@@ -30,6 +30,7 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
     else if("/gecko-scroll".equals(uri.getPath()))name="gecko-scroll-diagnostics.json";
     else if("/gecko-native-ime".equals(uri.getPath()))name="gecko-native-ime-snapshot.log";
     else if("/gecko-native-ime-metadata".equals(uri.getPath()))name="gecko-native-ime-snapshot.json";
+    else if("/gecko-view-input".equals(uri.getPath()))name="gecko-view-input-snapshot.json";
     else throw new FileNotFoundException("Unknown synthetic report");
     try{
       File base=getContext().getFilesDir().getCanonicalFile(),file=new File(base,name).getCanonicalFile();

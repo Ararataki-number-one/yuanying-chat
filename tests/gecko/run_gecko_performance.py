@@ -128,6 +128,8 @@ def main():
                         help='Enable extra SDK/IME and JS selection observations; disabled for the normal release regression.')
     observation.add_argument('--native-input-diagnostics', action='store_true',
                         help='Native MOZ_LOG only; retain original SDK delegate and all input objects. Diagnostic evidence cannot replace the normal regression.')
+    observation.add_argument('--view-input-diagnostics', action='store_true',
+                        help='Observe original-super View key entry and original IC return only; native logging and SDK input replacements remain off.')
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     started_ms = int(time.time() * 1000)
@@ -138,8 +140,18 @@ def main():
                  'gecko-performance-failure-window.txt', 'gecko-performance-failure-activity.txt',
                  'gecko-scroll-diagnostics.json', 'gecko-scroll-diagnostic-log.json',
                  'gecko-performance-screen.png', 'gecko-native-ime-snapshot.log', 'gecko-native-ime-snapshot.json',
-                 'gecko-native-ime-logcat.txt', 'gecko-native-ime-logcat-diagnostic.json']:
+                 'gecko-native-ime-logcat.txt', 'gecko-native-ime-logcat-diagnostic.json',
+                 'gecko-view-input-snapshot.json', 'gecko-view-input-logcat.txt', 'gecko-view-input-diagnostic.json']:
         (OUT / name).unlink(missing_ok=True)
+    expected_apk = None
+    if args.view_input_diagnostics:
+        apk = ROOT / 'app/build/outputs/apk/integration/app-x86_64-integration.apk'
+        digest = hashlib.sha256()
+        with apk.open('rb') as stream:
+            while block := stream.read(65536):
+                digest.update(block)
+        expected_apk = dict(bytes=apk.stat().st_size, sha256=digest.hexdigest(),
+                            sourceCommit=diagnostic_source, buildOutput=str(apk.relative_to(ROOT)))
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
     receipt = json.loads((baseline_root / 'source.json').read_text())
     assert receipt['sourceCommit'] == BASELINE, receipt
@@ -197,6 +209,77 @@ def main():
                         emittedNativeRecords=bool(raw and any(name in raw for name in (b'GeckoEditableSupport', b'IMEStateManager', b'IMEContentObserver'))))
         except Exception as error:
             return dict(enabled=True, actualAndroidFileRead=False, fileReadError=str(error))
+
+    def save_view_input():
+        if not args.view_input_diagnostics:
+            return dict(enabled=False)
+        try:
+            raw = subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'content', 'read', '--uri',
+                                           'content://' + package + '.evidence/gecko-view-input'], timeout=30)
+            path = OUT / 'gecko-view-input-snapshot.json'
+            path.write_bytes(raw)
+            value = json.loads(raw)
+            if value.get('sourceCommit') != diagnostic_source or value.get('runNonce') != diagnostic_run:
+                raise ValueError('View input trace belongs to another source or invocation')
+            if len(raw) > 2 * 1024 * 1024:
+                raise ValueError('View input trace exceeds its fixed export bound')
+            return dict(enabled=True, actualAndroidFileRead=True, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest(),
+                        trace=value, expectedBuildApk=expected_apk)
+        except Exception as error:
+            return dict(enabled=True, actualAndroidFileRead=False, fileReadError=str(error), expectedBuildApk=expected_apk)
+
+    def save_view_logcat():
+        result = dict(schema=1, sourceCommit=diagnostic_source, runNonce=diagnostic_run,
+                      diagnosticOnly=True, releaseAcceptance=False, mode='original-super-view-keys',
+                      nativeLoggingEnabled=False, expectedBuildApk=expected_apk,
+                      scope='Only original-super GeckoView entry/return is observed. No SDK handler or incoming '
+                            'IME commit/selection writer is observed, and timing can change. All original DOM events remain retained.')
+        try:
+            raw = subprocess.check_output([args.adb, '-s', args.serial, 'logcat', '-d'], timeout=30)
+            path = OUT / 'gecko-view-input-logcat.txt'
+            path.write_bytes(raw)
+            start = end = None
+            lines = raw.decode('utf-8', errors='replace').splitlines()
+            for number, line in enumerate(lines, 1):
+                if 'PocketGeckoPerformance: ' not in line:
+                    continue
+                try:
+                    item = json.loads(line.split('PocketGeckoPerformance: ', 1)[1])
+                    value = item['value']
+                    if not isinstance(value, dict):
+                        continue
+                    if item.get('kind') == 'gestureNeeded' and value.get('id') == 'current-input':
+                        start = number
+                    if item.get('kind') == 'nativeInputTrace' and value.get('api') == 'trace.viewSnapshot':
+                        marker = value.get('metadata', {})
+                        if marker.get('sourceCommit') == diagnostic_source and marker.get('runNonce') == diagnostic_run:
+                            end = number
+                except (ValueError, KeyError, TypeError):
+                    continue
+            result.update(actualAndroidLogcatRead=True, logcatBytes=len(raw), logcatSha256=hashlib.sha256(raw).hexdigest(),
+                          inputPhaseStartLine=start, inputPhaseEndLine=end,
+                          boundedInputPhase=bool(start is not None and end is not None and start < end),
+                          observedMozImeLogRecords=sum(bool(re.search(r'\]: [VDIWE]/(?:IMEStateManager|IMEContentObserver|IMEHandler|GeckoEditableSupport) ', line)) for line in lines))
+            report_path = OUT / 'gecko-performance-results.json'
+            if report_path.is_file():
+                result['rawPerformanceReportSha256'] = hashlib.sha256(report_path.read_bytes()).hexdigest()
+            trace_path = OUT / 'gecko-view-input-snapshot.json'
+            if trace_path.is_file():
+                trace_raw = trace_path.read_bytes()
+                trace = json.loads(trace_raw)
+                result['viewInputTraceSha256'] = hashlib.sha256(trace_raw).hexdigest()
+                result['viewInputSourceAndRunMatch'] = trace.get('sourceCommit') == diagnostic_source and trace.get('runNonce') == diagnostic_run
+                buffer = trace.get('buffer', {})
+                result['viewApiCounts'] = dict(collections.Counter(event['api'] for event in buffer.get('events', [])))
+                result['reserved'] = buffer.get('reserved')
+                result['published'] = buffer.get('published')
+                result['overflow'] = buffer.get('overflow')
+                installed = trace.get('installedApk', {})
+                result['installedApkMatchesBuild'] = installed.get('bytes') == expected_apk['bytes'] and installed.get('sha256') == expected_apk['sha256']
+        except Exception as error:
+            result.update(actualAndroidLogcatRead=False, captureError=str(error))
+        (OUT / 'gecko-view-input-diagnostic.json').write_text(json.dumps(result, indent=2) + '\n')
+        return result
 
     def save_native_logcat():
         """Derived diagnostic evidence only; never substitute logcat for the native file."""
@@ -302,6 +385,9 @@ def main():
         if args.native_input_diagnostics:
             activity.extend(['--ez', 'inputNativeDiagnostics', 'true'])
             activity.extend(['--es', 'diagnosticSourceCommit', diagnostic_source])
+        if args.view_input_diagnostics:
+            activity.extend(['--ez', 'inputViewDiagnostics', 'true'])
+            activity.extend(['--es', 'diagnosticSourceCommit', diagnostic_source])
         adb(*activity)
         checks, measurements, gestures, text_inputs, diagnostics = {}, {}, {}, {}, {}
         input_readiness, input_events, input_evaluations, native_input_events = {}, {}, {}, {}
@@ -371,8 +457,10 @@ def main():
             if report:
                 report['scrollDiagnostics'] = save_scroll_diagnostics()
                 report['nativeImeLog'] = save_native_ime()
+                if args.view_input_diagnostics:
+                    report['viewInputDiagnostic'] = save_view_input()
                 report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-                              diagnosticOnly=bool(args.input_diagnostics or args.native_input_diagnostics),
+                              diagnosticOnly=bool(args.input_diagnostics or args.native_input_diagnostics or args.view_input_diagnostics),
                               checks=list(checks.values()), measurements=list(measurements.values()), fixtureRequests=Fixture.requests,
                               controlledProxyRoutes=Socks.routes, browserDiagnostics=list(diagnostics.values()),
                               baselineAssetVerification=receipt, actualAndroidGestures=list(gestures.values()),
@@ -381,7 +469,7 @@ def main():
                               actualTrustedInputEvents=[event for key in sorted(input_events) for event in input_events[key]['events']],
                               actualInputEvaluationTrace=[input_evaluations[key] for key in sorted(input_evaluations)],
                               actualNativeInputTrace=[native_input_events[key] for key in sorted(native_input_events)])
-                if args.native_input_diagnostics:
+                if args.native_input_diagnostics or args.view_input_diagnostics:
                     types = collections.Counter(event['type'] for event in report['actualTrustedInputEvents'])
                     report['diagnosticInputEventShape'] = dict(counts=dict(types), total=len(report['actualTrustedInputEvents']),
                                                                expected={'focus': 1, 'keydown': 11, 'beforeinput': 11, 'input': 11, 'keyup': 11},
@@ -390,11 +478,12 @@ def main():
                 print(json.dumps(report, indent=2), flush=True)
                 assert report['inputDiagnosticsEnabled'] == args.input_diagnostics, report
                 assert report['inputNativeDiagnosticsEnabled'] == args.native_input_diagnostics, report
+                assert report.get('inputViewDiagnosticsEnabled', False) == args.view_input_diagnostics, report
                 if not args.input_diagnostics:
                     assert not input_evaluations, 'Normal/primitive-only regression unexpectedly traced JavaScript evaluation'
                     assert not any(event['type'] == 'selectionchange' or event['type'].startswith('script')
                                    for event in report['actualTrustedInputEvents']), 'Normal regression unexpectedly instrumented DOM selection'
-                if not args.input_diagnostics and not args.native_input_diagnostics:
+                if not args.input_diagnostics and not args.native_input_diagnostics and not args.view_input_diagnostics:
                     assert not native_input_events, 'Normal regression unexpectedly attached native diagnostic observers'
                 if args.native_input_diagnostics:
                     snapshots = [event for event in native_input_events.values() if event['api'] == 'trace.nativeLogSnapshot']
@@ -405,6 +494,25 @@ def main():
                     native_logcat = save_native_logcat()
                     assert native_logcat['actualAndroidLogcatRead'] and native_logcat['boundedInputPhase'] and native_logcat['matchedNativeRecords'] > 0, native_logcat
                     assert types == collections.Counter(report['diagnosticInputEventShape']['expected']), 'Native-only diagnostic differs from normal 45-event input path: ' + str(types)
+                if args.view_input_diagnostics:
+                    snapshots = [event for event in native_input_events.values() if event['api'] == 'trace.viewSnapshot']
+                    assert len(snapshots) == len(native_input_events) == 1 and snapshots[0]['mode'] == 'original-super-view-keys', snapshots
+                    assert report['viewInputDiagnostic']['actualAndroidFileRead'], report['viewInputDiagnostic']
+                    trace = report['viewInputDiagnostic']['trace']
+                    assert trace['status'] == 'captured' and trace['mode'] == 'original-super-view-keys' and trace['diagnosticOnly'] and trace['releaseAcceptance'] is False, trace
+                    assert all(trace[field] is False for field in ('nativeLoggingEnabled', 'publicDelegateReplaced', 'inputConnectionWrapped', 'inputConnectionClientReplaced', 'editableListenerReplaced', 'focusedChildReplaced', 'sdkInputHandlerObserved')), trace
+                    assert trace['originalInputConnectionMethodsCalledByObserver'] == 0, trace
+                    buffer = trace['buffer']
+                    assert buffer['capacity'] == 256 and not buffer['overflow'] and buffer['incomplete'] == 0 and buffer['reserved'] == buffer['published'] == len(buffer['events']), buffer
+                    assert buffer['viewIdentity'] == trace['currentViewIdentity'] > 0 and buffer['nativeSession'] == trace['currentNativeSession'] > 0, trace
+                    assert buffer['target'] == trace['currentUrl'] and buffer['navigationEpoch'] == trace['currentNavigationEpoch'], trace
+                    assert all(event['api'] in ('view.onKeyDown', 'view.onKeyUp', 'view.onCreateInputConnection') and event['originalSuperReturned'] and event['returnedUptime'] >= event['enteredUptime'] for event in buffer['events']), buffer
+                    installed = trace['installedApk']
+                    assert installed['package'] == package and installed['bytes'] == expected_apk['bytes'] and installed['sha256'] == expected_apk['sha256'] and installed['readOnWorker'], installed
+                    assert installed['versionCode'] > 0 and installed['signerSha256'] and all(re.fullmatch(r'[0-9a-f]{64}', value) for value in installed['signerSha256']), installed
+                    observed = save_view_logcat()
+                    assert observed['actualAndroidLogcatRead'] and observed['boundedInputPhase'] and observed['observedMozImeLogRecords'] == 0 and observed['installedApkMatchesBuild'], observed
+                    assert types == collections.Counter(report['diagnosticInputEventShape']['expected']), 'View diagnostic differs from normal 45-event input path: ' + str(types)
                 assert report['status'] == 'passed' and report['actualAndroidExecution'] and report['actualGeckoExecution'] and report['actualAndroidTouchExecution'] and report['actualGeckoBindingRegressionExecution'], report
                 assert report['baselineSource'] == BASELINE and report['checkCount'] == len(checks), report
                 assert len(checks) >= 125 and all(check['pass'] for check in checks.values()), report
@@ -430,6 +538,8 @@ def main():
                           checkCount=len(checks) if 'checks' in locals() else 0)
         report['scrollDiagnostics'] = save_scroll_diagnostics()
         report['nativeImeLog'] = save_native_ime()
+        if args.view_input_diagnostics:
+            report['viewInputDiagnostic'] = save_view_input()
         captures = {}
         ui_remote = '/sdcard/gecko-performance-failure-' + diagnostic_run + '.xml'
         operations = [
@@ -458,6 +568,9 @@ def main():
     finally:
         if args.native_input_diagnostics:
             save_native_logcat()
+        if args.view_input_diagnostics:
+            save_view_input()
+            save_view_logcat()
         for server in servers:
             server.shutdown()
             server.server_close()
