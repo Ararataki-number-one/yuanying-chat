@@ -16,7 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          fetch-depth: 0
+          # The short diagnostic ancestry reaches the frozen base. Avoid
+          # fetching unrelated APK artifact branches and their binary history.
+          fetch-depth: 16
       - name: Prepare the pinned diagnostic toolchain and official SDK
         id: setup
         shell: bash
