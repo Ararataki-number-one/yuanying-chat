@@ -100,6 +100,42 @@ def network_observation(commands, record, identity, phase):
     return usable
 
 
+def provision_sdk_wifi(commands, record, identity, phase, observation_phase):
+    """Restore only the observed SDK AP, within the original preflight deadline."""
+    stage = dict(phase=phase, startedAt=time.monotonic(),
+                 firstCommand=len(record['commands']),
+                 firstNetworkObservation=len(record['networkObservations']),
+                 wifiScans=[], status='failed')
+    record.setdefault('sdkWifiProvisioningStages', []).append(stage)
+    try:
+        # Reproduce only the SDK image's AndroidWifi provisioning convention.
+        # No airplane/mobile-data change, arbitrary SSID, or IME policy change.
+        commands.run('shell', 'cmd', 'wifi', 'set-wifi-enabled', 'enabled')
+        scan_deadline = min(commands.deadline - 10, time.monotonic() + 8)
+        while True:
+            scan = commands.run('shell', 'cmd', 'wifi', 'list-scan-results')
+            record['wifiScan'] = scan
+            stage['wifiScans'].append(dict(raw=scan, receivedAt=time.monotonic()))
+            # Exact SSID column followed by optional capability flags. Never
+            # accept a similarly named AP such as AndroidWifi-other.
+            if any(re.search(r'\sAndroidWifi\s*(?:\[[^\n]*\])?\s*$', line) for line in scan.splitlines()):
+                break
+            if time.monotonic() >= scan_deadline:
+                raise ValueError('The SDK emulator AndroidWifi access point was not observed')
+            time.sleep(min(1, max(0, scan_deadline - time.monotonic())))
+        commands.run('shell', 'cmd', 'wifi', 'connect-network', SSID, 'open')
+        record['sdkWifiProvisioningRequested'] = True
+        while not network_observation(commands, record, identity, observation_phase):
+            if commands.deadline - time.monotonic() <= 1:
+                raise TimeoutError('Actual Android active network with INTERNET did not become available')
+            time.sleep(min(1, max(0, commands.deadline - time.monotonic())))
+        stage['status'] = 'passed'
+    finally:
+        stage.update(completedAt=time.monotonic(),
+                     afterCommand=len(record['commands']),
+                     afterNetworkObservation=len(record['networkObservations']))
+
+
 def preflight(commands, record, identity):
     if commands.run('shell', 'getprop', 'ro.kernel.qemu') != '1':
         raise ValueError('The fixed adb target is not a confirmed emulator')
@@ -111,26 +147,8 @@ def preflight(commands, record, identity):
     before = network_observation(commands, record, identity, 'before-network-configuration')
     record['initialNetworkUsable'] = before
     if not before:
-        # Reproduce only the SDK image's AndroidWifi provisioning convention.
-        # No airplane/mobile-data change, arbitrary SSID, or IME policy change.
-        commands.run('shell', 'cmd', 'wifi', 'set-wifi-enabled', 'enabled')
-        scan_deadline = min(commands.deadline - 10, time.monotonic() + 8)
-        while True:
-            scan = commands.run('shell', 'cmd', 'wifi', 'list-scan-results')
-            record['wifiScan'] = scan
-            # Exact SSID column followed by optional capability flags. Never
-            # accept a similarly named AP such as AndroidWifi-other.
-            if any(re.search(r'\sAndroidWifi\s*(?:\[[^\n]*\])?\s*$', line) for line in scan.splitlines()):
-                break
-            if time.monotonic() >= scan_deadline:
-                raise ValueError('The SDK emulator AndroidWifi access point was not observed')
-            time.sleep(min(1, max(0, scan_deadline - time.monotonic())))
-        commands.run('shell', 'cmd', 'wifi', 'connect-network', SSID, 'open')
-        record['sdkWifiProvisioningRequested'] = True
-        while not network_observation(commands, record, identity, 'after-sdk-wifi-configuration'):
-            if commands.deadline - time.monotonic() <= 1:
-                raise TimeoutError('Actual Android active network with INTERNET did not become available')
-            time.sleep(min(1, max(0, commands.deadline - time.monotonic())))
+        provision_sdk_wifi(commands, record, identity, 'initial-network-provisioning',
+                           'after-sdk-wifi-configuration')
     present = commands.run('shell', 'pm', 'list', 'packages', PACKAGE).splitlines()
     record['packagePresent'] = 'package:' + PACKAGE in present
     if record['packagePresent']:
@@ -142,7 +160,14 @@ def preflight(commands, record, identity):
             raise ValueError('Setup-package disabled state was not confirmed')
         record['disabledStateConfirmed'] = True
     if not network_observation(commands, record, identity, 'after-setup-package-handling'):
-        raise ValueError('Actual default network disappeared after setup-package handling')
+        # Setup may own the initial Wi-Fi request. Its removal can tear down a
+        # network that was healthy above, so restore the same SDK AP and read CM
+        # again. A successful shell command or an expired wait is never success.
+        record['postSetupNetworkRecoveryRequired'] = True
+        provision_sdk_wifi(commands, record, identity, 'post-setup-network-recovery',
+                           'after-post-setup-sdk-wifi-configuration')
+        if not network_observation(commands, record, identity, 'after-post-setup-network-recovery-confirmation'):
+            raise ValueError('Actual default network disappeared after SDK Wi-Fi recovery')
     record['status'] = 'passed'
 
 
@@ -178,6 +203,7 @@ def main():
         actualGeckoExecution=False, physicalPhoneAcceptance=False, confirmedQemu=False,
         applicationOrInputPolicyModified=False, gestureReplayed=False,
         sdkWifiProvisioningRequested=False, disabledStateConfirmed=False,
+        postSetupNetworkRecoveryRequired=False, sdkWifiProvisioningStages=[],
         scope='Synthetic emulator prerequisite only; not production Android, Gecko, website or phone acceptance')
     started = time.monotonic()
     deadline = started + args.timeout
