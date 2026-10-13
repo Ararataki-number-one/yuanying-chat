@@ -609,6 +609,14 @@ def main():
         privacy=run(1,'privacy','privacy');assert privacy['nativeFingerprintingEnabled'] is True,privacy
         completion=run(1,'completion','completion');assert completion['guestActionsRecognized'] and completion['priorActionsCannotComplete'] and completion['nestedMessageIdRecognized'],completion
         bootstrap=run(1,'disableExtension','bootstrapCheck');assert bootstrap['navigationFailed'] is True,bootstrap
+        assert bootstrap['extensionId']=='browser@pocketchat.local' and bootstrap['enabledAfterDisable'] is False and bootstrap['disabledFlags']&2,bootstrap
+        restored_bootstrap=run(1,'restoreExtension','bootstrapRestore')
+        before=restored_bootstrap['ensureBefore'];enabled=restored_bootstrap['enableResult'];after=restored_bootstrap['ensureAfter']
+        assert before['id']==enabled['id']==after['id']=='browser@pocketchat.local' and before['version']==enabled['version']==after['version'],restored_bootstrap
+        assert before['enabled'] is False and before['disabledFlags']&2 and enabled['enabled'] is True and after['enabled'] is True and not after['disabledFlags']&2,restored_bootstrap
+        assert restored_bootstrap['enableSource']=='USER' and all(restored_bootstrap[key] for key in ['newNativeRoutePort','privacyReady','nativeProtectionAcknowledged']),restored_bootstrap
+        assert restored_bootstrap['protectionLevel']==restored_bootstrap['expectedProtectionLevel'] and restored_bootstrap['guardBefore']==restored_bootstrap['guardAfter'] and restored_bootstrap['networkReadyBefore']==restored_bootstrap['networkReadyAfter'],restored_bootstrap
+        report['closedBootstrapCleanup']=restored_bootstrap
         check(run(2,'read'),2,True)
         # Exercise the real outer Activity after moving its retained Gecko surface.
         adb('logcat','-c')

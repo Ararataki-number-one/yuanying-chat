@@ -185,9 +185,46 @@ public class GeckoIntegrationTestActivity extends Activity {
       .accept(value->loadFixture(serial),error->event(serial,"error",J.obj("error","native profile clear failed")));return;}
     if("block".equals(action))session.guard.setBlocked(true);
     if("disableExtension".equals(action)){
-      web.runtime.getWebExtensionController().disable(web.extension,1).accept(value->{web.current.loadUri("http://127.0.0.1:8765/fixture?context="+(slot+1)+"&action=read");session.handler.postDelayed(()->event(serial,"bootstrapCheck",J.obj("navigationFailed",session.navigationFailed)),5000);},error->event(serial,"error",J.obj("error","disable failed")));return;
+      web.runtime.getWebExtensionController().disable(web.extension,org.mozilla.geckoview.WebExtensionController.EnableSource.USER).accept(value->{if(serial!=run)return;web.current.loadUri("http://127.0.0.1:8765/fixture?context="+(slot+1)+"&action=read");session.handler.postDelayed(()->event(serial,"bootstrapCheck",J.obj("navigationFailed",session.navigationFailed,"extensionId",value.id,"enabledAfterDisable",value.metaData.enabled,"disabledFlags",value.metaData.disabledFlags)),5000);},error->event(serial,"error",J.obj("error","disable failed")));return;
     }
+    if("restoreExtension".equals(action)){restoreExtension(serial);return;}
     loadFixture(serial);
+  }
+  JSONObject extensionReceipt(org.mozilla.geckoview.WebExtension extension){return J.obj("id",extension.id,"version",extension.metaData.version,"enabled",extension.metaData.enabled,"disabledFlags",extension.metaData.disabledFlags);}
+  void restoreExtension(long serial){
+    final GeckoWebView web=(GeckoWebView)session.web;
+    final org.mozilla.geckoview.WebExtensionController controller=web.runtime.getWebExtensionController();
+    final org.mozilla.geckoview.WebExtension.Port previous=web.routePort;
+    final String expected="browser@pocketchat.local";
+    final boolean guardBefore=session.guard.allowed(),networkBefore=session.networkReady;
+    // The fail-closed assertion already completed in a separate invocation.
+    // USER disable survives force-stop; ensureBuiltIn does not enable an existing
+    // same-version add-on. Undo only this fixture's USER disable before later tests.
+    controller.ensureBuiltIn("resource://android/assets/gecko/",expected).accept(before->{
+      if(serial!=run||session.web!=web)return;
+      if(!expected.equals(before.id)||before.metaData.enabled||(before.metaData.disabledFlags&org.mozilla.geckoview.WebExtension.DisabledFlags.USER)==0){event(serial,"error",J.obj("error","Owned bootstrap disable was not retained","ensureBefore",extensionReceipt(before)));return;}
+      controller.enable(before,org.mozilla.geckoview.WebExtensionController.EnableSource.USER).accept(enabled->{
+        if(serial!=run||session.web!=web)return;
+        controller.ensureBuiltIn("resource://android/assets/gecko/",expected).accept(after->{
+          if(serial!=run||session.web!=web)return;
+          if(!expected.equals(enabled.id)||!expected.equals(after.id)||!enabled.metaData.enabled||!after.metaData.enabled||(after.metaData.disabledFlags&org.mozilla.geckoview.WebExtension.DisabledFlags.USER)!=0){event(serial,"error",J.obj("error","Owned bootstrap extension did not re-enable","enableResult",extensionReceipt(enabled),"ensureAfter",extensionReceipt(after)));return;}
+          web.extension=after;
+          JSONObject result=J.obj("ensureBefore",extensionReceipt(before),"enableResult",extensionReceipt(enabled),"ensureAfter",extensionReceipt(after),"enableSource","USER","guardBefore",guardBefore,"networkReadyBefore",networkBefore);
+          waitExtensionRestore(serial,web,previous,result,SystemClock.elapsedRealtime()+15000);
+        },error->event(serial,"error",J.obj("error","restored extension readback failed","detail",error.toString())));
+      },error->event(serial,"error",J.obj("error","bootstrap cleanup enable failed","detail",error.toString())));
+    },error->event(serial,"error",J.obj("error","disabled extension readback failed","detail",error.toString())));
+  }
+  void waitExtensionRestore(long serial,GeckoWebView web,org.mozilla.geckoview.WebExtension.Port previous,JSONObject result,long deadline){
+    if(serial!=run||session.web!=web)return;
+    boolean reconnected=web.routePort!=null&&web.routePort!=previous;
+    boolean protectedPolicy=web.privacyReady&&web.protectionLevel==session.privacy.level()&&web.getSettings().rfpAcknowledged;
+    if(reconnected&&protectedPolicy){
+      try{result.put("newNativeRoutePort",true).put("privacyReady",web.privacyReady).put("protectionLevel",web.protectionLevel).put("expectedProtectionLevel",session.privacy.level()).put("nativeProtectionAcknowledged",web.getSettings().rfpAcknowledged).put("guardAfter",session.guard.allowed()).put("networkReadyAfter",session.networkReady);}catch(JSONException error){throw new IllegalStateException(error);}
+      event(serial,"bootstrapRestore",result);return;
+    }
+    if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","Restored bootstrap extension did not acknowledge native protection","newNativeRoutePort",reconnected,"privacyReady",web.privacyReady,"protectionLevel",web.protectionLevel));return;}
+    session.handler.postDelayed(()->waitExtensionRestore(serial,web,previous,result,deadline),100);
   }
   void backgroundSettings(long serial){
     boolean desktop=session.privacy.wantsDesktop();session.pending=J.obj("id","synthetic-background-settings","confirmed",true);session.navigating=false;session.connecting=false;
