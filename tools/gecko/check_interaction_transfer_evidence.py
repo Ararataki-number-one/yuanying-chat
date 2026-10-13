@@ -3,6 +3,7 @@
 import argparse
 import json
 import pathlib
+import math
 if __package__:
     from .check_connection_evidence import verify_detector_transport_evidence
 else:
@@ -78,7 +79,30 @@ def verify_reading_bounds(report):
     fit(value)
     assert value['focused'] == 'composer' and 'native-input-ok' in value['draft']
     composer = value['blocks'][2]
-    assert composer['top'] >= -1 and composer['bottom'] <= value['visualHeight'] + 1
+    offset = value.get('offsetTop', 0)
+    assert composer['top'] >= offset - 1 and composer['bottom'] <= offset + value['visualHeight'] + 1
+    if 'nativeComposerFits' in value:
+        assert value['nativeComposerFits'] is True and value['productionKeyboardController'] is True
+        assert value['nativeFocusRequests'] > 0
+        assert value['nativeFocusMeasurements'] > 0
+        assert isinstance(value['nativeFocusWasClipped'], bool)
+        assert isinstance(value['nativeFocusScrolls'], int) and value['nativeFocusScrolls'] >= 0
+        assert math.isfinite(value['nativeFocusScrollDeltaCss'])
+        if value['nativeFocusWasClipped']:
+            assert value['nativeFocusScrolls'] > 0 and abs(value['nativeFocusScrollDeltaCss']) > 0
+        window = value['windowBounds']
+        assert all(math.isfinite(window[key]) for key in ('left', 'top', 'right', 'bottom'))
+        assert window['bottom'] > window['top'] and window['right'] > window['left']
+        assert value['imeTopPixels'] == window['bottom'] - keyboard['imeBottom']
+        matrix = value['pageToSurfaceMatrix']
+        assert len(matrix) == 9 and all(math.isfinite(number) for number in matrix)
+        assert abs(matrix[0] - value['matrixScale']) < .001 and abs(matrix[4] - value['matrixScaleY']) < .001
+        physical, visible = value['composerPhysicalRect'], value['visibleSurfaceRect']
+        assert all(math.isfinite(rect[key]) for rect in (physical, visible) for key in ('left', 'top', 'right', 'bottom'))
+        assert physical['right'] > physical['left'] and physical['bottom'] > physical['top']
+        assert visible['left'] - 2 <= physical['left'] < physical['right'] <= visible['right'] + 2
+        assert visible['top'] - 2 <= physical['top'] < physical['bottom'] <= visible['bottom'] + 2
+        assert visible['bottom'] <= value['imeTopPixels'] + 2
     assert value['document'] == reference['document'] and value['cookie'] == reference['cookie']
     assert value['bodyHash'] == reference['bodyHash'] and value['sessionIdentity'] == reference['sessionIdentity']
     assert value['surfaceIdentity'] == reference['surfaceIdentity'] and value['activityIdentity'] == reference['activityIdentity']
@@ -195,6 +219,13 @@ def verify_interaction_transfer_evidence(directory, source):
         assert isinstance(manifest['versionCode'], int) and manifest['versionCode'] > 0
         if manifest['versionCode'] >= 48:
             assert 'nativeReadingBounds' in device, 'This release requires native fit, privacy, rotation and IME bounds evidence.'
+        if manifest['versionCode'] >= 49:
+            assert device['nativeReadingBounds']['input']['measurement'].get('nativeComposerFits') is True
+            assert device['nativeReadingBounds']['input']['measurement'].get('productionKeyboardController') is True
+            for name, minimum in [('reading-host-results.json', 71), ('reading-focus-host-results.json', 17)]:
+                host = json.loads((directory / name).read_text())
+                assert host['sourceCommit'] == source and host['passed'] == host['total'] == len(host['checks']) >= minimum
+                assert all(row['pass'] is True for row in host['checks'])
     if 'nativeReadingBounds' in device:
         native_fit = verify_reading_bounds(device['nativeReadingBounds'])
     held_cancel = device['appUpdates']['cancelDuringQuery']

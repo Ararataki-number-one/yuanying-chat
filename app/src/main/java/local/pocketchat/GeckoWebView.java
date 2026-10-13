@@ -61,7 +61,7 @@ class GeckoWebView extends FrameLayout {
   final List<GeckoUploadFiles.Selection> uploadFiles=new ArrayList<>();
   GeckoSession.SessionState startupState;
   boolean checkpointReady,routePrepared;float readingLayout=1;long zoomEpoch,recoveryWindow;int contentRecoveries;
-  GeckoSession zoomTarget;long zoomStarted;float zoomX,zoomY,zoomRadius;
+  GeckoSession zoomTarget;long zoomStarted;float zoomX,zoomY,zoomRadius;int readingFocusScrolls;boolean readingFocusHadClipping;float readingFocusScrollDelta;
   final Runnable recovery=()->recoverClosed();
   final Runnable checkpoint=this::saveCheckpoint;
   final int[] surfaceOrigin=new int[2];
@@ -427,6 +427,28 @@ class GeckoWebView extends FrameLayout {
     // Retain the current reading position rather than returning to page top.
     current.getPanZoomController().scrollTo(ScreenLength.zero(),ScreenLength.fromPixels(Math.max(0,y)),PanZoomController.SCROLL_BEHAVIOR_AUTO);
   }
+  Rect readingFocusBounds(){
+    Rect visible=new Rect();if(!getGlobalVisibleRect(visible))return visible;int[] rootOrigin=new int[2];getRootView().getLocationOnScreen(rootOrigin);visible.offset(rootOrigin[0],rootOrigin[1]);
+    WindowInsets window=getRootWindowInsets();if(Build.VERSION.SDK_INT>=30&&window!=null&&window.isVisible(WindowInsets.Type.ime())){
+      WindowManager manager=displayContext.getSystemService(WindowManager.class);if(manager==null)return new Rect();visible.bottom=Math.min(visible.bottom,manager.getCurrentWindowMetrics().getBounds().bottom-window.getInsets(WindowInsets.Type.ime()).bottom);
+    }
+    return visible;
+  }
+  void revealReadingFocus(String expectedUrl,java.util.function.BooleanSupplier stillCurrent){
+    final GeckoSession target=current;final GeckoView focusSurface=surface;if(destroyed||failed||target==null||!target.isOpen()||focusSurface==null||!readingPage(expectedUrl)||!expectedUrl.equals(getUrl())||!stillCurrent.getAsBoolean())return;
+    final long focusZoomEpoch=zoomEpoch;final float layout=readingLayout;final int viewWidth=getWidth(),viewHeight=getHeight(),surfaceWidth=focusSurface.getWidth(),surfaceHeight=focusSurface.getHeight();final Rect visible=readingFocusBounds();final int[] origin=new int[2];focusSurface.getLocationOnScreen(origin);if(visible.isEmpty())return;
+    evaluateJavascript(BrowserReadingPolicy.focusScript(expectedUrl),raw->{
+      if(destroyed||failed||current!=target||!target.isOpen()||surface!=focusSurface||surface.getSession()!=target||!surface.isShown()||!expectedUrl.equals(getUrl()))return;
+      WindowInsets window=getRootWindowInsets();if(Build.VERSION.SDK_INT>=30&&(window==null||!window.isVisible(WindowInsets.Type.ime())))return;
+      int[] now=new int[2];focusSurface.getLocationOnScreen(now);if(focusZoomEpoch!=zoomEpoch||layout!=readingLayout||viewWidth!=getWidth()||viewHeight!=getHeight()||surfaceWidth!=focusSurface.getWidth()||surfaceHeight!=focusSurface.getHeight()||origin[0]!=now[0]||origin[1]!=now[1]||!visible.equals(readingFocusBounds()))return;
+      JSONObject measured=J.parse(raw),rect=measured.optJSONObject("rect");if(!measured.optBoolean("ok")||!expectedUrl.equals(measured.optString("url"))||rect==null||!stillCurrent.getAsBoolean())return;
+      Matrix matrix=new Matrix();target.getPageToSurfaceMatrix(matrix);float[] values=new float[9];matrix.getValues(values);float factor=values[Matrix.MSCALE_Y]*layout;
+      float[] points={(float)rect.optDouble("left",Double.NaN),(float)rect.optDouble("top",Double.NaN),(float)rect.optDouble("right",Double.NaN),(float)rect.optDouble("bottom",Double.NaN)};matrix.mapPoints(points);
+      float visibleTop=visible.top-origin[1],caretTop=Float.NaN,caretBottom=Float.NaN;JSONObject caret=measured.optJSONObject("caret");if(caret!=null){float[] cp={(float)caret.optDouble("left",Double.NaN),(float)caret.optDouble("top",Double.NaN),(float)caret.optDouble("right",Double.NaN),(float)caret.optDouble("bottom",Double.NaN)};matrix.mapPoints(cp);caretTop=cp[1]*layout-visibleTop;caretBottom=cp[3]*layout-visibleTop;}
+      float margin=8*getResources().getDisplayMetrics().density;float delta=BrowserReadingPolicy.focusScroll(points[1]*layout-visibleTop,points[3]*layout-visibleTop,caretTop,caretBottom,visible.height(),margin,factor);
+      if(delta!=0&&Float.isFinite(delta)){target.getPanZoomController().scrollBy(ScreenLength.zero(),ScreenLength.fromPixels(delta),PanZoomController.SCROLL_BEHAVIOR_AUTO);readingFocusScrolls++;readingFocusScrollDelta=delta;readingFocusHadClipping|=points[1]*layout<visibleTop||points[3]*layout>visible.bottom-origin[1];}
+    });
+  }
   boolean requiresViewportMeasurement(){return true;}
   public void setInitialScale(int percent){}
   boolean setReadingLayout(float choice){
@@ -450,7 +472,7 @@ class GeckoWebView extends FrameLayout {
     for(int step=0;step<12;step++){final int n=step;owner.handler.postDelayed(()->{
       if(target!=current||!enabled||destroyed||failed||epoch!=zoomEpoch||!target.isOpen())return;
       float next=primed*(1+(amount-1)*Math.max(0,n-1)/10f);pinch(target,started,MotionEvent.ACTION_MOVE,2,x,y,next);
-      if(n==11){pinch(target,started,MotionEvent.ACTION_POINTER_UP|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,x,y,next);pinch(target,started,MotionEvent.ACTION_UP,1,x,y,next);zoomTarget=null;}
+      if(n==11){pinch(target,started,MotionEvent.ACTION_POINTER_UP|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,x,y,next);pinch(target,started,MotionEvent.ACTION_UP,1,x,y,next);zoomTarget=null;owner.reading.nativeZoomFinished();}
     },(step+1)*16L);}
   }
   private void cancelZoom(){zoomEpoch++;if(zoomTarget!=null&&zoomTarget.isOpen())pinch(zoomTarget,zoomStarted,MotionEvent.ACTION_CANCEL,1,zoomX,zoomY,zoomRadius);zoomTarget=null;}

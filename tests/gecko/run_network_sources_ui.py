@@ -22,6 +22,8 @@ PACKAGE = "local.pocketchat.test"
 ACTIVITY = PACKAGE + "/local.pocketchat.NetworkSourcesUiIntegrationActivity"
 UI_CHECKS = []
 RUNNER_REPORT = None
+ACTION_TRACE = []
+CURRENT_COMMAND = "starting"
 
 
 def adb(*args, binary=False, timeout=35):
@@ -59,13 +61,25 @@ def state():
 
 
 def command(value):
+    global CURRENT_COMMAND
+    CURRENT_COMMAND = value
     adb("shell", "am", "start", "-W", "--activity-single-top", "-n", ACTIVITY, "--es", "command", value)
     return wait_for(state, lambda item: item.get("stage") == value, "Activity command " + value, seconds=15)
 
 
 def xml():
     adb("shell", "uiautomator", "dump", "/sdcard/pocket-source-ui.xml")
-    return ET.fromstring(adb("exec-out", "cat", "/sdcard/pocket-source-ui.xml"))
+    raw = adb("exec-out", "cat", "/sdcard/pocket-source-ui.xml")
+    (OUT / "network-source-ui-latest.xml").write_text(raw)
+    return ET.fromstring(raw)
+
+
+def record_action(action, **evidence):
+    ACTION_TRACE.append({"sequence": len(ACTION_TRACE) + 1, "command": CURRENT_COMMAND,
+                         "action": action, "monotonicSeconds": time.monotonic(),
+                         "uiXml": (OUT / "network-source-ui-latest.xml").read_text(), **evidence})
+    (OUT / "network-source-ui-action-trace.json").write_text(
+        json.dumps(ACTION_TRACE, ensure_ascii=False, indent=2) + "\n")
 
 
 def bounds(node):
@@ -92,20 +106,44 @@ def node(text=None, desc=None, part=None, kind=None, index=0):
 def tap(text=None, desc=None, part=None, kind=None, index=0):
     chosen = node(text, desc, part, kind, index)
     left, top, right, bottom = bounds(chosen)
+    record_action("tap", selector={"text": text, "description": desc, "part": part,
+                                   "kind": kind, "index": index}, node=chosen.attrib,
+                  x=(left + right) // 2, y=(top + bottom) // 2)
     adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
 
 
 def fill(description, value):
     chosen = node(desc=description, kind="EditText")
-    old = chosen.attrib.get("text", "")
     left, top, right, bottom = bounds(chosen)
+    record_action("focus-field", description=description, node=chosen.attrib,
+                  x=(left + right) // 2, y=(top + bottom) // 2)
     adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
+    focused = wait_for(xml, lambda tree: len(matching(tree, desc=description, kind="EditText")) == 1
+                       and matching(tree, desc=description, kind="EditText")[0].attrib.get("focused") == "true",
+                       "Actual focused field " + description, seconds=15)
+    old = matching(focused, desc=description, kind="EditText")[0].attrib.get("text", "")
     if old:
         adb("shell", "input", "keyevent", "123")
         adb("shell", "input", "keyevent", *("67" for _ in old))
     # Only synthetic ASCII values are accepted; quoting prevents shell interpretation of URLs.
     assert value.isascii() and "%" not in value
     adb("shell", "input", "text", shlex.quote(value))
+    tree = xml()
+    actual = matching(tree, desc=description, kind="EditText")
+    record_action("field-value", description=description, expected=value,
+                  nodes=[item.attrib for item in actual])
+    assert len(actual) == 1 and actual[0].attrib.get("text") == value, (
+        "Actual Android field did not receive the one input operation", description,
+        value, [item.attrib for item in actual])
+
+
+def assert_fields(expected):
+    tree = xml()
+    values = {description: [item.attrib for item in matching(tree, desc=description, kind="EditText")]
+              for description in expected}
+    record_action("save-fields", expected=expected, actual=values)
+    assert all(len(values[description]) == 1 and values[description][0].get("text") == value
+               for description, value in expected.items()), ("Actual fields changed before save", values)
 
 
 def check(name, condition):
@@ -150,6 +188,7 @@ def add(role, name):
     centered("添加" + ("入口" if role == "entry" else "出口") + "订阅")
     fill("订阅名称", name)
     fill("订阅地址", "https://127.0.0.1:9/" + name.lower())
+    assert_fields({"订阅名称": name, "订阅地址": "https://127.0.0.1:9/" + name.lower()})
     tap(text="保存订阅")
     wait_source(role, name)
     # Publication continues after the user closes the progress dialog.
@@ -163,6 +202,7 @@ def edit_source(role):
     name = "EntryEdited" if role == "entry" else "ExitEdited"
     fill("订阅名称", name)
     fill("订阅地址", "https://127.0.0.1:9/edited-" + role)
+    assert_fields({"订阅名称": name, "订阅地址": "https://127.0.0.1:9/edited-" + role})
     tap(text="保存订阅")
     wait_source(role, name)
     tap(desc="关闭读取" + ("入口" if role == "entry" else "出口") + "节点")
@@ -297,7 +337,17 @@ except BaseException as failure:
     try:
         report = RUNNER_REPORT if RUNNER_REPORT is not None else app_json("network-source-ui-results.json")
     except (subprocess.CalledProcessError, json.JSONDecodeError):
-        report = {"checks": [], "checkCount": 0}
+        try:
+            partial = state()
+            (OUT / "network-source-ui-failure-state.json").write_text(json.dumps(partial, ensure_ascii=False, indent=2) + "\n")
+            report = {"checks": partial.get("checks", []), "checkCount": partial.get("checkCount", 0),
+                      "stage": partial.get("stage"), "partialAndroidEvidence": True}
+        except (subprocess.CalledProcessError, json.JSONDecodeError):
+            report = {"checks": [], "checkCount": 0}
+    try:
+        xml()
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ET.ParseError):
+        pass
     report["androidStatus"] = report.get("status", "no-result")
     report["status"] = "failed"
     report["runnerFailure"] = type(failure).__name__ + ": " + str(failure)

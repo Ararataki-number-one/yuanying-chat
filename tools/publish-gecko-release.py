@@ -78,7 +78,7 @@ if version_code>=46:
     if chain_performance.get('fixedExitPreauthentication'):
         chain_files.append('preconnect-results.json')
     if chain_performance.get('independentNetworkSources'):
-        chain_files.extend(['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','network-source-results.json','network-source-ui-results.json','network-source-route-results.json','network-safe-idle-results.json'])
+        chain_files.extend(['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','sealed-file-host-results.json','network-source-results.json','network-source-ui-results.json','network-source-route-results.json','network-safe-idle-results.json','network-safe-idle-trust-host-results.json'])
     for name in chain_files:
         assert json.loads((args.evidence/name).read_text())['sourceCommit']==args.source,'Chain evidence belongs to a different source: '+name
 build=json.loads((args.evidence/'manifest.json').read_text())
@@ -114,6 +114,7 @@ if version_code>=42:
 performance_files=['gecko-performance-results.json','snapshot-host-results.json','reply-observation-host-results.json','ui-visual-results.json','ui-build-comparison.json'] if version_code>=43 else []
 if version_code>=44:performance_files.append('reply-binding-host-results.json')
 if version_code>=45:performance_files.extend(['update-transfer-results.json','update-transfer-host-results.json','interaction-host-results.json'])
+if version_code>=49:performance_files.extend(['reading-host-results.json','reading-focus-host-results.json'])
 if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','official-sdk-verification.json','official-sdk-input.json'])
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
 shutil.copy2(args.notes,stage/'RELEASE.md')

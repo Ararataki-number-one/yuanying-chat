@@ -108,7 +108,7 @@ final class NetworkCatalog {
   void cleanCacheGenerations(JSONObject latest){
     Set<String> keep=new HashSet<>();for(String role:new String[]{ENTRY,EXIT}){JSONArray all=latest.optJSONArray(key(role));for(int i=0;i<all.length();i++){JSONObject row=all.optJSONObject(i);if(row!=null){keep.add(row.optString("cacheSlot"));keep.add(row.optString("previousCacheSlot"));}}}
     File[] files=Profiles.context(c,0).getNoBackupFilesDir().listFiles();if(files==null)return;
-    for(File file:files){String name=file.getName();if(!name.matches("source-pool-(entry|exit)-[a-p]+[.]sealed([.](bak|new))?"))continue;String slot=name.replaceFirst("[.]sealed([.](bak|new))?$","");if(!keep.contains(slot))file.delete();}
+    for(File file:files){String name=file.getName();if(!name.matches("source-pool-(entry|exit)-[a-p]+[.]sealed([.](bak|new))?"))continue;String slot=name.replaceFirst("[.]sealed([.](bak|new))?$","");if(!keep.contains(slot))try{store.remove(slot);}catch(Exception unavailable){/* A later successful library write retries cleanup. */}}
   }
   JSONObject addSubscription(String name,String url)throws Exception{return addSubscription(ENTRY,name,url);}
   JSONObject addSubscription(String role,String name,String url)throws Exception{

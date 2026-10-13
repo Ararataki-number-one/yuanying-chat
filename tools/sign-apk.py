@@ -34,6 +34,7 @@ import zipfile
 with zipfile.ZipFile(args.output) as archive:
     assert 'assets/network-fixture.p12' not in archive.namelist(),'Synthetic TLS key must never appear in production APK'
     assert not any(name.endswith(('.p12','.jks')) for name in archive.namelist()),'Keystore and synthetic TLS fixtures must never appear in production APK'
+    assert not any(name.startswith('assets/network-safe-idle-trust/') for name in archive.namelist()),'Controlled test CA and NSS profile must never appear in production APK'
     assert not any(name.startswith('assets/performance-baseline/') for name in archive.namelist()),'Historical performance assets must never appear in production APK'
 assert 'application-debuggable' not in badging,'Release must not enable debugging.'
 manifest=subprocess.check_output([str(args.tools/'aapt2'),'dump','xmltree',str(args.output),'--file','AndroidManifest.xml'],text=True)

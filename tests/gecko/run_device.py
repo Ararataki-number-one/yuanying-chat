@@ -463,6 +463,11 @@ def main():
                 (OUT/f'reading-fit-{phase}.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
             report['nativeReadingBounds']['rotation']=geometry
             input_result=run(1,'readingBoundsInput','readingBoundsInput');assert input_result['imeVisible'] and input_result['imeBottom']>0 and all(input_result[key] for key in ('sameDocument','sameCookie','draftPreserved')),input_result
+            measured=input_result['measurement'];composer=measured['blocks'][2];physical=measured['composerPhysicalRect'];visible=measured['visibleSurfaceRect']
+            assert composer['top']>=measured['offsetTop']-1 and composer['bottom']<=measured['offsetTop']+measured['visualHeight']+1,measured
+            assert physical['bottom']>physical['top'] and physical['top']>=visible['top']-2 and physical['bottom']<=min(visible['bottom'],measured['imeTopPixels'])+2 and physical['left']>=visible['left']-2 and physical['right']<=visible['right']+2,measured
+            assert measured['nativeComposerFits'] and measured['productionKeyboardController'] and measured['nativeFocusRequests']>0 and measured['nativeFocusMeasurements']>0 and len(measured['pageToSurfaceMatrix'])==9,measured
+            assert measured['imeTopPixels']==measured['windowBounds']['bottom']-input_result['imeBottom'] and (not measured['nativeFocusWasClipped'] or measured['nativeFocusScrolls']>0 and abs(measured['nativeFocusScrollDeltaCss'])>0),measured
             report['nativeReadingBounds']['input']=input_result
             (OUT/'reading-fit-keyboard.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
             adb('shell','input','keyevent','KEYCODE_BACK');ended=run(1,'readingBoundsEnd','readingBoundsEnd');assert ended['productionDelegateRestored'] and ended['privacyRestored'],ended

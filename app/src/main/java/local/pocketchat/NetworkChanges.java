@@ -23,11 +23,11 @@ final class NetworkChanges {
         if(sources.exit!=null){String exit="pending-exit-subscription-"+suffix;vault.put(exit,sources.exitBytes);written.add(exit);NetworkCatalog.put(record,"exitSnapshot",exit);NetworkCatalog.put(record,"exitSnapshotMeta",NetworkSourceSelection.metadata(sources.exit,sources.exitBytes));}
       }
       vault.put("pending-network",record.toString().getBytes(StandardCharsets.UTF_8));published=true;deleteSnapshots(vault,before);
-    }finally{if(!published)for(String slot:written)new android.util.AtomicFile(vault.file(slot)).delete();}
+    }finally{if(!published)for(String slot:written)vault.remove(slot);}
   }
   static boolean snapshotSlot(String slot){return slot.matches("pending-(entry|exit)-subscription-[a-p]{32}");}
-  static void deleteSnapshots(SecretStore vault,JSONObject record){for(String key:new String[]{"entrySnapshot","exitSnapshot"}){String slot=record.optString(key);if(snapshotSlot(slot))new android.util.AtomicFile(vault.file(slot)).delete();}}
-  static void clear(Context c){try{NetworkSourceSelection.withActiveSnapshot(c,()->{SecretStore vault=new SecretStore(c);JSONObject before=pending(c);new android.util.AtomicFile(vault.file("pending-network")).delete();deleteSnapshots(vault,before);return null;});}catch(Exception failure){throw new IllegalStateException("待应用网络设置未能取消",failure);}}
+  static void deleteSnapshots(SecretStore vault,JSONObject record)throws Exception{for(String key:new String[]{"entrySnapshot","exitSnapshot"}){String slot=record.optString(key);if(snapshotSlot(slot))vault.remove(slot);}}
+  static void clear(Context c){try{NetworkSourceSelection.withActiveSnapshot(c,()->{SecretStore vault=new SecretStore(c);JSONObject before=pending(c);vault.remove("pending-network");deleteSnapshots(vault,before);return null;});}catch(Exception failure){throw new IllegalStateException("待应用网络设置未能取消",failure);}}
   /** A completed older apply must never clear a later saved candidate. */
   static boolean clearIfCurrent(Context c,String expected)throws Exception{return NetworkSourceSelection.withActiveSnapshot(c,()->{JSONObject current=pending(c);if(expected==null||expected.isEmpty()||current.length()==0||!expected.equals(current.toString()))return false;clear(c);return true;});}
   static JSONObject lineage(String transition,String writtenHash,String restoredHash,int generation){return J.obj("transition",transition,"writtenHash",writtenHash,"restoredHash",restoredHash,"generation",generation);}

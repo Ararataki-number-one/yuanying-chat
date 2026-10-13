@@ -123,7 +123,7 @@ final class NetworkSourceSelection {
     void restoreBefore()throws Exception{Exception failure=null;for(Map.Entry<String,byte[]> previous:before.entrySet())try{restore(vault,previous.getKey(),previous.getValue());}catch(Exception error){if(failure==null)failure=error;}if(failure!=null)throw failure;}
     void rollback()throws Exception{withActiveSnapshot(vault.context,()->{if(!writing)return null;if(after.isEmpty()||!matches(after))throw new IOException("环境网络快照已变化，未覆盖较新的设置");restoreBefore();writing=false;return null;});}
   }
-  static void restore(SecretStore vault,String slot,byte[] bytes)throws Exception{if(bytes==null)new android.util.AtomicFile(vault.file(slot)).delete();else vault.put(slot,bytes);}
+  static void restore(SecretStore vault,String slot,byte[] bytes)throws Exception{if(bytes==null)vault.remove(slot);else vault.put(slot,bytes);}
   static JSONObject metadata(JSONObject row){return J.obj("sourceId",row.optString("id"),"sourceUrl",row.optString("url"),"role",row.optString("role"),"urlHash",NativeNetwork.hash(row.optString("url")),"addressRevision",row.optLong("addressRevision"),"updatedAt",row.optLong("updatedAt"));}
   static String snapshotGeneration(String role,String id,long addressRevision,byte[] bytes){
     NetworkSubscriptionCatalogPolicy.role(role);if(id==null||id.isEmpty()||addressRevision<1||bytes==null||bytes.length==0)throw new IllegalArgumentException("来源快照身份不完整");

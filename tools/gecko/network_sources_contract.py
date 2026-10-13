@@ -10,6 +10,77 @@ SUCCESS = {'subscribed-a', 'subscribed-b', 'after-probes', 'restored-subscriptio
 FAILURE = {'invalid-entry-snapshot-sha', 'invalid-exit-snapshot-sha', 'same-name-changed-exit', 'same-name-changed-entry'}
 SAFE_IDLE_CASES = ['prepare-send', 'capture-send', 'prepare-transfer', 'capture-navigation',
                    'capture-delete', 'complete-delete', 'complete-late-save']
+SAFE_IDLE_TRUST_HASHES = {
+    'testCaSha256': '794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226',
+    'testLeafSha256': '66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c',
+    'profileDbSha256': 'a3114642d39ee1f3bc23c4428b08035abeb101de367547dcfe32680af6286023',
+}
+SAFE_IDLE_TRUST_CHECKS = {
+    'Public test CA database prepared in the isolated profile before Gecko runtime',
+    'Controlled ChatGPT certificate has the exact valid CA signed SAN and server chain',
+    'Official Gecko security callback trusts the controlled ChatGPT origin without an exception',
+}
+SAFE_IDLE_TRUST_MANIFEST_SHA256 = '077bb6aca51c2af07bc831cc4db3beabf9cbeb70c1fd793d1a7f61f25f54a621'
+SAFE_IDLE_TRUST_FILES = {
+    'root-ca.der': {'sha256': SAFE_IDLE_TRUST_HASHES['testCaSha256'], 'bytes': 959},
+    'server-leaf.der': {'sha256': SAFE_IDLE_TRUST_HASHES['testLeafSha256'], 'bytes': 941},
+    'cert9.db': {'sha256': SAFE_IDLE_TRUST_HASHES['profileDbSha256'], 'bytes': 28672},
+    'server.p12': {'sha256': '5fe7edd5f9b89854977cc3f6181faf8b38386eb03f4829ec9d39bd3cbfb6acc3', 'bytes': 3814},
+}
+SAFE_IDLE_TRUST_ASSET_NAMES = sorted(set(SAFE_IDLE_TRUST_FILES) | {'manifest.json', 'README.md'})
+MODEL_STORAGE_CHECKS = {
+    'Original encrypted record layout and slot AAD remain readable',
+    'Unprotected Android AtomicFile creates an actual pending .new',
+    "Unprotected Android recovery deletes another writer's .new",
+    'Unprotected Android finishWrite returns without publishing the new value',
+    'Formal encrypted writer reaches Android startWrite before publication',
+    "Formal encrypted reader waits instead of deleting the writer's .new",
+    'Formal encrypted reader decrypts the whole newly published value',
+    'Successful formal publication leaves no pending .new',
+    "Formal storage reports Android's quiet rename failure as IOException",
+    'Rejected encrypted publication keeps the previously committed value',
+    'Rejected encrypted publication leaves no pending staging file',
+    'Formal encrypted removal waits for an active publication',
+    'Formal encrypted removal clears both committed and pending files',
+    'Different physical files on one stripe support safe nested leases',
+    'Dynamic storage slots keep at most 64 stable lock inodes',
+    'Removing dynamic slots leaves no committed or pending payloads',
+    "Storage race fixtures preserve the environment's encrypted route",
+}
+SEALED_STORAGE_HOST_CHECKS = {
+    'Unprotected baseline creates a pending .new file',
+    "Unprotected openRead removes a different writer's .new file",
+    'Unprotected finishWrite can return normally without publishing',
+    'Formal publication turns quiet rename failure into IOException',
+    'Rejected rename publication retains the last committed bytes',
+    'Formal writer reaches an actual startWrite barrier',
+    'Formal reader waits instead of deleting an active .new',
+    'Formal reader receives the complete newly published value',
+    'Formal remove waits for publication before removing the record',
+    'Formal remove clears base and pending publication',
+    'A separate JVM reader cannot destroy a pending publication',
+    'Cross-JVM writer commits successfully',
+    'Cross-JVM reader observes the complete committed value',
+    'Fixture finds two different physical files sharing one stable stripe',
+    'Nested access to a different file on the same stripe is reentrant',
+    'Dynamic cache slot churn creates at most 64 persistent lock inodes',
+    'Removed dynamic slots leave no committed or pending payload files',
+    'Missing records return null without treating .lock files as data',
+    'Legacy backup recovery remains readable under the formal lease',
+    'Rejected rename publication clears its pending .new file',
+    'A separate JVM actually attempts and observes the held OS stripe lock',
+    'Payload removal never replaces or unlinks a stable stripe inode',
+    'Publication verifies prefix and complete multi-chunk payload',
+    'Publication verification rejects same-length prefix corruption',
+    'Publication verification rejects same-length payload-tail corruption',
+    'Publication verification rejects shortened and extra payload bytes',
+    'Canonical file aliases share the same stable stripe gate',
+    'Publication through an alias preserves the physical file and symlink',
+    'Removal through an alias clears the physical payload under its lease',
+    'A queued JVM waiter retains the same live canonical gate',
+    'Interrupted stripe acquisition exits without entering protected I/O',
+    'Completed and interrupted leases release all JVM gate references',
+}
 
 
 def _hash(value, length=64):
@@ -20,6 +91,84 @@ def _core_matches(report, receipt):
     assert report['coreAbi'] == 'x86_64'
     assert report['coreVersion'] == receipt['recipe']['version']
     assert report['coreSha256'] == receipt['binaries']['x86_64']['sha256']
+
+
+def _verify_route_session_restorations(report):
+    assert len(report['checks']) >= 71
+    required = {name + ' releases the browser guard through the production reconnect callback'
+                for name in ('restored-subscription', 'legacy-manual')}
+    assert required <= {row['name'] for row in report['checks']}
+    restorations = report['sessionRestorations']
+    assert [row['name'] for row in restorations] == ['restored-subscription', 'legacy-manual']
+    for row in restorations:
+        assert row['method'] == 'ChatSession.reconnect → NativeNetwork.recover → ChatSession.applyProxy'
+        before, after = row['before'], row['after']
+        assert before['coreReady'] is True and before['nativeReceiptCurrent'] is True
+        for key in ('networkReady', 'guardAllowed', 'coreReady', 'nativeReceiptCurrent', 'defaultNetworkUsable'):
+            assert after[key] is True, key
+        for key in ('guardBlocked', 'connecting', 'offline', 'coreStarting'):
+            assert after[key] is False, key
+        assert row['document'] == {'url': 'https://127.0.0.1:9879/pool', 'controlled': True}
+    for name in SUCCESS | FAILURE:
+        actual = [row for row in report['routes'] if '/bytes?id=' + name in row['url']]
+        assert actual, name
+        for row in actual:
+            state = row['session']
+            if name in SUCCESS:
+                for key in ('networkReady', 'guardAllowed', 'coreReady', 'nativeReceiptCurrent', 'defaultNetworkUsable'):
+                    assert state[key] is True, (name, key)
+                assert state['guardBlocked'] is False and state['offline'] is False
+            else:
+                assert state['coreReady'] is False and state['nativeReceiptCurrent'] is False
+
+
+def _verify_safe_idle_tls(report):
+    assert report['actualTestCaTrust'] is True and report['certificateExceptions'] == 0
+    preparation = report['testCaTrust']
+    assert preparation['schema'] == 1 and preparation['method'] == 'NSS SQL public-root profile preload'
+    assert preparation['assetDirectory'] == 'network-safe-idle-trust/' and preparation['hostname'] == 'chatgpt.com'
+    assert isinstance(preparation['profilePath'], str)
+    assert preparation['profilePath'].endswith('/local.pocketchat.test/no_backup/gecko-browser')
+    for key, expected in SAFE_IDLE_TRUST_HASHES.items():
+        assert report[key] == preparation[key] == expected, key
+    for key in ('preparedBeforeRuntime', 'databaseCopyShaVerified', 'serverChainShaVerified',
+                'certificateValidityChecked', 'certificateHostnameSanMatches'):
+        assert preparation[key] is True, key
+    assert preparation['productionTrustChanged'] is False and preparation['certificateExceptionUsed'] is False
+    security = report['securityEvents']
+    assert security
+    for event in security:
+        assert event['callback'] == 'GeckoSession.ProgressDelegate.onSecurityChange'
+        assert event['host'] == 'chatgpt.com' and isinstance(event['origin'], str)
+        assert event['isSecure'] is True and event['isException'] is False
+        assert event['certificateSha256'] == SAFE_IDLE_TRUST_HASHES['testLeafSha256']
+        assert event['testCaSha256'] == SAFE_IDLE_TRUST_HASHES['testCaSha256']
+        for key in ('certificateSignedByTestCa', 'certificateValidityChecked', 'certificateHostnameSanMatches',
+                    'certificateMatchesPackagedLeaf', 'accepted'):
+            assert event[key] is True, key
+        assert event['verificationError'] == ''
+    events = report['phaseEvents']
+    prepared = [event['value'] for event in events if event.get('kind') == 'testTrustPrepared']
+    observed = [event['value'] for event in events if event.get('kind') == 'security']
+    assert prepared == [preparation] and observed == security
+    preparation_index = next(i for i, event in enumerate(events) if event.get('kind') == 'testTrustPrepared')
+    first_security = next(i for i, event in enumerate(events) if event.get('kind') == 'security')
+    first_tap = next(i for i, event in enumerate(events) if event.get('kind') == 'tapNeeded')
+    assert preparation_index < first_security < first_tap
+
+
+def _verify_safe_idle_trust_host(report, source, apk_sha256):
+    assert report['schema'] == 1 and report['sourceCommit'] == source and report['status'] == 'passed'
+    assert report['actualAndroidExecution'] is False and not report.get('diagnosticOnly', False)
+    assert report['assetDirectory'] == 'network-safe-idle-trust/' and report['hostname'] == 'chatgpt.com'
+    assert report['manifestSha256'] == SAFE_IDLE_TRUST_MANIFEST_SHA256
+    assert report['files'] == SAFE_IDLE_TRUST_FILES
+    assert report['integrationApkAssetNames'] == SAFE_IDLE_TRUST_ASSET_NAMES
+    assert report['integrationApkAssetCount'] == len(SAFE_IDLE_TRUST_ASSET_NAMES)
+    for key in ('publicOnlyNssDatabase', 'nssServerCaTrustVerified', 'validCaSignedServerHostname',
+                'pkcs12LeafMatchesSource', 'integrationApkAssetsVerified'):
+        assert report[key] is True, key
+    assert _hash(apk_sha256) and report['integrationApkSha256'] == apk_sha256
 
 
 def verify_safe_idle(report):
@@ -40,11 +189,12 @@ def verify_safe_idle(report):
     assert 0 < report['controlledTlsPort'] <= 65535 and report['proxyUpstreamConnections']
     assert len(report['proxyUpstreamConnections']) == report['proxyAccepted']
     assert all(value == f"127.0.0.1:{report['controlledTlsPort']}" for value in report['proxyUpstreamConnections'])
-    assert report['certificateExceptions'] == 1
-    assert report['checkCount'] == len(report['checks']) >= 56
+    _verify_safe_idle_tls(report)
+    assert report['checkCount'] == len(report['checks']) >= 59
     assert all(row['pass'] is True for row in report['checks'])
     assert len({row['name'] for row in report['checks']}) == report['checkCount']
     assert 'Packaged native ELF exposes its actual ABI, streamed SHA and controller version' in {row['name'] for row in report['checks']}
+    assert SAFE_IDLE_TRUST_CHECKS <= {row['name'] for row in report['checks']}
     rows = report['cases']
     assert [row['name'] for row in rows] == SAFE_IDLE_CASES
     for row in rows:
@@ -184,6 +334,7 @@ def verify_source_route(report,server,receipt,source):
     for name in FAILURE:
         blocked=[row for row in report['routes'] if '/bytes?id='+name in row['url']]
         assert blocked and all(row['route']['type']=='socks' and row['route']['host']=='127.0.0.1' and row['route']['port']==9 for row in blocked)
+    _verify_route_session_restorations(report)
     return {'actualAndroidExecution':True,'actualGeckoHttp2Execution':True,'actualAuthenticatedSocksChain':True,
             'sameSourceFixedExitAcrossEntrySwitch':True,'independentProbesPreserveBusinessConnection':True,
             'snapshotAndNodeMismatchRejections':4,'legacyManualPathPreserved':True,'checks':len(report['checks']),
@@ -228,6 +379,15 @@ def verify_network_sources(directory, source, receipt):
             'Exact pointer cleanup removes the desired record and both owned payloads',
             'Canceling desired configuration keeps the active baseline unchanged',
             'An already canceled pointer cannot be replayed'} <= lineage_names
+    storage = json.loads((directory / 'sealed-file-host-results.json').read_text())
+    assert storage['sourceCommit'] == source and not storage.get('diagnosticOnly', False)
+    assert storage['status'] == 'passed' and storage['failure'] == ''
+    assert storage['actualAndroidExecution'] is False and storage['actualKeystoreEncryption'] is False
+    assert storage['actualAtomicFileBehaviorStub'] is True and storage['actualCrossJvmStorageLease'] is True
+    assert storage['executed'] == storage['passed'] == storage['total'] == len(storage['checks']) >= 32
+    assert all(row['pass'] is True for row in storage['checks'])
+    storage_names = {row['name'] for row in storage['checks']}
+    assert len(storage_names) == storage['total'] and SEALED_STORAGE_HOST_CHECKS <= storage_names
     model = report('network-source-results.json')
     for field in ['actualAndroidExecution', 'actualNativeExecution', 'actualMihomoExecution', 'actualKeystoreEncryption']:
         assert model[field] is True, field
@@ -235,8 +395,10 @@ def verify_network_sources(directory, source, receipt):
     assert model['coreAbi'] == 'x86_64'
     assert model['coreVersion'] == receipt['recipe']['version']
     assert model['coreSha256'] == receipt['binaries']['x86_64']['sha256']
-    assert model['checkCount'] == len(model['checks']) >= 46 and all(row['pass'] for row in model['checks'])
+    assert model['checkCount'] == len(model['checks']) >= 63 and all(row['pass'] for row in model['checks'])
     assert len({row['name'] for row in model['checks']}) == model['checkCount']
+    assert model['actualAtomicFilePublicationRace'] is True and model['actualSealedFileIoLease'] is True
+    assert MODEL_STORAGE_CHECKS <= {row['name'] for row in model['checks']}
     required = {
         'Identical subscription URLs have separate stable source IDs',
         'Native fixed-exit fingerprint survives a provider-name change',
@@ -267,8 +429,12 @@ def verify_network_sources(directory, source, receipt):
     idle = report('network-safe-idle-results.json')
     _core_matches(idle, receipt)
     assert idle['installedApkSha256'] == ui['installedApkSha256'], 'Safe-idle and touch UI must run the same integration APK'
+    trust_host = report('network-safe-idle-trust-host-results.json')
+    _verify_safe_idle_trust_host(trust_host, source, idle['installedApkSha256'])
     idle_result = verify_safe_idle(idle)
     return {'separateEntryAndExitLibraries': True, 'sourceModelAndroidChecks': model['checkCount'],
             'sourceUiAndroidChecks': ui['checkCount'], 'actualTouchChecks': ui['touchUiCheckCount'],
             'privateEnvironmentSnapshots': True, 'fixedExitRoute': route_result,
-            'pendingBaselineLineageHostChecks': lineage['total'], 'actualSafeIdleFences': idle_result}
+            'pendingBaselineLineageHostChecks': lineage['total'], 'actualSafeIdleFences': idle_result,
+            'integrationTestCaAssetsVerified': True, 'integrationTestCaAssetFiles': trust_host['integrationApkAssetCount'],
+            'crossJvmStorageLeaseHostChecks': storage['total'], 'actualAndroidStoragePublicationBarrier': True}

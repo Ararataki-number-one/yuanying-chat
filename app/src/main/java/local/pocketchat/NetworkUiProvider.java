@@ -1,6 +1,6 @@
 package local.pocketchat;
 
-import android.content.*;import android.database.Cursor;import android.net.Uri;import android.os.*;import android.util.AtomicFile;
+import android.content.*;import android.database.Cursor;import android.net.Uri;import android.os.*;
 import org.json.*;import java.util.*;import java.util.concurrent.*;import java.nio.charset.StandardCharsets;
 
 /** Private UI-to-profile bridge. Each provider runs in the existing profile's own process. */
@@ -183,7 +183,7 @@ public class NetworkUiProvider extends ContentProvider {
   void releaseCapture(Transition transition,boolean restoreGuard){ChatSession session=transition.session;if(session==null)return;if(transition.fenced&&session.web.touches==transition.touchFence)session.web.setOnTouchListener(transition.previousTouch);if(transition.keyTarget!=null){transition.keyTarget.setOnKeyListener(null);transition.keyTarget=null;}if(restoreGuard&&transition.fenced&&!transition.rollbackFailed&&!session.deleted&&!session.connecting&&ChatSession.peek()==session&&currentEnvironment(transition))session.guard.setBlocked(transition.previousBlocked);if(transition.capture&&activeTransition==transition){session.configurationCapture=false;session.operation=false;transition.capture=false;session.wakePolling();}}
   void deferTransition(Transition transition){if(activeTransition!=transition)return;if(transition.rollbackFailed){failTransition(transition,new java.io.IOException("网络设置恢复未完成，原网页未重新加载，请重新编辑网络"));return;}releaseCapture(transition,true);transition.cancelled=true;finish(transition.id,true,transition.cancelledByUser?"待应用设置已取消，当前连接保持不变":"网络设置已保存，当前回复和文件操作结束后自动应用");}
   void failTransition(Transition transition,Exception error){if(activeTransition!=transition)return;releaseCapture(transition,true);transition.cancelled=true;finish(transition.id,false,error.getMessage()==null?"网络设置未应用，原连接已保留":error.getMessage());}
-  static void restore(SecretStore store,String slot,byte[] value)throws Exception{if(value==null)new AtomicFile(store.file(slot)).delete();else store.put(slot,value);}
+  static void restore(SecretStore store,String slot,byte[] value)throws Exception{if(value==null)store.remove(slot);else store.put(slot,value);}
   void waitConnection(String id,ChatSession s,NativeNetwork n,boolean saved,long began){main.postDelayed(()->{
     if(s.networkReady&&!s.offline&&(!s.internalNetwork()||n.ready&&n.coreAlive())){finish(id,true,saved?"配置已保存并应用":"连接已恢复");}
     else if(!s.connecting&&!n.starting||SystemClock.elapsedRealtime()-began>150000){finish(id,false,(saved?"配置已保存，":"")+(s.networkIssue.isEmpty()?"连接尚未完成，请检查此窗口网络":s.networkIssue));}

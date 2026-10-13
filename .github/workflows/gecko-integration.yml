@@ -2,7 +2,7 @@ name: Production Gecko integration
 on:
   push:
     branches: [feature/android-engine-probe]
-    paths: ['app/**', 'tests/gecko/**', 'tests/browser-runtime/**', 'tests/browser-reading-host/**', 'tests/network-catalog-host/**', 'tests/network-source-host/**', 'tests/network-lineage-host/**', 'tools/gecko/**', 'tools/publish-update-feed.py', 'tools/build-mihomo.py', 'third-party/patches/**', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
+    paths: ['app/**', 'tests/gecko/**', 'tests/browser-runtime/**', 'tests/browser-reading-host/**', 'tests/browser-reading-focus.cjs', 'tests/network-catalog-host/**', 'tests/network-source-host/**', 'tests/network-lineage-host/**', 'tests/sealed-file-host/**', 'tools/gecko/**', 'tools/publish-update-feed.py', 'tools/build-mihomo.py', 'third-party/patches/**', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -41,6 +41,13 @@ jobs:
           set -euo pipefail
           work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-integration/build.log
           python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --gradle-cache "${GRADLE_USER_HOME:-$HOME/.gradle}" | tee work/gecko-integration/official-sdk-verification.json
+          python3 tools/gecko/check_safe_idle_trust.py --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk | tee work/gecko-integration/network-safe-idle-trust-host-results.json
+          python3 - <<'PYCODE'
+          import json,pathlib,subprocess
+          path=pathlib.Path('work/gecko-integration/network-safe-idle-trust-host-results.json')
+          report=json.loads(path.read_text()); report['sourceCommit']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          path.write_text(json.dumps(report,indent=2)+'\n')
+          PYCODE
       - name: Stage current original-page UI for visual acceptance
         run: python3 tools/gecko/build_ui_baseline.py --gradle work/gecko-integration/gradle/gradle-9.8.0/bin/gradle --key "$PWD/work/gecko-integration/integration-test.jks"
       - name: Check stale messages and continuous bridge use
@@ -50,7 +57,7 @@ jobs:
           javac -encoding UTF-8 -d work/gecko-integration/bridge-host app/src/main/java/local/pocketchat/BrowserBridgeRequests.java tests/browser-runtime/BrowserBridgeRequestsTest.java
           java -cp work/gecko-integration/bridge-host local.pocketchat.BrowserBridgeRequestsTest | tee work/gecko-integration/bridge-host-results.json
           mkdir -p work/gecko-integration/reading-host
-          javac -encoding UTF-8 -d work/gecko-integration/reading-host app/src/main/java/local/pocketchat/BrowserDisplay.java app/src/main/java/local/pocketchat/BrowserReadingPolicy.java app/src/main/java/local/pocketchat/BrowserReading.java tests/browser-reading-host/android/os/SystemClock.java tests/browser-reading-host/android/view/MotionEvent.java tests/browser-reading-host/local/pocketchat/ChatSession.java tests/browser-reading-host/local/pocketchat/BrowserReadingHostTest.java
+          javac -encoding UTF-8 -d work/gecko-integration/reading-host app/src/main/java/local/pocketchat/BrowserDisplay.java app/src/main/java/local/pocketchat/BrowserReadingPolicy.java app/src/main/java/local/pocketchat/BrowserReading.java tests/browser-reading-host/android/os/SystemClock.java tests/browser-reading-host/android/view/MotionEvent.java tests/browser-reading-host/local/pocketchat/ChatSession.java tests/browser-reading-host/local/pocketchat/BrowserReadingHostTest.java tests/browser-reading-host/local/pocketchat/BrowserReadingFocusScript.java
           java -cp work/gecko-integration/reading-host local.pocketchat.BrowserReadingHostTest | tee work/gecko-integration/reading-host-results.json
           node tests/browser-runtime/session-cookies.test.cjs | tee work/gecko-integration/cookie-host-results.json
           mkdir -p work/gecko-integration/region-host
@@ -65,6 +72,8 @@ jobs:
           javac -encoding UTF-8 -d work/gecko-integration/snapshot-host app/src/main/java/local/pocketchat/FileSnapshotCache.java tests/browser-runtime/FileSnapshotCacheTest.java
           java -cp work/gecko-integration/snapshot-host local.pocketchat.FileSnapshotCacheTest | tee work/gecko-integration/snapshot-host-results.json
           npm install --prefix work/browser-perf-host --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+          java -cp work/gecko-integration/reading-host local.pocketchat.BrowserReadingFocusScript > work/gecko-integration/reading-focus.js
+          JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-reading-focus.cjs work/gecko-integration/reading-focus.js | tee work/gecko-integration/reading-focus-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/reply-observation.test.cjs | tee work/gecko-integration/reply-observation-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/reply-binding-loading.test.cjs | tee work/gecko-integration/reply-binding-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/interaction-scheduling.test.cjs | tee work/gecko-integration/interaction-host-results.json
@@ -79,7 +88,7 @@ jobs:
           python3 - <<'PYCODE'
           import json,pathlib,subprocess
           source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          for name in ['network-pool-host-results.json','latency-probe-host-results.json','browser-runtime-policy-host-results.json','original-website-policy-host-results.json']:
+          for name in ['network-pool-host-results.json','latency-probe-host-results.json','browser-runtime-policy-host-results.json','original-website-policy-host-results.json','reading-host-results.json','reading-focus-host-results.json']:
               path=pathlib.Path('work/gecko-integration')/name
               report=json.loads(path.read_text())
               report['sourceCommit']=source
@@ -93,10 +102,11 @@ jobs:
           python3 tests/network-catalog-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-catalog-host-results.json
           python3 tests/network-source-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-source-host-results.json
           python3 tests/network-lineage-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-lineage-host-results.json
+          python3 tests/sealed-file-host/run.py --output work/gecko-integration/sealed-file-host-results.json
           python3 - <<'PYCODE'
           import json,pathlib,subprocess
           source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          for name in ['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json']:
+          for name in ['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','sealed-file-host-results.json']:
               path=pathlib.Path('work/gecko-integration')/name
               report=json.loads(path.read_text()); report['sourceCommit']=source
               path.write_text(json.dumps(report,indent=2)+'\n')
