@@ -111,6 +111,7 @@ class TemplateEvidenceGateTest(unittest.TestCase):
         paths={'app/src/main/java/local/pocketchat/'+name+'.java' for name in ['BrowserIdentitySpec','AuditReport','IdentityTemplateController','FingerprintTemplateUi','BrowserEditIntent','DeferredBrowserSettings','EnvironmentResetPlan','EnvironmentBrowserData','EnvironmentProcessPolicy','EnvironmentResetActivity','EnvironmentSpecRepository','ProfileCatalog','Profiles']}
         paths.update('app/src/main/assets/gecko/'+name for name in ['background.js','content.js','main-world-audit.js'])
         paths.update(gate.LIFECYCLE_SOURCE_FILES)
+        paths.update(gate.READING_FIXTURE_CLEANUP_SOURCE_FILES)
         hashes={path:hashlib.sha256((ROOT/path).read_bytes()).hexdigest() for path in paths}
         base=dict(status='passed',actualAndroidExecution=False,sourceCommit='a'*40,sourceTree='b'*40,sourceDirty=False,sourceUnchangedDuringChecks=True,files=hashes)
         checks=[{'name':'Counterfeit metadata only '+str(i),'pass':True} for i in range(95)]
