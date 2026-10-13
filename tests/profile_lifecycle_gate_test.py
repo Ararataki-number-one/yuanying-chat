@@ -10,7 +10,9 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
+import textwrap
 import unittest
 from unittest.mock import patch
 
@@ -223,6 +225,56 @@ class LifecycleGateCounterfeitControls(unittest.TestCase):
         for mutate in changes:
             value=device_control();mutate(value)
             with self.subTest(mutate=mutate),self.assertRaises(ValueError):self.device(value)
+
+
+class LifecycleGateImportControls(unittest.TestCase):
+    def check_import_context(self, module, search_directory):
+        # Fresh interpreters prevent this file's standalone import path from
+        # masking the package contexts used by staging and GitHub publication.
+        source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+        report=device_control();selected_identity=identity()
+        report['sourceCommit']=source
+        report['eventTransport']['buildIdentity']['sourceCommit']=source
+        selected_identity['sourceCommit']=source
+        program=textwrap.dedent('''
+            import copy,importlib,json,pathlib,sys
+            root=pathlib.Path(sys.argv[1]);module=sys.argv[2]
+            sys.path.insert(0,str(root/sys.argv[3]))
+            gate=importlib.import_module(module)
+            assert gate.__package__==module.rpartition('.')[0]
+            if '.' in module:
+                assert str(root/'tools/gecko') not in sys.path
+            value=json.load(sys.stdin);report=value['report'];identity=value['identity']
+            result=gate.verify_lifecycle_device(report,report['sourceCommit'],identity)
+            assert result=={'actualLifecycleDeviceAcceptance':True,'physicalPhoneAcceptance':False,
+                            'actions':['copyAndReset','resetZero','deleteOne']}
+            for key in ('schema','package','sourceCommit','sourceTree','dirtySource','version','versionCode',
+                        'sdkCoordinate','apkSha256','apkBytes','buildStampSha256'):
+                mismatched=copy.deepcopy(report)
+                mismatched['eventTransport']['buildIdentity'][key]='counterfeit mismatch'
+                try:
+                    gate.verify_lifecycle_device(mismatched,report['sourceCommit'],identity)
+                except ValueError as error:
+                    assert str(error)=='Installed test APK differs from the expected build: '+key
+                else:
+                    raise AssertionError('Installed identity mismatch was accepted: '+key)
+            print('Matched lifecycle parser and 11 installed-identity rejection controls passed')
+        ''')
+        completed=subprocess.run([sys.executable,'-I','-B','-c',program,str(ROOT),module,search_directory],
+                                 cwd='/tmp',input=json.dumps({'report':report,'identity':selected_identity}),
+                                 text=True,capture_output=True)
+        self.assertEqual(completed.returncode,0,completed.stdout+completed.stderr)
+        self.assertEqual(completed.stdout.strip(),
+                         'Matched lifecycle parser and 11 installed-identity rejection controls passed')
+
+    def test_standalone_cli_import_retains_lifecycle_and_apk_checks(self):
+        self.check_import_context('check_template_evidence','tools/gecko')
+
+    def test_publisher_package_import_retains_lifecycle_and_apk_checks(self):
+        self.check_import_context('gecko.check_template_evidence','tools')
+
+    def test_workflow_package_import_retains_lifecycle_and_apk_checks(self):
+        self.check_import_context('tools.gecko.check_template_evidence','.')
 
 
 if __name__=='__main__':unittest.main()

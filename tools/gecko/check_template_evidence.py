@@ -94,7 +94,10 @@ def verify_lifecycle_device(report,source,identity=None):
     if report.get('status')!='passed' or report.get('actualAndroidExecution') is not True or report.get('releaseMode') is not True or report.get('diagnosticOnly') is not False or report.get('sourceCommit')!=source or 'error' in report or report.get('artifactErrors'):
         raise ValueError('Lifecycle requires successful actual same-source full device acceptance')
     if identity is not None:
-        from profile_invocation_contract import verify_installed
+        if __package__:
+            from .profile_invocation_contract import verify_installed
+        else:
+            from profile_invocation_contract import verify_installed
         verify_installed(report.get('eventTransport',{}).get('buildIdentity',{}),identity)
     management=report.get('environmentManagement',{});steps=report.get('steps')
     if not isinstance(management,dict) or not isinstance(steps,list):raise ValueError('Actual lifecycle management/browser steps missing')
