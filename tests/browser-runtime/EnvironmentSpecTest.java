@@ -96,6 +96,9 @@ public final class EnvironmentSpecTest {
     EnvironmentSpec externalEmpty=EnvironmentSpecMigration.fromLegacy(identity,false,1,"external",new JSONObject(),"socks5://external-user:external-secret@external.example:1080");
     check("Switching to external mode ignores dormant internal sources",externalWithDormant.desired().equals(externalEmpty.desired()));
     check("External route digest never stores proxy credentials",!new String(externalWithDormant.bytes(),StandardCharsets.UTF_8).contains("external-secret"));
+    JSONObject legacyAuto=J.parse(manual.toString());legacyAuto.put("entryMode","");EnvironmentSpec auto=EnvironmentSpecMigration.fromLegacy(identity,false,1,"internal",legacyAuto,"");
+    check("Existing empty automatic entry mode is preserved",auto.desired().network.selectionMode.isEmpty());
+    check("Legacy automatic entry mode survives sealed model roundtrip",EnvironmentSpec.read(auto.bytes()).desired().network.selectionMode.isEmpty());
     check("Same generation with another UUID is a different environment",!identity.equals(new EnvironmentSpec.Identity(identity.slot,identity.generation,UUID.randomUUID().toString())));
     check("Same UUID with another generation is stale",!identity.equals(new EnvironmentSpec.Identity(identity.slot,identity.generation+1,identity.environmentId)));
     System.out.println("{\"passed\":"+checks+",\"scope\":\"production immutable environment model and legacy-settings migration on JVM; Android DB/Keystore/Gecko not covered\"}");

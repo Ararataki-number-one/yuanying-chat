@@ -27,8 +27,8 @@ final class EnvironmentSpecMigration {
     boolean subscribed="subscription".equals(network.optString("exitSource"));
     String exitSource=subscribed?network.optString("exitSubscriptionId"):network.optString("exitLibraryId",network.optString("exitSourceId",""));
     String exitNode=subscribed?network.optString("exitNodeKey"):network.optString("exitNodeId",exitFingerprint);
-    String selection=network.optString("entryMode","random");
-    if(!"manual".equals(selection)&&!"latency".equals(selection)&&!"random".equals(selection))throw new IllegalArgumentException("Invalid legacy entry selection");
+    String selection=network.optString("entryMode");
+    if(!selection.isEmpty()&&!"manual".equals(selection)&&!"latency".equals(selection)&&!"random".equals(selection))throw new IllegalArgumentException("Invalid legacy entry selection");
     // Hash the credential-bearing old proxy string rather than copying it.
     String subscribedIdentity=subscribed&&!exitNode.isEmpty()?hash("subscription|"+exitSource+"|"+exitNode):exitFingerprint;
     String credentialRevision=network.optString("exitCredentialRevision",network.optString("credentialRevision","internal".equals(networkMode)?subscribedIdentity:externalProxy==null||externalProxy.isEmpty()?"":hash(externalProxy)));
