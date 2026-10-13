@@ -6,7 +6,11 @@ The repository, UUID catalogue, preferences and SecretStore are explicit host
 doubles; files are atomic plain bytes. This does **not** execute Android SQLite,
 AES-GCM/Keystore, Gecko, the native network core, accounts or WAN traffic.
 
-The 75 checks cover staged/ready publication, model failure after staging,
+The 85 checks include the production proxy validation method, extracted verbatim
+from MainActivity, with positive HTTP/HTTPS/SOCKS and invalid syntax controls.
+Only the Android URI parser has a JVM syntax adapter; actual Android storage
+checks use the real Android validator. Legal synthetic routes use `socks://`.
+Transaction checks cover staged/ready publication, model failure after staging,
 predecessor intent and private payload retention, exact rollback refusing newer
 receipts, concurrent browser revision CAS, interruption before promotion,
 cancellation/model reconciliation, malformed/future data retention, legacy v24

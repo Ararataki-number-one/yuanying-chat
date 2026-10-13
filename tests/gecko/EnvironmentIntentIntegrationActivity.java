@@ -29,7 +29,7 @@ public final class EnvironmentIntentIntegrationActivity extends Activity {
   EnvironmentSpec.Identity identity()throws Exception{return catalog.identity(5);}
   EnvironmentSpec model()throws Exception{return new EnvironmentSpecRepository(profile).load();}
   JSONObject pending()throws Exception{return NetworkChanges.pendingStrict(profile);}
-  JSONObject proxy(String name){return J.obj("proxy","socks5://"+name+".synthetic.example:1080","requireExternalVpn",false);}
+  JSONObject proxy(String name){return J.obj("proxy","socks://"+name+".synthetic.example:1080","requireExternalVpn",false);}
   String save(String name)throws Exception{return EnvironmentSpecRuntime.saveNetworkIntent(profile,identity(),"external",proxy(name),NetworkChanges.hash(profile),new JSONObject());}
   String digest(String name){return NativeNetwork.hash(proxy(name).optString("proxy"));}
   void browser(String label)throws Exception{EnvironmentSpec value=model();JSONObject browser=value.desired().browser();browser.put("intentFixtureBrowser",label);new EnvironmentSpecRepository(profile).updateDesired(value.identity,value.desiredRevision,new EnvironmentSpec.Configuration(browser,value.desired().network));}
