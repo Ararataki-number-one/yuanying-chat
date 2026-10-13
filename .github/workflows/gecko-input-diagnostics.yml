@@ -1,12 +1,12 @@
-name: Gecko native input diagnostics
+name: Gecko passive input diagnostics
 on:
   push:
-    branches: [debug/gecko-ime]
+    branches: [debug/gecko-ime-passive-1fb6]
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
-  group: gecko-input-diagnostics
+  group: gecko-input-passive-diagnostics
   cancel-in-progress: false
 jobs:
   diagnose:
@@ -27,8 +27,8 @@ jobs:
           curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-input-diagnostics/gradle.zip
           echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-input-diagnostics/gradle.zip' | sha256sum -c -
           unzip -q work/gecko-input-diagnostics/gradle.zip -d work/gecko-input-diagnostics/gradle
-          curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20260924084938/geckoview-157.0.20260924084938.aar -o work/gecko-input-diagnostics/geckoview.aar
-          echo '25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0  work/gecko-input-diagnostics/geckoview.aar' | sha256sum -c -
+          curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.aar -o work/gecko-input-diagnostics/geckoview.aar
+          echo '15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268  work/gecko-input-diagnostics/geckoview.aar' | sha256sum -c -
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
       - name: Compile the native integration package
@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           work/gecko-input-diagnostics/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-input-diagnostics/integration-test.jks" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-input-diagnostics/build.log
-      - name: Diagnose buffered native input on Android 35
+      - name: Diagnose original input objects with public delegate and native logs on Android 35
         id: gecko
         shell: bash
         run: |
@@ -65,7 +65,7 @@ jobs:
               exit_code=$?
               checks_failed=1
             fi
-            for name in gecko-performance-results.json gecko-performance-failure-log.txt gecko-performance-screen.png; do
+            for name in gecko-performance-results.json gecko-performance-failure-log.txt gecko-performance-screen.png gecko-performance-failure-screen.png gecko-performance-failure-ui.xml gecko-performance-failure-window.txt gecko-performance-failure-activity.txt gecko-native-ime-snapshot.log gecko-native-ime-snapshot.json gecko-scroll-diagnostics.json gecko-scroll-diagnostic-log.json; do
               if [ -f "work/gecko-integration/$name" ]; then
                 cp "work/gecko-integration/$name" "$attempt/$name"
               fi
@@ -77,7 +77,8 @@ jobs:
           status={'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
                   'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ.get('GITHUB_RUN_ATTEMPT','1'),
                   'trial':int(attempt.name.removeprefix('attempt-')),'exitCode':int(sys.argv[2]),
-                  'status':'passed' if sys.argv[2]=='0' else 'failed','diagnosticOnly':True}
+                  'status':'passed' if sys.argv[2]=='0' else 'failed','diagnosticOnly':True,'releaseAcceptance':False,
+                  'instrumentation':'Public delegate primitive buffers plus native MOZ_LOG; original IC/client/listener/child retained; native logging may affect timing'}
           (attempt/'status.json').write_text(json.dumps(status,indent=2)+'\n')
           PYCODE
           done

@@ -20,6 +20,10 @@ ARTIFACTS = (
 ) + tuple((OUT, f'attempt-{trial}/{name}') for trial in (1, 2, 3) for name in (
     'status.json', 'runner.log', 'gecko-performance-results.json',
     'gecko-performance-failure-log.txt', 'gecko-performance-screen.png', 'screen.png',
+    'gecko-performance-failure-screen.png', 'gecko-performance-failure-ui.xml',
+    'gecko-performance-failure-window.txt', 'gecko-performance-failure-activity.txt',
+    'gecko-native-ime-snapshot.log', 'gecko-native-ime-snapshot.json',
+    'gecko-scroll-diagnostics.json', 'gecko-scroll-diagnostic-log.json',
 ))
 
 
@@ -68,7 +72,7 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
                     manifest['attempts'].append(report)
                 else:
                     if report.get('inputNativeDiagnosticsEnabled') is not True or report.get('inputDiagnosticsEnabled') is not False:
-                        raise ValueError('Expected native-only buffered diagnostics, without JS or evaluation tracing')
+                        raise ValueError('Expected public-delegate/native-log diagnostics, without extra JS or evaluation tracing')
                     manifest['reports'][name.split('/')[0]] = {
                         'inputNativeDiagnosticsEnabled': True, 'inputDiagnosticsEnabled': False,
                         'sourceCommit': source, 'status': report.get('status', 'unknown'),

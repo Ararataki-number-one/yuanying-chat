@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compare production observation assets through real Gecko and the Android native bridge."""
-import argparse, hashlib, http.server, json, pathlib, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse, uuid
+import argparse, collections, hashlib, http.server, json, pathlib, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse, uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'work/gecko-integration'
@@ -127,16 +127,17 @@ def main():
     observation.add_argument('--input-diagnostics', action='store_true',
                         help='Enable extra SDK/IME and JS selection observations; disabled for the normal release regression.')
     observation.add_argument('--native-input-diagnostics', action='store_true',
-                        help='Buffer only primitive SDK/IME observations and flush after input; no extra JS observers. Diagnostic evidence cannot replace the normal regression.')
+                        help='Buffer public SDK delegate calls and native MOZ_LOG; preserve all original SDK input objects. Diagnostic evidence cannot replace the normal regression.')
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     started_ms = int(time.time() * 1000)
     diagnostic_run = uuid.uuid4().hex
+    diagnostic_source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     for name in ['gecko-performance-results.json', 'gecko-performance-failure-log.txt',
                  'gecko-performance-failure-screen.png', 'gecko-performance-failure-ui.xml',
                  'gecko-performance-failure-window.txt', 'gecko-performance-failure-activity.txt',
                  'gecko-scroll-diagnostics.json', 'gecko-scroll-diagnostic-log.json',
-                 'gecko-performance-screen.png']:
+                 'gecko-performance-screen.png', 'gecko-native-ime-snapshot.log', 'gecko-native-ime-snapshot.json']:
         (OUT / name).unlink(missing_ok=True)
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
     receipt = json.loads((baseline_root / 'source.json').read_text())
@@ -179,6 +180,23 @@ def main():
         except Exception as error:
             return dict(schema=1, actualAndroidFileRead=False, fileReadError=str(error), instrumentationScope=scope)
 
+    def save_native_ime():
+        if not args.native_input_diagnostics:
+            return dict(enabled=False)
+        try:
+            metadata = json.loads(adb('exec-out', 'content', 'read', '--uri', 'content://' + package + '.evidence/gecko-native-ime-metadata'))
+            raw = subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'content', 'read', '--uri', 'content://' + package + '.evidence/gecko-native-ime'], timeout=30)
+            (OUT / 'gecko-native-ime-snapshot.log').write_bytes(raw)
+            (OUT / 'gecko-native-ime-snapshot.json').write_text(json.dumps(metadata, indent=2) + '\n')
+            if metadata.get('sourceCommit') != diagnostic_source or metadata.get('runNonce') != diagnostic_run:
+                raise ValueError('Native log source or invocation differs')
+            if metadata.get('bytes') != len(raw) or metadata.get('sha256') != hashlib.sha256(raw).hexdigest() or len(raw) > 1900 * 1024:
+                raise ValueError('Native log snapshot bytes differ from Android metadata')
+            return dict(enabled=True, actualAndroidFileRead=True, metadata=metadata,
+                        emittedNativeRecords=bool(raw and any(name in raw for name in (b'GeckoEditableSupport', b'IMEStateManager', b'IMEContentObserver'))))
+        except Exception as error:
+            return dict(enabled=True, actualAndroidFileRead=False, fileReadError=str(error))
+
     servers = [http.server.ThreadingHTTPServer(('127.0.0.1', 8767), Fixture), SocksServer(('127.0.0.1', 1087), Socks)]
     for server in servers:
         threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -205,6 +223,7 @@ def main():
             activity.extend(['--ez', 'inputDiagnostics', 'true'])
         if args.native_input_diagnostics:
             activity.extend(['--ez', 'inputNativeDiagnostics', 'true'])
+            activity.extend(['--es', 'diagnosticSourceCommit', diagnostic_source])
         adb(*activity)
         checks, measurements, gestures, text_inputs, diagnostics = {}, {}, {}, {}, {}
         input_readiness, input_events, input_evaluations, native_input_events = {}, {}, {}, {}
@@ -273,6 +292,7 @@ def main():
                     scroll_errors[line] = item['value']
             if report:
                 report['scrollDiagnostics'] = save_scroll_diagnostics()
+                report['nativeImeLog'] = save_native_ime()
                 report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                               diagnosticOnly=bool(args.input_diagnostics or args.native_input_diagnostics),
                               checks=list(checks.values()), measurements=list(measurements.values()), fixtureRequests=Fixture.requests,
@@ -283,6 +303,11 @@ def main():
                               actualTrustedInputEvents=[event for key in sorted(input_events) for event in input_events[key]['events']],
                               actualInputEvaluationTrace=[input_evaluations[key] for key in sorted(input_evaluations)],
                               actualNativeInputTrace=[native_input_events[key] for key in sorted(native_input_events)])
+                if args.native_input_diagnostics:
+                    types = collections.Counter(event['type'] for event in report['actualTrustedInputEvents'])
+                    report['diagnosticInputEventShape'] = dict(counts=dict(types), total=len(report['actualTrustedInputEvents']),
+                                                               expected={'focus': 1, 'keydown': 11, 'beforeinput': 11, 'input': 11, 'keyup': 11},
+                                                               allObservedEventsRetained=True)
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
                 assert report['inputDiagnosticsEnabled'] == args.input_diagnostics, report
@@ -294,11 +319,15 @@ def main():
                 if not args.input_diagnostics and not args.native_input_diagnostics:
                     assert not native_input_events, 'Normal regression unexpectedly attached native diagnostic observers'
                 if args.native_input_diagnostics:
-                    assert native_input_events and all(event['mode'] == 'buffered-primitives' for event in native_input_events.values()), report
+                    assert native_input_events and all(event['mode'] == 'public-delegate-primitives' for event in native_input_events.values()), report
                     summaries = [event for event in native_input_events.values() if event['api'] == 'trace.bufferedSummary']
                     assert len(summaries) == 1 and not summaries[0]['overflow'] and not summaries[0]['restoreError'], summaries
-                    assert summaries[0]['published'] == summaries[0]['reserved'] == len(native_input_events) - 1, 'Buffered native event log is incomplete'
-                    assert summaries[0]['focusedChildAttached'] and not summaries[0]['focusedChildError'], summaries
+                    assert summaries[0]['published'] == summaries[0]['reserved'] == len(native_input_events) - 2, 'Public delegate event log is incomplete'
+                    assert all(summaries[0][field] is False for field in ('inputConnectionWrapped', 'inputConnectionClientReplaced', 'editableListenerReplaced', 'focusedChildReplaced')), summaries
+                    snapshots = [event for event in native_input_events.values() if event['api'] == 'trace.nativeLogSnapshot']
+                    assert len(snapshots) == 1, snapshots
+                    assert report['nativeImeLog']['actualAndroidFileRead'] and report['nativeImeLog']['emittedNativeRecords'], report['nativeImeLog']
+                    assert types == collections.Counter(report['diagnosticInputEventShape']['expected']), 'Passive diagnostic differs from normal 45-event input path: ' + str(types)
                 assert report['status'] == 'passed' and report['actualAndroidExecution'] and report['actualGeckoExecution'] and report['actualAndroidTouchExecution'] and report['actualGeckoBindingRegressionExecution'], report
                 assert report['baselineSource'] == BASELINE and report['checkCount'] == len(checks), report
                 assert len(checks) >= 125 and all(check['pass'] for check in checks.values()), report
@@ -323,6 +352,7 @@ def main():
                           observedActivityReport=False, actualAndroidExecution=False, actualGeckoExecution=False,
                           checkCount=len(checks) if 'checks' in locals() else 0)
         report['scrollDiagnostics'] = save_scroll_diagnostics()
+        report['nativeImeLog'] = save_native_ime()
         captures = {}
         ui_remote = '/sdcard/gecko-performance-failure-' + diagnostic_run + '.xml'
         operations = [

@@ -29,7 +29,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   int checkCount,samples,inputFocusSamples,directDeferredSamples,nativeDeferredSamples;boolean finished,inputRequested,directDeferralChecked,nativeDeferralChecked;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
   String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
   String inputReadinessKey="";long inputReadySince;int inputTraceOffset,inputReadinessSequence;boolean inputImeSettled;
-  GeckoInputTrace nativeInputTrace;GeckoInputTrace.Buffered bufferedInputTrace;boolean inputDiagnostics,inputNativeDiagnostics;
+  GeckoInputTrace nativeInputTrace;GeckoInputTrace.Buffered bufferedInputTrace;boolean inputDiagnostics,inputNativeDiagnostics,nativeSnapshotRequested;String diagnosticSourceCommit;
   final JSONArray scrollDiagnosticPhases=new JSONArray();ScrollPhase scrollPhase;String scrollDiagnosticRun;
   static final class ScrollPhase {
     final String variant,url;final long navigationEpoch,started=SystemClock.elapsedRealtime();final GeckoSession sdk;final android.view.View surface;
@@ -108,7 +108,12 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     inputDiagnostics=getIntent().getBooleanExtra("inputDiagnostics",false);
     inputNativeDiagnostics=getIntent().getBooleanExtra("inputNativeDiagnostics",false);
     scrollDiagnosticRun=getIntent().getStringExtra("scrollDiagnosticRun");
+    diagnosticSourceCommit=getIntent().getStringExtra("diagnosticSourceCommit");
     if(inputDiagnostics&&inputNativeDiagnostics)throw new IllegalArgumentException("Input diagnostics must use one independent mode");
+    if(inputNativeDiagnostics){
+      if(diagnosticSourceCommit==null||!diagnosticSourceCommit.matches("[0-9a-f]{40}"))throw new IllegalArgumentException("Native logging requires exact source identity");
+      System.setProperty("pocketchat.gecko.nativeImeLog",GeckoInputTrace.LOG_MODULES);
+    }else System.clearProperty("pocketchat.gecko.nativeImeLog");
     getSharedPreferences("chat",0).edit().putString("browserEngine","gecko").putString("networkMode","external")
       .putString("proxy","socks://127.0.0.1:1087").putBoolean("requireExternalVpn",false).putBoolean("networkConfigured",false)
       .putBoolean("pageMode",true).putBoolean("desktopMode",true).putInt("privacyLevel",1)
@@ -415,7 +420,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     event("gestureNeeded",J.obj("id","current-input","action","input","x",x,"y",y,"text",INPUT_MARKER));waitInput(SystemClock.elapsedRealtime()+30000);
   });});}
   void stopInputTrace(){stopInputTrace(null);}
-  void stopInputTrace(Runnable next){if(session!=null&&session.web instanceof FixtureView)((FixtureView)session.web).inputTracing=false;if(nativeInputTrace!=null){nativeInputTrace.stop();nativeInputTrace=null;}if(bufferedInputTrace!=null){GeckoInputTrace.Buffered trace=bufferedInputTrace;bufferedInputTrace=null;trace.stopAndFlush(handler,value->event("nativeInputTrace",value),next);}else if(next!=null)next.run();}
+  void stopInputTrace(Runnable next){if(session!=null&&session.web instanceof FixtureView)((FixtureView)session.web).inputTracing=false;if(nativeInputTrace!=null){nativeInputTrace.stop();nativeInputTrace=null;}Runnable after=()->{if(inputNativeDiagnostics&&session!=null&&!nativeSnapshotRequested){nativeSnapshotRequested=true;GeckoInputTrace.snapshotNative(session.context,diagnosticSourceCommit,scrollDiagnosticRun,handler,value->event("nativeInputTrace",value),next);}else if(next!=null)next.run();};if(bufferedInputTrace!=null){GeckoInputTrace.Buffered trace=bufferedInputTrace;bufferedInputTrace=null;trace.stopAndFlush(handler,value->event("nativeInputTrace",value),after);}else after.run();}
   void recordInputTrace(JSONObject value)throws Exception{
     JSONArray events=value.optJSONArray("inputEvents");if(events==null)return;
     while(inputTraceOffset<events.length()){
@@ -442,10 +447,6 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     long settledMs=inputReadySince==0?0:now-inputReadySince;
     event("inputReadiness",J.obj("id","current-input","sequence",inputReadinessSequence++,"requested",inputRequested,"composerFocused",value.optBoolean("composerFocused"),"nativeFocused",nativeFocused,"acceptingText",acceptingText,"imeVisible",imeVisible,"imeBottom",imeBottom,"stableFocusSamples",inputFocusSamples,"settledMs",settledMs,"start",value.optInt("start"),"end",value.optInt("end"),"draft",value.optString("draft"),"bounds",value.optJSONObject("bounds"),"viewport",value.optJSONObject("viewport"),"nativeBounds",nativeBounds));
     if(!inputRequested&&inputReady&&inputFocusSamples>=3&&settledMs>=600){
-      if(bufferedInputTrace!=null&&!bufferedInputTrace.childAttached){
-        if(!bufferedInputTrace.childError.isEmpty())throw new IllegalStateException("Native diagnostic focused-child installation failed: "+bufferedInputTrace.childError);
-        bufferedInputTrace.prepareFocusedChild(handler,()->attempt(()->waitInput(expires)));return;
-      }
       if(!value.optString("draft").equals(inputDraft))throw new IllegalStateException("The draft changed before the single Android input burst");
       inputRequested=true;inputImeSettled=true;
       check("Actual Android input waits for visible IME and unchanged viewport, composer and caret",imeVisible&&imeBottom>0&&settledMs>=600&&inputFocusSamples>=3);

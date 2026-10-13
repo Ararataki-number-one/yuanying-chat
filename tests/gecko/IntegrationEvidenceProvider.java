@@ -28,6 +28,8 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
     else if("/network-source-ui".equals(uri.getPath()))name="network-source-ui-results.json";
     else if("/network-safe-idle".equals(uri.getPath()))name="network-safe-idle-results.json";
     else if("/gecko-scroll".equals(uri.getPath()))name="gecko-scroll-diagnostics.json";
+    else if("/gecko-native-ime".equals(uri.getPath()))name="gecko-native-ime-snapshot.log";
+    else if("/gecko-native-ime-metadata".equals(uri.getPath()))name="gecko-native-ime-snapshot.json";
     else throw new FileNotFoundException("Unknown synthetic report");
     try{
       File base=getContext().getFilesDir().getCanonicalFile(),file=new File(base,name).getCanonicalFile();
@@ -35,7 +37,7 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
       return ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY);
     }catch(IOException failure){throw new FileNotFoundException("Synthetic report unavailable");}
   }
-  @Override public String getType(Uri uri){return "application/json";}
+  @Override public String getType(Uri uri){return "/gecko-native-ime".equals(uri.getPath())?"text/plain":"application/json";}
   @Override public Cursor query(Uri uri,String[] projection,String selection,String[] args,String order){throw new UnsupportedOperationException();}
   @Override public Uri insert(Uri uri,ContentValues values){throw new UnsupportedOperationException();}
   @Override public int delete(Uri uri,String selection,String[] args){throw new UnsupportedOperationException();}
