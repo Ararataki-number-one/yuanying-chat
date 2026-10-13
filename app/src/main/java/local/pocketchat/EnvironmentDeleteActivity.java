@@ -15,6 +15,7 @@ public final class EnvironmentDeleteActivity extends Activity {
   void run(){if(working)return;working=true;new Thread(()->{String failure="";try{remove(this,slot);}catch(Exception e){failure="清理尚未完成，环境已暂停。请重试，不会清理其他环境。";}String error=failure;runOnUiThread(()->{working=false;if(error.isEmpty()){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));finish();}else{label.setText(error);new AlertDialog.Builder(this).setTitle("删除未完成").setMessage(error).setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->{startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));finish();}).show();}});},"environment-delete").start();}
   @Override public void onBackPressed(){if(!working)super.onBackPressed();}
   static void remove(Context c,int slot)throws Exception{
+    EnvironmentResetActivity.verifyRoots(c,slot);
     ProfileCatalog catalog=ProfileCatalog.get(c);JSONObject row=catalog.item(slot);
     if(!row.optBoolean("deleting"))throw new IOException("删除状态已变化");
     Context profile=Profiles.context(c,slot);DownloadLibrary.get(c).migrate();NetworkCatalog library=new NetworkCatalog(c);library.save();
@@ -25,6 +26,7 @@ public final class EnvironmentDeleteActivity extends Activity {
     String owner=c.getPackageName()+(slot==0?"":":profile"+slot),children=c.getPackageName()+":gecko_env"+slot+"_";
     ActivityManager manager=c.getSystemService(ActivityManager.class);long deadline=SystemClock.elapsedRealtime()+10000;
     do{boolean alive=false;List<ActivityManager.RunningAppProcessInfo> all=manager.getRunningAppProcesses();if(all!=null)for(ActivityManager.RunningAppProcessInfo p:all)if(p.uid==android.os.Process.myUid()&&(p.processName.equals(owner)||p.processName.startsWith(children))){if(p.pid==android.os.Process.myPid())throw new IOException();android.os.Process.killProcess(p.pid);alive=true;}if(!alive)break;if(SystemClock.elapsedRealtime()>deadline)throw new IOException();Thread.sleep(100);}while(true);
+    EnvironmentResetActivity.verifyRoots(c,slot);
     NotificationManager notices=c.getSystemService(NotificationManager.class);for(int id=4101;id<=4105;id++)notices.cancel(Profiles.notification(profile,id));
     File data=new File(Profiles.global(c).getApplicationInfo().dataDir);
     String prefix=slot==0?"":"env"+slot+"_";
