@@ -30,22 +30,22 @@ public class NetworkUiProvider extends ContentProvider {
     if(!"apply".equals(action)&&!"external".equals(action)){operate(id,action,candidate,baseline);return;}
     long requestRevision=++saveRevision;saving=true;
     io.execute(()->{
-      String error="";boolean superseded=false,sameGeneration=false;try{
+      String error="",desiredIssue="";boolean superseded=false,sameGeneration=false;try{
         JSONObject row=ProfileCatalog.get(profile).item(Profiles.slot(profile));sameGeneration=generation<0||generation==row.optInt("generation");
         if(!row.optBoolean("created")||!sameGeneration)throw new java.io.IOException("此环境已删除或重新创建");
         // A queued read must not put an older candidate back after a newer save.
         superseded=deferred&&!pendingSnapshot.isEmpty()&&!pendingSnapshot.equals(NetworkChanges.pending(profile).toString());
         if(!superseded){if(!baseline.equals(NetworkChanges.hash(profile)))throw new java.io.IOException("此窗口配置已变化，请重新编辑");
-          NetworkChanges.validate(profile,action,candidate);NetworkChanges.save(profile,action,candidate,baseline);}
+          if("apply".equals(action))new NetworkCatalog(profile).validateAndRun(candidate,currentCatalog->{NetworkChanges.validate(profile,action,candidate);NetworkChanges.save(profile,action,candidate,baseline);});else{NetworkChanges.validate(profile,action,candidate);NetworkChanges.save(profile,action,candidate,baseline);}try{EnvironmentSpecRuntime.desireNetwork(profile,action,candidate);}catch(Exception specFailure){desiredIssue="网络设置已保存，但环境配置记录未同步；稍后请重新保存网络设置。";}}
       }catch(Exception e){error=e.getMessage()==null?"配置未能保存":e.getMessage();}
       if(!error.isEmpty()&&deferred&&sameGeneration)try{JSONObject current=NetworkChanges.pending(profile);boolean unchanged=pendingSnapshot.isEmpty()?baseline.equals(current.optString("baseline"))&&candidate.toString().equals(String.valueOf(current.optJSONObject("config"))):pendingSnapshot.equals(current.toString());if(unchanged)NetworkChanges.clear(profile);}catch(Exception unavailable){/* Keep an unreadable candidate for the next idle retry. */}
-      String failure=error;boolean replaced=superseded;main.post(()->{
+      String failure=error,environmentIssue=desiredIssue;boolean replaced=superseded;main.post(()->{
         // A newer save owns this flag and its pending candidate. Older completion
         // must neither clear that candidate nor switch back to an older route.
         if(requestRevision!=saveRevision){if(deferred)jobs.remove(id);else jobs.put(id,J.obj("done",true,"ok",true,"message","已由较新的网络设置替换"));return;}
         saving=false;if(replaced){jobs.remove(id);return;}if(!failure.isEmpty()){if(deferred){ChatSession waiting=ChatSession.peek();if(waiting!=null)waiting.setStatus("已保存的网络设置需要重新编辑："+failure);}finish(id,false,failure);return;}
-        ChatSession s=ChatSession.peek();NativeNetwork n=NativeNetwork.get(profile);
-        if(saving||busy(s,n)||s!=null&&(s.navigating||s.state.optBoolean("busy"))){finish(id,true,"网络设置已保存，当前回复和文件操作结束后自动应用");return;}
+        ChatSession s=ChatSession.peek();NativeNetwork n=NativeNetwork.get(profile);if(!environmentIssue.isEmpty()){if(s!=null)s.setStatus(environmentIssue);finish(id,true,environmentIssue);return;}
+        if(saving||busy(s,n)||s!=null&&(s.navigating||s.state.optBoolean("busy"))){finish(id,true,environmentIssue.isEmpty()?"网络设置已保存，当前回复和文件操作结束后自动应用":environmentIssue);return;}
         NetworkChanges.clear(profile);operate(id,action,candidate,baseline);
       });
     });
@@ -88,10 +88,10 @@ public class NetworkUiProvider extends ContentProvider {
     SecretStore vault=new SecretStore(profile);JSONObject old=vault.settings();SharedPreferences prefs=profile.getSharedPreferences("chat",0);String oldMode=prefs.getString("networkMode","external"),oldEntry=prefs.getString("lastGoodEntry","");boolean oldConfigured=prefs.getBoolean("networkConfigured",false);byte[] oldProvider=null,oldMeta=null,oldUi=null,oldNetwork=null;boolean writing=false;
     try{
       if(!baseline.equals(NetworkChanges.hash(profile)))throw new java.io.IOException("此窗口配置已变化，请关闭后重新编辑");
-      NativeNetwork.validate(candidate);NetworkCatalog catalog=new NetworkCatalog(profile);JSONObject sub=catalog.subscription(NativeNetwork.hash(candidate.optString("subscriptionUrl")));if(sub==null)throw new java.io.IOException("订阅已变化，请重新选择");EntrySelection.validate(candidate,EntrySelection.strings(sub.optJSONArray("nodes")));
+      NativeNetwork.validate(candidate);NetworkCatalog catalog=new NetworkCatalog(profile);JSONObject sub=catalog.subscription(NativeNetwork.hash(candidate.optString("subscriptionUrl")));if(sub==null)throw new java.io.IOException("订阅已变化，请重新选择");catalog.validateExitSelection(candidate);EntrySelection.validate(candidate,EntrySelection.strings(sub.optJSONArray("nodes")));
       byte[] provider=catalog.cache(sub);if(provider==null)throw new java.io.IOException("请先读取所选订阅的入口，再保存");
       oldProvider=vault.get("subscription");oldMeta=vault.get("subscription-meta");oldUi=vault.get("subscription-ui");oldNetwork=vault.get("network");writing=true;
-      vault.put("subscription",provider);vault.put("subscription-meta",J.obj("urlHash",sub.optString("id"),"updatedAt",sub.optLong("updatedAt")).toString().getBytes(StandardCharsets.UTF_8));vault.put("subscription-ui",J.obj("urlHash",sub.optString("id"),"nodes",sub.optJSONArray("nodes")).toString().getBytes(StandardCharsets.UTF_8));vault.save(candidate);
+      catalog.validateAndRun(candidate,currentCatalog->{JSONObject currentSub=currentCatalog.subscription(NativeNetwork.hash(candidate.optString("subscriptionUrl")));byte[] currentProvider=currentCatalog.cache(currentSub);if(currentProvider==null)throw new java.io.IOException("请先读取所选订阅的入口，再保存");vault.put("subscription",currentProvider);vault.put("subscription-meta",J.obj("urlHash",currentSub.optString("id"),"updatedAt",currentSub.optLong("updatedAt")).toString().getBytes(StandardCharsets.UTF_8));vault.put("subscription-ui",J.obj("urlHash",currentSub.optString("id"),"nodes",currentSub.optJSONArray("nodes")).toString().getBytes(StandardCharsets.UTF_8));vault.save(candidate);});
       if(!prefs.edit().putString("networkMode","internal").putBoolean("networkConfigured",true).putString("lastGoodEntry",candidate.optString("entry").isEmpty()?oldEntry:candidate.optString("entry")).commit())throw new java.io.IOException("网络配置未能保存");
     }catch(Exception error){
       // Restore only if writes began; candidate validation has no observable side effects.

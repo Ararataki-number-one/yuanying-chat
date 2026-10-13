@@ -2,11 +2,13 @@
 
 使用 Mozilla 官方 GeckoView 的 Android ChatGPT 网页客户端。聊天、模型选择、历史记录和消息操作由 ChatGPT 官方网页提供；应用负责独立环境、网络、文件下载、阅读缩放和可选后台提醒。
 
-**当前正式版本：1.5.20（versionCode 46），仅 GeckoView 与官方网页。**
+**当前正式版本：1.5.21（versionCode 47），仅 GeckoView 与官方网页。**
+
+此开发分支为 **1.6.0（versionCode 48）候选实现，尚未发布**。请按 [分版本合并与验收说明](docs/MERGE-AND-ACCEPTANCE.md) 审查，设备测试通过后再签名发布。
 
 ## 下载与安装
 
-- [下载当前正式应用 1.5.20 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.20-gecko/PocketChat-1.5.20-gecko-arm64.apk)
+- [下载当前正式应用 1.5.21 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.21-gecko/PocketChat-1.5.21-gecko-arm64.apk)
 - [上一版 1.5.19 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.19-gecko/PocketChat-1.5.19-gecko-arm64.apk)
 - [上一版 1.5.13 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.13-gecko/PocketChat-1.5.13-gecko-arm64.apk)
 - [上一版 1.5.12 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.12-gecko/PocketChat-1.5.12-gecko-arm64.apk)
