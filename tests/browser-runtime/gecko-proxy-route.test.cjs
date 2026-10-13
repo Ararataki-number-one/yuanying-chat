@@ -12,6 +12,36 @@ const assetPath = 'app/src/main/assets/gecko/background.js';
 const testPath = 'tests/browser-runtime/gecko-proxy-route.test.cjs';
 const code = fs.readFileSync(path.join(root, assetPath), 'utf8');
 const blocked = {type: 'socks', host: '127.0.0.1', port: 9, proxyDNS: true, failoverTimeout: 1};
+const CHECK_NAMES = Object.freeze([
+  "Registers exactly one production listener for every URL",
+  "Explicitly authorized direct returns strict null",
+  "Native guard denial after direct stays closed",
+  "Verified internal HTTP route preserves every field",
+  "Explicit external SOCKS route preserves every field",
+  "Explicit HTTPS route preserves every field",
+  "Authorized direct does not retain the preceding proxy route",
+  "Missing native response stays closed",
+  "Empty native response stays closed",
+  "Malformed native JSON stays closed",
+  "Native JSON null stays closed",
+  "Native response without type stays closed",
+  "Native response with null type stays closed",
+  "Native response with numeric type stays closed",
+  "Native response with boolean type stays closed",
+  "Native JSON string stays closed",
+  "Native JSON boolean stays closed",
+  "Native JSON number stays closed",
+  "Native JSON array stays closed",
+  "Native JSON cannot inherit direct from __proto__",
+  "Unserialized native object stays closed",
+  "Other string-valued proxy types are not converted to null",
+  "An empty string type is not converted to null",
+  "Native bridge synchronous failure stays closed",
+  "Native bridge promise rejection stays closed",
+  "Pending native authorization never opens a request early",
+  "Pending request uses the final native denial",
+  "A later explicit direct authorization still returns strict null"
+]);
 const checks = [];
 const nativeRequests = [];
 const registrations = [];
@@ -39,7 +69,11 @@ const browser = {
 vm.runInNewContext(code, {browser}, {filename: assetPath, timeout: 1000});
 const request = {url: 'https://chatgpt.com/c/proxy-route-regression'};
 const plain = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
-const check = (name, action) => {action(); checks.push({name, pass: true});};
+const check = (name, action) => {
+  assert.equal(name, CHECK_NAMES[checks.length], 'Check name and order must match the source-owned contract');
+  action();
+  checks.push({name, pass: true});
+};
 
 async function replyCase(name, reply, expected) {
   nativeReply = async () => reply;
@@ -114,6 +148,8 @@ async function main() {
   const heldValue = await held;
   check('Pending request uses the final native denial', () => assert.deepStrictEqual(plain(heldValue), blocked));
   await replyCase('A later explicit direct authorization still returns strict null', '{"type":"direct"}', null);
+  assert.equal(CHECK_NAMES.length, 28, 'The source-owned contract must retain all 28 checks');
+  assert.equal(checks.length, 28, 'All 28 checks must execute before a passed receipt is emitted');
 
   const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim();
   const sourceTree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {cwd: root, encoding: 'utf8'}).trim();
