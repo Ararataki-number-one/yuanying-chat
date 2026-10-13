@@ -3,11 +3,13 @@ import copy
 import hashlib
 import importlib.util
 import json
+import re
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 from profile_guard_metadata import prototype_metadata
+from profile_lifecycle_gate_test import device_control
 
 ROOT=Path(__file__).resolve().parents[1]
 def load(name):
@@ -108,12 +110,14 @@ class TemplateEvidenceGateTest(unittest.TestCase):
     def write_host(self):
         paths={'app/src/main/java/local/pocketchat/'+name+'.java' for name in ['BrowserIdentitySpec','AuditReport','IdentityTemplateController','FingerprintTemplateUi','BrowserEditIntent','DeferredBrowserSettings','EnvironmentResetPlan','EnvironmentBrowserData','EnvironmentProcessPolicy','EnvironmentResetActivity','EnvironmentSpecRepository','ProfileCatalog','Profiles']}
         paths.update('app/src/main/assets/gecko/'+name for name in ['background.js','content.js','main-world-audit.js'])
+        paths.update(gate.LIFECYCLE_SOURCE_FILES)
         hashes={path:hashlib.sha256((ROOT/path).read_bytes()).hexdigest() for path in paths}
         base=dict(status='passed',actualAndroidExecution=False,sourceCommit='a'*40,sourceTree='b'*40,sourceDirty=False,sourceUnchangedDuringChecks=True,files=hashes)
         checks=[{'name':'Counterfeit metadata only '+str(i),'pass':True} for i in range(95)]
         template=dict(status='passed',actualAndroidExecution=False,passed=95,total=95,checks=checks)
         intent=dict(status='passed',actualAndroidExecution=False,passed=14,total=14,checks=checks[:14])
-        lifecycle=dict(status='passed',actualAndroidExecution=False,passed=39,total=39,checks=checks[:39])
+        lifecycle_names=re.findall(r'\b(?:check|rejects)\("([^"\n]+)"',(ROOT/'tests/browser-runtime/EnvironmentLifecyclePolicyTest.java').read_text())
+        lifecycle=dict(status='passed',actualAndroidExecution=False,passed=39,total=39,checks=[{'name':name,'pass':True} for name in lifecycle_names])
         host=dict(base,results=[dict(test='FingerprintTemplateTest',exitCode=0,output=json.dumps(template)),dict(test='BrowserEditIntentTest',exitCode=0,output=json.dumps(intent)),dict(test='EnvironmentLifecyclePolicyTest',exitCode=0,output=json.dumps(lifecycle))])
         controller=dict(base,passed=74,total=74,checks=checks[:74])
         deferred=dict(base,passed=24,total=24,checks=checks[:24])
@@ -124,6 +128,8 @@ class TemplateEvidenceGateTest(unittest.TestCase):
         raw=json.dumps(self.report).encode();(self.directory/'gecko-template-results.json').write_bytes(raw)
         log=dict(status='passed',sourceCommit='a'*40,buildIdentity=self.report['buildIdentity'],runNonce=self.report['runNonce'],installedBeforeAndAfterMatched=True,rawReportPreserved=True,reportSha256=hashlib.sha256(raw).hexdigest(),reportBytes=len(raw),diagnosticOnly=False,androidSdk=35)
         (self.directory/'gecko-template-runner-log.json').write_text(json.dumps(log))
+        device=device_control();device['eventTransport']['buildIdentity']=copy.deepcopy(self.report['buildIdentity'])
+        (self.directory/'device-results.json').write_text(json.dumps(device))
     def verify(self):
         def source_bytes(source,path):return (ROOT/path).read_bytes() if path!='app/build.gradle' else b"versionCode 52; versionName '1.7.0'"
         with patch.object(gate,'selected_bytes',side_effect=source_bytes),patch.object(gate.subprocess,'check_output',return_value='b'*40):return gate.verify_template_evidence(self.directory,'a'*40)
@@ -142,6 +148,18 @@ class TemplateEvidenceGateTest(unittest.TestCase):
         with self.assertRaises(ValueError):self.verify()
     def test_missing_lifecycle_host_controls_are_rejected(self):
         path=self.directory/'profile-host-results.json';host=json.loads(path.read_text());host['results']=[group for group in host['results'] if group['test']!='EnvironmentLifecyclePolicyTest'];path.write_text(json.dumps(host))
+        with self.assertRaises(ValueError):self.verify()
+    def test_missing_actual_device_lifecycle_report_is_rejected(self):
+        (self.directory/'device-results.json').unlink()
+        with self.assertRaises(FileNotFoundError):self.verify()
+    def test_template_report_cannot_replace_actual_lifecycle_failure(self):
+        path=self.directory/'device-results.json';value=json.loads(path.read_text());value['environmentManagement']['copyAndReset']['templateCopied']=False
+        for step in value['steps']:
+            if step['kind']=='environmentManagement' and step['result']['action']=='copyAndReset':step['result']['templateCopied']=False
+        path.write_text(json.dumps(value))
+        with self.assertRaises(ValueError):self.verify()
+    def test_template_report_cannot_certify_foreign_device_source(self):
+        path=self.directory/'device-results.json';value=json.loads(path.read_text());value['sourceCommit']='f'*40;path.write_text(json.dumps(value))
         with self.assertRaises(ValueError):self.verify()
     def test_missing_controller_host_is_rejected(self):
         (self.directory/'identity-controller-host-results.json').unlink()

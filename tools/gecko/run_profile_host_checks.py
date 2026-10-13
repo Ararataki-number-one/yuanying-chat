@@ -28,6 +28,7 @@ def main():
     input_paths.update((ROOT / "tests").rglob("*.py"))
     input_paths.update((ROOT / "tests").rglob("*.cjs"))
     input_paths.add(Path(__file__).resolve())
+    input_paths.add(ROOT/'app/src/main/AndroidManifest.xml')
     proxy_script = ROOT / 'app/src/main/assets/gecko/background.js'
     proxy_test = ROOT / 'tests/browser-runtime/gecko-proxy-route.test.cjs'
     if proxy_test.is_file():
@@ -147,6 +148,10 @@ def main():
         subprocess.run([sys.executable,str(deferred),"--json-jar",str(json_jar),"--output",str(deferred_receipt)],cwd=ROOT,check=True)
         receipt=json.loads(deferred_receipt.read_text());results.append({"test":"deferred-browser-host","report":str(deferred_receipt.relative_to(ROOT)),"passed":receipt["passed"],"actualAndroidExecution":False})
         files.update(ROOT/path for path in receipt["files"])
+    # Receipt coverage includes Android lifecycle/admission sources without pretending to compile them on the host JVM.
+    lifecycle_sources=('EnvironmentSpec','EnvironmentResetPlan','EnvironmentBrowserData','EnvironmentProcessPolicy','EnvironmentSpecRepository','ProfileCatalog','Profiles','ProfileContext','EnvironmentResetActivity','WindowHomeActivity','MainActivity','ChatSession','ChatService','NetworkUiProvider','AppUpdateRoute','EnvironmentDeleteActivity','EnvironmentSpecRuntime')
+    files.update(source/(name+'.java') for name in lifecycle_sources)
+    files.update((ROOT/'app/src/main/AndroidManifest.xml',ROOT/'tests/gecko/EnvironmentManagementIntegrationActivity.java',ROOT/'tests/gecko/run_device.py'))
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest
