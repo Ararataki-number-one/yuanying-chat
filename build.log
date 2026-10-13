@@ -1,0 +1,371 @@
+patching file adapter/adapter.go
+patching file adapter/outbound/socks5.go
+patching file adapter/outbound/socks5_preconnect.go
+patching file adapter/outbound/socks5_preconnect_test.go
+patching file adapter/outboundgroup/selector.go
+patching file adapter/outboundgroup/selector_preconnect_test.go
+patching file adapter/parser.go
+patching file adapter/pocket_config_fingerprint.go
+patching file adapter/pocket_config_fingerprint_test.go
+patching file adapter/provider/override.go
+patching file adapter/provider/pocket_selected_exit_test.go
+patching file adapter/provider/provider.go
+patching file adapter/urltest_probe_test.go
+patching file component/proxydialer/pocket_route.go
+patching file component/proxydialer/pocket_route_test.go
+patching file component/urltesttrace/trace.go
+patching file hub/route/pocket_provider_chain_test.go
+patching file hub/route/proxies.go
+patching file transport/socks5/socks5.go
+patching file transport/socks5/socks5_preconnect_test.go
+patching file tunnel/pocket_export_test.go
+patching file tunnel/pocket_preconnect_test.go
+patching file tunnel/tunnel.go
+all modules verified
+=== RUN   TestPocketNodeFingerprintSurvivesRenameAndGeneratedFields
+--- PASS: TestPocketNodeFingerprintSurvivesRenameAndGeneratedFields (0.00s)
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/certificate
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/type
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/password
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/skip-cert-verify
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/name-cert-verify
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/private-key
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/fingerprint
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/server
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/port
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/username
+=== RUN   TestPocketNodeFingerprintAuthenticationAndTLSChanges/tls
+--- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/certificate (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/type (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/password (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/skip-cert-verify (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/name-cert-verify (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/private-key (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/fingerprint (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/server (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/port (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/username (0.00s)
+    --- PASS: TestPocketNodeFingerprintAuthenticationAndTLSChanges/tls (0.00s)
+=== RUN   TestPocketNodeFingerprintKeepsProtocolUUIDAndTransport
+--- PASS: TestPocketNodeFingerprintKeepsProtocolUUIDAndTransport (0.00s)
+=== RUN   TestPocketNodeFingerprintUsesUpstreamTypedCanonicalOptions
+--- PASS: TestPocketNodeFingerprintUsesUpstreamTypedCanonicalOptions (0.00s)
+=== RUN   TestPocketNodeFingerprintJSONDoesNotLeakCredentialsOrReplaceRuntimeID
+--- PASS: TestPocketNodeFingerprintJSONDoesNotLeakCredentialsOrReplaceRuntimeID (0.00s)
+=== RUN   TestPocketNodeFingerprintErrorsAreRedacted
+--- PASS: TestPocketNodeFingerprintErrorsAreRedacted (0.00s)
+=== RUN   TestPocketNodeFingerprintRejectsAmbiguousDecoderAliases
+--- PASS: TestPocketNodeFingerprintRejectsAmbiguousDecoderAliases (0.00s)
+=== RUN   TestPocketProbeWarmIsActualReusedConnection
+--- PASS: TestPocketProbeWarmIsActualReusedConnection (0.10s)
+=== RUN   TestPocketProbeConnectionCloseMakesARealColdRetest
+--- PASS: TestPocketProbeConnectionCloseMakesARealColdRetest (0.04s)
+=== RUN   TestPocketProbeSecondResetCannotInflateFirstLatency
+time="2026-10-13T03:17:11.695797323Z" level=error msg="DIRECT failed to get the second response from http://127.0.0.1:34289: Head \"http://127.0.0.1:34289\": read tcp 127.0.0.1:43310->127.0.0.1:34289: read: connection reset by peer"
+time="2026-10-13T03:17:11.695832087Z" level=warning msg="It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests."
+--- PASS: TestPocketProbeSecondResetCannotInflateFirstLatency (0.38s)
+=== RUN   TestPocketProbeDeadlineIsNotWarmSuccess
+time="2026-10-13T03:17:11.847114384Z" level=error msg="DIRECT failed to get the second response from http://127.0.0.1:40289: Head \"http://127.0.0.1:40289\": context deadline exceeded"
+time="2026-10-13T03:17:11.847147345Z" level=warning msg="It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests."
+--- PASS: TestPocketProbeDeadlineIsNotWarmSuccess (0.15s)
+=== RUN   TestPocketProbeCancellationStopsInFlightSecondRequest
+time="2026-10-13T03:17:11.863264652Z" level=error msg="DIRECT failed to get the second response from http://127.0.0.1:40905: Head \"http://127.0.0.1:40905\": context canceled"
+time="2026-10-13T03:17:11.863298244Z" level=warning msg="It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests."
+--- PASS: TestPocketProbeCancellationStopsInFlightSecondRequest (0.02s)
+=== RUN   TestPocketProbeUntrustedTlsCannotCreateAHealthySample
+2026/10/13 03:17:11 http: TLS handshake error from 127.0.0.1:37718: remote error: tls: bad certificate
+--- PASS: TestPocketProbeUntrustedTlsCannotCreateAHealthySample (0.00s)
+=== RUN   TestPocketProbeUnexpectedStatusStillFailsHealth
+--- PASS: TestPocketProbeUnexpectedStatusStillFailsHealth (0.01s)
+=== RUN   TestPocketProbeSecondExpectedStatusKeepsOriginalHealthSemantics
+--- PASS: TestPocketProbeSecondExpectedStatusKeepsOriginalHealthSemantics (0.01s)
+=== RUN   TestPocketProbeLateRedialCompletionCannotLeakAConnection
+time="2026-10-13T03:17:11.894234714Z" level=error msg="DIRECT failed to get the second response from http://127.0.0.1:36659: Head \"http://127.0.0.1:36659\": context canceled"
+time="2026-10-13T03:17:11.894274278Z" level=warning msg="It is recommended to use HTTPS for provider.health-check.url and group.url to ensure better reliability. Due to some proxy providers hijacking test addresses and not being compatible with repeated HEAD requests, using HTTP may result in failed tests."
+--- PASS: TestPocketProbeLateRedialCompletionCannotLeakAConnection (0.01s)
+=== RUN   TestPocketProbeOptionalTraceNeverLeaksRawErrors
+--- PASS: TestPocketProbeOptionalTraceNeverLeaksRawErrors (0.00s)
+PASS
+ok  	github.com/metacubex/mihomo/adapter	0.755s
+=== RUN   TestPocketSelectedExitExactFingerprintSurvivesRefreshRename
+--- PASS: TestPocketSelectedExitExactFingerprintSurvivesRefreshRename (0.00s)
+=== RUN   TestPocketSelectedExitRejectsMissingAndCredentialRotation
+=== RUN   TestPocketSelectedExitRejectsMissingAndCredentialRotation/password
+=== RUN   TestPocketSelectedExitRejectsMissingAndCredentialRotation/server
+--- PASS: TestPocketSelectedExitRejectsMissingAndCredentialRotation (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsMissingAndCredentialRotation/password (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsMissingAndCredentialRotation/server (0.00s)
+=== RUN   TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames
+=== RUN   TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames/Tokyo
+=== RUN   TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames/Alias_Tokyo
+--- PASS: TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames/Tokyo (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames/Alias_Tokyo (0.00s)
+=== RUN   TestPocketSelectedExitRejectsUnsupportedProtocolAndMux
+=== RUN   TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/http
+=== RUN   TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/mux
+=== RUN   TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/mux-quoted-bool
+--- PASS: TestPocketSelectedExitRejectsUnsupportedProtocolAndMux (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/http (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/mux (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/mux-quoted-bool (0.00s)
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute/no-selected
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute/bad-sha
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute/wrong-name
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute/wrong-entry
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute/relative-epoch
+--- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute (0.00s)
+    --- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute/no-selected (0.00s)
+    --- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute/bad-sha (0.00s)
+    --- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute/wrong-name (0.00s)
+    --- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute/wrong-entry (0.00s)
+    --- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute/relative-epoch (0.00s)
+=== RUN   TestPocketSelectedExitStripsSubscriptionPoolAliasesAndPreservesNestedData
+--- PASS: TestPocketSelectedExitStripsSubscriptionPoolAliasesAndPreservesNestedData (0.00s)
+=== RUN   TestPocketSelectedExitProbeRolesNeverEnablePreconnect
+=== RUN   TestPocketSelectedExitProbeRolesNeverEnablePreconnect/ProbeExit
+=== RUN   TestPocketSelectedExitProbeRolesNeverEnablePreconnect/WebProbeExit
+--- PASS: TestPocketSelectedExitProbeRolesNeverEnablePreconnect (0.00s)
+    --- PASS: TestPocketSelectedExitProbeRolesNeverEnablePreconnect/ProbeExit (0.00s)
+    --- PASS: TestPocketSelectedExitProbeRolesNeverEnablePreconnect/WebProbeExit (0.00s)
+=== RUN   TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions
+=== RUN   TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions/.type_=_"http"
+=== RUN   TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions/.smux.enabled_=_true
+--- PASS: TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions (0.00s)
+    --- PASS: TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions/.type_=_"http" (0.00s)
+    --- PASS: TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions/.smux.enabled_=_true (0.00s)
+=== RUN   TestPocketSelectedExitMultipleNameFiltersCountSourceOnce
+--- PASS: TestPocketSelectedExitMultipleNameFiltersCountSourceOnce (0.00s)
+=== RUN   TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes
+=== RUN   TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/unknown-protocol
+=== RUN   TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/malformed-port
+=== RUN   TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/ambiguous-auth-alias
+--- PASS: TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes (0.00s)
+    --- PASS: TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/unknown-protocol (0.00s)
+    --- PASS: TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/malformed-port (0.00s)
+    --- PASS: TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/ambiguous-auth-alias (0.00s)
+PASS
+ok  	github.com/metacubex/mihomo/adapter/provider	0.019s
+=== RUN   TestPocketSelectedExitActualSameNamedGroupTunnelAndProbeAPI
+time="2026-10-13T03:17:11.362864648Z" level=info msg="Start initial configuration in progress"
+time="2026-10-13T03:17:11.364506160Z" level=info msg="Geodata Loader mode: memconservative"
+time="2026-10-13T03:17:11.364554714Z" level=info msg="Geosite Matcher implementation: succinct"
+time="2026-10-13T03:17:11.364627459Z" level=info msg="Initial configuration complete, total time: 1ms"
+--- PASS: TestPocketSelectedExitActualSameNamedGroupTunnelAndProbeAPI (0.07s)
+PASS
+ok  	github.com/metacubex/mihomo/hub/route	0.082s
+?   	github.com/metacubex/mihomo/component/urltesttrace	[no test files]
+=== RUN   TestPocketEpochFailClosed
+--- PASS: TestPocketEpochFailClosed (0.00s)
+=== RUN   TestPocketPreparedSocketHasNoConnectOrPayload
+--- PASS: TestPocketPreparedSocketHasNoConnectOrPayload (0.12s)
+=== RUN   TestPocketWrongAuthAndRepNeverRetry
+=== RUN   TestPocketWrongAuthAndRepNeverRetry/auth
+=== RUN   TestPocketWrongAuthAndRepNeverRetry/rep
+--- PASS: TestPocketWrongAuthAndRepNeverRetry (0.06s)
+    --- PASS: TestPocketWrongAuthAndRepNeverRetry/auth (0.03s)
+    --- PASS: TestPocketWrongAuthAndRepNeverRetry/rep (0.03s)
+=== RUN   TestPocketDeadIdleFreshOnceBeforePayload
+--- PASS: TestPocketDeadIdleFreshOnceBeforePayload (0.00s)
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge/selector
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge/config
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge/epoch
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge/expiry
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge/close
+--- PASS: TestPocketRouteEpochExpiryAndClosePurge (0.22s)
+    --- PASS: TestPocketRouteEpochExpiryAndClosePurge/selector (0.05s)
+    --- PASS: TestPocketRouteEpochExpiryAndClosePurge/config (0.05s)
+    --- PASS: TestPocketRouteEpochExpiryAndClosePurge/epoch (0.06s)
+    --- PASS: TestPocketRouteEpochExpiryAndClosePurge/expiry (0.06s)
+    --- PASS: TestPocketRouteEpochExpiryAndClosePurge/close (0.00s)
+=== RUN   TestPocketCancelPendingAndBoundedRefill
+--- PASS: TestPocketCancelPendingAndBoundedRefill (0.00s)
+=== RUN   TestPocketTraceBypassDoesNotConsumeOrRefill
+--- PASS: TestPocketTraceBypassDoesNotConsumeOrRefill (0.00s)
+=== RUN   TestPocketUnsupportedOrBlockedKeepsOriginalChain
+=== RUN   TestPocketUnsupportedOrBlockedKeepsOriginalChain/blockedEpoch
+=== RUN   TestPocketUnsupportedOrBlockedKeepsOriginalChain/unsupportedRoute
+--- PASS: TestPocketUnsupportedOrBlockedKeepsOriginalChain (0.00s)
+    --- PASS: TestPocketUnsupportedOrBlockedKeepsOriginalChain/blockedEpoch (0.00s)
+    --- PASS: TestPocketUnsupportedOrBlockedKeepsOriginalChain/unsupportedRoute (0.00s)
+=== RUN   TestPocketEnvironmentIsolation
+--- PASS: TestPocketEnvironmentIsolation (0.00s)
+=== RUN   TestPocketReadyRepRejectionNeverFreshRetries
+--- PASS: TestPocketReadyRepRejectionNeverFreshRetries (0.00s)
+=== RUN   TestPocketNetworkChangeDuringConnectReturnsNoBrowserSocket
+--- PASS: TestPocketNetworkChangeDuringConnectReturnsNoBrowserSocket (0.05s)
+=== RUN   TestPocketReturnedConnectionNeverClosedByLeaseWatcher
+--- PASS: TestPocketReturnedConnectionNeverClosedByLeaseWatcher (0.05s)
+=== RUN   TestPocketPendingPreparationCancelledByEpoch
+--- PASS: TestPocketPendingPreparationCancelledByEpoch (0.24s)
+=== RUN   TestPocketDeadIdleRetryCannotStealConcurrentPreparedSocket
+--- PASS: TestPocketDeadIdleRetryCannotStealConcurrentPreparedSocket (0.01s)
+=== RUN   TestPocketCancelledPreparerRetainsSlotUntilWorkerRetires
+--- PASS: TestPocketCancelledPreparerRetainsSlotUntilWorkerRetires (0.06s)
+PASS
+ok  	github.com/metacubex/mihomo/adapter/outbound	0.840s
+=== RUN   TestSelectorPreconnectABAKeepsMonotonicRevisionAndClosesEachPriorSignal
+--- PASS: TestSelectorPreconnectABAKeepsMonotonicRevisionAndClosesEachPriorSignal (0.00s)
+=== RUN   TestSelectorPreconnectHealthyRepeatAndMissingNameDoNotInvalidate
+--- PASS: TestSelectorPreconnectHealthyRepeatAndMissingNameDoNotInvalidate (0.00s)
+=== RUN   TestSelectorPreconnectSameNamedProviderReplacementReturnsActualNewLeaf
+--- PASS: TestSelectorPreconnectSameNamedProviderReplacementReturnsActualNewLeaf (0.00s)
+=== RUN   TestSelectorPreconnectConcurrentSnapshotAndSelectionUseActualLeaves
+--- PASS: TestSelectorPreconnectConcurrentSnapshotAndSelectionUseActualLeaves (0.00s)
+PASS
+ok  	github.com/metacubex/mihomo/adapter/outboundgroup	0.007s
+=== RUN   TestPocketRouteActualSelectorABAMustInvalidate
+--- PASS: TestPocketRouteActualSelectorABAMustInvalidate (0.00s)
+=== RUN   TestPocketRouteSameHealthySelectionStaysUsable
+--- PASS: TestPocketRouteSameHealthySelectionStaysUsable (0.00s)
+=== RUN   TestPocketRouteProviderSameNameNewActualIDInvalidates
+--- PASS: TestPocketRouteProviderSameNameNewActualIDInvalidates (0.00s)
+=== RUN   TestPocketRouteConfigReplacementSignalsAndInvalidatesImmediately
+--- PASS: TestPocketRouteConfigReplacementSignalsAndInvalidatesImmediately (0.00s)
+=== RUN   TestPocketRouteCapturedLeafDialNeverUsesMutableParent
+--- PASS: TestPocketRouteCapturedLeafDialNeverUsesMutableParent (0.00s)
+=== RUN   TestPocketRouteChangeDuringRealDialClosesResultBeforeHandoff
+--- PASS: TestPocketRouteChangeDuringRealDialClosesResultBeforeHandoff (0.00s)
+=== RUN   TestPocketRouteRejectsUncapturableLeafAndParent
+=== RUN   TestPocketRouteRejectsUncapturableLeafAndParent/leaf-upstream
+=== RUN   TestPocketRouteRejectsUncapturableLeafAndParent/nested-leaf
+=== RUN   TestPocketRouteRejectsUncapturableLeafAndParent/direct
+=== RUN   TestPocketRouteRejectsUncapturableLeafAndParent/reject
+=== RUN   TestPocketRouteRejectsUncapturableLeafAndParent/reject-drop
+=== RUN   TestPocketRouteRejectsUncapturableLeafAndParent/pass
+=== RUN   TestPocketRouteRejectsUncapturableLeafAndParent/compatible
+--- PASS: TestPocketRouteRejectsUncapturableLeafAndParent (0.00s)
+    --- PASS: TestPocketRouteRejectsUncapturableLeafAndParent/leaf-upstream (0.00s)
+    --- PASS: TestPocketRouteRejectsUncapturableLeafAndParent/nested-leaf (0.00s)
+    --- PASS: TestPocketRouteRejectsUncapturableLeafAndParent/direct (0.00s)
+    --- PASS: TestPocketRouteRejectsUncapturableLeafAndParent/reject (0.00s)
+    --- PASS: TestPocketRouteRejectsUncapturableLeafAndParent/reject-drop (0.00s)
+    --- PASS: TestPocketRouteRejectsUncapturableLeafAndParent/pass (0.00s)
+    --- PASS: TestPocketRouteRejectsUncapturableLeafAndParent/compatible (0.00s)
+=== RUN   TestPocketRouteActualParentReplacementInvalidates
+--- PASS: TestPocketRouteActualParentReplacementInvalidates (0.00s)
+PASS
+ok  	github.com/metacubex/mihomo/component/proxydialer	0.007s
+=== RUN   TestPreconnectSuccessfulHandshakeMatchesExactRFCWire
+=== RUN   TestPreconnectSuccessfulHandshakeMatchesExactRFCWire/no-auth
+=== RUN   TestPreconnectSuccessfulHandshakeMatchesExactRFCWire/password
+--- PASS: TestPreconnectSuccessfulHandshakeMatchesExactRFCWire (0.00s)
+    --- PASS: TestPreconnectSuccessfulHandshakeMatchesExactRFCWire/no-auth (0.00s)
+    --- PASS: TestPreconnectSuccessfulHandshakeMatchesExactRFCWire/password (0.00s)
+=== RUN   TestPreconnectAuthenticationFailuresNeverSendCommand
+=== RUN   TestPreconnectAuthenticationFailuresNeverSendCommand/wrong-version
+=== RUN   TestPreconnectAuthenticationFailuresNeverSendCommand/missing-method
+=== RUN   TestPreconnectAuthenticationFailuresNeverSendCommand/empty-reply
+=== RUN   TestPreconnectAuthenticationFailuresNeverSendCommand/unavailable-method
+=== RUN   TestPreconnectAuthenticationFailuresNeverSendCommand/unsupported-method
+=== RUN   TestPreconnectAuthenticationFailuresNeverSendCommand/password-required
+=== RUN   TestPreconnectAuthenticationFailuresNeverSendCommand/password-refused
+=== RUN   TestPreconnectAuthenticationFailuresNeverSendCommand/password-truncated
+--- PASS: TestPreconnectAuthenticationFailuresNeverSendCommand (0.00s)
+    --- PASS: TestPreconnectAuthenticationFailuresNeverSendCommand/wrong-version (0.00s)
+    --- PASS: TestPreconnectAuthenticationFailuresNeverSendCommand/missing-method (0.00s)
+    --- PASS: TestPreconnectAuthenticationFailuresNeverSendCommand/empty-reply (0.00s)
+    --- PASS: TestPreconnectAuthenticationFailuresNeverSendCommand/unavailable-method (0.00s)
+    --- PASS: TestPreconnectAuthenticationFailuresNeverSendCommand/unsupported-method (0.00s)
+    --- PASS: TestPreconnectAuthenticationFailuresNeverSendCommand/password-required (0.00s)
+    --- PASS: TestPreconnectAuthenticationFailuresNeverSendCommand/password-refused (0.00s)
+    --- PASS: TestPreconnectAuthenticationFailuresNeverSendCommand/password-truncated (0.00s)
+=== RUN   TestPreconnectCommandRefusalFailsClosedWithoutRetry
+=== RUN   TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_1
+=== RUN   TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_2
+=== RUN   TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_3
+=== RUN   TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_4
+=== RUN   TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_5
+=== RUN   TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_6
+=== RUN   TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_7
+=== RUN   TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_8
+--- PASS: TestPreconnectCommandRefusalFailsClosedWithoutRetry (0.00s)
+    --- PASS: TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_1 (0.00s)
+    --- PASS: TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_2 (0.00s)
+    --- PASS: TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_3 (0.00s)
+    --- PASS: TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_4 (0.00s)
+    --- PASS: TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_5 (0.00s)
+    --- PASS: TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_6 (0.00s)
+    --- PASS: TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_7 (0.00s)
+    --- PASS: TestPreconnectCommandRefusalFailsClosedWithoutRetry/SOCKS_error:_8 (0.00s)
+=== RUN   TestPreconnectCommandRejectsMalformedReply
+=== RUN   TestPreconnectCommandRejectsMalformedReply/wrong-version
+=== RUN   TestPreconnectCommandRejectsMalformedReply/reserved-field
+=== RUN   TestPreconnectCommandRejectsMalformedReply/truncated-header
+=== RUN   TestPreconnectCommandRejectsMalformedReply/missing-address
+=== RUN   TestPreconnectCommandRejectsMalformedReply/truncated-address
+=== RUN   TestPreconnectCommandRejectsMalformedReply/unknown-address-type
+--- PASS: TestPreconnectCommandRejectsMalformedReply (0.00s)
+    --- PASS: TestPreconnectCommandRejectsMalformedReply/wrong-version (0.00s)
+    --- PASS: TestPreconnectCommandRejectsMalformedReply/reserved-field (0.00s)
+    --- PASS: TestPreconnectCommandRejectsMalformedReply/truncated-header (0.00s)
+    --- PASS: TestPreconnectCommandRejectsMalformedReply/missing-address (0.00s)
+    --- PASS: TestPreconnectCommandRejectsMalformedReply/truncated-address (0.00s)
+    --- PASS: TestPreconnectCommandRejectsMalformedReply/unknown-address-type (0.00s)
+=== RUN   TestPreconnectAllReplyAddressFamiliesAndCommandBytes
+--- PASS: TestPreconnectAllReplyAddressFamiliesAndCommandBytes (0.00s)
+=== RUN   TestPreconnectRealStreamAuthenticationAndLaterCommand
+--- PASS: TestPreconnectRealStreamAuthenticationAndLaterCommand (0.00s)
+=== RUN   TestPreconnectIdleAuthenticatedStreamCanBeDiscardedWithoutCommand
+--- PASS: TestPreconnectIdleAuthenticatedStreamCanBeDiscardedWithoutCommand (0.00s)
+PASS
+ok  	github.com/metacubex/mihomo/transport/socks5	0.003s
+=== RUN   TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry
+=== RUN   TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/auth
+=== RUN   TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/rep
+=== RUN   TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/malformed
+=== RUN   TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/route
+=== RUN   TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/blocked
+=== RUN   TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/unsupported
+--- PASS: TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry (0.31s)
+    --- PASS: TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/auth (0.00s)
+    --- PASS: TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/rep (0.00s)
+    --- PASS: TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/malformed (0.00s)
+    --- PASS: TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/route (0.00s)
+    --- PASS: TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/blocked (0.15s)
+    --- PASS: TestPocketPreconnectRealFixedExitRejectionStopsActualTunnelRetry/unsupported (0.15s)
+=== RUN   TestPocketPreconnectMarkerDoesNotChangeOrdinaryTunnelRetry
+--- PASS: TestPocketPreconnectMarkerDoesNotChangeOrdinaryTunnelRetry (0.10s)
+PASS
+ok  	github.com/metacubex/mihomo/tunnel	0.413s
+{
+  "status": "passed",
+  "nativeBuildReceipt": "third-party/patches/mihomo-v1.19.31-probe-build.json",
+  "patchSha256": "8936660e67268907de012cbd459f3b5d6abe79ecc20a3ef209f5898e5b9fd774",
+  "binaries": {
+    "arm64-v8a": {
+      "path": "app/src/main/jniLibs/arm64-v8a/libmihomo.so",
+      "sha256": "2d02666723d8f5f38078df003a8e63cbe9ace9e8dd3df8771a1496ec1d078b09",
+      "bytes": 63761968,
+      "goos": "android",
+      "goarch": "arm64",
+      "cgo": 1,
+      "compiler": "aarch64-linux-android26-clang",
+      "elf": {
+        "machine": 183,
+        "type": "PIE",
+        "interpreter": "/system/bin/linker64",
+        "minimumLoadAlignment": 16384
+      }
+    },
+    "x86_64": {
+      "path": "app/src/main/jniLibs/x86_64/libmihomo.so",
+      "sha256": "9346271d67c0d82ea3910dc03771427809003189a5e832d6699eda1cc399c7c9",
+      "bytes": 68461936,
+      "goos": "android",
+      "goarch": "amd64",
+      "cgo": 1,
+      "compiler": "x86_64-linux-android26-clang",
+      "elf": {
+        "machine": 62,
+        "type": "PIE",
+        "interpreter": "/system/bin/linker64",
+        "minimumLoadAlignment": 16384
+      }
+    }
+  }
+}
