@@ -27,8 +27,8 @@ jobs:
           curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-input-diagnostics/gradle.zip
           echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-input-diagnostics/gradle.zip' | sha256sum -c -
           unzip -q work/gecko-input-diagnostics/gradle.zip -d work/gecko-input-diagnostics/gradle
-          curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20260924084938/geckoview-157.0.20260924084938.aar -o work/gecko-input-diagnostics/geckoview.aar
-          echo '25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0  work/gecko-input-diagnostics/geckoview.aar' | sha256sum -c -
+          curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.aar -o work/gecko-input-diagnostics/geckoview.aar
+          echo '15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268  work/gecko-input-diagnostics/geckoview.aar' | sha256sum -c -
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
       - name: Compile the native integration package
