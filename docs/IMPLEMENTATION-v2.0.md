@@ -33,6 +33,10 @@
 
 资源诊断不是物理 ARM 手机容量、真实 ChatGPT 上传、文件选择手势、原生键盘、下载吞吐、登录保持或长时间后台恢复验收。本版不声称网络延迟降低或物理手机最多可运行几环境。候选包通过云端检查后，正式发布仍要求用户真机清单。
 
+## 官方 SDK 的桌面 UA 范围
+
+桌面环境的页面、iframe、Worker JavaScript 与四类文档/脚本/页面 fetch 请求头使用实际 session UA。两类 Worker fetch 请求头仍按独立 `GeckoSession.getDefaultUserAgent()` 的 SDK 移动默认值核对；实际不一致保留在原始报告中。静态 getter 不表示运行时已确认，也不是完整桌面 UA 或指纹验收。本版没有修改 Worker 请求头或实现 WebRequest 修复。
+
 ## 可复用命令
 
 ```sh

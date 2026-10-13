@@ -10,16 +10,19 @@ contract=load('resource_invocation_contract');gate=load('check_resource_evidence
 NAMES=re.findall(r'resourceCheck\("([^"\n]+)"',(ROOT/'tests/gecko/ResourcePressureIntegrationActivity.java').read_text())
 def metadata():
     report=metadata_only_report();report['buildIdentity'].update(version='2.0.0',versionCode=53)
-    names=NAMES+contract.prototype_names();report.update(fixtureType='production-resource-pressure-controlled-v1',diagnosticOnly=True,capacityAcceptance=False,physicalDeviceAcceptance=False,resourceChecksCompleted=True,resourceChecks=[{'name':name,'pass':True} for name in NAMES],checks=[{'name':name,'pass':True} for name in names],passed=len(names),total=len(names),pid=123,nativeCustomCapabilities={name:'UNSUPPORTED' for name in contract.CUSTOM},resourceUncovered=['physical ARM capacity','Gecko child process PSS','real ChatGPT tasks','native file chooser gesture','real upload/download throughput','independent process restoration'])
+    names=NAMES+contract.prototype_names();report.update(fixtureType='production-resource-pressure-controlled-v1',diagnosticOnly=True,capacityAcceptance=False,physicalDeviceAcceptance=False,fullDesktopUaConsistency=False,fingerprintTemplateAcceptance=False,fullTemplateAcceptance=False,resourceChecksCompleted=True,resourceChecks=[{'name':name,'pass':True} for name in NAMES],checks=[{'name':name,'pass':True} for name in names],passed=len(names),total=len(names),pid=123,nativeCustomCapabilities={name:'UNSUPPORTED' for name in contract.CUSTOM},resourceUncovered=['physical ARM capacity','Gecko child process PSS','real ChatGPT tasks','native file chooser gesture','real upload/download throughput','independent process restoration','desktop Worker fetch UA consistency'])
     report['allocation']=dict(coldRuntimeCreates=0,recoveryRuntimeCreates=1,pressureSource='synthetic-pressure-control',physicalCapacityAcceptance=False,actualRuntimeObject=456,oldEpoch=1,newEpoch=2,recoveredTarget=report['origin']+'/frame?run='+report['runNonce']+'&case=4&session=secondary')
     report['platformMemory']=dict(source='android-ActivityManager.MemoryInfo',known=True,lowMemory=False,availableBytes=1024,totalBytes=2048,thresholdBytes=256,sampledAt=1000,observedAt=1001,process=dict(source='android-Debug.MemoryInfo',pid=123,totalPssKb=1024,javaUsedBytes=512,javaMaxBytes=4096,scope='Current fixture app PID only; Gecko child processes excluded'))
     for index,case in enumerate(report['cases']):
         for session in case['sessions']:
             desktop=index==1 or session['name']=='secondary'
-            ua=('Mozilla/5.0 (X11; Linux x86_64; rv:157.0)' if desktop else 'Mozilla/5.0 (Android 14; Mobile; rv:157.0)')+' Gecko/157.0 Firefox/157.0'
+            ua='Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0' if desktop else report['sdkUserAgentBaseline']['userAgent']
             session['native']['userAgent']=ua
             for context in ['parent','frame','worker','blobWorker']:session['observed'][context].update(ua=ua,origin=report['origin'])
-            for row in session['requestHeaders']:row['userAgent']=ua
+            for row in session['requestHeaders']:row['userAgent']=report['sdkUserAgentBaseline']['userAgent'] if row['role'] in ['worker-fetch','blob-worker-fetch'] else ua
+            session['userAgentScope']=dict(documentHeadersMatchSession=True,workerFetchHeadersMatchSdkDefault=True,workerFetchHeadersMatchSession=not desktop,workerFetchHeaderMismatch=desktop,observedUserAgentUniform=not desktop,fullTemplateAcceptance=False)
+        case['workerFetchMismatchSessions']=[row['name'] for row in case['sessions'] if row['userAgentScope']['workerFetchHeaderMismatch']]
+        case['fullTemplateAcceptance']=False
     return report
 class ResourceContractTest(unittest.TestCase):
     def setUp(self):self.report=metadata()
@@ -35,6 +38,15 @@ class ResourceContractTest(unittest.TestCase):
     def test_missing_actual_guard_evidence(self):self.rejects(lambda r:r.pop("guardEvidence"))
     def test_guard_tcp_cannot_hide_a_new_connection(self):self.rejects(lambda r:r["guardEvidence"]["afterServer"].update(acceptedConnections=r["guardEvidence"]["beforeServer"]["acceptedConnections"]+1))
     def test_guard_native_sender_is_bound(self):self.rejects(lambda r:r["guardEvidence"]["nativePort"].update(nativeSession=999))
+    def test_actual_sdk_worker_mismatch_remains_visible(self):
+        result=contract.verify_resource_report(self.report,NAMES);self.assertFalse(result['fullDesktopUaConsistency']);self.assertFalse(result['fingerprintTemplateAcceptance']);self.assertFalse(result['fullTemplateAcceptance']);self.assertEqual(result['workerFetchMismatchSessions'],[{'case':0,'sessions':[]},{'case':1,'sessions':['primary']},{'case':2,'sessions':[]},{'case':3,'sessions':['secondary']}])
+    def test_missing_independent_sdk_default(self):self.rejects(lambda r:r.pop('sdkUserAgentBaseline'))
+    def test_static_default_is_not_runtime_ack(self):self.rejects(lambda r:r['sdkUserAgentBaseline'].update(runtimeAcknowledgement=True))
+    def test_desktop_worker_headers_cannot_be_rewritten_to_session(self):self.rejects(lambda r:r['cases'][1]['sessions'][0]['requestHeaders'][4].update(userAgent=r['cases'][1]['sessions'][0]['native']['userAgent']))
+    def test_raw_worker_mismatch_cannot_be_hidden(self):self.rejects(lambda r:r['cases'][1]['sessions'][0]['userAgentScope'].update(workerFetchHeaderMismatch=False))
+    def test_case_worker_mismatch_cannot_be_hidden(self):self.rejects(lambda r:r['cases'][3].update(workerFetchMismatchSessions=[]))
+    def test_full_desktop_ua_claim_rejected(self):self.rejects(lambda r:r.update(fullDesktopUaConsistency=True))
+    def test_fingerprint_claim_rejected(self):self.rejects(lambda r:r.update(fingerprintTemplateAcceptance=True))
     def test_wrong_schema(self):self.rejects(lambda r:r.update(schema=2))
     def test_wrong_sdk(self):self.rejects(lambda r:r.update(sdkAarSha256='f'*64))
     def test_physical_capacity_claim(self):self.rejects(lambda r:r.update(capacityAcceptance=True))

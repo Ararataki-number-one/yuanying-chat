@@ -30,7 +30,7 @@ def verify_resource_report(report, expected):
         raise ValueError('Pinned actual official SDK report identity differs')
     if report.get('fixtureType')!='production-resource-pressure-controlled-v1' or report.get('resourceChecksCompleted') is not True:
         raise ValueError('Production resource fixture is incomplete')
-    if any(report.get(key) is not False for key in ['releaseAcceptance','capacityAcceptance','physicalDeviceAcceptance','publicNetworkTraffic']):
+    if any(report.get(key) is not False for key in ['releaseAcceptance','capacityAcceptance','physicalDeviceAcceptance','publicNetworkTraffic','fullDesktopUaConsistency','fingerprintTemplateAcceptance','fullTemplateAcceptance']):
         raise ValueError('Controlled resource observations cannot claim physical/native/release acceptance')
     if report.get('diagnosticOnly') is not True or report.get('actualAndroidExecution') is not True or report.get('actualGeckoExecution') is not True or report.get('synthetic') is not True or report.get('status')!='passed' or report.get('error') or report.get('failureType'):
         raise ValueError('Actual controlled Gecko resource execution failed')
@@ -41,6 +41,7 @@ def verify_resource_report(report, expected):
     if [x.get('name') for x in all_rows]!=wanted or any(x.get('pass') is not True for x in all_rows) or report.get('passed')!=len(wanted) or report.get('total')!=len(wanted):
         raise ValueError('The independent controlled SDK context checks must remain complete')
     _guard.verify_guard_evidence(report)
+    _guard.verify_user_agent_evidence(report)
     allocation=report.get('allocation',{})
     if type(allocation.get('coldRuntimeCreates')) is not int or type(allocation.get('recoveryRuntimeCreates')) is not int or allocation.get('coldRuntimeCreates')!=0 or allocation.get('recoveryRuntimeCreates')!=1 or allocation.get('physicalCapacityAcceptance') is not False or allocation.get('pressureSource')!='synthetic-pressure-control':
         raise ValueError('Runtime creation proof/pressure scope differs')
@@ -63,7 +64,7 @@ def verify_resource_report(report, expected):
         if type(process.get(key)) is not int or process[key]<=0:raise ValueError('Process memory observation is invalid')
     if report.get('nativeCustomCapabilities')!={key:'UNSUPPORTED' for key in CUSTOM}:
         raise ValueError('Stock SDK cannot claim new custom native controls')
-    if not set(['physical ARM capacity','Gecko child process PSS','real ChatGPT tasks','native file chooser gesture','real upload/download throughput','independent process restoration']).issubset(report.get('resourceUncovered',[])):
+    if not set(['physical ARM capacity','Gecko child process PSS','real ChatGPT tasks','native file chooser gesture','real upload/download throughput','independent process restoration','desktop Worker fetch UA consistency']).issubset(report.get('resourceUncovered',[])):
         raise ValueError('Resource acceptance limitations were removed')
     wire=[]
     cases=report.get('cases',[])
@@ -88,7 +89,7 @@ def verify_resource_report(report, expected):
                 expected_query=[('run',nonce),('case',str(case.get('serial'))),('session',session.get('name'))]
                 extra=[] if row.get('role') in ['page','frame','worker-script'] else [('kind',row.get('role'))]
                 wanted_path={'page':'/page','frame':'/frame','worker-script':'/worker'}.get(row.get('role'),'/echo')
-                if path.scheme or path.netloc or path.fragment or row.get('method')!='GET' or row.get('userAgent')!=ua or row.get('acceptLanguage','').split(',',1)[0].split(';',1)[0].strip()!=language or path.path!=wanted_path or query!=expected_query+extra or row.get('case')!=case.get('serial') or row.get('session')!=session.get('name'):
+                if path.scheme or path.netloc or path.fragment or row.get('method')!='GET' or row.get('userAgent')!=(report['sdkUserAgentBaseline']['userAgent'] if row.get('role') in _guard.WORKER_FETCH_HEADER_ROLES else ua) or row.get('acceptLanguage','').split(',',1)[0].split(';',1)[0].strip()!=language or path.path!=wanted_path or query!=expected_query+extra or row.get('case')!=case.get('serial') or row.get('session')!=session.get('name'):
                     raise ValueError('Controlled SDK request ownership differs')
                 wire.append(row)
     if report.get('allRequestHeaders')!=wire or [row.get('sequence') for row in wire]!=list(range(1,len(wire)+1)):
@@ -98,4 +99,4 @@ def verify_resource_report(report, expected):
         if report.get('allRequestHeaders')!=ordered or [row.get('sequence') for row in ordered]!=list(range(1,len(wire)+1)):
             raise ValueError('Raw controlled request records changed')
     if len(wire)!=30:raise ValueError('All five actual session header contexts are required')
-    return dict(status='passed',diagnosticOnly=True,capacityAcceptance=False,physicalDeviceAcceptance=False,nativeCustomControls='unsupported',resourceChecks=len(expected),controlledSdkChecks=len(prototype_names()),scope='Controlled actual Android/Gecko admission and retained tasks; synthetic pressure, actual platform/PID observations; no physical capacity or performance verdict')
+    return dict(status='passed',diagnosticOnly=True,capacityAcceptance=False,physicalDeviceAcceptance=False,fullDesktopUaConsistency=False,fingerprintTemplateAcceptance=False,fullTemplateAcceptance=False,workerFetchMismatchSessions=[dict(case=case['index'],sessions=case['workerFetchMismatchSessions']) for case in cases],nativeCustomControls='unsupported',resourceChecks=len(expected),controlledSdkChecks=len(prototype_names()),scope='Controlled actual Android/Gecko admission and retained tasks; synthetic pressure, actual platform/PID observations; no physical capacity, performance or uniform desktop Worker UA verdict')
