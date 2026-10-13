@@ -79,7 +79,7 @@ final class EnvironmentResourcePolicy {
 
   enum Decision { ALLOW, ALLOW_AFTER_SAFE_SUSPEND, DENY }
   enum Reason { ALREADY_LIVE, UNMEASURED, WITHIN_BUDGET, DEVICE_SCOPE_MISMATCH,
-    LOW_MEMORY, ACTIVE_WORK_PROTECTED, STALE_GENERATION, INVALID_SNAPSHOT, SAFE_BACKGROUND_AVAILABLE }
+    LOW_MEMORY, UNKNOWN_MEMORY, ACTIVE_WORK_PROTECTED, STALE_GENERATION, INVALID_SNAPSHOT, SAFE_BACKGROUND_AVAILABLE }
   static final class Plan {
     final Decision decision;
     final Reason reason;
@@ -112,6 +112,7 @@ final class EnvironmentResourcePolicy {
     if (!budget.measured) return result(Decision.ALLOW, Reason.UNMEASURED);
     if (!budget.appliesTo(deviceScope, engineRevision)) return result(Decision.DENY, Reason.DEVICE_SCOPE_MISMATCH);
     // Unknown available memory cannot justify a destructive reclamation decision.
+    if (availableBytes < 0) return result(Decision.DENY, Reason.UNKNOWN_MEMORY);
     if (availableBytes >= 0 && availableBytes < budget.minimumAvailableBytes)
       return result(Decision.DENY, Reason.LOW_MEMORY);
     if (live < budget.maximumLive) return result(Decision.ALLOW, Reason.WITHIN_BUDGET);

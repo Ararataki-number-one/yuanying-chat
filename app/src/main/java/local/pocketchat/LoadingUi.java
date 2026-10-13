@@ -22,6 +22,8 @@ final class LoadingUi {
   void update(){
     ChatSession s=a.session;if(s==null)return;
     boolean visible=s.web.hasVisibleDocument();
+    if(s.web.resourceDeferred&&!visible){a.status.setVisibility(View.GONE);cover.animate().cancel();cover.setAlpha(1);cover.setVisibility(View.VISIBLE);coverShown=true;title.setText("稍后打开当前环境");hint.setText(ResourcePressureController.DEFERRED_MESSAGE);wheel.setVisibility(View.GONE);retry.setText("重试打开");retry.setVisibility(View.VISIBLE);website.setVisibility(View.GONE);return;}
+    retry.setText("重新加载");
     boolean waiting=s.connecting||!s.networkReady||s.web.getUrl()==null||s.web.getUrl().isEmpty();
     // A live document always remains usable, including while the site is
     // loading or rendering a reply. Only an empty surface needs our cover.

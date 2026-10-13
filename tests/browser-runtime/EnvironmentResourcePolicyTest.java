@@ -70,6 +70,7 @@ public final class EnvironmentResourcePolicyTest {
     check("Within budget opens without suspension", plan(budget,Collections.singletonList(active),2,3).allowedWithoutSuspension());
     check("Low memory blocks new allocation without eviction", EnvironmentResourcePolicy.admit(budget,Arrays.asList(safe,active),2,3,511,"test-device",ENGINE).reason == EnvironmentResourcePolicy.Reason.LOW_MEMORY);
     check("Low memory does not interrupt existing runtime", EnvironmentResourcePolicy.admit(budget,Arrays.asList(safe,active),1,3,0,"test-device",ENGINE).allowedWithoutSuspension());
+    check("Unknown memory cannot authorize a measured suspension plan",EnvironmentResourcePolicy.admit(budget,Arrays.asList(safe,active),2,3,-1,"test-device",ENGINE).reason==EnvironmentResourcePolicy.Reason.UNKNOWN_MEMORY);
     check("Other-device receipt cannot apply", EnvironmentResourcePolicy.admit(budget,Arrays.asList(safe,active),2,3,1024,"other-device",ENGINE).reason == EnvironmentResourcePolicy.Reason.DEVICE_SCOPE_MISMATCH);
     check("Other-engine receipt cannot apply", EnvironmentResourcePolicy.admit(budget,Arrays.asList(safe,active),2,3,1024,"test-device","b".repeat(40)).reason == EnvironmentResourcePolicy.Reason.DEVICE_SCOPE_MISMATCH);
     EnvironmentResourcePolicy.Budget one = EnvironmentResourcePolicy.Budget.measured(1,0,"test-device",ENGINE,RECEIPT);

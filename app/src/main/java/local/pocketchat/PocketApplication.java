@@ -11,4 +11,6 @@ public class PocketApplication extends Application {
   // Android and AndroidX initializers require an Application here. Browser callers
   // retain the isolated ProfileContext supplied by each activity/service.
   @Override public Context getApplicationContext(){return this;}
+  @Override public void onTrimMemory(int level){super.onTrimMemory(level);ChatSession session=ChatSession.peek();if(session!=null)session.handler.post(()->{if(!session.deleted){session.resources.sample();session.updateBrowserActivity();}});}
+  @Override public void onLowMemory(){super.onLowMemory();onTrimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE);}
 }

@@ -23,6 +23,8 @@ public final class NetworkTransportService extends Service {
     JSONObject snapshot(){return J.obj("slot",slot,"state",state,"alive",alive(),"generation",generation,"pid",pid,"servicePid",android.os.Process.myPid(),"configuration",configHash,"controllerPort",controllerPort,"proxyPort",proxyPort,"webProbePort",webProbePort);}
   }
   @Override public void onCreate(){super.onCreate();for(int slot=0;slot<nodes.length;slot++)nodes[slot]=new Node(slot);preconnectEpoch=new ExitPreconnectEpoch(this,this::writePreconnectEpochs);QuietNotifications.backgroundChannel(this,QuietNotifications.NETWORK_BACKGROUND,"后台连接服务 · 静默");}
+  @Override public void onTrimMemory(int level){super.onTrimMemory(level);if(destroying||nodes[0]==null)return;try{nodes[0].commands.execute(()->{if(!destroying)writePreconnectEpochs();});}catch(RejectedExecutionException ignored){}}
+  @Override public void onLowMemory(){super.onLowMemory();onTrimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE);}
   void writePreconnectEpochs(){ExitPreconnectEpoch epoch=preconnectEpoch;if(epoch==null)return;File base=Profiles.global(this).getNoBackupFilesDir();for(Node n:nodes){File profile=n.slot==0?base:new File(base,"profiles/env"+n.slot);File directory=new File(profile,"network-runtime");android.util.AtomicFile file=new android.util.AtomicFile(new File(directory,ExitPreconnectEpoch.FILE));try{if(file.getBaseFile().isFile())epoch.writeExisting(directory);}catch(Exception unavailable){file.delete();}}}
   @Override public IBinder onBind(Intent intent){return endpoint.getBinder();}
   @Override public int onStartCommand(Intent intent,int flags,int startId){main.removeCallbacks(idleStop);notification();return START_NOT_STICKY;}

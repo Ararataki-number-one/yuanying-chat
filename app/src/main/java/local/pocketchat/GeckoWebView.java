@@ -61,7 +61,8 @@ class GeckoWebView extends FrameLayout {
   final ExecutorService uploadWorker=Executors.newSingleThreadExecutor();
   final List<GeckoUploadFiles.Selection> uploadFiles=new ArrayList<>();
   GeckoSession.SessionState startupState;
-  boolean checkpointReady,routePrepared,identityPrepared;float readingLayout=1;long zoomEpoch,recoveryWindow;int contentRecoveries;
+  boolean checkpointReady,checkpointRequested,routePrepared,identityPrepared,resourceDeferred;float readingLayout=1;long zoomEpoch,recoveryWindow;int contentRecoveries;
+  ResourcePressureController.Admission resourceAdmission=ResourcePressureController.Admission.START;
   GeckoSession zoomTarget;long zoomStarted;float zoomX,zoomY,zoomRadius;int readingFocusScrolls;boolean readingFocusHadClipping;float readingFocusScrollDelta;
   final Runnable recovery=()->recoverClosed();
   final Runnable checkpoint=this::saveCheckpoint;
@@ -88,9 +89,13 @@ class GeckoWebView extends FrameLayout {
   }
   static boolean active(Object web){return web instanceof GeckoWebView&&((GeckoWebView)web).enabled;}
   private void initialize(){
-    if(!enabled||destroyed||runtime!=null||failed)return;
+    if(!enabled||destroyed||owner.deleted||runtime!=null||failed)return;
+    if(!checkpointReady){if(!checkpointRequested){checkpointRequested=true;sessionStore.read(value->owner.handler.post(()->{if(destroyed)return;try{startupState=value==null?null:GeckoSession.SessionState.fromString(value);}catch(RuntimeException invalid){startupState=null;}checkpointReady=true;initialize();}));}return;}
+    ResourcePressureController.MemorySample memory=resourceMemory();
+    resourceAdmission=owner.resources.request(runtime!=null,startupState!=null||owner.resourceRestoreWork(),memory);
+    if(resourceAdmission==ResourcePressureController.Admission.DEFER){resourceDeferred=true;owner.setStatus(ResourcePressureController.DEFERRED_MESSAGE);return;}
+    resourceDeferred=false;
     try{
-      sessionStore.read(value->owner.handler.post(()->{if(destroyed)return;startupState=value==null?null:GeckoSession.SessionState.fromString(value);checkpointReady=true;maybeOpen();}));
       File directory=new File(owner.context.getNoBackupFilesDir(),"gecko-browser");
       if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("无法创建浏览器数据目录");
       File config=new File(owner.context.getNoBackupFilesDir(),"gecko-browser.yaml");
@@ -105,10 +110,14 @@ class GeckoWebView extends FrameLayout {
         .isolatedProcessEnabled(Build.VERSION.SDK_INT>=29).appZygoteProcessEnabled(false)
         .remoteDebuggingEnabled(false).consoleOutput(false).trustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_DISABLED)
         .forceUserScalableEnabled(true).inputAutoZoomEnabled(true).build());
+      owner.resources.runtimeCreated();
       runtime.getWebExtensionController().ensureBuiltIn("resource://android/assets/gecko/","browser@pocketchat.local")
         .accept(value->{if(destroyed)return;extension=value;extension.setMessageDelegate(routeMessages,"pocketroute");maybeOpen();},error->{if(!destroyed)failure("浏览器初始化失败，请重新打开当前环境重试");});
     }catch(Exception error){failure("新内核未能启动，请重新打开当前环境重试");}
   }
+  ResourcePressureController.MemorySample resourceMemory(){return owner.resources.sample();}
+  boolean retryResourceStart(){if(!resourceDeferred||destroyed||runtime!=null)return false;String target=queued.isEmpty()?owner.navigationTarget:queued;initialize();if(!resourceDeferred){if(!target.isEmpty())owner.beginNavigation(target,"正在打开当前环境");else owner.setStatus("正在打开当前环境");owner.wakePolling();}return true;}
+  boolean hasOpenPopup(){return !popups.isEmpty();}
   private final WebExtension.MessageDelegate routeMessages=new WebExtension.MessageDelegate(){
     @Override public void onConnect(WebExtension.Port port){
       if(destroyed||port.sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_EXTENSION)return;
@@ -247,17 +256,18 @@ class GeckoWebView extends FrameLayout {
           @Override public String getFilenameHint(){return "";}
           @Override public Intent createIntent(){return new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);}
         };
-        final long uploadEpoch=owner.navigationEpoch;
+        final long uploadEpoch=owner.navigationEpoch;owner.resourceFileWork(true,true);
         java.util.concurrent.atomic.AtomicBoolean selected=new java.util.concurrent.atomic.AtomicBoolean();
         boolean handled=chrome.onShowFileChooser(null,uris->{
-          if(!selected.compareAndSet(false,true))return;
+          if(!selected.compareAndSet(false,true))return;owner.resourceFileWork(true,false);
           if(uris==null||destroyed){if(!prompt.isComplete())result.complete(prompt.dismiss());return;}
+          owner.resourceFileWork(false,true);
           uploadWorker.execute(()->{try{
             GeckoUploadFiles.Selection files=GeckoUploadFiles.prepare(owner.context,uris);
-            owner.handler.post(()->{if(destroyed||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){new Thread(files::delete,"upload-cleanup").start();if(!prompt.isComplete())result.complete(prompt.dismiss());return;}uploadFiles.add(files);result.complete(prompt.confirm(owner.context,files.files));});
-          }catch(IOException error){owner.handler.post(()->{if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed){owner.setStatus(error.getMessage());android.widget.Toast.makeText(displayContext,error.getMessage(),android.widget.Toast.LENGTH_LONG).show();}});}});
+            owner.handler.post(()->{try{if(destroyed||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){new Thread(files::delete,"upload-cleanup").start();if(!prompt.isComplete())result.complete(prompt.dismiss());return;}uploadFiles.add(files);owner.resourceFilesPrepared(files.files,uploadEpoch);result.complete(prompt.confirm(owner.context,files.files));}finally{owner.resourceFileWork(false,false);}});
+          }catch(IOException error){owner.handler.post(()->{owner.resourceFileWork(false,false);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed)owner.setStatus(error.getMessage());});}});
         },params);
-        if(!handled&&selected.compareAndSet(false,true)&&!prompt.isComplete())result.complete(prompt.dismiss());return result;
+        if(!handled&&selected.compareAndSet(false,true)){owner.resourceFileWork(true,false);if(!prompt.isComplete())result.complete(prompt.dismiss());}return result;
       }
     });
     session.setPermissionDelegate(new GeckoSession.PermissionDelegate(){

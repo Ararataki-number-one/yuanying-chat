@@ -18,6 +18,7 @@ final class ExitPreconnectEpoch implements AutoCloseable {
   static final String FILE="preconnect-network-epoch";
   interface Changed { void run(); }
   final ConnectivityManager manager;
+  final Context context;
   final NetworkPoolIdentity.DefaultNetwork network=new NetworkPoolIdentity.DefaultNetwork();
   final Changed changed;
   NetworkPoolIdentity.NetworkSnapshot previous;
@@ -29,7 +30,7 @@ final class ExitPreconnectEpoch implements AutoCloseable {
     @Override public void onCapabilitiesChanged(Network n,NetworkCapabilities c){update(()->network.capabilities(n.toString(),c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)));}
   };
   ExitPreconnectEpoch(Context c,Changed changed){
-    this.changed=changed;manager=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);
+    this.context=c;this.changed=changed;manager=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);
     try{
       Network n=manager.getActiveNetwork();NetworkCapabilities caps=n==null?null:manager.getNetworkCapabilities(n);
       if(caps!=null)network.initial(n.toString(),caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN));
@@ -50,7 +51,9 @@ final class ExitPreconnectEpoch implements AutoCloseable {
     // removed environment when a network callback races with deletion.
     Path temporary=Files.createTempFile(directory.toPath(),"preconnect-",".tmp");
     try{
-      try(FileOutputStream stream=new FileOutputStream(temporary.toFile())){stream.write(value.getBytes(StandardCharsets.US_ASCII));stream.getFD().sync();}
+      String output=value;
+      if(output.startsWith("ready:")&&!ResourcePressureController.automaticWarmup(ResourcePressureController.read(context),android.os.SystemClock.elapsedRealtime()))output="blocked:pressure:"+output.substring(6);
+      try(FileOutputStream stream=new FileOutputStream(temporary.toFile())){stream.write(output.getBytes(StandardCharsets.US_ASCII));stream.getFD().sync();}
       Files.move(temporary,new File(directory,FILE).toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
     }finally{Files.deleteIfExists(temporary);}
   }
