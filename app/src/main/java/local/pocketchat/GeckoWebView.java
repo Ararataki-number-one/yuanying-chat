@@ -102,7 +102,7 @@ class GeckoWebView extends FrameLayout {
       runtime=GeckoRuntime.create(new GeckoEnvironmentContext(owner.context),new GeckoRuntimeSettings.Builder()
         .arguments(new String[]{"-profile",directory.getAbsolutePath()}).configFilePath(config.getAbsolutePath())
         .isolatedProcessEnabled(Build.VERSION.SDK_INT>=29).appZygoteProcessEnabled(false)
-        .remoteDebuggingEnabled(false).consoleOutput(false).trustedRecursiveResolverMode(5)
+        .remoteDebuggingEnabled(false).consoleOutput(false).trustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_DISABLED)
         .forceUserScalableEnabled(true).inputAutoZoomEnabled(true).build());
       runtime.getWebExtensionController().ensureBuiltIn("resource://android/assets/gecko/","browser@pocketchat.local")
         .accept(value->{if(destroyed)return;extension=value;extension.setMessageDelegate(routeMessages,"pocketroute");maybeOpen();},error->{if(!destroyed)failure("浏览器初始化失败，请重新打开当前环境重试");});

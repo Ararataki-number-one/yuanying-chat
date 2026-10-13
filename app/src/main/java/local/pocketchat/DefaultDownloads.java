@@ -1,5 +1,6 @@
 package local.pocketchat;
 
+import android.annotation.TargetApi;
 import android.content.*;
 import android.database.Cursor;
 import android.net.Uri;
@@ -24,6 +25,7 @@ final class DefaultDownloads {
     if(Build.VERSION.SDK_INT<29)return local(c,name);
     String actual=uniqueName(c,name);ContentValues values=new ContentValues();values.put(MediaStore.MediaColumns.DISPLAY_NAME,actual);values.put(MediaStore.MediaColumns.MIME_TYPE,mime);values.put(MediaStore.MediaColumns.RELATIVE_PATH,directory(c));values.put(MediaStore.MediaColumns.IS_PENDING,1);Uri uri=c.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);if(uri==null)throw new IOException("默认下载目录不可用，可在下载管理中另存为");try(Cursor row=c.getContentResolver().query(uri,new String[]{MediaStore.MediaColumns.DISPLAY_NAME},null,null,null)){if(row!=null&&row.moveToFirst())actual=row.getString(0);}catch(Exception ignored){}return new Target(c,uri,actual,directory(c)+actual,null);
   }
+  @TargetApi(29)
   static String uniqueName(Context c,String name)throws IOException {String clean=FileDownloads.safeName(name);int dot=clean.lastIndexOf('.');String base=dot>0?clean.substring(0,dot):clean,ext=dot>0?clean.substring(dot):"";for(int i=0;i<10000;i++){String candidate=i==0?clean:base+" ("+i+")"+ext;try(Cursor row=c.getContentResolver().query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,new String[]{MediaStore.MediaColumns._ID},MediaStore.MediaColumns.RELATIVE_PATH+"=? AND "+MediaStore.MediaColumns.DISPLAY_NAME+"=?",new String[]{directory(c),candidate},null)){if(row==null)throw new IOException("无法确认默认文件名");if(!row.moveToFirst())return candidate;}}throw new IOException("同名文件过多，请在下载管理中另存为");}
   static Target local(Context c,String name)throws IOException {
     String clean=FileDownloads.safeName(name);if(clean.equals(".")||clean.equals("..")||clean.equals("payload.part"))clean="文件_"+clean.replace('.','_');String id=UUID.randomUUID().toString();File folder=new File(c.getFilesDir(),"saved-downloads/"+id);if(!folder.mkdirs())throw new IOException("应用文件目录无法创建");Uri uri=new Uri.Builder().scheme("content").authority(c.getPackageName()+".saved-downloads").appendPath(String.valueOf(Profiles.slot(c))).appendPath(id).appendPath(clean).build();return new Target(c,uri,clean,"应用内文件/窗口_"+(Profiles.slot(c)+1)+"/"+clean,new File(folder,clean));
