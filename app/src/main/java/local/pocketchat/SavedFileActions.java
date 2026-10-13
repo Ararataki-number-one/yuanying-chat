@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 
 /** Saved files can be opened, shared, copied or removed without another download. */
 final class SavedFileActions {
-  static final int EXPORT=85;final Activity a;final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler(Looper.getMainLooper());JSONObject exporting;volatile boolean closed,busy;
+  static final int EXPORT=85;final Activity a;final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler(Looper.getMainLooper());JSONObject exporting;volatile boolean closed,busy;String deleteProblem="";
   SavedFileActions(Activity a){this.a=a;}
   void show(JSONObject row){new AlertDialog.Builder(a).setTitle(row.optString("name","文件")).setItems(new String[]{"打开","分享","另存为","查看保存位置","删除文件"},(d,n)->{if(n==0)open(a,row);if(n==1)share(a,row);if(n==2)export(row);if(n==3)new AlertDialog.Builder(a).setTitle("保存位置").setMessage(row.optString("location","原先选择的保存位置")+"\n\n如果文件被移动或删除，请从原网页重新下载。").setPositiveButton("关闭",null).show();if(n==4)confirmDelete(row);}).show();}
   AlertDialog confirmDelete(JSONObject row){
@@ -26,9 +26,10 @@ final class SavedFileActions {
     worker.execute(()->{
       String error="";try{SavedFileDeletion.remove(a,row);}catch(Exception e){error=e.getMessage()==null?"删除失败，下载记录已保留":e.getMessage();}
       String message=error;main.post(()->{busy=false;if(closed)return;
-        if(!message.isEmpty())problem(a,message);
+        if(!message.isEmpty()){deleteProblem=message;problem(a,message);}
         else if(a instanceof DownloadCenterActivity){DownloadCenterActivity center=(DownloadCenterActivity)a;center.showProblem("");center.refresh();}
-        else if(a instanceof MainActivity){MainActivity host=(MainActivity)a;if(host.hub!=null&&host.hub.page==AppHub.DOWNLOADS)host.hub.refresh();}
+        else if(a instanceof MainActivity){MainActivity host=(MainActivity)a;if(!deleteProblem.isEmpty()){if(host.hub!=null&&android.text.TextUtils.equals(host.hub.feedbackText.getText(),deleteProblem))host.hub.feedbackBar.setVisibility(android.view.View.GONE);if(host.status!=null&&android.text.TextUtils.equals(host.status.getText(),"文件操作失败："+deleteProblem))host.status.setVisibility(android.view.View.GONE);}if(host.hub!=null&&host.hub.page==AppHub.DOWNLOADS)host.hub.refresh();}
+        if(message.isEmpty())deleteProblem="";
       });
     });
   }
@@ -53,6 +54,6 @@ final class SavedFileActions {
     });
   }
   static void delete(Context c,Uri uri){try{if(android.provider.DocumentsContract.isDocumentUri(c,uri))android.provider.DocumentsContract.deleteDocument(c.getContentResolver(),uri);else c.getContentResolver().delete(uri,null,null);}catch(Exception ignored){}}
-  static void problem(Activity a,String message){if(a instanceof MainActivity)((MainActivity)a).status(message);else if(a instanceof DownloadCenterActivity)((DownloadCenterActivity)a).showProblem(message);else if(a instanceof WindowHomeActivity)((WindowHomeActivity)a).showProblem(message);}
+  static void problem(Activity a,String message){if(a instanceof MainActivity){MainActivity host=(MainActivity)a;if(host.hub!=null&&host.hub.page!=AppHub.CHAT)host.hub.feedback(message,true);else host.status("文件操作失败："+message);}else if(a instanceof DownloadCenterActivity)((DownloadCenterActivity)a).showProblem(message);else if(a instanceof WindowHomeActivity)((WindowHomeActivity)a).showProblem(message);}
   void close(){closed=true;worker.shutdown();}
 }
