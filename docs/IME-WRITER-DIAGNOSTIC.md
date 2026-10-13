@@ -44,15 +44,18 @@ rejects the transformed AAR. The installed APK stamp must match the receipt
 before diagnostic execution; the activity rejects a tainted SDK invoked as
 ordinary performance acceptance.
 
-The dispatch-only `gecko-ime-writer-diagnostics.yml` uses the current pinned
+The source-branch-specific `gecko-ime-writer-diagnostics.yml` uses the current pinned
 toolchain and emulator preflight. It performs one trial, keeps failure status
-and all evidence, and uploads an Actions artifact without any APK, key,
-browser profile, release publisher or shared candidate-artifact branch.
+and all evidence. A fixed allowlist preserves raw synthetic text/JSON/screens
+under `debug/gecko-ime-writer-evidence-1f970ea`, with an exact source first
+parent, immutable run path and SHA manifest. It never publishes an APK, AAR,
+class file, key, browser profile or shared candidate-artifact branch. Actions
+upload is secondary. Repeated workflow attempts are rejected.
 
-After review and pushing this isolated branch, the intended invocation is:
+After review, this push triggers the single diagnostic trial:
 
 ```sh
-gh workflow run gecko-ime-writer-diagnostics.yml --ref review/ime-writer-diagnostic-1f970ea
+git push origin review/ime-writer-diagnostic-1f970ea
 ```
 
 Inspect the retained input shape before interpreting SDK logs. The required

@@ -48,14 +48,16 @@ dependencies {
 def imeWriterAar = providers.gradleProperty('imeWriterDiagnosticAar')
 def imeWriterReceipt = providers.gradleProperty('imeWriterDiagnosticReceipt')
 def imeWriterReceiptSha = providers.gradleProperty('imeWriterDiagnosticReceiptSha256')
-if (imeWriterAar.isPresent() != imeWriterReceipt.isPresent() || imeWriterAar.isPresent() != imeWriterReceiptSha.isPresent())
-    throw new GradleException('Diagnostic AAR, receipt and receipt SHA must be supplied together')
+def imeWriterPom = providers.gradleProperty('imeWriterDiagnosticPom')
+if (imeWriterAar.isPresent() != imeWriterReceipt.isPresent() || imeWriterAar.isPresent() != imeWriterReceiptSha.isPresent() || imeWriterAar.isPresent() != imeWriterPom.isPresent())
+    throw new GradleException('Diagnostic AAR, official POM, receipt and receipt SHA must be supplied together')
 if (imeWriterAar.isPresent()) {
     if (gradle.startParameter.taskNames != [':app:assembleIntegration'])
         throw new GradleException('Tainted SDK requires exactly the explicit :app:assembleIntegration request')
     def aar = file(imeWriterAar.get())
     def receipt = file(imeWriterReceipt.get())
-    if (!aar.isFile() || !receipt.isFile()) throw new GradleException('Diagnostic SDK inputs unavailable')
+    def pom = file(imeWriterPom.get())
+    if (!aar.isFile() || !receipt.isFile() || !pom.isFile()) throw new GradleException('Diagnostic SDK inputs unavailable')
     def identity = new groovy.json.JsonSlurper().parse(receipt)
     def hash = { File path -> java.security.MessageDigest.getInstance('SHA-256').digest(path.bytes).encodeHex().toString() }
     def gitValue = { String argument -> providers.exec {
@@ -66,21 +68,49 @@ if (imeWriterAar.isPresent()) {
         commandLine 'git', '-C', rootProject.projectDir, 'status', '--porcelain', '--untracked-files=normal'
     }.standardOutput.asText.get().trim()
     def official = new groovy.json.JsonSlurper().parse(rootProject.file('third-party/sdk/geckoview-157.0.1-official.json'))
+    def classpathFile = rootProject.file('work/gecko-ime-writer-diagnostics/compile-classpath.json')
+    if (!classpathFile.isFile() || identity.compileClasspathReceiptSha256 != hash(classpathFile))
+        throw new GradleException('Official SDK dependency graph receipt unavailable or changed')
+    def originalClasspath = new groovy.json.JsonSlurper().parse(classpathFile)
     if (identity.schema != 1 || identity.diagnosticOnly != true || identity.releaseAcceptance != false
         || identity.sdkInputWriterDiagnosticsEnabled != true || identity.nativeArchivesIdentical != true
         || identity.javaApiIdentical != true || identity.debugFalsePreserved != true
         || identity.inputBehaviorChanged != false || identity.diagnosticAarSha256 != hash(aar)
         || identity.sourceCommit != source || identity.sourceTree != tree || !dirty.isEmpty()
+        || originalClasspath.sourceCommit != source
         || identity.sourceTransformPath != 'tools/gecko/build_ime_writer_diagnostic.py'
         || identity.sourceTransformSha256 != hash(rootProject.file(identity.sourceTransformPath))
         || identity.sdkCoordinate != official.coordinate || identity.officialAarSha256 != official.aar.sha256
         || identity.officialSourcesSha256 != official.sources.sha256 || identity.officialClassesJarSha256 != official.classesJarSha256
+        || identity.officialPomSha256 != official.pom.sha256 || hash(pom) != official.pom.sha256
         || !(imeWriterReceiptSha.get() ==~ /[0-9a-f]{64}/) || imeWriterReceiptSha.get() != hash(receipt))
         throw new GradleException('Diagnostic SDK receipt rejected')
     configurations.matching { it.name.startsWith('integration') }.configureEach {
         exclude group: 'org.mozilla.geckoview', module: 'geckoview'
     }
     dependencies.add('integrationImplementation', files(aar))
+    // Excluding the official artifact also removes its POM graph. Restore the
+    // exact verified direct dependencies with their original Maven scopes.
+    new groovy.xml.XmlSlurper().parse(pom).dependencies.dependency.each { dependency ->
+        def scope = dependency.scope.text()
+        if (!(scope in ['compile', 'runtime', ''])) throw new GradleException('Unexpected pinned SDK dependency scope')
+        dependencies.add(scope == 'runtime' ? 'integrationRuntimeOnly' : 'integrationImplementation',
+            "${dependency.groupId.text()}:${dependency.artifactId.text()}:${dependency.version.text()}")
+    }
+    tasks.named('preBuild').configure {
+        doFirst {
+            if (hash(aar) != identity.diagnosticAarSha256 || hash(receipt) != imeWriterReceiptSha.get()
+                || hash(pom) != official.pom.sha256 || hash(classpathFile) != identity.compileClasspathReceiptSha256
+                || hash(rootProject.file(identity.sourceTransformPath)) != identity.sourceTransformSha256)
+                throw new GradleException('Diagnostic build inputs changed after configuration')
+            def expected = originalClasspath.artifacts.collect { it.sha256 }.toSet()
+            if (!expected.remove(official.aar.sha256)) throw new GradleException('Original graph does not contain the pinned official AAR')
+            expected.add(identity.diagnosticAarSha256)
+            def resolved = configurations.integrationCompileClasspath.resolve() + configurations.integrationRuntimeClasspath.resolve()
+            def actual = resolved.toSet().collect { hash(it) }.toSet()
+            if (actual != expected) throw new GradleException('Diagnostic override changed the official dependency graph beyond the log-only AAR')
+        }
+    }
     gradle.taskGraph.whenReady { graph ->
         if (!graph.allTasks.any { it.path == ':app:assembleIntegration' }
             || graph.allTasks.any { it.name.toLowerCase().contains('release') })
@@ -96,7 +126,7 @@ tasks.register('prepareImeWriterDiagnosticClasspath') {
             commandLine 'git', '-C', rootProject.projectDir, 'rev-parse', 'HEAD'
         }.standardOutput.asText.get().trim()
         def hash = { File path -> java.security.MessageDigest.getInstance('SHA-256').digest(path.bytes).encodeHex().toString() }
-        def androidJar = android.bootClasspath.find { it.name == 'android.jar' }
+        def androidJar = androidComponents.sdkComponents.bootClasspath.get().collect { it.asFile }.find { it.name == 'android.jar' }
         if (androidJar == null) throw new GradleException('Android compile API unavailable')
         def resolved = configurations.integrationCompileClasspath.resolve() + configurations.integrationRuntimeClasspath.resolve()
         def artifacts = resolved.toSet().sort { it.absolutePath }.collect {

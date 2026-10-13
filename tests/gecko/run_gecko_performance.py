@@ -9,7 +9,7 @@ SDK_IME_BASE_SOURCE = '1f970ea51f90466fb69fc282692ecb535c38ce64'
 SDK_IME_TRANSFORM = 'tools/gecko/build_ime_writer_diagnostic.py'
 
 
-def sdk_ime_receipt(path, source):
+def sdk_ime_receipt(path, source, tree):
     """Bind the explicitly modified, test-only SDK to its frozen build receipt."""
     raw = pathlib.Path(path).read_bytes()
     if len(raw) > 131072:
@@ -18,8 +18,9 @@ def sdk_ime_receipt(path, source):
     if not isinstance(value, dict) or type(value.get('schema')) is not int:
         raise ValueError('SDK IME transform receipt must be a versioned JSON object')
     official = json.loads((ROOT / 'third-party/sdk/geckoview-157.0.1-official.json').read_text())
-    expected = dict(schema=1, sourceCommit=source, baseSourceCommit=SDK_IME_BASE_SOURCE,
+    expected = dict(schema=1, sourceCommit=source, sourceTree=tree, baseSourceCommit=SDK_IME_BASE_SOURCE,
                     sdkCoordinate=official['coordinate'], officialAarSha256=official['aar']['sha256'],
+                    officialPomSha256=official['pom']['sha256'],
                     officialSourcesSha256=official['sources']['sha256'], sourceTransformPath=SDK_IME_TRANSFORM)
     for key, wanted in expected.items():
         if value.get(key) != wanted:
@@ -29,7 +30,8 @@ def sdk_ime_receipt(path, source):
                             javaApiIdentical=True, debugFalsePreserved=True, inputBehaviorChanged=False).items():
         if value.get(key) is not wanted:
             raise ValueError('SDK IME transform receipt must explicitly declare: ' + key)
-    for key in ['diagnosticAarSha256', 'diagnosticClassesJarSha256', 'sourceTransformSha256']:
+    for key in ['diagnosticAarSha256', 'diagnosticClassesJarSha256', 'sourceTransformSha256',
+                'compileClasspathReceiptSha256']:
         if not isinstance(value.get(key), str) or not re.fullmatch(r'[0-9a-f]{64}', value[key]):
             raise ValueError('SDK IME transform receipt has invalid digest: ' + key)
     if value['diagnosticAarSha256'] == official['aar']['sha256'] or value['diagnosticClassesJarSha256'] == official['classesJarSha256']:
@@ -203,9 +205,10 @@ def main():
     sdk_receipt = sdk_receipt_sha = installed_sdk_identity = None
     if args.sdk_ime_log:
         source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+        tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=ROOT, text=True).strip()
         if subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=normal'], cwd=ROOT, text=True).strip():
             raise ValueError('SDK IME diagnostic execution requires a clean committed source tree')
-        sdk_receipt, sdk_receipt_raw, sdk_receipt_sha = sdk_ime_receipt(args.sdk_ime_receipt, source)
+        sdk_receipt, sdk_receipt_raw, sdk_receipt_sha = sdk_ime_receipt(args.sdk_ime_receipt, source, tree)
         (OUT / 'gecko-sdk-ime-transform-receipt.json').write_bytes(sdk_receipt_raw)
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
     receipt = json.loads((baseline_root / 'source.json').read_text())
@@ -225,6 +228,7 @@ def main():
 
     package = 'local.pocketchat.test'
     scroll_samples, scroll_touches, scroll_dom_events, scroll_errors = {}, {}, {}, {}
+    sdk_input_clocks = {}
 
     def sdk_diagnostic_report(value):
         if args.sdk_ime_log:
@@ -233,6 +237,7 @@ def main():
                          sdkInputWriterTransformReceiptSha256=sdk_receipt_sha,
                          sdkInputWriterTransformReceipt=sdk_receipt,
                          sdkInputWriterInstalledBuildIdentity=installed_sdk_identity,
+                         actualSdkInputClockTrace=list(sdk_input_clocks.values()),
                          sdkInputWriterDiagnosticScope='Log-only Java SDK instrumentation can affect timing. '
                          'Original assertions, passive DOM listeners, real tap and single Android input text burst remain unchanged. '
                          'This transformed SDK is diagnostic-only and cannot establish release acceptance.')
@@ -357,6 +362,11 @@ def main():
                 elif item['kind'] == 'nativeInputTrace':
                     trace = item['value']
                     native_input_events[trace['seq']] = trace
+                elif item['kind'] == 'sdkInputClock' and args.sdk_ime_log:
+                    trace = item['value']
+                    # The same logcat buffer is reread; retain the single actual
+                    # passive clock anchor without replaying or synthesizing it.
+                    sdk_input_clocks[json.dumps(trace, sort_keys=True)] = trace
                 elif item['kind'] == 'report':
                     report = item['value']
                 elif item['kind'] in ['load', 'route', 'loadError']:
@@ -396,6 +406,7 @@ def main():
                     assert not native_input_events, 'Normal regression unexpectedly attached native diagnostic observers'
                 if args.sdk_ime_log:
                     assert report.get('sdkInputWriterDiagnosticsEnabled') is True, 'Activity did not confirm SDK IME diagnostic mode'
+                    assert len(sdk_input_clocks) == 1, 'Diagnostic SDK clock anchor must be observed exactly once'
                     assert report['sdkInputWriterLogCapture']['sdkLogLines'] > 0, 'Diagnostic SDK did not emit its SDK IME witness log'
                 if args.native_input_diagnostics:
                     assert native_input_events and all(event['mode'] == 'buffered-primitives' for event in native_input_events.values()), report

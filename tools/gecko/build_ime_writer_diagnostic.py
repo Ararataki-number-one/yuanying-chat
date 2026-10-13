@@ -38,7 +38,7 @@ def transform(source):
     # DEBUG stays false: in particular, no IC wrapper/debug proxy is enabled.
     source = exactly(source, 'private static final boolean LOGGING = BuildConfig.NIGHTLY_BUILD;',
                      'private static final boolean LOGGING = true;')
-    source = source.replace('MozLog.d(MOZLOGTAG,', 'diagnosticLog(MOZLOGTAG,')
+    source = re.sub(r'MozLog\.d\(\s*MOZLOGTAG,', 'diagnosticLog(MOZLOGTAG,', source)
     helper = '''
   // DIAGNOSTIC ONLY: logs do not replace the IC, listener, or native delegate.
   private static final AtomicInteger DIAGNOSTIC_SEQUENCE = new AtomicInteger();
@@ -103,13 +103,14 @@ def rewrite_archive(original, destination, replacements):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ['aar', 'sources', 'output', 'receipt', 'classpath-json']:
+    for name in ['aar', 'pom', 'sources', 'output', 'receipt', 'classpath-json']:
         parser.add_argument('--' + name, required=True, type=pathlib.Path)
     args = parser.parse_args()
     pinned = json.loads((ROOT / 'third-party/sdk/geckoview-157.0.1-official.json').read_text())
     aar_hash = digest(args.aar.read_bytes())
+    pom_hash = digest(args.pom.read_bytes())
     sources_hash = digest(args.sources.read_bytes())
-    if aar_hash != pinned['aar']['sha256'] or sources_hash != pinned['sources']['sha256']:
+    if aar_hash != pinned['aar']['sha256'] or pom_hash != pinned['pom']['sha256'] or sources_hash != pinned['sources']['sha256']:
         raise ValueError('Diagnostic input is not the pinned official SDK')
     classpath = json.loads(args.classpath_json.read_text())
     source_commit = command('git', '-C', str(ROOT), 'rev-parse', 'HEAD').strip()
@@ -129,6 +130,12 @@ def main():
             official_jar.write_bytes(archive.read('classes.jar'))
         if digest(official_jar.read_bytes()) != pinned['classesJarSha256']:
             raise ValueError('Official classes.jar mismatch')
+        with zipfile.ZipFile(official_jar) as archive:
+            class_version = int.from_bytes(archive.read(CLASS + '.class')[6:8], 'big')
+        # Match the official compiler target, including its nestmate ABI.
+        java_target = str(class_version - 44)
+        if java_target != '17':
+            raise ValueError('Pinned official Java classfile target changed')
         with zipfile.ZipFile(args.sources) as archive:
             original = archive.read(SOURCE)
         if digest(original) != pinned['geckoEditableSourceSha256']:
@@ -153,7 +160,7 @@ def main():
                 compile_paths.append(path)
         compiled = temporary / 'compiled'
         compiled.mkdir()
-        javac_output = command('javac', '-encoding', 'UTF-8', '-source', '8', '-target', '8',
+        javac_output = command('javac', '-encoding', 'UTF-8', '-source', java_target, '-target', java_target,
                                '-proc:none', '-classpath', ':'.join(map(str, compile_paths)),
                                '-d', str(compiled), str(java_file))
         replacements = {str(path.relative_to(compiled)): path.read_bytes()
@@ -171,7 +178,7 @@ def main():
             if any(after.get(member) != descriptor for member, descriptor in before.items()):
                 raise ValueError('Original Java/native member shape changed: ' + name)
             added = set(after) - set(before)
-            if (name != CLASS + '.class' and added) or any('DIAGNOSTIC_SEQUENCE' not in x and 'diagnosticLog(' not in x and 'diagnosticReplace(' not in x for x in added):
+            if (name != CLASS + '.class' and added) or any('DIAGNOSTIC_SEQUENCE' not in x and 'diagnosticLog(' not in x and 'diagnosticReplace(' not in x and x != 'static {};' for x in added):
                 raise ValueError('Unexpected additional Java members: ' + name)
         dump = command('javap', '-classpath', str(diagnostic_jar), '-p', '-constants', CLASS.replace('/', '.'))
         if 'private static final boolean DEBUG = false;' not in dump:
@@ -191,6 +198,7 @@ def main():
             sdkInputWriterDiagnosticsEnabled=True, sourceCommit=source_commit,
             sourceTree=command('git', '-C', str(ROOT), 'rev-parse', 'HEAD^{tree}').strip(), baseSourceCommit=BASE,
             sdkCoordinate=pinned['coordinate'], officialAarSha256=aar_hash,
+            officialPomSha256=pom_hash,
             officialSourcesSha256=sources_hash, officialClassesJarSha256=pinned['classesJarSha256'],
             officialGeckoEditableSourceSha256=digest(original),
             modifiedGeckoEditableSourceSha256=digest(modified.encode()),
@@ -198,9 +206,11 @@ def main():
             diagnosticClassesJarSha256=digest(diagnostic_jar.read_bytes()),
             sourceTransformPath=str(pathlib.Path(__file__).resolve().relative_to(ROOT)),
             sourceTransformSha256=digest(pathlib.Path(__file__).read_bytes()),
+            compileClasspathReceiptSha256=digest(args.classpath_json.read_bytes()),
             nativeArchivesIdentical=True, nativeArchiveSha256=native, javaApiIdentical=True,
             debugFalsePreserved=True, inputBehaviorChanged=False,
             transformedClassFiles=sorted(expected),
+            officialClassfileMajorVersion=class_version, diagnosticJavaTarget=java_target,
             loggingOnlyChanges=['Enable existing LOGGING blocks and route them to Android logcat',
                 'Record actual ranges immediately before both unchanged onImeReplaceText calls',
                 'Record action identity at native ACK and accepted native selection callback'],

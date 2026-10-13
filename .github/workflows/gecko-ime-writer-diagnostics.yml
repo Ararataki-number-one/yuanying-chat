@@ -1,17 +1,22 @@
 name: Gecko IME rollback writer diagnostics
 on:
+  push:
+    branches: [review/ime-writer-diagnostic-1f970ea]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: gecko-ime-writer-diagnostics-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   diagnose:
+    if: github.run_attempt == 1 && github.ref == 'refs/heads/review/ime-writer-diagnostic-1f970ea'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
       - name: Prepare the pinned diagnostic toolchain and official SDK
         id: setup
         shell: bash
@@ -31,7 +36,8 @@ jobs:
           curl -fsSL --retry 3 "$sdk_url.aar" -o "$diagnostic_root/official/geckoview.aar"
           curl -fsSL --retry 3 "$sdk_url.pom" -o "$diagnostic_root/official/geckoview.pom"
           curl -fsSL --retry 3 "$sdk_url-sources.jar" -o "$diagnostic_root/official/geckoview-sources.jar"
-          python3 tools/gecko/verify_official_sdk.py --aar "$diagnostic_root/official/geckoview.aar" --pom "$diagnostic_root/official/geckoview.pom" --sources "$diagnostic_root/official/geckoview-sources.jar" | tee "$diagnostic_root/evidence/official-sdk-input-verification.json"
+          python3 tools/gecko/verify_official_sdk.py --aar "$diagnostic_root/official/geckoview.aar" --pom "$diagnostic_root/official/geckoview.pom" --sources "$diagnostic_root/official/geckoview-sources.jar" | tee "$diagnostic_root/official-sdk-input-verification.tmp.json"
+          mv "$diagnostic_root/official-sdk-input-verification.tmp.json" "$diagnostic_root/evidence/official-sdk-input-verification.json"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
       - name: Resolve the unchanged integration compile classpath
@@ -41,7 +47,8 @@ jobs:
           set -euo pipefail
           diagnostic_root="$PWD/work/gecko-ime-writer-diagnostics"
           "$diagnostic_root/gradle/gradle-9.8.0/bin/gradle" :app:prepareImeWriterDiagnosticClasspath --console=plain 2>&1 | tee "$diagnostic_root/evidence/classpath.log"
-          python3 tools/gecko/verify_official_sdk.py --aar "$diagnostic_root/official/geckoview.aar" --pom "$diagnostic_root/official/geckoview.pom" --sources "$diagnostic_root/official/geckoview-sources.jar" --gradle-cache "${GRADLE_USER_HOME:-$HOME/.gradle}" | tee "$diagnostic_root/evidence/official-sdk-resolved-verification.json"
+          python3 tools/gecko/verify_official_sdk.py --aar "$diagnostic_root/official/geckoview.aar" --pom "$diagnostic_root/official/geckoview.pom" --sources "$diagnostic_root/official/geckoview-sources.jar" --gradle-cache "${GRADLE_USER_HOME:-$HOME/.gradle}" | tee "$diagnostic_root/official-sdk-resolved-verification.tmp.json"
+          mv "$diagnostic_root/official-sdk-resolved-verification.tmp.json" "$diagnostic_root/evidence/official-sdk-resolved-verification.json"
           cp "$diagnostic_root/compile-classpath.json" "$diagnostic_root/evidence/compile-classpath.json"
       - name: Build the diagnostic SDK transform and its receipt
         id: transform
@@ -49,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           diagnostic_root="$PWD/work/gecko-ime-writer-diagnostics"
-          python3 tools/gecko/build_ime_writer_diagnostic.py --aar "$diagnostic_root/official/geckoview.aar" --sources "$diagnostic_root/official/geckoview-sources.jar" --classpath-json "$diagnostic_root/compile-classpath.json" --output "$diagnostic_root/geckoview-ime-writer-diagnostic.aar" --receipt "$diagnostic_root/ime-writer-transform.json" 2>&1 | tee "$diagnostic_root/evidence/transform.log"
+          python3 tools/gecko/build_ime_writer_diagnostic.py --aar "$diagnostic_root/official/geckoview.aar" --pom "$diagnostic_root/official/geckoview.pom" --sources "$diagnostic_root/official/geckoview-sources.jar" --classpath-json "$diagnostic_root/compile-classpath.json" --output "$diagnostic_root/geckoview-ime-writer-diagnostic.aar" --receipt "$diagnostic_root/ime-writer-transform.json" 2>&1 | tee "$diagnostic_root/evidence/transform.log"
           cp "$diagnostic_root/ime-writer-transform.json" "$diagnostic_root/evidence/ime-writer-transform.json"
       - name: Compile only the isolated diagnostic integration package
         id: build
@@ -58,7 +65,7 @@ jobs:
           set -euo pipefail
           diagnostic_root="$PWD/work/gecko-ime-writer-diagnostics"
           diagnostic_receipt_sha="$(sha256sum "$diagnostic_root/ime-writer-transform.json" | cut -d ' ' -f1)"
-          "$diagnostic_root/gradle/gradle-9.8.0/bin/gradle" :app:assembleIntegration -PtestSigningKey="$diagnostic_root/integration-test.jks" -PimeWriterDiagnosticAar="$diagnostic_root/geckoview-ime-writer-diagnostic.aar" -PimeWriterDiagnosticReceipt="$diagnostic_root/ime-writer-transform.json" -PimeWriterDiagnosticReceiptSha256="$diagnostic_receipt_sha" --console=plain 2>&1 | tee "$diagnostic_root/evidence/build.log"
+          "$diagnostic_root/gradle/gradle-9.8.0/bin/gradle" :app:assembleIntegration -PtestSigningKey="$diagnostic_root/integration-test.jks" -PimeWriterDiagnosticAar="$diagnostic_root/geckoview-ime-writer-diagnostic.aar" -PimeWriterDiagnosticPom="$diagnostic_root/official/geckoview.pom" -PimeWriterDiagnosticReceipt="$diagnostic_root/ime-writer-transform.json" -PimeWriterDiagnosticReceiptSha256="$diagnostic_receipt_sha" --console=plain 2>&1 | tee "$diagnostic_root/evidence/build.log"
           python3 tools/gecko/verify_ime_writer_apk.py --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --receipt "$diagnostic_root/ime-writer-transform.json" --output "$diagnostic_root/evidence/ime-writer-apk-verification.json" 2>&1 | tee "$diagnostic_root/evidence/apk-verification.log"
       - name: Observe one unchanged Android input burst on Android 35
         id: gecko
@@ -143,11 +150,14 @@ jobs:
                                  for name in ['setup', 'classpath', 'transform', 'build', 'gecko']}, artifacts=files)
           (root / 'manifest.json').write_text(json.dumps(value, indent=2) + '\n')
           PYCODE
+      - name: Preserve sanitized diagnostic evidence in its own Git branch
+        if: always()
+        run: python3 tools/gecko/publish_ime_writer_diagnostics.py
       - name: Upload synthetic diagnostic evidence only
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gecko-ime-writer-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
-          path: work/gecko-ime-writer-diagnostics/evidence/
+          path: work/gecko-ime-writer-diagnostics/sanitized-evidence/
           if-no-files-found: error
           retention-days: 14
