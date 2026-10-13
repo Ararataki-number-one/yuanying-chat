@@ -43,7 +43,14 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   boolean completionVisible(Context c,String id){StatusBarNotification n=notice(Profiles.notification(c,4102));return n!=null&&ChatService.open(c,job.optString("confirmedUrl"),"done:"+id).equals(n.getNotification().contentIntent);}
   void seed(String channel,int id){manager.createNotificationChannel(new NotificationChannel(channel,"旧版本状态提醒",NotificationManager.IMPORTANCE_DEFAULT));manager.notify(id,new Notification.Builder(this,channel).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("旧版提示").build());}
   void begin(){try{
+    // Production creation clears profile preferences. Finish it before seeding
+    // reminder settings and legacy receipts in this freshly cleared test app.
+    Profiles.prepare(this,7,false);Profiles.prepare(this,6,false);
     owner=Profiles.context(this,7);other=Profiles.context(this,6);
+    ProfileCatalog catalog=ProfileCatalog.get(this);
+    EnvironmentSpec.Identity ownerIdentity=catalog.identity(7),otherIdentity=catalog.identity(6);
+    if(!catalog.available(7)||!catalog.available(6)||ownerIdentity.slot!=7||otherIdentity.slot!=6||ownerIdentity.environmentId.equals(otherIdentity.environmentId)
+        ||!owner.getSharedPreferences("chat",0).getBoolean("environmentInitialized",false)||!other.getSharedPreferences("chat",0).getBoolean("environmentInitialized",false))throw new IllegalStateException("Notification fixtures require two initialized production environments");
     check("Background completion reminders are off by default",!AppSettings.backgroundCompletionNotice(owner));
     check("Browser and network child processes cannot count as visible UI",!QuietNotifications.uiProcess(getPackageName()+":gecko_env7_tab0_disable_art_image_",getPackageName())&&!QuietNotifications.uiProcess(getPackageName()+":network",getPackageName())&&QuietNotifications.uiProcess(getPackageName()+":profile7",getPackageName()));
     for(int slot:new int[]{6,7}){Context c=Profiles.context(this,slot);c.getSharedPreferences("chat",0).edit().putBoolean("replyNotice",true).commit();manager.cancel(Profiles.notification(c,4102));}
