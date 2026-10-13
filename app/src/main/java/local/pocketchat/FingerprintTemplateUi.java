@@ -53,7 +53,7 @@ final class FingerprintTemplateUi {
     });
   }
   static String summary(ChatSession session,EnvironmentSpec spec){
-    StringBuilder out=new StringBuilder("当前内核：").append(GeckoWebView.VERSION).append("\n").append(GeckoPolicyAdapter.summary());
+    StringBuilder out=new StringBuilder("当前内核：").append(GeckoWebView.VERSION).append("\n").append(GeckoPolicyAdapter.summary()).append("\n").append(NativeCapabilityManifest.officialGecko().unsupportedSummary());
     if(spec!=null)out.append("\n\n期望环境配置版本：").append(spec.desiredRevision).append("\n完整环境确认版本：").append(spec.appliedRevision).append("\n最近观测版本：").append(spec.observedRevision);
     else out.append("\n环境配置暂未读取");
     GeckoSettings metadata=session.web.getSettings();out.append("\n当前内核确认：").append(metadata.policyAcknowledged?"已确认当前设置":"尚未完成");

@@ -72,6 +72,31 @@ jobs:
           set -euo pipefail
           work/profile-build/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration :app:lintRelease -PtestSigningKey="$PWD/work/profile-build/integration-test.jks" --console=plain 2>&1 | tee work/profile-build/build.log
           python3 tools/gecko/verify_official_sdk.py --aar work/profile-build/geckoview.aar --pom work/profile-build/geckoview.pom --sources work/profile-build/geckoview-sources.jar --gradle-cache "${GRADLE_USER_HOME:-$HOME/.gradle}" | tee work/profile-build/official-sdk-verification.json
+      - name: Check integration stamp and keep it out of release APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f tests/gecko/run_profile_features.py ]; then
+            python3 - <<'PYCODE'
+          import importlib.util,json,pathlib,re,subprocess,zipfile
+          root=pathlib.Path.cwd()
+          spec=importlib.util.spec_from_file_location('profile_runner',root/'tests/gecko/run_profile_features.py')
+          runner=importlib.util.module_from_spec(spec);spec.loader.exec_module(runner)
+          source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
+          settings=(root/'app/build.gradle').read_text()
+          version=re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'",settings).group(1)
+          code=int(re.search(r'versionCode ([0-9]+)',settings).group(1))
+          integration=sorted((root/'app/build/outputs/apk/integration').glob('app-*-integration.apk'))
+          release=sorted((root/'app/build/outputs/apk/release').glob('app-*-release-unsigned.apk'))
+          assert len(integration)==2 and len(release)==2,'Both pinned ABI variants must be built'
+          identities=[runner.expected_build(apk,source,tree,version,code) for apk in integration]
+          for apk in release:
+              with zipfile.ZipFile(apk) as archive:
+                  assert runner.STAMP not in archive.namelist(),'Integration source stamp leaked into release APK'
+          (root/'work/profile-build/integration-stamps.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':False,'sourceCommit':source,'scope':'Built APK bytes and metadata only; not installed or executed','integration':identities},indent=2)+'\n')
+          PYCODE
+          fi
       - name: State build verification scope
         run: |
           printf '%s\n' 'Official SDK release/test APK compilation and lint passed. APKs remain unsigned or signed with an ephemeral synthetic key. No emulator/ARM execution, real ChatGPT login or WAN measurement is implied; no release is published.' >> "$GITHUB_STEP_SUMMARY"
@@ -83,5 +108,6 @@ jobs:
           path: |
             work/profile-build/build.log
             work/profile-build/official-sdk-verification.json
+            work/profile-build/integration-stamps.json
             app/build/reports/lint-results-release.*
           if-no-files-found: ignore

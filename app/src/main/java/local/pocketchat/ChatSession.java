@@ -112,7 +112,14 @@ final class ChatSession {
   void sendFailure(String message){submitting=false;ChatService.end(context);delivery(activeDeliveryId,"failed",message==null?"发送前检查失败":message,false,"","");setStatus(message);}
   void setStatus(String text){status=text==null?"网络连接未完成":text;changed();}
   boolean uploading(){for(int i=0;i<attachments.length();i++){JSONObject file=attachments.optJSONObject(i);if(file!=null&&"uploading".equals(file.optString("state")))return true;}return false;}
-  boolean browserWorkActive(){return !deleted&&(pending!=null||DeferredBrowserSettings.pending(this)||uiVisible||audit!=null&&audit.running||ChatService.running||connecting||navigating||submitting||operation||transferActive||uploading());}
+  boolean currentReplyActive(){return BrowserSettingsPolicy.currentReply(MainActivity.chatUrl(web.getUrl()),WebReplyObserver.same(web.getUrl(),state.optString("url")),state.optBoolean("busy"),stateEpoch,navigationEpoch);}
+  boolean browserWorkActive(){
+    boolean reply=currentReplyActive();
+    boolean maintenance=DeferredBrowserSettings.pending(this)||audit!=null&&audit.running||ChatService.running||configurationCapture;
+    // Pause activity while retaining the live session; this never destroys a
+    // process, discards a draft, or claims a durable eviction checkpoint.
+    return !deleted&&EnvironmentResourcePolicy.keepActivityRunning(uiVisible,pending!=null||submitting||operation||reply,uploading(),transferActive,connecting||navigating,maintenance);
+  }
   void updateBrowserActivity(){boolean active=browserWorkActive();if(active&&browserPaused){web.resumeTimers();web.onResume();browserPaused=false;}else if(!active&&!browserPaused){web.onPause();web.pauseTimers();browserPaused=true;}if(active)wakePolling();else handler.removeCallbacks(tick);}
   void foreground(boolean value){uiVisible=value;if(!value){pageMemory.capture(()->{});web.checkpointState();webStore.flush();}else{if(web.enabled&&web.failed)web.onResume();if(pending!=null&&!pending.optBoolean("webSuspended"))ChatService.begin(context);}updateBrowserActivity();}
   void checkBackgroundAttachments(){if(backgroundAttachmentCheck||uiVisible||!uploading()||offline||!networkReady)return;backgroundAttachmentCheck=true;long epoch=navigationEpoch;String owner=attachmentOwner;JSONArray names=new JSONArray();for(int i=0;i<attachments.length();i++)names.put(attachments.optJSONObject(i).optString("name"));
@@ -205,7 +212,7 @@ final class ChatSession {
   void submitReady(String text){submit(text);}
   final Runnable tick=new Runnable(){public void run(){if(!browserWorkActive()){if(!browserPaused){web.onPause();web.pauseTimers();browserPaused=true;}return;}if(browserPaused){web.resumeTimers();web.onResume();browserPaused=false;}
     DeferredBrowserSettings.drain(ChatSession.this);NetworkRegion.refresh(ChatSession.this);
-    if((uiVisible||ChatService.running||pending!=null||navigating||DeferredBrowserSettings.pending(ChatSession.this))&&networkReady&&!offline&&!inFlight&&!submitting&&!operation)sync();if(!uiVisible&&uploading())checkBackgroundAttachments();
+    if(EnvironmentResourcePolicy.observePage(uiVisible,ChatService.running,pending!=null,navigating,DeferredBrowserSettings.pending(ChatSession.this),currentReplyActive())&&networkReady&&!offline&&!inFlight&&!submitting&&!operation)sync();if(!uiVisible&&uploading())checkBackgroundAttachments();
     long delay=webPerformance()&&navigating&&SystemClock.elapsedRealtime()-navigationMono<10000?250:!uiVisible&&uploading()?2000:webPerformance()&&pending==null&&!navigating&&!navigationFailed&&!state.optBoolean("busy")?4000:1200;handler.postDelayed(this,delay);
   }};
 

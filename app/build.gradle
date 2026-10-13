@@ -24,7 +24,7 @@ tasks.register('prepareGeckoManifest') {
 android {
     namespace 'local.pocketchat'
     compileSdk { version = release(37) { minorApiLevel = 1 } }
-    defaultConfig { applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 51; versionName '1.7.0' }
+    defaultConfig { applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 52; versionName '2.0.0' }
     signingConfigs { debug { if (providers.gradleProperty('testSigningKey').isPresent()) storeFile file(providers.gradleProperty('testSigningKey').get()) } }
     sourceSets {
         main { manifest.srcFile(generatedManifest) }
@@ -41,4 +41,35 @@ tasks.named('preBuild').configure { dependsOn 'prepareGeckoManifest' }
 dependencies {
     implementation 'androidx.startup:startup-runtime:1.2.0'
     implementation 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
+}
+
+// Integration-only provenance. Production release assets never include this stamp.
+def integrationIdentityAssets = layout.buildDirectory.dir('generated/integration-identity/assets')
+def prepareIntegrationIdentity = tasks.register('prepareIntegrationIdentity') {
+    outputs.dir(integrationIdentityAssets)
+    outputs.upToDateWhen { false }
+    doLast {
+        def sourceGit = { List arguments ->
+            providers.exec {
+                workingDir rootProject.projectDir
+                commandLine(['git'] + arguments)
+            }.standardOutput.asText.get().trim()
+        }
+        def source = sourceGit(['rev-parse', 'HEAD'])
+        def tree = sourceGit(['rev-parse', 'HEAD^{tree}'])
+        def dirty = !sourceGit(['status', '--porcelain', '--untracked-files=normal']).isEmpty()
+        if (!(source ==~ /[0-9a-f]{40}/) || !(tree ==~ /[0-9a-f]{40}/) || dirty)
+            throw new GradleException('Integration evidence requires a clean committed source tree')
+        def directory = integrationIdentityAssets.get().asFile
+        directory.mkdirs()
+        new File(directory, 'pocketchat-integration-build.json').setText(groovy.json.JsonOutput.toJson([
+            schema: 1, sourceCommit: source, sourceTree: tree, dirtySource: false,
+            version: android.defaultConfig.versionName, versionCode: android.defaultConfig.versionCode,
+            sdkCoordinate: 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
+        ]) + '\n', 'UTF-8')
+    }
+}
+android.sourceSets.integration.assets.srcDir(integrationIdentityAssets)
+tasks.matching { it.name == 'mergeIntegrationAssets' }.configureEach {
+    dependsOn prepareIntegrationIdentity
 }

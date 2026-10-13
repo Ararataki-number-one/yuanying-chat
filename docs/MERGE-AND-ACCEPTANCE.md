@@ -74,3 +74,23 @@ Service Worker 尚未覆盖时明确显示未覆盖，不计为验证通过。
 当前云环境没有 Android SDK/设备。可执行 Java 源码编译使用从已发布
 1.5.21 APK 提取的接口类和 Android API35 jar，是编译兼容性检查。
 这些临时依赖不进入源码、APK、Git bundle 或正式构建；官方 AAR 不作任何变换。
+
+
+## 2.0 新增夹具与来源检查
+
+先在干净且已提交的候选源码上编译 integration APK 并安装到 `.test` 包。
+必须用同一 APK 运行新增环境模型夹具；不可省略 `--apk`：
+
+```sh
+python3 tests/gecko/run_profile_features.py --adb /path/to/adb --serial DEVICE \
+  --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+```
+
+ARM 设备应使用对应 `app-arm64-v8a-integration.apk`。脚本只清理固定的
+`.test` 合成包，在运行前后核对内嵌源码标记和设备 APK 字节哈希。它不
+替代 1.5.23 已有网络 source、UI、route、safe-idle 及 Gecko 集成测试。
+
+所有候选 PR 都有共同只读 host 和官方 SDK 构建/lint job；构建通过仅
+证明编译，没有设备执行。现有发布型 integration workflow 仍需另行运行。
+顺序补丁导出必须使用新目录；主机报告必须绑定最终提交及源码树，重新
+修改源码后重新测试，不复用旧报告。

@@ -11,10 +11,12 @@ import org.json.JSONObject;
 /** Host doubles for Android/UI, persistence I/O and service access. The controller,
  * immutable model and template validation under test are production sources. */
 final class WorkQueue implements Executor {
+  static WorkQueue running;final String lane;
+  WorkQueue(){this("unspecified");}WorkQueue(String lane){this.lane=lane;}
   final ArrayDeque<Runnable> tasks=new ArrayDeque<>();
   public void execute(Runnable work){tasks.add(work);}
   boolean post(Runnable work){tasks.add(work);return true;}
-  void run(){while(!tasks.isEmpty())tasks.remove().run();}
+  void run(){WorkQueue before=running;running=this;try{while(!tasks.isEmpty())tasks.remove().run();}finally{running=before;}}
 }
 final class FakeContext {EnvironmentSpec.NetworkBinding actual;}
 final class FakePrefs {
@@ -38,7 +40,7 @@ final class BrowserPrivacy {
 }
 final class ChatSession {
   final FakeContext context=new FakeContext();final FakePrefs prefs=new FakePrefs();
-  final WorkQueue environmentIo=new WorkQueue(),handler=new WorkQueue();
+  final WorkQueue environmentIo=new WorkQueue("environmentIo"),handler=new WorkQueue("main");
   final FakeGuard guard=new FakeGuard();final FakeAudit audit=new FakeAudit();final FakeWeb web=new FakeWeb();
   final BrowserPrivacy privacy=new BrowserPrivacy();
   boolean deleted,offline,networkReady=true,identityApplicationPending,deferred,failQueue;
@@ -64,7 +66,8 @@ final class NativeNetwork {
   static final NativeNetwork instance=new NativeNetwork();JSONObject settings=new JSONObject();
   boolean exactReceipt=true;NetworkHealthPolicy.Admission admission=NetworkHealthPolicy.Admission.VERIFIED;
   static NativeNetwork get(FakeContext context){return instance;}
-  boolean verifiedRouteCurrent(){return exactReceipt;}
+  String snapshotLane="";
+  boolean verifiedRouteCurrent(){snapshotLane=WorkQueue.running==null?"unqueued":WorkQueue.running.lane;if("main".equals(snapshotLane))throw new AssertionError("Service snapshot must not run on UI lane");return exactReceipt;}
   NetworkHealthPolicy.Admission connectionAdmission(){return admission;}
 }
 final class DeferredBrowserSettings {

@@ -10,7 +10,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
-/** Shell-only export of two synthetic reports from the non-debuggable test APK. */
+/** Shell-only export of source-bound synthetic reports from the non-debuggable test APK. */
 public final class IntegrationEvidenceProvider extends ContentProvider {
   @Override public boolean onCreate(){
     if(getContext()==null||!getContext().getPackageName().equals("local.pocketchat.test"))throw new SecurityException("Integration package only");
@@ -19,7 +19,9 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
   @Override public ParcelFileDescriptor openFile(Uri uri,String mode)throws FileNotFoundException {
     if(!"r".equals(mode)||Binder.getCallingUid()!=2000)throw new SecurityException("Read-only shell evidence");
     String name;
-    if("/native-probe".equals(uri.getPath()))name="native-probe-results.json";
+    if("/build-identity".equals(uri.getPath()))name="integration-build-identity.json";
+    else if("/environment-spec".equals(uri.getPath()))name="environment-spec-results.json";
+    else if("/native-probe".equals(uri.getPath()))name="native-probe-results.json";
     else if("/gecko-pool".equals(uri.getPath()))name="gecko-pool-results.json";
     else if("/preconnect".equals(uri.getPath()))name="preconnect-results.json";
     else if("/network-source-route".equals(uri.getPath()))name="network-source-route-results.json";
@@ -30,10 +32,11 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
     else if("/gecko-scroll".equals(uri.getPath()))name="gecko-scroll-diagnostics.json";
     else throw new FileNotFoundException("Unknown synthetic report");
     try{
+      if("integration-build-identity.json".equals(name))J.write(new File(getContext().getFilesDir(),name),IntegrationBuildIdentity.read(getContext()).toString());
       File base=getContext().getFilesDir().getCanonicalFile(),file=new File(base,name).getCanonicalFile();
       if(!base.equals(file.getParentFile())||!file.isFile()||file.length()>2*1024*1024)throw new FileNotFoundException("Synthetic report unavailable");
       return ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY);
-    }catch(IOException failure){throw new FileNotFoundException("Synthetic report unavailable");}
+    }catch(Exception failure){throw new FileNotFoundException("Synthetic report unavailable or build identity invalid");}
   }
   @Override public String getType(Uri uri){return "application/json";}
   @Override public Cursor query(Uri uri,String[] projection,String selection,String[] args,String order){throw new UnsupportedOperationException();}
