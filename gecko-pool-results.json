@@ -1,0 +1,109 @@
+{
+  "status": "failed",
+  "actualAndroidExecution": true,
+  "actualGeckoExecution": true,
+  "actualMihomoExecution": true,
+  "protocol": "h2",
+  "defaultNetworkCases": "Injected event values through the production DefaultNetwork state, not a physical Wi-Fi handover",
+  "environmentCase": "Separate pool instance with slot 1 in the same Gecko runtime; private-profile/login isolation is exercised by the existing multi-process suite",
+  "recoveryCase": "Real NativeNetwork.recover with an advanced asynchronous ChatSession epoch; no document navigation or resend",
+  "testOnlyCertificateException": true,
+  "publicNetworkTraffic": false,
+  "requestRealm": "page-content-fetch",
+  "webSocketRealm": "page-content-WebSocket",
+  "error": "java.io.IOException: Gecko initialization timed out",
+  "checks": [
+    {
+      "name": "The formal managed service starts a genuinely verified two-hop chain",
+      "pass": true
+    }
+  ],
+  "requests": [],
+  "routes": [
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/monitor/collections/changes/changeset?collection=third-party-cookie-blocking-exempt-urls&bucket=main&_expected=0",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 605825
+    },
+    {
+      "url": "https://firefox.settings.services.mozilla.com/v2/buckets/monitor/collections/changes/changeset?collection=tracking-protection-lists&bucket=main&_expected=0",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 605825
+    },
+    {
+      "url": "http://firefox-portal-detection.com/success.txt?ipv4",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 605833
+    },
+    {
+      "url": "http://firefox-portal-detection.com/success.txt?ipv6",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 605833
+    },
+    {
+      "url": "https://safebrowsing.googleapis.com/v5/hashLists:batchGet?key=AIzaSyC7jsptDS3am4tPx4r3nxis7IMjBc5Dovo&names=se-4b&names=mw-4b&names=uwsa-4b&version=&version=&version=",
+      "route": {
+        "type": "socks",
+        "host": "127.0.0.1",
+        "port": 9,
+        "proxyDNS": true,
+        "failoverTimeout": 1
+      },
+      "guardAllowed": true,
+      "epoch": 0,
+      "legacyEpochCounterfactual": false,
+      "alternatePoolInstance": false,
+      "at": 631167
+    }
+  ],
+  "transitions": [],
+  "sourceCommit": "7ced0920a34bf221e6dc0656ae73a3b6a9e52f26",
+  "androidSdk": 35,
+  "server": {
+    "protocol": "h2",
+    "requests": [],
+    "connections": [],
+    "webSockets": [],
+    "publicTraffic": false
+  }
+}
