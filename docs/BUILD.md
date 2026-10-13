@@ -1,4 +1,4 @@
-# 构建候选 1.6.0
+# 构建候选 1.7.0
 
 正式应用现已接入 Mozilla 官方 GeckoView。使用 Gradle 构建以合并 SDK 的 Java、原生库、资源、服务和依赖；旧版手工 AAPT2/D8 流程不再适用于本版本。
 
@@ -26,7 +26,7 @@ python3 tools/sign-apk.py app/build/outputs/apk/release/app-arm64-v8a-release-un
   --tools "$ANDROID_HOME/build-tools/37.0.0" --java "$JAVA_HOME/bin/java"
 ```
 
-输出 `dist/PocketChat-1.6.0-gecko-arm64.apk` 和签名检查记录。助手从 `app/build.gradle` 读取版本，检查原证书、包名 `local.pocketchat`、当前版本号 48、非调试构建、无测试入口及 16 KB 对齐。原版证书 SHA-256 为 `f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434`。不同证书的预览包不能覆盖原版。
+输出 `dist/PocketChat-1.7.0-gecko-arm64.apk` 和签名检查记录。助手从 `app/build.gradle` 读取版本，检查原证书、包名 `local.pocketchat`、当前版本号 49、非调试构建、无测试入口及 16 KB 对齐。原版证书 SHA-256 为 `f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434`。不同证书的预览包不能覆盖原版。
 
 ## 云环境
 

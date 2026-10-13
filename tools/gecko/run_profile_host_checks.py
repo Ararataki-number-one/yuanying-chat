@@ -34,10 +34,12 @@ def main():
         ("LatencyProbePolicyTest", ["LatencyProbePolicy"]),
         ("EnvironmentSpecTest", ["J", "EnvironmentSpec", "EnvironmentSpecMigration"]),
     ]
-    extras = [("BrowserIdentitySpecTest", ["J", "BrowserIdentitySpec"])]
+    extras = [("FingerprintTemplateTest", ["J", "BrowserIdentitySpec", "AuditReport"])]
     groups += [(name, names) for name, names in extras if (tests / (name + ".java")).is_file()]
     files = {source / (name + ".java") for _, names in groups for name in names}
     files.update(tests / (name + ".java") for name, _ in groups)
+    if (tests / "FingerprintTemplateTest.java").is_file():
+        files.add(tests / "fingerprint-report-stubs/BrowserNetworkGuard.java")
     files.update([source / "ExitSubscriptionParser.java", source / "ExitSubscriptionIdentity.java",
                   ROOT / "tests/exit-subscriptions/ExitSubscriptionParserTest.java"])
     compiler = [java, "-m", "jdk.compiler/com.sun.tools.javac.Main", "-encoding", "UTF-8",
@@ -53,9 +55,12 @@ def main():
             print(run.stderr, file=sys.stderr)
             raise subprocess.CalledProcessError(run.returncode, command)
     subprocess.run(["node", "tests/browser-runtime/session-cookies.test.cjs"], cwd=ROOT, check=True)
-    bridge = ROOT / "tests/review-host/audit-bridge.test.cjs"
-    if bridge.is_file():
-        subprocess.run(["node", "--test", str(bridge)], cwd=ROOT, check=True)
+    bridges = sorted((ROOT / "tests/review-host").glob("*.cjs"))
+    for bridge in bridges:
+        subprocess.run(["node", str(bridge)], cwd=ROOT, check=True)
+    controller = ROOT / "tests/review-host/run_identity_controller_host.py"
+    if controller.is_file():
+        subprocess.run([sys.executable, str(controller), "--json-jar", str(json_jar)], cwd=ROOT, check=True)
     report = {"schema": 1, "status": "passed", "actualAndroidExecution": False,
               "scope": "JVM production model/parser/decision tests and Node protocol fixtures only",
               "jsonJarSha256": hashlib.sha256(json_jar.read_bytes()).hexdigest(),

@@ -9,7 +9,7 @@ final class DeferredBrowserSettings {
   static boolean save(ChatSession s,int level,boolean desktop){return s.prefs.edit().putInt("nextPrivacyLevel",level).putBoolean("nextDesktopSite",desktop).commit();}
   static void cancel(ChatSession s){s.prefs.edit().remove("nextPrivacyLevel").remove("nextDesktopSite").commit();}
   static boolean idle(ChatSession s){return !s.deleted&&!ProfileUi.working(s)&&!s.connecting&&!s.navigating&&!s.recoveryScheduled&&!s.web.failed;}
-  static void apply(ChatSession s){JSONObject value=desired(s);boolean protection=value.optInt("privacyLevel")!=s.privacy.level();ProfileCatalog.get(s.context).browserDisplay(Profiles.slot(s.context),value.optBoolean("desktopSite"));s.prefs.edit().putInt("privacyLevel",value.optInt("privacyLevel")).remove("nextPrivacyLevel").remove("nextDesktopSite").commit();s.applyBrowserSettings(protection);s.setStatus("已应用保存的网页显示和保护设置");}
+  static void apply(ChatSession s){JSONObject value=desired(s);boolean protection=value.optInt("privacyLevel")!=s.privacy.level();ProfileCatalog.get(s.context).browserDisplay(Profiles.slot(s.context),value.optBoolean("desktopSite"));s.prefs.edit().putInt("privacyLevel",value.optInt("privacyLevel")).remove("nextPrivacyLevel").remove("nextDesktopSite").commit();s.identityApplicationPending=false;s.applyBrowserSettings(protection);s.setStatus("已应用保存的网页显示和保护设置");}
   static void release(ChatSession s){s.configurationCapture=false;s.operation=false;}
   static void drain(ChatSession s){
     if(!pending(s)||!idle(s)||android.os.SystemClock.elapsedRealtime()-s.lastDeferredBrowserAttempt<10000)return;

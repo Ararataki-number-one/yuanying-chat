@@ -4,7 +4,7 @@
 
 **当前正式版本：1.5.21（versionCode 47），仅 GeckoView 与官方网页。**
 
-此开发分支为 **1.6.0（versionCode 48）候选实现，尚未发布**。请按 [分版本合并与验收说明](docs/MERGE-AND-ACCEPTANCE.md) 审查，设备测试通过后再签名发布。
+此开发分支为 **1.7.0（versionCode 49）候选实现，尚未发布**。请按 [分版本合并与验收说明](docs/MERGE-AND-ACCEPTANCE.md) 审查，设备测试通过后再签名发布。
 
 ## 下载与安装
 
