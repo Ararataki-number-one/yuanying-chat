@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Release-mode SDK in the actual app: two live processes, distinct HTTP/SOCKS routes."""
 import argparse, hashlib, importlib.util, json, pathlib, select, socket, socketserver
-import re, subprocess, threading, time, urllib.parse
+import re, subprocess, sys, threading, time, urllib.parse
 import xml.etree.ElementTree as ET
 
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
+sys.path.insert(0,str(ROOT/'tools/gecko'))
+from check_interaction_transfer_evidence import verify_paint_case
 def missing_update_job(return_code, output, package):
     """Only Android's exact not-yet-registered job response is transient."""
     if return_code!=23:return False
@@ -526,6 +528,7 @@ def main():
         assert run(2,'sessionRead','session')['token']=='synthetic-session-2'
         report['sessionContinuity']=sessions
         paint=run(1,'earlyPaint','paint');assert paint['firstPaintBeforeComplete'],paint
+        first_paint_case=verify_paint_case(paint)
         reading_checks()
         surface=run(1,'nativeSurface','nativeSurface');assert all(surface[k] for k in ['stationaryGeometryDeduplicated','movedSurfaceAcceptsRealInput','documentAndDraftPreserved']),surface
         report['nativeSurfacePerformance']=surface;report['nativeSurfaceGestures']=surface_gestures[(1,'nativeSurface')]
@@ -537,6 +540,8 @@ def main():
         assert checkpoint['mainSerialized']==0 and checkpoint['firstBurstSerialized']==1 and checkpoint['firstBurstCoalesced']==999 and checkpoint['lastCandidate']==1199 and checkpoint['lastValidCandidate']==2002 and checkpoint['continuousLastCandidate']==4199 and checkpoint['continuousOffered']==200 and checkpoint['continuousWritesDuringOffers']>=1,checkpoint
         report['nativeCheckpointPerformance']=checkpoint
         cancelled=run(1,'cancelLoad','cancelledLoad');assert not cancelled['reportedFailure'] and not cancelled['pageError'] and cancelled['visibleDocumentRetained'] and cancelled['documentReadyBeforeStop'],cancelled
+        cancelled_paint_case=verify_paint_case(cancelled,cancelled=True)
+        assert cancelled_paint_case['serial']>first_paint_case['serial'] and cancelled_paint_case['target']!=first_paint_case['target'],cancelled
         assert any(x['kind']=='socks' and x.get('route')=='environment-1-socks' for x in fixture.TRACE)
         assert any(x['kind']=='httpProxy' and x.get('route')=='environment-2-http' for x in fixture.TRACE)
         assert any(x['kind']=='socks' and x['host']=='remote-probe.invalid' and x['addressType']==3 for x in fixture.TRACE)

@@ -11,7 +11,7 @@ import org.json.*;
 /** Test-only controlled HTTP exception; this class and manifest are absent from release. */
 public class GeckoIntegrationTestActivity extends Activity {
   ChatSession session;int slot;long run;String action;boolean closedSessionRecovery,blockedRecoveryPreservesClosed,pendingFailureRetained,activityResumed;
-  long paintStarted,paintVisible,paintFinished;
+  long paintCommand,paintRequested,paintStarted,paintVisible,paintFinished,paintFinishedBeforeCancel=-1;String paintTarget="";boolean paintCommitted,paintCancelledBeforeFinish;org.mozilla.geckoview.GeckoSession paintSession;
   String initialRouteNetwork="";long initialRouteStableSince;int initialRouteSamples;
   final int[] readingZoomSamples=new int[4];String readingZoomLast="";long readingZoomLastSample;JSONObject readingZoomReadiness;
   ReadingBoundsCase readingBoundsCase;JSONObject readingBoundsFitResult;
@@ -95,9 +95,9 @@ public class GeckoIntegrationTestActivity extends Activity {
     ChatSession.browserFactory=FixtureView::new;session=ChatSession.get(this);
     android.webkit.WebViewClient original=session.client();
     session.web.setWebViewClient(new android.webkit.WebViewClient(){
-      @Override public void onPageStarted(WebView view,String target,android.graphics.Bitmap icon){if(target.contains("/browser-loading")){paintStarted=SystemClock.elapsedRealtime();paintVisible=paintFinished=0;}original.onPageStarted(view,target,icon);}
-      @Override public void onPageCommitVisible(WebView view,String target){if(target.contains("/browser-loading")&&paintVisible==0)paintVisible=SystemClock.elapsedRealtime();original.onPageCommitVisible(view,target);}
-      @Override public void onPageFinished(WebView view,String target){if(target.contains("/browser-loading"))paintFinished=SystemClock.elapsedRealtime();if(target.startsWith("http://127.0.0.1:8765/")){session.navigating=false;session.navigationFailed=false;session.reading.visible(target);}else original.onPageFinished(view,target);}
+      @Override public void onPageStarted(WebView view,String target,android.graphics.Bitmap icon){if(paintCallback(target)&&!paintCommitted){paintCommitted=true;paintStarted=SystemClock.elapsedRealtime();}original.onPageStarted(view,target,icon);}
+      @Override public void onPageCommitVisible(WebView view,String target){if(paintCallback(target)&&paintCommitted&&paintVisible==0)paintVisible=SystemClock.elapsedRealtime();original.onPageCommitVisible(view,target);}
+      @Override public void onPageFinished(WebView view,String target){if(paintCallback(target)&&paintCommitted)paintFinished=SystemClock.elapsedRealtime();if(target.startsWith("http://127.0.0.1:8765/")){session.navigating=false;session.navigationFailed=false;session.reading.visible(target);}else original.onPageFinished(view,target);}
     });
     session.foreground(true);
     LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setFitsSystemWindows(true);
@@ -162,7 +162,12 @@ public class GeckoIntegrationTestActivity extends Activity {
     }
     if("sessionCheckpoint".equals(action)){web.checkpointState();session.handler.postDelayed(()->event("checkpoint",J.obj("saved",web.states.containsKey(web.primary))),1000);return;}
     if("windows".equals(action)||"lostParent".equals(action)){windowFlow(serial);return;}
-    if("earlyPaint".equals(action)||"cancelLoad".equals(action)){web.loadUrl("http://127.0.0.1:8765/browser-loading?command="+serial);session.handler.postDelayed(()->paintResult(serial),300);return;}
+    if("earlyPaint".equals(action)||"cancelLoad".equals(action)){
+      // SDK PageStart may precede the authoritative location commit callback.
+      // Arm this command before loading so its first probe cannot see prior paint.
+      paintCommand=serial;paintTarget="http://127.0.0.1:8765/browser-loading?command="+serial;paintSession=web.current;paintRequested=SystemClock.elapsedRealtime();paintStarted=paintVisible=paintFinished=0;paintFinishedBeforeCancel=-1;paintCommitted=paintCancelledBeforeFinish=false;
+      web.loadUrl(paintTarget);session.handler.postDelayed(()->paintResult(serial),300);return;
+    }
     if("closedSession".equals(action)){
       // Inject the exact SDK onKill contract (closed session), then render through the real SDK again.
       JSONObject previous=session.pending;session.pending=J.obj("kind","web","confirmed",true);
@@ -367,21 +372,33 @@ public class GeckoIntegrationTestActivity extends Activity {
       session.handler.postDelayed(()->waitWindow(serial,step,deadline,done),150);
     });
   }
+  boolean paintOwned(long serial){return serial==run&&serial==paintCommand&&paintSession!=null&&paintSession==session.web.current&&paintSession.isOpen();}
+  boolean paintCallback(String target){return paintOwned(paintCommand)&&paintTarget.equals(target)&&paintTarget.equals(session.web.getUrl())&&paintTarget.equals(session.web.locations.get(paintSession));}
+  boolean paintCurrent(long serial){return paintOwned(serial)&&paintCommitted&&paintCallback(paintTarget);}
+  JSONObject paintEvidence(JSONObject value){try{return value.put("paintCase",J.obj("schema",1,"serial",paintCommand,"target",paintTarget,"requested",paintRequested,"nativeSession",System.identityHashCode(paintSession),"currentNativeSession",System.identityHashCode(session.web.current),"currentUrl",session.web.getUrl(),"committedTarget",session.web.locations.get(paintSession),"committed",paintCommitted,"currentCase",paintCurrent(paintCommand),"started",paintStarted,"visible",paintVisible,"finished",paintFinished));}catch(JSONException error){throw new IllegalStateException(error);}}
+  void paintError(String message){event("error",paintEvidence(J.obj("error",message)));}
   void paintResult(long serial){
     if(serial!=run)return;
+    if(!paintOwned(serial)){paintError("paint fixture session ownership changed");return;}
+    if(!paintCurrent(serial)){
+      if(paintCommitted){paintError("paint fixture document ownership changed");return;}
+      if(SystemClock.elapsedRealtime()-paintRequested>15000){paintError("paint fixture document did not commit");return;}
+      session.handler.postDelayed(()->paintResult(serial),200);return;
+    }
     if("cancelLoad".equals(action)&&paintVisible>0&&paintFinished==0){
       session.web.evaluateJavascript("(()=>({command:new URL(location.href).searchParams.get('command'),heading:document.querySelector('h1')?.textContent}))()",raw->{
-        if(serial!=run)return;JSONObject value=J.parse(raw);
+        if(serial!=run)return;if(!paintCurrent(serial)){paintError("paint fixture document ownership changed");return;}JSONObject value=J.parse(raw);
         if(!String.valueOf(serial).equals(value.optString("command"))||!"Visible before slow resource".equals(value.optString("heading"))){session.handler.postDelayed(()->paintResult(serial),200);return;}
-        session.web.stopLoading();session.handler.postDelayed(()->{
-          if(serial!=run)return;
-          session.web.evaluateJavascript("document.querySelector('h1')?.textContent||null",result->event("cancelledLoad",J.obj("reportedFailure",session.navigationFailed,"pageError",session.pageError,"visibleDocumentRetained",JSONObject.quote("Visible before slow resource").equals(result),"documentReadyBeforeStop",true,"result",result)));
+        if(paintFinished>0){paintError("cancel fixture completed before its document was ready");return;}
+        paintFinishedBeforeCancel=paintFinished;paintCancelledBeforeFinish=paintFinishedBeforeCancel==0;session.web.stopLoading();session.handler.postDelayed(()->{
+          if(serial!=run)return;if(!paintCurrent(serial)){paintError("paint fixture document ownership changed");return;}
+          session.web.evaluateJavascript("document.querySelector('h1')?.textContent||null",result->{if(serial!=run)return;if(!paintCurrent(serial)){paintError("paint fixture document ownership changed");return;}event("cancelledLoad",paintEvidence(J.obj("reportedFailure",session.navigationFailed,"pageError",session.pageError,"visibleDocumentRetained",JSONObject.quote("Visible before slow resource").equals(result),"documentReadyBeforeStop",true,"cancelledBeforeFinish",paintCancelledBeforeFinish,"finishedBeforeCancel",paintFinishedBeforeCancel,"result",result)));});
         },400);
       });return;
     }
-    if("cancelLoad".equals(action)&&paintFinished>0){event("error",J.obj("error","cancel fixture completed before its document was ready"));return;}
-    if(paintFinished>0){event("paint",J.obj("started",paintStarted,"visible",paintVisible,"finished",paintFinished,"firstPaintBeforeComplete",paintVisible>0&&paintVisible>=paintStarted&&paintFinished-paintVisible>500));return;}
-    if(paintStarted>0&&SystemClock.elapsedRealtime()-paintStarted>15000){event("error",J.obj("error","slow-resource fixture did not complete"));return;}
+    if("cancelLoad".equals(action)&&paintFinished>0){paintError("cancel fixture completed before its document was ready");return;}
+    if(paintFinished>0){event("paint",paintEvidence(J.obj("started",paintStarted,"visible",paintVisible,"finished",paintFinished,"firstPaintBeforeComplete",paintVisible>0&&paintVisible>=paintStarted&&paintFinished-paintVisible>500)));return;}
+    if(paintStarted>0&&SystemClock.elapsedRealtime()-paintStarted>15000){paintError("slow-resource fixture did not complete");return;}
     session.handler.postDelayed(()->paintResult(serial),200);
   }
   void readingResult(long serial,long deadline){

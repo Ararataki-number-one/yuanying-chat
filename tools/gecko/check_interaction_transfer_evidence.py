@@ -26,6 +26,28 @@ UPDATE_CHECKS = {
 }
 
 
+def verify_paint_case(result, cancelled=False):
+    """Require actual current-command callbacks, never a prior page's counters."""
+    case = result['paintCase']
+    assert type(case['schema']) is int and case['schema'] == 1 and type(case['serial']) is int and case['serial'] > 0
+    expected = 'http://127.0.0.1:8765/browser-loading?command=' + str(case['serial'])
+    assert case['target'] == case['currentUrl'] == case['committedTarget'] == expected
+    assert case['currentCase'] is True and case['committed'] is True
+    assert type(case['nativeSession']) is int and case['nativeSession'] != 0
+    assert type(case['currentNativeSession']) is int and case['nativeSession'] == case['currentNativeSession']
+    assert all(type(case[key]) is int for key in ('requested', 'started', 'visible', 'finished'))
+    assert 0 < case['requested'] <= case['started'] <= case['visible']
+    if cancelled:
+        assert result['cancelledBeforeFinish'] is True and type(result['finishedBeforeCancel']) is int and result['finishedBeforeCancel'] == 0
+        assert case['finished'] == 0 or case['finished'] >= case['visible']
+        assert result['documentReadyBeforeStop'] is True and result['visibleDocumentRetained'] is True
+        assert result['reportedFailure'] is False and not result['pageError']
+    else:
+        assert result['firstPaintBeforeComplete'] is True and case['finished'] - case['visible'] > 500
+        assert all(result[key] == case[key] for key in ('started', 'visible', 'finished'))
+    return case
+
+
 def verify_reading_bounds(report):
     """Check measured native geometry, never substitute page-visible DPR."""
     assert report['schema'] == 1 and report['productionDelegateRestored'] is True and report['privacyRestored'] is True
@@ -220,6 +242,12 @@ def verify_interaction_transfer_evidence(directory, source):
         if manifest['versionCode'] >= 48:
             assert 'nativeReadingBounds' in device, 'This release requires native fit, privacy, rotation and IME bounds evidence.'
         if manifest['versionCode'] >= 49:
+            paint = [step['result'] for step in device['steps'] if step['kind'] == 'paint']
+            cancelled = [step['result'] for step in device['steps'] if step['kind'] == 'cancelledLoad']
+            assert len(paint) == len(cancelled) == 1
+            first = verify_paint_case(paint[0])
+            second = verify_paint_case(cancelled[0], cancelled=True)
+            assert second['serial'] > first['serial'] and second['target'] != first['target']
             assert all(device['nativeCheckpointPerformance'][key] is True for key in ('readingFixtureCookieRemovedFromDom','readingFixtureCookieRemovedFromNative','otherDomCookiesPreserved','otherNativeCookiesPreserved'))
             assert device['nativeReadingBounds']['input']['measurement'].get('nativeComposerFits') is True
             assert device['nativeReadingBounds']['input']['measurement'].get('productionKeyboardController') is True
