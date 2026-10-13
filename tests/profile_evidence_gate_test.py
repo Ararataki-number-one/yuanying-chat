@@ -150,5 +150,21 @@ class ProfileEvidenceGateTest(unittest.TestCase):
                 value=deepcopy(original);edit(value);self.write_report(name,value)
                 with self.assertRaises(ValueError):self.verify()
 
+    def test_user_agent_scope_cannot_be_rehashed_into_template_success(self):
+        # Counterfeit receipts remain unit-test metadata, never Android evidence.
+        from copy import deepcopy
+        name='gecko-identity-prototype';original=json.loads((self.directory/(name+'-results.json')).read_text())
+        edits=[
+            ('missing independent SDK baseline',lambda r:r.pop('sdkUserAgentBaseline')),
+            ('static getter labeled runtime ACK',lambda r:r['sdkUserAgentBaseline'].update(runtimeAcknowledgement=True)),
+            ('desktop mismatch concealed',lambda r:r['cases'][1]['sessions'][0]['userAgentScope'].update(workerFetchHeaderMismatch=False)),
+            ('case mismatch concealed',lambda r:r['cases'][3].update(workerFetchMismatchSessions=[])),
+            ('full template promoted',lambda r:r['userAgentCapability'].update(fullTemplateAcceptance=True)),
+        ]
+        for label,edit in edits:
+            with self.subTest(label=label):
+                value=deepcopy(original);edit(value);self.write_report(name,value)
+                with self.assertRaises(ValueError):self.verify()
+
 
 if __name__=='__main__':unittest.main()

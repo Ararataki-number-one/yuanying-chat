@@ -9,6 +9,10 @@ from zipfile import ZipFile
 
 STAMP = "assets/pocketchat-integration-build.json"
 PACKAGE = "local.pocketchat.test"
+SDK_COORDINATE = 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
+SDK_AAR_SHA256 = '15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268'
+DOCUMENT_HEADER_ROLES = ('page', 'frame', 'worker-script', 'page-fetch')
+WORKER_FETCH_HEADER_ROLES = ('worker-fetch', 'blob-worker-fetch')
 GUARD_CHECK_NAMES = (
     'Closed guard route evidence did not overflow',
     'Closed guard returns the blocked actual route for fetch GET',
@@ -207,6 +211,103 @@ def verify_guard_evidence(report):
             and isinstance(headers, list) and len(headers) == header_counts[1], 'no new actual first-party header record')
 
 
+def verify_user_agent_evidence(report):
+    """Check observed UA scopes, without treating the static default as runtime ACK."""
+    def require(condition, message):
+        if not condition:
+            raise ValueError('Actual user-agent scope evidence is incomplete: ' + message)
+
+    baseline = report.get('sdkUserAgentBaseline')
+    require(isinstance(baseline, dict), 'independent SDK build baseline')
+    require(baseline.get('api') == 'GeckoSession.getDefaultUserAgent()'
+            and baseline.get('scope') == 'sdk-build-mobile-default'
+            and baseline.get('ignoresSessionOverrides') is True
+            and baseline.get('runtimeAcknowledgement') is False, 'public static getter scope')
+    require(report.get('sdkCoordinate') == baseline.get('sdkCoordinate') == SDK_COORDINATE
+            and report.get('sdkAarSha256') == baseline.get('sdkAarSha256') == SDK_AAR_SHA256
+            and report.get('buildIdentity', {}).get('sdkCoordinate') == SDK_COORDINATE,
+            'pinned official build identity')
+    sdk = baseline.get('androidSdk'); release = baseline.get('androidRelease')
+    require(type(sdk) is int and sdk >= 26 and sdk == report.get('androidSdk')
+            and isinstance(release, str) and 0 < len(release) <= 64
+            and not any(ord(char) < 32 or char in '();' for char in release), 'Android build values')
+    # Pinned BuildConfig uses Build.VERSION.RELEASE on Q+, and Android 10 before Q.
+    expected_default = 'Mozilla/5.0 (Android ' + (release if sdk >= 29 else '10') + '; Mobile; rv:157.0) Gecko/157.0 Firefox/157.0'
+    require(baseline.get('userAgent') == expected_default, 'SDK mobile default, not session UA')
+    capability = report.get('userAgentCapability')
+    require(isinstance(capability, dict)
+            and capability.get('sessionSettingsScope') == 'top-browsing-context'
+            and capability.get('workerFetchHeaderScope') == 'sdk-build-mobile-default'
+            and capability.get('runtimeUserAgentSetterAvailable') is False
+            and capability.get('fullTemplateAcceptance') is False, 'unsupported uniform template scope')
+    all_headers = report.get('allRequestHeaders')
+    require(isinstance(all_headers, list) and len(all_headers) == 30, 'all five real six-role captures')
+    sequences = []
+    for row in all_headers:
+        require(isinstance(row, dict) and type(row.get('sequence')) is int, 'raw header sequence')
+        sequences.append(row['sequence'])
+    require(sequences == list(range(1, 31)), 'unique ordered raw headers')
+    owned_sequences = []
+    nonce = report.get('runNonce')
+    for case in report.get('cases', []):
+        require(isinstance(case, dict), 'case object')
+        serial = case.get('serial'); mismatches = []
+        for session in case.get('sessions', []):
+            require(isinstance(session, dict), 'session object')
+            name = session.get('name'); native = session.get('native'); observed = session.get('observed')
+            require(isinstance(native, dict) and isinstance(observed, dict), 'native and actual context observations')
+            session_ua = native.get('userAgent'); language = native.get('expectedSdkNormalizedLanguage')
+            require(isinstance(session_ua, str) and session_ua and 'Firefox/157.' in session_ua
+                    and isinstance(language, str) and language, 'session getter and normalized language')
+            require(native.get('getterScope') == 'Java requested value; not content acknowledgement', 'locale getter scope')
+            require(observed.get('run') == nonce and type(observed.get('case')) is int
+                    and observed['case'] == serial and observed.get('session') == name, 'context ownership')
+            for context in ('parent', 'frame', 'worker', 'blobWorker'):
+                signal = observed.get(context)
+                require(isinstance(signal, dict) and signal.get('ua') == session_ua,
+                        context + ' real JS UA equals session getter')
+            headers = session.get('requestHeaders')
+            require(isinstance(headers, list) and len(headers) == 6
+                    and all(isinstance(row, dict) for row in headers), 'six actual header roles')
+            roles = [row.get('role') for row in headers]
+            require(all(isinstance(role, str) for role in roles) and len(set(roles)) == 6
+                    and set(roles) == set(DOCUMENT_HEADER_ROLES + WORKER_FETCH_HEADER_ROLES),
+                    'unique document and Worker fetch roles')
+            worker_matches_session = True
+            for row in headers:
+                role = row['role']; worker_fetch = role in WORKER_FETCH_HEADER_ROLES
+                path = {'page':'/page', 'frame':'/frame', 'worker-script':'/worker'}.get(role, '/echo')
+                query = '?run=' + nonce + '&case=' + str(serial) + '&session=' + name
+                if path == '/echo': query += '&kind=' + role
+                require(type(row.get('case')) is int and row['case'] == serial
+                        and row.get('session') == name and row.get('method') == 'GET'
+                        and row.get('path') == path + query, 'exact owned request path/query')
+                sequence = row.get('sequence')
+                require(type(sequence) is int and 1 <= sequence <= 30
+                        and row == all_headers[sequence - 1], 'unchanged independent raw server row')
+                require(type(row.get('at')) is int and type(case.get('requestedAt')) is int
+                        and type(case.get('completedAt')) is int
+                        and 0 <= case['requestedAt'] <= row['at'] <= case['completedAt'], 'native header capture clock')
+                owned_sequences.append(sequence)
+                require(row.get('userAgent') == (expected_default if worker_fetch else session_ua),
+                        role + ' actual header UA scope')
+                accept = row.get('acceptLanguage')
+                require(isinstance(accept, str) and accept.split(',', 1)[0].split(';', 1)[0].strip().lower() == language.lower(),
+                        role + ' actual header language')
+                if worker_fetch: worker_matches_session &= row['userAgent'] == session_ua
+            scope = session.get('userAgentScope')
+            require(isinstance(scope, dict) and scope.get('documentHeadersMatchSession') is True
+                    and scope.get('workerFetchHeadersMatchSdkDefault') is True
+                    and scope.get('workerFetchHeadersMatchSession') is worker_matches_session
+                    and scope.get('workerFetchHeaderMismatch') is (not worker_matches_session)
+                    and scope.get('observedUserAgentUniform') is worker_matches_session
+                    and scope.get('fullTemplateAcceptance') is False, 'truthful measured session mismatch')
+            if not worker_matches_session: mismatches.append(name)
+        require(case.get('workerFetchMismatchSessions') == mismatches
+                and case.get('fullTemplateAcceptance') is False, 'truthful case mismatch scope')
+    require(sorted(owned_sequences) == list(range(1, 31)), 'each raw header belongs to one observed case/session')
+
+
 def verify_diagnostic(report):
     if report.get('diagnosticOnly') is not True or report.get('releaseAcceptance') is not False:
         raise ValueError('Prototype cannot claim template or release acceptance')
@@ -220,4 +321,5 @@ def verify_diagnostic(report):
     if 'Service Worker' not in report.get('uncovered', []) or 'unsupported' not in report.get('independentTimezone', ''):
         raise ValueError('Prototype limitations must remain explicit')
     verify_guard_evidence(report)
+    verify_user_agent_evidence(report)
 

@@ -188,6 +188,83 @@ class FixtureProvenanceTest(unittest.TestCase):
             ('stale original document clock',lambda r:r['cases'][3]['sessions'][0]['observed']['parent'].update(at=31.5)),
         ])
 
+    def test_user_agent_default_is_independent_sdk_build_scope(self):
+        # Counterfeit metadata mutations test the validator, not SDK execution.
+        self.reject_guard_edits([
+            ('missing independent default',lambda r:r.pop('sdkUserAgentBaseline')),
+            ('session API substituted',lambda r:r['sdkUserAgentBaseline'].update(api='GeckoSession.getUserAgent()')),
+            ('runtime ACK claim',lambda r:r['sdkUserAgentBaseline'].update(runtimeAcknowledgement=True)),
+            ('override-sensitive claim',lambda r:r['sdkUserAgentBaseline'].update(ignoresSessionOverrides=False)),
+            ('desktop default substituted',lambda r:r['sdkUserAgentBaseline'].update(userAgent=r['cases'][1]['sessions'][0]['native']['userAgent'])),
+            ('wrong SDK default',lambda r:r['sdkUserAgentBaseline'].update(userAgent=r['sdkUserAgentBaseline']['userAgent'].replace('157.0','158.0'))),
+            ('wrong SDK pin',lambda r:r['sdkUserAgentBaseline'].update(sdkAarSha256='0'*64)),
+            ('wrong Android release',lambda r:r['sdkUserAgentBaseline'].update(androidRelease='14')),
+            ('wrong Android SDK',lambda r:r['sdkUserAgentBaseline'].update(androidSdk=28)),
+            ('numeric scope flag',lambda r:r['sdkUserAgentBaseline'].update(runtimeAcknowledgement=0)),
+            ('runtime setter claim',lambda r:r['userAgentCapability'].update(runtimeUserAgentSetterAvailable=True)),
+            ('template acceptance claim',lambda r:r['userAgentCapability'].update(fullTemplateAcceptance=True)),
+        ])
+        # The pinned pre-Q API returns Android 10 even on a different device release.
+        report=prototype_metadata(self.identity());report['androidSdk']=28
+        report['sdkUserAgentBaseline'].update(androidSdk=28,androidRelease='9')
+        old=report['sdkUserAgentBaseline']['userAgent'];new=old.replace('Android 15','Android 10')
+        report['sdkUserAgentBaseline']['userAgent']=new
+        for case in report['cases']:
+            for session in case['sessions']:
+                if session['native']['userAgent']==old:
+                    session['native']['userAgent']=new
+                    for context in ('parent','frame','worker','blobWorker'):session['observed'][context]['ua']=new
+                for row in session['requestHeaders']:
+                    if row['userAgent']==old:row['userAgent']=new
+        for row in report['allRequestHeaders']:
+            if row['userAgent']==old:row['userAgent']=new
+        runner.verify_diagnostic(report)
+
+    def test_user_agent_role_rules_use_real_headers_and_preserve_language(self):
+        def edit_row(report,target_role,**values):
+            session=report['cases'][1]['sessions'][0]
+            row=next(row for row in session['requestHeaders'] if row['role']==target_role)
+            row.update(values);report['allRequestHeaders'][row['sequence']-1].update(values)
+        self.reject_guard_edits([
+            ('desktop Worker fetch header emulation',lambda r:edit_row(r,'worker-fetch',userAgent=r['cases'][1]['sessions'][0]['native']['userAgent'])),
+            ('desktop Blob Worker header emulation',lambda r:edit_row(r,'blob-worker-fetch',userAgent=r['cases'][1]['sessions'][0]['native']['userAgent'])),
+            ('document forced to default',lambda r:edit_row(r,'page',userAgent=r['sdkUserAgentBaseline']['userAgent'])),
+            ('wrong actual language',lambda r:edit_row(r,'worker-fetch',acceptLanguage='en-US')),
+            ('JS Worker default substituted',lambda r:r['cases'][1]['sessions'][0]['observed']['worker'].update(ua=r['sdkUserAgentBaseline']['userAgent'])),
+            ('missing real header',lambda r:r['cases'][1]['sessions'][0]['requestHeaders'].pop()),
+            ('duplicate role',lambda r:edit_row(r,'worker-fetch',role='page-fetch')),
+            ('unchanged raw row requirement',lambda r:r['cases'][1]['sessions'][0]['requestHeaders'][0].update(userAgent='modified')),
+        ])
+
+    def test_user_agent_raw_headers_bind_exact_case_and_request(self):
+        def edit_row(report,**values):
+            row=report['cases'][1]['sessions'][0]['requestHeaders'][4]
+            row.update(values);report['allRequestHeaders'][row['sequence']-1].update(values)
+        self.reject_guard_edits([
+            ('foreign nonce',lambda r:edit_row(r,path='/echo?run='+'a'*32+'&case=2&session=primary&kind=worker-fetch')),
+            ('extra query',lambda r:edit_row(r,path=r['cases'][1]['sessions'][0]['requestHeaders'][4]['path']+'&extra=1')),
+            ('foreign absolute origin',lambda r:edit_row(r,path='http://example.invalid'+r['cases'][1]['sessions'][0]['requestHeaders'][4]['path'])),
+            ('wrong case',lambda r:edit_row(r,case=1)),
+            ('wrong session',lambda r:edit_row(r,session='secondary')),
+            ('wrong method',lambda r:edit_row(r,method='POST')),
+            ('capture before case',lambda r:edit_row(r,at=9)),
+            ('capture after case',lambda r:edit_row(r,at=16)),
+            ('duplicate raw sequence',lambda r:r['allRequestHeaders'][1].update(sequence=1)),
+        ])
+
+    def test_user_agent_mismatch_claims_are_derived_not_trusted(self):
+        self.reject_guard_edits([
+            ('desktop claimed uniform',lambda r:r['cases'][1]['sessions'][0]['userAgentScope'].update(observedUserAgentUniform=True)),
+            ('desktop claimed same header',lambda r:r['cases'][1]['sessions'][0]['userAgentScope'].update(workerFetchHeadersMatchSession=True)),
+            ('desktop mismatch hidden',lambda r:r['cases'][1]['sessions'][0]['userAgentScope'].update(workerFetchHeaderMismatch=False)),
+            ('mobile mismatch invented',lambda r:r['cases'][0]['sessions'][0]['userAgentScope'].update(workerFetchHeaderMismatch=True)),
+            ('case mismatch removed',lambda r:r['cases'][1].update(workerFetchMismatchSessions=[])),
+            ('secondary mismatch hidden',lambda r:r['cases'][3].update(workerFetchMismatchSessions=[])),
+            ('numeric truth claim',lambda r:r['cases'][1]['sessions'][0]['userAgentScope'].update(documentHeadersMatchSession=1)),
+            ('case template claim',lambda r:r['cases'][1].update(fullTemplateAcceptance=True)),
+            ('session template claim',lambda r:r['cases'][1]['sessions'][0]['userAgentScope'].update(fullTemplateAcceptance=True)),
+        ])
+
 
 if __name__=='__main__':
     unittest.main()
