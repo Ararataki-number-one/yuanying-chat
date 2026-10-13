@@ -28,6 +28,10 @@ def main():
     input_paths.update((ROOT / "tests").rglob("*.py"))
     input_paths.update((ROOT / "tests").rglob("*.cjs"))
     input_paths.add(Path(__file__).resolve())
+    proxy_script = ROOT / 'app/src/main/assets/gecko/background.js'
+    proxy_test = ROOT / 'tests/browser-runtime/gecko-proxy-route.test.cjs'
+    if proxy_test.is_file():
+        input_paths.add(proxy_script)
     before_hashes = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in input_paths}
     java = os.environ.get("PROFILE_JAVA") or shutil.which("java")
     if not java:
@@ -92,6 +96,21 @@ def main():
         "EnvironmentSpecRepository.java", "EnvironmentSpecRuntime.java", "EnvironmentApplyCoordinator.java",
         "NativeNetwork.java", "NetworkUiProvider.java"))
     subprocess.run(["node", "tests/browser-runtime/session-cookies.test.cjs"], cwd=ROOT, check=True)
+    if proxy_test.is_file():
+        proxy_run = subprocess.run(['node', str(proxy_test)], cwd=ROOT, check=True,
+                                   text=True, capture_output=True)
+        proxy_value = json.loads(proxy_run.stdout)
+        if (proxy_value.get('status') != 'passed' or proxy_value.get('sourceCommit') != source_id
+                or proxy_value.get('sourceTree') != source_tree
+                or proxy_value.get('actualAndroidExecution') is not False
+                or proxy_value.get('actualProductionScriptExecution') is not True):
+            raise ValueError('Actual production proxy script host execution is required')
+        proxy_receipt = output / 'gecko-proxy-route-host-results.json'
+        proxy_receipt.write_text(proxy_run.stdout)
+        results.append({'test':'gecko-proxy-route-host',
+                        'report':str(proxy_receipt.relative_to(ROOT)),
+                        'passed':proxy_value.get('passed'),'actualAndroidExecution':False})
+        files.update([proxy_script, proxy_test])
     bridges = sorted((ROOT / "tests/review-host").glob("*.cjs"))
     for bridge in bridges:
         subprocess.run(["node", str(bridge)], cwd=ROOT, check=True)

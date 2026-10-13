@@ -117,6 +117,7 @@ jobs:
           python3 tools/gecko/run_profile_host_checks.py --json-jar work/gecko-integration/catalog-json.jar --network-reports work/gecko-integration
           cp work/profile-host/results.json work/gecko-integration/profile-host-results.json
           cp work/profile-host/environment-intent-host-results.json work/gecko-integration/environment-intent-host-results.json
+          cp work/profile-host/gecko-proxy-route-host-results.json work/gecko-integration/gecko-proxy-route-host-results.json
           python3 -m unittest discover -s tests -p 'profile_*_test.py'
           if [ -f tools/gecko/release_channel_contract_test.py ]; then
             python3 tools/gecko/release_channel_contract_test.py

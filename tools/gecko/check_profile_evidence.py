@@ -13,11 +13,12 @@ HOST_GROUPS = {
     'NetworkHealthPolicyTest', 'NetworkStatusPolicyTest', 'NetworkPoolIdentityTest',
     'LatencyProbePolicyTest', 'EnvironmentSpecTest', 'network-catalog-host',
     'network-source-host', 'network-lineage-host', 'sealed-file-host', 'environment-intent-host',
+    'gecko-proxy-route-host',
 }
 MIN_HOST_COUNTS = {'NetworkHealthPolicyTest':52,'NetworkStatusPolicyTest':16,
     'NetworkPoolIdentityTest':54,'LatencyProbePolicyTest':70,'EnvironmentSpecTest':102,
     'network-catalog-host':113,'network-source-host':94,'network-lineage-host':26,
-    'sealed-file-host':32,'environment-intent-host':75}
+    'sealed-file-host':32,'environment-intent-host':75,'gecko-proxy-route-host':28}
 MODEL_INPUTS = {
     'EnvironmentSpec', 'EnvironmentSpecMigration', 'EnvironmentSpecRepository',
     'EnvironmentSpecRuntime', 'EnvironmentApplyCoordinator', 'ProfileCatalog',
@@ -45,7 +46,7 @@ def verify_profile_evidence(directory, source):
     runner = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(runner)
     host = json.loads((directory / 'profile-host-results.json').read_text())
-    if host.get('status') != 'passed' or host.get('actualAndroidExecution') is not False or host.get('sourceDirty') is not False or host.get('sourceCommit') != source or host.get('sourceTree') != tree:
+    if host.get('status') != 'passed' or host.get('actualAndroidExecution') is not False or host.get('sourceDirty') is not False or host.get('sourceUnchangedDuringChecks') is not True or host.get('sourceCommit') != source or host.get('sourceTree') != tree:
         raise ValueError('A clean, exact-source host report is required')
     groups = host.get('results', [])
     by_name = {group.get('test'): group for group in groups}
@@ -60,6 +61,34 @@ def verify_profile_evidence(directory, source):
             if receipt.get('actualAndroidExecution') is not False or receipt.get('passed') != group.get('passed'):
                 raise ValueError('Host receipt disagrees with profile execution: ' + name)
             count = receipt.get('passed')
+            if name == 'gecko-proxy-route-host':
+                proxy_inputs = {'app/src/main/assets/gecko/background.js',
+                                'tests/browser-runtime/gecko-proxy-route.test.cjs'}
+                proxy_source = source_bytes(source, 'tests/browser-runtime/gecko-proxy-route.test.cjs').decode()
+                declaration = re.search(r'const CHECK_NAMES = Object\.freeze\((\[[\s\S]*?\])\);', proxy_source)
+                if declaration is None:
+                    raise ValueError('Proxy callback source must declare its ordered assertion contract')
+                expected_names = json.loads(declaration.group(1))
+                if (not isinstance(expected_names, list) or len(expected_names) < 28
+                        or any(not isinstance(name, str) or not name for name in expected_names)):
+                    raise ValueError('Every production proxy callback assertion name must be declared')
+                checks = receipt.get('checks', [])
+                if (receipt.get('schema') != 1 or receipt.get('status') != 'passed'
+                        or receipt.get('sourceCommit') != source or receipt.get('sourceTree') != tree
+                        or receipt.get('sourceDirty') is not False
+                        or receipt.get('sourceUnchangedDuringChecks') is not True
+                        or receipt.get('actualGeckoExecution') is not False
+                        or receipt.get('actualProductionScriptExecution') is not True
+                        or receipt.get('total') != len(expected_names)
+                        or receipt.get('executed') != len(expected_names) or count != len(expected_names)
+                        or [row.get('name') for row in checks] != expected_names
+                        or len(set(expected_names)) != len(expected_names)
+                        or any(row.get('pass') is not True for row in checks)
+                        or set(receipt.get('files', {})) != proxy_inputs):
+                    raise ValueError('Every exact source proxy callback assertion must pass on the host')
+                for path, digest in receipt['files'].items():
+                    if hashlib.sha256(source_bytes(source, path)).hexdigest() != digest:
+                        raise ValueError('Production proxy callback host inputs changed')
             if name=='environment-intent-host':
                 expected_names=re.findall(r'(?:check|rejects)\("([^"\n]+)"',source_bytes(source,'tests/environment-intent-host/local/pocketchat/EnvironmentIntentHostTest.java').decode())
                 checks=receipt.get('checks',[])
@@ -78,6 +107,8 @@ def verify_profile_evidence(directory, source):
         counts[name] = count
     hashes = host.get('files', {})
     mandatory = {'app/src/main/java/local/pocketchat/' + name + '.java' for name in MODEL_INPUTS}
+    mandatory.update({'app/src/main/assets/gecko/background.js',
+                      'tests/browser-runtime/gecko-proxy-route.test.cjs'})
     if not mandatory.issubset(hashes):
         raise ValueError('Host report omits model or network production inputs')
     for path, digest in hashes.items():

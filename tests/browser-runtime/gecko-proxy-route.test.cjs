@@ -11,6 +11,16 @@ const root = path.resolve(__dirname, '../..');
 const assetPath = 'app/src/main/assets/gecko/background.js';
 const testPath = 'tests/browser-runtime/gecko-proxy-route.test.cjs';
 const code = fs.readFileSync(path.join(root, assetPath), 'utf8');
+const snapshot = () => ({
+  sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim(),
+  sourceTree: execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {cwd: root, encoding: 'utf8'}).trim(),
+  sourceStatus: execFileSync('git', ['status', '--porcelain'], {cwd: root, encoding: 'utf8'}),
+  files: Object.fromEntries([assetPath, testPath].map(file => [file,
+    crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex'),
+  ])),
+});
+const sourceBefore = snapshot();
+assert.equal(crypto.createHash('sha256').update(code).digest('hex'), sourceBefore.files[assetPath]);
 const blocked = {type: 'socks', host: '127.0.0.1', port: 9, proxyDNS: true, failoverTimeout: 1};
 const CHECK_NAMES = Object.freeze([
   "Registers exactly one production listener for every URL",
@@ -151,12 +161,9 @@ async function main() {
   assert.equal(CHECK_NAMES.length, 28, 'The source-owned contract must retain all 28 checks');
   assert.equal(checks.length, 28, 'All 28 checks must execute before a passed receipt is emitted');
 
-  const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim();
-  const sourceTree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {cwd: root, encoding: 'utf8'}).trim();
-  const sourceDirty = execFileSync('git', ['status', '--porcelain'], {cwd: root, encoding: 'utf8'}).trim().length > 0;
-  const files = Object.fromEntries([assetPath, testPath].map(file => [file,
-    crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex'),
-  ]));
+  assert.deepStrictEqual(snapshot(), sourceBefore, 'Source changed during production proxy host checks');
+  const {sourceCommit, sourceTree, files} = sourceBefore;
+  const sourceDirty = sourceBefore.sourceStatus.trim().length > 0;
   const report = {
     schema: 1,
     status: 'passed',
@@ -166,6 +173,7 @@ async function main() {
     sourceCommit,
     sourceTree,
     sourceDirty,
+    sourceUnchangedDuringChecks: true,
     files,
     actualAndroidExecution: false,
     actualGeckoExecution: false,
