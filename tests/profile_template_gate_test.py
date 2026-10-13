@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from profile_guard_metadata import prototype_metadata
 
 ROOT=Path(__file__).resolve().parents[1]
 def load(name):
@@ -38,6 +39,15 @@ def metadata_only_report():
         observation=dict(fresh=True,identityAppliedRevision=index+2,rows=[dict(key=key,state='verified') for key in ['ua','language','frame','worker','zone']],contextCoverage=coverage,controlledRequestHeaders=sessions[0]['requestHeaders'])
         native=dict(requested=requested,accepted=requested,requestedLocales=contract.REQUESTS[index],expectedSdkLocales=[contract.NORMALIZED[index]],getterScope='requested-descriptor-only',rfpAcknowledged=True,fingerprintingProtected=False,trackingProtection=index<2)
         report['appliedCases'].append(dict(index=index,templateId=template,privacy=privacy,nativePolicy=native,identity=dict(slot=0,generation=0,environmentId='00000000-0000-0000-0000-000000000001'),desiredRevision=index+2,appliedRevision=index+2,observedRevision=index+2,report=observation))
+    # These copied guard fields remain counterfeit validator metadata. They do
+    # not represent an SDK invocation or a real closed-guard request.
+    guard=prototype_metadata(identity,report['runNonce'])
+    report['origin']=guard['origin'];report['guardEvidence']=guard['guardEvidence']
+    for actual,metadata in zip(report['cases'],guard['cases']):
+        actual.update(requestedAt=metadata['requestedAt'],completedAt=metadata['completedAt'])
+        for session,native_metadata in zip(actual['sessions'],metadata['sessions']):
+            session['native'].update(native_metadata['native'])
+            session['observed']['parent']['at']=native_metadata['observed']['parent']['at']
     return report
 
 
@@ -47,7 +57,14 @@ class TemplateContractTest(unittest.TestCase):
         report=copy.deepcopy(self.report);edit(report)
         with self.assertRaises(ValueError):contract.verify_template_report(report)
     def test_well_formed_metadata_retains_limited_scope(self):
-        result=contract.verify_template_report(self.report);self.assertTrue(result['controlledTemplateAcceptance']);self.assertFalse(result['fingerprintTemplateAcceptance']);self.assertFalse(result['realAccountLogin']);self.assertFalse(result['safeIdleApplicationAcceptance']);self.assertEqual(result['assertions'],181)
+        result=contract.verify_template_report(self.report);self.assertTrue(result['controlledTemplateAcceptance']);self.assertFalse(result['fingerprintTemplateAcceptance']);self.assertFalse(result['realAccountLogin']);self.assertFalse(result['safeIdleApplicationAcceptance']);self.assertEqual(result['assertions'],190)
+    def test_original_template_assertions_precede_the_nine_guard_checks(self):
+        names=contract.expected_check_names();self.assertEqual(len(names[:-9]),181);self.assertEqual(names[-9:],list(contract._guard.GUARD_CHECK_NAMES))
+    def test_template_cannot_omit_actual_guard_evidence(self):self.rejects(lambda r:r.pop('guardEvidence'))
+    def test_template_cannot_use_another_guard_document(self):self.rejects(lambda r:r['guardEvidence'].update(document='http://other.example/page'))
+    def test_template_cannot_hide_a_request_after_closing_guard(self):self.rejects(lambda r:r['guardEvidence']['afterServer'].update(acceptedConnections=r['guardEvidence']['beforeServer']['acceptedConnections']+1))
+    def test_template_cannot_use_a_foreign_native_guard_sender(self):self.rejects(lambda r:r['guardEvidence']['nativePort'].update(nativeSession=5002))
+    def test_template_cannot_claim_an_untrusted_worker_rejection(self):self.rejects(lambda r:r['guardEvidence']['observed']['worker'].update(trusted=False))
     def test_sdk_prototype_is_not_template_evidence(self):self.rejects(lambda r:r.update(diagnosticOnly=True,fixtureType='prototype'))
     def test_incomplete_context_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['observed'].update(frame={'ua':'Firefox/157.0'}))
     def test_missing_main_language_type_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['observed']['parent'].update(language=42))

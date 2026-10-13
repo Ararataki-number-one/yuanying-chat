@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """Controlled-template observations only. No device execution or full fingerprint attestation."""
+import importlib.util
+from pathlib import Path
 import re
 from urllib.parse import parse_qsl, urlsplit
+
+# The runner/public gate bind this shared pure contract to the selected source.
+_guard_spec=importlib.util.spec_from_file_location('template_shared_guard_contract',Path(__file__).with_name('profile_invocation_contract.py'))
+_guard=importlib.util.module_from_spec(_guard_spec);_guard_spec.loader.exec_module(_guard)
 
 SDK='org.mozilla.geckoview:geckoview:157.0.20261005135250'
 AAR='15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268'
@@ -29,7 +35,7 @@ def expected_check_names():
         names.extend(f'Template {index} '+suffix for suffix in ['receives the current native privacy acknowledgement','accepted identity remains requested configuration','actual production acknowledgement binds desired revision'])
         names.extend(f'Template {index} actual observation report covers '+key for key in ['ua','language','frame','worker','zone'])
         names.append(f'Template {index} production controller records the observed revision')
-    return names
+    return names+list(_guard.GUARD_CHECK_NAMES)
 
 
 def complete_signal(signal):
@@ -61,6 +67,7 @@ def verify_template_report(report):
     names=expected_check_names();checks=report.get('checks',[])
     if report.get('passed')!=len(names) or report.get('total')!=len(names) or [item.get('name') for item in checks]!=names or any(item.get('pass') is not True for item in checks):
         raise ValueError('Every exact ordered template/context/header/controller assertion must pass')
+    _guard.verify_guard_evidence(report)
     if report.get('error') or report.get('failureType'):raise ValueError('Template fixture recorded a failure')
     cases=report.get('cases');applied=report.get('appliedCases')
     if not isinstance(cases,list) or not isinstance(applied,list) or [item.get('index') for item in cases]!=list(range(4)) or [item.get('index') for item in applied]!=list(range(4)):
