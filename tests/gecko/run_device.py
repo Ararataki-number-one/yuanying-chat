@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Release-mode SDK in the actual app: two live processes, distinct HTTP/SOCKS routes."""
 import argparse, hashlib, importlib.util, json, pathlib, select, socket, socketserver
-import re, subprocess, sys, threading, time, urllib.parse
+import re, subprocess, sys, threading, time, urllib.parse, uuid
 import xml.etree.ElementTree as ET
 
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
 sys.path.insert(0,str(ROOT/'tools/gecko'))
 from check_interaction_transfer_evidence import verify_paint_case, verify_saved_file_deletion
+from integration_event_contract import EventTransfer, parse_receipt_line
+from profile_invocation_contract import expected_build, verify_installed
 def missing_update_job(return_code, output, package):
     """Only Android's exact not-yet-registered job response is transient."""
     if return_code!=23:return False
@@ -173,18 +175,26 @@ class Fixture(fixture.Fixture):
         super().end_headers()
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',default='emulator-5554')
+    parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',default='emulator-5554');parser.add_argument('--apk',type=pathlib.Path,default=ROOT/'app/build/outputs/apk/integration/app-x86_64-integration.apk')
     modes=parser.add_mutually_exclusive_group();modes.add_argument('--reading-only',action='store_true',help='Diagnostic reading/zoom/input subset; cannot replace full device acceptance');modes.add_argument('--update-transfers-only',action='store_true',help='Diagnostic real 28-case transfer subset; cannot replace full device acceptance');args=parser.parse_args()
     diagnostic='reading' if args.reading_only else 'update-transfers' if args.update_transfers_only else ''
     device_report_name='diagnostic-reading-results.json' if args.reading_only else 'diagnostic-update-device-results.json' if args.update_transfers_only else 'device-results.json'
     update_report_name='diagnostic-update-transfers-results.json' if diagnostic else 'update-transfer-results.json'
     OUT.mkdir(parents=True,exist_ok=True)
     def adb(*parts):return subprocess.check_output([args.adb,'-s',args.serial,*parts],text=True,timeout=30)
+    def adb_bytes(*parts):return subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=30)
+    source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+    tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=ROOT,text=True).strip()
+    if subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True):raise ValueError('Device evidence requires clean committed APK/source')
+    gradle=(ROOT/'app/build.gradle').read_text();version=re.search(r"versionName '([^']+)'",gradle).group(1);code=int(re.search(r'versionCode (\d+)',gradle).group(1))
+    identity=expected_build(args.apk.resolve(),source,tree,version,code)
+    event_transfers=[]
     package='local.pocketchat.test'
     servers=[fixture.http.server.ThreadingHTTPServer(('127.0.0.1',8765),Fixture),Server(('127.0.0.1',1080),Socks),Server(('127.0.0.1',1081),HttpProxy)]
     for server in servers:threading.Thread(target=server.serve_forever,daemon=True).start()
     for port in [8765,1080,1081]:adb('reverse',f'tcp:{port}',f'tcp:{port}')
     adb('shell','pm','clear',package)
+    verify_installed(json.loads(adb('exec-out','content','read','--uri','content://local.pocketchat.test.evidence/build-identity')),identity)
     sdk=int(adb('shell','getprop','ro.build.version.sdk').strip())
     if sdk>=33:adb('shell','pm','grant',package,'android.permission.POST_NOTIFICATIONS')
     # A fresh test phone needs an explicit permission response before checking app UI.
@@ -197,6 +207,13 @@ def main():
     steps=[];logs=[];update_report=None;surface_gestures={}
     def run(context,action,kind='fixture',extra=()):
         adb('logcat','-c')
+        nonce=uuid.uuid4().hex
+        transfer_record=dict(runNonce=nonce,fixtureAction=action,processSlot=context-1,events=[],scope='Complete owned synthetic event bytes; no replacement of original device assertions')
+        event_transfers.append(transfer_record)
+        def fetch_event(uri):
+            raw=adb_bytes('exec-out','content','read','--uri',uri)
+            return raw
+        transfer=EventTransfer(identity=identity,nonce=nonce,slot=context-1,action=action,fetch=fetch_event)
         tapped=set()
         reading_events=set();reading_trace=[];reading_lifecycle=[];reading_geometry=[];reading_readiness=None;bounds_before=None;bounds_pan=None
         surface_gestures[(context,action)]=[]
@@ -209,23 +226,25 @@ def main():
         # makes Android recreate its taskbar/navigation mode and resize the
         # already visible browser. Keep the first-boot workaround elsewhere.
         if has_pixel_launcher and action not in {'reading','readingZoom','readingInput','readingBounds','readingBoundsProtected','readingBoundsGeometry','readingBoundsInput','readingBoundsEnd','nativeSurface','nativeCheckpoint'}:adb('shell','am','force-stop',launcher)
-        adb('shell','am','start','-W','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action,*extra)
+        adb('shell','am','start','-W','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action,'--es','eventNonce',nonce,*extra)
         deadline=time.monotonic()+120
         while time.monotonic()<deadline:
             output=adb('logcat','-d','-s','PocketGeckoIntegration:I','*:S')
             for line in output.splitlines():
-                if '{' not in line:continue
-                try:event=json.loads(line[line.index('{'):])
-                except json.JSONDecodeError:continue
-                if event.get('nativeContext')!=f'environment-{context}':continue
+                receipt=parse_receipt_line(line)
+                if receipt is None:continue
+                if receipt.get('runNonce')!=nonce or receipt.get('processSlot')!=context-1:continue
+                if receipt.get('kind')=='eventTransportError':raise ValueError('Native complete event publication failed: '+str(receipt))
+                event=transfer.read(receipt)
+                transfer_record['events']=transfer.records
                 if action in {'readingBounds','readingBoundsProtected'} and event.get('kind') in {'readingBoundsBefore','readingBoundsPan'}:
                     if event['kind']=='readingBoundsBefore':bounds_before=event['result']
                     else:bounds_pan=event['result']
                     continue
                 if action=='readingZoom' and event.get('kind') in {'readingZoomTrace','readingZoomLifecycle','readingZoomGeometry','readingZoomReadiness'}:
-                    identity=json.dumps(event,sort_keys=True,separators=(',',':'))
-                    if identity not in reading_events:
-                        reading_events.add(identity);payload=event['result'];event_kind=event['kind']
+                    event_identity=json.dumps(event,sort_keys=True,separators=(',',':'))
+                    if event_identity not in reading_events:
+                        reading_events.add(event_identity);payload=event['result'];event_kind=event['kind']
                         if event_kind=='readingZoomTrace' and len(reading_trace)<96:reading_trace.append(payload)
                         elif event_kind=='readingZoomLifecycle' and len(reading_lifecycle)<16:reading_lifecycle.append(payload)
                         elif event_kind=='readingZoomGeometry' and len(reading_geometry)<16:reading_geometry.append(payload)
@@ -233,9 +252,9 @@ def main():
                         report.update(readingZoomTrace=reading_trace,readingZoomLifecycle=reading_lifecycle,readingZoomGeometry=reading_geometry,readingZoomReadiness=reading_readiness)
                     continue
                 if event.get('kind')=='swipeNeeded':
-                    point=event['result'];identity=point['id']
-                    if identity not in tapped:
-                        tapped.add(identity)
+                    point=event['result'];gesture_identity=point['id']
+                    if gesture_identity not in tapped:
+                        tapped.add(gesture_identity)
                         adb('shell','input','swipe',str(point['x']),str(point['fromY']),str(point['x']),str(point['toY']),str(point.get('duration',500)))
                         surface_gestures[(context,action)].append(dict(point,context=context,action=action,actualAndroidInput=True))
                     continue
@@ -659,6 +678,7 @@ def main():
         primary_error=sys.exc_info()[1]
         prefix=f'diagnostic-{diagnostic}-' if diagnostic else ''
         report['steps']=steps
+        report['eventTransport']=dict(schema=1,buildIdentity=identity,invocations=event_transfers,scope='Source/APK/nonce/slot/action/sequence and exact UTF-8 size/SHA-bound file handoff; original full event results and assertions remain unchanged')
         artifact_errors=report.setdefault('artifactErrors',[]);persistence_errors=[]
         def artifact(name,save,required=False):
             try:save()

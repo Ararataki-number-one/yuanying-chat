@@ -107,8 +107,10 @@ public class GeckoIntegrationTestActivity extends Activity {
     session.web.setHost(this);root.addView(session.web,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);command(getIntent());
   }
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);command(intent);}
-  void command(Intent intent){
+  synchronized void command(Intent intent){
     action=intent.getStringExtra("fixtureAction");if(action==null)return;long serial=++run;
+    try{if(eventBuildIdentity==null)eventBuildIdentity=IntegrationBuildIdentity.read(Profiles.global(this));eventStore=new IntegrationEventStore(this,slot,intent.getStringExtra("eventNonce"),action,serial,eventBuildIdentity);}
+    catch(Exception failure){throw new IllegalStateException("Full synthetic result transport unavailable",failure);}
     waitReady(serial);
   }
   void waitReady(long serial){
@@ -116,8 +118,8 @@ public class GeckoIntegrationTestActivity extends Activity {
     // onNewIntent arrives before onResume when bringing another task forward.
     // AndroidX publishes RESUMED in onActivityPostResumed, after Activity.onResume.
     if(!activityResumed||!processForeground()){session.handler.postDelayed(()->waitReady(serial),50);return;}
-    if("foreignPreferences".equals(action)){event("foreignPreferences",J.obj("marker",Profiles.context(this,1).getSharedPreferences("chat",0).getString("managementMarker","")));return;}
-    if(web.failed){event("error",J.obj("error","Gecko startup failed"));return;}
+    if("foreignPreferences".equals(action)){event(serial,"foreignPreferences",J.obj("marker",Profiles.context(this,1).getSharedPreferences("chat",0).getString("managementMarker","")));return;}
+    if(web.failed){event(serial,"error",J.obj("error","Gecko startup failed"));return;}
     if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
     FixtureView controlled=(FixtureView)web;
     if(!controlled.initialRouteReady){
@@ -130,12 +132,12 @@ public class GeckoIntegrationTestActivity extends Activity {
       else initialRouteSamples++;
       if(!available||initialRouteSamples<3||now-initialRouteStableSince<500){session.handler.postDelayed(()->waitReady(serial),100);return;}
       String expected=(slot==0?"socks":"http")+"://127.0.0.1:"+(1080+slot);
-      if(session.internalNetwork()||!expected.equals(session.prefs.getString("proxy",""))||session.prefs.getBoolean("requireExternalVpn",true)){event("error",J.obj("error","Initial controlled fixture route configuration mismatch"));return;}
+      if(session.internalNetwork()||!expected.equals(session.prefs.getString("proxy",""))||session.prefs.getBoolean("requireExternalVpn",true)){event(serial,"error",J.obj("error","Initial controlled fixture route configuration mismatch"));return;}
       // Admit this synthetic route once after the real observer has caught up.
       // Later loss/block/kill/clear behavior continues through production guards.
       session.guard.setBlocked(false);session.networkReady=true;controlled.initialRouteReady=true;
       JSONObject evidence=J.obj("actualNetwork",identity,"internet",true,"observerNetwork",session.networkIdentity,"observerOffline",session.offline,"stableMillis",now-initialRouteStableSince,"stableSamples",initialRouteSamples,"proxy",expected);
-      controlled.initialRouteReporter=target->{try{evidence.put("initialTarget",target).put("startupCheckpointUri",GeckoWebView.stateUrl(web.startupState)).put("guardAllowed",session.guard.allowed()).put("networkReady",session.networkReady).put("route",web.route(target));}catch(JSONException error){throw new IllegalStateException(error);}event("initialRouteReady",evidence);};
+      controlled.initialRouteReporter=target->{try{evidence.put("initialTarget",target).put("startupCheckpointUri",GeckoWebView.stateUrl(web.startupState)).put("guardAllowed",session.guard.allowed()).put("networkReady",session.networkReady).put("route",web.route(target));}catch(JSONException error){throw new IllegalStateException(error);}event(serial,"initialRouteReady",evidence);};
     }
     if("backgroundSettings".equals(action)){backgroundSettings(serial);return;}
     if("queuedChanges".equals(action)){queuedChanges(serial);return;}
@@ -143,7 +145,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("completion".equals(action)){completion(serial);return;}
     if("desktopImage".equals(action)){desktopImage(serial);return;}
     if("usability".equals(action)){usability(serial);return;}
-    if("deleteDownloads".equals(action)){DownloadDeletionIntegration.run(this,result->{if(serial==run)event("downloadDeletion",result);});return;}
+    if("deleteDownloads".equals(action)){DownloadDeletionIntegration.run(this,result->{if(serial==run)event(serial,"downloadDeletion",result);});return;}
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}
     if("readingZoom".equals(action)){beginReadingZoom(serial);return;}
     if("readingBounds".equals(action)||"readingBoundsProtected".equals(action)){beginReadingBounds(serial,"readingBoundsProtected".equals(action)?2:0);return;}
@@ -157,11 +159,11 @@ public class GeckoIntegrationTestActivity extends Activity {
       if("killRestore".equals(action)){
         org.mozilla.geckoview.GeckoSession stopped=web.current;stopped.close();stopped.getContentDelegate().onKill(stopped);
       }else if("resumeSaved".equals(action)){
-        String target=GeckoWebView.stateUrl(web.startupState);if(!target.contains("/browser-session")){event("error",J.obj("error","private session checkpoint missing"));return;}web.loadUrl(target);
+        String target=GeckoWebView.stateUrl(web.startupState);if(!target.contains("/browser-session")){event(serial,"error",J.obj("error","private session checkpoint missing"));return;}web.loadUrl(target);
       }else if(!"sessionLive".equals(action))web.loadUrl("http://127.0.0.1:8765/browser-session?context="+(slot+1)+"&action="+action+"&command="+serial);
       sessionResult(serial,SystemClock.elapsedRealtime()+20000);return;
     }
-    if("sessionCheckpoint".equals(action)){web.checkpointState();session.handler.postDelayed(()->event("checkpoint",J.obj("saved",web.states.containsKey(web.primary))),1000);return;}
+    if("sessionCheckpoint".equals(action)){web.checkpointState();session.handler.postDelayed(()->event(serial,"checkpoint",J.obj("saved",web.states.containsKey(web.primary))),1000);return;}
     if("windows".equals(action)||"lostParent".equals(action)){windowFlow(serial);return;}
     if("earlyPaint".equals(action)||"cancelLoad".equals(action)){
       // SDK PageStart may precede the authoritative location commit callback.
@@ -177,22 +179,22 @@ public class GeckoIntegrationTestActivity extends Activity {
       closedSessionRecovery=web.failed&&!stopped.isOpen();session.guard.setBlocked(true);web.loadUrl("http://127.0.0.1:8765/fixture");
       blockedRecoveryPreservesClosed=!stopped.isOpen();session.guard.setBlocked(false);loadFixture(serial);return;
     }
-    if("switchSystem".equals(action)){web.useEngine(false);event("engineSwitch",J.obj("gecko",web.enabled));return;}
+    if("switchSystem".equals(action)){web.useEngine(false);event(serial,"engineSwitch",J.obj("gecko",web.enabled));return;}
     if("switchGecko".equals(action)){web.useEngine(true);action="read";}
     if("clear".equals(action)){web.runtime.getStorageController().clearData(org.mozilla.geckoview.StorageController.ClearFlags.ALL)
-      .accept(value->loadFixture(serial),error->event("error",J.obj("error","native profile clear failed")));return;}
+      .accept(value->loadFixture(serial),error->event(serial,"error",J.obj("error","native profile clear failed")));return;}
     if("block".equals(action))session.guard.setBlocked(true);
     if("disableExtension".equals(action)){
-      web.runtime.getWebExtensionController().disable(web.extension,1).accept(value->{web.current.loadUri("http://127.0.0.1:8765/fixture?context="+(slot+1)+"&action=read");session.handler.postDelayed(()->event("bootstrapCheck",J.obj("navigationFailed",session.navigationFailed)),5000);},error->event("error",J.obj("error","disable failed")));return;
+      web.runtime.getWebExtensionController().disable(web.extension,1).accept(value->{web.current.loadUri("http://127.0.0.1:8765/fixture?context="+(slot+1)+"&action=read");session.handler.postDelayed(()->event(serial,"bootstrapCheck",J.obj("navigationFailed",session.navigationFailed)),5000);},error->event(serial,"error",J.obj("error","disable failed")));return;
     }
     loadFixture(serial);
   }
   void backgroundSettings(long serial){
     boolean desktop=session.privacy.wantsDesktop();session.pending=J.obj("id","synthetic-background-settings","confirmed",true);session.navigating=false;session.connecting=false;
     boolean saved=DeferredBrowserSettings.save(session,session.privacy.level(),!desktop);ChatService.begin(this);
-    event("homeNeeded",J.obj("id","background-settings-"+serial));
+    event(serial,"homeNeeded",J.obj("id","background-settings-"+serial));
     session.handler.postDelayed(()->{session.networkReady=false;session.guard.setBlocked(true);session.completeReply(session.pending,J.obj("url",session.web.getUrl()));session.changed();},5000);
-    session.handler.postDelayed(()->event("backgroundSettings",J.obj("saved",saved,"actualBackground",!session.uiVisible&&!processForeground(),"replyFinished",session.pending==null,"automaticallyApplied",!DeferredBrowserSettings.pending(session)&&session.privacy.wantsDesktop()!=desktop&&session.privacy.desktop!=desktop)),8500);
+    session.handler.postDelayed(()->event(serial,"backgroundSettings",J.obj("saved",saved,"actualBackground",!session.uiVisible&&!processForeground(),"replyFinished",session.pending==null,"automaticallyApplied",!DeferredBrowserSettings.pending(session)&&session.privacy.wantsDesktop()!=desktop&&session.privacy.desktop!=desktop)),8500);
   }
   void queuedChanges(long serial){
     session.prefs.edit().putString("managementMarker","prime-target").commit();String original=session.prefs.getString("proxy","");int level=session.privacy.level();boolean desktop=session.privacy.wantsDesktop();
@@ -201,14 +203,14 @@ public class GeckoIntegrationTestActivity extends Activity {
     NetworkBridge.run(this,slot,"external",J.obj("proxy","","requireExternalVpn",true),NetworkChanges.hash(this),(ok,message,snapshot)->{
       boolean kept=original.equals(session.prefs.getString("proxy",""))&&NetworkChanges.pending(this).length()>0&&session.pending!=null;
       DeferredBrowserSettings.cancel(session);JSONObject job=session.pending;session.completeReply(job,J.obj("url",session.web.getUrl()));session.changed();session.state=J.obj("busy",false);session.navigating=false;
-      session.handler.postDelayed(()->event("queuedChanges",J.obj("savedWhileReplying",ok,"oldRouteKept",kept,"browserSavedWithoutApplying",browserSaved&&livePolicyKept,"replyCleared",session.pending==null&&!session.prefs.contains("pending")&&!ProfileCatalog.get(this).item(slot).optBoolean("waiting"),"appliedWhenIdle",session.prefs.getString("proxy","x").isEmpty()&&NetworkChanges.pending(this).length()==0,"vpnGuardBlocksWithoutVpn",session.guard.requiresVpn()&&!session.guard.allowed(),"message",message)),3500);
+      session.handler.postDelayed(()->event(serial,"queuedChanges",J.obj("savedWhileReplying",ok,"oldRouteKept",kept,"browserSavedWithoutApplying",browserSaved&&livePolicyKept,"replyCleared",session.pending==null&&!session.prefs.contains("pending")&&!ProfileCatalog.get(this).item(slot).optBoolean("waiting"),"appliedWhenIdle",session.prefs.getString("proxy","x").isEmpty()&&NetworkChanges.pending(this).length()==0,"vpnGuardBlocksWithoutVpn",session.guard.requiresVpn()&&!session.guard.allowed(),"message",message)),3500);
     });
   }
   int priorPrivacy;
   void privacy(long serial,int stage){
     if(stage==0){priorPrivacy=session.privacy.level();session.prefs.edit().putInt("privacyLevel",2).commit();session.web.configure(session.privacy.desktop,2);session.handler.postDelayed(()->privacy(serial,1),1000);return;}
-    if(!session.web.privacyReady){if(stage>15){event("error",J.obj("error","privacy acknowledgment timeout"));return;}session.handler.postDelayed(()->privacy(serial,stage+1),500);return;}
-    boolean enabled=session.web.fingerprintingProtected;session.prefs.edit().putInt("privacyLevel",priorPrivacy).commit();session.web.configure(session.privacy.desktop,priorPrivacy);session.handler.postDelayed(()->event("privacy",J.obj("nativeFingerprintingEnabled",enabled,"restoredLevel",priorPrivacy)),1000);
+    if(!session.web.privacyReady){if(stage>15){event(serial,"error",J.obj("error","privacy acknowledgment timeout"));return;}session.handler.postDelayed(()->privacy(serial,stage+1),500);return;}
+    boolean enabled=session.web.fingerprintingProtected;session.prefs.edit().putInt("privacyLevel",priorPrivacy).commit();session.web.configure(session.privacy.desktop,priorPrivacy);session.handler.postDelayed(()->event(serial,"privacy",J.obj("nativeFingerprintingEnabled",enabled,"restoredLevel",priorPrivacy)),1000);
   }
   void completion(long serial){
     String html="<main><article data-turn='user'><div data-message-author-role='user' data-message-id='synthetic-user'>guest prompt</div></article><section><div data-message-author-role='assistant' data-message-id='synthetic-answer'><div class='markdown'>guest complete reply</div></div><button aria-label='Copy message'>Copy</button></section><textarea id='prompt-textarea'></textarea></main>";
@@ -226,7 +228,7 @@ public class GeckoIntegrationTestActivity extends Activity {
         session.web.evaluateJavascript(previous,v->{
           session.web.evaluateJavascript(code,later->{
             JSONObject old=J.parse(later);
-            event("completion",J.obj("guestActionsRecognized",current,"priorActionsCannotComplete",!old.optBoolean("terminal"),"nestedMessageIdRecognized","id:synthetic-user".equals(poll.optString("userKey")),"reply",poll.optString("markdown"),"poll",poll));
+            event(serial,"completion",J.obj("guestActionsRecognized",current,"priorActionsCannotComplete",!old.optBoolean("terminal"),"nestedMessageIdRecognized","id:synthetic-user".equals(poll.optString("userKey")),"reply",poll.optString("markdown"),"poll",poll));
           });
         });
       });
@@ -240,7 +242,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     FixtureView view=(FixtureView)session.web;final boolean[] chooser={false},mime={false};
     MainActivity host=new MainActivity(){
       @Override public android.view.Window getWindow(){return GeckoIntegrationTestActivity.this.getWindow();}
-      @Override void status(String message){if(message.contains("失败"))event("error",J.obj("error",message));}
+      @Override void status(String message){if(message.contains("失败"))event(serial,"error",J.obj("error",message));}
       @Override public void startActivityForResult(Intent intent,int request){
         chooser[0]=request==74&&Intent.ACTION_OPEN_DOCUMENT.equals(intent.getAction());mime[0]="image/*".equals(intent.getType())&&intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE,false);
         session.handler.post(()->{view.chooserOrigin=true;try{attachments.result(Activity.RESULT_OK,new Intent().setData(android.net.Uri.parse("content://synthetic.pocket.upload/image")));}finally{view.chooserOrigin=false;}});
@@ -258,8 +260,8 @@ public class GeckoIntegrationTestActivity extends Activity {
       JSONObject current=J.parse(raw);String value=current.optString("value");boolean touched=tapped;
       if(!touched&&current.optBoolean("ready")&&session.web.hasVisibleDocument()&&!session.navigating){tapElement(serial,"upload");touched=true;}
       final boolean next=touched;
-      if(value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;host.attachments.destroy();event("desktopImage",J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",((GeckoWebView)session.web).desktop));return;}
-      if(SystemClock.elapsedRealtime()>deadline){session.pending=null;host.attachments.destroy();event("error",J.obj("error","desktop image chooser/upload failed","result",raw,"chooser",chooser[0]));return;}
+      if(value.startsWith("ok:")){boolean retained=session.pending==held;session.pending=null;host.attachments.destroy();event(serial,"desktopImage",J.obj("productionChooserOpened",chooser[0],"imageMimeAndMultiple",mime[0],"pendingPreserved",retained,"noPhantomUpload",session.attachments.length()==0,"upload",value,"desktop",((GeckoWebView)session.web).desktop));return;}
+      if(SystemClock.elapsedRealtime()>deadline){session.pending=null;host.attachments.destroy();event(serial,"error",J.obj("error","desktop image chooser/upload failed","result",raw,"chooser",chooser[0]));return;}
       session.handler.postDelayed(()->desktopImageReady(serial,deadline,host,held,chooser,mime,next),100);
     });
   }
@@ -273,15 +275,15 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   void usabilityReady(long serial,long deadline){
     if(serial!=run)return;
-    if(!session.web.hasVisibleDocument()){if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","mobile document remained blank"));return;}session.handler.postDelayed(()->usabilityReady(serial,deadline),100);return;}
-    session.web.evaluateJavascript("navigator.userAgent",raw->{if(!raw.contains("Android")||!raw.contains("Firefox")){event("error",J.obj("error","mobile identity missing","ua",raw));return;}
-      if(!session.audit.start(false,()->{JSONObject report=session.audit.report;session.web.evaluateJavascript("(()=>({url:location.href,body:!!document.getElementById('upload'),visible:document.body.innerText.length>0}))()",value->{JSONObject current=J.parse(value);if(!current.optBoolean("body")||!current.optBoolean("visible")||!current.optString("url").contains("browser-usability")||!report.optBoolean("fresh")||!report.optJSONObject("signals").optJSONObject("parent").optString("ua").contains("Firefox")){event("error",J.obj("error","current Firefox audit failed","report",report,"current",current));return;}tapElement(serial,"upload");usabilityUpload(serial,deadline);});}))event("error",J.obj("error",session.audit.lastError));
+    if(!session.web.hasVisibleDocument()){if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","mobile document remained blank"));return;}session.handler.postDelayed(()->usabilityReady(serial,deadline),100);return;}
+    session.web.evaluateJavascript("navigator.userAgent",raw->{if(!raw.contains("Android")||!raw.contains("Firefox")){event(serial,"error",J.obj("error","mobile identity missing","ua",raw));return;}
+      if(!session.audit.start(false,()->{JSONObject report=session.audit.report;session.web.evaluateJavascript("(()=>({url:location.href,body:!!document.getElementById('upload'),visible:document.body.innerText.length>0}))()",value->{JSONObject current=J.parse(value);if(!current.optBoolean("body")||!current.optBoolean("visible")||!current.optString("url").contains("browser-usability")||!report.optBoolean("fresh")||!report.optJSONObject("signals").optJSONObject("parent").optString("ua").contains("Firefox")){event(serial,"error",J.obj("error","current Firefox audit failed","report",report,"current",current));return;}tapElement(serial,"upload");usabilityUpload(serial,deadline);});}))event(serial,"error",J.obj("error",session.audit.lastError));
     });
   }
   void usabilityUpload(long serial,long deadline){
     if(serial!=run)return;
-    session.web.evaluateJavascript("document.getElementById('upload-result')?.textContent",raw->{String value=raw==null?"":raw;try{value=new org.json.JSONTokener(raw).nextValue().toString();}catch(Exception ignored){}final String selectedValue=value;if(!"sample.txt:synthetic-upload".equals(value)){if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","SAF text upload failed","result",raw));return;}session.handler.postDelayed(()->usabilityUpload(serial,deadline),100);return;}
-      final long downloadEpoch=session.navigationEpoch;final String downloadDocument=session.web.getUrl();final boolean[] csvReceived={false};session.web.responseDownload=response->{new Thread(()->{try(java.io.InputStream in=response.body){String body=new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);session.handler.post(()->{if(!"name,value\nsynthetic,42\n".equals(body)){event("error",J.obj("error","native CSV body mismatch","body",body));return;}if(!csvReceived[0]){csvReceived[0]=true;tapElement(serial,"blob");return;}if(session.navigationEpoch!=downloadEpoch||!downloadDocument.equals(session.web.getUrl())||session.navigationFailed){event("error",J.obj("error","download replaced the current document"));return;}event("usability",J.obj("documentPreserved",true,"mobileVisible",session.web.hasVisibleDocument(),"upload",selectedValue,"csv",body,"blob",body,"audit",session.audit.report));});}catch(Exception error){event("error",J.obj("error","native download failed: "+error.getMessage()));}},"fixture-download").start();};
+    session.web.evaluateJavascript("document.getElementById('upload-result')?.textContent",raw->{String value=raw==null?"":raw;try{value=new org.json.JSONTokener(raw).nextValue().toString();}catch(Exception ignored){}final String selectedValue=value;if(!"sample.txt:synthetic-upload".equals(value)){if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","SAF text upload failed","result",raw));return;}session.handler.postDelayed(()->usabilityUpload(serial,deadline),100);return;}
+      final long downloadEpoch=session.navigationEpoch;final String downloadDocument=session.web.getUrl();final boolean[] csvReceived={false};session.web.responseDownload=response->{new Thread(()->{try(java.io.InputStream in=response.body){String body=new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);session.handler.post(()->{if(!"name,value\nsynthetic,42\n".equals(body)){event(serial,"error",J.obj("error","native CSV body mismatch","body",body));return;}if(!csvReceived[0]){csvReceived[0]=true;tapElement(serial,"blob");return;}if(session.navigationEpoch!=downloadEpoch||!downloadDocument.equals(session.web.getUrl())||session.navigationFailed){event(serial,"error",J.obj("error","download replaced the current document"));return;}event(serial,"usability",J.obj("documentPreserved",true,"mobileVisible",session.web.hasVisibleDocument(),"upload",selectedValue,"csv",body,"blob",body,"audit",session.audit.report));});}catch(Exception error){event(serial,"error",J.obj("error","native download failed: "+error.getMessage()));}},"fixture-download").start();};
       tapElement(serial,"csv");
     });
   }
@@ -301,9 +303,9 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(serial!=run)return;JSONObject result=J.parse(raw);
       if(result.length()>0&&action.equals(result.optString("action"))&&String.valueOf(slot+1).equals(result.optString("context"))&&String.valueOf(serial).equals(result.optString("command"))){((GeckoWebView)session.web).readCookies("http://127.0.0.1:8765/fixture",value->{
         if(serial!=run)return;
-        try{result.put("nativeCookies",value==null?JSONObject.NULL:value);if("legacyEnginePreference".equals(action))result.put("legacyEngineCompatibility",legacyEngineCompatibility());if("closedSession".equals(action)){result.put("closedSessionRecovery",closedSessionRecovery&&((GeckoWebView)session.web).current.isOpen()&&!((GeckoWebView)session.web).failed);result.put("blockedRecoveryPreservesClosed",blockedRecoveryPreservesClosed);result.put("pendingFailureRetained",pendingFailureRetained);result.put("recoveryMethod","injected SDK onKill contract; real close/open/render");}}catch(Exception error){event("error",J.obj("error",error.toString()));return;}event("fixture",result);
+        try{result.put("nativeCookies",value==null?JSONObject.NULL:value);if("legacyEnginePreference".equals(action))result.put("legacyEngineCompatibility",legacyEngineCompatibility());if("closedSession".equals(action)){result.put("closedSessionRecovery",closedSessionRecovery&&((GeckoWebView)session.web).current.isOpen()&&!((GeckoWebView)session.web).failed);result.put("blockedRecoveryPreservesClosed",blockedRecoveryPreservesClosed);result.put("pendingFailureRetained",pendingFailureRetained);result.put("recoveryMethod","injected SDK onKill contract; real close/open/render");}}catch(Exception error){event(serial,"error",J.obj("error",error.toString()));return;}event(serial,"fixture",result);
       });return;}
-      if(session.navigationFailed)event("loadError",J.obj("failed",true,"url",session.web.getUrl(),"error",session.pageError,"guard",session.guard.allowed()));
+      if(session.navigationFailed)event(serial,"loadError",J.obj("failed",true,"url",session.web.getUrl(),"error",session.pageError,"guard",session.guard.allowed()));
       else session.handler.postDelayed(()->poll(serial),300);
     });
   }
@@ -320,8 +322,8 @@ public class GeckoIntegrationTestActivity extends Activity {
   void blockedProbe(long serial,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript("window.__guardProbe||null",raw->{
       if(serial!=run)return;
-      if("\"blocked\"".equals(raw)||"\"leaked\"".equals(raw)){event("blocked",J.obj("guard",session.guard.allowed(),"route",session.web.route("http://127.0.0.1:8765/fixture"),"newFetchBlocked","\"blocked\"".equals(raw)));return;}
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","blocked fetch did not finish"));return;}session.handler.postDelayed(()->blockedProbe(serial,deadline),100);
+      if("\"blocked\"".equals(raw)||"\"leaked\"".equals(raw)){event(serial,"blocked",J.obj("guard",session.guard.allowed(),"route",session.web.route("http://127.0.0.1:8765/fixture"),"newFetchBlocked","\"blocked\"".equals(raw)));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","blocked fetch did not finish"));return;}session.handler.postDelayed(()->blockedProbe(serial,deadline),100);
     });
   }
   void windowFlow(long serial){
@@ -329,23 +331,23 @@ public class GeckoIntegrationTestActivity extends Activity {
     waitWindow(serial,"one",SystemClock.elapsedRealtime()+15000,()->{
       org.mozilla.geckoview.GeckoSession parent=web.current;web.loadUrl(windowUrl("two",serial));
       waitWindow(serial,"two",SystemClock.elapsedRealtime()+15000,()->{
-        if(!web.canBack){event("error",J.obj("error","parent history missing before popup"));return;}
+        if(!web.canBack){event(serial,"error",J.obj("error","parent history missing before popup"));return;}
         tapElement(serial,"popup");
         waitWindow(serial,"three",SystemClock.elapsedRealtime()+15000,()->{
-          if(web.current==parent||web.popups.size()!=1){event("error",J.obj("error","real popup did not become active"));return;}
+          if(web.current==parent||web.popups.size()!=1){event(serial,"error",J.obj("error","real popup did not become active"));return;}
           if("lostParent".equals(action)){parent.close();parent.getContentDelegate().onKill(parent);web.closePopup();
-            if(!web.failed||web.current!=parent){event("error",J.obj("error","closed parent state was not restored"));return;}
+            if(!web.failed||web.current!=parent){event(serial,"error",J.obj("error","closed parent state was not restored"));return;}
             web.loadUrl(windowUrl("two",serial));
-            waitWindow(serial,"two",SystemClock.elapsedRealtime()+15000,()->event("windowFlow",J.obj("lostParentRecovery",!web.failed&&parent.isOpen(),"popups",web.popups.size(),"url",web.getUrl())));return;
+            waitWindow(serial,"two",SystemClock.elapsedRealtime()+15000,()->event(serial,"windowFlow",J.obj("lostParentRecovery",!web.failed&&parent.isOpen(),"popups",web.popups.size(),"url",web.getUrl())));return;
           }
           web.loadUrl(windowUrl("four",serial));
           waitWindow(serial,"four",SystemClock.elapsedRealtime()+15000,()->{
-            if(!web.canBack){event("error",J.obj("error","popup history missing"));return;}
+            if(!web.canBack){event(serial,"error",J.obj("error","popup history missing"));return;}
             web.goBack();waitWindow(serial,"three",SystemClock.elapsedRealtime()+15000,()->{
               web.evaluateJavascript("window.close();null",null);
               waitWindow(serial,"two",SystemClock.elapsedRealtime()+15000,()->{
-                if(web.current!=parent||!web.canBack||!web.popups.isEmpty()){event("error",J.obj("error","parent history was lost after closing popup"));return;}
-                web.goBack();waitWindow(serial,"one",SystemClock.elapsedRealtime()+15000,()->event("windowFlow",J.obj("realPopup",true,"parentHistoryRestored",true,"popups",web.popups.size(),"url",web.getUrl(),"pendingCallbacks",web.callbacks.size())));
+                if(web.current!=parent||!web.canBack||!web.popups.isEmpty()){event(serial,"error",J.obj("error","parent history was lost after closing popup"));return;}
+                web.goBack();waitWindow(serial,"one",SystemClock.elapsedRealtime()+15000,()->event(serial,"windowFlow",J.obj("realPopup",true,"parentHistoryRestored",true,"popups",web.popups.size(),"url",web.getUrl(),"pendingCallbacks",web.callbacks.size())));
               });
             });
           });
@@ -356,12 +358,12 @@ public class GeckoIntegrationTestActivity extends Activity {
   String windowUrl(String step,long serial){return "http://127.0.0.1:8765/browser-window?step="+step+"&command="+serial;}
   void tapElement(long serial,String id){
     session.web.evaluateJavascript("(()=>{const r=document.getElementById("+JSONObject.quote(id)+").getBoundingClientRect(),v=visualViewport;return {x:r.left+r.width/2,y:r.top+r.height/2,pixels:devicePixelRatio*(v?.scale||1),left:v?.offsetLeft||0,top:v?.offsetTop||0}})()",raw->{
-      if(serial!=run)return;JSONObject rect=J.parse(raw);if(!rect.has("x")){event("error",J.obj("error","tap element not available"));return;}
+      if(serial!=run)return;JSONObject rect=J.parse(raw);if(!rect.has("x")){event(serial,"error",J.obj("error","tap element not available"));return;}
       // The SDK compositor matrix can still describe the previous document at
       // first paint. Use this document's viewport and the actual Android origin.
       int[] origin=new int[2];session.web.surface.getLocationOnScreen(origin);double pixels=rect.optDouble("pixels")*session.web.readingLayout;
       float[] point={(float)(origin[0]+(rect.optDouble("x")-rect.optDouble("left"))*pixels),(float)(origin[1]+(rect.optDouble("y")-rect.optDouble("top"))*pixels)};
-      event("tapNeeded",J.obj("id",id+"-"+serial,"x",Math.round(point[0]),"y",Math.round(point[1]),"shown",session.web.isShown(),"width",session.web.getWidth(),"height",session.web.getHeight(),"scale",session.web.getScale(),"paused",session.browserPaused));
+      event(serial,"tapNeeded",J.obj("id",id+"-"+serial,"x",Math.round(point[0]),"y",Math.round(point[1]),"shown",session.web.isShown(),"width",session.web.getWidth(),"height",session.web.getHeight(),"scale",session.web.getScale(),"paused",session.browserPaused));
     });
   }
   void waitWindow(long serial,String step,long deadline,Runnable done){
@@ -369,7 +371,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     session.web.evaluateJavascript("document.getElementById('window-step')?.textContent||null",raw->{
       if(serial!=run)return;
       if(JSONObject.quote(step).equals(raw)&&session.web.getUrl().contains("step="+step)&&session.web.painted.contains(session.web.current)){done.run();return;}
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","window flow timed out at "+step,"url",session.web.getUrl(),"failed",session.web.failed,"painted",session.web.painted.contains(session.web.current),"paused",session.browserPaused,"shown",session.web.isShown()));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","window flow timed out at "+step,"url",session.web.getUrl(),"failed",session.web.failed,"painted",session.web.painted.contains(session.web.current),"paused",session.browserPaused,"shown",session.web.isShown()));return;}
       session.handler.postDelayed(()->waitWindow(serial,step,deadline,done),150);
     });
   }
@@ -377,29 +379,29 @@ public class GeckoIntegrationTestActivity extends Activity {
   boolean paintCallback(String target){return paintOwned(paintCommand)&&paintTarget.equals(target)&&paintTarget.equals(session.web.getUrl())&&paintTarget.equals(session.web.locations.get(paintSession));}
   boolean paintCurrent(long serial){return paintOwned(serial)&&paintCommitted&&paintCallback(paintTarget);}
   JSONObject paintEvidence(JSONObject value){try{return value.put("paintCase",J.obj("schema",1,"serial",paintCommand,"target",paintTarget,"requested",paintRequested,"nativeSession",System.identityHashCode(paintSession),"currentNativeSession",System.identityHashCode(session.web.current),"currentUrl",session.web.getUrl(),"committedTarget",session.web.locations.get(paintSession),"committed",paintCommitted,"currentCase",paintCurrent(paintCommand),"started",paintStarted,"visible",paintVisible,"finished",paintFinished));}catch(JSONException error){throw new IllegalStateException(error);}}
-  void paintError(String message){event("error",paintEvidence(J.obj("error",message)));}
+  void paintError(long serial,String message){event(serial,"error",paintEvidence(J.obj("error",message)));}
   void paintResult(long serial){
     if(serial!=run)return;
-    if(!paintOwned(serial)){paintError("paint fixture session ownership changed");return;}
+    if(!paintOwned(serial)){paintError(serial,"paint fixture session ownership changed");return;}
     if(!paintCurrent(serial)){
-      if(paintCommitted){paintError("paint fixture document ownership changed");return;}
-      if(SystemClock.elapsedRealtime()-paintRequested>15000){paintError("paint fixture document did not commit");return;}
+      if(paintCommitted){paintError(serial,"paint fixture document ownership changed");return;}
+      if(SystemClock.elapsedRealtime()-paintRequested>15000){paintError(serial,"paint fixture document did not commit");return;}
       session.handler.postDelayed(()->paintResult(serial),200);return;
     }
     if("cancelLoad".equals(action)&&paintVisible>0&&paintFinished==0){
       session.web.evaluateJavascript("(()=>({command:new URL(location.href).searchParams.get('command'),heading:document.querySelector('h1')?.textContent}))()",raw->{
-        if(serial!=run)return;if(!paintCurrent(serial)){paintError("paint fixture document ownership changed");return;}JSONObject value=J.parse(raw);
+        if(serial!=run)return;if(!paintCurrent(serial)){paintError(serial,"paint fixture document ownership changed");return;}JSONObject value=J.parse(raw);
         if(!String.valueOf(serial).equals(value.optString("command"))||!"Visible before slow resource".equals(value.optString("heading"))){session.handler.postDelayed(()->paintResult(serial),200);return;}
-        if(paintFinished>0){paintError("cancel fixture completed before its document was ready");return;}
+        if(paintFinished>0){paintError(serial,"cancel fixture completed before its document was ready");return;}
         paintFinishedBeforeCancel=paintFinished;paintCancelledBeforeFinish=paintFinishedBeforeCancel==0;session.web.stopLoading();session.handler.postDelayed(()->{
-          if(serial!=run)return;if(!paintCurrent(serial)){paintError("paint fixture document ownership changed");return;}
-          session.web.evaluateJavascript("document.querySelector('h1')?.textContent||null",result->{if(serial!=run)return;if(!paintCurrent(serial)){paintError("paint fixture document ownership changed");return;}event("cancelledLoad",paintEvidence(J.obj("reportedFailure",session.navigationFailed,"pageError",session.pageError,"visibleDocumentRetained",JSONObject.quote("Visible before slow resource").equals(result),"documentReadyBeforeStop",true,"cancelledBeforeFinish",paintCancelledBeforeFinish,"finishedBeforeCancel",paintFinishedBeforeCancel,"result",result)));});
+          if(serial!=run)return;if(!paintCurrent(serial)){paintError(serial,"paint fixture document ownership changed");return;}
+          session.web.evaluateJavascript("document.querySelector('h1')?.textContent||null",result->{if(serial!=run)return;if(!paintCurrent(serial)){paintError(serial,"paint fixture document ownership changed");return;}event(serial,"cancelledLoad",paintEvidence(J.obj("reportedFailure",session.navigationFailed,"pageError",session.pageError,"visibleDocumentRetained",JSONObject.quote("Visible before slow resource").equals(result),"documentReadyBeforeStop",true,"cancelledBeforeFinish",paintCancelledBeforeFinish,"finishedBeforeCancel",paintFinishedBeforeCancel,"result",result)));});
         },400);
       });return;
     }
-    if("cancelLoad".equals(action)&&paintFinished>0){paintError("cancel fixture completed before its document was ready");return;}
-    if(paintFinished>0){event("paint",paintEvidence(J.obj("started",paintStarted,"visible",paintVisible,"finished",paintFinished,"firstPaintBeforeComplete",paintVisible>0&&paintVisible>=paintStarted&&paintFinished-paintVisible>500)));return;}
-    if(paintStarted>0&&SystemClock.elapsedRealtime()-paintStarted>15000){paintError("slow-resource fixture did not complete");return;}
+    if("cancelLoad".equals(action)&&paintFinished>0){paintError(serial,"cancel fixture completed before its document was ready");return;}
+    if(paintFinished>0){event(serial,"paint",paintEvidence(J.obj("started",paintStarted,"visible",paintVisible,"finished",paintFinished,"firstPaintBeforeComplete",paintVisible>0&&paintVisible>=paintStarted&&paintFinished-paintVisible>500)));return;}
+    if(paintStarted>0&&SystemClock.elapsedRealtime()-paintStarted>15000){paintError(serial,"slow-resource fixture did not complete");return;}
     session.handler.postDelayed(()->paintResult(serial),200);
   }
   void readingResult(long serial,long deadline){
@@ -408,9 +410,9 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(serial!=run)return;JSONObject result=J.parse(raw);
       if(String.valueOf(serial).equals(result.optString("command"))&&result.optInt("viewport")>0&&Math.abs(result.optDouble("viewport")*result.optDouble("density")-session.web.getWidth())<5&&session.web.painted.contains(session.web.current)){
         try{result.put("nativeWidth",session.web.getWidth());result.put("mobileViewport",session.web.current.getSettings().getViewportMode()==org.mozilla.geckoview.GeckoSessionSettings.VIEWPORT_MODE_MOBILE);result.put("desktopIdentity",session.web.current.getSettings().getUserAgentMode()==org.mozilla.geckoview.GeckoSessionSettings.USER_AGENT_MODE_DESKTOP);}catch(Exception ignored){}
-        event("reading",result);return;
+        event(serial,"reading",result);return;
       }
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","responsive fixture not painted","paused",session.browserPaused,"shown",session.web.isShown()));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","responsive fixture not painted","paused",session.browserPaused,"shown",session.web.isShown()));return;}
       session.handler.postDelayed(()->readingResult(serial,deadline),200);
     });
   }
@@ -422,15 +424,15 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(result.has("token")&&sameRequest&&!session.web.failed&&session.web.painted.contains(session.web.current)){
         // First paint can precede the SDK's asynchronous form restoration.
         if(("killRestore".equals(action)||"resumeSaved".equals(action))&&!result.optString("draft").equals("session-draft-"+(slot+1))){
-          if(SystemClock.elapsedRealtime()>deadline){org.mozilla.geckoview.GeckoSession.SessionState saved=session.web.states.get(session.web.primary);event("error",J.obj("error","SDK form restoration did not complete","measurement",result,"checkpointHasDraft",saved!=null&&saved.toString().contains("session-draft-"+(slot+1))));return;}
+          if(SystemClock.elapsedRealtime()>deadline){org.mozilla.geckoview.GeckoSession.SessionState saved=session.web.states.get(session.web.primary);event(serial,"error",J.obj("error","SDK form restoration did not complete","measurement",result,"checkpointHasDraft",saved!=null&&saved.toString().contains("session-draft-"+(slot+1))));return;}
           session.handler.postDelayed(()->sessionResult(serial,deadline),150);return;
         }
         if("sessionSeed".equals(action)){
-          session.web.evaluateJavascript("(()=>{const e=document.getElementById('session-draft');e.value='session-draft-"+(slot+1)+"';e.dispatchEvent(new Event('input',{bubbles:true}));return e.value})()",value->{session.web.checkpointState();session.handler.postDelayed(()->event("session",J.obj("token",result.optString("token"),"draft","session-draft-"+(slot+1),"checkpoint",session.web.states.containsKey(session.web.primary))),1000);});return;
+          session.web.evaluateJavascript("(()=>{const e=document.getElementById('session-draft');e.value='session-draft-"+(slot+1)+"';e.dispatchEvent(new Event('input',{bubbles:true}));return e.value})()",value->{session.web.checkpointState();session.handler.postDelayed(()->event(serial,"session",J.obj("token",result.optString("token"),"draft","session-draft-"+(slot+1),"checkpoint",session.web.states.containsKey(session.web.primary))),1000);});return;
         }
-        event("session",J.obj("token",result.optString("token"),"draft",result.optString("draft"),"history",result.optInt("history"),"automaticRecovery",!session.web.failed&&session.web.current.isOpen(),"profileForeground",processForeground()));return;
+        event(serial,"session",J.obj("token",result.optString("token"),"draft",result.optString("draft"),"history",result.optInt("history"),"automaticRecovery",!session.web.failed&&session.web.current.isOpen(),"profileForeground",processForeground()));return;
       }
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","session fixture did not recover","failed",session.web.failed,"url",session.web.getUrl()));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","session fixture did not recover","failed",session.web.failed,"url",session.web.getUrl()));return;}
       session.handler.postDelayed(()->sessionResult(serial,deadline),150);
     });
   }
@@ -441,7 +443,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   }catch(Exception ignored){return false;}}
   void readingZoom(long serial,int step,JSONArray results,long deadline){
     if(serial!=run)return;float[] choices={.8f,.6f,1.3f,.8f};
-    if(step==choices.length){event("readingZoom",J.obj("checks",results,"readiness",readingZoomReadiness));return;}
+    if(step==choices.length){event(serial,"readingZoom",J.obj("checks",results,"readiness",readingZoomReadiness));return;}
     float choice=choices[step];readingZoomLast="";session.reading.choose(choice);waitReadingZoom(serial,step,results,deadline,choice);
   }
   void beginReadingZoom(long serial){
@@ -456,40 +458,40 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(serial!=run)return;FixtureView web=(FixtureView)session.web;NativeGeometry geometry=NativeGeometry.read(web);long now=SystemClock.elapsedRealtime();readiness.totalFrames++;
     boolean ready=activityResumed&&!session.browserPaused&&web.isShown()&&geometry!=null&&geometry.focused&&!geometry.imeVisible&&geometry.normalBarsReady()&&geometry.attached==web.current&&web.current.isOpen()&&geometry.webWidth>0&&geometry.webHeight>0;
     boolean unchanged=readiness.previous!=null&&readiness.previous.same(geometry);
-    if(!unchanged&&readiness.transitions.length()<16){JSONObject transition=J.obj("elapsedMs",now-readiness.started,"geometry",geometry==null?JSONObject.NULL:geometry.json());readiness.transitions.put(transition);event("readingZoomGeometry",transition);}
+    if(!unchanged&&readiness.transitions.length()<16){JSONObject transition=J.obj("elapsedMs",now-readiness.started,"geometry",geometry==null?JSONObject.NULL:geometry.json());readiness.transitions.put(transition);event(serial,"readingZoomGeometry",transition);}
     if(!ready||!unchanged){readiness.stableSince=now;readiness.stableFrames=ready?1:0;}else readiness.stableFrames++;
     readiness.previous=geometry;
-    if(ready&&readiness.stableFrames>=8&&now-readiness.stableSince>=1000){readingZoomReadiness=J.obj("stableMillis",now-readiness.stableSince,"stableFrames",readiness.stableFrames,"activityResumed",activityResumed,"browserPaused",session.browserPaused);event("readingZoomReadiness",J.obj("stableMillis",now-readiness.stableSince,"stableFrames",readiness.stableFrames,"activityResumed",activityResumed,"browserPaused",session.browserPaused,"geometry",geometry.json()));readingZoom(serial,0,new JSONArray(),now+20000);return;}
-    if(now>readiness.deadline){event("error",J.obj("error","reading zoom foreground/layout did not settle","activityResumed",activityResumed,"browserPaused",session.browserPaused,"geometry",geometry==null?JSONObject.NULL:geometry.json()));return;}
+    if(ready&&readiness.stableFrames>=8&&now-readiness.stableSince>=1000){readingZoomReadiness=J.obj("stableMillis",now-readiness.stableSince,"stableFrames",readiness.stableFrames,"activityResumed",activityResumed,"browserPaused",session.browserPaused);event(serial,"readingZoomReadiness",J.obj("stableMillis",now-readiness.stableSince,"stableFrames",readiness.stableFrames,"activityResumed",activityResumed,"browserPaused",session.browserPaused,"geometry",geometry.json()));readingZoom(serial,0,new JSONArray(),now+20000);return;}
+    if(now>readiness.deadline){event(serial,"error",J.obj("error","reading zoom foreground/layout did not settle","activityResumed",activityResumed,"browserPaused",session.browserPaused,"geometry",geometry==null?JSONObject.NULL:geometry.json()));return;}
     web.postOnAnimation(()->awaitReadingZoomReady(serial,readiness));
   }
   JSONObject readingZoomSample(int step,float choice,JSONObject measurement){
     GeckoWebView web=session.web;BrowserReading reading=session.reading;
     return J.obj("step",step,"uptimeMs",SystemClock.uptimeMillis(),"wallMs",System.currentTimeMillis(),"choice",choice,"layout",web.readingLayout,"measurement",measurement,"nativeScale",web.getScale(),"rawPageScale",web.pageScales.getOrDefault(web.current,0f),"readingWidth",reading.width,"viewportWidth",reading.viewportWidth,"restoreAttempts",reading.restoreAttempts,"zoomActive",web.zoomTarget!=null,"zoomEpoch",web.zoomEpoch,"activityResumed",activityResumed,"browserPaused",session.browserPaused,"webShown",web.isShown(),"windowFocused",hasWindowFocus(),"sessionOpen",web.current!=null&&web.current.isOpen(),"webWidth",web.getWidth(),"webHeight",web.getHeight(),"surfaceWidth",web.surface==null?0:web.surface.getWidth(),"surfaceHeight",web.surface==null?0:web.surface.getHeight());
   }
-  void readingZoomSample(int step,float choice,JSONObject measurement,boolean force){
+  void readingZoomSample(long serial,int step,float choice,JSONObject measurement,boolean force){
     JSONObject sample=readingZoomSample(step,choice,measurement);long now=SystemClock.uptimeMillis();
     String signature=measurement.optDouble("scale")+"|"+session.web.getScale()+"|"+session.reading.restoreAttempts+"|"+(session.web.zoomTarget!=null)+"|"+activityResumed+"|"+session.browserPaused+"|"+hasWindowFocus()+"|"+session.web.getWidth()+"|"+session.web.getHeight()+"|"+measurement.optString("visibility");
-    if(readingZoomSamples[step]<24&&(force||!signature.equals(readingZoomLast)||now-readingZoomLastSample>=1000)){readingZoomSamples[step]++;event("readingZoomTrace",sample);readingZoomLast=signature;readingZoomLastSample=now;}
+    if(readingZoomSamples[step]<24&&(force||!signature.equals(readingZoomLast)||now-readingZoomLastSample>=1000)){readingZoomSamples[step]++;event(serial,"readingZoomTrace",sample);readingZoomLast=signature;readingZoomLastSample=now;}
   }
   void readingInput(long serial,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript("(()=>({focused:document.activeElement?.id,draft:document.getElementById('composer')?.value}))()",raw->{
       if(serial!=run)return;JSONObject result=J.parse(raw);
-      if(result.optString("draft").contains("native-input-ok")){event("readingInput",J.obj("focused",result.optString("focused"),"draft",result.optString("draft"),"choice",session.reading.choice(),"layout",session.web.readingLayout));return;}
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","scaled native input did not receive keyboard text","measurement",result));return;}session.handler.postDelayed(()->readingInput(serial,deadline),200);
+      if(result.optString("draft").contains("native-input-ok")){event(serial,"readingInput",J.obj("focused",result.optString("focused"),"draft",result.optString("draft"),"choice",session.reading.choice(),"layout",session.web.readingLayout));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","scaled native input did not receive keyboard text","measurement",result));return;}session.handler.postDelayed(()->readingInput(serial,deadline),200);
     });
   }
   void waitReadingZoom(long serial,int step,JSONArray results,long deadline,float choice){
     if(serial!=run)return;
     session.web.evaluateJavascript("(()=>{const e=document.getElementById('composer');if(!e)return null;return {viewport:document.documentElement.clientWidth,density:devicePixelRatio,scale:visualViewport.scale,draft:e.value,document:performance.timeOrigin,font:parseFloat(getComputedStyle(e).fontSize),visibility:document.visibilityState,documentFocused:document.hasFocus(),innerHeight,clientHeight:document.documentElement.clientHeight,scrollHeight:document.documentElement.scrollHeight,visualHeight:visualViewport.height,visualWidth:visualViewport.width}})()",raw->{
       if(serial!=run)return;JSONObject result=J.parse(raw);float factor=Math.min(1,choice);
-      readingZoomSample(step,choice,result,false);
+      readingZoomSample(serial,step,choice,result,false);
       double expected=session.web.getWidth()/factor,resultWidth=result.optDouble("viewport")*result.optDouble("density");
       if(result.has("document")&&Math.abs(resultWidth-expected)<6&&Math.abs(result.optDouble("scale")-Math.max(1,choice))<.05){
         try{result.put("choice",choice);result.put("layout",session.web.readingLayout);result.put("shownFontPixels",result.optDouble("font")*result.optDouble("density")*result.optDouble("scale")*session.web.readingLayout);result.put("nativeScale",session.web.getScale());result.put("nativeWidth",session.web.getWidth());}catch(Exception ignored){}
         results.put(result);session.handler.postDelayed(()->readingZoom(serial,step+1,results,SystemClock.elapsedRealtime()+20000),200);return;
       }
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","real reading zoom did not apply","choice",choice,"layout",session.web.readingLayout,"measurement",result,"ready",session.reading.ready,"checks",results,"readiness",readingZoomReadiness,"lastNative",readingZoomSample(step,choice,result)));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","real reading zoom did not apply","choice",choice,"layout",session.web.readingLayout,"measurement",result,"ready",session.reading.ready,"checks",results,"readiness",readingZoomReadiness,"lastNative",readingZoomSample(step,choice,result)));return;}
       session.handler.postDelayed(()->waitReadingZoom(serial,step,results,deadline,choice),150);
     });
   }
@@ -513,22 +515,22 @@ public class GeckoIntegrationTestActivity extends Activity {
   void readingBoundsConfigured(long serial,int level,long deadline){
     if(serial!=run)return;GeckoWebView web=session.web;
     if(web.privacyReady&&web.protectionLevel==level&&(level!=2||web.fingerprintingProtected)){readingBoundsCase.fingerprintingProtected=web.fingerprintingProtected;web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial+"&bounds=1");session.handler.postDelayed(()->readingBoundsMagnified(serial,level,SystemClock.elapsedRealtime()+20000),100);return;}
-    if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","reading bounds protection acknowledgment missing","level",level));return;}session.handler.postDelayed(()->readingBoundsConfigured(serial,level,deadline),100);
+    if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","reading bounds protection acknowledgment missing","level",level));return;}session.handler.postDelayed(()->readingBoundsConfigured(serial,level,deadline),100);
   }
   void readingBoundsMagnified(long serial,int level,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
       if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));double relative=value.optDouble("matrixScale")*value.optDouble("layout")*value.optDouble("viewport")/value.optInt("nativeWidth");
       if(String.valueOf(serial).equals(value.optString("command"))&&session.reading.ready&&session.web.painted.contains(session.web.current)&&Math.abs(relative-4.2)<.05&&session.web.zoomTarget==null){
-        readingBoundsCase.before=value;event("readingBoundsBefore",value);session.web.current.getPanZoomController().scrollTo(org.mozilla.geckoview.ScreenLength.fromPixels(48),org.mozilla.geckoview.ScreenLength.fromPixels(320),org.mozilla.geckoview.PanZoomController.SCROLL_BEHAVIOR_AUTO);readingBoundsPanned(serial,level,SystemClock.elapsedRealtime()+20000);return;
+        readingBoundsCase.before=value;event(serial,"readingBoundsBefore",value);session.web.current.getPanZoomController().scrollTo(org.mozilla.geckoview.ScreenLength.fromPixels(48),org.mozilla.geckoview.ScreenLength.fromPixels(320),org.mozilla.geckoview.PanZoomController.SCROLL_BEHAVIOR_AUTO);readingBoundsPanned(serial,level,SystemClock.elapsedRealtime()+20000);return;
       }
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","stored large reading zoom was not restored by real SDK","level",level,"measurement",value));return;}session.handler.postDelayed(()->readingBoundsMagnified(serial,level,deadline),100);
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","stored large reading zoom was not restored by real SDK","level",level,"measurement",value));return;}session.handler.postDelayed(()->readingBoundsMagnified(serial,level,deadline),100);
     });
   }
   void readingBoundsPanned(long serial,int level,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
       if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));
-      if(Math.abs(value.optDouble("nativeScrollX")-48)<=1&&Math.abs(value.optDouble("pageLeft")-48)<=1&&Math.abs(value.optDouble("nativeScrollY")-320)<=1){readingBoundsCase.pan=value;event("readingBoundsPan",value);session.reading.fit();readingBoundsFitted(serial,level,SystemClock.elapsedRealtime()+20000);return;}
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","real SDK horizontal pan did not occur","measurement",value));return;}session.handler.postDelayed(()->readingBoundsPanned(serial,level,deadline),100);
+      if(Math.abs(value.optDouble("nativeScrollX")-48)<=1&&Math.abs(value.optDouble("pageLeft")-48)<=1&&Math.abs(value.optDouble("nativeScrollY")-320)<=1){readingBoundsCase.pan=value;event(serial,"readingBoundsPan",value);session.reading.fit();readingBoundsFitted(serial,level,SystemClock.elapsedRealtime()+20000);return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","real SDK horizontal pan did not occur","measurement",value));return;}session.handler.postDelayed(()->readingBoundsPanned(serial,level,deadline),100);
     });
   }
   static boolean readingFits(JSONObject value){
@@ -545,40 +547,40 @@ public class GeckoIntegrationTestActivity extends Activity {
       long now=SystemClock.elapsedRealtime();if(!fit){test.stableSamples=0;test.stableSince=now;}else {if(test.stableSamples++==0)test.stableSince=now;}
       if(fit&&test.stableSamples>=5&&now-test.stableSince>=500){
         session.web.evaluateJavascript("document.getElementById('reading-code').scrollLeft=96",unused->session.web.evaluateJavascript(readingBoundsScript(),rawCode->{
-          if(serial!=run)return;JSONObject after=readingBoundsNative(J.parse(rawCode));if(!readingFits(after)||!readingIdentity(test.before,after)||after.optDouble("codeScrollWidth")<=after.optDouble("codeWidth")||after.optDouble("codeLeft")<=0){event("error",J.obj("error","fit changed content or prevented independent code scrolling","measurement",after));return;}
+          if(serial!=run)return;JSONObject after=readingBoundsNative(J.parse(rawCode));if(!readingFits(after)||!readingIdentity(test.before,after)||after.optDouble("codeScrollWidth")<=after.optDouble("codeWidth")||after.optDouble("codeLeft")<=0){event(serial,"error",J.obj("error","fit changed content or prevented independent code scrolling","measurement",after));return;}
           boolean acknowledged=session.web.privacyReady&&session.web.protectionLevel==level;readingBoundsFitResult=after;if(level!=2){session.web.current.setCompositorScrollDelegate(test.priorDelegate);session.prefs.edit().putInt("privacyLevel",test.privacy).commit();session.web.configure(true,test.privacy);}
-          event("readingBounds",J.obj("schema",1,"privacyLevel",level,"actualGeckoExecution",true,"protectionAcknowledged",acknowledged,"fingerprintingProtected",test.fingerprintingProtected,"fitUsedProductionController",true,"stableSamples",test.stableSamples,"stableMillis",now-test.stableSince,"after",after));
+          event(serial,"readingBounds",J.obj("schema",1,"privacyLevel",level,"actualGeckoExecution",true,"protectionAcknowledged",acknowledged,"fingerprintingProtected",test.fingerprintingProtected,"fitUsedProductionController",true,"stableSamples",test.stableSamples,"stableMillis",now-test.stableSince,"after",after));
         }));return;
       }
-      if(now>deadline){event("error",J.obj("error","fit did not restore both edges and preserve vertical reading position","measurement",value,"panY",test.pan.optDouble("nativeScrollY")));return;}session.handler.postDelayed(()->readingBoundsFitted(serial,level,deadline),100);
+      if(now>deadline){event(serial,"error",J.obj("error","fit did not restore both edges and preserve vertical reading position","measurement",value,"panY",test.pan.optDouble("nativeScrollY")));return;}session.handler.postDelayed(()->readingBoundsFitted(serial,level,deadline),100);
     });
   }
   void readingBoundsGeometry(long serial,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
       if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));NativeGeometry geometry=NativeGeometry.read((FixtureView)session.web);String requested=getIntent().getStringExtra("geometryPhase");boolean landscape="landscape".equals(requested);
-      if(readingBoundsFitResult!=null&&geometry!=null&&!geometry.imeVisible&&geometry.normalBarsReady()&&readingFits(value)&&readingIdentity(readingBoundsFitResult,value)&&landscape==(geometry.webWidth>geometry.webHeight)){event("readingBoundsGeometry",J.obj("phase",requested,"measurement",value,"geometry",geometry.json()));return;}
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","reading fit did not survive actual Android rotation","phase",requested,"measurement",value));return;}session.handler.postDelayed(()->readingBoundsGeometry(serial,deadline),100);
+      if(readingBoundsFitResult!=null&&geometry!=null&&!geometry.imeVisible&&geometry.normalBarsReady()&&readingFits(value)&&readingIdentity(readingBoundsFitResult,value)&&landscape==(geometry.webWidth>geometry.webHeight)){event(serial,"readingBoundsGeometry",J.obj("phase",requested,"measurement",value,"geometry",geometry.json()));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","reading fit did not survive actual Android rotation","phase",requested,"measurement",value));return;}session.handler.postDelayed(()->readingBoundsGeometry(serial,deadline),100);
     });
   }
   void readingBoundsTap(long serial){
     // Native matrix is used here too: RFP can deliberately mask page DPR.
     session.web.evaluateJavascript("(()=>{const r=document.getElementById('composer').getBoundingClientRect();return {x:r.left+r.width/2+scrollX,y:r.top+r.height/2+scrollY}})()",raw->{
       if(serial!=run)return;JSONObject box=J.parse(raw);android.graphics.Matrix matrix=new android.graphics.Matrix();session.web.current.getPageToSurfaceMatrix(matrix);float[] point={(float)box.optDouble("x"),(float)box.optDouble("y")};matrix.mapPoints(point);int[] origin=new int[2];session.web.surface.getLocationOnScreen(origin);point[0]=origin[0]+point[0]*session.web.readingLayout;point[1]=origin[1]+point[1]*session.web.readingLayout;
-      if(point[0]<=origin[0]||point[0]>=origin[0]+session.web.getWidth()||point[1]<=origin[1]||point[1]>=origin[1]+session.web.getHeight()){event("error",J.obj("error","reading bounds native tap is outside the actual surface","x",point[0],"y",point[1]));return;}
-      event("tapNeeded",J.obj("id","composer-bounds-"+serial,"x",Math.round(point[0]),"y",Math.round(point[1]),"nativeMatrix",true));
+      if(point[0]<=origin[0]||point[0]>=origin[0]+session.web.getWidth()||point[1]<=origin[1]||point[1]>=origin[1]+session.web.getHeight()){event(serial,"error",J.obj("error","reading bounds native tap is outside the actual surface","x",point[0],"y",point[1]));return;}
+      event(serial,"tapNeeded",J.obj("id","composer-bounds-"+serial,"x",Math.round(point[0]),"y",Math.round(point[1]),"nativeMatrix",true));
     });
   }
   void readingBoundsInput(long serial,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
       if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));NativeGeometry geometry=NativeGeometry.read((FixtureView)session.web);JSONObject input=value.optJSONArray("blocks")==null?null:value.optJSONArray("blocks").optJSONObject(2);
-      if(geometry!=null&&geometry.imeVisible&&geometry.imeBottom>0&&readingFits(value)&&value.optString("draft").contains("native-input-ok")&&"composer".equals(value.optString("focused"))&&input!=null&&input.optDouble("top")>=value.optDouble("offsetTop")-1&&input.optDouble("bottom")<=value.optDouble("offsetTop")+value.optDouble("visualHeight")+1&&value.optBoolean("nativeComposerFits")&&value.optBoolean("productionKeyboardController")){event("readingBoundsInput",J.obj("measurement",value,"imeVisible",true,"imeBottom",geometry.imeBottom,"sameDocument",value.optDouble("document")==readingBoundsFitResult.optDouble("document"),"sameCookie",value.optString("cookie").equals(readingBoundsFitResult.optString("cookie")),"draftPreserved",insertedInputPreserves(readingBoundsFitResult.optString("draft"),value.optString("draft"))));return;}
-      if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","fit composer did not stay inside the real IME viewport","measurement",value,"geometry",geometry==null?JSONObject.NULL:geometry.json()));return;}session.handler.postDelayed(()->readingBoundsInput(serial,deadline),100);
+      if(geometry!=null&&geometry.imeVisible&&geometry.imeBottom>0&&readingFits(value)&&value.optString("draft").contains("native-input-ok")&&"composer".equals(value.optString("focused"))&&input!=null&&input.optDouble("top")>=value.optDouble("offsetTop")-1&&input.optDouble("bottom")<=value.optDouble("offsetTop")+value.optDouble("visualHeight")+1&&value.optBoolean("nativeComposerFits")&&value.optBoolean("productionKeyboardController")){event(serial,"readingBoundsInput",J.obj("measurement",value,"imeVisible",true,"imeBottom",geometry.imeBottom,"sameDocument",value.optDouble("document")==readingBoundsFitResult.optDouble("document"),"sameCookie",value.optString("cookie").equals(readingBoundsFitResult.optString("cookie")),"draftPreserved",insertedInputPreserves(readingBoundsFitResult.optString("draft"),value.optString("draft"))));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","fit composer did not stay inside the real IME viewport","measurement",value,"geometry",geometry==null?JSONObject.NULL:geometry.json()));return;}session.handler.postDelayed(()->readingBoundsInput(serial,deadline),100);
     });
   }
   void readingBoundsEnd(long serial,long deadline){
     if(serial!=run)return;boolean restored=session.web.privacyReady&&session.web.protectionLevel==readingBoundsCase.privacy&&session.privacy.level()==readingBoundsCase.privacy;
-    if(restored){event("readingBoundsEnd",J.obj("productionDelegateRestored",session.web.current.getCompositorScrollDelegate()==readingBoundsCase.priorDelegate,"privacyRestored",true,"privacyLevel",session.privacy.level()));return;}
-    if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","reading bounds did not restore the original privacy configuration"));return;}session.handler.postDelayed(()->readingBoundsEnd(serial,deadline),100);
+    if(restored){event(serial,"readingBoundsEnd",J.obj("productionDelegateRestored",session.web.current.getCompositorScrollDelegate()==readingBoundsCase.priorDelegate,"privacyRestored",true,"privacyLevel",session.privacy.level()));return;}
+    if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","reading bounds did not restore the original privacy configuration"));return;}session.handler.postDelayed(()->readingBoundsEnd(serial,deadline),100);
   }
   static java.util.List<String> cookiesExceptReadingFixture(String value){
     java.util.List<String> result=new java.util.ArrayList<>();
@@ -590,18 +592,18 @@ public class GeckoIntegrationTestActivity extends Activity {
     GeckoWebView web=session.web;org.mozilla.geckoview.GeckoSession document=web.current;String target=web.getUrl();
     web.readCookies("http://127.0.0.1:8765/fixture",nativeBefore->{
       if(serial!=run)return;
-      if(web.current!=document||nativeBefore==null||!hasReadingFixtureCookie(nativeBefore)){event("error",J.obj("error","reading fixture cookie cleanup has no current native cookie receipt"));return;}
+      if(web.current!=document||nativeBefore==null||!hasReadingFixtureCookie(nativeBefore)){event(serial,"error",J.obj("error","reading fixture cookie cleanup has no current native cookie receipt"));return;}
       // This marker belongs only to the loopback fixture. The reading cases have
       // already captured their cookie-preservation evidence; expire only this
       // marker before the original strict environment cookie checks resume.
       web.evaluateJavascript("(()=>{if(location.origin!=='http://127.0.0.1:8765'||location.pathname!=='/browser-reading'||location.href!=="+JSONObject.quote(target)+")return null;const before=document.cookie;document.cookie='readingBounds=; Max-Age=0; Path=/';return {before,after:document.cookie}})()",raw->{
         if(serial!=run)return;JSONObject cookies=J.parse(raw);String before=cookies.optString("before"),after=cookies.optString("after");
         boolean domRemoved=hasReadingFixtureCookie(before)&&!hasReadingFixtureCookie(after),domPreserved=cookiesExceptReadingFixture(before).equals(cookiesExceptReadingFixture(after));
-        if(!domRemoved||!domPreserved){event("error",J.obj("error","reading fixture cookie cleanup did not preserve the other DOM cookies"));return;}
+        if(!domRemoved||!domPreserved){event(serial,"error",J.obj("error","reading fixture cookie cleanup did not preserve the other DOM cookies"));return;}
         web.readCookies("http://127.0.0.1:8765/fixture",nativeAfter->{
           if(serial!=run)return;boolean nativeRemoved=nativeAfter!=null&&!hasReadingFixtureCookie(nativeAfter),nativePreserved=nativeAfter!=null&&cookiesExceptReadingFixture(nativeBefore).equals(cookiesExceptReadingFixture(nativeAfter));
-          if(web.current!=document||!target.equals(web.getUrl())||!nativeRemoved||!nativePreserved){event("error",J.obj("error","reading fixture cookie cleanup did not preserve the other native cookies"));return;}
-          NetworkCatalog.put(checkpoint,"readingFixtureCookieRemovedFromDom",domRemoved);NetworkCatalog.put(checkpoint,"readingFixtureCookieRemovedFromNative",nativeRemoved);NetworkCatalog.put(checkpoint,"otherDomCookiesPreserved",domPreserved);NetworkCatalog.put(checkpoint,"otherNativeCookiesPreserved",nativePreserved);event("nativeCheckpoint",checkpoint);
+          if(web.current!=document||!target.equals(web.getUrl())||!nativeRemoved||!nativePreserved){event(serial,"error",J.obj("error","reading fixture cookie cleanup did not preserve the other native cookies"));return;}
+          NetworkCatalog.put(checkpoint,"readingFixtureCookieRemovedFromDom",domRemoved);NetworkCatalog.put(checkpoint,"readingFixtureCookieRemovedFromNative",nativeRemoved);NetworkCatalog.put(checkpoint,"otherDomCookiesPreserved",domPreserved);NetworkCatalog.put(checkpoint,"otherNativeCookiesPreserved",nativePreserved);event(serial,"nativeCheckpoint",checkpoint);
         });
       });
     });
@@ -614,16 +616,16 @@ public class GeckoIntegrationTestActivity extends Activity {
     final long started=SystemClock.elapsedRealtime(),deadline=started+25000;long stableSince;int stableFrames,totalFrames,changes;
     NativeGeometry previous;final JSONArray transitions=new JSONArray();
   }
-  void nativeGeometryDiagnostics(String phase,JSONArray entries,int from){for(int i=from;i<entries.length();i++)event("nativeSurfaceGeometry",J.obj("phase",phase,"entry",entries.optJSONObject(i)));}
+  void nativeGeometryDiagnostics(long serial,String phase,JSONArray entries,int from){for(int i=from;i<entries.length();i++)event(serial,"nativeSurfaceGeometry",J.obj("phase",phase,"entry",entries.optJSONObject(i)));}
   void nativeSurface(long serial){
     FixtureView web=(FixtureView)session.web;
     // The emulator's launcher can recreate its taskbar long after returning to
     // this Activity. Request ordinary visible system bars, then require their
     // actual insets below; a temporarily absent navigation bar is not stable.
-    if(Build.VERSION.SDK_INT>=30){android.view.WindowInsetsController bars=getWindow().getInsetsController();if(bars==null){event("error",J.obj("error","native surface system bar controller unavailable"));return;}bars.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_DEFAULT);bars.show(android.view.WindowInsets.Type.systemBars());}
+    if(Build.VERSION.SDK_INT>=30){android.view.WindowInsetsController bars=getWindow().getInsetsController();if(bars==null){event(serial,"error",J.obj("error","native surface system bar controller unavailable"));return;}bars.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_DEFAULT);bars.show(android.view.WindowInsets.Type.systemBars());}
     else getWindow().getDecorView().setSystemUiVisibility(0);
     web.evaluateJavascript("(()=>({document:performance.timeOrigin,draft:document.getElementById('composer')?.value,cookie:document.cookie}))()",raw->{
-      if(serial!=run)return;JSONObject before=nativePage(raw);if(!before.has("draft")){event("error",J.obj("error","native surface test needs the existing reading fixture"));return;}
+      if(serial!=run)return;JSONObject before=nativePage(raw);if(!before.has("draft")){event(serial,"error",J.obj("error","native surface test needs the existing reading fixture"));return;}
       awaitNativeGeometry(serial,before,new NativeGeometryReadiness());
     });
   }
@@ -637,13 +639,13 @@ public class GeckoIntegrationTestActivity extends Activity {
     // A launcher/taskbar reconfiguration and the IME hide animation are legal
     // geometry changes. Isolate them before measuring an unchanged surface;
     // retain strict one-sync verification during the three real swipes.
-    if(ready&&readiness.stableFrames>=8&&now-readiness.stableSince>=1000){nativeGeometryDiagnostics("readiness",readiness.transitions,0);nativeSurfaceProbe(serial,before,geometry,J.obj("imeHidden",true,"systemBarsRequested",true,"normalBarsVisible",geometry.normalBarsReady(),"stableFrames",readiness.stableFrames,"stableMillis",now-readiness.stableSince,"totalFrames",readiness.totalFrames,"waitMillis",now-readiness.started,"geometryChanges",readiness.changes,"geometry",geometry.json()));return;}
-    if(now>readiness.deadline){nativeGeometryDiagnostics("readiness",readiness.transitions,0);event("error",J.obj("error","native surface geometry did not settle","stableFrames",readiness.stableFrames,"stableMillis",now-readiness.stableSince,"totalFrames",readiness.totalFrames,"geometry",geometry==null?JSONObject.NULL:geometry.json()));return;}
+    if(ready&&readiness.stableFrames>=8&&now-readiness.stableSince>=1000){nativeGeometryDiagnostics(serial,"readiness",readiness.transitions,0);nativeSurfaceProbe(serial,before,geometry,J.obj("imeHidden",true,"systemBarsRequested",true,"normalBarsVisible",geometry.normalBarsReady(),"stableFrames",readiness.stableFrames,"stableMillis",now-readiness.stableSince,"totalFrames",readiness.totalFrames,"waitMillis",now-readiness.started,"geometryChanges",readiness.changes,"geometry",geometry.json()));return;}
+    if(now>readiness.deadline){nativeGeometryDiagnostics(serial,"readiness",readiness.transitions,0);event(serial,"error",J.obj("error","native surface geometry did not settle","stableFrames",readiness.stableFrames,"stableMillis",now-readiness.stableSince,"totalFrames",readiness.totalFrames,"geometry",geometry==null?JSONObject.NULL:geometry.json()));return;}
     web.postOnAnimation(()->awaitNativeGeometry(serial,before,readiness));
   }
   void nativeSurfaceProbe(long serial,JSONObject before,NativeGeometry baseline,JSONObject readiness){
     FixtureView web=(FixtureView)session.web;
-    try{field(web,"nativePerfEnabled").setBoolean(web,true);field(web,"surfaceOriginChecks").setLong(web,0);field(web,"surfaceOriginSyncs").setLong(web,0);}catch(ReflectiveOperationException missing){event("error",J.obj("error","native geometry instrumentation missing"));return;}
+    try{field(web,"nativePerfEnabled").setBoolean(web,true);field(web,"surfaceOriginChecks").setLong(web,0);field(web,"surfaceOriginSyncs").setLong(web,0);}catch(ReflectiveOperationException missing){event(serial,"error",J.obj("error","native geometry instrumentation missing"));return;}
     web.nativeGeometryTrace=new JSONArray();web.nativeGeometryPrevious=baseline;web.nativeUnchangedTouchEvents=web.nativeRedundantTouchSyncs=0;web.nativeFirstTouchSyncs=-1;web.nativeFirstTouchOriginCorrect=false;web.nativeGeometryActive=true;
     float x=web.getTranslationX(),y=web.getTranslationY();web.setTranslationX(x+7);web.setTranslationY(y+11);web.nativeGestureCount=0;
     NativeGeometry moved=NativeGeometry.read(web);web.nativeGeometrySwipes=false;web.recordNativeGeometry("test-translation-initial",baseline,moved,0,false);web.nativeGeometryExpected=moved;web.nativeGeometryStable=true;web.nativeGeometrySwipes=true;
@@ -651,17 +653,17 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(serial!=run)return;
       try{
         long checks=number(web,"surfaceOriginChecks"),syncs=number(web,"surfaceOriginSyncs");
-        boolean stable=web.nativeGeometryStable&&moved!=null&&moved.same(NativeGeometry.read(web));web.nativeGeometrySwipes=false;nativeGeometryDiagnostics("swipes",web.nativeGeometryTrace,0);
+        boolean stable=web.nativeGeometryStable&&moved!=null&&moved.same(NativeGeometry.read(web));web.nativeGeometrySwipes=false;nativeGeometryDiagnostics(serial,"swipes",web.nativeGeometryTrace,0);
         JSONObject result=J.obj("originChecks",checks,"originSyncs",syncs,"actualGestureCount",web.nativeGestureCount,"stationaryGeometryDeduplicated",checks>=20&&syncs==1&&web.nativeRedundantTouchSyncs==0&&stable,"initialSurfaceMoveSynced",syncs==1&&web.nativeFirstTouchSyncs==1&&web.nativeFirstTouchOriginCorrect,"geometryReadiness",readiness,"unchangedTouchEvents",web.nativeUnchangedTouchEvents,"redundantTouchSyncs",web.nativeRedundantTouchSyncs,"firstTouchSyncs",web.nativeFirstTouchSyncs,"firstTouchOriginCorrect",web.nativeFirstTouchOriginCorrect,"stationaryGeometryTraceCount",web.nativeGeometryTrace.length(),"geometryStableDuringSwipes",stable);
         // Move without a layout pass, then use the runner's real Android tap
         // and hardware input. The first touch must see the new screen origin.
         NativeGeometry old=NativeGeometry.read(web);web.setTranslationX(x+13);web.setTranslationY(y+19);web.recordNativeGeometry("test-translation-input",old,NativeGeometry.read(web),0,false);tapElement(serial,"composer");
         nativeSurfaceInput(serial,SystemClock.elapsedRealtime()+20000,before,result,x,y);
-      }catch(Exception error){event("error",J.obj("error",error.toString()));}
+      }catch(Exception error){event(serial,"error",J.obj("error",error.toString()));}
     };
     int[] at=new int[2];web.getLocationOnScreen(at);int touchX=at[0]+web.getWidth()/2,from=at[1]+Math.round(web.getHeight()*.7f),to=at[1]+Math.round(web.getHeight()*.35f);
-    for(int i=0;i<3;i++)event("swipeNeeded",J.obj("id","native-surface-"+serial+"-"+i,"x",touchX,"fromY",from,"toY",to,"duration",500));
-    session.handler.postDelayed(()->{if(serial==run&&web.nativeGestureComplete!=null){web.nativeGestureComplete=null;web.nativeGeometryActive=false;web.setTranslationX(x);web.setTranslationY(y);try{field(web,"nativePerfEnabled").setBoolean(web,false);}catch(Exception ignored){}nativeGeometryDiagnostics("swipe-timeout",web.nativeGeometryTrace,0);event("error",J.obj("error","native surface real gestures not received","gestureCount",web.nativeGestureCount));}},25000);
+    for(int i=0;i<3;i++)event(serial,"swipeNeeded",J.obj("id","native-surface-"+serial+"-"+i,"x",touchX,"fromY",from,"toY",to,"duration",500));
+    session.handler.postDelayed(()->{if(serial==run&&web.nativeGestureComplete!=null){web.nativeGestureComplete=null;web.nativeGeometryActive=false;web.setTranslationX(x);web.setTranslationY(y);try{field(web,"nativePerfEnabled").setBoolean(web,false);}catch(Exception ignored){}nativeGeometryDiagnostics(serial,"swipe-timeout",web.nativeGeometryTrace,0);event(serial,"error",J.obj("error","native surface real gestures not received","gestureCount",web.nativeGestureCount));}},25000);
   }
   void nativeSurfaceInput(long serial,long deadline,JSONObject before,JSONObject result,float originalX,float originalY){
     if(serial!=run)return;FixtureView web=(FixtureView)session.web;
@@ -671,17 +673,17 @@ public class GeckoIntegrationTestActivity extends Activity {
         try{
           long total=number(web,"surfaceOriginSyncs");result.put("movedSurfaceSyncs",total-result.optLong("originSyncs"));result.put("movedSurfaceAcceptsRealInput",total>result.optLong("originSyncs")&&"composer".equals(after.optString("focused")));
           result.put("documentAndDraftPreserved",after.optDouble("document")==before.optDouble("document")&&after.optString("cookie").equals(before.optString("cookie"))&&insertedInputPreserves(before.optString("draft"),after.optString("draft")));
-          result.put("typedCharacters",after.optString("draft").length()-before.optString("draft").length());nativeGeometryDiagnostics("input",web.nativeGeometryTrace,result.optInt("stationaryGeometryTraceCount"));result.put("finalGeometryTraceCount",web.nativeGeometryTrace.length());web.nativeGeometryActive=false;field(web,"nativePerfEnabled").setBoolean(web,false);
-        }catch(Exception error){event("error",J.obj("error",error.toString()));return;}
-        web.setTranslationX(originalX);web.setTranslationY(originalY);event("nativeSurface",result);return;
+          result.put("typedCharacters",after.optString("draft").length()-before.optString("draft").length());nativeGeometryDiagnostics(serial,"input",web.nativeGeometryTrace,result.optInt("stationaryGeometryTraceCount"));result.put("finalGeometryTraceCount",web.nativeGeometryTrace.length());web.nativeGeometryActive=false;field(web,"nativePerfEnabled").setBoolean(web,false);
+        }catch(Exception error){event(serial,"error",J.obj("error",error.toString()));return;}
+        web.setTranslationX(originalX);web.setTranslationY(originalY);event(serial,"nativeSurface",result);return;
       }
-      if(SystemClock.elapsedRealtime()>deadline){web.nativeGeometryActive=false;web.setTranslationX(originalX);web.setTranslationY(originalY);try{field(web,"nativePerfEnabled").setBoolean(web,false);}catch(Exception ignored){}nativeGeometryDiagnostics("input-timeout",web.nativeGeometryTrace,result.optInt("stationaryGeometryTraceCount"));event("error",J.obj("error","moved surface did not accept real keyboard input","result",result));return;}
+      if(SystemClock.elapsedRealtime()>deadline){web.nativeGeometryActive=false;web.setTranslationX(originalX);web.setTranslationY(originalY);try{field(web,"nativePerfEnabled").setBoolean(web,false);}catch(Exception ignored){}nativeGeometryDiagnostics(serial,"input-timeout",web.nativeGeometryTrace,result.optInt("stationaryGeometryTraceCount"));event(serial,"error",J.obj("error","moved surface did not accept real keyboard input","result",result));return;}
       session.handler.postDelayed(()->nativeSurfaceInput(serial,deadline,before,result,originalX,originalY),100);
     });
   }
   void nativeCheckpoint(long serial){
     org.mozilla.geckoview.GeckoSession.SessionState state=session.web.states.get(session.web.primary);
-    if(state==null){event("error",J.obj("error","checkpoint test needs a real SDK session state"));return;}
+    if(state==null){event(serial,"error",J.obj("error","checkpoint test needs a real SDK session state"));return;}
     new Thread(()->{
       try{
         java.io.File own=new java.io.File(getNoBackupFilesDir(),"native-checkpoint-fixture"),other=new java.io.File(Profiles.context(this,slot==0?1:0).getNoBackupFilesDir(),"native-checkpoint-fixture");if(!own.isDirectory()&&!own.mkdirs()||!other.isDirectory()&&!other.mkdirs())throw new java.io.IOException("fixture directory unavailable");
@@ -711,7 +713,7 @@ public class GeckoIntegrationTestActivity extends Activity {
         org.mozilla.geckoview.GeckoSession.SessionState restored=org.mozilla.geckoview.GeckoSession.SessionState.fromString(latest);
         JSONObject result=J.obj("offered",number(probe,"offered"),"coalesced",number(probe,"coalesced"),"serialized",number(probe,"serialized"),"mainSerialized",number(probe,"mainSerialized"),"written",number(probe,"written"),"serializeNanos",number(probe,"serializeNanos"),"encodedBytes",number(probe,"bytes"),"firstBurstSerialized",firstSerialized,"firstBurstCoalesced",firstCoalesced,"firstCandidate",firstValue.optInt("nativeFixtureCandidate",-2),"lastCandidate",latestValue.optInt("nativeFixtureCandidate",-2),"latestWrites",latestWrites,"lastValidCandidate",lastValidCandidate,"validAfterNullCandidate",invalidRetained[0],"validAfterThrowingCandidate",invalidRetained[1],"validAfterUtf8Oversize",invalidRetained[2],"invalidNewerKeepsValid",invalidRetained[0]&&invalidRetained[1]&&invalidRetained[2],"continuousOffered",Math.min(200,continuousOffered.get()),"continuousWritesDuringOffers",continuousWrites,"continuousOffersPersisted",persistedWhileOffering,"continuousLastCandidate",continuousCandidate,"continuousSerialized",number(probe,"serialized")-serializedBeforeContinuous,"mainSerializationZero",number(probe,"mainSerialized")==0,"pendingBounded",firstSerialized==1&&firstCoalesced==999&&firstValue.optInt("nativeFixtureCandidate",-2)==999,"latestWinsDuringSerialization",latestValue.optInt("nativeFixtureCandidate",-2)==1199&&latestWrites==2,"oversizeKeepsPrevious",latest.equals(afterOversize),"independentStore","isolated-synthetic-environment".equals(independent)&&continuousLast.equals(unchanged),"sdkSnapshotRestorable",restored!=null&&restored.size()==state.size()&&GeckoWebView.stateUrl(restored).equals(GeckoWebView.stateUrl(state)));
         store.io.shutdown();isolated.io.shutdown();runOnUiThread(()->{if(serial==run)removeReadingFixtureCookie(serial,result);});
-      }catch(Exception error){runOnUiThread(()->event("error",J.obj("error","native checkpoint regression: "+error)));}
+      }catch(Exception error){runOnUiThread(()->event(serial,"error",J.obj("error","native checkpoint regression: "+error)));}
     },"checkpoint-regression").start();
   }
   static String checkpointValue(org.mozilla.geckoview.GeckoSession.SessionState state,int candidate){if(Looper.myLooper()==Looper.getMainLooper())throw new IllegalStateException("serialization ran on UI");JSONObject value=J.parse(state.toString());try{value.put("nativeFixtureCandidate",candidate);value.put("nativeFixturePadding","x".repeat(300000));}catch(JSONException error){throw new IllegalStateException(error);}return value.toString();}
@@ -719,8 +721,9 @@ public class GeckoIntegrationTestActivity extends Activity {
   static void await(java.util.concurrent.CountDownLatch latch){try{if(!latch.await(15,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("checkpoint fixture timed out");}catch(InterruptedException error){Thread.currentThread().interrupt();throw new IllegalStateException(error);}}
   void onMain(Runnable task){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<RuntimeException> error=new java.util.concurrent.atomic.AtomicReference<>();runOnUiThread(()->{try{task.run();}catch(RuntimeException failure){error.set(failure);}finally{done.countDown();}});await(done);if(error.get()!=null)throw error.get();}
   static String readCheckpoint(BrowserSessionStore store){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<String> value=new java.util.concurrent.atomic.AtomicReference<>();store.read(result->{value.set(result);done.countDown();});await(done);return value.get();}
-  void event(String kind,JSONObject result){Log.i("PocketGeckoIntegration",J.obj("kind",kind,"result",result,"nativeContext","environment-"+(slot+1),"processSlot",slot).toString());}
-  void readingLifecycle(String phase){if("readingZoom".equals(action)&&session!=null)event("readingZoomLifecycle",J.obj("phase",phase,"uptimeMs",SystemClock.uptimeMillis(),"wallMs",System.currentTimeMillis(),"activityResumed",activityResumed,"browserPaused",session.browserPaused,"nativeScale",session.web.getScale(),"zoomActive",session.web.zoomTarget!=null,"webShown",session.web.isShown(),"windowFocused",hasWindowFocus()));}
+  JSONObject eventBuildIdentity;IntegrationEventStore eventStore;
+  synchronized void event(long serial,String kind,JSONObject result){if(serial!=run)return;try{if(eventStore==null||eventStore.command!=serial)throw new IllegalStateException("Missing invocation");eventStore.emit(kind,result);}catch(Exception failure){Log.e("PocketGeckoIntegration",J.obj("kind","eventTransportError","error",failure.toString(),"nativeContext","environment-"+(slot+1),"processSlot",slot,"fixtureAction",action,"runNonce",getIntent().getStringExtra("eventNonce"),"command",run).toString());}}
+  void readingLifecycle(String phase){if("readingZoom".equals(action)&&session!=null)event(run,"readingZoomLifecycle",J.obj("phase",phase,"uptimeMs",SystemClock.uptimeMillis(),"wallMs",System.currentTimeMillis(),"activityResumed",activityResumed,"browserPaused",session.browserPaused,"nativeScale",session.web.getScale(),"zoomActive",session.web.zoomTarget!=null,"webShown",session.web.isShown(),"windowFocused",hasWindowFocus()));}
   @Override protected void onResume(){super.onResume();activityResumed=true;if(session!=null)session.foreground(true);readingLifecycle("onResume");}
   @Override protected void onPause(){activityResumed=false;if(session!=null){session.reading.keyboard(false);session.foreground(false);}readingLifecycle("onPause");super.onPause();}
   @Override protected void onDestroy(){run++;super.onDestroy();}

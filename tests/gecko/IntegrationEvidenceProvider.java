@@ -10,7 +10,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
-/** Shell-only export of two synthetic reports from the non-debuggable test APK. */
+/** Shell-only export of bounded synthetic reports/events from the non-debuggable test APK. */
 public final class IntegrationEvidenceProvider extends ContentProvider {
   @Override public boolean onCreate(){
     if(getContext()==null||!getContext().getPackageName().equals("local.pocketchat.test"))throw new SecurityException("Integration package only");
@@ -18,6 +18,15 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
   }
   @Override public ParcelFileDescriptor openFile(Uri uri,String mode)throws FileNotFoundException {
     if(!"r".equals(mode)||Binder.getCallingUid()!=2000)throw new SecurityException("Read-only shell evidence");
+    if(uri.getPath()!=null&&uri.getPath().startsWith("/gecko-events/")){
+      java.util.List<String> parts=uri.getPathSegments();
+      if(parts.size()!=4||!parts.get(1).matches("[0-7]")||!parts.get(2).matches("[0-9a-f]{32}")||!parts.get(3).matches("[1-9][0-9]{0,3}"))throw new FileNotFoundException("Invalid synthetic event path");
+      try{
+        File event=IntegrationEventStore.file(getContext(),Integer.parseInt(parts.get(1)),parts.get(2),Integer.parseInt(parts.get(3)));
+        if(!event.isFile()||event.length()<=0||event.length()>IntegrationEventStore.MAX_BYTES)throw new FileNotFoundException("Synthetic event unavailable");
+        return ParcelFileDescriptor.open(event,ParcelFileDescriptor.MODE_READ_ONLY);
+      }catch(IOException failure){throw new FileNotFoundException("Synthetic event unavailable");}
+    }
     String name;
     if("/build-identity".equals(uri.getPath())){
       name="integration-build-identity.json";
