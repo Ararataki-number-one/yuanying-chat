@@ -1,0 +1,1 @@
+package android.widget; public class Spinner extends android.view.View {public static final java.util.List<Spinner> instances=new java.util.ArrayList<>();int selected; public Spinner(Object context){instances.add(this);} public void setAdapter(Object adapter){}public void setSelection(int selected){this.selected=selected;} public int getSelectedItemPosition(){return selected;}}
