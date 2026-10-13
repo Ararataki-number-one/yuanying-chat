@@ -61,6 +61,7 @@ class TemplateContractTest(unittest.TestCase):
     def test_duplicate_sequence_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][1].update(sequence=1))
     def test_zero_sequence_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][0].update(sequence=0))
     def test_wrong_fetch_role_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][3].update(path='/echo?run='+r['runNonce']+'&case=1&session=primary&kind=worker-fetch'))
+    def test_other_origin_header_target_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['requestHeaders'][0].update(path='https://other.example/page?run='+r['runNonce']+'&case=1&session=primary'))
     def test_unknown_schema_cannot_pass(self):self.rejects(lambda r:r.update(schema=2))
     def test_new_invocation_cannot_reuse_old_signals(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['observed'].update(run='f'*32))
     def test_unapplied_configuration_cannot_be_observed(self):self.rejects(lambda r:r['appliedCases'][0].update(appliedRevision=0))
@@ -76,16 +77,18 @@ class TemplateEvidenceGateTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.directory=Path(self.temp.name);self.report=metadata_only_report();self.write();self.write_host()
     def write_host(self):
-        paths={'app/src/main/java/local/pocketchat/'+name+'.java' for name in ['BrowserIdentitySpec','AuditReport','IdentityTemplateController','FingerprintTemplateUi']}
+        paths={'app/src/main/java/local/pocketchat/'+name+'.java' for name in ['BrowserIdentitySpec','AuditReport','IdentityTemplateController','FingerprintTemplateUi','BrowserEditIntent','DeferredBrowserSettings']}
         paths.update('app/src/main/assets/gecko/'+name for name in ['background.js','content.js','main-world-audit.js'])
         hashes={path:hashlib.sha256((ROOT/path).read_bytes()).hexdigest() for path in paths}
         base=dict(status='passed',actualAndroidExecution=False,sourceCommit='a'*40,sourceTree='b'*40,sourceDirty=False,sourceUnchangedDuringChecks=True,files=hashes)
-        checks=[{'name':'Counterfeit metadata only '+str(i),'pass':True} for i in range(88)]
-        template=dict(status='passed',actualAndroidExecution=False,passed=88,total=88,checks=checks)
-        host=dict(base,results=[dict(test='FingerprintTemplateTest',exitCode=0,output=json.dumps(template))])
-        controller=dict(base,passed=70,total=70,checks=checks[:70])
+        checks=[{'name':'Counterfeit metadata only '+str(i),'pass':True} for i in range(91)]
+        template=dict(status='passed',actualAndroidExecution=False,passed=91,total=91,checks=checks)
+        intent=dict(status='passed',actualAndroidExecution=False,passed=14,total=14,checks=checks[:14])
+        host=dict(base,results=[dict(test='FingerprintTemplateTest',exitCode=0,output=json.dumps(template)),dict(test='BrowserEditIntentTest',exitCode=0,output=json.dumps(intent))])
+        controller=dict(base,passed=74,total=74,checks=checks[:74])
+        deferred=dict(base,passed=24,total=24,checks=checks[:24])
         bridge=dict(base,results=[dict(test='audit-bridge.test.cjs',passed=9,total=9),dict(test='protection-handshake.test.cjs',passed=3,total=3)])
-        for name,value in [('profile-host-results.json',host),('identity-controller-host-results.json',controller),('identity-bridge-host-results.json',bridge)]:
+        for name,value in [('profile-host-results.json',host),('identity-controller-host-results.json',controller),('deferred-browser-host-results.json',deferred),('identity-bridge-host-results.json',bridge)]:
             (self.directory/name).write_text(json.dumps(value))
     def write(self):
         raw=json.dumps(self.report).encode();(self.directory/'gecko-template-results.json').write_bytes(raw)

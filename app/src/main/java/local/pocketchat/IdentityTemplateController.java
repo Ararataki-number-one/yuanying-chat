@@ -100,7 +100,7 @@ final class IdentityTemplateController {
       BrowserIdentitySpec selected=BrowserIdentitySpec.legacy(desktop,level).withLocales(prior.locales);
       EnvironmentSpec next=repository.updateDesired(before.identity,before.desiredRevision,
           new EnvironmentSpec.Configuration(selected.json(),before.desired().network));
-      session.handler.post(()->{if(!session.deleted){cached=next;queueUnavailable=false;acknowledge();}});
+      session.handler.post(()->{if(!session.deleted){cached=next;queueUnavailable=false;session.identityApplicationPending=DeferredBrowserSettings.pending(session);session.updateBrowserActivity();acknowledge();}});
     }catch(Exception error){issue("网页设置已保存，但环境配置记录未同步，请重新保存模板");}
   });}
   EnvironmentSpec.NetworkBinding route()throws Exception{

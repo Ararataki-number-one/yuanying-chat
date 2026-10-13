@@ -52,7 +52,7 @@ def main():
         ("LatencyProbePolicyTest", ["LatencyProbePolicy"]),
         ("EnvironmentSpecTest", ["J", "EnvironmentSpec", "EnvironmentSpecMigration"]),
     ]
-    extras = [("FingerprintTemplateTest", ["J", "BrowserIdentitySpec", "AuditReport"])]
+    extras = [("FingerprintTemplateTest", ["J", "BrowserIdentitySpec", "AuditReport"]),("BrowserEditIntentTest",["J","BrowserEditIntent"])]
     groups += [(name, names) for name, names in extras if (tests / (name + ".java")).is_file()]
     files = {source / (name + ".java") for _, names in groups for name in names}
     files.update(tests / (name + ".java") for name, _ in groups)
@@ -139,6 +139,12 @@ def main():
         controller_receipt=output / "identity-controller-host-results.json"
         subprocess.run([sys.executable,str(controller),"--json-jar",str(json_jar),"--output",str(controller_receipt)],cwd=ROOT,check=True)
         receipt=json.loads(controller_receipt.read_text());results.append({"test":"identity-controller-host","report":str(controller_receipt.relative_to(ROOT)),"passed":receipt["passed"],"actualAndroidExecution":False})
+        files.update(ROOT/path for path in receipt["files"])
+    deferred = ROOT / "tests/review-host/run_deferred_browser_host.py"
+    if deferred.is_file():
+        deferred_receipt=output / "deferred-browser-host-results.json"
+        subprocess.run([sys.executable,str(deferred),"--json-jar",str(json_jar),"--output",str(deferred_receipt)],cwd=ROOT,check=True)
+        receipt=json.loads(deferred_receipt.read_text());results.append({"test":"deferred-browser-host","report":str(deferred_receipt.relative_to(ROOT)),"passed":receipt["passed"],"actualAndroidExecution":False})
         files.update(ROOT/path for path in receipt["files"])
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status

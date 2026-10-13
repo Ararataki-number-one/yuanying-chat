@@ -88,6 +88,7 @@ final class EnvironmentEditorUi {
 
     java.util.function.Supplier<JSONObject> read=()->{
       JSONObject value=J.obj("name",name.getText().toString().trim(),"group",group.getText().toString().trim(),"notes",notes.getText().toString().trim(),"desktopSite",displayChoice.getSelectedItemPosition()==1,"privacyLevel",privacy.getSelectedItemPosition());
+      try{value.put(BrowserEditIntent.EDITED,BrowserEditIntent.fieldsChanged(browserBaseline[0],privacy.getSelectedItemPosition(),displayChoice.getSelectedItemPosition()==1));}catch(Exception ignored){}
       for(int i=0;i<options.length;i++)if(options[i]!=null)try{value.put(AppPrefs.KEYS[i],options[i].isChecked());}catch(Exception ignored){}return value;
     };
     final JSONObject baseline=read.get();browserBaseline[0]=baseline;
@@ -129,14 +130,18 @@ final class EnvironmentEditorUi {
   static boolean apply(MainActivity a,JSONObject value,EditText name){
     String title=value.optString("name").trim();if(title.isEmpty()||title.length()>24){name.setError("请输入 1–24 字名称");return false;}
     if(value.optString("group").length()>12||value.optString("notes").length()>120){a.status("分组最多 12 字，备注最多 120 字");return false;}
-    ChatSession s=a.session;int level=value.optInt("privacyLevel",s.privacy.level());if(level<0||level>2){a.status("请选择有效的保护等级");return false;}boolean change=level!=s.privacy.level();
-    boolean displayChange=value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
-    boolean browserIntent=change||displayChange||s.identityApplicationPending;
-    boolean deferred=(change||displayChange||s.identityApplicationPending)&&browserBusy(s);
+    ChatSession s=a.session;int level=value.optInt("privacyLevel",s.privacy.level());if(level<0||level>2){a.status("请选择有效的保护等级");return false;}boolean preserveBrowser=BrowserEditIntent.preserveFailedCandidate(s.identity!=null&&s.identity.queueUnavailable,value);boolean change=!preserveBrowser&&level!=s.privacy.level();
+    boolean displayChange=!preserveBrowser&&value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop();
+    boolean failedOverride=BrowserEditIntent.explicitFailedOverride(s.identity!=null&&s.identity.queueUnavailable,value);
+    boolean browserIntent=BrowserEditIntent.browserIntent(s.identity!=null&&s.identity.queueUnavailable,value,change||displayChange,s.identityApplicationPending);
+    // A failed candidate can contain locale-only changes even when the visible
+    // fields now equal the running browser. Mirror the explicit replacement
+    // before the existing safe queue can apply it.
+    boolean deferred=browserIntent&&(failedOverride||browserBusy(s));
 
-    if(deferred&&!DeferredBrowserSettings.save(s,level,value.optBoolean("desktopSite"))){a.status("设置暂时无法保存，请重试");return false;}Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));if(!deferred){DeferredBrowserSettings.cancel(s);ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));s.prefs.edit().putInt("privacyLevel",level).commit();}AppPrefs.apply(a,value);ProfileCatalog.get(a).draft(Profiles.slot(a),null);
-    if(browserIntent)s.browserIdentitySaved(level,value.optBoolean("desktopSite",s.privacy.wantsDesktop()));if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(!deferred&&(change||displayChange||s.identityApplicationPending))s.applyBrowserSettings(change);
-    s.audit.refresh(true);ProfileCatalog.get(a).heartbeat(s,true);if(a.hub!=null)a.hub.refresh();if(a.designChrome!=null)a.designChrome.update();a.status(deferred?"环境已保存，当前回复结束后自动应用网页设置":displayChange&&!s.networkReady?"环境配置已保存，加载网页时应用显示方式":"环境配置已保存");return true;
+    if(deferred&&!DeferredBrowserSettings.save(s,level,value.optBoolean("desktopSite"))){a.status("设置暂时无法保存，请重试");return false;}Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));if(!preserveBrowser&&!deferred){DeferredBrowserSettings.cancel(s);ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));s.prefs.edit().putInt("privacyLevel",level).commit();}AppPrefs.apply(a,value);ProfileCatalog.get(a).draft(Profiles.slot(a),null);
+    if(browserIntent)s.browserIdentitySaved(level,value.optBoolean("desktopSite",s.privacy.wantsDesktop()));if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(!deferred&&browserIntent)s.applyBrowserSettings(change);
+    s.audit.refresh(true);ProfileCatalog.get(a).heartbeat(s,true);if(a.hub!=null)a.hub.refresh();if(a.designChrome!=null)a.designChrome.update();a.status(preserveBrowser?"环境资料已保存；上次模板排队失败，期望配置已保留，请重新保存模板":deferred?"环境已保存，当前回复结束后自动应用网页设置":displayChange&&!s.networkReady?"环境配置已保存，加载网页时应用显示方式":"环境配置已保存");return true;
   }
   static String browserTaskReason(ChatSession s){return BrowserSettingsPolicy.reason(s.pending!=null,s.submitting,s.operation,s.transferActive,s.uploading(),false);}
   static boolean browserBusy(ChatSession s){boolean reply=BrowserSettingsPolicy.currentReply(MainActivity.chatUrl(s.web.getUrl()),WebReplyObserver.same(s.web.getUrl(),s.state.optString("url")),s.state.optBoolean("busy"),s.stateEpoch,s.navigationEpoch);return BrowserDisplay.busy(ProfileUi.working(s),s.navigating,s.connecting,s.recoveryScheduled,reply);}
@@ -145,7 +150,7 @@ final class EnvironmentEditorUi {
   static void applySafely(MainActivity a,JSONObject value,EditText name,java.util.function.Consumer<Boolean> done){applySafely(a,value,name,()->true,done);}
   static void applySafely(MainActivity a,JSONObject value,EditText name,java.util.function.BooleanSupplier current,java.util.function.Consumer<Boolean> done){
     if(!current.getAsBoolean()){done.accept(false);return;}
-    ChatSession s=a.session;boolean browserChange=value.optInt("privacyLevel",s.privacy.level())!=s.privacy.level()||value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop()||s.identityApplicationPending;
+    ChatSession s=a.session;boolean preserveBrowser=BrowserEditIntent.preserveFailedCandidate(s.identity!=null&&s.identity.queueUnavailable,value);boolean browserChange=BrowserEditIntent.browserIntent(s.identity!=null&&s.identity.queueUnavailable,value,!preserveBrowser&&(value.optInt("privacyLevel",s.privacy.level())!=s.privacy.level()||value.optBoolean("desktopSite",s.privacy.wantsDesktop())!=s.privacy.wantsDesktop()),s.identityApplicationPending);
     if(value.optString("name").trim().isEmpty()||value.optString("name").trim().length()>24||!browserChange||!MainActivity.chatUrl(s.web.getUrl())||ProfileUi.working(s)){done.accept(guardedApply(a,value,name,current));return;}
     final String url=s.web.getUrl(),scope=s.pageMemory.scope();final long epoch=s.navigationEpoch;
     s.operation=true;s.configurationCapture=true;s.changed();a.status("正在保留网页草稿…");

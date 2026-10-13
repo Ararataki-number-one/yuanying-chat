@@ -88,3 +88,6 @@ Both candidate and stable release pipelines require the original 1.6 gates plus 
 
 
 The UI labels the applied revision as the network plus SDK-request confirmation revision. Locale setter/getter equality confirms only request acceptance/readback; the public SDK has no independent asynchronous locale-content completion callback. The persisted applied snapshot is not a claim that every webpage or Worker adopted it. The actual-observation revision and context/header evidence provide that narrower proof. Standard or compatibility privacy-setting readback does not imply native RFP was enabled.
+
+
+A failed new queue also revokes an already-running deferred capture: entry, inspect, page-state, draft-write completion, final inspection and direct apply all recheck candidate availability before reconfiguration. The production DeferredBrowserSettings host fixture controls those delayed callbacks and preserves its real coordinator source; Android I/O and webpage callbacks are explicitly doubles. Unrelated metadata saves classify browser fields against the parent editor baseline, so an accepted B followed by failed C cannot overwrite C merely by saving a name. Explicitly changing B back to already-running A remains a new browser intent, mirrors the desired replacement before the safe queue is re-enabled, and wakes a retained background environment.

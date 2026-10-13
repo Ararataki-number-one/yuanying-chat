@@ -24,7 +24,7 @@ def selected_contract(source,name):
 
 
 def verify_template_host(directory,source,tree):
-    mandatory={'app/src/main/java/local/pocketchat/'+name+'.java' for name in ['BrowserIdentitySpec','AuditReport','IdentityTemplateController','FingerprintTemplateUi']}
+    mandatory={'app/src/main/java/local/pocketchat/'+name+'.java' for name in ['BrowserIdentitySpec','AuditReport','IdentityTemplateController','FingerprintTemplateUi','BrowserEditIntent','DeferredBrowserSettings']}
     mandatory.update('app/src/main/assets/gecko/'+name for name in ['background.js','content.js','main-world-audit.js'])
     counts={}
     host=json.loads((directory/'profile-host-results.json').read_text())
@@ -36,7 +36,7 @@ def verify_template_host(directory,source,tree):
                 raise ValueError('Controlled template host source hash differs: '+str(path))
         if receipt is host and not mandatory.issubset(receipt.get('files',{})):raise ValueError('Template host report omits production template or bridge sources')
         if 'checks' in receipt:
-            if type(receipt.get('passed')) is not int or receipt['passed']<70 or receipt['passed']!=receipt.get('total') or len(receipt['checks'])!=receipt['passed'] or any(row.get('pass') is not True for row in receipt['checks']):raise ValueError('Controller host assertions are incomplete')
+            if type(receipt.get('passed')) is not int or receipt['passed']<74 or receipt['passed']!=receipt.get('total') or len(receipt['checks'])!=receipt['passed'] or any(row.get('pass') is not True for row in receipt['checks']):raise ValueError('Controller host assertions are incomplete')
             counts['controller']=receipt['passed']
         elif receipt is not host:
             groups={row.get('test'):row for row in receipt.get('results',[])}
@@ -44,10 +44,21 @@ def verify_template_host(directory,source,tree):
                 group=groups.get(name,{})
                 if type(group.get('passed')) is not int or group['passed']<minimum or group['passed']!=group.get('total'):raise ValueError('Actual source bridge host suite is incomplete')
                 counts[name]=group['passed']
+    deferred=json.loads((directory/'deferred-browser-host-results.json').read_text())
+    if deferred.get('status')!='passed' or deferred.get('actualAndroidExecution') is not False or deferred.get('sourceCommit')!=source or deferred.get('sourceTree')!=tree or deferred.get('sourceDirty') is not False or deferred.get('sourceUnchangedDuringChecks') is not True or type(deferred.get('passed')) is not int or deferred['passed']<24 or deferred['passed']!=deferred.get('total') or len(deferred.get('checks',[]))!=deferred['passed'] or any(row.get('pass') is not True for row in deferred['checks']):raise ValueError('Production deferred browser failure/normal host controls are incomplete')
+    if 'app/src/main/java/local/pocketchat/DeferredBrowserSettings.java' not in deferred.get('files',{}):raise ValueError('Deferred host fixture omitted the production coordinator')
+    for path,digest in deferred['files'].items():
+        if '..' in Path(path).parts or Path(path).is_absolute() or hashlib.sha256(selected_bytes(source,path)).hexdigest()!=digest:raise ValueError('Deferred browser host source hash changed')
+    counts['deferredBrowser']=deferred['passed']
+    intents=[group for group in host.get('results',[]) if group.get('test')=='BrowserEditIntentTest']
+    if len(intents)!=1 or intents[0].get('exitCode')!=0:raise ValueError('Production editor intent host controls are missing')
+    intent=json.loads(intents[0].get('output','{}'))
+    if intent.get('status')!='passed' or intent.get('actualAndroidExecution') is not False or type(intent.get('passed')) is not int or intent['passed']<14 or intent['passed']!=intent.get('total') or len(intent.get('checks',[]))!=intent['passed'] or any(row.get('pass') is not True for row in intent['checks']):raise ValueError('Editor intent failure preservation host controls are incomplete')
+    counts['editorIntent']=intent['passed']
     matches=[group for group in host.get('results',[]) if group.get('test')=='FingerprintTemplateTest']
     if len(matches)!=1 or matches[0].get('exitCode')!=0:raise ValueError('Actual production template/report host suite required')
     template=json.loads(matches[0].get('output','{}'))
-    if template.get('actualAndroidExecution') is not False or template.get('status')!='passed' or type(template.get('passed')) is not int or template['passed']<88 or template['passed']!=template.get('total') or len(template.get('checks',[]))!=template['passed'] or any(row.get('pass') is not True for row in template['checks']):raise ValueError('Template report negative host assertions are incomplete')
+    if template.get('actualAndroidExecution') is not False or template.get('status')!='passed' or type(template.get('passed')) is not int or template['passed']<91 or template['passed']!=template.get('total') or len(template.get('checks',[]))!=template['passed'] or any(row.get('pass') is not True for row in template['checks']):raise ValueError('Template report negative host assertions are incomplete')
     counts['templateReport']=template['passed'];return counts
 
 

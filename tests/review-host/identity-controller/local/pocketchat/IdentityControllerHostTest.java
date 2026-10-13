@@ -183,8 +183,22 @@ public final class IdentityControllerHostTest {
     session=fixture();session.identity.acknowledge();settle(session);session.identity.observe(report);session.deleted=true;settle(session);
     check(EnvironmentSpecRepository.observedWrites==0,"deleted session cannot persist a queued observation");
   }
+  static void explicitFailedOverrideMirrorsAndWakes()throws Exception{
+    ChatSession session=acknowledgedFixture();EnvironmentSpec applied=EnvironmentSpecRepository.value;
+    BrowserIdentitySpec failed=BrowserIdentitySpec.preset(BrowserIdentitySpec.COMPATIBLE).withLocales(Collections.singletonList("ja-JP"));
+    EnvironmentSpecRepository.value=applied.withDesired(applied.desiredRevision,new EnvironmentSpec.Configuration(failed.json(),applied.desired().network));session.identity.cached=EnvironmentSpecRepository.value;
+    session.identity.queueUnavailable=true;session.identityApplicationPending=false;
+    // The editor has accepted an explicit B-to-current-A override and saved its
+    // existing preference queue; failed C must not come back after this mirror.
+    session.deferred=true;session.queuedLevel=1;session.queuedDesktop=false;session.paused=true;session.tickQueued=false;
+    session.identity.legacySaved(1,false);settle(session);
+    check(BrowserIdentitySpec.MOBILE.equals(EnvironmentSpecRepository.value.desired().browser().optString("templateId")),"explicit failed override replaces desired C even when display/privacy equal applied A");
+    check(!session.identity.queueUnavailable&&session.identityApplicationPending&&session.identity.pendingWork(),"successful override mirror re-enables the saved safe queue");
+    check(!session.paused&&session.tickQueued&&session.activityUpdates==1,"override mirror wakes the retained background environment");
+    check(EnvironmentSpecRepository.value.appliedRevision==applied.appliedRevision,"override mirror cannot invent a newer applied policy");
+  }
   public static void main(String[] arguments)throws Exception{
-    failedQueueDoesNotApplyOlderIntent();reusedIdentityAndReceiptFences();finishedActivityPublishesAndWakes(false);finishedActivityPublishesAndWakes(true);unchangedTemplateRequiresActualAcknowledgement();templateDialogKeepsLatestLanguage();staleEditorCompletion();newerEditBeforeMainCallback();legacyAndSessionSupersession();pendingStartupPolicy();interruptedDesiredPersistence();startupConfigurationGate();failedQueueRestoration();acknowledgements();observations();
+    explicitFailedOverrideMirrorsAndWakes();failedQueueDoesNotApplyOlderIntent();reusedIdentityAndReceiptFences();finishedActivityPublishesAndWakes(false);finishedActivityPublishesAndWakes(true);unchangedTemplateRequiresActualAcknowledgement();templateDialogKeepsLatestLanguage();staleEditorCompletion();newerEditBeforeMainCallback();legacyAndSessionSupersession();pendingStartupPolicy();interruptedDesiredPersistence();startupConfigurationGate();failedQueueRestoration();acknowledgements();observations();
     System.out.println(J.obj("schema",1,"status","passed","passed",checks,"total",checks,"checks",assertions,"actualAndroidExecution",false,"scope","Production IdentityTemplateController and FingerprintTemplateUi/model with queued UI/widgets/binder/persistence doubles; no Android, Gecko, Keystore or real draft capture").toString());
   }
 }
