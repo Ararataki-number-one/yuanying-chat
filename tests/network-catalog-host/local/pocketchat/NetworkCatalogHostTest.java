@@ -19,6 +19,13 @@ public final class NetworkCatalogHostTest {
   static String cache(NetworkCatalog c,JSONObject row){byte[] raw=c.cache(row);return raw==null?"":new String(raw,StandardCharsets.UTF_8);}
   static String good(NetworkCatalog c,JSONObject row){byte[] raw=c.lastGoodCache(row);return raw==null?"":new String(raw,StandardCharsets.UTF_8);}
   static NetworkCatalog fresh(Context c){return new NetworkCatalog(c);}
+  static void readOnly(String label,byte[] raw)throws Exception{
+    Context c=new Context(Files.createTempDirectory("network-catalog-format-").toFile(),0);SecretStore vault=new SecretStore(c);NetworkCatalog stale=fresh(c);vault.put("network-catalog",raw);NetworkCatalog current=fresh(c);
+    check(label+" is explicitly read only",!current.readError().isEmpty());
+    rejects(label+" cannot be changed by a freshly loaded writer",()->current.addSubscription("entry","Do not overwrite","https://fixture.invalid/new"));
+    rejects(label+" cannot be changed by an older writer",()->stale.save());
+    check(label+" preserves exact saved bytes",Arrays.equals(raw,vault.get("network-catalog")));
+  }
 
   public static void main(String[] args)throws Exception{
     if(args.length>0&&"child-add".equals(args[0])){Context c=new Context(new File(args[1]),0);for(int i=0;i<16;i++)fresh(c).addSubscription(i%2==0?"entry":"exit","Child "+args[2]+" "+i,"https://fixture.invalid/"+args[2]+"/"+i);return;}
@@ -98,6 +105,41 @@ public final class NetworkCatalogHostTest {
     check("Deleted manual exits cannot return through environment import",fresh(context).exit(manualId)==null);
     JSONObject explicitManual=fresh(context).addExit("Re-add","","127.0.0.1",18080,"fixture","fixture");check("Explicitly re-added manual exit has a new identity",!explicitManual.getString("id").equals(manualId));
     check("All library operations preserved the environment's saved configuration bytes",Arrays.equals(sealedBefore,vault.get("network")));
+
+    // Old fingerprints are references, not duplicates of a row's current endpoint.
+    Context manualContext=new Context(Files.createTempDirectory("network-catalog-manual-alias-").toFile(),0);NetworkCatalog manual=fresh(manualContext);
+    JSONObject endpointA=manual.addExit("A","","exit-a.invalid",1080,"fixture","fixture"),endpointB=manual.editExit(endpointA.getString("id"),"B","","exit-b.invalid",1080,"fixture","fixture");
+    JSONObject newA=manual.addExit("New A","","exit-a.invalid",1080,"fixture","fixture");
+    check("Re-adding an old manual endpoint creates the requested endpoint",newA.optString("host").equals("exit-a.invalid")&&manual.exits().length()==2);
+    check("Occupied historical fingerprint IDs are not reused",!newA.getString("id").equals(endpointB.getString("id")));
+    check("Adding the old endpoint preserves the edited endpoint and its label",fresh(manualContext).exit(endpointB.getString("id")).optString("host").equals("exit-b.invalid")&&fresh(manualContext).exit(endpointB.getString("id")).optString("name").equals("B"));
+    check("Explicit selection of the new endpoint survives a fresh catalog load",fresh(manualContext).exit(newA.getString("id")).optString("host").equals("exit-a.invalid"));
+    JSONObject repeated=manual.addExit("Renamed A","","exit-a.invalid",1080,"fixture","fixture");check("Actual current endpoint duplicates retain the new endpoint ID",repeated.getString("id").equals(newA.getString("id"))&&manual.exits().length()==2);
+    rejects("Editing to another current endpoint still rejects duplicates",()->manual.editExit(newA.getString("id"),"Duplicate B","","exit-b.invalid",1080,"fixture","fixture"));
+    manual.editExit(endpointB.getString("id"),"C","","exit-c.invalid",1080,"fixture","fixture");JSONObject reclaimed=manual.editExit(newA.getString("id"),"Reclaimed B","","exit-b.invalid",1080,"fixture","fixture");
+    check("Editing to another row's historical endpoint is allowed",reclaimed.optString("host").equals("exit-b.invalid")&&fresh(manualContext).exit(endpointB.getString("id")).optString("host").equals("exit-c.invalid"));
+
+    // Validate before migration: normalization must not erase corrupt or future data.
+    JSONObject empty=J.obj("schemaVersion",2,"subscriptions",new JSONArray(),"exitSubscriptions",new JSONArray(),"exits",new JSONArray(),"subscriptionTombstones",new JSONArray(),"exitTombstones",new JSONArray());
+    JSONObject future=NetworkCatalog.copy(empty);future.put("schemaVersion",999);readOnly("Future catalog version",bytes(future.toString()));
+    JSONObject fractional=NetworkCatalog.copy(empty);fractional.put("schemaVersion",2.5);readOnly("Fractional catalog version",bytes(fractional.toString()));
+    JSONObject typed=NetworkCatalog.copy(empty);typed.put("subscriptions",J.obj("recoverableSource","keep"));readOnly("Wrong-typed source list",bytes(typed.toString()));
+    JSONObject missing=NetworkCatalog.copy(empty);missing.remove("exits");readOnly("Missing current-schema list",bytes(missing.toString()));
+    JSONObject nullRow=NetworkCatalog.copy(empty);nullRow.put("subscriptions",J.arr(JSONObject.NULL));readOnly("Null source row",bytes(nullRow.toString()));
+    JSONObject duplicateRow=NetworkCatalog.copy(empty);JSONObject sourceRow=J.obj("id","fixture-source","url","https://fixture.invalid/source","nodes",new JSONArray());duplicateRow.put("subscriptions",J.arr(sourceRow,NetworkCatalog.copy(sourceRow)));readOnly("Duplicate source identity",bytes(duplicateRow.toString()));
+    JSONObject wrongRole=NetworkCatalog.copy(empty);JSONObject roleRow=NetworkCatalog.copy(sourceRow);roleRow.put("role","exit");wrongRole.put("subscriptions",J.arr(roleRow));readOnly("Wrong-role source row",bytes(wrongRole.toString()));
+    JSONObject wrongNodes=NetworkCatalog.copy(empty);JSONObject nodesRow=NetworkCatalog.copy(sourceRow);nodesRow.put("nodes",J.arr(123));wrongNodes.put("subscriptions",J.arr(nodesRow));readOnly("Wrong-typed node name",bytes(wrongNodes.toString()));
+    JSONObject wrongPort=NetworkCatalog.copy(empty);wrongPort.put("exits",J.arr(J.obj("id","fixture-exit","host","exit.invalid","port","1080")));readOnly("Wrong-typed exit port",bytes(wrongPort.toString()));
+    readOnly("Trailing document content",bytes(empty.toString()+" trailing"));readOnly("Malformed UTF-8",new byte[]{'{',(byte)0xc3,(byte)0x28,'}'});
+    readOnly("Unsupported draft catalog format",bytes(J.obj("schema",2,"subscriptions",new JSONArray(),"exits",new JSONArray(),"exitSources",new JSONArray()).toString()));
+    for(boolean versioned:new boolean[]{false,true}){
+      Context oldContext=new Context(Files.createTempDirectory("network-catalog-valid-legacy-").toFile(),0);SecretStore oldVault=new SecretStore(oldContext);
+      JSONObject oldSource=J.obj("id","legacy-source","name","Legacy","url","https://fixture.invalid/old","owner",0,"nodes",J.arr("Entry|legacy")),oldExit=J.obj("id","legacy-exit","host","exit.invalid","port",1080,"user","fixture","password","fixture");
+      JSONObject document=J.obj("subscriptions",J.arr(oldSource),"exits",J.arr(oldExit));if(versioned)document.put("schemaVersion",1);byte[] original=bytes(document.toString());oldVault.put("network-catalog",original);oldVault.put(NetworkCatalog.cacheSlot(oldSource.getString("url")),bytes("legacy-private-provider"));
+      NetworkCatalog migrated=fresh(oldContext);check("Valid legacy "+versioned+" loads without rewriting bytes",migrated.readError().isEmpty()&&Arrays.equals(original,oldVault.get("network-catalog")));
+      migrated.addSubscription("entry","Another","https://fixture.invalid/another");NetworkCatalog reread=fresh(oldContext);check("Valid legacy "+versioned+" keeps source/exit identities on version-2 save",reread.data.optInt("schemaVersion")==2&&reread.subscription("legacy-source")!=null&&reread.exit("legacy-exit")!=null);
+      check("Valid legacy "+versioned+" retains its private provider bytes",Arrays.equals(bytes("legacy-private-provider"),oldVault.get(NetworkCatalog.cacheSlot(oldSource.getString("url")))));
+    }
 
     // Independent JVMs share only the real file lock and atomic on-disk fixture.
     List<Process> processes=new ArrayList<>();String java=new File(System.getProperty("java.home"),"bin/java").getAbsolutePath(),cp=System.getProperty("java.class.path");

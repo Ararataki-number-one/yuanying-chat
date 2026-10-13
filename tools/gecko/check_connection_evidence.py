@@ -22,7 +22,7 @@ def verify_detector_transport_evidence(network):
             assert before['controllerPort'] > 0 and before['proxyPort'] > 0
             assert before['generation'] and before['configuration'] and before['entry'] and before['exitIp']
             assert len(before['tokenHash']) == 64
-            assert item['receiptCurrent'] and not item['sendAccepted'] and item['lastVerified'] == 0
+            assert item['receiptCurrent'] and item['sendAccepted'] and item['lastVerified'] == 0
             assert item['retryInMs'] > 0 and item['backoffNoRequests']
             assert item['webSocketConnections'] == 1 and item['echoesAfter'] > item['echoesBefore']
         else:
@@ -85,7 +85,18 @@ def verify_connection_evidence(directory, source):
         'An invalid exit service response preserves only the previously verified route',
         'Exit verification failure schedules bounded retry without claiming fresh success',
         'Exit verification backoff makes no repeated IP requests or WebSocket replacement',
-        'Send preflight reports unavailable verification without closing an already verified WSS',
+        'Send preflight admits the exact retained route with degraded verification',
+        'Same-route recovery callback reopens admission during detector outage',
+        'Primary detector outage with target HTTP 200 preserves verified route',
+        'Primary detector outage with target HTTP 403 preserves verified route',
+        'Primary detector outage with target HTTP 429 preserves verified route',
+        'Primary detector outage with target HTTP 503 preserves verified route',
+        'Busy health does not issue either primary or secondary request',
+        'Injected target SSLProtocolException never replaces or stops the actual WSS route',
+        'Injected target SSLException never replaces or stops the actual WSS route',
+        'Injected target SSLHandshakeException never replaces or stops the actual WSS route',
+        'One paired transport failure keeps the route suspect',
+        'Reachable target clears paired-failure suspicion despite continued primary outage',
         'A recovered exit service renews proof and resets the retry state',
         'All temporary verification faults retain one WebSocket and one core generation',
         "An actual entry change invalidates the previous route's verification receipt",
@@ -101,8 +112,8 @@ def verify_connection_evidence(directory, source):
         'A confirmed service exit mismatch still stops the core when maintenance is concurrently cancelled',
         'Independent network service retains the same WSS and core during detector reset',
         'Independent network service retains the same WSS and core during detector eof',
-        'Detector reset preflight refuses sending without replacing the verified WSS',
-        'Detector eof preflight refuses sending without replacing the verified WSS',
+        'Detector reset preflight admits only the retained verified WSS route',
+        'Detector eof preflight admits only the retained verified WSS route',
         'An unverified changed route rejects detector reset and closes its WSS',
         'An unverified changed route rejects detector eof and closes its WSS',
         'First connection rejects detector reset without inheriting a route receipt',
