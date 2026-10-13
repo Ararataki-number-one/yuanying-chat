@@ -30,6 +30,8 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
   String source,run,origin;int caseIndex=-1,serial;boolean finished,announced;
   String[] requestedLocales;String normalizedLanguage;boolean desktop;
   long requestedAt;Runnable caseDeadline;int navigationDropped;
+  GeckoSession guardSession;String guardNonce,guardDocument,guardFetchUrl,guardWorkerUrl;
+  JSONObject guardEvidence=new JSONObject();final JSONArray guardRoutes=new JSONArray();int guardRoutesDropped;
 
   static final class PrivateContext extends ContextWrapper {
     final File directory;
@@ -42,7 +44,9 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
     @Override protected boolean allowedUrl(String target){return target!=null&&target.startsWith(origin+"/");}
     @Override JSONObject route(String target){
       JSONObject actual=super.route(target);
-      if(routes.length()<64)routes.put(J.obj("url",target,"route",actual,"guardAllowed",owner.guard.allowed(),"at",SystemClock.elapsedRealtime()));
+      JSONObject record=J.obj("url",target,"route",actual,"guardAllowed",owner.guard.allowed(),"at",SystemClock.elapsedRealtime());
+      if(routes.length()<64)routes.put(record);
+      if(target.equals(guardFetchUrl)||target.equals(guardWorkerUrl)){if(guardRoutes.length()<8)guardRoutes.put(record);else guardRoutesDropped++;}
       return actual;
     }
     @Override GeckoSession newSession(){
@@ -63,6 +67,19 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
         @Override public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s,ContentPermission permission){navigation(s,"contentPermission",permission.uri,J.obj("permission",permission.permission,"value",permission.value,"privateMode",permission.privateMode,"thirdPartyOrigin",permission.thirdPartyOrigin));return permissions.onContentPermissionRequest(s,permission);}
         @Override public void onMediaPermissionRequest(GeckoSession s,String target,MediaSource[] video,MediaSource[] audio,MediaCallback callback){navigation(s,"mediaPermission",target,null);permissions.onMediaPermissionRequest(s,target,video,audio,callback);}
       });
+      sdk.getWebExtensionController().setMessageDelegate(extension,new WebExtension.MessageDelegate(){
+        @Override public void onConnect(WebExtension.Port port){
+          if(finished||guardSession!=sdk||port.sender.session!=sdk||port.sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_CONTENT_SCRIPT||!port.sender.isTopLevel()||!guardDocument.equals(port.sender.url))return;
+          reportPut(guardEvidence,"nativePort",J.obj("nativeSession",System.identityHashCode(port.sender.session),"senderUrl",port.sender.url,"topLevel",port.sender.isTopLevel(),"environmentType",port.sender.environmentType,"connectedAt",SystemClock.elapsedRealtime()));
+          port.setDelegate(new WebExtension.PortDelegate(){
+            @Override public void onPortMessage(Object message,WebExtension.Port incoming){
+              if(finished||incoming!=port||view.current!=guardSession||!guardDocument.equals(view.getUrl())||!(message instanceof JSONObject))return;
+              JSONObject data=(JSONObject)message;if(!"guardResult".equals(data.optString("kind")))return;
+              try{JSONObject observed=data.getJSONObject("value");if(!guardNonce.equals(observed.getString("nonce")))throw new IOException("Guard event nonce mismatch");reportPut(guardEvidence,"observed",observed);reportPut(guardEvidence,"nativeCallbackAt",SystemClock.elapsedRealtime());completeGuard();}catch(Throwable failure){finish(failure);}
+            }
+          });
+        }
+      },"identityguard");
       if(!announced){announced=true;handler.post(()->{if(!finished)beginCase();});}
       return sdk;
     }
@@ -107,7 +124,7 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
     if(finished)return;
     try{
       if(caseDeadline!=null)handler.removeCallbacks(caseDeadline);
-      caseIndex++;if(caseIndex==4){finish(null);return;}
+      caseIndex++;if(caseIndex==4){beginGuard();return;}
       final int ticket=++serial;requestedAt=SystemClock.elapsedRealtime();received.clear();nativeAgents.clear();rawObservations.clear();targets.clear();
       requestedLocales=new String[]{caseIndex==0||caseIndex==3?"en-US":caseIndex==1?"ja-JP":"zh-Hant-TW"};
       normalizedLanguage=normalize(requestedLocales[0]);desktop=caseIndex==1;
@@ -160,10 +177,43 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
   static boolean complete(JSONObject signal){
     return signal.opt("ua") instanceof String&&!signal.optString("ua").isEmpty()&&signal.opt("language") instanceof String&&!signal.optString("language").isEmpty()&&signal.optJSONArray("languages")!=null&&signal.optJSONArray("languages").length()>0&&signal.opt("cpu") instanceof Number&&signal.optInt("cpu")>0&&signal.opt("offset") instanceof Number&&signal.opt("zone") instanceof String&&!signal.optString("zone").isEmpty()&&signal.opt("intlLocale") instanceof String&&!signal.optString("intlLocale").isEmpty();
   }
+  void beginGuard(){
+    try{
+      guardSession=view.current;guardDocument=view.getUrl();guardNonce=UUID.randomUUID().toString().replace("-","");
+      if(guardSession==null||guardSession!=targets.get("primary")||!guardSession.isOpen()||!guardDocument.equals(origin+"/page?run="+run+"&case="+serial+"&session=primary"))throw new IOException("Guard probe lost its completed native document");
+      guardFetchUrl=origin+"/echo?run="+guardNonce+"&case="+serial+"&session=primary&kind=guard-fetch";guardWorkerUrl=origin+"/worker?run="+guardNonce+"&case="+serial+"&session=primary";
+      guardEvidence=J.obj("nonce",guardNonce,"document",guardDocument,"nativeSession",System.identityHashCode(guardSession),"fetchUrl",guardFetchUrl,"workerUrl",guardWorkerUrl,"requestedAt",SystemClock.elapsedRealtime(),"beforeServer",site.diagnostics(),"beforeHeaderCount",site.allRecords().length(),"scope","Actual main-world fetch and Dedicated HTTP Worker attempts after closing the production guard; event results returned through a fixture-only official SDK native-message namespace");
+      owner.guard.setBlocked(true);
+      caseDeadline=()->{if(!finished)finish(new IOException("Closed guard did not return actual fetch/Worker terminal events"));};handler.postDelayed(caseDeadline,15000);
+      JSONObject config=J.obj("nonce",guardNonce,"fetchUrl",guardFetchUrl,"workerUrl",guardWorkerUrl);
+      view.evaluateJavascript("(()=>{const c="+config+";const p=browser.runtime.connectNative('identityguard');addEventListener('pocket-identity-guard-result',e=>{if(typeof e.detail!=='string')return;const v=JSON.parse(e.detail);if(v.nonce===c.nonce)p.postMessage({kind:'guardResult',value:v})},{once:true});dispatchEvent(new CustomEvent('pocket-identity-guard',{detail:JSON.stringify(c)}));return 'guard-armed'})()",raw->{
+        if(finished)return;
+        try{if(view.current!=guardSession||!guardDocument.equals(view.getUrl())||!"\"guard-armed\"".equals(raw))throw new IOException("Guard probe did not arm in its actual native document");reportPut(guardEvidence,"armCallback",raw);completeGuard();}catch(Throwable failure){finish(failure);}
+      });
+    }catch(Throwable failure){finish(failure);}
+  }
+  void completeGuard(){
+    if(finished||!guardEvidence.has("armCallback")||!guardEvidence.has("observed"))return;
+    try{
+      JSONObject observed=guardEvidence.getJSONObject("observed"),before=guardEvidence.getJSONObject("beforeServer"),after=site.diagnostics();
+      reportPut(guardEvidence,"blockedRoutes",guardRoutes);reportPut(guardEvidence,"blockedRoutesDropped",guardRoutesDropped);reportPut(guardEvidence,"afterServer",after);reportPut(guardEvidence,"afterHeaderCount",site.allRecords().length());
+      check("Closed guard route evidence did not overflow",guardRoutesDropped==0);
+      for(String target:new String[]{guardFetchUrl,guardWorkerUrl}){boolean found=false;for(int i=0;i<guardRoutes.length();i++){JSONObject row=guardRoutes.getJSONObject(i),route=row.getJSONObject("route");if(target.equals(row.optString("url"))&&!row.optBoolean("guardAllowed",true)&&"socks".equals(route.optString("type"))&&"127.0.0.1".equals(route.optString("host"))&&route.optInt("port")==9)found=true;}check("Closed guard returns the blocked actual route for "+(target.equals(guardFetchUrl)?"fetch GET":"HTTP Worker"),found);}
+      check("Closed guard receives owned actual native callback",view.current==guardSession&&guardDocument.equals(view.getUrl())&&guardNonce.equals(observed.getString("nonce"))&&guardFetchUrl.equals(observed.getString("fetchUrl"))&&guardWorkerUrl.equals(observed.getString("workerUrl")));
+      check("Closed guard fetch terminates in an actual network rejection","network-error".equals(observed.getJSONObject("fetch").optString("outcome"))&&!observed.getJSONObject("fetch").optString("name").isEmpty());
+      check("Closed guard HTTP Worker terminates in a trusted error event","error".equals(observed.getJSONObject("worker").optString("outcome"))&&observed.getJSONObject("worker").optBoolean("trusted"));
+      check("Closed guard accepts no new controlled TCP connection",after.getInt("acceptedConnections")==before.getInt("acceptedConnections"));
+      check("Closed guard parses no new controlled request",after.getInt("parsedRequests")==before.getInt("parsedRequests")&&site.allRecords().length()==guardEvidence.getInt("beforeHeaderCount"));
+      check("Controlled listener remains bound after actual guard rejection",after.getBoolean("bound")&&!after.getBoolean("closed"));
+      reportPut(guardEvidence,"completedAt",SystemClock.elapsedRealtime());reportPut(guardEvidence,"status","passed");finish(null);
+    }catch(Throwable failure){finish(failure);}
+  }
   void finish(Throwable failure){
     if(finished)return;finished=true;if(caseDeadline!=null)handler.removeCallbacks(caseDeadline);
+    if(guardSession!=null){reportPut(guardEvidence,"blockedRoutes",guardRoutes);reportPut(guardEvidence,"blockedRoutesDropped",guardRoutesDropped);reportPut(guardEvidence,"afterServer",site.diagnostics());reportPut(guardEvidence,"afterHeaderCount",site.allRecords().length());if(failure!=null)reportPut(guardEvidence,"status","failed");}
     JSONObject report=J.obj("schema",1,"status",failure==null?"passed":"failed","diagnosticOnly",true,"releaseAcceptance",false,"synthetic",true,"actualAndroidExecution",true,"actualGeckoExecution",view!=null&&view.ready,"publicNetworkTraffic",false,"sourceCommit",source,"runNonce",run,"buildIdentity",buildIdentity,"sdkCoordinate",SDK,"sdkAarSha256",AAR,"engineVersion",GeckoWebView.VERSION,"androidSdk",Build.VERSION.SDK_INT,"abis",new JSONArray(Arrays.asList(Build.SUPPORTED_ABIS)),"pid",android.os.Process.myPid(),"origin",origin,"cases",cases,"checks",checks,"passed",passedChecks(),"total",checks.length(),"routes",routes,"nativeRuntimeScope","Locale settings belong to one runtime shared by these sessions","environmentIsolation","Separate Android process/profile isolation is unverified by this prototype","independentTimezone","unsupported; no timezone override requested or applied","deepCustomControls","Independent timezone/Canvas/WebGL/audio/font controls not implemented","uncovered",J.arr("cross-origin frame","Shared Worker","Service Worker","RFP compatibility","real account login","native IME","separate environment isolation","restart persistence"),"scope","Actual controlled page-main/same-origin frame/Dedicated HTTP and Blob Worker readings plus first-party server request headers through the production guarded bridge. No template applied/observed repository acknowledgement.");
     reportPut(report,"nativeNavigation",navigation);reportPut(report,"nativeNavigationDropped",navigationDropped);
+    reportPut(report,"guardEvidence",guardEvidence);
     if(view!=null&&view.runtime!=null){GeckoRuntimeSettings settings=view.runtime.getSettings();reportPut(report,"runtimeNetworkRequests",J.obj("lnaEnabled",settings.getLnaEnabled()==null?JSONObject.NULL:settings.getLnaEnabled(),"lnaBlocking",settings.getLnaBlocking()==null?JSONObject.NULL:settings.getLnaBlocking(),"scope","Java requested values; null means no requested override and does not establish native defaults"));}
     android.security.NetworkSecurityPolicy policy=android.security.NetworkSecurityPolicy.getInstance();
     reportPut(report,"androidCleartextPolicy",J.obj("globalPermitted",policy.isCleartextTrafficPermitted(),"loopbackPermitted",policy.isCleartextTrafficPermitted("127.0.0.1"),"localhostPermitted",policy.isCleartextTrafficPermitted("localhost"),"scope","Observed Android policy only; no policy override"));
@@ -226,6 +276,7 @@ public final class GeckoIdentityPrototypeIntegrationActivity extends Activity {
       +"const frame=document.createElement('iframe');const fp=new Promise(resolve=>addEventListener('message',e=>{if(e.origin===c.origin&&e.source===frame.contentWindow&&e.data?.kind==='identity-frame')resolve(e.data.value)}));frame.src='/frame?'+c.query;document.body.append(frame);"
       +"function observe(w){return new Promise(resolve=>{w.onmessage=e=>{w.terminate();resolve(e.data)};w.onerror=e=>{w.terminate();resolve({error:e.message})}})}"
       +"const worker=observe(new Worker('/worker?'+c.query));const blobUrl=URL.createObjectURL(new Blob(["+JSONObject.quote(blob)+"],{type:'application/javascript'}));const blobWorker=observe(new Worker(blobUrl));"
-      +"Promise.all([fp,worker,blobWorker]).then(async([frame,worker,blobWorker])=>{URL.revokeObjectURL(blobUrl);const response=await fetch('/echo?'+c.query+'&kind=page-fetch',{cache:'no-store'});if(!response.ok)throw Error('page echo failed');await response.json();return fetch('/report?'+c.query,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({run:c.run,case:c.case,session:c.session,parent:read(),frame,worker,blobWorker,provenance:'controlled-page-main-world'})})}).catch(e=>document.body.append(String(e)));</script>";
+      +"Promise.all([fp,worker,blobWorker]).then(async([frame,worker,blobWorker])=>{URL.revokeObjectURL(blobUrl);const response=await fetch('/echo?'+c.query+'&kind=page-fetch',{cache:'no-store'});if(!response.ok)throw Error('page echo failed');await response.json();return fetch('/report?'+c.query,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({run:c.run,case:c.case,session:c.session,parent:read(),frame,worker,blobWorker,provenance:'controlled-page-main-world'})})}).catch(e=>document.body.append(String(e)));"
+      +"let guardStarted=false;addEventListener('pocket-identity-guard',e=>{if(guardStarted||c.case!==4||typeof e.detail!=='string')return;const g=JSON.parse(e.detail);if(!/^[0-9a-f]{32}$/.test(g.nonce)||g.nonce===c.run||g.fetchUrl!==c.origin+'/echo?run='+g.nonce+'&case=4&session='+c.session+'&kind=guard-fetch'||g.workerUrl!==c.origin+'/worker?run='+g.nonce+'&case=4&session='+c.session)return;guardStarted=true;const f=fetch(g.fetchUrl,{cache:'no-store'}).then(r=>({outcome:'http-response',status:r.status,at:performance.now()})).catch(error=>({outcome:'network-error',name:String(error.name),message:String(error.message),at:performance.now()}));const w=new Promise(resolve=>{let instance;try{instance=new Worker(g.workerUrl);instance.onmessage=e=>{instance.terminate();resolve({outcome:'message',at:performance.now()})};instance.onerror=e=>{instance.terminate();resolve({outcome:'error',trusted:e.isTrusted,message:e.message,at:performance.now()})}}catch(error){resolve({outcome:'constructor-error',name:String(error.name),at:performance.now()})}});Promise.all([f,w]).then(([fetch,worker])=>dispatchEvent(new CustomEvent('pocket-identity-guard-result',{detail:JSON.stringify({nonce:g.nonce,fetchUrl:g.fetchUrl,workerUrl:g.workerUrl,fetch,worker,at:performance.now()})})))})</script>";
   }
 }
