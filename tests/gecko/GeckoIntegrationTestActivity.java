@@ -562,6 +562,32 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(restored){event("readingBoundsEnd",J.obj("productionDelegateRestored",session.web.current.getCompositorScrollDelegate()==readingBoundsCase.priorDelegate,"privacyRestored",true,"privacyLevel",session.privacy.level()));return;}
     if(SystemClock.elapsedRealtime()>deadline){event("error",J.obj("error","reading bounds did not restore the original privacy configuration"));return;}session.handler.postDelayed(()->readingBoundsEnd(serial,deadline),100);
   }
+  static java.util.List<String> cookiesExceptReadingFixture(String value){
+    java.util.List<String> result=new java.util.ArrayList<>();
+    for(String cookie:value.split(";")){cookie=cookie.trim();if(!cookie.isEmpty()&&!cookie.startsWith("readingBounds="))result.add(cookie);}
+    java.util.Collections.sort(result);return result;
+  }
+  static boolean hasReadingFixtureCookie(String value){for(String cookie:value.split(";"))if(cookie.trim().startsWith("readingBounds="))return true;return false;}
+  void removeReadingFixtureCookie(long serial,JSONObject checkpoint){
+    GeckoWebView web=session.web;org.mozilla.geckoview.GeckoSession document=web.current;String target=web.getUrl();
+    web.readCookies("http://127.0.0.1:8765/fixture",nativeBefore->{
+      if(serial!=run)return;
+      if(web.current!=document||nativeBefore==null||!hasReadingFixtureCookie(nativeBefore)){event("error",J.obj("error","reading fixture cookie cleanup has no current native cookie receipt"));return;}
+      // This marker belongs only to the loopback fixture. The reading cases have
+      // already captured their cookie-preservation evidence; expire only this
+      // marker before the original strict environment cookie checks resume.
+      web.evaluateJavascript("(()=>{if(location.origin!=='http://127.0.0.1:8765'||location.pathname!=='/browser-reading'||location.href!=="+JSONObject.quote(target)+")return null;const before=document.cookie;document.cookie='readingBounds=; Max-Age=0; Path=/';return {before,after:document.cookie}})()",raw->{
+        if(serial!=run)return;JSONObject cookies=J.parse(raw);String before=cookies.optString("before"),after=cookies.optString("after");
+        boolean domRemoved=hasReadingFixtureCookie(before)&&!hasReadingFixtureCookie(after),domPreserved=cookiesExceptReadingFixture(before).equals(cookiesExceptReadingFixture(after));
+        if(!domRemoved||!domPreserved){event("error",J.obj("error","reading fixture cookie cleanup did not preserve the other DOM cookies"));return;}
+        web.readCookies("http://127.0.0.1:8765/fixture",nativeAfter->{
+          if(serial!=run)return;boolean nativeRemoved=nativeAfter!=null&&!hasReadingFixtureCookie(nativeAfter),nativePreserved=nativeAfter!=null&&cookiesExceptReadingFixture(nativeBefore).equals(cookiesExceptReadingFixture(nativeAfter));
+          if(web.current!=document||!target.equals(web.getUrl())||!nativeRemoved||!nativePreserved){event("error",J.obj("error","reading fixture cookie cleanup did not preserve the other native cookies"));return;}
+          NetworkCatalog.put(checkpoint,"readingFixtureCookieRemovedFromDom",domRemoved);NetworkCatalog.put(checkpoint,"readingFixtureCookieRemovedFromNative",nativeRemoved);NetworkCatalog.put(checkpoint,"otherDomCookiesPreserved",domPreserved);NetworkCatalog.put(checkpoint,"otherNativeCookiesPreserved",nativePreserved);event("nativeCheckpoint",checkpoint);
+        });
+      });
+    });
+  }
   static java.lang.reflect.Field field(Object object,String name)throws ReflectiveOperationException{Class<?> type=object.getClass();while(type!=null){try{java.lang.reflect.Field found=type.getDeclaredField(name);found.setAccessible(true);return found;}catch(NoSuchFieldException missing){type=type.getSuperclass();}}throw new NoSuchFieldException(name);}
   static long number(Object object,String name)throws ReflectiveOperationException{Object value=field(object,name).get(object);return value instanceof java.util.concurrent.atomic.AtomicLong?((java.util.concurrent.atomic.AtomicLong)value).get():((Number)value).longValue();}
   JSONObject nativePage(String raw){return J.parse(raw);}
@@ -666,7 +692,7 @@ public class GeckoIntegrationTestActivity extends Activity {
         onMain(()->offer(offer,isolated,()->"isolated-synthetic-environment"));String independent=readCheckpoint(isolated),unchanged=readCheckpoint(store);
         org.mozilla.geckoview.GeckoSession.SessionState restored=org.mozilla.geckoview.GeckoSession.SessionState.fromString(latest);
         JSONObject result=J.obj("offered",number(probe,"offered"),"coalesced",number(probe,"coalesced"),"serialized",number(probe,"serialized"),"mainSerialized",number(probe,"mainSerialized"),"written",number(probe,"written"),"serializeNanos",number(probe,"serializeNanos"),"encodedBytes",number(probe,"bytes"),"firstBurstSerialized",firstSerialized,"firstBurstCoalesced",firstCoalesced,"firstCandidate",firstValue.optInt("nativeFixtureCandidate",-2),"lastCandidate",latestValue.optInt("nativeFixtureCandidate",-2),"latestWrites",latestWrites,"lastValidCandidate",lastValidCandidate,"validAfterNullCandidate",invalidRetained[0],"validAfterThrowingCandidate",invalidRetained[1],"validAfterUtf8Oversize",invalidRetained[2],"invalidNewerKeepsValid",invalidRetained[0]&&invalidRetained[1]&&invalidRetained[2],"continuousOffered",Math.min(200,continuousOffered.get()),"continuousWritesDuringOffers",continuousWrites,"continuousOffersPersisted",persistedWhileOffering,"continuousLastCandidate",continuousCandidate,"continuousSerialized",number(probe,"serialized")-serializedBeforeContinuous,"mainSerializationZero",number(probe,"mainSerialized")==0,"pendingBounded",firstSerialized==1&&firstCoalesced==999&&firstValue.optInt("nativeFixtureCandidate",-2)==999,"latestWinsDuringSerialization",latestValue.optInt("nativeFixtureCandidate",-2)==1199&&latestWrites==2,"oversizeKeepsPrevious",latest.equals(afterOversize),"independentStore","isolated-synthetic-environment".equals(independent)&&continuousLast.equals(unchanged),"sdkSnapshotRestorable",restored!=null&&restored.size()==state.size()&&GeckoWebView.stateUrl(restored).equals(GeckoWebView.stateUrl(state)));
-        store.io.shutdown();isolated.io.shutdown();runOnUiThread(()->{if(serial==run)event("nativeCheckpoint",result);});
+        store.io.shutdown();isolated.io.shutdown();runOnUiThread(()->{if(serial==run)removeReadingFixtureCookie(serial,result);});
       }catch(Exception error){runOnUiThread(()->event("error",J.obj("error","native checkpoint regression: "+error)));}
     },"checkpoint-regression").start();
   }

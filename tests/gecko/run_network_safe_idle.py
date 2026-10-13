@@ -39,10 +39,21 @@ def events():
             continue
         item = json.loads(line[line.index("{"):])
         found.append(item)
+    EVENTS[:] = found
+    for item in found:
         if item.get("kind") == "result" and item.get("value", {}).get("status") != "passed":
             raise AssertionError(item)
-    EVENTS[:] = found
     return found
+
+
+def save_report(terminal=None):
+    raw = adb("exec-out", "content", "read", "--uri", "content://" + PKG + ".evidence/network-safe-idle")
+    report = json.loads(raw)
+    if terminal is not None:
+        assert report["status"] == terminal["status"] and report["checkCount"] == terminal["checkCount"], (terminal, report)
+    report.update(sourceCommit=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(), installedPackage=PKG, installedApkSha256=apk_sha, actualAndroidGestures=GESTURES, phaseEvents=EVENTS, runnerOneAttemptPerGesture=True)
+    (OUT / "network-safe-idle-results.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    return report
 
 
 def wait(kind, predicate=lambda v: True, seconds=80):
@@ -96,10 +107,7 @@ try:
         wait("ready", lambda v, index=index: v.get("completedCases") == index + 1)
     intent("finish")
     wait("result", lambda v: v.get("status") == "passed")
-    raw = adb("exec-out", "content", "read", "--uri", "content://" + PKG + ".evidence/network-safe-idle")
-    report = json.loads(raw)
-    report.update(sourceCommit=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(), installedPackage=PKG, installedApkSha256=apk_sha, actualAndroidGestures=GESTURES, phaseEvents=EVENTS, runnerOneAttemptPerGesture=True)
-    (OUT / "network-safe-idle-results.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    report = save_report()
     receipt = json.loads((ROOT / "third-party/patches/mihomo-v1.19.31-probe-build.json").read_text())
     assert report["coreAbi"] == "x86_64"
     assert report["coreVersion"] == receipt["recipe"]["version"]
@@ -109,7 +117,14 @@ try:
     (OUT / "network-safe-idle-log.txt").write_text(adb("logcat", "-d"))
     print(json.dumps({"status": "passed", "checkCount": report["checkCount"], "cases": len(report["cases"]), "realTrustedGestures": len(GESTURES), "report": str(OUT / "network-safe-idle-results.json")}))
 except BaseException as error:
-    (OUT / "network-safe-idle-runner-failure.json").write_text(json.dumps({"status": "failed", "sourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(), "error": str(error), "events": EVENTS, "gestures": GESTURES}, ensure_ascii=False, indent=2) + "\n")
+    failure = {"status": "failed", "sourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(), "error": str(error), "events": EVENTS, "gestures": GESTURES}
+    terminal = next((e["value"] for e in reversed(EVENTS) if e.get("kind") == "result" and e.get("value", {}).get("status") == "failed"), None)
+    if terminal is not None:
+        try:
+            save_report(terminal)
+        except Exception as report_error:
+            failure["reportCaptureError"] = str(report_error)
+    (OUT / "network-safe-idle-runner-failure.json").write_text(json.dumps(failure, ensure_ascii=False, indent=2) + "\n")
     try:
         (OUT / "network-safe-idle-failure-log.txt").write_text(adb("logcat", "-d"))
         (OUT / "network-safe-idle-failure.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))

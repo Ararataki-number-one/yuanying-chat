@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compare production observation assets through real Gecko and the Android native bridge."""
-import argparse, hashlib, http.server, json, pathlib, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse
+import argparse, hashlib, http.server, json, pathlib, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse, uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'work/gecko-integration'
@@ -130,6 +130,14 @@ def main():
                         help='Buffer only primitive SDK/IME observations and flush after input; no extra JS observers. Diagnostic evidence cannot replace the normal regression.')
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
+    started_ms = int(time.time() * 1000)
+    diagnostic_run = uuid.uuid4().hex
+    for name in ['gecko-performance-results.json', 'gecko-performance-failure-log.txt',
+                 'gecko-performance-failure-screen.png', 'gecko-performance-failure-ui.xml',
+                 'gecko-performance-failure-window.txt', 'gecko-performance-failure-activity.txt',
+                 'gecko-scroll-diagnostics.json', 'gecko-scroll-diagnostic-log.json',
+                 'gecko-performance-screen.png']:
+        (OUT / name).unlink(missing_ok=True)
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
     receipt = json.loads((baseline_root / 'source.json').read_text())
     assert receipt['sourceCommit'] == BASELINE, receipt
@@ -145,6 +153,31 @@ def main():
 
     def adb(*parts):
         return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
+
+    package = 'local.pocketchat.test'
+    scroll_samples, scroll_touches, scroll_dom_events, scroll_errors = {}, {}, {}, {}
+
+    def save_scroll_diagnostics():
+        scope = ('Read-only scroll-phase diagnostics add passive DOM listeners, bounded native touch/delegate '
+                 'capture, geometry and existing before/after snapshots; no new evaluations or changes to '
+                 'gestures, pacing, timeouts, assertions or typing. First four busy samples are unchanged; '
+                 'APZ touch dispatch, scroll-phase scheduling and frame timing may be affected by the added work '
+                 'and passive touch listeners.')
+        source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+        observed = dict(schema=1, sourceCommit=source, run=diagnostic_run, startedUnixMs=started_ms, instrumentationScope=scope,
+                        samples=list(scroll_samples.values()), nativeTouches=list(scroll_touches.values()),
+                        trustedDomEvents=list(scroll_dom_events.values()), diagnosticErrors=list(scroll_errors.values()))
+        (OUT / 'gecko-scroll-diagnostic-log.json').write_text(json.dumps(observed, indent=2) + '\n')
+        try:
+            actual = json.loads(adb('exec-out', 'content', 'read', '--uri', 'content://' + package + '.evidence/gecko-scroll'))
+            if actual.get('run') != diagnostic_run:
+                raise ValueError('Android scroll diagnostics do not belong to this invocation')
+            actual.update(sourceCommit=source, startedUnixMs=started_ms, instrumentationScope=scope,
+                          actualAndroidFileRead=True)
+            (OUT / 'gecko-scroll-diagnostics.json').write_text(json.dumps(actual, indent=2) + '\n')
+            return dict(schema=1, actualAndroidFileRead=True, phases=len(actual['phases']), instrumentationScope=scope)
+        except Exception as error:
+            return dict(schema=1, actualAndroidFileRead=False, fileReadError=str(error), instrumentationScope=scope)
 
     servers = [http.server.ThreadingHTTPServer(('127.0.0.1', 8767), Fixture), SocksServer(('127.0.0.1', 1087), Socks)]
     for server in servers:
@@ -167,6 +200,7 @@ def main():
                   'frameTimingInterpretation': 'Descriptive actual Gecko RAF and Android Choreographer gaps during the controlled polling and gesture workload; no claim of real-account FPS.'}
         adb('logcat', '-c')
         activity = ['shell', 'am', 'start', '-W', '-n', package + '/local.pocketchat.GeckoPerformanceIntegrationActivity']
+        activity.extend(['--es', 'scrollDiagnosticRun', diagnostic_run])
         if args.input_diagnostics:
             activity.extend(['--ez', 'inputDiagnostics', 'true'])
         if args.native_input_diagnostics:
@@ -229,7 +263,16 @@ def main():
                     report = item['value']
                 elif item['kind'] in ['load', 'route', 'loadError']:
                     diagnostics[line] = item
+                elif item['kind'] == 'scrollSample':
+                    value = item['value'];scroll_samples[(value['phase'], value['sequence'])] = value
+                elif item['kind'] == 'scrollNativeTouch':
+                    value = item['value'];scroll_touches[(value['phase'], value['event']['sequence'])] = value
+                elif item['kind'] == 'scrollDomEvent':
+                    value = item['value'];scroll_dom_events[(value['phase'], value['event']['sequence'])] = value
+                elif item['kind'] == 'scrollDiagnosticError':
+                    scroll_errors[line] = item['value']
             if report:
+                report['scrollDiagnostics'] = save_scroll_diagnostics()
                 report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                               diagnosticOnly=bool(args.input_diagnostics or args.native_input_diagnostics),
                               checks=list(checks.values()), measurements=list(measurements.values()), fixtureRequests=Fixture.requests,
@@ -267,17 +310,43 @@ def main():
                 assert Socks.routes and all(route['accepted'] for route in Socks.routes), report
                 decisions = [item['value'] for item in diagnostics.values() if item['kind'] == 'route' and item['value']['url'].startswith('http://127.0.0.1:8767/performance')]
                 assert len(decisions) >= 2 and all(item['guardAllowed'] and item['decision']['type'] == 'socks' and item['decision']['host'] == '127.0.0.1' and item['decision']['port'] == 1087 for item in decisions), report
+                if not report['scrollDiagnostics']['actualAndroidFileRead'] or report['scrollDiagnostics'].get('phases') != 2:
+                    raise RuntimeError('Actual same-invocation scroll diagnostic phases were not captured')
                 image = subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30)
                 (OUT / 'gecko-performance-screen.png').write_bytes(image)
                 return
             time.sleep(1)
         raise TimeoutError('No completed real Gecko performance report')
     except Exception as error:
+        if report is None:
+            report = dict(status='failed', sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+                          observedActivityReport=False, actualAndroidExecution=False, actualGeckoExecution=False,
+                          checkCount=len(checks) if 'checks' in locals() else 0)
+        report['scrollDiagnostics'] = save_scroll_diagnostics()
+        captures = {}
+        ui_remote = '/sdcard/gecko-performance-failure-' + diagnostic_run + '.xml'
+        operations = [
+            ('gecko-performance-failure-screen.png', lambda: subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30)),
+            ('gecko-performance-failure-ui.xml', lambda: (adb('shell', 'uiautomator', 'dump', ui_remote), adb('shell', 'cat', ui_remote))[1]),
+            ('gecko-performance-failure-window.txt', lambda: adb('shell', 'dumpsys', 'window')),
+            ('gecko-performance-failure-activity.txt', lambda: adb('shell', 'dumpsys', 'activity', 'activities')),
+            ('gecko-performance-failure-log.txt', lambda: adb('logcat', '-d')),
+        ]
+        for name, capture in operations:
+            try:
+                data = capture()
+                if isinstance(data, bytes):
+                    (OUT / name).write_bytes(data)
+                else:
+                    (OUT / name).write_text(data)
+                captures[name] = dict(saved=True, bytes=(OUT / name).stat().st_size)
+            except Exception as capture_error:
+                captures[name] = dict(saved=False, error=str(capture_error))
+        report['failureCaptures'] = captures
         if report is not None:
             report['status'] = 'failed'
             report['runnerError'] = str(error)
             (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
-        (OUT / 'gecko-performance-failure-log.txt').write_text(adb('logcat', '-d'))
         raise
     finally:
         for server in servers:

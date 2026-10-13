@@ -27,6 +27,7 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
     else if("/network-source-ui-state".equals(uri.getPath()))name="network-source-ui-state.json";
     else if("/network-source-ui".equals(uri.getPath()))name="network-source-ui-results.json";
     else if("/network-safe-idle".equals(uri.getPath()))name="network-safe-idle-results.json";
+    else if("/gecko-scroll".equals(uri.getPath()))name="gecko-scroll-diagnostics.json";
     else throw new FileNotFoundException("Unknown synthetic report");
     try{
       File base=getContext().getFilesDir().getCanonicalFile(),file=new File(base,name).getCanonicalFile();

@@ -220,6 +220,7 @@ def verify_interaction_transfer_evidence(directory, source):
         if manifest['versionCode'] >= 48:
             assert 'nativeReadingBounds' in device, 'This release requires native fit, privacy, rotation and IME bounds evidence.'
         if manifest['versionCode'] >= 49:
+            assert all(device['nativeCheckpointPerformance'][key] is True for key in ('readingFixtureCookieRemovedFromDom','readingFixtureCookieRemovedFromNative','otherDomCookiesPreserved','otherNativeCookiesPreserved'))
             assert device['nativeReadingBounds']['input']['measurement'].get('nativeComposerFits') is True
             assert device['nativeReadingBounds']['input']['measurement'].get('productionKeyboardController') is True
             for name, minimum in [('reading-host-results.json', 71), ('reading-focus-host-results.json', 17)]:

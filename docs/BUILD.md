@@ -1,4 +1,4 @@
-# 构建 1.5.20
+# 构建 1.5.23
 
 正式应用现已接入 Mozilla 官方 GeckoView。使用 Gradle 构建以合并 SDK 的 Java、原生库、资源、服务和依赖；旧版手工 AAPT2/D8 流程不再适用于本版本。
 
@@ -26,7 +26,7 @@ python3 tools/sign-apk.py app/build/outputs/apk/release/app-arm64-v8a-release-un
   --tools "$ANDROID_HOME/build-tools/37.0.0" --java "$JAVA_HOME/bin/java"
 ```
 
-输出 `dist/PocketChat-1.5.20-gecko-arm64.apk` 和签名检查记录。助手从 `app/build.gradle` 读取版本，检查原证书、包名 `local.pocketchat`、当前版本号 46、非调试构建、无测试入口及 16 KB 对齐。原版证书 SHA-256 为 `f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434`。不同证书的预览包不能覆盖原版。
+输出 `dist/PocketChat-1.5.23-gecko-arm64.apk` 和签名检查记录。助手从 `app/build.gradle` 读取版本，检查原证书、包名 `local.pocketchat`、当前版本号 49、非调试构建、无测试入口及 16 KB 对齐。原版证书 SHA-256 为 `f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434`。不同证书的预览包不能覆盖原版。
 
 ## 云环境
 
@@ -39,3 +39,17 @@ python3 tools/sign-apk.py app/build/outputs/apk/release/app-arm64-v8a-release-un
 正式源码只使用官方 GeckoView；不再依赖 AndroidX WebKit，不打包旧简洁页面及其渲染库。正常验收保留原网页输入、存储、上传、下载和环境线路检查，并追加仅原网页、前台安静／后台选用以及更新线路续传检查。公开 SDK AAR 校验和固定，未使用输入实验补丁。
 
 工作流在构建前核验官方 AAR/POM/源码包，构建后再次核验 Gradle 实际解析到的完整 AAR。`tools/gecko/verify_official_sdk.py` 只读取并比对，不重写 AAR、SDK 类或原生库。SDK 来源核验和编译通过不代表输入问题已修复；仍需保留原单次 Android 硬件输入、草稿与选择范围断言，全部正常设备验收通过后才能发布。
+
+## 入口、出口与加密存储回归
+
+入口和出口订阅分别保存地址、节点、更新状态和独立标识。环境保存私有的入口、出口快照；共享订阅刷新不重写正在运行的环境。候选网络在安全空闲时应用，固定出口不随机。
+
+加密文件的恢复、读取、发布和删除必须经过 `SealedFileIo`。保持原 Keystore 别名、GCM 数据格式和 slot AAD；跨进程锁使用最多 64 个稳定文件，成功返回前校验实际发布的字节。可运行无需额外 Java 依赖的主机检查：
+
+```bash
+python3 tests/sealed-file-host/run.py --java-home "$JAVA_HOME"
+```
+
+该流程验证 32 项主机检查，不执行 Android Keystore。订阅目录、源快照和待应用设置的其他主机检查使用固定校验和的 `org.json:json:20240303`；下载、校验和运行命令见当前 Gecko 工作流。
+
+设备验收还要求独立订阅管理的真实点击、Android 加密读写竞争、固定出口链式连接、回复期间的候选应用、原网页输入和原生缩放／键盘位置检查。受控 HTTPS 样本的 CA、NSS 数据库和服务器证书只属于 `local.pocketchat.test`；正式 APK 必须排除整个测试信任目录和所有 JKS／PKCS#12 文件。

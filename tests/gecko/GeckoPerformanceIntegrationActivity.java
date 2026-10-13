@@ -30,11 +30,24 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
   String inputReadinessKey="";long inputReadySince;int inputTraceOffset,inputReadinessSequence;boolean inputImeSettled;
   GeckoInputTrace nativeInputTrace;GeckoInputTrace.Buffered bufferedInputTrace;boolean inputDiagnostics,inputNativeDiagnostics;
+  final JSONArray scrollDiagnosticPhases=new JSONArray();ScrollPhase scrollPhase;String scrollDiagnosticRun;
+  static final class ScrollPhase {
+    final String variant,url;final long navigationEpoch,started=SystemClock.elapsedRealtime();final GeckoSession sdk;final android.view.View surface;
+    final GeckoSession.CompositorScrollDelegate prior;final JSONArray samples=new JSONArray(),nativeUpdates=new JSONArray(),domEvents=new JSONArray();
+    int updates,sampleCount,touchPublished;float scrollX,scrollY,zoom;double beforeScrollTop;boolean hasBefore;
+    ScrollPhase(String value,ChatSession owner){variant=value;url=owner.web.getUrl();navigationEpoch=owner.navigationEpoch;sdk=owner.web.current;surface=owner.web.surface;prior=sdk.getCompositorScrollDelegate();}
+  }
   CountDownLatch archiveEntered,archiveRelease;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
     boolean semanticRoute,inspectPending,inputTracing,quietTracking;JSONObject productionPoll,productionInspect;int pageStateReads,stableBeforeInspectedPoll=-1,completionBeforeInspectedPoll=-1,inputEvaluateSequence,quietStops,quietLoads;String pageStateDraft="",navigationError="",semanticUrl=MainActivity.ORIGIN+"c/performance-fixture";
     FixtureView(Context c,ChatSession owner){super(c,owner);}
+    boolean scrollTracing;int scrollTouchCount;JSONArray scrollTouches=new JSONArray();
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent motion){
+      boolean trace=scrollTracing;boolean handled=super.dispatchTouchEvent(motion);
+      if(trace){scrollTouchCount++;if(scrollTouches.length()<64)scrollTouches.put(J.obj("sequence",scrollTouchCount,"action",motion.getActionMasked(),"pointers",motion.getPointerCount(),"eventTime",motion.getEventTime(),"downTime",motion.getDownTime(),"uptimeMs",SystemClock.uptimeMillis(),"x",motion.getX(),"y",motion.getY(),"rawX",motion.getRawX(),"rawY",motion.getRawY(),"source",motion.getSource(),"superHandled",handled));}
+      return handled;
+    }
     @Override public void stopLoading(){if(quietTracking)quietStops++;super.stopLoading();}
     @Override public void loadUrl(String url){if(quietTracking)quietLoads++;super.loadUrl(url);}
     @Override public String getUrl(){return semanticRoute?semanticUrl:super.getUrl();}
@@ -88,12 +101,13 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   void later(Step step,long delay){handler.postDelayed(()->attempt(step),delay);}
   void event(String kind,JSONObject value){Log.i("PocketGeckoPerformance",J.obj("kind",kind,"value",value).toString());}
   void check(String name,boolean pass){checkCount++;event("check",J.obj("name",name,"pass",pass));if(!pass)throw new IllegalStateException(name);}
-  void fail(Exception error){if(finished)return;finished=true;frames.stop();if(archiveRelease!=null)archiveRelease.countDown();stopInputTrace(()->event("report",J.obj("status","failed","actualAndroidExecution",true,"actualGeckoExecution",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"checkCount",checkCount,"error",error.toString())));}
+  void fail(Exception error){if(finished)return;finishScrollDiagnostics("failed");finished=true;frames.stop();if(archiveRelease!=null)archiveRelease.countDown();stopInputTrace(()->event("report",J.obj("status","failed","actualAndroidExecution",true,"actualGeckoExecution",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"checkCount",checkCount,"error",error.toString())));}
   String asset(String name)throws Exception{try(InputStream in=getAssets().open(name)){return J.text(in,512*1024);}}
   @Override public void onCreate(Bundle saved){super.onCreate(saved);attempt(()->{
     if(!getPackageName().endsWith(".test"))throw new SecurityException("Only isolated integration package may run this fixture");
     inputDiagnostics=getIntent().getBooleanExtra("inputDiagnostics",false);
     inputNativeDiagnostics=getIntent().getBooleanExtra("inputNativeDiagnostics",false);
+    scrollDiagnosticRun=getIntent().getStringExtra("scrollDiagnosticRun");
     if(inputDiagnostics&&inputNativeDiagnostics)throw new IllegalArgumentException("Input diagnostics must use one independent mode");
     getSharedPreferences("chat",0).edit().putString("browserEngine","gecko").putString("networkMode","external")
       .putString("proxy","socks://127.0.0.1:1087").putBoolean("requireExternalVpn",false).putBoolean("networkConfigured",false)
@@ -182,14 +196,44 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       later(this::nextSample,80);
     });
   });}
-  void scrollGesture(){evaluate("({scrollTop:document.scrollingElement.scrollTop})",false,beforeScroll->{
+  void beginScrollDiagnostics(){
+    FixtureView web=(FixtureView)session.web;ScrollPhase phase=new ScrollPhase(variant,session);scrollPhase=phase;web.scrollTouches=new JSONArray();web.scrollTouchCount=0;web.scrollTracing=true;
+    phase.sdk.setCompositorScrollDelegate(new GeckoSession.CompositorScrollDelegate(){@Override public void onScrollChanged(GeckoSession sdk,GeckoSession.ScrollPositionUpdate update){
+      if(phase.prior!=null)phase.prior.onScrollChanged(sdk,update);
+      if(scrollPhase==phase&&sdk==phase.sdk){phase.scrollX=update.scrollX;phase.scrollY=update.scrollY;phase.zoom=update.zoom;phase.updates++;if(phase.nativeUpdates.length()<64)phase.nativeUpdates.put(J.obj("sequence",phase.updates,"uptimeMs",SystemClock.uptimeMillis(),"scrollX",update.scrollX,"scrollY",update.scrollY,"zoom",update.zoom));}
+    }});
+  }
+  String scrollSnapshotScript(boolean begin){return "(()=>{"+(begin?
+    "{const trace={active:true,events:[],count:0,initial:document.scrollingElement.scrollTop};const types=['touchstart','touchmove','touchend','touchcancel','wheel','scroll'];const listener=e=>{if(!trace.active)return;trace.count++;if(trace.count>64)return;const p=e.touches?.[0]||e.changedTouches?.[0],v=visualViewport;trace.events.push({sequence:trace.count,type:e.type,trusted:e.isTrusted,time:performance.now(),eventPhase:e.eventPhase,touches:e.touches?.length||0,x:p?.clientX??null,y:p?.clientY??null,deltaX:e.deltaX??null,deltaY:e.deltaY??null,scrollTop:document.scrollingElement.scrollTop,scrollY,pageTop:v?.pageTop??null,offsetTop:v?.offsetTop??null});};trace.stop=()=>{trace.active=false;for(const type of types)window.removeEventListener(type,listener,true);};for(const type of types)window.addEventListener(type,listener,{passive:true,capture:true});window.__fixtureScrollDiagnostics=trace;}":"")+
+    "const trace=window.__fixtureScrollDiagnostics,v=visualViewport,d=document.scrollingElement,events=trace?.events||[];if(trace)trace.events=[];const top=d.scrollTop;if(trace&&top>trace.initial)trace.stop();return {scrollTop:top,scrollLeft:d.scrollLeft,scrollY,scrollX,pageTop:v?.pageTop??null,pageLeft:v?.pageLeft??null,offsetTop:v?.offsetTop??null,offsetLeft:v?.offsetLeft??null,visualHeight:v?.height??null,visualWidth:v?.width??null,visualScale:v?.scale??null,innerHeight,innerWidth,clientHeight:d.clientHeight,clientWidth:d.clientWidth,scrollHeight:d.scrollHeight,scrollWidth:d.scrollWidth,url:location.href,document:performance.timeOrigin,visibility:document.visibilityState,documentFocused:document.hasFocus(),activeElement:document.activeElement?.id||document.activeElement?.tagName||'',eventCount:trace?.count||0,eventsDropped:Math.max(0,(trace?.count||0)-64),listenersActive:trace?.active||false,events};})()";}
+  JSONObject scrollNativeSnapshot(){
+    try{GeckoWebView web=session.web;ScrollPhase phase=scrollPhase;android.graphics.Matrix matrix=new android.graphics.Matrix();web.current.getPageToSurfaceMatrix(matrix);float[] numbers=new float[9];matrix.getValues(numbers);JSONArray values=new JSONArray();for(float number:numbers)values.put(Float.valueOf(number));
+      android.view.View root=web.getRootView(),surface=web.surface;int[] webOrigin=new int[2],surfaceOrigin=new int[2],rootOrigin=new int[2];web.getLocationOnScreen(webOrigin);surface.getLocationOnScreen(surfaceOrigin);root.getLocationOnScreen(rootOrigin);android.graphics.Rect visible=new android.graphics.Rect();boolean visibleRect=web.getGlobalVisibleRect(visible);visible.offset(rootOrigin[0],rootOrigin[1]);android.graphics.Rect frame=new android.graphics.Rect();root.getWindowVisibleDisplayFrame(frame);android.graphics.Rect window=Build.VERSION.SDK_INT>=30?getWindowManager().getCurrentWindowMetrics().getBounds():frame;
+      WindowInsets insets=web.getRootWindowInsets();boolean ime=Build.VERSION.SDK_INT>=30&&insets!=null&&insets.isVisible(WindowInsets.Type.ime());int imeBottom=ime?insets.getInsets(WindowInsets.Type.ime()).bottom:0;
+      return J.obj("uptimeMs",SystemClock.uptimeMillis(),"elapsedMs",SystemClock.elapsedRealtime()-phase.started,"navigationEpoch",session.navigationEpoch,"sameNavigation",session.navigationEpoch==phase.navigationEpoch,"url",web.getUrl(),"nativeUrl",web.locations.get(web.current),"sameUrl",phase.url.equals(web.getUrl()),"sdkOpen",web.current.isOpen(),"sessionIdentity",System.identityHashCode(web.current),"surfaceIdentity",System.identityHashCode(surface),"sameSession",web.current==phase.sdk,"sameSurface",surface==phase.surface,"attachedSessionIdentity",System.identityHashCode(web.surface.getSession()),"windowFocused",hasWindowFocus(),"webFocused",web.hasFocus(),"surfaceFocused",surface.hasFocus(),"webShown",web.isShown(),"surfaceShown",surface.isShown(),"surfaceAttached",surface.isAttachedToWindow(),"browserPaused",session.browserPaused,"readingDesktop",session.reading.desktop,"readingKeyboard",session.reading.keyboard,"readingLayout",web.readingLayout,"zoomActive",web.readingZoomActive(),"nativeMeasured",web.readingScaleMeasured(),"nativeScale",numbers[android.graphics.Matrix.MSCALE_Y]*web.readingLayout,"sdk",GeckoWebView.VERSION,"nativeUpdates",phase.updates,"nativeScrollX",phase.updates>0?phase.scrollX:JSONObject.NULL,"nativeScrollY",phase.updates>0?phase.scrollY:JSONObject.NULL,"nativeZoom",phase.updates>0?phase.zoom:JSONObject.NULL,"pageToSurfaceMatrix",values,"web",J.obj("x",webOrigin[0],"y",webOrigin[1],"width",web.getWidth(),"height",web.getHeight()),"surface",J.obj("x",surfaceOrigin[0],"y",surfaceOrigin[1],"width",surface.getWidth(),"height",surface.getHeight()),"root",J.obj("x",rootOrigin[0],"y",rootOrigin[1],"width",root.getWidth(),"height",root.getHeight()),"visibleRectAvailable",visibleRect,"visibleRect",scrollRect(visible),"windowBounds",scrollRect(window),"windowVisibleFrame",scrollRect(frame),"imeVisible",ime,"imeBottom",imeBottom);
+    }catch(Exception error){return J.obj("diagnosticError",error.toString());}
+  }
+  static JSONObject scrollRect(android.graphics.Rect rect){return J.obj("left",rect.left,"top",rect.top,"right",rect.right,"bottom",rect.bottom);}
+  void recordScrollSample(String stage,JSONObject dom){
+    ScrollPhase phase=scrollPhase;if(phase==null)return;phase.sampleCount++;JSONArray events=dom.optJSONArray("events");dom.remove("events");if(events!=null)for(int i=0;i<events.length();i++){JSONObject item=events.optJSONObject(i);phase.domEvents.put(item);event("scrollDomEvent",J.obj("phase",phase.variant,"event",item));}
+    FixtureView web=(FixtureView)session.web;while(phase.touchPublished<web.scrollTouches.length()){JSONObject item=web.scrollTouches.optJSONObject(phase.touchPublished++);event("scrollNativeTouch",J.obj("phase",phase.variant,"event",item));}
+    JSONObject sample=J.obj("phase",phase.variant,"stage",stage,"sequence",phase.sampleCount,"beforeScrollTop",phase.hasBefore?phase.beforeScrollTop:JSONObject.NULL,"dom",dom,"native",scrollNativeSnapshot());if(phase.samples.length()<256)phase.samples.put(sample);event("scrollSample",sample);
+  }
+  void finishScrollDiagnostics(String outcome){
+    ScrollPhase phase=scrollPhase;if(phase==null)return;FixtureView web=(FixtureView)session.web;web.scrollTracing=false;phase.sdk.setCompositorScrollDelegate(phase.prior);scrollPhase=null;
+    scrollDiagnosticPhases.put(J.obj("phase",phase.variant,"outcome",outcome,"url",phase.url,"navigationEpoch",phase.navigationEpoch,"sampleCount",phase.sampleCount,"samplesDropped",Math.max(0,phase.sampleCount-256),"samples",phase.samples,"nativeUpdates",phase.nativeUpdates,"nativeUpdatesCount",phase.updates,"nativeUpdatesDropped",Math.max(0,phase.updates-64),"nativeTouches",web.scrollTouches,"nativeTouchCount",web.scrollTouchCount,"nativeTouchesDropped",Math.max(0,web.scrollTouchCount-64),"domEvents",phase.domEvents));
+    try{J.write(new java.io.File(getFilesDir(),"gecko-scroll-diagnostics.json"),J.obj("schema",1,"run",scrollDiagnosticRun,"scope","Read-only scroll-phase diagnostics; passive DOM listeners, bounded native touch/delegate capture and existing before/after evaluations. No gesture, pacing, timeout, assertion or typing change. Added work and passive touch listeners may affect APZ touch dispatch, scroll-phase scheduling and frame timing; first four busy samples are unchanged.","phases",scrollDiagnosticPhases).toString());}catch(Exception error){event("scrollDiagnosticError",J.obj("error",error.toString()));}
+  }
+  void scrollGesture(){beginScrollDiagnostics();evaluate(scrollSnapshotScript(true),false,beforeScroll->{
+    scrollPhase.beforeScrollTop=beforeScroll.optDouble("scrollTop");scrollPhase.hasBefore=true;recordScrollSample("before",beforeScroll);
     int[] position=new int[2];session.web.getLocationOnScreen(position);int x=position[0]+session.web.getWidth()/2;
     event("gestureNeeded",J.obj("id",variant+"-scroll","action","scroll","x",x,"startY",position[1]+session.web.getHeight()*3/4,"endY",position[1]+session.web.getHeight()/4));
     waitScroll(beforeScroll.optDouble("scrollTop"),SystemClock.elapsedRealtime()+20000);
   });}
-  void waitScroll(double previous,long expires){evaluate("({scrollTop:document.scrollingElement.scrollTop})",false,afterScroll->{
+  void waitScroll(double previous,long expires){evaluate(scrollSnapshotScript(false),false,afterScroll->{
+    recordScrollSample("after",afterScroll);
     if(afterScroll.optDouble("scrollTop")<=previous){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Actual Android scroll gesture did not reach Gecko");later(()->waitScroll(previous,expires),100);return;}
-    check(variant+" accepts an actual Android scroll while reply observation is active",true);later(this::nextSample,80);
+    finishScrollDiagnostics("passed");check(variant+" accepts an actual Android scroll while reply observation is active",true);later(this::nextSample,80);
   });}
   void nextSample(){if(samples<12)sample();else measured();}
   void measured(){attempt(()->{
@@ -681,5 +725,5 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     @Override public void doFrame(long time){if(!active)return;if(previous>0){long gap=time-previous;count++;sum+=gap;max=Math.max(max,gap);if(gap>32000000L)over32++;}previous=time;Choreographer.getInstance().postFrameCallback(this);}
     JSONObject stop(){active=false;Choreographer.getInstance().removeFrameCallback(this);return J.obj("frames",count,"averageGapMs",count>0?sum/1000000.0/count:0,"maxGapMs",max/1000000.0,"gapsOver32Ms",over32);}
   }
-  @Override protected void onDestroy(){stopInputTrace();frames.stop();if(archiveRelease!=null)archiveRelease.countDown();handler.removeCallbacksAndMessages(null);if(session!=null)session.handler.removeCallbacks(session.tick);super.onDestroy();}
+  @Override protected void onDestroy(){finishScrollDiagnostics("destroyed");stopInputTrace();frames.stop();if(archiveRelease!=null)archiveRelease.countDown();handler.removeCallbacksAndMessages(null);if(session!=null)session.handler.removeCallbacks(session.tick);super.onDestroy();}
 }

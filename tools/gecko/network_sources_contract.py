@@ -103,6 +103,7 @@ def _verify_route_session_restorations(report):
     for row in restorations:
         assert row['method'] == 'ChatSession.reconnect → NativeNetwork.recover → ChatSession.applyProxy'
         before, after = row['before'], row['after']
+        assert before['nativeReceiptObservation'] == after['nativeReceiptObservation'] == 'fresh-service-snapshot'
         assert before['coreReady'] is True and before['nativeReceiptCurrent'] is True
         for key in ('networkReady', 'guardAllowed', 'coreReady', 'nativeReceiptCurrent', 'defaultNetworkUsable'):
             assert after[key] is True, key
@@ -114,6 +115,7 @@ def _verify_route_session_restorations(report):
         assert actual, name
         for row in actual:
             state = row['session']
+            assert state['nativeReceiptObservation'] == 'pushed-service-state'
             if name in SUCCESS:
                 for key in ('networkReady', 'guardAllowed', 'coreReady', 'nativeReceiptCurrent', 'defaultNetworkUsable'):
                     assert state[key] is True, (name, key)
@@ -182,6 +184,16 @@ def verify_safe_idle(report):
     for key in ('actualAndroidExecution', 'actualGeckoExecution', 'actualNativeParsing', 'actualNativeExecution', 'actualKeystoreEncryption'):
         assert report[key] is True, key
     assert report['actualRouteApplication'] is False and report['actualPublicWebsite'] is False
+    control = report['fixtureProviderControl']
+    assert control['removeCallbacksCalled'] is True and control['automaticDrainSuspended'] is True
+    assert control['registeredProviderIdentity'] != control['controlledProviderIdentity']
+    assert control['drainRevisionAfter'] == control['drainRevisionBefore'] + 1
+    separation = report['candidateSeparation']
+    assert [row['case'] for row in separation] == SAFE_IDLE_CASES[:5]
+    for row in separation:
+        assert row['schema'] == 1 and row['activeUnchanged'] is True and row['pendingUnchanged'] is True
+        assert row['activeBeforeHash'] == row['activeAfterHash'] and _hash(row['activeBeforeHash'])
+        assert row['pendingBeforeHash'] == row['pendingAfterHash'] and _hash(row['pendingBeforeHash'])
     gestures, events = report['actualAndroidGestures'], report['phaseEvents']
     assert report['runnerOneAttemptPerGesture'] is True
     assert report['parseCount'] == 2 and report['actualTrustedGestures'] == 2 and len(gestures) == 2

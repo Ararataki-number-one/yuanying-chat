@@ -532,6 +532,7 @@ def main():
         assert len(report['nativeSurfaceGestures'])==3 and surface['actualGestureCount']==3,surface
         adb('shell','input','keyevent','KEYCODE_BACK')
         checkpoint=run(1,'nativeCheckpoint','nativeCheckpoint')
+        assert all(checkpoint[k] for k in ['readingFixtureCookieRemovedFromDom','readingFixtureCookieRemovedFromNative','otherDomCookiesPreserved','otherNativeCookiesPreserved']),checkpoint
         assert all(checkpoint[k] for k in ['mainSerializationZero','pendingBounded','latestWinsDuringSerialization','oversizeKeepsPrevious','independentStore','validAfterNullCandidate','validAfterThrowingCandidate','validAfterUtf8Oversize','invalidNewerKeepsValid','continuousOffersPersisted','sdkSnapshotRestorable']),checkpoint
         assert checkpoint['mainSerialized']==0 and checkpoint['firstBurstSerialized']==1 and checkpoint['firstBurstCoalesced']==999 and checkpoint['lastCandidate']==1199 and checkpoint['lastValidCandidate']==2002 and checkpoint['continuousLastCandidate']==4199 and checkpoint['continuousOffered']==200 and checkpoint['continuousWritesDuringOffers']>=1,checkpoint
         report['nativeCheckpointPerformance']=checkpoint

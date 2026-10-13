@@ -73,6 +73,23 @@ def verify_performance_evidence(directory, source):
     assert len(build['currentSha256']) == 64
 
     gecko = android('gecko-performance-results.json')
+    manifest_path = directory / 'manifest.json'
+    if not manifest_path.exists():
+        manifest_path = directory / 'release-manifest.json'
+    if manifest_path.exists() and json.loads(manifest_path.read_text())['versionCode'] >= 49:
+        summary = gecko['scrollDiagnostics']
+        assert summary['schema'] == 1 and summary['actualAndroidFileRead'] is True and summary['phases'] == 2
+        scroll = json.loads((directory / 'gecko-scroll-diagnostics.json').read_text())
+        assert scroll['schema'] == 1 and scroll['sourceCommit'] == source and scroll['actualAndroidFileRead'] is True
+        assert len(scroll['run']) == 32 and all(c in '0123456789abcdef' for c in scroll['run'])
+        assert scroll['instrumentationScope'] == summary['instrumentationScope']
+        assert [phase['phase'] for phase in scroll['phases']] == ['baseline', 'current']
+        for phase in scroll['phases']:
+            assert phase['outcome'] == 'passed' and phase['samples'] and phase['nativeTouches']
+            before = phase['samples'][0]
+            assert before['stage'] == 'before' and len(phase['samples']) <= 256 and len(phase['nativeTouches']) <= 64
+            assert any(sample['stage'] == 'after' and sample['dom']['scrollTop'] > before['dom']['scrollTop'] for sample in phase['samples'])
+            assert {0, 2} <= {touch['action'] for touch in phase['nativeTouches']}
     assert gecko['actualGeckoExecution'] and gecko['baselineSource'] == BASELINE
     assert gecko['actualAndroidTouchExecution'] and len(gecko['actualAndroidGestures']) == 3
     routes = gecko['controlledProxyRoutes']

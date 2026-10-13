@@ -137,6 +137,44 @@ def fill(description, value):
         value, [item.attrib for item in actual])
 
 
+def reveal_field(description, title):
+    tree = xml()
+    for attempt in range(4):
+        found = matching(tree, desc=description, kind="EditText")
+        if len(found) == 1:
+            bounds(found[0])
+            return
+        assert not found and len(matching(tree, desc=title)) == 1, (description, title)
+        containers = [item for item in tree.iter("node")
+                      if item.attrib.get("class") == "android.widget.ScrollView"
+                      and item.attrib.get("package") == PACKAGE
+                      and item.attrib.get("scrollable") == "true"]
+        assert len(containers) == 1, ("Expected the actual modal scroll body", title)
+        container = containers[0]
+        left, top, right, bottom = bounds(container)
+        before = [item.attrib for item in matching(container, kind="EditText")]
+        x = (left + right) // 2
+        start_y, end_y = top + (bottom - top) * 4 // 5, top + (bottom - top) // 5
+        assert left < x < right and top < end_y < start_y < bottom
+        command = ["shell", "input", "swipe", str(x), str(start_y), str(x), str(end_y), "600"]
+        record_action("reveal-field-scroll", description=description, title=title,
+                      attempt=attempt + 1, container=container.attrib, beforeFields=before,
+                      command=command)
+        adb(*command)
+        tree = xml()
+        after = [item.attrib for item in matching(tree, kind="EditText")]
+        before_geometry = [(item.get("content-desc"), item.get("text"), item.get("bounds")) for item in before]
+        after_geometry = [(item.get("content-desc"), item.get("text"), item.get("bounds")) for item in after]
+        record_action("revealed-field-scroll-state", description=description, afterFields=after,
+                      actualVisibleFieldsMoved=before_geometry != after_geometry)
+        assert before_geometry != after_geometry, "Actual modal scroll did not move its visible fields"
+    found = matching(tree, desc=description, kind="EditText")
+    if len(found) == 1:
+        bounds(found[0])
+        return
+    raise AssertionError("Actual modal scroll did not reveal field: " + description)
+
+
 def assert_fields(expected):
     tree = xml()
     values = {description: [item.attrib for item in matching(tree, desc=description, kind="EditText")]
@@ -288,6 +326,7 @@ def main():
     tap(text="编辑出口")
     centered("编辑固定出口")
     fill("出口名称", "ManualEdited")
+    reveal_field("端口", "编辑固定出口")
     fill("端口", "19121")
     tap(text="保存出口")
     wait_for(state, lambda item: item["manual"].get("port") == 19121, "Edited manual exit")

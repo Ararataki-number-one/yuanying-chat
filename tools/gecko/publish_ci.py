@@ -45,6 +45,8 @@ if core_receipt.exists():
     shutil.copy2(out/'network-core-build.json',stage/'network-core-build.json')
 for screenshot in out.glob('reading-*.png'):
     shutil.copy2(screenshot, stage / screenshot.name)
+for pattern in ['gecko-scroll-*.json','gecko-performance-failure-*.png','gecko-performance-failure-*.xml','gecko-performance-failure-*.txt']:
+    for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 for pattern in ['network-latency-*.png','network-latency-*.xml']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')

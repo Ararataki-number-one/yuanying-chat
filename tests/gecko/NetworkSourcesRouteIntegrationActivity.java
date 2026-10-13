@@ -73,16 +73,21 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
   }
   void publishOriginal()throws Exception{JSONObject value=J.parse(candidate.toString());new NetworkSourceSelection.ActiveSnapshot(vault).write(NetworkSourceSelection.resolve(catalog,value),value);}
   boolean restart()throws Exception{CompletableFuture<Boolean> done=new CompletableFuture<>();network.restart((ok,message)->{event("startup",J.obj("ok",ok,"message",message));done.complete(ok);});return done.get(75,TimeUnit.SECONDS);}
-  JSONObject lifecycleState(){return J.obj("networkReady",session!=null&&session.networkReady,"guardBlocked",session==null||session.guard.blocked,"guardAllowed",session!=null&&session.guard.allowed(),"connecting",session!=null&&session.connecting,"offline",session==null||session.offline,"coreReady",network!=null&&network.ready,"coreStarting",network!=null&&network.starting,"nativeReceiptCurrent",network!=null&&network.verifiedRouteCurrent(),"defaultNetworkUsable",session!=null&&session.browserDefaultNetwork.snapshot().usable());}
+  boolean pushedReceiptCurrent(){NativeNetwork.ExitRouteReceipt receipt=network==null?null:network.verifiedRoute;return network!=null&&network.ready&&!network.recoveryBlocked&&receipt!=null&&receipt.matches(network,network.transport==null?null:network.transport.state);}
+  // Gecko routing and browser flags are observed on the UI thread. Its receipt
+  // uses pushed service state, as production routing does; fresh IPC is worker-only.
+  JSONObject lifecycleState(){return J.obj("networkReady",session!=null&&session.networkReady,"guardBlocked",session==null||session.guard.blocked,"guardAllowed",session!=null&&session.guard.allowed(),"connecting",session!=null&&session.connecting,"offline",session==null||session.offline,"coreReady",network!=null&&network.ready,"coreStarting",network!=null&&network.starting,"nativeReceiptCurrent",pushedReceiptCurrent(),"nativeReceiptObservation","pushed-service-state","defaultNetworkUsable",session!=null&&session.browserDefaultNetwork.snapshot().usable());}
   void reconnectSession(String name)throws Exception{
     JSONObject before=ui(this::lifecycleState);
+    NetworkCatalog.put(before,"nativeReceiptCurrent",network.verifiedRouteCurrent());NetworkCatalog.put(before,"nativeReceiptObservation","fresh-service-snapshot");
     // Restarting the core only publishes a network-status message. The actual
     // ChatSession reconnect callback owns applyProxy and releases its request
     // guard, exactly as NetworkUiProvider.confirmTransition does in production.
     // The existing test-only allowedUrl still rejects every public navigation.
     ui(()->{session.reconnect();return null;});
-    await(name+" ChatSession reconnect callback",()->ui(()->session.networkReady&&!session.connecting&&session.guard.allowed()&&network.verifiedRouteCurrent()),45000);
+    await(name+" ChatSession reconnect callback",()->ui(()->session.networkReady&&!session.connecting&&session.guard.allowed())&&network.verifiedRouteCurrent(),45000);
     JSONObject after=ui(()->{session.handler.removeCallbacks(session.tick);return lifecycleState();});
+    NetworkCatalog.put(after,"nativeReceiptCurrent",network.verifiedRouteCurrent());NetworkCatalog.put(after,"nativeReceiptObservation","fresh-service-snapshot");
     JSONObject document=eval("({url:location.href,controlled:!!document.getElementById('pool-ready')})");
     JSONObject row=J.obj("name",name,"method","ChatSession.reconnect → NativeNetwork.recover → ChatSession.applyProxy","before",before,"after",after,"document",document);sessionRestorations.put(row);event("sessionRestoration",row);
     check(name+" releases the browser guard through the production reconnect callback",after.getBoolean("networkReady")&&after.getBoolean("guardAllowed")&&!after.getBoolean("guardBlocked")&&after.getBoolean("nativeReceiptCurrent")&&!after.getBoolean("offline")&&document.getBoolean("controlled")&&document.getString("url").equals(ORIGIN+"/pool"));

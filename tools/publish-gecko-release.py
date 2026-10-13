@@ -114,7 +114,7 @@ if version_code>=42:
 performance_files=['gecko-performance-results.json','snapshot-host-results.json','reply-observation-host-results.json','ui-visual-results.json','ui-build-comparison.json'] if version_code>=43 else []
 if version_code>=44:performance_files.append('reply-binding-host-results.json')
 if version_code>=45:performance_files.extend(['update-transfer-results.json','update-transfer-host-results.json','interaction-host-results.json'])
-if version_code>=49:performance_files.extend(['reading-host-results.json','reading-focus-host-results.json'])
+if version_code>=49:performance_files.extend(['reading-host-results.json','reading-focus-host-results.json','gecko-scroll-diagnostics.json','gecko-scroll-diagnostic-log.json'])
 if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','official-sdk-verification.json','official-sdk-input.json'])
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
 shutil.copy2(args.notes,stage/'RELEASE.md')
