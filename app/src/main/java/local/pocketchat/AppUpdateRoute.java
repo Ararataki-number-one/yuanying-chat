@@ -68,14 +68,14 @@ final class AppUpdateRoute {
       }catch(Exception error){network.unknown();throw new Unavailable("手机网络尚未连接，恢复后继续下载");}
     }
     void refresh(){Network active=connectivity.getActiveNetwork();NetworkCapabilities caps=active==null?null:connectivity.getNetworkCapabilities(active);if(caps==null)network.unknown();else network.initial(active.toString(),caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN));}
-    void currentScope(int slot,int generation,String source)throws IOException {JSONObject row=ProfileCatalog.get(profile).item(slot);String mode=profile.getSharedPreferences("chat",0).getString("networkMode","external");if(!row.optBoolean("created")||row.optBoolean("deleting")||row.optInt("generation")!=generation||!(INTERNAL.equals(source)?"internal":"external").equals(mode))throw new Unavailable("原环境网络已变化，恢复后继续下载");}
+    void currentScope(int slot,int generation,String source)throws IOException {JSONObject row=ProfileCatalog.get(profile).item(slot);String mode=profile.getSharedPreferences("chat",0).getString("networkMode","external");if(!row.optBoolean("created")||(row.optBoolean("deleting")||row.optBoolean("resetting"))||row.optInt("generation")!=generation||!(INTERNAL.equals(source)?"internal":"external").equals(mode))throw new Unavailable("原环境网络已变化，恢复后继续下载");}
     boolean sessionAllows(ChatSession session){return session==null||!session.deleted&&Profiles.slot(session.context)==Profiles.slot(profile)&&session.internalNetwork()&&session.networkReady&&!session.connecting&&!session.offline&&session.guard!=null&&session.guard.allowed();}
     Bundle response(Bundle request,boolean validate){
       Bundle out=new Bundle();int slot=Profiles.slot(profile);out.putInt("slot",slot);
       try{
         if(Looper.myLooper()==Looper.getMainLooper()||request==null||request.getInt("slot",-1)!=slot||Profiles.processSlot()!=slot)throw new Unavailable("更新环境不匹配，已停止联网");
         JSONObject row=ProfileCatalog.get(profile).item(slot);int generation=row.optInt("generation");
-        if(!row.optBoolean("created")||row.optBoolean("deleting")||request.containsKey("environmentGeneration")&&request.getInt("environmentGeneration")!=generation)throw new Unavailable("原环境已删除或重新创建，请重新开始下载");
+        if(!row.optBoolean("created")||(row.optBoolean("deleting")||row.optBoolean("resetting"))||request.containsKey("environmentGeneration")&&request.getInt("environmentGeneration")!=generation)throw new Unavailable("原环境已删除或重新创建，请重新开始下载");
         out.putInt("environmentGeneration",generation);String mode=profile.getSharedPreferences("chat",0).getString("networkMode","external");
         if(!"internal".equals(mode)&&!"external".equals(mode))throw new Unavailable("环境网络方式暂时无法读取，请重新检查设置");
         // ChatSession.internalNetwork follows mode, including legacy records without the configured flag.

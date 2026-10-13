@@ -5,28 +5,29 @@ import org.json.*;import java.util.*;import java.util.concurrent.*;import java.n
 
 /** Private UI-to-profile bridge. Each provider runs in the existing profile's own process. */
 public class NetworkUiProvider extends ContentProvider {
-  Context profile;AppUpdateRoute.Server updateRoutes;final Handler main=new Handler(Looper.getMainLooper());final Map<String,JSONObject> jobs=new ConcurrentHashMap<>();boolean applying,saving,drainReading;long drainRevision,saveRevision;String activeApply="";volatile String modelProof="";volatile Transition activeTransition;final Runnable drain=()->{drainPending();main.postDelayed(this.drain,1000);};final ExecutorService io=Executors.newSingleThreadExecutor();
+  Context profile;AppUpdateRoute.Server updateRoutes;final Handler main=new Handler(Looper.getMainLooper());final Map<String,JSONObject> jobs=new ConcurrentHashMap<>();boolean applying,saving,drainReading;volatile boolean maintenanceStopped;long drainRevision,saveRevision;String activeApply="";volatile String modelProof="";volatile Transition activeTransition;final Runnable drain=()->{drainPending();main.postDelayed(this.drain,1000);};final ExecutorService io=Executors.newSingleThreadExecutor();
   public static class Profile1 extends NetworkUiProvider{}public static class Profile2 extends NetworkUiProvider{}public static class Profile3 extends NetworkUiProvider{}public static class Profile4 extends NetworkUiProvider{}public static class Profile5 extends NetworkUiProvider{}public static class Profile6 extends NetworkUiProvider{}public static class Profile7 extends NetworkUiProvider{}
   @Override public boolean onCreate(){profile=Profiles.context(getContext(),Profiles.processSlot());updateRoutes=new AppUpdateRoute.Server(profile);main.post(drain);return true;}
   @Override public Bundle call(String method,String arg,Bundle extras){
     if(Binder.getCallingUid()!=android.os.Process.myUid())throw new SecurityException();Bundle result=new Bundle();
-    if("updateRoute".equals(method)||"validateUpdateRoute".equals(method))return updateRoutes.response(extras,"validateUpdateRoute".equals(method));
-    if("stopForDelete".equals(method)){
-      if(!ProfileCatalog.get(profile).item(Profiles.slot(profile)).optBoolean("deleting"))throw new IllegalStateException();
-      java.util.concurrent.CountDownLatch stopped=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicBoolean confirmed=new java.util.concurrent.atomic.AtomicBoolean();main.post(()->{ChatSession s=ChatSession.peek();if(s!=null){s.deleted=true;s.handler.removeCallbacks(s.tick);s.guard.setBlocked(true);ChatService.end(profile);s.web.destroy();}NativeNetwork n=NativeNetwork.get(profile);n.cancelMaintenance();n.worker.execute(()->{try{confirmed.set(n.stopNow());}finally{stopped.countDown();}});});
+    if("stopForDelete".equals(method)||"stopForReset".equals(method)){
+      if(!ProfileCatalog.get(profile).item(Profiles.slot(profile)).optBoolean("stopForReset".equals(method)?"resetting":"deleting"))throw new IllegalStateException();
+      java.util.concurrent.CountDownLatch stopped=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicBoolean confirmed=new java.util.concurrent.atomic.AtomicBoolean();main.post(()->{maintenanceStopped=true;main.removeCallbacks(drain);drainRevision++;saveRevision++;Transition transition=activeTransition;if(transition!=null)transition.cancelled=true;ChatSession s=ChatSession.peek();if(s!=null){s.deleted=true;s.handler.removeCallbacks(s.tick);s.guard.setBlocked(true);ChatService.end(profile);s.web.destroy();}NativeNetwork n=NativeNetwork.get(profile);n.cancelMaintenance();io.execute(()->n.worker.execute(()->{try{confirmed.set(n.stopNow());}finally{stopped.countDown();}}));});
       try{if(!stopped.await(20,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("停止环境超时");}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}if(!confirmed.get()||NativeNetwork.get(profile).coreAlive())throw new IllegalStateException("独立网络尚未停止，请重试删除");result.putBoolean("stopped",true);return result;
     }
+    if(maintenanceStopped||!ProfileCatalog.get(profile).available(Profiles.slot(profile))){result.putBoolean("ready",false);result.putBoolean("valid",false);result.putString("message","此环境正在维护，完成后可重新打开");result.putString("json",J.obj("connected",false,"done",true,"ok",false,"message","此环境正在维护").toString());return result;}
+    if("updateRoute".equals(method)||"validateUpdateRoute".equals(method))return updateRoutes.response(extras,"validateUpdateRoute".equals(method));
     if("state".equals(method)){NativeNetwork n=NativeNetwork.get(profile);JSONObject state=WindowNetworkState.live(ChatSession.peek(),n);NetworkCatalog.put(state,"configurationHash",NetworkChanges.hash(profile));result.putString("json",state.toString());return result;}
     if("job".equals(method)){JSONObject status=jobs.get(arg);result.putString("json",status==null?J.obj("done",true,"ok",false,"message","操作记录已过期").toString():status.toString());return result;}
     if(!"start".equals(method))throw new IllegalArgumentException();String action=extras==null?"":extras.getString("action","");JSONObject candidate=J.parse(extras==null?"{}":extras.getString("config","{}"));String baseline=extras==null?"":extras.getString("baseline","");
     String id=UUID.randomUUID().toString();if(jobs.size()>24)jobs.entrySet().removeIf(x->x.getValue().optBoolean("done"));jobs.put(id,J.obj("done",false));main.post(()->request(id,action,candidate,baseline));result.putString("id",id);return result;
   }
-  void finish(String id,boolean ok,String message){if(Looper.myLooper()!=Looper.getMainLooper()){main.post(()->finish(id,ok,message));return;}if(id.equals(activeApply)){Transition transition=activeTransition;if(transition!=null&&transition.confirmed&&!transition.pendingReleased){transition.pendingReleased=true;io.execute(()->{try{NetworkChanges.clearIfCurrent(profile,transition.expectedPendingSnapshot);}catch(Exception ignored){}main.post(()->finish(id,ok,message));});return;}applying=false;activeApply="";if(transition!=null){releaseCapture(transition,!transition.confirmed);transition.cancelled=true;activeTransition=null;}ChatSession s=ChatSession.peek();if(s!=null){if(transition==null)s.operation=false;s.changed();}}WindowNetworkState.save(profile,ChatSession.peek(),NativeNetwork.get(profile));jobs.put(id,J.obj("done",true,"ok",ok,"message",message));}
+  void finish(String id,boolean ok,String message){if(maintenanceStopped)return;if(Looper.myLooper()!=Looper.getMainLooper()){main.post(()->finish(id,ok,message));return;}if(id.equals(activeApply)){Transition transition=activeTransition;if(transition!=null&&transition.confirmed&&!transition.pendingReleased){transition.pendingReleased=true;io.execute(()->{try{NetworkChanges.clearIfCurrent(profile,transition.expectedPendingSnapshot);}catch(Exception ignored){}main.post(()->finish(id,ok,message));});return;}applying=false;activeApply="";if(transition!=null){releaseCapture(transition,!transition.confirmed);transition.cancelled=true;activeTransition=null;}ChatSession s=ChatSession.peek();if(s!=null){if(transition==null)s.operation=false;s.changed();}}WindowNetworkState.save(profile,ChatSession.peek(),NativeNetwork.get(profile));jobs.put(id,J.obj("done",true,"ok",ok,"message",message));}
   boolean busy(ChatSession s,NativeNetwork n){return applying||n!=null&&(n.starting||n.measuringLatency)||s==null&&J.parse(profile.getSharedPreferences("chat",0).getString("pending","{}")).length()>0||s!=null&&(ProfileUi.working(s)||s.connecting);}
   void request(String id,String action,JSONObject candidate,String baseline){request(id,action,candidate,baseline,false);}
   void request(String id,String action,JSONObject candidate,String baseline,boolean deferred){request(id,action,candidate,baseline,deferred,-1,"");}
   void request(String id,String action,JSONObject candidate,String baseline,boolean deferred,int generation,String pendingSnapshot){
-    drainRevision++;
+    if(maintenanceStopped||!ProfileCatalog.get(profile).available(Profiles.slot(profile))){finish(id,false,"此环境正在维护");return;}drainRevision++;
     if(!"apply".equals(action)&&!"external".equals(action)){operate(id,action,candidate,baseline);return;}
     final EnvironmentSpec.Identity expected;try{expected=ProfileCatalog.get(profile).identity(Profiles.slot(profile));if(generation>=0&&generation!=expected.generation)throw new java.io.IOException("此环境已删除或重新创建");}catch(Exception invalid){finish(id,false,invalid.getMessage());return;}
     long requestRevision=++saveRevision;saving=true;
@@ -54,7 +55,7 @@ public class NetworkUiProvider extends ContentProvider {
   }
   void operate(String id,String action,JSONObject candidate,String baseline){
     ChatSession s=ChatSession.peek();NativeNetwork n=NativeNetwork.get(profile);
-    if(!ProfileCatalog.get(profile).item(Profiles.slot(profile)).optBoolean("created")){finish(id,false,"此环境已删除");return;}
+    if(maintenanceStopped||!ProfileCatalog.get(profile).available(Profiles.slot(profile))){finish(id,false,"此环境已删除");return;}
     if("cancelPending".equals(action)){cancelPending(id);return;}
     if("measure".equals(action)){if("internal".equals(profile.getSharedPreferences("chat",0).getString("networkMode","external")))n.measureLatency((ok,msg)->finish(id,ok,msg));else if(s!=null)NetworkRegion.refreshLatency(s,(ok,msg)->finish(id,ok,msg));else finish(id,false,"请先打开此窗口的会话后测量连接响应");return;}
     if(busy(s,n)){finish(id,false,"当前回复继续进行，网络配置可以先编辑保存");return;}
@@ -76,7 +77,7 @@ public class NetworkUiProvider extends ContentProvider {
     });
   }
   void drainPending(){
-    if(drainReading||saving||applying)return;
+    if(maintenanceStopped||drainReading||saving||applying)return;
     ChatSession s=ChatSession.peek();
     if(busy(s,null)||s!=null&&(s.deleted||s.navigating||s.recoveryScheduled||s.state.optBoolean("busy")))return;
     drainReading=true;long revision=drainRevision;
@@ -113,9 +114,9 @@ public class NetworkUiProvider extends ContentProvider {
       main.post(()->captureTransition(transition));
     }catch(Exception error){main.post(()->{if(error instanceof DeferredTransition)deferTransition(transition);else failTransition(transition,error);});}
   }
-  void requirePending(Transition transition)throws Exception{if(transition.cancelled||transition.expectedPendingSnapshot.isEmpty()||!transition.expectedPendingSnapshot.equals(NetworkChanges.pending(profile).toString()))throw new DeferredTransition();if(!transition.baseline.equals(NetworkChanges.hash(profile)))throw new java.io.IOException("此窗口配置已变化，请重新编辑");}
+  void requirePending(Transition transition)throws Exception{if(maintenanceStopped||transition.cancelled||transition.expectedPendingSnapshot.isEmpty()||!transition.expectedPendingSnapshot.equals(NetworkChanges.pending(profile).toString()))throw new DeferredTransition();if(!transition.baseline.equals(NetworkChanges.hash(profile)))throw new java.io.IOException("此窗口配置已变化，请重新编辑");}
   boolean owns(Transition transition){return !transition.cancelled&&activeTransition==transition&&transition.id.equals(activeApply)&&transition.revision==saveRevision;}
-  boolean currentEnvironment(Transition transition){JSONObject row=ProfileCatalog.get(profile).item(Profiles.slot(profile));return row.optBoolean("created")&&!row.optBoolean("deleting")&&row.optInt("generation")==transition.generation&&(transition.session==null||transition.session.environmentGeneration==transition.generation);}
+  boolean currentEnvironment(Transition transition){JSONObject row=ProfileCatalog.get(profile).item(Profiles.slot(profile));return row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting")&&row.optInt("generation")==transition.generation&&(transition.session==null||transition.session.environmentGeneration==transition.generation);}
   boolean fenceIdle(Transition transition){
     if(!owns(transition)||saving||!currentEnvironment(transition)||ChatSession.peek()!=transition.session)return false;NativeNetwork network=NativeNetwork.get(profile);if(network.starting||network.measuringLatency)return false;ChatSession session=transition.session;
     if(session==null)return J.parse(profile.getSharedPreferences("chat",0).getString("pending","{}")).length()==0;
@@ -169,6 +170,7 @@ public class NetworkUiProvider extends ContentProvider {
     if(!transition.publishedHash.isEmpty())NetworkChanges.rebase(profile,NetworkChanges.lineage(transition.id,transition.publishedHash,transition.baseline,transition.generation));transition.rollbackComplete=true;return null;
   });}catch(Exception ignored){transition.rollbackFailed=true;/* A newer writer is never overwritten; the old live route is not stopped. */}}
   void completeTransition(Transition transition){
+    if(maintenanceStopped)return;
     if(!fenceIdle(transition)){io.execute(()->{rollbackTransition(transition);main.post(()->deferTransition(transition));});return;}ChatSession session=transition.session;
     if(session!=null&&transition.page!=null){session.asyncDriver("inspect",J.obj("expectedUrl",transition.url),2500,fresh->{if(!inspectionIdle(transition,fresh,transition.page)){io.execute(()->{rollbackTransition(transition);main.post(()->deferTransition(transition));});return;}confirmTransition(transition);});}
     else confirmTransition(transition);

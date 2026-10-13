@@ -58,12 +58,19 @@ public final class EnvironmentSpecIntegrationActivity extends Activity {
     String firstId;
     try(ProfileCatalog upgraded=new ProfileCatalog(isolated)){
       JSONObject first=upgraded.item(0);firstId=first.getString("environmentId");
-      check("Production SQLiteOpenHelper upgrades schema6 to schema7",upgraded.getReadableDatabase().getVersion()==7);
+      check("Production SQLiteOpenHelper upgrades schema6 through schema7 to schema8",upgraded.getReadableDatabase().getVersion()==8&&!first.optBoolean("resetting"));
       check("Upgrade retains existing fields and generation",first.optString("name").equals("existing profile")&&first.optString("draft").equals("draft preserved")&&first.optBoolean("desktopSite")&&first.optInt("generation")==12);
       check("Existing profiles obtain different stable UUIDs",!firstId.isEmpty()&&!firstId.equals(upgraded.item(1).optString("environmentId")));
       check("Existing identity token is admitted",upgraded.withIdentity(upgraded.identity(0),()->true));
     }
     try(ProfileCatalog reopened=new ProfileCatalog(isolated)){check("UUID remains stable on database reopen",firstId.equals(reopened.identity(0).environmentId));}
+    // Independently exercise a shipped schema7 database: UUID must not regenerate.
+    isolated.deleteDatabase("environment-catalog.db");
+    try(SQLiteDatabase seven=isolated.openOrCreateDatabase("environment-catalog.db",0,null)){
+      seven.execSQL("CREATE TABLE environments (slot INTEGER PRIMARY KEY,name TEXT NOT NULL,created INTEGER NOT NULL DEFAULT 0,draft TEXT NOT NULL DEFAULT '',pid INTEGER NOT NULL DEFAULT 0,seen INTEGER NOT NULL DEFAULT 0,connected INTEGER NOT NULL DEFAULT 0,waiting INTEGER NOT NULL DEFAULT 0,mode TEXT NOT NULL DEFAULT '',privacy INTEGER NOT NULL DEFAULT 1,opened INTEGER NOT NULL DEFAULT 0,favorite INTEGER NOT NULL DEFAULT 0,problem TEXT NOT NULL DEFAULT '',page TEXT NOT NULL DEFAULT '原网页',group_name TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '',desktop INTEGER NOT NULL DEFAULT 0,generation INTEGER NOT NULL DEFAULT 0,deleting INTEGER NOT NULL DEFAULT 0,environment_id TEXT NOT NULL DEFAULT '')");seven.execSQL("CREATE TABLE app_settings(name TEXT PRIMARY KEY,value TEXT NOT NULL)");
+      android.content.ContentValues values=new android.content.ContentValues();values.put("slot",0);values.put("name","existing schema7 profile");values.put("created",1);values.put("generation",12);values.put("environment_id",firstId);seven.insertOrThrow("environments",null,values);seven.setVersion(7);
+    }
+    try(ProfileCatalog upgradedSeven=new ProfileCatalog(isolated)){check("Production schema7 upgrades to schema8 without changing identity",upgradedSeven.getReadableDatabase().getVersion()==8&&upgradedSeven.identity(0).environmentId.equals(firstId));check("Schema7 upgrade starts with no pending login reset",!upgradedSeven.item(0).optBoolean("resetting"));}
     isolated.deleteDatabase("environment-catalog.db");
   }
 

@@ -106,14 +106,15 @@ class TemplateEvidenceGateTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.directory=Path(self.temp.name);self.report=metadata_only_report();self.write();self.write_host()
     def write_host(self):
-        paths={'app/src/main/java/local/pocketchat/'+name+'.java' for name in ['BrowserIdentitySpec','AuditReport','IdentityTemplateController','FingerprintTemplateUi','BrowserEditIntent','DeferredBrowserSettings']}
+        paths={'app/src/main/java/local/pocketchat/'+name+'.java' for name in ['BrowserIdentitySpec','AuditReport','IdentityTemplateController','FingerprintTemplateUi','BrowserEditIntent','DeferredBrowserSettings','EnvironmentResetPlan','EnvironmentBrowserData','EnvironmentProcessPolicy','EnvironmentResetActivity','EnvironmentSpecRepository','ProfileCatalog','Profiles']}
         paths.update('app/src/main/assets/gecko/'+name for name in ['background.js','content.js','main-world-audit.js'])
         hashes={path:hashlib.sha256((ROOT/path).read_bytes()).hexdigest() for path in paths}
         base=dict(status='passed',actualAndroidExecution=False,sourceCommit='a'*40,sourceTree='b'*40,sourceDirty=False,sourceUnchangedDuringChecks=True,files=hashes)
         checks=[{'name':'Counterfeit metadata only '+str(i),'pass':True} for i in range(95)]
         template=dict(status='passed',actualAndroidExecution=False,passed=95,total=95,checks=checks)
         intent=dict(status='passed',actualAndroidExecution=False,passed=14,total=14,checks=checks[:14])
-        host=dict(base,results=[dict(test='FingerprintTemplateTest',exitCode=0,output=json.dumps(template)),dict(test='BrowserEditIntentTest',exitCode=0,output=json.dumps(intent))])
+        lifecycle=dict(status='passed',actualAndroidExecution=False,passed=39,total=39,checks=checks[:39])
+        host=dict(base,results=[dict(test='FingerprintTemplateTest',exitCode=0,output=json.dumps(template)),dict(test='BrowserEditIntentTest',exitCode=0,output=json.dumps(intent)),dict(test='EnvironmentLifecyclePolicyTest',exitCode=0,output=json.dumps(lifecycle))])
         controller=dict(base,passed=74,total=74,checks=checks[:74])
         deferred=dict(base,passed=24,total=24,checks=checks[:24])
         bridge=dict(base,results=[dict(test='audit-bridge.test.cjs',passed=9,total=9),dict(test='protection-handshake.test.cjs',passed=3,total=3)])
@@ -138,6 +139,9 @@ class TemplateEvidenceGateTest(unittest.TestCase):
         with self.assertRaises(ValueError):self.verify()
     def test_host_source_hash_change_is_rejected(self):
         path=self.directory/'profile-host-results.json';host=json.loads(path.read_text());host['files']['app/src/main/assets/gecko/content.js']='0'*64;path.write_text(json.dumps(host))
+        with self.assertRaises(ValueError):self.verify()
+    def test_missing_lifecycle_host_controls_are_rejected(self):
+        path=self.directory/'profile-host-results.json';host=json.loads(path.read_text());host['results']=[group for group in host['results'] if group['test']!='EnvironmentLifecyclePolicyTest'];path.write_text(json.dumps(host))
         with self.assertRaises(ValueError):self.verify()
     def test_missing_controller_host_is_rejected(self):
         (self.directory/'identity-controller-host-results.json').unlink()

@@ -88,6 +88,15 @@ final class EnvironmentSpec {
   JSONObject observations(){return copy(observations);}
   boolean pending(){return desiredRevision!=appliedRevision;}
 
+  /** A login reset keeps the logical environment and desired configuration, but
+   * retires every acknowledgement from the old browser incarnation. */
+  EnvironmentSpec afterLoginReset(Identity next)throws IOException{
+    if(identity.slot!=next.slot||!identity.environmentId.equals(next.environmentId)
+        ||identity.generation==Integer.MAX_VALUE||next.generation!=identity.generation+1)
+      throw new IOException("登录重置身份不匹配");
+    return new EnvironmentSpec(next,desiredRevision,desired,0,null,0,"",0,"{}",0);
+  }
+
   EnvironmentSpec withDesired(long expectedRevision,Configuration next)throws IOException{
     requireRevision(expectedRevision,desiredRevision);
     if(desired.equals(next))return this;

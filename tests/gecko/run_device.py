@@ -654,6 +654,12 @@ def main():
         report['savedFileDeletion']=deleted_files
         update_transfers()
         report['appUpdateTransfer']='passed (real HTTP interruption, durable Range resume, Android JobScheduler, pause/resume touch and concurrent controlled browser input)'
+        check(run(1,'seed'),1,True);check(run(2,'seed'),2,True)
+        lifecycle=management('copyAndReset')
+        check(run(2,'read'),2,False);check(run(1,'read'),1,True)
+        check(run(2,'seed'),2,True)
+        reset_zero=management('resetZero')
+        check(run(1,'read'),1,False);check(run(2,'read'),2,True)
         queued=run(2,'queuedChanges','queuedChanges');assert all(queued[key] for key in ['savedWhileReplying','oldRouteKept','browserSavedWithoutApplying','replyCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn']),queued
         foreign_before=run(1,'foreignPreferences','foreignPreferences');assert foreign_before['marker']=='prime-target',foreign_before
         deletion=management('deleteOne')
@@ -661,7 +667,7 @@ def main():
         check(run(2,'read'),2,False)
         background_settings=run(2,'backgroundSettings','backgroundSettings');assert all(background_settings.values()),background_settings
         deletion_zero=management('deleteZero')
-        report['environmentManagement']=dict(queued=queued,backgroundSettings=background_settings,deleteOne=deletion,deleteZero=deletion_zero,foreignPreferenceCache='passed (live parent sees cleared preferences)',slotReuseLogin='passed (old controlled cookie absent)',privacy=privacy,completion=completion)
+        report['environmentManagement']=dict(queued=queued,backgroundSettings=background_settings,copyAndReset=lifecycle,resetZero=reset_zero,resetLoginData='passed (actual production maintenance, synthetic Gecko cookie/storage and another environment retained)',deleteOne=deletion,deleteZero=deletion_zero,foreignPreferenceCache='passed (live parent sees cleared preferences)',slotReuseLogin='passed (old controlled cookie absent)',privacy=privacy,completion=completion)
         report.update(status='passed',liveEnvironmentProcesses='passed',storageIsolation='passed',restartPersistence='passed',
             distinctHttpSocksRoutes='passed',workersAndWebSocket='passed',remoteDns='passed',guardBlocksRequests='passed',
             nativeContextClear='passed',legacyEnginePreferenceCompatibility='passed (official Gecko, stored preferences and isolated data retained; system engine refused)',closedBootstrapWithoutExtension='passed',productionActivityShell='passed',

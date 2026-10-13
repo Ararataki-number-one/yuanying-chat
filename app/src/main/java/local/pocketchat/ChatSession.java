@@ -15,7 +15,7 @@ final class ChatSession {
   private static ChatSession instance;
   interface BrowserFactory{GeckoWebView create(Context context,ChatSession owner);}
   static BrowserFactory browserFactory=GeckoWebView::new;
-  static ChatSession get(Context c){if(instance==null)instance=new ChatSession(c);return instance;}
+  static ChatSession get(Context c){if(!ProfileCatalog.get(c).available(Profiles.slot(c)))throw new IllegalStateException("此环境正在维护或已删除");if(instance==null)instance=new ChatSession(c);return instance;}
   static ChatSession peek(){return instance;}
   final Context context;final SharedPreferences prefs;final Handler handler=new Handler(Looper.getMainLooper());final GeckoWebView web;final BrowserReading reading;final BrowserPrivacy privacy;final BrowserNetworkGuard guard;EnvironmentAudit audit;final WebReplyObserver webObserver;long webConfirmationVersion=0;
   final List<WeakReference<Observer>> observers=new ArrayList<>();String driver="",attachmentDriver="",attachmentOwner="",conversation="",status="准备连接",pageError="",confirmedPrompt="";long confirmationVersion=0;

@@ -13,6 +13,7 @@ import org.json.JSONObject;
  * key alias. Strict reads deliberately never replace corrupt/future data with defaults. */
 final class EnvironmentSpecRepository {
   static final String STORE="environment-spec";
+  static final String RESET="browser-reset";
   static final Object[] GATES=new Object[8];
   static{for(int i=0;i<GATES.length;i++)GATES[i]=new Object();}
   final Context context;
@@ -22,6 +23,50 @@ final class EnvironmentSpecRepository {
   EnvironmentSpecRepository(Context context){this.context=context.getApplicationContext();slot=Profiles.slot(this.context);catalog=ProfileCatalog.get(this.context);vault=new SecretStore(this.context);}
 
   EnvironmentSpec load()throws Exception{return locked(null,()->loadLocked(catalog.identity(slot)));}
+  EnvironmentSpec initializeCopy(EnvironmentSpec.Identity expected,JSONObject browser)throws Exception{
+    return locked(expected,()->{
+      if(vault.get(STORE)!=null)throw new IOException("新环境配置已存在，未覆盖");
+      EnvironmentSpec migrated=loadLocked(expected);
+      EnvironmentSpec copy=EnvironmentSpec.initial(expected,new EnvironmentSpec.Configuration(browser,migrated.desired().network));
+      vault.put(STORE,copy.bytes());return copy;
+    });
+  }
+  EnvironmentResetPlan beginLoginReset(EnvironmentSpec.Identity expected)throws Exception{
+    return locked(expected,()->{
+      EnvironmentResetPlan plan=EnvironmentResetPlan.start(loadLocked(expected));
+      // Publication precedes the SQL marker. If SQL rolls back, the old spec and
+      // browser still work and this staged journal can safely be replaced.
+      vault.put(RESET,plan.bytes());catalog.beginReset(expected);return plan;
+    });
+  }
+  EnvironmentResetPlan resetPlan(EnvironmentSpec.Identity expected)throws Exception{
+    return resetLocked(expected,()->{EnvironmentResetPlan plan=EnvironmentResetPlan.read(vault.get(RESET));if(!plan.next.equals(expected))throw new IOException("登录重置记录属于另一环境");return plan;});
+  }
+  void freezeReset(EnvironmentResetPlan plan)throws Exception{
+    resetLocked(plan.next,()->{EnvironmentResetPlan current=EnvironmentResetPlan.read(vault.get(RESET));if(!current.next.equals(plan.next)||current.frozen())throw new IOException("登录重置阶段已变化");vault.put(RESET,plan.bytes());return null;});
+  }
+  void finishLoginReset(EnvironmentResetPlan plan)throws Exception{
+    resetLocked(plan.next,()->{
+      EnvironmentResetPlan current=EnvironmentResetPlan.read(vault.get(RESET));
+      if(!current.frozen()||!java.util.Arrays.equals(current.bytes(),plan.bytes()))throw new IOException("登录重置记录已变化");
+      EnvironmentSpec stored=EnvironmentSpec.read(vault.get(STORE));
+      if(!stored.identity.equals(plan.before.identity)&&!stored.identity.equals(plan.next))throw new IOException("环境配置属于另一身份，原文件保留");
+      vault.put(STORE,plan.after.bytes());
+      if(plan.pending().length()==0)vault.remove("pending-network");else vault.put("pending-network",plan.pending().toString().getBytes(StandardCharsets.UTF_8));
+      BrowserIdentitySpec browser=BrowserIdentitySpec.from(plan.after.desired().browser());
+      if(!context.getSharedPreferences("chat",0).edit().putInt("privacyLevel",browser.protectionLevel()).remove("nextPrivacyLevel").remove("nextDesktopSite").commit())throw new IOException("网页配置未能保留，请重试");
+      catalog.completeReset(plan.next,browser.desktop());return null;
+    });
+    // Cleanup is after SQL commits. Losing this optional acknowledgement leaves
+    // a completed journal, never a paused environment without recovery data.
+    try{locked(plan.next,()->{EnvironmentResetPlan saved=EnvironmentResetPlan.read(vault.get(RESET));if(saved.next.equals(plan.next))vault.remove(RESET);return null;});}catch(Exception ignored){}
+  }
+  private <T>T resetLocked(EnvironmentSpec.Identity expected,ProfileCatalog.IdentityAction<T> action)throws Exception{
+    if(expected.slot!=slot)throw new IOException("环境槽位不匹配");
+    synchronized(GATES[slot]){return catalog.withReset(expected,()->{
+      try(RandomAccessFile handle=new RandomAccessFile(new File(context.getNoBackupFilesDir(),"environment-spec.lock"),"rw");FileLock lock=handle.getChannel().lock()){return action.run();}
+    });}
+  }
   EnvironmentSpec updateDesired(EnvironmentSpec.Identity expected,long expectedDesiredRevision,EnvironmentSpec.Configuration configuration)throws Exception{
     return locked(expected,()->saveChanged(loadLocked(expected),spec->spec.withDesired(expectedDesiredRevision,configuration)));
   }

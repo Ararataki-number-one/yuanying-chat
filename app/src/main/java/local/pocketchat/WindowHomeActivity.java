@@ -174,7 +174,7 @@ public class WindowHomeActivity extends Activity {
     JSONArray rows=ProfileCatalog.get(this).list();Set<Integer> running=live(),created=new HashSet<>();
     int[] counts=new int[5];List<JSONObject> ordered=new ArrayList<>();
     for(int i=0;i<rows.length();i++){
-      JSONObject row=rows.optJSONObject(i);if(!row.optBoolean("created"))continue;
+      JSONObject row=rows.optJSONObject(i);if(!row.optBoolean("created")||row.optBoolean("resetting"))continue;
       ordered.add(row);created.add(row.optInt("slot"));counts[0]++;
       if(row.optBoolean("favorite"))counts[1]++;
       if(running.contains(row.optInt("pid")))counts[2]++;
@@ -200,6 +200,7 @@ public class WindowHomeActivity extends Activity {
     if(sort==1)ordered.sort((l,r)->Long.compare(r.optLong("opened"),l.optLong("opened")));
     if(sort==2)ordered.sort((l,r)->l.optString("name").compareToIgnoreCase(r.optString("name")));
     cards.removeAllViews();visibleIds.clear();for(int i=0;i<rows.length();i++){JSONObject deleted=rows.optJSONObject(i);if(deleted.optBoolean("deleting")){int id=deleted.optInt("slot");DesignUi.action(cards,"继续清理 · "+deleted.optString("name"),false,()->startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));}}
+    for(int i=0;i<rows.length();i++){JSONObject paused=rows.optJSONObject(i);if(paused.optBoolean("resetting")){int id=paused.optInt("slot");DesignUi.action(cards,"继续重置登录 · "+paused.optString("name"),false,()->startReset(id,paused.optInt("generation")-1,paused.optString("environmentId")));}}
     for(JSONObject row:ordered){
       boolean active=running.contains(row.optInt("pid"));
       boolean fresh=row.optLong("seen")>0&&now-row.optLong("seen")<60000;
@@ -242,9 +243,11 @@ public class WindowHomeActivity extends Activity {
       }
       DesignUi.addCard(cards,card);
     }
-    count.setText(visibleIds.size()==counts[0]?counts[0]+" 个环境":"显示 "+visibleIds.size()+" / "+counts[0]);
+    int maintenance=0;for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.optBoolean("resetting")||row.optBoolean("deleting"))maintenance++;}
+    count.setText(counts[0]==0&&maintenance>0?maintenance+" 个环境待完成维护":visibleIds.size()==counts[0]?counts[0]+" 个环境":"显示 "+visibleIds.size()+" / "+counts[0]);
     if(visibleIds.isEmpty()){
-      DesignUi.empty(cards,"没有匹配的环境","试试其他关键词，或重置分组与状态筛选。","重置筛选",()->{filter=0;selectedGroup=null;search.setText("");lastSignature="";refresh();});
+      if(counts[0]==0&&maintenance>0)DesignUi.note(cards,"有环境等待完成维护，请点击上方继续重置或清理。");
+      else DesignUi.empty(cards,"没有匹配的环境","试试其他关键词，或重置分组与状态筛选。","重置筛选",()->{filter=0;selectedGroup=null;search.setText("");lastSignature="";refresh();});
     }
     updateSelectionBar(rows);
   }
@@ -310,13 +313,28 @@ public class WindowHomeActivity extends Activity {
   }
   void menu(int id){
     JSONObject row=ProfileCatalog.get(this).item(id);
-    String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境","删除环境"};
+    if(!ProfileCatalog.get(this).available(id))return;
+    String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境","复制环境配置","重置登录数据","删除环境"};
     new AlertDialog.Builder(this).setTitle(row.optString("name")).setItems(labels,(d,n)->{
       if(n==0)openWindow(id,"edit");if(n==1)metadata(id);
       if(n==2){ProfileCatalog.get(this).favorite(id,!row.optBoolean("favorite"));lastSignature="";refresh();}
       if(n==3){AppSettings.defaultSlot(this,id);lastSignature="";refresh();}
-      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(id);if(n==6)deleteEnvironment(id);
+      if(n==4)openWindow(id,"network");if(n==5)toggleSelection(id);if(n==6)copyEnvironment(id);if(n==7)resetEnvironment(id);if(n==8)deleteEnvironment(id);
     }).setNegativeButton("关闭",null).show();
+  }
+  void startReset(int id,int generation,String environmentId){startActivity(new Intent(this,EnvironmentResetActivity.class).putExtra("slot",id).putExtra("confirmedGeneration",generation).putExtra("confirmedEnvironmentId",environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
+  void resetEnvironment(int id){
+    JSONObject row=ProfileCatalog.get(this).item(id);if(!ProfileCatalog.get(this).available(id))return;
+    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("重置 "+row.optString("name")+" 的登录？")
+      .setMessage("将关闭此环境并清理登录、Cookie、网页存储和本地草稿、聊天缓存。正在进行的回复、上传和下载任务会中断。环境名称、模板、网络与使用偏好，以及已保存的下载文件会保留；其他环境不受影响。需要在此环境重新登录 ChatGPT。")
+      .setNegativeButton("取消",null).setPositiveButton("重置登录数据",(d,w)->startReset(id,row.optInt("generation"),row.optString("environmentId"))).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
+  }
+  void copyEnvironment(int sourceId){
+    if(preparing)return;JSONObject source=ProfileCatalog.get(this).item(sourceId);int target=-1;JSONArray rows=ProfileCatalog.get(this).list();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(!row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting")){target=row.optInt("slot");break;}}
+    if(target<0){showProblem("环境已满，请先删除不再使用的环境");return;}
+    final int destination=target;final EnvironmentSpec.Identity expected;try{expected=new EnvironmentSpec.Identity(sourceId,source.optInt("generation"),source.getString("environmentId"));}catch(Exception invalid){showProblem("源环境已变化，请重试");return;}
+    LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),0,dp(18),dp(16));String label=source.optString("name");if(label.length()>20)label=label.substring(0,20);EditText name=DesignUi.input(box,"新环境名称",label+" 副本","");name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});DesignUi.note(box,"复制已保存的浏览器模板、网络和使用偏好。账号、聊天和草稿在新环境独立，不会复制。");
+    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("复制环境配置").setView(box).setPositiveButton("创建副本",null).setNegativeButton("取消",null).create();dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("请输入环境名称");return;}if(preparing)return;preparing=true;dialog.dismiss();createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);new Thread(()->{String error="";try{Context origin=Profiles.context(this,sourceId);EnvironmentSpec.Identity copied=Profiles.copyConfiguration(origin,destination,expected);ProfileCatalog.get(this).withIdentity(copied,()->{Profiles.rename(this,destination,title);ProfileCatalog.get(this).details(destination,source.optString("group"),source.optString("notes"));return null;});}catch(Exception failure){error=failure.getMessage()==null?"复制未完成，请重试":failure.getMessage();}String issue=error;handler.post(()->{preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);lastSignature="";refresh();if(!issue.isEmpty())showProblem(issue);});},"environment-copy").start();});
   }
   void deleteEnvironment(int id){
     JSONObject row=ProfileCatalog.get(this).item(id);AlertDialog dialog=new AlertDialog.Builder(this).setTitle("删除 "+row.optString("name")+"？")
@@ -338,6 +356,7 @@ public class WindowHomeActivity extends Activity {
   }
   void openWindow(int id,String action){
     if(id<0||id>=Profiles.MAX)return;
+    if(!ProfileCatalog.get(this).available(id))return;
     if(id>0&&Build.VERSION.SDK_INT<28){showProblem("独立环境需要 Android 9 或更新版本");return;}
     ProfileCatalog.get(this).opened(id);
     startActivity(new Intent(this,Profiles.activity(id)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action))
@@ -347,7 +366,7 @@ public class WindowHomeActivity extends Activity {
     if(preparing)return;
     if(Build.VERSION.SDK_INT<28){showProblem("独立环境需要 Android 9 或更新版本");return;}
     JSONArray rows=ProfileCatalog.get(this).list();int next=-1;
-    for(int i=0;i<rows.length();i++)if(!rows.optJSONObject(i).optBoolean("created")&&!rows.optJSONObject(i).optBoolean("deleting")){next=i;break;}
+    for(int i=0;i<rows.length();i++)if(!rows.optJSONObject(i).optBoolean("created")&&!rows.optJSONObject(i).optBoolean("deleting")&&!rows.optJSONObject(i).optBoolean("resetting")){next=i;break;}
     if(next<0){showProblem("已达到 8 个环境");return;}
     new Wizard(next,rows).show();
   }

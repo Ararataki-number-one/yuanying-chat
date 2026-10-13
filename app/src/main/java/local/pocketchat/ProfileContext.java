@@ -7,11 +7,11 @@ import java.io.File;
 
 /** Browser profiles use separate app records in addition to separate WebView data. */
 final class ProfileContext extends ContextWrapper {
-  final int slot;
-  ProfileContext(Context base,int id){super(base instanceof ProfileContext?((ProfileContext)base).getBaseContext():base);if(id<0||id>=Profiles.MAX)throw new IllegalArgumentException();slot=id;}
+  final int slot;final boolean ownsProcess;
+  ProfileContext(Context base,int id){super(base instanceof ProfileContext?((ProfileContext)base).getBaseContext():base);if(id<0||id>=Profiles.MAX)throw new IllegalArgumentException();slot=id;String name=null;if(android.os.Build.VERSION.SDK_INT>=28)name=android.app.Application.getProcessName();else{android.app.ActivityManager manager=getBaseContext().getSystemService(android.app.ActivityManager.class);java.util.List<android.app.ActivityManager.RunningAppProcessInfo> all=manager==null?null:manager.getRunningAppProcesses();if(all!=null)for(android.app.ActivityManager.RunningAppProcessInfo process:all)if(process.pid==android.os.Process.myPid()){name=process.processName;break;}}ownsProcess=EnvironmentProcessPolicy.owns(getBaseContext().getPackageName(),name,id);}
   String name(String value){if(slot==0)return value;if(value.contains("/")||value.contains("\\"))throw new IllegalArgumentException("Invalid profile storage name");return "env"+slot+"_"+value;}
   @Override public Context getApplicationContext(){Context app=super.getApplicationContext();if(app instanceof ProfileContext)app=((ProfileContext)app).getBaseContext();return app instanceof PocketApplication?((PocketApplication)app).profile(slot):new ProfileContext(app,slot);}
-  @Override public android.content.SharedPreferences getSharedPreferences(String name,int mode){return super.getSharedPreferences(name(name),mode|(slot==Profiles.processSlot()?0:Context.MODE_MULTI_PROCESS));}
+  @Override public android.content.SharedPreferences getSharedPreferences(String name,int mode){return super.getSharedPreferences(name(name),mode|(ownsProcess?0:Context.MODE_MULTI_PROCESS));}
   @Override public File getDatabasePath(String name){return super.getDatabasePath(name(name));}
   @Override public SQLiteDatabase openOrCreateDatabase(String name,int mode,SQLiteDatabase.CursorFactory factory){return super.openOrCreateDatabase(name(name),mode,factory);}
   @Override public SQLiteDatabase openOrCreateDatabase(String name,int mode,SQLiteDatabase.CursorFactory factory,DatabaseErrorHandler handler){return super.openOrCreateDatabase(name(name),mode,factory,handler);}

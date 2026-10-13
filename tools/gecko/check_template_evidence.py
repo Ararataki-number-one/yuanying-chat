@@ -24,7 +24,7 @@ def selected_contract(source,name):
 
 
 def verify_template_host(directory,source,tree):
-    mandatory={'app/src/main/java/local/pocketchat/'+name+'.java' for name in ['BrowserIdentitySpec','AuditReport','IdentityTemplateController','FingerprintTemplateUi','BrowserEditIntent','DeferredBrowserSettings']}
+    mandatory={'app/src/main/java/local/pocketchat/'+name+'.java' for name in ['BrowserIdentitySpec','AuditReport','IdentityTemplateController','FingerprintTemplateUi','BrowserEditIntent','DeferredBrowserSettings','EnvironmentResetPlan','EnvironmentBrowserData','EnvironmentProcessPolicy','EnvironmentResetActivity','EnvironmentSpecRepository','ProfileCatalog','Profiles']}
     mandatory.update('app/src/main/assets/gecko/'+name for name in ['background.js','content.js','main-world-audit.js'])
     counts={}
     host=json.loads((directory/'profile-host-results.json').read_text())
@@ -59,7 +59,11 @@ def verify_template_host(directory,source,tree):
     if len(matches)!=1 or matches[0].get('exitCode')!=0:raise ValueError('Actual production template/report host suite required')
     template=json.loads(matches[0].get('output','{}'))
     if template.get('actualAndroidExecution') is not False or template.get('status')!='passed' or type(template.get('passed')) is not int or template['passed']<95 or template['passed']!=template.get('total') or len(template.get('checks',[]))!=template['passed'] or any(row.get('pass') is not True for row in template['checks']):raise ValueError('Template report negative host assertions are incomplete')
-    counts['templateReport']=template['passed'];return counts
+    lifecycle=[group for group in host.get('results',[]) if group.get('test')=='EnvironmentLifecyclePolicyTest']
+    if len(lifecycle)!=1 or lifecycle[0].get('exitCode')!=0:raise ValueError('Production lifecycle host controls are missing')
+    control=json.loads(lifecycle[0].get('output','{}'))
+    if control.get('status')!='passed' or control.get('actualAndroidExecution') is not False or type(control.get('passed')) is not int or control['passed']<39 or control['passed']!=control.get('total') or len(control.get('checks',[]))!=control['passed'] or any(row.get('pass') is not True for row in control['checks']):raise ValueError('Production reset journal/filesystem host assertions are incomplete')
+    counts['lifecycle']=control['passed'];counts['templateReport']=template['passed'];return counts
 
 
 def verify_template_evidence(directory,source):

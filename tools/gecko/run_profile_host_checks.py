@@ -51,6 +51,7 @@ def main():
         ("NetworkPoolIdentityTest", ["NetworkPoolIdentity"]),
         ("LatencyProbePolicyTest", ["LatencyProbePolicy"]),
         ("EnvironmentSpecTest", ["J", "EnvironmentSpec", "EnvironmentSpecMigration"]),
+        ("EnvironmentLifecyclePolicyTest", ["J", "EnvironmentSpec", "EnvironmentSpecMigration", "EnvironmentResetPlan", "EnvironmentBrowserData", "EnvironmentProcessPolicy"]),
     ]
     extras = [("FingerprintTemplateTest", ["J", "BrowserIdentitySpec", "AuditReport"]),("BrowserEditIntentTest",["J","BrowserEditIntent"])]
     groups += [(name, names) for name, names in extras if (tests / (name + ".java")).is_file()]
