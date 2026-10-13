@@ -5,6 +5,9 @@ const blocked = {type:'socks', host:'127.0.0.1', port:9, proxyDNS:true, failover
 browser.proxy.onRequest.addListener(async request => {
   try {
     const route = JSON.parse(await browser.runtime.sendNativeMessage('pocketroute', {kind:'route', url:request.url}));
+    // Gecko's explicit null removes the closed default proxy for this request.
+    // A "direct" ProxyInfo instead inherits that default when it is present.
+    if (route && route.type === 'direct') return null;
     return route && typeof route.type === 'string' ? route : blocked;
   } catch (_) { return blocked; }
 }, {urls:['<all_urls>']});
