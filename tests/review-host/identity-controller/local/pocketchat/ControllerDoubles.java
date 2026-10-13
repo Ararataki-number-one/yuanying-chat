@@ -23,8 +23,8 @@ final class FakePrefs {
   String getString(String name,String fallback){return "networkMode".equals(name)?mode:"proxy".equals(name)?proxy:fallback;}
 }
 final class FakeGuard {boolean allowed=true;boolean allowed(){return allowed;}}
-final class FakeAudit {String policy="policy",route="route";String policyStamp(){return policy;}String routeStamp(){return route;}}
-class GeckoSettings {boolean policyAcknowledged=true;String policyError="";JSONObject acceptedBrowserIdentity;}
+final class FakeAudit {boolean running;JSONObject report=new JSONObject();String policy="policy",route="route";String policyStamp(){return policy;}String routeStamp(){return route;}}
+class GeckoSettings {boolean policyAcknowledged=true;String policyError="";JSONObject acceptedBrowserIdentity=new JSONObject();String[] requestedLocales=new String[0],expectedSdkLocales=new String[0];}
 final class FakeSettings extends GeckoSettings {}
 final class FakeWeb {
   long identityPolicyRevision=1;final FakeSettings settings=new FakeSettings();BrowserIdentitySpec configured;
@@ -110,7 +110,10 @@ final class EnvironmentEditorUi {
 }
 
 final class Ui {static final int INK=0,MUTED=1;}
-final class DesignUi {static Object spinnerAdapter(MainActivity activity,String[] labels){return labels;}}
+final class DesignUi {static Object spinnerAdapter(MainActivity activity,String[] labels){return labels;}static void action(android.widget.LinearLayout box,String label,boolean primary,Runnable run){android.widget.Button button=new android.widget.Button(null);button.setText(label);button.setOnClickListener(view->run.run());box.addView(button);}}
+/** Constants for the UI's evidence-state comparison only. Production AuditReport
+ * validation has its own real-model suite; this double never builds a report. */
+final class AuditReport {static final String VERIFIED="verified",ISSUE="issue",UNCOVERED="uncovered";}
 final class EnvironmentAuditUi {static void show(MainActivity activity){}}
 final class GeckoPolicyAdapter {static String summary(){return "host policy summary";}}
 final class NativeCapabilityManifest {static NativeCapabilityManifest officialGecko(){return new NativeCapabilityManifest();}String unsupportedSummary(){return "host capability summary";}}
