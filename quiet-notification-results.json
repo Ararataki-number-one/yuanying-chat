@@ -1,0 +1,82 @@
+{
+  "status": "failed",
+  "actualAndroidExecution": true,
+  "checkCount": 10,
+  "error": "java.lang.IllegalStateException: \u6b64\u73af\u5883\u6b63\u5728\u7ef4\u62a4\u6216\u5df2\u5220\u9664",
+  "foregroundEvidence": {
+    "known": true,
+    "foreground": true,
+    "actualActivityStartedCount": 1,
+    "visibilitySource": "activity-start-stop",
+    "processes": [
+      {
+        "process": "local.pocketchat.test:profile7",
+        "pid": 5388,
+        "importance": 100,
+        "known": true,
+        "actualActivityStartedCount": 1,
+        "visible": true,
+        "activityStarts": 1,
+        "activityStops": 0,
+        "revision": 1,
+        "lastEventAt": 155206
+      },
+      {
+        "process": "local.pocketchat.test",
+        "pid": 5435,
+        "importance": 100,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 0,
+        "activityStops": 0,
+        "revision": 0,
+        "lastEventAt": 0
+      }
+    ]
+  },
+  "scope": "Android activity-process importance, channels, real foreground services, real Home, production stable-terminal gate, opt-in completion reminders and a real local MediaStore save; no account or network download",
+  "checks": [
+    {
+      "name": "Background completion reminders are off by default",
+      "pass": true
+    },
+    {
+      "name": "Browser and network child processes cannot count as visible UI",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes old noisy foreground channels",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes non-completion regular notifications across profiles",
+      "pass": true
+    },
+    {
+      "name": "A real visible app Activity suppresses completion reminders",
+      "pass": true
+    },
+    {
+      "name": "An already running default process exposes real zero-Activity lifecycle over private IPC",
+      "pass": true
+    },
+    {
+      "name": "A visible Activity is proved by real started lifecycle count",
+      "pass": true
+    },
+    {
+      "name": "A private visibility endpoint rejects an obsolete process PID",
+      "pass": true
+    },
+    {
+      "name": "Foreground replies and downloads stay quiet even after opting in",
+      "pass": true
+    },
+    {
+      "name": "Already visible completions are remembered without posting",
+      "pass": true
+    }
+  ],
+  "sourceCommit": "1f970ea51f90466fb69fc282692ecb535c38ce64"
+}
