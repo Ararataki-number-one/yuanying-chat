@@ -1,4 +1,4 @@
-name: Gecko passive input diagnostics
+name: Gecko native-only input diagnostics
 on:
   push:
     branches: [debug/gecko-ime-passive-1fb6]
@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           work/gecko-input-diagnostics/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-input-diagnostics/integration-test.jks" --console=plain --write-verification-metadata sha256 2>&1 | tee work/gecko-input-diagnostics/build.log
-      - name: Diagnose original input objects with public delegate and native logs on Android 35
+      - name: One native-only diagnostic trial with original input objects on Android 35
         id: gecko
         shell: bash
         run: |
@@ -55,7 +55,7 @@ jobs:
           adb -s emulator-5554 shell input keyevent 82
           adb -s emulator-5554 install app/build/outputs/apk/integration/app-x86_64-integration.apk
           checks_failed=0
-          for trial in 1 2 3; do
+          for trial in 1; do
             attempt="work/gecko-input-diagnostics/attempt-$trial"
             mkdir -p "$attempt"
             rm -f work/gecko-integration/gecko-performance-results.json work/gecko-integration/gecko-performance-failure-log.txt work/gecko-integration/gecko-performance-screen.png
@@ -65,7 +65,7 @@ jobs:
               exit_code=$?
               checks_failed=1
             fi
-            for name in gecko-performance-results.json gecko-performance-failure-log.txt gecko-performance-screen.png gecko-performance-failure-screen.png gecko-performance-failure-ui.xml gecko-performance-failure-window.txt gecko-performance-failure-activity.txt gecko-native-ime-snapshot.log gecko-native-ime-snapshot.json gecko-scroll-diagnostics.json gecko-scroll-diagnostic-log.json; do
+            for name in gecko-performance-results.json gecko-performance-failure-log.txt gecko-performance-screen.png gecko-performance-failure-screen.png gecko-performance-failure-ui.xml gecko-performance-failure-window.txt gecko-performance-failure-activity.txt gecko-native-ime-snapshot.log gecko-native-ime-snapshot.json gecko-native-ime-logcat.txt gecko-native-ime-logcat-diagnostic.json gecko-scroll-diagnostics.json gecko-scroll-diagnostic-log.json; do
               if [ -f "work/gecko-integration/$name" ]; then
                 cp "work/gecko-integration/$name" "$attempt/$name"
               fi
@@ -78,7 +78,8 @@ jobs:
                   'runId':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ.get('GITHUB_RUN_ATTEMPT','1'),
                   'trial':int(attempt.name.removeprefix('attempt-')),'exitCode':int(sys.argv[2]),
                   'status':'passed' if sys.argv[2]=='0' else 'failed','diagnosticOnly':True,'releaseAcceptance':False,
-                  'instrumentation':'Public delegate primitive buffers plus native MOZ_LOG; original IC/client/listener/child retained; native logging may affect timing'}
+                  'fixedTrialCount':1,
+                  'instrumentation':'Native MOZ_LOG only; original DefaultDelegate/IC/client/listener/child retained; no Java input observer; native logging may affect timing'}
           (attempt/'status.json').write_text(json.dumps(status,indent=2)+'\n')
           PYCODE
           done

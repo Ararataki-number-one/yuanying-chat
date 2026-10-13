@@ -17,12 +17,13 @@ ARTIFACTS = (
     (OUT, 'input-test.log'),
     (OUT, 'emulator.log'),
     (OUT, 'input-diagnostic-screen.png'),
-) + tuple((OUT, f'attempt-{trial}/{name}') for trial in (1, 2, 3) for name in (
+) + tuple((OUT, f'attempt-{trial}/{name}') for trial in (1,) for name in (
     'status.json', 'runner.log', 'gecko-performance-results.json',
     'gecko-performance-failure-log.txt', 'gecko-performance-screen.png', 'screen.png',
     'gecko-performance-failure-screen.png', 'gecko-performance-failure-ui.xml',
     'gecko-performance-failure-window.txt', 'gecko-performance-failure-activity.txt',
     'gecko-native-ime-snapshot.log', 'gecko-native-ime-snapshot.json',
+    'gecko-native-ime-logcat.txt', 'gecko-native-ime-logcat-diagnostic.json',
     'gecko-scroll-diagnostics.json', 'gecko-scroll-diagnostic-log.json',
 ))
 
@@ -49,30 +50,62 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
         'runAttempt': run_attempt,
         'diagnosticOnly': True,
         'releaseAcceptance': False,
+        'fixedTrialCount': 1,
         'stepOutcomes': outcomes,
         'artifacts': [],
         'warnings': [],
         'attempts': [],
         'reports': {},
+        'nativeLogcatDiagnostics': {},
     }
     for directory, name in ARTIFACTS:
         original = directory / name
         if original.is_symlink() or original.parent.is_symlink() or not original.is_file():
             continue
         data = original.read_bytes()
-        if name.endswith('/status.json') or name.endswith('/gecko-performance-results.json'):
+        if name.endswith('/status.json') or name.endswith('/gecko-performance-results.json') or name.endswith('/gecko-native-ime-logcat-diagnostic.json'):
             try:
                 report = json.loads(data)
                 if report.get('sourceCommit') != source:
                     raise ValueError('Report belongs to another source commit')
                 if name.endswith('/status.json'):
                     trial = int(name.split('/')[0].removeprefix('attempt-'))
-                    if report.get('runId') != run_id or report.get('runAttempt') != run_attempt or report.get('trial') != trial:
+                    if report.get('runId') != run_id or report.get('runAttempt') != run_attempt or report.get('trial') != trial or report.get('fixedTrialCount') != 1:
                         raise ValueError('Attempt belongs to another run or trial')
                     manifest['attempts'].append(report)
+                elif name.endswith('/gecko-native-ime-logcat-diagnostic.json'):
+                    if report.get('schema') != 1 or report.get('diagnosticOnly') is not True or report.get('releaseAcceptance') is not False or report.get('mode') != 'native-log-only':
+                        raise ValueError('Expected separate native-only diagnostic evidence')
+                    if not re.fullmatch(r'[0-9a-f]{32}', report.get('runNonce', '')):
+                        raise ValueError('Missing actual invocation nonce')
+                    if report.get('actualAndroidLogcatRead'):
+                        raw = (original.parent / 'gecko-native-ime-logcat.txt').read_bytes()
+                        if len(raw) != report.get('logcatBytes') or hashlib.sha256(raw).hexdigest() != report.get('logcatSha256'):
+                            raise ValueError('Derived logcat receipt differs from actual raw bytes')
+                        actual = (original.parent / 'gecko-performance-results.json').read_bytes()
+                        if hashlib.sha256(actual).hexdigest() != report.get('rawPerformanceReportSha256'):
+                            raise ValueError('Derived receipt differs from final app/runner report bytes')
+                        if 'nativeFileMetadataSha256' in report:
+                            native = (original.parent / 'gecko-native-ime-snapshot.json').read_bytes()
+                            metadata = json.loads(native)
+                            if hashlib.sha256(native).hexdigest() != report['nativeFileMetadataSha256'] or metadata.get('sourceCommit') != source or metadata.get('runNonce') != report['runNonce']:
+                                raise ValueError('Native-file metadata differs from this actual invocation')
+                        if len(report.get('literalNativeRecords', [])) > 64 or len(report.get('requestedSelectionOffsets', [])) > 128:
+                            raise ValueError('Derived native observations exceed their fixed bounds')
+                        lines = raw.decode('utf-8', errors='replace').splitlines()
+                        for entry in report.get('literalNativeRecords', []):
+                            if not 1 <= entry['line'] <= len(lines) or lines[entry['line'] - 1][:2048] != entry['literal']:
+                                raise ValueError('Derived native quote differs from actual logcat')
+                    manifest['nativeLogcatDiagnostics'][name.split('/')[0]] = {
+                        'sha256': hashlib.sha256(data).hexdigest(),
+                        'actualAndroidLogcatRead': report.get('actualAndroidLogcatRead', False),
+                        'boundedInputPhase': report.get('boundedInputPhase', False),
+                        'matchedNativeRecords': report.get('matchedNativeRecords', 0),
+                        'nativeFileCapturedPayloadBytes': report.get('nativeFileCapturedPayloadBytes'),
+                    }
                 else:
                     if report.get('inputNativeDiagnosticsEnabled') is not True or report.get('inputDiagnosticsEnabled') is not False:
-                        raise ValueError('Expected public-delegate/native-log diagnostics, without extra JS or evaluation tracing')
+                        raise ValueError('Expected native-only diagnostics, without extra JS or evaluation tracing')
                     manifest['reports'][name.split('/')[0]] = {
                         'inputNativeDiagnosticsEnabled': True, 'inputDiagnosticsEnabled': False,
                         'sourceCommit': source, 'status': report.get('status', 'unknown'),
@@ -80,7 +113,7 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
                         'actualAndroidExecution': report.get('actualAndroidExecution', False),
                         'actualGeckoExecution': report.get('actualGeckoExecution', False),
                     }
-            except (ValueError, TypeError, AttributeError) as error:
+            except (ValueError, TypeError, AttributeError, KeyError, OSError) as error:
                 manifest['warnings'].append(name + ': ' + str(error))
                 continue
         target = stage / name
@@ -89,11 +122,14 @@ def stage_evidence(source, run_id, run_attempt, outcomes):
         manifest['artifacts'].append({
             'file': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
         })
-    manifest['allAttemptsPassed'] = (len(manifest['attempts']) == 3
+    manifest['allAttemptsPassed'] = (len(manifest['attempts']) == 1
         and all(item.get('exitCode') == 0 and item.get('status') == 'passed' for item in manifest['attempts'])
-        and set(manifest['reports']) == {'attempt-1', 'attempt-2', 'attempt-3'}
+        and set(manifest['reports']) == {'attempt-1'}
         and all(item['status'] == 'passed' and item['actualAndroidExecution'] and item['actualGeckoExecution']
                 for item in manifest['reports'].values())
+        and set(manifest['nativeLogcatDiagnostics']) == {'attempt-1'}
+        and all(item['actualAndroidLogcatRead'] and item['boundedInputPhase'] and item['matchedNativeRecords'] > 0
+                for item in manifest['nativeLogcatDiagnostics'].values())
         and outcomes['gecko'] == 'success' and not manifest['warnings'])
     (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     return stage, manifest

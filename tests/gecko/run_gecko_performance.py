@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compare production observation assets through real Gecko and the Android native bridge."""
-import argparse, collections, hashlib, http.server, json, pathlib, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse, uuid
+import argparse, collections, hashlib, http.server, json, pathlib, re, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse, uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'work/gecko-integration'
@@ -127,7 +127,7 @@ def main():
     observation.add_argument('--input-diagnostics', action='store_true',
                         help='Enable extra SDK/IME and JS selection observations; disabled for the normal release regression.')
     observation.add_argument('--native-input-diagnostics', action='store_true',
-                        help='Buffer public SDK delegate calls and native MOZ_LOG; preserve all original SDK input objects. Diagnostic evidence cannot replace the normal regression.')
+                        help='Native MOZ_LOG only; retain original SDK delegate and all input objects. Diagnostic evidence cannot replace the normal regression.')
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     started_ms = int(time.time() * 1000)
@@ -137,7 +137,8 @@ def main():
                  'gecko-performance-failure-screen.png', 'gecko-performance-failure-ui.xml',
                  'gecko-performance-failure-window.txt', 'gecko-performance-failure-activity.txt',
                  'gecko-scroll-diagnostics.json', 'gecko-scroll-diagnostic-log.json',
-                 'gecko-performance-screen.png', 'gecko-native-ime-snapshot.log', 'gecko-native-ime-snapshot.json']:
+                 'gecko-performance-screen.png', 'gecko-native-ime-snapshot.log', 'gecko-native-ime-snapshot.json',
+                 'gecko-native-ime-logcat.txt', 'gecko-native-ime-logcat-diagnostic.json']:
         (OUT / name).unlink(missing_ok=True)
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
     receipt = json.loads((baseline_root / 'source.json').read_text())
@@ -196,6 +197,83 @@ def main():
                         emittedNativeRecords=bool(raw and any(name in raw for name in (b'GeckoEditableSupport', b'IMEStateManager', b'IMEContentObserver'))))
         except Exception as error:
             return dict(enabled=True, actualAndroidFileRead=False, fileReadError=str(error))
+
+    def save_native_logcat():
+        """Derived diagnostic evidence only; never substitute logcat for the native file."""
+        result = dict(schema=1, sourceCommit=diagnostic_source, runNonce=diagnostic_run,
+                      diagnosticOnly=True, releaseAcceptance=False, mode='native-log-only',
+                      modules='timestamp,IMEStateManager:3,IMEContentObserver:4',
+                      publicDelegateReplaced=False, inputConnectionWrapped=False,
+                      inputConnectionClientReplaced=False, editableListenerReplaced=False,
+                      focusedChildReplaced=False, nativeLogsMayAffectTiming=True,
+                      scope='Derived read-only logcat observations after the original input burst. '
+                            'Native file bytes and the app report remain independent evidence; '
+                            'neither a diagnostic pass nor native logging proves an input repair.')
+        try:
+            raw = subprocess.check_output([args.adb, '-s', args.serial, 'logcat', '-d'], timeout=30)
+            path = OUT / 'gecko-native-ime-logcat.txt'
+            path.write_bytes(raw)
+            lines = raw.decode('utf-8', errors='replace').splitlines()
+            start = end = None
+            for number, line in enumerate(lines, 1):
+                if 'PocketGeckoPerformance: ' not in line:
+                    continue
+                try:
+                    item = json.loads(line.split('PocketGeckoPerformance: ', 1)[1])
+                    value = item['value']
+                except (ValueError, KeyError, TypeError):
+                    continue
+                if not isinstance(value, dict):
+                    continue
+                if item.get('kind') == 'gestureNeeded' and value.get('id') == 'current-input':
+                    start = number
+                if item.get('kind') == 'nativeInputTrace' and value.get('api') == 'trace.nativeLogSnapshot':
+                    marker = value.get('metadata', {})
+                    if marker.get('sourceCommit') == diagnostic_source and marker.get('runNonce') == diagnostic_run:
+                        end = number
+            records, selections = [], []
+            for number, line in enumerate(lines, 1):
+                if start is None or end is None or not start < number < end:
+                    continue
+                match = re.search(r'\]: [VDIWE]/(IMEStateManager|IMEContentObserver) ', line)
+                if not match:
+                    continue
+                records.append(dict(line=number, module=match.group(1), literal=line[:2048],
+                                    literalTruncated=len(line) > 2048))
+                if 'MaybeHandleSelectionEvent(aEvent=' in line:
+                    offset = re.search(r'mOffset=(\d+)', line)
+                    if offset:
+                        selections.append(dict(line=number, offset=int(offset.group(1))))
+            selected = {entry['line']: entry for entry in records[:8] + records[-8:]}
+            for entry in records:
+                if 'HandleSelectionEvent(' in entry['literal'] and len(selected) < 64:
+                    selected[entry['line']] = entry
+            result.update(actualAndroidLogcatRead=True, logcatFile=path.name,
+                          logcatBytes=len(raw), logcatSha256=hashlib.sha256(raw).hexdigest(),
+                          inputPhaseStartLine=start, inputPhaseEndLine=end,
+                          boundedInputPhase=bool(start is not None and end is not None and start < end),
+                          matchedNativeRecords=len(records),
+                          moduleCounts=dict(collections.Counter(entry['module'] for entry in records)),
+                          literalNativeRecords=[selected[key] for key in sorted(selected)],
+                          requestedSelectionOffsets=selections[:128],
+                          requestedSelectionOffsetsTruncated=len(selections) > 128,
+                          sourceMarkerPresent=diagnostic_source.encode() in raw,
+                          runMarkerPresent=diagnostic_run.encode() in raw)
+            report_path = OUT / 'gecko-performance-results.json'
+            if report_path.is_file():
+                result['rawPerformanceReportSha256'] = hashlib.sha256(report_path.read_bytes()).hexdigest()
+            metadata_path = OUT / 'gecko-native-ime-snapshot.json'
+            if metadata_path.is_file():
+                metadata_bytes = metadata_path.read_bytes()
+                metadata = json.loads(metadata_bytes)
+                result['nativeFileMetadataSha256'] = hashlib.sha256(metadata_bytes).hexdigest()
+                result['nativeFileCapturedPayloadBytes'] = sum(entry['capturedBytes'] for entry in metadata.get('files', []))
+                result['nativeFileSourceAndRunMatch'] = (metadata.get('sourceCommit') == diagnostic_source
+                                                       and metadata.get('runNonce') == diagnostic_run)
+        except Exception as error:
+            result.update(actualAndroidLogcatRead=False, captureError=str(error))
+        (OUT / 'gecko-native-ime-logcat-diagnostic.json').write_text(json.dumps(result, indent=2) + '\n')
+        return result
 
     servers = [http.server.ThreadingHTTPServer(('127.0.0.1', 8767), Fixture), SocksServer(('127.0.0.1', 1087), Socks)]
     for server in servers:
@@ -319,15 +397,14 @@ def main():
                 if not args.input_diagnostics and not args.native_input_diagnostics:
                     assert not native_input_events, 'Normal regression unexpectedly attached native diagnostic observers'
                 if args.native_input_diagnostics:
-                    assert native_input_events and all(event['mode'] == 'public-delegate-primitives' for event in native_input_events.values()), report
-                    summaries = [event for event in native_input_events.values() if event['api'] == 'trace.bufferedSummary']
-                    assert len(summaries) == 1 and not summaries[0]['overflow'] and not summaries[0]['restoreError'], summaries
-                    assert summaries[0]['published'] == summaries[0]['reserved'] == len(native_input_events) - 2, 'Public delegate event log is incomplete'
-                    assert all(summaries[0][field] is False for field in ('inputConnectionWrapped', 'inputConnectionClientReplaced', 'editableListenerReplaced', 'focusedChildReplaced')), summaries
                     snapshots = [event for event in native_input_events.values() if event['api'] == 'trace.nativeLogSnapshot']
-                    assert len(snapshots) == 1, snapshots
-                    assert report['nativeImeLog']['actualAndroidFileRead'] and report['nativeImeLog']['emittedNativeRecords'], report['nativeImeLog']
-                    assert types == collections.Counter(report['diagnosticInputEventShape']['expected']), 'Passive diagnostic differs from normal 45-event input path: ' + str(types)
+                    assert len(snapshots) == len(native_input_events) == 1 and snapshots[0]['mode'] == 'native-log-only', snapshots
+                    assert report['nativeImeLog']['actualAndroidFileRead'], report['nativeImeLog']
+                    metadata = report['nativeImeLog']['metadata']
+                    assert all(metadata[field] is False for field in ('publicDelegateReplaced', 'inputConnectionWrapped', 'inputConnectionClientReplaced', 'editableListenerReplaced', 'focusedChildReplaced')), metadata
+                    native_logcat = save_native_logcat()
+                    assert native_logcat['actualAndroidLogcatRead'] and native_logcat['boundedInputPhase'] and native_logcat['matchedNativeRecords'] > 0, native_logcat
+                    assert types == collections.Counter(report['diagnosticInputEventShape']['expected']), 'Native-only diagnostic differs from normal 45-event input path: ' + str(types)
                 assert report['status'] == 'passed' and report['actualAndroidExecution'] and report['actualGeckoExecution'] and report['actualAndroidTouchExecution'] and report['actualGeckoBindingRegressionExecution'], report
                 assert report['baselineSource'] == BASELINE and report['checkCount'] == len(checks), report
                 assert len(checks) >= 125 and all(check['pass'] for check in checks.values()), report
@@ -379,6 +456,8 @@ def main():
             (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
         raise
     finally:
+        if args.native_input_diagnostics:
+            save_native_logcat()
         for server in servers:
             server.shutdown()
             server.server_close()

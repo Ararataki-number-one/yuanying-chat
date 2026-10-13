@@ -29,7 +29,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   int checkCount,samples,inputFocusSamples,directDeferredSamples,nativeDeferredSamples;boolean finished,inputRequested,directDeferralChecked,nativeDeferralChecked;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
   String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
   String inputReadinessKey="";long inputReadySince;int inputTraceOffset,inputReadinessSequence;boolean inputImeSettled;
-  GeckoInputTrace nativeInputTrace;GeckoInputTrace.Buffered bufferedInputTrace;boolean inputDiagnostics,inputNativeDiagnostics,nativeSnapshotRequested;String diagnosticSourceCommit;
+  GeckoInputTrace nativeInputTrace;boolean inputDiagnostics,inputNativeDiagnostics,nativeSnapshotRequested;String diagnosticSourceCommit;
   final JSONArray scrollDiagnosticPhases=new JSONArray();ScrollPhase scrollPhase;String scrollDiagnosticRun;
   static final class ScrollPhase {
     final String variant,url;final long navigationEpoch,started=SystemClock.elapsedRealtime();final GeckoSession sdk;final android.view.View surface;
@@ -406,7 +406,6 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     "bounds:{left:r.left,top:r.top,width:r.width,height:r.height},viewport:{width:vp?.width??innerWidth,height:vp?.height??innerHeight,offsetLeft:vp?.offsetLeft??0,offsetTop:vp?.offsetTop??0,scale:vp?.scale??1,innerWidth,innerHeight},"+
     "inputEvents:trace?.events||[],traceOverflow:!!trace?.overflow};})()";}
   void inputGesture(){attempt(()->{
-    if(inputNativeDiagnostics)bufferedInputTrace=GeckoInputTrace.attachBuffered(((FixtureView)session.web).current);
     if(inputDiagnostics){
       nativeInputTrace=GeckoInputTrace.attach(((FixtureView)session.web).current,value->event("nativeInputTrace",value));
       ((FixtureView)session.web).inputTracing=true;
@@ -420,7 +419,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     event("gestureNeeded",J.obj("id","current-input","action","input","x",x,"y",y,"text",INPUT_MARKER));waitInput(SystemClock.elapsedRealtime()+30000);
   });});}
   void stopInputTrace(){stopInputTrace(null);}
-  void stopInputTrace(Runnable next){if(session!=null&&session.web instanceof FixtureView)((FixtureView)session.web).inputTracing=false;if(nativeInputTrace!=null){nativeInputTrace.stop();nativeInputTrace=null;}Runnable after=()->{if(inputNativeDiagnostics&&session!=null&&!nativeSnapshotRequested){nativeSnapshotRequested=true;GeckoInputTrace.snapshotNative(session.context,diagnosticSourceCommit,scrollDiagnosticRun,handler,value->event("nativeInputTrace",value),next);}else if(next!=null)next.run();};if(bufferedInputTrace!=null){GeckoInputTrace.Buffered trace=bufferedInputTrace;bufferedInputTrace=null;trace.stopAndFlush(handler,value->event("nativeInputTrace",value),after);}else after.run();}
+  void stopInputTrace(Runnable next){if(session!=null&&session.web instanceof FixtureView)((FixtureView)session.web).inputTracing=false;if(nativeInputTrace!=null){nativeInputTrace.stop();nativeInputTrace=null;}if(inputNativeDiagnostics&&session!=null&&!nativeSnapshotRequested){nativeSnapshotRequested=true;GeckoInputTrace.snapshotNative(session.context,diagnosticSourceCommit,scrollDiagnosticRun,handler,value->event("nativeInputTrace",value),next);}else if(next!=null)next.run();}
   void recordInputTrace(JSONObject value)throws Exception{
     JSONArray events=value.optJSONArray("inputEvents");if(events==null)return;
     while(inputTraceOffset<events.length()){

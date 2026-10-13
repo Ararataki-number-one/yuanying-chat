@@ -17,15 +17,14 @@ import org.json.JSONArray;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.SessionTextInput;
 
-/** Diagnostic-only public delegate observation. All original SDK input objects remain intact. */
+/** Optional public delegate tracing, plus independent native-only snapshots after the burst. */
 final class GeckoInputTrace {
   interface LogSink {void record(JSONObject event);}
   static final String NATIVE_PREFIX="gecko-native-ime.log",NATIVE_SNAPSHOT="gecko-native-ime-snapshot.log",NATIVE_METADATA="gecko-native-ime-snapshot.json";
-  static final String LOG_MODULES="timestamp,rotate:1,GeckoEditableSupport:5,IMEStateManager:5,IMEContentObserver:5,IMEHandler:5,ContentCache:5,TextEventDispatcher:5";
+  static final String LOG_MODULES="timestamp,IMEStateManager:3,IMEContentObserver:4";
   final Buffered buffered;final LogSink sink;
   private GeckoInputTrace(GeckoSession session,LogSink value){buffered=new Buffered(session);sink=value;}
   static GeckoInputTrace attach(GeckoSession session,LogSink sink){return new GeckoInputTrace(session,sink);}
-  static Buffered attachBuffered(GeckoSession session){return new Buffered(session);}
   void stop(){buffered.stopAndFlush(null,sink,null);}
 
   static final class Buffered {
@@ -70,7 +69,7 @@ final class GeckoInputTrace {
   /** After the input burst only: capture bounded raw native logs without changing the logger. */
   static void snapshotNative(Context context,String source,String run,Handler ui,LogSink sink,Runnable done){
     new Thread(()->{
-      JSONObject metadata=J.obj("schema",1,"sourceCommit",source,"runNonce",run,"diagnosticOnly",true,"releaseAcceptance",false,"modules",LOG_MODULES,"javaShadowLogging","Official stable Java LOGGING is nightly-gated; not enabled here","nativeLogsMayAffectTiming",true,"inputConnectionWrapped",false,"inputConnectionClientReplaced",false,"editableListenerReplaced",false,"focusedChildReplaced",false,"nativeLoggerStillRunning",true);
+      JSONObject metadata=J.obj("schema",1,"sourceCommit",source,"runNonce",run,"diagnosticOnly",true,"releaseAcceptance",false,"mode","native-log-only","modules",LOG_MODULES,"javaShadowLogging","Official stable Java LOGGING is nightly-gated; not enabled here","nativeLogsMayAffectTiming",true,"publicDelegateReplaced",false,"inputConnectionWrapped",false,"inputConnectionClientReplaced",false,"editableListenerReplaced",false,"focusedChildReplaced",false,"nativeLoggerStillRunning",true);
       try{
         File root=context.getFilesDir();File[] found=root.listFiles(file->file.isFile()&&!java.nio.file.Files.isSymbolicLink(file.toPath())&&file.getName().matches("gecko-native-ime\\.log(?:\\.child-[0-9]+)?(?:\\.moz_log)?(?:\\.[0-3])?"));
         if(found==null)throw new IOException("Native log directory unavailable");Arrays.sort(found,Comparator.comparingLong(File::lastModified).reversed());
@@ -89,7 +88,7 @@ final class GeckoInputTrace {
       // Keep the logcat notification below its per-line limit. The complete
       // metadata and every captured native byte remain in the fixed exports.
       JSONObject notice=J.obj("sourceCommit",source,"runNonce",run,"status",metadata.optString("status"),"bytes",metadata.optLong("bytes"),"sha256",metadata.optString("sha256"),"foundFiles",metadata.optInt("foundFiles"),"truncated",metadata.optBoolean("truncated"));
-      ui.post(()->{sink.record(J.obj("id","current-input","seq",1025,"mode","public-delegate-primitives","api","trace.nativeLogSnapshot","metadata",notice));if(done!=null)done.run();});
+      ui.post(()->{sink.record(J.obj("id","current-input","seq",1025,"mode","native-log-only","api","trace.nativeLogSnapshot","metadata",notice));if(done!=null)done.run();});
     },"native-ime-log-snapshot").start();
   }
   static void atomic(File root,String name,byte[] bytes)throws IOException{File file=new File(root,name),temp=new File(root,name+".tmp");try(FileOutputStream out=new FileOutputStream(temp)){out.write(bytes);out.getFD().sync();}if(!temp.renameTo(file))throw new IOException("Native diagnostic publication failed");}
