@@ -60,7 +60,7 @@ public final class GeckoTemplateIntegrationActivity extends GeckoIdentityPrototy
               for(String key:new String[]{"ua","language","frame","worker","zone"})check("Template "+index+" actual observation report covers "+key,AuditReport.VERIFIED.equals(row(report,key).optString("state")));
               reportPut(report,"identityAppliedRevision",applied.appliedRevision);reportPut(report,"policy",owner.audit.policyStamp());reportPut(report,"route",owner.audit.routeStamp());
               reportPut(report,"controlledRequestHeaders",sessions.getJSONObject(0).getJSONArray("requestHeaders"));
-              reportPut(report,"scope","Controlled actual Gecko document/same-origin frame/Dedicated Worker; local server headers are separate. No ChatGPT, cross-origin or real network acceptance.");
+              reportPut(report,"scope","Controlled actual Gecko document/same-origin frame/Dedicated Worker JS fields; local server HTTP header roles remain separate. Worker fetch headers use the independent SDK mobile build default and do not certify uniform desktop HTTP UA. No ChatGPT, cross-origin or real network acceptance.");
               owner.identity.observe(report);
               owner.environmentIo.execute(()->{
                 try{
@@ -87,9 +87,10 @@ public final class GeckoTemplateIntegrationActivity extends GeckoIdentityPrototy
     reportPut(report,"fixtureType","production-template-controlled-contexts-v1");reportPut(report,"diagnosticOnly",false);reportPut(report,"releaseAcceptance",false);
     reportPut(report,"controlledTemplateAcceptance","passed".equals(report.optString("status"))&&appliedCases.length()==4);
     reportPut(report,"fingerprintTemplateAcceptance",false);reportPut(report,"realAccountLogin",false);reportPut(report,"safeIdleApplicationAcceptance",false);
+    reportPut(report,"fullDesktopUaConsistency",false);
     reportPut(report,"appliedCases",appliedCases);reportPut(report,"templateIds",new JSONArray(Arrays.asList(TEMPLATES)));
     reportPut(report,"independentTimezone","unsupported; observations use the real system timezone");
-    reportPut(report,"uncovered",J.arr("cross-origin frame","Shared Worker","Service Worker","RFP compatibility","real account login","native IME","separate environment isolation","restart persistence","safe-idle application during real tasks"));
-    reportPut(report,"scope","Four standard/compatibility mobile/desktop templates applied by production GeckoPolicyAdapter; production controller applied/observed acknowledgement on actual local main-world/frame/Dedicated Workers and document/fetch server headers. These controlled checks do not certify real ChatGPT compatibility, independent environment processes, restart or experimental RFP.");
+    reportPut(report,"uncovered",J.arr("cross-origin frame","Shared Worker","Service Worker","RFP compatibility","real account login","native IME","separate environment isolation","restart persistence","safe-idle application during real tasks","desktop Worker fetch UA consistency"));
+    reportPut(report,"scope","Four standard/compatibility mobile/desktop display templates applied by production GeckoPolicyAdapter; controller applied/observed acknowledgement on actual local JS contexts and document/script/page-fetch headers. Worker fetch headers are checked against independent GeckoSession.getDefaultUserAgent build evidence; desktop mismatch is retained, not aligned or rewritten. Full desktop HTTP UA consistency, real ChatGPT, process isolation, restart and experimental RFP remain unaccepted.");
   }
 }

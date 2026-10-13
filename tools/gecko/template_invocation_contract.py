@@ -16,7 +16,7 @@ REQUESTS=[['en-US'],['ja-JP'],['zh-Hant-TW'],['en-US']]
 NORMALIZED=['en-US','ja-JP','zh-TW','en-US']
 FIELDS=['ua','cpu','memory','language','languages','offset','zone']
 ROLES=['page','frame','worker-script','page-fetch','worker-fetch','blob-worker-fetch']
-UNCOVERED=['cross-origin frame','Shared Worker','Service Worker','RFP compatibility','real account login','native IME','separate environment isolation','restart persistence','safe-idle application during real tasks']
+UNCOVERED=['cross-origin frame','Shared Worker','Service Worker','RFP compatibility','real account login','native IME','separate environment isolation','restart persistence','safe-idle application during real tasks','desktop Worker fetch UA consistency']
 
 
 def expected_check_names():
@@ -58,7 +58,7 @@ def verify_template_report(report):
         raise ValueError('A distinct production template fixture is required, not the SDK prototype')
     if report.get('status')!='passed' or report.get('actualAndroidExecution') is not True or report.get('actualGeckoExecution') is not True or report.get('synthetic') is not True or report.get('publicNetworkTraffic') is not False:
         raise ValueError('Actual controlled Android/Gecko execution is incomplete')
-    if any(report.get(key) is not False for key in ['releaseAcceptance','fingerprintTemplateAcceptance','realAccountLogin','safeIdleApplicationAcceptance']):
+    if any(report.get(key) is not False for key in ['releaseAcceptance','fingerprintTemplateAcceptance','realAccountLogin','safeIdleApplicationAcceptance','fullDesktopUaConsistency']):
         raise ValueError('Controlled observations cannot certify untested ChatGPT or lifecycle flows')
     if report.get('sdkCoordinate')!=SDK or report.get('sdkAarSha256')!=AAR or report.get('engineVersion')!='GeckoView 157.0.1':
         raise ValueError('The pinned official SDK identity changed')
@@ -68,6 +68,7 @@ def verify_template_report(report):
     if report.get('passed')!=len(names) or report.get('total')!=len(names) or [item.get('name') for item in checks]!=names or any(item.get('pass') is not True for item in checks):
         raise ValueError('Every exact ordered template/context/header/controller assertion must pass')
     _guard.verify_guard_evidence(report)
+    _guard.verify_user_agent_evidence(report)
     if report.get('error') or report.get('failureType'):raise ValueError('Template fixture recorded a failure')
     cases=report.get('cases');applied=report.get('appliedCases')
     if not isinstance(cases,list) or not isinstance(applied,list) or [item.get('index') for item in cases]!=list(range(4)) or [item.get('index') for item in applied]!=list(range(4)):
@@ -100,7 +101,7 @@ def verify_template_report(report):
         if identity!=current_identity:raise ValueError('Controlled fixture changed environment identity')
         observation=model.get('report',{})
         rows={row.get('key'):row for row in observation.get('rows',[])}
-        if observation.get('fresh') is not True or observation.get('identityAppliedRevision')!=revision or any(rows.get(key,{}).get('state')!='verified' for key in ['ua','language','frame','worker','zone']):
+        if observation.get('fresh') is not True or observation.get('identityAppliedRevision')!=revision or any(rows.get(key,{}).get('state')!='verified' for key in ['ua','language','frame','worker','zone']) or rows.get('worker-header',{}).get('state')!='uncovered' or observation.get('fullDesktopUaConsistency') is not False or observation.get('fingerprintTemplateAcceptance') is not False:
             raise ValueError('Actual page observation did not verify its promised fields')
         coverage=observation.get('contextCoverage',{})
         if coverage.get('requiredFields')!=FIELDS or any(coverage.get(context,{}).get('missingOrInvalid')!=[] or coverage.get(context,{}).get('different')!=[] or coverage.get(context,{}).get('compared')!=FIELDS for context in ['frame','worker']):
@@ -136,10 +137,11 @@ def verify_template_report(report):
                 wanted_query={'run':nonce,'case':str(index+1),'session':name}
                 if role in ['page-fetch','worker-fetch','blob-worker-fetch']:wanted_query['kind']=role
                 if parsed.path!=wanted_path or query!=wanted_query:raise ValueError('Actual HTTP headers belong to another endpoint or invocation')
-                if header.get('case')!=index+1 or header.get('session')!=name or header.get('userAgent')!=ua or header.get('acceptLanguage','').split(',')[0].split(';')[0].strip().lower()!=NORMALIZED[index].lower():
+                expected_header_ua=report['sdkUserAgentBaseline']['userAgent'] if role in ['worker-fetch','blob-worker-fetch'] else ua
+                if header.get('case')!=index+1 or header.get('session')!=name or header.get('userAgent')!=expected_header_ua or header.get('acceptLanguage','').split(',')[0].split(';')[0].strip().lower()!=NORMALIZED[index].lower():
                     raise ValueError('Actual server-observed request headers disagree with the page')
             all_wire.extend(wire)
         if observation.get('controlledRequestHeaders')!=sessions[0].get('requestHeaders'):raise ValueError('Persisted observation omits real controlled HTTP evidence')
     if sorted(row.get('sequence') for row in all_wire)!=list(range(1,31)):raise ValueError('Every actual server sequence must occur once')
     if report.get('allRequestHeaders')!=sorted(all_wire,key=lambda row:row.get('sequence',-1)):raise ValueError('Complete actual first-party wire records are required')
-    return {'controlledTemplateAcceptance':True,'fingerprintTemplateAcceptance':False,'realAccountLogin':False,'safeIdleApplicationAcceptance':False,'templateIds':TEMPLATES,'assertions':len(names),'sessions':5,'uncovered':UNCOVERED,'scope':'Production adapter/controller acknowledgements and actual controlled page/frame/Dedicated Workers/document and fetch request headers; separate process isolation, restart, real ChatGPT and experimental RFP remain separate acceptance.'}
+    return {'controlledTemplateAcceptance':True,'fingerprintTemplateAcceptance':False,'fullDesktopUaConsistency':False,'realAccountLogin':False,'safeIdleApplicationAcceptance':False,'templateIds':TEMPLATES,'assertions':len(names),'sessions':5,'workerFetchHeaderScope':'sdk-build-mobile-default','workerFetchMismatchSessions':[{ 'case':case['index'],'sessions':case['workerFetchMismatchSessions']} for case in cases],'uncovered':UNCOVERED,'scope':'Production adapter/controller acknowledgements and actual controlled JS/document headers; Worker fetch headers match the independent SDK mobile build default, with desktop mismatch preserved. This is not uniform desktop HTTP UA acceptance. Process isolation, restart, real ChatGPT and experimental RFP remain separate acceptance.'}

@@ -17,36 +17,36 @@ contract=load('template_invocation_contract');gate=load('check_template_evidence
 
 def metadata_only_report():
     identity=dict(schema=1,package='local.pocketchat.test',sourceCommit='a'*40,sourceTree='b'*40,dirtySource=False,version='1.7.0',versionCode=52,sdkCoordinate=contract.SDK,apkSha256='c'*64,apkBytes=100,buildStampSha256='d'*64)
-    report=dict(schema=1,status='passed',synthetic=True,sourceCommit='a'*40,runNonce='e'*32,buildIdentity=identity,androidSdk=35,actualAndroidExecution=True,actualGeckoExecution=True,publicNetworkTraffic=False,fixtureType='production-template-controlled-contexts-v1',diagnosticOnly=False,controlledTemplateAcceptance=True,releaseAcceptance=False,fingerprintTemplateAcceptance=False,realAccountLogin=False,safeIdleApplicationAcceptance=False,sdkCoordinate=contract.SDK,sdkAarSha256=contract.AAR,engineVersion='GeckoView 157.0.1',templateIds=contract.TEMPLATES,uncovered=contract.UNCOVERED,independentTimezone='unsupported',origin='http://127.0.0.1:12345',cases=[],appliedCases=[],allRequestHeaders=[])
+    guard=prototype_metadata(identity,'e'*32)
+    report=dict(schema=1,status='passed',synthetic=True,sourceCommit='a'*40,runNonce='e'*32,buildIdentity=identity,androidSdk=35,actualAndroidExecution=True,actualGeckoExecution=True,publicNetworkTraffic=False,fixtureType='production-template-controlled-contexts-v1',diagnosticOnly=False,controlledTemplateAcceptance=True,releaseAcceptance=False,fingerprintTemplateAcceptance=False,fullDesktopUaConsistency=False,realAccountLogin=False,safeIdleApplicationAcceptance=False,sdkCoordinate=contract.SDK,sdkAarSha256=contract.AAR,sdkUserAgentBaseline=guard['sdkUserAgentBaseline'],userAgentCapability=guard['userAgentCapability'],engineVersion='GeckoView 157.0.1',templateIds=contract.TEMPLATES,uncovered=contract.UNCOVERED,independentTimezone='unsupported',origin=guard['origin'],cases=[],appliedCases=[],allRequestHeaders=[])
     names=contract.expected_check_names();report.update(passed=len(names),total=len(names),checks=[dict(name=name,pass_=True) for name in names])
     report['checks']=[{'name':name,'pass':True} for name in names]
     for index,template in enumerate(contract.TEMPLATES):
         desktop=index in [1,3];privacy='standard' if index<2 else 'compatibility';requested=dict(schema=1,templateId=template,display='desktop' if desktop else 'mobile',privacy=privacy,locales=contract.REQUESTS[index],timezoneStrategy='system')
-        ua=('Mozilla/5.0 (X11; Linux x86_64; rv:157.0)' if desktop else 'Mozilla/5.0 (Android 14; Mobile; rv:157.0)')+' Gecko/157.0 Firefox/157.0'
+        ua='Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0' if desktop else report['sdkUserAgentBaseline']['userAgent']
         signal=dict(ua=ua,cpu=8,memory=None,language=contract.NORMALIZED[index],languages=[contract.NORMALIZED[index]],offset=-540,zone='Asia/Tokyo',intlLocale=contract.NORMALIZED[index])
         sessions=[]
         for name in ['primary']+(['secondary'] if index==3 else []):
             wire=[]
             for role in contract.ROLES:
                 target={'page':'/page','frame':'/frame','worker-script':'/worker'}.get(role,'/echo');query='run='+report['runNonce']+'&case='+str(index+1)+'&session='+name+('&kind='+role if role.endswith('-fetch') else '')
-                header=dict(sequence=len(report['allRequestHeaders'])+1,case=index+1,session=name,role=role,userAgent=ua,acceptLanguage=contract.NORMALIZED[index],method='GET',path=target+'?'+query)
+                header=dict(sequence=len(report['allRequestHeaders'])+1,case=index+1,session=name,role=role,userAgent=report['sdkUserAgentBaseline']['userAgent'] if role in ['worker-fetch','blob-worker-fetch'] else ua,acceptLanguage=contract.NORMALIZED[index],method='GET',path=target+'?'+query,at=10*index+1)
                 wire.append(header);report['allRequestHeaders'].append(header)
             raw=dict(run=report['runNonce'],case=index+1,session=name,provenance='controlled-page-main-world',**{context:copy.deepcopy(signal) for context in ['parent','frame','worker','blobWorker']})
-            native=dict(userAgent=ua,requestedLocales=contract.REQUESTS[index],getterLocales=contract.REQUESTS[index],expectedSdkNormalizedLanguage=contract.NORMALIZED[index])
-            sessions.append(dict(name=name,native=native,observed=raw,requestHeaders=wire))
-        report['cases'].append(dict(index=index,serial=index+1,status='passed',sessions=sessions))
+            native=dict(userAgent=ua,requestedLocales=contract.REQUESTS[index],getterLocales=contract.REQUESTS[index],getterScope='Java requested value; not content acknowledgement',expectedSdkNormalizedLanguage=contract.NORMALIZED[index])
+            sessions.append(dict(name=name,native=native,observed=raw,requestHeaders=wire,userAgentScope=dict(documentHeadersMatchSession=True,workerFetchHeadersMatchSdkDefault=True,workerFetchHeadersMatchSession=not desktop,workerFetchHeaderMismatch=desktop,observedUserAgentUniform=not desktop,fullTemplateAcceptance=False)))
+        report['cases'].append(dict(index=index,serial=index+1,status='passed',sessions=sessions,workerFetchMismatchSessions=[session['name'] for session in sessions] if desktop else [],fullTemplateAcceptance=False))
         coverage=dict(requiredFields=contract.FIELDS,**{context:dict(compared=contract.FIELDS,missingOrInvalid=[],different=[]) for context in ['frame','worker']})
-        observation=dict(fresh=True,identityAppliedRevision=index+2,rows=[dict(key=key,state='verified') for key in ['ua','language','frame','worker','zone']],contextCoverage=coverage,controlledRequestHeaders=sessions[0]['requestHeaders'])
+        observation=dict(fresh=True,identityAppliedRevision=index+2,rows=[dict(key=key,state='verified') for key in ['ua','language','frame','worker','zone']]+[dict(key='worker-header',state='uncovered')],fullDesktopUaConsistency=False,fingerprintTemplateAcceptance=False,contextCoverage=coverage,controlledRequestHeaders=sessions[0]['requestHeaders'])
         native=dict(requested=requested,accepted=requested,requestedLocales=contract.REQUESTS[index],expectedSdkLocales=[contract.NORMALIZED[index]],getterScope='requested-descriptor-only',rfpAcknowledged=True,fingerprintingProtected=False,trackingProtection=index<2)
         report['appliedCases'].append(dict(index=index,templateId=template,privacy=privacy,nativePolicy=native,identity=dict(slot=0,generation=0,environmentId='00000000-0000-0000-0000-000000000001'),desiredRevision=index+2,appliedRevision=index+2,observedRevision=index+2,report=observation))
     # These copied guard fields remain counterfeit validator metadata. They do
     # not represent an SDK invocation or a real closed-guard request.
-    guard=prototype_metadata(identity,report['runNonce'])
     report['origin']=guard['origin'];report['guardEvidence']=guard['guardEvidence']
     for actual,metadata in zip(report['cases'],guard['cases']):
         actual.update(requestedAt=metadata['requestedAt'],completedAt=metadata['completedAt'])
         for session,native_metadata in zip(actual['sessions'],metadata['sessions']):
-            session['native'].update(native_metadata['native'])
+            session['native'].update({key:native_metadata['native'][key] for key in ['session','runtime']})
             session['observed']['parent']['at']=native_metadata['observed']['parent']['at']
     return report
 
@@ -65,6 +65,18 @@ class TemplateContractTest(unittest.TestCase):
     def test_template_cannot_hide_a_request_after_closing_guard(self):self.rejects(lambda r:r['guardEvidence']['afterServer'].update(acceptedConnections=r['guardEvidence']['beforeServer']['acceptedConnections']+1))
     def test_template_cannot_use_a_foreign_native_guard_sender(self):self.rejects(lambda r:r['guardEvidence']['nativePort'].update(nativeSession=5002))
     def test_template_cannot_claim_an_untrusted_worker_rejection(self):self.rejects(lambda r:r['guardEvidence']['observed']['worker'].update(trusted=False))
+    def test_desktop_worker_http_mismatch_is_preserved(self):
+        result=contract.verify_template_report(self.report);self.assertFalse(result['fullDesktopUaConsistency']);self.assertEqual(result['workerFetchMismatchSessions'],[{'case':0,'sessions':[]},{'case':1,'sessions':['primary']},{'case':2,'sessions':[]},{'case':3,'sessions':['primary','secondary']}])
+    def test_template_cannot_omit_independent_default_ua(self):self.rejects(lambda r:r.pop('sdkUserAgentBaseline'))
+    def test_template_cannot_use_session_ua_as_default(self):self.rejects(lambda r:r['sdkUserAgentBaseline'].update(userAgent=r['cases'][1]['sessions'][0]['native']['userAgent']))
+    def test_template_default_ua_is_not_runtime_ack(self):self.rejects(lambda r:r['sdkUserAgentBaseline'].update(runtimeAcknowledgement=True))
+    def test_template_cannot_rewrite_desktop_worker_header_to_match_page(self):self.rejects(lambda r:r['cases'][1]['sessions'][0]['requestHeaders'][4].update(userAgent=r['cases'][1]['sessions'][0]['native']['userAgent']))
+    def test_template_worker_default_cannot_replace_document_header(self):self.rejects(lambda r:r['cases'][1]['sessions'][0]['requestHeaders'][0].update(userAgent=r['sdkUserAgentBaseline']['userAgent']))
+    def test_template_cannot_hide_measured_worker_mismatch(self):self.rejects(lambda r:r['cases'][1]['sessions'][0]['userAgentScope'].update(workerFetchHeaderMismatch=False))
+    def test_template_cannot_hide_case_worker_mismatch(self):self.rejects(lambda r:r['cases'][3].update(workerFetchMismatchSessions=[]))
+    def test_template_cannot_claim_full_desktop_ua(self):self.rejects(lambda r:r.update(fullDesktopUaConsistency=True))
+    def test_product_selfcheck_cannot_claim_worker_http_from_js(self):self.rejects(lambda r:r['appliedCases'][1]['report']['rows'][-1].update(state='verified'))
+    def test_product_observation_cannot_promote_desktop_scope(self):self.rejects(lambda r:r['appliedCases'][1]['report'].update(fullDesktopUaConsistency=True))
     def test_sdk_prototype_is_not_template_evidence(self):self.rejects(lambda r:r.update(diagnosticOnly=True,fixtureType='prototype'))
     def test_incomplete_context_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['observed'].update(frame={'ua':'Firefox/157.0'}))
     def test_missing_main_language_type_cannot_pass(self):self.rejects(lambda r:r['cases'][0]['sessions'][0]['observed']['parent'].update(language=42))
@@ -98,8 +110,8 @@ class TemplateEvidenceGateTest(unittest.TestCase):
         paths.update('app/src/main/assets/gecko/'+name for name in ['background.js','content.js','main-world-audit.js'])
         hashes={path:hashlib.sha256((ROOT/path).read_bytes()).hexdigest() for path in paths}
         base=dict(status='passed',actualAndroidExecution=False,sourceCommit='a'*40,sourceTree='b'*40,sourceDirty=False,sourceUnchangedDuringChecks=True,files=hashes)
-        checks=[{'name':'Counterfeit metadata only '+str(i),'pass':True} for i in range(91)]
-        template=dict(status='passed',actualAndroidExecution=False,passed=91,total=91,checks=checks)
+        checks=[{'name':'Counterfeit metadata only '+str(i),'pass':True} for i in range(95)]
+        template=dict(status='passed',actualAndroidExecution=False,passed=95,total=95,checks=checks)
         intent=dict(status='passed',actualAndroidExecution=False,passed=14,total=14,checks=checks[:14])
         host=dict(base,results=[dict(test='FingerprintTemplateTest',exitCode=0,output=json.dumps(template)),dict(test='BrowserEditIntentTest',exitCode=0,output=json.dumps(intent))])
         controller=dict(base,passed=74,total=74,checks=checks[:74])

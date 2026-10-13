@@ -58,7 +58,7 @@ def verify_template_host(directory,source,tree):
     matches=[group for group in host.get('results',[]) if group.get('test')=='FingerprintTemplateTest']
     if len(matches)!=1 or matches[0].get('exitCode')!=0:raise ValueError('Actual production template/report host suite required')
     template=json.loads(matches[0].get('output','{}'))
-    if template.get('actualAndroidExecution') is not False or template.get('status')!='passed' or type(template.get('passed')) is not int or template['passed']<91 or template['passed']!=template.get('total') or len(template.get('checks',[]))!=template['passed'] or any(row.get('pass') is not True for row in template['checks']):raise ValueError('Template report negative host assertions are incomplete')
+    if template.get('actualAndroidExecution') is not False or template.get('status')!='passed' or type(template.get('passed')) is not int or template['passed']<95 or template['passed']!=template.get('total') or len(template.get('checks',[]))!=template['passed'] or any(row.get('pass') is not True for row in template['checks']):raise ValueError('Template report negative host assertions are incomplete')
     counts['templateReport']=template['passed'];return counts
 
 
