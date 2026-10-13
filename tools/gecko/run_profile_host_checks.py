@@ -35,6 +35,7 @@ def main():
     proxy_test = ROOT / 'tests/browser-runtime/gecko-proxy-route.test.cjs'
     if proxy_test.is_file():
         input_paths.add(proxy_script)
+    input_paths.add(ROOT / "tools/gecko/run_resource_host_checks.py")
     input_paths.update((ROOT / "app/src/main/assets/gecko").glob("*.js"))
     before_hashes = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in input_paths}
     java = os.environ.get("PROFILE_JAVA") or shutil.which("java")
@@ -156,6 +157,10 @@ def main():
     files.update((ROOT/'app/src/main/AndroidManifest.xml',ROOT/'tests/gecko/EnvironmentManagementIntegrationActivity.java',ROOT/'tests/gecko/run_device.py'))
     files.update((ROOT/'tests/gecko/GeckoIntegrationTestActivity.java',ROOT/'tools/gecko/check_template_evidence.py'))
     files.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py'))
+    pressure_receipt=output / "resource-pressure-host-results.json"
+    subprocess.run([sys.executable,str(ROOT / "tools/gecko/run_resource_host_checks.py"),"--json-jar",str(json_jar),"--output",str(pressure_receipt)],cwd=ROOT,check=True)
+    pressure=json.loads(pressure_receipt.read_text());results.append({"test":"resource-pressure-host","report":str(pressure_receipt.relative_to(ROOT)),"passed":pressure["passed"],"actualAndroidExecution":False})
+    files.update(ROOT/path for path in pressure["files"])
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest

@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT / 'tools/gecko'))
 from profile_invocation_contract import (verify, expected_build, verify_installed,
     bind_report, verify_invocation, verify_diagnostic)
 from template_invocation_contract import verify_template_report, expected_check_names
+from resource_invocation_contract import verify_resource_report
 
 
 def main():
@@ -53,6 +54,7 @@ def main():
         ('EnvironmentIntentIntegrationActivity','environment-intent',1,True),
         ('GeckoIdentityPrototypeIntegrationActivity','gecko-identity-prototype',1,True),
         ('GeckoTemplateIntegrationActivity','gecko-template',len(expected_check_names()),True),
+        ('ResourcePressureIntegrationActivity','resource-pressure',1,True),
     ]:
         path = output / (endpoint + '-results.json')
         path.unlink(missing_ok=True)
@@ -79,6 +81,9 @@ def main():
                         verify_diagnostic(report)
                     if endpoint=='gecko-template':
                         verify_template_report(report)
+                    if endpoint=='resource-pressure':
+                        expected_resource=re.findall(r'resourceCheck\("([^"\n]+)"',(ROOT/'tests/gecko/ResourcePressureIntegrationActivity.java').read_text())
+                        verify_diagnostic(report);verify_resource_report(report,expected_resource)
                     sdk=int(adb('shell','getprop','ro.build.version.sdk').strip())
                     if report.get('androidSdk')!=sdk:
                         raise ValueError('Device SDK observation does not match report')
@@ -87,7 +92,7 @@ def main():
                         'buildIdentity':identity,'reportSha256':hashlib.sha256(raw.encode()).hexdigest(),
                         'reportBytes':len(raw.encode()),'installedBeforeAndAfterMatched':True,
                         'rawReportPreserved':True,'androidSdk':sdk,
-                        'diagnosticOnly':endpoint=='gecko-identity-prototype',
+                        'diagnosticOnly':endpoint in ['gecko-identity-prototype','resource-pressure'],
                         'scope':'Installed test APK/source and invocation-bound raw Android report; prototype remains diagnostic, not template acceptance'
                     },indent=2)+'\n')
                     print(json.dumps({'fixture':activity,'passed':report['passed'],'sourceCommit':identity['sourceCommit'],'apkSha256':identity['apkSha256']}))

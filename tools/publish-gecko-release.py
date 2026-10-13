@@ -34,6 +34,7 @@ version=re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'",settings).group(1)
 version_code=int(re.search(r'versionCode ([0-9]+)',settings).group(1))
 roadmap_release=tuple(map(int,version.split('.'))) >= (1,6,0)
 template_release=tuple(map(int,version.split('.'))) >= (1,7,0)
+resource_release=tuple(map(int,version.split('.'))) >= (2,0,0)
 p=argparse.ArgumentParser()
 p.add_argument('--source',required=True)
 p.add_argument('--apk',type=pathlib.Path,default=root/f'dist/PocketChat-{version}-gecko-arm64.apk')
@@ -126,6 +127,9 @@ if roadmap_release:
 if template_release:
     from gecko.check_template_evidence import verify_template_evidence
     manifest['controlledTemplateRegression']=verify_template_evidence(args.evidence,args.source)
+if resource_release:
+    from gecko.check_resource_evidence import verify_resource_evidence
+    manifest['resourcePressureDiagnostic']=verify_resource_evidence(args.evidence,args.source)
 for number,offset in enumerate(range(0,len(raw),60_000_000)):
     part=raw[offset:offset+60_000_000];name=f'{args.apk.name}.part{number:02d}'
     manifest['parts'].append({'file':name,'bytes':len(part),'sha256':hashlib.sha256(part).hexdigest()})
@@ -146,6 +150,7 @@ if version_code>=45:performance_files.extend(['update-transfer-results.json','up
 if version_code>=49:performance_files.extend(['reading-host-results.json','reading-focus-host-results.json','gecko-scroll-diagnostics.json','gecko-scroll-diagnostic-log.json'])
 if roadmap_release:performance_files.extend(['emulator-bootstrap-results.json','environment-spec-results.json','environment-intent-results.json','profile-host-results.json','environment-intent-host-results.json','gecko-proxy-route-host-results.json','gecko-identity-prototype-results.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json'])
 if template_release:performance_files.extend(['gecko-template-results.json','gecko-template-runner-log.json','identity-controller-host-results.json','deferred-browser-host-results.json','identity-bridge-host-results.json'])
+if resource_release:performance_files.extend(['resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json'])
 if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','official-sdk-verification.json','official-sdk-input.json'])
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
 shutil.copy2(args.notes,stage/'RELEASE.md')
@@ -175,6 +180,8 @@ if previous:
     subprocess.run(['git','fetch','origin','refs/heads/'+branch],cwd=root,check=True)
     parents+=['-p',previous[0]]
 subprocess.run(['git','read-tree','--empty'],cwd=root,env=env,check=True)
+if resource_release:
+    for name in ['check_resource_evidence.py','resource_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*(['manual-acceptance.json'] if manual_raw is not None else []),*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
 tree=subprocess.check_output(['git','write-tree'],cwd=root,env=env,text=True).strip()
 commit=subprocess.check_output(['git','commit-tree',tree,*parents,'-m','Publish original-signed production Gecko APK'],cwd=root,env=env,text=True).strip()

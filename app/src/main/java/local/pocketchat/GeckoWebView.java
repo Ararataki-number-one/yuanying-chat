@@ -116,7 +116,9 @@ class GeckoWebView extends FrameLayout {
     }catch(Exception error){failure("新内核未能启动，请重新打开当前环境重试");}
   }
   ResourcePressureController.MemorySample resourceMemory(){return owner.resources.sample();}
-  boolean retryResourceStart(){if(!resourceDeferred||destroyed||runtime!=null)return false;String target=queued.isEmpty()?owner.navigationTarget:queued;initialize();if(!resourceDeferred){if(!target.isEmpty())owner.beginNavigation(target,"正在打开当前环境");else owner.setStatus("正在打开当前环境");owner.wakePolling();}return true;}
+  boolean resourcePage(String target){return MainActivity.chatUrl(target);}
+  boolean resourceSamePage(String a,String b){return WebReplyObserver.same(a,b);}
+  boolean retryResourceStart(){if(!resourceDeferred||destroyed||runtime!=null)return false;String target=queued.isEmpty()?owner.navigationTarget:queued;if(!target.isEmpty()&&allowedUrl(target)&&owner.guard.allowed())queued=target;initialize();if(!resourceDeferred&&!failed&&runtime!=null){if(!target.isEmpty())owner.beginNavigation(target,"正在打开当前环境");else owner.setStatus("正在打开当前环境");owner.wakePolling();}return true;}
   boolean hasOpenPopup(){return !popups.isEmpty();}
   private final WebExtension.MessageDelegate routeMessages=new WebExtension.MessageDelegate(){
     @Override public void onConnect(WebExtension.Port port){
@@ -298,12 +300,13 @@ class GeckoWebView extends FrameLayout {
           }
           if("result".equals(kind))callbacks.complete(incoming,data.optInt("id"),data.optString("result","null"));
           else if("auditResult".equals(kind)){String value=data.optString("result","null");if(value.length()<=64000)callbacks.complete(incoming,data.optInt("id"),value);}
-          else if("reply".equals(kind)&&MainActivity.chatUrl(port.sender.url)&&MainActivity.chatUrl(getUrl())&&owner.webObserver!=null){String text=data.optString("text");if(text.length()<=2*1024*1024)owner.webObserver.receive(J.parse(text));}
+          else if("reply".equals(kind)&&MainActivity.chatUrl(port.sender.url)&&MainActivity.chatUrl(getUrl())&&owner.webObserver!=null){String text=data.optString("text");if(text.length()<=2*1024*1024)owner.webObserver.receive(J.parse(text),incoming);}
           else if("ready".equals(kind)&&owner.webObserver!=null)owner.webObserver.pageReady();
         }
-        @Override public void onDisconnect(WebExtension.Port incoming){if(ports.get(source)==incoming)ports.remove(source);callbacks.cancel(incoming);}
+        @Override public void onDisconnect(WebExtension.Port incoming){if(ports.get(source)==incoming)ports.remove(source);if(source==current)owner.resourceObserverDisconnected(incoming);callbacks.cancel(incoming);}
       });
       if(previous!=null&&previous!=port)callbacks.cancel(previous);
+      if(source==current)owner.resourceObserverConnected(port);
     }
   };
   protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicHttps(Uri.parse(target));}

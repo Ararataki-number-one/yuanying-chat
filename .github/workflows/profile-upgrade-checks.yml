@@ -28,6 +28,8 @@ jobs:
           mkdir -p work/profile-host
           curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar -o work/profile-host/json.jar
           echo '3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  work/profile-host/json.jar' | sha256sum -c -
+          npm install --prefix work/resource-observer --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+          python3 tools/gecko/run_resource_observer_host.py --jsdom-module "$PWD/work/resource-observer/node_modules/jsdom" --output work/profile-host/resource-observer-host-results.json
           python3 tools/gecko/run_profile_host_checks.py --json-jar work/profile-host/json.jar
           if [ -f tools/gecko/run_identity_host_checks.sh ]; then
             bash tools/gecko/run_identity_host_checks.sh

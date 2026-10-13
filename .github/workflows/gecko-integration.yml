@@ -73,6 +73,7 @@ jobs:
           java -cp work/gecko-integration/snapshot-host local.pocketchat.FileSnapshotCacheTest | tee work/gecko-integration/snapshot-host-results.json
           npm install --prefix work/browser-perf-host --ignore-scripts --no-audit --no-fund jsdom@26.1.0
           java -cp work/gecko-integration/reading-host local.pocketchat.BrowserReadingFocusScript > work/gecko-integration/reading-focus.js
+          python3 tools/gecko/run_resource_observer_host.py --jsdom-module "$PWD/work/browser-perf-host/node_modules/jsdom" --output work/gecko-integration/resource-observer-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-reading-focus.cjs work/gecko-integration/reading-focus.js | tee work/gecko-integration/reading-focus-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/reply-observation.test.cjs | tee work/gecko-integration/reply-observation-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/reply-binding-loading.test.cjs | tee work/gecko-integration/reply-binding-host-results.json
@@ -115,6 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/gecko/run_profile_host_checks.py --json-jar work/gecko-integration/catalog-json.jar --network-reports work/gecko-integration
+          cp work/profile-host/resource-pressure-host-results.json work/gecko-integration/resource-pressure-host-results.json
           cp work/profile-host/results.json work/gecko-integration/profile-host-results.json
           cp work/profile-host/identity-controller-host-results.json work/gecko-integration/identity-controller-host-results.json
           cp work/profile-host/deferred-browser-host-results.json work/gecko-integration/deferred-browser-host-results.json
@@ -229,6 +231,9 @@ jobs:
             checks_failed=1
           fi
           if ! python3 tools/gecko/check_template_evidence.py work/gecko-integration --source "$GITHUB_SHA"; then
+            checks_failed=1
+          fi
+          if ! python3 tools/gecko/check_resource_evidence.py work/gecko-integration --source "$GITHUB_SHA"; then
             checks_failed=1
           fi
           if ! python3 tools/gecko/check_chain_evidence.py work/gecko-integration --source "$GITHUB_SHA"; then

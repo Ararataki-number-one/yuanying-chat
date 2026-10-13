@@ -66,12 +66,16 @@ final class WebReplyObserver {
   }
   static boolean webJob(JSONObject job) { return job != null && "web".equals(job.optString("kind")); }
 
-  void receive(JSONObject event) {
+  void receive(JSONObject event) {receive(event,null);}
+  void receive(JSONObject event,Object port) {
     String url = event.optString("url"), token = event.optString("token"), document = event.optString("documentId");
     if (!MainActivity.chatUrl(url) || !MainActivity.chatUrl(session.web.getUrl()) ||
         !document.matches("[a-zA-Z0-9-]{16,80}")) return;
     String type = event.optString("type");
+    if("resource-route".equals(type)){session.resourceObserverRouteReady(event,port);return;}
+    if("resource-work".equals(type)){session.resourceWebsiteObservation(event,port);return;}
     if ("ready".equals(type)) {
+      session.resourceObserverRouteReady(event,port);
       if (session.webPerformance() && session.networkReady && !session.offline &&
           session.navigating && session.targetMatches(url)) session.wakePolling();
       return;

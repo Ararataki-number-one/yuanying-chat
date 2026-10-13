@@ -39,7 +39,7 @@ public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
     @Override public Context getApplicationContext(){return this;}
     @Override public File getNoBackupFilesDir(){if(!directory.isDirectory()&&!directory.mkdirs())throw new IllegalStateException("Private fixture directory unavailable");return directory;}
   }
-  final class FixtureView extends GeckoWebView {
+  class FixtureView extends GeckoWebView {
     FixtureView(Context context,ChatSession session){super(context,session);}
     @Override protected boolean allowedUrl(String target){return target!=null&&target.startsWith(origin+"/");}
     @Override JSONObject route(String target){
@@ -90,6 +90,7 @@ public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
     String name="unowned";for(Map.Entry<String,GeckoSession> item:targets.entrySet())if(item.getValue()==sdk){name=item.getKey();break;}
     navigation.put(J.obj("kind",kind,"url",target,"session",System.identityHashCode(sdk),"name",name,"case",serial,"at",SystemClock.elapsedRealtime(),"detail",detail));
   }
+  FixtureView createFixtureView(Context context,ChatSession session){return new FixtureView(context,session);}
   void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
   @Override public void onCreate(Bundle state){
     super.onCreate(state);
@@ -113,7 +114,7 @@ public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
       Context context=new PrivateContext(getApplicationContext());
       context.getSharedPreferences("chat",0).edit().putString("networkMode","external").putString("proxy","").putBoolean("requireExternalVpn",false).putBoolean("networkConfigured",false).putInt("privacyLevel",0).putBoolean("backgroundWait",false).commit();
       ProfileCatalog.get(context).created(Profiles.slot(context));
-      ChatSession.browserFactory=(c,s)->new FixtureView(c,s);owner=ChatSession.get(context);view=(FixtureView)owner.web;
+      ChatSession.browserFactory=(c,s)->createFixtureView(c,s);owner=ChatSession.get(context);view=(FixtureView)owner.web;
       owner.handler.removeCallbacks(owner.tick);owner.networkReady=true;owner.offline=false;owner.uiVisible=true;owner.guard.setBlocked(false);
       LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);
       TextView label=new TextView(this);label.setText("Official Gecko identity prototype · controlled local observations only");layout.addView(label);
