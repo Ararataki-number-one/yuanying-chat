@@ -65,10 +65,44 @@ class HttpProxy(socketserver.BaseRequestHandler):
             with fixture.CONNECTION_LOCK:fixture.CONNECTIONS.discard(client)
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address=True;daemon_threads=True
+class PauseTransferBarrier:
+    """Keep the first real response incomplete until a real pause is accepted."""
+    def __init__(self,timeout=15):
+        self.timeout=timeout;self.reached=threading.Event();self.ended=threading.Event()
+        self._accepted=threading.Event();self._abort=threading.Event();self._lock=threading.Lock();self._state={}
+    def snapshot(self):
+        with self._lock:return dict(self._state)
+    def hold(self,connection,trace,held,total):
+        with self._lock:
+            now=time.monotonic();self._state=dict(heldBytes=held,totalBytes=total,reachedAt=now,deadline=now+self.timeout,endedAt=0,reason='',actualPauseAccepted=False)
+            trace['pauseBarrier']=self._state
+        self.reached.set()
+        reason=''
+        try:
+            while not reason:
+                if self._accepted.is_set():reason='actual-pause-accepted';break
+                if self._abort.is_set():reason='cleanup';break
+                remaining=self._state['deadline']-time.monotonic()
+                if remaining<=0:reason='deadline';break
+                readable,_,_=select.select([connection],[],[],min(.05,remaining))
+                if readable and not connection.recv(1,socket.MSG_PEEK):reason='client-disconnect'
+        except OSError:reason='client-disconnect'
+        finally:
+            with self._lock:self._state.update(reason=reason,endedAt=time.monotonic())
+            self.ended.set()
+    def accept_pause(self,gesture,phase):
+        if not (gesture.get('label')=='暂停下载' and all(gesture.get(key) is True for key in ['actualAndroidInput','actualNativeView','enabled','clickable','windowFocused']) and phase.get('state')=='paused' and phase.get('userPaused') is True):
+            raise AssertionError('The HTTP barrier requires an actual Android pause gesture accepted by production')
+        with self._lock:
+            if not self.reached.is_set() or self._state['reason'] not in {'','client-disconnect'}:raise AssertionError('The first pause HTTP barrier is unavailable')
+            self._state.update(actualPauseAccepted=True,pauseAcceptedAt=time.monotonic(),gestureToken=gesture.get('token'),pauseToken=phase.get('token'),runningAtAcceptance=phase.get('running'))
+        self._accepted.set()
+    def abort(self):self._abort.set()
 class Fixture(fixture.Fixture):
     update_transfer_trace=[]
     update_transfer_counts={}
     update_transfer_lock=threading.Lock()
+    pause_barrier=None
     def update_transfer(self,scenario):
         if scenario not in {'cut','pause','ignore-range','bad-range','changed-etag','short-length','oversize','bad-hash','bad-signer','queued-cancel','cancel-restart'}:
             self.send_error(404);return
@@ -103,8 +137,12 @@ class Fixture(fixture.Fixture):
         self.end_headers();trace.update(status=status,etag=etag,contentRange=content_range,responseBytes=len(response))
         cut=index==1 and not incoming_range and scenario in {'cut','ignore-range','bad-range','changed-etag','queued-cancel','cancel-restart'}
         send_length=len(body)//2 if cut else len(response)
+        barrier_at=(send_length-1)//16384*16384 if scenario=='pause' and index==1 and not incoming_range else -1
         try:
             for at in range(0,send_length,16384):
+                if at==barrier_at:
+                    if self.pause_barrier is None:raise AssertionError('First pause response requires an armed HTTP barrier')
+                    self.pause_barrier.hold(self.connection,trace,trace['sentBytes'],len(body));self.close_connection=True;return
                 chunk=response[at:min(at+16384,send_length)];self.wfile.write(chunk);self.wfile.flush();trace['sentBytes']+=len(chunk)
                 if scenario=='pause':time.sleep(.5)
             if cut:
@@ -352,6 +390,7 @@ def main():
         (OUT/('update-transfer-job-'+stage+'.txt')).write_text(detail);event=dict(stage=stage,jobId=4103,state=raw.strip(),service='local.pocketchat.AppUpdateJob',readinessTrace=attempts);update_report['actualJobExecutions'].append(event);return event
     def update_transfers():
         nonlocal update_report
+        Fixture.pause_barrier=PauseTransferBarrier()
         update_report=dict(status='running',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),diagnosticOnly=bool(diagnostic),validationScope='Diagnostic update-transfers subset; cannot replace full acceptance' if diagnostic else 'Full device acceptance',actualAndroidExecution=True,actualHttpTransfer=True,actualJobSchedulerExecution=False,checks=[],cases=[],httpTransfers=Fixture.update_transfer_trace,actualAndroidGestures=[],actualJobExecutions=[],scope='Real signed synthetic APK over controlled HTTP through the production transfer and Android JobScheduler; no synthetic APK installed.')
         original=(OUT/'update-fixture.apk').read_bytes();expected=hashlib.sha256(original).hexdigest();size=len(original)
         cut=transfer('cut',target='waiting');transfer_check('disconnectPreservesPartial',cut['partialBytes']==size//2 and cut['partialSha']==hashlib.sha256(original[:size//2]).hexdigest() and cut['partialIdentity'] and not cut['uri'])
@@ -371,9 +410,21 @@ def main():
         transfer_check('streamingStatusReadable',progress['statusReads']>=2 and 0<progress['received']<size and progress['total']==size and isinstance(progress['message'],str) and speed>0 and remaining>=0 and remaining==(progress['total']-progress['received']+speed-1)//speed and progress['speedSamplePairs']>0 and progress['speedSampleDeltaBytes']>0 and progress['speedSampleDurationMillis']>0 and progress['speedLastReceived']-progress['speedFirstReceived']==progress['speedSampleDeltaBytes'] and progress['speedLastSampleNanos']>progress['speedFirstSampleNanos'] and '/s' in progress['downloadDetailsText'] and '约剩' in progress['downloadDetailsText'])
         transfer_check('mainThreadStatusNoIo',progress['statusMainThreadIo']==0)
         transfer_check('progressKeepsViewIdentity',progress['progressIdentityPairs']>=1)
-        update_touch('暂停下载');paused=transfer('pause','transferWaitPaused','paused')
+        assert Fixture.pause_barrier.reached.wait(35),'First pause HTTP barrier was not reached'
+        barrier=Fixture.pause_barrier.snapshot();update_report['pauseBarrierBeforeGesture']=barrier
+        assert 0<barrier['heldBytes']<size and not barrier['reason'],barrier
+        update_touch('暂停下载')
+        # A pause first records the user's choice, then cancels its blocked read.
+        # Release only after observing that real gesture's production state;
+        # the original paused/not-running oracle still follows below.
+        accepted=transfer('pause','transferInspect','inspect')
+        Fixture.pause_barrier.accept_pause(update_report['actualAndroidGestures'][-1],accepted)
+        paused=transfer('pause','transferWaitPaused','paused')
         transfer_check('actualPauseTouch',paused['state']=='paused' and paused['userPaused'] and not paused['running'])
         transfer_check('pauseKeepsPartial',0<paused['partialBytes']<size and paused['partialIdentity'] and not paused['uri'])
+        assert Fixture.pause_barrier.ended.wait(1),'Accepted pause did not release its HTTP barrier'
+        barrier=Fixture.pause_barrier.snapshot();update_report['pauseBarrierAfterPause']=barrier
+        assert barrier['actualPauseAccepted'] and barrier['reason'] in {'actual-pause-accepted','client-disconnect'} and 0<paused['partialBytes']<=barrier['heldBytes']<size,barrier
         before_race=len(Fixture.update_transfer_trace)
         queued_pause=transfer('pause','transferQueuedPause','paused')
         transfer_check('queuedResumeCannotOverridePause',queued_pause['commandQueueDrained'] and queued_pause['state']=='paused' and queued_pause['userPaused'] and queued_pause['partialBytes']==paused['partialBytes'] and queued_pause['partialSha']==paused['partialSha'] and queued_pause['partialIdentity'] and not queued_pause['running'] and not queued_pause['pendingTransferJob'] and len(Fixture.update_transfer_trace)==before_race)
@@ -690,6 +741,9 @@ def main():
     finally:
         import sys
         primary_error=sys.exc_info()[1]
+        if Fixture.pause_barrier is not None:
+            Fixture.pause_barrier.abort()
+            if Fixture.pause_barrier.reached.is_set():Fixture.pause_barrier.ended.wait(1)
         prefix=f'diagnostic-{diagnostic}-' if diagnostic else ''
         report['steps']=steps
         report['eventTransport']=dict(schema=1,buildIdentity=identity,invocations=event_transfers,scope='Source/APK/nonce/slot/action/sequence and exact UTF-8 size/SHA-bound file handoff; original full event results and assertions remain unchanged')
