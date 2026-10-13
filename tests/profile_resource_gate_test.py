@@ -27,9 +27,14 @@ class ResourceContractTest(unittest.TestCase):
         value=copy.deepcopy(self.report);edit(value)
         with self.assertRaises(ValueError):contract.verify_resource_report(value,NAMES)
     def test_complete_metadata_retains_diagnostic_scope(self):
-        value=contract.verify_resource_report(self.report,NAMES);self.assertTrue(value['diagnosticOnly']);self.assertFalse(value['capacityAcceptance']);self.assertFalse(value['physicalDeviceAcceptance']);self.assertEqual(value['controlledSdkChecks'],129)
+        value=contract.verify_resource_report(self.report,NAMES);self.assertTrue(value['diagnosticOnly']);self.assertFalse(value['capacityAcceptance']);self.assertFalse(value['physicalDeviceAcceptance']);self.assertEqual(value['controlledSdkChecks'],138)
     def test_failure_cannot_hide_behind_green_metadata(self):self.rejects(lambda r:r.update(failureType="NativeFailure"))
     def test_boolean_counters_are_not_runtime_counts(self):self.rejects(lambda r:r["allocation"].update(coldRuntimeCreates=False))
+    def test_guard_assertions_are_appended_after_original_sdk_checks(self):
+        names=contract.prototype_names();self.assertEqual(len(names[:-9]),129);self.assertEqual(names[-9:],list(contract._guard.GUARD_CHECK_NAMES))
+    def test_missing_actual_guard_evidence(self):self.rejects(lambda r:r.pop("guardEvidence"))
+    def test_guard_tcp_cannot_hide_a_new_connection(self):self.rejects(lambda r:r["guardEvidence"]["afterServer"].update(acceptedConnections=r["guardEvidence"]["beforeServer"]["acceptedConnections"]+1))
+    def test_guard_native_sender_is_bound(self):self.rejects(lambda r:r["guardEvidence"]["nativePort"].update(nativeSession=999))
     def test_wrong_schema(self):self.rejects(lambda r:r.update(schema=2))
     def test_wrong_sdk(self):self.rejects(lambda r:r.update(sdkAarSha256='f'*64))
     def test_physical_capacity_claim(self):self.rejects(lambda r:r.update(capacityAcceptance=True))

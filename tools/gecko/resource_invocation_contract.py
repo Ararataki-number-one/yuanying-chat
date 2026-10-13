@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Controlled resource observations; never physical capacity or native fingerprint acceptance."""
 import re
+import importlib.util
+from pathlib import Path
+
+_guard_spec=importlib.util.spec_from_file_location("resource_shared_guard_contract",Path(__file__).with_name("profile_invocation_contract.py"))
+_guard=importlib.util.module_from_spec(_guard_spec);_guard_spec.loader.exec_module(_guard)
 from urllib.parse import urlsplit, parse_qsl
 
 CUSTOM=['INDEPENDENT_TIMEZONE','CANVAS_READBACK','WEBGL_IDENTITY','AUDIO_IDENTITY','FONT_IDENTITY']
@@ -17,7 +22,7 @@ def prototype_names():
                 result += [prefix+context+' '+suffix for suffix in ['actual UA matches native session','observes SDK normalized language','agrees on observed language list','agrees on observed timezone']]
             result += [prefix+role+' has real server request headers' for role in ['page','frame','worker-script','page-fetch','worker-fetch','blob-worker-fetch']]
         if index==3:result += ['Two sessions share this runtime locale, not separate environment evidence']
-    return result
+    return result+list(_guard.GUARD_CHECK_NAMES)
 
 
 def verify_resource_report(report, expected):
@@ -35,6 +40,7 @@ def verify_resource_report(report, expected):
     all_rows=report.get('checks',[]);wanted=expected+prototype_names()
     if [x.get('name') for x in all_rows]!=wanted or any(x.get('pass') is not True for x in all_rows) or report.get('passed')!=len(wanted) or report.get('total')!=len(wanted):
         raise ValueError('The independent controlled SDK context checks must remain complete')
+    _guard.verify_guard_evidence(report)
     allocation=report.get('allocation',{})
     if type(allocation.get('coldRuntimeCreates')) is not int or type(allocation.get('recoveryRuntimeCreates')) is not int or allocation.get('coldRuntimeCreates')!=0 or allocation.get('recoveryRuntimeCreates')!=1 or allocation.get('physicalCapacityAcceptance') is not False or allocation.get('pressureSource')!='synthetic-pressure-control':
         raise ValueError('Runtime creation proof/pressure scope differs')
