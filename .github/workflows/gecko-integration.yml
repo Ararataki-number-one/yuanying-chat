@@ -162,12 +162,6 @@ jobs:
           adb shell input keyevent 82
           adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
           checks_failed=0
-          # Capture new source-bound model/SDK diagnostics before the long suite.
-          # Every legacy suite still runs and every release gate remains required.
-          if ! python3 tests/gecko/run_profile_features.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk; then
-            checks_failed=1
-          fi
-          python3 tools/gecko/publish_ci.py
           if ! python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
             checks_failed=1
           fi
@@ -217,6 +211,11 @@ jobs:
           fi
           python3 tools/gecko/publish_ci.py
           if ! python3 tests/gecko/run_network_safe_idle.py --adb "$(command -v adb)" --serial emulator-5554 --expected-apk-sha "$(python3 -c 'import hashlib,pathlib;print(hashlib.sha256(pathlib.Path("app/build/outputs/apk/integration/app-x86_64-integration.apk").read_bytes()).hexdigest())')"; then
+            checks_failed=1
+          fi
+          python3 tools/gecko/publish_ci.py
+          # Preserve the original input/performance baseline before new fixtures.
+          if ! python3 tests/gecko/run_profile_features.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk; then
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py
