@@ -160,7 +160,7 @@ shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/r
 if roadmap_release:
     for name in ['check_profile_evidence.py','profile_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if template_release:
-    for name in ['check_template_evidence.py','template_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    for name in ['check_template_evidence.py','template_invocation_contract.py','integration_event_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=44:shutil.copy2(root/'tools/gecko/check_connection_evidence.py',stage/'tools/gecko/check_connection_evidence.py')
 if version_code>=45:shutil.copy2(root/'tools/gecko/check_interaction_transfer_evidence.py',stage/'tools/gecko/check_interaction_transfer_evidence.py')
 if version_code>=46:

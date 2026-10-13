@@ -28,6 +28,8 @@ def main():
     input_paths.update((ROOT / "tests").rglob("*.py"))
     input_paths.update((ROOT / "tests").rglob("*.cjs"))
     input_paths.add(Path(__file__).resolve())
+    input_paths.add(ROOT/'tools/gecko/check_template_evidence.py')
+    input_paths.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py'))
     input_paths.add(ROOT/'app/src/main/AndroidManifest.xml')
     proxy_script = ROOT / 'app/src/main/assets/gecko/background.js'
     proxy_test = ROOT / 'tests/browser-runtime/gecko-proxy-route.test.cjs'
@@ -152,6 +154,8 @@ def main():
     lifecycle_sources=('EnvironmentSpec','EnvironmentResetPlan','EnvironmentBrowserData','EnvironmentProcessPolicy','EnvironmentSpecRepository','ProfileCatalog','Profiles','ProfileContext','EnvironmentResetActivity','WindowHomeActivity','MainActivity','ChatSession','ChatService','NetworkUiProvider','AppUpdateRoute','EnvironmentDeleteActivity','EnvironmentSpecRuntime')
     files.update(source/(name+'.java') for name in lifecycle_sources)
     files.update((ROOT/'app/src/main/AndroidManifest.xml',ROOT/'tests/gecko/EnvironmentManagementIntegrationActivity.java',ROOT/'tests/gecko/run_device.py'))
+    files.update((ROOT/'tests/gecko/GeckoIntegrationTestActivity.java',ROOT/'tools/gecko/check_template_evidence.py'))
+    files.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py'))
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest

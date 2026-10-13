@@ -155,6 +155,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("readingInput".equals(action)){tapElement(serial,"composer");readingInput(serial,SystemClock.elapsedRealtime()+15000);return;}
     if("nativeSurface".equals(action)){nativeSurface(serial);return;}
     if("nativeCheckpoint".equals(action)){nativeCheckpoint(serial);return;}
+    if("readingFixtureCookieCleanup".equals(action)){beginReadingFixtureCookieCleanup(serial);return;}
     if("sessionSeed".equals(action)||"sessionRead".equals(action)||"sessionLive".equals(action)||"sessionLogout".equals(action)||"killRestore".equals(action)||"resumeSaved".equals(action)){
       if("killRestore".equals(action)){
         org.mozilla.geckoview.GeckoSession stopped=web.current;stopped.close();stopped.getContentDelegate().onKill(stopped);
@@ -621,26 +622,50 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   static java.util.List<String> cookiesExceptReadingFixture(String value){
     java.util.List<String> result=new java.util.ArrayList<>();
-    for(String cookie:value.split(";")){cookie=cookie.trim();if(!cookie.isEmpty()&&!cookie.startsWith("readingBounds="))result.add(cookie);}
+    for(String cookie:value.split(";")){cookie=cookie.trim();if(!cookie.isEmpty()&&!cookie.equals("readingBounds=controlled-fixture"))result.add(cookie);}
     java.util.Collections.sort(result);return result;
   }
   static boolean hasReadingFixtureCookie(String value){for(String cookie:value.split(";"))if(cookie.trim().startsWith("readingBounds="))return true;return false;}
-  void removeReadingFixtureCookie(long serial,JSONObject checkpoint){
-    GeckoWebView web=session.web;org.mozilla.geckoview.GeckoSession document=web.current;String target=web.getUrl();
+  static boolean hasExactReadingFixtureCookie(String value){int count=0;for(String cookie:value.split(";")){cookie=cookie.trim();if(cookie.startsWith("readingBounds=")){if(!cookie.equals("readingBounds=controlled-fixture"))return false;count++;}}return count==1;}
+  void beginReadingFixtureCookieCleanup(long serial){
+    if(!"local.pocketchat.test".equals(getPackageName())||slot!=1){event(serial,"error",J.obj("error","Reading cookie retirement requires the isolated second test environment"));return;}
+    String target="http://127.0.0.1:8765/reading-cookie-retirement?runNonce="+eventStore.nonce;
+    // Process-restart checks have already finished. This page has no scripts,
+    // cookies or storage writes, so it cannot replace an unexpected marker.
+    session.web.loadUrl(target);awaitReadingFixtureCookieCleanup(serial,target,SystemClock.elapsedRealtime()+15000);
+  }
+  void awaitReadingFixtureCookieCleanup(long serial,String target,long deadline){
+    if(serial!=run)return;session.web.evaluateJavascript("(()=>({url:location.href,ready:document.readyState==='complete'}))()",raw->{
+      if(serial!=run)return;JSONObject state=J.parse(raw);
+      if(target.equals(state.optString("url"))&&state.optBoolean("ready")&&target.equals(session.web.getUrl())){removeReadingFixtureCookie(serial,new JSONObject(),"readingFixtureCookieCleanup","/reading-cookie-retirement");return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","Owned reading cookie retirement page did not load"));return;}
+      session.handler.postDelayed(()->awaitReadingFixtureCookieCleanup(serial,target,deadline),100);
+    });
+  }
+  void removeReadingFixtureCookie(long serial,JSONObject checkpoint){removeReadingFixtureCookie(serial,checkpoint,"nativeCheckpoint","/browser-reading");}
+  void removeReadingFixtureCookie(long serial,JSONObject checkpoint,String kind,String path){
+    GeckoWebView web=session.web;org.mozilla.geckoview.GeckoSession document=web.current;String target=web.getUrl();android.net.Uri location=android.net.Uri.parse(target);
+    if(!"local.pocketchat.test".equals(getPackageName())||!"http".equals(location.getScheme())||!"127.0.0.1".equals(location.getHost())||location.getPort()!=8765||!path.equals(location.getPath())||"readingFixtureCookieCleanup".equals(kind)&&!eventStore.nonce.equals(location.getQueryParameter("runNonce"))){event(serial,"error",J.obj("error","Reading cookie retirement page is not owned by this fixture invocation"));return;}
     web.readCookies("http://127.0.0.1:8765/fixture",nativeBefore->{
       if(serial!=run)return;
-      if(web.current!=document||nativeBefore==null||!hasReadingFixtureCookie(nativeBefore)){event(serial,"error",J.obj("error","reading fixture cookie cleanup has no current native cookie receipt"));return;}
-      // This marker belongs only to the loopback fixture. The reading cases have
-      // already captured their cookie-preservation evidence; expire only this
-      // marker before the original strict environment cookie checks resume.
-      web.evaluateJavascript("(()=>{if(location.origin!=='http://127.0.0.1:8765'||location.pathname!=='/browser-reading'||location.href!=="+JSONObject.quote(target)+")return null;const before=document.cookie;document.cookie='readingBounds=; Max-Age=0; Path=/';return {before,after:document.cookie}})()",raw->{
+      if(web.current!=document||nativeBefore==null||!hasExactReadingFixtureCookie(nativeBefore)){event(serial,"error",J.obj("error","Reading cookie retirement requires one exact known native marker","nativeBefore",nativeBefore));return;}
+      // The completed reading cases own exactly this loopback marker. Unknown
+      // same-name values and every other cookie remain outside this retirement.
+      web.evaluateJavascript("(()=>{if(location.origin!=='http://127.0.0.1:8765'||location.pathname!=="+JSONObject.quote(path)+"||location.href!=="+JSONObject.quote(target)+")return null;const before=document.cookie,markers=before.split(';').map(v=>v.trim()).filter(v=>v.startsWith('readingBounds='));if(markers.length!==1||markers[0]!=='readingBounds=controlled-fixture')return {error:'Unexpected reading fixture marker',before};const documentBefore=performance.timeOrigin;document.cookie='readingBounds=; Max-Age=0; Path=/';return {before,after:document.cookie,documentBefore,documentAfter:performance.timeOrigin}})()",raw->{
         if(serial!=run)return;JSONObject cookies=J.parse(raw);String before=cookies.optString("before"),after=cookies.optString("after");
-        boolean domRemoved=hasReadingFixtureCookie(before)&&!hasReadingFixtureCookie(after),domPreserved=cookiesExceptReadingFixture(before).equals(cookiesExceptReadingFixture(after));
-        if(!domRemoved||!domPreserved){event(serial,"error",J.obj("error","reading fixture cookie cleanup did not preserve the other DOM cookies"));return;}
+        boolean domRemoved=!cookies.has("error")&&hasExactReadingFixtureCookie(before)&&!hasReadingFixtureCookie(after),domPreserved=cookiesExceptReadingFixture(before).equals(cookiesExceptReadingFixture(after));
+        if(!domRemoved||!domPreserved){event(serial,"error",J.obj("error","Reading cookie retirement did not preserve the other DOM cookies","beforeDomCookies",before,"afterDomCookies",after,"nativeBefore",nativeBefore));return;}
         web.readCookies("http://127.0.0.1:8765/fixture",nativeAfter->{
           if(serial!=run)return;boolean nativeRemoved=nativeAfter!=null&&!hasReadingFixtureCookie(nativeAfter),nativePreserved=nativeAfter!=null&&cookiesExceptReadingFixture(nativeBefore).equals(cookiesExceptReadingFixture(nativeAfter));
-          if(web.current!=document||!target.equals(web.getUrl())||!nativeRemoved||!nativePreserved){event(serial,"error",J.obj("error","reading fixture cookie cleanup did not preserve the other native cookies"));return;}
-          NetworkCatalog.put(checkpoint,"readingFixtureCookieRemovedFromDom",domRemoved);NetworkCatalog.put(checkpoint,"readingFixtureCookieRemovedFromNative",nativeRemoved);NetworkCatalog.put(checkpoint,"otherDomCookiesPreserved",domPreserved);NetworkCatalog.put(checkpoint,"otherNativeCookiesPreserved",nativePreserved);event(serial,"nativeCheckpoint",checkpoint);
+          if(web.current!=document||!target.equals(web.getUrl())||!nativeRemoved||!nativePreserved){event(serial,"error",J.obj("error","Reading cookie retirement did not preserve the other native cookies","nativeBefore",nativeBefore,"nativeAfter",nativeAfter));return;}
+          web.evaluateJavascript("(()=>({url:location.href,document:performance.timeOrigin,cookie:document.cookie}))()",finalRaw->{
+            if(serial!=run)return;JSONObject finalPage=J.parse(finalRaw);double beforeDocument=cookies.optDouble("documentBefore",-1),afterDocument=finalPage.optDouble("document",-1);
+            boolean sameSession=web.current==document,sameUrl=target.equals(web.getUrl())&&target.equals(finalPage.optString("url")),sameDocument=beforeDocument>0&&beforeDocument==cookies.optDouble("documentAfter",-1)&&beforeDocument==afterDocument;
+            if(!sameSession||!sameUrl||!sameDocument||!cookiesExceptReadingFixture(after).equals(cookiesExceptReadingFixture(finalPage.optString("cookie")))||hasReadingFixtureCookie(finalPage.optString("cookie"))){event(serial,"error",J.obj("error","Reading cookie retirement lost its owned document"));return;}
+            JSONObject receipt=J.obj("schema",1,"cookie","readingBounds=controlled-fixture","cookiePath","/","processSlot",slot,"runNonce",eventStore.nonce,"invocation",serial,"origin","http://127.0.0.1:8765","url",target,"sameSession",sameSession,"sameDocument",sameDocument,"sameUrl",sameUrl,"sessionBefore",System.identityHashCode(document),"sessionAfter",System.identityHashCode(web.current),"documentBefore",beforeDocument,"documentAfter",afterDocument,"beforeDomCookies",before,"afterDomCookies",finalPage.optString("cookie"),"nativeBefore",nativeBefore,"nativeAfter",nativeAfter,"readingFixtureCookieRemovedFromDom",domRemoved,"readingFixtureCookieRemovedFromNative",nativeRemoved,"otherDomCookiesPreserved",domPreserved,"otherNativeCookiesPreserved",nativePreserved);
+            if("readingFixtureCookieCleanup".equals(kind)){event(serial,kind,receipt);return;}
+            NetworkCatalog.put(checkpoint,"readingFixtureCookieRemovedFromDom",domRemoved);NetworkCatalog.put(checkpoint,"readingFixtureCookieRemovedFromNative",nativeRemoved);NetworkCatalog.put(checkpoint,"otherDomCookiesPreserved",domPreserved);NetworkCatalog.put(checkpoint,"otherNativeCookiesPreserved",nativePreserved);NetworkCatalog.put(checkpoint,"readingFixtureCookieCleanup",receipt);event(serial,"nativeCheckpoint",checkpoint);
+          });
         });
       });
     });

@@ -9,7 +9,10 @@ import hashlib
 import json
 import re
 
-from profile_invocation_contract import PACKAGE, SDK_COORDINATE, verify_installed
+if __package__:
+    from .profile_invocation_contract import PACKAGE, SDK_COORDINATE, verify_installed
+else:
+    from profile_invocation_contract import PACKAGE, SDK_COORDINATE, verify_installed
 
 TAG = 'PocketGeckoIntegration'
 MAX_PAYLOAD_BYTES = 2 * 1024 * 1024

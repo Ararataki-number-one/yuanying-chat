@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Require distinct source/APK/invocation-bound controlled-template Android evidence."""
 import argparse
+import ast
 import hashlib
 import importlib.util
 import json
+import math
 from pathlib import Path
 import re
 import subprocess
+from urllib.parse import parse_qs, urlsplit
 
 ROOT=Path(__file__).resolve().parents[2]
 LIFECYCLE_SOURCE_FILES=tuple('app/src/main/java/local/pocketchat/'+name+'.java' for name in (
@@ -16,6 +19,32 @@ LIFECYCLE_SOURCE_FILES=tuple('app/src/main/java/local/pocketchat/'+name+'.java' 
     'EnvironmentDeleteActivity','EnvironmentSpecRuntime'))+(
     'app/src/main/AndroidManifest.xml','tests/browser-runtime/EnvironmentLifecyclePolicyTest.java',
     'tests/gecko/EnvironmentManagementIntegrationActivity.java','tests/gecko/run_device.py')
+READING_FIXTURE_CLEANUP_ACTION='readingFixtureCookieCleanup'
+READING_FIXTURE_CLEANUP_SOURCE_FILES=(
+    'tests/gecko/GeckoIntegrationTestActivity.java','tools/gecko/check_template_evidence.py',
+    'tools/gecko/integration_event_contract.py','tools/gecko/profile_invocation_contract.py')
+
+
+def requires_reading_fixture_cleanup(source):
+    """Read capability from the selected producers, never from an evidence claim."""
+    action=READING_FIXTURE_CLEANUP_ACTION
+    runner=ast.parse(selected_bytes(source,'tests/gecko/run_device.py').decode())
+    calls=[node for node in ast.walk(runner) if isinstance(node,ast.Call)
+           and isinstance(node.func,ast.Name) and node.func.id=='run'
+           and len(node.args)>=2 and isinstance(node.args[1],ast.Constant)
+           and node.args[1].value==action]
+    java=selected_bytes(source,'tests/gecko/GeckoIntegrationTestActivity.java').decode()
+    producers=re.findall(r'\bif\s*\(\s*"'+action+r'"\s*\.equals\(\s*action\s*\)\s*\)',java)
+    if not calls and not producers:return False
+    if len(calls)!=1 or len(producers)!=1 or len(calls[0].args)!=3 or calls[0].keywords:
+        raise ValueError('Selected reading-cookie cleanup producers disagree')
+    if not all(isinstance(node,ast.Constant) for node in calls[0].args) or [node.value for node in calls[0].args]!=[2,action,action] or type(calls[0].args[0].value) is not int:
+        raise ValueError('Selected reading-cookie cleanup invocation differs')
+    return True
+
+
+def lifecycle_required_source_files(source):
+    return LIFECYCLE_SOURCE_FILES+(READING_FIXTURE_CLEANUP_SOURCE_FILES if requires_reading_fixture_cleanup(source) else ())
 
 
 def expected_lifecycle_host_names(source):
@@ -27,8 +56,9 @@ def expected_lifecycle_host_names(source):
 
 
 def verify_lifecycle_sources(files,source):
-    if not isinstance(files,dict) or not set(LIFECYCLE_SOURCE_FILES).issubset(files):raise ValueError('Lifecycle host receipt omits production/fixture/admission sources')
-    for path in LIFECYCLE_SOURCE_FILES:
+    required=lifecycle_required_source_files(source)
+    if not isinstance(files,dict) or not set(required).issubset(files):raise ValueError('Lifecycle host receipt omits production/fixture/admission sources')
+    for path in required:
         digest=files[path]
         if not isinstance(digest,str) or not re.fullmatch('[0-9a-f]{64}',digest) or hashlib.sha256(selected_bytes(source,path)).hexdigest()!=digest:
             raise ValueError('Lifecycle source hash differs: '+path)
@@ -90,6 +120,95 @@ def _cookie_case(step,context,action,populated):
     if any(len(part)!=2 for part in parts) or len({part[0] for part in parts})!=len(parts) or dict(parts)!=({'probe':expected,'nativeOnly':expected} if populated else {}):raise ValueError('Actual native lifecycle Cookie isolation failed')
 
 
+def _reading_cookie_tokens(raw):
+    if not isinstance(raw,str):raise ValueError('Reading-cookie cleanup observation missing')
+    tokens=[token.strip() for token in raw.split(';') if token.strip()]
+    if any('=' not in token or not token.split('=',1)[0] for token in tokens):
+        raise ValueError('Reading-cookie cleanup observation is malformed')
+    return tokens
+
+
+def _verify_reading_cookie_removal(before,after):
+    marker='readingBounds=controlled-fixture'
+    first=_reading_cookie_tokens(before);last=_reading_cookie_tokens(after)
+    named=[token for token in first if token.split('=',1)[0]=='readingBounds']
+    if named!=[marker] or any(token.split('=',1)[0]=='readingBounds' for token in last):
+        raise ValueError('Reading-cookie cleanup must retire exactly its known marker')
+    if sorted(token for token in first if token!=marker)!=sorted(last):
+        raise ValueError('Reading-cookie cleanup changed another cookie')
+
+
+def _verify_reading_cleanup_invocation(report,source,value):
+    transport=report.get('eventTransport')
+    if not isinstance(transport,dict) or type(transport.get('schema')) is not int or transport['schema']!=1:
+        raise ValueError('Reading-cookie cleanup event transport missing')
+    identity=transport.get('buildIdentity')
+    if not isinstance(identity,dict) or identity.get('sourceCommit')!=source:
+        raise ValueError('Reading-cookie cleanup installed source differs')
+    invocations=transport.get('invocations')
+    if not isinstance(invocations,list) or any(not isinstance(item,dict) for item in invocations):
+        raise ValueError('Reading-cookie cleanup invocation missing')
+    matches=[item for item in invocations if item.get('fixtureAction')==READING_FIXTURE_CLEANUP_ACTION]
+    nonce=value['runNonce'];owned=[item for item in invocations if item.get('runNonce')==nonce]
+    if len(matches)!=1 or len(owned)!=1 or owned[0]!=matches[0] or type(matches[0].get('processSlot')) is not int or matches[0]['processSlot']!=1:
+        raise ValueError('Reading-cookie cleanup nonce/action/environment differs')
+    records=matches[0].get('events')
+    if not isinstance(records,list) or not records:
+        raise ValueError('Reading-cookie cleanup complete event bytes missing')
+    decode_event=selected_contract(source,'integration_event_contract').decode_event
+    completed=[]
+    for sequence,record in enumerate(records,1):
+        if not isinstance(record,dict) or not isinstance(record.get('receipt'),dict) or not isinstance(record.get('rawUtf8'),str):
+            raise ValueError('Reading-cookie cleanup complete event record missing')
+        receipt=record['receipt']
+        if type(receipt.get('sequence')) is not int or receipt['sequence']!=sequence:
+            raise ValueError('Reading-cookie cleanup event sequence differs')
+        event=decode_event(receipt,record['rawUtf8'].encode('utf-8'),identity=identity,
+                           nonce=nonce,slot=1,action=READING_FIXTURE_CLEANUP_ACTION,command=value['invocation'])
+        if event.get('kind')=='error' or 'error' in event['result']:
+            raise ValueError('Reading-cookie cleanup invocation contains a failure')
+        if event.get('kind')==READING_FIXTURE_CLEANUP_ACTION:completed.append(event['result'])
+    if completed!=[value] or event.get('kind')!=READING_FIXTURE_CLEANUP_ACTION:
+        raise ValueError('Reading-cookie cleanup differs from its final complete owned event')
+
+
+def verify_reading_fixture_cleanup(report,source,steps,copy_index):
+    action=READING_FIXTURE_CLEANUP_ACTION
+    found=[index for index,step in enumerate(steps) if isinstance(step,dict) and step.get('kind')==action]
+    if copy_index<3 or found!=[copy_index-3]:
+        raise ValueError('Reading-cookie cleanup must immediately precede lifecycle seeds')
+    step=steps[found[0]];value=report.get(action)
+    if not isinstance(value,dict) or step.get('result')!=value or 'error' in value:
+        raise ValueError('Reading-cookie cleanup summary differs from its unique actual step')
+    if step.get('nativeContext')!='environment-2' or type(step.get('processSlot')) is not int or step['processSlot']!=1 or type(value.get('processSlot')) is not int or value['processSlot']!=1:
+        raise ValueError('Reading-cookie cleanup belongs to another environment')
+    if type(value.get('schema')) is not int or value['schema']!=1 or value.get('cookie')!='readingBounds=controlled-fixture' or value.get('cookiePath')!='/' or value.get('origin')!='http://127.0.0.1:8765':
+        raise ValueError('Reading-cookie cleanup target differs')
+    nonce=value.get('runNonce');invocation=value.get('invocation')
+    if not isinstance(nonce,str) or not re.fullmatch('[0-9a-f]{32}',nonce) or type(invocation) is not int or invocation<=0:
+        raise ValueError('Reading-cookie cleanup invocation identity missing')
+    target=value.get('url')
+    if not isinstance(target,str):raise ValueError('Reading-cookie cleanup document URL missing')
+    parsed=urlsplit(target)
+    if parsed.scheme!='http' or parsed.netloc!='127.0.0.1:8765' or parsed.path!='/reading-cookie-retirement' or parsed.fragment or parse_qs(parsed.query,keep_blank_values=True)!={'runNonce':[nonce]}:
+        raise ValueError('Reading-cookie cleanup document is outside its owned invocation')
+    flags=('sameSession','sameDocument','sameUrl','readingFixtureCookieRemovedFromDom',
+           'readingFixtureCookieRemovedFromNative','otherDomCookiesPreserved','otherNativeCookiesPreserved')
+    if any(value.get(flag) is not True for flag in flags):
+        raise ValueError('Reading-cookie cleanup document/cookie receipt failed')
+    before=value.get('sessionBefore');after=value.get('sessionAfter')
+    if type(before) is not int or before<=0 or type(after) is not int or after!=before:
+        raise ValueError('Reading-cookie cleanup SDK session changed')
+    before=value.get('documentBefore');after=value.get('documentAfter')
+    try:document_matches=type(before) in (int,float) and math.isfinite(before) and before>0 and type(after) in (int,float) and math.isfinite(after) and after==before
+    except OverflowError:document_matches=False
+    if not document_matches:
+        raise ValueError('Reading-cookie cleanup document changed')
+    _verify_reading_cookie_removal(value.get('beforeDomCookies'),value.get('afterDomCookies'))
+    _verify_reading_cookie_removal(value.get('nativeBefore'),value.get('nativeAfter'))
+    _verify_reading_cleanup_invocation(report,source,value)
+
+
 def verify_lifecycle_device(report,source,identity=None):
     if report.get('status')!='passed' or report.get('actualAndroidExecution') is not True or report.get('releaseMode') is not True or report.get('diagnosticOnly') is not False or report.get('sourceCommit')!=source or 'error' in report or report.get('artifactErrors'):
         raise ValueError('Lifecycle requires successful actual same-source full device acceptance')
@@ -119,6 +238,7 @@ def verify_lifecycle_device(report,source,identity=None):
     following=[step for step in steps[delete_index+1:] if isinstance(step,dict) and step.get('kind')=='fixture']
     if not following:raise ValueError('Reused slot has no actual browser read')
     _cookie_case(following[0],2,'read',False)
+    if requires_reading_fixture_cleanup(source):verify_reading_fixture_cleanup(report,source,steps,copy_index)
     return {'actualLifecycleDeviceAcceptance':True,'physicalPhoneAcceptance':False,'actions':['copyAndReset','resetZero','deleteOne']}
 
 
@@ -130,7 +250,8 @@ def selected_contract(source,name):
     path=Path(__file__).with_name(name+'.py')
     if path.read_bytes()!=selected_bytes(source,'tools/gecko/'+name+'.py'):
         raise ValueError('Evidence contract differs from selected source: '+name)
-    spec=importlib.util.spec_from_file_location('selected_'+name,path)
+    module_name=(__package__+'.' if __package__ else '')+'selected_'+name
+    spec=importlib.util.spec_from_file_location(module_name,path)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
 
 

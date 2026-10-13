@@ -183,6 +183,8 @@ class Fixture(fixture.Fixture):
                   f'onclick="window.open(\'/browser-window?step=three&command={command}\',\'_blank\')">Open controlled popup</button>').encode()
         elif address.path=='/browser-loading':
             body=b'<!doctype html><meta charset="utf-8"><h1>Visible before slow resource</h1><img src="/slow-resource">'
+        elif address.path=='/reading-cookie-retirement':
+            body=b'<!doctype html><meta charset="utf-8"><title>Owned reading cookie retirement</title>'
         elif address.path=='/browser-reading':
             body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
             <title>Controlled responsive reading fixture</title><style>body{margin:0;font:18px sans-serif}main{padding:16px;box-sizing:border-box}#sidebar{width:260px;float:left}textarea{width:100%;height:72px;box-sizing:border-box;font:inherit}pre{overflow:auto}@media(max-width:760px){#sidebar{display:none}}</style>
@@ -713,6 +715,9 @@ def main():
         report['savedFileDeletion']=deleted_files
         update_transfers()
         report['appUpdateTransfer']='passed (real HTTP interruption, durable Range resume, Android JobScheduler, pause/resume touch and concurrent controlled browser input)'
+        cleanup=run(2,'readingFixtureCookieCleanup','readingFixtureCookieCleanup')
+        assert cleanup['schema']==1 and cleanup['processSlot']==1 and cleanup['cookie']=='readingBounds=controlled-fixture' and cleanup['cookiePath']=='/' and all(cleanup[key] is True for key in ('sameSession','sameDocument','sameUrl','readingFixtureCookieRemovedFromDom','readingFixtureCookieRemovedFromNative','otherDomCookiesPreserved','otherNativeCookiesPreserved')),cleanup
+        report['readingFixtureCookieCleanup']=cleanup
         check(run(1,'seed'),1,True);check(run(2,'seed'),2,True)
         lifecycle=management('copyAndReset')
         check(run(2,'read'),2,False);check(run(1,'read'),1,True)
