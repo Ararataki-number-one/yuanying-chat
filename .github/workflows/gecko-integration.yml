@@ -160,6 +160,7 @@ jobs:
           timeout 180 adb wait-for-device
           timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
           adb shell input keyevent 82
+          python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554
           adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
           checks_failed=0
           if ! python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554; then

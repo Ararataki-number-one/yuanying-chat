@@ -29,7 +29,7 @@ for name in ['network-performance-results.json','network-performance-failure-log
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['preconnect-results.json','preconnect-log.txt','preconnect-failure-log.txt','preconnect-server.json','preconnect-server-failure.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
-for name in ['profile-host-results.json','environment-intent-host-results.json','gecko-proxy-route-host-results.json','environment-spec-results.json','environment-intent-results.json','gecko-identity-prototype-results.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json']:
+for name in ['emulator-bootstrap-results.json','profile-host-results.json','environment-intent-host-results.json','gecko-proxy-route-host-results.json','environment-spec-results.json','environment-intent-results.json','gecko-identity-prototype-results.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for pattern in ['environment-spec-*.txt','environment-intent-*.txt','gecko-identity-prototype-*.txt']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
