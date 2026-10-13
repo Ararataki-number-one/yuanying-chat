@@ -1,10 +1,65 @@
 #!/usr/bin/env python3
 """Compare production observation assets through real Gecko and the Android native bridge."""
-import argparse, hashlib, http.server, json, pathlib, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse, uuid
+import argparse, hashlib, http.server, json, pathlib, re, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse, uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'work/gecko-integration'
 BASELINE = '835d59991218eda70c7a4fdd73ea9d7ae6052688'
+SDK_IME_BASE_SOURCE = '1f970ea51f90466fb69fc282692ecb535c38ce64'
+SDK_IME_TRANSFORM = 'tools/gecko/build_ime_writer_diagnostic.py'
+
+
+def sdk_ime_receipt(path, source):
+    """Bind the explicitly modified, test-only SDK to its frozen build receipt."""
+    raw = pathlib.Path(path).read_bytes()
+    if len(raw) > 131072:
+        raise ValueError('SDK IME transform receipt exceeds the bounded receipt size')
+    value = json.loads(raw)
+    if not isinstance(value, dict) or type(value.get('schema')) is not int:
+        raise ValueError('SDK IME transform receipt must be a versioned JSON object')
+    official = json.loads((ROOT / 'third-party/sdk/geckoview-157.0.1-official.json').read_text())
+    expected = dict(schema=1, sourceCommit=source, baseSourceCommit=SDK_IME_BASE_SOURCE,
+                    sdkCoordinate=official['coordinate'], officialAarSha256=official['aar']['sha256'],
+                    officialSourcesSha256=official['sources']['sha256'], sourceTransformPath=SDK_IME_TRANSFORM)
+    for key, wanted in expected.items():
+        if value.get(key) != wanted:
+            raise ValueError('SDK IME transform receipt mismatch: ' + key)
+    for key, wanted in dict(diagnosticOnly=True, releaseAcceptance=False,
+                            sdkInputWriterDiagnosticsEnabled=True, nativeArchivesIdentical=True,
+                            javaApiIdentical=True, debugFalsePreserved=True, inputBehaviorChanged=False).items():
+        if value.get(key) is not wanted:
+            raise ValueError('SDK IME transform receipt must explicitly declare: ' + key)
+    for key in ['diagnosticAarSha256', 'diagnosticClassesJarSha256', 'sourceTransformSha256']:
+        if not isinstance(value.get(key), str) or not re.fullmatch(r'[0-9a-f]{64}', value[key]):
+            raise ValueError('SDK IME transform receipt has invalid digest: ' + key)
+    if value['diagnosticAarSha256'] == official['aar']['sha256'] or value['diagnosticClassesJarSha256'] == official['classesJarSha256']:
+        raise ValueError('SDK IME diagnostics require an explicitly modified diagnostic SDK')
+    if value['sourceTransformSha256'] != hashlib.sha256((ROOT / SDK_IME_TRANSFORM).read_bytes()).hexdigest():
+        raise ValueError('SDK IME transform script differs from its receipt')
+    return value, raw, hashlib.sha256(raw).hexdigest()
+
+
+def sdk_ime_identity(value, receipt, receipt_sha, source, tree):
+    """Check the device's installed APK stamp before launching the diagnostic activity."""
+    if not isinstance(value, dict) or type(value.get('schema')) is not int:
+        raise ValueError('Installed SDK IME diagnostic identity must be a versioned JSON object')
+    expected = dict(schema=1, sourceCommit=source, sourceTree=tree,
+                    sdkCoordinate=receipt['sdkCoordinate'], package='local.pocketchat.test',
+                    diagnosticSdkAarSha256=receipt['diagnosticAarSha256'],
+                    sdkInputWriterTransformReceiptSha256=receipt_sha)
+    for key, wanted in expected.items():
+        if value.get(key) != wanted:
+            raise ValueError('Installed SDK IME diagnostic identity mismatch: ' + key)
+    for key, wanted in dict(dirtySource=False, sdkInputWriterDiagnosticsEnabled=True,
+                            diagnosticOnly=True, releaseAcceptance=False).items():
+        if value.get(key) is not wanted:
+            raise ValueError('Installed SDK IME diagnostic identity must explicitly declare: ' + key)
+    if type(value.get('apkBytes')) is not int or value['apkBytes'] <= 0:
+        raise ValueError('Installed SDK IME diagnostic APK bytes were not measured')
+    for key in ['apkSha256', 'buildStampSha256']:
+        if not isinstance(value.get(key), str) or not re.fullmatch(r'[0-9a-f]{64}', value[key]):
+            raise ValueError('Installed SDK IME diagnostic identity has invalid digest: ' + key)
+    return value
 
 
 def document():
@@ -128,7 +183,13 @@ def main():
                         help='Enable extra SDK/IME and JS selection observations; disabled for the normal release regression.')
     observation.add_argument('--native-input-diagnostics', action='store_true',
                         help='Buffer only primitive SDK/IME observations and flush after input; no extra JS observers. Diagnostic evidence cannot replace the normal regression.')
+    observation.add_argument('--sdk-ime-log', action='store_true',
+                        help='Use a separately receipted, log-only SDK transform. Diagnostic-only; no native/JS observer flags or release acceptance.')
+    parser.add_argument('--sdk-ime-receipt', type=pathlib.Path,
+                        help='Exact external transform receipt required with --sdk-ime-log')
     args = parser.parse_args()
+    if bool(args.sdk_ime_receipt) != args.sdk_ime_log:
+        parser.error('--sdk-ime-log and --sdk-ime-receipt must be supplied together')
     OUT.mkdir(parents=True, exist_ok=True)
     started_ms = int(time.time() * 1000)
     diagnostic_run = uuid.uuid4().hex
@@ -136,8 +197,16 @@ def main():
                  'gecko-performance-failure-screen.png', 'gecko-performance-failure-ui.xml',
                  'gecko-performance-failure-window.txt', 'gecko-performance-failure-activity.txt',
                  'gecko-scroll-diagnostics.json', 'gecko-scroll-diagnostic-log.json',
-                 'gecko-performance-screen.png']:
+                 'gecko-performance-screen.png', 'gecko-sdk-ime-log.txt',
+                 'gecko-sdk-ime-transform-receipt.json', 'gecko-sdk-ime-build-identity.json']:
         (OUT / name).unlink(missing_ok=True)
+    sdk_receipt = sdk_receipt_sha = installed_sdk_identity = None
+    if args.sdk_ime_log:
+        source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+        if subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=normal'], cwd=ROOT, text=True).strip():
+            raise ValueError('SDK IME diagnostic execution requires a clean committed source tree')
+        sdk_receipt, sdk_receipt_raw, sdk_receipt_sha = sdk_ime_receipt(args.sdk_ime_receipt, source)
+        (OUT / 'gecko-sdk-ime-transform-receipt.json').write_bytes(sdk_receipt_raw)
     baseline_root = ROOT / 'tests/gecko/assets/performance-baseline'
     receipt = json.loads((baseline_root / 'source.json').read_text())
     assert receipt['sourceCommit'] == BASELINE, receipt
@@ -156,6 +225,26 @@ def main():
 
     package = 'local.pocketchat.test'
     scroll_samples, scroll_touches, scroll_dom_events, scroll_errors = {}, {}, {}, {}
+
+    def sdk_diagnostic_report(value):
+        if args.sdk_ime_log:
+            value.update(diagnosticOnly=True, releaseAcceptance=False,
+                         sdkInputWriterDiagnosticsRequested=True,
+                         sdkInputWriterTransformReceiptSha256=sdk_receipt_sha,
+                         sdkInputWriterTransformReceipt=sdk_receipt,
+                         sdkInputWriterInstalledBuildIdentity=installed_sdk_identity,
+                         sdkInputWriterDiagnosticScope='Log-only Java SDK instrumentation can affect timing. '
+                         'Original assertions, passive DOM listeners, real tap and single Android input text burst remain unchanged. '
+                         'This transformed SDK is diagnostic-only and cannot establish release acceptance.')
+            value.setdefault('sdkInputWriterDiagnosticsEnabled', False)
+
+    def capture_sdk_input_log():
+        raw = adb('logcat', '-d', '-v', 'epoch', '-b', 'all')
+        encoded = raw.encode('utf-8')
+        (OUT / 'gecko-sdk-ime-log.txt').write_bytes(encoded)
+        return dict(saved=True, bytes=len(encoded), sha256=hashlib.sha256(encoded).hexdigest(),
+                    sdkLogLines=sum('PocketSDKIME' in line for line in raw.splitlines()),
+                    format='epoch', buffers='all', filtered=False)
 
     def save_scroll_diagnostics():
         scope = ('Read-only scroll-phase diagnostics add passive DOM listeners, bounded native touch/delegate '
@@ -198,6 +287,12 @@ def main():
                   'androidRelease': adb('shell', 'getprop', 'ro.build.version.release').strip(),
                   'screen': adb('shell', 'wm', 'size').strip(), 'density': adb('shell', 'wm', 'density').strip(),
                   'frameTimingInterpretation': 'Descriptive actual Gecko RAF and Android Choreographer gaps during the controlled polling and gesture workload; no claim of real-account FPS.'}
+        if args.sdk_ime_log:
+            source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+            tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=ROOT, text=True).strip()
+            installed_sdk_identity = sdk_ime_identity(json.loads(adb('exec-out', 'content', 'read', '--uri',
+                'content://' + package + '.evidence/build-identity')), sdk_receipt, sdk_receipt_sha, source, tree)
+            (OUT / 'gecko-sdk-ime-build-identity.json').write_text(json.dumps(installed_sdk_identity, indent=2) + '\n')
         adb('logcat', '-c')
         activity = ['shell', 'am', 'start', '-W', '-n', package + '/local.pocketchat.GeckoPerformanceIntegrationActivity']
         activity.extend(['--es', 'scrollDiagnosticRun', diagnostic_run])
@@ -205,6 +300,9 @@ def main():
             activity.extend(['--ez', 'inputDiagnostics', 'true'])
         if args.native_input_diagnostics:
             activity.extend(['--ez', 'inputNativeDiagnostics', 'true'])
+        if args.sdk_ime_log:
+            activity.extend(['--ez', 'sdkInputWriterDiagnostics', 'true',
+                             '--es', 'sdkInputWriterTransformReceiptSha256', sdk_receipt_sha])
         adb(*activity)
         checks, measurements, gestures, text_inputs, diagnostics = {}, {}, {}, {}, {}
         input_readiness, input_events, input_evaluations, native_input_events = {}, {}, {}, {}
@@ -283,6 +381,9 @@ def main():
                               actualTrustedInputEvents=[event for key in sorted(input_events) for event in input_events[key]['events']],
                               actualInputEvaluationTrace=[input_evaluations[key] for key in sorted(input_evaluations)],
                               actualNativeInputTrace=[native_input_events[key] for key in sorted(native_input_events)])
+                sdk_diagnostic_report(report)
+                if args.sdk_ime_log:
+                    report['sdkInputWriterLogCapture'] = capture_sdk_input_log()
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
                 assert report['inputDiagnosticsEnabled'] == args.input_diagnostics, report
@@ -293,6 +394,9 @@ def main():
                                    for event in report['actualTrustedInputEvents']), 'Normal regression unexpectedly instrumented DOM selection'
                 if not args.input_diagnostics and not args.native_input_diagnostics:
                     assert not native_input_events, 'Normal regression unexpectedly attached native diagnostic observers'
+                if args.sdk_ime_log:
+                    assert report.get('sdkInputWriterDiagnosticsEnabled') is True, 'Activity did not confirm SDK IME diagnostic mode'
+                    assert report['sdkInputWriterLogCapture']['sdkLogLines'] > 0, 'Diagnostic SDK did not emit its SDK IME witness log'
                 if args.native_input_diagnostics:
                     assert native_input_events and all(event['mode'] == 'buffered-primitives' for event in native_input_events.values()), report
                     summaries = [event for event in native_input_events.values() if event['api'] == 'trace.bufferedSummary']
@@ -343,6 +447,12 @@ def main():
             except Exception as capture_error:
                 captures[name] = dict(saved=False, error=str(capture_error))
         report['failureCaptures'] = captures
+        sdk_diagnostic_report(report)
+        if args.sdk_ime_log:
+            try:
+                report['sdkInputWriterLogCapture'] = capture_sdk_input_log()
+            except Exception as capture_error:
+                report['sdkInputWriterLogCapture'] = dict(saved=False, error=str(capture_error))
         if report is not None:
             report['status'] = 'failed'
             report['runnerError'] = str(error)

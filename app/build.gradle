@@ -43,6 +43,72 @@ dependencies {
     implementation 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
 }
 
+// Explicit integration-only log witness. Normal SDK verification remains exact;
+// no release task or production APK may use the transformed diagnostic AAR.
+def imeWriterAar = providers.gradleProperty('imeWriterDiagnosticAar')
+def imeWriterReceipt = providers.gradleProperty('imeWriterDiagnosticReceipt')
+def imeWriterReceiptSha = providers.gradleProperty('imeWriterDiagnosticReceiptSha256')
+if (imeWriterAar.isPresent() != imeWriterReceipt.isPresent() || imeWriterAar.isPresent() != imeWriterReceiptSha.isPresent())
+    throw new GradleException('Diagnostic AAR, receipt and receipt SHA must be supplied together')
+if (imeWriterAar.isPresent()) {
+    if (gradle.startParameter.taskNames != [':app:assembleIntegration'])
+        throw new GradleException('Tainted SDK requires exactly the explicit :app:assembleIntegration request')
+    def aar = file(imeWriterAar.get())
+    def receipt = file(imeWriterReceipt.get())
+    if (!aar.isFile() || !receipt.isFile()) throw new GradleException('Diagnostic SDK inputs unavailable')
+    def identity = new groovy.json.JsonSlurper().parse(receipt)
+    def hash = { File path -> java.security.MessageDigest.getInstance('SHA-256').digest(path.bytes).encodeHex().toString() }
+    def gitValue = { String argument -> providers.exec {
+        commandLine 'git', '-C', rootProject.projectDir, 'rev-parse', argument
+    }.standardOutput.asText.get().trim() }
+    def source = gitValue('HEAD'), tree = gitValue('HEAD^{tree}')
+    def dirty = providers.exec {
+        commandLine 'git', '-C', rootProject.projectDir, 'status', '--porcelain', '--untracked-files=normal'
+    }.standardOutput.asText.get().trim()
+    def official = new groovy.json.JsonSlurper().parse(rootProject.file('third-party/sdk/geckoview-157.0.1-official.json'))
+    if (identity.schema != 1 || identity.diagnosticOnly != true || identity.releaseAcceptance != false
+        || identity.sdkInputWriterDiagnosticsEnabled != true || identity.nativeArchivesIdentical != true
+        || identity.javaApiIdentical != true || identity.debugFalsePreserved != true
+        || identity.inputBehaviorChanged != false || identity.diagnosticAarSha256 != hash(aar)
+        || identity.sourceCommit != source || identity.sourceTree != tree || !dirty.isEmpty()
+        || identity.sourceTransformPath != 'tools/gecko/build_ime_writer_diagnostic.py'
+        || identity.sourceTransformSha256 != hash(rootProject.file(identity.sourceTransformPath))
+        || identity.sdkCoordinate != official.coordinate || identity.officialAarSha256 != official.aar.sha256
+        || identity.officialSourcesSha256 != official.sources.sha256 || identity.officialClassesJarSha256 != official.classesJarSha256
+        || !(imeWriterReceiptSha.get() ==~ /[0-9a-f]{64}/) || imeWriterReceiptSha.get() != hash(receipt))
+        throw new GradleException('Diagnostic SDK receipt rejected')
+    configurations.matching { it.name.startsWith('integration') }.configureEach {
+        exclude group: 'org.mozilla.geckoview', module: 'geckoview'
+    }
+    dependencies.add('integrationImplementation', files(aar))
+    gradle.taskGraph.whenReady { graph ->
+        if (!graph.allTasks.any { it.path == ':app:assembleIntegration' }
+            || graph.allTasks.any { it.name.toLowerCase().contains('release') })
+            throw new GradleException('Tainted SDK is restricted to assembleIntegration; release tasks are forbidden')
+    }
+}
+
+tasks.register('prepareImeWriterDiagnosticClasspath') {
+    doLast {
+        if (imeWriterAar.isPresent()) throw new GradleException('Resolve compile inputs from the official SDK only')
+        def output = rootProject.file('work/gecko-ime-writer-diagnostics/compile-classpath.json')
+        def sourceCommit = providers.exec {
+            commandLine 'git', '-C', rootProject.projectDir, 'rev-parse', 'HEAD'
+        }.standardOutput.asText.get().trim()
+        def hash = { File path -> java.security.MessageDigest.getInstance('SHA-256').digest(path.bytes).encodeHex().toString() }
+        def androidJar = android.bootClasspath.find { it.name == 'android.jar' }
+        if (androidJar == null) throw new GradleException('Android compile API unavailable')
+        def resolved = configurations.integrationCompileClasspath.resolve() + configurations.integrationRuntimeClasspath.resolve()
+        def artifacts = resolved.toSet().sort { it.absolutePath }.collect {
+            [path: it.absolutePath, sha256: hash(it)]
+        }
+        output.parentFile.mkdirs()
+        output.setText(groovy.json.JsonOutput.toJson([schema: 1,
+            sourceCommit: sourceCommit, androidJar: androidJar.absolutePath,
+            androidJarSha256: hash(androidJar), artifacts: artifacts]) + '\n', 'UTF-8')
+    }
+}
+
 // Test provenance is generated only for the integration variant.
 @org.gradle.work.DisableCachingByDefault(because = 'Every test build must check its committed source identity')
 abstract class PrepareIntegrationIdentity extends org.gradle.api.DefaultTask {
@@ -54,6 +120,9 @@ abstract class PrepareIntegrationIdentity extends org.gradle.api.DefaultTask {
     abstract org.gradle.api.provider.Property<String> getApplicationVersionName()
     @org.gradle.api.tasks.Input
     abstract org.gradle.api.provider.Property<Integer> getApplicationVersionCode()
+    @org.gradle.api.tasks.Input
+    @org.gradle.api.tasks.Optional
+    abstract org.gradle.api.provider.Property<String> getImeWriterReceiptPath()
     @javax.inject.Inject
     abstract org.gradle.process.ExecOperations getExecOperations()
     @org.gradle.api.tasks.TaskAction
@@ -74,11 +143,20 @@ abstract class PrepareIntegrationIdentity extends org.gradle.api.DefaultTask {
             throw new org.gradle.api.GradleException('Integration evidence requires a clean committed source tree')
         def directory = outputDirectory.get().asFile
         directory.mkdirs()
-        new File(directory, 'pocketchat-integration-build.json').setText(groovy.json.JsonOutput.toJson([
+        def identity = [
             schema: 1, sourceCommit: source, sourceTree: tree, dirtySource: false,
             version: applicationVersionName.get(), versionCode: applicationVersionCode.get(),
             sdkCoordinate: 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
-        ]) + '\n', 'UTF-8')
+        ]
+        if (imeWriterReceiptPath.isPresent()) {
+            def receiptFile = new File(imeWriterReceiptPath.get())
+            def receipt = new groovy.json.JsonSlurper().parse(receiptFile)
+            if (receipt.sourceCommit != source) throw new org.gradle.api.GradleException('Diagnostic receipt source mismatch')
+            identity.putAll([sdkInputWriterDiagnosticsEnabled: true, diagnosticOnly: true, releaseAcceptance: false,
+                diagnosticSdkAarSha256: receipt.diagnosticAarSha256,
+                sdkInputWriterTransformReceiptSha256: java.security.MessageDigest.getInstance('SHA-256').digest(receiptFile.bytes).encodeHex().toString()])
+        }
+        new File(directory, 'pocketchat-integration-build.json').setText(groovy.json.JsonOutput.toJson(identity) + '\n', 'UTF-8')
     }
 }
 def prepareIntegrationIdentity = tasks.register('prepareIntegrationIdentity', PrepareIntegrationIdentity) {
@@ -86,6 +164,7 @@ def prepareIntegrationIdentity = tasks.register('prepareIntegrationIdentity', Pr
     sourceDirectory.set(rootProject.layout.projectDirectory)
     applicationVersionName.set(android.defaultConfig.versionName)
     applicationVersionCode.set(android.defaultConfig.versionCode)
+    if (imeWriterReceipt.isPresent()) imeWriterReceiptPath.set(file(imeWriterReceipt.get()).absolutePath)
     outputs.upToDateWhen { false }
 }
 androidComponents {

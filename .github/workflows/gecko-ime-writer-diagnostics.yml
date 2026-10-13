@@ -1,0 +1,153 @@
+name: Gecko IME rollback writer diagnostics
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gecko-ime-writer-diagnostics-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Prepare the pinned diagnostic toolchain and official SDK
+        id: setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$PWD/work/gecko-ime-writer-diagnostics"
+          mkdir -p "$diagnostic_root/official" "$diagnostic_root/evidence/trial-1" work/gecko-integration
+          exec > >(tee "$diagnostic_root/evidence/setup.log") 2>&1
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore "$diagnostic_root/integration-test.jks" -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
+          curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o "$diagnostic_root/gradle.zip"
+          echo "bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  $diagnostic_root/gradle.zip" | sha256sum -c -
+          unzip -q "$diagnostic_root/gradle.zip" -d "$diagnostic_root/gradle"
+          sdk_url=https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250
+          curl -fsSL --retry 3 "$sdk_url.aar" -o "$diagnostic_root/official/geckoview.aar"
+          curl -fsSL --retry 3 "$sdk_url.pom" -o "$diagnostic_root/official/geckoview.pom"
+          curl -fsSL --retry 3 "$sdk_url-sources.jar" -o "$diagnostic_root/official/geckoview-sources.jar"
+          python3 tools/gecko/verify_official_sdk.py --aar "$diagnostic_root/official/geckoview.aar" --pom "$diagnostic_root/official/geckoview.pom" --sources "$diagnostic_root/official/geckoview-sources.jar" | tee "$diagnostic_root/evidence/official-sdk-input-verification.json"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
+      - name: Resolve the unchanged integration compile classpath
+        id: classpath
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$PWD/work/gecko-ime-writer-diagnostics"
+          "$diagnostic_root/gradle/gradle-9.8.0/bin/gradle" :app:prepareImeWriterDiagnosticClasspath --console=plain 2>&1 | tee "$diagnostic_root/evidence/classpath.log"
+          python3 tools/gecko/verify_official_sdk.py --aar "$diagnostic_root/official/geckoview.aar" --pom "$diagnostic_root/official/geckoview.pom" --sources "$diagnostic_root/official/geckoview-sources.jar" --gradle-cache "${GRADLE_USER_HOME:-$HOME/.gradle}" | tee "$diagnostic_root/evidence/official-sdk-resolved-verification.json"
+          cp "$diagnostic_root/compile-classpath.json" "$diagnostic_root/evidence/compile-classpath.json"
+      - name: Build the diagnostic SDK transform and its receipt
+        id: transform
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$PWD/work/gecko-ime-writer-diagnostics"
+          python3 tools/gecko/build_ime_writer_diagnostic.py --aar "$diagnostic_root/official/geckoview.aar" --sources "$diagnostic_root/official/geckoview-sources.jar" --classpath-json "$diagnostic_root/compile-classpath.json" --output "$diagnostic_root/geckoview-ime-writer-diagnostic.aar" --receipt "$diagnostic_root/ime-writer-transform.json" 2>&1 | tee "$diagnostic_root/evidence/transform.log"
+          cp "$diagnostic_root/ime-writer-transform.json" "$diagnostic_root/evidence/ime-writer-transform.json"
+      - name: Compile only the isolated diagnostic integration package
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$PWD/work/gecko-ime-writer-diagnostics"
+          diagnostic_receipt_sha="$(sha256sum "$diagnostic_root/ime-writer-transform.json" | cut -d ' ' -f1)"
+          "$diagnostic_root/gradle/gradle-9.8.0/bin/gradle" :app:assembleIntegration -PtestSigningKey="$diagnostic_root/integration-test.jks" -PimeWriterDiagnosticAar="$diagnostic_root/geckoview-ime-writer-diagnostic.aar" -PimeWriterDiagnosticReceipt="$diagnostic_root/ime-writer-transform.json" -PimeWriterDiagnosticReceiptSha256="$diagnostic_receipt_sha" --console=plain 2>&1 | tee "$diagnostic_root/evidence/build.log"
+          python3 tools/gecko/verify_ime_writer_apk.py --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --receipt "$diagnostic_root/ime-writer-transform.json" --output "$diagnostic_root/evidence/ime-writer-apk-verification.json" 2>&1 | tee "$diagnostic_root/evidence/apk-verification.log"
+      - name: Observe one unchanged Android input burst on Android 35
+        id: gecko
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_root="$PWD/work/gecko-ime-writer-diagnostics"
+          trial="$diagnostic_root/evidence/trial-1"
+          exec > >(tee "$trial/device-run.log") 2>&1
+          export ANDROID_AVD_HOME="$diagnostic_root/avd"
+          export ANDROID_USER_HOME="$diagnostic_root/android-user"
+          export ANDROID_EMULATOR_HOME="$diagnostic_root/emulator-home"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+          capture_trial() {
+            trial_exit_code=$?
+            trap - EXIT
+            set +e
+            if adb -s emulator-5554 get-state >/dev/null 2>&1; then
+              timeout 30 adb -s emulator-5554 logcat -d -v threadtime > "$trial/full-logcat.txt"
+              timeout 30 adb -s emulator-5554 exec-out screencap -p > "$trial/final-screen.png" || rm -f "$trial/final-screen.png"
+            fi
+            for name in emulator-bootstrap-results.json gecko-performance-results.json gecko-performance-failure-log.txt gecko-performance-failure-screen.png gecko-performance-failure-ui.xml gecko-performance-failure-window.txt gecko-performance-failure-activity.txt gecko-scroll-diagnostics.json gecko-scroll-diagnostic-log.json gecko-performance-screen.png gecko-sdk-ime-log.txt gecko-sdk-ime-transform-receipt.json gecko-sdk-ime-build-identity.json; do
+              if [ -f "work/gecko-integration/$name" ]; then
+                cp "work/gecko-integration/$name" "$trial/$name"
+              fi
+            done
+            python3 - "$trial" "$trial_exit_code" <<'PYCODE'
+          import json, os, pathlib, subprocess, sys
+          trial = pathlib.Path(sys.argv[1])
+          code = int(sys.argv[2])
+          value = dict(schema=1, sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                       baseSourceCommit='1f970ea51f90466fb69fc282692ecb535c38ce64',
+                       runId=os.environ['GITHUB_RUN_ID'], runAttempt=os.environ.get('GITHUB_RUN_ATTEMPT', '1'),
+                       trial=1, exitCode=code, executionOutcome='completed' if code == 0 else 'failed',
+                       diagnosticOnly=True, releaseAcceptance=False, productionArtifactPublished=False,
+                       runnerCommand=['python3', 'tests/gecko/run_gecko_performance.py', '--adb', 'adb',
+                                      '--serial', 'emulator-5554', '--sdk-ime-log', '--sdk-ime-receipt',
+                                      'work/gecko-ime-writer-diagnostics/ime-writer-transform.json'],
+                       requestedInputBursts=1, inputDiagnostics=False, inputNativeDiagnostics=False)
+          (trial / 'status.json').write_text(json.dumps(value, indent=2) + '\n')
+          PYCODE
+            timeout 15 adb -s emulator-5554 emu kill >/dev/null 2>&1 || true
+            exit "$trial_exit_code"
+          }
+          trap capture_trial EXIT
+          sudo chmod a+rw /dev/kvm
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoimewriter -p "$ANDROID_AVD_HOME/geckoimewriter.avd" -k 'system-images;android-35;google_apis;x86_64'
+          "$ANDROID_HOME/emulator/emulator" -avd geckoimewriter -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > "$trial/emulator.log" 2>&1 &
+          timeout 180 adb -s emulator-5554 wait-for-device
+          timeout 300 bash -c 'until [ "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+          adb -s emulator-5554 shell input keyevent 82
+          adb -s emulator-5554 install app/build/outputs/apk/integration/app-x86_64-integration.apk
+          python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk 2>&1 | tee "$trial/preflight.log"
+          python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554 --sdk-ime-log --sdk-ime-receipt "$diagnostic_root/ime-writer-transform.json" 2>&1 | tee "$trial/runner.log"
+      - name: Record diagnostic scope and step outcomes
+        if: always()
+        env:
+          DIAGNOSTIC_SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          DIAGNOSTIC_CLASSPATH_OUTCOME: ${{ steps.classpath.outcome }}
+          DIAGNOSTIC_TRANSFORM_OUTCOME: ${{ steps.transform.outcome }}
+          DIAGNOSTIC_BUILD_OUTCOME: ${{ steps.build.outcome }}
+          DIAGNOSTIC_GECKO_OUTCOME: ${{ steps.gecko.outcome }}
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib, json, os, pathlib, subprocess
+          root = pathlib.Path('work/gecko-ime-writer-diagnostics/evidence')
+          root.mkdir(parents=True, exist_ok=True)
+          files = []
+          for file in sorted(root.rglob('*')):
+              if file.is_file():
+                  files.append(dict(file=str(file.relative_to(root)), bytes=file.stat().st_size,
+                                    sha256=hashlib.sha256(file.read_bytes()).hexdigest()))
+          value = dict(schema=1, sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                       sourceTree=subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+                       baseSourceCommit='1f970ea51f90466fb69fc282692ecb535c38ce64',
+                       runId=os.environ['GITHUB_RUN_ID'], runAttempt=os.environ.get('GITHUB_RUN_ATTEMPT', '1'),
+                       diagnosticOnly=True, releaseAcceptance=False, productionArtifactPublished=False,
+                       scope='SDK Java IME rollback-writer observations during one original single-burst fixture invocation; diagnostic execution cannot replace release regression or phone acceptance.',
+                       sdkCoordinate='org.mozilla.geckoview:geckoview:157.0.20261005135250',
+                       requestedTrials=1, requestedInputBursts=1,
+                       outcomes={name: os.environ['DIAGNOSTIC_' + name.upper() + '_OUTCOME']
+                                 for name in ['setup', 'classpath', 'transform', 'build', 'gecko']}, artifacts=files)
+          (root / 'manifest.json').write_text(json.dumps(value, indent=2) + '\n')
+          PYCODE
+      - name: Upload synthetic diagnostic evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gecko-ime-writer-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/gecko-ime-writer-diagnostics/evidence/
+          if-no-files-found: error
+          retention-days: 14

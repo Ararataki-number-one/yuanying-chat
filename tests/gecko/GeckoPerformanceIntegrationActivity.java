@@ -29,7 +29,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   int checkCount,samples,inputFocusSamples,directDeferredSamples,nativeDeferredSamples;boolean finished,inputRequested,directDeferralChecked,nativeDeferralChecked;long deadline,payloadBytes,payloadChars,callbackMs,scriptChars;
   String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
   String inputReadinessKey="";long inputReadySince;int inputTraceOffset,inputReadinessSequence;boolean inputImeSettled;
-  GeckoInputTrace nativeInputTrace;GeckoInputTrace.Buffered bufferedInputTrace;boolean inputDiagnostics,inputNativeDiagnostics;
+  GeckoInputTrace nativeInputTrace;GeckoInputTrace.Buffered bufferedInputTrace;boolean inputDiagnostics,inputNativeDiagnostics,sdkInputWriterDiagnostics,sdkInputWriterTainted;String sdkInputWriterReceipt="";
   final JSONArray scrollDiagnosticPhases=new JSONArray();ScrollPhase scrollPhase;String scrollDiagnosticRun;
   static final class ScrollPhase {
     final String variant,url;final long navigationEpoch,started=SystemClock.elapsedRealtime();final GeckoSession sdk;final android.view.View surface;
@@ -101,12 +101,19 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   void later(Step step,long delay){handler.postDelayed(()->attempt(step),delay);}
   void event(String kind,JSONObject value){Log.i("PocketGeckoPerformance",J.obj("kind",kind,"value",value).toString());}
   void check(String name,boolean pass){checkCount++;event("check",J.obj("name",name,"pass",pass));if(!pass)throw new IllegalStateException(name);}
-  void fail(Exception error){if(finished)return;finishScrollDiagnostics("failed");finished=true;frames.stop();if(archiveRelease!=null)archiveRelease.countDown();stopInputTrace(()->event("report",J.obj("status","failed","actualAndroidExecution",true,"actualGeckoExecution",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"checkCount",checkCount,"error",error.toString())));}
+  void fail(Exception error){if(finished)return;finishScrollDiagnostics("failed");finished=true;frames.stop();if(archiveRelease!=null)archiveRelease.countDown();stopInputTrace(()->event("report",J.obj("status","failed","actualAndroidExecution",true,"actualGeckoExecution",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"sdkInputWriterDiagnosticsEnabled",sdkInputWriterDiagnostics,"diagnosticOnly",sdkInputWriterTainted||inputDiagnostics||inputNativeDiagnostics,"releaseAcceptance",false,"checkCount",checkCount,"error",error.toString())));}
   String asset(String name)throws Exception{try(InputStream in=getAssets().open(name)){return J.text(in,512*1024);}}
   @Override public void onCreate(Bundle saved){super.onCreate(saved);attempt(()->{
     if(!getPackageName().endsWith(".test"))throw new SecurityException("Only isolated integration package may run this fixture");
     inputDiagnostics=getIntent().getBooleanExtra("inputDiagnostics",false);
     inputNativeDiagnostics=getIntent().getBooleanExtra("inputNativeDiagnostics",false);
+    sdkInputWriterDiagnostics=getIntent().getBooleanExtra("sdkInputWriterDiagnostics",false);
+    JSONObject sdkBuild=J.parse(asset("pocketchat-integration-build.json"));sdkInputWriterTainted=sdkBuild.optBoolean("sdkInputWriterDiagnosticsEnabled");
+    if(sdkInputWriterTainted!=sdkInputWriterDiagnostics)throw new SecurityException("Tainted SDK requires explicit diagnostic invocation; official SDK cannot claim writer instrumentation");
+    if(sdkInputWriterDiagnostics){
+      sdkInputWriterReceipt=getIntent().getStringExtra("sdkInputWriterTransformReceiptSha256");
+      if(inputDiagnostics||inputNativeDiagnostics||!sdkBuild.optBoolean("diagnosticOnly")||sdkBuild.optBoolean("releaseAcceptance",true)||sdkInputWriterReceipt==null||!sdkInputWriterReceipt.matches("[0-9a-f]{64}")||!sdkInputWriterReceipt.equals(sdkBuild.optString("sdkInputWriterTransformReceiptSha256")))throw new SecurityException("SDK log witness must preserve the original passive input path and exact diagnostic build receipt");
+    }
     scrollDiagnosticRun=getIntent().getStringExtra("scrollDiagnosticRun");
     if(inputDiagnostics&&inputNativeDiagnostics)throw new IllegalArgumentException("Input diagnostics must use one independent mode");
     getSharedPreferences("chat",0).edit().putString("browserEngine","gecko").putString("networkMode","external")
@@ -396,7 +403,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     "for(const name of ['selectionStart','selectionEnd','selectionDirection','value']){let prototype=composer,descriptor;while(prototype&&!(descriptor=Object.getOwnPropertyDescriptor(prototype,name)))prototype=Object.getPrototypeOf(prototype);if(!descriptor?.get||!descriptor?.set||!descriptor.configurable)continue;Object.defineProperty(composer,name,{...descriptor,get(){return descriptor.get.call(this);},set(value){record('script-setter',{property:name,value:typeof value==='string'?value.slice(0,90):value,stack:caller()});descriptor.set.call(this,value);record('script-setter-return',{property:name});}});}"+
     "return {installed:true};})()";}
   String inputSnapshot(){return "(()=>{const composer=document.getElementById('prompt-textarea'),r=composer.getBoundingClientRect(),vp=visualViewport,trace=window.__fixtureInputTrace;"+
-    "return {draft:composer.value,composerFocused:document.activeElement===composer,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),"+
+    "return {"+(sdkInputWriterDiagnostics?"timeOrigin:performance.timeOrigin,now:performance.now(),":"")+"draft:composer.value,composerFocused:document.activeElement===composer,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),"+
     "start:composer.selectionStart,end:composer.selectionEnd,x:r.left+r.width/2,y:r.top+r.height/2,width:innerWidth,height:innerHeight,"+
     "bounds:{left:r.left,top:r.top,width:r.width,height:r.height},viewport:{width:vp?.width??innerWidth,height:vp?.height??innerHeight,offsetLeft:vp?.offsetLeft??0,offsetTop:vp?.offsetTop??0,scale:vp?.scale??1,innerWidth,innerHeight},"+
     "inputEvents:trace?.events||[],traceOverflow:!!trace?.overflow};})()";}
@@ -407,6 +414,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       ((FixtureView)session.web).inputTracing=true;
     }
     evaluate(inputTraceInstall()+";\n"+inputSnapshot(),false,point->{
+    if(sdkInputWriterDiagnostics)event("sdkInputClock",J.obj("timeOrigin",point.optDouble("timeOrigin"),"performanceNow",point.optDouble("now"),"wallTimeMillis",System.currentTimeMillis(),"uptimeMillis",SystemClock.uptimeMillis(),"scope","Passive clock anchor from the existing pre-input snapshot; native and DOM clocks retain their sampling uncertainty"));
     inputDraft=point.optString("draft");if(inputDraft.contains(INPUT_MARKER))throw new IllegalStateException("Input fixture draft already contains the synthetic marker");
     inputRequested=false;inputFocusSamples=0;inputReadinessKey="";inputReadySince=0;inputTraceOffset=inputReadinessSequence=0;inputImeSettled=false;
     int[] position=new int[2];session.web.getLocationOnScreen(position);
@@ -711,7 +719,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       session.pending=null;session.prefs.edit().remove("pending").commit();success();
     });
   });}
-  void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"actualInputImeSettled",inputImeSettled,"actualSingleInputBurst",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"baselineSource",BASELINE,"checkCount",checkCount,"directDeferredSamples",directDeferredSamples,"nativeDeferredSamples",nativeDeferredSamples,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
+  void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"actualInputImeSettled",inputImeSettled,"actualSingleInputBurst",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"sdkInputWriterDiagnosticsEnabled",sdkInputWriterDiagnostics,"diagnosticOnly",sdkInputWriterTainted||inputDiagnostics||inputNativeDiagnostics,"releaseAcceptance",false,"baselineSource",BASELINE,"checkCount",checkCount,"directDeferredSamples",directDeferredSamples,"nativeDeferredSamples",nativeDeferredSamples,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
   String telemetryInstall(){return "(()=>{const data={readChars:0,readCalls:0,clones:0,started:performance.now(),rafCount:0,rafSum:0,rafMax:0,rafOver32:0,previous:0};"+
     "for(const [prototype,key] of [[HTMLElement.prototype,'innerText'],[Node.prototype,'textContent'],[Node.prototype,'nodeValue']]){const original=Object.getOwnPropertyDescriptor(prototype,key);if(original?.get&&original.configurable)Object.defineProperty(prototype,key,{...original,get(){const value=original.get.call(this);data.readCalls++;if(typeof value==='string')data.readChars+=value.length;return value;}});}"+
     "const clone=Node.prototype.cloneNode;Node.prototype.cloneNode=function(...args){data.clones++;return clone.apply(this,args);};"+
