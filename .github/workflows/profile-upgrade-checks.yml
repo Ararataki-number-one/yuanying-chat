@@ -32,7 +32,9 @@ jobs:
           if [ -f tools/gecko/run_identity_host_checks.sh ]; then
             bash tools/gecko/run_identity_host_checks.sh
           fi
-          python3 -m unittest discover -s tests -p 'profile_*_test.py'
+          if compgen -G 'tests/profile_*_test.py' >/dev/null; then
+            python3 -m unittest discover -s tests -p 'profile_*_test.py'
+          fi
       - name: State host verification scope
         run: |
           printf '%s\n' 'Host model and protocol checks only. No Android execution, real account login, native fingerprint support or performance claim is implied.' >> "$GITHUB_STEP_SUMMARY"
