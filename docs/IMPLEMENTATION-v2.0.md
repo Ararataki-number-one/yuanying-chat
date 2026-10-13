@@ -22,7 +22,7 @@
 
 `tools/gecko/check_identity_capabilities.py` 检查官方 SDK 清单、可选的原生原型证据、可选的真机容量记录以及发布元数据。文件都绑定大小和 SHA-256，路径必须位于仓库内。官方清单不能宣称原生能力已验证。
 
-`.github/workflows/fingerprint-contracts.yml` 在 push 和 PR 中运行确定性 Java 策略测试和 Python 拒绝条件测试。CI 权限仅为读取，不发布、不合并、不发送消息。
+`.github/workflows/profile-upgrade-checks.yml` 在 push 和 PR 中运行确定性 Java 策略测试和 Python 拒绝条件测试。CI 权限仅为读取，不发布、不合并、不发送消息。
 
 ```sh
 bash tools/gecko/run_identity_host_checks.sh
