@@ -35,6 +35,8 @@ for pattern in ['environment-spec-*.txt','environment-intent-*.txt','gecko-ident
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 for pattern in ['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','sealed-file-host-results.json','network-source-*.json','network-source-*.txt','network-source-*.png','network-source-*.xml','network-safe-idle-*.json','network-safe-idle-*.txt','network-safe-idle-*.png','network-safe-idle-*.xml']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
+for name in ['environment-spec-results.json', 'environment-spec-failure-log.txt']:
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
 if (out/'ui-visuals').exists():shutil.copytree(out/'ui-visuals',stage/'ui-visuals',dirs_exist_ok=True)
 if (out/'official-sdk-verification.json').exists():shutil.copy2(out/'official-sdk-verification.json',stage/'official-sdk-verification.json')
 sdk_receipt=root/'third-party/sdk/geckoview-157.0.1-official.json'
