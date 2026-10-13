@@ -28,6 +28,8 @@ class ResourceContractTest(unittest.TestCase):
         with self.assertRaises(ValueError):contract.verify_resource_report(value,NAMES)
     def test_complete_metadata_retains_diagnostic_scope(self):
         value=contract.verify_resource_report(self.report,NAMES);self.assertTrue(value['diagnosticOnly']);self.assertFalse(value['capacityAcceptance']);self.assertFalse(value['physicalDeviceAcceptance']);self.assertEqual(value['controlledSdkChecks'],129)
+    def test_failure_cannot_hide_behind_green_metadata(self):self.rejects(lambda r:r.update(failureType="NativeFailure"))
+    def test_boolean_counters_are_not_runtime_counts(self):self.rejects(lambda r:r["allocation"].update(coldRuntimeCreates=False))
     def test_wrong_schema(self):self.rejects(lambda r:r.update(schema=2))
     def test_wrong_sdk(self):self.rejects(lambda r:r.update(sdkAarSha256='f'*64))
     def test_physical_capacity_claim(self):self.rejects(lambda r:r.update(capacityAcceptance=True))
@@ -83,6 +85,15 @@ class ResourceGateTest(unittest.TestCase):
         with self.assertRaises(ValueError):self.verify()
     def test_changed_host_source(self):
         p=self.directory/'resource-pressure-host-results.json';v=json.loads(p.read_text());v['files']['app/src/main/java/local/pocketchat/ResourcePressureController.java']='0'*64;p.write_text(json.dumps(v))
+        with self.assertRaises(ValueError):self.verify()
+    def test_changed_observer_source(self):
+        p=self.directory/'resource-observer-host-results.json';v=json.loads(p.read_text());v['files']['app/src/main/assets/web-reply-observer.js']='0'*64;p.write_text(json.dumps(v))
+        with self.assertRaises(ValueError):self.verify()
+    def test_observer_false_check(self):
+        p=self.directory/'resource-observer-host-results.json';v=json.loads(p.read_text());v['checks'][0]['pass']=False;p.write_text(json.dumps(v))
+        with self.assertRaises(ValueError):self.verify()
+    def test_observer_dirty_source(self):
+        p=self.directory/'resource-observer-host-results.json';v=json.loads(p.read_text());v['sourceDirty']=True;p.write_text(json.dumps(v))
         with self.assertRaises(ValueError):self.verify()
     def test_host_scope_mismatch(self):
         p=self.directory/'resource-pressure-host-results.json';v=json.loads(p.read_text());v['actualAndroidExecution']=True;p.write_text(json.dumps(v))

@@ -27,7 +27,7 @@ def verify_resource_report(report, expected):
         raise ValueError('Production resource fixture is incomplete')
     if any(report.get(key) is not False for key in ['releaseAcceptance','capacityAcceptance','physicalDeviceAcceptance','publicNetworkTraffic']):
         raise ValueError('Controlled resource observations cannot claim physical/native/release acceptance')
-    if report.get('diagnosticOnly') is not True or report.get('actualAndroidExecution') is not True or report.get('actualGeckoExecution') is not True or report.get('synthetic') is not True or report.get('status')!='passed' or report.get('error'):
+    if report.get('diagnosticOnly') is not True or report.get('actualAndroidExecution') is not True or report.get('actualGeckoExecution') is not True or report.get('synthetic') is not True or report.get('status')!='passed' or report.get('error') or report.get('failureType'):
         raise ValueError('Actual controlled Gecko resource execution failed')
     rows=report.get('resourceChecks')
     if not expected or len(set(expected))!=len(expected) or not isinstance(rows,list) or [x.get('name') for x in rows]!=expected or any(x.get('pass') is not True for x in rows):
@@ -36,7 +36,7 @@ def verify_resource_report(report, expected):
     if [x.get('name') for x in all_rows]!=wanted or any(x.get('pass') is not True for x in all_rows) or report.get('passed')!=len(wanted) or report.get('total')!=len(wanted):
         raise ValueError('The independent controlled SDK context checks must remain complete')
     allocation=report.get('allocation',{})
-    if allocation.get('coldRuntimeCreates')!=0 or allocation.get('recoveryRuntimeCreates')!=1 or allocation.get('physicalCapacityAcceptance') is not False or allocation.get('pressureSource')!='synthetic-pressure-control':
+    if type(allocation.get('coldRuntimeCreates')) is not int or type(allocation.get('recoveryRuntimeCreates')) is not int or allocation.get('coldRuntimeCreates')!=0 or allocation.get('recoveryRuntimeCreates')!=1 or allocation.get('physicalCapacityAcceptance') is not False or allocation.get('pressureSource')!='synthetic-pressure-control':
         raise ValueError('Runtime creation proof/pressure scope differs')
     if type(allocation.get('actualRuntimeObject')) is not int or allocation['actualRuntimeObject']==0 or type(allocation.get('oldEpoch')) is not int or type(allocation.get('newEpoch')) is not int or allocation['newEpoch']<=allocation['oldEpoch']:
         raise ValueError('Actual runtime/navigation deadline observations are missing')
