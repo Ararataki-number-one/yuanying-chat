@@ -118,6 +118,8 @@ public final class NetworkCatalogHostTest {
     rejects("Editing to another current endpoint still rejects duplicates",()->manual.editExit(newA.getString("id"),"Duplicate B","","exit-b.invalid",1080,"fixture","fixture"));
     manual.editExit(endpointB.getString("id"),"C","","exit-c.invalid",1080,"fixture","fixture");JSONObject reclaimed=manual.editExit(newA.getString("id"),"Reclaimed B","","exit-b.invalid",1080,"fixture","fixture");
     check("Editing to another row's historical endpoint is allowed",reclaimed.optString("host").equals("exit-b.invalid")&&fresh(manualContext).exit(endpointB.getString("id")).optString("host").equals("exit-c.invalid"));
+    JSONObject colonOne=manual.addExit("Colon one","","colon.invalid",1080,"user:token","secret"),colonTwo=manual.addExit("Colon two","","colon.invalid",1080,"user","token:secret");
+    check("Different credentials sharing a legacy colon-delimited hash stay distinct",!colonOne.getString("id").equals(colonTwo.getString("id"))&&colonTwo.optString("user").equals("user")&&colonTwo.optString("password").equals("token:secret"));
 
     // Validate before migration: normalization must not erase corrupt or future data.
     JSONObject empty=J.obj("schemaVersion",2,"subscriptions",new JSONArray(),"exitSubscriptions",new JSONArray(),"exits",new JSONArray(),"subscriptionTombstones",new JSONArray(),"exitTombstones",new JSONArray());

@@ -46,7 +46,9 @@ final class EnvironmentSpec {
     }
     NetworkBinding(String mode,String entrySourceId,String entryNodeId,String exitSourceId,String exitNodeId,String selectionMode,String credentialRevision,String entryConfigRevision,String exitConfigRevision){
       if(!"internal".equals(mode)&&!"external".equals(mode))throw new IllegalArgumentException("Invalid network mode");
-      if(!"manual".equals(selectionMode)&&!"latency".equals(selectionMode)&&!"random".equals(selectionMode))throw new IllegalArgumentException("Invalid entry selection mode");
+      // The shipped runtime accepts the empty legacy automatic/full-pool mode.
+      // Retain it during migration rather than silently choosing a new policy.
+      if(!"".equals(selectionMode)&&!"manual".equals(selectionMode)&&!"latency".equals(selectionMode)&&!"random".equals(selectionMode))throw new IllegalArgumentException("Invalid entry selection mode");
       this.mode=mode;this.entrySourceId=text(entrySourceId,512);this.entryNodeId=text(entryNodeId,512);this.exitSourceId=text(exitSourceId,512);this.exitNodeId=text(exitNodeId,512);this.selectionMode=selectionMode;this.credentialRevision=text(credentialRevision,512);this.entryConfigRevision=text(entryConfigRevision,512);this.exitConfigRevision=text(exitConfigRevision,512);
     }
     JSONObject json(){return object("mode",mode,"entrySourceId",entrySourceId,"entryNodeId",entryNodeId,"exitSourceId",exitSourceId,"exitNodeId",exitNodeId,"selectionMode",selectionMode,"credentialRevision",credentialRevision,"entryConfigRevision",entryConfigRevision,"exitConfigRevision",exitConfigRevision);}
