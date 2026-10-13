@@ -29,6 +29,10 @@ for name in ['network-performance-results.json','network-performance-failure-log
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['preconnect-results.json','preconnect-log.txt','preconnect-failure-log.txt','preconnect-server.json','preconnect-server-failure.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
+for name in ['profile-host-results.json','environment-intent-host-results.json','environment-spec-results.json','environment-intent-results.json','gecko-identity-prototype-results.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json']:
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
+for pattern in ['environment-spec-*.txt','environment-intent-*.txt','gecko-identity-prototype-*.txt']:
+    for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 for pattern in ['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','sealed-file-host-results.json','network-source-*.json','network-source-*.txt','network-source-*.png','network-source-*.xml','network-safe-idle-*.json','network-safe-idle-*.txt','network-safe-idle-*.png','network-safe-idle-*.xml']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 if (out/'ui-visuals').exists():shutil.copytree(out/'ui-visuals',stage/'ui-visuals',dirs_exist_ok=True)

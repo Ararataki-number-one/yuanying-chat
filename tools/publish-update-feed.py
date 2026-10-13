@@ -4,6 +4,7 @@ import hashlib,json,os,pathlib,re,subprocess,time,urllib.request
 
 ROOT=pathlib.Path.cwd()
 def metadata(m,notes):
+    assert m.get('channel','stable')=='stable','Candidates cannot advance the stable automatic update channel.'
     assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',m['version'])
     assert isinstance(m['versionCode'],int) and m['versionCode']>0
     assert m['package']=='local.pocketchat'

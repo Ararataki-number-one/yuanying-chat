@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Stage only verified signed APK chunks and public synthetic test evidence."""
 import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, urllib.request
+from gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance
 
 
 def verify_existing_release_identity(current, previous, tag_source, actual_bytes, actual_sha256):
@@ -10,7 +11,7 @@ def verify_existing_release_identity(current, previous, tag_source, actual_bytes
 
 
 def existing_release_preflight(manifest, repository):
-    tag=f"v{manifest['version']}-gecko"
+    tag=release_tag(manifest)
     refs=subprocess.check_output(['git','ls-remote','origin','refs/tags/'+tag,'refs/tags/'+tag+'^{}'],cwd=repository,text=True)
     values={name:commit for commit,name in (line.split() for line in refs.splitlines())}
     target=values.get('refs/tags/'+tag+'^{}',values.get('refs/tags/'+tag))
@@ -31,12 +32,18 @@ root=pathlib.Path(__file__).resolve().parents[1]
 settings=(root/'app/build.gradle').read_text()
 version=re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'",settings).group(1)
 version_code=int(re.search(r'versionCode ([0-9]+)',settings).group(1))
+roadmap_release=tuple(map(int,version.split('.'))) >= (1,6,0)
 p=argparse.ArgumentParser()
 p.add_argument('--source',required=True)
 p.add_argument('--apk',type=pathlib.Path,default=root/f'dist/PocketChat-{version}-gecko-arm64.apk')
 p.add_argument('--notes',type=pathlib.Path,default=root/f'docs/RELEASE-v{version}.md')
 p.add_argument('--evidence',type=pathlib.Path,default=root/'work/gecko-integration')
+p.add_argument('--channel',choices=['stable','candidate'],default='stable')
+p.add_argument('--candidate-number',type=int)
+p.add_argument('--manual-acceptance',type=pathlib.Path)
 args=p.parse_args()
+channel_identity=dict(version=version,channel=args.channel,candidateNumber=args.candidate_number)
+tag=release_tag(channel_identity)
 assert re.fullmatch(r'[0-9a-f]{40}',args.source),'A complete source commit is required.'
 report=json.loads((args.evidence/'device-results.json').read_text())
 assert report['status']=='passed' and report['actualAndroidExecution'] and report['releaseMode']
@@ -92,12 +99,29 @@ raw=args.apk.read_bytes()
 assert receipt['bytes']==len(raw) and receipt['sha256']==hashlib.sha256(raw).hexdigest()
 manifest=dict(receipt,sourceCommit=args.source,filename=args.apk.name,parts=[],
               nativeRegression='passed',googleLogin='not-tested',physicalArmPhone='not-tested')
+manifest['channel']=args.channel
+if args.channel=='candidate':manifest['candidateNumber']=args.candidate_number
+manual_raw=None
+if requires_manual_acceptance(manifest):
+    assert args.manual_acceptance is not None,'Publish a candidate first; stable roadmap releases require the user physical-phone checklist.'
+    manual_raw=args.manual_acceptance.read_bytes()
+    manual=verify_manual_acceptance(json.loads(manual_raw),manifest)
+    manifest['manualAcceptance']=manual
+    manifest['physicalArmPhone']='user-reported-passed'
+    manifest['manualAcceptanceArtifact']=dict(file='manual-acceptance.json',bytes=len(manual_raw),sha256=hashlib.sha256(manual_raw).hexdigest())
 if version_code>=43:manifest['performanceRegression']=performance
 if version_code>=44:manifest['connectionRecoveryRegression']=connection
 if version_code>=45:manifest['interactionTransferRegression']=interaction_transfer
 if version_code>=46:
     manifest['chainPerformanceRegression']=chain_performance
     manifest['originalClientRegression']=client
+if roadmap_release:
+    from gecko.check_profile_evidence import verify_profile_evidence
+    manifest['environmentProfileRegression']=verify_profile_evidence(args.evidence,args.source)
+    prototype=json.loads((args.evidence/'gecko-identity-prototype-results.json').read_text())
+    assert prototype['sourceCommit']==args.source and prototype['actualAndroidExecution'] is True
+    assert prototype['diagnosticOnly'] is True and prototype['releaseAcceptance'] is False,'SDK capability diagnostics are not fingerprint acceptance.'
+    manifest['identityPrototypeScope']='Controlled SDK diagnostic only; no template or physical-device acceptance.'
 for number,offset in enumerate(range(0,len(raw),60_000_000)):
     part=raw[offset:offset+60_000_000];name=f'{args.apk.name}.part{number:02d}'
     manifest['parts'].append({'file':name,'bytes':len(part),'sha256':hashlib.sha256(part).hexdigest()})
@@ -107,6 +131,7 @@ if stage.exists():shutil.rmtree(stage)
 stage.mkdir(parents=True)
 for number,part in enumerate(manifest['parts']):(stage/part['file']).write_bytes(raw[number*60_000_000:(number+1)*60_000_000])
 (stage/'release-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+if manual_raw is not None:(stage/'manual-acceptance.json').write_bytes(manual_raw)
 (stage/'device-results.json').write_text(json.dumps(report,indent=2)+'\n')
 if version_code>=40:shutil.copy2(args.evidence/'network-performance-results.json',stage/'network-performance-results.json')
 if version_code>=42:
@@ -115,6 +140,7 @@ performance_files=['gecko-performance-results.json','snapshot-host-results.json'
 if version_code>=44:performance_files.append('reply-binding-host-results.json')
 if version_code>=45:performance_files.extend(['update-transfer-results.json','update-transfer-host-results.json','interaction-host-results.json'])
 if version_code>=49:performance_files.extend(['reading-host-results.json','reading-focus-host-results.json','gecko-scroll-diagnostics.json','gecko-scroll-diagnostic-log.json'])
+if roadmap_release:performance_files.extend(['environment-spec-results.json','environment-intent-results.json','profile-host-results.json','environment-intent-host-results.json','gecko-identity-prototype-results.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json'])
 if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','official-sdk-verification.json','official-sdk-input.json'])
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
 shutil.copy2(args.notes,stage/'RELEASE.md')
@@ -125,6 +151,9 @@ shutil.copy2(root/'tools/publish-update-feed.py',stage/'tools/publish-update-fee
 if version_code>=43:
     (stage/'tools/gecko').mkdir(exist_ok=True)
     shutil.copy2(root/'tools/gecko/check_performance_evidence.py',stage/'tools/gecko/check_performance_evidence.py')
+shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')
+if roadmap_release:
+    for name in ['check_profile_evidence.py','profile_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=44:shutil.copy2(root/'tools/gecko/check_connection_evidence.py',stage/'tools/gecko/check_connection_evidence.py')
 if version_code>=45:shutil.copy2(root/'tools/gecko/check_interaction_transfer_evidence.py',stage/'tools/gecko/check_interaction_transfer_evidence.py')
 if version_code>=46:
@@ -139,8 +168,8 @@ if previous:
     subprocess.run(['git','fetch','origin','refs/heads/'+branch],cwd=root,check=True)
     parents+=['-p',previous[0]]
 subprocess.run(['git','read-tree','--empty'],cwd=root,env=env,check=True)
-subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
+subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*(['manual-acceptance.json'] if manual_raw is not None else []),*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
 tree=subprocess.check_output(['git','write-tree'],cwd=root,env=env,text=True).strip()
 commit=subprocess.check_output(['git','commit-tree',tree,*parents,'-m','Publish original-signed production Gecko APK'],cwd=root,env=env,text=True).strip()
 subprocess.run(['git','-c','http.postBuffer=524288000','push','origin',commit+':refs/heads/'+branch],cwd=root,check=True)
-print(json.dumps({'artifactCommit':commit,'sha256':manifest['sha256'],'download':f'https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v{version}-gecko/'+args.apk.name}))
+print(json.dumps({'artifactCommit':commit,'channel':args.channel,'sha256':manifest['sha256'],'download':f'https://github.com/Ararataki-number-one/yuanying-chat/releases/download/{tag}/'+args.apk.name}))
