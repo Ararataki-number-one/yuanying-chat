@@ -250,7 +250,21 @@
       if(current.trim())conflict=true;
       else {input.focus({preventScroll:true});if(input.tagName==='TEXTAREA'){Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,exactText(saved.draft));input.dispatchEvent(new Event('input',{bubbles:true}));}
         else {const range=document.createRange();range.selectNodeContents(input);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);if(!document.execCommand('insertText',false,exactText(saved.draft))){input.textContent=exactText(saved.draft);input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:exactText(saved.draft)}));}}
-        await new Promise(r=>setTimeout(r,80));if(!samePage(arg.expectedUrl))return {ok:false};restoredDraft=exactText(draft(input))===exactText(saved.draft);if(!restoredDraft)return {ok:true,restoredDraft:false,interacted:true};
+        // Restoring text can queue its own selection event. Compare with the
+        // resulting selection, and protect newer user actions while it settles.
+        const doc=document,identity=documentKey(),events=['pointerdown','keydown','beforeinput','input','compositionstart','compositionupdate','compositionend','wheel','select','selectionchange','focusin','focusout'];
+        const selection=()=>{if(input.tagName==='TEXTAREA')return [input.selectionStart,input.selectionEnd,input.selectionDirection];const s=doc.defaultView?.getSelection();return [s?.anchorNode,s?.anchorOffset,s?.focusNode,s?.focusOffset];};
+        const initialSelection=selection();let interacted=false;
+        const changed=event=>{if(!event.isTrusted)return;if(event.type==='select'||event.type==='selectionchange'){if(selection().some((value,index)=>value!==initialSelection[index]))interacted=true;}else interacted=true;};
+        try{
+          for(const type of events)doc.addEventListener(type,changed,true);
+          await new Promise(r=>setTimeout(r,80));
+          if(document!==doc||documentKey()!==identity||!samePage(arg.expectedUrl))return {ok:false,reason:'route'};
+          if(composer()!==input||input.ownerDocument!==doc||!input.isConnected)return {ok:false,reason:'composer'};
+          if(busy()||siteError(null,true))return {ok:false,reason:'page-state'};
+          restoredDraft=exactText(draft(input))===exactText(saved.draft);
+          if(!restoredDraft||interacted||doc.activeElement!==input||selection().some((value,index)=>value!==initialSelection[index]))return {ok:true,restoredDraft,interacted:true};
+        }finally{for(const type of events)doc.removeEventListener(type,changed,true);}
       }
     }
     const scroll=pageScroll();if(arg.allowScroll!==false&&scroll&&Number.isFinite(saved.scrollTop))scroll.scrollTop=Math.max(0,Math.min(saved.scrollTop,scroll.scrollHeight-scroll.clientHeight));

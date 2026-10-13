@@ -119,6 +119,7 @@ jobs:
           cp work/profile-host/environment-intent-host-results.json work/gecko-integration/environment-intent-host-results.json
           cp work/profile-host/gecko-proxy-route-host-results.json work/gecko-integration/gecko-proxy-route-host-results.json
           python3 -m unittest discover -s tests -p 'profile_*_test.py'
+          python3 -m unittest discover -s tests -p 'gecko_emulator_bootstrap_test.py'
           if [ -f tools/gecko/release_channel_contract_test.py ]; then
             python3 tools/gecko/release_channel_contract_test.py
           fi
@@ -160,8 +161,8 @@ jobs:
           timeout 180 adb wait-for-device
           timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
           adb shell input keyevent 82
-          python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554
           adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
+          python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
           checks_failed=0
           if ! python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
             checks_failed=1
