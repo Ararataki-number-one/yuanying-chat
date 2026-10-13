@@ -82,6 +82,24 @@ public final class IdentityControllerHostTest {
     session=fixture();session.identity.load();session.deleted=true;settle(session);
     check(!session.web.identityPrepared,"deleted environment cannot open after late configuration callback");
   }
+  static void controlledFixtureDesiredConfiguration()throws Exception{
+    ChatSession session=fixture();EnvironmentSpec initial=EnvironmentSpecRepository.value;
+    // A provider has migrated standard=1 before an isolated fixture writes
+    // compatibility=0 to legacy preferences. The persisted model still owns the
+    // desired browser policy, exactly as it should for a real saved template.
+    session.privacy.protection=0;session.identity.cached=null;session.identity.load();settle(session);
+    check(session.deferred&&session.queuedLevel==1,"legacy-only compatibility fixture restores the previously migrated standard desired policy");
+    check(session.identityApplicationPending&&session.identity.pendingWork()&&session.tickQueued,"restored desired policy wakes the real controller maintenance path");
+    check(BrowserIdentitySpec.COMPATIBLE.equals(session.web.configured.templateId),"pending desired standard policy initially preserves actual legacy compatibility");
+    check(EnvironmentSpecRepository.value.desired().equals(initial.desired()),"controller never overwrites the durable desired template to accommodate a legacy-only fixture");
+    session=fixture();initial=EnvironmentSpecRepository.value;session.privacy.protection=0;
+    EnvironmentSpec selected=EnvironmentSpecRuntime.desireBrowser(session.context,BrowserIdentitySpec.legacy(false,0).json());
+    session.identity.cached=null;session.identity.load();settle(session);
+    check(selected.identity.equals(initial.identity)&&selected.desired().network.json().toString().equals(initial.desired().network.json().toString()),"explicit fixture desired browser configuration preserves environment identity and network binding");
+    check(!session.deferred&&!session.identityApplicationPending&&!session.identity.pendingWork()&&session.queuedSaves==0,"matching durable compatibility intent cannot create a spurious startup protection queue");
+    check(session.web.identityPrepared&&BrowserIdentitySpec.COMPATIBLE.equals(session.web.configured.templateId),"matching fixture intent opens the actual compatible browser configuration");
+    check(EnvironmentSpecRepository.value.appliedRevision==0&&EnvironmentSpecRepository.appliedWrites==0,"fixture intent persistence cannot fabricate native policy application acknowledgement");
+  }
   static void failedQueueRestoration()throws Exception{
     ChatSession session=fixture();EnvironmentSpec base=EnvironmentSpecRepository.value;
     EnvironmentSpec applied=base.withApplied(1,"host-only",1);
@@ -198,7 +216,7 @@ public final class IdentityControllerHostTest {
     check(EnvironmentSpecRepository.value.appliedRevision==applied.appliedRevision,"override mirror cannot invent a newer applied policy");
   }
   public static void main(String[] arguments)throws Exception{
-    explicitFailedOverrideMirrorsAndWakes();failedQueueDoesNotApplyOlderIntent();reusedIdentityAndReceiptFences();finishedActivityPublishesAndWakes(false);finishedActivityPublishesAndWakes(true);unchangedTemplateRequiresActualAcknowledgement();templateDialogKeepsLatestLanguage();staleEditorCompletion();newerEditBeforeMainCallback();legacyAndSessionSupersession();pendingStartupPolicy();interruptedDesiredPersistence();startupConfigurationGate();failedQueueRestoration();acknowledgements();observations();
+    controlledFixtureDesiredConfiguration();explicitFailedOverrideMirrorsAndWakes();failedQueueDoesNotApplyOlderIntent();reusedIdentityAndReceiptFences();finishedActivityPublishesAndWakes(false);finishedActivityPublishesAndWakes(true);unchangedTemplateRequiresActualAcknowledgement();templateDialogKeepsLatestLanguage();staleEditorCompletion();newerEditBeforeMainCallback();legacyAndSessionSupersession();pendingStartupPolicy();interruptedDesiredPersistence();startupConfigurationGate();failedQueueRestoration();acknowledgements();observations();
     System.out.println(J.obj("schema",1,"status","passed","passed",checks,"total",checks,"checks",assertions,"actualAndroidExecution",false,"scope","Production IdentityTemplateController and FingerprintTemplateUi/model with queued UI/widgets/binder/persistence doubles; no Android, Gecko, Keystore or real draft capture").toString());
   }
 }

@@ -27,8 +27,39 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
   NetworkOptimizationIntegrationActivity.TestNetwork network;
   NetworkOptimizationIntegrationActivity.HttpFixture site,plain;
   NetworkOptimizationIntegrationActivity.Socks fixed,entryA,entryB;
+  FixtureIdentity fixtureIdentity;
   final ExecutorService runner=Executors.newSingleThreadExecutor();
   interface Work<T>{T run()throws Exception;}
+  /** The provider may migrate the environment before this Activity writes its
+   * legacy preferences. Configure the same durable desired model as production
+   * before creating a browser; never weaken its restored-template policy. */
+  static final class FixtureIdentity {
+    final EnvironmentSpec.Identity identity;final EnvironmentSpec.Configuration desired;final JSONObject record;
+    FixtureIdentity(EnvironmentSpec spec,JSONObject before){identity=spec.identity;desired=spec.desired();record=J.obj("identity",identity.json(),"before",before,"desiredRevision",spec.desiredRevision,"appliedRevision",spec.appliedRevision,"browser",desired.browser(),"networkMode",desired.network.mode,"networkMatches",true,"at",SystemClock.elapsedRealtime());}
+  }
+  static FixtureIdentity prepareFixtureIdentity(Context context,JSONObject config)throws Exception{
+    return EnvironmentSpecRuntime.withIntent(context,()->{
+      EnvironmentSpec.Identity expected=ProfileCatalog.get(context).identity(Profiles.slot(context));
+      EnvironmentSpecRepository repository=new EnvironmentSpecRepository(context);EnvironmentSpec before=repository.load();
+      EnvironmentSpecRuntime.reconcileNetwork(context,expected,"");
+      EnvironmentSpec saved=EnvironmentSpecRuntime.desireBrowser(context,BrowserIdentitySpec.legacy(false,0).json());
+      EnvironmentSpec reread=repository.load();EnvironmentSpecRuntime.requireIdentity(context,expected);
+      EnvironmentSpec.Configuration requested=new EnvironmentSpec.Configuration(BrowserIdentitySpec.legacy(false,0).json(),EnvironmentSpecRuntime.binding(expected,"internal",config,""));
+      if(!before.identity.equals(expected)||!saved.identity.equals(expected)||!reread.identity.equals(expected)||!saved.desired().equals(requested)||!reread.desired().equals(requested))throw new IOException("Controlled fixture desired configuration did not persist exactly");
+      return new FixtureIdentity(reread,J.obj("desiredRevision",before.desiredRevision,"appliedRevision",before.appliedRevision,"browser",before.desired().browser(),"networkMode",before.desired().network.mode));
+    });
+  }
+  static JSONObject startupState(ChatSession session,GeckoWebView view,FixtureIdentity expected){
+    EnvironmentSpec cached=session.identity.cached;
+    return J.obj("at",SystemClock.elapsedRealtime(),"ready",view.ready,"privacyReady",view.privacyReady,"identityPrepared",view.identityPrepared,
+      "routePrepared",view.routePrepared,"bridgeReady",view.routePort!=null,"guardAllowed",session.guard.allowed(),"networkReady",session.networkReady,
+      "connecting",session.connecting,"navigating",session.navigating,"pendingBrowserSettings",DeferredBrowserSettings.pending(session),
+      "identityApplicationPending",session.identityApplicationPending,"queueUnavailable",session.identity.queueUnavailable,
+      "privacyLevel",session.privacy.level(),"protectionLevel",view.protectionLevel,"requestedProtection",view.requestedProtection,
+      "identityMatches",cached!=null&&cached.identity.equals(expected.identity),"desiredMatches",cached!=null&&cached.desired().equals(expected.desired),
+      "cachedDesiredRevision",cached==null?0:cached.desiredRevision,"epoch",session.connectionEpoch,"queued",view.queued,"url",view.getUrl(),"environmentSpecIssue",session.environmentSpecIssue);
+  }
+  static boolean startupSettled(JSONObject state){return state.optBoolean("ready")&&state.optBoolean("privacyReady")&&state.optBoolean("identityPrepared")&&state.optBoolean("routePrepared")&&state.optBoolean("bridgeReady")&&state.optBoolean("guardAllowed")&&state.optBoolean("networkReady")&&!state.optBoolean("connecting")&&!state.optBoolean("navigating")&&!state.optBoolean("pendingBrowserSettings")&&!state.optBoolean("identityApplicationPending")&&!state.optBoolean("queueUnavailable")&&state.optInt("privacyLevel",-1)==0&&state.optInt("protectionLevel",-1)==0&&state.optInt("requestedProtection",-1)==0&&state.optBoolean("identityMatches")&&state.optBoolean("desiredMatches")&&state.optLong("epoch",-1)==0&&state.optString("queued").isEmpty()&&state.optString("environmentSpecIssue").isEmpty();}
   <T>T ui(Work<T> work)throws Exception{
     CompletableFuture<T> done=new CompletableFuture<>();runOnUiThread(()->{try{done.complete(work.run());}catch(Throwable error){done.completeExceptionally(error);}});
     return done.get(20,TimeUnit.SECONDS);
@@ -147,6 +178,8 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
       SecretStore vault=new SecretStore(this);vault.save(config);vault.put("subscription",yaml.getBytes(StandardCharsets.UTF_8));vault.put("subscription-meta",J.obj("urlHash",NativeNetwork.hash(config.getString("subscriptionUrl")),"updatedAt",System.currentTimeMillis()).toString().getBytes(StandardCharsets.UTF_8));
       getSharedPreferences("chat",0).edit().putString("lastGoodEntry","Entry|a").putString("browserEngine","gecko").putString("networkMode","internal")
         .putBoolean("networkConfigured",true).putBoolean("requireExternalVpn",false).putBoolean("pageMode",true).putInt("privacyLevel",0).putBoolean("backgroundWait",false).putBoolean("replyNotice",false).commit();
+      fixtureIdentity=prepareFixtureIdentity(this,config);event("fixtureIdentity",fixtureIdentity.record);NetworkCatalog.put(report,"fixtureIdentity",fixtureIdentity.record);
+      check("Controlled fixture persists matching browser and network desired identity before browser creation",fixtureIdentity.desired.equals(new EnvironmentSpec.Configuration(BrowserIdentitySpec.legacy(false,0).json(),EnvironmentSpecRuntime.binding(fixtureIdentity.identity,"internal",config,""))));
       network=new NetworkOptimizationIntegrationActivity.TestNetwork(this,site,plain,true);
       // Replace only this freshly cleared test process's singleton, so production
       // route()/guard consult the actual controlled managed service.
@@ -160,7 +193,7 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
       });
       await("Gecko initialization",()->ui(()->view.ready&&view.privacyReady&&session.browserDefaultNetwork.snapshot().usable()),60000);
       check("A fresh runtime obtains the real Android default-network snapshot",ui(()->session.browserDefaultNetwork.snapshot().usable()));
-      ui(()->{view.loadUrl(ORIGIN+"/pool");return null;});
+      ui(()->{JSONObject before=startupState(session,view,fixtureIdentity);event("beforeControlledLoad",before);NetworkCatalog.put(report,"beforeControlledLoad",before);check("Controlled document starts only with the exact durable template and an idle admitted route",startupSettled(before));view.loadUrl(ORIGIN+"/pool");JSONObject after=startupState(session,view,fixtureIdentity);event("afterControlledLoad",after);NetworkCatalog.put(report,"afterControlledLoad",after);check("One controlled document load is dispatched without protection or connection queueing",after.optString("queued").isEmpty()&&after.optLong("epoch",-1)==before.optLong("epoch"));return null;});
       await("Actual controlled TLS document",()->eval("({ready:location.href==="+JSONObject.quote(ORIGIN+"/pool")+"&&!!document.getElementById('pool-ready')})").optBoolean("ready"),35000);
       check("The test certificate exception is scoped to one localhost document",view.certificateExceptions==1);
       JSONObject pageApis=eval("({pageFetch:typeof content!=='undefined'&&typeof content.fetch==='function',pageWebSocket:typeof content!=='undefined'&&typeof content.WebSocket==='function'})");
@@ -196,7 +229,7 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
       JSONObject restored=fetch("guard-restored",true);checkNewConnection("Restoring admission after an unknown network uses a fresh actual TLS connection",returnNetwork,restored);
       check("The app's actual fixture keeps the same unsent draft and performs no send",eval("({draft:document.getElementById('prompt-textarea').value,sends:Number(document.getElementById('send-count').textContent)})").optString("draft").equals("unsent pool draft")&&eval("({sends:Number(document.getElementById('send-count').textContent)})").optInt("sends")==0);
       NetworkCatalog.put(report,"fixedExitConnections",fixed.connections);NetworkCatalog.put(report,"entryAConnections",entryA.connections);NetworkCatalog.put(report,"entryBConnections",entryB.connections);NetworkCatalog.put(report,"status","passed");
-    }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());}
+    }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());if(view!=null&&fixtureIdentity!=null)try{ui(()->{JSONObject state=startupState(session,view,fixtureIdentity);event("failedControlledLoadState",state);NetworkCatalog.put(report,"failedControlledLoadState",state);return null;});}catch(Exception diagnostic){NetworkCatalog.put(report,"startupDiagnosticError",diagnostic.toString());}}
     finally{
       if(view!=null)try{ui(()->{session.handler.removeCallbacks(session.tick);view.destroy();return null;});}catch(Exception ignored){}
       stopThreads(network);for(AutoCloseable fixture:new AutoCloseable[]{site,plain,fixed,entryA,entryB})if(fixture!=null)try{fixture.close();}catch(Exception ignored){}
