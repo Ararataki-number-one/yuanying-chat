@@ -40,6 +40,6 @@ final class FingerprintTemplateUi {
     else out.append("\n环境配置暂未读取");
     GeckoSettings metadata=session.web.getSettings();out.append("\n当前内核确认：").append(metadata.policyAcknowledged?"已确认当前设置":"尚未完成");
     if(!metadata.policyError.isEmpty())out.append("（").append(metadata.policyError).append("）");
-    out.append("\n\n内核确认只代表设置接受；具体网页字段请运行自检。");return out.toString();
+    out.append("\n\n").append(NativeCapabilityManifest.officialGecko().unsupportedSummary());out.append("\n\n内核确认只代表设置接受；具体网页字段请运行自检。");return out.toString();
   }
 }

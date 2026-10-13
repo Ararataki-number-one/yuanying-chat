@@ -1,0 +1,51 @@
+name: Fingerprint and environment maintenance contracts
+on:
+  push:
+    paths:
+      - 'app/src/main/java/local/pocketchat/**'
+      - 'app/build.gradle'
+      - 'tests/browser-runtime/NativeCapabilityManifestTest.java'
+      - 'tests/browser-runtime/EnvironmentResourcePolicyTest.java'
+      - 'tests/identity_capabilities_test.py'
+      - 'tools/gecko/check_identity_capabilities.py'
+      - 'tools/gecko/run_identity_host_checks.sh'
+      - 'third-party/sdk/**'
+      - '.github/workflows/fingerprint-contracts.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'tools/gecko/**'
+      - 'third-party/sdk/**'
+      - '.github/workflows/fingerprint-contracts.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fingerprint-contracts-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  host-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Check native inventory and protected-work admission policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$JAVA_HOME_17_X64/bin:$PATH"
+          bash tools/gecko/run_identity_host_checks.sh
+      - name: Check profile models, parser and asynchronous template controller
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$JAVA_HOME_17_X64/bin:$PATH"
+          mkdir -p work/profile-host
+          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar -o work/profile-host/json.jar
+          echo '3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  work/profile-host/json.jar' | sha256sum -c -
+          python3 tools/gecko/run_profile_host_checks.py --json-jar work/profile-host/json.jar
+      - name: State verification scope
+        shell: bash
+        run: |
+          printf '%s\n' 'Host contracts passed. No physical ARM test, live ChatGPT test, native fingerprint control or concurrent-environment performance claim is implied.' >> "$GITHUB_STEP_SUMMARY"

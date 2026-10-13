@@ -112,7 +112,13 @@ final class ChatSession {
   void sendFailure(String message){submitting=false;ChatService.end(context);delivery(activeDeliveryId,"failed",message==null?"发送前检查失败":message,false,"","");setStatus(message);}
   void setStatus(String text){status=text==null?"网络连接未完成":text;changed();}
   boolean uploading(){for(int i=0;i<attachments.length();i++){JSONObject file=attachments.optJSONObject(i);if(file!=null&&"uploading".equals(file.optString("state")))return true;}return false;}
-  boolean browserWorkActive(){return !deleted&&(pending!=null||DeferredBrowserSettings.pending(this)||uiVisible||audit!=null&&audit.running||ChatService.running||connecting||navigating||submitting||operation||transferActive||uploading());}
+  boolean browserWorkActive(){
+    boolean reply=BrowserSettingsPolicy.currentReply(MainActivity.chatUrl(web.getUrl()),WebReplyObserver.same(web.getUrl(),state.optString("url")),state.optBoolean("busy"),stateEpoch,navigationEpoch);
+    boolean maintenance=DeferredBrowserSettings.pending(this)||audit!=null&&audit.running||ChatService.running||configurationCapture;
+    // Pause activity while retaining the live session; this never destroys a
+    // process, discards a draft, or claims a durable eviction checkpoint.
+    return !deleted&&EnvironmentResourcePolicy.keepActivityRunning(uiVisible,pending!=null||submitting||operation||reply,uploading(),transferActive,connecting||navigating,maintenance);
+  }
   void updateBrowserActivity(){boolean active=browserWorkActive();if(active&&browserPaused){web.resumeTimers();web.onResume();browserPaused=false;}else if(!active&&!browserPaused){web.onPause();web.pauseTimers();browserPaused=true;}if(active)wakePolling();else handler.removeCallbacks(tick);}
   void foreground(boolean value){uiVisible=value;if(!value){pageMemory.capture(()->{});web.checkpointState();webStore.flush();}else{if(web.enabled&&web.failed)web.onResume();if(pending!=null&&!pending.optBoolean("webSuspended"))ChatService.begin(context);}updateBrowserActivity();}
   void checkBackgroundAttachments(){if(backgroundAttachmentCheck||uiVisible||!uploading()||offline||!networkReady)return;backgroundAttachmentCheck=true;long epoch=navigationEpoch;String owner=attachmentOwner;JSONArray names=new JSONArray();for(int i=0;i<attachments.length();i++)names.put(attachments.optJSONObject(i).optString("name"));

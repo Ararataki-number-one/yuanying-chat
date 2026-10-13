@@ -63,6 +63,11 @@ Service Worker 尚未覆盖时明确显示未覆盖，不计为验证通过。
 
 1. 用 JDK 17+ 执行主机测试。环境模型的 JVM 测试需 JSON-java jar；
    jar 只用于主机测试，生产继续用 Android org.json。
+主机测试命令：`python3 tools/gecko/run_profile_host_checks.py --json-jar /path/to/json.jar`；
+2.0 追加 `bash tools/gecko/run_identity_host_checks.sh`。新增 Android 夹具使用
+`python3 tests/gecko/run_profile_features.py --adb /path/to/adb --serial DEVICE`，
+只清理固定的 `.test` 合成包，不接受正式包名。
+
 2. 按 BUILD.md 用固定官方 SDK/Gradle 进行完整 APK 编译和 lint。
 3. 用 Android ARM 真机执行新增和既有集成测试，验证真实账户登录。
 4. 同一手机/网络/操作分别统计冷加载、热加载、页面可用 p50/p95、断开

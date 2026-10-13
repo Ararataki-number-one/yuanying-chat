@@ -29,8 +29,9 @@ public final class EnvironmentSpecIntegrationActivity extends Activity {
     try{
       if(!getPackageName().endsWith(".test"))throw new IOException("Synthetic integration package required");
       schemaUpgrade();repositoryLifecycle();
-      result=J.obj("passed",checks,"scope","Android SQLite v6→v7, sealed config migration and deletion/reuse; no webpage fingerprint or WAN claim");
-    }catch(Throwable failure){result=J.obj("passed",checks,"error",failure.toString());}
+      result=J.obj("status","passed","actualAndroidExecution",true,"synthetic",true,"passed",checks,"scope","Android SQLite v6→v7, sealed config migration and deletion/reuse; no webpage fingerprint or WAN claim");
+    }catch(Throwable failure){result=J.obj("status","failed","actualAndroidExecution",true,"synthetic",true,"passed",checks,"error",failure.toString());}
+    try{J.write(new File(getFilesDir(),"environment-spec-results.json"),result.toString());}catch(IOException unavailable){Log.e("PocketEnvironmentSpec","Unable to persist fixture report");}
     Log.i("PocketEnvironmentSpec",result.toString());
   },"environment-spec-fixture").start();}
 

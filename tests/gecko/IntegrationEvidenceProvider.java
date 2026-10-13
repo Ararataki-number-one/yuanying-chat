@@ -10,7 +10,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
-/** Shell-only export of two synthetic reports from the non-debuggable test APK. */
+/** Shell-only export of fixed synthetic reports from the non-debuggable test APK. */
 public final class IntegrationEvidenceProvider extends ContentProvider {
   @Override public boolean onCreate(){
     if(getContext()==null||!getContext().getPackageName().equals("local.pocketchat.test"))throw new SecurityException("Integration package only");
@@ -22,6 +22,8 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
     if("/native-probe".equals(uri.getPath()))name="native-probe-results.json";
     else if("/gecko-pool".equals(uri.getPath()))name="gecko-pool-results.json";
     else if("/preconnect".equals(uri.getPath()))name="preconnect-results.json";
+    else if("/environment-spec".equals(uri.getPath()))name="environment-spec-results.json";
+    else if("/exit-subscriptions".equals(uri.getPath()))name="exit-subscription-catalog-results.json";
     else throw new FileNotFoundException("Unknown synthetic report");
     try{
       File base=getContext().getFilesDir().getCanonicalFile(),file=new File(base,name).getCanonicalFile();

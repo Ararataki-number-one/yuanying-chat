@@ -23,7 +23,7 @@ final class DesignSettingsUi {
   }
   static void group(Activity a,LinearLayout box,String title,String detail,String icon,Runnable click){DesignUi.addCard(box,DesignUi.setting(a,icon,title,detail,"",click));}
   static void about(Activity a){DesignUi.message(a,"元婴期院士 · "+AppVersion.name(a),"Android ChatGPT 网页客户端\n\n使用 Mozilla GeckoView 打开 ChatGPT 官方网页。消息、模型选择和输入框沿用网站本身。\n\n在环境列表新建或编辑环境，各环境分别保存登录和网络配置。下载中心汇总已保存的文件。\n\n后台完成提醒默认关闭，可在应用设置中开启。登录数据保存在本机，网络凭据由 Android Keystore 加密。第三方许可随源码提供。\n\n浏览器保护范围以实际自检为准。");}
-  static void capabilities(Activity a){DesignUi.message(a,"功能支持范围","• GeckoView 浏览器与 ChatGPT 官方网页\n• 最多 8 个独立环境，支持分组、备注、收藏和删除\n• 每个环境分别保存登录、Cookie、草稿和网络配置\n• 手机网络、订阅入口与固定出口\n• 文件下载和后台回复检测\n\n后台完成提醒需主动开启。浏览器保护范围以自检结果为准。Chrome 扩展尚不支持。");}
+  static void capabilities(Activity a){DesignUi.message(a,"功能支持范围","• GeckoView 浏览器与 ChatGPT 官方网页\n• 最多 8 个独立环境，支持分组、备注、收藏和删除\n• 每个环境分别保存登录、Cookie、草稿和网络配置\n• 手机网络、订阅入口与固定出口\n• 文件下载和后台回复检测\n\n后台完成提醒需主动开启。浏览器保护范围以自检结果为准。Chrome 扩展尚不支持。\n\n"+NativeCapabilityManifest.officialGecko().unsupportedSummary()+"\n多环境同时运行容量尚未测量。后台空闲只暂停保留会话的活动；回复、上传、下载和维护任务继续受到保护。");}
   static void completionReminders(Activity a,Runnable refresh){
     LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));
     Switch enabled=new Switch(a);enabled.setText("离开应用后提醒完成");enabled.setTextSize(14);enabled.setTextColor(DesignUi.TEXT);enabled.setChecked(AppSettings.backgroundCompletionNotice(a));box.addView(enabled);
