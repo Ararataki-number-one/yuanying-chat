@@ -1,0 +1,176 @@
+{
+  "schema": 1,
+  "status": "failed",
+  "runNonce": "ed23934a3a29f19afa3f4706821e7d69",
+  "applicationAcceptance": false,
+  "physicalPhoneAcceptance": false,
+  "vendorKeyboardUiAcceptance": false,
+  "sourceCommit": "1defa2a29427b15d083e6b088afb5306f331db83",
+  "sourceTree": "d3e463ba0a90ca926bb126918fc02883a743c10f",
+  "runId": "38557959311",
+  "runAttempt": "1",
+  "integrationApkSha256": "66e24a3ef244ba08fbd11358f361a53e7895ce67ae104fc1789351b03f8d5861",
+  "sdkReceiptSha256": "d9f1e14f325c7719a6a6e47f15c6b60f30413a70dad2a5ec46ae33e894fdbdc3",
+  "identity": {
+    "sourceCommit": "1defa2a29427b15d083e6b088afb5306f331db83",
+    "sourceTree": "d3e463ba0a90ca926bb126918fc02883a743c10f",
+    "runId": "38557959311",
+    "runAttempt": "1",
+    "integrationApkSha256": "66e24a3ef244ba08fbd11358f361a53e7895ce67ae104fc1789351b03f8d5861",
+    "sdkReceiptSha256": "d9f1e14f325c7719a6a6e47f15c6b60f30413a70dad2a5ec46ae33e894fdbdc3"
+  },
+  "serial": "emulator-5554",
+  "user": 0,
+  "exactFixtureComponent": "local.pocketchat.test/local.pocketchat.ControlledCaretInputMethodService",
+  "commands": [
+    {
+      "parts": [
+        "shell",
+        "getprop",
+        "ro.kernel.qemu"
+      ],
+      "startedAtMonotonicNanos": 606079149437,
+      "stdout": "1\n",
+      "status": "passed",
+      "completedAtMonotonicNanos": 606114472648
+    },
+    {
+      "parts": [
+        "shell",
+        "am",
+        "get-current-user"
+      ],
+      "startedAtMonotonicNanos": 606114479298,
+      "stdout": "0\n",
+      "status": "passed",
+      "completedAtMonotonicNanos": 606165513923
+    },
+    {
+      "parts": [
+        "shell",
+        "getprop",
+        "ro.build.version.sdk"
+      ],
+      "startedAtMonotonicNanos": 606165520643,
+      "stdout": "35\n",
+      "status": "passed",
+      "completedAtMonotonicNanos": 606199104559
+    },
+    {
+      "parts": [
+        "shell",
+        "settings",
+        "--user",
+        "0",
+        "get",
+        "secure",
+        "default_input_method"
+      ],
+      "startedAtMonotonicNanos": 606199120803,
+      "stdout": "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME\n",
+      "status": "passed",
+      "completedAtMonotonicNanos": 606261862808
+    },
+    {
+      "parts": [
+        "shell",
+        "settings",
+        "--user",
+        "0",
+        "get",
+        "secure",
+        "enabled_input_methods"
+      ],
+      "startedAtMonotonicNanos": 606261876809,
+      "stdout": "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME;1594443099:com.google.android.tts/com.google.android.apps.speech.tts.googletts.settings.asr.voiceime.VoiceInputMethodService\n",
+      "status": "passed",
+      "completedAtMonotonicNanos": 606315765863
+    },
+    {
+      "parts": [
+        "shell",
+        "settings",
+        "--user",
+        "0",
+        "get",
+        "secure",
+        "selected_input_method_subtype"
+      ],
+      "startedAtMonotonicNanos": 606315780755,
+      "stdout": "1594443099\n",
+      "status": "passed",
+      "completedAtMonotonicNanos": 606405201802
+    },
+    {
+      "parts": [
+        "shell",
+        "settings",
+        "--user",
+        "0",
+        "get",
+        "secure",
+        "input_methods_subtype_history"
+      ],
+      "startedAtMonotonicNanos": 606405216393,
+      "stdout": "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME;1891618174\n",
+      "status": "passed",
+      "completedAtMonotonicNanos": 606475109121
+    },
+    {
+      "parts": [
+        "shell",
+        "ime",
+        "list",
+        "-a",
+        "-s",
+        "--user",
+        "0"
+      ],
+      "startedAtMonotonicNanos": 606476684888,
+      "stdout": "com.google.android.tts/com.google.android.apps.speech.tts.googletts.settings.asr.voiceime.VoiceInputMethodService\ncom.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME\nlocal.pocketchat.test/local.pocketchat.ControlledCaretInputMethodService\n",
+      "status": "passed",
+      "completedAtMonotonicNanos": 606519148026
+    },
+    {
+      "parts": [
+        "shell",
+        "ime",
+        "list",
+        "-s",
+        "--user",
+        "0"
+      ],
+      "startedAtMonotonicNanos": 606519151121,
+      "stdout": "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME\ncom.google.android.tts/com.google.android.apps.speech.tts.googletts.settings.asr.voiceime.VoiceInputMethodService\n",
+      "status": "passed",
+      "completedAtMonotonicNanos": 606561381477
+    },
+    {
+      "parts": [
+        "shell",
+        "dumpsys",
+        "--priority",
+        "CRITICAL",
+        "input_method"
+      ],
+      "startedAtMonotonicNanos": 606561445033,
+      "status": "failed",
+      "errorType": "ValueError",
+      "error": "Controlled IME guard: bounded actual stdout required",
+      "completedAtMonotonicNanos": 607055545595
+    }
+  ],
+  "mutationAttempted": false,
+  "restorationVerified": true,
+  "scope": "Exact emulator/User 0 state around unchanged original-SDK compatibility protocol; not vendor keyboard or phone acceptance.",
+  "prepareStartedAtMonotonicNanos": 606079147534,
+  "confirmedQemu": true,
+  "confirmedUser0": true,
+  "confirmedAndroidSdk": 35,
+  "errorType": "ValueError",
+  "error": "Controlled IME guard: bounded actual stdout required",
+  "failureStage": "prepare",
+  "workloadStatus": "unaccepted",
+  "restoreStartedAtMonotonicNanos": 607055558034,
+  "restoredAtMonotonicNanos": 607055559626
+}
