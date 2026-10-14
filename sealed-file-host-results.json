@@ -1,0 +1,142 @@
+{
+  "status": "passed",
+  "passed": 32,
+  "total": 32,
+  "executed": 32,
+  "actualAndroidExecution": false,
+  "actualKeystoreEncryption": false,
+  "actualAtomicFileBehaviorStub": true,
+  "actualCrossJvmStorageLease": true,
+  "failure": "",
+  "checks": [
+    {
+      "name": "Unprotected baseline creates a pending .new file",
+      "pass": true
+    },
+    {
+      "name": "Unprotected openRead removes a different writer's .new file",
+      "pass": true
+    },
+    {
+      "name": "Unprotected finishWrite can return normally without publishing",
+      "pass": true
+    },
+    {
+      "name": "Formal publication turns quiet rename failure into IOException",
+      "pass": true
+    },
+    {
+      "name": "Rejected rename publication clears its pending .new file",
+      "pass": true
+    },
+    {
+      "name": "Rejected rename publication retains the last committed bytes",
+      "pass": true
+    },
+    {
+      "name": "Formal writer reaches an actual startWrite barrier",
+      "pass": true
+    },
+    {
+      "name": "Formal reader waits instead of deleting an active .new",
+      "pass": true
+    },
+    {
+      "name": "Formal reader receives the complete newly published value",
+      "pass": true
+    },
+    {
+      "name": "Formal remove waits for publication before removing the record",
+      "pass": true
+    },
+    {
+      "name": "Formal remove clears base and pending publication",
+      "pass": true
+    },
+    {
+      "name": "A separate JVM actually attempts and observes the held OS stripe lock",
+      "pass": true
+    },
+    {
+      "name": "A separate JVM reader cannot destroy a pending publication",
+      "pass": true
+    },
+    {
+      "name": "Cross-JVM writer commits successfully",
+      "pass": true
+    },
+    {
+      "name": "Cross-JVM reader observes the complete committed value",
+      "pass": true
+    },
+    {
+      "name": "Fixture finds two different physical files sharing one stable stripe",
+      "pass": true
+    },
+    {
+      "name": "Nested access to a different file on the same stripe is reentrant",
+      "pass": true
+    },
+    {
+      "name": "Dynamic cache slot churn creates at most 64 persistent lock inodes",
+      "pass": true
+    },
+    {
+      "name": "Removed dynamic slots leave no committed or pending payload files",
+      "pass": true
+    },
+    {
+      "name": "Payload removal never replaces or unlinks a stable stripe inode",
+      "pass": true
+    },
+    {
+      "name": "Missing records return null without treating .lock files as data",
+      "pass": true
+    },
+    {
+      "name": "Legacy backup recovery remains readable under the formal lease",
+      "pass": true
+    },
+    {
+      "name": "Publication verifies prefix and complete multi-chunk payload",
+      "pass": true
+    },
+    {
+      "name": "Publication verification rejects same-length prefix corruption",
+      "pass": true
+    },
+    {
+      "name": "Publication verification rejects same-length payload-tail corruption",
+      "pass": true
+    },
+    {
+      "name": "Publication verification rejects shortened and extra payload bytes",
+      "pass": true
+    },
+    {
+      "name": "Canonical file aliases share the same stable stripe gate",
+      "pass": true
+    },
+    {
+      "name": "Publication through an alias preserves the physical file and symlink",
+      "pass": true
+    },
+    {
+      "name": "Removal through an alias clears the physical payload under its lease",
+      "pass": true
+    },
+    {
+      "name": "A queued JVM waiter retains the same live canonical gate",
+      "pass": true
+    },
+    {
+      "name": "Interrupted stripe acquisition exits without entering protected I/O",
+      "pass": true
+    },
+    {
+      "name": "Completed and interrupted leases release all JVM gate references",
+      "pass": true
+    }
+  ],
+  "sourceCommit": "1aaa83ff2b208babbcf8543fbbcf554a667f8dc3"
+}
