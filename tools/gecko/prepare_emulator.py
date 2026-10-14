@@ -71,6 +71,7 @@ class Commands:
             result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     text=True, timeout=timeout)
         except subprocess.TimeoutExpired as error:
+            # A complete snapshot in stdout does not turn a timed-out process into success.
             def decoded(raw):
                 return raw.decode('utf-8', errors='replace') if isinstance(raw, bytes) else (raw or '')
             self.record['commands'].append(dict(command=command, exitCode=None, timedOut=True,
