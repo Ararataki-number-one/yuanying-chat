@@ -3,8 +3,10 @@
 The real guard and package parser execute against explicit fake ADB states.
 These controls do not establish Android, keyboard, APK, or application readiness.
 """
+import hashlib
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -23,6 +25,18 @@ STATE = {operation:state for state,operation in RESTORE.items()}
 HOME_COMMAND = ('shell','cmd','package','resolve-activity','--brief','--user','0',
                 '-a','android.intent.action.MAIN','-c','android.intent.category.HOME')
 NORMAL_WINDOW = '  mCurrentFocus=Window{fake123 u0 local.pocketchat.test/local.pocketchat.ControlledFixture}\n'
+CAPTURED_DUMP = ROOT / 'tests/fixtures/android-launcher-package-86db516.txt'
+CAPTURED_DUMP_SHA256 = '7e66eb178577df7b5919aef3031030ca337677533b67c6d84ab41381f8cc48d8'
+
+
+def captured_package_dump():
+    # Byte-identical read-only stdout from run 38543923996/attempt 1, source
+    # 86db5167780357fffcc347479c4e802a0ffa4a5d, artifact 52f4bbf2335343746042e2927a699d258ddeadff.
+    # Parent environment ledger SHA256: 033aef21606674466c3fa757d03d8b9a94525d846f81d540966c0224b3bc67d7.
+    raw = CAPTURED_DUMP.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != CAPTURED_DUMP_SHA256:
+        raise AssertionError('Actual retained package dump changed')
+    return raw.decode('utf-8')
 
 
 def identity():
@@ -111,6 +125,57 @@ def harness(**options):
 
 
 class EnabledStateParserTest(unittest.TestCase):
+    def test_actual_full_dump_reproduces_old_cross_line_refusal_and_returns_package_state(self):
+        raw = captured_package_dump()
+        old_users = re.findall(r'^\s*User 0:\s*([^\n]+)',raw,re.M)
+        self.assertEqual(len(old_users),2)
+        self.assertTrue(old_users[1].startswith('['),'Old parser consumed the following Queries line')
+        self.assertEqual(len(raw.encode('utf-8')),22309)
+        self.assertEqual(guard._enabled_state(raw),0)
+
+    def test_actual_full_dump_preserves_all_five_exact_enabled_states(self):
+        raw = captured_package_dump()
+        self.assertEqual(raw.count('enabled=0'),1)
+        for state in range(5):
+            with self.subTest(state=state):
+                self.assertEqual(guard._enabled_state(raw.replace('enabled=0','enabled='+str(state))),state)
+
+    def test_unrelated_empty_visibility_users_and_global_state_do_not_own_package_metadata(self):
+        raw = ('Queries:\n  queryable via interaction:\n    User 0:\n'
+               '      [foreign.package]:\n        '+PACKAGE+'\n'+package_dump(2)+
+               '\nQueries:\n  queryable via interaction:\n    User 0:\n'
+               '      [another.package]:\n        '+PACKAGE+'\n'
+               '    User 0: installed=false enabled=4\n')
+        self.assertEqual(guard._enabled_state(raw),2)
+
+    def test_package_user_metadata_must_be_on_one_direct_member_row(self):
+        raw = package_dump(0)
+        row = next(line for line in raw.splitlines() if 'User 0:' in line)
+        variants = [raw.replace(row,'    User 0:\n      installed=true enabled=0'),
+                    raw.replace(row,'  User 0: installed=true enabled=0'),
+                    raw.replace(row,'      User 0: installed=true enabled=0'),
+                    raw.replace('installed=true','not-installed=true'),
+                    raw.replace('enabled=0','not-enabled=0')]
+        for changed in variants:
+            with self.subTest(changed=changed),self.assertRaises(ValueError):
+                guard._enabled_state(changed)
+
+    def test_genuine_duplicate_package_user_rows_remain_fatal(self):
+        raw = captured_package_dump()
+        row = next(line for line in raw.splitlines() if 'User 0: ceDataInode=' in line)
+        for added in [row,row.replace('enabled=0','enabled=1'),
+                      row.replace('installed=true','installed=false'),'    User 0:',
+                      '      User 0: installed=true enabled=0']:
+            with self.subTest(added=added),self.assertRaises(ValueError):
+                guard._enabled_state(raw.replace(row,row+'\n'+added))
+
+    def test_following_global_user_state_cannot_replace_missing_package_state(self):
+        raw = captured_package_dump()
+        row = next(line for line in raw.splitlines() if 'User 0: ceDataInode=' in line)
+        changed = raw.replace(row,'').replace('Queries:\n','Queries:\n    User 0: installed=true enabled=0\n')
+        with self.assertRaises(ValueError):
+            guard._enabled_state(changed)
+
     def test_all_five_exact_android_enabled_states_are_preserved(self):
         for state in range(5):
             with self.subTest(state=state):
@@ -140,6 +205,20 @@ class LauncherGuardTest(unittest.TestCase):
                 self.assertEqual(parts,('shell','am','force-stop','--user','0',PACKAGE))
         self.assertFalse(any('input' in parts or 'settings' in parts for parts in fake.calls),
                          'The guard must not dismiss errors or modify input policy')
+
+    def test_captured_full_dump_allows_fake_workload_and_exact_state_restoration(self):
+        raw = captured_package_dump()
+        fake,record,instance = harness(initial_dump=raw,
+            disabled_dump=raw.replace('enabled=0','enabled=3'),restored_dump=raw)
+        ran = []
+        self.assertEqual(instance.run(lambda:ran.append(fake.state)),None)
+        self.assertEqual(ran,[3])
+        self.assertEqual(fake.pm_changes,[('disable-user',3),('default-state',0)])
+        self.assertEqual(record['initialPackageRaw'],raw)
+        self.assertEqual(record['restoredPackageRaw'],raw)
+        self.assertTrue(record['restorationVerified'])
+        self.assertEqual(record['restoredHome'],record['initialHome'])
+        self.assert_known_package_only(fake)
 
     def test_normal_workloads_restore_exact_states_zero_through_four_before_later_home(self):
         for initial in range(5):

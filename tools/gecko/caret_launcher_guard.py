@@ -14,12 +14,28 @@ def require(condition, message):
 
 def _enabled_state(raw):
     require(isinstance(raw, str), 'actual package dump required')
-    packages = re.findall(r'^\s*Package \[([^\]]+)\]', raw, re.M)
-    require(packages == [LAUNCHER], 'exact launcher package dump required')
-    users = re.findall(r'^\s*User 0:\s*([^\n]+)', raw, re.M)
-    require(len(users) == 1 and re.findall(r'\binstalled=([^\s]+)', users[0]) == ['true'],
+    lines = raw.splitlines()
+    packages = [(index, match) for index, line in enumerate(lines)
+                if (match := re.match(r'^([ \t]*)Package \[([^\]]+)\]', line))]
+    require(len(packages) == 1 and packages[0][1][2] == LAUNCHER,
+            'exact launcher package dump required')
+    index, header = packages[0]
+    indent = lambda line: len(line) - len(line.lstrip(' \t'))
+    # dumpsys also emits global Queries/User sections. Only the requested
+    # Package's indented members can authorize an enabled-state mutation.
+    block = []
+    for line in lines[index + 1:]:
+        if line.strip() and indent(line) <= len(header[1]):
+            break
+        if line.strip():
+            block.append(line)
+    member_indent = min((indent(line) for line in block), default=-1)
+    users = [match for line in block
+             if (match := re.fullmatch(r'([ \t]*)User 0:[ \t]*([^\r\n]*)', line))]
+    require(len(users) == 1 and len(users[0][1]) == member_indent
+            and re.findall(r'(?:^|[ \t])installed=([^ \t]+)', users[0][2]) == ['true'],
             'one installed User 0 state required')
-    states = re.findall(r'\benabled=([^\s]+)', users[0])
+    states = re.findall(r'(?:^|[ \t])enabled=([^ \t]+)', users[0][2])
     require(len(states) == 1 and states[0] in {'0', '1', '2', '3', '4'}, 'safe exact enabled-state integer required')
     return int(states[0])
 
