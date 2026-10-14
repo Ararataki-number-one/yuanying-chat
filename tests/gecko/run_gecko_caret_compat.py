@@ -34,6 +34,50 @@ IDS = ['rapid-taps', 'selected-replace', 'arrow-delete', 'undo', 'ime-multiword'
        'soft-single-char', 'codepoint-delete', 'noop-composition']
 
 
+def capture_failure_diagnostics(adb_executable, serial, output):
+    """Read terminal failure state without input, retries, or Activity changes."""
+    output = pathlib.Path(output)
+    remote_ui = '/sdcard/gecko-caret-compat-failure-' + secrets.token_hex(16) + '.xml'
+
+    def read(*parts):
+        return subprocess.check_output([str(adb_executable), '-s', serial, *parts],
+                                       stderr=subprocess.PIPE, timeout=30)
+
+    def read_ui():
+        read('shell', 'uiautomator', 'dump', remote_ui)
+        return read('exec-out', 'cat', remote_ui)
+
+    # Window ownership is captured first, before the slower UI dump.
+    operations = [
+        ('gecko-caret-compat-failure-window.txt', lambda: read('shell', 'dumpsys', 'window')),
+        ('gecko-caret-compat-failure-activity.txt', lambda: read('shell', 'dumpsys', 'activity', 'activities')),
+        ('gecko-caret-compat-failure-screen.png', lambda: read('exec-out', 'screencap', '-p')),
+        ('gecko-caret-compat-failure-ui.xml', read_ui),
+        ('gecko-caret-compat-failure-log.txt', lambda: read('logcat', '-d')),
+    ]
+    captures = {}
+    for name, capture in operations:
+        record = dict(startedAtWallTimeMillis=time.time_ns() // 1_000_000,
+                      startedAtMonotonicNanos=time.monotonic_ns())
+        try:
+            raw = capture()
+            (output / name).write_bytes(raw)
+            record.update(saved=True, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+        except Exception as error:
+            record.update(saved=False, error=str(error))
+            for field in ('output', 'stderr'):
+                value = getattr(error, field, None)
+                if value is not None:
+                    if isinstance(value, bytes):
+                        value = value[:8192].decode('utf-8', 'replace')
+                    record[field] = str(value)[:8192]
+        finally:
+            record['completedAtMonotonicNanos'] = time.monotonic_ns()
+            record['completedAtWallTimeMillis'] = time.time_ns() // 1_000_000
+        captures[name] = record
+    return captures
+
+
 def perform_android_action(action, adb):
     """Execute the complete decoded original request once, without delays or replay."""
     require(action.get('scenario') in IDS and isinstance(action.get('id'), str)
@@ -416,8 +460,8 @@ def main():
                               diagnosticOnly=not args.normal_acceptance, releaseAcceptance=False,
                               actualAndroidExecution=activity_launched, sourceCommit=source, runId=build['runId'], runAttempt=build['runAttempt'])
             report.update(status='failed', controlledCaretCompatibilityAcceptance=False, runnerError=str(error))
+            report['failureCaptures'] = capture_failure_diagnostics(args.adb, args.serial, out)
             save(report)
-            (out / 'gecko-caret-compat-failure-log.txt').write_text(adb('logcat', '-d'))
         else:
             (out / 'preflight-failure.json').write_text(json.dumps(dict(status='failed', actualAndroidExecution=False,
                 error=str(error), sourceCommit=source, runId=build['runId'], runAttempt=build['runAttempt']), indent=2) + '\n')

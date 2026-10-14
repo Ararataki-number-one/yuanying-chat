@@ -131,6 +131,7 @@ class BoundedPublisherTest(unittest.TestCase):
         self.diagnostic_bytes = {}
         for name,folder in [('installed-apk-read-performance-before.json',output),
                             ('installed-apk-read-performance-after.json',output),
+                            ('editing-phase-environment.json',output),
                             ('installed-apk-read-caret.json',output/'caret-compat')]:
             body = (json.dumps(dict(status='failed',sourceCommit=self.source,
                 scope='Synthetic localhost provider-read control',origin='http://127.0.0.1:8771',
@@ -142,6 +143,19 @@ class BoundedPublisherTest(unittest.TestCase):
                 ensure_ascii=False,indent=3)+'\n\n').encode('utf-8')
             self.diagnostic_bytes[name] = body
             (folder/name).write_bytes(body)
+        self.failure_bytes = {
+            'gecko-caret-compat-failure-window.txt':
+                'Synthetic localhost window diagnostic; no actual Android focus\n原始窗口🙂\n\n'.encode('utf-8'),
+            'gecko-caret-compat-failure-activity.txt':
+                'Synthetic localhost activity diagnostic; no actual Android process\r\n原始 activity🙂\r\n'.encode('utf-8'),
+            'gecko-caret-compat-failure-screen.png':
+                b'SYNTHETIC-PNG-PATH-BYTES-NOT-AN-IMAGE\x00'+bytes(range(256)),
+            'gecko-caret-compat-failure-ui.xml':
+                ('<?xml version="1.0" encoding="utf-8"?>\n'
+                 '<synthetic-host-control origin="http://127.0.0.1:8771" actualAndroidExecution="false" '
+                 'applicationAcceptance="false">原始 UI🙂</synthetic-host-control>\n').encode('utf-8')}
+        for name,body in self.failure_bytes.items():
+            (output/'caret-compat'/name).write_bytes(body)
 
     def publish(self,mode=None,race=None):
         environment = dict(self.environment,PATH=str(self.wrapper_dir)+os.pathsep+os.environ.get('PATH',''),
@@ -240,6 +254,14 @@ class BoundedPublisherTest(unittest.TestCase):
                 for flag in ('actualAndroidExecution','actualGeckoExecution','applicationAcceptance',
                              'controlledCaretCompatibilityAcceptance','releaseAcceptance','physicalPhoneAcceptance'):
                     self.assertIs(value[flag],False)
+        for name,expected in self.failure_bytes.items():
+            with self.subTest(name=name):
+                self.assertIn(name,paths)
+                self.assertNotIn('caret-compat/'+name,paths)
+                raw = subprocess.check_output([GIT,'--git-dir',str(self.remote),'show',current+':'+name],env=self.environment)
+                self.assertEqual(raw,expected)
+                self.assertEqual((stage/name).read_bytes(),expected)
+                self.assertEqual(hashlib.sha256(raw).hexdigest(),hashlib.sha256(expected).hexdigest())
         self.assert_source_preserved()
 
     def test_branch_drift_between_ls_remote_and_fetch_fails_without_push(self):

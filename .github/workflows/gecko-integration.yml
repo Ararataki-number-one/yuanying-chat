@@ -175,10 +175,13 @@ jobs:
           adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
           python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
           checks_failed=0
-          if ! python3 tests/gecko/run_caret_bound_performance.py --adb "$(command -v adb)" --serial emulator-5554 --root "$PWD" --out work/gecko-integration --build-receipt work/gecko-integration/caret-apk-build-receipt.json --sdk-receipt work/native-caret-sdk/sdk-build-receipt.json --sdk-aar work/native-caret-sdk/geckoview-caret.aar --official-sdk-aar work/gecko-integration/geckoview.aar --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk; then
-            checks_failed=1
-          fi
-          if ! python3 tests/gecko/run_gecko_caret_compat.py --normal-acceptance --adb "$(command -v adb)" --serial emulator-5554 --root "$PWD" --out work/gecko-integration/caret-compat --sdk-receipt work/native-caret-sdk/sdk-build-receipt.json --build-receipt work/gecko-integration/caret-apk-build-receipt.json --sdk-aar work/native-caret-sdk/geckoview-caret.aar --official-sdk-aar work/gecko-integration/geckoview.aar --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk --release-apk app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk; then
+          if python3 tools/gecko/run_caret_editing_phase.py --adb "$(command -v adb)" --serial emulator-5554 --root "$PWD" --out work/gecko-integration --build-receipt work/gecko-integration/caret-apk-build-receipt.json --sdk-receipt work/native-caret-sdk/sdk-build-receipt.json --sdk-aar work/native-caret-sdk/geckoview-caret.aar --official-sdk-aar work/gecko-integration/geckoview.aar --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk --release-apk app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk; then
+            :
+          else
+            editing_status=$?
+            # Only an ordinary fixture failure after verified HOME restoration
+            # may continue collecting the remaining independent evidence.
+            if [ "$editing_status" -ne 1 ]; then exit "$editing_status"; fi
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py
