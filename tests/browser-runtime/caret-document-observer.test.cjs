@@ -158,6 +158,19 @@ test('isolated observer reads immutable DOM readiness without modifying editor s
   assert.equal(f.pageWindow.__pocketCaretObservation, undefined);
 });
 
+test('isolated measured targets include every UTF16 boundary without editing the draft', () => {
+  const f = harness(12);
+  f.state.draft = 'A😀B'; f.state.start = f.state.end = 3;
+  const before = {...f.state};
+  const value = f.observe();
+  assert.equal(value.ready, true);
+  assert.equal(value.points.length, 5);
+  assert.deepEqual(value.points.map(point => point.x), [23,38,53,68,83]);
+  assert.ok(value.points.every(point => Number.isFinite(point.x) && Number.isFinite(point.y)));
+  assert.deepEqual(f.state, before);
+  assert.deepEqual(f.writes, []);
+});
+
 test('repeat reads install one recorder and retain exact host callback events', () => {
   const f = harness();
   assert.equal(f.observe().ready, true);

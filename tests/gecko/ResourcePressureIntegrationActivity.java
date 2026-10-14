@@ -185,13 +185,28 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
       // observer in the actual SDK document, collect its bytes via the existing
       // native evaluate port, then pass them unchanged to production admission.
       // This is not ChatGPT, a real file upload or a physical user gesture.
-      owner.webObserver.script=owner.webObserver.script.replace("location.origin !== 'https://chatgpt.com'","location.origin !== "+JSONObject.quote(origin))+"\nwindow.__pocketFixtureResourceEvents=window.__pocketFixtureResourceEvents||[];window.PocketWebReply={postMessage:text=>{const value=JSON.parse(text);if(value.type==='resource-work'){const values=window.__pocketFixtureResourceEvents;values.push(value);if(values.length>32)values.shift();}}};";
+      String originalObserver=owner.webObserver.script;
+      owner.webObserver.script=resourceFixtureObserverScript(originalObserver,origin,run);
+      reportPut(resourcePortControls,"observerAdapter",J.obj("sourceCommit",source,"runNonce",run,"origin",origin,"path","/resource","phases",J.arr("parent","popup"),"observerGuardOccurrences",1,"driverGuardOccurrences",1,"originalScriptSha256",NativeNetwork.hash(originalObserver),"adaptedScriptSha256",NativeNetwork.hash(owner.webObserver.script),"productionAssetsModified",false,"scope","Fixture-only exact owned route/nonce guards and bounded observer-byte collection; production source assets and resource admission unchanged."));
       reportPut(resourcePortControls,"sourceCommit",source);reportPut(resourcePortControls,"runNonce",run);reportPut(resourcePortControls,"phaseScope","controlled-production-delegate-sdk-open-load");reportPut(resourcePortControls,"syntheticPopupActivation",true);reportPut(resourcePortControls,"trustedUserGesture",false);reportPut(resourcePortControls,"trustedPopupGesture",false);reportPut(resourcePortControls,"realWebsiteExecution",false);reportPut(resourcePortControls,"observerDelivery","Actual SDK document observer bytes read through native evaluate; unchanged bytes passed to production resource admission");
       evaluate("(()=>{document.getElementById('first').dataset.uploadState='uploading';let stop=document.getElementById('stop');if(!stop){stop=document.createElement('button');stop.id='stop';stop.dataset.testid='stop-button';stop.textContent='Stop';document.querySelector('form').append(stop);}document.getElementById('prompt-textarea').value='retained-resource-draft';document.cookie='resourceRetained=preserved;path=/';return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sent:Number(document.body.dataset.sent),url:location.href}})()",before->{
         reportPut(resourcePortControls,"before",before);owner.resourceObserverConnected(view.ports.get(view.current));owner.webObserver.pageReady();
         awaitResourceSnapshot(true,true,0,initial->openControlledPopup(initial));
       });
     }catch(Throwable failure){finish(failure);}
+  }
+  static String replaceResourceFixtureGuard(String script,String guard,String replacement)throws IOException{
+    if(script==null||guard==null||guard.isEmpty()||replacement==null)throw new IOException("Controlled resource guard source missing");
+    int first=script.indexOf(guard);
+    if(first<0||script.indexOf(guard,first+guard.length())>=0)throw new IOException("Controlled resource guard must occur exactly once");
+    return script.substring(0,first)+replacement+script.substring(first+guard.length());
+  }
+  static String resourceFixtureObserverScript(String script,String origin,String nonce)throws IOException{
+    if(origin==null||!origin.matches("http://127\\.0\\.0\\.1:[1-9][0-9]{0,4}")||Integer.parseInt(origin.substring(origin.lastIndexOf(':')+1))>65535||nonce==null||!nonce.matches("[0-9a-f]{32}"))throw new IOException("Owned local resource origin and nonce required");
+    String guard="(location.origin !== \""+origin+"\" || location.pathname !== '/resource' || new URL(location.href).searchParams.getAll('run').length !== 1 || new URL(location.href).searchParams.get('run') !== '"+nonce+"' || new URL(location.href).searchParams.getAll('phase').length !== 1 || !['parent','popup'].includes(new URL(location.href).searchParams.get('phase')))";
+    String adapted=replaceResourceFixtureGuard(script,"location.origin !== 'https://chatgpt.com'",guard);
+    adapted=replaceResourceFixtureGuard(adapted,"location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'",guard);
+    return adapted+"\nwindow.__pocketFixtureResourceEvents=window.__pocketFixtureResourceEvents||[];window.PocketWebReply={postMessage:text=>{const value=JSON.parse(text);if(value.type==='resource-work'){const values=window.__pocketFixtureResourceEvents;values.push(value);if(values.length>32)values.shift();}}};";
   }
   void awaitResourceSnapshot(boolean busy,boolean uploading,int attempt,java.util.function.Consumer<JSONObject> done){
     if(finished)return;owner.handler.removeCallbacks(owner.tick);final Object port=view.ports.get(view.current);final String binding=owner.resourceObserverBinding;

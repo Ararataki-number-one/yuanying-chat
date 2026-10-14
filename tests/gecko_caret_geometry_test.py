@@ -1,6 +1,6 @@
 """Execute the actual fixture's Java coordinate method on the host JVM.
 
-These checks cover coordinate arithmetic and rejected geometry only. They do not
+These checks cover coordinate arithmetic, captured tap targets, and rejection only. They do not
 execute Android, Gecko, a native matrix provider, or real keyboard input.
 """
 import os
@@ -17,11 +17,12 @@ ACTIVITY = ROOT / 'tests/gecko/GeckoCaretCompatibilityIntegrationActivity.java'
 PINNED_JAVA = Path('/workspace/yuanying-chat/work/cloud-setup/jdk/usr/lib/jvm/java-17-openjdk-amd64/bin/java')
 
 
-def actual_method(source):
+def actual_method(source, name='mapClientPoint'):
     """Copy the complete method, including its validation, from fixture source."""
-    match = re.search(r'\bstatic\s+float\s*\[\s*\]\s+mapClientPoint\s*\([^)]*\)\s*\{', source)
+    match = re.search(r'\b(?:static\s+)?(?:float\s*\[\s*\]|JSONObject)\s+' + re.escape(name)
+                      + r'\s*\([^)]*\)\s*(?:throws\s+Exception\s*)?\{', source)
     if match is None:
-        raise AssertionError('Actual fixture mapClientPoint method is absent')
+        raise AssertionError('Actual fixture ' + name + ' method is absent')
     depth = 1
     cursor = match.end()
     quote = None
@@ -56,6 +57,26 @@ def actual_method(source):
 
 
 JAVA_CHECKS = r'''
+  // Minimal JSON containers let the complete source tap method execute without
+  // Android. A fresh native query fails, proving both taps use the owned pose.
+  static class JSONObject {
+    final java.util.Map<String,Object> values=new java.util.LinkedHashMap<>();
+    Object get(String key){if(!values.containsKey(key))throw new AssertionError("Missing "+key);return values.get(key);}
+    double getDouble(String key){return ((Number)get(key)).doubleValue();}
+    int getInt(String key){return ((Number)get(key)).intValue();}
+    JSONObject getJSONObject(String key){return (JSONObject)get(key);}
+    JSONArray getJSONArray(String key){return (JSONArray)get(key);}
+  }
+  static class JSONArray extends java.util.ArrayList<Object> {
+    JSONArray put(Object value){add(value);return this;}
+    int length(){return size();}
+    double getDouble(int index){return ((Number)get(index)).doubleValue();}
+    JSONObject getJSONObject(int index){return (JSONObject)get(index);}
+  }
+  static class J {
+    static JSONObject obj(Object... pairs){JSONObject value=new JSONObject();for(int i=0;i<pairs.length;i+=2)value.values.put((String)pairs[i],pairs[i+1]);return value;}
+  }
+  JSONObject nativeGeometry(JSONObject value){throw new AssertionError("Tap queried a new unpaired native pose");}
   interface Work { void run(); }
   static void close(float expected,float actual) {
     if(!Float.isFinite(actual)||Math.abs(expected-actual)>.001f)
@@ -66,7 +87,7 @@ JAVA_CHECKS = r'''
     throw new AssertionError("Invalid geometry was accepted");
   }
   static float[] identity() { return new float[]{1,0,0,0,1,0,0,0,1}; }
-  public static void main(String[] args) {
+  public static void main(String[] args) throws Exception {
     switch(args[0]) {
       case "ime-regression": {
         float x=147.98405896777342f,y=91.99999829882812f;
@@ -135,6 +156,22 @@ JAVA_CHECKS = r'''
         rejected(()->mapClientPoint(Float.MAX_VALUE,Float.MAX_VALUE,translated,.75f,0,0));
         break;
       }
+      case "captured-rapid-taps": {
+        CaretGeometryUnderTest fixture=new CaretGeometryUnderTest();
+        JSONArray matrix=new JSONArray();for(float value:new float[]{2.5f,0,0,0,2.5f,0,0,0,1})matrix.put(value);
+        JSONObject pose=J.obj("clientToSurfaceMatrix",matrix,"readingLayout",1,"originX",0,"originY",117);
+        JSONObject viewport=J.obj("width",432,"height",667);
+        JSONArray points=new JSONArray();for(int i=0;i<=10;i++)points.put(J.obj("x",(100+i)/2.5,"y",80));
+        JSONObject observation=J.obj("nativeGeometry",pose,"viewport",viewport,"points",points);
+        for(int caret:new int[]{2,9}) {
+          JSONObject tap=fixture.tap(observation,caret);
+          if(tap.getInt("expectedCaret")!=caret||tap.getInt("x")!=100+caret||tap.getInt("y")!=317
+              ||tap.getJSONObject("clientPoint")!=points.getJSONObject(caret)
+              ||tap.getJSONObject("nativeGeometry")!=pose||tap.getJSONObject("viewport")!=viewport)
+            throw new AssertionError("Tap substituted the captured point, viewport or native pose");
+        }
+        break;
+      }
       default: throw new AssertionError("Unknown host vector");
     }
     System.out.println("PASS "+args[0]+"; host Java arithmetic only");
@@ -151,7 +188,9 @@ class CaretGeometryTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory(prefix='caret-geometry-host-')
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.directory = Path(cls.temporary.name)
-        source = 'public final class CaretGeometryUnderTest {\n' + actual_method(ACTIVITY.read_text()) + '\n' + JAVA_CHECKS + '\n}\n'
+        fixture_source=ACTIVITY.read_text()
+        methods='\n'.join(actual_method(fixture_source,name) for name in ['mapClientPoint','matrixValues','tap'])
+        source = 'public final class CaretGeometryUnderTest {\n' + methods + '\n' + JAVA_CHECKS + '\n}\n'
         path = cls.directory / 'CaretGeometryUnderTest.java'
         path.write_text(source)
         compiled = subprocess.run([cls.java,'-m','jdk.compiler/com.sun.tools.javac.Main','-encoding','UTF-8',str(path)],
@@ -185,6 +224,9 @@ class CaretGeometryTests(unittest.TestCase):
 
     def test_native_coordinate_overflow_is_rejected(self):
         self.vector('result-overflow')
+
+    def test_both_rapid_taps_use_the_same_captured_pose_viewport_and_measured_points(self):
+        self.vector('captured-rapid-taps')
 
 
 if __name__ == '__main__':

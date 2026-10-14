@@ -33,6 +33,7 @@ def snap(number, draft, start, events, end=None, *, focused=True, direction='non
                 nativeGeometry=geometry(number), width=432, height=720, readyState='complete', documentFontsLoaded=True,
                 viewport=dict(width=432,height=720,scale=1,offsetLeft=0,offsetTop=0,pageLeft=0,pageTop=0),
                 bounds=dict(x=12,y=65.63,width=408,height=96),
+                points=[dict(x=(100+index)/2.5,y=80) for index in range(C.utf16_length(draft)+1)],
                 direction=direction, focused=focused, otherDraft='untouched independent draft',
                 sendCount=0, cookie='session=synthetic-caret', allTrusted=True, overflow=False,
                 **C.counts(events))
@@ -556,6 +557,99 @@ class ContractControls(unittest.TestCase):
             target['runNonce']='e'*32
         attach_transport(data['report'])
         with self.assertRaises(ValueError):self.verify(data)
+
+    def test_rehashed_transition_before_preparation_or_inside_claimed_stable_interval_is_rejected(self):
+        for time,ready in [(89,True),(101,False),(799,False),(799,True)]:
+            data=copy.deepcopy(self.data)
+            preparation=data['report']['scenarios'][0]['initialSnapshot']['geometryPreparation']
+            value=copy.deepcopy(preparation['firstStableSnapshot']) if ready else dict(ready=False,reason='Document owner differs')
+            if time == 89:
+                preparation['transitions'][0]['observedAt']=time
+            else:
+                if ready:value['nativeGeometry']['originY']+=1
+                preparation['transitions'].append(dict(observedAt=time,ready=ready,snapshot=value))
+            attach_transport(data['report'])
+            with self.subTest(time=time,ready=ready),self.assertRaisesRegex(ValueError,'transitions'):
+                self.verify(data)
+
+    def test_final_stable_transition_is_recorded_when_prefix_has_room(self):
+        for mode in ['missing','not-ready','different-pose']:
+            data=copy.deepcopy(self.data)
+            preparation=data['report']['scenarios'][0]['initialSnapshot']['geometryPreparation']
+            if mode == 'missing':
+                preparation['transitions']=[dict(observedAt=95,ready=False,snapshot=dict(ready=False))]
+            elif mode == 'not-ready':
+                preparation['transitions'][0]['ready']=False
+            else:
+                preparation['transitions'][0]['snapshot']['nativeGeometry']['originY']+=1
+            attach_transport(data['report'])
+            with self.subTest(mode=mode),self.assertRaisesRegex(ValueError,'stable transition'):
+                self.verify(data)
+
+    def test_full_sixteen_transition_prefix_can_end_before_final_stable_epoch(self):
+        data=copy.deepcopy(self.data)
+        preparation=data['report']['scenarios'][0]['initialSnapshot']['geometryPreparation']
+        preparation.update(startedAt=1900,completedAt=2600)
+        pending=copy.deepcopy(preparation['firstStableSnapshot'])
+        pending['nativeGeometry'].update(nativePort=0,attachedSession=0,shown=False)
+        preparation['transitions']=[dict(observedAt=100+index*100,ready=False,snapshot=copy.deepcopy(pending))
+                                   for index in range(16)]
+        attach_transport(data['report'])
+        self.assertEqual(self.verify(data)['scenarios'],14)
+        self.assertEqual(len(data['report']['actualAndroidActions'][0]['commands']),1)
+        # Exactly sixteen is also valid when the final epoch is still retained.
+        preparation['transitions'][-1]=dict(observedAt=1900,ready=True,snapshot=copy.deepcopy(preparation['firstStableSnapshot']))
+        attach_transport(data['report'])
+        self.assertEqual(self.verify(data)['scenarios'],14)
+        preparation['transitions'][-1]=dict(observedAt=2500,ready=False,snapshot=dict(ready=False))
+        attach_transport(data['report'])
+        with self.assertRaisesRegex(ValueError,'transitions'):self.verify(data)
+
+    def test_rapid_tap_caret_cannot_be_relabelled_by_joint_point_and_screen_coordinates(self):
+        data=copy.deepcopy(self.data)
+        command=data['report']['actualAndroidActions'][1]['commands'][0]
+        command['clientPoint']=copy.deepcopy(data['report']['scenarios'][0]['focusedInitial']['points'][9])
+        command['x']=109
+        attach_transport(data['report'])
+        with self.assertRaisesRegex(ValueError,'advertised caret'):self.verify(data)
+
+    def test_later_rapid_taps_use_the_complete_owned_pose_and_viewport(self):
+        for field,value in [('nativePort',999),('nativeSession',999),('originY',4)]:
+            data=copy.deepcopy(self.data)
+            command=data['report']['actualAndroidActions'][1]['commands'][0]
+            command['nativeGeometry'][field]=value
+            if field == 'nativeSession':command['nativeGeometry']['attachedSession']=value
+            if field == 'originY':command['y']+=value
+            attach_transport(data['report'])
+            with self.subTest(field=field),self.assertRaisesRegex(ValueError,'canonical captured target'):
+                self.verify(data)
+        data=copy.deepcopy(self.data)
+        data['report']['actualAndroidActions'][1]['commands'][0]['viewport']['height']=667
+        attach_transport(data['report'])
+        with self.assertRaisesRegex(ValueError,'canonical captured target'):self.verify(data)
+
+    def test_measured_target_vector_requires_every_utf16_boundary_and_finite_points(self):
+        for mutate in [lambda value:value.pop('points'),lambda value:value['points'].pop(),
+                       lambda value:value['points'].append(dict(x=1,y=1)),
+                       lambda value:value['points'][0].__setitem__('x',True),
+                       lambda value:value['points'][0].__setitem__('y',float('nan')),
+                       lambda value:value['points'][0].__setitem__('y',float('inf'))]:
+            data=copy.deepcopy(self.data)
+            mutate(data['report']['scenarios'][0]['focusedInitial'])
+            attach_transport(data['report'])
+            with self.assertRaises(ValueError):self.verify(data)
+        self.assertEqual(len(self.data['report']['scenarios'][12]['focusedInitial']['points']),5)
+        self.assertEqual(self.verify()['scenarios'],14)
+
+    def test_utf16_measured_points_need_not_be_monotone(self):
+        data=copy.deepcopy(self.data)
+        # A half-surrogate can measure wider than the complete codepoint.
+        for value in [data['report']['scenarios'][12]['initialSnapshot'],
+                      data['report']['scenarios'][12]['initialSnapshot']['geometryPreparation']['firstStableSnapshot'],
+                      data['report']['scenarios'][12]['initialSnapshot']['geometryPreparation']['transitions'][0]['snapshot']]:
+            value['points'][2]['x']=value['points'][3]['x']+1
+        attach_transport(data['report'])
+        self.assertEqual(self.verify(data)['scenarios'],14)
 
     def rejected(self, mutate):
         data = copy.deepcopy(self.data); mutate(data)

@@ -162,7 +162,7 @@ def main():
         total = re.search(r"^# tests (\d+)$",run.stdout,re.M)
         passed = re.search(r"^# pass (\d+)$",run.stdout,re.M)
         failed = re.search(r"^# fail (\d+)$",run.stdout,re.M)
-        if not total or not passed or not failed or int(total.group(1))<13 or total.group(1)!=passed.group(1) or failed.group(1)!="0":
+        if not total or not passed or not failed or int(total.group(1))<14 or total.group(1)!=passed.group(1) or failed.group(1)!="0":
             raise ValueError("Incomplete isolated caret observer host controls")
         inputs = [caret_test,caret_asset,ROOT / "app/src/main/assets/gecko/content.js"]
         value = dict(sourceCommit=source_id,sourceTree=source_tree,sourceDirty=bool(source_status.strip()),

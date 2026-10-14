@@ -334,6 +334,17 @@ def verify_viewport(viewport):
             'actual document visual viewport missing or invalid')
 
 
+def verify_measured_points(snapshot):
+    points = snapshot.get('points')
+    require(snapshot.get('ready') is True and isinstance(points, list)
+            and len(points) == utf16_length(snapshot.get('draft')) + 1,
+            'complete actual UTF16 measured caret points missing')
+    require(all(isinstance(point, dict) and set(point) == {'x', 'y'}
+                and finite_number(point['x']) and finite_number(point['y']) for point in points),
+            'actual measured caret points must contain finite coordinates')
+    return points
+
+
 def verify_hardware(actual, expected):
     require(isinstance(actual, dict) and actual.get('id') == expected['id'] and actual.get('scenario') == expected['scenario']
             and actual.get('origin') == 'adb-input-keyboard-and-touch', 'Android action identity')
@@ -495,6 +506,7 @@ def verify_caret_transport(report, *, source, run_id, run_attempt):
             owner = dict(expected, timeOrigin=observed)
             matrix, layout = verify_native_geometry(value.get('nativeGeometry'), owner)
             verify_viewport(value.get('viewport'))
+            verify_measured_points(value)
         initial = case['initialSnapshot']
         preparation = initial.get('geometryPreparation')
         require(isinstance(preparation, dict) and integer(preparation.get('stableSamples'), 3)
@@ -507,14 +519,15 @@ def verify_caret_transport(report, *, source, run_id, run_attempt):
                 and preparation['completedAt'] - preparation['startedAt'] == preparation['stableMillis'],
                 'actual geometry preparation timestamps differ from settled duration')
         first = preparation.get('firstStableSnapshot')
-        require(isinstance(first, dict) and all(first.get(key) == initial.get(key) for key in
-                ['sourceCommit', 'runId', 'runAttempt', 'runNonce', 'case', 'documentUrl', 'timeOrigin',
-                 'nativeGeometry', 'viewport', 'bounds', 'draft', 'start', 'end', 'readyState', 'documentFontsLoaded']),
+        stable_fields = ['sourceCommit', 'runId', 'runAttempt', 'runNonce', 'case', 'documentUrl', 'timeOrigin',
+                         'nativeGeometry', 'viewport', 'bounds', 'points', 'draft', 'start', 'end',
+                         'readyState', 'documentFontsLoaded']
+        require(isinstance(first, dict) and all(_sdk._typed_equal(first.get(key), initial.get(key)) for key in stable_fields),
                 'prepared geometry changed between first and final stable observations')
-        last_transition = -1
+        last_transition = preparation['preparationStartedAt']
         for transition in preparation['transitions']:
             require(isinstance(transition, dict) and integer(transition.get('observedAt'), 1)
-                    and last_transition <= transition['observedAt'] <= preparation['completedAt']
+                    and last_transition <= transition['observedAt'] <= preparation['startedAt']
                     and type(transition.get('ready')) is bool and isinstance(transition.get('snapshot'), dict),
                     'bounded actual geometry transitions malformed or out of order')
             last_transition = transition['observedAt']
@@ -532,9 +545,18 @@ def verify_caret_transport(report, *, source, run_id, run_attempt):
                 if transition['ready'] is True:
                     transition_matrix, transition_layout = verify_native_geometry(pending_native, owner)
                     verify_viewport(observed_snapshot.get('viewport'))
+                    verify_measured_points(observed_snapshot)
                     require(observed_snapshot.get('readyState') == 'complete' and observed_snapshot.get('documentFontsLoaded') is True
                             and abs(pending_native['webWidth'] - observed_snapshot['viewport']['width'] * transition_matrix[0] * transition_layout) < 8,
                             'ready native geometry transition is not coherent with its document')
+            if transition['observedAt'] == preparation['startedAt']:
+                require(transition['ready'] is True and all(_sdk._typed_equal(observed_snapshot.get(key), first.get(key))
+                        for key in stable_fields), 'final stable transition differs from its first stable observation')
+        # The producer retains only the first 16 transitions. When there is room,
+        # it must have recorded the final stable epoch; a full prefix can end
+        # earlier, with the separately retained firstStableSnapshot proving it.
+        require(len(preparation['transitions']) == 16 or last_transition == preparation['startedAt'],
+                'final stable transition missing before the retained prefix was full')
         require(initial.get('readyState') == 'complete' and initial.get('documentFontsLoaded') is True,
                 'initial document layout/font preparation incomplete')
         native = initial['nativeGeometry']; viewport = initial['viewport']
@@ -548,12 +570,24 @@ def verify_caret_transport(report, *, source, run_id, run_attempt):
                 'sole initial tap differs from the prepared actual geometry')
     for action in actions:
         number = IDS.index(action['scenario'])
-        initial = report['scenarios'][number]['initialSnapshot']
+        case = report['scenarios'][number]
+        initial = case['initialSnapshot']
         owner = dict(sourceCommit=source, runId=run_id, runAttempt=run_attempt, runNonce=nonce,
                      case=number, documentUrl=initial['documentUrl'], timeOrigin=initial['timeOrigin'])
         for command in action['commands']:
             if command['op'] == 'tap':
                 verify_native_geometry(command.get('nativeGeometry'), owner)
+                target = initial if '-focus-' in action['id'] else case['focusedInitial']
+                require('-focus-' in action['id'] or number == 0 and '-two-rapid-taps-and-type-' in action['id'],
+                        'tap has no canonical captured target observation')
+                points = verify_measured_points(target)
+                index = command.get('expectedCaret')
+                require(integer(index) and index < len(points)
+                        and _sdk._typed_equal(command.get('clientPoint'), points[index]),
+                        'tap does not use the measured point for its advertised caret')
+                require(_sdk._typed_equal(command.get('nativeGeometry'), target['nativeGeometry'])
+                        and _sdk._typed_equal(command.get('viewport'), target['viewport']),
+                        'tap geometry differs from its canonical captured target observation')
     return len(records)
 
 
