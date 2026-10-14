@@ -1,0 +1,40 @@
+Loading local repository...                                                     [=========                              ] 25% Loading local repository...       [=========                              ] 25% Fetch remote repository...        [=======================================] 100% Fetch remote repository...       
+Auto-selecting single ABI x86_64
+Do you wish to create a custom hardware profile? [no] * daemon not running; starting now at tcp:5037
+* daemon started successfully
+Performing Streamed Install
+Success
+{"sourceCommit": "9d6737c0d6a2e87d3bdd7932d90faa7e675dd3e1", "status": "passed", "initialNetworkUsable": true, "sdkWifiProvisioningRequested": false, "disabledStateConfirmed": true, "actualConnectivityManagerExecution": true, "applicationAcceptance": false}
+[  0%] /data/app/~~0rsR24K0X4krvwiGCPC0ow==/local.pocketchat.test-HsMItk-gOsS3ykMyyrsQhw==/base.apk
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 122, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 93, in main
+    before = snapshot('before')
+             ^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 70, in snapshot
+    adb('pull', paths[0], str(apk))
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 62, in adb
+    return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 466, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/local/lib/android/sdk/platform-tools/adb', '-s', 'emulator-5554', 'pull', '/data/app/~~0rsR24K0X4krvwiGCPC0ow==/local.pocketchat.test-HsMItk-gOsS3ykMyyrsQhw==/base.apk', '/home/runner/work/yuanying-chat/yuanying-chat/work/gecko-integration/caret-performance-before-bosshs5l/base.apk']' returned non-zero exit status 1.
+[ 45%] /data/app/~~0rsR24K0X4krvwiGCPC0ow==/local.pocketchat.test-HsMItk-gOsS3ykMyyrsQhw==/base.apk
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 427, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 286, in main
+    adb('pull', paths[0], str(installed_apk))
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 243, in adb
+    return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 466, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/local/lib/android/sdk/platform-tools/adb', '-s', 'emulator-5554', 'pull', '/data/app/~~0rsR24K0X4krvwiGCPC0ow==/local.pocketchat.test-HsMItk-gOsS3ykMyyrsQhw==/base.apk', '/home/runner/work/yuanying-chat/yuanying-chat/work/gecko-integration/caret-compat/installed-integration.apk']' returned non-zero exit status 1.
