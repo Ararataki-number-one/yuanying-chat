@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPECTED_TOTAL = 15
+EXPECTED_TOTAL = 17
 
 
 def digest(path):
@@ -39,7 +39,7 @@ def main():
     dirty = bool(git('status', '--porcelain', '--untracked-files=normal'))
     expected = re.findall(r"test\('([^'\n]+)'", test.read_text())
     if len(expected) != EXPECTED_TOTAL or len(set(expected)) != EXPECTED_TOTAL:
-        raise ValueError('The exact fifteen unique literal observer checks are required')
+        raise ValueError('The exact seventeen unique literal observer checks are required')
     output = args.output or ROOT / 'work/resource-observer-host/results.json'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.unlink(missing_ok=True)

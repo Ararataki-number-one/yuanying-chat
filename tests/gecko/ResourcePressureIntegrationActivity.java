@@ -13,7 +13,7 @@ import org.mozilla.geckoview.*;
 public final class ResourcePressureIntegrationActivity extends GeckoIdentityPrototypeIntegrationActivity {
   final JSONArray resourceChecks=new JSONArray();JSONObject platform=new JSONObject(),allocation=new JSONObject();
   ChatSession.Observer pressureObserver;boolean coldChecked,controlsStarted,resourceDone;String target,pendingBytes;int readyAttempts;
-  final Object fixtureDocument=new Object();String documentId;
+  final Object fixtureDocument=new Object();String documentId;JSONObject resourcePortControls=new JSONObject();
   class PressureView extends FixtureView {
     boolean low=true;int pauses,resumes,closures;
     PressureView(Context c,ChatSession s){super(c,s);}
@@ -81,18 +81,18 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
       resourceCheck("Existing pending recovery retains the open runtime",view.current.isOpen()&&owner.resources.created==1&&((PressureView)view).pauses==pause);
       owner.pending=null;owner.prefs.edit().remove("pending").commit();owner.identityApplicationPending=false;owner.identity.queueUnavailable=false;
       Object realPort=view.ports.get(view.current);owner.resourceObserverConnected(realPort);
-      JSONObject observation=J.obj("url",actual.optString("url"),"documentId",documentId,"resourceSequence",1,"busy",actual.optBoolean("busy"),"uploading",actual.optBoolean("uploading"),"capturedAt",System.currentTimeMillis());
+      JSONObject observation=J.obj("url",actual.optString("url"),"documentId",documentId,"resourceBinding",owner.resourceObserverBinding,"resourceSequence",1,"busy",actual.optBoolean("busy"),"uploading",actual.optBoolean("uploading"),"capturedAt",System.currentTimeMillis());
       owner.resourceWebsiteObservation(observation,realPort);owner.handler.removeCallbacks(owner.tick);
       resourceCheck("Controlled page task observations protect existing activity",owner.currentReplyActive()&&owner.resourceFilesActive()&&owner.browserWorkActive()&&view.current.isOpen());
-      owner.resourceWebsiteObservation(J.obj("url",target,"documentId",documentId,"resourceSequence",1,"busy",false,"uploading",false,"capturedAt",System.currentTimeMillis()),realPort);
+      owner.resourceWebsiteObservation(J.obj("url",target,"documentId",documentId,"resourceBinding",owner.resourceObserverBinding,"resourceSequence",1,"busy",false,"uploading",false,"capturedAt",System.currentTimeMillis()),realPort);
       resourceCheck("Late idle resource observation cannot clear newer work",owner.resourceWebsiteBusy&&owner.resourceWebsiteUploading);
-      owner.resourceWebsiteObservation(J.obj("url",target,"documentId",java.util.UUID.randomUUID().toString(),"resourceSequence",2,"busy",false,"uploading",false,"capturedAt",System.currentTimeMillis()),realPort);
+      owner.resourceWebsiteObservation(J.obj("url",target,"documentId",java.util.UUID.randomUUID().toString(),"resourceBinding",owner.resourceObserverBinding,"resourceSequence",2,"busy",false,"uploading",false,"capturedAt",System.currentTimeMillis()),realPort);
       resourceCheck("Another document identity cannot clear current work",owner.resourceWebsiteBusy&&owner.resourceWebsiteUploading);
-      owner.resourceObserverConnected(fixtureDocument);owner.resourceWebsiteObservation(J.obj("url",target,"documentId",documentId,"resourceSequence",2,"busy",false,"uploading",false,"capturedAt",System.currentTimeMillis()),realPort);
+      owner.resourceObserverConnected(fixtureDocument);owner.resourceWebsiteObservation(J.obj("url",target,"documentId",documentId,"resourceBinding",owner.resourceObserverBinding,"resourceSequence",2,"busy",false,"uploading",false,"capturedAt",System.currentTimeMillis()),realPort);
       resourceCheck("Replaced extension port cannot supply an idle observation",owner.resourceWebsiteEpoch==-1);
-      owner.resourceObserverConnected(realPort);owner.resourceWebsiteObservation(observation,realPort);
+      owner.resourceObserverConnected(realPort);reportPut(observation,"resourceBinding",owner.resourceObserverBinding);owner.resourceWebsiteObservation(observation,realPort);
       String next=target+"&spa=1";owner.beginNavigation(next,"Controlled same document route");
-      evaluate("(()=>{history.pushState({},'',"+JSONObject.quote(next)+");return {url:location.href,documentId:"+JSONObject.quote(documentId)+"}})()",actualRoute->{target=next;awaitSameDocument(actualRoute,realPort,0);});
+      evaluate("(()=>{history.pushState({},'',"+JSONObject.quote(next)+");return {url:location.href,documentId:"+JSONObject.quote(documentId)+",resourceBinding:"+JSONObject.quote(owner.resourceObserverBinding)+"}})()",actualRoute->{target=next;awaitSameDocument(actualRoute,realPort,0);});
 
     }catch(Throwable failure){finish(failure);}
   }
@@ -100,7 +100,7 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
     if(finished)return;
     if(!target.equals(view.getUrl())){if(attempt>=50){finish(new IOException("Actual same-document route did not update"));return;}handler.postDelayed(()->awaitSameDocument(actual,port,attempt+1),100);return;}
     try{
-      owner.resourceObserverRouteReady(actual,port);owner.resourceWebsiteObservation(J.obj("url",actual.optString("url"),"documentId",actual.optString("documentId"),"resourceSequence",2,"busy",false,"uploading",false,"capturedAt",System.currentTimeMillis()),port);owner.handler.removeCallbacks(owner.tick);
+      owner.resourceObserverRouteReady(actual,port);owner.resourceWebsiteObservation(J.obj("url",actual.optString("url"),"documentId",actual.optString("documentId"),"resourceBinding",owner.resourceObserverBinding,"resourceSequence",2,"busy",false,"uploading",false,"capturedAt",System.currentTimeMillis()),port);owner.handler.removeCallbacks(owner.tick);
       resourceCheck("Confirmed same document route retains observer port and monotonic sequence",owner.resourceObserverPort==port&&owner.resourceObserverEpoch==owner.navigationEpoch&&owner.resourceObserverSequence==2&&owner.resourceWebsiteEpoch==owner.navigationEpoch);
       owner.navigating=false;attachmentControls();
     }catch(Throwable failure){finish(failure);}
@@ -126,9 +126,86 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
         JSONArray names=owner.resourceUploadNames;owner.resourceUploadObservation(actual,owner.navigationEpoch,names,target);owner.handler.removeCallbacks(owner.tick);
         if(step==0){resourceCheck("Actual delayed first attachment retains both selections",owner.resourceFilesActive()&&names.length()==2);evaluate("(()=>{document.getElementById('first').dataset.uploadState='ready';return {updated:true}})()",ignored->inspectAttachments(1));}
         else if(step==1){resourceCheck("One terminal attachment sample does not release selection work",owner.resourceFilesActive()&&owner.resourceUploadStable==1);inspectAttachments(2);}
-        else{resourceCheck("Two actual terminal attachment samples release completed selections",!owner.resourceFilesActive()&&owner.resourceUploadNames.length()==0);finishControls();}
+        else{resourceCheck("Two actual terminal attachment samples release completed selections",!owner.resourceFilesActive()&&owner.resourceUploadNames.length()==0);beginRetainedPortControls();}
       }catch(Throwable failure){finish(failure);}
     });
+  }
+  void beginRetainedPortControls(){
+    try{
+      owner.uiVisible=true;owner.updateBrowserActivity();owner.handler.removeCallbacks(owner.tick);
+      // Explicit fixture-only origin/transport adapters: run the production
+      // observer in the actual SDK document, collect its bytes via the existing
+      // native evaluate port, then pass them unchanged to production admission.
+      // This is not ChatGPT, a real file upload or a physical user gesture.
+      owner.webObserver.script=owner.webObserver.script.replace("location.origin !== 'https://chatgpt.com'","location.origin !== "+JSONObject.quote(origin))+"\nwindow.__pocketFixtureResourceEvents=window.__pocketFixtureResourceEvents||[];window.PocketWebReply={postMessage:text=>{const value=JSON.parse(text);if(value.type==='resource-work'){const values=window.__pocketFixtureResourceEvents;values.push(value);if(values.length>32)values.shift();}}};";
+      reportPut(resourcePortControls,"sourceCommit",source);reportPut(resourcePortControls,"runNonce",run);reportPut(resourcePortControls,"phaseScope","controlled-production-delegate-sdk-open-load");reportPut(resourcePortControls,"syntheticPopupActivation",true);reportPut(resourcePortControls,"trustedUserGesture",false);reportPut(resourcePortControls,"trustedPopupGesture",false);reportPut(resourcePortControls,"realWebsiteExecution",false);reportPut(resourcePortControls,"observerDelivery","Actual SDK document observer bytes read through native evaluate; unchanged bytes passed to production resource admission");
+      evaluate("(()=>{document.getElementById('first').dataset.uploadState='uploading';let stop=document.getElementById('stop');if(!stop){stop=document.createElement('button');stop.id='stop';stop.dataset.testid='stop-button';stop.textContent='Stop';document.querySelector('form').append(stop);}document.getElementById('prompt-textarea').value='retained-resource-draft';document.cookie='resourceRetained=preserved;path=/';return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sent:Number(document.body.dataset.sent),url:location.href}})()",before->{
+        reportPut(resourcePortControls,"before",before);owner.resourceObserverConnected(view.ports.get(view.current));owner.webObserver.pageReady();
+        awaitResourceSnapshot(true,true,0,initial->openControlledPopup(initial));
+      });
+    }catch(Throwable failure){finish(failure);}
+  }
+  void awaitResourceSnapshot(boolean busy,boolean uploading,int attempt,java.util.function.Consumer<JSONObject> done){
+    if(finished)return;owner.handler.removeCallbacks(owner.tick);final Object port=view.ports.get(view.current);final String binding=owner.resourceObserverBinding;
+    evaluate("(()=>({events:(window.__pocketFixtureResourceEvents||[]).filter(value=>value.resourceBinding==="+JSONObject.quote(binding)+"),documentId:window.__pocketWebReplyObserver?.documentId||'',url:location.href}))()",actual->{
+      JSONArray events=actual.optJSONArray("events");JSONObject event=events==null||events.length()==0?null:events.optJSONObject(events.length()-1);
+      if(event==null||event.optBoolean("busy")!=busy||event.optBoolean("uploading")!=uploading){if(attempt>=25){finish(new IOException("Actual retained resource snapshot did not become ready"));return;}handler.postDelayed(()->awaitResourceSnapshot(busy,uploading,attempt+1,done),200);return;}
+      if(port!=view.ports.get(view.current)||!binding.equals(owner.resourceObserverBinding)||!actual.optString("url").equals(view.getUrl())||!actual.optString("documentId").equals(event.optString("documentId"))){finish(new IOException("Actual resource snapshot changed its SDK port/document ownership"));return;}
+      owner.resourceWebsiteObservation(event,port);owner.handler.removeCallbacks(owner.tick);done.accept(event);
+    });
+  }
+  void openControlledPopup(JSONObject initial){
+    try{
+      GeckoSession parent=view.current;Object parentPort=view.ports.get(parent);String parentBinding=owner.resourceObserverBinding;
+      resourceCheck("Actual parent observer captures reply and upload before popup",owner.resourceWebsiteBusy&&owner.resourceWebsiteUploading&&owner.resourceWebsiteEpoch==owner.navigationEpoch&&initial.optString("resourceBinding").equals(parentBinding));
+      reportPut(resourcePortControls,"parentBefore",initial);reportPut(resourcePortControls,"parentSession",System.identityHashCode(parent));reportPut(resourcePortControls,"parentPort",System.identityHashCode(parentPort));reportPut(resourcePortControls,"parentEpochBefore",owner.navigationEpoch);reportPut(resourcePortControls,"parentBeforeBinding",owner.resourceObserverBinding);
+      String popupTarget=origin+"/frame?run="+run+"&session=resource-popup";
+      // Controlled direct production-delegate invocation, followed by a real
+      // official SDK open/load. No synthetic click is called a user gesture.
+      parent.getNavigationDelegate().onNewSession(parent,popupTarget).accept(popup->{
+        try{if(popup==null)throw new IOException("Controlled production popup delegate refused the fixture");popup.open(view.runtime);popup.loadUri(popupTarget);awaitControlledPopup(parent,parentPort,parentBinding,initial,popup,popupTarget,0);}catch(Throwable failure){finish(failure);}
+      },failure->finish(new IOException("Controlled production popup delegate failed",failure)));
+    }catch(Throwable failure){finish(failure);}
+  }
+  void awaitControlledPopup(GeckoSession parent,Object parentPort,String parentBinding,JSONObject initial,GeckoSession popup,String popupTarget,int attempt){
+    if(finished)return;owner.handler.removeCallbacks(owner.tick);
+    if(view.current!=popup||!popup.isOpen()||!popupTarget.equals(view.getUrl())||!view.hasVisibleDocument()||view.ports.get(popup)==null){if(attempt>=40){finish(new IOException("Actual SDK popup/port did not become ready"));return;}handler.postDelayed(()->awaitControlledPopup(parent,parentPort,parentBinding,initial,popup,popupTarget,attempt+1),200);return;}
+    try{
+      resourceCheck("Production popup activation owns a distinct actual SDK port",owner.resourceObserverPort==view.ports.get(popup)&&owner.resourceObserverPort!=parentPort&&!owner.resourceObserverBinding.equals(parentBinding));
+      evaluate("(()=>{document.body.innerHTML='<form><textarea id=prompt-textarea></textarea><button data-testid=stop-button>Stop</button><div data-upload-state=uploading></div></form>';return {url:location.href}})()",actual->{
+        owner.webObserver.pageReady();awaitResourceSnapshot(true,true,0,popupEvent->{
+          try{
+            Object popupPort=view.ports.get(popup);reportPut(resourcePortControls,"popup",popupEvent);reportPut(resourcePortControls,"popupSession",System.identityHashCode(popup));reportPut(resourcePortControls,"popupPort",System.identityHashCode(popupPort));reportPut(resourcePortControls,"popupEpoch",owner.navigationEpoch);reportPut(resourcePortControls,"popupBinding",owner.resourceObserverBinding);
+            if(!view.closePopup())throw new IOException("Production closePopup refused its actual current popup");owner.handler.removeCallbacks(owner.tick);
+            resourceCheck("Returning from actual SDK popup rebinds retained parent port",view.current==parent&&parent.isOpen()&&!popup.isOpen()&&view.ports.get(parent)==parentPort&&owner.resourceObserverPort==parentPort&&owner.resourceObserverEpoch==owner.navigationEpoch);
+            resourceCheck("Retained parent activation renews the observation binding",!owner.resourceObserverBinding.equals(parentBinding)&&!owner.resourceObserverBinding.equals(popupEvent.optString("resourceBinding"))&&owner.resourceWebsiteEpoch==-1);
+            owner.resourceWebsiteObservation(popupEvent,popupPort);
+            reportPut(resourcePortControls,"stalePopupAfter",retainedNativeState());
+            resourceCheck("Closed popup observations cannot authorize retained parent state",owner.resourceWebsiteEpoch==-1&&owner.resourceObserverPort==parentPort);
+            owner.resourceWebsiteObservation(initial,parentPort);
+            reportPut(resourcePortControls,"staleParentAfter",retainedNativeState());
+            resourceCheck("Queued old parent binding cannot authorize retained state",owner.resourceWebsiteEpoch==-1&&owner.resourceObserverSequence==0);
+            awaitResourceSnapshot(true,true,0,returned->finishRetainedPortControls(initial,returned));
+          }catch(Throwable failure){finish(failure);}
+        });
+      });
+    }catch(Throwable failure){finish(failure);}
+  }
+  JSONObject retainedNativeState(){return J.obj("websiteEpoch",owner.resourceWebsiteEpoch,"sequence",owner.resourceObserverSequence,"observerBinding",owner.resourceObserverBinding,"observerPort",System.identityHashCode(owner.resourceObserverPort),"navigationEpoch",owner.navigationEpoch);}
+  void finishRetainedPortControls(JSONObject initial,JSONObject returned){
+    try{
+      reportPut(resourcePortControls,"parentReturned",returned);reportPut(resourcePortControls,"returnEpoch",owner.navigationEpoch);reportPut(resourcePortControls,"parentReturnedBinding",owner.resourceObserverBinding);reportPut(resourcePortControls,"returnedSession",System.identityHashCode(view.current));reportPut(resourcePortControls,"returnedPort",System.identityHashCode(view.ports.get(view.current)));
+      resourceCheck("Retained document refresh captures actual reply and upload without mutation",owner.resourceWebsiteBusy&&owner.resourceWebsiteUploading&&owner.resourceWebsiteEpoch==owner.navigationEpoch&&returned.optString("documentId").equals(initial.optString("documentId"))&&returned.optLong("resourceSequence")>initial.optLong("resourceSequence"));
+      evaluate("(()=>({draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sent:Number(document.body.dataset.sent),url:location.href}))()",after->{
+        try{
+          JSONObject before=resourcePortControls.optJSONObject("before");reportPut(resourcePortControls,"after",after);
+          resourceCheck("Retained observer rebind preserves draft login marker and send count",before!=null&&before.optString("draft").equals(after.optString("draft"))&&before.optString("cookie").equals(after.optString("cookie"))&&after.optInt("sent",-1)==0&&target.equals(after.optString("url")));
+          evaluate("(()=>{document.getElementById('stop').remove();document.getElementById('first').dataset.uploadState='ready';return {updated:true}})()",ignored->awaitResourceSnapshot(false,false,0,idle->{
+            try{reportPut(resourcePortControls,"parentIdle",idle);resourceCheck("Actual post return terminal observation releases reply and upload protection",!owner.resourceWebsiteBusy&&!owner.resourceWebsiteUploading&&owner.resourceWebsiteEpoch==owner.navigationEpoch&&idle.optLong("resourceSequence")>returned.optLong("resourceSequence"));finishControls();}catch(Throwable failure){finish(failure);}
+          }));
+        }catch(Throwable failure){finish(failure);}
+      });
+    }catch(Throwable failure){finish(failure);}
   }
   void finishControls(){
     evaluate("(()=>({sent:Number(document.body.dataset.sent),url:location.href}))()",actual->{
@@ -142,7 +219,7 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
     });
   }
   @Override void configureReport(JSONObject report){
-    reportPut(report,"fixtureType","production-resource-pressure-controlled-v1");reportPut(report,"diagnosticOnly",true);reportPut(report,"releaseAcceptance",false);reportPut(report,"capacityAcceptance",false);reportPut(report,"physicalDeviceAcceptance",false);reportPut(report,"fullDesktopUaConsistency",false);reportPut(report,"fingerprintTemplateAcceptance",false);reportPut(report,"fullTemplateAcceptance",false);JSONObject nativeInventory=new JSONObject();for(NativeCapabilityManifest.Capability capability:NativeCapabilityManifest.Capability.values())reportPut(nativeInventory,capability.name(),NativeCapabilityManifest.officialGecko().status(capability).name());reportPut(report,"nativeCustomCapabilities",nativeInventory);reportPut(report,"resourceChecks",resourceChecks);reportPut(report,"resourceChecksCompleted",resourceDone);reportPut(report,"platformMemory",platform);reportPut(report,"allocation",allocation);
+    reportPut(report,"fixtureType","production-resource-pressure-controlled-v1");reportPut(report,"diagnosticOnly",true);reportPut(report,"releaseAcceptance",false);reportPut(report,"capacityAcceptance",false);reportPut(report,"physicalDeviceAcceptance",false);reportPut(report,"fullDesktopUaConsistency",false);reportPut(report,"fingerprintTemplateAcceptance",false);reportPut(report,"fullTemplateAcceptance",false);JSONObject nativeInventory=new JSONObject();for(NativeCapabilityManifest.Capability capability:NativeCapabilityManifest.Capability.values())reportPut(nativeInventory,capability.name(),NativeCapabilityManifest.officialGecko().status(capability).name());reportPut(report,"nativeCustomCapabilities",nativeInventory);reportPut(report,"resourceChecks",resourceChecks);reportPut(report,"resourceChecksCompleted",resourceDone);reportPut(report,"resourcePortControls",resourcePortControls);reportPut(report,"platformMemory",platform);reportPut(report,"allocation",allocation);
     reportPut(report,"scope","Actual official Gecko runtime creation/retained session and controlled local document through production admission, navigation and attachment bookkeeping. Pressure values and pending recovery task are synthetic controls. Android MemoryInfo and current app PID PSS are observations, not physical capacity, ChatGPT, upload picker, native IME or performance acceptance. Session UA and document headers do not establish desktop Worker fetch UA consistency; inherited raw mismatch scope remains unsupported.");
     reportPut(report,"resourceUncovered",J.arr("physical ARM capacity","Gecko child process PSS","real ChatGPT tasks","native file chooser gesture","real upload/download throughput","independent process restoration","desktop Worker fetch UA consistency"));
   }

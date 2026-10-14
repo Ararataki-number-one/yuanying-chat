@@ -64,7 +64,7 @@ function fixture({url = 'https://chatgpt.com/c/resource-fixture', uploadApi = tr
   };
   const close = () => { observers.forEach(observer => observer.disconnect()); timers.clear(); window.close(); };
   return {window, api, posts, timers, handlers, observers, reads, settle, scheduled, flush, mutation, resources, busy, uploading, close,
-    install:() => window.__pocketInstallWebReplyObserver(api), advance:value => { now += value; }};
+    install:binding => window.__pocketInstallWebReplyObserver(api,binding), advance:value => { now += value; }};
 }
 
 test('Initial resource state is sampled once after a controlled 250ms throttle', async t => {
@@ -170,6 +170,31 @@ test('Same document query and hash changes emit a bound route and refresh resour
   assert.equal(f.resources().length,2);assert.equal(f.resources()[1].resourceSequence,2);assert.equal(f.resources()[1].url,route.url);
   f.window.history.replaceState({}, '', '/c/a-different-route'); f.window.dispatchEvent(new f.window.PopStateEvent('popstate')); await f.mutation(); f.flush(50); f.flush(250);
   assert.equal(f.resources().length,3);assert.equal(f.resources()[2].resourceSequence,3);
+});
+
+test('Retained document reinstall refreshes one bounded snapshot without duplicate listeners or draft writes', async t => {
+  const f = fixture(); t.after(f.close);
+  const firstBinding='primary-before-popup'; f.install(firstBinding); f.flush(50); f.flush(250);
+  const first=f.resources()[0], listeners=[...f.handlers].map(([kind,callbacks])=>[kind,callbacks.length]);
+  const draft=f.window.document.querySelector('textarea').value, cookie=f.window.document.cookie;
+  f.busy(true);f.uploading(true);await f.settle();f.flush(250);
+  const before=f.resources().at(-1), reads={...f.reads};
+  f.advance(400);f.install('primary-after-popup');f.install('primary-after-popup');
+  assert.equal(f.scheduled(250),1);assert.deepEqual(f.reads,reads);
+  f.flush(250);const fresh=f.resources().at(-1);
+  assert.equal(fresh.resourceBinding,'primary-after-popup');assert.equal(first.resourceBinding,firstBinding);
+  assert.equal(fresh.documentId,first.documentId);assert.equal(fresh.resourceSequence,before.resourceSequence+1);
+  assert.equal(fresh.busy,true);assert.equal(fresh.uploading,true);assert.ok(fresh.capturedAt>before.capturedAt);
+  assert.equal(f.observers.length,1);assert.deepEqual([...f.handlers].map(([kind,callbacks])=>[kind,callbacks.length]),listeners);
+  assert.equal(f.window.document.querySelector('textarea').value,draft);assert.equal(f.window.document.cookie,cookie);
+  assert.equal(f.posts.filter(row=>row.type==='intent').length,0);
+});
+
+test('A queued resource sample adopts only the newest native activation binding', async t => {
+  const f=fixture();t.after(f.close);f.install('old-primary');
+  f.install('popup');f.install('returned-primary');assert.equal(f.scheduled(250),1);f.flush(250);
+  assert.equal(f.resources().length,1);assert.equal(f.resources()[0].resourceBinding,'returned-primary');
+  f.window.__pocketWebReplyObserver.refreshResources('x'.repeat(81));assert.equal(f.scheduled(250),0);
 });
 
 test('API without uploadBusy preserves readiness and trusted reply intent binding', async t => {

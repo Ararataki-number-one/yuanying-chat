@@ -25,6 +25,46 @@ def prototype_names():
     return result+list(_guard.GUARD_CHECK_NAMES)
 
 
+def verify_resource_port_controls(report):
+    """Check actual observer bytes and native ownership, not assertion booleans."""
+    controls=report.get('resourcePortControls')
+    if not isinstance(controls,dict) or controls.get('sourceCommit')!=report.get('sourceCommit') or controls.get('runNonce')!=report.get('runNonce') or controls.get('phaseScope')!='controlled-production-delegate-sdk-open-load' or controls.get('syntheticPopupActivation') is not True or any(controls.get(key) is not False for key in ('trustedPopupGesture','trustedUserGesture','realWebsiteExecution')) or controls.get('observerDelivery')!='Actual SDK document observer bytes read through native evaluate; unchanged bytes passed to production resource admission':
+        raise ValueError('Retained resource popup scope is missing or claims a trusted gesture')
+    def integer(value,minimum=1):
+        return type(value) is int and minimum<=value<=2**63-1
+    for key in ['parentSession','parentPort','popupSession','popupPort','returnedSession','returnedPort','parentEpochBefore','popupEpoch','returnEpoch']:
+        if not integer(controls.get(key)):
+            raise ValueError('Retained resource native ownership is missing: '+key)
+    if controls['parentSession']==controls['popupSession'] or controls['parentPort']==controls['popupPort'] or controls['returnedSession']!=controls['parentSession'] or controls['returnedPort']!=controls['parentPort'] or not controls['parentEpochBefore']<controls['popupEpoch']<controls['returnEpoch']:
+        raise ValueError('Retained resource parent restoration or navigation epochs differ')
+    primary=report['cases'][0]['sessions'][0]['native']
+    if controls['parentSession']!=primary['session'] or report['allocation']['actualRuntimeObject']!=primary['runtime']:
+        raise ValueError('Retained resource parent/runtime differs from inherited actual SDK observations')
+    parent_url=report['allocation']['recoveredTarget']+'&spa=1'
+    popup_url=report['origin']+'/frame?run='+report['runNonce']+'&session=resource-popup'
+    events=[]
+    for key,url,busy,uploading in [('parentBefore',parent_url,True,True),('popup',popup_url,True,True),('parentReturned',parent_url,True,True),('parentIdle',parent_url,False,False)]:
+        event=controls.get(key)
+        if not isinstance(event,dict) or event.get('type')!='resource-work' or event.get('url')!=url or event.get('busy') is not busy or event.get('uploading') is not uploading or not integer(event.get('resourceSequence')) or not integer(event.get('capturedAt')) or not isinstance(event.get('documentId'),str) or not re.fullmatch('[a-zA-Z0-9-]{16,80}',event['documentId']) or not isinstance(event.get('resourceBinding'),str) or not re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',event['resourceBinding']):
+            raise ValueError('Actual retained resource observer event is incomplete: '+key)
+        events.append(event)
+    before,popup,returned,idle=events
+    if any(controls.get(key)!=event['resourceBinding'] for key,event in [('parentBeforeBinding',before),('popupBinding',popup),('parentReturnedBinding',returned)]):
+        raise ValueError('Native activation binding differs from actual document observer bytes')
+    if returned['documentId']!=before['documentId'] or idle['documentId']!=before['documentId'] or popup['documentId']==before['documentId'] or len({before['resourceBinding'],popup['resourceBinding'],returned['resourceBinding']})!=3 or idle['resourceBinding']!=returned['resourceBinding'] or not before['resourceSequence']<returned['resourceSequence']<idle['resourceSequence']:
+        raise ValueError('Retained observer document, activation binding or sequence differs')
+    clocks=[event['capturedAt'] for event in events]
+    if clocks!=sorted(clocks) or before['capturedAt']>=returned['capturedAt']:
+        raise ValueError('Retained resource observations have inconsistent capture times')
+    for key in ['stalePopupAfter','staleParentAfter']:
+        state=controls.get(key)
+        if not isinstance(state,dict) or type(state.get('websiteEpoch')) is not int or state['websiteEpoch']!=-1 or type(state.get('sequence')) is not int or state['sequence']!=0 or state.get('observerBinding')!=returned['resourceBinding'] or type(state.get('observerPort')) is not int or state['observerPort']!=controls['parentPort'] or type(state.get('navigationEpoch')) is not int or state['navigationEpoch']!=controls['returnEpoch']:
+            raise ValueError('Stale resource observation changed retained native ownership: '+key)
+    first,last=controls.get('before'),controls.get('after')
+    if not isinstance(first,dict) or not isinstance(last,dict) or first.get('url')!=parent_url or last.get('url')!=parent_url or not isinstance(first.get('draft'),str) or not first['draft'] or first['draft']!=last.get('draft') or not isinstance(first.get('cookie'),str) or first['cookie']!=last.get('cookie') or [part.strip() for part in first['cookie'].split(';') if part.strip().startswith('resourceRetained=')]!=['resourceRetained=preserved'] or any(type(value.get('sent')) is not int or value['sent']!=0 for value in (first,last)):
+        raise ValueError('Retained rebind changed controlled draft, cookie marker, URL or sends')
+
+
 def verify_resource_report(report, expected):
     if report.get('schema')!=1 or report.get('sdkCoordinate')!='org.mozilla.geckoview:geckoview:157.0.20261005135250' or report.get('sdkAarSha256')!='15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268' or report.get('engineVersion')!='GeckoView 157.0.1':
         raise ValueError('Pinned actual official SDK report identity differs')
@@ -50,6 +90,7 @@ def verify_resource_report(report, expected):
     origin=report.get('origin','');nonce=report.get('runNonce','')
     if not re.fullmatch(r'http://127\.0\.0\.1:[1-9][0-9]{0,4}',origin) or not re.fullmatch('[0-9a-f]{32}',nonce) or allocation.get('recoveredTarget')!=origin+'/frame?run='+nonce+'&case=4&session=secondary':
         raise ValueError('Captured resource candidate is not bound to this local invocation')
+    verify_resource_port_controls(report)
     platform=report.get('platformMemory',{})
     if platform.get('known') is not True or platform.get('source')!='android-ActivityManager.MemoryInfo' or type(platform.get('lowMemory')) is not bool:
         raise ValueError('Actual Android platform snapshot is missing')

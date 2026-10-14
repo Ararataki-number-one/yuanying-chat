@@ -22,13 +22,13 @@ final class WebReplyObserver {
         script = J.text(in, 128 * 1024);
       }
       try (InputStream in = session.context.getAssets().open("web-performance.js")) { script = J.text(in, 128 * 1024) + "\n" + script; }
-      script += "\nwindow.__pocketReadDriver=(action,arg)=>" + session.driver.replace("__ACTION__", "action").replace("__ARG__", "arg") + ";\nwindow.__pocketReadDriver('observe-install',{});";
+      script += "\nwindow.__pocketReadDriver=(action,arg)=>" + session.driver.replace("__ACTION__", "action").replace("__ARG__", "arg") + ";";
       supported = true;
     } catch (Exception ignored) { supported = false; }
   }
 
   void pageReady() {
-    if (!script.isEmpty() && MainActivity.chatUrl(session.web.getUrl())) session.web.evaluateJavascript(script, null);
+    if (!script.isEmpty() && session.web.resourcePage(session.web.getUrl())) session.web.evaluateJavascript(script+"\nwindow.__pocketReadDriver('observe-install',"+J.obj("resourceBinding",session.resourceObserverBinding)+");", null);
   }
 
   void restorePending() {

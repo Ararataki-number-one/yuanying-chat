@@ -1,10 +1,10 @@
 /* Observe trusted website gestures. This module never fills, clicks or submits. */
 (() => {
   'use strict';
-  window.__pocketInstallWebReplyObserver = api => {
+  window.__pocketInstallWebReplyObserver = (api, resourceBinding = '') => {
     if (window !== window.top || location.origin !== 'https://chatgpt.com' ||
         !window.PocketWebReply?.postMessage) return false;
-    if (window.__pocketWebReplyObserver) return true;
+    if (window.__pocketWebReplyObserver) { window.__pocketWebReplyObserver.refreshResources?.(resourceBinding); return true; }
     const uuid = () => typeof crypto.randomUUID === 'function' ? crypto.randomUUID() :
       [...crypto.getRandomValues(new Uint8Array(16))].map(n => n.toString(16).padStart(2, '0')).join('');
     const documentId = uuid();
@@ -19,7 +19,7 @@
     const sameRoute = (from, to) => address(from) === address(to) ||
       (newChat(from) && /^\/(?:g\/[^/]+\/)?c\/[^/]+$/.test(new URL(to).pathname));
     function emit(type, data = {}) {
-      try { window.PocketWebReply.postMessage(JSON.stringify({type, documentId, url:location.href, ...data})); }
+      try { window.PocketWebReply.postMessage(JSON.stringify({type, documentId, url:location.href, resourceBinding, ...data})); }
       catch (_) { /* No website behavior depends on a host callback. */ }
     }
     function invalidate(reason) {
@@ -133,7 +133,7 @@
     document.addEventListener('DOMContentLoaded', scheduleReadiness, {once:true});
     scheduleReadiness();
     scheduleResources();
-    window.__pocketWebReplyObserver = Object.freeze({documentId,lastGestureAt:()=>attempt?.started||0});
+    window.__pocketWebReplyObserver = Object.freeze({documentId,lastGestureAt:()=>attempt?.started||0,refreshResources:binding=>{if(typeof binding!=='string'||binding.length>80||binding===resourceBinding)return;resourceBinding=binding;lastResource='';scheduleResources();}});
     return true;
   };
 })();

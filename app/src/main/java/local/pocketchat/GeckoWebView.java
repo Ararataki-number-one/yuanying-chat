@@ -364,7 +364,7 @@ class GeckoWebView extends FrameLayout {
     GeckoSession previous=current;
     if(surface.getSession()!=null)surface.releaseSession();
     if(previous!=null){if(previous.isOpen())previous.setActive(false);WebExtension.Port port=ports.get(previous);if(port!=null)callbacks.cancel(port);}
-    current=session;url=locations.getOrDefault(session,"");canBack=backStates.getOrDefault(session,false);scale=pageScales.getOrDefault(session,1f)*readingLayout;
+    current=session;owner.resourceObserverConnected(ports.get(session));url=locations.getOrDefault(session,"");canBack=backStates.getOrDefault(session,false);scale=pageScales.getOrDefault(session,1f)*readingLayout;
     failed=crashed.contains(session);
     if(!failed){surface.setSession(session);session.setActive(!owner.browserPaused);}
     configure(desktop,owner.privacy.level());
@@ -411,7 +411,7 @@ class GeckoWebView extends FrameLayout {
   }
   private boolean closePopup(GeckoSession old){
     if(destroyed||!popups.remove(old))return false;
-    if(old==current){activate(popups.isEmpty()?primary:popups.get(popups.size()-1));owner.pageError="";if(crashed.contains(current))contentStopped(current,"上一页被系统关闭，点按重新加载可恢复");else{owner.beginNavigation(url,"正在返回上一页…");if(client!=null&&painted.contains(current)){client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}}}
+    if(old==current){activate(popups.isEmpty()?primary:popups.get(popups.size()-1));owner.pageError="";if(crashed.contains(current))contentStopped(current,"上一页被系统关闭，点按重新加载可恢复");else{owner.beginNavigation(url,"正在返回上一页…");owner.resourceObserverConnected(ports.get(current));if(client!=null&&painted.contains(current)){client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}}}
     WebExtension.Port port=ports.remove(old);if(port!=null)callbacks.cancel(port);
     locations.remove(old);backStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);
     if(old.isOpen())old.close();return true;
