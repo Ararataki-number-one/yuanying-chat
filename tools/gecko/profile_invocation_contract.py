@@ -52,9 +52,15 @@ def expected_build(apk, source, tree, version, code):
         sdk_asset = _sdk.sdk_from_apk(archive, source, tree)
     stamp = json.loads(raw)
     if sdk_asset is not None:
-        if 'sdkBuildIdentity' in stamp and stamp['sdkBuildIdentity'] != sdk_asset:
+        if 'sdkBuildIdentity' in stamp and not _sdk._typed_equal(stamp['sdkBuildIdentity'], sdk_asset):
             raise ValueError('Integration stamp differs from embedded SDK asset')
         stamp['sdkBuildIdentity'] = sdk_asset
+        # Match IntegrationBuildIdentity.read/NormalCaretSdkReceipt.copySdkFields:
+        # derive these fields from the independently verified APK assets only.
+        for key in _sdk.SDK_FIELDS:
+            if key in stamp and not _sdk._typed_equal(stamp[key], sdk_asset[key]):
+                raise ValueError('Integration stamp SDK field differs from embedded SDK asset: ' + key)
+            stamp[key] = sdk_asset[key]
     if stamp.get('schema') != 1 or stamp.get('dirtySource') is not False or stamp.get('sourceCommit') != source or stamp.get('sourceTree') != tree:
         raise ValueError('Local APK was not built from the current clean source commit/tree')
     if stamp.get('version') != version or stamp.get('versionCode') != code:

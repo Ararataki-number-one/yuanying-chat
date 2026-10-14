@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import warnings
 from zipfile import ZipFile
 
@@ -13,6 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('prototype_sdk_contract', ROOT/'tools/gecko/sdk_identity_contract.py')
 sdk = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sdk)
+spec = importlib.util.spec_from_file_location('sdk_apk_invocation_contract', ROOT/'tools/gecko/profile_invocation_contract.py')
+invocation = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(invocation)
 SOURCE, TREE = 'a'*40, 'b'*40
 
 
@@ -194,6 +198,119 @@ class SelectedSourceIdentityTests(unittest.TestCase):
                         archive.writestr(sdk.SDK_RECEIPT_ASSET, self.raw)
                 with ZipFile(path) as archive, self.assertRaises(ValueError):
                     sdk.sdk_from_apk(archive, SOURCE, TREE, self.reader)
+
+
+class ApkInstalledIdentityRoundtripTests(unittest.TestCase):
+    """Exercise ZIP assets and Android's serialized nested plus flat identity."""
+    def setUp(self):
+        _, _, self.reader, _, self.receipt_raw, self.asset, _, _ = fixture()
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.apk = Path(directory.name)/'identity-test.apk'
+        self.stamp = dict(schema=1, sourceCommit=SOURCE, sourceTree=TREE,
+                          dirtySource=False, version='2.0.0', versionCode=53,
+                          sdkCoordinate=sdk.SDK_COORDINATE)
+        # Use the canonical validators with selected synthetic source bytes;
+        # neither wrapper manufactures an identity or bypasses receipt checks.
+        self.addCleanup(patch.stopall)
+        patch.object(invocation._sdk, 'sdk_from_apk',
+                     side_effect=lambda archive, source, tree: sdk.sdk_from_apk(archive, source, tree, self.reader)).start()
+        patch.object(invocation._sdk, 'verify_sdk_identity',
+                     side_effect=lambda value, source=None, tree=None: sdk.verify_sdk_identity(value, source, tree, reader=self.reader)).start()
+
+    def write_apk(self, stamp=None, *, receipt=None, mode='derived'):
+        raw = encoded(self.stamp if stamp is None else stamp)
+        with warnings.catch_warnings(), ZipFile(self.apk, 'w') as archive:
+            warnings.simplefilter('ignore', UserWarning)
+            archive.writestr(invocation.STAMP, raw)
+            if mode != 'legacy':
+                archive.writestr(sdk.SDK_ASSET, encoded(self.asset))
+                if mode == 'duplicate-identity':
+                    archive.writestr(sdk.SDK_ASSET, encoded(self.asset))
+                if mode != 'missing-receipt':
+                    archive.writestr(sdk.SDK_RECEIPT_ASSET, self.receipt_raw if receipt is None else receipt)
+        return raw
+
+    def expected(self):
+        return invocation.expected_build(self.apk, SOURCE, TREE, '2.0.0', 53)
+
+    def android_identity(self, raw):
+        # IntegrationBuildIdentity.read first reads the raw integration stamp,
+        # then NormalCaretSdkReceipt.copySdkFields copies only SDK_FIELDS.
+        value = json.loads(raw)
+        value.update({key: self.asset[key] for key in sdk.SDK_FIELDS})
+        value['sdkBuildIdentity'] = self.asset
+        value.update(package=invocation.PACKAGE, apkSha256=sdk.digest(self.apk.read_bytes()),
+                     apkBytes=self.apk.stat().st_size, buildStampSha256=sdk.digest(raw))
+        return json.loads(encoded(value))
+
+    def test_valid_apk_assets_match_android_nested_and_flat_json_roundtrip(self):
+        raw = self.write_apk()
+        expected = self.expected()
+        installed = self.android_identity(raw)
+        self.assertEqual(expected, installed)
+        self.assertEqual(expected['buildStampSha256'], sdk.digest(raw))
+        self.assertNotEqual(expected['buildStampSha256'], sdk.digest(encoded(expected)))
+        for key in ('runId', 'runAttempt'):
+            self.assertNotIn(key, expected)
+            self.assertIn(key, expected['sdkBuildIdentity'])
+        self.assertIs(invocation.verify_installed(installed, expected), installed)
+
+    def test_each_missing_or_wrong_installed_flat_field_is_rejected(self):
+        raw = self.write_apk()
+        expected = self.expected()
+        for key in sdk.SDK_FIELDS:
+            for mode in ('missing', 'wrong'):
+                with self.subTest(field=key, mode=mode):
+                    installed = self.android_identity(raw)
+                    if mode == 'missing':
+                        installed.pop(key)
+                    else:
+                        installed[key] = 'foreign-sdk-field'
+                    with self.assertRaises(ValueError):
+                        invocation.verify_installed(installed, expected)
+
+    def test_each_conflicting_existing_outer_sdk_field_is_rejected(self):
+        for key in sdk.SDK_FIELDS:
+            with self.subTest(field=key):
+                self.write_apk(dict(self.stamp, **{key: 'foreign-sdk-field'}))
+                with self.assertRaises(ValueError):
+                    self.expected()
+
+    def test_matching_existing_nested_and_flat_fields_are_preserved(self):
+        stamp = dict(self.stamp, sdkBuildIdentity=self.asset,
+                     **{key: self.asset[key] for key in sdk.SDK_FIELDS if key not in self.stamp})
+        raw = self.write_apk(stamp)
+        self.assertEqual(self.expected(), self.android_identity(raw))
+
+    def test_existing_nested_boolean_schema_cannot_equal_integer_schema(self):
+        asset = dict(self.asset, schema=True)
+        self.write_apk(dict(self.stamp, sdkBuildIdentity=asset))
+        with self.assertRaises(ValueError):
+            self.expected()
+
+    def test_invalid_or_missing_sdk_assets_cannot_create_expected_identity(self):
+        for mode in ('missing-receipt', 'duplicate-identity', 'wrong-receipt-bytes'):
+            with self.subTest(mode=mode):
+                self.write_apk(mode=mode, receipt=self.receipt_raw+b'\n' if mode == 'wrong-receipt-bytes' else None)
+                with self.assertRaises(ValueError):
+                    self.expected()
+
+    def test_legacy_official_apk_without_sdk_assets_keeps_historical_identity(self):
+        def historical_reader(source, path):
+            if source != SOURCE:
+                raise ValueError('foreign historical source')
+            raise KeyError(path)
+        self.reader = historical_reader
+        raw = self.write_apk(mode='legacy')
+        expected = self.expected()
+        installed = dict(json.loads(raw), package=invocation.PACKAGE,
+                         apkSha256=sdk.digest(self.apk.read_bytes()), apkBytes=self.apk.stat().st_size,
+                         buildStampSha256=sdk.digest(raw))
+        self.assertEqual(expected, installed)
+        self.assertNotIn('sdkBuildIdentity', expected)
+        self.assertNotIn('sdkBuildKind', expected)
+        self.assertIs(invocation.verify_installed(installed, expected), installed)
 
 
 def archive_bytes(entries):
