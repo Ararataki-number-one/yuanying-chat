@@ -63,6 +63,7 @@ function harness(caseNumber = 0) {
     getAttribute:name => name === 'data-caret-case' ? String(state.caseNumber) : null};
   document.body = {innerText:'Controlled original input semantics'};
   document.readyState = 'complete';
+  document.fonts = {status:'loaded'};
   document.URL = url;
   document.defaultView = pageWindow;
   Object.defineProperty(document, 'cookie', {get:() => state.cookie, set:() => writes.push('cookie')});
@@ -84,7 +85,10 @@ function harness(caseNumber = 0) {
     document, location, performance, innerWidth:384, innerHeight:720, getComputedStyle:computedStyle,
   });
   window.top = window; pageWindow.top = pageWindow;
-  const common = {document,location,performance,innerWidth:384,innerHeight:720,
+  const viewport = {width:384,height:720,scale:1,offsetLeft:0,offsetTop:0,pageLeft:0,pageTop:0,
+    addEventListener() {}};
+  Object.assign(window, {visualViewport:viewport,devicePixelRatio:1,scrollX:0,scrollY:0});
+  const common = {document,location,performance,innerWidth:384,innerHeight:720,scrollX:0,scrollY:0,
     getComputedStyle:computedStyle,URL,URLSearchParams,console};
   const page = vm.createContext({...common, window:pageWindow});
   const extension = vm.createContext({...common, window,
@@ -92,7 +96,7 @@ function harness(caseNumber = 0) {
       assert.equal(name, 'pocketpage');
       return {postMessage:value => messages.push(value),onMessage:{addListener:callback => { nativeReceive = callback; }}};
     }}},
-    visualViewport:{scale:1,addEventListener() {}},devicePixelRatio:1,
+    visualViewport:viewport,devicePixelRatio:1,
     MutationObserver:class { observe() {} disconnect() {} },
     requestAnimationFrame:() => 1,cancelAnimationFrame() {},
     setTimeout:() => 1,clearTimeout() {},
@@ -119,7 +123,7 @@ function harness(caseNumber = 0) {
   };
   const count = () => document.listenerCount() + node.listenerCount() + send.listenerCount();
   return {state,writes,document,window,pageWindow,page,extension,configuration,location,
-    get node() { return node; },send,evaluate,observe,emit,count,
+    get node() { return node; },send,viewport,evaluate,observe,emit,count,
     replaceComposer() { node.isConnected = false; node = makeNode('prompt-textarea'); },
   };
 }
@@ -188,6 +192,29 @@ test('repeat reads install one recorder and retain exact host callback events', 
   assert.equal(value.focused, true);
   assert.deepEqual(f.observe().events, value.events);
   assert.equal(f.count(), listenerCount);
+  assert.deepEqual(f.writes, []);
+});
+
+test('layout viewport changes remain separate from passive visual geometry', () => {
+  const f = harness();
+  const original = f.observe();
+  assert.equal(original.ready, true);
+  f.extension.innerHeight = f.window.innerHeight = 989;
+  f.viewport.height = 667;
+  f.viewport.offsetTop = 7;
+  f.viewport.pageTop = 12;
+  f.extension.scrollY = f.window.scrollY = 5;
+  const value = f.observe();
+  assert.equal(value.height, 989);
+  assert.deepEqual(value.viewport, {width:384,height:667,scale:1,
+    offsetLeft:0,offsetTop:7,pageLeft:0,pageTop:12});
+  assert.equal(value.devicePixelRatio, 1);
+  assert.equal(value.scrollX, 0);
+  assert.equal(value.scrollY, 5);
+  assert.equal(value.readyState, 'complete');
+  assert.equal(value.documentFontsLoaded, true);
+  assert.deepEqual(value.points, original.points,
+    'Text measurement must not scale CSS points by layout viewport height');
   assert.deepEqual(f.writes, []);
 });
 

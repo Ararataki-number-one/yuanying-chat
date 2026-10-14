@@ -30,9 +30,21 @@ def snap(number, draft, start, events, end=None, *, focused=True, direction='non
                 sourceCommit=SOURCE, runId=RUN, runAttempt=ATTEMPT, runNonce=NONCE,
                 documentUrl='http://127.0.0.1:8771/caret?case=' + str(number), timeOrigin=1000 + number,
                 observerWorld='extension-isolated-world', listenerInstallCount=1,
+                nativeGeometry=geometry(number), width=432, height=720, readyState='complete', documentFontsLoaded=True,
+                viewport=dict(width=432,height=720,scale=1,offsetLeft=0,offsetTop=0,pageLeft=0,pageTop=0),
+                bounds=dict(x=12,y=65.63,width=408,height=96),
                 direction=direction, focused=focused, otherDraft='untouched independent draft',
                 sendCount=0, cookie='session=synthetic-caret', allTrusted=True, overflow=False,
                 **C.counts(events))
+
+
+def geometry(number):
+    return dict(sourceCommit=SOURCE,runId=RUN,runAttempt=ATTEMPT,runNonce=NONCE,case=number,
+        documentUrl='http://127.0.0.1:8771/caret?case='+str(number),timeOrigin=1000+number,
+        nativeSession=123,attachedSession=123,nativePort=321+number,
+        clientToSurfaceMatrix=[2.5,0,0,0,2.5,0,0,0,1],readingLayout=1,originX=0,originY=0,
+        surfaceWidth=1080,surfaceHeight=1800,webWidth=1080,webHeight=1800,shown=True,
+        committedUrl='http://127.0.0.1:8771/caret?case='+str(number))
 
 
 def typed(events, old, new, before, after, char, *, end=None, reject=False):
@@ -169,7 +181,9 @@ def fixture(directory):
         commands = []
         for op, value in row['commands']:
             if op == 'tap':
-                commands.append(dict(op=op, x=100 + value, y=200, expectedCaret=value))
+                commands.append(dict(op=op, x=100 + value, y=200, expectedCaret=value,
+                    nativeGeometry=geometry(C.IDS.index(row['scenario'])),clientPoint=dict(x=(100+value)/2.5,y=80),
+                    viewport=dict(width=432,height=720,scale=1,offsetLeft=0,offsetTop=0,pageLeft=0,pageTop=0)))
             else:
                 commands.append(dict(op=op, **{{'text': 'text', 'key': 'code', 'combination': 'codes'}[op]: value}))
         hardware.append(dict(id=row['id'], scenario=row['scenario'], origin='adb-input-keyboard-and-touch', commands=commands,
@@ -187,8 +201,12 @@ def fixture(directory):
             field = 'id' if kind == 'hw' else 'index'
             row = next(row for row in rows if row[field] == wanted[field])
             actions.append({k: v for k, v in row.items() if k != 'executions'})
+        initial=snap(number,C.SEEDS[number],0,[],focused=False)
+        first=copy.deepcopy(initial)
+        initial['geometryPreparation']=dict(stableSamples=7,stableMillis=700,preparationStartedAt=90,startedAt=100,completedAt=800,
+            firstStableSnapshot=first,transitions=[dict(observedAt=100,ready=True,snapshot=copy.deepcopy(first))])
         scenarios.append(dict(id=case_id, initialDraft=C.SEEDS[number],
-            initialSnapshot=snap(number, C.SEEDS[number], 0, [], focused=False),
+            initialSnapshot=initial,
             focusedInitial=snap(number, C.SEEDS[number], C.CARETS[number], events[:1]),
             actual=states[-1], actions=actions, checkpoints=case_checkpoints))
         chunks.extend(dict(id=case_id, offset=offset, events=events[offset:offset + 4]) for offset in range(0, len(events), 4))
@@ -467,6 +485,77 @@ class ContractControls(unittest.TestCase):
                           ('documentUrl','http://127.0.0.1:8771/caret?case=1'),('timeOrigin',9999),
                           ('listenerInstallCount',2),('observerWorld','page-main-world')]:
             self.rejected(lambda d,key=key,value=value:d['report']['scenarios'][0]['actual'].__setitem__(key,value))
+
+    def test_reported_layout_height_does_not_change_sdk_matrix_tap(self):
+        for height in [667,989]:
+            data=copy.deepcopy(self.data)
+            data['report']['scenarios'][0]['initialSnapshot']['height']=height
+            attach_transport(data['report'])
+            self.assertEqual(self.verify(data)['scenarios'],14)
+        data=copy.deepcopy(self.data)
+        command=data['report']['actualAndroidActions'][0]['commands'][0]
+        command['y']=round(command['clientPoint']['y']*command['nativeGeometry']['webHeight']/989)
+        attach_transport(data['report'])
+        with self.assertRaisesRegex(ValueError,'tap coordinates'):
+            self.verify(data)
+
+    def test_actual_matrix_origin_layout_target_and_document_proof_cannot_be_omitted(self):
+        for key in ['nativeGeometry','clientPoint','viewport']:
+            data=copy.deepcopy(self.data);data['report']['actualAndroidActions'][0]['commands'][0].pop(key)
+            attach_transport(data['report'])
+            with self.subTest(field=key),self.assertRaises(ValueError):self.verify(data)
+        for key in ['originX','originY','clientToSurfaceMatrix','readingLayout']:
+            data=copy.deepcopy(self.data);data['report']['actualAndroidActions'][0]['commands'][0]['nativeGeometry'].pop(key)
+            attach_transport(data['report'])
+            with self.subTest(field=key),self.assertRaises(ValueError):self.verify(data)
+
+    def test_rehashed_wrong_sdk_matrix_origin_layout_and_foreign_geometry_are_rejected(self):
+        for key,value in [('originY',5),('readingLayout',.5),('nativePort',999),('sourceCommit','f'*40),
+                          ('case',1),('timeOrigin',1001),('runNonce','e'*32),('clientToSurfaceMatrix',[1,0,0,0,1,0,0,0,1])]:
+            data=copy.deepcopy(self.data);data['report']['actualAndroidActions'][0]['commands'][0]['nativeGeometry'][key]=value
+            attach_transport(data['report'])
+            with self.subTest(field=key),self.assertRaises(ValueError):self.verify(data)
+
+    def test_actual_geometry_preparation_samples_duration_first_pose_and_transition_fences(self):
+        for key,value in [('stableSamples',2),('stableMillis',599),('preparationStartedAt',801),
+                          ('startedAt',101),('completedAt',26000),('transitions',[])]:
+            data=copy.deepcopy(self.data);data['report']['scenarios'][0]['initialSnapshot']['geometryPreparation'][key]=value
+            attach_transport(data['report'])
+            with self.subTest(field=key),self.assertRaises(ValueError):self.verify(data)
+        for mutate in [lambda p:p['firstStableSnapshot']['nativeGeometry'].__setitem__('originY',5),
+                       lambda p:p['transitions'][0]['snapshot'].__setitem__('runNonce','e'*32),
+                       lambda p:p['transitions'][0].__setitem__('observedAt',1000)]:
+            data=copy.deepcopy(self.data);mutate(data['report']['scenarios'][0]['initialSnapshot']['geometryPreparation'])
+            attach_transport(data['report'])
+            with self.assertRaises(ValueError):self.verify(data)
+
+    def test_geometry_stability_cannot_hide_incoherent_native_width_or_pending_fonts(self):
+        for key,value in [('readyState','loading'),('documentFontsLoaded',False)]:
+            data=copy.deepcopy(self.data);data['report']['scenarios'][0]['initialSnapshot'][key]=value
+            attach_transport(data['report'])
+            with self.subTest(field=key),self.assertRaises(ValueError):self.verify(data)
+        data=copy.deepcopy(self.data)
+        initial=data['report']['scenarios'][0]['initialSnapshot']
+        for value in [initial,initial['geometryPreparation']['firstStableSnapshot']]:
+            value['viewport']['width']=400
+        data['report']['actualAndroidActions'][0]['commands'][0]['viewport']['width']=400
+        attach_transport(data['report'])
+        with self.assertRaises(ValueError):self.verify(data)
+
+    def test_html_ready_but_native_pending_transition_can_settle_without_replaying_tap(self):
+        data=copy.deepcopy(self.data)
+        preparation=data['report']['scenarios'][0]['initialSnapshot']['geometryPreparation']
+        pending=copy.deepcopy(preparation['firstStableSnapshot'])
+        pending['nativeGeometry'].update(nativePort=0,attachedSession=0,shown=False,
+                                         clientToSurfaceMatrix=[1,0,0,0,1,0,0,0,1])
+        preparation['transitions'].insert(0,dict(observedAt=95,ready=False,snapshot=pending))
+        attach_transport(data['report'])
+        self.assertEqual(self.verify(data)['scenarios'],14)
+        self.assertEqual(len(data['report']['actualAndroidActions'][0]['commands']),1)
+        for target in [pending,pending['nativeGeometry']]:
+            target['runNonce']='e'*32
+        attach_transport(data['report'])
+        with self.assertRaises(ValueError):self.verify(data)
 
     def rejected(self, mutate):
         data = copy.deepcopy(self.data); mutate(data)

@@ -303,6 +303,37 @@ def snapshot(value, number, events, *, focused=None):
         require(type(value.get(field)) is int and value[field] == actual, 'snapshot counter differs from raw events: ' + field)
 
 
+def finite_number(value):
+    return type(value) in (int, float) and math.isfinite(value)
+
+
+def verify_native_geometry(geometry, owner):
+    require(isinstance(geometry, dict) and all(type(geometry.get(key)) is type(wanted) and geometry[key] == wanted
+            for key, wanted in owner.items()), 'native geometry source/run/document owner differs')
+    for field in ['nativeSession', 'attachedSession', 'nativePort']:
+        require(type(geometry.get(field)) is int and geometry[field] != 0, 'actual native geometry session/port missing')
+    require(geometry['nativeSession'] == geometry['attachedSession'] and geometry.get('shown') is True
+            and geometry.get('committedUrl') == owner['documentUrl'], 'native geometry is not the visible committed session')
+    for field in ['surfaceWidth', 'surfaceHeight', 'webWidth', 'webHeight']:
+        require(integer(geometry.get(field), 1), 'native geometry dimension missing: ' + field)
+    for field in ['originX', 'originY']:
+        require(type(geometry.get(field)) is int and -(2**31) <= geometry[field] < 2**31, 'actual native surface origin missing')
+    layout, matrix = geometry.get('readingLayout'), geometry.get('clientToSurfaceMatrix')
+    require(finite_number(layout) and 0 < layout <= 1 and isinstance(matrix, list) and len(matrix) == 9
+            and all(finite_number(value) for value in matrix), 'finite actual native matrix and layout required')
+    require(matrix[0] > 0 and matrix[4] > 0 and abs(matrix[0] - matrix[4]) <= .001
+            and matrix[1] == matrix[3] == matrix[6] == matrix[7] == 0 and matrix[8] == 1,
+            'native client matrix must have positive isotropic affine scales')
+    return matrix, layout
+
+
+def verify_viewport(viewport):
+    require(isinstance(viewport, dict) and all(finite_number(viewport.get(field)) for field in
+            ['width', 'height', 'scale', 'offsetLeft', 'offsetTop', 'pageLeft', 'pageTop'])
+            and viewport['width'] > 0 and viewport['height'] > 0 and viewport['scale'] > 0,
+            'actual document visual viewport missing or invalid')
+
+
 def verify_hardware(actual, expected):
     require(isinstance(actual, dict) and actual.get('id') == expected['id'] and actual.get('scenario') == expected['scenario']
             and actual.get('origin') == 'adb-input-keyboard-and-touch', 'Android action identity')
@@ -313,6 +344,17 @@ def verify_hardware(actual, expected):
         require(isinstance(command, dict) and command.get('op') == wanted[0], 'Android command order')
         if wanted[0] == 'tap':
             require(command.get('expectedCaret') == wanted[1] and integer(command.get('x')) and integer(command.get('y')), 'real tap caret/geometry missing')
+            geometry, point = command.get('nativeGeometry'), command.get('clientPoint')
+            require(isinstance(geometry, dict) and isinstance(point, dict)
+                    and finite_number(point.get('x')) and finite_number(point.get('y')), 'actual SDK matrix/origin/client target missing')
+            matrix, layout = verify_native_geometry(geometry, {key: geometry.get(key) for key in
+                ['sourceCommit', 'runId', 'runAttempt', 'runNonce', 'case', 'documentUrl', 'timeOrigin']})
+            verify_viewport(command.get('viewport'))
+            mapped_x = geometry['originX'] + (matrix[0] * point['x'] + matrix[2]) * layout
+            mapped_y = geometry['originY'] + (matrix[4] * point['y'] + matrix[5]) * layout
+            require(finite_number(mapped_x) and finite_number(mapped_y)
+                    and abs(command['x'] - mapped_x) <= .51 and abs(command['y'] - mapped_y) <= .51,
+                    'actual tap coordinates differ from the SDK matrix, reading layout and surface origin')
         else:
             field = {'text': 'text', 'key': 'code', 'combination': 'codes'}[wanted[0]]
             require(command.get(field) == wanted[1], 'Android command changed')
@@ -450,6 +492,68 @@ def verify_caret_transport(report, *, source, run_id, run_attempt):
             require(type(observed) in (int, float) and math.isfinite(observed) and observed > 0
                     and (time_origin is None or observed == time_origin), 'observer document time origin changed within case')
             time_origin = observed
+            owner = dict(expected, timeOrigin=observed)
+            matrix, layout = verify_native_geometry(value.get('nativeGeometry'), owner)
+            verify_viewport(value.get('viewport'))
+        initial = case['initialSnapshot']
+        preparation = initial.get('geometryPreparation')
+        require(isinstance(preparation, dict) and integer(preparation.get('stableSamples'), 3)
+                and integer(preparation.get('stableMillis'), 600) and isinstance(preparation.get('transitions'), list)
+                and 1 <= len(preparation['transitions']) <= 16, 'initial geometry preparation was skipped or unbounded')
+        require(integer(preparation.get('startedAt'), 1) and integer(preparation.get('completedAt'), 1)
+                and integer(preparation.get('preparationStartedAt'), 1)
+                and preparation['preparationStartedAt'] <= preparation['startedAt'] <= preparation['completedAt']
+                and preparation['completedAt'] - preparation['preparationStartedAt'] <= 25000
+                and preparation['completedAt'] - preparation['startedAt'] == preparation['stableMillis'],
+                'actual geometry preparation timestamps differ from settled duration')
+        first = preparation.get('firstStableSnapshot')
+        require(isinstance(first, dict) and all(first.get(key) == initial.get(key) for key in
+                ['sourceCommit', 'runId', 'runAttempt', 'runNonce', 'case', 'documentUrl', 'timeOrigin',
+                 'nativeGeometry', 'viewport', 'bounds', 'draft', 'start', 'end', 'readyState', 'documentFontsLoaded']),
+                'prepared geometry changed between first and final stable observations')
+        last_transition = -1
+        for transition in preparation['transitions']:
+            require(isinstance(transition, dict) and integer(transition.get('observedAt'), 1)
+                    and last_transition <= transition['observedAt'] <= preparation['completedAt']
+                    and type(transition.get('ready')) is bool and isinstance(transition.get('snapshot'), dict),
+                    'bounded actual geometry transitions malformed or out of order')
+            last_transition = transition['observedAt']
+            observed_snapshot = transition['snapshot']
+            require(transition['ready'] is not True or observed_snapshot.get('ready') is True,
+                    'native geometry transition claims readiness before document readiness')
+            if observed_snapshot.get('ready') is True:
+                owner = dict(sourceCommit=source, runId=run_id, runAttempt=run_attempt, runNonce=nonce,
+                    case=number, documentUrl=initial['documentUrl'], timeOrigin=initial['timeOrigin'])
+                require(all(observed_snapshot.get(key) == wanted for key, wanted in owner.items()),
+                        'geometry transition belongs to another observer document')
+                pending_native = observed_snapshot.get('nativeGeometry')
+                require(isinstance(pending_native, dict) and all(pending_native.get(key) == wanted for key, wanted in owner.items()),
+                        'pending native geometry transition belongs to another document')
+                if transition['ready'] is True:
+                    transition_matrix, transition_layout = verify_native_geometry(pending_native, owner)
+                    verify_viewport(observed_snapshot.get('viewport'))
+                    require(observed_snapshot.get('readyState') == 'complete' and observed_snapshot.get('documentFontsLoaded') is True
+                            and abs(pending_native['webWidth'] - observed_snapshot['viewport']['width'] * transition_matrix[0] * transition_layout) < 8,
+                            'ready native geometry transition is not coherent with its document')
+        require(initial.get('readyState') == 'complete' and initial.get('documentFontsLoaded') is True,
+                'initial document layout/font preparation incomplete')
+        native = initial['nativeGeometry']; viewport = initial['viewport']
+        require(abs(native['webWidth'] - viewport['width'] * native['clientToSurfaceMatrix'][0] * native['readingLayout']) < 8,
+                'initial document/native viewport geometry incoherent')
+        focus_action = next((action for action in actions if action.get('scenario') == case['id']
+                             and '-focus-' in action.get('id', '')), None)
+        require(isinstance(focus_action, dict) and len(focus_action['commands']) == 1
+                and focus_action['commands'][0].get('nativeGeometry') == native
+                and focus_action['commands'][0].get('viewport') == viewport,
+                'sole initial tap differs from the prepared actual geometry')
+    for action in actions:
+        number = IDS.index(action['scenario'])
+        initial = report['scenarios'][number]['initialSnapshot']
+        owner = dict(sourceCommit=source, runId=run_id, runAttempt=run_attempt, runNonce=nonce,
+                     case=number, documentUrl=initial['documentUrl'], timeOrigin=initial['timeOrigin'])
+        for command in action['commands']:
+            if command['op'] == 'tap':
+                verify_native_geometry(command.get('nativeGeometry'), owner)
     return len(records)
 
 
