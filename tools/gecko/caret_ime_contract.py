@@ -1,5 +1,6 @@
 """Validate recorded emulator IME isolation; never treats host controls as Android."""
 import importlib.util
+import hashlib
 from pathlib import Path
 import re
 import shlex
@@ -128,13 +129,23 @@ def verify_ime_environment(value, phase, *, identity, nonce, raw_sha256):
     require(isinstance(rows,list) and 0 < len(rows) <= 100, 'bounded actual command ledger required')
     previous = times[0]
     for row in rows:
-        require(isinstance(row,dict) and row.get('status') == 'passed' and isinstance(row.get('stdout'),str)
-                and len(row['stdout']) <= 131072 and stamp(row.get('startedAtMonotonicNanos'))
-                and stamp(row.get('completedAtMonotonicNanos'))
-                and previous <= row['startedAtMonotonicNanos'] <= row['completedAtMonotonicNanos'] <= times[-1], 'actual command timing/result differs')
-        previous = row['completedAtMonotonicNanos']
+        require(isinstance(row,dict), 'actual command record required')
         parts = row.get('parts')
         require(isinstance(parts,list) and parts and all(isinstance(x,str) and len(x)<=8192 for x in parts), 'actual command argument vector missing')
+        require(isinstance(row,dict) and row.get('status') == 'passed' and isinstance(row.get('stdout'),str)
+                and stamp(row.get('startedAtMonotonicNanos'))
+                and stamp(row.get('completedAtMonotonicNanos'))
+                and previous <= row['startedAtMonotonicNanos'] <= row['completedAtMonotonicNanos'] <= times[-1], 'actual command timing/result differs')
+        if tuple(parts)==G.METHOD_DUMP_COMMAND:
+            raw=row['stdout'].encode('utf-8')
+            require(len(raw)<=G.METHOD_DUMP_BYTES and row.get('stdoutType')=='str'
+                    and type(row.get('stdoutChars')) is int and row['stdoutChars']==len(row['stdout'])
+                    and type(row.get('stdoutBytes')) is int and row['stdoutBytes']==len(raw)
+                    and row.get('stdoutSha256')==hashlib.sha256(raw).hexdigest()
+                    and not row.get('stdoutTruncated'), 'bounded full method dump and actual size/hash required')
+        else:
+            require(len(row['stdout'])<=131072, 'other command stdout bound changed')
+        previous = row['completedAtMonotonicNanos']
     require([row['parts'] for row in rows[:3]] == [
         ['shell','getprop','ro.kernel.qemu'], ['shell','am','get-current-user'], ['shell','getprop','ro.build.version.sdk']], 'actual emulator preflight command order differs')
     require([row['stdout'].strip() for row in rows[:3]] == ['1','0','35'], 'actual emulator preflight values differ')

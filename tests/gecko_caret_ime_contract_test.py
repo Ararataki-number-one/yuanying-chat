@@ -47,7 +47,7 @@ def raw_hash(value):
 
 
 def recorded_base(*, fixture_previously_enabled=False, absent_subtype=False, absent_history=False,
-                  relative_artifacts=False):
+                  relative_artifacts=False, method_dump_padding=''):
     """Execute the checked-in guards/coordinator; only child process results are doubled.
 
     The parent coordinator actually records both commands, once-only counts,
@@ -61,6 +61,9 @@ def recorded_base(*, fixture_previously_enabled=False, absent_subtype=False, abs
                  runId=identity['runId'], runAttempt=identity['runAttempt'], phaseStatus='failed')
     fake_ime = IME_HOST.FakeAdb(initial_fixture_enabled=fixture_previously_enabled,
                               absent_subtype=absent_subtype, absent_history=absent_history)
+    def ime_command(*parts):
+        raw=fake_ime(*parts)
+        return raw+method_dump_padding if parts==METHOD_DUMP_COMMAND else raw
     calls = []
     with tempfile.TemporaryDirectory(prefix='ime-contract-host-only-') as temporary:
         output = Path(temporary)
@@ -85,7 +88,7 @@ def recorded_base(*, fixture_previously_enabled=False, absent_subtype=False, abs
                 if fake_ime.mutations or fake_ime.settings != fake_ime.before:
                     raise AssertionError('Real coordinator switched IME before stock workload')
             elif command[1].endswith('/run_gecko_caret_compat.py'):
-                guard = ControlledImeGuard(adb=fake_ime, identity=identity, record=value,
+                guard = ControlledImeGuard(adb=ime_command, identity=identity, record=value,
                                            nonce=NONCE, clock=clock)
                 guard.run(lambda: 0)
                 target.write_bytes(encode(value))
@@ -135,6 +138,28 @@ def setting_read_positions(value, snapshot):
 
 
 class EnvironmentContractTest(unittest.TestCase):
+    def test_large_complete_method_dump_is_accepted_with_actual_utf8_size_and_hash(self):
+        padding='  synthetic_readonly_history='+('界'*140000)+'\n'
+        value,phase,identity,nonce,digest=recorded_base(method_dump_padding=padding)
+        self.assertEqual(check(value,phase,identity,nonce,digest)['status'],'passed')
+        for row in value['commands']:
+            if tuple(row['parts'])==METHOD_DUMP_COMMAND:
+                raw=row['stdout'].encode('utf-8')
+                self.assertGreater(len(raw),131072)
+                self.assertEqual(row['stdoutChars'],len(row['stdout']))
+                self.assertEqual(row['stdoutBytes'],len(raw))
+                self.assertEqual(row['stdoutSha256'],hashlib.sha256(raw).hexdigest())
+                self.assertTrue(row['stdout'].endswith(padding))
+
+    def test_complete_method_dump_metadata_cannot_be_forged_or_claim_truncation(self):
+        for field,wrong in (('stdoutType','bytes'),('stdoutChars',True),('stdoutBytes',1),
+                            ('stdoutSha256','0'*64),('stdoutTruncated',True)):
+            def mutate(value,field=field,wrong=wrong):
+                row=next(row for row in value['commands'] if tuple(row['parts'])==METHOD_DUMP_COMMAND)
+                row[field]=wrong
+            with self.subTest(field=field):
+                self.assert_rejected(mutate)
+
     def assert_rejected(self, mutate_value=None, mutate_phase=None, *, mutate_args=None):
         value, phase, identity, nonce, digest = recorded_base()
         # Each negative begins with a passing executed base, so an unrelated

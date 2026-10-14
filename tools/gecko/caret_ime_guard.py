@@ -4,6 +4,7 @@ Host fake-ADB controls exercise this code; only real CI commands establish Andro
 The original 155-case workload must run outside this guard with its stock IME.
 """
 from dataclasses import dataclass
+import hashlib
 import re
 import shlex
 import time
@@ -16,6 +17,7 @@ PACKAGE_PART = r'[A-Za-z_][A-Za-z0-9_]*'
 CLASS_PART = r'[A-Za-z_$][A-Za-z0-9_$]*'
 COMPONENT_RE = PACKAGE_PART + r'(?:\.' + PACKAGE_PART + r')*/(?:\.)?' + CLASS_PART + r'(?:\.' + CLASS_PART + r')*'
 METHOD_DUMP_COMMAND = ('shell', 'dumpsys', '--priority', 'CRITICAL', 'input_method')
+METHOD_DUMP_BYTES = 4 * 1024 * 1024
 IDENTITY_FIELDS = ('sourceCommit', 'sourceTree', 'runId', 'runAttempt',
                    'integrationApkSha256', 'sdkReceiptSha256')
 
@@ -82,7 +84,8 @@ def _method_block(raw):
     method and may temporarily be null. Nested method/client/history dumps must
     never authorize another user's selection. CRITICAL stops before remote IPC.
     """
-    require(isinstance(raw, str) and len(raw) <= 131072, 'bounded actual input_method dump required')
+    require(isinstance(raw, str) and len(raw.encode('utf-8')) <= METHOD_DUMP_BYTES,
+            'bounded actual input_method dump required')
     lines = raw.splitlines()
     headers = [index for index, line in enumerate(lines) if line == 'Current Input Method Manager state:']
     require(len(headers) == 1, 'one actual Android 35 service header required')
@@ -172,7 +175,17 @@ class ControlledImeGuard:
         self.record['commands'].append(row)
         try:
             value = self.adapter(*parts)
-            require(isinstance(value, str) and len(value) <= 131072, 'bounded actual stdout required')
+            row['stdoutType'] = type(value).__name__
+            if isinstance(value, str):
+                raw = value.encode('utf-8')
+                row.update(stdoutChars=len(value), stdoutBytes=len(raw), stdoutSha256=hashlib.sha256(raw).hexdigest())
+                allowed = len(raw) <= METHOD_DUMP_BYTES if parts == METHOD_DUMP_COMMAND else len(value) <= 131072
+                if not allowed:
+                    row.update(stdoutFirst=value[:4096], stdoutLast=value[-4096:], stdoutTruncated=True)
+                require(allowed, 'bounded actual stdout required')
+            else:
+                row.update(stdoutChars=None, stdoutBytes=None, stdoutSha256=None)
+                require(False, 'actual string stdout required')
             row.update(stdout=value, status='passed')
             return value
         except BaseException as error:

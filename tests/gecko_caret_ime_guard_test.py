@@ -1,5 +1,6 @@
 """Counterfeit state controls; no actual adb, Android, APK or IME is exercised."""
 import json
+import hashlib
 from pathlib import Path
 import shlex
 import unittest
@@ -10,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools/gecko'))
 
 from caret_ime_guard import (ControlledImeGuard, COMPONENT, SERIAL, KEYS, METHOD_DUMP_COMMAND,
-                            canonical_component, current_method, active_method, enabled_entries)
+                            METHOD_DUMP_BYTES, canonical_component, current_method, active_method, enabled_entries)
 
 STOCK = 'org.stock/.LatinIme'
 OTHER = 'org.other/third.party.IME'
@@ -424,6 +425,79 @@ class GuardTest(unittest.TestCase):
                 self.assertEqual(fake.settings, fake.before)
                 self.assertTrue(record['restorationVerified'])
                 self.assertEqual(record['workloadInvocationCount'], 1)
+
+    def test_large_valid_exact_method_dump_is_kept_complete_with_utf8_counts_and_hash(self):
+        class LargeDumpAdb(FakeAdb):
+            def __init__(self):
+                super().__init__()
+                self.complete_dumps = []
+            def __call__(self, *parts):
+                value = super().__call__(*parts)
+                if parts == METHOD_DUMP_COMMAND:
+                    value += '    syntheticDiagnostic=' + ('\u4f60\U0001f642alpha'*20000) + '\n'
+                    self.complete_dumps.append(value)
+                return value
+        fake, record = LargeDumpAdb(), {}
+        guard = ControlledImeGuard(adb=fake, identity=identity(), record=record, nonce='e'*32)
+        self.assertEqual(guard.run(lambda: 0), 0)
+        rows = [row for row in record['commands'] if tuple(row['parts']) == METHOD_DUMP_COMMAND]
+        self.assertEqual(len(rows), 4)
+        for row, actual in zip(rows, fake.complete_dumps):
+            raw = actual.encode('utf-8')
+            self.assertGreater(len(actual), 131072)
+            self.assertLessEqual(len(raw), METHOD_DUMP_BYTES)
+            self.assertEqual(row['stdout'], actual)
+            self.assertEqual(row['stdout'].encode('utf-8'), raw)
+            self.assertEqual(row['stdoutType'], 'str')
+            self.assertEqual(row['stdoutChars'], len(actual))
+            self.assertEqual(row['stdoutBytes'], len(raw))
+            self.assertEqual(row['stdoutSha256'], hashlib.sha256(raw).hexdigest())
+            self.assertNotIn('stdoutTruncated', row)
+        self.assertEqual(record['initial']['inputMethodDumpRaw'], fake.complete_dumps[0])
+        self.assertEqual(record['during']['inputMethodDumpRaw'], fake.complete_dumps[1])
+        self.assertEqual(record['activeInputMethod']['inputMethodDumpRaw'], fake.complete_dumps[2])
+        self.assertEqual(record['restored']['inputMethodDumpRaw'], fake.complete_dumps[3])
+        self.assertEqual(fake.settings, fake.before)
+        # Similar dump commands do not obtain the dedicated allowance. Ordinary
+        # commands retain the original character cap, even for multibyte text.
+        ordinary = ControlledImeGuard(adb=lambda *unused: fake.complete_dumps[0], identity=identity(), record={}, nonce='f'*32)
+        with self.assertRaises(ValueError):
+            ordinary.command('shell', 'dumpsys', 'input_method')
+        within = '\U0001f642'*131072
+        ordinary = ControlledImeGuard(adb=lambda *unused: within, identity=identity(), record={}, nonce='f'*32)
+        self.assertEqual(ordinary.command('shell', 'getprop', 'synthetic-host-only-key'), within)
+
+    def test_over_four_mib_utf8_dump_rejects_before_mutation_with_bounded_diagnostics(self):
+        fake = FakeAdb()
+        actual = fake(*METHOD_DUMP_COMMAND) + '    syntheticDiagnostic=' + '\u4f60'*1400000 + '\n'
+        self.assertLess(len(actual), METHOD_DUMP_BYTES)
+        raw = actual.encode('utf-8')
+        self.assertGreater(len(raw), METHOD_DUMP_BYTES)
+        fake = FakeAdb(dump_override=actual)
+        record, called = {}, []
+        guard = ControlledImeGuard(adb=fake, identity=identity(), record=record, nonce='e'*32)
+        with self.assertRaises(ValueError):
+            guard.run(lambda: called.append(1))
+        self.assertEqual(fake.mutations, [])
+        self.assertEqual(called, [])
+        self.assertEqual(record['failureStage'], 'prepare')
+        self.assertFalse(record['mutationAttempted'])
+        rows = [row for row in record['commands'] if tuple(row['parts']) == METHOD_DUMP_COMMAND]
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row['status'], 'failed')
+        self.assertEqual(row['stdoutType'], 'str')
+        self.assertEqual(row['stdoutChars'], len(actual))
+        self.assertEqual(row['stdoutBytes'], len(raw))
+        self.assertEqual(row['stdoutSha256'], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(row['stdoutFirst'], actual[:4096])
+        self.assertEqual(row['stdoutLast'], actual[-4096:])
+        self.assertLessEqual(len(row['stdoutFirst']), 4096)
+        self.assertLessEqual(len(row['stdoutLast']), 4096)
+        self.assertTrue(row['stdoutTruncated'])
+        self.assertNotIn('stdout', row)
+        with self.assertRaises(ValueError):
+            current_method(actual)
 
 
 
