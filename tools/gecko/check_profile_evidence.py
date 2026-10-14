@@ -9,6 +9,11 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
+
+# Shared SDK expectations come from selected source, never report-provided pins.
+import importlib.util as _sdk_importlib
+_sdk_spec=_sdk_importlib.spec_from_file_location('selected_sdk_identity_contract',Path(__file__).with_name('sdk_identity_contract.py'))
+_sdk=_sdk_importlib.module_from_spec(_sdk_spec);_sdk_spec.loader.exec_module(_sdk)
 HOST_GROUPS = {
     'NetworkHealthPolicyTest', 'NetworkStatusPolicyTest', 'NetworkPoolIdentityTest',
     'LatencyProbePolicyTest', 'EnvironmentSpecTest', 'network-catalog-host',
@@ -36,6 +41,9 @@ def verify_profile_evidence(directory, source):
     if not re.fullmatch('[0-9a-f]{40}', source):
         raise ValueError('Exact source commit is required')
     tree = subprocess.check_output(['git', 'rev-parse', source + '^{tree}'], cwd=ROOT, text=True).strip()
+    helper=Path(__file__).with_name('sdk_identity_contract.py')
+    if helper.read_bytes()!=source_bytes(source,'tools/gecko/sdk_identity_contract.py'):
+        raise ValueError('Shared SDK identity contract differs from selected source')
     settings=source_bytes(source,'app/build.gradle').decode()
     version=re.search(r"versionName '([^']+)'",settings).group(1)
     version_code=int(re.search(r'versionCode ([0-9]+)',settings).group(1))
@@ -129,7 +137,8 @@ def verify_profile_evidence(directory, source):
         if identity.get('sourceCommit') != source or identity.get('sourceTree') != tree or identity.get('dirtySource') is not False:
             raise ValueError('Android installation is bound to another source: ' + name)
         if identity.get('schema')!=1 or identity.get('package')!='local.pocketchat.test' or identity.get('version')!=version or identity.get('versionCode')!=version_code or identity.get('sdkCoordinate')!='org.mozilla.geckoview:geckoview:157.0.20261005135250':
-            raise ValueError('Android build identity does not match this version and official SDK')
+            raise ValueError('Android build identity does not match this version and upstream SDK')
+        _sdk.verify_gate_sdk(identity, directory, source, tree)
         if type(identity.get('apkBytes')) is not int or identity['apkBytes']<=0 or not re.fullmatch('[0-9a-f]{64}',str(identity.get('apkSha256',''))) or not re.fullmatch('[0-9a-f]{64}',str(identity.get('buildStampSha256',''))):
             raise ValueError('Actual installed APK byte identity is incomplete')
         runner.verify_invocation(report, identity, log.get('runNonce', ''))
@@ -150,8 +159,9 @@ def verify_profile_evidence(directory, source):
             if log.get('diagnosticOnly') is not True:
                 raise ValueError('Prototype runner lost its diagnostic boundary')
             engine_version=re.search(r'static final String VERSION="([^"]+)"',source_bytes(source,'app/src/main/java/local/pocketchat/GeckoWebView.java').decode()).group(1)
-            if report.get('sdkCoordinate')!='org.mozilla.geckoview:geckoview:157.0.20261005135250' or report.get('sdkAarSha256')!='15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268' or report.get('engineVersion')!=engine_version:
-                raise ValueError('Diagnostic prototype must identify the unchanged pinned official engine')
+            _sdk.verify_report_sdk(report)
+            if report.get('engineVersion')!=engine_version:
+                raise ValueError('Diagnostic prototype must identify the exact selected engine label')
         elif name=='environment-intent':
             expected_names=re.findall(r'(?:check|rejects)\("([^"\n]+)"',source_bytes(source,'tests/gecko/EnvironmentIntentIntegrationActivity.java').decode())
             actual_names=[row.get('name') for row in report['checks']]

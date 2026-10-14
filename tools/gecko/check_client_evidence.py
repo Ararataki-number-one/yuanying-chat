@@ -42,18 +42,13 @@ def verify_client_evidence(directory, source):
     assert website['passed'] == website['total'] == len(website['checks']) >= 25
     assert all(item['pass'] for item in website['checks'])
 
+    try:
+        from .check_sdk_build_evidence import verify_sdk_build_evidence
+    except ImportError:
+        from check_sdk_build_evidence import verify_sdk_build_evidence
+    actual_sdk = verify_sdk_build_evidence(directory,source)
     sdk = report('official-sdk-verification.json')
-    receipt_path = directory / 'official-sdk-input.json'
-    receipt = json.loads(receipt_path.read_text())
     coordinate = 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
-    assert sdk['coordinate'] == receipt['coordinate'] == coordinate
-    assert sdk['firefoxVersion'] == receipt['firefoxVersion'] == '157.0.1'
-    assert sdk['receiptSha256'] == hashlib.sha256(receipt_path.read_bytes()).hexdigest()
-    assert sdk['aarSha256'] == receipt['aar']['sha256'] == '15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268'
-    assert sdk['classesJarSha256'] == receipt['classesJarSha256'] == '73b9e0b8a6a1d5842010f2dd06f5a50408981238027b481cef162984d1896c8e'
-    assert sdk['actualAndroidExecution'] is False and sdk['gradleResolvedAarVerified'] is True
-    assert sdk['sdkAarModified'] is False and sdk['sdkClassTransformApplied'] is False
-    assert sdk['resolvedArtifacts'] and all(row['sha256'] == sdk['aarSha256'] and row['bytes'] == receipt['aar']['bytes'] for row in sdk['resolvedArtifacts'])
 
     quiet = report('quiet-notification-results.json')
     assert quiet['actualAndroidExecution'] and quiet['checkCount'] == len(quiet['checks']) >= 39
@@ -78,10 +73,12 @@ def verify_client_evidence(directory, source):
     core = json.loads((directory / 'network-core-build.json').read_text())
     assert core['sourceCommit'] == source
     update = verify_update_route(route, source, core['binaries']['x86_64']['sha256'])
-    return {'geckoOnly': True, 'originalWebsiteOnly': True,
+    result = {'geckoOnly': True, 'originalWebsiteOnly': True,
             'officialSdk': coordinate, 'officialSdkAarSha256': sdk['aarSha256'],
             'runtimeHostChecks': host['total'], 'websiteHostChecks': website['total'],
             'quietAndroidChecks': quiet['checkCount'], 'updateRoute': update}
+    if actual_sdk is not None: result['actualSdk'] = actual_sdk
+    return result
 
 
 if __name__ == '__main__':

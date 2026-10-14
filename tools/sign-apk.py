@@ -33,13 +33,20 @@ assert f"package: name='local.pocketchat' versionCode='{version_code}' versionNa
 import zipfile
 with zipfile.ZipFile(args.output) as archive:
     assert 'assets/pocketchat-integration-build.json' not in archive.namelist(),'Integration-only source stamp must never appear in production APK'
+    assert 'assets/caret-build-identity.json' not in archive.namelist(),'Caret fixture identity asset must never appear in production APK'
     assert 'assets/network-fixture.p12' not in archive.namelist(),'Synthetic TLS key must never appear in production APK'
     assert not any(name.endswith(('.p12','.jks')) for name in archive.namelist()),'Keystore and synthetic TLS fixtures must never appear in production APK'
     assert not any(name.startswith('assets/network-safe-idle-trust/') for name in archive.namelist()),'Controlled test CA and NSS profile must never appear in production APK'
     assert not any(name.startswith('assets/performance-baseline/') for name in archive.namelist()),'Historical performance assets must never appear in production APK'
 assert 'application-debuggable' not in badging,'Release must not enable debugging.'
+from gecko.caret_build_identity import dex_definitions
+with zipfile.ZipFile(args.output) as archive:
+    for name in archive.namelist():
+        if re.fullmatch(r'classes(?:[2-9]|[1-9][0-9]+)?\.dex',name):
+            definitions=dex_definitions(archive.read(name))
+            assert not any(value.startswith(('Llocal/pocketchat/GeckoCaretCompatibilityIntegrationActivity','Llocal/pocketchat/CaretCompatibilityBuildIdentity')) for value in definitions),'Caret fixture class present in production DEX.'
 manifest=subprocess.check_output([str(args.tools/'aapt2'),'dump','xmltree',str(args.output),'--file','AndroidManifest.xml'],text=True)
-assert all(name not in manifest for name in ['GeckoIntegrationTestActivity','ProfileGeckoIntegrationActivity','AppUpdateIntegrationActivity','GeckoUploadFixtureProvider','EnvironmentManagementIntegrationActivity','UiVisualIntegrationActivity','NetworkOptimizationIntegrationActivity','NetworkTransportLifecycleActivity','NotificationQuietIntegrationActivity','CompactChromeIntegrationActivity','GeckoPerformanceIntegrationActivity','GeckoConnectionPoolIntegrationActivity','NativeProbeIntegrationActivity','PreconnectIntegrationActivity','NetworkSourcesIntegrationActivity','NetworkSourcesUiIntegrationActivity','NetworkSourcesRouteIntegrationActivity','NetworkSafeIdleIntegrationActivity','IntegrationEvidenceProvider','AppUpdateRouteIntegrationActivity','EngineRestartActivity','BrowserEngineUi']),'Test component present in release.'
+assert all(name not in manifest for name in ['GeckoIntegrationTestActivity','ProfileGeckoIntegrationActivity','AppUpdateIntegrationActivity','GeckoUploadFixtureProvider','EnvironmentManagementIntegrationActivity','UiVisualIntegrationActivity','NetworkOptimizationIntegrationActivity','NetworkTransportLifecycleActivity','NotificationQuietIntegrationActivity','CompactChromeIntegrationActivity','GeckoPerformanceIntegrationActivity','GeckoCaretCompatibilityIntegrationActivity','CaretCompatibilityBuildIdentity','GeckoConnectionPoolIntegrationActivity','NativeProbeIntegrationActivity','PreconnectIntegrationActivity','NetworkSourcesIntegrationActivity','NetworkSourcesUiIntegrationActivity','NetworkSourcesRouteIntegrationActivity','NetworkSafeIdleIntegrationActivity','IntegrationEvidenceProvider','AppUpdateRouteIntegrationActivity','EngineRestartActivity','BrowserEngineUi']),'Test component present in release.'
 assert all(name not in manifest for name in ['EnvironmentSpecIntegrationActivity','EnvironmentIntentIntegrationActivity','GeckoIdentityPrototypeIntegrationActivity','GeckoTemplateIntegrationActivity','NetworkPreflightProvider','ResourcePressureIntegrationActivity','profile-fixture','POCKET_FIXTURE_SOURCE']),'Profile test component or build marker present in release.'
 subprocess.run([str(args.tools/'zipalign'),'-c','-P','16','4',str(args.output)],check=True)
 receipt={'file':args.output.name,'package':'local.pocketchat','version':version,'versionCode':version_code,'bytes':args.output.stat().st_size,

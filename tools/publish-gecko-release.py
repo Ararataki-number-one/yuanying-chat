@@ -28,6 +28,37 @@ def existing_release_preflight(manifest, repository):
         while data:=response.read(1024*1024):digest.update(data);size+=len(data)
     verify_existing_release_identity(manifest,previous,target,size,digest.hexdigest())
 
+
+def verify_derived_release_evidence(evidence, source, report, build, receipt, apk):
+    """Add source-derived checks without replacing any original release gate."""
+    from gecko.check_sdk_build_evidence import verify_sdk_build_evidence
+    from gecko.sdk_identity_contract import sdk_from_apk, SDK_FIELDS, strict_json
+    import zipfile
+    sdk=verify_sdk_build_evidence(evidence,source)
+    tree=subprocess.check_output(['git','rev-parse',source+'^{tree}'],text=True).strip()
+    with zipfile.ZipFile(apk) as archive: shipped=sdk_from_apk(archive,source,tree)
+    if sdk is None:
+        assert shipped is None,'Official source cannot ship an undeclared derived SDK'
+        return None,None
+    assert shipped is not None,'Derived source must ship the verified normal SDK assets'
+    for key in (*SDK_FIELDS,'sourceCommit','sourceTree','runId','runAttempt'):
+        assert shipped[key]==sdk[key],'Signed production SDK differs from installed SDK proof: '+key
+    assert sdk['runId']==build['runId'] and sdk['runAttempt']==build['runAttempt'],'SDK proof belongs to another CI run/attempt'
+    from gecko.check_caret_compat_evidence import verify_caret_evidence
+    from gecko.profile_invocation_contract import verify_installed
+    caret=verify_caret_evidence(evidence,source)
+    assert caret['runId']==build['runId'] and caret['runAttempt']==build['runAttempt'],'Caret proof belongs to another CI run/attempt'
+    assert caret['sourceTree']==tree==sdk['sourceTree'],'Caret/SDK/source trees differ'
+    expected_unsigned=next(item['sha256'] for item in build['artifacts'] if item['abi']=='arm64-v8a')
+    assert caret['releaseApkSha256']==receipt['unsignedSha256']==expected_unsigned,'Caret SDK build is not the signed production input'
+    compatibility=strict_json((pathlib.Path(evidence)/'gecko-caret-compat-results.json').read_bytes())
+    installed=report['eventTransport']['buildIdentity']
+    verify_installed(compatibility['commonInstalledIdentity'],installed)
+    assert caret['integrationApkSha256']==installed['apkSha256'],'Caret and full original baseline used different installed APKs'
+    for key in ('sdkAarSha256','sdkClassesJarSha256','sdkGeckoEditableClassSha256','sdkManifestSha256','sdkBuildReceiptSha256'):
+        assert caret[key]==sdk[key],'Caret and build proof used different SDK identity: '+key
+    return sdk,caret
+
 root=pathlib.Path(__file__).resolve().parents[1]
 settings=(root/'app/build.gradle').read_text()
 version=re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'",settings).group(1)
@@ -47,6 +78,11 @@ args=p.parse_args()
 channel_identity=dict(version=version,channel=args.channel,candidateNumber=args.candidate_number)
 tag=release_tag(channel_identity)
 assert re.fullmatch(r'[0-9a-f]{40}',args.source),'A complete source commit is required.'
+if version_code>=46:
+    # SDK/client checks read exact source blobs; establish the commit before them.
+    available=subprocess.run(['git','cat-file','-e',args.source+'^{commit}'],cwd=root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    if available.returncode:
+        subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',args.source],cwd=root,check=True)
 report=json.loads((args.evidence/'device-results.json').read_text())
 assert report['status']=='passed' and report['actualAndroidExecution'] and report['releaseMode']
 assert report.get('sourceCommit')==args.source,'Native report belongs to a different source.'
@@ -99,10 +135,15 @@ assert receipt['version']==build['version']==version and receipt['versionCode']=
 assert receipt['file']==args.apk.name==f'PocketChat-{version}-gecko-arm64.apk'
 raw=args.apk.read_bytes()
 assert receipt['bytes']==len(raw) and receipt['sha256']==hashlib.sha256(raw).hexdigest()
+sdk_build,caret=(verify_derived_release_evidence(args.evidence,args.source,report,build,receipt,args.apk) if version_code>=46 else (None,None))
 manifest=dict(receipt,sourceCommit=args.source,filename=args.apk.name,parts=[],
               nativeRegression='passed',googleLogin='not-tested',physicalArmPhone='not-tested')
 manifest['channel']=args.channel
 if args.channel=='candidate':manifest['candidateNumber']=args.candidate_number
+if sdk_build is not None:
+    manifest['sdkBuildProvenance']=sdk_build
+    manifest['controlledCaretCompatibilityRegression']=caret
+    manifest['buildRunId']=build['runId'];manifest['buildRunAttempt']=build['runAttempt']
 manual_raw=None
 if requires_manual_acceptance(manifest):
     assert args.manual_acceptance is not None,'Publish a candidate first; stable roadmap releases require the user physical-phone checklist.'
@@ -149,6 +190,7 @@ if version_code>=44:performance_files.append('reply-binding-host-results.json')
 if version_code>=45:performance_files.extend(['update-transfer-results.json','update-transfer-host-results.json','interaction-host-results.json'])
 if version_code>=49:performance_files.extend(['reading-host-results.json','reading-focus-host-results.json','gecko-scroll-diagnostics.json','gecko-scroll-diagnostic-log.json'])
 if roadmap_release:performance_files.extend(['emulator-bootstrap-results.json','environment-spec-results.json','environment-intent-results.json','profile-host-results.json','environment-intent-host-results.json','gecko-proxy-route-host-results.json','gecko-identity-prototype-results.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json'])
+if sdk_build is not None:performance_files.extend(['sdk-build-receipt.json','derived-sdk-verification.json','derived-sdk-input.json','caret-apk-build-receipt.json','gecko-caret-compat-results.json','installed-apk-definition-audit.json','gecko-performance-build-identity.json'])
 if template_release:performance_files.extend(['gecko-template-results.json','gecko-template-runner-log.json','identity-controller-host-results.json','deferred-browser-host-results.json','identity-bridge-host-results.json'])
 if resource_release:performance_files.extend(['resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json'])
 if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','official-sdk-verification.json','official-sdk-input.json'])
@@ -164,12 +206,14 @@ if version_code>=43:
 shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')
 if roadmap_release:
     for name in ['check_profile_evidence.py','profile_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+if sdk_build is not None:
+    for name in ['check_caret_compat_evidence.py','caret_build_identity.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if template_release:
     for name in ['check_template_evidence.py','template_invocation_contract.py','integration_event_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=44:shutil.copy2(root/'tools/gecko/check_connection_evidence.py',stage/'tools/gecko/check_connection_evidence.py')
 if version_code>=45:shutil.copy2(root/'tools/gecko/check_interaction_transfer_evidence.py',stage/'tools/gecko/check_interaction_transfer_evidence.py')
 if version_code>=46:
-    for name in ['check_chain_evidence.py','chain_runtime_contract.py','preconnect_contract.py','network_sources_contract.py','check_client_evidence.py','update_route_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    for name in ['check_chain_evidence.py','chain_runtime_contract.py','preconnect_contract.py','network_sources_contract.py','check_client_evidence.py','check_sdk_build_evidence.py','sdk_identity_contract.py','update_route_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 branch='apk/gecko-release-20261003'
 env=dict(os.environ,GIT_INDEX_FILE=str(root/'work/gecko-integration/signed-index'),GIT_WORK_TREE=str(stage),
     GIT_AUTHOR_NAME='PocketChat release',GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',

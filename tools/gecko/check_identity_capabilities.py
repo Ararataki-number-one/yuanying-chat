@@ -58,7 +58,7 @@ def blob(root, record, label):
 
 def gradle_identity(root):
     text = (root / "app/build.gradle").read_text(encoding="utf-8")
-    dependencies = re.findall(r"implementation\s+'(org\.mozilla\.geckoview:[^']+)'", text)
+    dependencies = re.findall(r"implementation\s+'((?:org\.mozilla\.geckoview|local\.pocketchat\.sdk):[^']+)'", text)
     require(len(dependencies) == 1, "Exactly one Gecko SDK dependency is required.")
     version = re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'", text)
     code = re.search(r"versionCode ([0-9]+)", text)
@@ -89,6 +89,38 @@ def check_official(root, manifest, aar=None):
             "upstreamRevision": manifest["upstreamRevision"], "aarSha256": manifest["aarSha256"],
             "resolvedAarChecked": aar is not None, "actualAndroidExecution": False,
             "nativeControlsEnabled": False, "scope": "Build inventory only; runtime support remains unsupported."}
+
+
+
+def check_source_derived_input(root, manifest, aar=None):
+    # This is an input-provenance mode, never the custom native-control prototype.
+    try:
+        from .sdk_identity_contract import validate_manifest, digest as sdk_digest, SDK_COORDINATE, SDK_RUNTIME_COORDINATE
+    except ImportError:
+        from sdk_identity_contract import validate_manifest, digest as sdk_digest, SDK_COORDINATE, SDK_RUNTIME_COORDINATE
+    require(manifest.get('schema') == 1 and manifest.get('engineMode') == 'source-derived-java', 'Explicit source-derived SDK inventory required.')
+    coordinate, _, _ = gradle_identity(root)
+    require(coordinate == manifest.get('coordinate') == SDK_RUNTIME_COORDINATE, 'Derived runtime dependency identity differs.')
+    source = subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
+    source_sha(source,'Build source')
+    def selected(commit,path):
+        return subprocess.check_output(['git','show',commit+':'+path],cwd=root,stderr=subprocess.PIPE)
+    path = manifest.get('sdkReceipt')
+    require(path == 'third-party/sdk/geckoview-157.0.1-editable-selection.json', 'Exact selected derived receipt required.')
+    raw = selected(source,path)
+    derived = validate_manifest(raw,source,selected)
+    require(sdk_digest(raw) == manifest.get('sdkReceiptSha256'), 'Inventory derived receipt hash differs.')
+    require(manifest.get('sdkInputCoordinate') == SDK_COORDINATE and manifest.get('aarSha256') == derived['sdkAarSha256'], 'Inventory actual/base AAR identity differs.')
+    require(manifest.get('upstreamRevision') == derived['upstreamRevision'] and manifest.get('actualAndroidExecution') is False, 'Build inventory source/scope differs.')
+    capabilities = manifest.get('capabilities')
+    require(isinstance(capabilities,dict) and set(capabilities) == CAPABILITIES and all(status == 'unsupported' for status in capabilities.values()), 'Input correction must not enable custom native controls.')
+    java = selected(source,'app/src/main/java/local/pocketchat/NativeCapabilityManifest.java').decode('utf-8')
+    for key, expected in (('SDK_COORDINATE', SDK_COORDINATE),('SDK_RUNTIME_COORDINATE',SDK_RUNTIME_COORDINATE),('SDK_BUILD_KIND','source-derived-java'),('SDK_INPUT_AAR_SHA256',derived['sdkInputAarSha256']),('UPSTREAM_REVISION',derived['upstreamRevision'])):
+        require(re.search(r'\b'+key+r'\s*=\s*"'+re.escape(expected)+r'"',java),'Java derived inventory differs: '+key)
+    require('enum Status { UNSUPPORTED }' in java and 'boolean usesOfficialSdk() { return false; }' in java, 'Derived inventory must be truthful and keep unsupported states.')
+    if aar is not None:
+        require(aar.stat().st_size == derived['sdkAarBytes'] and digest(aar) == derived['sdkAarSha256'],'Resolved derived AAR differs from selected receipt.')
+    return {'status':'passed','engineMode':'source-derived-java','coordinate':coordinate,'sdkInputCoordinate':SDK_COORDINATE,'aarSha256':derived['sdkAarSha256'],'sdkReceiptSha256':sdk_digest(raw),'resolvedAarChecked':aar is not None,'actualAndroidExecution':False,'nativeControlsEnabled':False,'scope':'Selected source-derived Java input SDK inventory only; native core/custom controls and physical acceptance are separate.'}
 
 
 def check_prototype(root, manifest):
@@ -184,7 +216,7 @@ def main():
     root = args.root.resolve()
     try:
         manifest = json.loads((args.manifest or root / "third-party/sdk/identity-capabilities.json").read_text())
-        result = {"inventory": check_official(root, manifest, args.aar)}
+        result = {"inventory": check_source_derived_input(root, manifest, args.aar) if manifest.get("engineMode") == "source-derived-java" else check_official(root, manifest, args.aar)}
         if args.prototype:
             result["prototype"] = check_prototype(root, json.loads(args.prototype.read_text()))
         if args.resource_budget:

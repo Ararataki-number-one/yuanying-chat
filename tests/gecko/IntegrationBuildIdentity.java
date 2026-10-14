@@ -28,6 +28,10 @@ final class IntegrationBuildIdentity {
     long code=Build.VERSION.SDK_INT>=28?info.getLongVersionCode():info.versionCode;
     if (code!=value.optLong("versionCode") || !info.versionName.equals(value.optString("version")))
       throw new IllegalStateException("Installed package differs from source stamp");
+    JSONObject sdk=NormalCaretSdkReceipt.read(context);
+    NormalCaretSdkReceipt.requireSource(sdk,value);
+    NormalCaretSdkReceipt.copySdkFields(sdk,value);
+    value.put("sdkBuildIdentity",sdk);
     File apk=new File(context.getApplicationInfo().sourceDir);
     MessageDigest digest=MessageDigest.getInstance("SHA-256");
     try (InputStream in=new FileInputStream(apk)) {

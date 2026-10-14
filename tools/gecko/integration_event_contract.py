@@ -8,6 +8,12 @@ import copy
 import hashlib
 import json
 import re
+from pathlib import Path
+
+# Shared SDK expectations come from selected source, never report-provided pins.
+import importlib.util as _sdk_importlib
+_sdk_spec=_sdk_importlib.spec_from_file_location('selected_sdk_identity_contract',Path(__file__).with_name('sdk_identity_contract.py'))
+_sdk=_sdk_importlib.module_from_spec(_sdk_spec);_sdk_spec.loader.exec_module(_sdk)
 
 if __package__:
     from .profile_invocation_contract import PACKAGE, SDK_COORDINATE, verify_installed
@@ -83,7 +89,7 @@ def _identity(identity):
         _require(_integer(identity.get(key)), 'installed build identity ' + key)
     _require(isinstance(identity.get('version'), str) and bool(identity['version']),
              'installed build version')
-    _require(identity.get('sdkCoordinate') == SDK_COORDINATE, 'pinned official SDK identity')
+    _sdk.verify_sdk_identity(identity)
 
 
 def validate_receipt(receipt, *, identity, nonce, slot, action, command=None):

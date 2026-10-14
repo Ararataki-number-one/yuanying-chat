@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from profile_guard_metadata import prototype_metadata
+from profile_sdk_metadata import historical_git_output
 
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('profile_gate',ROOT/'tools/gecko/check_profile_evidence.py')
@@ -21,6 +22,7 @@ class ProfileEvidenceGateTest(unittest.TestCase):
         self.files={
             'app/build.gradle':b"versionCode 51; versionName '1.6.0'",
             'tools/gecko/profile_invocation_contract.py':(ROOT/'tools/gecko/profile_invocation_contract.py').read_bytes(),
+            'tools/gecko/sdk_identity_contract.py':(ROOT/'tools/gecko/sdk_identity_contract.py').read_bytes(),
             'app/src/main/java/local/pocketchat/GeckoWebView.java':b'static final String VERSION="GeckoView 157.0.1";',
         }
         for name in gate.MODEL_INPUTS:
@@ -79,7 +81,8 @@ class ProfileEvidenceGateTest(unittest.TestCase):
             diagnosticOnly=name=='gecko-identity-prototype'))
 
     def verify(self):
-        with patch.object(gate,'source_bytes',side_effect=lambda source,path:self.files[path]),patch.object(gate.subprocess,'check_output',return_value=self.tree):
+        source_bytes=lambda source,path:self.files[path]
+        with patch.object(gate,'source_bytes',side_effect=source_bytes),patch.object(gate.subprocess,'check_output',side_effect=historical_git_output(source_bytes,self.source,self.tree)):
             return gate.verify_profile_evidence(self.directory,self.source)
 
     def test_well_formed_metadata_preserves_scope(self):

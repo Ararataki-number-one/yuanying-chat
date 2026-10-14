@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Reconstruct and verify signed public APK
+      - name: Verify original regressions, derived SDK provenance and signed public APK
         shell: bash
         run: |
           set -euo pipefail
@@ -30,6 +30,10 @@ jobs:
               assert verify_manual_acceptance(json.loads(raw),m)==m['manualAcceptance']
           assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',m['version']) and isinstance(m['versionCode'],int)
           assert m['filename']==f"PocketChat-{m['version']}-gecko-arm64.apk"
+          assert re.fullmatch(r'[0-9a-f]{40}',m['sourceCommit'])
+          if m['versionCode']>=46:
+              # Client and derived SDK checks use git-show before profile checks.
+              subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',m['sourceCommit']],check=True)
           report=json.loads(pathlib.Path('device-results.json').read_text())
           assert report['sourceCommit']==m['sourceCommit'] and report['status']=='passed' and report['actualAndroidExecution'] and report['releaseMode']
           if m['versionCode']>=43:
@@ -46,12 +50,32 @@ jobs:
               assert verify_chain_evidence(pathlib.Path('.'),m['sourceCommit'])==m['chainPerformanceRegression']
               from tools.gecko.check_client_evidence import verify_client_evidence
               assert verify_client_evidence(pathlib.Path('.'),m['sourceCommit'])==m['originalClientRegression']
+              from tools.gecko.check_sdk_build_evidence import verify_sdk_build_evidence
+              sdk_build=verify_sdk_build_evidence(pathlib.Path('.'),m['sourceCommit'])
+              if sdk_build is not None:
+                  assert sdk_build==m['sdkBuildProvenance']
+                  assert sdk_build['runId']==m['buildRunId'] and sdk_build['runAttempt']==m['buildRunAttempt']
+                  from tools.gecko.check_caret_compat_evidence import verify_caret_evidence
+                  from tools.gecko.profile_invocation_contract import verify_installed
+                  from tools.gecko.sdk_identity_contract import strict_json
+                  caret=verify_caret_evidence(pathlib.Path('.'),m['sourceCommit'])
+                  assert caret==m['controlledCaretCompatibilityRegression']
+                  assert caret['runId']==m['buildRunId'] and caret['runAttempt']==m['buildRunAttempt']
+                  assert caret['sourceTree']==sdk_build['sourceTree']
+                  assert caret['releaseApkSha256']==m['unsignedSha256']
+                  compatibility=strict_json(pathlib.Path('gecko-caret-compat-results.json').read_bytes())
+                  installed=report['eventTransport']['buildIdentity']
+                  verify_installed(compatibility['commonInstalledIdentity'],installed)
+                  assert caret['integrationApkSha256']==installed['apkSha256']
+                  for key in ('sdkAarSha256','sdkClassesJarSha256','sdkGeckoEditableClassSha256','sdkManifestSha256','sdkBuildReceiptSha256'):
+                      assert caret[key]==sdk_build[key],key
+              else:
+                  assert 'sdkBuildProvenance' not in m and 'controlledCaretCompatibilityRegression' not in m
               for name in ['native-probe-results.json','gecko-pool-results.json','network-core-build.json','network-pool-host-results.json','latency-probe-host-results.json']:
                   assert json.loads(pathlib.Path(name).read_text())['sourceCommit']==m['sourceCommit'],name
               if m['chainPerformanceRegression'].get('fixedExitPreauthentication'):
                   assert json.loads(pathlib.Path('preconnect-results.json').read_text())['sourceCommit']==m['sourceCommit']
           if tuple(map(int,m['version'].split('.'))) >= (1,6,0):
-              subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',m['sourceCommit']],check=True)
               from tools.gecko.check_profile_evidence import verify_profile_evidence
               assert verify_profile_evidence(pathlib.Path('.'),m['sourceCommit'])==m['environmentProfileRegression']
               prototype=json.loads(pathlib.Path('gecko-identity-prototype-results.json').read_text())
@@ -71,6 +95,17 @@ jobs:
               data.extend(raw)
           assert len(data)==m['bytes'] and hashlib.sha256(data).hexdigest()==m['sha256']
           pathlib.Path(m['filename']).write_bytes(data)
+          if m['versionCode']>=46:
+              import zipfile
+              from tools.gecko.sdk_identity_contract import sdk_from_apk, SDK_FIELDS
+              tree=subprocess.check_output(['git','rev-parse',m['sourceCommit']+'^{tree}'],text=True).strip()
+              with zipfile.ZipFile(m['filename']) as archive: shipped=sdk_from_apk(archive,m['sourceCommit'],tree)
+              if sdk_build is None:
+                  assert shipped is None
+              else:
+                  assert shipped is not None
+                  for key in (*SDK_FIELDS,'sourceCommit','sourceTree','runId','runAttempt'):
+                      assert shipped[key]==sdk_build[key],key
           import os
           tools=sorted(pathlib.Path(os.environ['ANDROID_HOME']).glob('build-tools/*/apksigner'))[-1].parent
           cert=subprocess.check_output([str(tools/'apksigner'),'verify','--print-certs',m['filename']],text=True)
@@ -78,7 +113,7 @@ jobs:
           info=subprocess.check_output([str(tools/'aapt2'),'dump','badging',m['filename']],text=True)
           assert f"package: name='local.pocketchat' versionCode='{m['versionCode']}' versionName='{m['version']}'" in info
           assert 'application-debuggable' not in info
-          print('Verified original signer, app identity, version and byte hash.')
+          print('Verified original regressions, shipped SDK provenance, original signer, app identity, version and byte hash. Controlled caret checks remain separate from physical phone acceptance.')
           PY
       - name: Publish APK download
         env:

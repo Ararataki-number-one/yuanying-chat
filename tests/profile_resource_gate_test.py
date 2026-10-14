@@ -3,6 +3,7 @@ import copy, hashlib, importlib.util, json, os, re, shutil, subprocess, tempfile
 from pathlib import Path
 from unittest.mock import patch
 from profile_template_gate_test import metadata_only_report
+from profile_sdk_metadata import historical_git_output, historical_source
 ROOT=Path(__file__).resolve().parents[1]
 def load(name):
     spec=importlib.util.spec_from_file_location(name,ROOT/'tools/gecko'/f'{name}.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
@@ -178,8 +179,9 @@ class ResourceGateTest(unittest.TestCase):
         log=dict(status='passed',sourceCommit='a'*40,buildIdentity=self.report['buildIdentity'],runNonce=self.report['runNonce'],installedBeforeAndAfterMatched=True,rawReportPreserved=True,reportSha256=hashlib.sha256(raw).hexdigest(),reportBytes=len(raw),diagnosticOnly=True,androidSdk=35)
         (self.directory/'resource-pressure-runner-log.json').write_text(json.dumps(log))
     def verify(self):
-        def selected(source,path):return b"versionCode 53; versionName '2.0.0'" if path=='app/build.gradle' else (ROOT/path).read_bytes()
-        with patch.object(gate,'selected_bytes',side_effect=selected),patch.object(gate,'selected_contract',side_effect=lambda source,name:contract if name=='resource_invocation_contract' else invocation),patch.object(gate.subprocess,'check_output',return_value='b'*40):return gate.verify_resource_evidence(self.directory,'a'*40)
+        def files(source,path):return b"versionCode 53; versionName '2.0.0'" if path=='app/build.gradle' else (ROOT/path).read_bytes()
+        def selected(source,path):return historical_source(files,source,path)
+        with patch.object(gate,'selected_bytes',side_effect=selected),patch.object(gate,'selected_contract',side_effect=lambda source,name:contract if name=='resource_invocation_contract' else invocation),patch.object(gate.subprocess,'check_output',side_effect=historical_git_output(selected,'a'*40,'b'*40)):return gate.verify_resource_evidence(self.directory,'a'*40)
     def test_complete_metadata_preserves_scope(self):
         value=self.verify();self.assertFalse(value['capacityAcceptance']);self.assertTrue(value['sameInstalledApkAcrossRegressions']);self.assertEqual(value['androidSdk'],35)
     def reject_linked_edit(self,name,edit,message):

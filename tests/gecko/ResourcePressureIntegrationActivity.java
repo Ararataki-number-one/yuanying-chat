@@ -13,7 +13,7 @@ import org.mozilla.geckoview.*;
 /** Actual production bridge/runtime admission with explicitly synthetic pressure.
  * Platform readings are observations, never a physical capacity or login verdict. */
 public final class ResourcePressureIntegrationActivity extends GeckoIdentityPrototypeIntegrationActivity {
-  final JSONArray resourceChecks=new JSONArray();JSONObject platform=new JSONObject(),allocation=new JSONObject();
+  final JSONArray resourceChecks=new JSONArray(),resourceEvaluationTrace=new JSONArray();int resourceEvaluationDropped;JSONObject platform=new JSONObject(),allocation=new JSONObject();
   ChatSession.Observer pressureObserver;boolean coldChecked,controlsStarted,resourceDone;String target,pendingBytes;int readyAttempts;
   final Object fixtureDocument=new Object();String documentId;JSONObject resourcePortControls=new JSONObject();final List<JSONObject> resourceRequests=new ArrayList<>();
   class PressureView extends FixtureView {
@@ -82,7 +82,44 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
     if(!target.equals(view.getUrl())||!view.hasVisibleDocument()||view.ports.get(view.current)==null){if(++readyAttempts>100){finish(new IOException("Controlled resource document/port did not become ready"));return;}handler.postDelayed(this::awaitResourceDocument,200);return;}
     evaluate("(()=>{document.body.innerHTML='<form><textarea id=prompt-textarea></textarea><button id=stop data-testid=stop-button>Stop</button><div id=first data-file-name=first.txt data-upload-state=uploading><button aria-label=\"Remove file\">Remove</button></div><div id=second data-file-name=second.txt data-upload-state=ready><button aria-label=\"Remove file\">Remove</button></div></form>';document.body.dataset.sent='0';document.querySelector('form').addEventListener('submit',e=>{e.preventDefault();document.body.dataset.sent=String(Number(document.body.dataset.sent)+1)});return {url:location.href,busy:!!document.getElementById('stop'),uploading:document.getElementById('first').dataset.uploadState==='uploading'}})()",this::workControls);
   }
-  void evaluate(String code,java.util.function.Consumer<JSONObject> done){view.evaluateJavascript(code,raw->{if(finished)return;try{JSONObject value=J.parse(raw);if(value.length()==0)throw new IOException("Actual controlled Gecko evaluation returned no observation");done.accept(value);}catch(Throwable failure){finish(failure);}});}
+  void evaluate(String code,java.util.function.Consumer<JSONObject> done){
+    final GeckoSession selected=view.current;final Object port=view.ports.get(selected);final long epoch=owner.navigationEpoch,started=SystemClock.elapsedRealtime();final String requestedUrl=view.getUrl();
+    view.evaluateJavascript(code,raw->{if(finished)return;try{
+      String observed=raw==null?"null":raw;
+      if(resourceEvaluationTrace.length()<128)resourceEvaluationTrace.put(J.obj("sequence",resourceEvaluationTrace.length()+1,"sourceCommit",source,"runNonce",run,"scriptSha256",NativeNetwork.hash(code),"startedAt",started,"completedAt",SystemClock.elapsedRealtime(),"requestedSession",System.identityHashCode(selected),"requestedPort",System.identityHashCode(port),"requestedEpoch",epoch,"requestedUrl",requestedUrl,"currentSession",System.identityHashCode(view.current),"currentPort",System.identityHashCode(view.ports.get(view.current)),"currentEpoch",owner.navigationEpoch,"currentUrl",view.getUrl(),"visibleDocument",view.hasVisibleDocument(),"observerDocument",owner.resourceObserverDocument,"observerBinding",owner.resourceObserverBinding,"rawResult",observed.length()>16384?observed.substring(0,16384):observed,"rawResultCharacters",observed.length(),"rawResultTruncated",observed.length()>16384));else resourceEvaluationDropped++;
+      JSONObject value=J.parse(raw);if(value.length()==0)throw new IOException("Actual controlled Gecko evaluation returned no observation");done.accept(value);
+    }catch(Throwable failure){finish(failure);}});
+  }
+  // evaluateJavascript returns immediate JSON, so an async production driver
+  // needs the same Promise handoff and 2500 ms bound as ChatSession.asyncDriver.
+  // This adapter changes only the fixed loopback fixture's result collection.
+  final class AttachmentResult {
+    final GeckoSession session=view.current;final Object port=view.ports.get(session);final long epoch=owner.navigationEpoch,expires=SystemClock.elapsedRealtime()+2500;
+    final String url=target,binding=owner.resourceObserverBinding,document=owner.resourceObserverDocument,key="__pocketResourceAttachment_"+run+"_"+UUID.randomUUID().toString().replace("-","");
+    final JSONArray names=owner.resourceUploadNames;final java.util.function.Consumer<JSONObject> done;double timeOrigin;
+    AttachmentResult(java.util.function.Consumer<JSONObject> done){this.done=done;}
+    boolean owns(){return session!=null&&session.isOpen()&&view.current==session&&port!=null&&view.ports.get(session)==port&&owner.navigationEpoch==epoch&&url.equals(target)&&url.equals(view.getUrl())&&view.hasVisibleDocument()&&owner.resourceObserverPort==port&&owner.resourceObserverEpoch==epoch&&binding.equals(owner.resourceObserverBinding)&&document.equals(owner.resourceObserverDocument)&&owner.resourceUploadNames==names;}
+    void verify(JSONObject value)throws Exception{
+      if(!owns()||!source.equals(value.optString("sourceCommit"))||!run.equals(value.optString("runNonce"))||!key.equals(value.optString("key"))||!url.equals(value.optString("documentUrl"))||Double.compare(value.getDouble("timeOrigin"),timeOrigin)!=0)throw new IOException("Actual attachment Promise changed source, invocation, document or native ownership");
+    }
+    void start(String code){
+      if(!owns()){finish(new IOException("Actual attachment Promise has no owned SDK document/port"));return;}
+      String wrapper="(()=>{const key="+JSONObject.quote(key)+",base={sourceCommit:"+JSONObject.quote(source)+",runNonce:"+JSONObject.quote(run)+",key,documentUrl:location.href,timeOrigin:performance.timeOrigin};if(Object.prototype.hasOwnProperty.call(window,key))throw new Error('Owned attachment result key already exists');window[key]={...base,state:'pending'};Promise.resolve("+code+").then(value=>window[key]={...base,state:'fulfilled',value},error=>window[key]={...base,state:'rejected',error:String(error?.stack||error)});return {...base,state:'armed'};})()";
+      evaluate(wrapper,armed->{try{timeOrigin=armed.getDouble("timeOrigin");if(!Double.isFinite(timeOrigin)||timeOrigin<=0||!"armed".equals(armed.optString("state")))throw new IOException("Actual attachment Promise was not armed in a real document");verify(armed);poll();}catch(Throwable failure){finish(failure);}});
+    }
+    void poll(){
+      if(finished)return;if(!owns()){finish(new IOException("Actual attachment Promise lost its native document/port"));return;}if(SystemClock.elapsedRealtime()>expires){finish(new IOException("Actual attachment Promise exceeded the production 2500 ms bound"));return;}
+      String pollScript="(()=>({documentUrl:location.href,timeOrigin:performance.timeOrigin,result:window["+JSONObject.quote(key)+"]||null}))()";
+      evaluate(pollScript,actual->{try{
+        if(!owns()||!url.equals(actual.optString("documentUrl"))||Double.compare(actual.getDouble("timeOrigin"),timeOrigin)!=0||SystemClock.elapsedRealtime()>expires)throw new IOException("Actual attachment Promise lost its owned document or deadline");
+        JSONObject result=actual.optJSONObject("result");if(result==null)throw new IOException("Actual owned attachment Promise result disappeared");verify(result);
+        String state=result.optString("state");if("pending".equals(state)){handler.postDelayed(this::poll,120);return;}if("rejected".equals(state))throw new IOException("Actual attachment Promise rejected: "+result.optString("error"));if(!"fulfilled".equals(state))throw new IOException("Actual attachment Promise state is invalid");
+        JSONObject value=result.optJSONObject("value");if(value==null||value.length()==0||!value.optBoolean("ok")||value.optJSONArray("files")==null)throw new IOException("Actual attachment Promise resolved without attachment observations");
+        String cleanupScript="(()=>{delete window["+JSONObject.quote(key)+"];return {removed:true}})()";
+        evaluate(cleanupScript,removed->{if(!owns()||SystemClock.elapsedRealtime()>expires||!removed.optBoolean("removed")){finish(new IOException("Actual attachment result cleanup changed native ownership or deadline"));return;}done.accept(value);});
+      }catch(Throwable failure){finish(failure);}});
+    }
+  }
   void workControls(JSONObject actual){
     try{
       owner.handler.removeCallbacks(owner.tick);owner.navigating=false;owner.state=J.obj("url",target,"busy",false);owner.stateEpoch=owner.navigationEpoch;
@@ -132,14 +169,14 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
   }
   void inspectAttachments(int step){
     String script=owner.attachmentDriver.replace("location.protocol!=='https:'||location.hostname!=='chatgpt.com'","location.origin!=="+JSONObject.quote(origin)).replace("__ACTION__",JSONObject.quote("attachment-state")).replace("__ARG__",J.obj("names",owner.resourceUploadNames,"url",target).toString());
-    evaluate(script,actual->{
+    new AttachmentResult(actual->{
       try{
         JSONArray names=owner.resourceUploadNames;owner.resourceUploadObservation(actual,owner.navigationEpoch,names,target);owner.handler.removeCallbacks(owner.tick);
         if(step==0){resourceCheck("Actual delayed first attachment retains both selections",owner.resourceFilesActive()&&names.length()==2);evaluate("(()=>{document.getElementById('first').dataset.uploadState='ready';return {updated:true}})()",ignored->inspectAttachments(1));}
         else if(step==1){resourceCheck("One terminal attachment sample does not release selection work",owner.resourceFilesActive()&&owner.resourceUploadStable==1);inspectAttachments(2);}
         else{resourceCheck("Two actual terminal attachment samples release completed selections",!owner.resourceFilesActive()&&owner.resourceUploadNames.length()==0);beginRetainedPortControls();}
       }catch(Throwable failure){finish(failure);}
-    });
+    }).start(script);
   }
   void beginRetainedPortControls(){
     try{
@@ -230,7 +267,7 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
     });
   }
   @Override void configureReport(JSONObject report){
-    reportPut(report,"fixtureType","production-resource-pressure-controlled-v1");reportPut(report,"diagnosticOnly",true);reportPut(report,"releaseAcceptance",false);reportPut(report,"capacityAcceptance",false);reportPut(report,"physicalDeviceAcceptance",false);reportPut(report,"fullDesktopUaConsistency",false);reportPut(report,"fingerprintTemplateAcceptance",false);reportPut(report,"fullTemplateAcceptance",false);JSONObject nativeInventory=new JSONObject();for(NativeCapabilityManifest.Capability capability:NativeCapabilityManifest.Capability.values())reportPut(nativeInventory,capability.name(),NativeCapabilityManifest.officialGecko().status(capability).name());reportPut(report,"nativeCustomCapabilities",nativeInventory);reportPut(report,"resourceChecks",resourceChecks);reportPut(report,"resourceChecksCompleted",resourceDone);reportPut(report,"resourcePortControls",resourcePortControls);reportPut(report,"platformMemory",platform);reportPut(report,"allocation",allocation);
+    reportPut(report,"fixtureType","production-resource-pressure-controlled-v1");reportPut(report,"diagnosticOnly",true);reportPut(report,"releaseAcceptance",false);reportPut(report,"capacityAcceptance",false);reportPut(report,"physicalDeviceAcceptance",false);reportPut(report,"fullDesktopUaConsistency",false);reportPut(report,"fingerprintTemplateAcceptance",false);reportPut(report,"fullTemplateAcceptance",false);JSONObject nativeInventory=new JSONObject();for(NativeCapabilityManifest.Capability capability:NativeCapabilityManifest.Capability.values())reportPut(nativeInventory,capability.name(),NativeCapabilityManifest.officialGecko().status(capability).name());reportPut(report,"nativeCustomCapabilities",nativeInventory);reportPut(report,"resourceChecks",resourceChecks);reportPut(report,"resourceChecksCompleted",resourceDone);reportPut(report,"resourcePortControls",resourcePortControls);reportPut(report,"resourceEvaluationTrace",resourceEvaluationTrace);reportPut(report,"resourceEvaluationTraceDropped",resourceEvaluationDropped);reportPut(report,"platformMemory",platform);reportPut(report,"allocation",allocation);
     reportPut(report,"scope","Actual official Gecko runtime creation/retained session and controlled local document through production admission, navigation and attachment bookkeeping. Pressure values and pending recovery task are synthetic controls. Android MemoryInfo and current app PID PSS are observations, not physical capacity, ChatGPT, upload picker, native IME or performance acceptance. Session UA and document headers do not establish desktop Worker fetch UA consistency; inherited raw mismatch scope remains unsupported.");
     synchronized(resourceRequests){reportPut(report,"resourceRequests",new JSONArray(resourceRequests));}
     reportPut(report,"resourceUncovered",J.arr("physical ARM capacity","Gecko child process PSS","real ChatGPT tasks","native file chooser gesture","real upload/download throughput","independent process restoration","desktop Worker fetch UA consistency"));

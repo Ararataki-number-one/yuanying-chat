@@ -4,7 +4,8 @@ public final class NativeCapabilityManifestTest {
   public static void main(String[] args) {
     NativeCapabilityManifest manifest = NativeCapabilityManifest.officialGecko();
     int checks = 0;
-    if (!manifest.usesOfficialSdk()) throw new AssertionError("official backend"); checks++;
+    if (manifest.usesOfficialSdk()) throw new AssertionError("source-derived backend must not claim unmodified official SDK"); checks++;
+    if (!manifest.unsupportedSummary().contains("输入同步修正")) throw new AssertionError("derived SDK disclosure"); checks++;
     for (NativeCapabilityManifest.Capability capability : NativeCapabilityManifest.Capability.values()) {
       if (manifest.supports(capability) || manifest.status(capability) != NativeCapabilityManifest.Status.UNSUPPORTED)
         throw new AssertionError("False native claim: " + capability);

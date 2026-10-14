@@ -27,8 +27,8 @@ android {
     defaultConfig { applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 53; versionName '2.0.0' }
     signingConfigs { debug { if (providers.gradleProperty('testSigningKey').isPresent()) storeFile file(providers.gradleProperty('testSigningKey').get()) } }
     sourceSets {
-        main { manifest.srcFile(generatedManifest) }
-        integration { java.srcDirs = ['../tests/gecko']; assets.srcDirs = ['../tests/gecko/assets']; manifest.srcFile('../tests/gecko/AndroidManifest.xml') }
+        main { manifest.srcFile(generatedManifest); assets.srcDir(providers.gradleProperty('caretSdkAssets').orElse('../work/native-caret-sdk/assets')) }
+        integration { java.srcDirs = ['../tests/gecko']; assets.srcDirs = ['../tests/gecko/assets']; assets.srcDir(providers.gradleProperty('caretIdentityAssets').orElse('../work/native-caret-sdk/integration-assets')); manifest.srcFile('../tests/gecko/AndroidManifest.xml') }
     }
     buildTypes {
         release { minifyEnabled false; debuggable false }
@@ -40,7 +40,7 @@ android {
 tasks.named('preBuild').configure { dependsOn 'prepareGeckoManifest' }
 dependencies {
     implementation 'androidx.startup:startup-runtime:1.2.0'
-    implementation 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
+    implementation 'local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket1'
 }
 
 // Test provenance is generated only for the integration variant.
@@ -79,6 +79,32 @@ abstract class PrepareIntegrationIdentity extends org.gradle.api.DefaultTask {
             version: applicationVersionName.get(), versionCode: applicationVersionCode.get(),
             sdkCoordinate: 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
         ]) + '\n', 'UTF-8')
+    }
+}
+
+// Inspect both actual compile inputs rather than inferring the SDK from its label.
+tasks.register('writeCaretResolvedArtifacts') {
+    doLast {
+        def rows = []
+        for (name in ['releaseCompileClasspath', 'integrationCompileClasspath']) {
+            def selected = configurations.getByName(name).resolvedConfiguration.resolvedArtifacts.findAll {
+                it.moduleVersion.id.group == 'local.pocketchat.sdk' && it.name == 'geckoview-caret'
+            }
+            if (selected.size() != 1) throw new GradleException('Exactly one reviewed SDK artifact is required: ' + name)
+            for (artifact in selected) {
+                def digest = java.security.MessageDigest.getInstance('SHA-256')
+                artifact.file.withInputStream { stream ->
+                    byte[] block = new byte[65536]; int count
+                    while ((count = stream.read(block)) != -1) digest.update(block, 0, count)
+                }
+                rows.add([configuration:name, coordinate:artifact.moduleVersion.id.toString(),
+                          path:artifact.file.absolutePath, bytes:artifact.file.length(),
+                          sha256:digest.digest().collect { String.format('%02x', it & 255) }.join()])
+            }
+        }
+        def output = rootProject.file(providers.gradleProperty('caretResolvedArtifacts').orElse('work/native-caret-sdk/resolved-artifacts.json').get())
+        output.parentFile.mkdirs()
+        output.setText(groovy.json.JsonOutput.toJson(rows) + '\n', 'UTF-8')
     }
 }
 def prepareIntegrationIdentity = tasks.register('prepareIntegrationIdentity', PrepareIntegrationIdentity) {

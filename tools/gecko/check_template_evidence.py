@@ -12,6 +12,11 @@ import subprocess
 from urllib.parse import parse_qs, urlsplit
 
 ROOT=Path(__file__).resolve().parents[2]
+
+# Shared SDK expectations come from selected source, never report-provided pins.
+import importlib.util as _sdk_importlib
+_sdk_spec=_sdk_importlib.spec_from_file_location('selected_sdk_identity_contract',Path(__file__).with_name('sdk_identity_contract.py'))
+_sdk=_sdk_importlib.module_from_spec(_sdk_spec);_sdk_spec.loader.exec_module(_sdk)
 LIFECYCLE_SOURCE_FILES=tuple('app/src/main/java/local/pocketchat/'+name+'.java' for name in (
     'EnvironmentSpec','EnvironmentResetPlan','EnvironmentBrowserData','EnvironmentProcessPolicy',
     'EnvironmentSpecRepository','ProfileCatalog','Profiles','ProfileContext','EnvironmentResetActivity',
@@ -250,6 +255,9 @@ def selected_contract(source,name):
     path=Path(__file__).with_name(name+'.py')
     if path.read_bytes()!=selected_bytes(source,'tools/gecko/'+name+'.py'):
         raise ValueError('Evidence contract differs from selected source: '+name)
+    helper=Path(__file__).with_name('sdk_identity_contract.py')
+    if helper.read_bytes()!=selected_bytes(source,'tools/gecko/sdk_identity_contract.py'):
+        raise ValueError('Shared SDK identity contract differs from selected source')
     module_name=(__package__+'.' if __package__ else '')+'selected_'+name
     spec=importlib.util.spec_from_file_location(module_name,path)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
@@ -305,6 +313,7 @@ def verify_template_evidence(directory,source):
     if log.get('status')!='passed' or log.get('sourceCommit')!=source or log.get('installedBeforeAndAfterMatched') is not True or log.get('rawReportPreserved') is not True or log.get('reportSha256')!=hashlib.sha256(raw).hexdigest() or log.get('reportBytes')!=len(raw):raise ValueError('Installed/invocation-bound raw template evidence changed')
     if identity.get('sourceCommit')!=source or identity.get('sourceTree')!=tree or identity.get('dirtySource') is not False or identity.get('package')!='local.pocketchat.test' or identity.get('version')!=version or identity.get('versionCode')!=code or identity.get('sdkCoordinate')!=template.SDK:
         raise ValueError('Template APK identity differs from selected clean source/version/SDK')
+    _sdk.verify_gate_sdk(identity, directory, source, tree)
     if type(identity.get('apkBytes')) is not int or identity['apkBytes']<=0 or any(not re.fullmatch('[0-9a-f]{64}',str(identity.get(key,''))) for key in ['apkSha256','buildStampSha256']):raise ValueError('Installed APK byte identity missing')
     invocation.verify_invocation(report,identity,log.get('runNonce',''));invocation.verify(report,len(template.expected_check_names()),True)
     if log.get('diagnosticOnly') is not False or report.get('androidSdk')!=log.get('androidSdk') or type(report.get('androidSdk')) is not int or report['androidSdk']<26:raise ValueError('Template execution SDK/scope disagrees with runner')

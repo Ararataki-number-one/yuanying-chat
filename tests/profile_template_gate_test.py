@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 from profile_guard_metadata import prototype_metadata
 from profile_lifecycle_gate_test import device_control
+from profile_sdk_metadata import historical_git_output, historical_source
 
 ROOT=Path(__file__).resolve().parents[1]
 def load(name):
@@ -132,8 +133,9 @@ class TemplateEvidenceGateTest(unittest.TestCase):
         device=device_control();device['eventTransport']['buildIdentity']=copy.deepcopy(self.report['buildIdentity'])
         (self.directory/'device-results.json').write_text(json.dumps(device))
     def verify(self):
-        def source_bytes(source,path):return (ROOT/path).read_bytes() if path!='app/build.gradle' else b"versionCode 52; versionName '1.7.0'"
-        with patch.object(gate,'selected_bytes',side_effect=source_bytes),patch.object(gate.subprocess,'check_output',return_value='b'*40):return gate.verify_template_evidence(self.directory,'a'*40)
+        def files(source,path):return (ROOT/path).read_bytes() if path!='app/build.gradle' else b"versionCode 52; versionName '1.7.0'"
+        def source_bytes(source,path):return historical_source(files,source,path)
+        with patch.object(gate,'selected_bytes',side_effect=source_bytes),patch.object(gate.subprocess,'check_output',side_effect=historical_git_output(source_bytes,'a'*40,'b'*40)):return gate.verify_template_evidence(self.directory,'a'*40)
     def test_complete_metadata_only_gate_preserves_scope(self):self.assertFalse(self.verify()['fingerprintTemplateAcceptance'])
     def test_raw_receipt_sha_change_is_rejected(self):
         (self.directory/'gecko-template-results.json').write_text(json.dumps(self.report)+' ')

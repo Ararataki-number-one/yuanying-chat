@@ -1,10 +1,10 @@
-name: Profile upgrade host and official SDK build checks
+name: Profile upgrade host and reviewed SDK build checks
 on:
   push:
     branches: ['feature/profile-upgrades-1_6', 'feature/profile-upgrades-1_7', 'feature/profile-upgrades-1_7-final', 'feature/profile-upgrades-2_0', 'feature/android-engine-probe', 'codex/v1.6-network-environments', 'codex/v1.7-templates-audit', 'codex/v2.0-maintenance-capabilities']
-    paths: ['app/**', 'tests/**', 'tools/gecko/**', 'tools/export-profile-upgrades.py', 'third-party/sdk/**', 'third-party/patches/**', 'build.gradle', 'settings.gradle', 'gradle.properties', '.github/workflows/profile-upgrade-checks.yml']
+    paths: ['app/**', 'tests/**', 'tools/gecko/**', 'tools/export-profile-upgrades.py', 'third-party/sdk/**', 'third-party/patches/**', 'third-party/gecko/**', 'build.gradle', 'settings.gradle', 'gradle.properties', '.github/workflows/profile-upgrade-checks.yml']
   pull_request:
-    paths: ['app/**', 'tests/**', 'tools/gecko/**', 'tools/export-profile-upgrades.py', 'third-party/sdk/**', 'third-party/patches/**', 'build.gradle', 'settings.gradle', 'gradle.properties', '.github/workflows/profile-upgrade-checks.yml']
+    paths: ['app/**', 'tests/**', 'tools/gecko/**', 'tools/export-profile-upgrades.py', 'third-party/sdk/**', 'third-party/patches/**', 'third-party/gecko/**', 'build.gradle', 'settings.gradle', 'gradle.properties', '.github/workflows/profile-upgrade-checks.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -35,7 +35,8 @@ jobs:
             bash tools/gecko/run_identity_host_checks.sh
           fi
           if compgen -G 'tests/profile_*_test.py' >/dev/null; then
-            python3 -m unittest discover -s tests -p 'profile_*_test.py'
+            JSDOM_MODULE="$PWD/work/resource-observer/node_modules/jsdom" python3 -m unittest discover -s tests -p 'profile_*_test.py'
+            python3 -m unittest discover -s tests -p 'gecko_caret_*_test.py'
           fi
           if [ -f tools/gecko/release_channel_contract_test.py ]; then
             python3 tools/gecko/release_channel_contract_test.py
@@ -68,15 +69,18 @@ jobs:
           curl -fsSL --retry 3 "$task_sdk_url.pom" -o work/profile-build/geckoview.pom
           curl -fsSL --retry 3 "$task_sdk_url-sources.jar" -o work/profile-build/geckoview-sources.jar
           echo '15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268  work/profile-build/geckoview.aar' | sha256sum -c -
-          python3 tools/gecko/verify_official_sdk.py --aar work/profile-build/geckoview.aar --pom work/profile-build/geckoview.pom --sources work/profile-build/geckoview-sources.jar
+          python3 tools/gecko/verify_official_sdk.py --aar work/profile-build/geckoview.aar --pom work/profile-build/geckoview.pom --sources work/profile-build/geckoview-sources.jar --upstream-only
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
-      - name: Compile release and synthetic test APKs with official SDK; run lint
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          python3 tools/gecko/caret_workflow.py prepare --work work/profile-build
+      - name: Compile release and test APKs with the source-derived SDK; run lint
         shell: bash
         run: |
           set -euo pipefail
-          work/profile-build/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration :app:lintRelease -PtestSigningKey="$PWD/work/profile-build/integration-test.jks" --console=plain 2>&1 | tee work/profile-build/build.log
-          python3 tools/gecko/verify_official_sdk.py --aar work/profile-build/geckoview.aar --pom work/profile-build/geckoview.pom --sources work/profile-build/geckoview-sources.jar --gradle-cache "${GRADLE_USER_HOME:-$HOME/.gradle}" | tee work/profile-build/official-sdk-verification.json
+          work/profile-build/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration :app:lintRelease :app:writeCaretResolvedArtifacts -PtestSigningKey="$PWD/work/profile-build/integration-test.jks" --console=plain 2>&1 | tee work/profile-build/build.log
+          python3 tools/gecko/verify_official_sdk.py --aar work/profile-build/geckoview.aar --pom work/profile-build/geckoview.pom --sources work/profile-build/geckoview-sources.jar --upstream-only | tee work/profile-build/official-sdk-verification.json
+          python3 tools/gecko/caret_workflow.py record --work work/profile-build
       - name: Check integration stamp and keep it out of release APKs
         shell: bash
         run: |
@@ -104,7 +108,7 @@ jobs:
           fi
       - name: State build verification scope
         run: |
-          printf '%s\n' 'Official SDK release/test APK compilation and lint passed. APKs remain unsigned or signed with an ephemeral synthetic key. No emulator/ARM execution, real ChatGPT login or WAN measurement is implied; no release is published.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'Pinned upstream SDK verification, reviewed single-class source build, release/test APK compilation and lint passed. APKs remain unsigned or signed with an ephemeral synthetic key. No emulator/ARM execution, real ChatGPT login or WAN measurement is implied; no release is published.' >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve build logs and lint report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -114,5 +118,11 @@ jobs:
             work/profile-build/build.log
             work/profile-build/official-sdk-verification.json
             work/profile-build/integration-stamps.json
+            work/profile-build/sdk-build-receipt.json
+            work/profile-build/derived-sdk-verification.json
+            work/profile-build/derived-sdk-input.json
+            work/profile-build/caret-apk-build-receipt.json
+            work/native-caret-sdk/derived-sdk-compilation.json
+            work/native-caret-sdk/compile/*-javac.log
             app/build/reports/lint-results-release.*
           if-no-files-found: ignore

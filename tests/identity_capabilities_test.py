@@ -7,8 +7,12 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import subprocess
+import sys
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/"tools/gecko"))
 spec = importlib.util.spec_from_file_location("identity_contract", ROOT / "tools/gecko/check_identity_capabilities.py")
 contract = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(contract)
@@ -16,16 +20,40 @@ spec.loader.exec_module(contract)
 
 class IdentityContractTest(unittest.TestCase):
     def test_official_inventory(self):
-        manifest = json.loads((ROOT / "third-party/sdk/identity-capabilities.json").read_text())
-        self.assertFalse(contract.check_official(ROOT, manifest)["nativeControlsEnabled"])
-        for mutation in ("verified", "enabled", "prototype", "unsupported-but-enabled"):
-            bad = copy.deepcopy(manifest)
-            bad["capabilities"]["INDEPENDENT_TIMEZONE"] = mutation
-            with self.assertRaises(contract.ContractError):
-                contract.check_official(ROOT, bad)
-        manifest["actualAndroidExecution"] = True
-        with self.assertRaises(contract.ContractError):
-            contract.check_official(ROOT, manifest)
+        # Preserve the real historical official source contract in an explicit
+        # frozen fixture; the current derived backend must not impersonate it.
+        frozen=ROOT/'tests/sdk-provenance-fixtures/official-157'
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            for path,material in (('app/build.gradle',frozen/'app-build.gradle'),('app/src/main/java/local/pocketchat/NativeCapabilityManifest.java',frozen/'NativeCapabilityManifest.java'),('third-party/sdk/identity-capabilities.json',frozen/'identity-capabilities.json'),('third-party/sdk/geckoview-157.0.1-official.json',ROOT/'third-party/sdk/geckoview-157.0.1-official.json')):
+                destination=root/path;destination.parent.mkdir(parents=True,exist_ok=True)
+                destination.write_bytes(material.read_bytes())
+            manifest=json.loads((root/'third-party/sdk/identity-capabilities.json').read_text())
+            self.assertFalse(contract.check_official(root,manifest)['nativeControlsEnabled'])
+            for mutation in ('verified','enabled','prototype','unsupported-but-enabled'):
+                bad=copy.deepcopy(manifest);bad['capabilities']['INDEPENDENT_TIMEZONE']=mutation
+                with self.assertRaises(contract.ContractError):contract.check_official(root,bad)
+            manifest['actualAndroidExecution']=True
+            with self.assertRaises(contract.ContractError):contract.check_official(root,manifest)
+
+    def test_derived_inventory_requires_selected_source_and_keeps_native_controls_unsupported(self):
+        from profile_sdk_identity_test import fixture, SOURCE, sdk
+        selected,materials,reader,_,_,_,_,_=fixture()
+        materials['app/src/main/java/local/pocketchat/NativeCapabilityManifest.java']=(ROOT/'app/src/main/java/local/pocketchat/NativeCapabilityManifest.java').read_bytes()
+        def git_output(arguments,**kwargs):
+            if arguments==['git','rev-parse','HEAD']:return SOURCE+'\n'
+            if arguments[:2]==['git','show']:return reader(*arguments[2].split(':',1))
+            raise AssertionError('Unexpected source query: '+repr(arguments))
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);(root/'app').mkdir();(root/'app/build.gradle').write_text("implementation '"+sdk.SDK_RUNTIME_COORDINATE+"'; versionName '2.0.0'; versionCode 53")
+            manifest=dict(schema=1,engineMode='source-derived-java',coordinate=sdk.SDK_RUNTIME_COORDINATE,sdkInputCoordinate=sdk.SDK_COORDINATE,sdkReceipt=sdk.DERIVED_MANIFEST,sdkReceiptSha256=sdk.digest(materials[sdk.DERIVED_MANIFEST]),aarSha256=selected['sdkAarSha256'],upstreamRevision=selected['upstreamRevision'],actualAndroidExecution=False,capabilities={name:'unsupported' for name in contract.CAPABILITIES})
+            with patch.object(contract.subprocess,'check_output',side_effect=git_output):
+                self.assertFalse(contract.check_source_derived_input(root,manifest)['nativeControlsEnabled'])
+                for key,value in (('engineMode','official'),('coordinate',sdk.SDK_COORDINATE),('aarSha256',sdk.SDK_AAR_SHA256),('sdkReceiptSha256','0'*64),('actualAndroidExecution',True)):
+                    with self.subTest(field=key),self.assertRaises(contract.ContractError):contract.check_source_derived_input(root,dict(manifest,**{key:value}))
+                for capability in contract.CAPABILITIES:
+                    bad=copy.deepcopy(manifest);bad['capabilities'][capability]='verified'
+                    with self.subTest(capability=capability),self.assertRaises(contract.ContractError):contract.check_source_derived_input(root,bad)
 
     def test_path_escape_and_hash_tamper(self):
         with tempfile.TemporaryDirectory() as temp:

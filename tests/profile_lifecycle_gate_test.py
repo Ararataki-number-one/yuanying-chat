@@ -17,6 +17,7 @@ import tempfile
 import textwrap
 import unittest
 from unittest.mock import patch
+from profile_sdk_metadata import DERIVED_MANIFEST
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
@@ -51,6 +52,8 @@ def selected_source(source,path):
     candidate=Path(path)
     if candidate.is_absolute() or '..' in candidate.parts:
         raise ValueError('Counterfeit control path differs')
+    if path==DERIVED_MANIFEST:
+        raise FileNotFoundError('Historical counterfeit lifecycle source has no derived SDK manifest')
     return (ROOT/candidate).read_bytes()
 
 
@@ -502,14 +505,14 @@ class LifecycleGateImportControls(unittest.TestCase):
     def check_import_context(self, module, search_directory,import_root=ROOT):
         # Fresh interpreters prevent this file's standalone import path from
         # masking the package contexts used by staging and GitHub publication.
-        source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+        source=SOURCE
         report=device_control();selected_identity=identity()
         report['sourceCommit']=source
         report['eventTransport']['buildIdentity']['sourceCommit']=source
         selected_identity['sourceCommit']=source
         report['eventTransport']['invocations']=[cleanup_transfer(report['steps'][0],selected_identity)]
         program=textwrap.dedent('''
-            import copy,importlib,json,pathlib,sys
+            import copy,importlib,json,pathlib,subprocess,sys
             root=pathlib.Path(sys.argv[1]);module=sys.argv[2]
             sys.path.insert(0,str(root/sys.argv[3]))
             gate=importlib.import_module(module)
@@ -517,6 +520,21 @@ class LifecycleGateImportControls(unittest.TestCase):
             if '.' in module:
                 assert str(root/'tools/gecko') not in sys.path
             value=json.load(sys.stdin);report=value['report'];identity=value['identity']
+            materials=pathlib.Path(sys.argv[4])
+            def selected_bytes(source,path):
+                assert source==report['sourceCommit']
+                if path=='third-party/sdk/geckoview-157.0.1-editable-selection.json':
+                    raise FileNotFoundError('Historical counterfeit import source has no derived SDK manifest')
+                relative=pathlib.PurePosixPath(path)
+                assert not relative.is_absolute() and '..' not in relative.parts
+                return (materials/path).read_bytes()
+            def selected_git(command,**kwargs):
+                assert len(command)==3 and command[:2]==['git','show']
+                source,separator,path=command[2].partition(':')
+                assert separator
+                return selected_bytes(source,path)
+            gate.selected_bytes=selected_bytes
+            subprocess.check_output=selected_git
             assert gate.requires_reading_fixture_cleanup(report['sourceCommit']) is True
             invocation=gate.selected_contract(report['sourceCommit'],'profile_invocation_contract')
             decoder=gate.selected_contract(report['sourceCommit'],'integration_event_contract')
@@ -549,7 +567,7 @@ class LifecycleGateImportControls(unittest.TestCase):
                     raise AssertionError('Installed identity mismatch was accepted: '+key)
             print('Matched lifecycle parser and 11 installed-identity rejection controls passed')
         ''')
-        completed=subprocess.run([sys.executable,'-I','-B','-c',program,str(import_root),module,search_directory],
+        completed=subprocess.run([sys.executable,'-I','-B','-c',program,str(import_root),module,search_directory,str(ROOT)],
                                  cwd='/tmp',input=json.dumps({'report':report,'identity':selected_identity}),
                                  text=True,capture_output=True)
         self.assertEqual(completed.returncode,0,completed.stdout+completed.stderr)

@@ -6,6 +6,12 @@ import math
 import re
 from urllib.parse import urlsplit
 from zipfile import ZipFile
+from pathlib import Path
+
+# Shared SDK expectations come from selected source, never report-provided pins.
+import importlib.util as _sdk_importlib
+_sdk_spec=_sdk_importlib.spec_from_file_location('selected_sdk_identity_contract',Path(__file__).with_name('sdk_identity_contract.py'))
+_sdk=_sdk_importlib.module_from_spec(_sdk_spec);_sdk_spec.loader.exec_module(_sdk)
 
 STAMP = "assets/pocketchat-integration-build.json"
 PACKAGE = "local.pocketchat.test"
@@ -43,13 +49,17 @@ def expected_build(apk, source, tree, version, code):
         if archive.namelist().count(STAMP) != 1:
             raise ValueError('Exactly one integration source stamp is required')
         raw = archive.read(STAMP)
+        sdk_asset = _sdk.sdk_from_apk(archive, source, tree)
     stamp = json.loads(raw)
+    if sdk_asset is not None:
+        if 'sdkBuildIdentity' in stamp and stamp['sdkBuildIdentity'] != sdk_asset:
+            raise ValueError('Integration stamp differs from embedded SDK asset')
+        stamp['sdkBuildIdentity'] = sdk_asset
     if stamp.get('schema') != 1 or stamp.get('dirtySource') is not False or stamp.get('sourceCommit') != source or stamp.get('sourceTree') != tree:
         raise ValueError('Local APK was not built from the current clean source commit/tree')
     if stamp.get('version') != version or stamp.get('versionCode') != code:
         raise ValueError('Local APK version does not match current Gradle metadata')
-    if stamp.get('sdkCoordinate') != 'org.mozilla.geckoview:geckoview:157.0.20261005135250':
-        raise ValueError('Local APK stamp does not identify the pinned official SDK')
+    _sdk.verify_sdk_identity(stamp, source, tree)
     digest = hashlib.sha256()
     with apk.open('rb') as stream:
         for block in iter(lambda:stream.read(65536),b''):
@@ -63,6 +73,12 @@ def verify_installed(installed, expected):
     for key in ('schema','package','sourceCommit','sourceTree','dirtySource','version','versionCode','sdkCoordinate','apkSha256','apkBytes','buildStampSha256'):
         if installed.get(key) != expected.get(key):
             raise ValueError('Installed test APK differs from the expected build: ' + key)
+    for key in ('sdkBuildIdentity',) + _sdk.SDK_FIELDS:
+        if key in expected or key in installed:
+            if installed.get(key) != expected.get(key):
+                raise ValueError('Installed test APK SDK differs from expected build: ' + key)
+    _sdk.verify_sdk_identity(expected)
+    _sdk.verify_sdk_identity(installed)
     return installed
 
 
@@ -223,10 +239,7 @@ def verify_user_agent_evidence(report):
             and baseline.get('scope') == 'sdk-build-mobile-default'
             and baseline.get('ignoresSessionOverrides') is True
             and baseline.get('runtimeAcknowledgement') is False, 'public static getter scope')
-    require(report.get('sdkCoordinate') == baseline.get('sdkCoordinate') == SDK_COORDINATE
-            and report.get('sdkAarSha256') == baseline.get('sdkAarSha256') == SDK_AAR_SHA256
-            and report.get('buildIdentity', {}).get('sdkCoordinate') == SDK_COORDINATE,
-            'pinned official build identity')
+    _sdk.verify_report_sdk(report, baseline)
     sdk = baseline.get('androidSdk'); release = baseline.get('androidRelease')
     require(type(sdk) is int and sdk >= 26 and sdk == report.get('androidSdk')
             and isinstance(release, str) and 0 < len(release) <= 64

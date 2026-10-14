@@ -15,6 +15,11 @@ except ImportError:
 
 ROOT=Path(__file__).resolve().parents[2]
 
+# Shared SDK expectations come from selected source, never report-provided pins.
+import importlib.util as _sdk_importlib
+_sdk_spec=_sdk_importlib.spec_from_file_location('selected_sdk_identity_contract',Path(__file__).with_name('sdk_identity_contract.py'))
+_sdk=_sdk_importlib.module_from_spec(_sdk_spec);_sdk_spec.loader.exec_module(_sdk)
+
 
 def verify_resource_evidence(directory,source):
     directory=Path(directory)
@@ -26,6 +31,7 @@ def verify_resource_evidence(directory,source):
     settings=selected_bytes(source,'app/build.gradle').decode();version=re.search(r"versionName '([^']+)'",settings).group(1);code=int(re.search('versionCode ([0-9]+)',settings).group(1))
     if log.get('status')!='passed' or log.get('sourceCommit')!=source or log.get('installedBeforeAndAfterMatched') is not True or log.get('rawReportPreserved') is not True or log.get('diagnosticOnly') is not True or log.get('reportSha256')!=hashlib.sha256(raw).hexdigest() or log.get('reportBytes')!=len(raw):raise ValueError('Raw installed/invocation resource identity is incomplete')
     if identity.get('sourceCommit')!=source or identity.get('sourceTree')!=tree or identity.get('dirtySource') is not False or identity.get('package')!='local.pocketchat.test' or identity.get('version')!=version or identity.get('versionCode')!=code or identity.get('sdkCoordinate')!='org.mozilla.geckoview:geckoview:157.0.20261005135250':raise ValueError('Resource APK is not the selected clean version/source/SDK')
+    _sdk.verify_gate_sdk(identity, directory, source, tree)
     if type(identity.get('apkBytes')) is not int or identity['apkBytes']<=0 or any(not re.fullmatch('[0-9a-f]{64}',str(identity.get(key,''))) for key in ['apkSha256','buildStampSha256']):raise ValueError('Installed resource APK bytes are missing')
     invocation.verify_invocation(report,identity,log.get('runNonce',''));invocation.verify_diagnostic(report)
     if report.get('androidSdk')!=log.get('androidSdk') or type(report.get('androidSdk')) is not int or report['androidSdk']<26:raise ValueError('Observed Android SDK differs')

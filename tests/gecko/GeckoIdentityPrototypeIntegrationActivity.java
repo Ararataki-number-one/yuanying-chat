@@ -19,14 +19,14 @@ import org.mozilla.geckoview.*;
 public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
   static final String TAG="PocketIdentityPrototype",FILE="gecko-identity-prototype-results.json";
   static final String SDK="org.mozilla.geckoview:geckoview:157.0.20261005135250";
-  static final String AAR="15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268";
+  // SDK is the upstream reference; actual AAR identity comes from the installed SDK asset.
   final Handler handler=new Handler(Looper.getMainLooper());
   final ExecutorService storage=Executors.newSingleThreadExecutor();
   final JSONArray checks=new JSONArray(),cases=new JSONArray(),routes=new JSONArray(),navigation=new JSONArray();
   final Map<String,JSONObject> received=new LinkedHashMap<>(),nativeAgents=new LinkedHashMap<>();
   final Map<String,JSONObject> rawObservations=new LinkedHashMap<>();
   final Map<String,GeckoSession> targets=new LinkedHashMap<>();
-  JSONObject buildIdentity=new JSONObject(),sdkUserAgentBaseline=new JSONObject();ChatSession owner;FixtureView view;LocalSite site;
+  JSONObject buildIdentity=new JSONObject(),sdkUserAgentBaseline=new JSONObject(),sdkBuildIdentity=new JSONObject();ChatSession owner;FixtureView view;LocalSite site;
   String source,run,origin;int caseIndex=-1,serial;boolean finished,announced;
   String[] requestedLocales;String normalizedLanguage;boolean desktop;
   long requestedAt;Runnable caseDeadline;int navigationDropped;
@@ -100,10 +100,13 @@ public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
       try{
         if(source==null||!source.matches("[0-9a-f]{40}")||run==null||!run.matches("[0-9a-f]{32}"))throw new IOException("Exact source and run nonce required");
         JSONObject preparedIdentity=IntegrationBuildIdentity.read(this);
-        if(!source.equals(preparedIdentity.optString("sourceCommit"))||preparedIdentity.optBoolean("dirtySource",true)||!SDK.equals(preparedIdentity.optString("sdkCoordinate")))throw new IOException("Installed clean source/official SDK identity mismatch");
-        JSONObject preparedBaseline=J.obj("api","GeckoSession.getDefaultUserAgent()","scope","sdk-build-mobile-default","userAgent",GeckoSession.getDefaultUserAgent(),"sdkCoordinate",SDK,"sdkAarSha256",AAR,"androidSdk",Build.VERSION.SDK_INT,"androidRelease",Build.VERSION.RELEASE,"ignoresSessionOverrides",true,"runtimeAcknowledgement",false);
+        JSONObject preparedSdk=NormalCaretSdkReceipt.read(this);
+        NormalCaretSdkReceipt.requireInstalled(preparedSdk,preparedIdentity);
+        if(!source.equals(preparedIdentity.optString("sourceCommit"))||preparedIdentity.optBoolean("dirtySource",true)||!SDK.equals(preparedIdentity.optString("sdkCoordinate")))throw new IOException("Installed clean source/SDK identity mismatch");
+        JSONObject preparedBaseline=J.obj("api","GeckoSession.getDefaultUserAgent()","scope","sdk-build-mobile-default","userAgent",GeckoSession.getDefaultUserAgent(),"androidSdk",Build.VERSION.SDK_INT,"androidRelease",Build.VERSION.RELEASE,"ignoresSessionOverrides",true,"runtimeAcknowledgement",false);
+        NormalCaretSdkReceipt.copySdkFields(preparedSdk,preparedBaseline);
         LocalSite preparedSite=new LocalSite();
-        handler.post(()->{if(finished){preparedSite.close();return;}buildIdentity=preparedIdentity;sdkUserAgentBaseline=preparedBaseline;site=preparedSite;origin="http://127.0.0.1:"+site.socket.getLocalPort();site.start();openBrowser();});
+        handler.post(()->{if(finished){preparedSite.close();return;}buildIdentity=preparedIdentity;sdkBuildIdentity=preparedSdk;sdkUserAgentBaseline=preparedBaseline;site=preparedSite;origin="http://127.0.0.1:"+site.socket.getLocalPort();site.start();openBrowser();});
       }catch(Throwable failure){handler.post(()->finish(failure));}
     });
     handler.postDelayed(()->{if(!finished&&caseIndex<0)finish(new IOException("Official Gecko startup did not become ready"));},60000);
@@ -117,7 +120,7 @@ public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
       ChatSession.browserFactory=(c,s)->createFixtureView(c,s);owner=ChatSession.get(context);view=(FixtureView)owner.web;
       owner.handler.removeCallbacks(owner.tick);owner.networkReady=true;owner.offline=false;owner.uiVisible=true;owner.guard.setBlocked(false);
       LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);
-      TextView label=new TextView(this);label.setText("Official Gecko identity prototype · controlled local observations only");layout.addView(label);
+      TextView label=new TextView(this);label.setText("Gecko SDK identity prototype · controlled local observations only");layout.addView(label);
       view.setHost(this);layout.addView(view,new LinearLayout.LayoutParams(-1,0,1));setContentView(layout);
     }catch(Throwable failure){finish(failure);}
   }
@@ -242,7 +245,8 @@ public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
   void finish(Throwable failure){
     if(finished)return;finished=true;if(caseDeadline!=null)handler.removeCallbacks(caseDeadline);
     if(guardSession!=null){reportPut(guardEvidence,"blockedRoutes",guardRoutes);reportPut(guardEvidence,"blockedRoutesDropped",guardRoutesDropped);reportPut(guardEvidence,"afterServer",site.diagnostics());reportPut(guardEvidence,"afterHeaderCount",site.allRecords().length());if(failure!=null)reportPut(guardEvidence,"status","failed");}
-    JSONObject report=J.obj("schema",1,"status",failure==null?"passed":"failed","diagnosticOnly",true,"releaseAcceptance",false,"synthetic",true,"actualAndroidExecution",true,"actualGeckoExecution",view!=null&&view.ready,"publicNetworkTraffic",false,"sourceCommit",source,"runNonce",run,"buildIdentity",buildIdentity,"sdkCoordinate",SDK,"sdkAarSha256",AAR,"engineVersion",GeckoWebView.VERSION,"androidSdk",Build.VERSION.SDK_INT,"abis",new JSONArray(Arrays.asList(Build.SUPPORTED_ABIS)),"pid",android.os.Process.myPid(),"origin",origin,"cases",cases,"checks",checks,"passed",passedChecks(),"total",checks.length(),"routes",routes,"nativeRuntimeScope","Locale settings belong to one runtime shared by these sessions","environmentIsolation","Separate Android process/profile isolation is unverified by this prototype","independentTimezone","unsupported; no timezone override requested or applied","deepCustomControls","Independent timezone/Canvas/WebGL/audio/font controls not implemented","uncovered",J.arr("cross-origin frame","Shared Worker","Service Worker","RFP compatibility","real account login","native IME","separate environment isolation","restart persistence"),"scope","Actual controlled page-main/same-origin frame/Dedicated HTTP and Blob Worker readings plus first-party server request headers through the production guarded bridge. No template applied/observed repository acknowledgement.");
+    JSONObject report=J.obj("schema",1,"status",failure==null?"passed":"failed","diagnosticOnly",true,"releaseAcceptance",false,"synthetic",true,"actualAndroidExecution",true,"actualGeckoExecution",view!=null&&view.ready,"publicNetworkTraffic",false,"sourceCommit",source,"runNonce",run,"buildIdentity",buildIdentity,"engineVersion",GeckoWebView.VERSION,"androidSdk",Build.VERSION.SDK_INT,"abis",new JSONArray(Arrays.asList(Build.SUPPORTED_ABIS)),"pid",android.os.Process.myPid(),"origin",origin,"cases",cases,"checks",checks,"passed",passedChecks(),"total",checks.length(),"routes",routes,"nativeRuntimeScope","Locale settings belong to one runtime shared by these sessions","environmentIsolation","Separate Android process/profile isolation is unverified by this prototype","independentTimezone","unsupported; no timezone override requested or applied","deepCustomControls","Independent timezone/Canvas/WebGL/audio/font controls not implemented","uncovered",J.arr("cross-origin frame","Shared Worker","Service Worker","RFP compatibility","real account login","native IME","separate environment isolation","restart persistence"),"scope","Actual controlled page-main/same-origin frame/Dedicated HTTP and Blob Worker readings plus first-party server request headers through the production guarded bridge. No template applied/observed repository acknowledgement.");
+    try{NormalCaretSdkReceipt.copySdkFields(sdkBuildIdentity,report);}catch(Throwable identityFailure){reportPut(report,"status","failed");reportPut(report,"error",String.valueOf(identityFailure));reportPut(report,"failureType",identityFailure.getClass().getName());}
     reportPut(report,"nativeNavigation",navigation);reportPut(report,"nativeNavigationDropped",navigationDropped);
     reportPut(report,"sdkUserAgentBaseline",sdkUserAgentBaseline);
     reportPut(report,"userAgentCapability",J.obj("sessionSettingsScope","top-browsing-context","workerFetchHeaderScope","sdk-build-mobile-default","runtimeUserAgentSetterAvailable",false,"fullTemplateAcceptance",false,"description","Session UA is observed in main/frame/Dedicated Worker JavaScript and document/script/page-fetch headers. Dedicated HTTP and Blob Worker fetch headers are checked against the independent SDK build mobile default; desktop session UA consistency for these requests is unsupported. The static default getter is not a native runtime acknowledgement."));

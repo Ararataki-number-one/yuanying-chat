@@ -5,6 +5,11 @@ from pathlib import Path
 import re
 from urllib.parse import parse_qsl, urlsplit
 
+# Shared SDK expectations come from selected source, never report-provided pins.
+import importlib.util as _sdk_importlib
+_sdk_spec=_sdk_importlib.spec_from_file_location('selected_sdk_identity_contract',Path(__file__).with_name('sdk_identity_contract.py'))
+_sdk=_sdk_importlib.module_from_spec(_sdk_spec);_sdk_spec.loader.exec_module(_sdk)
+
 # The runner/public gate bind this shared pure contract to the selected source.
 _guard_spec=importlib.util.spec_from_file_location('template_shared_guard_contract',Path(__file__).with_name('profile_invocation_contract.py'))
 _guard=importlib.util.module_from_spec(_guard_spec);_guard_spec.loader.exec_module(_guard)
@@ -60,8 +65,7 @@ def verify_template_report(report):
         raise ValueError('Actual controlled Android/Gecko execution is incomplete')
     if any(report.get(key) is not False for key in ['releaseAcceptance','fingerprintTemplateAcceptance','realAccountLogin','safeIdleApplicationAcceptance','fullDesktopUaConsistency']):
         raise ValueError('Controlled observations cannot certify untested ChatGPT or lifecycle flows')
-    if report.get('sdkCoordinate')!=SDK or report.get('sdkAarSha256')!=AAR or report.get('engineVersion')!='GeckoView 157.0.1':
-        raise ValueError('The pinned official SDK identity changed')
+    _sdk.verify_report_sdk(report)
     if report.get('templateIds')!=TEMPLATES or set(report.get('uncovered',[]))!=set(UNCOVERED) or 'unsupported' not in report.get('independentTimezone',''):
         raise ValueError('Template or unsupported capability scope changed')
     names=expected_check_names();checks=report.get('checks',[])

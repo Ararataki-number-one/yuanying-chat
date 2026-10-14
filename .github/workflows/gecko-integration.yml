@@ -2,7 +2,7 @@ name: Production Gecko integration
 on:
   push:
     branches: [feature/android-engine-probe, feature/profile-upgrades-1_6, feature/profile-upgrades-1_7, feature/profile-upgrades-1_7-final, feature/profile-upgrades-2_0]
-    paths: ['app/**', 'tests/**', 'tools/**', 'third-party/patches/**', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
+    paths: ['app/**', 'tests/**', 'tools/**', 'third-party/patches/**', 'third-party/sdk/**', 'third-party/gecko/**', 'settings.gradle', 'build.gradle', 'gradle.properties', '.github/workflows/gecko-integration.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -33,14 +33,17 @@ jobs:
           echo '15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268  work/gecko-integration/geckoview.aar' | sha256sum -c -
           curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.pom -o work/gecko-integration/geckoview.pom
           curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250-sources.jar -o work/gecko-integration/geckoview-sources.jar
-          python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar
+          python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --upstream-only
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          python3 tools/gecko/caret_workflow.py prepare --work work/gecko-integration
       - name: Compile release and native regression package
         run: |
           set -euo pipefail
-          work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain 2>&1 | tee work/gecko-integration/build.log
-          python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --gradle-cache "${GRADLE_USER_HOME:-$HOME/.gradle}" | tee work/gecko-integration/official-sdk-verification.json
+          work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration :app:writeCaretResolvedArtifacts -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain 2>&1 | tee work/gecko-integration/build.log
+          python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --upstream-only | tee work/gecko-integration/official-sdk-verification.json
+          python3 tools/gecko/caret_workflow.py record --work work/gecko-integration
           python3 tools/gecko/check_safe_idle_trust.py --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk | tee work/gecko-integration/network-safe-idle-trust-host-results.json
           python3 - <<'PYCODE'
           import json,pathlib,subprocess
@@ -123,7 +126,8 @@ jobs:
           cp work/profile-host/identity-bridge-host-results.json work/gecko-integration/identity-bridge-host-results.json
           cp work/profile-host/environment-intent-host-results.json work/gecko-integration/environment-intent-host-results.json
           cp work/profile-host/gecko-proxy-route-host-results.json work/gecko-integration/gecko-proxy-route-host-results.json
-          python3 -m unittest discover -s tests -p 'profile_*_test.py'
+          JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" python3 -m unittest discover -s tests -p 'profile_*_test.py'
+          python3 -m unittest discover -s tests -p 'gecko_caret_*_test.py'
           python3 -m unittest discover -s tests -p 'gecko_emulator_bootstrap_test.py'
           python3 -m unittest discover -s tests -p 'gecko_event_transfer_test.py'
           if [ -f tools/gecko/release_channel_contract_test.py ]; then
@@ -170,7 +174,10 @@ jobs:
           adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
           python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
           checks_failed=0
-          if ! python3 tests/gecko/run_gecko_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
+          if ! python3 tests/gecko/run_caret_bound_performance.py --adb "$(command -v adb)" --serial emulator-5554 --root "$PWD" --out work/gecko-integration --build-receipt work/gecko-integration/caret-apk-build-receipt.json --sdk-receipt work/native-caret-sdk/sdk-build-receipt.json --sdk-aar work/native-caret-sdk/geckoview-caret.aar --official-sdk-aar work/gecko-integration/geckoview.aar --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk; then
+            checks_failed=1
+          fi
+          if ! python3 tests/gecko/run_gecko_caret_compat.py --normal-acceptance --adb "$(command -v adb)" --serial emulator-5554 --root "$PWD" --out work/gecko-integration/caret-compat --sdk-receipt work/native-caret-sdk/sdk-build-receipt.json --build-receipt work/gecko-integration/caret-apk-build-receipt.json --sdk-aar work/native-caret-sdk/geckoview-caret.aar --official-sdk-aar work/gecko-integration/geckoview.aar --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk --release-apk app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk; then
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py

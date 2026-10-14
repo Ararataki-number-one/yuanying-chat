@@ -62,14 +62,22 @@ def class_constants(data):
     return values
 
 
-def verify(aar, pom, sources, gradle_cache=None):
+def verify(aar, pom, sources, gradle_cache=None, upstream_only=False):
     receipt = json.loads(RECEIPT.read_text())
     assert receipt['schema'] == 1 and receipt['releaseChannel'] == 'release'
     assert receipt['sdkAarModified'] is False and receipt['sdkClassTransformApplied'] is False
     coordinate = ':'.join(('org.mozilla.geckoview', 'geckoview', receipt['version']))
     assert receipt['coordinate'] == coordinate
-    dependencies = re.findall(r"implementation\s+'(org\.mozilla\.geckoview:[^']+)'", (ROOT / 'app/build.gradle').read_text())
-    assert dependencies == [coordinate], 'Actual app dependency does not match the official SDK receipt.'
+    if upstream_only:
+        assert gradle_cache is None, 'Upstream-only verification cannot claim actual dependency resolution.'
+        from sdk_identity_contract import selected_manifest, SDK_RUNTIME_COORDINATE
+        source = subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+        selected, _ = selected_manifest(source)
+        dependencies = re.findall(r"implementation\s+'(local\.pocketchat\.sdk:[^']+)'", (ROOT/'app/build.gradle').read_text())
+        assert dependencies == [SDK_RUNTIME_COORDINATE] == [selected['sdkRuntimeCoordinate']]
+    else:
+        dependencies = re.findall(r"implementation\s+'(org\.mozilla\.geckoview:[^']+)'", (ROOT / 'app/build.gradle').read_text())
+        assert dependencies == [coordinate], 'Actual app dependency does not match the official SDK receipt.'
     for name, file in (('aar', aar), ('pom', pom), ('sources', sources)):
         pin = receipt[name]
         suffix = '-sources.jar' if name == 'sources' else '.' + name
@@ -108,6 +116,7 @@ def verify(aar, pom, sources, gradle_cache=None):
             'coordinate': coordinate, 'firefoxVersion': receipt['firefoxVersion'], 'upstreamRevision': receipt['upstreamRevision'],
             'receiptSha256': digest(RECEIPT), 'aarSha256': receipt['aar']['sha256'], 'classesJarSha256': receipt['classesJarSha256'],
             'sdkAarModified': False, 'sdkClassTransformApplied': False, 'gradleResolvedAarVerified': gradle_cache is not None,
+            'upstreamInputOnly': upstream_only, 'actualRuntimeSdkVerified': False,
             'resolvedArtifacts': resolved, 'actualAndroidExecution': False,
             'scope': 'Official SDK build-input provenance only; no input-correctness or device acceptance claim.'}
 
@@ -118,5 +127,6 @@ if __name__ == '__main__':
     parser.add_argument('--pom', required=True, type=pathlib.Path)
     parser.add_argument('--sources', required=True, type=pathlib.Path)
     parser.add_argument('--gradle-cache', type=pathlib.Path)
+    parser.add_argument('--upstream-only', action='store_true', help='Verify immutable inputs for a separately attested source-derived SDK; never claim unchanged runtime resolution.')
     args = parser.parse_args()
-    print(json.dumps(verify(args.aar, args.pom, args.sources, args.gradle_cache), indent=2))
+    print(json.dumps(verify(args.aar, args.pom, args.sources, args.gradle_cache, args.upstream_only), indent=2))

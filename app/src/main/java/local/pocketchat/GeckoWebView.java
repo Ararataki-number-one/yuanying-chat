@@ -40,7 +40,7 @@ class GeckoWebView extends FrameLayout {
     uploadWorker.execute(()->{for(GeckoUploadFiles.Selection files:uploadFiles)files.delete();uploadFiles.clear();});uploadWorker.shutdown();
   }
 
-  static final String VERSION="GeckoView 157.0.1";
+  static final String VERSION="GeckoView 157.0.1 · 输入同步修正";
   final ChatSession owner;
   GeckoView surface;GeckoRuntime runtime;WebExtension extension;GeckoSession primary,current;
   final ArrayList<GeckoSession> popups=new ArrayList<>();
@@ -63,6 +63,7 @@ class GeckoWebView extends FrameLayout {
   GeckoSession.SessionState startupState;
   boolean checkpointReady,checkpointRequested,routePrepared,identityPrepared,resourceDeferred;float readingLayout=1;long zoomEpoch,recoveryWindow;int contentRecoveries;
   ResourcePressureController.Admission resourceAdmission=ResourcePressureController.Admission.START;
+  JSONObject sdkBuildIdentity;
   GeckoSession zoomTarget;long zoomStarted;float zoomX,zoomY,zoomRadius;int readingFocusScrolls;boolean readingFocusHadClipping;float readingFocusScrollDelta;
   final Runnable recovery=()->recoverClosed();
   final Runnable checkpoint=this::saveCheckpoint;
@@ -96,6 +97,7 @@ class GeckoWebView extends FrameLayout {
     if(resourceAdmission==ResourcePressureController.Admission.DEFER){resourceDeferred=true;owner.setStatus(ResourcePressureController.DEFERRED_MESSAGE);return;}
     resourceDeferred=false;
     try{
+      if(sdkBuildIdentity==null)sdkBuildIdentity=NormalCaretSdkReceipt.read(owner.context);
       File directory=new File(owner.context.getNoBackupFilesDir(),"gecko-browser");
       if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("无法创建浏览器数据目录");
       File config=new File(owner.context.getNoBackupFilesDir(),"gecko-browser.yaml");

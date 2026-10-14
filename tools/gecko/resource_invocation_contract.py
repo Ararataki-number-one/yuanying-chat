@@ -5,6 +5,11 @@ import hashlib
 import importlib.util
 from pathlib import Path
 
+# Shared SDK expectations come from selected source, never report-provided pins.
+import importlib.util as _sdk_importlib
+_sdk_spec=_sdk_importlib.spec_from_file_location('selected_sdk_identity_contract',Path(__file__).with_name('sdk_identity_contract.py'))
+_sdk=_sdk_importlib.module_from_spec(_sdk_spec);_sdk_spec.loader.exec_module(_sdk)
+
 _guard_spec=importlib.util.spec_from_file_location("resource_shared_guard_contract",Path(__file__).with_name("profile_invocation_contract.py"))
 _guard=importlib.util.module_from_spec(_guard_spec);_guard_spec.loader.exec_module(_guard)
 from urllib.parse import urlsplit, parse_qsl
@@ -97,8 +102,8 @@ def verify_resource_port_controls(report):
 
 
 def verify_resource_report(report, expected):
-    if report.get('schema')!=1 or report.get('sdkCoordinate')!='org.mozilla.geckoview:geckoview:157.0.20261005135250' or report.get('sdkAarSha256')!='15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268' or report.get('engineVersion')!='GeckoView 157.0.1':
-        raise ValueError('Pinned actual official SDK report identity differs')
+    if report.get('schema')!=1:raise ValueError('Resource report schema differs')
+    _sdk.verify_report_sdk(report)
     if report.get('fixtureType')!='production-resource-pressure-controlled-v1' or report.get('resourceChecksCompleted') is not True:
         raise ValueError('Production resource fixture is incomplete')
     if any(report.get(key) is not False for key in ['releaseAcceptance','capacityAcceptance','physicalDeviceAcceptance','publicNetworkTraffic','fullDesktopUaConsistency','fingerprintTemplateAcceptance','fullTemplateAcceptance']):
