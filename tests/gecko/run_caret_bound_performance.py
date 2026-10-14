@@ -12,6 +12,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 from caret_build_identity import audit_apk, digest, embedded_identity, require, strict_json, validate_sdk_receipt
+from installed_apk_read import read_installed_apk
 import sdk_identity_contract as sdk_contract
 
 PACKAGE = 'local.pocketchat.test'
@@ -67,7 +68,9 @@ def main():
         require(len(paths) == 1 and paths[0].startswith('/data/app/'), 'Expected one actual installed .test base APK; split APK unsupported')
         with tempfile.TemporaryDirectory(prefix='caret-performance-' + label + '-', dir=out) as temp:
             apk = Path(temp) / 'base.apk'
-            adb('pull', paths[0], str(apk))
+            read_installed_apk(adb=args.adb, serial=args.serial, installed_path=paths[0], destination=apk,
+                expected_sha256=build['integrationApkSha256'], expected_bytes=args.integration_apk.stat().st_size,
+                diagnostics=out / ('installed-apk-read-performance-' + label + '.json'), label='original-performance-' + label)
             actual_hash = digest(apk)
             require(actual_hash == build['integrationApkSha256'], 'Actual installed APK differs ' + label)
             audit = audit_apk(apk)

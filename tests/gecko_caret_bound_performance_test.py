@@ -47,7 +47,7 @@ class BoundPerformanceControls(unittest.TestCase):
                      '--sdk-aar', str(self.root/'derived.aar'), '--official-sdk-aar', str(self.root/'official.aar'),
                      '--integration-apk', str(self.apk)]
         self.raw = b'{"status":"passed","actualAndroidExecution":true,"sourceCommit":"' + SOURCE.encode() + b'"}\n'
-        self.returncode = 0; self.invocations = []; self.pulls = 0; self.change_after = False
+        self.returncode = 0; self.invocations = []; self.installed_reads = 0; self.change_after = False
 
     def output(self, command, **kwargs):
         if command[:3] == ['git', 'rev-parse', 'HEAD']:
@@ -61,14 +61,14 @@ class BoundPerformanceControls(unittest.TestCase):
             return b'original runner bytes\n' if name == W.RUNNER else b'original activity bytes\n'
         if command[-4:] == ['shell', 'pm', 'path', W.PACKAGE]:
             return 'package:/data/app/controlled/base.apk\n'
-        if command[3] == 'pull':
-            self.pulls += 1
-            data = self.apk.read_bytes() + (b'changed' if self.change_after and self.pulls == 2 else b'')
-            Path(command[-1]).write_bytes(data)
-            return 'one actual-byte read simulated\n'
         raise AssertionError(command)
 
     def run_once(self, command, **kwargs):
+        if command[3:] == ['exec-out','cat','/data/app/controlled/base.apk']:
+            self.installed_reads += 1
+            data=self.apk.read_bytes()+(b'changed' if self.change_after and self.installed_reads == 2 else b'')
+            kwargs['stdout'].write(data)
+            return subprocess.CompletedProcess(command,0,stderr=b'')
         self.invocations.append(command)
         (self.out/'gecko-performance-results.json').write_bytes(self.raw)
         return subprocess.CompletedProcess(command, self.returncode)
@@ -92,7 +92,7 @@ class BoundPerformanceControls(unittest.TestCase):
         self.assertEqual(sidecar['before'], sidecar['after'])
         self.assertEqual(sidecar['invocationCount'], 1)
         self.assertEqual(sidecar['invocationRepositoryRoot'], str(self.root))
-        self.assertEqual(self.pulls, 2)
+        self.assertEqual(self.installed_reads, 2)
         self.assertEqual(self.runner.read_bytes(), b'original runner bytes\n')
 
     def test_failed_original_is_retained_without_retry_or_waiver(self):
@@ -109,7 +109,7 @@ class BoundPerformanceControls(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.invoke()
         self.assertEqual(self.invocations, [])
-        self.assertEqual(self.pulls, 0)
+        self.assertEqual(self.installed_reads, 0)
 
     def test_protected_runner_mutation_prevents_invocation(self):
         self.runner.write_bytes(b'changed original runner')

@@ -11,6 +11,7 @@ import socket
 import socketserver
 import struct
 import subprocess
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -19,6 +20,7 @@ import secrets
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'tools/gecko'))
 from caret_build_identity import audit_apk, digest, embedded_identity, require, strict_json, validate_sdk_receipt
 from caret_dispatch import CaretDispatch
+from installed_apk_read import read_installed_apk
 from integration_event_contract import parse_receipt_line
 from profile_invocation_contract import verify_installed
 
@@ -282,10 +284,13 @@ def main():
         # Pull the actual installed package before any fixture launch. No install/update is performed by this runner.
         paths = [line[len('package:'):] for line in adb('shell', 'pm', 'path', PACKAGE).splitlines() if line.startswith('package:')]
         require(len(paths) == 1 and paths[0].startswith('/data/app/'), 'Expected one installed integration APK; splits unsupported')
-        installed_apk = out / 'installed-integration.apk'
-        adb('pull', paths[0], str(installed_apk))
-        require(digest(installed_apk) == build['integrationApkSha256'], 'Actually installed APK differs from same-run compiled APK')
-        installed_audit = audit_apk(installed_apk)
+        with tempfile.TemporaryDirectory(prefix='caret-installed-', dir=out) as installed_directory:
+            installed_apk = pathlib.Path(installed_directory) / 'base.apk'
+            read_installed_apk(adb=args.adb, serial=args.serial, installed_path=paths[0], destination=installed_apk,
+                expected_sha256=build['integrationApkSha256'], expected_bytes=args.integration_apk.stat().st_size,
+                diagnostics=out / 'installed-apk-read-caret.json', label='caret-preflight')
+            require(digest(installed_apk) == build['integrationApkSha256'], 'Actually installed APK differs from same-run compiled APK')
+            installed_audit = audit_apk(installed_apk)
         require(installed_audit == compiled_audit, 'Installed APK definition/embedded asset audit differs')
         audit_path = out / 'installed-apk-definition-audit.json'
         audit_path.write_text(json.dumps(installed_audit, indent=2) + '\n')
@@ -295,7 +300,6 @@ def main():
                                   apkDefinitionAuditSha256=digest(audit_path),
                                   embeddedIdentityAssetSha256=installed_audit['embeddedIdentityAssetSha256'],
                                   sdkManifestSha256=installed_audit['sdkManifestSha256'])
-        installed_apk.unlink()  # Retain byte hash/audit, not a duplicate APK artifact.
         servers = [http.server.ThreadingHTTPServer(('127.0.0.1', 8771), Fixture), SocksServer(('127.0.0.1', 1088), Socks)]
         Fixture.requests, Socks.routes = [], []
         for server in servers:

@@ -31,9 +31,9 @@ for name in ['preconnect-results.json','preconnect-log.txt','preconnect-failure-
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['caret-document-observer-host-results.json','resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json','emulator-bootstrap-results.json','profile-host-results.json','identity-controller-host-results.json','deferred-browser-host-results.json','identity-bridge-host-results.json','environment-intent-host-results.json','gecko-proxy-route-host-results.json','environment-spec-results.json','environment-intent-results.json','gecko-identity-prototype-results.json','gecko-template-results.json','gecko-template-runner-log.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
-for name in ['sdk-build-receipt.json','derived-sdk-verification.json','derived-sdk-input.json','caret-apk-build-receipt.json','gecko-performance-build-identity.json']:
+for name in ['sdk-build-receipt.json','derived-sdk-verification.json','derived-sdk-input.json','caret-apk-build-receipt.json','gecko-performance-build-identity.json','installed-apk-read-performance-before.json','installed-apk-read-performance-after.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
-for name in ['gecko-caret-compat-results.json','gecko-caret-compat-screen.png','gecko-caret-compat-failure-log.txt','installed-apk-definition-audit.json','preflight-failure.json']:
+for name in ['gecko-caret-compat-results.json','gecko-caret-compat-screen.png','gecko-caret-compat-failure-log.txt','installed-apk-definition-audit.json','preflight-failure.json','installed-apk-read-caret.json']:
     if (out/'caret-compat'/name).exists():shutil.copy2(out/'caret-compat'/name,stage/name)
 for pattern in ['environment-spec-*.txt','environment-intent-*.txt','gecko-identity-prototype-*.txt','gecko-template-*.txt','resource-pressure-*.txt']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
@@ -67,7 +67,12 @@ env = dict(os.environ, GIT_INDEX_FILE=str(out/'public-index'), GIT_WORK_TREE=str
 parents = ['-p', source]
 previous = subprocess.check_output(['git','ls-remote','origin','refs/heads/'+branch], text=True).split()
 if previous:
-    subprocess.run(['git','fetch','origin','refs/heads/'+branch], check=True)
+    # Only the current artifact tree/parent is needed. Older immutable APK
+    # ancestry remains on origin and must not accumulate on this CI runner.
+    subprocess.run(['git','fetch','--depth=1','--no-tags','origin','refs/heads/'+branch], check=True)
+    fetched = subprocess.check_output(['git','rev-parse','FETCH_HEAD'], text=True).strip()
+    if fetched != previous[0]:
+        raise RuntimeError('Public artifact branch changed during bounded fetch')
     parents += ['-p', previous[0]]
 subprocess.run(['git','read-tree','--empty'], check=True, env=env)
 subprocess.run(['git','add','-f','--',*[p.name for p in stage.iterdir()]], check=True, env=env)
