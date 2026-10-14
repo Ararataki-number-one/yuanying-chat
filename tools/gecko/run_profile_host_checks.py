@@ -182,6 +182,8 @@ def main():
     files.update((ROOT/'tests/gecko/GeckoIntegrationTestActivity.java',ROOT/'tools/gecko/check_template_evidence.py'))
     files.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
     files.add(ROOT/'tests/fixtures/android-launcher-package-86db516.txt')
+    files.update((ROOT/'tests/gecko/GeckoCaretCompatibilityIntegrationActivity.java',
+                  ROOT/'tests/gecko_caret_input_diagnostics_test.py'))
     pressure_receipt=output / "resource-pressure-host-results.json"
     subprocess.run([sys.executable,str(ROOT / "tools/gecko/run_resource_host_checks.py"),"--json-jar",str(json_jar),"--output",str(pressure_receipt)],cwd=ROOT,check=True)
     pressure=json.loads(pressure_receipt.read_text());results.append({"test":"resource-pressure-host","report":str(pressure_receipt.relative_to(ROOT)),"passed":pressure["passed"],"actualAndroidExecution":False})
