@@ -1,5 +1,5 @@
 """Counterfeit metadata only for rejection tests; never actual resource/device proof."""
-import copy, hashlib, importlib.util, json, re, tempfile, unittest
+import copy, hashlib, importlib.util, json, os, re, shutil, subprocess, tempfile, unittest
 from pathlib import Path
 from unittest.mock import patch
 from profile_template_gate_test import metadata_only_report
@@ -11,14 +11,18 @@ NAMES=re.findall(r'resourceCheck\("([^"\n]+)"',(ROOT/'tests/gecko/ResourcePressu
 def metadata():
     report=metadata_only_report();report['buildIdentity'].update(version='2.0.0',versionCode=53)
     names=NAMES+contract.prototype_names();report.update(fixtureType='production-resource-pressure-controlled-v1',diagnosticOnly=True,capacityAcceptance=False,physicalDeviceAcceptance=False,fullDesktopUaConsistency=False,fingerprintTemplateAcceptance=False,fullTemplateAcceptance=False,resourceChecksCompleted=True,resourceChecks=[{'name':name,'pass':True} for name in NAMES],checks=[{'name':name,'pass':True} for name in names],passed=len(names),total=len(names),pid=123,nativeCustomCapabilities={name:'UNSUPPORTED' for name in contract.CUSTOM},resourceUncovered=['physical ARM capacity','Gecko child process PSS','real ChatGPT tasks','native file chooser gesture','real upload/download throughput','independent process restoration','desktop Worker fetch UA consistency'])
-    report['allocation']=dict(coldRuntimeCreates=0,recoveryRuntimeCreates=1,pressureSource='synthetic-pressure-control',physicalCapacityAcceptance=False,actualRuntimeObject=report['cases'][0]['sessions'][0]['native']['runtime'],oldEpoch=1,newEpoch=2,recoveredTarget=report['origin']+'/frame?run='+report['runNonce']+'&case=4&session=secondary')
-    parent_url=report['allocation']['recoveredTarget']+'&spa=1';popup_url=report['origin']+'/frame?run='+report['runNonce']+'&session=resource-popup'
+    report['allocation']=dict(coldRuntimeCreates=0,recoveryRuntimeCreates=1,pressureSource='synthetic-pressure-control',physicalCapacityAcceptance=False,actualRuntimeObject=report['cases'][0]['sessions'][0]['native']['runtime'],oldEpoch=1,newEpoch=2,recoveredTarget=report['origin']+'/resource?run='+report['runNonce']+'&phase=parent')
+    parent_url=report['allocation']['recoveredTarget']+'&spa=1';popup_url=report['origin']+'/resource?run='+report['runNonce']+'&phase=popup'
     bindings=['11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222','33333333-3333-3333-3333-333333333333']
     def event(url,binding,document,sequence,at,busy=True,uploading=True):return dict(type='resource-work',url=url,resourceBinding=binding,documentId=document,resourceSequence=sequence,capturedAt=at,busy=busy,uploading=uploading)
     rejection=dict(websiteEpoch=-1,sequence=0,observerBinding=bindings[2],observerPort=100,navigationEpoch=3)
     untouched=dict(draft='retained-resource-draft',cookie='resourceRetained=preserved',url=parent_url,sent=0)
     parent_session=report['cases'][0]['sessions'][0]['native']['session']
     report['resourcePortControls']=dict(sourceCommit=report['sourceCommit'],runNonce=report['runNonce'],phaseScope='controlled-production-delegate-sdk-open-load',syntheticPopupActivation=True,trustedPopupGesture=False,trustedUserGesture=False,realWebsiteExecution=False,observerDelivery='Actual SDK document observer bytes read through native evaluate; unchanged bytes passed to production resource admission',parentSession=parent_session,parentPort=100,popupSession=parent_session+2,popupPort=200,returnedSession=parent_session,returnedPort=100,parentEpochBefore=1,popupEpoch=2,returnEpoch=3,parentBeforeBinding=bindings[0],popupBinding=bindings[1],parentReturnedBinding=bindings[2],parentBefore=event(parent_url,bindings[0],'a'*32,1,1000),popup=event(popup_url,bindings[1],'b'*32,1,2000),parentReturned=event(parent_url,bindings[2],'a'*32,2,3000),parentIdle=event(parent_url,bindings[2],'a'*32,3,4000,False,False),stalePopupAfter=dict(rejection),staleParentAfter=dict(rejection),before=dict(untouched),after=dict(untouched))
+    report['resourceRequests']=[]
+    for sequence,phase in enumerate(('parent','popup'),1):
+        target='/resource?run='+report['runNonce']+'&phase='+phase;line='GET '+target+' HTTP/1.1';document=contract.resource_bootstrap_document(phase)
+        report['resourceRequests'].append(dict(sourceCommit=report['sourceCommit'],runNonce=report['runNonce'],sequence=sequence,connection=sequence,method='GET',path=target,phase=phase,userAgent='Observed Firefox/157.0',acceptLanguage='en-US',requestAt=sequence*100,responseAt=sequence*100+1,responseStatus=200,responseBytes=len(document),responseSha256=hashlib.sha256(document).hexdigest(),parsedRequestLine=line,parsedRequestLineBytes=len(line.encode('ascii')),parsedRequestLineSha256=hashlib.sha256(line.encode('ascii')).hexdigest(),requestLineScope='Parsed HTTP request line without CRLF; not a raw socket-byte capture'))
     report['platformMemory']=dict(source='android-ActivityManager.MemoryInfo',known=True,lowMemory=False,availableBytes=1024,totalBytes=2048,thresholdBytes=256,sampledAt=1000,observedAt=1001,process=dict(source='android-Debug.MemoryInfo',pid=123,totalPssKb=1024,javaUsedBytes=512,javaMaxBytes=4096,scope='Current fixture app PID only; Gecko child processes excluded'))
     for index,case in enumerate(report['cases']):
         for session in case['sessions']:
@@ -111,6 +115,44 @@ class ResourceContractTest(unittest.TestCase):
     def test_retained_rebind_preserves_controlled_draft(self):self.rejects(lambda r:r['resourcePortControls']['after'].update(draft='lost draft'))
     def test_retained_rebind_preserves_controlled_cookie(self):self.rejects(lambda r:r['resourcePortControls']['after'].update(cookie=''))
     def test_retained_rebind_cannot_send_any_message(self):self.rejects(lambda r:r['resourcePortControls']['after'].update(sent=1))
+    def test_resource_http_receipts_are_required(self):self.rejects(lambda r:r.pop('resourceRequests'))
+    def test_resource_http_phase_count_is_exact(self):self.rejects(lambda r:r['resourceRequests'].append(dict(r['resourceRequests'][0])))
+    def test_resource_http_source_is_owned(self):self.rejects(lambda r:r['resourceRequests'][0].update(sourceCommit='f'*40))
+    def test_resource_http_nonce_is_owned(self):self.rejects(lambda r:r['resourceRequests'][1].update(runNonce='f'*32))
+    def test_resource_http_get_is_required(self):self.rejects(lambda r:r['resourceRequests'][0].update(method='POST'))
+    def test_resource_http_phase_is_exact(self):self.rejects(lambda r:r['resourceRequests'][1].update(phase='parent'))
+    def test_resource_http_sequence_is_exact(self):self.rejects(lambda r:r['resourceRequests'][1].update(sequence=1))
+    def test_resource_http_query_cannot_add_another_phase(self):self.rejects(lambda r:r['resourceRequests'][0].update(path=r['resourceRequests'][0]['path']+'&phase=popup'))
+    def test_resource_http_target_cannot_be_absolute(self):self.rejects(lambda r:r['resourceRequests'][0].update(path=r['origin']+r['resourceRequests'][0]['path']))
+    def test_resource_http_target_cannot_contain_fragment(self):self.rejects(lambda r:r['resourceRequests'][0].update(path=r['resourceRequests'][0]['path']+'#other'))
+    def test_resource_http_receipt_cannot_claim_raw_socket_bytes(self):self.rejects(lambda r:r['resourceRequests'][0].update(requestLineScope='Raw socket bytes'))
+    def test_resource_parsed_line_bytes_are_preserved(self):self.rejects(lambda r:r['resourceRequests'][0].update(parsedRequestLineBytes=0))
+    def test_resource_parsed_line_hash_is_preserved(self):self.rejects(lambda r:r['resourceRequests'][0].update(parsedRequestLineSha256='0'*64))
+    def test_resource_response_status_is_actual_success(self):self.rejects(lambda r:r['resourceRequests'][1].update(responseStatus=403))
+    def test_resource_response_visible_body_bytes_are_exact(self):self.rejects(lambda r:r['resourceRequests'][0].update(responseBytes=0,responseSha256=hashlib.sha256(b'').hexdigest()))
+    def test_resource_response_phase_body_cannot_be_swapped(self):self.rejects(lambda r:r['resourceRequests'][1].update(responseSha256=r['resourceRequests'][0]['responseSha256']))
+    def test_resource_response_connection_is_distinct(self):self.rejects(lambda r:r['resourceRequests'][1].update(connection=1))
+    def test_resource_response_times_follow_parent_then_popup(self):self.rejects(lambda r:r['resourceRequests'][1].update(requestAt=50))
+    def test_resource_http_headers_are_observed(self):self.rejects(lambda r:r['resourceRequests'][0].update(userAgent=''))
+class ResourceBootstrapPolicyTest(unittest.TestCase):
+    def test_actual_java_bootstrap_policy_rejects_wrong_authority_and_renders_visible_body(self):
+        def method(path,signature):
+            source=(ROOT/path).read_text();start=source.index(signature);end=source.index('\n  }',start)+4;return source[start:end]
+        policy=method('tests/gecko/ResourcePressureIntegrationActivity.java','static String bootstrapDocument(')
+        default=method('tests/gecko/GeckoIdentityPrototypeIntegrationActivity.java','String resourceFixtureDocument(').split('\n',1)[0]
+        java=os.environ.get('PROFILE_JAVA') or shutil.which('java')
+        self.assertTrue(java,'JDK 17 is required to execute the actual extracted Java fixture policy')
+        harness='''import java.util.*;
+public final class ResourceBootstrapPolicyControl {
+POLICY
+DEFAULT
+static void check(boolean value){if(!value)throw new AssertionError("Actual resource bootstrap policy failed");}
+public static void main(String[] args){String nonce="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";Map<String,String> query=new HashMap<>();query.put("run",nonce);query.put("phase","parent");String parent=bootstrapDocument("GET",query,nonce);check(parent!=null&&parent.contains("<p>")&&parent.contains("<input ")&&!parent.contains("<script"));check(parent.equals(PARENT));query.put("phase","popup");check(bootstrapDocument("GET",query,nonce).equals(POPUP));check(new ResourceBootstrapPolicyControl().resourceFixtureDocument("GET",query)==null);for(String invalid:new String[]{"POST","HEAD","get"})check(bootstrapDocument(invalid,query,nonce)==null);check(bootstrapDocument("GET",query,"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")==null);check(bootstrapDocument("GET",query,"wrong")==null);check(bootstrapDocument("GET",query,null)==null);check(bootstrapDocument("GET",null,nonce)==null);query.put("phase","other");check(bootstrapDocument("GET",query,nonce)==null);query.put("phase","parent");query.put("unexpected","1");check(bootstrapDocument("GET",query,nonce)==null);query.remove("unexpected");query.remove("run");check(bootstrapDocument("GET",query,nonce)==null);}
+}'''.replace('POLICY',policy).replace('DEFAULT',default).replace('PARENT',json.dumps(contract.resource_bootstrap_document('parent').decode())).replace('POPUP',json.dumps(contract.resource_bootstrap_document('popup').decode()))
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'ResourceBootstrapPolicyControl.java';path.write_text(harness)
+            compile=subprocess.run([java,'-m','jdk.compiler/com.sun.tools.javac.Main',str(path)],text=True,capture_output=True,timeout=30);self.assertEqual(compile.returncode,0,compile.stderr)
+            run=subprocess.run([java,'-cp',temp,'ResourceBootstrapPolicyControl'],text=True,capture_output=True,timeout=30);self.assertEqual(run.returncode,0,run.stderr)
 class ResourceGateTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.directory=Path(self.temp.name);self.report=metadata();self.write()

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Controlled resource observations; never physical capacity or native fingerprint acceptance."""
 import re
+import hashlib
 import importlib.util
 from pathlib import Path
 
@@ -9,6 +10,36 @@ _guard=importlib.util.module_from_spec(_guard_spec);_guard_spec.loader.exec_modu
 from urllib.parse import urlsplit, parse_qsl
 
 CUSTOM=['INDEPENDENT_TIMEZONE','CANVAS_READBACK','WEBGL_IDENTITY','AUDIO_IDENTITY','FONT_IDENTITY']
+
+
+def resource_bootstrap_document(phase):
+    return ('<!doctype html><meta charset=utf-8><title>Controlled resource fixture</title><body><p>Controlled resource '+phase+'</p><input id=resource-ready value='+phase+'></body>').encode('utf-8')
+
+
+def verify_resource_requests(report):
+    """Separate parsed GET/response observations from the 30 SDK context headers."""
+    rows=report.get('resourceRequests')
+    if not isinstance(rows,list) or len(rows)!=2:
+        raise ValueError('Two actual resource bootstrap GET observations are required')
+    connections=[];clocks=[]
+    for sequence,(row,phase) in enumerate(zip(rows,('parent','popup')),1):
+        target='/resource?run='+report['runNonce']+'&phase='+phase
+        request_line='GET '+target+' HTTP/1.1';line_bytes=request_line.encode('ascii')
+        response_bytes=resource_bootstrap_document(phase)
+        if not isinstance(row,dict) or row.get('sourceCommit')!=report['sourceCommit'] or row.get('runNonce')!=report['runNonce'] or type(row.get('sequence')) is not int or row['sequence']!=sequence or row.get('method')!='GET' or row.get('phase')!=phase or row.get('path')!=target:
+            raise ValueError('Resource bootstrap GET source, invocation or phase differs')
+        if row.get('parsedRequestLine')!=request_line or type(row.get('parsedRequestLineBytes')) is not int or row['parsedRequestLineBytes']!=len(line_bytes) or row.get('parsedRequestLineSha256')!=hashlib.sha256(line_bytes).hexdigest() or row.get('requestLineScope')!='Parsed HTTP request line without CRLF; not a raw socket-byte capture':
+            raise ValueError('Parsed resource request line observation changed')
+        if type(row.get('responseStatus')) is not int or row['responseStatus']!=200 or type(row.get('responseBytes')) is not int or row['responseBytes']!=len(response_bytes) or row.get('responseSha256')!=hashlib.sha256(response_bytes).hexdigest():
+            raise ValueError('Actual resource bootstrap response bytes differ')
+        for key in ('connection','requestAt','responseAt'):
+            if type(row.get(key)) is not int or not 1<=row[key]<=2**63-1:
+                raise ValueError('Actual resource HTTP connection/clock is missing: '+key)
+        if row['requestAt']>row['responseAt'] or any(not isinstance(row.get(key),str) or not row[key] or len(row[key])>16384 or '\r' in row[key] or '\n' in row[key] for key in ('userAgent','acceptLanguage')):
+            raise ValueError('Actual resource HTTP response/header observations are inconsistent')
+        connections.append(row['connection']);clocks.extend((row['requestAt'],row['responseAt']))
+    if connections[0]>=connections[1] or clocks!=sorted(clocks):
+        raise ValueError('Parent resource response must precede the distinct popup request')
 
 
 def prototype_names():
@@ -41,7 +72,7 @@ def verify_resource_port_controls(report):
     if controls['parentSession']!=primary['session'] or report['allocation']['actualRuntimeObject']!=primary['runtime']:
         raise ValueError('Retained resource parent/runtime differs from inherited actual SDK observations')
     parent_url=report['allocation']['recoveredTarget']+'&spa=1'
-    popup_url=report['origin']+'/frame?run='+report['runNonce']+'&session=resource-popup'
+    popup_url=report['origin']+'/resource?run='+report['runNonce']+'&phase=popup'
     events=[]
     for key,url,busy,uploading in [('parentBefore',parent_url,True,True),('popup',popup_url,True,True),('parentReturned',parent_url,True,True),('parentIdle',parent_url,False,False)]:
         event=controls.get(key)
@@ -88,8 +119,9 @@ def verify_resource_report(report, expected):
     if type(allocation.get('actualRuntimeObject')) is not int or allocation['actualRuntimeObject']==0 or type(allocation.get('oldEpoch')) is not int or type(allocation.get('newEpoch')) is not int or allocation['newEpoch']<=allocation['oldEpoch']:
         raise ValueError('Actual runtime/navigation deadline observations are missing')
     origin=report.get('origin','');nonce=report.get('runNonce','')
-    if not re.fullmatch(r'http://127\.0\.0\.1:[1-9][0-9]{0,4}',origin) or not re.fullmatch('[0-9a-f]{32}',nonce) or allocation.get('recoveredTarget')!=origin+'/frame?run='+nonce+'&case=4&session=secondary':
+    if not re.fullmatch(r'http://127\.0\.0\.1:[1-9][0-9]{0,4}',origin) or not re.fullmatch('[0-9a-f]{32}',nonce) or allocation.get('recoveredTarget')!=origin+'/resource?run='+nonce+'&phase=parent':
         raise ValueError('Captured resource candidate is not bound to this local invocation')
+    verify_resource_requests(report)
     verify_resource_port_controls(report)
     platform=report.get('platformMemory',{})
     if platform.get('known') is not True or platform.get('source')!='android-ActivityManager.MemoryInfo' or type(platform.get('lowMemory')) is not bool:

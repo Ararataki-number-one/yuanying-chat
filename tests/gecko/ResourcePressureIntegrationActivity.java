@@ -5,6 +5,8 @@ import android.net.Uri;
 import android.os.*;
 import android.webkit.*;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 import org.json.*;
 import org.mozilla.geckoview.*;
 
@@ -13,7 +15,7 @@ import org.mozilla.geckoview.*;
 public final class ResourcePressureIntegrationActivity extends GeckoIdentityPrototypeIntegrationActivity {
   final JSONArray resourceChecks=new JSONArray();JSONObject platform=new JSONObject(),allocation=new JSONObject();
   ChatSession.Observer pressureObserver;boolean coldChecked,controlsStarted,resourceDone;String target,pendingBytes;int readyAttempts;
-  final Object fixtureDocument=new Object();String documentId;JSONObject resourcePortControls=new JSONObject();
+  final Object fixtureDocument=new Object();String documentId;JSONObject resourcePortControls=new JSONObject();final List<JSONObject> resourceRequests=new ArrayList<>();
   class PressureView extends FixtureView {
     boolean low=true;int pauses,resumes,closures;
     PressureView(Context c,ChatSession s){super(c,s);}
@@ -27,6 +29,15 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
   @Override FixtureView createFixtureView(Context context,ChatSession session){return new PressureView(context,session);}
   @Override String reportFile(){return "resource-pressure-results.json";}
   @Override String reportTag(){return "PocketResourceFixture";}
+  static String bootstrapDocument(String method,Map<String,String> query,String nonce){
+    if(!"GET".equals(method)||query==null||nonce==null||!nonce.matches("[0-9a-f]{32}")||query.size()!=2||!query.keySet().equals(new HashSet<>(Arrays.asList("run","phase")))||!nonce.equals(query.get("run")))return null;
+    String phase=query.get("phase");if(!"parent".equals(phase)&&!"popup".equals(phase))return null;
+    return "<!doctype html><meta charset=utf-8><title>Controlled resource fixture</title><body><p>Controlled resource "+phase+"</p><input id=resource-ready value="+phase+"></body>";
+  }
+  @Override String resourceFixtureDocument(String method,Map<String,String> query){return bootstrapDocument(method,query,run);}
+  @Override void resourceFixtureResponse(int connection,String parsedRequestLine,String method,String requestTarget,Map<String,String> query,Map<String,String> headers,String document,long requestAt,long responseAt)throws IOException{
+    synchronized(resourceRequests){if(resourceRequests.size()>=4)throw new IOException("Too many controlled resource requests");resourceRequests.add(J.obj("sourceCommit",source,"runNonce",run,"sequence",resourceRequests.size()+1,"connection",connection,"method",method,"path",requestTarget,"phase",query.get("phase"),"userAgent",headers.getOrDefault("user-agent",""),"acceptLanguage",headers.getOrDefault("accept-language",""),"requestAt",requestAt,"responseAt",responseAt,"responseStatus",200,"responseBytes",document.getBytes(StandardCharsets.UTF_8).length,"responseSha256",NativeNetwork.hash(document),"parsedRequestLine",parsedRequestLine,"parsedRequestLineBytes",parsedRequestLine.getBytes(StandardCharsets.ISO_8859_1).length,"parsedRequestLineSha256",NativeNetwork.hash(parsedRequestLine),"requestLineScope","Parsed HTTP request line without CRLF; not a raw socket-byte capture"));}
+  }
   void resourceCheck(String name,boolean value){resourceChecks.put(J.obj("name",name,"pass",value));check(name,value);}
   @Override void openBrowser(){
     super.openBrowser();if(finished||view==null)return;
@@ -34,7 +45,7 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
       ResourcePressureController.MemorySample actual=ResourcePressureController.read(this);
       platform=J.obj("source",actual.source,"known",actual.known,"lowMemory",actual.lowMemory,"availableBytes",actual.availableBytes,"totalBytes",actual.totalBytes,"thresholdBytes",actual.thresholdBytes,"sampledAt",actual.sampledAt,"observedAt",SystemClock.elapsedRealtime(),"scope","Actual Android ActivityManager snapshot; not a device capacity measurement");
       storage.execute(()->{android.os.Debug.MemoryInfo info=new android.os.Debug.MemoryInfo();Debug.getMemoryInfo(info);Runtime java=Runtime.getRuntime();JSONObject process=J.obj("source","android-Debug.MemoryInfo","pid",android.os.Process.myPid(),"totalPssKb",info.getTotalPss(),"javaUsedBytes",java.totalMemory()-java.freeMemory(),"javaMaxBytes",java.maxMemory(),"scope","Current fixture app PID only; Gecko child processes excluded; no capacity budget");handler.post(()->reportPut(platform,"process",process));});
-      target=origin+"/frame?run="+run+"&case=4&session=secondary";documentId=java.util.UUID.randomUUID().toString();
+      target=origin+"/resource?run="+run+"&phase=parent";documentId=java.util.UUID.randomUUID().toString();
       owner.beginNavigation(target,"Controlled cold allocation");view.loadUrl(target);
       pressureObserver=()->{if(!coldChecked&&view.resourceDeferred)try{coldAllocation();}catch(Throwable failure){finish(failure);}};owner.add(pressureObserver);
     }catch(Throwable failure){finish(failure);}
@@ -159,7 +170,7 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
       GeckoSession parent=view.current;Object parentPort=view.ports.get(parent);String parentBinding=owner.resourceObserverBinding;
       resourceCheck("Actual parent observer captures reply and upload before popup",owner.resourceWebsiteBusy&&owner.resourceWebsiteUploading&&owner.resourceWebsiteEpoch==owner.navigationEpoch&&initial.optString("resourceBinding").equals(parentBinding));
       reportPut(resourcePortControls,"parentBefore",initial);reportPut(resourcePortControls,"parentSession",System.identityHashCode(parent));reportPut(resourcePortControls,"parentPort",System.identityHashCode(parentPort));reportPut(resourcePortControls,"parentEpochBefore",owner.navigationEpoch);reportPut(resourcePortControls,"parentBeforeBinding",owner.resourceObserverBinding);
-      String popupTarget=origin+"/frame?run="+run+"&session=resource-popup";
+      String popupTarget=origin+"/resource?run="+run+"&phase=popup";
       // Controlled direct production-delegate invocation, followed by a real
       // official SDK open/load. No synthetic click is called a user gesture.
       parent.getNavigationDelegate().onNewSession(parent,popupTarget).accept(popup->{
@@ -221,6 +232,7 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
   @Override void configureReport(JSONObject report){
     reportPut(report,"fixtureType","production-resource-pressure-controlled-v1");reportPut(report,"diagnosticOnly",true);reportPut(report,"releaseAcceptance",false);reportPut(report,"capacityAcceptance",false);reportPut(report,"physicalDeviceAcceptance",false);reportPut(report,"fullDesktopUaConsistency",false);reportPut(report,"fingerprintTemplateAcceptance",false);reportPut(report,"fullTemplateAcceptance",false);JSONObject nativeInventory=new JSONObject();for(NativeCapabilityManifest.Capability capability:NativeCapabilityManifest.Capability.values())reportPut(nativeInventory,capability.name(),NativeCapabilityManifest.officialGecko().status(capability).name());reportPut(report,"nativeCustomCapabilities",nativeInventory);reportPut(report,"resourceChecks",resourceChecks);reportPut(report,"resourceChecksCompleted",resourceDone);reportPut(report,"resourcePortControls",resourcePortControls);reportPut(report,"platformMemory",platform);reportPut(report,"allocation",allocation);
     reportPut(report,"scope","Actual official Gecko runtime creation/retained session and controlled local document through production admission, navigation and attachment bookkeeping. Pressure values and pending recovery task are synthetic controls. Android MemoryInfo and current app PID PSS are observations, not physical capacity, ChatGPT, upload picker, native IME or performance acceptance. Session UA and document headers do not establish desktop Worker fetch UA consistency; inherited raw mismatch scope remains unsupported.");
+    synchronized(resourceRequests){reportPut(report,"resourceRequests",new JSONArray(resourceRequests));}
     reportPut(report,"resourceUncovered",J.arr("physical ARM capacity","Gecko child process PSS","real ChatGPT tasks","native file chooser gesture","real upload/download throughput","independent process restoration","desktop Worker fetch UA consistency"));
   }
 }

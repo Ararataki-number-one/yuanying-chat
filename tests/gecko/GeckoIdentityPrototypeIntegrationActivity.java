@@ -134,6 +134,10 @@ public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
   }
   void completeCase(JSONArray sessions,Runnable next){next.run();}
   void configureReport(JSONObject report){}
+  /** Resource fixtures opt in separately; identity context endpoints stay unchanged. */
+  String resourceFixtureDocument(String method,Map<String,String> query){return null;}
+  void resourceFixtureResponse(int connection,String parsedRequestLine,String method,String target,
+      Map<String,String> query,Map<String,String> headers,String document,long requestAt,long responseAt)throws IOException{}
   void beginCase(){
     if(finished)return;
     try{
@@ -279,6 +283,12 @@ public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
         int count=Integer.parseInt(headers.getOrDefault("content-length","0"));if(count<0||count>32768)throw new IOException("Oversized observation");byte[] body=new byte[count];new DataInputStream(in).readFully(body);
         synchronized(this){parsed++;}stage="response";
         if("/favicon.ico".equals(uri.getPath())){respond(client,404,"text/plain","");return;}
+        if("/resource".equals(uri.getPath())){
+          String document=resourceFixtureDocument(request[0],query);
+          if(document==null){respond(client,403,"text/plain","Unknown resource fixture");return;}
+          long requestAt=SystemClock.elapsedRealtime();respond(client,200,"text/html",document);
+          resourceFixtureResponse(connection,first,request[0],request[1],query,headers,document,requestAt,SystemClock.elapsedRealtime());return;
+        }
         if(!run.equals(query.get("run"))||!query.getOrDefault("case","").matches("[1-4]")||!Arrays.asList("primary","secondary").contains(query.get("session"))){respond(client,403,"text/plain","Unknown fixture case");return;}
         int ticket=Integer.parseInt(query.get("case"));String name=query.get("session"),path=uri.getPath();
         String role="/page".equals(path)?"page":"/frame".equals(path)?"frame":"/worker".equals(path)?"worker-script":"/echo".equals(path)?query.getOrDefault("kind",""):"";
