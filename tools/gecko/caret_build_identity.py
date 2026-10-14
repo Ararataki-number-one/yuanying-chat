@@ -14,6 +14,8 @@ OBSERVER_PREFIXES = ('Lorg/mozilla/geckoview/PocketGeckoEditableTrace',
 EDITABLE = 'Lorg/mozilla/geckoview/GeckoEditable;'
 FIXTURE = 'Llocal/pocketchat/GeckoCaretCompatibilityIntegrationActivity;'
 CARET_HELPER = 'Llocal/pocketchat/CaretCompatibilityBuildIdentity;'
+CONTROLLED_IME = 'Llocal/pocketchat/ControlledCaretInputMethodService;'
+CONTROLLED_IME_XML = 'res/xml/caret_controlled_input_method.xml'
 IDENTITY_ASSET = 'assets/caret-build-identity.json'
 OBSERVER_ASSET = 'assets/caret-document-observer.js'
 
@@ -146,6 +148,7 @@ def audit_apk(path, package='local.pocketchat.test', component='local.pocketchat
         else:
             require(IDENTITY_ASSET not in archive.namelist(), 'Release APK includes caret fixture identity asset')
             require(OBSERVER_ASSET not in archive.namelist(), 'Release APK includes passive caret fixture observation asset')
+            require(CONTROLLED_IME_XML not in archive.namelist(), 'Release APK includes controlled test IME resource')
             observer_raw = None
             raw, identity = None, None
     bad = sorted(item for item in definitions if item.startswith(OBSERVER_PREFIXES))
@@ -153,9 +156,11 @@ def audit_apk(path, package='local.pocketchat.test', component='local.pocketchat
     require(EDITABLE in definitions, 'APK lacks SDK editable definition')
     require((FIXTURE in definitions) is require_fixture and (CARET_HELPER in definitions) is require_fixture,
             'APK fixture/helper definition presence differs from variant')
+    require(require_fixture or CONTROLLED_IME not in definitions, 'Release APK includes controlled test IME definition')
     return dict(schema=1, apkSha256=digest(path), package=package, component=component,
                 definitionCount=len(definitions), dex=records, observerDefinitions=bad,
                 editableDefinitionCount=1, fixtureDefinitionCount=int(FIXTURE in definitions), caretHelperDefinitionCount=int(CARET_HELPER in definitions),
+                controlledImeDefinitionCount=int(CONTROLLED_IME in definitions),
                 embeddedIdentityAssetSha256=hashlib.sha256(raw).hexdigest() if raw is not None else None, embeddedBuildIdentity=identity,
                 sdkManifestSha256=identity.get('sdkManifestSha256') if identity is not None else None,
                 observerScriptSha256=hashlib.sha256(observer_raw).hexdigest() if observer_raw is not None else None)

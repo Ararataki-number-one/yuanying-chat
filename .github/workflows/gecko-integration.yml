@@ -129,6 +129,7 @@ jobs:
           cp work/profile-host/gecko-proxy-route-host-results.json work/gecko-integration/gecko-proxy-route-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" python3 -m unittest discover -s tests -p 'profile_*_test.py'
           python3 -m unittest discover -s tests -p 'gecko_caret_*_test.py'
+          python3 -m unittest discover -s tests -p 'gecko_ui_visual_capture_test.py'
           python3 -m unittest discover -s tests -p 'gecko_emulator_bootstrap_test.py'
           python3 -m unittest discover -s tests -p 'gecko_event_transfer_test.py'
           if [ -f tools/gecko/release_channel_contract_test.py ]; then

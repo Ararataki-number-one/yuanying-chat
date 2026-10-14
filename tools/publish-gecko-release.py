@@ -191,6 +191,8 @@ if version_code>=45:performance_files.extend(['update-transfer-results.json','up
 if version_code>=49:performance_files.extend(['reading-host-results.json','reading-focus-host-results.json','gecko-scroll-diagnostics.json','gecko-scroll-diagnostic-log.json'])
 if roadmap_release:performance_files.extend(['emulator-bootstrap-results.json','environment-spec-results.json','environment-intent-results.json','profile-host-results.json','environment-intent-host-results.json','gecko-proxy-route-host-results.json','gecko-identity-prototype-results.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json'])
 if sdk_build is not None:performance_files.extend(['sdk-build-receipt.json','derived-sdk-verification.json','derived-sdk-input.json','caret-apk-build-receipt.json','gecko-caret-compat-results.json','installed-apk-definition-audit.json','gecko-performance-build-identity.json','caret-document-observer-host-results.json'])
+if caret is not None and caret.get('controlledImeEnvironment'):
+    performance_files.extend(['caret-ime-environment.json','editing-phase-environment.json'])
 if template_release:performance_files.extend(['gecko-template-results.json','gecko-template-runner-log.json','identity-controller-host-results.json','deferred-browser-host-results.json','identity-bridge-host-results.json'])
 if resource_release:performance_files.extend(['resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json'])
 if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','official-sdk-verification.json','official-sdk-input.json'])
@@ -208,6 +210,8 @@ if roadmap_release:
     for name in ['check_profile_evidence.py','profile_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if sdk_build is not None:
     for name in ['check_caret_compat_evidence.py','caret_build_identity.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    if caret.get('controlledImeEnvironment'):
+        for name in ['caret_ime_contract.py','caret_ime_guard.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if template_release:
     for name in ['check_template_evidence.py','template_invocation_contract.py','integration_event_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=44:shutil.copy2(root/'tools/gecko/check_connection_evidence.py',stage/'tools/gecko/check_connection_evidence.py')

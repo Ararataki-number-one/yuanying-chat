@@ -37,6 +37,7 @@ jobs:
           if compgen -G 'tests/profile_*_test.py' >/dev/null; then
             JSDOM_MODULE="$PWD/work/resource-observer/node_modules/jsdom" python3 -m unittest discover -s tests -p 'profile_*_test.py'
             python3 -m unittest discover -s tests -p 'gecko_caret_*_test.py'
+            python3 -m unittest discover -s tests -p 'gecko_ui_visual_capture_test.py'
           fi
           if [ -f tools/gecko/release_channel_contract_test.py ]; then
             python3 tools/gecko/release_channel_contract_test.py

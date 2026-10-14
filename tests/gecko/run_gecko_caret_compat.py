@@ -7,6 +7,7 @@ import http.server
 import json
 import pathlib
 import select
+import signal
 import socket
 import socketserver
 import struct
@@ -20,6 +21,7 @@ import secrets
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'tools/gecko'))
 from caret_build_identity import audit_apk, digest, embedded_identity, require, strict_json, validate_sdk_receipt
 from caret_dispatch import CaretDispatch
+from caret_ime_guard import ControlledImeGuard
 from installed_apk_read import read_installed_apk
 from integration_event_contract import parse_receipt_line
 from profile_invocation_contract import verify_installed
@@ -280,10 +282,18 @@ def main():
     chunks, trusted, seen = [], {}, set()
     report, installed_audit, installed_identity = None, None, None
     activity_launched = False
+    ime_record = dict(schema=1, status='failed', runNonce='',
+                      applicationAcceptance=False, physicalPhoneAcceptance=False, vendorKeyboardUiAcceptance=False)
     nonce = secrets.token_hex(16)
+    ime_record.update(runNonce=nonce, sourceCommit=source, sourceTree=tree, runId=build['runId'], runAttempt=build['runAttempt'])
     transfer = dispatcher = None
     collection = None
     servers = []
+    signal_handlers = {}
+    def interrupted(signum, unused):
+        raise KeyboardInterrupt('Controlled caret fixture interrupted by signal ' + str(signum))
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        signal_handlers[signum] = signal.signal(signum, interrupted)
 
     def adb(*parts):
         return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
@@ -357,102 +367,109 @@ def main():
         dispatcher = CaretDispatch(identity=common_installed, nonce=nonce, slot=0, action='caretCompatibility',
                                    fetch=fetch_event, command=1, dispatch=lambda value: perform_android_action(value, adb))
         transfer = dispatcher.transfer
-        adb('shell', 'wm', 'size', '1080x2400')
-        adb('shell', 'wm', 'density', '420')
-        adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
-        adb('logcat', '-c')
-        started = adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/local.pocketchat.GeckoCaretCompatibilityIntegrationActivity',
-            '--ez', 'normalAcceptance', str(args.normal_acceptance).lower(), '--es', 'sourceCommit', source,
-            '--es', 'runId', build['runId'], '--es', 'runAttempt', build['runAttempt'], '--es', 'eventNonce', nonce)
-        require('Status: ok' in started, 'Actual integration Activity did not start: ' + started)
-        activity_launched = True
-        collection = dict(schema=1, scope='host-artifact-io', activeOperationBudgetMillis=300000,
-                          readOnlyDrainBudgetMillis=600000,
-                          receiptCaptureStartedAtMonotonicNanos=time.monotonic_ns())
-        expires = time.monotonic() + 300
-        while time.monotonic() < expires:
-            raw = adb('logcat', '-d', '-s', 'PocketGeckoIntegration:I', 'PocketCaretCompat:E', 'AndroidRuntime:E', '*:S')
-            require('FATAL EXCEPTION' not in raw, 'Android activity crashed: ' + raw)
-            receipts = []
-            for line in raw.splitlines():
-                if 'PocketCaretCompat' in line:
-                    raise ValueError('Native caret event transport unavailable: ' + line)
-                receipt = parse_receipt_line(line)
-                if receipt is None:
+        ime_identity = dict(sourceCommit=source, sourceTree=tree, runId=build['runId'],
+                            runAttempt=build['runAttempt'], integrationApkSha256=build['integrationApkSha256'],
+                            sdkReceiptSha256=digest(args.sdk_receipt))
+        ime_guard = ControlledImeGuard(adb=adb, identity=ime_identity, record=ime_record, nonce=nonce, serial=args.serial)
+        def run_compatibility():
+            nonlocal activity_launched, collection, report
+            adb('shell', 'wm', 'size', '1080x2400')
+            adb('shell', 'wm', 'density', '420')
+            adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
+            adb('logcat', '-c')
+            started = adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/local.pocketchat.GeckoCaretCompatibilityIntegrationActivity',
+                '--ez', 'normalAcceptance', str(args.normal_acceptance).lower(), '--es', 'sourceCommit', source,
+                '--es', 'runId', build['runId'], '--es', 'runAttempt', build['runAttempt'], '--es', 'eventNonce', nonce)
+            require('Status: ok' in started, 'Actual integration Activity did not start: ' + started)
+            activity_launched = True
+            collection = dict(schema=1, scope='host-artifact-io', activeOperationBudgetMillis=300000,
+                              readOnlyDrainBudgetMillis=600000,
+                              receiptCaptureStartedAtMonotonicNanos=time.monotonic_ns())
+            expires = time.monotonic() + 300
+            while time.monotonic() < expires:
+                raw = adb('logcat', '-d', '-s', 'PocketGeckoIntegration:I', 'PocketCaretCompat:E', 'AndroidRuntime:E', '*:S')
+                require('FATAL EXCEPTION' not in raw, 'Android activity crashed: ' + raw)
+                receipts = []
+                for line in raw.splitlines():
+                    if 'PocketCaretCompat' in line:
+                        raise ValueError('Native caret event transport unavailable: ' + line)
+                    receipt = parse_receipt_line(line)
+                    if receipt is None:
+                        continue
+                    require(receipt.get('runNonce') == nonce and receipt.get('fixtureAction') == 'caretCompatibility'
+                            and receipt.get('processSlot') == 0, 'Foreign native caret event receipt')
+                    require(receipt.get('kind') != 'eventTransportError', 'Native complete event publication failed: ' + str(receipt))
+                    receipts.append(receipt)
+                # Validate the ENTIRE receipt snapshot before input. Passive immutable
+                # evidence must not consume the Activity's unchanged input deadlines.
+                dispatcher.ingest(receipts)
+                if not dispatcher.terminal:
+                    time.sleep(.25)  # Receipt polling only; never pace/retry hardware input.
                     continue
-                require(receipt.get('runNonce') == nonce and receipt.get('fixtureAction') == 'caretCompatibility'
-                        and receipt.get('processSlot') == 0, 'Foreign native caret event receipt')
-                require(receipt.get('kind') != 'eventTransportError', 'Native complete event publication failed: ' + str(receipt))
-                receipts.append(receipt)
-            # Validate the ENTIRE receipt snapshot before input. Passive immutable
-            # evidence must not consume the Activity's unchanged input deadlines.
-            dispatcher.ingest(receipts)
-            if not dispatcher.terminal:
-                time.sleep(.25)  # Receipt polling only; never pace/retry hardware input.
-                continue
-            # Read-only collection has its own finite budget. No input executes
-            # while all original bytes undergo the unchanged ordered decoder.
-            collection['receiptCaptureCompletedAtMonotonicNanos'] = time.monotonic_ns()
-            collection['receiptCaptureDurationNanos'] = (collection['receiptCaptureCompletedAtMonotonicNanos']
-                                                        - collection['receiptCaptureStartedAtMonotonicNanos'])
-            collection['drainStartedAtMonotonicNanos'] = time.monotonic_ns()
-            try:
-                dispatcher.drain(timeout=600)
-            finally:
-                collection['drainCompletedAtMonotonicNanos'] = time.monotonic_ns()
-                collection['drainDurationNanos'] = (collection['drainCompletedAtMonotonicNanos']
-                                                   - collection['drainStartedAtMonotonicNanos'])
-            for receipt in dispatcher.receipts:
-                event = transfer.read(receipt)
-                if receipt['sequence'] in seen:
-                    continue
-                seen.add(receipt['sequence'])
-                kind, value = event['kind'], event['result']
-                if kind == 'stepNeeded':
-                    actual = dispatcher.actions.get(value['id'])
-                    # A terminal already observed suppresses queued actions; keep
-                    # their original request and honestly record zero executions.
-                    unique(steps, value['id'], actual if actual is not None else dict(value, executions=[]), 'Android action')
-                elif kind == 'check':
-                    unique(checks, value['index'], value, 'check')
-                elif kind == 'checkpoint':
-                    unique(checkpoints, value['index'], value, 'checkpoint')
-                elif kind == 'scenario':
-                    unique(scenarios, value['id'], value, 'scenario')
-                elif kind == 'api':
-                    unique(api, value['index'], value, 'original SDK API')
-                elif kind == 'clipboard':
-                    unique(clipboard, value['index'], value, 'original Android clipboard API')
-                elif kind == 'trustedEvents':
-                    parts = trusted.setdefault(value['id'], [])
-                    expected_offset = sum(len(part['events']) for part in parts)
-                    require(value['offset'] == expected_offset and 0 < len(value['events']) <= 4,
-                            'Trusted event chunk gap/duplicate/overflow')
-                    parts.append(value); chunks.append(value)
-                elif kind == 'report':
-                    require(report is None, 'More than one terminal activity report')
-                    report = value
-            if report is not None:
-                require(report.get('embeddedBuildIdentity') == embedded, 'Activity read a different actual build identity asset')
-                require(report.get('mode') == ('normal' if args.normal_acceptance else 'diagnostic')
-                        and report.get('diagnosticOnly') is (not args.normal_acceptance), 'Activity mode differs')
-                save(report)
-                require(report['status'] == 'passed', 'Compatibility activity failed: ' + str(report.get('error')))
-                if args.normal_acceptance:
-                    from check_caret_compat_evidence import verify_report
-                    verify_report(report, build=build, sdk=sdk, audit=installed_audit,
-                                  source=source, run_id=build["runId"], run_attempt=build["runAttempt"],
-                                  build_hash=digest(args.build_receipt), sdk_hash=digest(args.sdk_receipt),
-                                  audit_hash=digest(audit_path), artifact_root=args.root, sdk_raw=args.sdk_receipt.read_bytes())
-                (out / 'gecko-caret-compat-screen.png').write_bytes(subprocess.check_output(
-                    [args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30))
-                print(json.dumps({'status': report['status'], 'scenarioCount': len(scenarios),
-                                  'checkCount': len(checks), 'mode': report['mode'],
-                                  'controlledCaretCompatibilityAcceptance': args.normal_acceptance,
-                                  'physicalPhoneAcceptance': False, 'vendorKeyboardUiAcceptance': False}), flush=True)
-                return
-            time.sleep(.25)  # Poll the completed workload; never pace/retry input characters.
-        raise TimeoutError('No completed real Gecko caret compatibility report')
+                # Read-only collection has its own finite budget. No input executes
+                # while all original bytes undergo the unchanged ordered decoder.
+                collection['receiptCaptureCompletedAtMonotonicNanos'] = time.monotonic_ns()
+                collection['receiptCaptureDurationNanos'] = (collection['receiptCaptureCompletedAtMonotonicNanos']
+                                                            - collection['receiptCaptureStartedAtMonotonicNanos'])
+                collection['drainStartedAtMonotonicNanos'] = time.monotonic_ns()
+                try:
+                    dispatcher.drain(timeout=600)
+                finally:
+                    collection['drainCompletedAtMonotonicNanos'] = time.monotonic_ns()
+                    collection['drainDurationNanos'] = (collection['drainCompletedAtMonotonicNanos']
+                                                       - collection['drainStartedAtMonotonicNanos'])
+                for receipt in dispatcher.receipts:
+                    event = transfer.read(receipt)
+                    if receipt['sequence'] in seen:
+                        continue
+                    seen.add(receipt['sequence'])
+                    kind, value = event['kind'], event['result']
+                    if kind == 'stepNeeded':
+                        actual = dispatcher.actions.get(value['id'])
+                        # A terminal already observed suppresses queued actions; keep
+                        # their original request and honestly record zero executions.
+                        unique(steps, value['id'], actual if actual is not None else dict(value, executions=[]), 'Android action')
+                    elif kind == 'check':
+                        unique(checks, value['index'], value, 'check')
+                    elif kind == 'checkpoint':
+                        unique(checkpoints, value['index'], value, 'checkpoint')
+                    elif kind == 'scenario':
+                        unique(scenarios, value['id'], value, 'scenario')
+                    elif kind == 'api':
+                        unique(api, value['index'], value, 'original SDK API')
+                    elif kind == 'clipboard':
+                        unique(clipboard, value['index'], value, 'original Android clipboard API')
+                    elif kind == 'trustedEvents':
+                        parts = trusted.setdefault(value['id'], [])
+                        expected_offset = sum(len(part['events']) for part in parts)
+                        require(value['offset'] == expected_offset and 0 < len(value['events']) <= 4,
+                                'Trusted event chunk gap/duplicate/overflow')
+                        parts.append(value); chunks.append(value)
+                    elif kind == 'report':
+                        require(report is None, 'More than one terminal activity report')
+                        report = value
+                if report is not None:
+                    require(report.get('embeddedBuildIdentity') == embedded, 'Activity read a different actual build identity asset')
+                    require(report.get('mode') == ('normal' if args.normal_acceptance else 'diagnostic')
+                            and report.get('diagnosticOnly') is (not args.normal_acceptance), 'Activity mode differs')
+                    save(report)
+                    require(report['status'] == 'passed', 'Compatibility activity failed: ' + str(report.get('error')))
+                    if args.normal_acceptance:
+                        from check_caret_compat_evidence import verify_report
+                        verify_report(report, build=build, sdk=sdk, audit=installed_audit,
+                                      source=source, run_id=build["runId"], run_attempt=build["runAttempt"],
+                                      build_hash=digest(args.build_receipt), sdk_hash=digest(args.sdk_receipt),
+                                      audit_hash=digest(audit_path), artifact_root=args.root, sdk_raw=args.sdk_receipt.read_bytes())
+                    (out / 'gecko-caret-compat-screen.png').write_bytes(subprocess.check_output(
+                        [args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30))
+                    print(json.dumps({'status': report['status'], 'scenarioCount': len(scenarios),
+                                      'checkCount': len(checks), 'mode': report['mode'],
+                                      'controlledCaretCompatibilityAcceptance': args.normal_acceptance,
+                                      'physicalPhoneAcceptance': False, 'vendorKeyboardUiAcceptance': False}), flush=True)
+                    return 0
+                time.sleep(.25)  # Poll the completed workload; never pace/retry input characters.
+            raise TimeoutError('No completed real Gecko caret compatibility report')
+        ime_guard.run(run_compatibility)
     except Exception as error:
         if installed_audit is not None:
             if report is None:
@@ -467,6 +484,12 @@ def main():
                 error=str(error), sourceCommit=source, runId=build['runId'], runAttempt=build['runAttempt']), indent=2) + '\n')
         raise
     finally:
+        for signum, handler in signal_handlers.items():
+            signal.signal(signum, handler)
+        ime_path = out / 'caret-ime-environment.json'
+        ime_temporary = ime_path.with_suffix('.partial')
+        ime_temporary.write_text(json.dumps(ime_record, ensure_ascii=False, indent=2) + '\n')
+        ime_temporary.replace(ime_path)
         for server in servers:
             server.shutdown(); server.server_close()
 

@@ -2,15 +2,18 @@
 """Actual Android screenshots of production UI; never touches the formal app."""
 import argparse,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET
 import http.server,importlib.util,threading,uuid
+import sys
 
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
 p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()
 source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
 package='local.pocketchat.test';scenes=['chat','environments','network','proxy','entries','browser','preferences'];records=[]
+sys.path.insert(0,str(root/'tools/gecko'))
+from ui_visual_capture import UiVisualCapture
+ui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')
 def adb(*values):return subprocess.check_output([args.adb,'-s',args.serial,*values],timeout=90).decode(errors='replace')
-def dump():
-    adb('shell','uiautomator','dump','/sdcard/ui-visual.xml')
-    return adb('shell','cat','/sdcard/ui-visual.xml')
+def dump(deadline=None):
+    return ui_capture.read(deadline=deadline)
 def click(xml,label):
     node=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text')==label)
     x1,y1,x2,y2=map(int,re.findall(r'\d+',node.attrib['bounds']));adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
@@ -36,7 +39,7 @@ def capture(variant,width,height,scale,scene):
     required={'chat':'当前环境','environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息'}[scene]
     deadline=time.monotonic()+35
     while True:
-        xml=dump()
+        xml=dump(deadline=deadline)
         runtime=adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         if 'FATAL EXCEPTION' in runtime:raise AssertionError((variant,scene,'Android UI crashed',runtime[-5000:]))
         if required in xml:break

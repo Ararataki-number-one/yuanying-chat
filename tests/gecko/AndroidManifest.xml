@@ -12,6 +12,10 @@
     <provider android:name="local.pocketchat.AppUpdateRouteIntegrationActivity$Control7" android:authorities="local.pocketchat.test.test-update-route7" android:exported="false" android:process=":profile7" />
     <activity android:name="local.pocketchat.GeckoPerformanceIntegrationActivity" android:exported="true" />
     <activity android:name="local.pocketchat.GeckoCaretCompatibilityIntegrationActivity" android:exported="true" />
+    <service android:name="local.pocketchat.ControlledCaretInputMethodService" android:exported="true" android:permission="android.permission.BIND_INPUT_METHOD" android:process=":caret_controlled_ime">
+      <intent-filter><action android:name="android.view.InputMethod" /></intent-filter>
+      <meta-data android:name="android.view.im" android:resource="@xml/caret_controlled_input_method" />
+    </service>
     <activity android:name="local.pocketchat.GeckoConnectionPoolIntegrationActivity" android:exported="true" />
     <activity android:name="local.pocketchat.NativeProbeIntegrationActivity" android:exported="true" />
     <activity android:name="local.pocketchat.PreconnectIntegrationActivity" android:exported="true" />

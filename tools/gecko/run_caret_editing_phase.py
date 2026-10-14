@@ -35,19 +35,59 @@ def editing_commands(args):
     return performance, caret
 
 
-def run_workloads(args, record):
+def run_workloads(args, record, verify_caret_environment=None):
     failed = False
-    for label, command in zip(('original-performance-wrapper', 'caret-compatibility'), editing_commands(args)):
-        row = dict(name=label, command=command, invocationCount=1, startedAtMonotonicNanos=time.monotonic_ns())
-        record.setdefault('workloads', []).append(row)
-        try:
-            result = subprocess.run(command, cwd=args.root, check=False)
-            row['exitCode'] = result.returncode
-            require(result.returncode >= 0, 'Editing fixture process was terminated; do not launch another workload')
-            failed |= result.returncode != 0
-        finally:
-            row['completedAtMonotonicNanos'] = time.monotonic_ns()
+    for index, (label, command) in enumerate(zip(('original-performance-wrapper', 'caret-compatibility'), editing_commands(args))):
+        def invoke():
+            row = dict(name=label, command=command, invocationCount=1, startedAtMonotonicNanos=time.monotonic_ns())
+            record.setdefault('workloads', []).append(row)
+            try:
+                result = subprocess.run(command, cwd=args.root, check=False)
+                row['exitCode'] = result.returncode
+                require(result.returncode >= 0, 'Editing fixture process was terminated; do not launch another workload')
+                return result.returncode
+            finally:
+                row['completedAtMonotonicNanos'] = time.monotonic_ns()
+        code = invoke()
+        if index == 1 and verify_caret_environment is not None:
+            # The runner selects its IME after its final package reset and must
+            # restore it before this phase permits the later real HOME suites.
+            verify_caret_environment()
+        failed |= code != 0
     return 1 if failed else 0
+
+
+def verify_caret_ime_environment(path, identity):
+    from caret_ime_guard import COMPONENT, IDENTITY_FIELDS
+    require(path.is_file(), 'Missing actual controlled IME restoration receipt; later HOME suites must not run')
+    value = strict_json(path.read_text())
+    require(type(value.get('schema')) is int and value['schema'] == 1
+            and value.get('exactFixtureComponent') == COMPONENT
+            and value.get('serial') == SERIAL and type(value.get('user')) is int and value['user'] == 0,
+            'Controlled IME receipt component/device differs')
+    bound = value.get('identity')
+    require(isinstance(bound, dict) and all(bound.get(key) == identity.get(key) for key in IDENTITY_FIELDS),
+            'Controlled IME restoration receipt source/run/APK/SDK differs')
+    require(value.get('restorationVerified') is True and not value.get('restoreError')
+            and not value.get('fatal') and all(isinstance(value.get(key), dict) and value[key]
+                for key in ('initial', 'during', 'restored')),
+            'Exact IME restoration was not proved; later HOME suites must not run')
+    require(value.get('failureStage') in (None, 'workload')
+            and value.get('errorType') not in ('KeyboardInterrupt', 'SystemExit'),
+            'Controlled IME preflight, exit status, or interruption failed; later HOME suites must not run')
+    state_keys = ('settings', 'selectedComponent', 'enabledComponents', 'actualEnabledComponents',
+                  'registeredComponents', 'actualSelectedComponent')
+    require(all(key in value['initial'] and key in value['restored']
+                and value['initial'][key] == value['restored'][key] for key in state_keys),
+            'Actual selected/enabled IME and raw secure settings were not exactly restored')
+    phases = [value.get(key) for key in ('prepareStartedAtMonotonicNanos', 'preparedAtMonotonicNanos',
+              'workloadStartedAtMonotonicNanos', 'workloadCompletedAtMonotonicNanos',
+              'restoreStartedAtMonotonicNanos', 'restoredAtMonotonicNanos')]
+    require(all(type(stamp) is int and stamp > 0 for stamp in phases) and phases == sorted(phases)
+            and value.get('mutationAttempted') is True
+            and type(value.get('workloadInvocationCount')) is int and value['workloadInvocationCount'] == 1,
+            'Controlled IME phase/workload receipt incomplete')
+    return value
 
 
 def main():
@@ -93,7 +133,14 @@ def main():
             return subprocess.run([args.adb, '-s', args.serial, *parts], check=True,
                                   text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=8).stdout.strip()
         guard = LauncherGuard(adb=adb, identity=identity, record=record, nonce=nonce, serial=args.serial)
-        exit_code = guard.run(lambda: run_workloads(args, record))
+        ime_path = args.out / 'caret-compat/caret-ime-environment.json'
+        require(not ime_path.exists(), 'Refuse stale IME guard receipt before the once-only fixture')
+        def verify_ime_environment():
+            ime = verify_caret_ime_environment(ime_path, identity)
+            record['imeEnvironmentReceipt'] = str(ime_path.relative_to(args.out))
+            record['imeEnvironmentReceiptSha256'] = digest(ime_path)
+            record['imeRestorationVerified'] = ime['restorationVerified']
+        exit_code = guard.run(lambda: run_workloads(args, record, verify_ime_environment))
         record['phaseStatus'] = 'passed' if exit_code == 0 else 'workload-failed-restored'
     except BaseException as error:
         record.update(phaseStatus='fatal-environment-failure', phaseErrorType=type(error).__name__, phaseError=str(error))

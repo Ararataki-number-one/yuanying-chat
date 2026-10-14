@@ -852,6 +852,25 @@ def verify_original_burst(report, *, source, run_id, run_attempt, identity, side
 EVIDENCE_FILES = ('installed-apk-definition-audit.json', 'sdk-build-receipt.json',
                   'caret-apk-build-receipt.json', 'gecko-caret-compat-results.json',
                   'gecko-performance-results.json', 'gecko-performance-build-identity.json')
+IME_EVIDENCE_FILES = ('caret-ime-environment.json', 'editing-phase-environment.json')
+IME_SERVICE_SOURCE = 'tests/gecko/ControlledCaretInputMethodService.java'
+
+
+def selected_controlled_ime(source, artifact_root, source_reader):
+    # Actual publication uses exact Git tree membership, never current workspace
+    # presence or an optional field in a claimed report. Injected readers are
+    # only for legacy, explicitly synthetic parser controls.
+    if source_reader is not None:
+        try:
+            return source_reader(source, IME_SERVICE_SOURCE)
+        except FileNotFoundError:
+            return None
+    names = subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', source, '--', IME_SERVICE_SOURCE],
+                                    cwd=artifact_root, stderr=subprocess.PIPE).decode().splitlines()
+    if not names:
+        return None
+    require(names == [IME_SERVICE_SOURCE], 'selected controlled IME source path differs')
+    return subprocess.check_output(['git', 'show', source + ':' + IME_SERVICE_SOURCE], cwd=artifact_root, stderr=subprocess.PIPE)
 
 
 def verify_caret_evidence(directory, source, *, artifact_root=ROOT, source_reader=None):
@@ -891,6 +910,25 @@ def verify_caret_evidence(directory, source, *, artifact_root=ROOT, source_reade
         build_hash=hashes['caret-apk-build-receipt.json'], sdk_raw=raw['sdk-build-receipt.json'],
         artifact_root=artifact_root, source_reader=source_reader)
     common = report['commonInstalledIdentity']
+    controlled_source = selected_controlled_ime(source, artifact_root, source_reader)
+    if controlled_source is not None:
+        require(type(controlled_source) is bytes and controlled_source, 'selected test IME source missing')
+        descriptor = 'Llocal/pocketchat/ControlledCaretInputMethodService;'
+        definitions = [name for row in audit['dex'] for name in row['classDefinitions']]
+        require(definitions.count(descriptor) == 1 and type(audit.get('controlledImeDefinitionCount')) is int
+                and audit['controlledImeDefinitionCount'] == 1, 'actual installed controlled IME definition missing/duplicated')
+        for name in IME_EVIDENCE_FILES:
+            require((directory / name).is_file(), 'required controlled IME evidence artifact missing: ' + name)
+            raw[name] = (directory / name).read_bytes()
+            values[name] = _sdk.strict_json(raw[name]); hashes[name] = digest(raw[name])
+        contract_spec = importlib.util.spec_from_file_location('caret_ime_release_contract', Path(__file__).with_name('caret_ime_contract.py'))
+        contract = importlib.util.module_from_spec(contract_spec); contract_spec.loader.exec_module(contract)
+        identity = dict(sourceCommit=source, sourceTree=common['sourceTree'], runId=run_id, runAttempt=run_attempt,
+                        integrationApkSha256=build['integrationApkSha256'], sdkReceiptSha256=hashes['sdk-build-receipt.json'])
+        result['controlledImeEnvironment'] = contract.verify_ime_environment(values['caret-ime-environment.json'],
+            values['editing-phase-environment.json'], identity=identity, nonce=report['runNonce'],
+            raw_sha256=hashes['caret-ime-environment.json'])
+        result['controlledImeSourceSha256'] = digest(controlled_source)
     return dict(result, status='passed', sourceCommit=source, sourceTree=common['sourceTree'],
         runId=run_id, runAttempt=run_attempt, integrationApkSha256=build['integrationApkSha256'],
         releaseApkSha256=build['releaseApkSha256'], sdkManifestSha256=build['sdkManifestSha256'],

@@ -33,7 +33,8 @@ for name in ['caret-document-observer-host-results.json','resource-observer-host
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['sdk-build-receipt.json','derived-sdk-verification.json','derived-sdk-input.json','caret-apk-build-receipt.json','gecko-performance-build-identity.json','installed-apk-read-performance-before.json','installed-apk-read-performance-after.json','editing-phase-environment.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
-for name in ['gecko-caret-compat-results.json','gecko-caret-compat-screen.png','gecko-caret-compat-failure-log.txt','gecko-caret-compat-failure-window.txt','gecko-caret-compat-failure-activity.txt','gecko-caret-compat-failure-screen.png','gecko-caret-compat-failure-ui.xml','installed-apk-definition-audit.json','preflight-failure.json','installed-apk-read-caret.json']:
+if (out/'ui-visual-capture-attempts.json').exists():shutil.copy2(out/'ui-visual-capture-attempts.json',stage/'ui-visual-capture-attempts.json')
+for name in ['gecko-caret-compat-results.json','gecko-caret-compat-screen.png','gecko-caret-compat-failure-log.txt','gecko-caret-compat-failure-window.txt','gecko-caret-compat-failure-activity.txt','gecko-caret-compat-failure-screen.png','gecko-caret-compat-failure-ui.xml','installed-apk-definition-audit.json','preflight-failure.json','installed-apk-read-caret.json','caret-ime-environment.json']:
     if (out/'caret-compat'/name).exists():shutil.copy2(out/'caret-compat'/name,stage/name)
 for pattern in ['environment-spec-*.txt','environment-intent-*.txt','gecko-identity-prototype-*.txt','gecko-template-*.txt','resource-pressure-*.txt']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)

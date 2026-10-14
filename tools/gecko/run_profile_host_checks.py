@@ -29,6 +29,9 @@ def main():
     input_paths.update((ROOT / "tests").rglob("*.cjs"))
     input_paths.update((ROOT / "tests/gecko/assets").glob("*.js"))
     input_paths.add(ROOT/'tests/fixtures/android-launcher-package-86db516.txt')
+    input_paths.add(ROOT/'tests/gecko/AndroidManifest.xml')
+    input_paths.update((ROOT/'tests/gecko/res').rglob('*.xml'))
+    input_paths.update(ROOT/'tools/gecko'/name for name in ('caret_ime_guard.py','caret_ime_contract.py','ui_visual_capture.py','caret_build_identity.py'))
     input_paths.add(Path(__file__).resolve())
     input_paths.add(ROOT/'tools/gecko/check_template_evidence.py')
     input_paths.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
@@ -184,6 +187,11 @@ def main():
     files.add(ROOT/'tests/fixtures/android-launcher-package-86db516.txt')
     files.update((ROOT/'tests/gecko/GeckoCaretCompatibilityIntegrationActivity.java',
                   ROOT/'tests/gecko_caret_input_diagnostics_test.py'))
+    files.update(ROOT/'tools/gecko'/name for name in ('caret_ime_guard.py','caret_ime_contract.py','ui_visual_capture.py','caret_build_identity.py'))
+    files.update((ROOT/'tests/gecko/AndroidManifest.xml',ROOT/'tests/gecko/ControlledCaretInputMethodService.java',
+                  ROOT/'tests/gecko/run_gecko_caret_compat.py',ROOT/'tests/gecko/run_ui_visuals.py',
+                  ROOT/'tests/gecko_ui_visual_capture_test.py'))
+    files.update((ROOT/'tests/gecko/res').rglob('*.xml'))
     pressure_receipt=output / "resource-pressure-host-results.json"
     subprocess.run([sys.executable,str(ROOT / "tools/gecko/run_resource_host_checks.py"),"--json-jar",str(json_jar),"--output",str(pressure_receipt)],cwd=ROOT,check=True)
     pressure=json.loads(pressure_receipt.read_text());results.append({"test":"resource-pressure-host","report":str(pressure_receipt.relative_to(ROOT)),"passed":pressure["passed"],"actualAndroidExecution":False})
