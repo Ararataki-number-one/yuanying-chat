@@ -345,6 +345,32 @@ def verify_measured_points(snapshot):
     return points
 
 
+def verify_evidence_collection(report):
+    collection = report.get('evidenceCollection')
+    phases = [('receiptCaptureStartedAtMonotonicNanos', 'receiptCaptureCompletedAtMonotonicNanos', 'receiptCaptureDurationNanos'),
+              ('drainStartedAtMonotonicNanos', 'drainCompletedAtMonotonicNanos', 'drainDurationNanos')]
+    fields = {'schema', 'scope', 'activeOperationBudgetMillis', 'readOnlyDrainBudgetMillis'}
+    fields.update(field for phase in phases for field in phase)
+    require(isinstance(collection, dict) and set(collection) == fields
+            and type(collection.get('schema')) is int and collection['schema'] == 1
+            and collection.get('scope') == 'host-artifact-io'
+            and type(collection.get('activeOperationBudgetMillis')) is int and collection['activeOperationBudgetMillis'] == 300000
+            and type(collection.get('readOnlyDrainBudgetMillis')) is int and collection['readOnlyDrainBudgetMillis'] == 600000,
+            'host artifact collection scope or operation/drain budget differs')
+    for start, end, duration in phases:
+        require(integer(collection.get(start), 1) and integer(collection.get(end), 1)
+                and integer(collection.get(duration)) and collection[end] >= collection[start]
+                and collection[duration] == collection[end] - collection[start],
+                'actual host artifact collection phase clocks or duration differ: ' + start)
+    require(collection['receiptCaptureCompletedAtMonotonicNanos'] <= collection['drainStartedAtMonotonicNanos'],
+            'read-only evidence drain overlaps the active receipt capture phase')
+    for action in report['actualAndroidActions']:
+        for execution in action['executions']:
+            require(collection['receiptCaptureStartedAtMonotonicNanos'] <= execution['adbStartedAtMonotonicNanos']
+                    <= execution['adbCompletedAtMonotonicNanos'] <= collection['receiptCaptureCompletedAtMonotonicNanos'],
+                    'actual Android input execution lies outside active receipt capture or during read-only drain')
+
+
 def verify_hardware(actual, expected):
     require(isinstance(actual, dict) and actual.get('id') == expected['id'] and actual.get('scenario') == expected['scenario']
             and actual.get('origin') == 'adb-input-keyboard-and-touch', 'Android action identity')
@@ -372,6 +398,10 @@ def verify_hardware(actual, expected):
         require(isinstance(done, dict) and type(done.get('commandIndex')) is int and done['commandIndex'] == index
                 and done.get('op') == wanted[0] and done.get('completed') is True and type(done.get('invocationCount')) is int
                 and done['invocationCount'] == 1, 'skipped/duplicated Android execution')
+        for start, end in [('adbStartedAtWallTimeMillis', 'adbCompletedAtWallTimeMillis'),
+                           ('adbStartedAtMonotonicNanos', 'adbCompletedAtMonotonicNanos')]:
+            require(integer(done.get(start), 1) and integer(done.get(end), 1) and done[end] >= done[start],
+                    'actual Android execution timestamps missing, malformed or reversed: ' + start)
 
 
 def verify_common_identity(common, build, *, source, run_id, run_attempt):
@@ -479,6 +509,9 @@ def verify_caret_transport(report, *, source, run_id, run_attempt):
             and terminal.get('error') == '' and all(report.get(key) == value for key, value in terminal.items()),
             'full native terminal report missing, failed or mutated')
     require(observed_order == expected_transport_order(report), 'provider event order differs from the actual fixture flow')
+    require(isinstance(transport.get('receiptLedger'), list)
+            and _sdk._typed_equal(transport['receiptLedger'], [row['receipt'] for row in records]),
+            'complete native receipt ledger differs from ordered original provider records')
     for kind, field in [('check', 'checks'), ('checkpoint', 'checkpoints'), ('scenario', 'scenarios'),
                         ('api', 'actualInputConnectionCalls'), ('clipboard', 'actualClipboardCalls'),
                         ('trustedEvents', 'trustedEventChunks')]:
@@ -641,6 +674,7 @@ def verify_report(report, *, build, sdk, audit, source, run_id, run_attempt, bui
     require(isinstance(hardware, list) and len(hardware) == len(wanted_hardware), 'missing/extra Android actions')
     for actual, expected in zip(hardware, wanted_hardware):
         verify_hardware(actual, expected)
+    verify_evidence_collection(report)
     clipboard = report.get('actualClipboardCalls')
     require(clipboard == wanted_clipboard, 'missing/extra/reordered actual ClipboardManager calls')
     cases, checkpoints = report.get('scenarios'), report.get('checkpoints')

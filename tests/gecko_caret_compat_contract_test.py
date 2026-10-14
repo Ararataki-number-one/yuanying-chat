@@ -188,7 +188,10 @@ def fixture(directory):
             else:
                 commands.append(dict(op=op, **{{'text': 'text', 'key': 'code', 'combination': 'codes'}[op]: value}))
         hardware.append(dict(id=row['id'], scenario=row['scenario'], origin='adb-input-keyboard-and-touch', commands=commands,
-            executions=[dict(commandIndex=i, op=command['op'], completed=True, invocationCount=1) for i, command in enumerate(commands)]))
+            executions=[dict(commandIndex=i, op=command['op'], completed=True, invocationCount=1,
+                adbStartedAtWallTimeMillis=1000000+i*3,adbCompletedAtWallTimeMillis=1000002+i*3,
+                adbStartedAtMonotonicNanos=1000000000+i*3000000,adbCompletedAtMonotonicNanos=1002000000+i*3000000)
+                for i, command in enumerate(commands)]))
     scenarios, checkpoints, chunks, flat, projections = [], [], [], {}, {}
     for number, case_id in enumerate(C.IDS):
         events, states = case_events(number); flat[case_id] = events; projections[case_id] = C.vectors(events)
@@ -217,6 +220,10 @@ def fixture(directory):
     common_identity.pop('runId'); common_identity.pop('runAttempt')
     report = dict(schema=1, sourceCommit=SOURCE, runId=RUN, runAttempt=ATTEMPT, runNonce=NONCE,
         observerScriptSha256=observer_hash, mode='normal', status='passed',
+        evidenceCollection=dict(schema=1,scope='host-artifact-io',activeOperationBudgetMillis=300000,readOnlyDrainBudgetMillis=600000,
+            receiptCaptureStartedAtMonotonicNanos=900000000,receiptCaptureCompletedAtMonotonicNanos=1100000000,
+            receiptCaptureDurationNanos=200000000,drainStartedAtMonotonicNanos=1200000000,
+            drainCompletedAtMonotonicNanos=1500000000,drainDurationNanos=300000000),
         commonInstalledIdentity=common_identity,
         diagnosticOnly=False, releaseAcceptance=False, physicalPhoneAcceptance=False, vendorKeyboardUiAcceptance=False,
         controlledCaretCompatibilityAcceptance=True, actualAndroidExecution=True, actualGeckoExecution=True,
@@ -264,7 +271,8 @@ def attach_transport(report):
             eventKind=kind, payloadBytes=len(encoded), payloadSha256=C.digest(encoded))
         records.append(dict(receipt=receipt, rawUtf8=encoded.decode('utf-8')))
     report['eventTransport'] = dict(schema=1, runNonce=NONCE, fixtureAction='caretCompatibility', processSlot=0,
-                                    command=1, buildIdentity=copy.deepcopy(report['commonInstalledIdentity']), records=records)
+                                    command=1, buildIdentity=copy.deepcopy(report['commonInstalledIdentity']), records=records,
+                                    receiptLedger=[copy.deepcopy(row['receipt']) for row in records])
 
 
 def burst(identity):
@@ -423,6 +431,7 @@ class ContractControls(unittest.TestCase):
         encoded = raw(envelope)
         terminal['rawUtf8'] = encoded.decode('utf-8')
         terminal['receipt'].update(payloadBytes=len(encoded), payloadSha256=C.digest(encoded))
+        data['report']['eventTransport']['receiptLedger'][-1]=copy.deepcopy(terminal['receipt'])
         self.assertGreater(len(encoded), 4048)
         self.assertGreater(len(encoded), len(terminal['rawUtf8']))
         self.assertEqual(envelope['event']['result']['scope'], data['report']['scope'])
@@ -710,6 +719,89 @@ class ContractControls(unittest.TestCase):
             with self.subTest(key=key):
                 self.rejected(lambda d, key=key, value=value: d['report']['actualAndroidActions'][0]['executions'][0].__setitem__(key, value))
         self.rejected(lambda d: d['report']['actualAndroidActions'][1]['commands'][2].__setitem__('text', 'QQ'))
+
+    def test_actual_adb_execution_timestamps_require_positive_typed_integers(self):
+        fields=['adbStartedAtWallTimeMillis','adbCompletedAtWallTimeMillis',
+                'adbStartedAtMonotonicNanos','adbCompletedAtMonotonicNanos']
+        for field in fields:
+            for value in [None,True,0,-1,1.5,'1000000',2**63]:
+                data=copy.deepcopy(self.data)
+                execution=data['report']['actualAndroidActions'][0]['executions'][0]
+                execution[field]=value
+                with self.subTest(field=field,value=value),self.assertRaisesRegex(ValueError,'execution timestamps'):
+                    self.verify(data)
+            data=copy.deepcopy(self.data)
+            data['report']['actualAndroidActions'][0]['executions'][0].pop(field)
+            with self.subTest(field=field,mode='missing'),self.assertRaisesRegex(ValueError,'execution timestamps'):
+                self.verify(data)
+
+    def test_actual_adb_completion_cannot_precede_start_in_either_clock(self):
+        for start,end in [('adbStartedAtWallTimeMillis','adbCompletedAtWallTimeMillis'),
+                          ('adbStartedAtMonotonicNanos','adbCompletedAtMonotonicNanos')]:
+            data=copy.deepcopy(self.data)
+            execution=data['report']['actualAndroidActions'][0]['executions'][0]
+            execution[end]=execution[start]-1
+            with self.subTest(clock=start),self.assertRaisesRegex(ValueError,'execution timestamps'):
+                self.verify(data)
+
+    def test_equal_execution_clocks_are_valid_without_a_latency_threshold(self):
+        data=copy.deepcopy(self.data)
+        for action in data['report']['actualAndroidActions']:
+            for execution in action['executions']:
+                execution['adbCompletedAtWallTimeMillis']=execution['adbStartedAtWallTimeMillis']
+                execution['adbCompletedAtMonotonicNanos']=execution['adbStartedAtMonotonicNanos']
+        self.assertEqual(self.verify(data)['scenarios'],14)
+
+    def test_complete_receipt_ledger_cannot_be_omitted_truncated_reordered_or_conflicted(self):
+        for mode in ['missing','truncated','reordered','conflicted','typed-conflict']:
+            data=copy.deepcopy(self.data);transport=data['report']['eventTransport']
+            if mode == 'missing':transport.pop('receiptLedger')
+            elif mode == 'truncated':transport['receiptLedger'].pop()
+            elif mode == 'reordered':transport['receiptLedger'][0],transport['receiptLedger'][1]=transport['receiptLedger'][1],transport['receiptLedger'][0]
+            elif mode == 'conflicted':transport['receiptLedger'][0]['payloadSha256']='f'*64
+            else:transport['receiptLedger'][0]['schema']=True
+            with self.subTest(mode=mode),self.assertRaisesRegex(ValueError,'receipt ledger'):
+                self.verify(data)
+
+    def test_host_artifact_phase_scope_and_exact_budget_labels_are_required(self):
+        for field,value in [('schema',True),('scope','runtime-input-speed'),('activeOperationBudgetMillis',300001),
+                            ('activeOperationBudgetMillis',300000.0),('readOnlyDrainBudgetMillis',600001),
+                            ('readOnlyDrainBudgetMillis',600000.0)]:
+            data=copy.deepcopy(self.data);data['report']['evidenceCollection'][field]=value
+            with self.subTest(field=field,value=value),self.assertRaisesRegex(ValueError,'collection scope'):
+                self.verify(data)
+        data=copy.deepcopy(self.data);data['report'].pop('evidenceCollection')
+        with self.assertRaisesRegex(ValueError,'collection scope'):self.verify(data)
+
+    def test_host_artifact_phase_times_are_typed_ordered_and_exact(self):
+        fields=['receiptCaptureStartedAtMonotonicNanos','receiptCaptureCompletedAtMonotonicNanos','receiptCaptureDurationNanos',
+                'drainStartedAtMonotonicNanos','drainCompletedAtMonotonicNanos','drainDurationNanos']
+        for field in fields:
+            data=copy.deepcopy(self.data);data['report']['evidenceCollection'][field]=True
+            with self.subTest(field=field),self.assertRaisesRegex(ValueError,'collection phase'):
+                self.verify(data)
+        for field,value in [('receiptCaptureDurationNanos',199999999),('drainDurationNanos',299999999),
+                            ('receiptCaptureCompletedAtMonotonicNanos',899999999),('drainCompletedAtMonotonicNanos',1199999999)]:
+            data=copy.deepcopy(self.data);data['report']['evidenceCollection'][field]=value
+            with self.subTest(field=field,value=value),self.assertRaisesRegex(ValueError,'collection phase'):
+                self.verify(data)
+        data=copy.deepcopy(self.data)
+        collection=data['report']['evidenceCollection'];collection['drainStartedAtMonotonicNanos']=1099999999
+        collection['drainDurationNanos']=collection['drainCompletedAtMonotonicNanos']-collection['drainStartedAtMonotonicNanos']
+        with self.assertRaisesRegex(ValueError,'overlaps'):self.verify(data)
+
+    def test_android_input_cannot_run_outside_capture_or_during_read_only_drain(self):
+        for start in [899999999,1200000000]:
+            data=copy.deepcopy(self.data)
+            execution=data['report']['actualAndroidActions'][0]['executions'][0]
+            execution['adbStartedAtMonotonicNanos']=execution['adbCompletedAtMonotonicNanos']=start
+            with self.subTest(start=start),self.assertRaisesRegex(ValueError,'outside active receipt capture'):
+                self.verify(data)
+        data=copy.deepcopy(self.data)
+        execution=data['report']['actualAndroidActions'][0]['executions'][0]
+        execution['adbStartedAtMonotonicNanos']=1100000000
+        execution['adbCompletedAtMonotonicNanos']=1100000001
+        with self.assertRaisesRegex(ValueError,'outside active receipt capture'):self.verify(data)
 
     def test_missing_real_clipboard_and_wrong_single_character_payload(self):
         self.rejected(lambda d: d['report']['actualClipboardCalls'].pop())

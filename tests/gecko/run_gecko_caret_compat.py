@@ -18,7 +18,8 @@ import sys
 import secrets
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'tools/gecko'))
 from caret_build_identity import audit_apk, digest, embedded_identity, require, strict_json, validate_sdk_receipt
-from integration_event_contract import EventTransfer, parse_receipt_line
+from caret_dispatch import CaretDispatch
+from integration_event_contract import parse_receipt_line
 from profile_invocation_contract import verify_installed
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -29,6 +30,48 @@ SEEDS = ['abcdefghij', 'abcdefghij', 'abcdef', 'undo draft', 'left-right', 'clip
 IDS = ['rapid-taps', 'selected-replace', 'arrow-delete', 'undo', 'ime-multiword', 'clipboard-paste',
        'chinese-composition', 'finish-composition', 'batch-commit', 'reversed-selection', 'rejected-input',
        'soft-single-char', 'codepoint-delete', 'noop-composition']
+
+
+def perform_android_action(action, adb):
+    """Execute the complete decoded original request once, without delays or replay."""
+    require(action.get('scenario') in IDS and isinstance(action.get('id'), str)
+            and action['id'].startswith(action['scenario'] + '-'), 'Unexpected fixture action owner')
+    invocations = []
+    for command in action['commands']:
+        require(isinstance(command, dict), 'Original Android command required')
+        if command.get('op') == 'tap':
+            require(set(command) == {'op', 'x', 'y', 'expectedCaret', 'clientPoint', 'nativeGeometry', 'viewport'}
+                    and type(command['x']) is int and type(command['y']) is int
+                    and command['x'] >= 0 and command['y'] >= 0, 'Unexpected original touch action')
+            invocations.append(('shell', 'input', 'tap', str(command['x']), str(command['y'])))
+        elif command.get('op') == 'text':
+            require(set(command) == {'op', 'text'} and command['text'] in ('Q', 'Z', 'X'),
+                    'Unapproved fixture text action')
+            invocations.append(('shell', 'input', 'keyboard', 'text', command['text']))
+        elif command.get('op') == 'key':
+            require(set(command) == {'op', 'code'} and type(command['code']) is int
+                    and command['code'] in (21, 67, 112), 'Unexpected original key action')
+            invocations.append(('shell', 'input', 'keyboard', 'keyevent', str(command['code'])))
+        elif command.get('op') == 'combination':
+            require(set(command) == {'op', 'codes'} and command['codes'] == [113, 54],
+                    'Unexpected original combination')
+            invocations.append(('shell', 'input', 'keyboard', 'keycombination', '113', '54'))
+        else:
+            raise ValueError('Unknown original Android command: ' + repr(command))
+    executions = action['executions']
+    require(executions == [], 'Android action cannot be replayed')
+    for index, (command, invocation) in enumerate(zip(action['commands'], invocations)):
+        execution = dict(commandIndex=index, op=command['op'], invocationCount=1, completed=False)
+        executions.append(execution)
+        execution['adbStartedAtWallTimeMillis'] = time.time_ns() // 1_000_000
+        execution['adbStartedAtMonotonicNanos'] = time.monotonic_ns()
+        try:
+            adb(*invocation)
+            execution['completed'] = True
+        finally:
+            execution['adbCompletedAtMonotonicNanos'] = time.monotonic_ns()
+            execution['adbCompletedAtWallTimeMillis'] = time.time_ns() // 1_000_000
+    return executions
 
 
 def document(case):
@@ -192,7 +235,8 @@ def main():
     report, installed_audit, installed_identity = None, None, None
     activity_launched = False
     nonce = secrets.token_hex(16)
-    transfer = None
+    transfer = dispatcher = None
+    collection = None
     servers = []
 
     def adb(*parts):
@@ -216,7 +260,8 @@ def main():
                      apkDefinitionAuditSha256=digest(out / 'installed-apk-definition-audit.json'),
                      checks=[checks[k] for k in sorted(checks)], scenarios=[scenarios[k] for k in IDS if k in scenarios],
                      checkpoints=[checkpoints[k] for k in sorted(checkpoints)],
-                     actualAndroidActions=list(steps.values()), actualInputConnectionCalls=[api[k] for k in sorted(api)],
+                     actualAndroidActions=list({**(dispatcher.actions if dispatcher is not None else {}), **steps}.values()),
+                     actualInputConnectionCalls=[api[k] for k in sorted(api)],
                      actualClipboardCalls=[clipboard[k] for k in sorted(clipboard)],
                      trustedEventChunks=chunks, actualTrustedEvents=ordered_events,
                      eventVectors={key: event_vectors(events) for key, events in ordered_events.items()},
@@ -224,7 +269,9 @@ def main():
                      eventTransport=dict(schema=1, runNonce=nonce, fixtureAction='caretCompatibility', processSlot=0,
                          command=1, buildIdentity=transfer.identity if transfer is not None else common_expected,
                          records=transfer.records if transfer is not None else [],
+                         receiptLedger=dispatcher.receipts if dispatcher is not None else [],
                          scope='Existing shell-only IntegrationEventStore/provider handoff; complete UTF8 bytes, SHA256, ordered sequence, invocation and installed APK/source/SDK fences.'),
+                     evidenceCollection=collection,
                      device={'sdk': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                              'screen': adb('shell', 'wm', 'size').strip(), 'density': adb('shell', 'wm', 'density').strip()},
                      capabilities={'controlledSdkChineseComposition': True, 'physicalPhoneAcceptance': False,
@@ -259,7 +306,9 @@ def main():
         require('Success' in adb('shell', 'pm', 'clear', PACKAGE), 'Could not clear isolated test package')
         common_installed = strict_json(fetch_event('content://' + PACKAGE + '.evidence/build-identity'))
         verify_installed(common_installed, common_expected)
-        transfer = EventTransfer(identity=common_installed, nonce=nonce, slot=0, action='caretCompatibility', fetch=fetch_event, command=1)
+        dispatcher = CaretDispatch(identity=common_installed, nonce=nonce, slot=0, action='caretCompatibility',
+                                   fetch=fetch_event, command=1, dispatch=lambda value: perform_android_action(value, adb))
+        transfer = dispatcher.transfer
         adb('shell', 'wm', 'size', '1080x2400')
         adb('shell', 'wm', 'density', '420')
         adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
@@ -269,10 +318,14 @@ def main():
             '--es', 'runId', build['runId'], '--es', 'runAttempt', build['runAttempt'], '--es', 'eventNonce', nonce)
         require('Status: ok' in started, 'Actual integration Activity did not start: ' + started)
         activity_launched = True
+        collection = dict(schema=1, scope='host-artifact-io', activeOperationBudgetMillis=300000,
+                          readOnlyDrainBudgetMillis=600000,
+                          receiptCaptureStartedAtMonotonicNanos=time.monotonic_ns())
         expires = time.monotonic() + 300
         while time.monotonic() < expires:
             raw = adb('logcat', '-d', '-s', 'PocketGeckoIntegration:I', 'PocketCaretCompat:E', 'AndroidRuntime:E', '*:S')
             require('FATAL EXCEPTION' not in raw, 'Android activity crashed: ' + raw)
+            receipts = []
             for line in raw.splitlines():
                 if 'PocketCaretCompat' in line:
                     raise ValueError('Native caret event transport unavailable: ' + line)
@@ -282,31 +335,36 @@ def main():
                 require(receipt.get('runNonce') == nonce and receipt.get('fixtureAction') == 'caretCompatibility'
                         and receipt.get('processSlot') == 0, 'Foreign native caret event receipt')
                 require(receipt.get('kind') != 'eventTransportError', 'Native complete event publication failed: ' + str(receipt))
+                receipts.append(receipt)
+            # Validate the ENTIRE receipt snapshot before input. Passive immutable
+            # evidence must not consume the Activity's unchanged input deadlines.
+            dispatcher.ingest(receipts)
+            if not dispatcher.terminal:
+                time.sleep(.25)  # Receipt polling only; never pace/retry hardware input.
+                continue
+            # Read-only collection has its own finite budget. No input executes
+            # while all original bytes undergo the unchanged ordered decoder.
+            collection['receiptCaptureCompletedAtMonotonicNanos'] = time.monotonic_ns()
+            collection['receiptCaptureDurationNanos'] = (collection['receiptCaptureCompletedAtMonotonicNanos']
+                                                        - collection['receiptCaptureStartedAtMonotonicNanos'])
+            collection['drainStartedAtMonotonicNanos'] = time.monotonic_ns()
+            try:
+                dispatcher.drain(timeout=600)
+            finally:
+                collection['drainCompletedAtMonotonicNanos'] = time.monotonic_ns()
+                collection['drainDurationNanos'] = (collection['drainCompletedAtMonotonicNanos']
+                                                   - collection['drainStartedAtMonotonicNanos'])
+            for receipt in dispatcher.receipts:
                 event = transfer.read(receipt)
                 if receipt['sequence'] in seen:
                     continue
                 seen.add(receipt['sequence'])
                 kind, value = event['kind'], event['result']
                 if kind == 'stepNeeded':
-                    unique(steps, value['id'], value, 'Android action')
-                    value['executions'] = []
-                    for index, command in enumerate(value['commands']):
-                        execution = dict(commandIndex=index, op=command['op'], invocationCount=1, completed=False)
-                        value['executions'].append(execution)
-                        if command['op'] == 'tap':
-                            adb('shell', 'input', 'tap', str(command['x']), str(command['y']))
-                        elif command['op'] == 'text':
-                            require(command['text'] in ('Q', 'Z', 'X'), 'Unapproved fixture text action')
-                            adb('shell', 'input', 'keyboard', 'text', command['text'])
-                        elif command['op'] == 'key':
-                            require(command['code'] in (21, 67, 112), 'Unexpected original key action')
-                            adb('shell', 'input', 'keyboard', 'keyevent', str(command['code']))
-                        elif command['op'] == 'combination':
-                            require(command['codes'] == [113, 54], 'Unexpected original combination')
-                            adb('shell', 'input', 'keyboard', 'keycombination', *map(str, command['codes']))
-                        else:
-                            raise ValueError('Unknown original Android command: ' + repr(command))
-                        execution['completed'] = True
+                    actual = dispatcher.actions.get(value['id'])
+                    # A terminal already observed suppresses queued actions; keep
+                    # their original request and honestly record zero executions.
+                    unique(steps, value['id'], actual if actual is not None else dict(value, executions=[]), 'Android action')
                 elif kind == 'check':
                     unique(checks, value['index'], value, 'check')
                 elif kind == 'checkpoint':
