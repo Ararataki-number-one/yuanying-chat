@@ -9,7 +9,7 @@ import zipfile
 import zlib
 import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools/gecko'))
-from caret_build_identity import CARET_HELPER, EDITABLE, FIXTURE, audit_apk, dex_definitions
+from caret_build_identity import CARET_HELPER, EDITABLE, FIXTURE, OBSERVER_ASSET, audit_apk, dex_definitions
 
 
 def minimal_dex(definitions, references=()):
@@ -75,16 +75,35 @@ class DexIdentityTests(unittest.TestCase):
                     if extra:
                         archive.writestr('classes2.dex', minimal_dex(extra))
                     archive.writestr('assets/caret-build-identity.json', json.dumps({'schema': 1}))
+                    archive.writestr('assets/caret-document-observer.js', 'synthetic fixture script')
                 return path
             observer = 'Lorg/mozilla/geckoview/PocketGeckoEditableTrace;'
             positive = audit_apk(package('normal.apk', [EDITABLE, FIXTURE, CARET_HELPER], [observer]))
             self.assertEqual(positive['observerDefinitions'], [])
+            self.assertEqual(positive['observerScriptSha256'], hashlib.sha256(b'synthetic fixture script').hexdigest())
             self.assertEqual(positive['dex'][0]['classDefinitions'], sorted([EDITABLE, FIXTURE, CARET_HELPER]))
             for name, definitions, extra in [('observer.apk', [EDITABLE, FIXTURE, CARET_HELPER, observer], None),
                                              ('missing.apk', [EDITABLE], None),
                                              ('duplicate.apk', [EDITABLE, FIXTURE, CARET_HELPER], [EDITABLE])]:
                 with self.subTest(name=name), self.assertRaises(ValueError):
                     audit_apk(package(name, definitions, extra=extra))
+
+    def test_passive_fixture_asset_is_required_only_in_integration_and_excluded_from_release(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=pathlib.Path(temp)
+            def package(name, definitions, observer=False, identity=False):
+                path=root/name
+                with zipfile.ZipFile(path,'w') as archive:
+                    archive.writestr('classes.dex',minimal_dex(definitions))
+                    if observer:archive.writestr(OBSERVER_ASSET,'synthetic passive observer')
+                    if identity:archive.writestr('assets/caret-build-identity.json','{"schema":1}')
+                return path
+            release=package('release.apk',[EDITABLE])
+            self.assertIsNone(audit_apk(release,package='local.pocketchat',component=None,require_fixture=False)['observerScriptSha256'])
+            with self.assertRaises(ValueError):
+                audit_apk(package('leaked-asset.apk',[EDITABLE],observer=True),package='local.pocketchat',component=None,require_fixture=False)
+            with self.assertRaises(ValueError):
+                audit_apk(package('missing-asset.apk',[EDITABLE,FIXTURE,CARET_HELPER],identity=True))
 
 
 if __name__ == '__main__':

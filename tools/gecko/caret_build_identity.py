@@ -15,6 +15,7 @@ EDITABLE = 'Lorg/mozilla/geckoview/GeckoEditable;'
 FIXTURE = 'Llocal/pocketchat/GeckoCaretCompatibilityIntegrationActivity;'
 CARET_HELPER = 'Llocal/pocketchat/CaretCompatibilityBuildIdentity;'
 IDENTITY_ASSET = 'assets/caret-build-identity.json'
+OBSERVER_ASSET = 'assets/caret-document-observer.js'
 
 
 def require(value, message):
@@ -140,8 +141,12 @@ def audit_apk(path, package='local.pocketchat.test', component='local.pocketchat
         if require_fixture:
             raw = archive.read(IDENTITY_ASSET)
             identity = strict_json(raw)
+            require(OBSERVER_ASSET in archive.namelist(), 'Integration APK passive observation asset missing')
+            observer_raw = archive.read(OBSERVER_ASSET)
         else:
             require(IDENTITY_ASSET not in archive.namelist(), 'Release APK includes caret fixture identity asset')
+            require(OBSERVER_ASSET not in archive.namelist(), 'Release APK includes passive caret fixture observation asset')
+            observer_raw = None
             raw, identity = None, None
     bad = sorted(item for item in definitions if item.startswith(OBSERVER_PREFIXES))
     require(not bad, 'Installed APK contains SDK diagnostic observer definitions: ' + repr(bad))
@@ -152,4 +157,5 @@ def audit_apk(path, package='local.pocketchat.test', component='local.pocketchat
                 definitionCount=len(definitions), dex=records, observerDefinitions=bad,
                 editableDefinitionCount=1, fixtureDefinitionCount=int(FIXTURE in definitions), caretHelperDefinitionCount=int(CARET_HELPER in definitions),
                 embeddedIdentityAssetSha256=hashlib.sha256(raw).hexdigest() if raw is not None else None, embeddedBuildIdentity=identity,
-                sdkManifestSha256=identity.get('sdkManifestSha256') if identity is not None else None)
+                sdkManifestSha256=identity.get('sdkManifestSha256') if identity is not None else None,
+                observerScriptSha256=hashlib.sha256(observer_raw).hexdigest() if observer_raw is not None else None)

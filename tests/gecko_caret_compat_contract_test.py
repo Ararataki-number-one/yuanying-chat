@@ -11,6 +11,7 @@ SPEC = importlib.util.spec_from_file_location('caret_contract', Path(__file__).r
 C = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(C)
 SOURCE, RUN, ATTEMPT = 'a' * 40, '12345', '1'
+NONCE = 'd' * 32
 
 
 def raw(value):
@@ -26,6 +27,9 @@ def event(events, kind, draft, start, end=None, *, key='', data='', input_type='
 
 def snap(number, draft, start, events, end=None, *, focused=True, direction='none'):
     return dict(ready=True, case=number, draft=draft, start=start, end=start if end is None else end,
+                sourceCommit=SOURCE, runId=RUN, runAttempt=ATTEMPT, runNonce=NONCE,
+                documentUrl='http://127.0.0.1:8771/caret?case=' + str(number), timeOrigin=1000 + number,
+                observerWorld='extension-isolated-world', listenerInstallCount=1,
                 direction=direction, focused=focused, otherDraft='untouched independent draft',
                 sendCount=0, cookie='session=synthetic-caret', allTrusted=True, overflow=False,
                 **C.counts(events))
@@ -116,6 +120,10 @@ def fixture(directory):
     protected = directory / 'tests/gecko'; protected.mkdir(parents=True)
     (protected / 'run_gecko_performance.py').write_text('# synthetic protected runner source control\n')
     (protected / 'GeckoPerformanceIntegrationActivity.java').write_text('// synthetic protected activity source control\n')
+    assets = protected / 'assets'; assets.mkdir()
+    observer = assets / 'caret-document-observer.js'
+    observer.write_bytes((C.ROOT / 'tests/gecko/assets/caret-document-observer.js').read_bytes())
+    observer_hash = C.digest(observer.read_bytes())
     def record(path):
         return dict(path=path.name, bytes=path.stat().st_size, sha256=C.digest(path.read_bytes()))
     manifest = dict(schema=1, sdkBuildKind='source-derived-java', sdkCoordinate=C._sdk.SDK_COORDINATE,
@@ -140,6 +148,7 @@ def fixture(directory):
         normalMode=True, sdkObserverIncluded=False)
     embedded = {field: build[field] for field in C.IDENTITY_FIELDS}
     audit = dict(schema=1, apkSha256=build['integrationApkSha256'], package=C.PACKAGE, component=C.COMPONENT,
+        observerScriptSha256=observer_hash,
         definitionCount=3, observerDefinitions=[], editableDefinitionCount=1, fixtureDefinitionCount=1, caretHelperDefinitionCount=1,
         sdkManifestSha256=build['sdkManifestSha256'],
         embeddedIdentityAssetSha256=build['embeddedIdentityAssetSha256'], embeddedBuildIdentity=embedded,
@@ -187,7 +196,8 @@ def fixture(directory):
     common_identity = dict(common_sdk, package=C.PACKAGE, dirtySource=False,
                            apkSha256=build['integrationApkSha256'], sdkBuildIdentity=copy.deepcopy(common_sdk))
     common_identity.pop('runId'); common_identity.pop('runAttempt')
-    report = dict(schema=1, sourceCommit=SOURCE, runId=RUN, runAttempt=ATTEMPT, mode='normal', status='passed',
+    report = dict(schema=1, sourceCommit=SOURCE, runId=RUN, runAttempt=ATTEMPT, runNonce=NONCE,
+        observerScriptSha256=observer_hash, mode='normal', status='passed',
         commonInstalledIdentity=common_identity,
         diagnosticOnly=False, releaseAcceptance=False, physicalPhoneAcceptance=False, vendorKeyboardUiAcceptance=False,
         controlledCaretCompatibilityAcceptance=True, actualAndroidExecution=True, actualGeckoExecution=True,
@@ -200,9 +210,42 @@ def fixture(directory):
         actualTrustedEvents=flat, eventVectors=projections,
         fixtureRequests=[dict(case=i, id=case_id, method='GET', path='/caret') for i, case_id in enumerate(C.IDS)],
         controlledProxyRoutes=[dict(host='127.0.0.1', port=8771, addressType=1, accepted=True)])
+    attach_transport(report)
     return dict(report=report, build=build, sdk=sdk, audit=audit, source=SOURCE, run_id=RUN, run_attempt=ATTEMPT,
                 build_hash=build_hash, sdk_hash=sdk_hash, audit_hash=audit_hash, sdk_raw=sdk_raw,
                 source_reader=source_reader, artifact_root=directory)
+
+
+def attach_transport(report):
+    """Synthetic complete provider handoff for adversarial parser controls only."""
+    fields = {'check':'checks', 'checkpoint':'checkpoints', 'scenario':'scenarios', 'api':'actualInputConnectionCalls',
+              'clipboard':'actualClipboardCalls', 'stepNeeded':'actualAndroidActions', 'trustedEvents':'trustedEventChunks'}
+    terminal = {key:copy.deepcopy(value) for key,value in report.items()
+                if key in ['schema','mode','status','error','diagnosticOnly','releaseAcceptance','actualAndroidExecution',
+                    'actualGeckoExecution','sdkObserverEnabled','sdkObserverAbsenceChecked','sdkObserverClassNamesChecked',
+                    'sourceCommit','runId','runAttempt','runNonce','observerScriptSha256','embeddedBuildIdentity',
+                    'commonInstalledIdentity','domTextWrites','scenarioCount','checkCount','apiCount','checkpointCount',
+                    'controlledCaretCompatibilityAcceptance','physicalPhoneAcceptance','vendorKeyboardUiAcceptance']}
+    records = []
+    for kind, key in C.expected_transport_order(report):
+        if kind == 'report':
+            value = terminal
+        else:
+            rows = report[fields[kind]]
+            wanted = lambda row: (row['id'],row['offset']) if kind == 'trustedEvents' else row['id'] if kind in ['stepNeeded','scenario'] else row['index']
+            value = copy.deepcopy(next(row for row in rows if wanted(row) == key))
+            if kind == 'stepNeeded': value.pop('executions')
+        envelope = dict(schema=1, sourceCommit=SOURCE, buildIdentity=copy.deepcopy(report['commonInstalledIdentity']),
+            runNonce=NONCE, fixtureAction='caretCompatibility', command=1, sequence=len(records)+1,
+            nativeContext='environment-1', processSlot=0, observedAtElapsedRealtime=len(records)+1,
+            event=dict(kind=kind, result=value, nativeContext='environment-1', processSlot=0))
+        encoded = raw(envelope)
+        receipt = dict(kind='eventReceipt', schema=1, runNonce=NONCE, fixtureAction='caretCompatibility',
+            command=1, sequence=len(records)+1, nativeContext='environment-1', processSlot=0,
+            eventKind=kind, payloadBytes=len(encoded), payloadSha256=C.digest(encoded))
+        records.append(dict(receipt=receipt, rawUtf8=encoded.decode('utf-8')))
+    report['eventTransport'] = dict(schema=1, runNonce=NONCE, fixtureAction='caretCompatibility', processSlot=0,
+                                    command=1, buildIdentity=copy.deepcopy(report['commonInstalledIdentity']), records=records)
 
 
 def burst(identity):
@@ -349,6 +392,81 @@ class ContractControls(unittest.TestCase):
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
         self.assertEqual(module.ROOT, staged)
         self.assertFalse((staged / 'app').exists())
+
+    def test_large_complete_native_report_is_transferred_without_logcat_payload(self):
+        data = copy.deepcopy(self.data)
+        # Explicitly fictional large UTF8 report tail recreates the >4048-byte risk.
+        data['report']['scope'] = 'host transport control 你好😀 ' * 300
+        attach_transport(data['report'])
+        terminal = data['report']['eventTransport']['records'][-1]
+        envelope = json.loads(terminal['rawUtf8'])
+        envelope['event']['result']['scope'] = data['report']['scope']
+        encoded = raw(envelope)
+        terminal['rawUtf8'] = encoded.decode('utf-8')
+        terminal['receipt'].update(payloadBytes=len(encoded), payloadSha256=C.digest(encoded))
+        self.assertGreater(len(encoded), 4048)
+        self.assertGreater(len(encoded), len(terminal['rawUtf8']))
+        self.assertEqual(envelope['event']['result']['scope'], data['report']['scope'])
+        self.assertGreater(C.verify_report(**data)['completeProviderEvents'], 129)
+
+    def test_missing_partial_and_duplicate_provider_transport_are_rejected(self):
+        for mutate in [lambda r:r.pop('eventTransport'),
+                       lambda r:r['eventTransport']['records'].pop(),
+                       lambda r:r['eventTransport']['records'].insert(1,copy.deepcopy(r['eventTransport']['records'][0]))]:
+            self.rejected(lambda d,mutate=mutate:mutate(d['report']))
+
+    def test_provider_raw_byte_hash_length_and_truncated_json_are_rejected(self):
+        for mutate in [lambda row:row['receipt'].__setitem__('payloadBytes',row['receipt']['payloadBytes']-1),
+                       lambda row:row['receipt'].__setitem__('payloadSha256','f'*64),
+                       lambda row:row.__setitem__('rawUtf8',row['rawUtf8'][:-4])]:
+            self.rejected(lambda d,mutate=mutate:mutate(d['report']['eventTransport']['records'][-1]))
+        data=copy.deepcopy(self.data);row=data['report']['eventTransport']['records'][-1]
+        row['rawUtf8']=row['rawUtf8'][:4048]
+        encoded=row['rawUtf8'].encode('utf-8');row['receipt'].update(payloadBytes=len(encoded),payloadSha256=C.digest(encoded))
+        with self.assertRaises(ValueError):self.verify(data)
+
+    def test_provider_receipt_nonce_slot_command_sequence_and_kind_fences(self):
+        for key,value in [('runNonce','e'*32),('processSlot',1),('command',2),('sequence',2),
+                          ('fixtureAction','anotherFixture'),('eventKind','report'),('payloadBytes',True)]:
+            self.rejected(lambda d,key=key,value=value:d['report']['eventTransport']['records'][0]['receipt'].__setitem__(key,value))
+
+    def test_rehashed_provider_envelope_foreign_source_build_and_invocation_are_rejected(self):
+        for key,value in [('sourceCommit','f'*40),('runNonce','e'*32),('fixtureAction','anotherFixture'),
+                          ('command',2),('sequence',2),('processSlot',1),('nativeContext','environment-2')]:
+            data=copy.deepcopy(self.data);row=data['report']['eventTransport']['records'][0]
+            envelope=json.loads(row['rawUtf8']);envelope[key]=value
+            encoded=raw(envelope);row['rawUtf8']=encoded.decode('utf-8')
+            row['receipt'].update(payloadBytes=len(encoded),payloadSha256=C.digest(encoded))
+            with self.subTest(field=key),self.assertRaises(ValueError):self.verify(data)
+        data=copy.deepcopy(self.data);row=data['report']['eventTransport']['records'][0]
+        envelope=json.loads(row['rawUtf8']);envelope['buildIdentity']['sdkBuildIdentity']['runAttempt']='9'
+        encoded=raw(envelope);row['rawUtf8']=encoded.decode('utf-8');row['receipt'].update(payloadBytes=len(encoded),payloadSha256=C.digest(encoded))
+        with self.assertRaises(ValueError):self.verify(data)
+
+    def test_rehashed_ordered_records_cannot_reorder_the_original_fixture_events(self):
+        data=copy.deepcopy(self.data);records=data['report']['eventTransport']['records']
+        records[0],records[1]=records[1],records[0]
+        for index,row in enumerate(records,1):
+            envelope=json.loads(row['rawUtf8']);envelope['sequence']=index;encoded=raw(envelope)
+            row['rawUtf8']=encoded.decode('utf-8');row['receipt'].update(sequence=index,payloadBytes=len(encoded),payloadSha256=C.digest(encoded))
+        with self.assertRaises(ValueError):self.verify(data)
+
+    def test_mutated_reconstructed_terminal_result_cannot_override_native_provider_report(self):
+        self.rejected(lambda d:d['report'].__setitem__('vendorKeyboardUiAcceptance',True))
+        data=copy.deepcopy(self.data);row=data['report']['eventTransport']['records'][-1]
+        envelope=json.loads(row['rawUtf8']);envelope['event']['result']['status']='failed'
+        envelope['event']['result']['error']='Document timeout '+('完整失败' * 1200)
+        encoded=raw(envelope);row['rawUtf8']=encoded.decode('utf-8');row['receipt'].update(payloadBytes=len(encoded),payloadSha256=C.digest(encoded))
+        self.assertGreater(len(encoded),4048)
+        self.assertEqual(json.loads(row['rawUtf8'])['event']['result']['error'],envelope['event']['result']['error'])
+        with self.assertRaises(ValueError):self.verify(data)
+
+    def test_isolated_observer_asset_and_snapshot_owner_are_source_bound(self):
+        self.rejected(lambda d:d['report'].__setitem__('observerScriptSha256','f'*64))
+        for key,value in [('runNonce','e'*32),('sourceCommit','f'*40),('runId','9'),('case',1),
+                          ('documentUrl','http://127.0.0.1:8771/caret?case=1'),('timeOrigin',9999),
+                          ('listenerInstallCount',2),('observerWorld','page-main-world')]:
+            self.rejected(lambda d,key=key,value=value:d['report']['scenarios'][0]['actual'].__setitem__(key,value))
 
     def rejected(self, mutate):
         data = copy.deepcopy(self.data); mutate(data)

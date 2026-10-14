@@ -344,6 +344,115 @@ def verify_common_identity(common, build, *, source, run_id, run_attempt):
     return common
 
 
+def expected_transport_order(report):
+    order = []
+    check_index = api_index = hardware_index = checkpoint_index = clipboard_index = 0
+    for case_id, flow in zip(IDS, FLOW):
+        order += [('check', check_index), ('stepNeeded', f'{case_id}-focus-{hardware_index}'), ('check', check_index + 1)]
+        check_index += 2; hardware_index += 1
+        for step in flow:
+            kind = step[0]
+            if kind == 'hw':
+                order.append(('stepNeeded', f'{case_id}-{step[1]}-{hardware_index}')); hardware_index += 1
+            elif kind == 'api':
+                order += [('api', api_index), ('check', check_index)]; api_index += 1; check_index += 1
+            elif kind == 'clipboard':
+                order.append(('clipboard', clipboard_index)); clipboard_index += 1
+            elif kind == 'cp':
+                order.append(('checkpoint', checkpoint_index)); checkpoint_index += 1
+                order += [('check', check_index + offset) for offset in range(3)]; check_index += 3
+            elif kind == 'extra':
+                order.append(('check', check_index)); check_index += 1
+        order += [('trustedEvents', (row['id'], row['offset'])) for row in report['trustedEventChunks'] if row['id'] == case_id]
+        order.append(('scenario', case_id))
+    order.append(('report', None))
+    return order
+
+
+def verify_caret_transport(report, *, source, run_id, run_attempt):
+    """Reconstruct the actual provider records; never accept a partial log payload."""
+    transport = report.get('eventTransport')
+    require(isinstance(transport, dict) and type(transport.get('schema')) is int and transport['schema'] == 1,
+            'complete owned caret event transport missing')
+    nonce = transport.get('runNonce')
+    require(hex_value(nonce, 32) and report.get('runNonce') == nonce
+            and transport.get('fixtureAction') == 'caretCompatibility'
+            and type(transport.get('processSlot')) is int and transport['processSlot'] == 0
+            and type(transport.get('command')) is int and transport['command'] == 1,
+            'caret transport invocation/slot/action/command differs')
+    common = report['commonInstalledIdentity']
+    require(transport.get('buildIdentity') == common, 'caret transport differs from actual installed identity')
+    records = transport.get('records')
+    require(isinstance(records, list) and 1 <= len(records) <= 4096, 'complete ordered provider records missing')
+    collected = {kind: [] for kind in ['check', 'checkpoint', 'scenario', 'api', 'clipboard', 'stepNeeded', 'trustedEvents']}
+    terminal, observed_order = None, []
+    for sequence, row in enumerate(records, 1):
+        require(isinstance(row, dict) and set(row) == {'receipt', 'rawUtf8'} and isinstance(row['rawUtf8'], str),
+                'original provider receipt and complete UTF8 payload required')
+        raw = row['rawUtf8'].encode('utf-8', errors='strict')
+        receipt = row['receipt']
+        require(isinstance(receipt, dict) and receipt.get('kind') == 'eventReceipt'
+                and type(receipt.get('schema')) is int and receipt['schema'] == 1
+                and type(receipt.get('payloadBytes')) is int and receipt['payloadBytes'] == len(raw)
+                and 0 < len(raw) <= 2 * 1024 * 1024 and receipt.get('payloadSha256') == digest(raw),
+                'provider payload UTF8 byte bound/length/hash differs')
+        envelope = _sdk.strict_json(raw)
+        expected = dict(runNonce=nonce, fixtureAction='caretCompatibility', command=1, sequence=sequence,
+                        nativeContext='environment-1', processSlot=0)
+        for key, wanted in expected.items():
+            require(type(receipt.get(key)) is type(wanted) and receipt[key] == wanted
+                    and type(envelope.get(key)) is type(wanted) and envelope[key] == wanted,
+                    'provider source/run/ordered sequence fence differs: ' + key)
+        require(type(envelope.get('schema')) is int and envelope['schema'] == 1
+                and envelope.get('sourceCommit') == source and envelope.get('buildIdentity') == common
+                and integer(envelope.get('observedAtElapsedRealtime')),
+                'provider envelope source/build/observation identity differs')
+        event = envelope.get('event')
+        require(isinstance(event, dict) and event.get('kind') == receipt.get('eventKind')
+                and event.get('nativeContext') == 'environment-1' and type(event.get('processSlot')) is int
+                and event['processSlot'] == 0 and isinstance(event.get('result'), dict),
+                'complete original provider event/result differs')
+        kind, value = event['kind'], event['result']
+        require(terminal is None and kind in set(collected) | {'report'}, 'unexpected, failed or post-terminal provider event')
+        key = None if kind == 'report' else ((value.get('id'), value.get('offset')) if kind == 'trustedEvents'
+              else value.get('id') if kind in ['stepNeeded', 'scenario'] else value.get('index'))
+        observed_order.append((kind, key))
+        if kind == 'report':
+            require(sequence == len(records), 'terminal provider report is not the final event')
+            terminal = value
+        else:
+            collected[kind].append(value)
+    require(isinstance(terminal, dict) and terminal.get('status') == 'passed'
+            and terminal.get('error') == '' and all(report.get(key) == value for key, value in terminal.items()),
+            'full native terminal report missing, failed or mutated')
+    require(observed_order == expected_transport_order(report), 'provider event order differs from the actual fixture flow')
+    for kind, field in [('check', 'checks'), ('checkpoint', 'checkpoints'), ('scenario', 'scenarios'),
+                        ('api', 'actualInputConnectionCalls'), ('clipboard', 'actualClipboardCalls'),
+                        ('trustedEvents', 'trustedEventChunks')]:
+        require(collected[kind] == report.get(field), 'provider raw events differ from reconstructed ' + field)
+    actions = report.get('actualAndroidActions')
+    require(isinstance(actions, list) and collected['stepNeeded'] ==
+            [{key: value for key, value in action.items() if key != 'executions'} for action in actions],
+            'provider original Android requests differ from executed actions')
+    for number, case in enumerate(report.get('scenarios', [])):
+        snapshots = [case.get('initialSnapshot'), case.get('focusedInitial'), case.get('actual')]
+        snapshots += [checkpoint.get('actual') for checkpoint in case.get('checkpoints', [])]
+        time_origin = None
+        for value in snapshots:
+            require(isinstance(value, dict), 'actual isolated observation snapshot missing')
+            expected = dict(sourceCommit=source, runId=run_id, runAttempt=run_attempt, runNonce=nonce,
+                            case=number, documentUrl='http://127.0.0.1:8771/caret?case=' + str(number))
+            require(all(type(value.get(key)) is type(wanted) and value[key] == wanted for key, wanted in expected.items())
+                    and value.get('observerWorld') == 'extension-isolated-world'
+                    and type(value.get('listenerInstallCount')) is int and value['listenerInstallCount'] == 1,
+                    'isolated observer source/run/nonce/case/document/listener owner differs')
+            observed = value.get('timeOrigin')
+            require(type(observed) in (int, float) and math.isfinite(observed) and observed > 0
+                    and (time_origin is None or observed == time_origin), 'observer document time origin changed within case')
+            time_origin = observed
+    return len(records)
+
+
 def verify_report(report, *, build, sdk, audit, source, run_id, run_attempt, build_hash, sdk_hash, audit_hash,
                   artifact_root=ROOT, sdk_raw=None, source_reader=None):
     embedded, identity, installed = verify_receipts(build, sdk, audit, source=source, run_id=run_id, run_attempt=run_attempt,
@@ -367,7 +476,11 @@ def verify_report(report, *, build, sdk, audit, source, run_id, run_attempt, bui
         def source_reader(commit, path):
             return subprocess.check_output(['git', 'show', commit + ':' + path], cwd=artifact_root, stderr=subprocess.PIPE)
     _sdk.verify_sdk_identity(report['commonInstalledIdentity'], source, sdk['sourceTree'], sdk_raw, source_reader)
+    observer_hash = digest(source_reader(source, 'tests/gecko/assets/caret-document-observer.js'))
+    require(report.get('observerScriptSha256') == audit.get('observerScriptSha256') == observer_hash,
+            'actual isolated observer asset differs from installed APK or selected source')
     events = verify_events(report)
+    transport_count = verify_caret_transport(report, source=source, run_id=run_id, run_attempt=run_attempt)
     wanted_checks, wanted_apis, wanted_hardware, wanted_actions, wanted_clipboard = expected_layout()
     checks = report.get('checks')
     require(isinstance(checks, list) and type(report.get('checkCount')) is int and report['checkCount'] == len(wanted_checks) == len(checks), 'missing/extra checks')
@@ -455,7 +568,8 @@ def verify_report(report, *, build, sdk, audit, source, run_id, run_attempt, bui
     return dict(controlledCaretCompatibilityAcceptance=True, releaseAcceptance=False,
                 physicalPhoneAcceptance=False, vendorKeyboardUiAcceptance=False, scenarios=14,
                 checkpoints=len(checkpoints), checks=len(checks), originalInputConnectionCalls=len(apis),
-                actualAndroidActions=len(hardware), trustedDomEvents=sum(map(len, events.values())))
+                actualAndroidActions=len(hardware), trustedDomEvents=sum(map(len, events.values())),
+                completeProviderEvents=transport_count)
 
 
 def verify_original_burst(report, *, source, run_id, run_attempt, identity, sidecar, raw_report, build,

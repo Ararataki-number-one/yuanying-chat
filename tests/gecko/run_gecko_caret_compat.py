@@ -15,8 +15,11 @@ import threading
 import time
 import urllib.parse
 import sys
+import secrets
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'tools/gecko'))
 from caret_build_identity import audit_apk, digest, embedded_identity, require, strict_json, validate_sdk_receipt
+from integration_event_contract import EventTransfer, parse_receipt_line
+from profile_invocation_contract import verify_installed
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'work/gecko-integration'
@@ -30,23 +33,12 @@ IDS = ['rapid-taps', 'selected-replace', 'arrow-delete', 'undo', 'ime-multiword'
 
 def document(case):
     # Seed only via immutable response HTML. No JS sets text, focus or selection.
-    return ('''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    return ('''<!doctype html><html data-caret-case="''' + str(case) + '''"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Controlled original input semantics</title><style>
 body{margin:0;padding:12px;background:white;font:18px monospace}textarea{box-sizing:border-box;width:100%;height:96px;padding:10px;border:1px solid #888;font:26px monospace;white-space:pre;resize:none}#other-draft{height:58px;margin-top:22px}button{margin-top:16px}h2{font:18px sans-serif}
 </style><h2>''' + html.escape(IDS[case]) + '''</h2><textarea id="prompt-textarea" rows="2" spellcheck="false" autocorrect="off">''' +
             html.escape(SEEDS[case]) + '''</textarea><textarea id="other-draft" tabindex="-1">untouched independent draft</textarea>
-<button id="send" onclick="window.sendCount++">Send</button><script>
-window.sendCount=0;const composer=document.getElementById('prompt-textarea');const events=[];let overflow=false;
-const caseNumber=''' + str(case) + ''';
-const record=e=>{if(events.length>=512){overflow=true;return}events.push({index:events.length,time:performance.now(),type:e.type,key:e.key||'',data:e.data??'',inputType:e.inputType||'',trusted:e.isTrusted,ctrl:!!e.ctrlKey,shift:!!e.shiftKey,composing:!!e.isComposing,start:composer.selectionStart,end:composer.selectionEnd,draft:composer.value,prevented:e.defaultPrevented});};
-for(const type of ['focus','blur','select','keydown','keyup','beforeinput','input','compositionstart','compositionupdate','compositionend']){
-composer.addEventListener(type,e=>{if(type==='beforeinput'&&caseNumber===10)e.preventDefault();record(e);});}
-document.addEventListener('selectionchange',e=>{if(document.activeElement===composer)record(e);},true);
-
-window.__caretSnapshot=()=>{const r=composer.getBoundingClientRect(),style=getComputedStyle(composer),canvas=document.createElement('canvas'),context=canvas.getContext('2d');context.font=style.font;const points=[];
-for(let i=0;i<=composer.value.length;i++)points.push({x:r.left+parseFloat(style.borderLeftWidth)+parseFloat(style.paddingLeft)+context.measureText(composer.value.slice(0,i)).width-composer.scrollLeft,y:r.top+parseFloat(style.borderTopWidth)+parseFloat(style.paddingTop)+parseFloat(style.fontSize)*.6});
-return {ready:true,case:caseNumber,draft:composer.value,otherDraft:document.getElementById('other-draft').value,focused:document.activeElement===composer,start:composer.selectionStart,end:composer.selectionEnd,direction:composer.selectionDirection,cookie:document.cookie,sendCount:window.sendCount,width:innerWidth,height:innerHeight,bounds:{x:r.x,y:r.y,width:r.width,height:r.height},points,events,overflow,eventCount:events.length,keyCount:events.filter(e=>e.type==='keydown').length,characterKeyCount:events.filter(e=>e.type==='keydown'&&e.key.length===1).length,qKeyCount:events.filter(e=>e.type==='keydown'&&e.key==='Q').length,inputCount:events.filter(e=>e.type==='input').length,beforeCount:events.filter(e=>e.type==='beforeinput').length,compositionCount:events.filter(e=>e.type==='compositionstart').length,compositionEndCount:events.filter(e=>e.type==='compositionend').length,allTrusted:events.every(e=>e.trusted)}};
-</script>''').encode('utf-8')
+<button id="send" type="button">Send</button></html>''').encode('utf-8')
 
 
 class Fixture(http.server.BaseHTTPRequestHandler):
@@ -181,6 +173,16 @@ def main():
             require(common_sdk['sdkBuildReceiptSha256'] == digest(args.sdk_receipt)
                     and common_sdk['runId'] == build['runId'] and common_sdk['runAttempt'] == build['runAttempt'],
                     'Compiled APK common SDK bytes/run identity differs')
+            if apk == args.integration_apk:
+                stamp_raw = archive.read('assets/pocketchat-integration-build.json')
+                common_expected = strict_json(stamp_raw)
+                common_expected.update({key: common_sdk[key] for key in sdk_contract.SDK_FIELDS})
+                common_expected.update(sdkBuildIdentity=common_sdk, package=PACKAGE,
+                    apkSha256=build['integrationApkSha256'], apkBytes=apk.stat().st_size,
+                    buildStampSha256=hashlib.sha256(stamp_raw).hexdigest())
+                require(compiled_audit['observerScriptSha256'] == hashlib.sha256(
+                    selected_reader(source, 'tests/gecko/assets/caret-document-observer.js')).hexdigest(),
+                    'Compiled passive observation asset differs from selected source')
     build_identity = dict(schema=1, **{key: build[key] for key in (
         'sourceCommit', 'runId', 'runAttempt', 'integrationApkSha256', 'releaseApkSha256',
         'sdkReceiptSha256', 'sdkAarSha256', 'sdkClassJarSha256', 'sdkEditableClassSha256', 'sdkManifestSha256',
@@ -189,10 +191,15 @@ def main():
     chunks, trusted, seen = [], {}, set()
     report, installed_audit, installed_identity = None, None, None
     activity_launched = False
+    nonce = secrets.token_hex(16)
+    transfer = None
     servers = []
 
     def adb(*parts):
         return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
+
+    def fetch_event(uri):
+        return subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'content', 'read', '--uri', uri], timeout=30)
 
     def unique(target, key, value, kind):
         require(key not in target, 'Duplicate ' + kind + ' index/id: ' + str(key))
@@ -214,6 +221,10 @@ def main():
                      trustedEventChunks=chunks, actualTrustedEvents=ordered_events,
                      eventVectors={key: event_vectors(events) for key, events in ordered_events.items()},
                      fixtureRequests=Fixture.requests, controlledProxyRoutes=Socks.routes,
+                     eventTransport=dict(schema=1, runNonce=nonce, fixtureAction='caretCompatibility', processSlot=0,
+                         command=1, buildIdentity=transfer.identity if transfer is not None else common_expected,
+                         records=transfer.records if transfer is not None else [],
+                         scope='Existing shell-only IntegrationEventStore/provider handoff; complete UTF8 bytes, SHA256, ordered sequence, invocation and installed APK/source/SDK fences.'),
                      device={'sdk': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                              'screen': adb('shell', 'wm', 'size').strip(), 'density': adb('shell', 'wm', 'density').strip()},
                      capabilities={'controlledSdkChineseComposition': True, 'physicalPhoneAcceptance': False,
@@ -246,25 +257,36 @@ def main():
             adb('reverse', 'tcp:' + str(port), 'tcp:' + str(port))
         adb('shell', 'am', 'force-stop', PACKAGE)
         require('Success' in adb('shell', 'pm', 'clear', PACKAGE), 'Could not clear isolated test package')
+        common_installed = strict_json(fetch_event('content://' + PACKAGE + '.evidence/build-identity'))
+        verify_installed(common_installed, common_expected)
+        transfer = EventTransfer(identity=common_installed, nonce=nonce, slot=0, action='caretCompatibility', fetch=fetch_event, command=1)
         adb('shell', 'wm', 'size', '1080x2400')
         adb('shell', 'wm', 'density', '420')
         adb('shell', 'settings', 'put', 'system', 'font_scale', '1.0')
         adb('logcat', '-c')
         started = adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/local.pocketchat.GeckoCaretCompatibilityIntegrationActivity',
             '--ez', 'normalAcceptance', str(args.normal_acceptance).lower(), '--es', 'sourceCommit', source,
-            '--es', 'runId', build['runId'], '--es', 'runAttempt', build['runAttempt'])
+            '--es', 'runId', build['runId'], '--es', 'runAttempt', build['runAttempt'], '--es', 'eventNonce', nonce)
         require('Status: ok' in started, 'Actual integration Activity did not start: ' + started)
         activity_launched = True
         expires = time.monotonic() + 300
         while time.monotonic() < expires:
-            raw = adb('logcat', '-d', '-s', 'PocketCaretCompat:I', 'AndroidRuntime:E', '*:S')
+            raw = adb('logcat', '-d', '-s', 'PocketGeckoIntegration:I', 'PocketCaretCompat:E', 'AndroidRuntime:E', '*:S')
             require('FATAL EXCEPTION' not in raw, 'Android activity crashed: ' + raw)
             for line in raw.splitlines():
-                if 'PocketCaretCompat' not in line or '{' not in line or line in seen:
+                if 'PocketCaretCompat' in line:
+                    raise ValueError('Native caret event transport unavailable: ' + line)
+                receipt = parse_receipt_line(line)
+                if receipt is None:
                     continue
-                seen.add(line)
-                item = strict_json(line[line.index('{'):])
-                kind, value = item['kind'], item['value']
+                require(receipt.get('runNonce') == nonce and receipt.get('fixtureAction') == 'caretCompatibility'
+                        and receipt.get('processSlot') == 0, 'Foreign native caret event receipt')
+                require(receipt.get('kind') != 'eventTransportError', 'Native complete event publication failed: ' + str(receipt))
+                event = transfer.read(receipt)
+                if receipt['sequence'] in seen:
+                    continue
+                seen.add(receipt['sequence'])
+                kind, value = event['kind'], event['result']
                 if kind == 'stepNeeded':
                     unique(steps, value['id'], value, 'Android action')
                     value['executions'] = []

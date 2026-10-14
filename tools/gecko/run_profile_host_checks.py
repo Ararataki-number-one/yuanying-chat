@@ -27,6 +27,7 @@ def main():
     input_paths.update((ROOT / "tests").rglob("*.java"))
     input_paths.update((ROOT / "tests").rglob("*.py"))
     input_paths.update((ROOT / "tests").rglob("*.cjs"))
+    input_paths.update((ROOT / "tests/gecko/assets").glob("*.js"))
     input_paths.add(Path(__file__).resolve())
     input_paths.add(ROOT/'tools/gecko/check_template_evidence.py')
     input_paths.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py'))
@@ -151,6 +152,28 @@ def main():
         subprocess.run([sys.executable,str(deferred),"--json-jar",str(json_jar),"--output",str(deferred_receipt)],cwd=ROOT,check=True)
         receipt=json.loads(deferred_receipt.read_text());results.append({"test":"deferred-browser-host","report":str(deferred_receipt.relative_to(ROOT)),"passed":receipt["passed"],"actualAndroidExecution":False})
         files.update(ROOT/path for path in receipt["files"])
+    caret_test = ROOT / "tests/browser-runtime/caret-document-observer.test.cjs"
+    if caret_test.is_file():
+        caret_asset = ROOT / "tests/gecko/assets/caret-document-observer.js"
+        command = ["node", "--test", "--test-reporter=tap", str(caret_test)]
+        run = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+        if run.returncode:
+            raise subprocess.CalledProcessError(run.returncode, command, run.stdout, run.stderr)
+        total = re.search(r"^# tests (\d+)$",run.stdout,re.M)
+        passed = re.search(r"^# pass (\d+)$",run.stdout,re.M)
+        failed = re.search(r"^# fail (\d+)$",run.stdout,re.M)
+        if not total or not passed or not failed or int(total.group(1))<12 or total.group(1)!=passed.group(1) or failed.group(1)!="0":
+            raise ValueError("Incomplete isolated caret observer host controls")
+        inputs = [caret_test,caret_asset,ROOT / "app/src/main/assets/gecko/content.js"]
+        value = dict(sourceCommit=source_id,sourceTree=source_tree,sourceDirty=bool(source_status.strip()),
+            sourceUnchangedDuringChecks=True,status="passed",actualAndroidExecution=False,
+            actualGeckoExecution=False,synthetic=True,passed=int(passed.group(1)),total=int(total.group(1)),
+            scope="Actual production bridge and integration observer code in separate VM realms sharing explicit DOM doubles. Events are synthetic host callbacks; not Android input or Gecko isolation acceptance.",
+            output=run.stdout,files={str(path.relative_to(ROOT)):before_hashes[path] for path in inputs})
+        receipt=output / "caret-document-observer-host-results.json"
+        receipt.write_text(json.dumps(value,indent=2)+"\n")
+        results.append(dict(test="caret-document-observer-host",report=str(receipt.relative_to(ROOT)),passed=value["passed"],actualAndroidExecution=False))
+        files.update(inputs)
     # Receipt coverage includes Android lifecycle/admission sources without pretending to compile them on the host JVM.
     lifecycle_sources=('EnvironmentSpec','EnvironmentResetPlan','EnvironmentBrowserData','EnvironmentProcessPolicy','EnvironmentSpecRepository','ProfileCatalog','Profiles','ProfileContext','EnvironmentResetActivity','WindowHomeActivity','MainActivity','ChatSession','ChatService','NetworkUiProvider','AppUpdateRoute','EnvironmentDeleteActivity','EnvironmentSpecRuntime')
     files.update(source/(name+'.java') for name in lifecycle_sources)

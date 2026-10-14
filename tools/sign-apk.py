@@ -34,6 +34,7 @@ import zipfile
 with zipfile.ZipFile(args.output) as archive:
     assert 'assets/pocketchat-integration-build.json' not in archive.namelist(),'Integration-only source stamp must never appear in production APK'
     assert 'assets/caret-build-identity.json' not in archive.namelist(),'Caret fixture identity asset must never appear in production APK'
+    assert 'assets/caret-document-observer.js' not in archive.namelist(),'Passive caret fixture asset must never appear in production APK'
     assert 'assets/network-fixture.p12' not in archive.namelist(),'Synthetic TLS key must never appear in production APK'
     assert not any(name.endswith(('.p12','.jks')) for name in archive.namelist()),'Keystore and synthetic TLS fixtures must never appear in production APK'
     assert not any(name.startswith('assets/network-safe-idle-trust/') for name in archive.namelist()),'Controlled test CA and NSS profile must never appear in production APK'
