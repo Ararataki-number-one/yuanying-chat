@@ -1,0 +1,22 @@
+Loading local repository...                                                     [=========                              ] 25% Loading local repository...       [=========                              ] 25% Fetch remote repository...        [=======================================] 100% Fetch remote repository...       
+Auto-selecting single ABI x86_64
+Do you wish to create a custom hardware profile? [no] * daemon not running; starting now at tcp:5037
+* daemon started successfully
+Performing Streamed Install
+Success
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_emulator.py", line 244, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_emulator.py", line 225, in main
+    preflight(commands, record, identity)
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_emulator.py", line 147, in preflight
+    before = network_observation(commands, record, identity, 'before-network-configuration')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_emulator.py", line 96, in network_observation
+    usable = validate_observation(value, identity, nonce)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_emulator.py", line 31, in validate_observation
+    verify_installed(value['buildIdentity'], identity)
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/profile_invocation_contract.py", line 79, in verify_installed
+    raise ValueError('Installed test APK SDK differs from expected build: ' + key)
+ValueError: Installed test APK SDK differs from expected build: sdkBuildKind
