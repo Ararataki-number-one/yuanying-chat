@@ -1,0 +1,1456 @@
+Loading local repository...                                                     [=========                              ] 25% Loading local repository...       [=========                              ] 25% Fetch remote repository...        [=======================================] 100% Fetch remote repository...       
+Auto-selecting single ABI x86_64
+Do you wish to create a custom hardware profile? [no] * daemon not running; starting now at tcp:5037
+* daemon started successfully
+Performing Streamed Install
+Success
+{"sourceCommit": "9d6737c0d6a2e87d3bdd7932d90faa7e675dd3e1", "status": "passed", "initialNetworkUsable": true, "sdkWifiProvisioningRequested": false, "disabledStateConfirmed": true, "actualConnectivityManagerExecution": true, "applicationAcceptance": false}
+[  0%] /data/app/~~0rsR24K0X4krvwiGCPC0ow==/local.pocketchat.test-HsMItk-gOsS3ykMyyrsQhw==/base.apk
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 122, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 93, in main
+    before = snapshot('before')
+             ^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 70, in snapshot
+    adb('pull', paths[0], str(apk))
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 62, in adb
+    return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 466, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/local/lib/android/sdk/platform-tools/adb', '-s', 'emulator-5554', 'pull', '/data/app/~~0rsR24K0X4krvwiGCPC0ow==/local.pocketchat.test-HsMItk-gOsS3ykMyyrsQhw==/base.apk', '/home/runner/work/yuanying-chat/yuanying-chat/work/gecko-integration/caret-performance-before-bosshs5l/base.apk']' returned non-zero exit status 1.
+[ 45%] /data/app/~~0rsR24K0X4krvwiGCPC0ow==/local.pocketchat.test-HsMItk-gOsS3ykMyyrsQhw==/base.apk
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 427, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 286, in main
+    adb('pull', paths[0], str(installed_apk))
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 243, in adb
+    return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 466, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/local/lib/android/sdk/platform-tools/adb', '-s', 'emulator-5554', 'pull', '/data/app/~~0rsR24K0X4krvwiGCPC0ow==/local.pocketchat.test-HsMItk-gOsS3ykMyyrsQhw==/base.apk', '/home/runner/work/yuanying-chat/yuanying-chat/work/gecko-integration/caret-compat/installed-integration.apk']' returned non-zero exit status 1.
+From https://github.com/Ararataki-number-one/yuanying-chat
+ * branch            apk/gecko-integration-build-20261003 -> FETCH_HEAD
+To https://github.com/Ararataki-number-one/yuanying-chat
+   0c28217..0158432  01584325a0008bb4b8f3df7c07b5e761c04b09c6 -> apk/gecko-integration-build-20261003
+{
+  "status": "passed",
+  "actualAndroidExecution": true,
+  "actualMihomoExecution": true,
+  "initialDisplaySampling": {
+    "busyRequests": 0,
+    "idleRequests": 2
+  },
+  "firstWebsiteReading": {
+    "entry": "Entry|slow",
+    "at": 1791966306166,
+    "firstMs": 163,
+    "warmMs": 4,
+    "code": 200,
+    "status": "ok"
+  },
+  "headConnectionIds": [
+    35478,
+    35478
+  ],
+  "controlledWebsiteReadings": [
+    {
+      "entry": "Entry|slow",
+      "at": 1791966306166,
+      "firstMs": 163,
+      "warmMs": 4,
+      "code": 200,
+      "status": "ok"
+    },
+    {
+      "entry": "Entry|fast",
+      "at": 1791966306242,
+      "firstMs": 64,
+      "warmMs": 4,
+      "code": 200,
+      "status": "ok"
+    }
+  ],
+  "telemetryScheduling": {
+    "queuedBusyRequests": 0,
+    "idleSampleRequests": 2,
+    "newerSampleDuplicateRequests": 0,
+    "recoveryExitRequests": 1,
+    "recoveryMs": 659,
+    "webSocketConnections": 1,
+    "webSocketEchoes": 6
+  },
+  "independentNetworkService": "passed",
+  "checkCount": 156,
+  "checks": [
+    {
+      "name": "Eight encrypted environment regions stay isolated across alternating reads",
+      "pass": true
+    },
+    {
+      "name": "Repeated multi-window reads reuse decrypted region snapshots",
+      "pass": true
+    },
+    {
+      "name": "Replacing one sealed region updates only that environment",
+      "pass": true
+    },
+    {
+      "name": "Deleting a sealed region clears its cached identity",
+      "pass": true
+    },
+    {
+      "name": "Network list reads pending draft metadata on its background reader",
+      "pass": true
+    },
+    {
+      "name": "Network list refresh sees draft removal without a global pending cache",
+      "pass": true
+    },
+    {
+      "name": "Actual Android main-thread region and cold latency reads complete",
+      "pass": true
+    },
+    {
+      "name": "Region and latency UI snapshots cause no main-thread disk reads or writes",
+      "pass": true
+    },
+    {
+      "name": "Cold profile metadata paths resolve without Android main-thread directory access",
+      "pass": true
+    },
+    {
+      "name": "Background cold-path resolution restores the correct eight environment snapshots",
+      "pass": true
+    },
+    {
+      "name": "Deferred callback race reaches both real encrypted candidate writes",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback does not clear the newer sealed candidate",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback keeps the newer request saving state",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback does not apply the replaced candidate",
+      "pass": true
+    },
+    {
+      "name": "Intervening non-saving network operations preserve the newest save ownership",
+      "pass": true
+    },
+    {
+      "name": "The latest network candidate is applied once after the stale callback is ignored",
+      "pass": true
+    },
+    {
+      "name": "Low latency permits a pool without a preselected entry",
+      "pass": true
+    },
+    {
+      "name": "Foreign subscription nodes are rejected",
+      "pass": true
+    },
+    {
+      "name": "An empty optimization pool is rejected",
+      "pass": true
+    },
+    {
+      "name": "Actual native parser supplies identities for the original permitted entry pool",
+      "pass": true
+    },
+    {
+      "name": "Draft restores the low latency mode",
+      "pass": true
+    },
+    {
+      "name": "Draft saves only the permitted pool",
+      "pass": true
+    },
+    {
+      "name": "Changing subscription clears candidates and pool",
+      "pass": true
+    },
+    {
+      "name": "Maintenance rounds stay bounded",
+      "pass": true
+    },
+    {
+      "name": "Round robin explores the whole allowed pool",
+      "pass": true
+    },
+    {
+      "name": "Production Mihomo starts with ARC DNS and TCP concurrency",
+      "pass": true
+    },
+    {
+      "name": "Startup verifies the same controlled fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Remembered route starts without an invented delay",
+      "pass": true
+    },
+    {
+      "name": "Automatic display sampling makes no requests while a reply is busy",
+      "pass": true
+    },
+    {
+      "name": "The current route gets a real first sample after the reply becomes idle",
+      "pass": true
+    },
+    {
+      "name": "Display sampling preserves entry core and fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Repeated UI reads do not repeatedly probe the route",
+      "pass": true
+    },
+    {
+      "name": "A stale real sample remains visible and is explicitly marked previous",
+      "pass": true
+    },
+    {
+      "name": "A real failed sample is not mislabeled unmeasured",
+      "pass": true
+    },
+    {
+      "name": "Display does not reuse a different fixed exit's sample",
+      "pass": true
+    },
+    {
+      "name": "A blocked display probe reports its failure while preserving the usable connection",
+      "pass": true
+    },
+    {
+      "name": "Display-only failure does not poison route quality or trigger switching",
+      "pass": true
+    },
+    {
+      "name": "A newer display-only sample cannot hide the original health failure",
+      "pass": true
+    },
+    {
+      "name": "Legacy saved runtime keeps its original health failure semantics",
+      "pass": true
+    },
+    {
+      "name": "External connection response can be measured over an explicit existing proxy",
+      "pass": true
+    },
+    {
+      "name": "External measured response is shown instead of permanently unmeasured",
+      "pass": true
+    },
+    {
+      "name": "Switching the actual phone network invalidates the previous response",
+      "pass": true
+    },
+    {
+      "name": "A blocked external route makes no test request or direct fallback",
+      "pass": true
+    },
+    {
+      "name": "TCP concurrency is enabled by the running core",
+      "pass": true
+    },
+    {
+      "name": "DNS nameservers remain guarded by the fixed exit",
+      "pass": true
+    },
+    {
+      "name": "First and repeat website headers are measured",
+      "pass": true
+    },
+    {
+      "name": "HEAD repeat reuses the same controlled HTTP connection",
+      "pass": true
+    },
+    {
+      "name": "Website probes contain no account Cookie or Authorization",
+      "pass": true
+    },
+    {
+      "name": "A different candidate uses a new probe connection",
+      "pass": true
+    },
+    {
+      "name": "Candidate probing leaves the live route unchanged",
+      "pass": true
+    },
+    {
+      "name": "Both entry routes and the same fixed exit carry real requests",
+      "pass": true
+    },
+    {
+      "name": "Site challenges are reported separately",
+      "pass": true
+    },
+    {
+      "name": "Site challenges do not count as failed routes",
+      "pass": true
+    },
+    {
+      "name": "HEAD unsupported is explicit",
+      "pass": true
+    },
+    {
+      "name": "Website redirects are not followed",
+      "pass": true
+    },
+    {
+      "name": "DNS timing accepts a genuine matching A response",
+      "pass": true
+    },
+    {
+      "name": "DNS probe uses the current fixed exit",
+      "pass": true
+    },
+    {
+      "name": "A different DNS transaction is rejected",
+      "pass": true
+    },
+    {
+      "name": "Failed DNS resolution is rejected",
+      "pass": true
+    },
+    {
+      "name": "Truncated DNS packets are rejected",
+      "pass": true
+    },
+    {
+      "name": "Measured DNS selects the quickest valid service",
+      "pass": true
+    },
+    {
+      "name": "Fresh DNS readings prevent repeated probes",
+      "pass": true
+    },
+    {
+      "name": "Expired DNS is scheduled for renewal",
+      "pass": true
+    },
+    {
+      "name": "DNS choice survives recreation",
+      "pass": true
+    },
+    {
+      "name": "DNS measurements stay isolated by environment",
+      "pass": true
+    },
+    {
+      "name": "DNS selection expires with its evidence",
+      "pass": true
+    },
+    {
+      "name": "A different route resets DNS choice",
+      "pass": true
+    },
+    {
+      "name": "Busy maintenance makes no extra website or DNS requests",
+      "pass": true
+    },
+    {
+      "name": "Explicit speed test runs while reply is busy",
+      "pass": true
+    },
+    {
+      "name": "Busy manual speed test preserves live entry and exit",
+      "pass": true
+    },
+    {
+      "name": "An actual website request reaches the cancellation fixture",
+      "pass": true
+    },
+    {
+      "name": "Starting a user operation cancels the active probe",
+      "pass": true
+    },
+    {
+      "name": "Cancellation keeps the live route and core",
+      "pass": true
+    },
+    {
+      "name": "A healthy route is held during cooldown",
+      "pass": true
+    },
+    {
+      "name": "Activity prevents performance-only switching",
+      "pass": true
+    },
+    {
+      "name": "A consistently faster stable route wins when idle",
+      "pass": true
+    },
+    {
+      "name": "Failures outweigh a deceptively fast sample",
+      "pass": true
+    },
+    {
+      "name": "Healthy random mode is not silently optimized",
+      "pass": true
+    },
+    {
+      "name": "Manual mode keeps the specified entry",
+      "pass": true
+    },
+    {
+      "name": "Low latency selects a proven better candidate",
+      "pass": true
+    },
+    {
+      "name": "Optimizing preserves the fixed exit IP",
+      "pass": true
+    },
+    {
+      "name": "Exit IP changes still trigger the original protection",
+      "pass": true
+    },
+    {
+      "name": "A real WSS connection carries continuous frames through both Mihomo SOCKS hops",
+      "pass": true
+    },
+    {
+      "name": "The live core and selected route have a successful exit verification receipt",
+      "pass": true
+    },
+    {
+      "name": "A temporary exit HTTP failure preserves the same WSS core and fixed route",
+      "pass": true
+    },
+    {
+      "name": "Exit verification failure schedules bounded retry without claiming fresh success",
+      "pass": true
+    },
+    {
+      "name": "Exit verification backoff makes no repeated IP requests or WebSocket replacement",
+      "pass": true
+    },
+    {
+      "name": "Detector backoff prevents failed latency probes from replacing the verified WSS route",
+      "pass": true
+    },
+    {
+      "name": "A real exit read timeout leaves the existing WSS tunnel responsive",
+      "pass": true
+    },
+    {
+      "name": "An invalid exit service response preserves only the previously verified route",
+      "pass": true
+    },
+    {
+      "name": "A malformed exit IP cannot become a new successful verification",
+      "pass": true
+    },
+    {
+      "name": "Send preflight admits the exact retained route with degraded verification",
+      "pass": true
+    },
+    {
+      "name": "Explicit exit verification reports failure while the existing verified tunnel continues",
+      "pass": true
+    },
+    {
+      "name": "Same-route recovery callback reopens admission during detector outage",
+      "pass": true
+    },
+    {
+      "name": "A recovered exit service renews proof and resets the retry state",
+      "pass": true
+    },
+    {
+      "name": "All temporary verification faults retain one WebSocket and one core generation",
+      "pass": true
+    },
+    {
+      "name": "Exit receipts reject changed core identity exit identity or listener ports",
+      "pass": true
+    },
+    {
+      "name": "An actual entry change invalidates the previous route's verification receipt",
+      "pass": true
+    },
+    {
+      "name": "An unverified changed route fails closed when the exit service is unavailable",
+      "pass": true
+    },
+    {
+      "name": "A new core has no inherited in-memory verification receipt",
+      "pass": true
+    },
+    {
+      "name": "First connection requires actual exit verification and never accepts an outage",
+      "pass": true
+    },
+    {
+      "name": "Cancellation fixture begins with a live verified WSS before changing the route",
+      "pass": true
+    },
+    {
+      "name": "Cancelled maintenance fails closed after an actual unverified entry change",
+      "pass": true
+    },
+    {
+      "name": "Verification recovery permits a fresh real WebSocket after intentional closure",
+      "pass": true
+    },
+    {
+      "name": "A confirmed exit IP mismatch still blocks recovery and closes the real WebSocket",
+      "pass": true
+    },
+    {
+      "name": "Detector outage fixture starts with actual protected WSS",
+      "pass": true
+    },
+    {
+      "name": "Primary detector outage with target HTTP 200 preserves verified route",
+      "pass": true
+    },
+    {
+      "name": "Primary detector outage with target HTTP 403 preserves verified route",
+      "pass": true
+    },
+    {
+      "name": "Primary detector outage with target HTTP 429 preserves verified route",
+      "pass": true
+    },
+    {
+      "name": "Primary detector outage with target HTTP 503 preserves verified route",
+      "pass": true
+    },
+    {
+      "name": "Busy health does not issue either primary or secondary request",
+      "pass": true
+    },
+    {
+      "name": "Injected target SSLProtocolException never replaces or stops the actual WSS route",
+      "pass": true
+    },
+    {
+      "name": "Injected target SSLException never replaces or stops the actual WSS route",
+      "pass": true
+    },
+    {
+      "name": "Injected target SSLHandshakeException never replaces or stops the actual WSS route",
+      "pass": true
+    },
+    {
+      "name": "One paired transport failure keeps the route suspect",
+      "pass": true
+    },
+    {
+      "name": "Reachable target clears paired-failure suspicion despite continued primary outage",
+      "pass": true
+    },
+    {
+      "name": "Telemetry scheduling begins with a genuine persistent protected WebSocket",
+      "pass": true
+    },
+    {
+      "name": "Queued automatic sampling yields to a reply that started before execution",
+      "pass": true
+    },
+    {
+      "name": "Deferred automatic sampling resumes idle without a fabricated failure or route change",
+      "pass": true
+    },
+    {
+      "name": "Queued display sampling reuses a newer same-route health sample instead of probing twice",
+      "pass": true
+    },
+    {
+      "name": "Automatic telemetry deferral preserves one WebSocket and the exact core identity",
+      "pass": true
+    },
+    {
+      "name": "Actual failed-chain recovery performs exactly one full exit verification for the new entry",
+      "pass": true
+    },
+    {
+      "name": "Removing duplicate recovery verification preserves the live WebSocket and fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Detector transport classification excludes cancellation TLS identity and configuration failures",
+      "pass": true
+    },
+    {
+      "name": "An unverified changed route rejects detector reset and closes its WSS",
+      "pass": true
+    },
+    {
+      "name": "First connection rejects detector reset without inheriting a route receipt",
+      "pass": true
+    },
+    {
+      "name": "An unverified changed route rejects detector eof and closes its WSS",
+      "pass": true
+    },
+    {
+      "name": "First connection rejects detector eof without inheriting a route receipt",
+      "pass": true
+    },
+    {
+      "name": "Proxy data plane has an independent Android process",
+      "pass": true
+    },
+    {
+      "name": "The independent service owns a live real proxy core",
+      "pass": true
+    },
+    {
+      "name": "A new control client adopts the running tunnel",
+      "pass": true
+    },
+    {
+      "name": "Client recreation keeps the exact core and port",
+      "pass": true
+    },
+    {
+      "name": "Adoption restores probe indices from the running configuration",
+      "pass": true
+    },
+    {
+      "name": "Adoption rechecks the fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Independent network service retains the same WSS and core during exit HTTP failure",
+      "pass": true
+    },
+    {
+      "name": "Independent network service retains the same WSS and core during a real exit timeout",
+      "pass": true
+    },
+    {
+      "name": "Independent network service retains the same WSS and core during invalid exit response",
+      "pass": true
+    },
+    {
+      "name": "Independent network service retains the same WSS and core during detector reset",
+      "pass": true
+    },
+    {
+      "name": "Detector reset preflight admits only the retained verified WSS route",
+      "pass": true
+    },
+    {
+      "name": "Independent network service retains the same WSS and core during detector eof",
+      "pass": true
+    },
+    {
+      "name": "Detector eof preflight admits only the retained verified WSS route",
+      "pass": true
+    },
+    {
+      "name": "Independent network service renews exit proof without replacing the original WebSocket",
+      "pass": true
+    },
+    {
+      "name": "Concurrent environments own different kernels and ports",
+      "pass": true
+    },
+    {
+      "name": "A separate environment control process observes its tunnel",
+      "pass": true
+    },
+    {
+      "name": "Killing the environment control process keeps its proxy kernel",
+      "pass": true
+    },
+    {
+      "name": "Actual core exit is pushed to the control client",
+      "pass": true
+    },
+    {
+      "name": "One core exiting leaves the other environment usable",
+      "pass": true
+    },
+    {
+      "name": "Restart creates a new generation that ignores the old exit event",
+      "pass": true
+    },
+    {
+      "name": "Restarting one tunnel keeps the other kernel and port",
+      "pass": true
+    },
+    {
+      "name": "A stop acknowledgement confirms the targeted core is closed",
+      "pass": true
+    },
+    {
+      "name": "Stopping one environment does not stop the other",
+      "pass": true
+    },
+    {
+      "name": "Service process death closes the client's network admission",
+      "pass": true
+    },
+    {
+      "name": "A replacement service restores and verifies the environment",
+      "pass": true
+    },
+    {
+      "name": "A service mismatch cancellation fixture starts from a verified live WSS",
+      "pass": true
+    },
+    {
+      "name": "A confirmed service exit mismatch still stops the core when maintenance is concurrently cancelled",
+      "pass": true
+    },
+    {
+      "name": "The last tunnel stops through the service",
+      "pass": true
+    }
+  ],
+  "exitTransportContinuity": [
+    {
+      "kind": "changed-route",
+      "fault": "reset",
+      "detectorRequests": 2,
+      "wireFaultRequests": 2,
+      "classification": "transport-reset-or-eof",
+      "sendAccepted": false,
+      "ready": false,
+      "coreAlive": false,
+      "receiptCurrent": false,
+      "entryChanged": true,
+      "webSocketClosed": true,
+      "webSocketConnections": 1
+    },
+    {
+      "kind": "first-route",
+      "fault": "reset",
+      "detectorRequests": 1,
+      "wireFaultRequests": 1,
+      "classification": "transport-reset-or-eof",
+      "startAccepted": false,
+      "ready": false,
+      "coreAlive": false,
+      "receiptCurrent": false,
+      "startupBeganAt": 108060,
+      "controllerPort": 42355
+    },
+    {
+      "kind": "changed-route",
+      "fault": "eof",
+      "detectorRequests": 2,
+      "wireFaultRequests": 2,
+      "classification": "transport-reset-or-eof",
+      "sendAccepted": false,
+      "ready": false,
+      "coreAlive": false,
+      "receiptCurrent": false,
+      "entryChanged": true,
+      "webSocketClosed": true,
+      "webSocketConnections": 1
+    },
+    {
+      "kind": "first-route",
+      "fault": "eof",
+      "detectorRequests": 1,
+      "wireFaultRequests": 1,
+      "classification": "transport-reset-or-eof",
+      "startAccepted": false,
+      "ready": false,
+      "coreAlive": false,
+      "receiptCurrent": false,
+      "startupBeganAt": 109167,
+      "controllerPort": 42463
+    },
+    {
+      "kind": "verified",
+      "fault": "reset",
+      "serviceProcess": true,
+      "before": {
+        "pid": 4393,
+        "servicePid": 4378,
+        "generation": "f0793f8e-8cc1-4d22-bbcb-801355824e80",
+        "configuration": "698f061c10f632038b4a33984fd51c7656109232fbe6b17ae23bc48698918ca9",
+        "controllerPort": 41293,
+        "proxyPort": 38431,
+        "entry": "Entry|slow",
+        "tokenHash": "abdf8faf45a143053fe0e776ab0a77be411b113296beb2c29d927516c674452f",
+        "exitIp": "203.0.113.8",
+        "alive": true
+      },
+      "after": {
+        "pid": 4393,
+        "servicePid": 4378,
+        "generation": "f0793f8e-8cc1-4d22-bbcb-801355824e80",
+        "configuration": "698f061c10f632038b4a33984fd51c7656109232fbe6b17ae23bc48698918ca9",
+        "controllerPort": 41293,
+        "proxyPort": 38431,
+        "entry": "Entry|slow",
+        "tokenHash": "abdf8faf45a143053fe0e776ab0a77be411b113296beb2c29d927516c674452f",
+        "exitIp": "203.0.113.8",
+        "alive": true
+      },
+      "classification": "transport-reset-or-eof",
+      "detectorRequests": 3,
+      "wireFaultRequests": 3,
+      "lastVerified": 0,
+      "retryInMs": 900000,
+      "backoffNoRequests": true,
+      "sendAccepted": true,
+      "receiptCurrent": true,
+      "webSocketConnections": 1,
+      "echoesBefore": 54,
+      "echoesAfter": 56
+    },
+    {
+      "kind": "verified",
+      "fault": "eof",
+      "serviceProcess": true,
+      "before": {
+        "pid": 4393,
+        "servicePid": 4378,
+        "generation": "f0793f8e-8cc1-4d22-bbcb-801355824e80",
+        "configuration": "698f061c10f632038b4a33984fd51c7656109232fbe6b17ae23bc48698918ca9",
+        "controllerPort": 41293,
+        "proxyPort": 38431,
+        "entry": "Entry|slow",
+        "tokenHash": "abdf8faf45a143053fe0e776ab0a77be411b113296beb2c29d927516c674452f",
+        "exitIp": "203.0.113.8",
+        "alive": true
+      },
+      "after": {
+        "pid": 4393,
+        "servicePid": 4378,
+        "generation": "f0793f8e-8cc1-4d22-bbcb-801355824e80",
+        "configuration": "698f061c10f632038b4a33984fd51c7656109232fbe6b17ae23bc48698918ca9",
+        "controllerPort": 41293,
+        "proxyPort": 38431,
+        "entry": "Entry|slow",
+        "tokenHash": "abdf8faf45a143053fe0e776ab0a77be411b113296beb2c29d927516c674452f",
+        "exitIp": "203.0.113.8",
+        "alive": true
+      },
+      "classification": "transport-reset-or-eof",
+      "detectorRequests": 2,
+      "wireFaultRequests": 2,
+      "lastVerified": 0,
+      "retryInMs": 900000,
+      "backoffNoRequests": true,
+      "sendAccepted": true,
+      "receiptCurrent": true,
+      "webSocketConnections": 1,
+      "echoesBefore": 56,
+      "echoesAfter": 57
+    }
+  ],
+  "sourceCommit": "9d6737c0d6a2e87d3bdd7932d90faa7e675dd3e1"
+}
+{
+  "status": "passed",
+  "actualAndroidExecution": true,
+  "checkCount": 42,
+  "error": "",
+  "foregroundEvidence": {
+    "known": true,
+    "foreground": true,
+    "actualActivityStartedCount": 1,
+    "visibilitySource": "activity-start-stop",
+    "processes": [
+      {
+        "process": "local.pocketchat.test:profile7",
+        "pid": 4657,
+        "importance": 100,
+        "known": true,
+        "actualActivityStartedCount": 1,
+        "visible": true,
+        "activityStarts": 1,
+        "activityStops": 0,
+        "revision": 1,
+        "lastEventAt": 126754
+      },
+      {
+        "process": "local.pocketchat.test",
+        "pid": 4694,
+        "importance": 100,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 0,
+        "activityStops": 0,
+        "revision": 0,
+        "lastEventAt": 0
+      }
+    ]
+  },
+  "homeEvidence": {
+    "known": true,
+    "foreground": false,
+    "actualActivityStartedCount": 0,
+    "visibilitySource": "activity-start-stop",
+    "processes": [
+      {
+        "process": "local.pocketchat.test:profile7",
+        "pid": 4657,
+        "importance": 125,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 1,
+        "activityStops": 1,
+        "revision": 2,
+        "lastEventAt": 130588
+      },
+      {
+        "process": "local.pocketchat.test",
+        "pid": 4694,
+        "importance": 125,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 0,
+        "activityStops": 0,
+        "revision": 0,
+        "lastEventAt": 0
+      }
+    ]
+  },
+  "scope": "Android activity-process importance, channels, real foreground services, real Home, production stable-terminal gate, opt-in completion reminders and a real local MediaStore save; no account or network download",
+  "checks": [
+    {
+      "name": "Background completion reminders are off by default",
+      "pass": true
+    },
+    {
+      "name": "Browser and network child processes cannot count as visible UI",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes old noisy foreground channels",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes non-completion regular notifications across profiles",
+      "pass": true
+    },
+    {
+      "name": "A real visible app Activity suppresses completion reminders",
+      "pass": true
+    },
+    {
+      "name": "An already running default process exposes real zero-Activity lifecycle over private IPC",
+      "pass": true
+    },
+    {
+      "name": "A visible Activity is proved by real started lifecycle count",
+      "pass": true
+    },
+    {
+      "name": "A private visibility endpoint rejects an obsolete process PID",
+      "pass": true
+    },
+    {
+      "name": "Foreground replies and downloads stay quiet even after opting in",
+      "pass": true
+    },
+    {
+      "name": "Already visible completions are remembered without posting",
+      "pass": true
+    },
+    {
+      "name": "Waiting and disconnected states do not post completion alerts",
+      "pass": true
+    },
+    {
+      "name": "reply-background-quiet-v2 remains silent at MIN or system-required LOW",
+      "pass": true
+    },
+    {
+      "name": "network-background-quiet-v2 remains silent at MIN or system-required LOW",
+      "pass": true
+    },
+    {
+      "name": "Reply service keeps a legitimate foreground notification",
+      "pass": true
+    },
+    {
+      "name": "Network service keeps a legitimate foreground notification",
+      "pass": true
+    },
+    {
+      "name": "Foreground statuses no longer contain waiting or environment-count messages",
+      "pass": true
+    },
+    {
+      "name": "Both foreground notices stay off the lock screen",
+      "pass": true
+    },
+    {
+      "name": "Progress polling does not repost a notification",
+      "pass": true
+    },
+    {
+      "name": "Real Home leaves the UI in background while required services keep running",
+      "pass": true
+    },
+    {
+      "name": "Real Home is proved by stopped Activity lifecycle despite browser process priority",
+      "pass": true
+    },
+    {
+      "name": "Home preserves the pending reply and background observation service",
+      "pass": true
+    },
+    {
+      "name": "Background completion stays quiet until the user opts in",
+      "pass": true
+    },
+    {
+      "name": "Explicit opt-in admits completion only after real Home",
+      "pass": true
+    },
+    {
+      "name": "Foreground completions never become delayed background alerts",
+      "pass": true
+    },
+    {
+      "name": "Busy replies cannot trigger a completion notice",
+      "pass": true
+    },
+    {
+      "name": "A first terminal observation cannot alert early",
+      "pass": true
+    },
+    {
+      "name": "A second terminal observation remains quiet",
+      "pass": true
+    },
+    {
+      "name": "Stable terminal reply is accepted only after repeated observations",
+      "pass": true
+    },
+    {
+      "name": "A detected complete reply produces the one regular reminder",
+      "pass": true
+    },
+    {
+      "name": "Completion ends the waiting foreground service",
+      "pass": true
+    },
+    {
+      "name": "An older completed reply cannot re-alert after another reply",
+      "pass": true
+    },
+    {
+      "name": "Aggregate legacy receipts migrate to the indexed ledger without re-alerting",
+      "pass": true
+    },
+    {
+      "name": "Existing single-job notification records are respected",
+      "pass": true
+    },
+    {
+      "name": "The same completion identity in another environment remains independent",
+      "pass": true
+    },
+    {
+      "name": "A disabled reminder is not posted or incorrectly marked delivered",
+      "pass": true
+    },
+    {
+      "name": "A completion can be retried after reminders are enabled",
+      "pass": true
+    },
+    {
+      "name": "Attention and network events remain in-app without separate reminders",
+      "pass": true
+    },
+    {
+      "name": "Background observation remains enabled by default",
+      "pass": true
+    },
+    {
+      "name": "Opted-in background file completion opens the exact saved task",
+      "pass": true
+    },
+    {
+      "name": "The notified local file is fully published and readable",
+      "pass": true
+    },
+    {
+      "name": "A saved download cannot re-alert after dismissal",
+      "pass": true
+    },
+    {
+      "name": "Opting out removes completion cards across environments",
+      "pass": true
+    }
+  ],
+  "sourceCommit": "9d6737c0d6a2e87d3bdd7932d90faa7e675dd3e1"
+}
+From https://github.com/Ararataki-number-one/yuanying-chat
+ * branch            apk/gecko-integration-build-20261003 -> FETCH_HEAD
+To https://github.com/Ararataki-number-one/yuanying-chat
+   0158432..6fef071  6fef071de8003b5a9942926e648d4152cdc9b435 -> apk/gecko-integration-build-20261003
+Success
+{"kind": "tapNeeded", "result": {"id": "upload-1", "x": 321, "y": 487, "shown": true, "width": 1080, "height": 1732, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "tapNeeded", "result": {"id": "csv-1", "x": 256, "y": 685, "shown": true, "width": 1080, "height": 1732, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "tapNeeded", "result": {"id": "blob-1", "x": 665, "y": 687, "shown": true, "width": 1080, "height": 1732, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "usability", "result": {"documentPreserved": true, "mobileVisible": true, "upload": "sample.txt:synthetic-upload", "csv": "name,value\nsynthetic,42\n", "blob": "name,value\nsynthetic,42\n", "audit": {"at": 1791966624074, "network": false, "fresh": true, "rows": [{"key": "provenance", "name": "\u7f51\u9875\u6267\u884c\u73af\u5883\u4e0e\u6765\u6e90", "state": "verified", "detail": "\u672c\u6b21\u5728\u9875\u9762\u4e3b\u6267\u884c\u73af\u5883\u91c7\u96c6\u516c\u5f00\u5b57\u6bb5\uff1b\u9875\u9762\u53ef\u4fee\u6539\u6216\u4f2a\u9020\u8fd9\u4e9b\u503c\uff0c\u7ed3\u679c\u4e0d\u662f\u72ec\u7acb\u8eab\u4efd\u8ba4\u8bc1"}, {"key": "ua", "name": "\u6d4f\u89c8\u5668\u7248\u672c\u4e0e\u7f51\u9875\u4fe1\u606f", "state": "verified", "detail": "\u68c0\u67e5\u9875\u9762\u7684 UA \u4e0e\u5e94\u7528\u8bbe\u7f6e\u53ca\u5df2\u5b89\u88c5\u5185\u6838\u4e3b\u7248\u672c\u4e00\u81f4"}, {"key": "hints", "name": "Client Hints \u6d4f\u89c8\u5668\u4fe1\u606f", "state": "uncovered", "detail": "\u5f53\u524d\u9875\u9762\u672a\u63d0\u4f9b\u53ef\u6838\u9a8c\u7684 Client Hints \u54c1\u724c\uff0c\u4e0d\u80fd\u636e\u6b64\u8ba4\u5b9a\u6240\u6709\u6765\u6e90\u4e00\u81f4"}, {"key": "frame", "name": "\u540c\u6e90\u5d4c\u5165\u9875\u9762\u4e00\u81f4\u6027", "state": "verified", "detail": "\u540c\u6e90 srcdoc \u7684 UA\u3001\u7ebf\u7a0b\u6570\u3001\u5185\u5b58\u63a5\u53e3\u3001\u8bed\u8a00\u5217\u8868\u53ca\u65f6\u533a\u89c2\u6d4b\u4e0e\u4e3b\u9875\u9762\u4e00\u81f4\uff1b\u4e0d\u4ee3\u8868\u5176\u4ed6 API \u5df2\u8986\u76d6"}, {"key": "worker", "name": "Dedicated Worker \u516c\u5f00 JS \u5b57\u6bb5\u6838\u5bf9", "state": "verified", "detail": "Dedicated Worker \u7684 UA\u3001\u7ebf\u7a0b\u6570\u3001\u5185\u5b58\u63a5\u53e3\u3001\u8bed\u8a00\u5217\u8868\u53ca\u65f6\u533a\u89c2\u6d4b\u4e0e\u4e3b\u9875\u9762\u4e00\u81f4\uff1b\u8fd9\u4e0d\u9a8c\u8bc1 Worker \u7684 HTTP \u8bf7\u6c42\u5934\u3001\u56fe\u5f62\u6216\u5176\u4ed6 API"}, {"key": "worker-header", "name": "Worker HTTP \u8bf7\u6c42 UA", "state": "uncovered", "detail": "\u672c\u6b21\u81ea\u68c0\u672a\u91c7\u96c6 Worker \u7684\u670d\u52a1\u7aef\u8bf7\u6c42\u5934\u3002\u5f53\u524d Firefox SDK \u7684\u7535\u8111\u7248\u9875\u9762\u4e0e Worker \u8054\u7f51 UA \u4e0d\u4fdd\u8bc1\u4e00\u81f4\uff1b\u9875\u9762\u548c Worker \u7684 JS \u5b57\u6bb5\u76f8\u540c\u4e0d\u80fd\u9a8c\u8bc1\u8fd9\u4e00\u9879"}, {"key": "early", "name": "\u52a0\u8f7d\u524d\u4fdd\u62a4\u8986\u76d6", "state": "uncovered", "detail": "Firefox \u4f7f\u7528\u5185\u6838\u4fdd\u62a4\uff1b\u6b64\u9879\u811a\u672c\u4fdd\u62a4\u68c0\u6d4b\u4e0d\u9002\u7528"}, {"key": "rtc", "name": "WebRTC \u672c\u673a\u63a5\u53e3\u9650\u5236", "state": "verified", "detail": "\u672c\u5730\u68c0\u67e5\u672a\u80fd\u521b\u5efa RTC \u8fde\u63a5\uff1b\u6ca1\u6709\u8fdb\u884c STUN \u516c\u7f51\u5019\u9009\u6216\u5168\u90e8\u534f\u8bae\u6293\u5305\u6d4b\u8bd5"}, {"key": "zone", "name": "\u7f51\u9875\u4e0e\u624b\u673a\u65f6\u533a\u504f\u79fb", "state": "verified", "detail": "\u53ea\u6838\u5bf9\u5f53\u524d\u624b\u673a\u4e0e\u9875\u9762\u504f\u79fb\uff1b\u4e0d\u628a\u65f6\u533a\u4e0e IP \u5730\u533a\u5dee\u5f02\u5f53\u4f5c\u8d26\u53f7\u5371\u9669"}, {"key": "language", "name": "\u7f51\u9875\u8bed\u8a00\u4e0e\u539f\u751f\u8bbe\u7f6e", "state": "verified", "detail": "\u6838\u5bf9\u672c\u6b21 navigator.language \u4e0e\u5b98\u65b9 SDK \u7684 language-region \u89c4\u8303\u5316\u9884\u6d4b\uff1bSDK \u56de\u8bfb\u4ec5\u8868\u793a\u8bf7\u6c42\uff0c\u5f3a\u5316\u7b56\u7565\u53ef\u80fd\u7ee7\u7eed\u6807\u51c6\u5316\uff0c\u5b9e\u9645\u5dee\u5f02\u4f1a\u4fdd\u7559"}, {"key": "network", "name": "\u5b9e\u9645\u7f51\u7edc\u51fa\u53e3", "state": "uncovered", "detail": "\u672c\u6b21\u53ea\u68c0\u67e5\u6d4f\u89c8\u5668\u4fe1\u606f\uff0c\u6ca1\u6709\u8bbf\u95ee\u7f51\u7edc\u68c0\u6d4b\u670d\u52a1"}, {"key": "cross-origin", "name": "\u8de8\u6e90 iframe", "state": "uncovered", "detail": "\u672c\u6b21\u4ec5\u521b\u5efa\u540c\u6e90 srcdoc \u5b50\u9875\u9762\uff0c\u6ca1\u6709\u5df2\u9a8c\u8bc1\u7684\u8de8\u6e90\u9875\u9762\u63a2\u9488"}, {"key": "shared-worker", "name": "Shared Worker", "state": "uncovered", "detail": "\u672c\u6b21\u4ec5\u521b\u5efa Dedicated Worker\uff0c\u6ca1\u6709 Shared Worker \u89c2\u6d4b"}, {"key": "service-worker", "name": "Service Worker", "state": "uncovered", "detail": "\u6ca1\u6709\u6ce8\u518c\u6216\u6539\u53d8\u7f51\u7ad9 Service Worker\uff1b\u8be5\u6267\u884c\u73af\u5883\u672a\u8986\u76d6"}, {"key": "native-setting", "name": "\u539f\u751f\u6297\u6307\u7eb9\u8bbe\u7f6e\u56de\u8bfb", "state": "verified", "detail": "\u5f53\u524d\u8bf7\u6c42\u672a\u5f00\u542f\u6297\u6307\u7eb9\uff0c\u8bbe\u7f6e\u56de\u8bfb\u4e00\u81f4\uff1b\u8fd9\u4e0d\u8bc1\u660e\u5177\u4f53\u6307\u7eb9 API \u4fdd\u62a4\u6216\u7f51\u9875\u517c\u5bb9\u6027"}, {"key": "dns", "name": "DNS \u7f51\u7edc\u6cc4\u6f0f", "state": "uncovered", "detail": "\u53ef\u67e5\u770b\u5185\u7f6e\u52a0\u5bc6 DNS \u914d\u7f6e\uff0c\u4f46\u672a\u8fdb\u884c\u6743\u5a01 DNS \u63a2\u9488\u6216\u7f51\u7edc\u6293\u5305\uff0c\u4e0d\u80fd\u8bc1\u660e\u89e3\u6790\u6ca1\u6709\u7ed5\u884c"}, {"key": "udp", "name": "UDP / QUIC / TLS \u7b49\u8def\u5f84", "state": "uncovered", "detail": "\u672c\u6b21 HTTPS \u67e5\u8be2\u4e0d\u80fd\u8986\u76d6\u6240\u6709\u534f\u8bae\u6216\u8bc6\u522b\u5168\u90e8\u6d4f\u89c8\u5668\u7f51\u7edc\u6307\u7eb9"}], "signals": {"id": "1", "parent": {"ua": "Mozilla/5.0 (Android 15; Mobile; rv:157.0) Gecko/157.0 Firefox/157.0", "appVersion": "5.0 (Android 15)", "platform": "Linux armv81", "language": "en-US", "zone": "UTC", "renderer": "Generic Renderer", "rtc": "absent", "cpu": 2, "memory": null, "offset": 0, "languages": ["en-US"], "screen": {"width": 414, "height": 736, "availWidth": 414, "availHeight": 736, "depth": 24}, "viewport": {"width": 414, "height": 664, "pixelRatio": 2.608695652173913, "touch": 5}}, "frame": {"ua": "Mozilla/5.0 (Android 15; Mobile; rv:157.0) Gecko/157.0 Firefox/157.0", "appVersion": "5.0 (Android 15)", "platform": "Linux armv81", "language": "en-US", "zone": "UTC", "renderer": "Generic Renderer", "rtc": "absent", "cpu": 2, "memory": null, "offset": 0, "languages": ["en-US"], "screen": {"width": 414, "height": 736, "availWidth": 414, "availHeight": 736, "depth": 24}, "viewport": {"width": 0, "height": 0, "pixelRatio": 2.608695652173913, "touch": 5}}, "worker": {"ua": "Mozilla/5.0 (Android 15; Mobile; rv:157.0) Gecko/157.0 Firefox/157.0", "appVersion": "5.0 (Android 15)", "platform": "Linux armv81", "language": "en-US", "zone": "UTC", "renderer": "Generic Renderer", "rtc": "absent", "cpu": 2, "memory": null, "offset": 0, "languages": ["en-US"]}, "isolated": {"ua": "Mozilla/5.0 (Android 15; Mobile; rv:157.0) Gecko/157.0 Firefox/157.0", "appVersion": "5.0 (Android 15)", "platform": "Linux armv81", "language": "en-US", "languages": ["en-US"], "cpu": 2, "memory": null, "offset": 0, "zone": "UTC"}, "provenance": "page-main-world", "mainWorld": {"observed": true, "error": "", "authenticity": "Page-provided public signals may be forged by the page; not independent attestation"}, "coverage": {"frame": "same-origin-srcdoc", "worker": "dedicated-blob", "crossOriginFrame": false, "sharedWorker": false, "serviceWorker": false}, "network": {}}, "native": {}, "contextCoverage": {"requiredFields": ["ua", "cpu", "memory", "language", "languages", "offset", "zone"], "frame": {"compared": ["ua", "cpu", "memory", "language", "languages", "offset", "zone"], "missingOrInvalid": [], "different": [], "state": "verified"}, "worker": {"compared": ["ua", "cpu", "memory", "language", "languages", "offset", "zone"], "missingOrInvalid": [], "different": [], "state": "verified"}}, "fullDesktopUaConsistency": false, "fingerprintTemplateAcceptance": false, "expected": {"engine": "gecko", "ua": "Mozilla/5.0 (Android 15; Mobile; rv:157.0) Gecko/157.0 Firefox/157.0", "major": 157, "level": 1, "offset": 0, "timezoneStrategy": "system", "language": "en-US", "requestedLocales": ["en-US"], "expectedSdkLocales": ["en-US"], "languageSource": "sdk157-language-region-prediction-not-content-ack", "rfpAcknowledged": true, "exitIp": ""}, "scope": "\u9875\u9762\u4e3b\u6267\u884c\u73af\u5883\uff08\u82e5 CSP \u5141\u8bb8\uff09\u3001\u540c\u6e90 srcdoc\u3001Dedicated Worker \u516c\u5f00 JS \u5b57\u6bb5\u53ca\u660e\u786e\u6807\u6ce8\u7684 Gecko \u5185\u5bb9\u811a\u672c\u8bf7\u6c42\uff1b\u6ca1\u6709 Worker HTTP \u8bf7\u6c42\u5934\u89c2\u6d4b\u6216\u5b8c\u6574\u684c\u9762\u6307\u7eb9\u627f\u8bfa\uff0c\u516c\u5f00\u5b57\u6bb5\u53ef\u88ab\u9875\u9762\u4f2a\u9020", "identityAppliedRevision": 2, "policy": "571f4e96059b0752e0db9e11a13e4d9b807e1325f2848e308be190ebb61d65dc", "route": "e00c122c7c7ec17f64957edd8f51aaa7fad14923dff683db9d9568a01a8b0f57"}}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "tapNeeded", "result": {"id": "upload-2", "x": 321, "y": 377, "shown": true, "width": 1080, "height": 1795, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "desktopImage", "result": {"productionChooserOpened": true, "imageMimeAndMultiple": true, "pendingPreserved": true, "noPhantomUpload": true, "upload": "ok:photo-123.png:image/png:4x3", "desktop": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "seed", "context": "1", "command": "3", "cookie": "probe=synthetic-environment-1", "localStorage": "synthetic-environment-1", "indexedDB": "synthetic-environment-1", "cache": "synthetic-environment-1", "serviceWorkers": 1, "workerToken": "synthetic-environment-1", "nativeCookies": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1"}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "read", "context": "2", "command": "1", "cookie": "", "localStorage": null, "indexedDB": null, "cache": null, "serviceWorkers": 0, "workerToken": null, "nativeCookies": ""}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "fixture", "result": {"action": "seed", "context": "2", "command": "2", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "fixture", "result": {"action": "read", "context": "1", "command": "4", "cookie": "probe=synthetic-environment-1", "localStorage": "synthetic-environment-1", "indexedDB": "synthetic-environment-1", "cache": "synthetic-environment-1", "serviceWorkers": 1, "workerToken": "synthetic-environment-1", "nativeCookies": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1"}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "network", "context": "1", "command": "5", "cookie": "probe=synthetic-environment-1", "localStorage": "synthetic-environment-1", "indexedDB": "synthetic-environment-1", "cache": "synthetic-environment-1", "serviceWorkers": 1, "workerToken": "synthetic-environment-1", "redirect": "synthetic-ok", "remoteDns": "synthetic-ok", "downloadBytes": 1152, "webSocket": "synthetic-probe", "dedicatedWorker": "synthetic-ok", "nativeCookies": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1"}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "network", "context": "2", "command": "1", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "redirect": "synthetic-ok", "remoteDns": "synthetic-ok", "downloadBytes": 1152, "webSocket": "synthetic-probe", "dedicatedWorker": "synthetic-ok", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "tapNeeded", "result": {"id": "popup-6", "x": 212, "y": 377, "shown": true, "width": 1080, "height": 1795, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "windowFlow", "result": {"realPopup": true, "parentHistoryRestored": true, "popups": 0, "url": "http://127.0.0.1:8765/browser-window?step=one&command=6", "pendingCallbacks": 0}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "closedSession", "context": "1", "command": "7", "cookie": "probe=synthetic-environment-1", "localStorage": "synthetic-environment-1", "indexedDB": "synthetic-environment-1", "cache": "synthetic-environment-1", "serviceWorkers": 1, "workerToken": "synthetic-environment-1", "nativeCookies": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1", "closedSessionRecovery": true, "blockedRecoveryPreservesClosed": true, "pendingFailureRetained": true, "recoveryMethod": "injected SDK onKill contract; real close/open/render"}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "tapNeeded", "result": {"id": "popup-1", "x": 212, "y": 377, "shown": true, "width": 1080, "height": 1732, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "windowFlow", "result": {"realPopup": true, "parentHistoryRestored": true, "popups": 0, "url": "http://127.0.0.1:8765/browser-window?step=one&command=1", "pendingCallbacks": 0}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "fixture", "result": {"action": "closedSession", "context": "2", "command": "2", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2", "closedSessionRecovery": true, "blockedRecoveryPreservesClosed": true, "pendingFailureRetained": true, "recoveryMethod": "injected SDK onKill contract; real close/open/render"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "tapNeeded", "result": {"id": "popup-8", "x": 212, "y": 377, "shown": true, "width": 1080, "height": 1795, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "windowFlow", "result": {"lostParentRecovery": true, "popups": 0, "url": "http://127.0.0.1:8765/browser-window?step=two&command=8"}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "read", "context": "2", "command": "1", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "checkpoint": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "session-draft-2", "checkpoint": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "session-draft-2", "history": 3, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "session-draft-2", "history": 3, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "session-draft-2", "history": 3, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "session-draft-2", "history": 3, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "session-draft-2", "history": 3, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "session-draft-2", "history": 3, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "session-draft-2", "history": 3, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "checkpoint", "result": {"saved": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "session-draft-2", "history": 3, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "checkpoint", "result": {"saved": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "session-draft-2", "history": 3, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "none", "draft": "", "history": 3, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "checkpoint", "result": {"saved": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "none", "draft": "", "history": 1, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "", "history": 1, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "paint", "result": {"started": 579760, "visible": 579762, "finished": 585488, "firstPaintBeforeComplete": true, "paintCase": {"schema": 1, "serial": 2, "target": "http://127.0.0.1:8765/browser-loading?command=2", "requested": 579632, "nativeSession": 230367163, "currentNativeSession": 230367163, "currentUrl": "http://127.0.0.1:8765/browser-loading?command=2", "committedTarget": "http://127.0.0.1:8765/browser-loading?command=2", "committed": true, "currentCase": true, "started": 579760, "visible": 579762, "finished": 585488}}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "reading", "result": {"command": "3", "viewport": 362, "density": 2.608695652173913, "scale": 1, "sidebarHidden": true, "composerWidth": 330.25, "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0", "draft": "Unsent draft stays here", "nativeWidth": 945, "mobileViewport": true, "desktopIdentity": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "reading", "result": {"command": "4", "viewport": 393, "density": 2.608695652173913, "scale": 1, "sidebarHidden": true, "composerWidth": 360.5333251953125, "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0", "draft": "Unsent draft stays here", "nativeWidth": 1024, "mobileViewport": true, "desktopIdentity": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "reading", "result": {"command": "5", "viewport": 432, "density": 2.608695652173913, "scale": 1, "sidebarHidden": true, "composerWidth": 400.3999938964844, "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0", "draft": "Unsent draft stays here", "nativeWidth": 1128, "mobileViewport": true, "desktopIdentity": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "reading", "result": {"command": "6", "viewport": 736, "density": 2.608695652173913, "scale": 1, "sidebarHidden": true, "composerWidth": 704, "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0", "draft": "Unsent draft stays here", "nativeWidth": 1920, "mobileViewport": true, "desktopIdentity": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "reading", "result": {"command": "7", "viewport": 414, "density": 2.608695652173913, "scale": 1, "sidebarHidden": true, "composerWidth": 382, "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0", "draft": "Unsent draft stays here", "nativeWidth": 1080, "mobileViewport": true, "desktopIdentity": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "readingZoom", "result": {"checks": [{"viewport": 518, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 830, "clientHeight": 830, "scrollHeight": 830, "visualHeight": 829.9166870117188, "visualWidth": 517.5, "choice": 0.800000011920929, "layout": 0.800000011920929, "shownFontPixels": 37.56521795106971, "nativeScale": 2.086956739425659, "nativeWidth": 1080}, {"viewport": 690, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 1107, "clientHeight": 1107, "scrollHeight": 1107, "visualHeight": 1106.683349609375, "visualWidth": 690, "choice": 0.6000000238418579, "layout": 0.6000000238418579, "shownFontPixels": 28.17391416300898, "nativeScale": 1.5652174949645996, "nativeWidth": 1080}, {"viewport": 414, "density": 2.608695652173913, "scale": 1.3027297258377075, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 664, "clientHeight": 664, "scrollHeight": 664, "visualHeight": 509.6499938964844, "visualWidth": 317.79998779296875, "choice": 1.2999999523162842, "layout": 1, "shownFontPixels": 61.171656691509746, "nativeScale": 3.074765205383301, "nativeWidth": 1080}, {"viewport": 518, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 830, "clientHeight": 830, "scrollHeight": 830, "visualHeight": 829.9166870117188, "visualWidth": 517.5, "choice": 0.800000011920929, "layout": 0.800000011920929, "shownFontPixels": 37.56521795106971, "nativeScale": 2.086956739425659, "nativeWidth": 1080}], "readiness": {"stableMillis": 1012, "stableFrames": 60, "activityResumed": true, "browserPaused": false, "geometry": {"child": 63370481, "session": 230367163, "x": 0, "y": 125, "top": 63, "right": 0, "bottom": 63, "left": 0, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1080, "surfaceHeight": 1732, "childWidth": 1080, "childHeight": 1732, "rootWidth": 1080, "rootHeight": 1920, "imeVisible": false, "imeBottom": 0, "focused": true, "statusBarsVisible": true, "navigationBarsVisible": true, "navigationInsets": 63, "visibleSafeTop": 63, "visibleSafeRight": 0, "visibleSafeBottom": 63, "visibleSafeLeft": 0}}, "trace": [{"step": 0, "uptimeMs": 601889, "wallMs": 1791966819275, "choice": 0.8, "layout": 1, "measurement": {"viewport": 414, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 664, "clientHeight": 664, "scrollHeight": 664, "visualHeight": 663.933349609375, "visualWidth": 414}, "nativeScale": 2.6086957, "rawPageScale": 2.6086957, "readingWidth": 1080, "viewportWidth": 414, "restoreAttempts": 0, "zoomActive": false, "zoomEpoch": 7, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1080, "surfaceHeight": 1732}, {"step": 0, "uptimeMs": 602228, "wallMs": 1791966819614, "choice": 0.8, "layout": 0.8, "measurement": {"viewport": 518, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 830, "clientHeight": 830, "scrollHeight": 830, "visualHeight": 829.9166870117188, "visualWidth": 517.5}, "nativeScale": 2.0869567, "rawPageScale": 2.6086957, "readingWidth": 1080, "viewportWidth": 414.4, "restoreAttempts": 0, "zoomActive": false, "zoomEpoch": 8, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1350, "surfaceHeight": 2165}, {"step": 1, "uptimeMs": 602501, "wallMs": 1791966819887, "choice": 0.6, "layout": 0.8, "measurement": {"viewport": 518, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 830, "clientHeight": 830, "scrollHeight": 830, "visualHeight": 829.9166870117188, "visualWidth": 517.5}, "nativeScale": 2.0869567, "rawPageScale": 2.6086957, "readingWidth": 1080, "viewportWidth": 414.4, "restoreAttempts": 0, "zoomActive": false, "zoomEpoch": 8, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1350, "surfaceHeight": 2165}, {"step": 1, "uptimeMs": 603141, "wallMs": 1791966820527, "choice": 0.6, "layout": 0.6, "measurement": {"viewport": 690, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 1107, "clientHeight": 1107, "scrollHeight": 1107, "visualHeight": 1106.683349609375, "visualWidth": 690}, "nativeScale": 1.5652175, "rawPageScale": 2.6086957, "readingWidth": 1080, "viewportWidth": 414.00003, "restoreAttempts": 0, "zoomActive": false, "zoomEpoch": 9, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1800, "surfaceHeight": 2887}, {"step": 2, "uptimeMs": 603609, "wallMs": 1791966820995, "choice": 1.3, "layout": 0.6, "measurement": {"viewport": 690, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 1107, "clientHeight": 1107, "scrollHeight": 1107, "visualHeight": 1106.683349609375, "visualWidth": 690}, "nativeScale": 1.5652175, "rawPageScale": 2.6086957, "readingWidth": 1080, "viewportWidth": 414.00003, "restoreAttempts": 0, "zoomActive": false, "zoomEpoch": 9, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1800, "surfaceHeight": 2887}, {"step": 2, "uptimeMs": 603826, "wallMs": 1791966821212, "choice": 1.3, "layout": 1, "measurement": {"viewport": 414, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 664, "clientHeight": 664, "scrollHeight": 664, "visualHeight": 663.933349609375, "visualWidth": 414}, "nativeScale": 2.6086957, "rawPageScale": 2.6086957, "readingWidth": 1080, "viewportWidth": 414, "restoreAttempts": 0, "zoomActive": false, "zoomEpoch": 10, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1080, "surfaceHeight": 1732}, {"step": 2, "uptimeMs": 604014, "wallMs": 1791966821400, "choice": 1.3, "layout": 1, "measurement": {"viewport": 414, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 664, "clientHeight": 664, "scrollHeight": 664, "visualHeight": 663.933349609375, "visualWidth": 414}, "nativeScale": 2.6086957, "rawPageScale": 2.6086957, "readingWidth": 1080, "viewportWidth": 414, "restoreAttempts": 1, "zoomActive": true, "zoomEpoch": 11, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1080, "surfaceHeight": 1732}, {"step": 2, "uptimeMs": 604241, "wallMs": 1791966821626, "choice": 1.3, "layout": 1, "measurement": {"viewport": 414, "density": 2.608695652173913, "scale": 1.3027297258377075, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 664, "clientHeight": 664, "scrollHeight": 664, "visualHeight": 509.6499938964844, "visualWidth": 317.79998779296875}, "nativeScale": 3.0747652, "rawPageScale": 3.0747652, "readingWidth": 1080, "viewportWidth": 414, "restoreAttempts": 1, "zoomActive": false, "zoomEpoch": 11, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1080, "surfaceHeight": 1732}, {"step": 3, "uptimeMs": 604507, "wallMs": 1791966821893, "choice": 0.8, "layout": 1, "measurement": {"viewport": 414, "density": 2.608695652173913, "scale": 1.3027297258377075, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 664, "clientHeight": 664, "scrollHeight": 664, "visualHeight": 509.6499938964844, "visualWidth": 317.79998779296875}, "nativeScale": 3.3984253, "rawPageScale": 3.3984253, "readingWidth": 1080, "viewportWidth": 414, "restoreAttempts": 0, "zoomActive": false, "zoomEpoch": 11, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1080, "surfaceHeight": 1732}, {"step": 3, "uptimeMs": 604715, "wallMs": 1791966822101, "choice": 0.8, "layout": 0.8, "measurement": {"viewport": 518, "density": 2.608695652173913, "scale": 1.302729845046997, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 830, "clientHeight": 830, "scrollHeight": 830, "visualHeight": 637.066650390625, "visualWidth": 397.25}, "nativeScale": 2.7187402, "rawPageScale": 3.3984253, "readingWidth": 1080, "viewportWidth": 414.4, "restoreAttempts": 0, "zoomActive": false, "zoomEpoch": 12, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1350, "surfaceHeight": 2165}, {"step": 3, "uptimeMs": 604869, "wallMs": 1791966822255, "choice": 0.8, "layout": 0.8, "measurement": {"viewport": 518, "density": 2.608695652173913, "scale": 1.302729845046997, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 830, "clientHeight": 830, "scrollHeight": 830, "visualHeight": 637.066650390625, "visualWidth": 397.25}, "nativeScale": 2.7187407, "rawPageScale": 3.3984258, "readingWidth": 1080, "viewportWidth": 414.4, "restoreAttempts": 1, "zoomActive": true, "zoomEpoch": 13, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1350, "surfaceHeight": 2165}, {"step": 3, "uptimeMs": 605095, "wallMs": 1791966822481, "choice": 0.8, "layout": 0.8, "measurement": {"viewport": 518, "density": 2.608695652173913, "scale": 1.302729845046997, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 830, "clientHeight": 830, "scrollHeight": 830, "visualHeight": 637.066650390625, "visualWidth": 397.25}, "nativeScale": 2.3409505, "rawPageScale": 2.926188, "readingWidth": 1080, "viewportWidth": 414.4, "restoreAttempts": 1, "zoomActive": false, "zoomEpoch": 13, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1350, "surfaceHeight": 2165}, {"step": 3, "uptimeMs": 605261, "wallMs": 1791966822647, "choice": 0.8, "layout": 0.8, "measurement": {"viewport": 518, "density": 2.608695652173913, "scale": 1, "draft": "Unsent draft stays here", "document": 1791966816007, "font": 18, "visibility": "visible", "documentFocused": false, "innerHeight": 830, "clientHeight": 830, "scrollHeight": 830, "visualHeight": 829.9166870117188, "visualWidth": 517.5}, "nativeScale": 2.0869567, "rawPageScale": 2.6086957, "readingWidth": 1080, "viewportWidth": 414.4, "restoreAttempts": 1, "zoomActive": false, "zoomEpoch": 13, "activityResumed": true, "browserPaused": false, "webShown": true, "windowFocused": true, "sessionOpen": true, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1350, "surfaceHeight": 2165}], "lifecycle": [{"phase": "onResume", "uptimeMs": 600780, "wallMs": 1791966818166, "activityResumed": true, "browserPaused": false, "nativeScale": 2.6086957, "zoomActive": false, "webShown": true, "windowFocused": true}], "geometryTransitions": [{"elapsedMs": 0, "geometry": {"child": 63370481, "session": 230367163, "x": 0, "y": 125, "top": 63, "right": 0, "bottom": 63, "left": 0, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1080, "surfaceHeight": 1732, "childWidth": 1080, "childHeight": 1732, "rootWidth": 1080, "rootHeight": 1920, "imeVisible": false, "imeBottom": 0, "focused": true, "statusBarsVisible": true, "navigationBarsVisible": true, "navigationInsets": 63, "visibleSafeTop": 63, "visibleSafeRight": 0, "visibleSafeBottom": 63, "visibleSafeLeft": 0}}]}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "tapNeeded", "result": {"id": "composer-9", "x": 540, "y": 702, "shown": true, "width": 1080, "height": 1732, "scale": 2.0869567, "paused": false}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "readingInput", "result": {"focused": "composer", "draft": "Unsent draft stays herenative-input-ok", "choice": 0.8, "layout": 0.8}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "readingBounds", "result": {"schema": 1, "privacyLevel": 0, "actualGeckoExecution": true, "protectionAcknowledged": true, "fingerprintingProtected": false, "fitUsedProductionController": true, "stableSamples": 6, "stableMillis": 555, "after": {"command": "10", "document": 1791966850902, "draft": "Unsent draft stays here", "cookie": "probe=synthetic-environment-1; readingBounds=controlled-fixture", "bodyHash": "93c92472", "sends": 0, "viewport": 414, "scrollWidth": 414, "dpr": 2.608695652173913, "scale": 0.9998389482498169, "visualWidth": 414.0666809082031, "visualHeight": 664.0333251953125, "offsetLeft": 0, "offsetTop": -0.133331298828125, "pageLeft": 0, "pageTop": 320, "innerHeight": 664, "clientHeight": 664, "scrollX": 0, "scrollY": 320.1333312988281, "focused": "", "blocks": [{"left": 0, "right": 414, "top": -320.1333312988281, "bottom": 4540.083465576172}, {"left": 16, "right": 398, "top": -160.8333282470703, "bottom": -89.53334045410156}, {"left": 16, "right": 398, "top": -32.06666564941406, "bottom": 39.93333435058594}], "codeWidth": 382, "codeScrollWidth": 1404, "codeLeft": 95.8499984741211, "matrixScale": 2.6082756519317627, "matrixScaleY": 2.6082756519317627, "matrixX": 0, "matrixY": 0, "nativeWidth": 1080, "nativeHeight": 1732, "layout": 1, "choice": 1, "nativeScrollX": 0, "nativeScrollY": 320, "nativeUpdateZoom": 2.6082756519317627, "nativeUpdates": 25, "sessionIdentity": 230367163, "surfaceIdentity": 4604534, "activityIdentity": 151419843, "privacyLevel": 0, "fingerprintingProtected": false, "nativeMeasured": true, "readingReady": true, "rawPageScale": 2.6082757, "viewportWidth": 414, "restoreAttempts": 1, "zoomActive": false, "composerPhysicalRect": {"left": 41.7324104309082, "top": 41.70904541015625, "right": 1038.09375, "bottom": 229.5048828125}, "visibleSurfaceRect": {"left": 0, "top": 125, "right": 1080, "bottom": 1857}, "imeTopPixels": 1920, "windowBounds": {"left": 0, "top": 0, "right": 1080, "bottom": 1920}, "nativeComposerFits": false, "pageToSurfaceMatrix": [2.6082757, 0, 0, 0, 2.6082757, -834.6482, 0, 0, 1], "productionKeyboardController": false, "nativeFocusRequests": 1, "nativeFocusMeasurements": 1, "nativeFocusScrolls": 0, "nativeFocusWasClipped": false, "nativeFocusScrollDeltaCss": 0}, "before": {"command": "10", "document": 1791966850902, "draft": "Unsent draft stays here", "cookie": "probe=synthetic-environment-1; readingBounds=controlled-fixture", "bodyHash": "93c92472", "sends": 0, "viewport": 414, "scrollWidth": 414, "dpr": 2.608695652173913, "scale": 4.200993537902832, "visualWidth": 98.55000305175781, "visualHeight": 158.0500030517578, "offsetLeft": 157.5833282470703, "offsetTop": 252.9499969482422, "pageLeft": 157.5833282470703, "pageTop": 252.9499969482422, "innerHeight": 664, "clientHeight": 664, "scrollX": 0, "scrollY": 0, "focused": "", "blocks": [{"left": 0, "right": 414, "top": 0, "bottom": 4860.216796875}, {"left": 16, "right": 398, "top": 159.3000030517578, "bottom": 230.60000610351562}, {"left": 16, "right": 398, "top": 288.066650390625, "bottom": 360.066650390625}], "codeWidth": 382, "codeScrollWidth": 1404, "codeLeft": 0, "matrixScale": 10.959114074707031, "matrixScaleY": 10.959114074707031, "matrixX": 0, "matrixY": 0, "nativeWidth": 1080, "nativeHeight": 1732, "layout": 1, "choice": 4.199999809265137, "nativeScrollX": 157.57986450195312, "nativeScrollY": 252.94561767578125, "nativeUpdateZoom": 10.959114074707031, "nativeUpdates": 13, "sessionIdentity": 230367163, "surfaceIdentity": 4604534, "activityIdentity": 151419843, "privacyLevel": 0, "fingerprintingProtected": false, "nativeMeasured": true, "readingReady": true, "rawPageScale": 10.959114, "viewportWidth": 414, "restoreAttempts": 1, "zoomActive": false, "composerPhysicalRect": {"left": -1551.58984375, "top": 509.8955078125, "right": 2634.7919921875, "bottom": 1298.95166015625}, "visibleSurfaceRect": {"left": 0, "top": 125, "right": 1080, "bottom": 1857}, "imeTopPixels": 1920, "windowBounds": {"left": 0, "top": 0, "right": 1080, "bottom": 1920}, "nativeComposerFits": false, "pageToSurfaceMatrix": [10.959114, 0, -1726.9357, 0, 10.959114, -2772.0598, 0, 0, 1], "productionKeyboardController": false, "nativeFocusRequests": 1, "nativeFocusMeasurements": 1, "nativeFocusScrolls": 0, "nativeFocusWasClipped": false, "nativeFocusScrollDeltaCss": 0}, "pan": {"command": "10", "document": 1791966850902, "draft": "Unsent draft stays here", "cookie": "probe=synthetic-environment-1; readingBounds=controlled-fixture", "bodyHash": "93c92472", "sends": 0, "viewport": 414, "scrollWidth": 414, "dpr": 2.608695652173913, "scale": 4.200993537902832, "visualWidth": 98.55000305175781, "visualHeight": 158.0500030517578, "offsetLeft": 48, "offsetTop": 320, "pageLeft": 48, "pageTop": 320, "innerHeight": 664, "clientHeight": 664, "scrollX": 0, "scrollY": 0, "focused": "", "blocks": [{"left": 0, "right": 414, "top": 0, "bottom": 4860.216796875}, {"left": 16, "right": 398, "top": 159.3000030517578, "bottom": 230.60000610351562}, {"left": 16, "right": 398, "top": 288.066650390625, "bottom": 360.066650390625}], "codeWidth": 382, "codeScrollWidth": 1404, "codeLeft": 0, "matrixScale": 10.959114074707031, "matrixScaleY": 10.959114074707031, "matrixX": 0, "matrixY": 0, "nativeWidth": 1080, "nativeHeight": 1732, "layout": 1, "choice": 4.199999809265137, "nativeScrollX": 48, "nativeScrollY": 320, "nativeUpdateZoom": 10.959114074707031, "nativeUpdates": 14, "sessionIdentity": 230367163, "surfaceIdentity": 4604534, "activityIdentity": 151419843, "privacyLevel": 0, "fingerprintingProtected": false, "nativeMeasured": true, "readingReady": true, "rawPageScale": 10.959114, "viewportWidth": 414, "restoreAttempts": 1, "zoomActive": false, "composerPhysicalRect": {"left": -350.691650390625, "top": -224.961181640625, "right": 3835.68994140625, "bottom": 564.094970703125}, "visibleSurfaceRect": {"left": 0, "top": 125, "right": 1080, "bottom": 1857}, "imeTopPixels": 1920, "windowBounds": {"left": 0, "top": 0, "right": 1080, "bottom": 1920}, "nativeComposerFits": false, "pageToSurfaceMatrix": [10.959114, 0, -526.0375, 0, 10.959114, -3506.9165, 0, 0, 1], "productionKeyboardController": false, "nativeFocusRequests": 1, "nativeFocusMeasurements": 1, "nativeFocusScrolls": 0, "nativeFocusWasClipped": false, "nativeFocusScrollDeltaCss": 0}}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "readingBounds", "result": {"schema": 1, "privacyLevel": 2, "actualGeckoExecution": true, "protectionAcknowledged": true, "fingerprintingProtected": true, "fitUsedProductionController": true, "stableSamples": 6, "stableMillis": 628, "after": {"command": "11", "document": 1791966858053.722, "draft": "Unsent draft stays here", "cookie": "probe=synthetic-environment-1; readingBounds=controlled-fixture", "bodyHash": "93c92472", "sends": 0, "viewport": 414, "scrollWidth": 414, "dpr": 2, "scale": 0.9998389482498169, "visualWidth": 414.0666809082031, "visualHeight": 664.0333251953125, "offsetLeft": 0, "offsetTop": -0.133331298828125, "pageLeft": 0, "pageTop": 320, "innerHeight": 664, "clientHeight": 664, "scrollX": 0, "scrollY": 320.1333312988281, "focused": "", "blocks": [{"left": 0, "right": 414, "top": -320.1333312988281, "bottom": 4540.083465576172}, {"left": 16, "right": 398, "top": -160.8333282470703, "bottom": -89.53334045410156}, {"left": 16, "right": 398, "top": -32.06666564941406, "bottom": 39.93333435058594}], "codeWidth": 382, "codeScrollWidth": 1404, "codeLeft": 95.8499984741211, "matrixScale": 2.6082756519317627, "matrixScaleY": 2.6082756519317627, "matrixX": 0, "matrixY": 0, "nativeWidth": 1080, "nativeHeight": 1732, "layout": 1, "choice": 1, "nativeScrollX": 0, "nativeScrollY": 320, "nativeUpdateZoom": 2.6082756519317627, "nativeUpdates": 25, "sessionIdentity": 230367163, "surfaceIdentity": 4604534, "activityIdentity": 151419843, "privacyLevel": 2, "fingerprintingProtected": true, "nativeMeasured": true, "readingReady": true, "rawPageScale": 2.6082757, "viewportWidth": 414, "restoreAttempts": 1, "zoomActive": false, "composerPhysicalRect": {"left": 41.7324104309082, "top": 41.70904541015625, "right": 1038.09375, "bottom": 229.5048828125}, "visibleSurfaceRect": {"left": 0, "top": 125, "right": 1080, "bottom": 1857}, "imeTopPixels": 1920, "windowBounds": {"left": 0, "top": 0, "right": 1080, "bottom": 1920}, "nativeComposerFits": false, "pageToSurfaceMatrix": [2.6082757, 0, 0, 0, 2.6082757, -834.6482, 0, 0, 1], "productionKeyboardController": false, "nativeFocusRequests": 1, "nativeFocusMeasurements": 1, "nativeFocusScrolls": 0, "nativeFocusWasClipped": false, "nativeFocusScrollDeltaCss": 0}, "before": {"command": "11", "document": 1791966858053.722, "draft": "Unsent draft stays here", "cookie": "probe=synthetic-environment-1; readingBounds=controlled-fixture", "bodyHash": "93c92472", "sends": 0, "viewport": 414, "scrollWidth": 414, "dpr": 2, "scale": 4.200993537902832, "visualWidth": 98.55000305175781, "visualHeight": 158.0500030517578, "offsetLeft": 157.5833282470703, "offsetTop": 252.9499969482422, "pageLeft": 157.5833282470703, "pageTop": 252.9499969482422, "innerHeight": 664, "clientHeight": 664, "scrollX": 0, "scrollY": 0, "focused": "", "blocks": [{"left": 0, "right": 414, "top": 0, "bottom": 4860.216796875}, {"left": 16, "right": 398, "top": 159.3000030517578, "bottom": 230.60000610351562}, {"left": 16, "right": 398, "top": 288.066650390625, "bottom": 360.066650390625}], "codeWidth": 382, "codeScrollWidth": 1404, "codeLeft": 0, "matrixScale": 10.959114074707031, "matrixScaleY": 10.959114074707031, "matrixX": 0, "matrixY": 0, "nativeWidth": 1080, "nativeHeight": 1732, "layout": 1, "choice": 4.199999809265137, "nativeScrollX": 157.57989501953125, "nativeScrollY": 252.9456787109375, "nativeUpdateZoom": 10.959114074707031, "nativeUpdates": 12, "sessionIdentity": 230367163, "surfaceIdentity": 4604534, "activityIdentity": 151419843, "privacyLevel": 2, "fingerprintingProtected": true, "nativeMeasured": true, "readingReady": true, "rawPageScale": 10.959114, "viewportWidth": 414, "restoreAttempts": 1, "zoomActive": false, "composerPhysicalRect": {"left": -1551.5902099609375, "top": 509.894775390625, "right": 2634.79150390625, "bottom": 1298.950927734375}, "visibleSurfaceRect": {"left": 0, "top": 125, "right": 1080, "bottom": 1857}, "imeTopPixels": 1920, "windowBounds": {"left": 0, "top": 0, "right": 1080, "bottom": 1920}, "nativeComposerFits": false, "pageToSurfaceMatrix": [10.959114, 0, -1726.936, 0, 10.959114, -2772.0605, 0, 0, 1], "productionKeyboardController": false, "nativeFocusRequests": 1, "nativeFocusMeasurements": 1, "nativeFocusScrolls": 0, "nativeFocusWasClipped": false, "nativeFocusScrollDeltaCss": 0}, "pan": {"command": "11", "document": 1791966858053.722, "draft": "Unsent draft stays here", "cookie": "probe=synthetic-environment-1; readingBounds=controlled-fixture", "bodyHash": "93c92472", "sends": 0, "viewport": 414, "scrollWidth": 414, "dpr": 2, "scale": 4.200993537902832, "visualWidth": 98.55000305175781, "visualHeight": 158.0500030517578, "offsetLeft": 48, "offsetTop": 320, "pageLeft": 48, "pageTop": 320, "innerHeight": 664, "clientHeight": 664, "scrollX": 0, "scrollY": 0, "focused": "", "blocks": [{"left": 0, "right": 414, "top": 0, "bottom": 4860.216796875}, {"left": 16, "right": 398, "top": 159.3000030517578, "bottom": 230.60000610351562}, {"left": 16, "right": 398, "top": 288.066650390625, "bottom": 360.066650390625}], "codeWidth": 382, "codeScrollWidth": 1404, "codeLeft": 0, "matrixScale": 10.959114074707031, "matrixScaleY": 10.959114074707031, "matrixX": 0, "matrixY": 0, "nativeWidth": 1080, "nativeHeight": 1732, "layout": 1, "choice": 4.199999809265137, "nativeScrollX": 48, "nativeScrollY": 320, "nativeUpdateZoom": 10.959114074707031, "nativeUpdates": 13, "sessionIdentity": 230367163, "surfaceIdentity": 4604534, "activityIdentity": 151419843, "privacyLevel": 2, "fingerprintingProtected": true, "nativeMeasured": true, "readingReady": true, "rawPageScale": 10.959114, "viewportWidth": 414, "restoreAttempts": 1, "zoomActive": false, "composerPhysicalRect": {"left": -350.691650390625, "top": -224.961181640625, "right": 3835.68994140625, "bottom": 564.094970703125}, "visibleSurfaceRect": {"left": 0, "top": 125, "right": 1080, "bottom": 1857}, "imeTopPixels": 1920, "windowBounds": {"left": 0, "top": 0, "right": 1080, "bottom": 1920}, "nativeComposerFits": false, "pageToSurfaceMatrix": [10.959114, 0, -526.0375, 0, 10.959114, -3506.9165, 0, 0, 1], "productionKeyboardController": false, "nativeFocusRequests": 1, "nativeFocusMeasurements": 1, "nativeFocusScrolls": 0, "nativeFocusWasClipped": false, "nativeFocusScrollDeltaCss": 0}}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "readingBoundsGeometry", "result": {"phase": "landscape", "measurement": {"command": "11", "document": 1791966858053.722, "draft": "Unsent draft stays here", "cookie": "probe=synthetic-environment-1; readingBounds=controlled-fixture", "bodyHash": "93c92472", "sends": 0, "viewport": 736, "scrollWidth": 736, "dpr": 2, "scale": 0.9998415112495422, "visualWidth": 736.1166381835938, "visualHeight": 341.98333740234375, "offsetLeft": 0, "offsetTop": -0.133331298828125, "pageLeft": 0, "pageTop": 248.6999969482422, "innerHeight": 342, "clientHeight": 342, "scrollX": 0, "scrollY": 248.8333282470703, "focused": "", "blocks": [{"left": 0, "right": 736, "top": -248.8333282470703, "bottom": 3351.7499237060547}, {"left": 16, "right": 720, "top": -137.06666564941406, "bottom": -89.53334045410156}, {"left": 16, "right": 720, "top": -32.06666564941406, "bottom": 39.93333435058594}], "codeWidth": 704, "codeScrollWidth": 1404, "codeLeft": 95.8499984741211, "matrixScale": 2.6082823276519775, "matrixScaleY": 2.6082823276519775, "matrixX": 0, "matrixY": 0, "nativeWidth": 1920, "nativeHeight": 892, "layout": 1, "choice": 1, "nativeScrollX": 0, "nativeScrollY": 248.6999969482422, "nativeUpdateZoom": 2.6082823276519775, "nativeUpdates": 26, "sessionIdentity": 230367163, "surfaceIdentity": 4604534, "activityIdentity": 151419843, "privacyLevel": 2, "fingerprintingProtected": true, "nativeMeasured": true, "readingReady": true, "rawPageScale": 2.6082757, "viewportWidth": 736, "restoreAttempts": 0, "zoomActive": false, "composerPhysicalRect": {"left": 41.73251724243164, "top": 41.7088623046875, "right": 1877.9632568359375, "bottom": 229.50518798828125}, "visibleSurfaceRect": {"left": 0, "top": 125, "right": 1920, "bottom": 1017}, "imeTopPixels": 1080, "windowBounds": {"left": 0, "top": 0, "right": 1920, "bottom": 1080}, "nativeComposerFits": false, "pageToSurfaceMatrix": [2.6082823, 0, 0, 0, 2.6082823, -648.6798, 0, 0, 1], "productionKeyboardController": false, "nativeFocusRequests": 1, "nativeFocusMeasurements": 1, "nativeFocusScrolls": 0, "nativeFocusWasClipped": false, "nativeFocusScrollDeltaCss": 0}, "geometry": {"child": 63370481, "session": 230367163, "x": 0, "y": 125, "top": 63, "right": 0, "bottom": 63, "left": 0, "webWidth": 1920, "webHeight": 892, "surfaceWidth": 1920, "surfaceHeight": 892, "childWidth": 1920, "childHeight": 892, "rootWidth": 1920, "rootHeight": 1080, "imeVisible": false, "imeBottom": 0, "focused": true, "statusBarsVisible": true, "navigationBarsVisible": true, "navigationInsets": 63, "visibleSafeTop": 63, "visibleSafeRight": 0, "visibleSafeBottom": 63, "visibleSafeLeft": 0}}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "readingBoundsGeometry", "result": {"phase": "portrait", "measurement": {"command": "11", "document": 1791966858053.722, "draft": "Unsent draft stays here", "cookie": "probe=synthetic-environment-1; readingBounds=controlled-fixture", "bodyHash": "93c92472", "sends": 0, "viewport": 414, "scrollWidth": 414, "dpr": 2, "scale": 0.9998415112495422, "visualWidth": 414.0666809082031, "visualHeight": 664.0333251953125, "offsetLeft": 0, "offsetTop": -0.133331298828125, "pageLeft": 0, "pageTop": 320, "innerHeight": 664, "clientHeight": 664, "scrollX": 0, "scrollY": 320.1333312988281, "focused": "", "blocks": [{"left": 0, "right": 414, "top": -320.1333312988281, "bottom": 4540.083465576172}, {"left": 16, "right": 398, "top": -160.8333282470703, "bottom": -89.53334045410156}, {"left": 16, "right": 398, "top": -32.06666564941406, "bottom": 39.93333435058594}], "codeWidth": 382, "codeScrollWidth": 1404, "codeLeft": 95.8499984741211, "matrixScale": 2.6082823276519775, "matrixScaleY": 2.6082823276519775, "matrixX": 0, "matrixY": 0, "nativeWidth": 1080, "nativeHeight": 1732, "layout": 1, "choice": 1, "nativeScrollX": 0, "nativeScrollY": 320, "nativeUpdateZoom": 2.6082823276519775, "nativeUpdates": 27, "sessionIdentity": 230367163, "surfaceIdentity": 4604534, "activityIdentity": 151419843, "privacyLevel": 2, "fingerprintingProtected": true, "nativeMeasured": true, "readingReady": true, "rawPageScale": 2.6082823, "viewportWidth": 414, "restoreAttempts": 0, "zoomActive": false, "composerPhysicalRect": {"left": 41.73251724243164, "top": 41.70880126953125, "right": 1038.0963134765625, "bottom": 229.505126953125}, "visibleSurfaceRect": {"left": 0, "top": 125, "right": 1080, "bottom": 1857}, "imeTopPixels": 1920, "windowBounds": {"left": 0, "top": 0, "right": 1080, "bottom": 1920}, "nativeComposerFits": false, "pageToSurfaceMatrix": [2.6082823, 0, 0, 0, 2.6082823, -834.6503, 0, 0, 1], "productionKeyboardController": false, "nativeFocusRequests": 1, "nativeFocusMeasurements": 1, "nativeFocusScrolls": 0, "nativeFocusWasClipped": false, "nativeFocusScrollDeltaCss": 0}, "geometry": {"child": 63370481, "session": 230367163, "x": 0, "y": 125, "top": 63, "right": 0, "bottom": 63, "left": 0, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1080, "surfaceHeight": 1732, "childWidth": 1080, "childHeight": 1732, "rootWidth": 1080, "rootHeight": 1920, "imeVisible": false, "imeBottom": 0, "focused": true, "statusBarsVisible": true, "navigationBarsVisible": true, "navigationInsets": 63, "visibleSafeTop": 63, "visibleSafeRight": 0, "visibleSafeBottom": 63, "visibleSafeLeft": 0}}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "tapNeeded", "result": {"id": "composer-bounds-14", "x": 540, "y": 970, "nativeMatrix": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "readingBoundsInput", "result": {"measurement": {"command": "11", "document": 1791966858053.722, "draft": "Unsent draft stays herenative-input-ok", "cookie": "probe=synthetic-environment-1; readingBounds=controlled-fixture", "bodyHash": "93c92472", "sends": 0, "viewport": 414, "scrollWidth": 414, "dpr": 2, "scale": 0.9999538660049438, "visualWidth": 414.01666259765625, "visualHeight": 341.95001220703125, "offsetLeft": 0, "offsetTop": -0.133331298828125, "pageLeft": 0, "pageTop": 58.13333511352539, "innerHeight": 664, "clientHeight": 664, "scrollX": 0, "scrollY": 58.266666412353516, "focused": "composer", "blocks": [{"left": 0, "right": 414, "top": -58.26666259765625, "bottom": 4801.950134277344}, {"left": 16, "right": 398, "top": 101.03334045410156, "bottom": 172.3333282470703}, {"left": 16, "right": 398, "top": 229.8000030517578, "bottom": 301.8000030517578}], "codeWidth": 382, "codeScrollWidth": 1404, "codeLeft": 95.8499984741211, "matrixScale": 2.6085753440856934, "matrixScaleY": 2.6085753440856934, "matrixX": 0, "matrixY": 0, "nativeWidth": 1080, "nativeHeight": 892, "layout": 1, "choice": 1, "nativeScrollX": 0, "nativeScrollY": 58.13333511352539, "nativeUpdateZoom": 2.6085753440856934, "nativeUpdates": 32, "sessionIdentity": 230367163, "surfaceIdentity": 4604534, "activityIdentity": 151419843, "privacyLevel": 2, "fingerprintingProtected": true, "nativeMeasured": true, "readingReady": true, "rawPageScale": 2.6085753, "viewportWidth": 414, "restoreAttempts": 0, "zoomActive": false, "composerPhysicalRect": {"left": 41.737205505371094, "top": 724.7984619140625, "right": 1038.2130126953125, "bottom": 912.6158447265625}, "visibleSurfaceRect": {"left": 0, "top": 125, "right": 1080, "bottom": 1017}, "imeTopPixels": 1017, "windowBounds": {"left": 0, "top": 0, "right": 1080, "bottom": 1920}, "nativeComposerFits": true, "pageToSurfaceMatrix": [2.6085753, 0, 0, 0, 2.6085753, -151.64519, 0, 0, 1], "productionKeyboardController": true, "nativeFocusRequests": 1, "nativeFocusMeasurements": 1, "nativeFocusScrolls": 1, "nativeFocusWasClipped": true, "nativeFocusScrollDeltaCss": 26.130445}, "imeVisible": true, "imeBottom": 903, "sameDocument": true, "sameCookie": true, "draftPreserved": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "readingBoundsEnd", "result": {"productionDelegateRestored": true, "privacyRestored": true, "privacyLevel": 1}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "reading", "result": {"command": "16", "viewport": 414, "density": 2.608695652173913, "scale": 1, "sidebarHidden": true, "composerWidth": 382, "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0", "draft": "Unsent draft stays here", "nativeWidth": 1080, "mobileViewport": true, "desktopIdentity": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "tapNeeded", "result": {"id": "composer-17", "x": 553, "y": 989, "shown": true, "width": 1080, "height": 1732, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "nativeSurface", "result": {"originChecks": 82, "originSyncs": 1, "actualGestureCount": 3, "stationaryGeometryDeduplicated": true, "initialSurfaceMoveSynced": true, "geometryReadiness": {"imeHidden": true, "systemBarsRequested": true, "normalBarsVisible": true, "stableFrames": 61, "stableMillis": 1021, "totalFrames": 61, "waitMillis": 1021, "geometryChanges": 1, "geometry": {"child": 63370481, "session": 230367163, "x": 0, "y": 125, "top": 63, "right": 0, "bottom": 63, "left": 0, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1080, "surfaceHeight": 1732, "childWidth": 1080, "childHeight": 1732, "rootWidth": 1080, "rootHeight": 1920, "imeVisible": false, "imeBottom": 0, "focused": true, "statusBarsVisible": true, "navigationBarsVisible": true, "navigationInsets": 63, "visibleSafeTop": 63, "visibleSafeRight": 0, "visibleSafeBottom": 63, "visibleSafeLeft": 0}}, "unchangedTouchEvents": 81, "redundantTouchSyncs": 0, "firstTouchSyncs": 1, "firstTouchOriginCorrect": true, "stationaryGeometryTraceCount": 2, "geometryStableDuringSwipes": true, "movedSurfaceSyncs": 1, "movedSurfaceAcceptsRealInput": true, "documentAndDraftPreserved": true, "typedCharacters": 15, "finalGeometryTraceCount": 5}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "nativeCheckpoint", "result": {"offered": 1408, "coalesced": 1349, "serialized": 59, "mainSerialized": 0, "written": 10, "serializeNanos": 5502839114, "encodedBytes": 21091532, "firstBurstSerialized": 1, "firstBurstCoalesced": 999, "firstCandidate": 999, "lastCandidate": 1199, "latestWrites": 2, "lastValidCandidate": 2002, "validAfterNullCandidate": true, "validAfterThrowingCandidate": true, "validAfterUtf8Oversize": true, "invalidNewerKeepsValid": true, "continuousOffered": 200, "continuousWritesDuringOffers": 1, "continuousOffersPersisted": true, "continuousLastCandidate": 4199, "continuousSerialized": 49, "mainSerializationZero": true, "pendingBounded": true, "latestWinsDuringSerialization": true, "oversizeKeepsPrevious": true, "independentStore": true, "sdkSnapshotRestorable": true, "readingFixtureCookieRemovedFromDom": true, "readingFixtureCookieRemovedFromNative": true, "otherDomCookiesPreserved": true, "otherNativeCookiesPreserved": true, "readingFixtureCookieCleanup": {"schema": 1, "cookie": "readingBounds=controlled-fixture", "cookiePath": "/", "processSlot": 0, "runNonce": "ee5c633588274f148047dd800aef68a1", "invocation": 18, "origin": "http://127.0.0.1:8765", "url": "http://127.0.0.1:8765/browser-reading?command=16", "sameSession": true, "sameDocument": true, "sameUrl": true, "sessionBefore": 230367163, "sessionAfter": 230367163, "documentBefore": 1791966881365, "documentAfter": 1791966881365, "beforeDomCookies": "probe=synthetic-environment-1; readingBounds=controlled-fixture", "afterDomCookies": "probe=synthetic-environment-1", "nativeBefore": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1; readingBounds=controlled-fixture", "nativeAfter": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1", "readingFixtureCookieRemovedFromDom": true, "readingFixtureCookieRemovedFromNative": true, "otherDomCookiesPreserved": true, "otherNativeCookiesPreserved": true}}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "cancelledLoad", "result": {"reportedFailure": false, "pageError": "", "visibleDocumentRetained": true, "documentReadyBeforeStop": true, "cancelledBeforeFinish": true, "finishedBeforeCancel": 0, "result": "\"Visible before slow resource\"", "paintCase": {"schema": 1, "serial": 19, "target": "http://127.0.0.1:8765/browser-loading?command=19", "requested": 696117, "nativeSession": 230367163, "currentNativeSession": 230367163, "currentUrl": "http://127.0.0.1:8765/browser-loading?command=19", "committedTarget": "http://127.0.0.1:8765/browser-loading?command=19", "committed": true, "currentCase": true, "started": 696247, "visible": 696285, "finished": 0}}, "nativeContext": "environment-1", "processSlot": 0}
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 47684)
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/socketserver.py", line 692, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/usr/lib/python3.12/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib/python3.12/socketserver.py", line 761, in __init__
+    self.handle()
+  File "/usr/lib/python3.12/http/server.py", line 438, in handle
+    self.handle_one_request()
+  File "/usr/lib/python3.12/http/server.py", line 424, in handle_one_request
+    method()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_device.py", line 205, in do_GET
+    self.end_headers();self.wfile.write(body)
+                       ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/socketserver.py", line 840, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+{"kind": "blocked", "result": {"guard": false, "route": {"type": "socks", "host": "127.0.0.1", "port": 9, "proxyDNS": true, "failoverTimeout": 1}, "newFetchBlocked": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "read", "context": "2", "command": "1", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "fixture", "result": {"action": "read", "context": "1", "command": "1", "cookie": "probe=synthetic-environment-1", "localStorage": "synthetic-environment-1", "indexedDB": "synthetic-environment-1", "cache": "synthetic-environment-1", "serviceWorkers": 1, "workerToken": "synthetic-environment-1", "nativeCookies": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1"}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "read", "context": "2", "command": "1", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "fixture", "result": {"action": "legacyEnginePreference", "context": "1", "command": "1", "cookie": "probe=synthetic-environment-1", "localStorage": "synthetic-environment-1", "indexedDB": "synthetic-environment-1", "cache": "synthetic-environment-1", "serviceWorkers": 1, "workerToken": "synthetic-environment-1", "nativeCookies": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1", "legacyEngineCompatibility": {"actualGecko": true, "oldPreferencesPreserved": true, "systemEngineRefused": true, "sameSdkSession": true, "sameSurface": true, "sameDocument": true, "sameProtectedRoute": true, "systemWebViews": 0}}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "legacyEnginePreference", "context": "2", "command": "1", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2", "legacyEngineCompatibility": {"actualGecko": true, "oldPreferencesPreserved": true, "systemEngineRefused": true, "sameSdkSession": true, "sameSurface": true, "sameDocument": true, "sameProtectedRoute": true, "systemWebViews": 0}}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "none", "draft": "", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "", "history": 2, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "fixture", "result": {"action": "read", "context": "1", "command": "1", "cookie": "probe=synthetic-environment-1", "localStorage": "synthetic-environment-1", "indexedDB": "synthetic-environment-1", "cache": "synthetic-environment-1", "serviceWorkers": 1, "workerToken": "synthetic-environment-1", "nativeCookies": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1"}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "read", "context": "2", "command": "1", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "synthetic-session-1", "draft": "session-draft-1", "checkpoint": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "clear", "context": "1", "command": "3", "cookie": "", "localStorage": null, "indexedDB": null, "cache": null, "serviceWorkers": 0, "workerToken": null, "nativeCookies": ""}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "read", "context": "2", "command": "1", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "session", "result": {"token": "none", "draft": "", "history": 1, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "session", "result": {"token": "synthetic-session-2", "draft": "", "history": 1, "automaticRecovery": true, "profileForeground": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "privacy", "result": {"nativeFingerprintingEnabled": true, "restoredLevel": 1}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "completion", "result": {"guestActionsRecognized": true, "priorActionsCannotComplete": true, "nestedMessageIdRecognized": true, "reply": "guest complete reply", "poll": {"url": "http://127.0.0.1:8765/browser-session?context=1&action=sessionRead&command=1", "error": "", "recoverable": false, "thinking": false, "searching": false, "busy": false, "submitted": true, "userKey": "id:synthetic-user", "userOrdinal": 0, "boundByNewIdentity": false, "otherQuestion": false, "replyKey": "id:synthetic-answer", "terminal": true, "hasFiles": false, "prompt": "guest prompt", "text": "guest complete reply", "markdown": "guest complete reply"}}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "bootstrapCheck", "result": {"navigationFailed": true, "extensionId": "browser@pocketchat.local", "enabledAfterDisable": false, "disabledFlags": 2}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "bootstrapRestore", "result": {"ensureBefore": {"id": "browser@pocketchat.local", "version": "2.0.0", "enabled": false, "disabledFlags": 2}, "enableResult": {"id": "browser@pocketchat.local", "version": "2.0.0", "enabled": true, "disabledFlags": 0}, "ensureAfter": {"id": "browser@pocketchat.local", "version": "2.0.0", "enabled": true, "disabledFlags": 0}, "enableSource": "USER", "guardBefore": true, "networkReadyBefore": true, "newNativeRoutePort": true, "privacyReady": true, "protectionLevel": 1, "expectedProtectionLevel": 1, "nativeProtectionAcknowledged": true, "guardAfter": true, "networkReadyAfter": true}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "read", "context": "2", "command": "1", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "appUpdate", "action": "badHash", "result": {"action": "badHash", "state": "available", "message": "\u66f4\u65b0\u6587\u4ef6\u4e0d\u5b8c\u6574\uff0c\u8bf7\u91cd\u65b0\u4e0b\u8f7d", "uri": "", "downloadId": -1}}
+{"kind": "appUpdate", "action": "badSigner", "result": {"action": "badSigner", "state": "available", "message": "\u66f4\u65b0\u7b7e\u540d\u4e0e\u5f53\u524d\u5e94\u7528\u4e0d\u540c\uff0c\u5df2\u505c\u6b62\u5b89\u88c5", "uri": "", "downloadId": -1}}
+{"kind": "appUpdate", "action": "cancel", "result": {"action": "cancel", "state": "available", "message": "\u4e0b\u8f7d\u5df2\u53d6\u6d88\uff0c\u53ef\u4ee5\u968f\u65f6\u91cd\u65b0\u4e0b\u8f7d", "uri": "", "downloadId": -1}}
+{"kind": "appUpdate", "action": "cancelDuringQuery", "result": {"action": "cancelDuringQuery", "actualSystemQuery": true, "ownedDownloadId": 14, "generationBeforeCancel": 5, "releaseCode": 54, "releaseSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "pid": 21885, "cursorClass": "android.app.DownloadManager$CursorTranslator", "cursorStatusBeforeCancel": 1, "systemRowId": 14, "queriedUri": "http://127.0.0.1:8765/update-wait", "queryHeldAfterReturn": true, "productionProviderCancel": true, "cancelState": "available", "generationAfterCancel": 6, "cancelledDownloadId": -1, "queryReturnedAfterCancel": true, "productionPollDrained": true, "cleanupWorkerDrained": true, "systemRecordRemoved": true, "sameRelease": true, "finalPid": 21885, "state": "available", "message": "\u4e0b\u8f7d\u5df2\u53d6\u6d88\uff0c\u53ef\u4ee5\u968f\u65f6\u91cd\u65b0\u4e0b\u8f7d", "uri": "", "received": 0, "downloadId": -1, "downloadRequested": false, "pendingTransferJob": false, "finalFilePresent": false}}
+{"kind": "appUpdate", "action": "good", "result": {"action": "good", "state": "ready", "message": "", "uri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "downloadId": -1}}
+{"kind": "appUpdate", "action": "verifyAccess", "result": {"readOnly": true, "traversalRejected": true, "sameSigner": true, "installedVersion": "2.0.0", "packageVersion": 53}}
+{"kind": "appUpdate", "action": "showUi", "result": {"opened": true}}
+{"kind": "downloadDeletion", "result": {"schema": 1, "status": "passed", "actualAndroidExecution": true, "actualAdbTouchExecution": false, "scope": "Synthetic saved downloads only; no existing phone files selected.", "actualSameUriPublicationBarrier": true, "staleDeleteWaitedForWriter": true, "newPublishedBytesPreserved": true, "writerProfileSlot": 0, "oldSelectionProfileSlot": 7, "lateOldSlotSuppressed": true, "actualMediaStoreExecution": true, "actualPrivateProviderExecution": true, "actualWorkerThreadDeletion": true, "profileSlot": 7, "freedMediaStoreBytes": 5127, "freedPrivateBytes": 8197, "alreadyAbsentPrivateFreedBytes": 0, "alreadyAbsentMediaStoreFreedBytes": 0, "staleMenuFreedBytes": 0, "cancelConfirmation": "Android negative Button.performClick; no ADB gesture", "ownSyntheticDestinationsCleaned": true, "checks": [{"name": "Saved-file deletion runs outside the Android main thread", "pass": true}, {"name": "The controlled device supports real MediaStore Downloads", "pass": true}, {"name": "Published MediaStore and profile-7 private APK bytes are readable", "pass": true}, {"name": "Deleting the selected MediaStore APK reports its actual size and removes its row", "pass": true}, {"name": "A same-name private APK in another profile survives MediaStore deletion", "pass": true}, {"name": "Deleting a profile-7 private APK removes its physical payload and both shared indexes", "pass": true}, {"name": "Same-name destinations in another profile and directory retain their exact bytes", "pass": true}, {"name": "An unrelated progress save and late add/sync cannot resurrect a deleted saved file", "pass": true}, {"name": "Reopening profile tasks and migrating legacy history keep the deletion durable", "pass": true}, {"name": "A later download with a fresh id and timestamp may reuse the exact destination URI", "pass": true}, {"name": "An old captured menu cannot delete a newer download at the same URI", "pass": true}, {"name": "A same-URI delete actually waits inside the active publication lease", "pass": true}, {"name": "After the writer publishes a new identity the old deletion preserves its bytes and index", "pass": true}, {"name": "Late old-slot add/sync cannot replace a newer saved identity from another profile", "pass": true}, {"name": "An already absent private payload clears stale metadata without claiming freed bytes", "pass": true}, {"name": "A known empty MediaStore query clears stale metadata without claiming freed bytes", "pass": true}, {"name": "Provider deletion failure retains its exact file bytes and indexed metadata", "pass": true}, {"name": "A stale or unindexed identity cannot delete another saved payload", "pass": true}, {"name": "Cancelling the rendered confirmation preserves the file and its metadata", "pass": true}, {"name": "Unrelated same-name saved files remain readable after every deletion and failure case", "pass": true}], "checkCount": 20}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "updateTransfer", "result": {"token": "1549688746698", "action": "transferStart", "scenario": "cut", "state": "waiting", "message": "\u7f51\u7edc\u6682\u65f6\u4e2d\u65ad\uff0c\u5df2\u4fdd\u7559\u8fdb\u5ea6\uff0c\u7a0d\u540e\u81ea\u52a8\u7eed\u4f20", "uri": "", "received": 528592, "total": 1057185, "partialBytes": 528592, "partialSha": "ec1e1357e13338bc76d858d9f899d4477c450617bb471170df7fb4584a87ea54", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": false, "statusReads": 2, "statusMainThreadIo": 0, "maxStatusMs": 0.303912, "nativeRenders": 1, "progressIdentityPairs": 0, "pid": 21885, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": true}}
+{"kind": "updateTransfer", "result": {"token": "1550163113867", "action": "transferResume", "scenario": "cut", "state": "ready", "message": "", "uri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "received": 1057185, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 1057185, "finalSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "finalApks": 1, "sameSigner": true, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 4, "statusMainThreadIo": 0, "maxStatusMs": 0.355719, "nativeRenders": 2, "progressIdentityPairs": 0, "pid": 21885, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "0.5 / 1.0 MB", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "reading", "result": {"command": "1", "viewport": 414, "density": 2.608695652173913, "scale": 1, "sidebarHidden": true, "composerWidth": 382, "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:157.0) Gecko/20100101 Firefox/157.0", "draft": "Unsent draft stays here", "nativeWidth": 1080, "mobileViewport": true, "desktopIdentity": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "updateTransfer", "result": {"token": "1553353786904", "action": "transferStart", "scenario": "pause", "state": "downloading", "message": "\u901a\u8fc7\u624b\u673a\u7f51\u7edc\u4e0b\u8f7d \u00b7 \u53ef\u7ee7\u7eed\u4f7f\u7528\u804a\u5929", "uri": "", "received": 147456, "total": 1057185, "partialBytes": 147456, "partialSha": "c97b9ba323a66bfda49242f0ea554f3e543039df794bd7732f4e5625590143c6", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": true, "downloadRequested": true, "userPaused": false, "statusReads": 25, "statusMainThreadIo": 0, "maxStatusMs": 0.669425, "nativeRenders": 4, "progressIdentityPairs": 3, "pid": 21885, "bytesPerSecond": 39702, "remainingSeconds": 23, "downloadDetailsText": "0.1 / 1.0 MB \u00b7 36 KB/s \u00b7 \u7ea6\u5269 26 \u79d2", "speedFirstReceived": 0, "speedLastReceived": 147456, "speedFirstSampleNanos": 836727720236, "speedLastSampleNanos": 840579460257, "speedSamplePairs": 7, "speedSampleDeltaBytes": 147456, "speedSampleDurationMillis": 3851.740021, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": true}}
+{"kind": "tapNeeded", "result": {"id": "composer-1", "x": 553, "y": 989, "shown": true, "width": 1080, "height": 1732, "scale": 2.6086957, "paused": false}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "nativeSurface", "result": {"originChecks": 85, "originSyncs": 1, "actualGestureCount": 3, "stationaryGeometryDeduplicated": true, "initialSurfaceMoveSynced": true, "geometryReadiness": {"imeHidden": true, "systemBarsRequested": true, "normalBarsVisible": true, "stableFrames": 58, "stableMillis": 1005, "totalFrames": 61, "waitMillis": 1023, "geometryChanges": 2, "geometry": {"child": 124689646, "session": 220724417, "x": 0, "y": 125, "top": 63, "right": 0, "bottom": 63, "left": 0, "webWidth": 1080, "webHeight": 1732, "surfaceWidth": 1080, "surfaceHeight": 1732, "childWidth": 1080, "childHeight": 1732, "rootWidth": 1080, "rootHeight": 1920, "imeVisible": false, "imeBottom": 0, "focused": true, "statusBarsVisible": true, "navigationBarsVisible": true, "navigationInsets": 63, "visibleSafeTop": 63, "visibleSafeRight": 0, "visibleSafeBottom": 63, "visibleSafeLeft": 0}}, "unchangedTouchEvents": 84, "redundantTouchSyncs": 0, "firstTouchSyncs": 1, "firstTouchOriginCorrect": true, "stationaryGeometryTraceCount": 2, "geometryStableDuringSwipes": true, "movedSurfaceSyncs": 1, "movedSurfaceAcceptsRealInput": true, "documentAndDraftPreserved": true, "typedCharacters": 15, "finalGeometryTraceCount": 5}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "updateTransfer", "result": {"token": "1581822178949", "action": "transferInspect", "scenario": "pause", "state": "downloading", "message": "\u901a\u8fc7\u624b\u673a\u7f51\u7edc\u4e0b\u8f7d \u00b7 \u53ef\u7ee7\u7eed\u4f7f\u7528\u804a\u5929", "uri": "", "received": 925696, "total": 1057185, "partialBytes": 933888, "partialSha": "a58ac3d4502790b9ee5546a5d5069fc36c18ede954b098e7b6a5056a589f488e", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": true, "downloadRequested": true, "userPaused": false, "statusReads": 26, "statusMainThreadIo": 0, "maxStatusMs": 0.937252, "nativeRenders": 4, "progressIdentityPairs": 3, "pid": 21885, "bytesPerSecond": 33139, "remainingSeconds": 4, "downloadDetailsText": "0.1 / 1.0 MB \u00b7 36 KB/s \u00b7 \u7ea6\u5269 26 \u79d2", "speedFirstReceived": 0, "speedLastReceived": 925696, "speedFirstSampleNanos": 836727720236, "speedLastSampleNanos": 864860782605, "speedSamplePairs": 8, "speedSampleDeltaBytes": 925696, "speedSampleDurationMillis": 28133.062369, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": true}}
+{"kind": "updateTransfer", "result": {"token": "1584467918045", "action": "transferInspect", "scenario": "pause", "state": "downloading", "message": "\u901a\u8fc7\u624b\u673a\u7f51\u7edc\u4e0b\u8f7d \u00b7 \u53ef\u7ee7\u7eed\u4f7f\u7528\u804a\u5929", "uri": "", "received": 1007616, "total": 1057185, "partialBytes": 1015808, "partialSha": "299a1a6603caf2f431e818bf2e7ca763f829406cb2f602d1a917773edf0b6b21", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": true, "downloadRequested": true, "userPaused": false, "statusReads": 27, "statusMainThreadIo": 0, "maxStatusMs": 0.937252, "nativeRenders": 4, "progressIdentityPairs": 6, "pid": 21885, "bytesPerSecond": 32805, "remainingSeconds": 2, "downloadDetailsText": "0.9 / 1.0 MB \u00b7 32 KB/s \u00b7 \u7ea6\u5269 3 \u79d2", "speedFirstReceived": 0, "speedLastReceived": 1007616, "speedFirstSampleNanos": 836727720236, "speedLastSampleNanos": 867470058075, "speedSamplePairs": 9, "speedSampleDeltaBytes": 1007616, "speedSampleDurationMillis": 30742.337839, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": true}}
+{"kind": "updateTransfer", "result": {"token": "1585686755928", "action": "transferLocatePause", "scenario": "pause", "state": "downloading", "label": "\u6682\u505c\u4e0b\u8f7d", "actualNativeView": true, "enabled": true, "clickable": true, "windowFocused": true, "bounds": {"left": 74, "top": 669, "right": 1006, "bottom": 795}, "x": 540, "y": 732, "pid": 21885}}
+{"kind": "updateTransfer", "result": {"token": "1585835844445", "action": "transferInspect", "scenario": "pause", "state": "paused", "message": "\u4e0b\u8f7d\u5df2\u6682\u505c\uff0c\u5df2\u4fdd\u7559\u4e0b\u8f7d\u8fdb\u5ea6", "uri": "", "received": 1048576, "total": 1057185, "partialBytes": 1048576, "partialSha": "fc71742b70a0129d98551179700cbe9856879a37bcac9822431d42c647678d1d", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": true, "statusReads": 28, "statusMainThreadIo": 0, "maxStatusMs": 0.937252, "nativeRenders": 5, "progressIdentityPairs": 8, "pid": 21885, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "1.0 / 1.0 MB", "speedFirstReceived": 0, "speedLastReceived": 1007616, "speedFirstSampleNanos": 836727720236, "speedLastSampleNanos": 867470058075, "speedSamplePairs": 9, "speedSampleDeltaBytes": 1007616, "speedSampleDurationMillis": 30742.337839, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1585961498817", "action": "transferWaitPaused", "scenario": "pause", "state": "paused", "message": "\u4e0b\u8f7d\u5df2\u6682\u505c\uff0c\u5df2\u4fdd\u7559\u4e0b\u8f7d\u8fdb\u5ea6", "uri": "", "received": 1048576, "total": 1057185, "partialBytes": 1048576, "partialSha": "fc71742b70a0129d98551179700cbe9856879a37bcac9822431d42c647678d1d", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": true, "statusReads": 29, "statusMainThreadIo": 0, "maxStatusMs": 0.937252, "nativeRenders": 5, "progressIdentityPairs": 8, "pid": 21885, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "1.0 / 1.0 MB", "speedFirstReceived": 0, "speedLastReceived": 1007616, "speedFirstSampleNanos": 836727720236, "speedLastSampleNanos": 867470058075, "speedSamplePairs": 9, "speedSampleDeltaBytes": 1007616, "speedSampleDurationMillis": 30742.337839, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1586094908788", "action": "transferQueuedPause", "scenario": "pause", "state": "paused", "message": "\u4e0b\u8f7d\u5df2\u6682\u505c\uff0c\u5df2\u4fdd\u7559\u4e0b\u8f7d\u8fdb\u5ea6", "uri": "", "received": 1048576, "total": 1057185, "partialBytes": 1048576, "partialSha": "fc71742b70a0129d98551179700cbe9856879a37bcac9822431d42c647678d1d", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": true, "statusReads": 30, "statusMainThreadIo": 0, "maxStatusMs": 0.937252, "nativeRenders": 5, "progressIdentityPairs": 8, "pid": 21885, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "1.0 / 1.0 MB", "speedFirstReceived": 0, "speedLastReceived": 1007616, "speedFirstSampleNanos": 836727720236, "speedLastSampleNanos": 867470058075, "speedSamplePairs": 9, "speedSampleDeltaBytes": 1007616, "speedSampleDurationMillis": 30742.337839, "commandQueueDrained": true, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1586228525841", "action": "transferDelayedPause", "scenario": "pause", "state": "paused", "message": "\u4e0b\u8f7d\u5df2\u6682\u505c\uff0c\u5df2\u4fdd\u7559\u4e0b\u8f7d\u8fdb\u5ea6", "uri": "", "received": 1048576, "total": 1057185, "partialBytes": 1048576, "partialSha": "fc71742b70a0129d98551179700cbe9856879a37bcac9822431d42c647678d1d", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": true, "statusReads": 31, "statusMainThreadIo": 0, "maxStatusMs": 0.937252, "nativeRenders": 5, "progressIdentityPairs": 8, "pid": 21885, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "1.0 / 1.0 MB", "speedFirstReceived": 0, "speedLastReceived": 1007616, "speedFirstSampleNanos": 836727720236, "speedLastSampleNanos": 867470058075, "speedSamplePairs": 9, "speedSampleDeltaBytes": 1007616, "speedSampleDurationMillis": 30742.337839, "commandQueueDrained": true, "preparationGuardReached": true, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1586362633648", "action": "transferInspect", "scenario": "pause", "state": "paused", "message": "\u4e0b\u8f7d\u5df2\u6682\u505c\uff0c\u5df2\u4fdd\u7559\u4e0b\u8f7d\u8fdb\u5ea6", "uri": "", "received": 1048576, "total": 1057185, "partialBytes": 1048576, "partialSha": "fc71742b70a0129d98551179700cbe9856879a37bcac9822431d42c647678d1d", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": true, "statusReads": 1, "statusMainThreadIo": 0, "maxStatusMs": 0.339925, "nativeRenders": 0, "progressIdentityPairs": 0, "pid": 21885, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1586901602117", "action": "transferInspect", "scenario": "pause", "state": "paused", "message": "\u4e0b\u8f7d\u5df2\u6682\u505c\uff0c\u5df2\u4fdd\u7559\u8fdb\u5ea6", "uri": "", "received": 1048576, "total": 1057185, "partialBytes": 1048576, "partialSha": "fc71742b70a0129d98551179700cbe9856879a37bcac9822431d42c647678d1d", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": true, "statusReads": 1, "statusMainThreadIo": 0, "maxStatusMs": 0.590557, "nativeRenders": 0, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1588718362678", "action": "transferLocateResume", "scenario": "pause", "state": "paused", "label": "\u7ee7\u7eed\u4e0b\u8f7d", "actualNativeView": true, "enabled": true, "clickable": true, "windowFocused": true, "bounds": {"left": 74, "top": 660, "right": 1006, "bottom": 786}, "x": 540, "y": 723, "pid": 23808}}
+{"kind": "updateTransfer", "result": {"token": "1589082693723", "action": "transferWaitReady", "scenario": "pause", "state": "ready", "message": "", "uri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "received": 1057185, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 1057185, "finalSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "finalApks": 1, "sameSigner": true, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 3, "statusMainThreadIo": 0, "maxStatusMs": 1.858191, "nativeRenders": 3, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1589808973525", "action": "transferStart", "scenario": "ignore-range", "state": "waiting", "message": "\u7f51\u7edc\u6682\u65f6\u4e2d\u65ad\uff0c\u5df2\u4fdd\u7559\u8fdb\u5ea6\uff0c\u7a0d\u540e\u81ea\u52a8\u7eed\u4f20", "uri": "", "received": 528592, "total": 1057185, "partialBytes": 528592, "partialSha": "ec1e1357e13338bc76d858d9f899d4477c450617bb471170df7fb4584a87ea54", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": false, "statusReads": 5, "statusMainThreadIo": 0, "maxStatusMs": 1.858191, "nativeRenders": 3, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": true}}
+{"kind": "updateTransfer", "result": {"token": "1590202290940", "action": "transferResume", "scenario": "ignore-range", "state": "ready", "message": "", "uri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "received": 1057185, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 1057185, "finalSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "finalApks": 1, "sameSigner": true, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 7, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 4, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "0.5 / 1.0 MB", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1590598075171", "action": "transferStart", "scenario": "bad-range", "state": "waiting", "message": "\u7f51\u7edc\u6682\u65f6\u4e2d\u65ad\uff0c\u5df2\u4fdd\u7559\u8fdb\u5ea6\uff0c\u7a0d\u540e\u81ea\u52a8\u7eed\u4f20", "uri": "", "received": 528592, "total": 1057185, "partialBytes": 528592, "partialSha": "ec1e1357e13338bc76d858d9f899d4477c450617bb471170df7fb4584a87ea54", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": false, "statusReads": 9, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 5, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": true}}
+{"kind": "updateTransfer", "result": {"token": "1591047493215", "action": "transferResume", "scenario": "bad-range", "state": "available", "message": "\u66f4\u65b0\u670d\u52a1\u5668\u7eed\u4f20\u8303\u56f4\u4e0e\u4e0b\u8f7d\u8fdb\u5ea6\u4e0d\u7b26", "uri": "", "received": 0, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 11, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 6, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "0.5 / 1.0 MB", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1591450872655", "action": "transferStart", "scenario": "changed-etag", "state": "waiting", "message": "\u7f51\u7edc\u6682\u65f6\u4e2d\u65ad\uff0c\u5df2\u4fdd\u7559\u8fdb\u5ea6\uff0c\u7a0d\u540e\u81ea\u52a8\u7eed\u4f20", "uri": "", "received": 528592, "total": 1057185, "partialBytes": 528592, "partialSha": "ec1e1357e13338bc76d858d9f899d4477c450617bb471170df7fb4584a87ea54", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": false, "statusReads": 13, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 7, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": true}}
+{"kind": "updateTransfer", "result": {"token": "1591851043906", "action": "transferResume", "scenario": "changed-etag", "state": "available", "message": "\u66f4\u65b0\u6587\u4ef6\u6807\u8bc6\u53d1\u751f\u53d8\u5316\uff0c\u5df2\u505c\u6b62\u7eed\u4f20", "uri": "", "received": 0, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 15, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 8, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "0.5 / 1.0 MB", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1592260433149", "action": "transferStart", "scenario": "short-length", "state": "available", "message": "\u66f4\u65b0\u670d\u52a1\u5668\u8fd4\u56de\u7684\u6587\u4ef6\u5927\u5c0f\u4e0d\u7b26", "uri": "", "received": 0, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 17, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 9, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1592649914279", "action": "transferStart", "scenario": "oversize", "state": "available", "message": "\u66f4\u65b0\u670d\u52a1\u5668\u8fd4\u56de\u7684\u6587\u4ef6\u5927\u5c0f\u4e0d\u7b26", "uri": "", "received": 0, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 19, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 10, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1593064707927", "action": "transferStart", "scenario": "bad-hash", "state": "available", "message": "\u66f4\u65b0\u6587\u4ef6\u4e0d\u5b8c\u6574\uff0c\u8bf7\u91cd\u65b0\u4e0b\u8f7d", "uri": "", "received": 0, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 21, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 10, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": 0, "speedLastReceived": 0, "speedFirstSampleNanos": 876079645634, "speedLastSampleNanos": 876079645634, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1593460986861", "action": "transferStart", "scenario": "bad-signer", "state": "available", "message": "\u66f4\u65b0\u7b7e\u540d\u4e0e\u5f53\u524d\u5e94\u7528\u4e0d\u540c\uff0c\u5df2\u505c\u6b62\u5b89\u88c5", "uri": "", "received": 0, "total": 1057183, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 23, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 11, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1593866527830", "action": "transferStart", "scenario": "queued-cancel", "state": "waiting", "message": "\u7f51\u7edc\u6682\u65f6\u4e2d\u65ad\uff0c\u5df2\u4fdd\u7559\u8fdb\u5ea6\uff0c\u7a0d\u540e\u81ea\u52a8\u7eed\u4f20", "uri": "", "received": 528592, "total": 1057185, "partialBytes": 528592, "partialSha": "ec1e1357e13338bc76d858d9f899d4477c450617bb471170df7fb4584a87ea54", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": false, "statusReads": 25, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 12, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": true}}
+{"kind": "updateTransfer", "result": {"token": "1594258076391", "action": "transferQueuedCancel", "scenario": "queued-cancel", "state": "available", "message": "\u4e0b\u8f7d\u5df2\u53d6\u6d88\uff0c\u53ef\u4ee5\u968f\u65f6\u91cd\u65b0\u4e0b\u8f7d", "uri": "", "received": 0, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 26, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 13, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "0.5 / 1.0 MB", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": true, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1594665345700", "action": "transferStart", "scenario": "cancel-restart", "state": "waiting", "message": "\u7f51\u7edc\u6682\u65f6\u4e2d\u65ad\uff0c\u5df2\u4fdd\u7559\u8fdb\u5ea6\uff0c\u7a0d\u540e\u81ea\u52a8\u7eed\u4f20", "uri": "", "received": 528592, "total": 1057185, "partialBytes": 528592, "partialSha": "ec1e1357e13338bc76d858d9f899d4477c450617bb471170df7fb4584a87ea54", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": false, "statusReads": 28, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 14, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": true}}
+{"kind": "updateTransfer", "result": {"token": "1595055241035", "action": "transferPause", "scenario": "cancel-restart", "state": "paused", "message": "\u4e0b\u8f7d\u5df2\u6682\u505c\uff0c\u5df2\u4fdd\u7559\u4e0b\u8f7d\u8fdb\u5ea6", "uri": "", "received": 528592, "total": 1057185, "partialBytes": 528592, "partialSha": "ec1e1357e13338bc76d858d9f899d4477c450617bb471170df7fb4584a87ea54", "partialIdentity": true, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": true, "userPaused": true, "statusReads": 29, "statusMainThreadIo": 0, "maxStatusMs": 2.009236, "nativeRenders": 14, "progressIdentityPairs": 0, "pid": 23808, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1595450056339", "action": "transferCancelBeforeCleanup", "scenario": "cancel-restart", "state": "available", "uri": "", "downloadRequested": false, "userPaused": false, "partialBytes": 528592, "partialSha": "ec1e1357e13338bc76d858d9f899d4477c450617bb471170df7fb4584a87ea54", "partialIdentity": true, "discardPending": true, "durableDiscardPending": true, "cleanupWorkerBlocked": true, "writerWasActive": false, "pid": 23808}}
+{"kind": "updateTransfer", "result": {"token": "1595973052710", "action": "transferInspect", "scenario": "cancel-restart", "state": "available", "message": "\u4e0b\u8f7d\u5df2\u53d6\u6d88\uff0c\u53ef\u4ee5\u968f\u65f6\u91cd\u65b0\u4e0b\u8f7d", "uri": "", "received": 0, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 1, "statusMainThreadIo": 0, "maxStatusMs": 0.414686, "nativeRenders": 0, "progressIdentityPairs": 0, "pid": 24116, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1596748949681", "action": "transferResume", "scenario": "cancel-restart", "state": "ready", "message": "", "uri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "received": 1057185, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 1057185, "finalSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "finalApks": 1, "sameSigner": true, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 3, "statusMainThreadIo": 0, "maxStatusMs": 0.751727, "nativeRenders": 1, "progressIdentityPairs": 0, "pid": 24116, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "updateTransfer", "result": {"token": "1597149558131", "action": "transferKeepPackage", "scenario": "cancel-restart", "state": "ready", "message": "", "uri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "received": 1057185, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 1057185, "finalSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "finalApks": 1, "sameSigner": true, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 4, "statusMainThreadIo": 0, "maxStatusMs": 0.751727, "nativeRenders": 2, "progressIdentityPairs": 0, "pid": 24116, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false, "packageDeletion": {"actualOwnedFile": "update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "beforeBytes": 1057185, "beforeSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "beforeStoredBytes": 1057185, "releaseCode": 54, "oldUri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "generationBefore": 1, "actualProductionDialog": true, "dialogLabel": "\u4fdd\u7559\u5b89\u88c5\u5305", "actualAndroidGesture": false, "nativeButtonClicked": true, "dialogDismissed": true, "pendingInstallCleared": true, "phaseAfterDialog": "ready", "afterBytes": 1057185, "afterSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "afterStoredBytes": 1057185, "oldUriRejected": false, "ownedFiles": 1, "generationAfter": 1, "cancelledCode": 0, "packageDeleteRetry": false, "sameMetadata": true, "sameSettings": true, "verifiedSerial": 0, "verifyRequestedSerial": 0}}}
+{"kind": "updateTransfer", "result": {"token": "1597577431441", "action": "transferStaleDelete", "scenario": "cancel-restart", "state": "ready", "message": "", "uri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "received": 1057185, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 1057185, "finalSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "finalApks": 1, "sameSigner": true, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 5, "statusMainThreadIo": 0, "maxStatusMs": 0.751727, "nativeRenders": 2, "progressIdentityPairs": 0, "pid": 24116, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false, "packageDeletion": {"actualOwnedFile": "update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "beforeBytes": 1057185, "beforeSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "beforeStoredBytes": 1057185, "releaseCode": 54, "oldUri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "generationBefore": 1, "wrongCodeRejected": true, "wrongUriRejected": true, "afterBytes": 1057185, "afterSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "afterStoredBytes": 1057185, "oldUriRejected": false, "ownedFiles": 1, "generationAfter": 1, "cancelledCode": 0, "packageDeleteRetry": false, "sameMetadata": true, "sameSettings": true, "verifiedSerial": 0, "verifyRequestedSerial": 0}}}
+{"kind": "updateTransfer", "result": {"token": "1597999921137", "action": "transferDeleteReady", "scenario": "cancel-restart", "state": "available", "message": "\u5b89\u88c5\u5305\u5df2\u5220\u9664\uff0c\u53ef\u4ee5\u968f\u65f6\u91cd\u65b0\u4e0b\u8f7d", "uri": "", "received": 0, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 6, "statusMainThreadIo": 0, "maxStatusMs": 0.751727, "nativeRenders": 3, "progressIdentityPairs": 0, "pid": 24116, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false, "packageDeletion": {"actualOwnedFile": "update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "beforeBytes": 1057185, "beforeSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "beforeStoredBytes": 1057185, "releaseCode": 54, "oldUri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "generationBefore": 1, "queuedVerifyRequest": 1, "actualProductionDialog": true, "dialogLabel": "\u5220\u9664\u5b89\u88c5\u5305", "actualAndroidGesture": false, "nativeButtonClicked": true, "dialogDismissed": true, "pendingInstallCleared": true, "phaseAfterDialog": "deleting", "afterBytes": 0, "afterSha": "", "afterStoredBytes": 0, "oldUriRejected": true, "ownedFiles": 0, "generationAfter": 2, "cancelledCode": 54, "packageDeleteRetry": false, "sameMetadata": true, "sameSettings": true, "verifiedSerial": 0, "verifyRequestedSerial": 2}}}
+{"kind": "updateTransfer", "result": {"token": "1598424245453", "action": "transferAutomaticSuppression", "scenario": "cancel-restart", "state": "available", "message": "\u5b89\u88c5\u5305\u5df2\u5220\u9664\uff0c\u53ef\u4ee5\u968f\u65f6\u91cd\u65b0\u4e0b\u8f7d", "uri": "", "received": 0, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 0, "finalSha": "", "finalApks": 0, "sameSigner": false, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 7, "statusMainThreadIo": 0, "maxStatusMs": 0.751727, "nativeRenders": 4, "progressIdentityPairs": 0, "pid": 24116, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false, "packageDeletion": {"actualOwnedFile": "update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "beforeBytes": 0, "beforeSha": "", "beforeStoredBytes": 0, "releaseCode": 54, "oldUri": "", "generationBefore": 2, "automaticAdmissionAttempted": true, "afterBytes": 0, "afterSha": "", "afterStoredBytes": 0, "oldUriRejected": false, "ownedFiles": 0, "generationAfter": 2, "cancelledCode": 54, "packageDeleteRetry": false, "sameMetadata": true, "sameSettings": true, "verifiedSerial": 0, "verifyRequestedSerial": 2}}}
+{"kind": "updateTransfer", "result": {"token": "1598827741370", "action": "transferResume", "scenario": "cancel-restart", "state": "ready", "message": "", "uri": "content://local.pocketchat.test.app-updates/update-54-43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14.apk", "received": 1057185, "total": 1057185, "partialBytes": 0, "partialSha": "", "partialIdentity": false, "finalBytes": 1057185, "finalSha": "43f7b9b9736f80b10d602ecff77c707258575c4d3351678ff50dfa04fbef2d14", "finalApks": 1, "sameSigner": true, "running": false, "downloadRequested": false, "userPaused": false, "statusReads": 9, "statusMainThreadIo": 0, "maxStatusMs": 0.751727, "nativeRenders": 4, "progressIdentityPairs": 0, "pid": 24116, "bytesPerSecond": 0, "remainingSeconds": -1, "downloadDetailsText": "", "speedFirstReceived": -1, "speedLastReceived": -1, "speedFirstSampleNanos": 0, "speedLastSampleNanos": 0, "speedSamplePairs": 0, "speedSampleDeltaBytes": 0, "speedSampleDurationMillis": 0, "commandQueueDrained": false, "preparationGuardReached": false, "discardPending": false, "pendingTransferJob": false}}
+{"kind": "readingFixtureCookieCleanup", "result": {"schema": 1, "cookie": "readingBounds=controlled-fixture", "cookiePath": "/", "processSlot": 1, "runNonce": "bc286ebcefc44398b946aa9dd660ec8a", "invocation": 1, "origin": "http://127.0.0.1:8765", "url": "http://127.0.0.1:8765/reading-cookie-retirement?runNonce=bc286ebcefc44398b946aa9dd660ec8a", "sameSession": true, "sameDocument": true, "sameUrl": true, "sessionBefore": 167841946, "sessionAfter": 167841946, "documentBefore": 1791967102203, "documentAfter": 1791967102203, "beforeDomCookies": "probe=synthetic-environment-2; readingBounds=controlled-fixture", "afterDomCookies": "probe=synthetic-environment-2", "nativeBefore": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2; readingBounds=controlled-fixture", "nativeAfter": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2", "readingFixtureCookieRemovedFromDom": true, "readingFixtureCookieRemovedFromNative": true, "otherDomCookiesPreserved": true, "otherNativeCookiesPreserved": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "fixture", "result": {"action": "seed", "context": "1", "command": "1", "cookie": "probe=synthetic-environment-1", "localStorage": "synthetic-environment-1", "indexedDB": "synthetic-environment-1", "cache": "synthetic-environment-1", "serviceWorkers": 1, "workerToken": "synthetic-environment-1", "nativeCookies": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1"}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "seed", "context": "2", "command": "2", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"action": "copyAndReset", "templateCopied": true, "newIdentity": true, "freshAcknowledgements": true, "browserDataNotCopied": true, "draftNotCopied": true, "sourceIdentityKept": true, "occupiedTargetRejected": true, "failedCopyThenOrdinaryCreation": true, "resetKeepsLogicalId": true, "resetAdvancesGeneration": true, "pausedIdentityRejected": true, "configurationPreserved": true, "resetAppliedEvidenceRetired": true, "pendingNetworkRebound": true, "controlledCandidateCancelled": true, "networkSecretUnchanged": true, "preferencesKept": true, "draftAndTaskCleared": true, "oldConfigurationCallbackRejected": true, "oldHeartbeatRejected": true, "duplicateResetCannotClearNewLogin": true, "retryCompleted": true}
+{"kind": "fixture", "result": {"action": "read", "context": "2", "command": "2", "cookie": "", "localStorage": null, "indexedDB": null, "cache": null, "serviceWorkers": 0, "workerToken": null, "nativeCookies": ""}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "fixture", "result": {"action": "read", "context": "1", "command": "1", "cookie": "probe=synthetic-environment-1", "localStorage": "synthetic-environment-1", "indexedDB": "synthetic-environment-1", "cache": "synthetic-environment-1", "serviceWorkers": 1, "workerToken": "synthetic-environment-1", "nativeCookies": "nativeOnly=synthetic-environment-1; probe=synthetic-environment-1"}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "seed", "context": "2", "command": "3", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"action": "resetZero", "identityKept": true, "configurationKept": true, "sharedRootKept": true, "otherEnvironmentKept": true, "savedDownloadsKept": true, "defaultKept": true}
+{"kind": "fixture", "result": {"action": "read", "context": "1", "command": "1", "cookie": "", "localStorage": null, "indexedDB": null, "cache": null, "serviceWorkers": 0, "workerToken": null, "nativeCookies": ""}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "read", "context": "2", "command": "4", "cookie": "probe=synthetic-environment-2", "localStorage": "synthetic-environment-2", "indexedDB": "synthetic-environment-2", "cache": "synthetic-environment-2", "serviceWorkers": 1, "workerToken": "synthetic-environment-2", "nativeCookies": "nativeOnly=synthetic-environment-2; probe=synthetic-environment-2"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "queuedChanges", "result": {"savedWhileReplying": true, "oldRouteKept": true, "browserSavedWithoutApplying": true, "replyCleared": true, "appliedWhenIdle": true, "vpnGuardBlocksWithoutVpn": true, "message": "\u7f51\u7edc\u8bbe\u7f6e\u5df2\u4fdd\u5b58\uff0c\u5f53\u524d\u56de\u590d\u548c\u6587\u4ef6\u64cd\u4f5c\u7ed3\u675f\u540e\u81ea\u52a8\u5e94\u7528"}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "foreignPreferences", "result": {"marker": "prime-target"}, "nativeContext": "environment-1", "processSlot": 0}
+{"action": "deleteOne", "removed": true, "generationChanged": true, "privateDataGone": true, "otherEnvironmentKept": true, "savedFileKept": true, "danglingLockRemoved": true, "slotReusable": true, "slotReuseNewIdentity": true, "slotReuseOldCallbackRejected": true}
+{"kind": "foreignPreferences", "result": {"marker": ""}, "nativeContext": "environment-1", "processSlot": 0}
+{"kind": "fixture", "result": {"action": "read", "context": "2", "command": "2", "cookie": "", "localStorage": null, "indexedDB": null, "cache": null, "serviceWorkers": 0, "workerToken": null, "nativeCookies": ""}, "nativeContext": "environment-2", "processSlot": 1}
+{"kind": "backgroundSettings", "result": {"saved": true, "actualBackground": true, "replyFinished": true, "automaticallyApplied": true}, "nativeContext": "environment-2", "processSlot": 1}
+{"action": "deleteZero", "removed": true, "otherEnvironmentKept": true, "updateSettingsKept": true, "libraryKept": true, "defaultReassigned": true, "lastEnvironmentProtected": true}
+{
+  "status": "passed",
+  "sourceCommit": "9d6737c0d6a2e87d3bdd7932d90faa7e675dd3e1",
+  "checks": 32,
+  "actualProfileProcesses": true,
+  "resumedRange": "bytes=262144-",
+  "directFactoryCalls": 2
+}
+From https://github.com/Ararataki-number-one/yuanying-chat
+ * branch            apk/gecko-integration-build-20261003 -> FETCH_HEAD
+To https://github.com/Ararataki-number-one/yuanying-chat
+   6fef071..b514295  b514295c66530c272ae58acd996aa09700072d30 -> apk/gecko-integration-build-20261003
+{
+  "status": "passed",
+  "sourceCommit": "9d6737c0d6a2e87d3bdd7932d90faa7e675dd3e1",
+  "checkCount": 69,
+  "webSocketEchoes": 27,
+  "cancellations": [
+    {
+      "path": "/cancel-first",
+      "mechanism": "raw-controller-client",
+      "expectedHeads": 1,
+      "actualHeads": 1,
+      "controllerClosedAt": 982892,
+      "targetObservedNativeEofAt": 982893,
+      "nativeCloseMs": 1,
+      "nativeTimeoutMs": 6000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false
+    },
+    {
+      "path": "/cancel-second",
+      "mechanism": "raw-controller-client",
+      "expectedHeads": 2,
+      "actualHeads": 2,
+      "controllerClosedAt": 983505,
+      "targetObservedNativeEofAt": 983506,
+      "nativeCloseMs": 1,
+      "nativeTimeoutMs": 6000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false
+    },
+    {
+      "path": "/cancel-java-first",
+      "mechanism": "production-maintenance",
+      "expectedHeads": 1,
+      "actualHeads": 1,
+      "controllerClosedAt": 984020,
+      "targetObservedNativeEofAt": 984021,
+      "nativeCloseMs": 1,
+      "nativeTimeoutMs": 8000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false,
+      "javaProbeDelay": -1
+    },
+    {
+      "path": "/cancel-java-second",
+      "mechanism": "production-maintenance",
+      "expectedHeads": 2,
+      "actualHeads": 2,
+      "controllerClosedAt": 984633,
+      "targetObservedNativeEofAt": 984634,
+      "nativeCloseMs": 1,
+      "nativeTimeoutMs": 8000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false,
+      "javaProbeDelay": -1
+    }
+  ],
+  "startupSearches": [
+    {
+      "name": "winner-cleanup",
+      "mechanism": "production-firstVerifiedRoute",
+      "result": {
+        "parentMaintenancePresent": false,
+        "parentInterrupted": false,
+        "selectedEntry": "Entry|winner",
+        "endedAt": 986294
+      },
+      "parentFutureCancelled": false,
+      "before": {
+        "pid": 27255,
+        "entry": "Entry|winner",
+        "generationHash": "f949413f126a1488b1a2f2e8fcedf2697ecb59605092f98271c07db5e6295b51",
+        "exitFingerprint": "159aec57e8668db530d47389489c9f93e21d9bd2372203c2ad2489b17acbe367",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 44617,
+        "controllerPort": 44877,
+        "verified": true,
+        "routeSerial": 2
+      },
+      "after": {
+        "pid": 27255,
+        "entry": "Entry|winner",
+        "generationHash": "f949413f126a1488b1a2f2e8fcedf2697ecb59605092f98271c07db5e6295b51",
+        "exitFingerprint": "159aec57e8668db530d47389489c9f93e21d9bd2372203c2ad2489b17acbe367",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 44617,
+        "controllerPort": 44877,
+        "verified": true,
+        "routeSerial": 3
+      },
+      "winnerPath": "/startup-win",
+      "winnerHeads": 2,
+      "losers": [
+        {
+          "path": "/startup-loser",
+          "expectedHeads": 1,
+          "actualHeads": 1,
+          "cleanupRequestedAt": 986294,
+          "targetObservedNativeEofAt": 986295,
+          "nativeCloseMs": 1,
+          "nativeTimeoutMs": 8000,
+          "serverClosedSocketBeforeEof": false
+        }
+      ]
+    },
+    {
+      "name": "parent-cancellation",
+      "mechanism": "production-firstVerifiedRoute",
+      "parentMaintenancePresent": true,
+      "parentFutureCancelled": false,
+      "result": {
+        "cancelled": true,
+        "cause": "InterruptedException",
+        "endedAt": 986809
+      },
+      "cancelRequestedAt": 986808,
+      "before": {
+        "pid": 27255,
+        "entry": "Entry|winner",
+        "generationHash": "f949413f126a1488b1a2f2e8fcedf2697ecb59605092f98271c07db5e6295b51",
+        "exitFingerprint": "159aec57e8668db530d47389489c9f93e21d9bd2372203c2ad2489b17acbe367",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 44617,
+        "controllerPort": 44877,
+        "verified": true,
+        "routeSerial": 3
+      },
+      "after": {
+        "pid": 27255,
+        "entry": "Entry|winner",
+        "generationHash": "f949413f126a1488b1a2f2e8fcedf2697ecb59605092f98271c07db5e6295b51",
+        "exitFingerprint": "159aec57e8668db530d47389489c9f93e21d9bd2372203c2ad2489b17acbe367",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 44617,
+        "controllerPort": 44877,
+        "verified": true,
+        "routeSerial": 3
+      },
+      "losers": [
+        {
+          "path": "/startup-cancel-a",
+          "expectedHeads": 1,
+          "actualHeads": 1,
+          "cleanupRequestedAt": 986808,
+          "targetObservedNativeEofAt": 986810,
+          "nativeCloseMs": 2,
+          "nativeTimeoutMs": 8000,
+          "serverClosedSocketBeforeEof": false
+        },
+        {
+          "path": "/startup-cancel-b",
+          "expectedHeads": 1,
+          "actualHeads": 1,
+          "cleanupRequestedAt": 986808,
+          "targetObservedNativeEofAt": 986814,
+          "nativeCloseMs": 6,
+          "nativeTimeoutMs": 8000,
+          "serverClosedSocketBeforeEof": false
+        }
+      ]
+    }
+  ]
+}
+From https://github.com/Ararataki-number-one/yuanying-chat
+ * branch            apk/gecko-integration-build-20261003 -> FETCH_HEAD
+To https://github.com/Ararataki-number-one/yuanying-chat
+   b514295..c18f0c1  c18f0c1cfa392861c13485004597712fd3bcea10 -> apk/gecko-integration-build-20261003
+{"status": "passed", "checks": 71, "actualHttp2Requests": 13, "webSocketFrames": 17, "sourceCommit": "9d6737c0d6a2e87d3bdd7932d90faa7e675dd3e1"}
