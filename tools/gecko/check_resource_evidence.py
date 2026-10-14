@@ -29,6 +29,20 @@ def verify_resource_evidence(directory,source):
     if type(identity.get('apkBytes')) is not int or identity['apkBytes']<=0 or any(not re.fullmatch('[0-9a-f]{64}',str(identity.get(key,''))) for key in ['apkSha256','buildStampSha256']):raise ValueError('Installed resource APK bytes are missing')
     invocation.verify_invocation(report,identity,log.get('runNonce',''));invocation.verify_diagnostic(report)
     if report.get('androidSdk')!=log.get('androidSdk') or type(report.get('androidSdk')) is not int or report['androidSdk']<26:raise ValueError('Observed Android SDK differs')
+    # A source stamp alone cannot establish that the baseline, template and
+    # resource phases exercised the same installed integration APK bytes.
+    device=json.loads((directory/'device-results.json').read_text())
+    if device.get('status')!='passed' or device.get('actualAndroidExecution') is not True or device.get('releaseMode') is not True or device.get('diagnosticOnly') is not False or device.get('sourceCommit')!=source or 'error' in device or device.get('artifactErrors'):
+        raise ValueError('Resource diagnostics require the successful full same-source device baseline')
+    invocation.verify_installed(device.get('eventTransport',{}).get('buildIdentity',{}),identity)
+    template_raw=(directory/'gecko-template-results.json').read_bytes();template=json.loads(template_raw)
+    template_log=json.loads((directory/'gecko-template-runner-log.json').read_text())
+    if template.get('status')!='passed' or template.get('actualAndroidExecution') is not True or template.get('diagnosticOnly') is not False or template_log.get('status')!='passed' or template_log.get('sourceCommit')!=source or template_log.get('diagnosticOnly') is not False or template_log.get('installedBeforeAndAfterMatched') is not True or template_log.get('rawReportPreserved') is not True or template_log.get('reportSha256')!=hashlib.sha256(template_raw).hexdigest() or template_log.get('reportBytes')!=len(template_raw):
+        raise ValueError('Resource diagnostics require raw installed/invocation-bound template evidence')
+    invocation.verify_installed(template_log.get('buildIdentity',{}),identity)
+    invocation.verify_invocation(template,identity,template_log.get('runNonce',''))
+    if any(type(value.get('androidSdk')) is not int or value['androidSdk']!=report['androidSdk'] for value in (device,template,template_log)):
+        raise ValueError('Device, template and resource observations must use the same actual Android SDK')
     scope=contract.verify_resource_report(report,expected)
     host=json.loads((directory/'resource-pressure-host-results.json').read_text())
     names=re.findall(r'check\("([^"\n]+)"',selected_bytes(source,'tests/resource-pressure-host/local/pocketchat/ResourcePressureHostTest.java').decode())
@@ -47,7 +61,7 @@ def verify_resource_evidence(directory,source):
     if set(observer.get('files',{}))!=observer_files:raise ValueError('Resource observer host inputs changed')
     for path,digest in observer['files'].items():
         if hashlib.sha256(selected_bytes(source,path)).hexdigest()!=digest:raise ValueError('Observer host source hash differs: '+path)
-    return dict(scope,observerHostChecks=len(observer_names),sourceCommit=source,sourceTree=tree,actualAndroidExecution=True,hostChecks=len(names),apkSha256=identity['apkSha256'],reportSha256=hashlib.sha256(raw).hexdigest())
+    return dict(scope,observerHostChecks=len(observer_names),sourceCommit=source,sourceTree=tree,actualAndroidExecution=True,hostChecks=len(names),apkSha256=identity['apkSha256'],sameInstalledApkAcrossRegressions=True,androidSdk=report['androidSdk'],reportSha256=hashlib.sha256(raw).hexdigest())
 
 
 if __name__=='__main__':

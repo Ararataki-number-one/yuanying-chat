@@ -75,6 +75,15 @@ class ResourceContractTest(unittest.TestCase):
 class ResourceGateTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.directory=Path(self.temp.name);self.report=metadata();self.write()
+        # Explicit counterfeit baseline/template receipts exercise the cross-
+        # phase byte-identity gate; they are never exported as device proof.
+        identity=copy.deepcopy(self.report['buildIdentity'])
+        device=dict(status='passed',sourceCommit='a'*40,actualAndroidExecution=True,releaseMode=True,diagnosticOnly=False,androidSdk=35,eventTransport=dict(buildIdentity=identity),artifactErrors=[])
+        (self.directory/'device-results.json').write_text(json.dumps(device))
+        template=metadata_only_report();template.update(buildIdentity=copy.deepcopy(identity),runNonce='f'*32)
+        template_raw=json.dumps(template).encode();(self.directory/'gecko-template-results.json').write_bytes(template_raw)
+        template_log=dict(status='passed',sourceCommit='a'*40,buildIdentity=copy.deepcopy(identity),runNonce=template['runNonce'],installedBeforeAndAfterMatched=True,rawReportPreserved=True,reportSha256=hashlib.sha256(template_raw).hexdigest(),reportBytes=len(template_raw),diagnosticOnly=False,androidSdk=35)
+        (self.directory/'gecko-template-runner-log.json').write_text(json.dumps(template_log))
         names=re.findall(r'check\("([^"\n]+)"',(ROOT/'tests/resource-pressure-host/local/pocketchat/ResourcePressureHostTest.java').read_text())
         paths=['app/src/main/java/local/pocketchat/ResourcePressureController.java','tools/gecko/run_resource_host_checks.py','tests/resource-pressure-host/local/pocketchat/ResourcePressureHostTest.java','tests/resource-pressure-host/android/app/ActivityManager.java','tests/resource-pressure-host/android/content/Context.java','tests/resource-pressure-host/android/os/SystemClock.java']
         host=dict(status='passed',actualAndroidExecution=False,synthetic=True,capacityAcceptance=False,actualPlatformMemoryObservation=False,sourceCommit='a'*40,sourceTree='b'*40,sourceDirty=False,sourceUnchangedDuringChecks=True,passed=len(names),total=len(names),executed=len(names),checks=[{'name':n,'pass':True} for n in names],expectedCheckNames=names,files={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in paths})
@@ -90,7 +99,38 @@ class ResourceGateTest(unittest.TestCase):
     def verify(self):
         def selected(source,path):return b"versionCode 53; versionName '2.0.0'" if path=='app/build.gradle' else (ROOT/path).read_bytes()
         with patch.object(gate,'selected_bytes',side_effect=selected),patch.object(gate,'selected_contract',side_effect=lambda source,name:contract if name=='resource_invocation_contract' else invocation),patch.object(gate.subprocess,'check_output',return_value='b'*40):return gate.verify_resource_evidence(self.directory,'a'*40)
-    def test_complete_metadata_preserves_scope(self):self.assertFalse(self.verify()['capacityAcceptance'])
+    def test_complete_metadata_preserves_scope(self):
+        value=self.verify();self.assertFalse(value['capacityAcceptance']);self.assertTrue(value['sameInstalledApkAcrossRegressions']);self.assertEqual(value['androidSdk'],35)
+    def reject_linked_edit(self,name,edit,message):
+        path=self.directory/name;original=path.read_bytes();value=json.loads(original);edit(value)
+        path.write_text(json.dumps(value))
+        if name=='gecko-template-results.json':
+            log_path=self.directory/'gecko-template-runner-log.json';original_log=log_path.read_bytes();log=json.loads(original_log);raw=path.read_bytes();log.update(reportSha256=hashlib.sha256(raw).hexdigest(),reportBytes=len(raw));log_path.write_text(json.dumps(log))
+        try:
+            with self.assertRaisesRegex(ValueError,message):self.verify()
+        finally:
+            path.write_bytes(original)
+            if name=='gecko-template-results.json':log_path.write_bytes(original_log)
+    def linked_identity_edits(self,key,value):
+        for name in ['device-results.json','gecko-template-results.json','gecko-template-runner-log.json']:
+            with self.subTest(file=name,field=key):
+                def edit(report):
+                    identity=report['eventTransport']['buildIdentity'] if name=='device-results.json' else report['buildIdentity']
+                    self.assertEqual(identity['sourceCommit'],'a'*40);self.assertEqual(identity['sourceTree'],'b'*40);identity[key]=value
+                self.reject_linked_edit(name,edit,'Installed test APK differs.*'+key)
+    def test_same_source_different_installed_apk_sha(self):self.linked_identity_edits('apkSha256','0'*64)
+    def test_same_source_different_installed_apk_size(self):self.linked_identity_edits('apkBytes',101)
+    def test_same_source_different_installed_build_stamp(self):self.linked_identity_edits('buildStampSha256','0'*64)
+    def test_same_installed_apk_different_android_sdk(self):
+        for name in ['device-results.json','gecko-template-results.json','gecko-template-runner-log.json']:
+            with self.subTest(file=name):self.reject_linked_edit(name,lambda report:report.update(androidSdk=36),'same actual Android SDK')
+    def test_missing_baseline_installed_identity(self):self.reject_linked_edit('device-results.json',lambda report:report.pop('eventTransport'),'Installed test APK differs')
+    def test_diagnostic_subset_is_not_full_device_baseline(self):self.reject_linked_edit('device-results.json',lambda report:report.update(diagnosticOnly=True),'full same-source device baseline')
+    def test_template_diagnostic_is_not_template_acceptance(self):self.reject_linked_edit('gecko-template-results.json',lambda report:report.update(diagnosticOnly=True),'raw installed/invocation-bound template evidence')
+    def test_template_raw_report_is_preserved(self):
+        path=self.directory/'gecko-template-results.json';path.write_bytes(path.read_bytes()+b' ')
+        with self.assertRaisesRegex(ValueError,'raw installed/invocation-bound template evidence'):self.verify()
+    def test_template_invocation_nonce_is_bound(self):self.reject_linked_edit('gecko-template-runner-log.json',lambda report:report.update(runNonce='0'*32),'another fixture invocation')
     def test_changed_raw_bytes(self):
         p=self.directory/'resource-pressure-results.json';p.write_bytes(p.read_bytes()+b' ')
         with self.assertRaises(ValueError):self.verify()
