@@ -1,4 +1,5 @@
 """Keep public candidates separate from verified stable app updates."""
+import datetime
 import re
 
 
@@ -32,6 +33,65 @@ def advances_update_channel(manifest):
 def requires_manual_acceptance(manifest):
     release_tag(manifest)
     return advances_update_channel(manifest) and tuple(map(int, manifest['version'].split('.'))) >= (1, 6, 0)
+
+
+def verify_direct_release(record, identity):
+    """Record an explicit publication request without claiming phone acceptance.
+
+    This is a separate, opt-in publication decision. It never satisfies or
+    changes the physical-device checklist contract above or below.
+    """
+    require(isinstance(identity, dict) and identity.get('channel') == 'stable',
+            'Direct publication requires an explicit stable release identity.')
+    release_tag(identity)
+    require(isinstance(record, dict), 'A direct publication authorization is required.')
+    identity_fields = ('sourceCommit', 'sha256', 'version', 'versionCode', 'signerSha256', 'bytes')
+    required_fields = set(identity_fields) | {
+        'schema', 'kind', 'status', 'requestedBy', 'authorizationSource', 'userRequest',
+        'requestedChannel', 'scope', 'physicalPhoneAcceptanceStatus', 'recordedAt'}
+    require(set(record) == required_fields,
+            'Direct publication accepts only authorization fields, never manual acceptance or phone claims.')
+    expected = {
+        'schema': 1, 'kind': 'user-requested-stable-release', 'status': 'authorized',
+        'requestedBy': 'user', 'authorizationSource': 'current-user-message',
+        'requestedChannel': 'stable', 'scope': 'publish-existing-signed-apk-to-stable',
+        'physicalPhoneAcceptanceStatus': 'not-reported'}
+    for key, value in expected.items():
+        require(type(record[key]) is type(value) and record[key] == value,
+                'Invalid direct publication authorization field: ' + key)
+    for key in identity_fields:
+        require(type(record[key]) is type(identity.get(key)) and record[key] == identity.get(key),
+                'Direct publication authorization belongs to a different ' + key + '.')
+    for key, length in (('sourceCommit', 40), ('sha256', 64), ('signerSha256', 64)):
+        require(isinstance(record[key], str) and re.fullmatch(r'[0-9a-f]{' + str(length) + r'}', record[key]),
+                'Invalid exact APK identity field: ' + key)
+    for key in ('versionCode', 'bytes'):
+        require(type(record[key]) is int and record[key] > 0, 'Invalid exact APK identity field: ' + key)
+    request = record['userRequest']
+    require(isinstance(request, str) and request.strip() and len(request) <= 2000,
+            'The current explicit user publication request is required.')
+    # Deliberately accept direct commands, not an inferred instruction from
+    # vague continuation, a question, a quoted discussion, or a negation.
+    command = re.sub(r'\s+', ' ', request.strip())
+    chinese = re.fullmatch(
+        r'(?:(?:请|现在|直接|立即|继续|帮我|给我|麻烦)\s*)*'
+        r'(?:发布|发行|上线)(?:为)?\s*(?:正式版|正式版本|新版本)(?:吧|即可|就行)?[。.!！]*', command)
+    english = re.fullmatch(
+        r'(?:please )?(?:publish|release|promote) (?:the )?(?:existing |signed |existing signed )?'
+        r'(?:apk |app |release )?(?:(?:to|as) )?(?:a |the )?(?:stable|production)(?: release| version)?[.!]*',
+        command, re.IGNORECASE)
+    require(chinese is not None or english is not None,
+            'The authorization must preserve a direct affirmative request to publish the stable release.')
+    recorded_at = record['recordedAt']
+    require(isinstance(recorded_at, str) and re.fullmatch(
+        r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})', recorded_at),
+        'Direct publication requires a timezone-qualified ISO 8601 recording time.')
+    try:
+        parsed = datetime.datetime.fromisoformat(recorded_at.replace('Z', '+00:00'))
+    except ValueError:
+        raise ReleaseChannelError('Invalid direct publication recording time.') from None
+    require(parsed.utcoffset() is not None, 'Direct publication recording time requires a timezone.')
+    return dict(record, physicalArmPhone='not-tested')
 
 
 def verify_manual_acceptance(record, identity):

@@ -15,7 +15,8 @@ import org.json.*;
 /** Compact environment controls outside the untouched official ChatGPT document. */
 final class DesignChrome {
   final MainActivity a;
-  final TextView title,dot,stateWord,latencyWord;
+  final TextView title,dot,stateWord,latencyWord,compactTitle;
+  final FrameLayout compact;
   final LinearLayout top,networkRow;
   final LinearLayout modes=null; // Historical tests may inspect the retired control.
   final Button more;
@@ -34,18 +35,40 @@ final class DesignChrome {
     this.a=a;
     swipe=new ChromeCollapseGesture(a.dp(40),ViewConfiguration.get(a).getScaledTouchSlop(),ViewConfiguration.getLongPressTimeout());
     a.toolbar=new CollapsingToolbar();a.toolbar.setOrientation(LinearLayout.VERTICAL);
-    a.toolbar.setVisibility(View.GONE);
+    a.toolbar.setVisibility(View.VISIBLE);
     a.toolbar.setBackgroundColor(ReferenceUi.CHAT_BG);
     a.toolbar.setPadding(a.dp(10),0,a.dp(10),0);
+    compact=new FrameLayout(a);
+    compactTitle=ReferenceUi.text(a,Profiles.display(a,Profiles.slot(a)),12,ReferenceUi.TEXT,true);
+    ReferenceUi.single(compactTitle);
+    compactTitle.setMaxWidth(a.dp(240));
+    compactTitle.setGravity(Gravity.CENTER);
+    compactTitle.setPadding(a.dp(16),0,a.dp(16),0);
+    compactTitle.setBackground(Ui.ripple(a,0xfff0f2f6,14));
+    compactTitle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,-1,Gravity.CENTER);
+    compactLabel.leftMargin=a.dp(16);compactLabel.rightMargin=a.dp(16);
+    compact.addView(compactTitle,compactLabel);
+    compact.setFocusable(true);
+    compact.setContentDescription("当前环境："+compactTitle.getText()+"，点击展开环境工具栏");
+    compact.setOnClickListener(v->reveal());
+    compact.setAccessibilityDelegate(new View.AccessibilityDelegate(){
+      @Override public void onInitializeAccessibilityNodeInfo(View host,AccessibilityNodeInfo info){
+        super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName(Button.class.getName());
+      }
+    });
+    AccessibilityManager accessibility=(AccessibilityManager)a.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE);
+    int compactHeight=Math.max(a.dp(accessibility!=null&&accessibility.isTouchExplorationEnabled()?48:28),textHeight(compactTitle)+a.dp(8));
+    a.toolbar.addView(compact,new LinearLayout.LayoutParams(-1,compactHeight));
     top=DesignUi.row(a);
     a.navigation=new Ui.IconButton(a,"hamburger","管理环境",false);
     a.navigation.setOnClickListener(v->a.showDrawer());
-    title=ReferenceUi.text(a,Profiles.display(a,Profiles.slot(a)),16,ReferenceUi.TEXT,true);
+    title=ReferenceUi.text(a,compactTitle.getText().toString(),16,ReferenceUi.TEXT,true);
     profileName=title.getText().toString();
     ReferenceUi.single(title);
-    title.setGravity(Gravity.CENTER_VERTICAL);
-    title.setPadding(a.dp(3),0,a.dp(6),0);
-    title.setBackground(Ui.ripple(a,Color.TRANSPARENT,9));
+    title.setGravity(Gravity.CENTER);
+    title.setPadding(a.dp(12),0,a.dp(12),0);
+    title.setBackground(Ui.ripple(a,0xfff0f2f6,18));
     title.setOnClickListener(v->ProfileUi.show(a));
 
     more=ReferenceUi.more(a,()->a.moreSheet());
@@ -83,6 +106,7 @@ final class DesignChrome {
     networkRow.addView(latencyWord,new LinearLayout.LayoutParams(-2,lineHeight));
     networkRow.addView(stateWord,new LinearLayout.LayoutParams(-2,lineHeight));
     a.toolbar.addView(networkRow,new LinearLayout.LayoutParams(-1,lineHeight));
+    top.setVisibility(View.GONE);networkRow.setVisibility(View.VISIBLE);
     root.addView(a.toolbar,new LinearLayout.LayoutParams(-1,-2));
     actions=new View[]{a.navigation,title,more};
     a.toolbar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutTouchTargets());
@@ -113,7 +137,7 @@ final class DesignChrome {
 
   /** Observe only input already admitted by the existing browser/security listeners. */
   void webTouch(MotionEvent event){
-    int result=gestureEvent(event,true);if(result!=ChromeCollapseGesture.NONE)scheduleSwipe(result,true);
+    int result=gestureEvent(event,true);if(result==ChromeCollapseGesture.HIDE)scheduleSwipe(result,true);
   }
 
   private int gestureEvent(MotionEvent event,boolean reading){
@@ -139,7 +163,7 @@ final class DesignChrome {
     @Override public boolean dispatchTouchEvent(MotionEvent event){
       int action=event.getActionMasked();if(action==MotionEvent.ACTION_DOWN)sequence=gestureAllowed(false);
       boolean owned=sequence;int result=gestureEvent(event,false);boolean handled;
-      if(result!=ChromeCollapseGesture.NONE){
+      if(result==ChromeCollapseGesture.HIDE){
         MotionEvent cancel=MotionEvent.obtain(event);cancel.setAction(MotionEvent.ACTION_CANCEL);
         handled=super.dispatchTouchEvent(cancel);cancel.recycle();scheduleSwipe(result,false);
       }else handled=super.dispatchTouchEvent(event);
@@ -150,7 +174,13 @@ final class DesignChrome {
 
   private void setCollapsed(boolean value){
     if(collapsed==value)return;collapsed=value;
-    if(a.hub==null||a.hub.page==AppHub.CHAT)a.toolbar.setVisibility(value?View.GONE:View.VISIBLE);
+    // Never leave hidden expanded controls' touch delegates over the compact label.
+    touchTargets=null;a.toolbar.setTouchDelegate(null);
+    compact.setVisibility(value?View.VISIBLE:View.GONE);
+    top.setVisibility(value?View.GONE:View.VISIBLE);
+    networkRow.setVisibility(View.VISIBLE);
+    if(a.hub==null||a.hub.page==AppHub.CHAT)a.toolbar.setVisibility(View.VISIBLE);
+    a.toolbar.post(this::layoutTouchTargets);
   }
 
   private static int textHeight(TextView text){
@@ -165,6 +195,8 @@ final class DesignChrome {
   private void renderLatest(){
     queued=false;if(a.destroyed)return;UiPerfStats.chromeUpdate();refreshMetadata();
     text(title,profileName);
+    text(compactTitle,profileName);
+    description(compact,"当前环境："+profileName+"，点击展开环境工具栏");
     description(title,"当前环境："+profileName+"，点击切换环境");
     NativeNetwork network=NativeNetwork.get(a);
     JSONObject config=network.settings==null?new JSONObject():network.settings;
@@ -198,6 +230,7 @@ final class DesignChrome {
   }
 
   private void layoutTouchTargets(){
+    if(collapsed){touchTargets=null;a.toolbar.setTouchDelegate(null);return;}
     if(a.toolbar.getWidth()<=0||networkRow.getHeight()<=0)return;
     Rect[] visible=new Rect[actions.length],expanded=new Rect[actions.length];
     int[] toolbarAt=new int[2],actionAt=new int[2];
