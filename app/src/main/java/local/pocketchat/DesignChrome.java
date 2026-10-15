@@ -45,11 +45,13 @@ final class DesignChrome {
     compactTitle.setGravity(Gravity.CENTER);
     compactTitle.setPadding(a.dp(16),0,a.dp(16),0);
     compactTitle.setBackground(Ui.ripple(a,0xfff0f2f6,14));
+    compactTitle.setDuplicateParentStateEnabled(true);
     compactTitle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,-1,Gravity.CENTER);
     compactLabel.leftMargin=a.dp(16);compactLabel.rightMargin=a.dp(16);
     compact.addView(compactTitle,compactLabel);
     compact.setFocusable(true);
+    compact.setDefaultFocusHighlightEnabled(false);
     compact.setContentDescription("当前环境："+compactTitle.getText()+"，点击展开环境工具栏");
     compact.setOnClickListener(v->reveal());
     compact.setAccessibilityDelegate(new View.AccessibilityDelegate(){
