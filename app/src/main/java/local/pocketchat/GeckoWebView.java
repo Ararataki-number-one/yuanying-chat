@@ -118,7 +118,9 @@ class GeckoWebView extends FrameLayout {
         .arguments(new String[]{"-profile",directory.getAbsolutePath()}).configFilePath(config.getAbsolutePath())
         .isolatedProcessEnabled(Build.VERSION.SDK_INT>=29).appZygoteProcessEnabled(false)
         .remoteDebuggingEnabled(false).consoleOutput(false).trustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_DISABLED)
-        .forceUserScalableEnabled(true).inputAutoZoomEnabled(true).build());
+        // Keep pinch/menu zoom, but do not defer a caret tap while APZ decides
+        // whether another tap will turn into a double-tap zoom gesture.
+        .doubleTapZoomingEnabled(false).forceUserScalableEnabled(true).inputAutoZoomEnabled(true).build());
       owner.resources.runtimeCreated();
       runtime.getWebExtensionController().ensureBuiltIn("resource://android/assets/gecko/","browser@pocketchat.local")
         .accept(value->{if(destroyed)return;extension=value;extension.setMessageDelegate(routeMessages,"pocketroute");maybeOpen();},error->{if(!destroyed)failure("浏览器初始化失败，请重新打开当前环境重试");});
