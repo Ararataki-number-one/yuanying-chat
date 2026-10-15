@@ -20,6 +20,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   static class ReloadView extends GeckoWebView {
     static final String LOCAL="http://127.0.0.1:8765/";boolean tracking;int stops,loads;String requested="";
     ReloadView(Context c,ChatSession owner){super(c,owner);}
+    String rawUrl(){return super.getUrl();}
     @Override protected boolean allowedUrl(String target){return target!=null&&target.startsWith(LOCAL+"c/reload-");}
     @Override public String getUrl(){String raw=super.getUrl();return raw!=null&&raw.startsWith(LOCAL)?MainActivity.ORIGIN+raw.substring(LOCAL.length()):raw;}
     @Override public void loadUrl(String target){if(tracking){loads++;requested=target;}super.loadUrl(target.startsWith(MainActivity.ORIGIN)?LOCAL+target.substring(MainActivity.ORIGIN.length()):target);}

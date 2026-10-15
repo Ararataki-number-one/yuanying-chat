@@ -65,8 +65,12 @@ def main():
     ]
     extras = [("FingerprintTemplateTest", ["J", "BrowserIdentitySpec", "AuditReport"]),("BrowserEditIntentTest",["J","BrowserEditIntent"]),("DownloadListPolicyTest",["DownloadListPolicy"]),("ChromeCollapseGestureTest",["ChromeCollapseGesture"])]
     groups += [(name, names) for name, names in extras if (tests / (name + ".java")).is_file()]
+    if (tests / "ChromeCollapseDocumentReadyAdapterTest.java").is_file():
+        groups.append(("ChromeCollapseDocumentReadyAdapterTest", []))
     files = {source / (name + ".java") for _, names in groups for name in names}
     files.update(tests / (name + ".java") for name, _ in groups)
+    if (tests / "ChromeCollapseDocumentReadyAdapterTest.java").is_file():
+        files.add(ROOT / "tests/gecko/ChromeCollapseDocumentReadyAdapter.java")
     if (tests / "FingerprintTemplateTest.java").is_file():
         files.add(tests / "fingerprint-report-stubs/BrowserNetworkGuard.java")
     compiler = [java, "-m", "jdk.compiler/com.sun.tools.javac.Main", "-encoding", "UTF-8",

@@ -43,6 +43,13 @@ def verify_auto_collapse(report,source,apk_sha):
         assert cold['webHeight']==initial['webHeight']+initial['toolbarHeight']
         assert initial['expanded'] and initial['toolbarVisibility']==0 and initial['toolbarHeight']>0
         assert initial['visibleDocument'] and initial['loadingCoverVisibility']==8 and initial['documents']==1
+        ready=initial['documentReadyEvidence']
+        actual='http://127.0.0.1:8765/c/reload-collapse';virtual='https://chatgpt.com/c/reload-collapse'
+        assert ready['rawMessage']['kind']=='documentReady' and ready['rawMessage']['url']==actual
+        assert ready['senderUrl']==ready['actualUrl']==actual and ready['visibleUrl']==virtual
+        assert ready['normalizedMessage']==dict(ready['rawMessage'],url=virtual)
+        assert ready['topLevel'] is True and ready['contentScript'] is True and ready['acceptedByProduction'] is True
+        assert ready['nativeSession']==ready['currentSession']==initial['sdkSession']
         assert initial['loads']==initial['stops']==initial['sendCount']==0 and initial['sdkSession']==initial['attachedSession']
         assert len(initial['document'])==32 and initial['draft']=='unsent controlled browser draft' and initial['pending']['confirmed']
         stable=['surface','sdkSession','attachedSession','document','draft','cookie','sendCount','path','loads','stops','documents','pending','pendingStored','activityStarts','menuOpens']

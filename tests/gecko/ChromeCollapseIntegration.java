@@ -4,6 +4,7 @@ import android.content.*;
 import android.os.*;
 import android.view.*;
 import org.json.*;
+import org.mozilla.geckoview.*;
 
 /** Test-only observation of the real chrome and SDK. All gestures come from adb input. */
 final class ChromeCollapseIntegration {
@@ -30,7 +31,36 @@ final class ChromeCollapseIntegration {
   }
   static final class CollapseView extends CompactChromeIntegrationActivity.ReloadView {
     JSONArray touchesObserved=new JSONArray();
+    JSONObject documentReadyEvidence=new JSONObject();
     CollapseView(Context context,ChatSession owner){super(context,owner);}
+    @Override GeckoSession newSession(){
+      GeckoSession sdk=super.newSession();
+      sdk.getWebExtensionController().setMessageDelegate(extension,new WebExtension.MessageDelegate(){
+        @Override public void onConnect(WebExtension.Port port){
+          pageMessages.onConnect(port);
+          final WebExtension.PortDelegate original;
+          try{java.lang.reflect.Field field=WebExtension.Port.class.getDeclaredField("delegate");field.setAccessible(true);Object value=field.get(port);if(!(value instanceof WebExtension.PortDelegate))return;original=(WebExtension.PortDelegate)value;}
+          catch(ReflectiveOperationException failure){throw new IllegalStateException("Pinned SDK test delegate unavailable",failure);}
+          port.setDelegate(new WebExtension.PortDelegate(){
+            @Override public void onPortMessage(Object message,WebExtension.Port incoming){
+              Object forwarded=message;boolean mapped=false;
+              if(message instanceof JSONObject){JSONObject data=(JSONObject)message;
+                mapped=ChromeCollapseDocumentReadyAdapter.maps(data.optString("kind"),data.optString("url"),rawUrl(),port.sender.url,getUrl(),incoming==port&&port.sender.session==sdk&&sdk==current,port.sender.isTopLevel(),port.sender.environmentType==WebExtension.MessageSender.ENV_TYPE_CONTENT_SCRIPT);
+                if(mapped)try{
+                  JSONObject normalized=new JSONObject(data.toString());normalized.put("url",ChromeCollapseDocumentReadyAdapter.VIRTUAL);forwarded=normalized;
+                  documentReadyEvidence=J.obj("rawMessage",new JSONObject(data.toString()),"senderUrl",port.sender.url,"actualUrl",rawUrl(),"visibleUrl",getUrl(),"nativeSession",System.identityHashCode(port.sender.session),"currentSession",System.identityHashCode(current),"topLevel",port.sender.isTopLevel(),"contentScript",true,"normalizedMessage",new JSONObject(normalized.toString()));
+                }catch(JSONException failure){throw new IllegalStateException(failure);}
+              }
+              // The original production delegate alone may mark the real SDK usable.
+              original.onPortMessage(forwarded,incoming);
+              if(mapped)try{documentReadyEvidence.put("acceptedByProduction",hasVisibleDocument());}catch(JSONException failure){throw new IllegalStateException(failure);}
+            }
+            @Override public void onDisconnect(WebExtension.Port incoming){original.onDisconnect(incoming);}
+          });
+        }
+      },"pocketpage");
+      return sdk;
+    }
     @Override public boolean dispatchTouchEvent(MotionEvent event){
       boolean handled=super.dispatchTouchEvent(event);
       Context host=displayContext.getBaseContext();
@@ -75,6 +105,7 @@ final class ChromeCollapseIntegration {
         .put("surface",System.identityHashCode(a.remote)).put("sdkSession",System.identityHashCode(a.remote.current)).put("attachedSession",System.identityHashCode(a.remote.surface.getSession()))
         .put("loads",web().loads).put("stops",web().stops).put("documents",documents).put("page",a.hub.page).put("keyboard",a.keyboardVisible)
         .put("visibleDocument",a.remote.hasVisibleDocument()).put("loadingCoverVisibility",a.loading.cover.getVisibility())
+        .put("documentReadyEvidence",web().documentReadyEvidence)
         .put("pending",a.session.pending==null?JSONObject.NULL:new JSONObject(a.session.pending.toString())).put("pendingStored",a.session.prefs.getString("pending",""))
         .put("activityStarts",activityStarts).put("menuOpens",menuOpens).put("windowFocus",a.hasWindowFocus())
         .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar)).put("chatTap",a.center(a.hub.tabs[0])).put("settingsTap",a.center(a.hub.tabs[4]));
