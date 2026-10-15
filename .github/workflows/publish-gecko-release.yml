@@ -20,6 +20,11 @@ jobs:
           python3 - <<'PY'
           import hashlib,json,os,pathlib,re,subprocess
           m=json.loads(pathlib.Path('release-manifest.json').read_text())
+          if 'releaseException' in m:
+              from tools.gecko.release_203_authorization import verify_release
+              subprocess.run(['python3','tools/gecko/release_203_authorization_test.py'],check=True)
+              verify_release(pathlib.Path('.'))
+              raise SystemExit(0)
           tools_commit=m['releaseToolsCommit']
           assert re.fullmatch(r'[0-9a-f]{40}',tools_commit)
           assert re.fullmatch(r'[0-9a-f]{40}',m['sourceCommit'])
@@ -168,6 +173,8 @@ jobs:
           if existing is None:
               assert target is None,'A tag already exists without a verifiable public release identity; use a new version.'
               qualification=[m[key]['file'] for key in ('manualAcceptanceArtifact','releaseAuthorizationArtifact') if key in m]
+              if 'releaseException' in m:
+                  qualification.append('known-caret-failure.json')
               command=['gh','release','create',tag,m['filename'],'release-manifest.json',*qualification,'--target',m['sourceCommit'],
                   '--title',m['version']+(' · 元婴期院士候选测试版' if candidate else ' · 元婴期院士正式版'),'--notes-file','RELEASE.md','--repo',repository]
               if candidate:command.extend(['--prerelease','--latest=false'])
