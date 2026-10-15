@@ -60,13 +60,15 @@ def run(adb,adb_bytes,source,trace,out,focus):
             inputs.append({'kind':'tap','label':label,'actualAndroidInput':True,'point':point})
             return snapshot(label)
         def unchanged(before,after):
-            return all(after[k]==before[k] for k in ['surface','sdkSession','attachedSession','document','draft','cookie','sendCount','path','loads','stops','documents','pending','pendingStored'])
+            return all(after[k]==before[k] for k in ['surface','sdkSession','attachedSession','document','draft','cookie','sendCount','path','loads','stops','documents','pending','pendingStored','activityStarts','menuOpens'])
         def gesture_geometry(before,after):
             touches=after['touches']
             return len(touches)>=3 and touches[0]['action']==0 and touches[-1]['action']==1 and any(t['action']==2 for t in touches) and all(t['pointers']==1 and t['height']==before['webHeight'] and t['width']==before['webWidth'] and t['expanded']==before['expanded'] for t in touches)
         adb('shell','am','start','-W','-n',component,'--es','compactAction','collapseStart','--es','eventNonce',nonce)
-        initial=event('ready')
-        check('Actual Gecko document starts expanded with owned login draft and pending task',initial['visibleDocument'] and initial['loadingCoverVisibility']==8 and initial['expanded'] and initial['toolbarVisibility']==0 and initial['toolbarHeight']>0 and initial['webHeight']>0 and initial['documents']==1 and initial['loads']==initial['stops']==initial['sendCount']==0 and initial['path']=='/c/reload-collapse' and len(initial['document'])==32 and initial['draft']=='unsent controlled browser draft' and 'session=synthetic-reload' in initial['cookie'] and initial['pending']['confirmed'] and initial['sdkSession']==initial['attachedSession'])
+        cold=event('ready')
+        check('Actual Gecko document starts with collapsed environment controls',not cold['expanded'] and cold['toolbarVisibility']==8 and cold['visibleDocument'] and cold['loadingCoverVisibility']==8)
+        initial=tap(cold,'initialChat','chatTap')
+        check('Explicit Chat tap reveals controls without replacing the initial document',unchanged(cold,initial) and cold['webHeight']==initial['webHeight']+initial['toolbarHeight'] and initial['visibleDocument'] and initial['loadingCoverVisibility']==8 and initial['expanded'] and initial['toolbarVisibility']==0 and initial['toolbarHeight']>0 and initial['webHeight']>0 and initial['documents']==1 and initial['loads']==initial['stops']==initial['sendCount']==0 and initial['path']=='/c/reload-collapse' and len(initial['document'])==32 and initial['draft']=='unsent controlled browser draft' and 'session=synthetic-reload' in initial['cookie'] and initial['pending']['confirmed'] and initial['sdkSession']==initial['attachedSession'])
         hidden=swipe(initial,'up','up')
         check('Trusted upward reading swipe hides chrome only after the gesture',not hidden['expanded'] and hidden['toolbarVisibility']==8 and hidden['webHeight']==initial['webHeight']+initial['toolbarHeight'] and gesture_geometry(initial,hidden) and unchanged(initial,hidden) and hidden['scrollY']>initial['scrollY'] and any(t['trusted'] and t['type']=='touchend' for t in hidden['trusted']))
         shown=swipe(hidden,'down','down')
@@ -87,7 +89,16 @@ def run(adb,adb_bytes,source,trace,out,focus):
         adb('shell','am','start','-W','--activity-single-top','-n',component)
         focus('local.pocketchat.CompactChromeIntegrationActivity')
         resumed=snapshot('activityResume')
-        check('Activity resume reveals chrome and preserves the live SDK page',not hidden_resume['expanded'] and resumed['expanded'] and resumed['webHeight']==initial['webHeight'] and unchanged(initial,resumed))
+        check('Activity resume preserves the collapsed controls and live SDK page',not hidden_resume['expanded'] and not resumed['expanded'] and resumed['webHeight']==hidden_resume['webHeight'] and unchanged(initial,resumed))
+        resume_chat=tap(resumed,'resumeChat','chatTap')
+        check('Explicit Chat tap reveals controls after resume',resume_chat['expanded'] and resume_chat['webHeight']==initial['webHeight'] and unchanged(initial,resume_chat))
+        send('clear');start=resume_chat['headerSwipeFrom'];end=resume_chat['headerSwipeTo'];left,top,right,bottom=resume_chat['headerButtonTouch']
+        check('Native header swipe starts inside an actual expanded button touch region',left<=start[0]<right and top<=start[1]<bottom)
+        adb('shell','input','swipe',str(start[0]),str(start[1]),str(end[0]),str(end[1]),'320')
+        inputs.append({'kind':'swipe','label':'headerUp','actualAndroidInput':True,'from':start,'to':end,'durationMs':320})
+        header=snapshot('headerUp');native_touches=header['nativeTouches']
+        focus('local.pocketchat.CompactChromeIntegrationActivity')
+        check('Upward swipe on native environment controls collapses only after release',not header['expanded'] and header['toolbarVisibility']==8 and header['windowFocus'] and header['activityStarts']==header['menuOpens']==0 and header['webHeight']==cold['webHeight'] and unchanged(initial,header) and len(native_touches)>=3 and native_touches[0]['action']==0 and native_touches[-1]['action']==1 and any(t['action']==2 for t in native_touches) and all(t['pointers']==1 and t['height']==initial['webHeight'] and t['expanded'] for t in native_touches))
         requests=[row for row in trace if row['kind']=='http' and row['path']=='/c/reload-collapse' and row['documentMarker']==initial['document']]
         check('All chrome interactions use one controlled actual document without navigation or send',len(requests)==1 and all(unchanged(initial,sample) for sample in observations.values()) and all(sample['sendCount']==0 for sample in observations.values()))
         cases.append({'viewport':width,'fontScale':scale,'runNonce':nonce,'sourceCommit':source,'actualAndroidExecution':True,'actualGeckoExecution':True,'actualAndroidTouchExecution':True,'checks':checks,'observations':observations,'actualAndroidInputs':inputs,'eventTransfer':{'runNonce':nonce,'fixtureAction':'chromeCollapse','processSlot':0,'events':transfer.records},'fixtureRequests':requests})

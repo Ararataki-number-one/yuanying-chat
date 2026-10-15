@@ -39,12 +39,14 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     getSharedPreferences("chat",0).edit().putString("browserEngine","system").putString("networkMode","external").putBoolean("networkConfigured",false).putBoolean("environmentInitialized",true).putBoolean("pageMode",false).remove("pending").commit();
     AppSettings.put(this,"brandSeen","true");
     AppSettings.put(this,"updateAutoCheck","false");
-    getIntent().putExtra("openWindowAction","native-smoke");
+    getIntent().putExtra("openWindowAction",collapseFixture?"chat":"native-smoke");
     // This layout fixture does not open a website or make synthetic state a real connection.
     ChatSession.get(this).manualAttention=true;
     super.onCreate(state);
     command=getIntent().getStringExtra("compactCommand");
     if(collapseFixture){collapse=new ChromeCollapseIntegration(this,getIntent().getStringExtra("eventNonce"));collapse.start();return;}
+    // Historical geometry/touch assertions explicitly inspect expanded chrome.
+    designChrome.reveal();
     if(reloadFixture){
       handler.removeCallbacks(ticker);session.remove(sessionObserver);session.handler.removeCallbacks(session.tick);
       session.prefs.edit().putBoolean("networkConfigured",true).putString("proxy","socks://127.0.0.1:1080").putBoolean("requireExternalVpn",false).commit();session.networkReady=true;session.offline=false;session.guard.setBlocked(false);
@@ -62,6 +64,8 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   @Override void startNetwork(){}
 
   @Override protected void onDestroy(){if(collapse!=null)collapse.close();super.onDestroy();}
+
+  @Override public boolean dispatchTouchEvent(MotionEvent event){boolean handled=super.dispatchTouchEvent(event);if(collapse!=null)collapse.nativeTouch(event);return handled;}
 
   @Override protected void onNewIntent(Intent intent){
     super.onNewIntent(intent);
@@ -110,6 +114,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   }
 
   @Override void moreSheet(){
+    if(collapse!=null)collapse.menuOpens++;
     super.moreSheet();
     if(reporting)event("more");
   }
@@ -119,6 +124,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   }
 
   @Override public void startActivity(Intent intent){
+    if(collapse!=null)collapse.activityStarts++;
     super.startActivity(intent);
     if(reporting)event("activity:"+(intent.getComponent()==null?"":intent.getComponent().getClassName()));
   }

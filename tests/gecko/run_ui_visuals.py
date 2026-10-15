@@ -36,7 +36,7 @@ def capture(variant,width,height,scale,scene):
     if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
     adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
     adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene)
-    required={'chat':'当前环境','environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息'}[scene]
+    required={'chat':'会话','environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息'}[scene]
     deadline=time.monotonic()+35
     while True:
         xml=dump(deadline=deadline)
@@ -63,6 +63,7 @@ def capture(variant,width,height,scale,scene):
     if scene=='chat':
         time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])
         assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml
+        assert not any(n.attrib.get('content-desc','').startswith('当前环境：') for n in ET.fromstring(xml).iter('node')),xml
     assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
     if variant=='current' and scene=='entries':
         choices=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class') in ['android.widget.CheckBox','android.widget.RadioButton']]

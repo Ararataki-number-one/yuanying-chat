@@ -14,11 +14,13 @@ final class ChromeCollapseIntegration {
   final IntegrationEventStore events;
   String task="";
   int documents;
+  int activityStarts,menuOpens;
+  JSONArray nativeTouches=new JSONArray();
   final BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent intent){
     if(!nonce.equals(intent.getStringExtra("eventNonce")))return;
     String command=intent.getStringExtra("collapseCommand");
     if(command==null||!command.matches("[a-zA-Z0-9_-]{1,80}"))return;
-    if("clear".equals(command)){web().touchesObserved=new JSONArray();return;}
+    if("clear".equals(command)){web().touchesObserved=new JSONArray();nativeTouches=new JSONArray();return;}
     a.handler.postDelayed(()->snapshot(command),150);
   }};
   ChromeCollapseIntegration(CompactChromeIntegrationActivity activity,String runNonce){
@@ -61,7 +63,7 @@ final class ChromeCollapseIntegration {
       a.session.pending=J.obj("id",task,"kind","web","engine","gecko","confirmed",true,"webSuspended",true,"userKey","id:reload-user","prompt","already sent fixture question","confirmedUrl",TARGET,"expectedUrl",TARGET);
       a.session.conversation=TARGET;a.session.prefs.edit().putString("pending",a.session.pending.toString()).putString("conversation",TARGET).commit();
       // Only the actual usable SDK document dismisses the production loading cover.
-      a.session.manualAttention=false;a.loading.update();web().tracking=true;a.designChrome.reveal();a.handler.postDelayed(()->snapshot("ready"),300);
+      a.session.manualAttention=false;a.loading.update();web().tracking=true;a.handler.postDelayed(()->snapshot("ready"),300);
     });
   }
   void snapshot(String command){
@@ -74,11 +76,18 @@ final class ChromeCollapseIntegration {
         .put("loads",web().loads).put("stops",web().stops).put("documents",documents).put("page",a.hub.page).put("keyboard",a.keyboardVisible)
         .put("visibleDocument",a.remote.hasVisibleDocument()).put("loadingCoverVisibility",a.loading.cover.getVisibility())
         .put("pending",a.session.pending==null?JSONObject.NULL:new JSONObject(a.session.pending.toString())).put("pendingStored",a.session.prefs.getString("pending",""))
-        .put("touches",web().touchesObserved).put("chatTap",a.center(a.hub.tabs[0])).put("settingsTap",a.center(a.hub.tabs[4]));
+        .put("activityStarts",activityStarts).put("menuOpens",menuOpens).put("windowFocus",a.hasWindowFocus())
+        .put("touches",web().touchesObserved).put("nativeTouches",nativeTouches).put("toolbarBounds",a.bounds(a.toolbar)).put("chatTap",a.center(a.hub.tabs[0])).put("settingsTap",a.center(a.hub.tabs[4]));
+        if(a.designChrome.expanded()){
+          java.lang.reflect.Method method=DesignChrome.class.getDeclaredMethod("touchBounds",View.class);method.setAccessible(true);
+          android.graphics.Rect target=(android.graphics.Rect)method.invoke(a.designChrome,a.designChrome.title);int[] origin=new int[2];a.toolbar.getLocationOnScreen(origin);target.offset(origin[0],origin[1]);
+          result.put("headerSwipeFrom",J.arr(target.centerX(),target.bottom-2)).put("headerSwipeTo",J.arr(target.centerX(),origin[1]+a.dp(1))).put("headerButtonTouch",a.rect(target));
+        }
         emit("collapseSnapshot",result);
       }catch(Exception failure){emit("error",J.obj("error",failure.toString()));}
     });
   }
   void emit(String kind,JSONObject result){try{events.emit(kind,result);}catch(Exception failure){events.failure(failure);}}
+  void nativeTouch(MotionEvent event){if(web().tracking&&nativeTouches.length()<256)nativeTouches.put(J.obj("action",event.getActionMasked(),"pointers",event.getPointerCount(),"height",a.remote.getHeight(),"expanded",a.designChrome.expanded()));}
   void close(){try{a.unregisterReceiver(receiver);}catch(IllegalArgumentException ignored){}}
 }

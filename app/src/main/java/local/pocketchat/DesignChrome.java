@@ -26,14 +26,15 @@ final class DesignChrome {
   private boolean queued,metadataPending;
   private long metadataAt;
   private String profileName;
-  private boolean collapsed;
+  private boolean collapsed=true;
   private final ChromeCollapseGesture swipe;
   private Runnable pendingSwipe;
 
   DesignChrome(MainActivity a,LinearLayout root){
     this.a=a;
     swipe=new ChromeCollapseGesture(a.dp(40),ViewConfiguration.get(a).getScaledTouchSlop(),ViewConfiguration.getLongPressTimeout());
-    a.toolbar=DesignUi.column(a);
+    a.toolbar=new CollapsingToolbar();a.toolbar.setOrientation(LinearLayout.VERTICAL);
+    a.toolbar.setVisibility(View.GONE);
     a.toolbar.setBackgroundColor(ReferenceUi.CHAT_BG);
     a.toolbar.setPadding(a.dp(10),0,a.dp(10),0);
     top=DesignUi.row(a);
@@ -90,7 +91,7 @@ final class DesignChrome {
 
   boolean expanded(){return !collapsed;}
 
-  /** Native navigation always offers the environment controls again. */
+  /** Explicit native navigation offers the environment controls again. */
   void reveal(){
     cancelWebGesture();setCollapsed(false);
     if((a.hub==null||a.hub.page==AppHub.CHAT)&&a.toolbar.getVisibility()!=View.VISIBLE)a.toolbar.setVisibility(View.VISIBLE);
@@ -100,27 +101,51 @@ final class DesignChrome {
     swipe.cancel();if(pendingSwipe!=null){a.handler.removeCallbacks(pendingSwipe);pendingSwipe=null;}
   }
 
-  private boolean readingGestureAllowed(){
-    if(a.destroyed||!a.active||a.keyboardVisible||a.hub==null||a.hub.page!=AppHub.CHAT||a.remote==null||!a.remote.hasVisibleDocument())return false;
-    String url=a.remote.getUrl();if(!MainActivity.chatUrl(url)||LoginPagePolicy.login(url))return false;
+  private boolean gestureAllowed(boolean reading){
+    if(a.destroyed||!a.active||a.keyboardVisible||a.hub==null||a.hub.page!=AppHub.CHAT)return false;
+    if(reading){
+      if(a.remote==null||!a.remote.hasVisibleDocument())return false;
+      String url=a.remote.getUrl();if(!MainActivity.chatUrl(url)||LoginPagePolicy.login(url))return false;
+    }
     AccessibilityManager accessibility=(AccessibilityManager)a.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE);
     return accessibility==null||!accessibility.isTouchExplorationEnabled();
   }
 
   /** Observe only input already admitted by the existing browser/security listeners. */
   void webTouch(MotionEvent event){
+    int result=gestureEvent(event,true);if(result!=ChromeCollapseGesture.NONE)scheduleSwipe(result,true);
+  }
+
+  private int gestureEvent(MotionEvent event,boolean reading){
     int action=event.getActionMasked();
     if(action==MotionEvent.ACTION_DOWN){
-      cancelWebGesture();swipe.begin(event.getX(),event.getY(),event.getEventTime(),readingGestureAllowed());return;
+      cancelWebGesture();swipe.begin(event.getX(),event.getY(),event.getEventTime(),gestureAllowed(reading));return ChromeCollapseGesture.NONE;
     }
-    if(!readingGestureAllowed()||action==MotionEvent.ACTION_CANCEL||event.getPointerCount()!=1||action==MotionEvent.ACTION_POINTER_DOWN||action==MotionEvent.ACTION_POINTER_UP){cancelWebGesture();return;}
-    if(action==MotionEvent.ACTION_MOVE){swipe.move(event.getX(),event.getY(),event.getPointerCount(),event.getEventTime());return;}
-    if(action!=MotionEvent.ACTION_UP)return;
-    int result=swipe.finish(event.getX(),event.getY(),event.getEventTime());
-    if(result==ChromeCollapseGesture.NONE)return;
+    if(!gestureAllowed(reading)||action==MotionEvent.ACTION_CANCEL||event.getPointerCount()!=1||action==MotionEvent.ACTION_POINTER_DOWN||action==MotionEvent.ACTION_POINTER_UP){cancelWebGesture();return ChromeCollapseGesture.NONE;}
+    if(action==MotionEvent.ACTION_MOVE){swipe.move(event.getX(),event.getY(),event.getPointerCount(),event.getEventTime());return ChromeCollapseGesture.NONE;}
+    return action==MotionEvent.ACTION_UP?swipe.finish(event.getX(),event.getY(),event.getEventTime()):ChromeCollapseGesture.NONE;
+  }
+
+  private void scheduleSwipe(int result,boolean reading){
     // Resize once after Android/Gecko have received UP, never beneath a live finger.
-    pendingSwipe=()->{pendingSwipe=null;if(readingGestureAllowed())setCollapsed(result==ChromeCollapseGesture.HIDE);};
+    pendingSwipe=()->{pendingSwipe=null;if(gestureAllowed(reading))setCollapsed(result==ChromeCollapseGesture.HIDE);};
     a.handler.post(pendingSwipe);
+  }
+
+  /** A deliberate swipe on the header cancels its button click; ordinary taps pass through. */
+  private final class CollapsingToolbar extends LinearLayout {
+    boolean sequence;
+    CollapsingToolbar(){super(a);}
+    @Override public boolean dispatchTouchEvent(MotionEvent event){
+      int action=event.getActionMasked();if(action==MotionEvent.ACTION_DOWN)sequence=gestureAllowed(false);
+      boolean owned=sequence;int result=gestureEvent(event,false);boolean handled;
+      if(result!=ChromeCollapseGesture.NONE){
+        MotionEvent cancel=MotionEvent.obtain(event);cancel.setAction(MotionEvent.ACTION_CANCEL);
+        handled=super.dispatchTouchEvent(cancel);cancel.recycle();scheduleSwipe(result,false);
+      }else handled=super.dispatchTouchEvent(event);
+      if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)sequence=false;
+      return handled||owned;
+    }
   }
 
   private void setCollapsed(boolean value){

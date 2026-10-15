@@ -40,12 +40,12 @@ final class AppHub {
     if(target<CHAT||target>NETWORK)return;
     if(target==ENVIRONMENTS){a.startActivity(new Intent(a,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));return;}
     long token=++navigation;
-    if(target==CHAT&&page==CHAT){a.designChrome.reveal();return;}
+    if(target==CHAT){a.designChrome.reveal();if(page==CHAT)return;}
     if(page==CHAT&&target!=CHAT)a.session.pageMemory.capture(()->{if(token==navigation)show(target);});else show(target);
   }
   void show(int target){
     if(target!=page||target==CHAT)feedbackBar.setVisibility(View.GONE);
-    page=target;chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page==CHAT)a.designChrome.reveal();else{a.designChrome.cancelWebGesture();a.toolbar.setVisibility(View.GONE);}
+    page=target;chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page==CHAT)a.toolbar.setVisibility(a.designChrome.expanded()?View.VISIBLE:View.GONE);else{a.designChrome.cancelWebGesture();a.toolbar.setVisibility(View.GONE);}
     a.status.setVisibility(View.GONE);panel.setVisibility(page==CHAT?View.GONE:View.VISIBLE);
     a.session.foreground(a.active);mark();a.updateReadingLayout();a.handler.removeCallbacks(tick);
     if(page!=CHAT){a.hideKeyboard();refresh();a.handler.postDelayed(tick,2500);}
