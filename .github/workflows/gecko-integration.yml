@@ -12,7 +12,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Verify pinned network core and source patch
@@ -159,7 +159,7 @@ jobs:
           "$tools/apksigner" sign --ks work/gecko-integration/update-wrong-key.jks --ks-key-alias fixture --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-wrong-signer.apk work/gecko-integration/update-fixture-unsigned.apk
       - name: Publish unsigned build for local original signing
         run: python3 tools/gecko/publish_ci.py
-      - name: Exercise two production environment processes
+      - name: Boot Android and verify editing performance
         shell: bash
         run: |
           set -euo pipefail
@@ -187,6 +187,14 @@ jobs:
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py
+          if [ "$checks_failed" -ne 0 ]; then exit 1; fi
+      - name: Verify network performance and compact chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+          echo "Starting phase: Verify network performance and compact chrome"
+          checks_failed=0
           if ! python3 tests/gecko/run_network_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
             checks_failed=1
           fi
@@ -197,6 +205,14 @@ jobs:
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py
+          if [ "$checks_failed" -ne 0 ]; then exit 1; fi
+      - name: Verify production environments and file transfers
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+          echo "Starting phase: Verify production environments and file transfers"
+          checks_failed=0
           adb shell am force-stop local.pocketchat.test
           adb shell pm clear local.pocketchat.test
           if ! python3 tests/gecko/run_device.py --adb "$(command -v adb)" --serial emulator-5554; then
@@ -207,6 +223,14 @@ jobs:
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py
+          if [ "$checks_failed" -ne 0 ]; then exit 1; fi
+      - name: Verify browser connection reuse and preauthentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+          echo "Starting phase: Verify browser connection reuse and preauthentication"
+          checks_failed=0
           if ! python3 tests/gecko/run_native_probe.py --adb "$(command -v adb)" --serial emulator-5554; then
             checks_failed=1
           fi
@@ -219,6 +243,14 @@ jobs:
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py
+          if [ "$checks_failed" -ne 0 ]; then exit 1; fi
+      - name: Verify subscription storage and selection UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+          echo "Starting phase: Verify subscription storage and selection UI"
+          checks_failed=0
           if ! python3 tests/gecko/run_network_sources.py --adb "$(command -v adb)" --serial emulator-5554; then
             checks_failed=1
           fi
@@ -227,6 +259,14 @@ jobs:
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py
+          if [ "$checks_failed" -ne 0 ]; then exit 1; fi
+      - name: Verify fixed-exit routing and deferred application
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+          echo "Starting phase: Verify fixed-exit routing and deferred application"
+          checks_failed=0
           if ! python3 tests/gecko/run_network_sources_route.py --adb "$(command -v adb)" --serial emulator-5554; then
             checks_failed=1
           fi
@@ -235,6 +275,14 @@ jobs:
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py
+          if [ "$checks_failed" -ne 0 ]; then exit 1; fi
+      - name: Verify environment templates and resource policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+          echo "Starting phase: Verify environment templates and resource policy"
+          checks_failed=0
           # Preserve the original input/performance baseline before new fixtures.
           if ! python3 tests/gecko/run_profile_features.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk; then
             checks_failed=1
