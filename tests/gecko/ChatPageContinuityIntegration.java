@@ -37,9 +37,7 @@ final class ChatPageContinuityIntegration {
     if(!target.equals(web.getUrl())||!web.hasVisibleDocument()||web.ports.get(web.current)==null){if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Continuity SDK document did not become usable");later(this::ready,100);return;}
     eval("(()=>{document.getElementById('prompt-textarea').value='preserve unsent continuity draft';document.cookie='continuity-token=controlled;path=/';window.__continuityDocument=String(performance.timeOrigin)+'-'+Math.random();return "+snapshot()+";})()",value->{
       before=value;sdk=web.current;record("before",value);check("Continuity starts in an actual visible Gecko document",web.hasVisibleDocument()&&sdk.isOpen()&&target.equals(value.optString("url")));
-      String guard="location.protocol !== 'https:' || location.hostname !== 'chatgpt.com'";
-      if(!owner.driver.contains(guard))throw new IllegalStateException("Production observation guard changed");
-      owner.driver=owner.driver.replace(guard,"location.protocol !== 'http:' || location.hostname !== '127.0.0.1' || location.port !== '8765'");
+      owner.driver=ContinuityDriverAdapter.adapt(owner.driver,target);
       web.continuityUrl=target;web.chooserOrigin=true;web.continuityTracing=true;web.continuityResults=new JSONArray();web.continuityLoads=web.continuityStops=0;
       owner.prefs.edit().putBoolean("networkConfigured",true).commit();owner.appliedIdentity=owner.networkIdentity();
       owner.manualAttention=false;owner.recoveryScheduled=false;owner.recoveryAttempt=0;

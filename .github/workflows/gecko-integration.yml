@@ -85,6 +85,7 @@ jobs:
           javac -encoding UTF-8 -d work/gecko-integration/browser-policy-host app/src/main/java/local/pocketchat/BrowserRuntimePolicy.java tests/browser-runtime/BrowserRuntimePolicyTest.java
           java -cp work/gecko-integration/browser-policy-host local.pocketchat.BrowserRuntimePolicyTest "$PWD" | tee work/gecko-integration/browser-runtime-policy-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/original-website-policy.test.cjs | tee work/gecko-integration/original-website-policy-host-results.json
+          JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/continuity-driver-adapter.test.cjs | tee work/gecko-integration/continuity-driver-adapter-host-results.json
           mkdir -p work/gecko-integration/network-policy-host
           javac -encoding UTF-8 -d work/gecko-integration/network-policy-host app/src/main/java/local/pocketchat/NetworkPoolIdentity.java tests/browser-runtime/NetworkPoolIdentityTest.java app/src/main/java/local/pocketchat/LatencyProbePolicy.java tests/browser-runtime/LatencyProbePolicyTest.java
           java -cp work/gecko-integration/network-policy-host local.pocketchat.NetworkPoolIdentityTest | tee work/gecko-integration/network-pool-host-results.json
@@ -92,7 +93,7 @@ jobs:
           python3 - <<'PYCODE'
           import json,pathlib,subprocess
           source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          for name in ['network-pool-host-results.json','latency-probe-host-results.json','browser-runtime-policy-host-results.json','original-website-policy-host-results.json','reading-host-results.json','reading-focus-host-results.json']:
+          for name in ['network-pool-host-results.json','latency-probe-host-results.json','browser-runtime-policy-host-results.json','original-website-policy-host-results.json','continuity-driver-adapter-host-results.json','reading-host-results.json','reading-focus-host-results.json']:
               path=pathlib.Path('work/gecko-integration')/name
               report=json.loads(path.read_text())
               report['sourceCommit']=source

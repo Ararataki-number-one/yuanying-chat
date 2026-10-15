@@ -31,9 +31,6 @@ public class GeckoIntegrationTestActivity extends Activity {
     long nativeUnchangedTouchEvents,nativeRedundantTouchSyncs,nativeFirstTouchSyncs=-1;boolean nativeFirstTouchOriginCorrect;
     @Override public String getUrl(){return chooserOrigin?MainActivity.ORIGIN:super.getUrl();}
     @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){
-      // The controlled document keeps its real SDK/origin. Only the captured
-      // expected URL is adapted with the same test-only HTTPS origin exception.
-      if(continuityTracing&&!continuityUrl.isEmpty())code=code.replace("\"expectedUrl\":\"https://chatgpt.com/\"","\"expectedUrl\":"+JSONObject.quote(continuityUrl));
       if(continuityTracing&&code.startsWith("window['__pocket_")){String request=code;super.evaluateJavascript(code,raw->{JSONObject value=J.parse(raw);if(value.length()>0)continuityResults.put(J.obj("at",SystemClock.elapsedRealtime(),"request",request,"result",value));if(callback!=null)callback.onReceiveValue(raw);});}
       else super.evaluateJavascript(code,callback);
     }
