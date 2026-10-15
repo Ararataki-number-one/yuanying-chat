@@ -209,7 +209,25 @@ try:
             if self.path=='/c/reload-collapse':
                 body=body.replace(b'</main>',b'<div style="height:12000px;overflow:hidden">Controlled long reading document</div></main>')
                 body=body.replace(b'</form>',b'<button type="button" data-testid="stop-button" aria-label="Stop">Stop</button></form>')
-                body=body.replace(b'</html>',b'<script>window.__chromeTouches=[];for(const type of ["touchstart","touchmove","touchend"])addEventListener(type,e=>{if(__chromeTouches.length<256)__chromeTouches.push({type:e.type,trusted:e.isTrusted});},{passive:true});</script></html>')
+                body=body.replace(b'</html>',b'''<script>
+                (()=>{
+                  const root=document.documentElement;
+                  const types=['touchstart','touchmove','touchend','touchcancel','pointerdown','pointermove','pointerup','pointercancel','mousedown','mousemove','mouseup','scroll'];
+                  const trace={schema:1,realm:'page-main-world',document:root.dataset.reloadDocument,listenerTypes:types,
+                    capabilities:{touchEvent:typeof TouchEvent==='function',pointerEvent:typeof PointerEvent==='function',maxTouchPoints:navigator.maxTouchPoints,
+                      coarsePointer:matchMedia('(pointer:coarse)').matches,hover:matchMedia('(hover:hover)').matches},
+                    count:0,dropped:0,events:[]};
+                  const publish=()=>{root.dataset.chromeInputEvidence=JSON.stringify(trace);};
+                  for(const type of types)addEventListener(type,e=>{
+                    const p=e.changedTouches?.[0]||e.touches?.[0]||e;
+                    const record={sequence:++trace.count,type:e.type,trusted:e.isTrusted,time:performance.now(),
+                      pointerType:e.pointerType||'',x:Number.isFinite(p.clientX)?p.clientX:null,y:Number.isFinite(p.clientY)?p.clientY:null,scrollY:scrollY};
+                    if(trace.events.length===256){trace.events.shift();trace.dropped++;}
+                    trace.events.push(record);publish();
+                  },{passive:true,capture:true});
+                  publish();
+                })();
+                </script></html>''')
             self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(body)
     reload_http=http.server.ThreadingHTTPServer(('127.0.0.1',8765),ReloadHttp)
     reload_socks=reload_loopback.ThreadedSocks(('127.0.0.1',1080),reload_loopback.Socks)

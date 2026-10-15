@@ -10,6 +10,8 @@ import org.mozilla.geckoview.*;
 final class ChromeCollapseIntegration {
   static final String ACTION="local.pocketchat.test.CHROME_COLLAPSE";
   static final String TARGET=MainActivity.ORIGIN+"c/reload-collapse";
+  static final String TELEMETRY="JSON.parse(document.documentElement.dataset.chromeInputEvidence||'null')";
+  static final String TELEMETRY_READY="t?.schema===1&&t.realm==='page-main-world'&&t.document===document.documentElement.dataset.reloadDocument&&Array.isArray(t.events)&&t.listenerTypes?.includes('touchend')";
   final CompactChromeIntegrationActivity a;
   final String nonce;
   final IntegrationEventStore events;
@@ -86,8 +88,8 @@ final class ChromeCollapseIntegration {
     a.remote.loadUrl(CompactChromeIntegrationActivity.ReloadView.LOCAL+"c/reload-collapse");
   }
   void ready(long deadline){
-    a.remote.evaluateJavascript("({ready:!!document.getElementById('prompt-textarea')&&!!document.documentElement.dataset.reloadDocument})",raw->{
-      if(!J.parse(raw).optBoolean("ready")||!a.remote.hasVisibleDocument()){if(SystemClock.elapsedRealtime()>deadline){emit("error",J.obj("error","Controlled chrome document timeout"));return;}a.handler.postDelayed(()->ready(deadline),100);return;}
+    a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {ready:!!document.getElementById('prompt-textarea')&&!!document.documentElement.dataset.reloadDocument,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
+      if(!J.parse(raw).optBoolean("ready")||!J.parse(raw).optBoolean("telemetryReady")||!a.remote.hasVisibleDocument()){if(SystemClock.elapsedRealtime()>deadline){emit("error",J.obj("error","Controlled chrome document or shared-DOM telemetry timeout"));return;}a.handler.postDelayed(()->ready(deadline),100);return;}
       task=a.session.deliveries.begin(TARGET,"already sent fixture question",new JSONArray(),"web",null);
       // This owned task measures retention, not the independent reply worker.
       a.session.pending=J.obj("id",task,"kind","web","engine","gecko","confirmed",true,"webSuspended",true,"userKey","id:reload-user","prompt","already sent fixture question","confirmedUrl",TARGET,"expectedUrl",TARGET);
@@ -98,7 +100,7 @@ final class ChromeCollapseIntegration {
   }
   void snapshot(String command){
     pauseObservers();
-    a.remote.evaluateJavascript("({draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.dataset.reloadDocument,scrollY:scrollY,innerWidth:innerWidth,innerHeight:innerHeight,trusted:window.__chromeTouches||[]})",raw->{
+    a.remote.evaluateJavascript("(()=>{const t="+TELEMETRY+";return {draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.dataset.reloadDocument,scrollY:scrollY,innerWidth:innerWidth,innerHeight:innerHeight,trusted:t?.events||[],fixtureInputTelemetry:t,telemetryReady:"+TELEMETRY_READY+"};})()",raw->{
       JSONObject result=J.parse(raw);int[] location=new int[2];a.remote.getLocationOnScreen(location);
       try{result.put("command",command).put("expanded",a.designChrome.expanded()).put("toolbarVisibility",a.toolbar.getVisibility()).put("toolbarHeight",a.toolbar.getHeight())
         .put("webWidth",a.remote.getWidth()).put("webHeight",a.remote.getHeight()).put("webX",location[0]).put("webY",location[1])

@@ -26,16 +26,33 @@ PAYLOAD = bytes(range(256)) * 23 + b'\x00APK\r\n\xff\xfe\x80binary\x00tail\n'
 FAKE_ADB = r'''import json, os, pathlib, stat, sys, time
 base = pathlib.Path(__file__).parent
 config = json.loads((base / 'config.json').read_text())
-record = {'argv': sys.argv[1:], 'stdoutIsRegularFile': stat.S_ISREG(os.fstat(1).st_mode)}
+target = pathlib.Path(sys.argv[-1])
+record = {'argv': sys.argv[1:], 'stdoutIsRegularFile': stat.S_ISREG(os.fstat(1).st_mode),
+          'stageParentMode': stat.S_IMODE(target.parent.stat().st_mode),
+          'stagePreexisted': target.exists(),
+          'finalPreReserved': pathlib.Path(config['finalPath']).is_file()}
 with (base / 'commands.jsonl').open('a') as log:
     log.write(json.dumps(record) + '\n')
 raw = (base / 'payload.bin').read_bytes()
 mode = config['mode']
 if mode == 'empty':
     raw = b''
+if mode == 'short':
+    raw = raw[:-31]
+if mode == 'wrong-bytes':
+    raw = bytes([raw[0] ^ 255]) + raw[1:]
 if mode == 'timeout':
     raw = raw[:31]
-sys.stdout.buffer.write(raw)
+if mode == 'stage-symlink':
+    prior = base / 'prior-stage-evidence.bin'
+    prior.write_bytes(b'prior unrelated evidence')
+    target.symlink_to(prior)
+elif mode not in ('missing', 'stdout-only'):
+    target.write_bytes(raw)
+stdout = raw if mode == 'stdout-only' else b'1 file pulled. actual bytes are in the destination file\n'
+if mode == 'large-stdout':
+    stdout = b'O' * 70000
+sys.stdout.buffer.write(stdout)
 sys.stdout.buffer.flush()
 if mode in ('error', 'timeout'):
     sys.stderr.buffer.write(b'controlled adb failure\n')
@@ -59,12 +76,12 @@ class InstalledApkReadTests(unittest.TestCase):
         self.adb.write_text('#!' + sys.executable + '\n' + FAKE_ADB)
         self.adb.chmod(self.adb.stat().st_mode | stat.S_IXUSR)
         (self.directory / 'payload.bin').write_bytes(PAYLOAD)
-        self.mode('success')
         self.destination = self.directory / 'actual installed.apk'
+        self.mode('success')
         self.diagnostics = self.directory / 'read-diagnostics.json'
 
     def mode(self, value):
-        (self.directory / 'config.json').write_text(json.dumps({'mode': value}))
+        (self.directory / 'config.json').write_text(json.dumps({'mode': value, 'finalPath': str(self.destination)}))
 
     def commands(self):
         path = self.directory / 'commands.jsonl'
@@ -82,8 +99,19 @@ class InstalledApkReadTests(unittest.TestCase):
         return json.loads(self.diagnostics.read_text())
 
     def assert_once(self):
-        self.assertEqual(self.commands(), [dict(argv=['-s', SERIAL, 'exec-out', 'cat', INSTALLED],
-                                                stdoutIsRegularFile=True)])
+        commands = self.commands()
+        self.assertEqual(len(commands), 1, 'Exactly one uncompressed SYNC device read')
+        command = commands[0]
+        self.assertEqual(command['argv'][:-1], ['-s', SERIAL, 'pull', '-Z', INSTALLED])
+        target = Path(command['argv'][-1])
+        self.assertEqual(target.name, 'actual-installed.apk')
+        self.assertEqual(target.parent.parent, self.directory)
+        self.assertTrue(target.parent.name.startswith('.installed-apk-pull-'))
+        self.assertFalse(target.parent.exists(), 'Private staging must always be cleaned')
+        self.assertFalse(command['stdoutIsRegularFile'])
+        self.assertEqual(command['stageParentMode'], 0o700)
+        self.assertFalse(command['stagePreexisted'])
+        self.assertTrue(command['finalPreReserved'])
 
     def assert_failed_cleanup(self, **changes):
         with self.assertRaises(READER.InstalledApkReadError) as caught:
@@ -95,9 +123,13 @@ class InstalledApkReadTests(unittest.TestCase):
         self.assertEqual(caught.exception.diagnostics, self.receipt())
 
     def assert_io_receipt(self, receipt, payload):
-        self.assertEqual(receipt['command'], [str(self.adb), '-s', SERIAL, 'exec-out', 'cat', INSTALLED])
+        self.assertEqual(receipt['command'][:-1], [str(self.adb), '-s', SERIAL, 'pull', '-Z', INSTALLED])
+        self.assertEqual(receipt['transport'], 'adb-sync-uncompressed')
+        self.assertEqual(receipt['dataSource'], 'destination-file')
         self.assertEqual(receipt['stdoutBytes'], len(payload))
         self.assertEqual(receipt['stdoutSha256'], hashlib.sha256(payload).hexdigest())
+        self.assertEqual(receipt['actualFileBytes'], receipt['stdoutBytes'])
+        self.assertEqual(receipt['actualFileSha256'], receipt['stdoutSha256'])
         for field in ('hostDiskBefore', 'hostDiskAfter'):
             disk = receipt[field]
             self.assertEqual(set(disk), {'total', 'used', 'free'})
@@ -105,15 +137,14 @@ class InstalledApkReadTests(unittest.TestCase):
             self.assertGreater(disk['total'], 0)
             self.assertLessEqual(disk['free'], disk['total'])
 
-    def test_exact_binary_roundtrip_uses_one_exec_out_cat_and_a_real_output_file(self):
+    def test_exact_binary_roundtrip_uses_one_uncompressed_sync_and_a_reserved_output_file(self):
         with patch.object(READER.subprocess, 'run', wraps=subprocess.run) as process:
             receipt = self.read()
         process.assert_called_once()
-        command = [str(self.adb), '-s', SERIAL, 'exec-out', 'cat', INSTALLED]
+        command = self.receipt()['command']
         self.assertEqual(process.call_args.args, (command,))
         parameters = process.call_args.kwargs
-        self.assertEqual(parameters['stdout'].name, str(self.destination))
-        self.assertEqual(parameters['stdout'].mode, 'xb')
+        self.assertEqual(parameters['stdout'], subprocess.PIPE)
         self.assertEqual(parameters['stderr'], subprocess.PIPE)
         self.assertEqual(parameters['timeout'], 30)
         self.assertIs(parameters['check'], False)
@@ -144,6 +175,56 @@ class InstalledApkReadTests(unittest.TestCase):
     def test_empty_successful_process_output_cannot_pass(self):
         self.mode('empty')
         self.assert_failed_cleanup()
+
+    def test_sync_short_file_with_exit_zero_cannot_pass_or_retry(self):
+        self.mode('short')
+        self.assert_failed_cleanup()
+        self.assert_io_receipt(self.receipt(), PAYLOAD[:-31])
+        self.assertFalse(self.receipt()['retryPerformed'])
+
+    def test_sync_same_size_wrong_file_with_exit_zero_cannot_pass(self):
+        self.mode('wrong-bytes')
+        self.assert_failed_cleanup()
+        self.assert_io_receipt(self.receipt(), bytes([PAYLOAD[0] ^ 255]) + PAYLOAD[1:])
+
+    def test_missing_sync_output_is_not_replaced_by_any_other_file(self):
+        self.mode('missing')
+        self.assert_failed_cleanup()
+        self.assert_io_receipt(self.receipt(), b'')
+        self.assertFalse(self.receipt()['compiledFileFallback'])
+
+    def test_cli_stdout_containing_exact_apk_bytes_is_never_the_apk(self):
+        self.mode('stdout-only')
+        self.assert_failed_cleanup()
+        receipt = self.receipt()
+        self.assert_io_receipt(receipt, b'')
+        self.assertEqual(receipt['cliStdoutBytes'], len(PAYLOAD))
+        self.assertEqual(receipt['cliStdoutSha256'], hashlib.sha256(PAYLOAD).hexdigest())
+
+    def test_success_cli_progress_is_separate_from_verified_destination_bytes(self):
+        receipt = self.read()
+        self.assert_once()
+        self.assert_io_receipt(receipt, PAYLOAD)
+        progress = b'1 file pulled. actual bytes are in the destination file\n'
+        self.assertEqual(receipt['cliStdout'], progress.decode())
+        self.assertEqual(receipt['cliStdoutBytes'], len(progress))
+        self.assertEqual(receipt['cliStdoutSha256'], hashlib.sha256(progress).hexdigest())
+        self.assertNotEqual(receipt['cliStdoutSha256'], receipt['stdoutSha256'])
+
+    def test_large_cli_stdout_diagnostics_are_bounded(self):
+        self.mode('large-stdout')
+        receipt = self.read()
+        self.assert_once()
+        self.assert_io_receipt(receipt, PAYLOAD)
+        self.assertEqual(receipt['cliStdoutBytes'], 70000)
+        self.assertTrue(receipt['cliStdoutTruncated'])
+        self.assertLessEqual(len(receipt['cliStdout'].encode()), 65536)
+
+    def test_staging_symlink_is_never_followed_or_treated_as_device_bytes(self):
+        self.mode('stage-symlink')
+        self.assert_failed_cleanup()
+        self.assertEqual((self.directory / 'prior-stage-evidence.bin').read_bytes(), b'prior unrelated evidence')
+        self.assert_io_receipt(self.receipt(), b'')
 
     def test_nonzero_exit_cannot_pass_even_when_stdout_has_exact_apk_bytes(self):
         self.mode('error')

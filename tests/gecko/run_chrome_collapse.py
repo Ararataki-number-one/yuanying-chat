@@ -66,7 +66,7 @@ def run(adb,adb_bytes,source,trace,out,focus):
             return len(touches)>=3 and touches[0]['action']==0 and touches[-1]['action']==1 and any(t['action']==2 for t in touches) and all(t['pointers']==1 and t['height']==before['webHeight'] and t['width']==before['webWidth'] and t['expanded']==before['expanded'] for t in touches)
         adb('shell','am','start','-W','-n',component,'--es','compactAction','collapseStart','--es','eventNonce',nonce)
         cold=event('ready')
-        check('Actual Gecko document starts with collapsed environment controls',not cold['expanded'] and cold['toolbarVisibility']==8 and cold['visibleDocument'] and cold['loadingCoverVisibility']==8)
+        check('Actual Gecko document starts with collapsed environment controls',not cold['expanded'] and cold['toolbarVisibility']==8 and cold['visibleDocument'] and cold['loadingCoverVisibility']==8 and cold['telemetryReady'])
         initial=tap(cold,'initialChat','chatTap')
         check('Explicit Chat tap reveals controls without replacing the initial document',unchanged(cold,initial) and cold['webHeight']==initial['webHeight']+initial['toolbarHeight'] and initial['visibleDocument'] and initial['loadingCoverVisibility']==8 and initial['expanded'] and initial['toolbarVisibility']==0 and initial['toolbarHeight']>0 and initial['webHeight']>0 and initial['documents']==1 and initial['loads']==initial['stops']==initial['sendCount']==0 and initial['path']=='/c/reload-collapse' and len(initial['document'])==32 and initial['draft']=='unsent controlled browser draft' and 'session=synthetic-reload' in initial['cookie'] and initial['pending']['confirmed'] and initial['sdkSession']==initial['attachedSession'])
         hidden=swipe(initial,'up','up')

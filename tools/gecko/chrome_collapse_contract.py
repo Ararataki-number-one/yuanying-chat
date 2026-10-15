@@ -53,7 +53,14 @@ def verify_auto_collapse(report,source,apk_sha):
         assert initial['loads']==initial['stops']==initial['sendCount']==0 and initial['sdkSession']==initial['attachedSession']
         assert len(initial['document'])==32 and initial['draft']=='unsent controlled browser draft' and initial['pending']['confirmed']
         stable=['surface','sdkSession','attachedSession','document','draft','cookie','sendCount','path','loads','stops','documents','pending','pendingStored','activityStarts','menuOpens']
-        for sample in snapshots.values():assert all(sample[k]==initial[k] for k in stable),sample['command']
+        for sample in snapshots.values():
+            assert all(sample[k]==initial[k] for k in stable),sample['command']
+            telemetry=sample['fixtureInputTelemetry']
+            assert sample['telemetryReady'] is True and telemetry['schema']==1 and telemetry['realm']=='page-main-world'
+            assert telemetry['document']==sample['document'] and 'touchend' in telemetry['listenerTypes']
+            assert telemetry['events']==sample['trusted'] and len(telemetry['events'])<=256
+            assert telemetry['count']==len(telemetry['events'])+telemetry['dropped']
+            assert all(isinstance(row['trusted'],bool) and row['type'] in telemetry['listenerTypes'] for row in telemetry['events'])
         for before_key,after_key,expanded in [('initialChat','up',False),('up','down',True),('down','horizontal',True)]:
             before,after=snapshots[before_key],snapshots[after_key];touches=after['touches']
             assert len(touches)>=3 and touches[0]['action']==0 and touches[-1]['action']==1 and any(t['action']==2 for t in touches)

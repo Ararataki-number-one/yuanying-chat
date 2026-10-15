@@ -183,6 +183,19 @@ def main():
         receipt.write_text(json.dumps(value,indent=2)+"\n")
         results.append(dict(test="caret-document-observer-host",report=str(receipt.relative_to(ROOT)),passed=value["passed"],actualAndroidExecution=False))
         files.update(inputs)
+    collapse_telemetry=ROOT/'tests/browser-runtime/chrome-collapse-telemetry.test.cjs'
+    if collapse_telemetry.is_file():
+        command=['node','--test','--test-reporter=tap',str(collapse_telemetry)]
+        run=subprocess.run(command,cwd=ROOT,text=True,capture_output=True)
+        if run.returncode:raise subprocess.CalledProcessError(run.returncode,command,run.stdout,run.stderr)
+        total=re.search(r'^# tests (\d+)$',run.stdout,re.M);passed=re.search(r'^# pass (\d+)$',run.stdout,re.M);failed=re.search(r'^# fail (\d+)$',run.stdout,re.M)
+        if not total or not passed or not failed or int(total.group(1))<12 or total.group(1)!=passed.group(1) or failed.group(1)!='0':raise ValueError('Incomplete shared-DOM chrome telemetry host controls')
+        inputs=[collapse_telemetry,ROOT/'tests/gecko/run_ui_visuals.py',ROOT/'tests/gecko/ChromeCollapseIntegration.java']
+        value=dict(sourceCommit=source_id,sourceTree=source_tree,sourceDirty=bool(source_status.strip()),status='passed',actualAndroidExecution=False,actualGeckoExecution=False,synthetic=True,
+            passed=int(passed.group(1)),total=int(total.group(1)),scope='Actual fixture/snapshot expressions in separate host VM globals sharing a DOM double. All callback events are explicitly synthetic and untrusted; no Android input or trusted-touch acceptance.',
+            output=run.stdout,files={str(path.relative_to(ROOT)):before_hashes[path] for path in inputs})
+        receipt=output/'chrome-collapse-telemetry-host-results.json';receipt.write_text(json.dumps(value,indent=2)+'\n')
+        results.append(dict(test='chrome-collapse-telemetry-host',report=str(receipt.relative_to(ROOT)),passed=value['passed'],actualAndroidExecution=False));files.update(inputs)
     # Receipt coverage includes Android lifecycle/admission sources without pretending to compile them on the host JVM.
     lifecycle_sources=('EnvironmentSpec','EnvironmentResetPlan','EnvironmentBrowserData','EnvironmentProcessPolicy','EnvironmentSpecRepository','ProfileCatalog','Profiles','ProfileContext','EnvironmentResetActivity','WindowHomeActivity','MainActivity','ChatSession','ChatService','NetworkUiProvider','AppUpdateRoute','EnvironmentDeleteActivity','EnvironmentSpecRuntime')
     files.update(source/(name+'.java') for name in lifecycle_sources)
