@@ -1,6 +1,14 @@
 # 2.0.3 验证记录
 
-当前状态：用户已在获知输入失败及验证未完成后再次明确指令“发布”。据此准备正式发布；回归结论仍为 incomplete-with-known-issue，不记为通过。复用来源 7d04c0f 的 APK，保留后续同应用代码的失败记录。
+当前状态：用户在获知输入失败及验证未完成后再次明确指令“发布”，已据此发布正式版。回归结论仍为 incomplete-with-known-issue，不记为通过。复用来源 7d04c0f 的 APK，保留后续同应用代码的失败记录。
+
+## 发布核验
+
+- [2.0.3 正式版](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.0.3-gecko)，版本码 56，原签名；发布流程 [38764190792](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/38764190792) 成功。
+- APK 大小 119082248 字节；SHA-256：`ffc3a3c2bafb01de90afa58ea77c4c2291005b3d80f7458b4f3a1a8186ff8330`。
+- 匿名完整下载哈希与本地签名 APK 一致；两次 Range / If-Range 请求均返回 206，分片内容与本地 APK 一致。
+- GitHub latest 与应用更新订阅均指向 2.0.3，更新订阅中的 APK 哈希一致。
+- 精确发布授权和原始输入失败报告随正式版资产提供。上述发布完整性校验不等于输入问题已修复或真机验收已通过。
 
 ## 已完成的改动
 
