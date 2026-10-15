@@ -17,21 +17,27 @@ final class GeckoUploadFiles {
     void delete(){File[] children=directory.listFiles();if(children!=null)for(File child:children)child.delete();directory.delete();}
   }
   static Selection prepare(Context context,Uri[] source)throws IOException {
+    if(source==null||source.length==0)throw new IOException("没有选中附件，请重新选择");
     File parent=new File(context.getCacheDir(),"gecko-uploads"),directory=new File(parent,UUID.randomUUID().toString());
     if(!directory.mkdirs())throw new IOException("无法准备附件，请检查剩余空间");
     Selection selection=new Selection(directory,new Uri[source.length]);long total=0;Set<String> names=new HashSet<>();
     try{for(int i=0;i<source.length;i++){
       Uri uri=source[i];if(uri==null||!("content".equals(uri.getScheme())||"file".equals(uri.getScheme())))throw new IOException("所选附件不可读取，请重新选择");
-      String name="附件";
+      String name="附件",mime=null;
       if("file".equals(uri.getScheme()))name=new File(uri.getPath()).getName();
-      else try(Cursor cursor=context.getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(cursor!=null&&cursor.moveToFirst()&&!cursor.isNull(0))name=cursor.getString(0);}
+      else {
+        // Photo/cloud providers may grant the stream but omit their metadata.
+        // An optional name or MIME lookup must not reject a readable document.
+        try(Cursor cursor=context.getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(cursor!=null&&cursor.moveToFirst()){int column=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);if(column>=0&&!cursor.isNull(column)){String candidate=cursor.getString(column);if(candidate!=null)name=candidate;}}}catch(RuntimeException ignored){}
+        try{mime=context.getContentResolver().getType(uri);}catch(RuntimeException ignored){}
+      }
       name=name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]","_").trim();if(name.isEmpty()||name.equals(".")||name.equals(".."))name="附件";if(name.length()>80)name=name.substring(name.length()-80);
-      if("content".equals(uri.getScheme())){String mime=context.getContentResolver().getType(uri);if(mime!=null&&mime.startsWith("image/")){int dot=name.lastIndexOf('.');String actual=dot<0?null:MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substring(dot+1).toLowerCase(Locale.ROOT));String extension=MimeTypeMap.getSingleton().getExtensionFromMimeType(mime.toLowerCase(Locale.ROOT));if(extension!=null&&!mime.equalsIgnoreCase(actual))name+="."+extension;}}
-      if(!names.add(name))throw new IOException("所选附件名称重复，请分别添加");
+      if(mime!=null&&(mime.startsWith("image/")||name.equals("附件"))){int dot=name.lastIndexOf('.');String actual=dot<0?null:MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substring(dot+1).toLowerCase(Locale.ROOT));String extension=MimeTypeMap.getSingleton().getExtensionFromMimeType(mime.toLowerCase(Locale.ROOT));if(extension!=null&&!mime.equalsIgnoreCase(actual))name+="."+extension;}
+      String original=name;int duplicate=1,dot=original.lastIndexOf('.');while(!names.add(name)){String suffix=" ("+(++duplicate)+")";name=dot>0?original.substring(0,dot)+suffix+original.substring(dot):original+suffix;}
       File file=new File(directory,name);
       try(InputStream input=context.getContentResolver().openInputStream(uri);OutputStream output=new FileOutputStream(file)){
         if(input==null)throw new IOException("附件不可读取，请重新选择");byte[] buffer=new byte[65536];int count;
-        while((count=input.read(buffer))!=-1){total+=count;if(total>MAX||directory.getUsableSpace()<64L*1024*1024)throw new IOException("附件过大或剩余空间不足");output.write(buffer,0,count);}
+        while((count=input.read(buffer))!=-1){if(Thread.currentThread().isInterrupted())throw new IOException("附件读取已取消");total+=count;if(total>MAX||directory.getUsableSpace()<64L*1024*1024)throw new IOException("附件过大或剩余空间不足");output.write(buffer,0,count);}
       }
       selection.files[i]=Uri.fromFile(file);
     }return selection;}catch(Exception error){selection.delete();throw new IOException("读取附件失败："+(error.getMessage()==null?"请重新选择":error.getMessage()),error);}

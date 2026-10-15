@@ -18,7 +18,7 @@ class FileDownloads {
   static final int SAVE=83;static final long MAX=512L*1024*1024;
   final MainActivity a;final ExecutorService worker=Executors.newSingleThreadExecutor();
   volatile InputStream nativeInput;volatile boolean cancelled;volatile HttpURLConnection connection;volatile File temp;volatile boolean active,destroyed;String imageLabel="",name="文件",mime="application/octet-stream",sourceId="",sourceKey="",sourceUrl="",retryUrl="",agent="",blobKey="",blobPage="";volatile long ticket=0;long blobSize,offset,ignoreUntil=0;Dialog dialog;AlertDialog noticeDialog;TextView progress;
-  final SavedFileActions savedActions;final DownloadTasks tasks;JSONObject task;boolean resumeRequested=false,minimized=false,completeFile=false,awaitingPicker=false;long pickerTicket=-1;volatile Uri savingDestination;AlertDialog manager;String resumeValidator="",resumeAddress="";volatile long receivedBytes=0,totalBytes=-1;
+  final SavedFileActions savedActions;final DownloadTasks tasks;JSONObject task;boolean resumeRequested=false,minimized=false,completeFile=false,awaitingPicker=false;long pickerTicket=-1,lastProgressSaved;static final long PROGRESS_SAVE_INTERVAL=2000;volatile Uri savingDestination;AlertDialog manager;String resumeValidator="",resumeAddress="";volatile long receivedBytes=0,totalBytes=-1;
   FileDownloads(MainActivity a){this.a=a;savedActions=new SavedFileActions(a);tasks=new DownloadTasks(a);a.remote.setDownloadListener((url,ua,cd,type,size)->accept(url,ua,cd,type,size));a.remote.responseDownload=this::acceptResponse;}
   void acceptResponse(org.mozilla.geckoview.WebResponse response){
     InputStream input=response.body;
@@ -115,8 +115,14 @@ class FileDownloads {
   void dismiss(){if(dialog!=null){dialog.dismiss();dialog=null;}}
   void destroy(){if(active)pause();if(manager!=null)manager.dismiss();if(noticeDialog!=null)noticeDialog.dismiss();destroyed=true;savedActions.close();worker.shutdown();}
   void newTask(String id,String key,String url){name="文件";mime="application/octet-stream";imageLabel="";completeFile=false;task=tasks.add(id,key,url);temp=null;resumeValidator="";resumeAddress="";receivedBytes=0;totalBytes=-1;minimized=true;}
-  void mark(String state,String reason){if(task==null)return;DownloadTasks.put(task,"state",state,"reason",reason==null?"":reason,"name",name,"mime",mime,"received",receivedBytes,"total",totalBytes,"validator",resumeValidator,"resource",resumeAddress,"complete",completeFile);if(temp!=null)DownloadTasks.put(task,"partial",temp.getName());tasks.save();}
-  void transferProgress(){mark("downloading","");showProgress(name+"\n"+DownloadTasks.progress(task));}
+  void updateTask(String state,String reason){if(task==null)return;DownloadTasks.put(task,"state",state,"reason",reason==null?"":reason,"name",name,"mime",mime,"received",receivedBytes,"total",totalBytes,"validator",resumeValidator,"resource",resumeAddress,"complete",completeFile);if(temp!=null)DownloadTasks.put(task,"partial",temp.getName());}
+  void mark(String state,String reason){if(task==null)return;updateTask(state,reason);tasks.save();lastProgressSaved=android.os.SystemClock.elapsedRealtime();}
+  void transferProgress(){
+    if(task==null)return;updateTask("downloading","");long now=android.os.SystemClock.elapsedRealtime();
+    // Keep live bytes local; terminal states still use mark() and synchronously retain every byte.
+    if(lastProgressSaved==0||now-lastProgressSaved>=PROGRESS_SAVE_INTERVAL){tasks.save();lastProgressSaved=now;}
+    showProgress(name+"\n"+DownloadTasks.progress(task));
+  }
   void fail(long attempt,String reason){a.handler.post(()->{if(!valid(attempt))return;mark(reason!=null&&reason.startsWith("仅 Wi-Fi")?"paused":"failed",reason);active=false;a.session.transferActive=false;a.session.updateBrowserActivity();dismiss();clearBlob();if(a.hub!=null&&a.hub.page==1)a.hub.refresh();});}
   void pause(){if(!active)return;ignoreUntil=System.currentTimeMillis()+1500;cancelled=true;active=false;a.session.transferActive=false;a.session.updateBrowserActivity();ticket++;if(connection!=null)connection.disconnect();InputStream nativeStream=nativeInput;nativeInput=null;if(nativeStream!=null)new Thread(()->{try{nativeStream.close();}catch(IOException ignored){}},"download-close").start();clearBlob();dismiss();savingDestination=null;mark("paused","点击继续；网页临时文件可能需要重新下载");}
   void requestCancel(){if(destroyed||task==null||"saved".equals(task.optString("state")))return;JSONObject chosen=task;new AlertDialog.Builder(a).setTitle("取消下载？").setMessage("会清理已下载的部分。只想稍后继续，可以暂停下载。").setPositiveButton("取消并清理",(d,w)->{if(task==chosen&&!"saved".equals(chosen.optString("state")))cancel();}).setNeutralButton("暂停下载",(d,w)->{if(task==chosen)pause();}).setNegativeButton("保留下载",null).show();}

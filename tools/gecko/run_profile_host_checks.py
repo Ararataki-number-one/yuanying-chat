@@ -62,7 +62,7 @@ def main():
         ("EnvironmentSpecTest", ["J", "EnvironmentSpec", "EnvironmentSpecMigration"]),
         ("EnvironmentLifecyclePolicyTest", ["J", "EnvironmentSpec", "EnvironmentSpecMigration", "EnvironmentResetPlan", "EnvironmentBrowserData", "EnvironmentProcessPolicy"]),
     ]
-    extras = [("FingerprintTemplateTest", ["J", "BrowserIdentitySpec", "AuditReport"]),("BrowserEditIntentTest",["J","BrowserEditIntent"])]
+    extras = [("FingerprintTemplateTest", ["J", "BrowserIdentitySpec", "AuditReport"]),("BrowserEditIntentTest",["J","BrowserEditIntent"]),("DownloadListPolicyTest",["DownloadListPolicy"])]
     groups += [(name, names) for name, names in extras if (tests / (name + ".java")).is_file()]
     files = {source / (name + ".java") for _, names in groups for name in names}
     files.update(tests / (name + ".java") for name, _ in groups)
@@ -196,6 +196,20 @@ def main():
     subprocess.run([sys.executable,str(ROOT / "tools/gecko/run_resource_host_checks.py"),"--json-jar",str(json_jar),"--output",str(pressure_receipt)],cwd=ROOT,check=True)
     pressure=json.loads(pressure_receipt.read_text());results.append({"test":"resource-pressure-host","report":str(pressure_receipt.relative_to(ROOT)),"passed":pressure["passed"],"actualAndroidExecution":False})
     files.update(ROOT/path for path in pressure["files"])
+    # Execute the real SAF-copy implementation against host streams/files. This
+    # complements, and does not stand in for, the Android prompt/picker checks.
+    upload_test=ROOT/'tests/gecko_upload_files_test.py'
+    upload_run=subprocess.run([sys.executable,str(upload_test)],cwd=ROOT,text=True,capture_output=True)
+    if upload_run.returncode:
+        raise subprocess.CalledProcessError(upload_run.returncode,upload_run.args,upload_run.stdout,upload_run.stderr)
+    upload_records=[json.loads(line) for line in upload_run.stdout.splitlines() if line.startswith('{')]
+    if len(upload_records)!=1 or upload_records[0].get('status')!='passed' or upload_records[0].get('checks',0)<17 or upload_records[0].get('actualAndroidExecution') is not False:
+        raise ValueError('Incomplete production upload-file host checks')
+    upload_receipt=output/'gecko-upload-files-host-results.json'
+    upload_receipt.write_text(json.dumps(dict(upload_records[0],sourceCommit=source_id,sourceTree=source_tree,
+        sourceDirty=bool(source_status.strip()),output=upload_run.stdout),indent=2)+'\n')
+    results.append(dict(test='gecko-upload-files-host',report=str(upload_receipt.relative_to(ROOT)),passed=upload_records[0]['checks'],actualAndroidExecution=False))
+    files.update((upload_test,source/'GeckoUploadFiles.java'))
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest

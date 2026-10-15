@@ -46,8 +46,10 @@ public class MainActivity extends Activity {
     boolean current=session!=null&&TextUtils.equals(message,session.status);
     boolean sessionError=current&&(!session.pageError.isEmpty()&&TextUtils.equals(message,session.pageError)||session.websiteConnectionIssue||!session.networkIssue.isEmpty()&&TextUtils.equals(message,session.networkIssue)&&(session.offline||!session.networkReady&&!session.connecting));
     boolean error=!quiet&&(sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
-    if(error){if(!TextUtils.equals(status.getText(),message))status.setText(message);status.setTextColor(DesignUi.RED);}
-    status.setVisibility(error&&hub!=null&&hub.page==AppHub.CHAT?View.VISIBLE:View.GONE);
+    boolean fileProgress=session!=null&&session.resourceFilePreparations>0&&message.equals("准备附件…");
+    if(error||fileProgress){if(!TextUtils.equals(status.getText(),message))status.setText(message);status.setTextColor(error?DesignUi.RED:DesignUi.MUTED);}
+    status.setClickable(error);status.setContentDescription(fileProgress?"正在准备所选附件":"网页或网络错误，点按查看详情");
+    status.setVisibility((error||fileProgress)&&hub!=null&&hub.page==AppHub.CHAT?View.VISIBLE:View.GONE);
     if(error&&hub!=null&&hub.page!=AppHub.CHAT)hub.feedback(message,true);
   }
   @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}

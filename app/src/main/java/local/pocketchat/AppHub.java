@@ -18,6 +18,8 @@ final class AppHub {
   String rendered="";
   final Button[] tabs=new Button[5];
   final NetworkWorkspaceUi networkWorkspace;
+  DesignDownloads.Controller downloadController;
+  View downloadScreen;
   final Runnable tick=this::updateTick;
 
   AppHub(MainActivity a,LinearLayout root,View chat){
@@ -64,7 +66,12 @@ final class AppHub {
     feedbackBar.setBackgroundColor(error?0xfffff1f2:0xffedf5ff);feedbackBar.setVisibility(View.VISIBLE);
   }
   void refresh(){if(page==DOWNLOADS)downloads();if(page==SETTINGS)settings();if(page==NETWORK)networkWorkspace.show(networkTab);}
-  void downloads(){DesignDownloads.render(a,layout("下载中心"),downloadFilter,n->{downloadFilter=n;downloads();},a.downloads.savedActions);}
+  void downloads(){
+    if(downloadController==null||panel.getChildCount()==0||panel.getChildAt(0)!=downloadScreen){
+      LinearLayout box=layout("下载中心");downloadScreen=panel.getChildAt(0);
+      downloadController=new DesignDownloads.Controller(a,box,downloadFilter,n->{downloadFilter=n;downloads();},a.downloads.savedActions);
+    }else downloadController.refresh(downloadFilter);
+  }
   void settings(){DesignSettingsUi.render(a,layout("应用设置"),settingsTab);}
   void network(){show(NETWORK);}
   void networkFor(int slot){networkTab=0;networkWorkspace.focus(slot);select(NETWORK);}

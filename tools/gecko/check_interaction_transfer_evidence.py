@@ -32,6 +32,20 @@ PACKAGE_DELETE_CHECKS = {
     'packageDeletionStatusNoIo', 'explicitRedownloadAfterPackageDeletion',
 }
 
+DOWNLOAD_LIST_CHECKS = {
+    'Re-indexing an unchanged saved file preserves its recorded download timestamp',
+    'An unchanged task sync retains its original progress heartbeat and exact shared row',
+    'A changed progress sync updates only that task with new bytes and a real heartbeat',
+    'A legacy history row without a time cannot move or replace an existing saved download',
+    'The attached Android download list keeps actual active tasks first',
+    'Completed Android cards follow actual newest-to-oldest saved times',
+    'Rendered saved card displays its existing recorded download date',
+    'Live byte polls retain the exact Android decor scroll card and focus',
+    'The same Android progress bar reports current bytes without duplicate rows',
+    'Progress-only refresh keeps the existing visible scroll offset',
+    'Old downloads with no timestamp disclose the missing time rather than use today',
+}
+
 
 def verify_saved_file_deletion(report):
     assert report['schema'] == 1 and report['status'] == 'passed'
@@ -39,18 +53,22 @@ def verify_saved_file_deletion(report):
         'actualMediaStoreExecution', 'actualPrivateProviderExecution',
         'actualWorkerThreadDeletion', 'actualSameUriPublicationBarrier',
         'staleDeleteWaitedForWriter', 'newPublishedBytesPreserved',
-        'ownSyntheticDestinationsCleaned', 'lateOldSlotSuppressed'))
+        'ownSyntheticDestinationsCleaned', 'lateOldSlotSuppressed',
+        'actualAndroidDownloadViewExecution', 'stableDownloadRows',
+        'liveProgressFocusPreserved', 'realDownloadTimeOrdering'))
     assert report['actualAdbTouchExecution'] is False and report['profileSlot'] == 7
     assert report['writerProfileSlot'] == 0 and report['oldSelectionProfileSlot'] == 7
-    assert report['checkCount'] == len(report['checks']) >= 20
+    assert report['checkCount'] == len(report['checks']) >= 31
     assert all(item['pass'] is True for item in report['checks'])
+    assert DOWNLOAD_LIST_CHECKS <= {item['name'] for item in report['checks']}
     assert report['freedMediaStoreBytes'] == 5127 and report['freedPrivateBytes'] == 8197
     assert all(report[key] == 0 for key in ('alreadyAbsentPrivateFreedBytes',
         'alreadyAbsentMediaStoreFreedBytes', 'staleMenuFreedBytes'))
     return {'actualAndroidExecution': True, 'checks': report['checkCount'],
             'mediaStoreBytesRemoved': report['freedMediaStoreBytes'],
             'privateBytesRemoved': report['freedPrivateBytes'],
-            'sameUriPublicationProtected': True}
+            'sameUriPublicationProtected': True, 'stableDownloadRows': True,
+            'realDownloadTimeOrdering': True}
 
 
 def verify_paint_case(result, cancelled=False):

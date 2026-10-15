@@ -21,14 +21,24 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
+    boolean continuityTracing;String continuityUrl="";int continuityLoads,continuityStops,resourcePauseCalls;JSONArray continuityResults=new JSONArray();
+    @Override public void onPause(){resourcePauseCalls++;super.onPause();}
+    @Override public void stopLoading(){if(continuityTracing)continuityStops++;super.stopLoading();}
     boolean chooserOrigin;Runnable nativeGestureComplete;int nativeGestureCount,nativeFocusRequests,nativeFocusMeasurements;long lastFocusDocument;String lastFocusUrl="";
     @Override void revealReadingFocus(String expected,java.util.function.BooleanSupplier fence){nativeFocusRequests++;final int[] checks={0};super.revealReadingFocus(expected,()->{boolean current=fence.getAsBoolean();if(current&&++checks[0]==2){nativeFocusMeasurements++;lastFocusUrl=expected;lastFocusDocument=owner.reading.document;}return current;});}
     boolean initialRouteReady;java.util.function.Consumer<String> initialRouteReporter;
     boolean nativeGeometryActive,nativeGeometrySwipes,nativeGeometryStable;JSONArray nativeGeometryTrace=new JSONArray();NativeGeometry nativeGeometryPrevious,nativeGeometryExpected;
     long nativeUnchangedTouchEvents,nativeRedundantTouchSyncs,nativeFirstTouchSyncs=-1;boolean nativeFirstTouchOriginCorrect;
     @Override public String getUrl(){return chooserOrigin?MainActivity.ORIGIN:super.getUrl();}
+    @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){
+      // The controlled document keeps its real SDK/origin. Only the captured
+      // expected URL is adapted with the same test-only HTTPS origin exception.
+      if(continuityTracing&&!continuityUrl.isEmpty())code=code.replace("\"expectedUrl\":\"https://chatgpt.com/\"","\"expectedUrl\":"+JSONObject.quote(continuityUrl));
+      if(continuityTracing&&code.startsWith("window['__pocket_")){String request=code;super.evaluateJavascript(code,raw->{JSONObject value=J.parse(raw);if(value.length()>0)continuityResults.put(J.obj("at",SystemClock.elapsedRealtime(),"request",request,"result",value));if(callback!=null)callback.onReceiveValue(raw);});}
+      else super.evaluateJavascript(code,callback);
+    }
     FixtureView(Context context,ChatSession owner){super(context,owner);}
-    @Override public void loadUrl(String target){java.util.function.Consumer<String> reporter=initialRouteReporter;if(reporter!=null){initialRouteReporter=null;reporter.accept(target);}super.loadUrl(target);}
+    @Override public void loadUrl(String target){if(continuityTracing)continuityLoads++;java.util.function.Consumer<String> reporter=initialRouteReporter;if(reporter!=null){initialRouteReporter=null;reporter.accept(target);}super.loadUrl(target);}
     @Override protected boolean allowedUrl(String target){
       return target.startsWith("http://127.0.0.1:8765/")||target.startsWith("http://remote-probe.invalid:8765/")||super.allowedUrl(target);
     }
@@ -144,6 +154,8 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("privacy".equals(action)){privacy(serial,0);return;}
     if("completion".equals(action)){completion(serial);return;}
     if("desktopImage".equals(action)){desktopImage(serial);return;}
+    if("uploadLifecycle".equals(action)){GeckoUploadLifecycleIntegration.run(this,serial);return;}
+    if("pageContinuity".equals(action)){ChatPageContinuityIntegration.run(this,serial);return;}
     if("usability".equals(action)){usability(serial);return;}
     if("deleteDownloads".equals(action)){DownloadDeletionIntegration.run(this,result->{if(serial==run)event(serial,"downloadDeletion",result);});return;}
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}

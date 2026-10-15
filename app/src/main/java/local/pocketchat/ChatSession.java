@@ -72,7 +72,13 @@ final class ChatSession {
     else{privacy.apply();if(!offline)navigate(resumeUrl(),"正在应用网页设置…");}
   }
   void beginNavigation(String url,String label){resourceObserverEpoch=-1;resetReplyStability();websiteConnectionIssue=false;navigationEpoch++;navigating=true;navigationFailed=false;navigationTarget=url;navigationLabel=label;spaTransition=false;documentNavigationSeen=false;navigationDispatched=true;priorDocumentId=lastDocumentId;awaitNewDocument=!priorDocumentId.isEmpty();spaStable=0;spaSignature="";navigationStarted=System.currentTimeMillis();trace.page("网页加载");navigationMono=SystemClock.elapsedRealtime();firstPageVisible=0;pageUsableAt=0;long epoch=navigationEpoch;setStatus(label);handler.postDelayed(()->navigationTimeout(epoch),45000);}
-  void navigationTimeout(long epoch){if(navigating&&navigationEpoch==epoch&&!web.resourceDeferred)finishNavigation("加载时间较长，请重试或查看原网页");}
+  void navigationTimeout(long epoch){
+    if(!navigating||navigationEpoch!=epoch||web.resourceDeferred)return;
+    // Readiness is a DOM observation, not evidence that the verified route died.
+    // Keep observing a displayed document without interrupting its form/files.
+    if(web.hasVisibleDocument()){setStatus("网页响应较慢，继续检查当前页面");wakePolling();return;}
+    finishNavigation("网页还未显示，请重试或检查网络",false);
+  }
   void navigate(String url,String label){
     if(!MainActivity.chatUrl(url)){setStatus("对话地址无效");return;}
     requestedConversation="";String source=web.getUrl();
@@ -186,7 +192,7 @@ final class ChatSession {
     });
   }
   void reconnect(){manualAttention=false;recoveryAttempt=0;recoveryToken++;recoveryScheduled=false;invalidateConnection();if(offline){setStatus("当前离线，请先连接手机网络");return;}openConnection(true,internalNetwork()&&NativeNetwork.get(context).recoveryBlocked);}
-  void openConnection(boolean recover,boolean force){if(offline||connecting)return;if(!privacy.canNavigate()){guard.setBlocked(true);manualAttention=true;setStatus("当前浏览器保护尚未就绪，请重新打开当前环境");return;}keepPageCandidate=recover&&!force&&pending==null&&!submitting&&!operation&&pageUsableAt>0&&MainActivity.chatUrl(web.getUrl())&&WebReplyObserver.same(web.getUrl(),resumeUrl());if(recover)pageMemory.capture(()->{});trace.begin();connecting=true;networkReady=false;updateBrowserActivity();connectionStarted=SystemClock.elapsedRealtime();proxyReadyAt=0;web.stopLoading();guard.setBlocked(true);pageError="";long epoch=++connectionEpoch;connectionStage=internalNetwork()?"检查应用专用代理":"检查网页连接";setStatus(recover?"正在恢复连接，草稿与发送记录已保留…":"正在连接…");
+  void openConnection(boolean recover,boolean force){if(offline||connecting)return;if(!privacy.canNavigate()){guard.setBlocked(true);manualAttention=true;setStatus("当前浏览器保护尚未就绪，请重新打开当前环境");return;}keepPageCandidate=recover&&!force&&web.hasVisibleDocument()&&resumable(web.getUrl());if(recover)pageMemory.capture(()->{});trace.begin();connecting=true;networkReady=false;updateBrowserActivity();connectionStarted=SystemClock.elapsedRealtime();proxyReadyAt=0;if(!keepPageCandidate)web.stopLoading();guard.setBlocked(true);pageError="";long epoch=++connectionEpoch;connectionStage=internalNetwork()?"检查应用专用代理":"检查网页连接";setStatus(recover?"正在恢复连接，草稿与发送记录已保留…":"正在连接…");
     try{new SecretStore(context).importPrivateProvision();}catch(Exception e){connectionFailed(epoch,"私有网络配置导入失败，请在设置中重新填写",false);return;}
     if(internalNetwork()){NativeNetwork n=NativeNetwork.get(context);NativeNetwork.Callback callback=(ok,message)->{if(epoch!=connectionEpoch||offline)return;if(ok)applyProxy(n.proxy(),epoch);else connectionFailed(epoch,message,!n.recoveryBlocked);};if(force)n.restart(callback);else if(recover)n.recover(callback);else n.start(callback);return;}
     if(!prefs.getBoolean("networkConfigured",false)){connectionFailed(epoch,"请先配置手机独立网络",false);return;}applyProxy(prefs.getString("proxy",""),epoch);
@@ -195,13 +201,15 @@ final class ChatSession {
   void applyProxy(String proxy){applyProxy(proxy,connectionEpoch);}
   String networkIdentity(){try{if(internalNetwork()){NativeNetwork n=NativeNetwork.get(context);return "internal:"+n.fingerprint+":"+NativeNetwork.hash(n.settings==null?"":n.settings.optString("subscriptionUrl"));}return "external:"+prefs.getString("proxy","");}catch(Exception e){return "";}}
   void applyProxy(String proxy,long epoch){if(guard.requiresVpn()&&!guard.vpnActive()){connectionFailed(epoch,"手机 VPN 未连接，已暂停网页联网；请先连接 VPN 后重连",false);connectionStage="等待手机 VPN";return;}String identity=networkIdentity();boolean keep=keepPageCandidate&&!appliedIdentity.isEmpty()&&appliedIdentity.equals(identity);Runnable done=()->{
-      if(epoch!=connectionEpoch||offline)return;if(!guard.routeProtected()){connectionFailed(epoch,"受保护连接已中断，网页联网已暂停",false);return;}connecting=false;networkReady=true;proxyReadyAt=SystemClock.elapsedRealtime();trace.network(internalNetwork()?NativeNetwork.get(context):null);appliedIdentity=identity;connectionStage="正在核对网页";guard.setBlocked(false);identityPolicyAcknowledged();audit.refresh(true);
-      String target=resumeUrl();if(!keep||pending!=null){navigate(target,"正在恢复 ChatGPT 对话…");return;}
-      asyncDriver("page-recover",J.obj("expectedUrl",target),3200,result->{if(epoch!=connectionEpoch||offline)return;trace.recoveryProbe=(long)ConnectionTrace.bounded(result.optDouble("probeMs",-1));
-        if(result.optBoolean("ok")&&pending==null&&!submitting&&!operation&&WebReplyObserver.same(target,web.getUrl())){
-          navigating=false;navigationFailed=false;manualAttention=false;recoveryAttempt=0;recoveryScheduled=false;recoveryToken++;connectionStage="已连接";networkIssue="";pageError="";navigationMono=SystemClock.elapsedRealtime();firstPageVisible=pageUsableAt=navigationMono;trace.page("保留现有网页");trace.visible=trace.usable=SystemClock.elapsedRealtime();setStatus("已连接 · 网页已保留");wakePolling();
-        }else navigate(target,"正在恢复 ChatGPT 对话…");
-      });
+    if(epoch!=connectionEpoch||offline)return;if(!guard.routeProtected()){connectionFailed(epoch,"受保护连接已中断，网页联网已暂停",false);return;}connecting=false;networkReady=true;proxyReadyAt=SystemClock.elapsedRealtime();trace.network(internalNetwork()?NativeNetwork.get(context):null);appliedIdentity=identity;connectionStage="正在核对网页";guard.setBlocked(false);identityPolicyAcknowledged();audit.refresh(true);
+      if(keep&&web.hasVisibleDocument()&&resumable(web.getUrl())){
+        String retained=web.getUrl();long documentEpoch=navigationEpoch;
+        navigating=false;navigationFailed=false;manualAttention=false;recoveryAttempt=0;recoveryScheduled=false;recoveryToken++;connectionStage="已连接";networkIssue="";pageError="";trace.page("保留现有网页");trace.visible=SystemClock.elapsedRealtime();trace.usable=pageUsableAt>0?trace.visible:0;setStatus("已连接 · 网页已保留");wakePolling();
+        // HEAD/DOM readiness can fail while ChatGPT generates or uploads. It
+        // is diagnostic only; it cannot authorize a new document or resend.
+        asyncDriver("page-recover",J.obj("expectedUrl",retained),3200,result->{if(epoch!=connectionEpoch||documentEpoch!=navigationEpoch||offline||!BrowserRuntimePolicy.sameDocument(retained,web.getUrl()))return;trace.recoveryProbe=(long)ConnectionTrace.bounded(result.optDouble("probeMs",-1));});return;
+      }
+      navigate(resumeUrl(),"正在恢复 ChatGPT 对话…");
     };
     if(!proxy.isEmpty()&&!MainActivity.validProxy(proxy)){connectionFailed(epoch,"代理地址无效，已停止网络加载",false);return;}
     done.run();

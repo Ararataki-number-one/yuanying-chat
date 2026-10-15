@@ -17,18 +17,22 @@ final class Attachments {
   ValueCallback<Uri[]> callback;String pickerUrl="";long pickerEpoch;boolean destroyed;
   Attachments(MainActivity activity){a=activity;}
 
-  WebChromeClient chrome(){return new WebChromeClient(){
+  final class Chrome extends WebChromeClient {
     @Override public void onPermissionRequest(PermissionRequest request){request.deny();}
     @Override public void onGeolocationPermissionsShowPrompt(String origin,GeolocationPermissions.Callback result){result.invoke(origin,false,false);}
     @Override public boolean onShowFileChooser(WebView ignored,ValueCallback<Uri[]> result,FileChooserParams params){
-      if(destroyed||!MainActivity.chatUrl(a.remote.getUrl())||a.session.navigating){result.onReceiveValue(null);return true;}
+      if(destroyed){result.onReceiveValue(null);return true;}
+      if(!MainActivity.chatUrl(a.remote.getUrl())||!a.remote.canChooseFiles()){result.onReceiveValue(null);a.status("网页正在切换或尚未就绪，请稍后再添加附件");return true;}
       cancelChooser();callback=result;pickerUrl=a.remote.getUrl();pickerEpoch=a.session.navigationEpoch;
       if(a.loading!=null)a.loading.dismissTask();
       try{a.startActivityForResult(chooserIntent(params,"file"),74);}
       catch(ActivityNotFoundException failure){cancelChooser();a.status("设备没有可用的文件选择器");}
+      catch(SecurityException failure){cancelChooser();a.status("无法打开文件选择器，请检查系统文件访问设置");}
       return true;
     }
-  };}
+    void dismissFilePrompt(ValueCallback<Uri[]> recipient){if(callback!=recipient)return;cancelChooser();try{a.finishActivity(74);}catch(RuntimeException ignored){}}
+  }
+  WebChromeClient chrome(){return new Chrome();}
   static Intent chooserIntent(WebChromeClient.FileChooserParams params,String kind){
     LinkedHashSet<String> types=new LinkedHashSet<>();String[] accepted=params.getAcceptTypes();if(accepted!=null)for(String group:accepted)if(group!=null)for(String raw:group.split(",")){String type=raw.trim().toLowerCase(Locale.ROOT);if(type.startsWith("."))type=MimeTypeMap.getSingleton().getMimeTypeFromExtension(type.substring(1));if(type!=null&&type.matches("[a-z0-9.+-]+/[a-z0-9.+*-]+"))types.add(type);}
     String type="image".equals(kind)&&types.isEmpty()?"image/*":"*/*";if(types.size()==1)type=types.iterator().next();else if(!types.isEmpty()){boolean images=true;for(String t:types)images&=t.startsWith("image/");if(images)type="image/*";}

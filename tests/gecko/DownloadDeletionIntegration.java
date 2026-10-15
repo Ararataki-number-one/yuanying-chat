@@ -73,6 +73,7 @@ final class DownloadDeletionIntegration {
     ownIds.add(otherTask.optString("id"));stale.rows.put(otherTask);stale.save();
     appendHistory(seven,privateRow,privateRemainingRow);
     library.add(main,publicRow);library.add(main,remainingRow);
+    unchangedIndexChecks(privateRow,otherTask);
     check("Published MediaStore and profile-7 private APK bytes are readable",
         "media".equals(publicTarget.uri.getAuthority())&&Profiles.slot(seven)==7&&Arrays.equals(read(publicTarget.uri),publicBytes)&&Arrays.equals(read(privateTarget.uri),privateBytes));
 
@@ -122,6 +123,7 @@ final class DownloadDeletionIntegration {
     cancelConfirmation(privateRemainingRow);
     check("Cancelling the rendered confirmation preserves the file and its metadata",library.saved(privateRemainingRow)!=null&&!library.isRemoved(privateRemainingRow)&&Arrays.equals(read(privateRemaining.uri),remainingBytes));
     check("Unrelated same-name saved files remain readable after every deletion and failure case",library.saved(remainingRow)!=null&&Arrays.equals(read(remainingTarget.uri),remainingBytes)&&Arrays.equals(read(privateRemaining.uri),remainingBytes));
+    stableDownloadRows();
     report.put("actualMediaStoreExecution",true).put("actualPrivateProviderExecution",true).put("actualWorkerThreadDeletion",true)
         .put("profileSlot",7).put("freedMediaStoreBytes",publicFreed).put("freedPrivateBytes",privateFreed)
         .put("alreadyAbsentPrivateFreedBytes",absentPrivateFreed).put("alreadyAbsentMediaStoreFreedBytes",absentMediaFreed)
@@ -143,6 +145,49 @@ final class DownloadDeletionIntegration {
   static boolean containsId(JSONArray rows,String id){for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&id.equals(row.optString("id")))return true;}return false;}
   static JSONArray history(Context context){JSONArray rows=J.parse(context.getSharedPreferences("chat",0).getString("downloadHistory","{}")).optJSONArray("files");return rows==null?new JSONArray():rows;}
   static void appendHistory(Context context,JSONObject... added)throws Exception{SharedPreferences prefs=context.getSharedPreferences("chat",0);JSONObject value=J.parse(prefs.getString("downloadHistory","{}"));JSONArray rows=value.optJSONArray("files");if(rows==null)rows=new JSONArray();for(JSONObject row:added)rows.put(J.parse(row.toString()));value.put("files",rows);if(!prefs.edit().putString("downloadHistory",value.toString()).commit())throw new IllegalStateException("Synthetic history publication failed");}
+
+  JSONObject indexedTask(JSONObject row){try(Cursor c=library.getReadableDatabase().query("tasks",new String[]{"row"},"slot=? AND id=?",new String[]{String.valueOf(row.optInt("slot")),row.optString("id")},null,null,null)){return c.moveToFirst()?J.parse(c.getString(0)):null;}}
+  void unchangedIndexChecks(JSONObject saved,JSONObject task)throws Exception{
+    JSONObject before=library.saved(saved),taskBefore=indexedTask(task);if(before==null||taskBefore==null)throw new IllegalStateException("Missing initial synthetic download index");
+    long deadline=SystemClock.elapsedRealtime()+2000;while(System.currentTimeMillis()<=taskBefore.optLong("updated")&&SystemClock.elapsedRealtime()<deadline)Thread.sleep(1);
+    library.add(seven,J.parse(saved.toString()));library.sync(seven,new JSONArray().put(J.parse(task.toString())));
+    JSONObject taskAfter=indexedTask(task);
+    check("Re-indexing an unchanged saved file preserves its recorded download timestamp",library.saved(saved).optLong("time")==before.optLong("time"));
+    check("An unchanged task sync retains its original progress heartbeat and exact shared row",taskBefore.toString().equals(taskAfter.toString())&&taskBefore.optLong("updated")==taskAfter.optLong("updated"));
+    JSONObject changed=J.parse(task.toString());changed.put("received",task.optLong("received")+1);library.sync(seven,new JSONArray().put(changed));JSONObject live=indexedTask(task);
+    check("A changed progress sync updates only that task with new bytes and a real heartbeat",live.optLong("received")==changed.optLong("received")&&live.optLong("updated")>taskBefore.optLong("updated")&&library.saved(saved).optLong("time")==before.optLong("time"));
+    JSONObject legacy=J.parse(saved.toString());legacy.remove("time");library.add(seven,legacy);
+    check("A legacy history row without a time cannot move or replace an existing saved download",library.saved(saved)!=null&&library.saved(saved).optLong("time")==before.optLong("time"));
+  }
+
+  void stableDownloadRows()throws Exception{
+    CountDownLatch done=new CountDownLatch(1);AtomicReference<Throwable> failure=new AtomicReference<>();
+    activity.runOnUiThread(()->{
+      SavedFileActions actions=new SavedFileActions(activity);AtomicReference<AlertDialog> modal=new AtomicReference<>();
+      try{
+        android.widget.LinearLayout box=DesignUi.column(activity);android.widget.ScrollView scroll=new android.widget.ScrollView(activity);scroll.addView(box);android.widget.LinearLayout frame=DesignUi.column(activity);frame.addView(scroll,new android.widget.LinearLayout.LayoutParams(-1,DesignUi.dp(activity,300)));
+        DesignDownloads.Controller view=new DesignDownloads.Controller(activity,box,0,n->{},actions);long now=System.currentTimeMillis();
+        JSONArray files=new JSONArray();for(int i=0;i<8;i++)files.put(J.obj("id","view-file-"+i,"slot",i%2,"name","visible-file-"+i+".txt","uri","content://synthetic.pocket/view/"+i,"state","saved","time",1609459200000L+i*60000,"location","synthetic view fixture"));
+        JSONObject active=J.obj("id","view-progress","slot",7,"name","visible-progress.bin","state","downloading","time",1000,"received",10,"total",100,"updated",now);view.apply(DesignDownloads.ordered(files,new JSONArray().put(active)),0,now);
+        AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("下载视图回归").setView(frame).create();modal.set(dialog);dialog.show();
+        new android.os.Handler(Looper.getMainLooper()).postDelayed(()->{
+          try{
+            DesignDownloads.Row held=view.views.get(DesignDownloads.key(active));android.view.View card=held.card;android.view.View decor=dialog.getWindow().getDecorView();card.setFocusableInTouchMode(true);boolean focused=card.requestFocus();scroll.scrollTo(0,200);int y=scroll.getScrollY();
+            check("The attached Android download list keeps actual active tasks first",view.list.getChildAt(0)==card);
+            JSONObject latest=files.optJSONObject(7);check("Completed Android cards follow actual newest-to-oldest saved times",view.list.getChildAt(1)==view.views.get(DesignDownloads.key(latest)).card);
+            check("Rendered saved card displays its existing recorded download date",view.views.get(DesignDownloads.key(latest)).time.getText().toString().equals(DesignDownloads.timeLabel(latest))&&DesignDownloads.timeLabel(latest).startsWith("保存于 "));
+            JSONObject progress=J.parse(active.toString());progress.put("received",70).put("updated",now+1000);JSONArray next=DesignDownloads.ordered(files,new JSONArray().put(progress));view.apply(next,0,now+1000);view.apply(next,0,now+1000);
+            check("Live byte polls retain the exact Android decor scroll card and focus",dialog.getWindow().getDecorView()==decor&&box.getParent()==scroll&&view.views.get(DesignDownloads.key(progress)).card==card&&focused&&card.hasFocus());
+            check("The same Android progress bar reports current bytes without duplicate rows",held.progress.getProgress()==70&&held.value.optLong("received")==70&&view.list.getChildCount()==9);
+            check("Progress-only refresh keeps the existing visible scroll offset",y>0&&scroll.getScrollY()==y);
+            JSONObject legacy=J.obj("slot",0,"uri","content://synthetic.pocket/view/legacy","state","saved");check("Old downloads with no timestamp disclose the missing time rather than use today",DesignDownloads.timeLabel(legacy).equals("时间未记录"));
+            report.put("actualAndroidDownloadViewExecution",true).put("stableDownloadRows",true).put("liveProgressFocusPreserved",true).put("realDownloadTimeOrdering",true);
+          }catch(Throwable error){failure.set(error);}finally{AlertDialog opened=modal.get();if(opened!=null)opened.dismiss();actions.close();done.countDown();}
+        },120);
+      }catch(Throwable error){failure.set(error);AlertDialog opened=modal.get();if(opened!=null)opened.dismiss();actions.close();done.countDown();}
+    });
+    if(!done.await(5,TimeUnit.SECONDS))throw new IllegalStateException("Download view regression did not finish");if(failure.get()!=null)throw new IllegalStateException("Download view regression failed",failure.get());
+  }
 
   void cancelConfirmation(JSONObject row)throws Exception{
     CountDownLatch done=new CountDownLatch(1);AtomicReference<Throwable> failure=new AtomicReference<>();

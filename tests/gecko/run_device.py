@@ -173,6 +173,8 @@ class Fixture(fixture.Fixture):
             self.send_response(200);self.send_header('Content-Type','text/csv');self.send_header('Content-Disposition','attachment; filename="generated.csv"');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
         if address.path=='/browser-image':
             body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><h1>Desktop image fixture</h1><input id="upload" type="file" accept="image/*" multiple><p id="upload-result"></p><script>upload.onchange=async e=>{try{const f=e.target.files[0],image=await createImageBitmap(f),bytes=new Uint8Array(await f.arrayBuffer());if(f.type!=='image/png'||image.width!==4||image.height!==3||bytes[0]!==137||bytes[1]!==80)throw Error('image bytes or MIME lost');const form=new FormData();form.append('file',f);const response=await fetch('/image-received',{method:'POST',body:form});if(!response.ok)throw Error('upload rejected');document.getElementById('upload-result').textContent='ok:'+f.name+':'+f.type+':4x3';}catch(error){document.getElementById('upload-result').textContent='error:'+error.message;}};</script>'''
+        elif address.path=='/browser-continuity':
+            body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><h1>Controlled page continuity</h1><textarea id="prompt-textarea"></textarea><button id="stop" data-testid="stop-button">Stop</button><script>window.__continuitySends=0;</script>'''
         elif address.path=='/browser-usability':
             body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><h1>Mobile browser capability fixture</h1><input id="upload" type="file" accept="text/plain"><p id="upload-result"></p><a id="csv" href="/native-csv">Download generated CSV</a><button id="blob" onclick="const a=document.createElement('a');a.href=window.URL.createObjectURL(new window.Blob(['name,value\\nsynthetic,42\\n'],{type:'text/csv'}));a.download='generated.csv';document.body.appendChild(a);a.click();a.remove();">Download page blob</button><script>document.getElementById('upload').onchange=async e=>{const f=e.target.files[0];document.getElementById('upload-result').textContent=f.name+':'+await f.text();};</script>'''
         elif address.path=='/browser-window':
@@ -579,6 +581,13 @@ def main():
         report['browserUsability']=usability
         image=run(1,'desktopImage','desktopImage');assert all(image[k] for k in ['productionChooserOpened','imageMimeAndMultiple','pendingPreserved','noPhantomUpload','desktop']) and image['upload']=='ok:photo-123.png:image/png:4x3',image
         report['desktopImageUpload']=image
+        upload_lifecycle=run(1,'uploadLifecycle','uploadLifecycle')
+        assert all(upload_lifecycle[k] is True for k in ['atomicHandoff','dismissedOnce','closedPromptResultIgnored','preparationCleanup']),upload_lifecycle
+        report['uploadPromptLifecycle']=upload_lifecycle
+        continuity=run(1,'pageContinuity','pageContinuity')
+        assert continuity['status']=='passed' and all(continuity[k] is True for k in ['readinessNoReload','busyRecoveryPreserved','failedProbePreserved','emptyTimeoutManualOnly','ownedCookieCleaned','resourcesRestored','persistedPendingRestored']),continuity
+        assert continuity['checkCount']==len(continuity['checks']) and all(item['pass'] is True for item in continuity['checks']),continuity
+        report['pageContinuity']=continuity
         check(run(1,'seed'),1,True);check(run(2,'read'),2,False)
         check(run(2,'seed'),2,True);check(run(1,'read'),1,True)
         for context in [1,2]:

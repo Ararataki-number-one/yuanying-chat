@@ -251,7 +251,8 @@ class GeckoWebView extends FrameLayout {
     session.setPromptDelegate(new GeckoSession.PromptDelegate(){
       @Override public GeckoResult<PromptResponse> onFilePrompt(GeckoSession s,FilePrompt prompt){
         GeckoResult<PromptResponse> result=new GeckoResult<>();
-        if(chrome==null||s!=current){result.complete(prompt.dismiss());return result;}
+        final WebChromeClient requestChrome=chrome;
+        if(destroyed||requestChrome==null||s!=current){result.complete(prompt.dismiss());return result;}
         WebChromeClient.FileChooserParams params=new WebChromeClient.FileChooserParams(){
           @Override public int getMode(){return prompt.type==FilePrompt.Type.MULTIPLE?MODE_OPEN_MULTIPLE:MODE_OPEN;}
           @Override public String[] getAcceptTypes(){return prompt.mimeTypes;}
@@ -262,16 +263,43 @@ class GeckoWebView extends FrameLayout {
         };
         final long uploadEpoch=owner.navigationEpoch;owner.resourceFileWork(true,true);
         java.util.concurrent.atomic.AtomicBoolean selected=new java.util.concurrent.atomic.AtomicBoolean();
-        boolean handled=chrome.onShowFileChooser(null,uris->{
-          if(!selected.compareAndSet(false,true))return;owner.resourceFileWork(true,false);
-          if(uris==null||destroyed){if(!prompt.isComplete())result.complete(prompt.dismiss());return;}
+        java.util.concurrent.atomic.AtomicBoolean cancelled=new java.util.concurrent.atomic.AtomicBoolean();
+        ValueCallback<Uri[]> selection=uris->{
+          if(!selected.compareAndSet(false,true))return;
+          if(uris==null||uris.length==0||destroyed||cancelled.get()||prompt.isComplete()){
+            owner.resourceFileWork(true,false);if(!prompt.isComplete())result.complete(prompt.dismiss());return;
+          }
+          // The picker puts the Activity in the background. Transfer ownership
+          // before releasing it so Gecko never briefly becomes inactive here.
           owner.resourceFileWork(false,true);
-          uploadWorker.execute(()->{try{
+          owner.resourceFileWork(true,false);
+          final String beforePreparation=owner.status;owner.setStatus("准备附件…");
+          try{uploadWorker.execute(()->{try{
             GeckoUploadFiles.Selection files=GeckoUploadFiles.prepare(owner.context,uris);
-            owner.handler.post(()->{try{if(destroyed||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){new Thread(files::delete,"upload-cleanup").start();if(!prompt.isComplete())result.complete(prompt.dismiss());return;}uploadFiles.add(files);owner.resourceFilesPrepared(files.files,uploadEpoch);result.complete(prompt.confirm(owner.context,files.files));}finally{owner.resourceFileWork(false,false);}});
-          }catch(IOException error){owner.handler.post(()->{owner.resourceFileWork(false,false);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed)owner.setStatus(error.getMessage());});}});
-        },params);
-        if(!handled&&selected.compareAndSet(false,true)){owner.resourceFileWork(true,false);if(!prompt.isComplete())result.complete(prompt.dismiss());}return result;
+            owner.handler.post(()->{try{
+              if(destroyed||cancelled.get()||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){new Thread(files::delete,"upload-cleanup").start();if(!prompt.isComplete())result.complete(prompt.dismiss());return;}
+              PromptResponse response;
+              try{response=prompt.confirm(owner.context,files.files);}
+              catch(RuntimeException error){new Thread(files::delete,"upload-cleanup").start();if(!prompt.isComplete())result.complete(prompt.dismiss());owner.setStatus("附件未能交给网页，请重新选择");return;}
+              uploadFiles.add(files);result.complete(response);owner.resourceFilesPrepared(files.files,uploadEpoch);
+            }finally{uploadPreparationFinished(beforePreparation);}});
+          }catch(IOException error){owner.handler.post(()->{uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed&&!cancelled.get())owner.setStatus(error.getMessage());});}});}
+          catch(RejectedExecutionException error){uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed)owner.setStatus("附件读取已结束，请重新打开文件选择器");}
+        };
+        prompt.setDelegate(new PromptInstanceDelegate(){
+          @Override public void onPromptDismiss(BasePrompt ignored){
+            cancelled.set(true);
+            // Gecko dismisses an obsolete prompt without completing BasePrompt.
+            // Complete it once and close only the picker belonging to this request.
+            if(requestChrome instanceof Attachments.Chrome)((Attachments.Chrome)requestChrome).dismissFilePrompt(selection);
+            selection.onReceiveValue(null);
+            if(!prompt.isComplete())result.complete(prompt.dismiss());
+          }
+        });
+        boolean handled;
+        try{handled=requestChrome.onShowFileChooser(null,selection,params);}
+        catch(RuntimeException error){selection.onReceiveValue(null);owner.setStatus("文件选择器未能打开，请重试");return result;}
+        if(!handled)selection.onReceiveValue(null);return result;
       }
     });
     session.setPermissionDelegate(new GeckoSession.PermissionDelegate(){
@@ -328,6 +356,8 @@ class GeckoWebView extends FrameLayout {
   }
   private void failure(String message){failed=true;owner.pageError=message;owner.finishNavigation(message,false);}
   boolean hasVisibleDocument(){return enabled&&current!=null&&current.isOpen()&&!failed&&!crashed.contains(current)&&usable.contains(current);}
+  boolean canChooseFiles(){return hasVisibleDocument()&&!pendingLoads.contains(current)&&(!owner.navigating||owner.navigationDispatched&&owner.targetMatches(getUrl()));}
+  private void uploadPreparationFinished(String previousStatus){owner.resourceFileWork(false,false);if(!destroyed&&owner.resourceFilePreparations==0&&owner.status.equals("准备附件…"))owner.setStatus(previousStatus.equals("准备附件…")?"":previousStatus);}
   private void pageVisible(GeckoSession session){
     String target=loadingTargets.get(session);
     if(destroyed||session!=current||target==null||"about:blank".equals(target)||crashed.contains(session)||!painted.add(session))return;
