@@ -63,7 +63,17 @@ def capture(variant,width,height,scale,scene):
     if scene=='chat':
         time.sleep(2.5);xml=dump();assert all(label in xml for label in ['会话','环境','下载','网络','设置'])
         assert not any(n.attrib.get('text') in ['简洁','原网页'] for n in ET.fromstring(xml).iter('node')),xml
-        assert not any(n.attrib.get('content-desc','').startswith('当前环境：') for n in ET.fromstring(xml).iter('node')),xml
+        nodes=list(ET.fromstring(xml).iter('node'))
+        environment=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境：')]
+        network=[n for n in nodes if n.attrib.get('content-desc','').startswith('当前环境网络：')]
+        assert len(environment)==len(network)==1,xml
+        assert environment[0].attrib.get('content-desc')=='当前环境：日常会话，点击展开环境工具栏' and environment[0].attrib.get('clickable')=='true',xml
+        assert network[0].attrib.get('clickable')=='false',xml
+        assert not any(n.attrib.get('content-desc') in ['管理环境','更多'] for n in nodes),xml
+        left,top,right,bottom=map(int,re.findall(r'\d+',environment[0].attrib['bounds']))
+        nl,nt,nr,nb=map(int,re.findall(r'\d+',network[0].attrib['bounds']))
+        assert 0<=left<right<=width*3 and 0<=nl<nr<=width*3 and top<bottom==nt<nb,xml
+        assert bottom-top<=(28 if scale==1 else 48)*3,xml
     assert 'FATAL EXCEPTION' not in adb('logcat','-d','-s','AndroidRuntime:E','*:S')
     if variant=='current' and scene=='entries':
         choices=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class') in ['android.widget.CheckBox','android.widget.RadioButton']]
