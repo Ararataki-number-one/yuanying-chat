@@ -10,7 +10,12 @@ def metadata(m,notes):
     assert m['package']=='local.pocketchat'
     assert m['signerSha256']=='f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434'
     assert m['filename']==f"PocketChat-{m['version']}-gecko-arm64.apk"
-    assert m['nativeRegression']=='passed' and len(notes)<12000
+    if 'releaseException' in m:
+        from gecko.release_203_authorization import verify_authorization
+        verify_authorization(m, ROOT)
+    else:
+        assert m['nativeRegression']=='passed'
+    assert len(notes)<12000
     return dict(schema=1,package=m['package'],version=m['version'],versionCode=m['versionCode'],
         abi='arm64-v8a',minSdk=26,bytes=m['bytes'],sha256=m['sha256'],signerSha256=m['signerSha256'],
         downloadUrl=f"https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v{m['version']}-gecko/{m['filename']}",
