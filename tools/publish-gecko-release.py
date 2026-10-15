@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage only verified signed APK chunks and public synthetic test evidence."""
 import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, urllib.request
-from gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance
+from gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance, verify_direct_release
 
 
 def verify_existing_release_identity(current, previous, tag_source, actual_bytes, actual_sha256):
@@ -73,16 +73,28 @@ p.add_argument('--notes',type=pathlib.Path,default=root/f'docs/RELEASE-v{version
 p.add_argument('--evidence',type=pathlib.Path,default=root/'work/gecko-integration')
 p.add_argument('--channel',choices=['stable','candidate'],default='stable')
 p.add_argument('--candidate-number',type=int)
-p.add_argument('--manual-acceptance',type=pathlib.Path)
+qualification=p.add_mutually_exclusive_group()
+qualification.add_argument('--manual-acceptance',type=pathlib.Path)
+qualification.add_argument('--direct-release-authorization',type=pathlib.Path)
 args=p.parse_args()
 channel_identity=dict(version=version,channel=args.channel,candidateNumber=args.candidate_number)
 tag=release_tag(channel_identity)
+assert args.direct_release_authorization is None or requires_manual_acceptance(channel_identity),'Direct release authorization applies only to an explicit stable roadmap release.'
 assert re.fullmatch(r'[0-9a-f]{40}',args.source),'A complete source commit is required.'
 if version_code>=46:
     # SDK/client checks read exact source blobs; establish the commit before them.
     available=subprocess.run(['git','cat-file','-e',args.source+'^{commit}'],cwd=root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     if available.returncode:
         subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',args.source],cwd=root,check=True)
+# Release automation may advance independently while promoting the exact tested
+# APK. Keep that revision separate and reject any application/source changes.
+release_tools_commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
+assert not subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip(),'Freeze and commit release tools before publishing.'
+release_tool_files={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}
+if release_tools_commit!=args.source:
+    subprocess.run(['git','merge-base','--is-ancestor',args.source,release_tools_commit],cwd=root,check=True)
+    changed=set(subprocess.check_output(['git','diff','--name-only',args.source,release_tools_commit],cwd=root,text=True).splitlines())
+    assert changed and changed<=release_tool_files,'A release-tools revision cannot change the APK application source.'
 report=json.loads((args.evidence/'device-results.json').read_text())
 assert report['status']=='passed' and report['actualAndroidExecution'] and report['releaseMode']
 assert report.get('sourceCommit')==args.source,'Native report belongs to a different source.'
@@ -138,6 +150,7 @@ assert receipt['bytes']==len(raw) and receipt['sha256']==hashlib.sha256(raw).hex
 sdk_build,caret=(verify_derived_release_evidence(args.evidence,args.source,report,build,receipt,args.apk) if version_code>=46 else (None,None))
 manifest=dict(receipt,sourceCommit=args.source,filename=args.apk.name,parts=[],
               nativeRegression='passed',googleLogin='not-tested',physicalArmPhone='not-tested')
+manifest['releaseToolsCommit']=release_tools_commit
 manifest['channel']=args.channel
 if args.channel=='candidate':manifest['candidateNumber']=args.candidate_number
 if sdk_build is not None:
@@ -145,13 +158,19 @@ if sdk_build is not None:
     manifest['controlledCaretCompatibilityRegression']=caret
     manifest['buildRunId']=build['runId'];manifest['buildRunAttempt']=build['runAttempt']
 manual_raw=None
+authorization_raw=None
 if requires_manual_acceptance(manifest):
-    assert args.manual_acceptance is not None,'Publish a candidate first; stable roadmap releases require the user physical-phone checklist.'
-    manual_raw=args.manual_acceptance.read_bytes()
-    manual=verify_manual_acceptance(json.loads(manual_raw),manifest)
-    manifest['manualAcceptance']=manual
-    manifest['physicalArmPhone']='user-reported-passed'
-    manifest['manualAcceptanceArtifact']=dict(file='manual-acceptance.json',bytes=len(manual_raw),sha256=hashlib.sha256(manual_raw).hexdigest())
+    if args.manual_acceptance is not None:
+        manual_raw=args.manual_acceptance.read_bytes()
+        manual=verify_manual_acceptance(json.loads(manual_raw),manifest)
+        manifest['manualAcceptance']=manual
+        manifest['physicalArmPhone']='user-reported-passed'
+        manifest['manualAcceptanceArtifact']=dict(file='manual-acceptance.json',bytes=len(manual_raw),sha256=hashlib.sha256(manual_raw).hexdigest())
+    else:
+        assert args.direct_release_authorization is not None,'Stable roadmap releases require the physical-phone checklist or a separately recorded exact-APK user release instruction.'
+        authorization_raw=args.direct_release_authorization.read_bytes()
+        manifest['releaseAuthorization']=verify_direct_release(json.loads(authorization_raw),manifest)
+        manifest['releaseAuthorizationArtifact']=dict(file='release-authorization.json',bytes=len(authorization_raw),sha256=hashlib.sha256(authorization_raw).hexdigest())
 if version_code>=43:manifest['performanceRegression']=performance
 if version_code>=44:manifest['connectionRecoveryRegression']=connection
 if version_code>=45:manifest['interactionTransferRegression']=interaction_transfer
@@ -181,6 +200,7 @@ stage.mkdir(parents=True)
 for number,part in enumerate(manifest['parts']):(stage/part['file']).write_bytes(raw[number*60_000_000:(number+1)*60_000_000])
 (stage/'release-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if manual_raw is not None:(stage/'manual-acceptance.json').write_bytes(manual_raw)
+if authorization_raw is not None:(stage/'release-authorization.json').write_bytes(authorization_raw)
 (stage/'device-results.json').write_text(json.dumps(report,indent=2)+'\n')
 if version_code>=40:shutil.copy2(args.evidence/'network-performance-results.json',stage/'network-performance-results.json')
 if version_code>=42:
@@ -202,11 +222,13 @@ workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkd
 shutil.copy2(root/'.github/workflows/publish-gecko-release.yml',workflow)
 (stage/'tools').mkdir(exist_ok=True)
 shutil.copy2(root/'tools/publish-update-feed.py',stage/'tools/publish-update-feed.py')
+shutil.copy2(root/'tools/publish-gecko-release.py',stage/'tools/publish-gecko-release.py')
 if version_code>=43:
     (stage/'tools/gecko').mkdir(exist_ok=True)
     shutil.copy2(root/'tools/gecko/check_performance_evidence.py',stage/'tools/gecko/check_performance_evidence.py')
     if (root/'tools/gecko/chrome_collapse_contract.py').is_file():shutil.copy2(root/'tools/gecko/chrome_collapse_contract.py',stage/'tools/gecko/chrome_collapse_contract.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')
+shutil.copy2(root/'tools/gecko/release_channel_contract_test.py',stage/'tools/gecko/release_channel_contract_test.py')
 if roadmap_release:
     for name in ['check_profile_evidence.py','profile_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if sdk_build is not None:
@@ -224,6 +246,7 @@ env=dict(os.environ,GIT_INDEX_FILE=str(root/'work/gecko-integration/signed-index
     GIT_AUTHOR_NAME='PocketChat release',GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',
     GIT_COMMITTER_NAME='PocketChat release',GIT_COMMITTER_EMAIL='pocketchat@users.noreply.github.com')
 parents=['-p',args.source]
+if release_tools_commit!=args.source:parents+=['-p',release_tools_commit]
 previous=subprocess.check_output(['git','ls-remote','origin','refs/heads/'+branch],cwd=root,text=True).split()
 if previous:
     subprocess.run(['git','fetch','origin','refs/heads/'+branch],cwd=root,check=True)
@@ -231,7 +254,7 @@ if previous:
 subprocess.run(['git','read-tree','--empty'],cwd=root,env=env,check=True)
 if resource_release:
     for name in ['check_resource_evidence.py','resource_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
-subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*(['manual-acceptance.json'] if manual_raw is not None else []),*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
+subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*(['manual-acceptance.json'] if manual_raw is not None else []),*(['release-authorization.json'] if authorization_raw is not None else []),*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
 tree=subprocess.check_output(['git','write-tree'],cwd=root,env=env,text=True).strip()
 commit=subprocess.check_output(['git','commit-tree',tree,*parents,'-m','Publish original-signed production Gecko APK'],cwd=root,env=env,text=True).strip()
 subprocess.run(['git','-c','http.postBuffer=524288000','push','origin',commit+':refs/heads/'+branch],cwd=root,check=True)

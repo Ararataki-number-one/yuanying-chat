@@ -18,16 +18,41 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib,json,pathlib,re,subprocess
+          import hashlib,json,os,pathlib,re,subprocess
           m=json.loads(pathlib.Path('release-manifest.json').read_text())
-          from tools.gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance
+          tools_commit=m['releaseToolsCommit']
+          assert re.fullmatch(r'[0-9a-f]{40}',tools_commit)
+          assert re.fullmatch(r'[0-9a-f]{40}',m['sourceCommit'])
+          subprocess.run(['git','fetch','--no-tags','--depth=2','--filter=blob:none','origin',tools_commit],check=True)
+          subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',m['sourceCommit']],check=True)
+          parents=[line.split()[1] for line in subprocess.check_output(['git','cat-file','-p',os.environ['GITHUB_SHA']],text=True).split('\n\n',1)[0].splitlines() if line.startswith('parent ')]
+          assert parents[0]==m['sourceCommit'] and tools_commit in parents
+          release_files={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}
+          if tools_commit!=m['sourceCommit']:
+              subprocess.run(['git','merge-base','--is-ancestor',m['sourceCommit'],tools_commit],check=True)
+              changed=set(subprocess.check_output(['git','diff','--name-only',m['sourceCommit'],tools_commit],text=True).splitlines())
+              assert changed and changed<=release_files,'Release tools cannot change the tested APK application source.'
+          for name in release_files|{'tools/publish-update-feed.py'}:
+              assert pathlib.Path(name).read_bytes()==subprocess.check_output(['git','show',tools_commit+':'+name]),name
+          subprocess.run(['python3','tools/gecko/release_channel_contract_test.py'],check=True)
+          from tools.gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance, verify_direct_release
           release_tag(m)
           if requires_manual_acceptance(m):
-              record=m['manualAcceptanceArtifact']
-              assert record['file']=='manual-acceptance.json'
+              manual='manualAcceptanceArtifact' in m
+              direct='releaseAuthorizationArtifact' in m
+              assert manual!=direct,'Choose physical acceptance or a separately recorded release instruction.'
+              record=m['manualAcceptanceArtifact' if manual else 'releaseAuthorizationArtifact']
+              assert record['file']==('manual-acceptance.json' if manual else 'release-authorization.json')
               raw=pathlib.Path(record['file']).read_bytes()
               assert len(raw)==record['bytes'] and hashlib.sha256(raw).hexdigest()==record['sha256']
-              assert verify_manual_acceptance(json.loads(raw),m)==m['manualAcceptance']
+              if manual:
+                  assert 'releaseAuthorization' not in m
+                  assert verify_manual_acceptance(json.loads(raw),m)==m['manualAcceptance']
+                  assert m['physicalArmPhone']=='user-reported-passed'
+              else:
+                  assert 'manualAcceptance' not in m
+                  assert verify_direct_release(json.loads(raw),m)==m['releaseAuthorization']
+                  assert m['physicalArmPhone']=='not-tested'
           assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',m['version']) and isinstance(m['versionCode'],int)
           assert m['filename']==f"PocketChat-{m['version']}-gecko-arm64.apk"
           assert re.fullmatch(r'[0-9a-f]{40}',m['sourceCommit'])
@@ -142,9 +167,11 @@ jobs:
               existing=None
           if existing is None:
               assert target is None,'A tag already exists without a verifiable public release identity; use a new version.'
-              command=['gh','release','create',tag,m['filename'],'release-manifest.json','--target',m['sourceCommit'],
+              qualification=[m[key]['file'] for key in ('manualAcceptanceArtifact','releaseAuthorizationArtifact') if key in m]
+              command=['gh','release','create',tag,m['filename'],'release-manifest.json',*qualification,'--target',m['sourceCommit'],
                   '--title',m['version']+(' · 元婴期院士候选测试版' if candidate else ' · 元婴期院士正式版'),'--notes-file','RELEASE.md','--repo',repository]
               if candidate:command.extend(['--prerelease','--latest=false'])
+              else:command.append('--latest=true')
               subprocess.run(command,check=True)
           else:
               assert existing['tag_name']==tag and not existing['draft'] and existing['prerelease']==candidate
