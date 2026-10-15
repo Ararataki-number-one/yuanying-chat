@@ -205,6 +205,7 @@ shutil.copy2(root/'tools/publish-update-feed.py',stage/'tools/publish-update-fee
 if version_code>=43:
     (stage/'tools/gecko').mkdir(exist_ok=True)
     shutil.copy2(root/'tools/gecko/check_performance_evidence.py',stage/'tools/gecko/check_performance_evidence.py')
+    if (root/'tools/gecko/chrome_collapse_contract.py').is_file():shutil.copy2(root/'tools/gecko/chrome_collapse_contract.py',stage/'tools/gecko/chrome_collapse_contract.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')
 if roadmap_release:
     for name in ['check_profile_evidence.py','profile_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)

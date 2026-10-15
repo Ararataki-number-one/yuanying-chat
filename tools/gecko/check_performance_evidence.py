@@ -3,6 +3,10 @@
 import argparse
 import json
 import pathlib
+if __package__:
+    from .chrome_collapse_contract import verify_auto_collapse
+else:
+    from chrome_collapse_contract import verify_auto_collapse
 
 BASELINE = '835d59991218eda70c7a4fdd73ea9d7ae6052688'
 MAIN_IO = ('mainSealedReads', 'mainSealedWrites', 'mainCatalogReads', 'mainHeartbeatWrites')
@@ -71,6 +75,8 @@ def verify_performance_evidence(directory, source):
     assert build['coreSourceCommit'] == source and build['comparisonMode'] == 'current-only'
     assert build['historicalUIRebuilt'] is False and build['changedForBaseline'] == []
     assert len(build['currentSha256']) == 64
+    auto_collapse = verify_auto_collapse(chrome['autoCollapse'], source, build['currentSha256'])
+    assert visual['autoCollapse'] == chrome['autoCollapse']
 
     gecko = android('gecko-performance-results.json')
     manifest_path = directory / 'manifest.json'
@@ -172,6 +178,7 @@ def verify_performance_evidence(directory, source):
         assert report['passed'] == report['total'] >= count, name
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True, 'geckoChecks': gecko['checkCount'],
             'compactCases': len(chrome['cases']), 'reloadConfirmationChecks': len(reload['checks']),
+            'autoCollapse': auto_collapse,
             'currentVisualScreens': len(captures), 'historicalUIRebuilt': False,
             'bridgeResponseBytes': {'baseline': baseline['bridgeResponseBytes'], 'current': current['bridgeResponseBytes']},
             'domReadChars': {'baseline': baseline['domReadChars'], 'current': current['domReadChars']}}

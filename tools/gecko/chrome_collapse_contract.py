@@ -1,0 +1,57 @@
+"""Require real swipe/native-layout evidence and complete bound Android payloads."""
+if __package__:
+    from .integration_event_contract import EventTransfer,event_uri
+else:
+    from integration_event_contract import EventTransfer,event_uri
+
+NAMES={
+    'Actual Gecko document starts expanded with owned login draft and pending task',
+    'Trusted upward reading swipe hides chrome only after the gesture',
+    'Trusted downward reading swipe reveals chrome after the gesture',
+    'Horizontal scrolling does not collapse environment controls',
+    'Short gestures do not collapse environment controls',
+    'Tapping the already selected Chat tab reveals environment controls',
+    'Returning from native settings reveals chrome without reloading chat',
+    'Activity resume reveals chrome and preserves the live SDK page',
+    'All chrome interactions use one controlled actual document without navigation or send',
+}
+
+def verify_auto_collapse(report,source,apk_sha):
+    assert report['status']=='passed' and report['sourceCommit']==source
+    assert all(report[k] is True for k in ['actualAndroidExecution','actualGeckoExecution','actualAndroidTouchExecution'])
+    identity=report['buildIdentity'];assert identity['sourceCommit']==source and identity['apkSha256']==apk_sha
+    assert {(c['viewport'],c['fontScale']) for c in report['cases']}=={(360,1),(412,1),(360,2)} and len(report['cases'])==3
+    phases={'ready','up','down','horizontal','short','upBeforeChat','selectedChat','upBeforeNative','settings','nativeReturn','upBeforeResume','activityResume'}
+    for case in report['cases']:
+        assert case['sourceCommit']==source and all(case[k] is True for k in ['actualAndroidExecution','actualGeckoExecution','actualAndroidTouchExecution'])
+        assert NAMES<={check['name'] for check in case['checks']} and all(check['pass'] is True for check in case['checks'])
+        owned=case['eventTransfer'];assert owned['runNonce']==case['runNonce'] and owned['fixtureAction']=='chromeCollapse' and owned['processSlot']==0
+        rows=owned['events'];payloads={event_uri(row['receipt']):row['rawUtf8'].encode('utf-8') for row in rows}
+        assert len(rows)==len(payloads)==len(phases)
+        transfer=EventTransfer(identity=identity,nonce=case['runNonce'],slot=0,action='chromeCollapse',fetch=lambda uri:payloads[uri])
+        snapshots={}
+        for row in rows:
+            event=transfer.read(row['receipt']);assert event['kind']=='collapseSnapshot'
+            sample=event['result'];assert sample['command'] not in snapshots;snapshots[sample['command']]=sample
+        assert snapshots==case['observations'] and set(snapshots)==phases
+        initial=snapshots['ready']
+        assert initial['expanded'] and initial['toolbarVisibility']==0 and initial['toolbarHeight']>0
+        assert initial['visibleDocument'] and initial['loadingCoverVisibility']==8 and initial['documents']==1
+        assert initial['loads']==initial['stops']==initial['sendCount']==0 and initial['sdkSession']==initial['attachedSession']
+        assert len(initial['document'])==32 and initial['draft']=='unsent controlled browser draft' and initial['pending']['confirmed']
+        stable=['surface','sdkSession','attachedSession','document','draft','cookie','sendCount','path','loads','stops','documents','pending','pendingStored']
+        for sample in snapshots.values():assert all(sample[k]==initial[k] for k in stable),sample['command']
+        for before_key,after_key,expanded in [('ready','up',False),('up','down',True),('down','horizontal',True)]:
+            before,after=snapshots[before_key],snapshots[after_key];touches=after['touches']
+            assert len(touches)>=3 and touches[0]['action']==0 and touches[-1]['action']==1 and any(t['action']==2 for t in touches)
+            assert all(t['pointers']==1 and t['width']==before['webWidth'] and t['height']==before['webHeight'] and t['expanded']==before['expanded'] for t in touches)
+            assert after['expanded'] is expanded
+        assert snapshots['up']['webHeight']==initial['webHeight']+initial['toolbarHeight'] and snapshots['up']['toolbarVisibility']==8
+        assert snapshots['up']['scrollY']>initial['scrollY'] and any(t['trusted'] is True and t['type']=='touchend' for t in snapshots['up']['trusted'])
+        assert snapshots['short']['expanded'] and snapshots['short']['webHeight']==initial['webHeight']
+        for key,prior in [('selectedChat','upBeforeChat'),('nativeReturn','upBeforeNative'),('activityResume','upBeforeResume')]:
+            assert snapshots[prior]['expanded'] is False and snapshots[key]['expanded'] and snapshots[key]['page']==0 and snapshots[key]['webHeight']==initial['webHeight']
+        assert snapshots['settings']['page']==3 and len(case['fixtureRequests'])==1 and case['fixtureRequests'][0]['documentMarker']==initial['document']
+        gestures=case['actualAndroidInputs'];assert len(gestures)==10 and all(g['actualAndroidInput'] is True for g in gestures)
+        assert [g['kind'] for g in gestures].count('swipe')==7 and [g['kind'] for g in gestures].count('tap')==3
+    return {'cases':3,'actualAndroidExecution':True,'actualGeckoExecution':True,'checks':sum(len(c['checks']) for c in report['cases'])}

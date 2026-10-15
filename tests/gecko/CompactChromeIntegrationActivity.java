@@ -16,7 +16,8 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   int actionCount;
   JSONObject performance=new JSONObject();
   boolean reloadFixture;String reloadBefore="",reloadArchivedDraft="";int reloadDocuments;
-  static final class ReloadView extends GeckoWebView {
+  ChromeCollapseIntegration collapse;
+  static class ReloadView extends GeckoWebView {
     static final String LOCAL="http://127.0.0.1:8765/";boolean tracking;int stops,loads;String requested="";
     ReloadView(Context c,ChatSession owner){super(c,owner);}
     @Override protected boolean allowedUrl(String target){return target!=null&&target.startsWith(LOCAL+"c/reload-");}
@@ -32,6 +33,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   @Override public void onCreate(Bundle state){
     if(!getPackageName().endsWith(".test"))throw new SecurityException();
     reloadFixture="reloadStart".equals(getIntent().getStringExtra("compactAction"));if(reloadFixture)ChatSession.browserFactory=ReloadView::new;
+    boolean collapseFixture="collapseStart".equals(getIntent().getStringExtra("compactAction"));if(collapseFixture)ChatSession.browserFactory=ChromeCollapseIntegration.CollapseView::new;
     ProfileCatalog.get(this).created(0);
     Profiles.rename(this,0,getIntent().getBooleanExtra("longName",true)?"长文阅读与文件整理和日常会话测试环境":"默认环境");
     getSharedPreferences("chat",0).edit().putString("browserEngine","system").putString("networkMode","external").putBoolean("networkConfigured",false).putBoolean("environmentInitialized",true).putBoolean("pageMode",false).remove("pending").commit();
@@ -42,6 +44,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     ChatSession.get(this).manualAttention=true;
     super.onCreate(state);
     command=getIntent().getStringExtra("compactCommand");
+    if(collapseFixture){collapse=new ChromeCollapseIntegration(this,getIntent().getStringExtra("eventNonce"));collapse.start();return;}
     if(reloadFixture){
       handler.removeCallbacks(ticker);session.remove(sessionObserver);session.handler.removeCallbacks(session.tick);
       session.prefs.edit().putBoolean("networkConfigured",true).putString("proxy","socks://127.0.0.1:1080").putBoolean("requireExternalVpn",false).commit();session.networkReady=true;session.offline=false;session.guard.setBlocked(false);
@@ -58,9 +61,12 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
 
   @Override void startNetwork(){}
 
+  @Override protected void onDestroy(){if(collapse!=null)collapse.close();super.onDestroy();}
+
   @Override protected void onNewIntent(Intent intent){
     super.onNewIntent(intent);
     command=intent.getStringExtra("compactCommand");
+    if(collapse!=null)return;
     if(reloadFixture){reloadCommand(intent.getStringExtra("compactAction"));return;}
     if("snapshot".equals(intent.getStringExtra("compactAction")))handler.post(()->snapshot("snapshot"));
     if("performance".equals(intent.getStringExtra("compactAction")))handler.post(this::performance);

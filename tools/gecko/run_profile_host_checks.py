@@ -34,6 +34,7 @@ def main():
     input_paths.update(ROOT/'tools/gecko'/name for name in ('caret_ime_guard.py','caret_ime_contract.py','ui_visual_capture.py','caret_build_identity.py'))
     input_paths.add(Path(__file__).resolve())
     input_paths.add(ROOT/'tools/gecko/check_template_evidence.py')
+    input_paths.add(ROOT/'tools/gecko/chrome_collapse_contract.py')
     input_paths.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
     input_paths.add(ROOT/'app/src/main/AndroidManifest.xml')
     proxy_script = ROOT / 'app/src/main/assets/gecko/background.js'
@@ -62,7 +63,7 @@ def main():
         ("EnvironmentSpecTest", ["J", "EnvironmentSpec", "EnvironmentSpecMigration"]),
         ("EnvironmentLifecyclePolicyTest", ["J", "EnvironmentSpec", "EnvironmentSpecMigration", "EnvironmentResetPlan", "EnvironmentBrowserData", "EnvironmentProcessPolicy"]),
     ]
-    extras = [("FingerprintTemplateTest", ["J", "BrowserIdentitySpec", "AuditReport"]),("BrowserEditIntentTest",["J","BrowserEditIntent"]),("DownloadListPolicyTest",["DownloadListPolicy"])]
+    extras = [("FingerprintTemplateTest", ["J", "BrowserIdentitySpec", "AuditReport"]),("BrowserEditIntentTest",["J","BrowserEditIntent"]),("DownloadListPolicyTest",["DownloadListPolicy"]),("ChromeCollapseGestureTest",["ChromeCollapseGesture"])]
     groups += [(name, names) for name, names in extras if (tests / (name + ".java")).is_file()]
     files = {source / (name + ".java") for _, names in groups for name in names}
     files.update(tests / (name + ".java") for name, _ in groups)

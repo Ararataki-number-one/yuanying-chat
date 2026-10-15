@@ -27,7 +27,14 @@ class GeckoWebView extends FrameLayout {
   void setHost(android.app.Activity activity){displayContext.setBaseContext(activity==null?owner.context:activity);}
   OnTouchListener touches;
   @Override public void setOnTouchListener(OnTouchListener listener){touches=listener;}
-  @Override public boolean dispatchTouchEvent(MotionEvent event){if(zoomTarget!=null&&event.getActionMasked()==MotionEvent.ACTION_DOWN)cancelZoom();if(touches!=null&&touches.onTouch(this,event))return true;syncSurfaceOrigin();return super.dispatchTouchEvent(event);}
+  @Override public boolean dispatchTouchEvent(MotionEvent event){
+    if(zoomTarget!=null&&event.getActionMasked()==MotionEvent.ACTION_DOWN)cancelZoom();
+    Context host=displayContext.getBaseContext();DesignChrome chrome=host instanceof MainActivity?((MainActivity)host).designChrome:null;
+    // BrowserReading and the temporary network input fence keep ownership and priority.
+    if(touches!=null&&touches.onTouch(this,event)){if(chrome!=null)chrome.cancelWebGesture();return true;}
+    syncSurfaceOrigin();boolean handled=super.dispatchTouchEvent(event);
+    if(chrome!=null)chrome.webTouch(event);return handled;
+  }
   void destroy(){
     if(destroyed)return;destroyed=true;
     cancelZoom();owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();

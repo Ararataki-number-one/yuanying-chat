@@ -6,6 +6,7 @@ import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.*;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityManager;
 import android.widget.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -25,9 +26,13 @@ final class DesignChrome {
   private boolean queued,metadataPending;
   private long metadataAt;
   private String profileName;
+  private boolean collapsed;
+  private final ChromeCollapseGesture swipe;
+  private Runnable pendingSwipe;
 
   DesignChrome(MainActivity a,LinearLayout root){
     this.a=a;
+    swipe=new ChromeCollapseGesture(a.dp(40),ViewConfiguration.get(a).getScaledTouchSlop(),ViewConfiguration.getLongPressTimeout());
     a.toolbar=DesignUi.column(a);
     a.toolbar.setBackgroundColor(ReferenceUi.CHAT_BG);
     a.toolbar.setPadding(a.dp(10),0,a.dp(10),0);
@@ -81,6 +86,46 @@ final class DesignChrome {
     actions=new View[]{a.navigation,title,more};
     a.toolbar.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutTouchTargets());
     a.toolbar.post(this::layoutTouchTargets);
+  }
+
+  boolean expanded(){return !collapsed;}
+
+  /** Native navigation always offers the environment controls again. */
+  void reveal(){
+    cancelWebGesture();setCollapsed(false);
+    if((a.hub==null||a.hub.page==AppHub.CHAT)&&a.toolbar.getVisibility()!=View.VISIBLE)a.toolbar.setVisibility(View.VISIBLE);
+  }
+
+  void cancelWebGesture(){
+    swipe.cancel();if(pendingSwipe!=null){a.handler.removeCallbacks(pendingSwipe);pendingSwipe=null;}
+  }
+
+  private boolean readingGestureAllowed(){
+    if(a.destroyed||!a.active||a.keyboardVisible||a.hub==null||a.hub.page!=AppHub.CHAT||a.remote==null||!a.remote.hasVisibleDocument())return false;
+    String url=a.remote.getUrl();if(!MainActivity.chatUrl(url)||LoginPagePolicy.login(url))return false;
+    AccessibilityManager accessibility=(AccessibilityManager)a.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE);
+    return accessibility==null||!accessibility.isTouchExplorationEnabled();
+  }
+
+  /** Observe only input already admitted by the existing browser/security listeners. */
+  void webTouch(MotionEvent event){
+    int action=event.getActionMasked();
+    if(action==MotionEvent.ACTION_DOWN){
+      cancelWebGesture();swipe.begin(event.getX(),event.getY(),event.getEventTime(),readingGestureAllowed());return;
+    }
+    if(!readingGestureAllowed()||action==MotionEvent.ACTION_CANCEL||event.getPointerCount()!=1||action==MotionEvent.ACTION_POINTER_DOWN||action==MotionEvent.ACTION_POINTER_UP){cancelWebGesture();return;}
+    if(action==MotionEvent.ACTION_MOVE){swipe.move(event.getX(),event.getY(),event.getPointerCount(),event.getEventTime());return;}
+    if(action!=MotionEvent.ACTION_UP)return;
+    int result=swipe.finish(event.getX(),event.getY(),event.getEventTime());
+    if(result==ChromeCollapseGesture.NONE)return;
+    // Resize once after Android/Gecko have received UP, never beneath a live finger.
+    pendingSwipe=()->{pendingSwipe=null;if(readingGestureAllowed())setCollapsed(result==ChromeCollapseGesture.HIDE);};
+    a.handler.post(pendingSwipe);
+  }
+
+  private void setCollapsed(boolean value){
+    if(collapsed==value)return;collapsed=value;
+    if(a.hub==null||a.hub.page==AppHub.CHAT)a.toolbar.setVisibility(value?View.GONE:View.VISIBLE);
   }
 
   private static int textHeight(TextView text){
