@@ -165,6 +165,8 @@ jobs:
         run: |
           set -euo pipefail
           exec > >(tee work/gecko-integration/native-test.log) 2>&1
+          # Compilation has finished; release the 3 GiB Gradle daemon before the VM.
+          work/gecko-integration/gradle/gradle-9.8.0/bin/gradle --stop
           export ANDROID_AVD_HOME="$PWD/work/gecko-integration/avd"
           export ANDROID_USER_HOME="$PWD/work/gecko-integration/android-user"
           export ANDROID_EMULATOR_HOME="$PWD/work/gecko-integration/emulator-home"
@@ -191,6 +193,17 @@ jobs:
           # An ordinary input fixture failure remains a failed qualification,
           # but must not prevent independent UI/network evidence collection.
           if [ "$checks_failed" -ne 0 ]; then echo 'fixture_failed=true' >> "$GITHUB_OUTPUT"; fi
+      - name: Verify network sharing and explicit import UI
+        if: ${{ !cancelled() && steps.editing.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+          echo "Starting phase: Verify network sharing and explicit import UI"
+          result=0
+          python3 tests/gecko/run_network_sharing.py --adb "$(command -v adb)" --serial emulator-5554 || result=$?
+          python3 tools/gecko/publish_ci.py
+          exit "$result"
       - name: Verify network performance and compact chrome
         shell: bash
         run: |
@@ -279,17 +292,6 @@ jobs:
           fi
           python3 tools/gecko/publish_ci.py
           if [ "$checks_failed" -ne 0 ]; then exit 1; fi
-      - name: Verify network sharing and explicit import UI
-        if: ${{ !cancelled() && steps.editing.outcome == 'success' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
-          echo "Starting phase: Verify network sharing and explicit import UI"
-          result=0
-          python3 tests/gecko/run_network_sharing.py --adb "$(command -v adb)" --serial emulator-5554 || result=$?
-          python3 tools/gecko/publish_ci.py
-          exit "$result"
       - name: Verify environment templates and resource policy
         shell: bash
         run: |
@@ -320,6 +322,17 @@ jobs:
           if [ "$checks_failed" -ne 0 ]; then
             exit 1
           fi
+      - name: Preserve emulator and runner health
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p work/gecko-integration
+          {
+            date -u
+            free -m
+            ps -eo pid,comm,rss --sort=-rss | sed -n '1,20p'
+            if [ -r /sys/fs/cgroup/memory.events ]; then cat /sys/fs/cgroup/memory.events; fi
+          } > work/gecko-integration/runner-health.txt
       - name: Publish synthetic regression evidence
         if: always()
         run: python3 tools/gecko/publish_ci.py
