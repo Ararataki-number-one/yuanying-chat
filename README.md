@@ -2,12 +2,12 @@
 
 使用 Mozilla 官方 GeckoView 的 Android ChatGPT 网页客户端。聊天、模型选择、历史记录和消息操作由 ChatGPT 官方网页提供；应用负责独立环境、网络、文件下载、阅读缩放和可选后台提醒。
 
-**当前正式版本：2.0.5（versionCode 58），仅 GeckoView 与官方网页。**
+**当前正式版本：2.0.6（versionCode 59），仅 GeckoView 与官方网页。**
 
 ## 下载与安装
 
-- [下载当前正式应用 2.0.5 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.5-gecko/PocketChat-2.0.5-gecko-arm64.apk)
-- [上一版 2.0.4 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.4-gecko/PocketChat-2.0.4-gecko-arm64.apk)
+- [下载当前正式应用 2.0.6 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.6-gecko/PocketChat-2.0.6-gecko-arm64.apk)
+- [上一版 2.0.5 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.5-gecko/PocketChat-2.0.5-gecko-arm64.apk)
 - [历史 1.5.19 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.19-gecko/PocketChat-1.5.19-gecko-arm64.apk)
 - [历史 1.5.13 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.13-gecko/PocketChat-1.5.13-gecko-arm64.apk)
 - [历史 1.5.12 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.12-gecko/PocketChat-1.5.12-gecko-arm64.apk)
@@ -22,7 +22,7 @@
 
 已有原签名正式版可直接覆盖安装，无需卸载；环境与登录数据继续保留。此前临时签名预览包使用不同证书，不能直接覆盖。
 
-本版新增入口、出口及整条线路分享；接收方先预览，再选择环境并保存应用，保留原有登录数据。见[发布说明](docs/RELEASE-v2.0.5.md)、[分享操作与范围](docs/NETWORK-SHARING.md)和[构建、Android 与公网验证](docs/VALIDATION-v2.0.5.md)。
+本版新增默认跟随系统的白天／黑夜外观，并优化低延迟入口探索和后台探测预算。保留入口、出口及整条线路分享。见[发布说明](docs/RELEASE-v2.0.6.md)、[分享操作](docs/NETWORK-SHARING.md)和[构建、Android 与公网验证](docs/VALIDATION-v2.0.6.md)。真实线路是否达到 200 ms 尚未验证。
 
 从 1.5.20 起移除系统内核和简洁模式入口，旧模式设置会转为官方网页。已有 Gecko 登录目录和环境隔离继续沿用；旧系统内核数据留存在本机，系统浏览器会话不会自动转成 Gecko 会话。旧简洁模式的本机草稿保留，可从会话更多菜单查看并复制。真实 Google 登录与 ARM 手机兼容性仍需设备验收。
 
@@ -41,8 +41,9 @@
 | 下载 | 自动保存、同名编号、暂停与续传、跨窗口文件列表、打开、分享、另存为 |
 | 应用更新 | 每天自动检查、可选 Wi-Fi 自动下载、后台下载与取消/重试、原签名覆盖安装确认 |
 | 后台等待 | 回复只读检测；前台完成安静，后台完成提醒默认关闭、可在设置开启；Android 必需服务提示保持静音 |
-| 网络管理 | 全部窗口网络、订阅与固定出口三栏；候选编辑后保存并应用；随机 / 手动 / 低延迟优先入口；完整线路与网站响应检测、出口核验；独立服务持有每环境内核、核验后接管；空闲维护与 DNS 优选；回复期间保存候选，结束后应用 |
+| 网络管理 | 全部窗口网络、订阅与固定出口三栏；候选编辑后保存并应用；随机 / 手动 / 低延迟优先入口；完整线路与网站响应检测、出口核验；独立服务持有每环境内核、核验后接管；空闲小批次优选与探测缓存；回复期间保存候选，结束后应用 |
 | 隐私与自检 | Gecko 原生跟踪保护、关闭 WebRTC、强化档原生抗指纹；支持当前 Gecko 页面公共浏览器信息自检 |
+| 外观 | 默认跟随系统深浅色；可固定白天或黑夜，主题切换不重载网页 |
 | 偏好 | 网页草稿与滚动位置保留、可选后台提醒、仅 Wi-Fi 下载、旧临时文件清理 |
 
 当前平台是 ChatGPT。模型和网页可用功能由当前登录账号及网页实际提供。软件通过内置网页登录，不要求填写 API Key。
@@ -134,7 +135,7 @@
 
 ## 历史版本规划记录
 
-以下为各版本开发初期的候选范围与当时的验收状态，不代表当前发布状态；当前正式下载及验证以本文顶部和 2.0.5 发布记录为准。
+以下为各版本开发初期的候选范围与当时的验收状态，不代表当前发布状态；当前正式下载及验证以本文顶部和 2.0.6 发布记录为准。
 
 1.6.0 候选基于正式 v1.5.23-gecko，保留新版双订阅、安全延后应用、缩放与键盘行为；补充准确线路准入、健康交叉检查、目录格式保护及独立环境配置。尚未发布安装包。合并与验证见 [docs/MERGE-AND-ACCEPTANCE.md](docs/MERGE-AND-ACCEPTANCE.md)。
 
