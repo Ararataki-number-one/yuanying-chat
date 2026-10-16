@@ -8,6 +8,10 @@ public final class AppearanceColorsTest {
   public static void main(String[] args){
     check(AppearanceColors.mode(null).equals("system"),"old/missing preference follows system");
     check(AppearanceColors.mode("unknown").equals("system"),"unknown preference follows system");
+    check(AppearanceColors.ownsUi("app","app"),"main UI initializes appearance");
+    for(int i=1;i<8;i++)check(AppearanceColors.ownsUi("app","app:profile"+i),"environment UI initializes appearance");
+    check(AppearanceColors.ownsUi("app","app:engine_restart"),"restart UI is themed");
+    for(String process:new String[]{null,"app:network","app:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0","app:gpu","other","app:profile8"})check(!AppearanceColors.ownsUi("app",process),"non-UI children never access theme storage");
     for(boolean system:new boolean[]{false,true}){
       check(AppearanceColors.dark("system",system)==system,"system events control automatic mode");
       check(AppearanceColors.dark("dark",system),"manual dark persists");check(!AppearanceColors.dark("light",system),"manual light persists");

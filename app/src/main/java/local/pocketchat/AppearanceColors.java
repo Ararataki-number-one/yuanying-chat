@@ -14,6 +14,12 @@ final class AppearanceColors {
     {0xfffecdd3,0xff69404b},{0xff1268ff,0xff8db1ff},{0xff2563eb,0xff8da9ff}
   };
   static String mode(String value){return "light".equals(value)||"dark".equals(value)?value:"system";}
+  static boolean ownsUi(String app,String process){
+    if(app==null||process==null)return false;
+    if(process.equals(app)||process.equals(app+":engine_restart"))return true;
+    for(int i=1;i<8;i++)if(process.equals(app+":profile"+i))return true;
+    return false;
+  }
   static boolean dark(String mode,boolean systemDark){return "dark".equals(mode)||!"light".equals(mode)&&systemDark;}
   static int color(int value,boolean dark){for(int[] pair:PAIRS)if(value==pair[0]||value==pair[1])return pair[dark?1:0];return value;}
   static int text(int value,boolean dark){

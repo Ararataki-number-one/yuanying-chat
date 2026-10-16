@@ -718,10 +718,10 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     String snapshot="({draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,url:location.href,marker:window.__appearanceDocument,dark:matchMedia('(prefers-color-scheme: dark)').matches})";
     evaluate("window.__appearanceDocument='appearance-document-'+Math.random();"+snapshot,false,before->{
       AppAppearance.choose(this,"dark");handler.postDelayed(()->evaluate(snapshot,false,night->{
-        check("Dark appearance applies the official Gecko runtime preference",session.web.runtime.getSettings().getPreferredColorScheme()==GeckoRuntimeSettings.COLOR_SCHEME_DARK);
+        check("Dark appearance applies the official Gecko runtime preference",session.web.runtime.getSettings().getPreferredColorScheme()==GeckoRuntimeSettings.COLOR_SCHEME_DARK&&night.optBoolean("dark"));
         check("Dark appearance preserves actual document login draft and URL",night.optString("draft").equals(before.optString("draft"))&&night.optString("cookie").equals(before.optString("cookie"))&&night.optString("url").equals(before.optString("url"))&&night.optString("marker").equals(before.optString("marker")));
         AppAppearance.choose(this,"light");handler.postDelayed(()->evaluate(snapshot,false,day->{
-          check("Light appearance applies the official Gecko runtime preference",session.web.runtime.getSettings().getPreferredColorScheme()==GeckoRuntimeSettings.COLOR_SCHEME_LIGHT);
+          check("Light appearance applies the official Gecko runtime preference",session.web.runtime.getSettings().getPreferredColorScheme()==GeckoRuntimeSettings.COLOR_SCHEME_LIGHT&&!day.optBoolean("dark"));
           check("Theme roundtrip preserves the same browser session and navigation epoch",session.web.current==original&&session.navigationEpoch==epoch&&((FixtureView)session.web).quietLoads==loads&&((FixtureView)session.web).quietStops==stops);
           check("Light appearance preserves actual document login and unsent draft",day.optString("draft").equals(before.optString("draft"))&&day.optString("cookie").equals(before.optString("cookie"))&&day.optString("marker").equals(before.optString("marker")));
           AppAppearance.choose(this,oldMode);success();

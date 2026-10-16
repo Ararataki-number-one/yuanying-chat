@@ -16,6 +16,7 @@ final class AppAppearance {
   static final String[] MODES={"system","light","dark"},LABELS={"跟随系统","始终白天","始终黑夜"};
   private static String mode="system";
   private static boolean dark;
+  private static boolean installed;
   private static final Set<Activity> activities=Collections.newSetFromMap(new WeakHashMap<>());
   private static final Set<Dialog> dialogs=Collections.newSetFromMap(new WeakHashMap<>());
   static boolean dark(){return dark;}
@@ -25,6 +26,11 @@ final class AppAppearance {
   static int text(int value){return AppearanceColors.text(value,dark);}
   static int theme(){return dark?R.style.AppThemeDark:R.style.AppThemeLight;}
   static void install(Application app){
+    // Gecko renderers run the same Application under an isolated UID. They must
+    // never open the catalogue or register the UI settings receiver.
+    if(android.os.Process.myUid()!=app.getApplicationInfo().uid)return;
+    if(Build.VERSION.SDK_INT>=28&&!AppearanceColors.ownsUi(app.getPackageName(),Application.getProcessName()))return;
+    installed=true;
     refresh(app);
     IntentFilter filter=new IntentFilter(app.getPackageName()+".APPEARANCE_CHANGED");
     BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){refresh(c);}};
@@ -36,6 +42,7 @@ final class AppAppearance {
     a.sendBroadcast(new Intent(a.getPackageName()+".APPEARANCE_CHANGED").setPackage(a.getPackageName()));
   }
   static void refresh(Context context){
+    if(!installed)return;
     String selected=AppearanceColors.mode(AppSettings.get(context,KEY,"system"));
     boolean system=(context.getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
     boolean next=AppearanceColors.dark(selected,system),changed=next!=dark||!selected.equals(mode);
