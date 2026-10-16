@@ -2,28 +2,29 @@
 
 使用 Mozilla 官方 GeckoView 的 Android ChatGPT 网页客户端。聊天、模型选择、历史记录和消息操作由 ChatGPT 官方网页提供；应用负责独立环境、网络、文件下载、阅读缩放和可选后台提醒。
 
-**当前正式版本：1.5.20（versionCode 46），仅 GeckoView 与官方网页。**
+**当前正式版本：2.0.5（versionCode 58），仅 GeckoView 与官方网页。**
 
 ## 下载与安装
 
-- [下载当前正式应用 1.5.20 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.20-gecko/PocketChat-1.5.20-gecko-arm64.apk)
-- [上一版 1.5.19 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.19-gecko/PocketChat-1.5.19-gecko-arm64.apk)
-- [上一版 1.5.13 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.13-gecko/PocketChat-1.5.13-gecko-arm64.apk)
-- [上一版 1.5.12 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.12-gecko/PocketChat-1.5.12-gecko-arm64.apk)
-- [上一版 1.5.11 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.11-gecko/PocketChat-1.5.11-gecko-arm64.apk)
-- [上一版 1.5.10 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.10-gecko/PocketChat-1.5.10-gecko-arm64.apk)
-- [上一版 1.5.9 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.9-gecko/PocketChat-1.5.9-gecko-arm64.apk)
-- [上一版 1.5.8 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.8-gecko/PocketChat-1.5.8-gecko-arm64.apk)
-- [上一版 1.5.7 Firefox 内核更新 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.7-gecko/PocketChat-1.5.7-gecko-arm64.apk)
-- [上一版 1.5.6 电脑版阅读优化 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/477353188f4af649055bae7a1235b03e7c221fd9/public-downloads/PocketChat-1.5.6-desktop-reading.apk)
+- [下载当前正式应用 2.0.5 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.5-gecko/PocketChat-2.0.5-gecko-arm64.apk)
+- [上一版 2.0.4 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.4-gecko/PocketChat-2.0.4-gecko-arm64.apk)
+- [历史 1.5.19 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.19-gecko/PocketChat-1.5.19-gecko-arm64.apk)
+- [历史 1.5.13 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.13-gecko/PocketChat-1.5.13-gecko-arm64.apk)
+- [历史 1.5.12 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.12-gecko/PocketChat-1.5.12-gecko-arm64.apk)
+- [历史 1.5.11 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.11-gecko/PocketChat-1.5.11-gecko-arm64.apk)
+- [历史 1.5.10 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.10-gecko/PocketChat-1.5.10-gecko-arm64.apk)
+- [历史 1.5.9 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.9-gecko/PocketChat-1.5.9-gecko-arm64.apk)
+- [历史 1.5.8 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.8-gecko/PocketChat-1.5.8-gecko-arm64.apk)
+- [历史 1.5.7 Firefox 内核更新 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.7-gecko/PocketChat-1.5.7-gecko-arm64.apk)
+- [历史 1.5.6 电脑版阅读优化 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/477353188f4af649055bae7a1235b03e7c221fd9/public-downloads/PocketChat-1.5.6-desktop-reading.apk)
 - [历史 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
 - [查看 Releases](https://github.com/Ararataki-number-one/yuanying-chat/releases)
 
-原发布 1.5.0 和上一轮原签名预览包可直接覆盖安装，无需卸载。此前临时签名预览包使用不同证书，不能直接覆盖。
+已有原签名正式版可直接覆盖安装，无需卸载；环境与登录数据继续保留。此前临时签名预览包使用不同证书，不能直接覆盖。
 
-本版的[逐文件修改说明](docs/CHANGELOG-v1.5.20.md)和[构建、Android 与公网验证](verification/chain-performance-v1.5.20/README.md)均已归档。
+本版新增入口、出口及整条线路分享；接收方先预览，再选择环境并保存应用，保留原有登录数据。见[发布说明](docs/RELEASE-v2.0.5.md)、[分享操作与范围](docs/NETWORK-SHARING.md)和[构建、Android 与公网验证](docs/VALIDATION-v2.0.5.md)。
 
-1.5.20 移除系统内核和简洁模式入口，旧模式设置会转为官方网页。已有 Gecko 登录目录和环境隔离继续沿用；旧系统内核数据留存在本机，系统浏览器会话不会自动转成 Gecko 会话。旧简洁模式的本机草稿保留，可从会话更多菜单查看并复制。真实 Google 登录与 ARM 手机兼容性仍需设备验收。
+从 1.5.20 起移除系统内核和简洁模式入口，旧模式设置会转为官方网页。已有 Gecko 登录目录和环境隔离继续沿用；旧系统内核数据留存在本机，系统浏览器会话不会自动转成 Gecko 会话。旧简洁模式的本机草稿保留，可从会话更多菜单查看并复制。真实 Google 登录与 ARM 手机兼容性仍需设备验收。
 
 安卓 8.0 起可使用默认窗口；安卓 9.0 起支持最多 8 个独立窗口。内置网络组件支持 ARM64 和 x86_64。
 
@@ -131,7 +132,9 @@
 第三方组件保留各自许可与署名，见 [third-party](third-party/README.md)。本项目自有源码暂未另行声明开源许可证。
 
 
-## 后续版本候选
+## 历史版本规划记录
+
+以下为各版本开发初期的候选范围与当时的验收状态，不代表当前发布状态；当前正式下载及验证以本文顶部和 2.0.5 发布记录为准。
 
 1.6.0 候选基于正式 v1.5.23-gecko，保留新版双订阅、安全延后应用、缩放与键盘行为；补充准确线路准入、健康交叉检查、目录格式保护及独立环境配置。尚未发布安装包。合并与验证见 [docs/MERGE-AND-ACCEPTANCE.md](docs/MERGE-AND-ACCEPTANCE.md)。
 
