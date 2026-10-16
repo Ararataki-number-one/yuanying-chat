@@ -112,15 +112,29 @@ def tap(text=None, desc=None, part=None, kind=None, index=0):
     adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
 
 
+def field_focus_state(tree, description):
+    # Android can show spelling suggestions after focusing an existing name.
+    # This framework popup becomes the accessible window, hiding the EditText.
+    if any(item.attrib.get("resource-id") == "android:id/suggestionWindowContainer"
+           for item in tree.iter("node")):
+        return "spelling-popup"
+    fields = matching(tree, desc=description, kind="EditText")
+    return "focused" if len(fields) == 1 and fields[0].attrib.get("focused") == "true" else "waiting"
+
+
 def fill(description, value):
     chosen = node(desc=description, kind="EditText")
     left, top, right, bottom = bounds(chosen)
     record_action("focus-field", description=description, node=chosen.attrib,
                   x=(left + right) // 2, y=(top + bottom) // 2)
     adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
-    focused = wait_for(xml, lambda tree: len(matching(tree, desc=description, kind="EditText")) == 1
-                       and matching(tree, desc=description, kind="EditText")[0].attrib.get("focused") == "true",
+    focused = wait_for(xml, lambda tree: field_focus_state(tree, description) != "waiting",
                        "Actual focused field " + description, seconds=15)
+    if field_focus_state(focused, description) == "spelling-popup":
+        record_action("dismiss-spelling-popup", description=description)
+        adb("shell", "input", "keyevent", "KEYCODE_BACK")
+        focused = wait_for(xml, lambda tree: field_focus_state(tree, description) == "focused",
+                           "Actual field focus after spelling popup " + description, seconds=15)
     old = matching(focused, desc=description, kind="EditText")[0].attrib.get("text", "")
     if old:
         adb("shell", "input", "keyevent", "123")

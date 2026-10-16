@@ -280,9 +280,12 @@ jobs:
           python3 tools/gecko/publish_ci.py
           if [ "$checks_failed" -ne 0 ]; then exit 1; fi
       - name: Verify network sharing and explicit import UI
+        if: ${{ !cancelled() && steps.editing.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
+          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+          echo "Starting phase: Verify network sharing and explicit import UI"
           result=0
           python3 tests/gecko/run_network_sharing.py --adb "$(command -v adb)" --serial emulator-5554 || result=$?
           python3 tools/gecko/publish_ci.py

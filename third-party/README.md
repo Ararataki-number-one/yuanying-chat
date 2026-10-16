@@ -7,6 +7,7 @@
 | Mihomo | v1.19.31-pocket-preconnect1，基于 v1.19.31 的探测与固定出口预认证补丁，Android ARM64、x86_64 | [GPL-3.0](licenses/Mihomo-GPL-3.0.txt)、[原始上游源码](source/mihomo-v1.19.31.tar.gz)、[修改补丁](patches/mihomo-v1.19.31-probe.patch)、[构建与行为说明](patches/mihomo-v1.19.31-probe.md) |
 | AndroidX WebKit（历史） | 1.12.1，1.5.20 已移除正式依赖 | [POM](licenses/AndroidX-WebKit.pom)、[Apache-2.0](licenses/Apache-2.0.txt) |
 | AndroidX Core | Gradle 发布使用 Gecko 的传递依赖；旧手工构建保留 1.1.0 | [Apache-2.0](licenses/Apache-2.0.txt) |
+| SnakeYAML | 2.3，网络分享从缓存订阅中提取选定节点，使用受限 SafeConstructor | [Apache-2.0](licenses/Apache-2.0.txt)、[对应 Maven 源码与 POM](https://repo.maven.apache.org/maven2/org/yaml/snakeyaml/2.3/) |
 | DOMPurify | 仅保留历史许可，1.5.20 不再打包 | [原始许可](licenses/DOMPurify.txt) |
 | Marked | 仅保留历史许可，1.5.20 不再打包 | [原始许可](licenses/Marked.txt) |
 | KaTeX | 仅保留历史许可，1.5.20 不再打包 | [原始许可](licenses/KaTeX.txt) |
