@@ -1,0 +1,145 @@
+Stopping Daemon(s)
+1 Daemon stopped
+Loading local repository...                                                     [=========                              ] 25% Loading local repository...       [=========                              ] 25% Fetch remote repository...        [=======================================] 100% Fetch remote repository...       
+Auto-selecting single ABI x86_64
+Do you wish to create a custom hardware profile? [no] * daemon not running; starting now at tcp:5037
+* daemon started successfully
+Performing Streamed Install
+Success
+{"sourceCommit": "a7202d3053cb954b3378b0d5a535ab759899ea1f", "status": "passed", "initialNetworkUsable": true, "sdkWifiProvisioningRequested": false, "disabledStateConfirmed": true, "actualConnectivityManagerExecution": true, "applicationAcceptance": false}
+From https://github.com/Ararataki-number-one/yuanying-chat
+ * branch            835d59991218eda70c7a4fdd73ea9d7ae6052688 -> FETCH_HEAD
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_performance.py", line 358, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_performance.py", line 215, in main
+    raise AssertionError(raw)
+AssertionError: --------- beginning of main
+10-16 15:35:01.111  4034  4034 I PocketGeckoPerformance: {"kind":"load","value":{"variant":"baseline","guardAllowed":true,"offline":false,"networkReady":true,"proxy":"socks:\/\/127.0.0.1:1087"}}
+--------- beginning of crash
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: FATAL EXCEPTION: main
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: Process: local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_67c73cfb3d3b4b10ab1f20d6516d34c6, PID: 4195
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: java.lang.RuntimeException: Unable to create application local.pocketchat.PocketApplication: java.lang.SecurityException: Isolated process not allowed to call getContentProvider
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7510)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleBindApplication(Unknown Source:0)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2416)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:107)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:232)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:317)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:8705)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:886)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: Caused by: java.lang.SecurityException: Isolated process not allowed to call getContentProvider
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3242)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Parcel.createException(Parcel.java:3226)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3209)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3151)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.IActivityManager$Stub$Proxy.getContentProvider(IActivityManager.java:6315)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread.acquireProvider(ActivityThread.java:7841)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ContextImpl$ApplicationContentResolver.acquireProvider(ContextImpl.java:3757)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.content.ContentResolver.acquireProvider(ContentResolver.java:2526)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.provider.Settings$ContentProviderHolder.getProvider(Settings.java:3316)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.provider.Settings$NameValueCache.getStringForUser(Settings.java:3542)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.provider.Settings$Global.getStringForUser(Settings.java:17999)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.provider.Settings$Global.getString(Settings.java:17982)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteCompatibilityWalFlags.initIfNeeded(SQLiteCompatibilityWalFlags.java:105)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteCompatibilityWalFlags.isLegacyCompatibilityWalEnabled(SQLiteCompatibilityWalFlags.java:57)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.<init>(SQLiteDatabase.java:490)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:1003)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:996)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteOpenHelper.getDatabaseLocked(SQLiteOpenHelper.java:373)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteOpenHelper.getReadableDatabase(SQLiteOpenHelper.java:340)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at local.pocketchat.AppSettings.get(AppSettings.java:6)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at local.pocketchat.AppAppearance.refresh(AppAppearance.java:39)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at local.pocketchat.AppAppearance.install(AppAppearance.java:28)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at local.pocketchat.PocketApplication.onCreate(PocketApplication.java:9)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.Instrumentation.callApplicationOnCreate(Instrumentation.java:1386)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7504)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	... 9 more
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: Caused by: android.os.RemoteException: Remote stack trace:
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.enforceNotIsolatedCaller(ActivityManagerService.java:3127)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.server.am.ContentProviderHelper.getContentProvider(ContentProviderHelper.java:136)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.getContentProvider(ActivityManagerService.java:7127)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.IActivityManager$Stub.onTransact(IActivityManager.java:2950)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.onTransact(ActivityManagerService.java:2812)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 
+
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 125, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 119, in main
+    require(outcome.returncode == 0 and report.get('status') == 'passed', 'Original performance invocation failed; sidecar preserves failed raw evidence')
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/caret_build_identity.py", line 25, in require
+    raise ValueError(message)
+ValueError: Original performance invocation failed; sidecar preserves failed raw evidence
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 498, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 472, in main
+    ime_guard.run(run_compatibility)
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/caret_ime_guard.py", line 327, in run
+    raise failure
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/caret_ime_guard.py", line 308, in run
+    result = workload()
+             ^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 391, in run_compatibility
+    require('FATAL EXCEPTION' not in raw, 'Android activity crashed: ' + raw)
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/caret_build_identity.py", line 25, in require
+    raise ValueError(message)
+ValueError: Android activity crashed: --------- beginning of crash
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: FATAL EXCEPTION: main
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: Process: local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_7b71ec2601fa4fabbd79d5bf4d37da8a, PID: 4707
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: java.lang.RuntimeException: Unable to create application local.pocketchat.PocketApplication: java.lang.SecurityException: Isolated process not allowed to call getContentProvider
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7510)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleBindApplication(Unknown Source:0)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2416)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:107)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:232)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:317)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:8705)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:886)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: Caused by: java.lang.SecurityException: Isolated process not allowed to call getContentProvider
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3242)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Parcel.createException(Parcel.java:3226)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3209)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3151)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.IActivityManager$Stub$Proxy.getContentProvider(IActivityManager.java:6315)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread.acquireProvider(ActivityThread.java:7841)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ContextImpl$ApplicationContentResolver.acquireProvider(ContextImpl.java:3757)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.content.ContentResolver.acquireProvider(ContentResolver.java:2526)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.provider.Settings$ContentProviderHolder.getProvider(Settings.java:3316)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.provider.Settings$NameValueCache.getStringForUser(Settings.java:3542)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.provider.Settings$Global.getStringForUser(Settings.java:17999)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.provider.Settings$Global.getString(Settings.java:17982)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteCompatibilityWalFlags.initIfNeeded(SQLiteCompatibilityWalFlags.java:105)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteCompatibilityWalFlags.isLegacyCompatibilityWalEnabled(SQLiteCompatibilityWalFlags.java:57)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.<init>(SQLiteDatabase.java:490)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:1003)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:996)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteOpenHelper.getDatabaseLocked(SQLiteOpenHelper.java:373)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteOpenHelper.getReadableDatabase(SQLiteOpenHelper.java:340)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at local.pocketchat.AppSettings.get(AppSettings.java:6)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at local.pocketchat.AppAppearance.refresh(AppAppearance.java:39)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at local.pocketchat.AppAppearance.install(AppAppearance.java:28)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at local.pocketchat.PocketApplication.onCreate(PocketApplication.java:9)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.Instrumentation.callApplicationOnCreate(Instrumentation.java:1386)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7504)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	... 9 more
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: Caused by: android.os.RemoteException: Remote stack trace:
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.enforceNotIsolatedCaller(ActivityManagerService.java:3127)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.server.am.ContentProviderHelper.getContentProvider(ContentProviderHelper.java:136)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.getContentProvider(ActivityManagerService.java:7127)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.IActivityManager$Stub.onTransact(IActivityManager.java:2950)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.onTransact(ActivityManagerService.java:2812)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 
+
+{"phaseStatus": "workload-failed-restored", "restorationVerified": true, "applicationAcceptance": false}
+From https://github.com/Ararataki-number-one/yuanying-chat
+ * branch            apk/gecko-integration-build-20261003 -> FETCH_HEAD
+To https://github.com/Ararataki-number-one/yuanying-chat
+   88b1759..44e7f70  44e7f700c5c6ba048d0cc3cf11695fe51974d6ef -> apk/gecko-integration-build-20261003
+Starting phase: Verify network sharing and explicit import UI
+{"status": "passed", "nativeChecks": 42, "actualAndroidTaps": 5}
