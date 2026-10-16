@@ -19,6 +19,8 @@ final class WorkQueue implements Executor {
   void run(){WorkQueue old=current;current=this;try{while(!tasks.isEmpty())tasks.remove().run();}finally{current=old;}}
 }
 final class FakeContext {EnvironmentSpec.NetworkBinding actual;WorkQueue writer;int bindingReads;}
+// Theme presentation is exercised on Android; keep this controller fixture's dialog double.
+final class AppAppearance {static android.app.AlertDialog.Builder dialog(Object context){return new android.app.AlertDialog.Builder(context);}}
 final class FakePrefs {
   String mode="external",proxy="";
   String getString(String name,String fallback){return "networkMode".equals(name)?mode:"proxy".equals(name)?proxy:fallback;}

@@ -3,7 +3,7 @@ import android.content.*;import org.json.*;import java.util.*;
 
 /** Recent complete-chain samples; a healthy route is not replaced for one fast probe. */
 final class RouteQuality {
- static final long WINDOW=30*60*1000L,COOLDOWN=5*60*1000L;
+ static final long WINDOW=30*60*1000L,COOLDOWN=2*60*1000L;
  final SharedPreferences prefs;JSONObject data;String scope="",selected="",candidate="";long switched=0;int wins=0;
  RouteQuality(Context c){this(c,"route-quality");}
  RouteQuality(Context c,String store){prefs=c.getSharedPreferences(store,0);data=J.parse(prefs.getString("samples","{}"));scope=prefs.getString("scope","");selected=prefs.getString("selected","");candidate=prefs.getString("candidate","");switched=prefs.getLong("switched",0);wins=prefs.getInt("wins",0);}

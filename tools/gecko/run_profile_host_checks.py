@@ -57,6 +57,7 @@ def main():
     tests = ROOT / "tests/browser-runtime"
     groups = [
         ("NetworkHealthPolicyTest", ["NetworkHealthPolicy"]),
+        ("NetworkOptimizationPolicyTest", ["NetworkOptimizationPolicy"]),
         ("NetworkStatusPolicyTest", ["NetworkStatusPolicy"]),
         ("NetworkPoolIdentityTest", ["NetworkPoolIdentity"]),
         ("LatencyProbePolicyTest", ["LatencyProbePolicy"]),

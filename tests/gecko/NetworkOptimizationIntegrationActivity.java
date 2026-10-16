@@ -95,6 +95,15 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       check("Candidate probing leaves the live route unchanged",n.currentEntry.equals("Entry|slow")&&n.api("GET","/proxies/EntryChoice",null,3000).getString("now").equals("Entry|slow"));
       check("Both entry routes and the same fixed exit carry real requests",slow.connections>0&&fast.connections>0&&fixed.connections>=2);
       NetworkCatalog.put(report,"controlledWebsiteReadings",J.arr(first,alternative));
+      check("A faster permitted entrance reduces controlled website cold response time",alternative.getLong("firstMs")<first.getLong("firstMs"));
+      NativeNetwork.RouteProbe challenger=n.startupProbe("Entry|fast",n.names.indexOf("Entry|fast"),n.token);check("Challenger has actual native full-chain evidence",challenger.delay>0&&challenger.sample!=null);n.recordProbe(challenger.sample,System.currentTimeMillis());
+      int headBefore=site.headConnections.size();n.measureWebsiteCandidates(n.names);
+      check("Fresh website evidence avoids duplicate candidate HEAD requests",site.headConnections.size()==headBefore);
+      for(JSONObject sample:n.websiteSamples.values())NetworkCatalog.put(sample,"at",System.currentTimeMillis()-120001);
+      n.measureWebsiteCandidates(n.names);
+      check("Expired candidate evidence is renewed through real website requests",site.headConnections.size()>headBefore);
+      check("Budgeted website comparison keeps live entry and fixed exit",n.currentEntry.equals("Entry|slow")&&n.exitIp.equals("203.0.113.8"));
+
       site.status=403;JSONObject blocked=n.measureWebsite("Entry|slow");check("Site challenges are reported separately",blocked.getString("status").equals("restricted")&&n.ready);int before=n.websiteQuality.stats("Entry|slow",System.currentTimeMillis()).getInt("samples");n.measureWebsite("Entry|slow");check("Site challenges do not count as failed routes",n.websiteQuality.stats("Entry|slow",System.currentTimeMillis()).getInt("samples")==before);
       site.status=405;check("HEAD unsupported is explicit",n.measureWebsite("Entry|slow").getString("status").equals("unsupported"));site.status=302;site.redirectSeen=false;check("Website redirects are not followed",n.measureWebsite("Entry|slow").getInt("code")==302&&!site.redirectSeen);site.status=200;
       int dnsDelay=NetworkDns.measure(n,site.url("/dns"));check("DNS timing accepts a genuine matching A response",dnsDelay>0);check("DNS probe uses the current fixed exit",n.currentEntry.equals("Entry|slow")&&n.exitIp.equals("203.0.113.8"));

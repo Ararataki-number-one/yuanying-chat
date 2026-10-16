@@ -18,7 +18,7 @@ class NativeNetwork {
   static synchronized NativeNetwork get(Context c){if(instance==null)instance=new NativeNetwork(c);return instance;}
   final Context context;final SecretStore secrets;final Handler main=new Handler(Looper.getMainLooper());
   final ScheduledExecutorService worker=Executors.newSingleThreadScheduledExecutor();final ExecutorService probes=Executors.newFixedThreadPool(4);final ExecutorService closers=Executors.newFixedThreadPool(4);final ThreadLocal<NetworkWork> maintenance=new ThreadLocal<>();volatile NetworkWork backgroundWork;volatile long maintenanceGeneration=0,lastMaintenanceAt=0;
-  final NetworkTransportClient transport;final RouteQuality quality,websiteQuality;final NetworkDns dns;volatile JSONObject websiteResult=new JSONObject();volatile int webProbePort;int scanCursor;volatile String activeDns="";final TrafficMonitor traffic;volatile boolean measuringLatency=false;volatile long lastManualProbe=-5000;final File root;volatile boolean ready=false,starting=false;volatile String message="未连接",currentEntry="",exitIp="",observedExitIp="";volatile JSONArray results=new JSONArray();
+  final NetworkTransportClient transport;final RouteQuality quality,websiteQuality;final NetworkDns dns;volatile JSONObject websiteResult=new JSONObject();volatile int webProbePort;int scanCursor,optimizationRounds;final Map<String,JSONObject> websiteSamples=new HashMap<>();String websiteSampleEpoch="";volatile String activeDns="";final TrafficMonitor traffic;volatile boolean measuringLatency=false;volatile long lastManualProbe=-5000;final File root;volatile boolean ready=false,starting=false;volatile String message="未连接",currentEntry="",exitIp="",observedExitIp="";volatile JSONArray results=new JSONArray();
   volatile boolean recoveryBlocked=false;boolean restartQueued=false;final List<Callback> startWaiters=new ArrayList<>();volatile long lastVerified=0,lastObserved=0;
   java.lang.Process process;JSONObject settings;volatile int controllerPort,proxyPort;int failures;volatile String token="";String fingerprint="";List<String> names=new ArrayList<>();long lastScan=0;int totalEntries=0;volatile long startupDuration=0;volatile String startupPath="";volatile long startupBeganAt=0,coreDuration=0,providerDuration=0,exitCheckDuration=0;volatile boolean startupCached=false;
   static final String MEASUREMENT_PROFILE="unified-delay-trace-v2";volatile long lastProbeDuration=0,lastProbeDurationAt=0;volatile String lastProbeEntry="";
@@ -148,7 +148,7 @@ class NativeNetwork {
     report("正在恢复独立网络连接并核实固定出口…");verifyExit();ready=true;recoveryBlocked=false;startupPath="service-adopted";return true;
   }
   void startNow()throws Exception{
-    invalidateVerifiedRoute();long startupBegan=android.os.SystemClock.elapsedRealtime();startupBeganAt=startupBegan;startupDuration=coreDuration=providerDuration=0;startupPath="";
+    invalidateVerifiedRoute();long startupBegan=android.os.SystemClock.elapsedRealtime();startupBeganAt=startupBegan;startupDuration=coreDuration=providerDuration=0;startupPath="";optimizationRounds=0;
     settings=secrets.settings();validate(settings);if(transport==null)cleanupOwnedPid();token=UUID.randomUUID().toString()+UUID.randomUUID();controllerPort=freePort();proxyPort=freePort();webProbePort=freePort();
     fingerprint=exitIdentity(settings);
     String scope=fingerprint+":"+hash(settings.optString("subscriptionUrl"));quality.configure(MEASUREMENT_PROFILE+":"+scope);websiteQuality.configure("chatgpt-head-v1:"+scope);dns.configure(scope);activeDns=dns.primary(System.currentTimeMillis());byte[] cached=secrets.get("subscription");JSONObject meta=J.parse(new String(Optional.ofNullable(secrets.get("subscription-meta")).orElse(new byte[0]),StandardCharsets.UTF_8));
@@ -359,6 +359,17 @@ class NativeNetwork {
   boolean lowLatency(){return settings!=null&&"latency".equals(settings.optString("entryMode"));}
   boolean routeBusy(){return NetworkRegion.backgroundBusy(ChatSession.peek());}
   List<String> rankedRoutes(){long now=System.currentTimeMillis();List<String> ordered=quality.ranked(names,now);if(lowLatency())ordered.sort(Comparator.comparingDouble(name->{JSONObject q=websiteQuality.stats(name,now);return q.optInt("samples")>=3&&q.optInt("latest")>0?q.optDouble("score"):1000000+quality.stats(name,now).optDouble("score");}));return ordered;}
+  List<String> optimizationBatch(){
+    long now=System.currentTimeMillis();Map<String,Integer> samples=new HashMap<>(),delays=new HashMap<>();
+    for(String name:names){JSONObject q=quality.stats(name,now);samples.put(name,q.optInt("warmSamples"));delays.put(name,LatencyProbePolicy.comparable(q.optString("kind"),q.optInt("latest"))?q.optInt("warmLatest"):-1);}
+    return NetworkOptimizationPolicy.adaptiveBatch(names,rankedRoutes(),currentEntry,scanCursor++,samples,delays);
+  }
+  boolean websiteProbeDue(String entry,long now){JSONObject old=probeRouteKey().equals(websiteSampleEpoch)?websiteSamples.get(entry):null;return old==null||NetworkOptimizationPolicy.websiteDue(old.optString("status"),old.optLong("at"),now);}
+  void measureWebsiteCandidates(List<String> batch)throws Exception{
+    for(String name:NetworkOptimizationPolicy.websiteBatch(batch,quality.ranked(batch,System.currentTimeMillis()),currentEntry)){
+      maintenanceCheck();if(quality.stats(name,System.currentTimeMillis()).optInt("latest")>0&&websiteProbeDue(name,System.currentTimeMillis()))measureWebsite(name);
+    }
+  }
   String websiteUrl(){return "https://chatgpt.com/";}
   void closeWebsiteConnections()throws Exception{
     JSONArray connections=api("GET","/connections",null,3000).optJSONArray("connections");if(connections==null)return;
@@ -367,13 +378,14 @@ class NativeNetwork {
     }
   }
   JSONObject measureWebsite(String entry)throws Exception{
-    maintenanceCheck();if(!names.contains(entry))throw new IOException("入口不属于允许池");String epoch=token;
+    maintenanceCheck();if(!names.contains(entry))throw new IOException("入口不属于允许池");String epoch=token,route=probeRouteKey();
     // Only the probe's own tunnels are closed; the actual FixedExit never changes here.
     JSONObject value;try{closeWebsiteConnections();api("PUT","/proxies/WebProbeEntry",J.obj("name",entry),3000);value=WebsiteProbe.run(this,entry,webProbePort,websiteUrl());}catch(InterruptedIOException cancelled){maintenanceCheck();if(Thread.currentThread().isInterrupted())throw cancelled;value=J.obj("entry",entry,"at",System.currentTimeMillis(),"status","unreachable");}catch(IOException unavailable){value=J.obj("entry",entry,"at",System.currentTimeMillis(),"status","unreachable");}
-    maintenanceCheck();if(!epoch.equals(token))throw new InterruptedIOException("连接已变化");
+    maintenanceCheck();if(!epoch.equals(token)||!route.equals(probeRouteKey()))throw new InterruptedIOException("连接已变化");
     if("ok".equals(value.optString("status")))websiteQuality.record(entry,(int)value.optLong("firstMs"),value.optLong("at"));
     // A site-side challenge is inconclusive, rather than a failed proxy sample.
     else if("unreachable".equals(value.optString("status")))websiteQuality.record(entry,-1,value.optLong("at"));
+    if(!route.equals(websiteSampleEpoch)){websiteSamples.clear();websiteSampleEpoch=route;}websiteSamples.put(entry,value);
     if(entry.equals(currentEntry))websiteResult=value;return value;
   }
   void scanAndSelect(boolean force)throws Exception{scanSubset(new ArrayList<>(names),force,false);}
@@ -387,7 +399,7 @@ class NativeNetwork {
       }finally{for(Future<ProbeResult> task:tasks)if(!task.isDone())task.cancel(true);}
     }
     maintenanceCheck();results=measured;lastScan=System.currentTimeMillis();if(good==0&&background)return;if(good==0)throw new IOException("本轮入口的完整代理链均不可用；不会改为直连");
-    if(lowLatency()&&!force)for(String name:batch){maintenanceCheck();if(quality.stats(name,lastScan).optInt("latest")>0)measureWebsite(name);}
+    if(lowLatency()&&!force)measureWebsiteCandidates(batch);
     maintenanceCheck();String mode=settings==null?"":settings.optString("entryMode"),chosen=currentEntry;
     if(lowLatency()){
       JSONObject current=websiteQuality.stats(currentEntry,lastScan);boolean enough=current.optInt("samples")>=3&&current.optInt("latest")>0;
@@ -479,10 +491,12 @@ class NativeNetwork {
       }
       recordProbe(result,now);healthStatus="healthy";healthTargetCode=0;healthObservedAt=now;
       failures=0;if(now-lastVerified>=NetworkOptimizationPolicy.ACTIVE_INTERVAL)verifyExit();
-      if((lowLatency()||settings!=null&&settings.optString("entryMode").isEmpty())&&now-lastScan>=NetworkOptimizationPolicy.SCAN_INTERVAL&&!backgroundIdle()){
-        List<String> batch=NetworkOptimizationPolicy.batch(names,rankedRoutes(),currentEntry,scanCursor++);scanSubset(batch,false,true);
+      if((lowLatency()||settings!=null&&settings.optString("entryMode").isEmpty())&&now-lastScan>=NetworkOptimizationPolicy.scanInterval(optimizationRounds)&&!backgroundIdle()){
+        List<String> batch=optimizationBatch();scanSubset(batch,false,true);optimizationRounds++;
       }
-      maintenanceCheck();if(lowLatency()&&!backgroundIdle()){String server=dns.next(System.currentTimeMillis());if(!server.isEmpty()){int ms=-1;try{ms=NetworkDns.measure(this,server);}catch(IOException unavailable){maintenanceCheck();}maintenanceCheck();dns.record(server,ms,System.currentTimeMillis());}}
+      // Website hostnames are handed to the fixed SOCKS exit for remote resolution.
+      // Periodically benchmarking unrelated DoH services cannot tune that resolver;
+      // keep diagnostics on demand instead of competing with browser traffic.
     }catch(Exception e){if(maintenanceCancelled()&&!(e instanceof ExitMismatch)&&cancelledVerifiedRouteCurrent())return;if(!retainVerifiedRoute(e)){stopNow();if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException?e.getMessage():"内置网络已停止；请检查节点与固定出口");}}
   }
   void stop(){cancelMaintenance();worker.execute(()->stopNow());}

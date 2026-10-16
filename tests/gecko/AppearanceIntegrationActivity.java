@@ -14,7 +14,7 @@ public final class AppearanceIntegrationActivity extends ThemedActivity {
   final Handler handler=new Handler(Looper.getMainLooper());
   final String instance=java.util.UUID.randomUUID().toString();
   String token;LinearLayout root,settings;EditText draft;TextView sample;Button primary;
-  ReferenceUi.Modal modal;int configurations;
+  ReferenceUi.Modal modal;int configurations;JSONObject buildIdentity;
   @Override public void onCreate(Bundle state){super.onCreate(state);token=getIntent().getStringExtra("runToken");
     root=DesignUi.screen(this);settings=DesignUi.body(this,root,"外观测试",null);
     sample=DesignUi.text(this,"正文与辅助信息",16,DesignUi.TEXT);settings.addView(sample);
@@ -23,8 +23,9 @@ public final class AppearanceIntegrationActivity extends ThemedActivity {
     DesignUi.action(settings,"检查弹窗",false,()->{modal=new ReferenceUi.Modal(this,"弹窗配色");modal.note("网络与下载仍可继续");modal.buttons("关闭",modal::dismiss,"确定",modal::dismiss);modal.show();});
     setContentView(root);handler.post(write);
   }
+  JSONObject identity()throws Exception{if(buildIdentity==null)buildIdentity=IntegrationBuildIdentity.read(this);return buildIdentity;}
   final Runnable write=new Runnable(){public void run(){try{
-    JSONObject value=J.obj("runToken",token,"instance",instance,"buildIdentity",IntegrationBuildIdentity.read(AppearanceIntegrationActivity.this),"actualAndroidExecution",true,
+    JSONObject value=J.obj("runToken",token,"instance",instance,"buildIdentity",identity(),"actualAndroidExecution",true,
       "mode",AppAppearance.mode(),"dark",AppAppearance.dark(),"systemDark",(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES,
       "textColor",sample.getCurrentTextColor(),"cardColor",DesignUi.CARD,"backgroundColor",DesignUi.BG,"primaryText",primary.getCurrentTextColor(),
       "draft",draft.getText().toString(),"selectionStart",draft.getSelectionStart(),"selectionEnd",draft.getSelectionEnd(),"configurations",configurations,
