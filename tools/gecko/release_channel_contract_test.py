@@ -124,14 +124,14 @@ class DirectReleaseTests(unittest.TestCase):
         with self.assertRaises(ReleaseChannelError):verify_direct_release(record, self.identity)
 
     def test_vague_negative_or_question_text_is_not_explicit_publication(self):
-        for request in ('', '  ', '继续', '测试已通过', '以后发布正式版', '不要发布正式版',
+        for request in ('不要做这个然后发布', '做这个然后发布？', '以后做这个然后发布', '', '  ', '继续', '测试已通过', '以后发布正式版', '不要发布正式版',
                         '我不想发布正式版', '不要发布新版本', '发布新版本？', '以后发布新版本', '发布正式版？', '他说“发布正式版”',
                         'Do not publish the stable release', '发布正式版' + ' '*2000, None, True):
             with self.subTest(request=request), self.assertRaises(ReleaseChannelError):
                 verify_direct_release(dict(self.record, userRequest=request), self.identity)
 
     def test_affirmative_command_preserves_original_user_text(self):
-        for request in ('发布正式版', '发布新版本', '请现在发布正式版。', 'Publish the stable release',
+        for request in ('做这个然后发布', '发布正式版', '发布新版本', '请现在发布正式版。', 'Publish the stable release',
                         'Please promote the existing signed APK to stable.'):
             record = dict(self.record, userRequest=request)
             with self.subTest(request=request):

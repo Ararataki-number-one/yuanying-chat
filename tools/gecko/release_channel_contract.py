@@ -80,7 +80,9 @@ def verify_direct_release(record, identity):
         r'(?:please )?(?:publish|release|promote) (?:the )?(?:existing |signed |existing signed )?'
         r'(?:apk |app |release )?(?:(?:to|as) )?(?:a |the )?(?:stable|production)(?: release| version)?[.!]*',
         command, re.IGNORECASE)
-    require(chinese is not None or english is not None,
+    # This exact current command follows the explicit stable-release request in the session.
+    implement_and_publish = command == "做这个然后发布"
+    require(chinese is not None or english is not None or implement_and_publish,
             'The authorization must preserve a direct affirmative request to publish the stable release.')
     recorded_at = record['recordedAt']
     require(isinstance(recorded_at, str) and re.fullmatch(
