@@ -28,7 +28,13 @@ def signed(n):return n-(1<<32) if n>=1<<31 else n
 def snapshot(name):
  (out/('appearance-'+name+'.png')).write_bytes(adb('exec-out','screencap','-p',binary=True))
  (out/('appearance-'+name+'.xml')).write_text(ET.tostring(tree(),encoding='unicode'))
-def start():adb('shell','am','start','-W','-n',pkg+'/local.pocketchat.AppearanceIntegrationActivity','--es','runToken',token)
+def start():
+ # The persisted evidence file can still describe the previous process until
+ # the new Activity writes its first report. Require this launch's nonce before
+ # accepting its theme, instance, or persisted preference.
+ global token
+ token=uuid.uuid4().hex
+ adb('shell','am','start','-W','-n',pkg+'/local.pocketchat.AppearanceIntegrationActivity','--es','runToken',token)
 def theme(dark,mode):return wait(report,lambda r:r.get('runToken')==token and r.get('dark')==dark and r.get('mode')==mode)
 try:
  adb('shell','am','force-stop',pkg);adb('shell','pm','clear',pkg);adb('shell','cmd','uimode','night','no');start()
