@@ -8,9 +8,9 @@ import android.view.Gravity;
 import android.widget.Button;
 
 final class Ui {
-  static final int INK=0xff1e293b,MUTED=0xff64748b,PAPER=0xfff4f6fa,SOFT=0xffeaf1ff;
+  static int INK=0xff1e293b,MUTED=0xff64748b,PAPER=0xfff4f6fa,SOFT=0xffeaf1ff;
   static int dp(Context c,int n){return (int)(c.getResources().getDisplayMetrics().density*n+.5f);}
-  static GradientDrawable shape(Context c,int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(c,radius));return d;}
+  static GradientDrawable shape(Context c,int color,int radius){GradientDrawable d=new AppAppearance.Surface(color);d.setCornerRadius(dp(c,radius));return d;}
   static RippleDrawable ripple(Context c,int color,int radius){return new RippleDrawable(ColorStateList.valueOf(0x18000000),shape(c,color,radius),shape(c,Color.WHITE,radius));}
   static final class Icon extends Drawable {
     String name;final Paint p=new Paint(3);int color;
@@ -42,7 +42,7 @@ final class Ui {
         case "clipboard":canvas.drawRoundRect(new RectF(5,5,19,22),2,2,p);canvas.drawRoundRect(new RectF(8,2,16,7),2,2,p);break;
         case "search":canvas.drawCircle(10,10,6,p);canvas.drawLine(14.5f,14.5f,20,20,p);break;
         case "chat":canvas.drawRoundRect(new RectF(3,4,21,18),5,5,p);path.moveTo(6,18);path.lineTo(5,22);path.lineTo(11,18);canvas.drawPath(path,p);break;
-        case "settings":canvas.drawLine(4,7,20,7,p);canvas.drawLine(4,17,20,17,p);p.setStyle(Paint.Style.FILL);p.setColor(Color.WHITE);canvas.drawCircle(9,7,3,p);canvas.drawCircle(16,17,3,p);p.setStyle(Paint.Style.STROKE);p.setColor(color);canvas.drawCircle(9,7,3,p);canvas.drawCircle(16,17,3,p);break;
+        case "settings":canvas.drawLine(4,7,20,7,p);canvas.drawLine(4,17,20,17,p);p.setStyle(Paint.Style.FILL);p.setColor(DesignUi.CARD);canvas.drawCircle(9,7,3,p);canvas.drawCircle(16,17,3,p);p.setStyle(Paint.Style.STROKE);p.setColor(color);canvas.drawCircle(9,7,3,p);canvas.drawCircle(16,17,3,p);break;
       }canvas.restore();
     }
     public void setAlpha(int a){p.setAlpha(a);}public void setColorFilter(ColorFilter f){p.setColorFilter(f);}public int getOpacity(){return PixelFormat.TRANSLUCENT;}

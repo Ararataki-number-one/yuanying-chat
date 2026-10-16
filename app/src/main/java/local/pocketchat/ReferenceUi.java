@@ -12,14 +12,14 @@ import android.widget.*;
 
 /** Presentation tokens for the two reference pages; other workspaces keep their styles. */
 final class ReferenceUi {
-  static final int BG=DesignUi.BG,CHAT_BG=0xfff9fbfe,WHITE=0xffffffff,TEXT=DesignUi.TEXT,
+  static int BG=DesignUi.BG,CHAT_BG=0xfff9fbfe,WHITE=0xffffffff,TEXT=DesignUi.TEXT,
     MUTED=DesignUi.MUTED,LINE=DesignUi.LINE,BLUE=DesignUi.BLUE,BLUE_SOFT=0xffedf4ff,
     GREEN=DesignUi.GREEN,ORANGE=0xffa96c0a,RED=DesignUi.RED;
   static int dp(Context c,int n){return Ui.dp(c,n);}
   static TextView text(Context c,String value,int size,int color,boolean strong){TextView v=DesignUi.text(c,value,size,color);if(strong)v.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));return v;}
   static void single(TextView v){v.setSingleLine(true);v.setEllipsize(TextUtils.TruncateAt.END);}
   static Drawable surface(Context c,int color,int radius,int border){return DesignUi.surface(c,color,radius,border);}
-  static Button button(Context c,String label,boolean primary,Runnable run){Button b=DesignUi.button(c,label,primary,run);b.setTextColor(primary?WHITE:TEXT);b.setTextSize(14);b.setBackground(new RippleDrawable(ColorStateList.valueOf(primary?0x33ffffff:0x182468f2),surface(c,primary?BLUE:WHITE,12,primary?BLUE:LINE),null));return b;}
+  static Button button(Context c,String label,boolean primary,Runnable run){Button b=DesignUi.button(c,label,primary,run);b.setTextColor(primary?Color.WHITE:TEXT);b.setTextSize(14);b.setBackground(new RippleDrawable(ColorStateList.valueOf(primary?0x33ffffff:0x182468f2),primary?DesignUi.gradient(c):surface(c,WHITE,12,LINE),null));return b;}
   static Button small(Context c,String label,boolean primary,Runnable run){Button b=button(c,label,false,run);b.setTextSize(13);b.setTextColor(primary?BLUE:TEXT);b.setPadding(dp(c,13),0,dp(c,13),0);b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x182468f2),new InsetDrawable(surface(c,primary?BLUE_SOFT:WHITE,10,primary?0xffcfe0ff:LINE),0,dp(c,6),0,dp(c,6)),null));b.setPadding(dp(c,13),0,dp(c,13),0);return b;}
   static Button link(Context c,String label,Runnable run){Button b=button(c,label,false,run);b.setTextColor(BLUE);b.setPadding(dp(c,4),0,dp(c,4),0);b.setBackground(Ui.ripple(c,Color.TRANSPARENT,9));return b;}
   static Button more(Context c,Runnable run){Button b=link(c,"⋮",run);b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,24);b.setTextColor(MUTED);b.setContentDescription("更多");return b;}
@@ -55,7 +55,7 @@ final class ReferenceUi {
     });}root.requestApplyInsets();
   }
 
-  static final class Modal extends Dialog {
+  static final class Modal extends ThemedDialog {
     final Activity a;final LinearLayout root,body,footer,head;final ScrollView scroll;Runnable cancel=this::dismiss;
     Modal(Activity a,String title){super(a);this.a=a;root=DesignUi.column(a);root.setPadding(dp(a,16),dp(a,12),dp(a,16),dp(a,16));root.setBackground(surface(a,WHITE,18,WHITE));head=DesignUi.row(a);TextView heading=text(a,title,18,TEXT,true);heading.setMaxLines(2);heading.setGravity(Gravity.CENTER_VERTICAL);heading.setMinimumHeight(dp(a,48));heading.setContentDescription(title);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));Button close=link(a,"×",()->cancel.run());close.setContentDescription("关闭"+title);close.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,24);close.setTextColor(MUTED);head.addView(close,new LinearLayout.LayoutParams(dp(a,48),dp(a,48)));root.addView(head);body=DesignUi.column(a);scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,-2));footer=DesignUi.row(a);footer.setPadding(0,dp(a,12),0,0);root.addView(footer);setContentView(root);setCanceledOnTouchOutside(false);getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));getWindow().setDimAmount(.38f);getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);getWindow().setGravity(Gravity.CENTER);getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);if(Build.VERSION.SDK_INT>=30)root.setOnApplyWindowInsetsListener((v,in)->{v.post(this::resize);return in;});}
     void buttons(String secondary,Runnable back,String primary,Runnable save){

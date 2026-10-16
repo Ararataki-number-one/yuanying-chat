@@ -4,13 +4,13 @@ import android.app.*;import android.content.*;import android.content.res.ColorSt
 
 /** Native design system. Website content and network/identity policies are not restyled here. */
 final class DesignUi {
-  static final int BG=0xfff4f7fb,CARD=0xffffffff,FIELD=0xfff8fafc,LINE=0xffe0e7f0,TEXT=0xff172033,MUTED=0xff64748b,BLUE=0xff2468f2,CYAN=0xff2468f2,PURPLE=0xff2468f2,GREEN=0xff16845b,RED=0xffc93747;
+  static int BG=0xfff4f7fb,CARD=0xffffffff,FIELD=0xfff8fafc,LINE=0xffe0e7f0,TEXT=0xff172033,MUTED=0xff64748b,BLUE=0xff2468f2,CYAN=0xff2468f2,PURPLE=0xff2468f2,GREEN=0xff16845b,RED=0xffc93747;
   static final String[] NAV={"会话","环境","下载","网络","设置"},GLYPHS={"chat","window","download","globe","settings"};
   static int dp(Context c,int n){return Ui.dp(c,n);}
-  static TextView text(Context c,String value,int size,int color){TextView v=new TextView(c);v.setText(value);v.setTextSize(size);v.setTextColor(color);v.setIncludeFontPadding(false);v.setLineSpacing(dp(c,3),1);return v;}
+  static TextView text(Context c,String value,int size,int color){TextView v=new TextView(c);v.setText(value);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));v.setIncludeFontPadding(false);v.setLineSpacing(dp(c,3),1);return v;}
   static GradientDrawable surface(Context c,int color,int radius,int stroke){GradientDrawable d=Ui.shape(c,color,radius);d.setStroke(dp(c,1),stroke);return d;}
-  static GradientDrawable gradient(Context c){GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{BLUE,BLUE});d.setCornerRadius(dp(c,12));d.setStroke(dp(c,1),CYAN);return d;}
-  static void chrome(Activity a){a.getWindow().setStatusBarColor(BG);a.getWindow().setNavigationBarColor(BG);a.getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | (Build.VERSION.SDK_INT>=26?View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR:0));}
+  static GradientDrawable gradient(Context c){GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xff2468f2,0xff2468f2});d.setCornerRadius(dp(c,12));d.setStroke(dp(c,1),0xff2468f2);return d;}
+  static void chrome(Activity a){AppAppearance.window(a.getWindow());}
   static LinearLayout column(Context c){LinearLayout v=new LinearLayout(c);v.setOrientation(LinearLayout.VERTICAL);return v;}
   static LinearLayout row(Context c){LinearLayout v=new LinearLayout(c);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
   static LinearLayout card(Context c){LinearLayout box=column(c);box.setPadding(dp(c,14),dp(c,10),dp(c,14),dp(c,8));box.setBackground(surface(c,CARD,14,LINE));return box;}
@@ -39,7 +39,7 @@ final class DesignUi {
     Runnable close=()->{
       if(!dirty.getAsBoolean()){dialog.dismiss();return;}
       if(prompt[0]!=null&&prompt[0].isShowing())return;
-      prompt[0]=new AlertDialog.Builder(a).setTitle("保留正在填写的内容？")
+      prompt[0]=AppAppearance.dialog(a).setTitle("保留正在填写的内容？")
         .setMessage("继续编辑可保留本次填写；放弃修改后会退出此表单。")
         .setPositiveButton("继续编辑",null).setNegativeButton("放弃修改",(d,w)->dialog.dismiss()).show();
       prompt[0].getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(RED);
@@ -99,7 +99,7 @@ final class DesignUi {
     row.addView(label,new LinearLayout.LayoutParams(0,-2,1));Button change=button(a,"切换",false,()->a.startActivity(new Intent(a,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
     change.setTextSize(12);row.addView(change,new LinearLayout.LayoutParams(dp(a,64),dp(a,48)));box.addView(row);
   }
-  static AlertDialog message(Activity a,String title,String text){return new AlertDialog.Builder(a).setTitle(title).setMessage(text).setPositiveButton("知道了",null).show();}
+  static AlertDialog message(Activity a,String title,String text){return AppAppearance.dialog(a).setTitle(title).setMessage(text).setPositiveButton("知道了",null).show();}
   static final class Stars extends Drawable {
     static final List<java.lang.ref.WeakReference<Stars>> instances=new ArrayList<>();
     static final Handler main=new Handler(Looper.getMainLooper());

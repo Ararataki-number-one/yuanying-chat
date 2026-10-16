@@ -12,7 +12,7 @@ import java.io.*;
 import java.util.concurrent.*;
 
 /** Local SAF preview: no network requests, scripts, or public file paths. */
-public class AttachmentPreviewActivity extends Activity {
+public class AttachmentPreviewActivity extends ThemedActivity {
   @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}
   final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler(Looper.getMainLooper());
   ZoomImage image;TextView info;Button previous,next;PdfRenderer pdf;ParcelFileDescriptor fd;File scratch;int page=0,total=0;boolean busy=false,closed=false;

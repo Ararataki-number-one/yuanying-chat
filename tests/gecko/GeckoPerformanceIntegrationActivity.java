@@ -711,7 +711,25 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       session.pending=null;session.prefs.edit().remove("pending").commit();success();
     });
   });}
-  void success(){finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"actualInputImeSettled",inputImeSettled,"actualSingleInputBurst",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"baselineSource",BASELINE,"checkCount",checkCount,"directDeferredSamples",directDeferredSamples,"nativeDeferredSamples",nativeDeferredSamples,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
+  boolean appearanceChecked;
+  void appearanceRegression(){
+    final GeckoSession original=session.web.current;final long epoch=session.navigationEpoch;final String oldMode=AppAppearance.mode();
+    final int loads=((FixtureView)session.web).quietLoads,stops=((FixtureView)session.web).quietStops;
+    String snapshot="({draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,url:location.href,marker:window.__appearanceDocument,dark:matchMedia('(prefers-color-scheme: dark)').matches})";
+    evaluate("window.__appearanceDocument='appearance-document-'+Math.random();"+snapshot,false,before->{
+      AppAppearance.choose(this,"dark");handler.postDelayed(()->evaluate(snapshot,false,night->{
+        check("Dark appearance applies the official Gecko runtime preference",session.web.runtime.getSettings().getPreferredColorScheme()==GeckoRuntimeSettings.COLOR_SCHEME_DARK);
+        check("Dark appearance preserves actual document login draft and URL",night.optString("draft").equals(before.optString("draft"))&&night.optString("cookie").equals(before.optString("cookie"))&&night.optString("url").equals(before.optString("url"))&&night.optString("marker").equals(before.optString("marker")));
+        AppAppearance.choose(this,"light");handler.postDelayed(()->evaluate(snapshot,false,day->{
+          check("Light appearance applies the official Gecko runtime preference",session.web.runtime.getSettings().getPreferredColorScheme()==GeckoRuntimeSettings.COLOR_SCHEME_LIGHT);
+          check("Theme roundtrip preserves the same browser session and navigation epoch",session.web.current==original&&session.navigationEpoch==epoch&&((FixtureView)session.web).quietLoads==loads&&((FixtureView)session.web).quietStops==stops);
+          check("Light appearance preserves actual document login and unsent draft",day.optString("draft").equals(before.optString("draft"))&&day.optString("cookie").equals(before.optString("cookie"))&&day.optString("marker").equals(before.optString("marker")));
+          AppAppearance.choose(this,oldMode);success();
+        }),300);
+      }),300);
+    });
+  }
+  void success(){if(!appearanceChecked){appearanceChecked=true;appearanceRegression();return;}finished=true;event("report",J.obj("status","passed","actualAndroidExecution",true,"actualGeckoExecution",true,"actualAndroidTouchExecution",true,"actualGeckoBindingRegressionExecution",true,"actualAppearanceRoundtrip",true,"actualInputImeSettled",inputImeSettled,"actualSingleInputBurst",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"baselineSource",BASELINE,"checkCount",checkCount,"directDeferredSamples",directDeferredSamples,"nativeDeferredSamples",nativeDeferredSamples,"scope","Actual GeckoView 157, real extension-to-native payload and DOM work; actual Android scroll and keyboard input; 240 historical messages and 105k current reply. Subsequent same-route DOM restoration, exact-identity SPA allocation, website socket faults and native completion-stability regression; no real account or external site. RAF and Android Choreographer timings are descriptive, no cross-device FPS threshold.","measurements",J.arr(baselineMetrics,currentMetrics)));}
   String telemetryInstall(){return "(()=>{const data={readChars:0,readCalls:0,clones:0,started:performance.now(),rafCount:0,rafSum:0,rafMax:0,rafOver32:0,previous:0};"+
     "for(const [prototype,key] of [[HTMLElement.prototype,'innerText'],[Node.prototype,'textContent'],[Node.prototype,'nodeValue']]){const original=Object.getOwnPropertyDescriptor(prototype,key);if(original?.get&&original.configurable)Object.defineProperty(prototype,key,{...original,get(){const value=original.get.call(this);data.readCalls++;if(typeof value==='string')data.readChars+=value.length;return value;}});}"+
     "const clone=Node.prototype.cloneNode;Node.prototype.cloneNode=function(...args){data.clones++;return clone.apply(this,args);};"+

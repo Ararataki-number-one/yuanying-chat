@@ -21,14 +21,14 @@ final class EnvironmentEditorUi {
   static void show(MainActivity a){editTab(a,BASIC);}
   static void editTab(MainActivity a,int tab){
     JSONObject draft=J.parse(ProfileCatalog.get(a).item(Profiles.slot(a)).optString("draft"));
-    if(draft.length()>0)new AlertDialog.Builder(a).setTitle("有未应用的环境草稿").setMessage("继续编辑可恢复上次填写的内容；草稿不会改变运行中的环境。")
+    if(draft.length()>0)AppAppearance.dialog(a).setTitle("有未应用的环境草稿").setMessage("继续编辑可恢复上次填写的内容；草稿不会改变运行中的环境。")
       .setPositiveButton("继续草稿",(d,w)->edit(a,draft,tab)).setNeutralButton("编辑已保存配置",(d,w)->edit(a,current(a),tab)).setNegativeButton("取消",(d,w)->returnToList(a)).setOnCancelListener(d->returnToList(a)).show();
     else edit(a,current(a),tab);
   }
   static void edit(MainActivity a,JSONObject value){edit(a,value,BASIC);}
   static void edit(MainActivity a,JSONObject initial,int tab){
     // Old drafts may lack newly introduced metadata; inherit its current value.
-    JSONObject existing=current(a);final Runnable[] exit={null};final boolean[] saving={false};final JSONObject[] browserBaseline={null};final Dialog dialog=new Dialog(a){@Override public void onBackPressed(){if(exit[0]!=null)exit[0].run();else super.onBackPressed();}};
+    JSONObject existing=current(a);final Runnable[] exit={null};final boolean[] saving={false};final JSONObject[] browserBaseline={null};final Dialog dialog=new ThemedDialog(a){@Override public void onBackPressed(){if(exit[0]!=null)exit[0].run();else super.onBackPressed();}};
     LinearLayout root=DesignUi.screen(a),outer=DesignUi.body(a,root,"编辑 · "+Profiles.display(a,Profiles.slot(a)),()->{if(exit[0]!=null)exit[0].run();});
     LinearLayout tabs=DesignUi.row(a);outer.addView(tabs);
     LinearLayout basic=DesignUi.column(a),network=DesignUi.column(a),browser=DesignUi.column(a),preferences=DesignUi.column(a);
@@ -96,7 +96,7 @@ final class EnvironmentEditorUi {
       if(saving[0]){a.status("正在保存环境，请稍候");return;}
       JSONObject value=read.get();boolean dirty=false;java.util.Iterator<String> keys=value.keys();while(keys.hasNext()){String key=keys.next();if(!java.util.Objects.equals(value.opt(key),baseline.opt(key))){dirty=true;break;}}
       if(!dirty){dialog.dismiss();return;}
-      AlertDialog prompt=new AlertDialog.Builder(a).setTitle("退出前保留修改？").setMessage("草稿只保存填写内容，不改变运行中的环境。")
+      AlertDialog prompt=AppAppearance.dialog(a).setTitle("退出前保留修改？").setMessage("草稿只保存填写内容，不改变运行中的环境。")
         .setPositiveButton("存草稿并退出",(d,w)->{ProfileCatalog.get(a).draft(Profiles.slot(a),value);dialog.dismiss();})
         .setNeutralButton("放弃本次修改",(d,w)->dialog.dismiss()).setNegativeButton("继续编辑",null).show();
       prompt.getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(DesignUi.RED);
@@ -124,7 +124,7 @@ final class EnvironmentEditorUi {
       LinearLayout.LayoutParams p=primaryRow?new LinearLayout.LayoutParams(-1,a.dp(48)):new LinearLayout.LayoutParams(0,a.dp(48),1);
       p.setMargins(a.dp(3),primaryRow?a.dp(8):0,a.dp(3),0);(primaryRow?actions:secondary).addView(button,p);actionIndex++;
     }
-    root.addView(actions);dialog.setOnDismissListener(d->returnToList(a));dialog.setCanceledOnTouchOutside(false);dialog.setContentView(root);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);dialog.getWindow().setStatusBarColor(DesignUi.BG);dialog.getWindow().setNavigationBarColor(DesignUi.BG);dialog.getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|(Build.VERSION.SDK_INT>=26?android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR:0));dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+    root.addView(actions);dialog.setOnDismissListener(d->returnToList(a));dialog.setCanceledOnTouchOutside(false);dialog.setContentView(root);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);dialog.getWindow().setStatusBarColor(DesignUi.BG);dialog.getWindow().setNavigationBarColor(DesignUi.BG);AppAppearance.shown(dialog);dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
   }
   static void updateTabs(MainActivity a,LinearLayout tabs,FrameLayoutHost host,int selected){int n=Math.max(0,Math.min(SECTIONS.length-1,selected));host.page(n);tabs.removeAllViews();tabs.addView(DesignUi.tabs(a,SECTIONS,n,i->updateTabs(a,tabs,host,i)),new LinearLayout.LayoutParams(-1,-2));}
   static boolean apply(MainActivity a,JSONObject value,EditText name){
@@ -181,7 +181,7 @@ final class EnvironmentEditorUi {
   }
   static void storage(MainActivity a){
     JSONObject scan=AppPrefs.temporaryCache(a,System.currentTimeMillis(),false);
-    new AlertDialog.Builder(a).setTitle("数据与存储 · "+Profiles.display(a,Profiles.slot(a))).setMessage("下载位置："+DefaultDownloads.description(a)+"\n\n可清理旧临时文件："+scan.optInt("count")+" 个 / "+NetworkMetricsUi.amount(scan.optLong("bytes"))+"\n任务引用的中间文件："+scan.optInt("protected")+" 个\n\n清理仅处理超过 30 天且未被任务引用的中间文件。聊天、草稿、登录与已保存文件保留。").setPositiveButton("清理旧临时文件",(d,w)->{JSONObject result=AppPrefs.temporaryCache(a,System.currentTimeMillis(),true);a.status("已清理 "+result.optInt("removed")+" 个旧临时文件");}).setNegativeButton("关闭",null).show();
+    AppAppearance.dialog(a).setTitle("数据与存储 · "+Profiles.display(a,Profiles.slot(a))).setMessage("下载位置："+DefaultDownloads.description(a)+"\n\n可清理旧临时文件："+scan.optInt("count")+" 个 / "+NetworkMetricsUi.amount(scan.optLong("bytes"))+"\n任务引用的中间文件："+scan.optInt("protected")+" 个\n\n清理仅处理超过 30 天且未被任务引用的中间文件。聊天、草稿、登录与已保存文件保留。").setPositiveButton("清理旧临时文件",(d,w)->{JSONObject result=AppPrefs.temporaryCache(a,System.currentTimeMillis(),true);a.status("已清理 "+result.optInt("removed")+" 个旧临时文件");}).setNegativeButton("关闭",null).show();
   }
   static final class FrameLayoutHost extends android.widget.FrameLayout {
     final LinearLayout[] pages;FrameLayoutHost(MainActivity a,LinearLayout... views){super(a);pages=views;for(LinearLayout v:views)addView(v);}

@@ -9,10 +9,10 @@ import java.util.*;
 import org.json.*;
 
 /** A foreground maintenance process owns deletion after all target writers have exited. */
-public final class EnvironmentDeleteActivity extends Activity {
+public final class EnvironmentDeleteActivity extends ThemedActivity {
   boolean working;int slot;TextView label;
   @Override public void onCreate(Bundle state){super.onCreate(state);slot=getIntent().getIntExtra("slot",-1);if(slot<0||slot>=Profiles.MAX){finish();return;}LinearLayout root=DesignUi.screen(this);LinearLayout body=DesignUi.body(this,root,"删除环境",null);label=DesignUi.text(this,"正在清理环境数据…",16,DesignUi.TEXT);body.addView(label);setContentView(root);run();}
-  void run(){if(working)return;working=true;new Thread(()->{String failure="";try{remove(this,slot);}catch(Exception e){failure="清理尚未完成，环境已暂停。请重试，不会清理其他环境。";}String error=failure;runOnUiThread(()->{working=false;if(error.isEmpty()){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));finish();}else{label.setText(error);new AlertDialog.Builder(this).setTitle("删除未完成").setMessage(error).setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->{startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));finish();}).show();}});},"environment-delete").start();}
+  void run(){if(working)return;working=true;new Thread(()->{String failure="";try{remove(this,slot);}catch(Exception e){failure="清理尚未完成，环境已暂停。请重试，不会清理其他环境。";}String error=failure;runOnUiThread(()->{working=false;if(error.isEmpty()){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));finish();}else{label.setText(error);AppAppearance.dialog(this).setTitle("删除未完成").setMessage(error).setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->{startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));finish();}).show();}});},"environment-delete").start();}
   @Override public void onBackPressed(){if(!working)super.onBackPressed();}
   static void remove(Context c,int slot)throws Exception{
     EnvironmentResetActivity.verifyRoots(c,slot);

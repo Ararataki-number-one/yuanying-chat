@@ -6,7 +6,7 @@ import android.os.Bundle;
 import android.widget.LinearLayout;
 
 /** Opening app-wide settings from the manager requires no WebView or account session. */
-public class AppSettingsActivity extends Activity {
+public class AppSettingsActivity extends ThemedActivity {
   LinearLayout box;
   @Override public void onCreate(Bundle state){
     super.onCreate(state);LinearLayout root=DesignUi.screen(this);box=DesignUi.body(this,root,"应用设置",()->finish());

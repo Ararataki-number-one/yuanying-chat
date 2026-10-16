@@ -30,7 +30,7 @@ final class FingerprintTemplateUi {
     DesignUi.action(box,"模板说明与状态详情",false,()->showDetails(a,edited));
     TextView result=a.label("",13,Ui.MUTED);box.addView(result);
     ScrollView scroll=new ScrollView(a);scroll.addView(box);
-    AlertDialog dialog=new AlertDialog.Builder(a).setTitle("环境模板").setView(scroll).setPositiveButton("保存模板",null).setNeutralButton("查看环境自检",(d,w)->EnvironmentAuditUi.show(a)).setNegativeButton("关闭",null).create();
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("环境模板").setView(scroll).setPositiveButton("保存模板",null).setNeutralButton("查看环境自检",(d,w)->EnvironmentAuditUi.show(a)).setNegativeButton("关闭",null).create();
     dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
       String template=ids[choices.getSelectedItemPosition()];int selectedIndex=language.getSelectedItemPosition();
       String[] locales={"","","zh-CN","en-US","ja-JP"};String selected=locales[selectedIndex];
@@ -86,7 +86,7 @@ final class FingerprintTemplateUi {
     edited.environmentIo.execute(()->{EnvironmentSpec loaded=null;try{loaded=new EnvironmentSpecRepository(edited.context).load();}catch(Exception ignored){}EnvironmentSpec latest=loaded;
       edited.handler.post(()->{if(a.isDestroyed()||a.isFinishing()||edited.deleted||a.session!=edited)return;
         TextView text=a.label(details(edited,latest),14,Ui.INK);text.setLineSpacing(a.dp(4),1);text.setPadding(a.dp(18),a.dp(8),a.dp(18),a.dp(12));ScrollView scroll=new ScrollView(a);scroll.addView(text);
-        new AlertDialog.Builder(a).setTitle("模板说明与状态详情").setView(scroll).setPositiveButton("关闭",null).show();
+        AppAppearance.dialog(a).setTitle("模板说明与状态详情").setView(scroll).setPositiveButton("关闭",null).show();
       });
     });
   }

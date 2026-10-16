@@ -64,7 +64,7 @@ final class AppHub {
   void note(LinearLayout box,String text){DesignUi.note(box,text);}
   void feedback(String message,boolean error){
     if(page==CHAT)return;feedbackText.setText(message);feedbackText.setTextColor(error?DesignUi.RED:DesignUi.TEXT);
-    feedbackBar.setBackgroundColor(error?0xfffff1f2:0xffedf5ff);feedbackBar.setVisibility(View.VISIBLE);
+    feedbackBar.setBackgroundColor(AppAppearance.color(error?0xfffff1f2:0xffedf5ff));feedbackBar.setVisibility(View.VISIBLE);
   }
   void refresh(){if(page==DOWNLOADS)downloads();if(page==SETTINGS)settings();if(page==NETWORK)networkWorkspace.show(networkTab);}
   void downloads(){

@@ -3,7 +3,7 @@ package local.pocketchat;
 import android.app.*;import android.content.*;import android.os.*;import android.widget.*;
 
 /** Cross-window downloads stay native and preserve the current filter and scroll. */
-public class DownloadCenterActivity extends Activity {
+public class DownloadCenterActivity extends ThemedActivity {
   LinearLayout root,box;TextView problem;SavedFileActions actions;DesignDownloads.Controller downloadsView;int filter;
   final Handler handler=new Handler(Looper.getMainLooper());
   final Runnable tick=()->{refresh();handler.postDelayed(this.tick,2000);};

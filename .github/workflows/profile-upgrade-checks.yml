@@ -26,6 +26,9 @@ jobs:
           set -euo pipefail
           export PATH="$JAVA_HOME_17_X64/bin:$PATH"
           mkdir -p work/profile-host
+          javac -d work/profile-host/appearance app/src/main/java/local/pocketchat/AppearanceColors.java tests/AppearanceColorsTest.java
+          java -cp work/profile-host/appearance local.pocketchat.AppearanceColorsTest
+          node tests/appearance_web_test.js
           curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar -o work/profile-host/json.jar
           echo '3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  work/profile-host/json.jar' | sha256sum -c -
           npm install --prefix work/resource-observer --ignore-scripts --no-audit --no-fund jsdom@26.1.0

@@ -12,7 +12,7 @@ final class DesignSettingsUi {
 
     DesignUi.section(box,"启动与界面","");
     group(a,box,"默认环境与启动入口","默认："+Profiles.display(a,AppSettings.defaultSlot(a)),"window",()->defaultEntry(a,refresh));
-    group(a,box,"界面与品牌页","浅色管理界面 · 蓝色重点操作","brand",()->appearance(a));
+    group(a,box,"白天与黑夜",AppAppearance.label()+" · 应用与网页外观","brand",()->appearance(a,refresh));
     DesignUi.section(box,"提醒与后台", "");
     group(a,box,"后台完成提醒",AppSettings.backgroundCompletionNotice(a)?"离开应用后提醒回复和下载完成":"已关闭 · 使用时保持安静","chat",()->completionReminders(a,refresh));
     group(a,box,"通知与电池设置","通知提醒与后台运行权限","chat",()->FeatureDialogs.backgroundSettings(a));
@@ -29,7 +29,7 @@ final class DesignSettingsUi {
     Switch enabled=new Switch(a);enabled.setText("离开应用后提醒完成");enabled.setTextSize(14);enabled.setTextColor(DesignUi.TEXT);enabled.setChecked(AppSettings.backgroundCompletionNotice(a));box.addView(enabled);
     DesignUi.note(box,"回复和文件下载完成后提醒。使用应用时保持安静；系统仍可能显示后台服务的静默提示。");
     enabled.setOnCheckedChangeListener((button,value)->{AppSettings.put(a,"backgroundCompletionNotice",String.valueOf(value));if(value){ChatService.channels(a);if(android.os.Build.VERSION.SDK_INT>=33&&a.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)a.requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},91);}refresh.run();});
-    new AlertDialog.Builder(a).setTitle("后台完成提醒").setView(box).setPositiveButton("完成",null).show();
+    AppAppearance.dialog(a).setTitle("后台完成提醒").setView(box).setPositiveButton("完成",null).show();
   }
   static void defaultEntry(Activity a,Runnable refresh){
     JSONArray rows=ProfileCatalog.get(a).list();List<Integer> ids=new ArrayList<>();List<String> titles=new ArrayList<>();
@@ -38,12 +38,18 @@ final class DesignSettingsUi {
     spinner.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,titles));spinner.setSelection(Math.max(0,ids.indexOf(AppSettings.defaultSlot(a))));box.addView(spinner);
     CheckBox direct=new CheckBox(a);direct.setText("启动时直接进入默认环境的原网页");direct.setChecked(AppSettings.bool(a,"startupDirect",true));box.addView(direct);
     DesignUi.note(box,"关闭后先进入环境管理。底部“会话”会回到正在使用的环境。");
-    AlertDialog dialog=new AlertDialog.Builder(a).setTitle("默认环境与启动入口").setView(box).setPositiveButton("保存",(d,w)->{if(spinner.getSelectedItemPosition()<0)return;AppSettings.defaultSlot(a,ids.get(spinner.getSelectedItemPosition()));AppSettings.put(a,"startupDirect",String.valueOf(direct.isChecked()));refresh.run();if(a instanceof MainActivity&&((MainActivity)a).designChrome!=null)((MainActivity)a).designChrome.update();}).setNegativeButton("取消",null).show();
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("默认环境与启动入口").setView(box).setPositiveButton("保存",(d,w)->{if(spinner.getSelectedItemPosition()<0)return;AppSettings.defaultSlot(a,ids.get(spinner.getSelectedItemPosition()));AppSettings.put(a,"startupDirect",String.valueOf(direct.isChecked()));refresh.run();if(a instanceof MainActivity&&((MainActivity)a).designChrome!=null)((MainActivity)a).designChrome.update();}).setNegativeButton("取消",null).show();
   }
-  static void appearance(Activity a){
-    LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));DesignUi.field(box,"管理界面","浅色背景 · 清晰分组 · 蓝色操作按钮");
-    DesignUi.note(box,"ChatGPT 原网页继续使用网站自身的外观设置。");
-    box.addView(DesignUi.button(a,"查看品牌启动页",false,()->a.startActivity(new android.content.Intent(a,BrandLaunchActivity.class).putExtra("previewBrand",true))));
-    new AlertDialog.Builder(a).setTitle("界面与品牌页").setView(box).setPositiveButton("关闭",null).show();
+  static void appearance(Activity a,Runnable refresh){
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,"白天与黑夜");
+    RadioGroup choices=new RadioGroup(a);d.body.addView(choices);
+    for(int i=0;i<AppAppearance.MODES.length;i++){
+      RadioButton choice=new RadioButton(a);choice.setId(android.view.View.generateViewId());choice.setText(AppAppearance.LABELS[i]);choice.setTag(AppAppearance.MODES[i]);choice.setTextSize(15);choice.setTextColor(DesignUi.TEXT);choice.setMinHeight(DesignUi.dp(a,48));choices.addView(choice);
+      if(AppAppearance.mode().equals(AppAppearance.MODES[i]))choices.check(choice.getId());
+    }
+    d.note("跟随手机的浅色或深色设置，系统定时切换时也会自动调整。网页使用 ChatGPT 自带的浅色／深色配色，保留输入，不重新加载。");
+    choices.setOnCheckedChangeListener((group,id)->{RadioButton choice=group.findViewById(id);if(choice!=null){AppAppearance.choose(a,String.valueOf(choice.getTag()));refresh.run();}});
+    DesignUi.action(d.body,"查看品牌启动页",false,()->{d.dismiss();a.startActivity(new android.content.Intent(a,BrandLaunchActivity.class).putExtra("previewBrand",true));});
+    d.buttons("",()->{},"完成",d::dismiss);d.show();
   }
 }

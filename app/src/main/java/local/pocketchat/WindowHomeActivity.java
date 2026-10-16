@@ -10,7 +10,7 @@ import org.json.*;
 import java.util.*;
 
 /** Native environment workspace. Metadata management never needs an account session. */
-public class WindowHomeActivity extends Activity {
+public class WindowHomeActivity extends ThemedActivity {
   LinearLayout root,cards,filters,selectionBar;
   TextView count,selectionCount,problem;
   EditText search;
@@ -125,7 +125,7 @@ public class WindowHomeActivity extends Activity {
     groupButton=DesignUi.button(this,(selectedGroup==null?"全部分组":selectedGroup.isEmpty()?"未分组":selectedGroup)+" ▾",false,this::chooseGroup);
     sortButton=DesignUi.button(this,new String[]{"编号排序 ▾","最近使用 ▾","名称排序 ▾"}[sort],false,this::chooseSort);
     choices.addView(groupButton,new LinearLayout.LayoutParams(-1,dp(48)));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(48));p.topMargin=dp(8);choices.addView(sortButton,p);
-    new AlertDialog.Builder(this).setTitle("筛选与排序").setView(choices).setPositiveButton("完成",null).show();
+    AppAppearance.dialog(this).setTitle("筛选与排序").setView(choices).setPositiveButton("完成",null).show();
   }
   void chooseGroup(){
     List<String> groups=new ArrayList<>();groups.add(null);groups.add("");
@@ -136,13 +136,13 @@ public class WindowHomeActivity extends Activity {
     }
     String[] names=new String[groups.size()];
     for(int i=0;i<names.length;i++)names[i]=groups.get(i)==null?"全部分组":groups.get(i).isEmpty()?"未分组":groups.get(i);
-    new AlertDialog.Builder(this).setTitle("按分组查看")
+    AppAppearance.dialog(this).setTitle("按分组查看")
       .setSingleChoiceItems(names,groups.indexOf(selectedGroup),(d,n)->{
         selectedGroup=groups.get(n);d.dismiss();lastSignature="";refresh();
       }).setNegativeButton("取消",null).show();
   }
   void chooseSort(){
-    new AlertDialog.Builder(this).setTitle("环境排序")
+    AppAppearance.dialog(this).setTitle("环境排序")
       .setSingleChoiceItems(new String[]{"编号排序","最近使用","名称排序"},sort,(d,n)->{
         sort=n;d.dismiss();lastSignature="";refresh();
       }).setNegativeButton("取消",null).show();
@@ -301,9 +301,9 @@ public class WindowHomeActivity extends Activity {
       JSONObject row=rows.optJSONObject(i);String value=row.optString("group");
       if(row.optBoolean("created")&&!value.isEmpty()&&!groups.contains(value))groups.add(value);
     }
-    if(!groups.isEmpty())DesignUi.action(box,"选择已有分组",false,()->new AlertDialog.Builder(this).setTitle("已有分组")
+    if(!groups.isEmpty())DesignUi.action(box,"选择已有分组",false,()->AppAppearance.dialog(this).setTitle("已有分组")
       .setItems(groups.toArray(new String[0]),(d,n)->group.setText(groups.get(n))).setNegativeButton("取消",null).show());
-    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("批量分组").setView(box)
+    AlertDialog dialog=AppAppearance.dialog(this).setTitle("批量分组").setView(box)
       .setPositiveButton("保存分组",null).setNegativeButton("取消",null).create();
     dialog.show();
     dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
@@ -315,7 +315,7 @@ public class WindowHomeActivity extends Activity {
     JSONObject row=ProfileCatalog.get(this).item(id);
     if(!ProfileCatalog.get(this).available(id))return;
     String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境","复制环境配置","重置登录数据","删除环境"};
-    new AlertDialog.Builder(this).setTitle(row.optString("name")).setItems(labels,(d,n)->{
+    AppAppearance.dialog(this).setTitle(row.optString("name")).setItems(labels,(d,n)->{
       if(n==0)openWindow(id,"edit");if(n==1)metadata(id);
       if(n==2){ProfileCatalog.get(this).favorite(id,!row.optBoolean("favorite"));lastSignature="";refresh();}
       if(n==3){AppSettings.defaultSlot(this,id);lastSignature="";refresh();}
@@ -325,7 +325,7 @@ public class WindowHomeActivity extends Activity {
   void startReset(int id,int generation,String environmentId){startActivity(new Intent(this,EnvironmentResetActivity.class).putExtra("slot",id).putExtra("confirmedGeneration",generation).putExtra("confirmedEnvironmentId",environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
   void resetEnvironment(int id){
     JSONObject row=ProfileCatalog.get(this).item(id);if(!ProfileCatalog.get(this).available(id))return;
-    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("重置 "+row.optString("name")+" 的登录？")
+    AlertDialog dialog=AppAppearance.dialog(this).setTitle("重置 "+row.optString("name")+" 的登录？")
       .setMessage("将关闭此环境并清理登录、Cookie、网页存储和本地草稿、聊天缓存。正在进行的回复、上传和下载任务会中断。环境名称、模板、网络与使用偏好，以及已保存的下载文件会保留；其他环境不受影响。需要在此环境重新登录 ChatGPT。")
       .setNegativeButton("取消",null).setPositiveButton("重置登录数据",(d,w)->startReset(id,row.optInt("generation"),row.optString("environmentId"))).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
   }
@@ -334,10 +334,10 @@ public class WindowHomeActivity extends Activity {
     if(target<0){showProblem("环境已满，请先删除不再使用的环境");return;}
     final int destination=target;final EnvironmentSpec.Identity expected;try{expected=new EnvironmentSpec.Identity(sourceId,source.optInt("generation"),source.getString("environmentId"));}catch(Exception invalid){showProblem("源环境已变化，请重试");return;}
     LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),0,dp(18),dp(16));String label=source.optString("name");if(label.length()>20)label=label.substring(0,20);EditText name=DesignUi.input(box,"新环境名称",label+" 副本","");name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});DesignUi.note(box,"复制已保存的浏览器模板、网络和使用偏好。账号、聊天和草稿在新环境独立，不会复制。");
-    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("复制环境配置").setView(box).setPositiveButton("创建副本",null).setNegativeButton("取消",null).create();dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("请输入环境名称");return;}if(preparing)return;preparing=true;dialog.dismiss();createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);new Thread(()->{String error="";try{Context origin=Profiles.context(this,sourceId);EnvironmentSpec.Identity copied=Profiles.copyConfiguration(origin,destination,expected);ProfileCatalog.get(this).withIdentity(copied,()->{Profiles.rename(this,destination,title);ProfileCatalog.get(this).details(destination,source.optString("group"),source.optString("notes"));return null;});}catch(Exception failure){error=failure.getMessage()==null?"复制未完成，请重试":failure.getMessage();}String issue=error;handler.post(()->{preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);lastSignature="";refresh();if(!issue.isEmpty())showProblem(issue);});},"environment-copy").start();});
+    AlertDialog dialog=AppAppearance.dialog(this).setTitle("复制环境配置").setView(box).setPositiveButton("创建副本",null).setNegativeButton("取消",null).create();dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("请输入环境名称");return;}if(preparing)return;preparing=true;dialog.dismiss();createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);new Thread(()->{String error="";try{Context origin=Profiles.context(this,sourceId);EnvironmentSpec.Identity copied=Profiles.copyConfiguration(origin,destination,expected);ProfileCatalog.get(this).withIdentity(copied,()->{Profiles.rename(this,destination,title);ProfileCatalog.get(this).details(destination,source.optString("group"),source.optString("notes"));return null;});}catch(Exception failure){error=failure.getMessage()==null?"复制未完成，请重试":failure.getMessage();}String issue=error;handler.post(()->{preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);lastSignature="";refresh();if(!issue.isEmpty())showProblem(issue);});},"environment-copy").start();});
   }
   void deleteEnvironment(int id){
-    JSONObject row=ProfileCatalog.get(this).item(id);AlertDialog dialog=new AlertDialog.Builder(this).setTitle("删除 "+row.optString("name")+"？")
+    JSONObject row=ProfileCatalog.get(this).item(id);AlertDialog dialog=AppAppearance.dialog(this).setTitle("删除 "+row.optString("name")+"？")
       .setMessage("将关闭此环境，清理它的登录、草稿、聊天缓存和网络配置。正在进行的回复和文件操作会中断。其他环境、订阅与固定出口，以及已保存到下载目录的文件会保留。")
       .setNegativeButton("取消",null).setPositiveButton("删除环境",(d,w)->{try{ProfileCatalog.get(this).beginDelete(id);startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Exception e){showProblem(e.getMessage());}}).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
   }
@@ -348,7 +348,7 @@ public class WindowHomeActivity extends Activity {
     EditText notes=DesignUi.input(box,"备注",row.optString("notes"),"环境用途说明");
     group.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
     notes.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
-    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("分组与备注 · "+row.optString("name")).setView(box)
+    AlertDialog dialog=AppAppearance.dialog(this).setTitle("分组与备注 · "+row.optString("name")).setView(box)
       .setPositiveButton("保存",(d,w)->{
         ProfileCatalog.get(this).details(id,group.getText().toString(),notes.getText().toString());lastSignature="";refresh();
       }).setNegativeButton("取消",null).show();
@@ -376,7 +376,7 @@ public class WindowHomeActivity extends Activity {
     int step,sourceType,sourceSlot;String title,group="";boolean makeDefault,desktop;Spinner displayChoice;
     Wizard(int id,JSONArray windows){
       this.id=id;this.windows=windows;title="环境 "+(id+1);sourceSlot=AppSettings.defaultSlot(WindowHomeActivity.this);
-      dialog=new Dialog(WindowHomeActivity.this){@Override public void onBackPressed(){Wizard.this.back();}};
+      dialog=new ThemedDialog(WindowHomeActivity.this){@Override public void onBackPressed(){Wizard.this.back();}};
       dialog.setCanceledOnTouchOutside(false);
     }
     void show(){
@@ -392,7 +392,7 @@ public class WindowHomeActivity extends Activity {
       boolean dirty=!title.equals("环境 "+(id+1))||!group.isEmpty()||sourceType!=0||makeDefault||desktop;
       if(!dirty){dialog.dismiss();return;}
       if(exitPrompt!=null&&exitPrompt.isShowing())return;
-      exitPrompt=new AlertDialog.Builder(WindowHomeActivity.this).setTitle("放弃创建环境？")
+      exitPrompt=AppAppearance.dialog(WindowHomeActivity.this).setTitle("放弃创建环境？")
         .setMessage("退出后，本次填写的环境配置不会保存。")
         .setPositiveButton("继续填写",null).setNegativeButton("放弃创建",(d,w)->dialog.dismiss()).show();
       exitPrompt.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(DesignUi.RED);

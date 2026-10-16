@@ -49,6 +49,7 @@
   port.onMessage.addListener(message => {
     if(message.kind==='auditCancel'){auditCancel();return;}
     if(message.kind==='audit'&&Number.isInteger(message.id)){audit(message).catch(()=>port.postMessage({kind:'auditResult',id:message.id,result:'null'}));return;}
+    if(message.kind === 'appearance'){globalThis.PocketAppearance?.apply(message.dark);return;}
     if(message.kind !== 'evaluate' || !Number.isInteger(message.id))return;
     try {
       const value = (0,eval)(message.code);

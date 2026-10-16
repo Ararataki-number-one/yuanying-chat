@@ -25,10 +25,10 @@ final class FeatureDialogs {
     DesignUi.note(box,"保存后会重新连接此环境。用户名和密码在本机加密保存；首次下载订阅需要可用网络。");
     TextView notice=DesignUi.text(a,"",13,DesignUi.RED);notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(notice);
     ScrollView scroll=new ScrollView(a);scroll.addView(box);
-    AlertDialog dialog=new AlertDialog.Builder(a).setTitle("订阅与固定出口").setView(scroll).setPositiveButton("保存并连接",null).setNegativeButton("取消",null).create();
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("订阅与固定出口").setView(scroll).setPositiveButton("保存并连接",null).setNegativeButton("取消",null).create();
     if(vault.hasBundledDefaults())DesignUi.action(box,"恢复默认网络配置",false,()->{
       if(DesignNetworkUi.busy(a)){notice.setText("当前操作还未完成，请稍后再恢复配置。");return;}
-      new AlertDialog.Builder(a).setTitle("恢复默认网络配置？").setMessage("当前参数和本次填写的修改会被默认配置替换。")
+      AppAppearance.dialog(a).setTitle("恢复默认网络配置？").setMessage("当前参数和本次填写的修改会被默认配置替换。")
         .setPositiveButton("恢复并连接",(d,w)->{try{vault.restoreBundledDefaults();dialog.dismiss();a.session.reconnect();a.status("已恢复默认网络配置");}catch(Exception e){notice.setText("恢复失败，请稍后重试。");}}).setNegativeButton("继续编辑",null).show();
     });
     dialog.show();
@@ -49,7 +49,7 @@ final class FeatureDialogs {
     TextView state=DesignUi.text(a,n.message,14,DesignUi.MUTED);state.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(state);
     LinearLayout rows=DesignUi.column(a);box.addView(rows);final boolean[] operating={false};
     ScrollView scroll=new ScrollView(a);scroll.addView(box);
-    AlertDialog dialog=new AlertDialog.Builder(a).setTitle("完整链路测速").setView(scroll).setPositiveButton("重新测速",null).setNegativeButton("关闭",null).create();
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("完整链路测速").setView(scroll).setPositiveButton("重新测速",null).setNegativeButton("关闭",null).create();
     final Runnable[] refresh={null};refresh[0]=()->{
       DesignUi.rebuild(rows,true,()->{
         if(n.results.length()==0)DesignUi.empty(rows,"还没有测量结果","保存内置网络配置后，点“重新测速”检查实际线路。","",null);
@@ -72,5 +72,5 @@ final class FeatureDialogs {
       n.rescan((ok,msg)->{a.loading.dismissTask();operating[0]=false;a.status(msg);if(dialog.isShowing()){state.setText(msg);dialog.getButton(-1).setEnabled(true);refresh[0].run();}});
     });
   }
-  static void backgroundSettings(Activity a){boolean allowed=a.getSystemService(NotificationManager.class).areNotificationsEnabled();boolean unrestricted=((PowerManager)a.getSystemService(android.content.Context.POWER_SERVICE)).isIgnoringBatteryOptimizations(a.getPackageName());new AlertDialog.Builder(a).setTitle("系统通知与电池权限").setMessage("系统通知："+(allowed?"已开启":"未开启")+"\n系统电池优化："+(unrestricted?"已忽略":"仍启用")+"\n\n后台继续检测回复。完成提醒默认关闭，可在应用设置中开启；使用应用时保持安静。系统仍可能显示静默服务提示。\n\n强制停止或省电策略可能中断检测。发送记录会保留，重新打开继续核对，不自动重发。").setPositiveButton("通知设置",(d,w)->{if(Build.VERSION.SDK_INT>=33&&a.checkSelfPermission("android.permission.POST_NOTIFICATIONS")!=android.content.pm.PackageManager.PERMISSION_GRANTED)a.requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},91);else a.startActivity(new android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,a.getPackageName()));}).setNeutralButton("电池设置",(d,w)->a.startActivity(new android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))).setNegativeButton("关闭",null).show();}
+  static void backgroundSettings(Activity a){boolean allowed=a.getSystemService(NotificationManager.class).areNotificationsEnabled();boolean unrestricted=((PowerManager)a.getSystemService(android.content.Context.POWER_SERVICE)).isIgnoringBatteryOptimizations(a.getPackageName());AppAppearance.dialog(a).setTitle("系统通知与电池权限").setMessage("系统通知："+(allowed?"已开启":"未开启")+"\n系统电池优化："+(unrestricted?"已忽略":"仍启用")+"\n\n后台继续检测回复。完成提醒默认关闭，可在应用设置中开启；使用应用时保持安静。系统仍可能显示静默服务提示。\n\n强制停止或省电策略可能中断检测。发送记录会保留，重新打开继续核对，不自动重发。").setPositiveButton("通知设置",(d,w)->{if(Build.VERSION.SDK_INT>=33&&a.checkSelfPermission("android.permission.POST_NOTIFICATIONS")!=android.content.pm.PackageManager.PERMISSION_GRANTED)a.requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},91);else a.startActivity(new android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,a.getPackageName()));}).setNeutralButton("电池设置",(d,w)->a.startActivity(new android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))).setNegativeButton("关闭",null).show();}
 }

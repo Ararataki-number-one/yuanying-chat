@@ -38,7 +38,7 @@ for name in ['gecko-caret-compat-results.json','gecko-caret-compat-screen.png','
     if (out/'caret-compat'/name).exists():shutil.copy2(out/'caret-compat'/name,stage/name)
 for pattern in ['environment-spec-*.txt','environment-intent-*.txt','gecko-identity-prototype-*.txt','gecko-template-*.txt','resource-pressure-*.txt']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
-for pattern in ['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','sealed-file-host-results.json','network-source-*.json','network-source-*.txt','network-source-*.png','network-source-*.xml','network-safe-idle-*.json','network-safe-idle-*.txt','network-safe-idle-*.png','network-safe-idle-*.xml']:
+for pattern in ['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','sealed-file-host-results.json','network-source-*.json','network-source-*.txt','network-source-*.png','network-source-*.xml','network-safe-idle-*.json','network-safe-idle-*.txt','network-safe-idle-*.png','network-safe-idle-*.xml','appearance-*.json','appearance-*.png','appearance-*.xml']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 for name in ['environment-spec-results.json', 'environment-spec-failure-log.txt']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)

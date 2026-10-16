@@ -4,7 +4,7 @@ import android.app.*;import android.content.*;import android.net.Uri;import andr
 import org.json.*;import java.io.*;import java.nio.charset.StandardCharsets;
 
 /** Preview first. Import mutates only the network library; application remains explicit. */
-public final class NetworkImportActivity extends Activity {
+public final class NetworkImportActivity extends ThemedActivity {
   static final int PICK=780;
   FrameLayout host;NetworkWorkspaceUi workspace;ReferenceUi.Modal current;
   @Override public void onCreate(Bundle state){super.onCreate(state);if(android.os.Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);DesignUi.chrome(this);LinearLayout root=DesignUi.column(this);root.setBackgroundColor(ReferenceUi.BG);ReferenceUi.insets(this,root,null);root.addView(ReferenceUi.link(this,"返回",this::finish));host=new FrameLayout(this);root.addView(host,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);workspace=new NetworkWorkspaceUi(this,host);

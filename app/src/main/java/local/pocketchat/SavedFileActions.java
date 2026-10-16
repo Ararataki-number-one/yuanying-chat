@@ -12,12 +12,12 @@ import java.util.concurrent.*;
 final class SavedFileActions {
   static final int EXPORT=85;final Activity a;final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler(Looper.getMainLooper());JSONObject exporting;volatile boolean closed,busy;String deleteProblem="";
   SavedFileActions(Activity a){this.a=a;}
-  void show(JSONObject row){new AlertDialog.Builder(a).setTitle(row.optString("name","文件")).setItems(new String[]{"打开","分享","另存为","查看保存位置","删除文件"},(d,n)->{if(n==0)open(a,row);if(n==1)share(a,row);if(n==2)export(row);if(n==3)new AlertDialog.Builder(a).setTitle("保存位置").setMessage(row.optString("location","原先选择的保存位置")+"\n\n如果文件被移动或删除，请从原网页重新下载。").setPositiveButton("关闭",null).show();if(n==4)confirmDelete(row);}).show();}
+  void show(JSONObject row){AppAppearance.dialog(a).setTitle(row.optString("name","文件")).setItems(new String[]{"打开","分享","另存为","查看保存位置","删除文件"},(d,n)->{if(n==0)open(a,row);if(n==1)share(a,row);if(n==2)export(row);if(n==3)AppAppearance.dialog(a).setTitle("保存位置").setMessage(row.optString("location","原先选择的保存位置")+"\n\n如果文件被移动或删除，请从原网页重新下载。").setPositiveButton("关闭",null).show();if(n==4)confirmDelete(row);}).show();}
   AlertDialog confirmDelete(JSONObject row){
     JSONObject selected=J.parse(row.toString());if(!selected.has("slot"))DownloadTasks.put(selected,"slot",Profiles.slot(a));String name=selected.optString("name","文件");
     String detail="会从保存位置永久删除这个文件，释放手机存储空间。";
     if(name.toLowerCase(java.util.Locale.ROOT).endsWith(".apk"))detail+="\n已安装的软件不受影响。";
-    AlertDialog dialog=new AlertDialog.Builder(a).setTitle("删除“"+name+"”？").setMessage(detail)
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("删除“"+name+"”？").setMessage(detail)
         .setNegativeButton("取消",null).setPositiveButton("删除文件",(d,w)->remove(selected)).create();
     dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);return dialog;
   }

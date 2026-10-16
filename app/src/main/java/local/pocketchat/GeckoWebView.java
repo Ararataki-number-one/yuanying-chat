@@ -88,6 +88,7 @@ class GeckoWebView extends FrameLayout {
 
   GeckoWebView(Context context,ChatSession session){
     super(context);owner=session;displayContext=new MutableContextWrapper(context);sessionStore=new BrowserSessionStore(context);
+    setBackgroundColor(ReferenceUi.CHAT_BG);
     BrowserBridgeRequests.Timer timer=new BrowserBridgeRequests.Timer(){
       public void schedule(Runnable task,long delay){owner.handler.postDelayed(task,delay);}
       public void cancel(Runnable task){owner.handler.removeCallbacks(task);}
@@ -118,6 +119,7 @@ class GeckoWebView extends FrameLayout {
         .arguments(new String[]{"-profile",directory.getAbsolutePath()}).configFilePath(config.getAbsolutePath())
         .isolatedProcessEnabled(Build.VERSION.SDK_INT>=29).appZygoteProcessEnabled(false)
         .remoteDebuggingEnabled(false).consoleOutput(false).trustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_DISABLED)
+        .preferredColorScheme(AppAppearance.dark()?GeckoRuntimeSettings.COLOR_SCHEME_DARK:GeckoRuntimeSettings.COLOR_SCHEME_LIGHT)
         .forceUserScalableEnabled(true).inputAutoZoomEnabled(true).build());
       owner.resources.runtimeCreated();
       runtime.getWebExtensionController().ensureBuiltIn("resource://android/assets/gecko/","browser@pocketchat.local")
@@ -187,7 +189,7 @@ class GeckoWebView extends FrameLayout {
     if(!enabled||destroyed)return;
     // Choose the official transform-capable backend once. Changing a live SDK
     // surface backend can leave its surface callback detached (157.0 SDK).
-    if(surface==null){surface=new GeckoView(displayContext);surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
+    if(surface==null){surface=new GeckoView(displayContext);surface.setViewBackend(GeckoView.BACKEND_TEXTURE_VIEW);surface.coverUntilFirstPaint(ReferenceUi.CHAT_BG);addView(surface,new FrameLayout.LayoutParams(-1,-1));}
     primary=newSession();current=primary;primary.open(runtime);surface.setSession(primary);configure(desktop,owner.privacy.level());ready=true;
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
   }
@@ -323,6 +325,7 @@ class GeckoWebView extends FrameLayout {
         @Override public void onPortMessage(Object message,WebExtension.Port incoming){
           if(!(message instanceof JSONObject)||incoming!=ports.get(source))return;
           JSONObject data=(JSONObject)message;String kind=data.optString("kind");
+          if("ready".equals(kind)||"documentReady".equals(kind))appearance(port);
           if("scale".equals(kind)){
             // Page DPR can be masked by Firefox privacy protection. Only the
             // compositor's CSS-to-surface ratio may drive native zoom.
@@ -346,6 +349,18 @@ class GeckoWebView extends FrameLayout {
       if(source==current)owner.resourceObserverConnected(port);
     }
   };
+  /** Native appearance events do not navigate, restart Gecko, or touch browser identity. */
+  void applyAppearance(){
+    if(destroyed)return;
+    setBackgroundColor(ReferenceUi.CHAT_BG);
+    if(runtime!=null)runtime.getSettings().setPreferredColorScheme(AppAppearance.dark()?GeckoRuntimeSettings.COLOR_SCHEME_DARK:GeckoRuntimeSettings.COLOR_SCHEME_LIGHT);
+    for(GeckoSession s:locations.keySet())if(s.isOpen())s.getCompositorController().setClearColor(ReferenceUi.CHAT_BG);
+    for(WebExtension.Port port:new ArrayList<>(ports.values()))appearance(port);
+  }
+  private void appearance(WebExtension.Port port){
+    if(!MainActivity.chatUrl(port.sender.url))return;
+    try{port.postMessage(J.obj("kind","appearance","dark",AppAppearance.dark()));}catch(RuntimeException ignored){/* A replaced document receives its preference on ready. */}
+  }
   protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicHttps(Uri.parse(target));}
   boolean readingPage(String target){return BrowserReadingPolicy.chat(target)&&!LoginPagePolicy.login(target);}
   static String header(WebResponse response,String name){for(Map.Entry<String,String> entry:response.headers.entrySet())if(name.equalsIgnoreCase(entry.getKey()))return entry.getValue();return "";}

@@ -42,7 +42,7 @@ final class LoadingUi {
   void showTask(){
     if(!taskRunning||a.destroyed||a.isFinishing()||taskDialog!=null)return;
     LinearLayout box=DesignUi.progress(a,taskMessage,"可收起这个窗口，任务会继续。");
-    AlertDialog dialog=new AlertDialog.Builder(a).setTitle("正在处理").setView(box).setNegativeButton("收起",null).create();
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("正在处理").setView(box).setNegativeButton("收起",null).create();
     taskDialog=dialog;dialog.setCanceledOnTouchOutside(false);
     dialog.setOnDismissListener(d->{if(taskDialog==dialog)taskDialog=null;if(!a.destroyed){update();if(a.hub!=null&&a.hub.page!=AppHub.CHAT)a.hub.refresh();}});
     dialog.show();update();

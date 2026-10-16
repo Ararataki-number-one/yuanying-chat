@@ -16,7 +16,7 @@ import java.io.*;
 import java.util.*;
 
 /** The app manages environments; Gecko displays the official ChatGPT document. */
-public class MainActivity extends Activity {
+public class MainActivity extends ThemedActivity {
   static final String ORIGIN="https://chatgpt.com/";
   final Handler handler=new Handler(Looper.getMainLooper());
   GeckoWebView remote;
@@ -90,7 +90,7 @@ public class MainActivity extends Activity {
     DesignUi.note(box,"本机代理可填写 http://127.0.0.1:7890，其中 127.0.0.1 指这部手机。保存后会重新连接此环境。");
     TextView notice=DesignUi.text(this,"",13,DesignUi.RED);notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(notice);
     ScrollView scroll=new ScrollView(this);scroll.addView(box);
-    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("应用专用代理").setView(scroll).setPositiveButton("保存并连接",null).setNegativeButton("取消",null).create();
+    AlertDialog dialog=AppAppearance.dialog(this).setTitle("应用专用代理").setView(scroll).setPositiveButton("保存并连接",null).setNegativeButton("取消",null).create();
     dialog.show();DesignUi.protectEdits(this,dialog,()->!saved.equals(proxy.getText().toString()));
     dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
       if(DesignNetworkUi.busy(this)){notice.setText("当前操作还未完成，请稍后再保存。");return;}
@@ -118,7 +118,7 @@ public class MainActivity extends Activity {
     if(session==null||destroyed)return;pending=session.pending;networkReady=session.networkReady;submitting=session.submitting;entries=session.entries;conversation=session.conversation;
     status(session.status);NetworkMetricsUi.update(this);if(loading!=null)loading.update();if(designChrome!=null)designChrome.update();
   }
-  TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(color);return v;}
+  TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));return v;}
   void moreSheet(){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项");
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
@@ -198,7 +198,7 @@ public class MainActivity extends Activity {
   void showLegacyDrafts(JSONArray drafts,boolean incomplete){
     if(drafts.length()==0){DesignUi.message(this,"旧版暂存草稿",incomplete?"部分暂存草稿暂时无法读取，请稍后重试。原数据未修改。":"没有找到旧版暂存草稿。网页里的草稿仍由当前网页保存。");return;}
     String[] labels=new String[drafts.length()];for(int i=0;i<labels.length;i++){JSONObject row=drafts.optJSONObject(i);labels[i]=row.optString("origin")+"\n"+draftPreview(row.optString("body"));}
-    new AlertDialog.Builder(this).setTitle("复制旧版暂存草稿").setItems(labels,(dialog,index)->{
+    AppAppearance.dialog(this).setTitle("复制旧版暂存草稿").setItems(labels,(dialog,index)->{
       JSONObject row=drafts.optJSONObject(index);ReferenceUi.Modal detail=new ReferenceUi.Modal(this,"暂存草稿");
       TextView body=label(row.optString("body"),14,ReferenceUi.TEXT);body.setTextIsSelectable(true);detail.body.addView(body,new LinearLayout.LayoutParams(-1,-2));
       detail.note("复制后可在网页输入框中粘贴。不会替换当前网页草稿，也不会发送。");
