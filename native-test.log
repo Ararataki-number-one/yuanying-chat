@@ -1,0 +1,1069 @@
+Stopping Daemon(s)
+1 Daemon stopped
+Loading local repository...                                                     [=========                              ] 25% Loading local repository...       [=========                              ] 25% Fetch remote repository...        [=======================================] 100% Fetch remote repository...       
+Auto-selecting single ABI x86_64
+Do you wish to create a custom hardware profile? [no] * daemon not running; starting now at tcp:5037
+* daemon started successfully
+Performing Streamed Install
+Success
+{"sourceCommit": "a7202d3053cb954b3378b0d5a535ab759899ea1f", "status": "passed", "initialNetworkUsable": true, "sdkWifiProvisioningRequested": false, "disabledStateConfirmed": true, "actualConnectivityManagerExecution": true, "applicationAcceptance": false}
+From https://github.com/Ararataki-number-one/yuanying-chat
+ * branch            835d59991218eda70c7a4fdd73ea9d7ae6052688 -> FETCH_HEAD
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_performance.py", line 358, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_performance.py", line 215, in main
+    raise AssertionError(raw)
+AssertionError: --------- beginning of main
+10-16 15:35:01.111  4034  4034 I PocketGeckoPerformance: {"kind":"load","value":{"variant":"baseline","guardAllowed":true,"offline":false,"networkReady":true,"proxy":"socks:\/\/127.0.0.1:1087"}}
+--------- beginning of crash
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: FATAL EXCEPTION: main
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: Process: local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_67c73cfb3d3b4b10ab1f20d6516d34c6, PID: 4195
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: java.lang.RuntimeException: Unable to create application local.pocketchat.PocketApplication: java.lang.SecurityException: Isolated process not allowed to call getContentProvider
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7510)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleBindApplication(Unknown Source:0)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2416)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:107)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:232)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:317)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:8705)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:886)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: Caused by: java.lang.SecurityException: Isolated process not allowed to call getContentProvider
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3242)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Parcel.createException(Parcel.java:3226)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3209)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3151)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.IActivityManager$Stub$Proxy.getContentProvider(IActivityManager.java:6315)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread.acquireProvider(ActivityThread.java:7841)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ContextImpl$ApplicationContentResolver.acquireProvider(ContextImpl.java:3757)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.content.ContentResolver.acquireProvider(ContentResolver.java:2526)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.provider.Settings$ContentProviderHolder.getProvider(Settings.java:3316)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.provider.Settings$NameValueCache.getStringForUser(Settings.java:3542)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.provider.Settings$Global.getStringForUser(Settings.java:17999)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.provider.Settings$Global.getString(Settings.java:17982)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteCompatibilityWalFlags.initIfNeeded(SQLiteCompatibilityWalFlags.java:105)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteCompatibilityWalFlags.isLegacyCompatibilityWalEnabled(SQLiteCompatibilityWalFlags.java:57)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.<init>(SQLiteDatabase.java:490)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:1003)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:996)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteOpenHelper.getDatabaseLocked(SQLiteOpenHelper.java:373)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.database.sqlite.SQLiteOpenHelper.getReadableDatabase(SQLiteOpenHelper.java:340)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at local.pocketchat.AppSettings.get(AppSettings.java:6)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at local.pocketchat.AppAppearance.refresh(AppAppearance.java:39)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at local.pocketchat.AppAppearance.install(AppAppearance.java:28)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at local.pocketchat.PocketApplication.onCreate(PocketApplication.java:9)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.Instrumentation.callApplicationOnCreate(Instrumentation.java:1386)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7504)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	... 9 more
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: Caused by: android.os.RemoteException: Remote stack trace:
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.enforceNotIsolatedCaller(ActivityManagerService.java:3127)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.server.am.ContentProviderHelper.getContentProvider(ContentProviderHelper.java:136)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.getContentProvider(ActivityManagerService.java:7127)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at android.app.IActivityManager$Stub.onTransact(IActivityManager.java:2950)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.onTransact(ActivityManagerService.java:2812)
+10-16 15:35:01.357  4195  4195 E AndroidRuntime: 
+
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 125, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_caret_bound_performance.py", line 119, in main
+    require(outcome.returncode == 0 and report.get('status') == 'passed', 'Original performance invocation failed; sidecar preserves failed raw evidence')
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/caret_build_identity.py", line 25, in require
+    raise ValueError(message)
+ValueError: Original performance invocation failed; sidecar preserves failed raw evidence
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 498, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 472, in main
+    ime_guard.run(run_compatibility)
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/caret_ime_guard.py", line 327, in run
+    raise failure
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/caret_ime_guard.py", line 308, in run
+    result = workload()
+             ^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_gecko_caret_compat.py", line 391, in run_compatibility
+    require('FATAL EXCEPTION' not in raw, 'Android activity crashed: ' + raw)
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/caret_build_identity.py", line 25, in require
+    raise ValueError(message)
+ValueError: Android activity crashed: --------- beginning of crash
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: FATAL EXCEPTION: main
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: Process: local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_7b71ec2601fa4fabbd79d5bf4d37da8a, PID: 4707
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: java.lang.RuntimeException: Unable to create application local.pocketchat.PocketApplication: java.lang.SecurityException: Isolated process not allowed to call getContentProvider
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7510)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleBindApplication(Unknown Source:0)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2416)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:107)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:232)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:317)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:8705)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:886)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: Caused by: java.lang.SecurityException: Isolated process not allowed to call getContentProvider
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3242)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Parcel.createException(Parcel.java:3226)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3209)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3151)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.IActivityManager$Stub$Proxy.getContentProvider(IActivityManager.java:6315)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread.acquireProvider(ActivityThread.java:7841)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ContextImpl$ApplicationContentResolver.acquireProvider(ContextImpl.java:3757)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.content.ContentResolver.acquireProvider(ContentResolver.java:2526)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.provider.Settings$ContentProviderHolder.getProvider(Settings.java:3316)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.provider.Settings$NameValueCache.getStringForUser(Settings.java:3542)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.provider.Settings$Global.getStringForUser(Settings.java:17999)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.provider.Settings$Global.getString(Settings.java:17982)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteCompatibilityWalFlags.initIfNeeded(SQLiteCompatibilityWalFlags.java:105)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteCompatibilityWalFlags.isLegacyCompatibilityWalEnabled(SQLiteCompatibilityWalFlags.java:57)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.<init>(SQLiteDatabase.java:490)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:1003)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:996)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteOpenHelper.getDatabaseLocked(SQLiteOpenHelper.java:373)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.database.sqlite.SQLiteOpenHelper.getReadableDatabase(SQLiteOpenHelper.java:340)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at local.pocketchat.AppSettings.get(AppSettings.java:6)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at local.pocketchat.AppAppearance.refresh(AppAppearance.java:39)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at local.pocketchat.AppAppearance.install(AppAppearance.java:28)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at local.pocketchat.PocketApplication.onCreate(PocketApplication.java:9)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.Instrumentation.callApplicationOnCreate(Instrumentation.java:1386)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7504)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	... 9 more
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: Caused by: android.os.RemoteException: Remote stack trace:
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.enforceNotIsolatedCaller(ActivityManagerService.java:3127)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.server.am.ContentProviderHelper.getContentProvider(ContentProviderHelper.java:136)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.getContentProvider(ActivityManagerService.java:7127)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at android.app.IActivityManager$Stub.onTransact(IActivityManager.java:2950)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.onTransact(ActivityManagerService.java:2812)
+10-16 15:35:19.412  4707  4707 E AndroidRuntime: 
+
+{"phaseStatus": "workload-failed-restored", "restorationVerified": true, "applicationAcceptance": false}
+From https://github.com/Ararataki-number-one/yuanying-chat
+ * branch            apk/gecko-integration-build-20261003 -> FETCH_HEAD
+To https://github.com/Ararataki-number-one/yuanying-chat
+   88b1759..44e7f70  44e7f700c5c6ba048d0cc3cf11695fe51974d6ef -> apk/gecko-integration-build-20261003
+Starting phase: Verify network sharing and explicit import UI
+{"status": "passed", "nativeChecks": 42, "actualAndroidTaps": 5}
+From https://github.com/Ararataki-number-one/yuanying-chat
+ * branch            apk/gecko-integration-build-20261003 -> FETCH_HEAD
+To https://github.com/Ararataki-number-one/yuanying-chat
+   44e7f70..c45c811  c45c8119c4d92a09a1c33db378bd02907629cc8c -> apk/gecko-integration-build-20261003
+{"status": "passed", "actualAndroidExecution": true, "actualAndroidTaps": 9, "systemModeEvents": true, "buildIdentity": {"schema": 1, "sourceCommit": "a7202d3053cb954b3378b0d5a535ab759899ea1f", "sourceTree": "9b3f0b45f213276dfd5233f9dd903df1a9ac7bbb", "dirtySource": false, "version": "2.0.6", "versionCode": 59, "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250", "sdkBuildKind": "source-derived-java", "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250", "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket1", "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268", "sdkAarSha256": "ede7935705aff417b9f5af0470f553ea55672680419bc61e9a49f64192cd4876", "sdkClassesJarSha256": "199f0506b699f23a6ee899b93b759e29bec4f14599ca46a3e8b7b2b2ba6865df", "sdkGeckoEditableClassSha256": "787e56f101767671ba0fe9a275eb6a0b87939ec5596edd78a74ffedad8b43585", "sdkManifestSha256": "c7499fe504791d015854c613183d28233954a36bb89083f36d6ff867bcf76cca", "sdkBuildReceiptSha256": "113264e048ed1459b30af6f1586d9cd6d028d025200b801402f878597a4093b9", "sdkBuildSource": "a7202d3053cb954b3378b0d5a535ab759899ea1f", "sdkBuildIdentity": {"sdkBuildKind": "source-derived-java", "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250", "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket1", "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250", "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268", "sdkAarSha256": "ede7935705aff417b9f5af0470f553ea55672680419bc61e9a49f64192cd4876", "sdkClassesJarSha256": "199f0506b699f23a6ee899b93b759e29bec4f14599ca46a3e8b7b2b2ba6865df", "sdkGeckoEditableClassSha256": "787e56f101767671ba0fe9a275eb6a0b87939ec5596edd78a74ffedad8b43585", "sdkManifestSha256": "c7499fe504791d015854c613183d28233954a36bb89083f36d6ff867bcf76cca", "sdkBuildReceiptSha256": "113264e048ed1459b30af6f1586d9cd6d028d025200b801402f878597a4093b9", "sdkBuildSource": "a7202d3053cb954b3378b0d5a535ab759899ea1f", "schema": 1, "sourceCommit": "a7202d3053cb954b3378b0d5a535ab759899ea1f", "sourceTree": "9b3f0b45f213276dfd5233f9dd903df1a9ac7bbb", "runId": "38923992218", "runAttempt": "1"}, "package": "local.pocketchat.test", "apkBytes": 126122185, "apkSha256": "ade204fe4a4c2e3018ca531f7345f27005cf9fcbfae67d0d86278f829e66a69c", "buildStampSha256": "afa081356cf0feb56d65cebdfc51bf4c7baee693b09fc3d48b7827a630fe6fb1", "scope": "Installed synthetic integration APK bytes and embedded source stamp only"}, "checks": [{"name": "Missing preference defaults to follow system", "pass": true}, {"name": "Actual installed source matches tested commit", "pass": true}, {"name": "Actual installed APK identity matches built APK", "pass": true}, {"name": "System event changes appearance without recreating activity", "pass": true}, {"name": "Native text and background use night palette", "pass": true}, {"name": "Already open central modal becomes dark", "pass": true}, {"name": "Night status bar uses light icons", "pass": true}, {"name": "Draft and selection survive system theme event", "pass": true}, {"name": "Primary button text stays white", "pass": true}, {"name": "Manual light overrides dark system", "pass": true}, {"name": "Manual mode ignores later system toggles", "pass": true}, {"name": "Manual choice survives process restart", "pass": true}, {"name": "Returning to automatic follows subsequent system changes", "pass": true}], "checkCount": 13, "taps": ["\u68c0\u67e5\u5f39\u7a97", "\u5173\u95ed", "\u6253\u5f00\u5916\u89c2\u8bbe\u7f6e", "\u59cb\u7ec8\u767d\u5929", "\u59cb\u7ec8\u9ed1\u591c", "\u5b8c\u6210", "\u6253\u5f00\u5916\u89c2\u8bbe\u7f6e", "\u8ddf\u968f\u7cfb\u7edf", "\u5b8c\u6210"]}
+From https://github.com/Ararataki-number-one/yuanying-chat
+ * branch            apk/gecko-integration-build-20261003 -> FETCH_HEAD
+To https://github.com/Ararataki-number-one/yuanying-chat
+   c45c811..7167a10  7167a104d6d783d7cec093ada53978531597a5f5 -> apk/gecko-integration-build-20261003
+Starting phase: Verify network performance and compact chrome
+{
+  "status": "passed",
+  "actualAndroidExecution": true,
+  "actualMihomoExecution": true,
+  "initialDisplaySampling": {
+    "busyRequests": 0,
+    "idleRequests": 2
+  },
+  "firstWebsiteReading": {
+    "entry": "Entry|slow",
+    "at": 1792164884818,
+    "firstMs": 151,
+    "warmMs": 2,
+    "code": 200,
+    "status": "ok"
+  },
+  "headConnectionIds": [
+    44654,
+    44654
+  ],
+  "controlledWebsiteReadings": [
+    {
+      "entry": "Entry|slow",
+      "at": 1792164884818,
+      "firstMs": 151,
+      "warmMs": 2,
+      "code": 200,
+      "status": "ok"
+    },
+    {
+      "entry": "Entry|fast",
+      "at": 1792164884818,
+      "firstMs": 57,
+      "warmMs": 2,
+      "code": 200,
+      "status": "ok"
+    }
+  ],
+  "telemetryScheduling": {
+    "queuedBusyRequests": 0,
+    "idleSampleRequests": 2,
+    "newerSampleDuplicateRequests": 0,
+    "recoveryExitRequests": 1,
+    "recoveryMs": 661,
+    "webSocketConnections": 1,
+    "webSocketEchoes": 6
+  },
+  "independentNetworkService": "passed",
+  "checkCount": 161,
+  "checks": [
+    {
+      "name": "Eight encrypted environment regions stay isolated across alternating reads",
+      "pass": true
+    },
+    {
+      "name": "Repeated multi-window reads reuse decrypted region snapshots",
+      "pass": true
+    },
+    {
+      "name": "Replacing one sealed region updates only that environment",
+      "pass": true
+    },
+    {
+      "name": "Deleting a sealed region clears its cached identity",
+      "pass": true
+    },
+    {
+      "name": "Network list reads pending draft metadata on its background reader",
+      "pass": true
+    },
+    {
+      "name": "Network list refresh sees draft removal without a global pending cache",
+      "pass": true
+    },
+    {
+      "name": "Actual Android main-thread region and cold latency reads complete",
+      "pass": true
+    },
+    {
+      "name": "Region and latency UI snapshots cause no main-thread disk reads or writes",
+      "pass": true
+    },
+    {
+      "name": "Cold profile metadata paths resolve without Android main-thread directory access",
+      "pass": true
+    },
+    {
+      "name": "Background cold-path resolution restores the correct eight environment snapshots",
+      "pass": true
+    },
+    {
+      "name": "Deferred callback race reaches both real encrypted candidate writes",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback does not clear the newer sealed candidate",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback keeps the newer request saving state",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback does not apply the replaced candidate",
+      "pass": true
+    },
+    {
+      "name": "Intervening non-saving network operations preserve the newest save ownership",
+      "pass": true
+    },
+    {
+      "name": "The latest network candidate is applied once after the stale callback is ignored",
+      "pass": true
+    },
+    {
+      "name": "Low latency permits a pool without a preselected entry",
+      "pass": true
+    },
+    {
+      "name": "Foreign subscription nodes are rejected",
+      "pass": true
+    },
+    {
+      "name": "An empty optimization pool is rejected",
+      "pass": true
+    },
+    {
+      "name": "Actual native parser supplies identities for the original permitted entry pool",
+      "pass": true
+    },
+    {
+      "name": "Draft restores the low latency mode",
+      "pass": true
+    },
+    {
+      "name": "Draft saves only the permitted pool",
+      "pass": true
+    },
+    {
+      "name": "Changing subscription clears candidates and pool",
+      "pass": true
+    },
+    {
+      "name": "Maintenance rounds stay bounded",
+      "pass": true
+    },
+    {
+      "name": "Round robin explores the whole allowed pool",
+      "pass": true
+    },
+    {
+      "name": "Production Mihomo starts with ARC DNS and TCP concurrency",
+      "pass": true
+    },
+    {
+      "name": "Startup verifies the same controlled fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Remembered route starts without an invented delay",
+      "pass": true
+    },
+    {
+      "name": "Automatic display sampling makes no requests while a reply is busy",
+      "pass": true
+    },
+    {
+      "name": "The current route gets a real first sample after the reply becomes idle",
+      "pass": true
+    },
+    {
+      "name": "Display sampling preserves entry core and fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Repeated UI reads do not repeatedly probe the route",
+      "pass": true
+    },
+    {
+      "name": "A stale real sample remains visible and is explicitly marked previous",
+      "pass": true
+    },
+    {
+      "name": "A real failed sample is not mislabeled unmeasured",
+      "pass": true
+    },
+    {
+      "name": "Display does not reuse a different fixed exit's sample",
+      "pass": true
+    },
+    {
+      "name": "A blocked display probe reports its failure while preserving the usable connection",
+      "pass": true
+    },
+    {
+      "name": "Display-only failure does not poison route quality or trigger switching",
+      "pass": true
+    },
+    {
+      "name": "A newer display-only sample cannot hide the original health failure",
+      "pass": true
+    },
+    {
+      "name": "Legacy saved runtime keeps its original health failure semantics",
+      "pass": true
+    },
+    {
+      "name": "External connection response can be measured over an explicit existing proxy",
+      "pass": true
+    },
+    {
+      "name": "External measured response is shown instead of permanently unmeasured",
+      "pass": true
+    },
+    {
+      "name": "Switching the actual phone network invalidates the previous response",
+      "pass": true
+    },
+    {
+      "name": "A blocked external route makes no test request or direct fallback",
+      "pass": true
+    },
+    {
+      "name": "TCP concurrency is enabled by the running core",
+      "pass": true
+    },
+    {
+      "name": "DNS nameservers remain guarded by the fixed exit",
+      "pass": true
+    },
+    {
+      "name": "First and repeat website headers are measured",
+      "pass": true
+    },
+    {
+      "name": "HEAD repeat reuses the same controlled HTTP connection",
+      "pass": true
+    },
+    {
+      "name": "Website probes contain no account Cookie or Authorization",
+      "pass": true
+    },
+    {
+      "name": "A different candidate uses a new probe connection",
+      "pass": true
+    },
+    {
+      "name": "Candidate probing leaves the live route unchanged",
+      "pass": true
+    },
+    {
+      "name": "Both entry routes and the same fixed exit carry real requests",
+      "pass": true
+    },
+    {
+      "name": "A faster permitted entrance reduces controlled website cold response time",
+      "pass": true
+    },
+    {
+      "name": "Challenger has actual native full-chain evidence",
+      "pass": true
+    },
+    {
+      "name": "Fresh website evidence avoids duplicate candidate HEAD requests",
+      "pass": true
+    },
+    {
+      "name": "Expired candidate evidence is renewed through real website requests",
+      "pass": true
+    },
+    {
+      "name": "Budgeted website comparison keeps live entry and fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Site challenges are reported separately",
+      "pass": true
+    },
+    {
+      "name": "Site challenges do not count as failed routes",
+      "pass": true
+    },
+    {
+      "name": "HEAD unsupported is explicit",
+      "pass": true
+    },
+    {
+      "name": "Website redirects are not followed",
+      "pass": true
+    },
+    {
+      "name": "DNS timing accepts a genuine matching A response",
+      "pass": true
+    },
+    {
+      "name": "DNS probe uses the current fixed exit",
+      "pass": true
+    },
+    {
+      "name": "A different DNS transaction is rejected",
+      "pass": true
+    },
+    {
+      "name": "Failed DNS resolution is rejected",
+      "pass": true
+    },
+    {
+      "name": "Truncated DNS packets are rejected",
+      "pass": true
+    },
+    {
+      "name": "Measured DNS selects the quickest valid service",
+      "pass": true
+    },
+    {
+      "name": "Fresh DNS readings prevent repeated probes",
+      "pass": true
+    },
+    {
+      "name": "Expired DNS is scheduled for renewal",
+      "pass": true
+    },
+    {
+      "name": "DNS choice survives recreation",
+      "pass": true
+    },
+    {
+      "name": "DNS measurements stay isolated by environment",
+      "pass": true
+    },
+    {
+      "name": "DNS selection expires with its evidence",
+      "pass": true
+    },
+    {
+      "name": "A different route resets DNS choice",
+      "pass": true
+    },
+    {
+      "name": "Busy maintenance makes no extra website or DNS requests",
+      "pass": true
+    },
+    {
+      "name": "Explicit speed test runs while reply is busy",
+      "pass": true
+    },
+    {
+      "name": "Busy manual speed test preserves live entry and exit",
+      "pass": true
+    },
+    {
+      "name": "An actual website request reaches the cancellation fixture",
+      "pass": true
+    },
+    {
+      "name": "Starting a user operation cancels the active probe",
+      "pass": true
+    },
+    {
+      "name": "Cancellation keeps the live route and core",
+      "pass": true
+    },
+    {
+      "name": "A healthy route is held during cooldown",
+      "pass": true
+    },
+    {
+      "name": "Activity prevents performance-only switching",
+      "pass": true
+    },
+    {
+      "name": "A consistently faster stable route wins when idle",
+      "pass": true
+    },
+    {
+      "name": "Failures outweigh a deceptively fast sample",
+      "pass": true
+    },
+    {
+      "name": "Healthy random mode is not silently optimized",
+      "pass": true
+    },
+    {
+      "name": "Manual mode keeps the specified entry",
+      "pass": true
+    },
+    {
+      "name": "Low latency selects a proven better candidate",
+      "pass": true
+    },
+    {
+      "name": "Optimizing preserves the fixed exit IP",
+      "pass": true
+    },
+    {
+      "name": "Exit IP changes still trigger the original protection",
+      "pass": true
+    },
+    {
+      "name": "A real WSS connection carries continuous frames through both Mihomo SOCKS hops",
+      "pass": true
+    },
+    {
+      "name": "The live core and selected route have a successful exit verification receipt",
+      "pass": true
+    },
+    {
+      "name": "A temporary exit HTTP failure preserves the same WSS core and fixed route",
+      "pass": true
+    },
+    {
+      "name": "Exit verification failure schedules bounded retry without claiming fresh success",
+      "pass": true
+    },
+    {
+      "name": "Exit verification backoff makes no repeated IP requests or WebSocket replacement",
+      "pass": true
+    },
+    {
+      "name": "Detector backoff prevents failed latency probes from replacing the verified WSS route",
+      "pass": true
+    },
+    {
+      "name": "A real exit read timeout leaves the existing WSS tunnel responsive",
+      "pass": true
+    },
+    {
+      "name": "An invalid exit service response preserves only the previously verified route",
+      "pass": true
+    },
+    {
+      "name": "A malformed exit IP cannot become a new successful verification",
+      "pass": true
+    },
+    {
+      "name": "Send preflight admits the exact retained route with degraded verification",
+      "pass": true
+    },
+    {
+      "name": "Explicit exit verification reports failure while the existing verified tunnel continues",
+      "pass": true
+    },
+    {
+      "name": "Same-route recovery callback reopens admission during detector outage",
+      "pass": true
+    },
+    {
+      "name": "A recovered exit service renews proof and resets the retry state",
+      "pass": true
+    },
+    {
+      "name": "All temporary verification faults retain one WebSocket and one core generation",
+      "pass": true
+    },
+    {
+      "name": "Exit receipts reject changed core identity exit identity or listener ports",
+      "pass": true
+    },
+    {
+      "name": "An actual entry change invalidates the previous route's verification receipt",
+      "pass": true
+    },
+    {
+      "name": "An unverified changed route fails closed when the exit service is unavailable",
+      "pass": true
+    },
+    {
+      "name": "A new core has no inherited in-memory verification receipt",
+      "pass": true
+    },
+    {
+      "name": "First connection requires actual exit verification and never accepts an outage",
+      "pass": true
+    },
+    {
+      "name": "Cancellation fixture begins with a live verified WSS before changing the route",
+      "pass": true
+    },
+    {
+      "name": "Cancelled maintenance fails closed after an actual unverified entry change",
+      "pass": true
+    },
+    {
+      "name": "Verification recovery permits a fresh real WebSocket after intentional closure",
+      "pass": true
+    },
+    {
+      "name": "A confirmed exit IP mismatch still blocks recovery and closes the real WebSocket",
+      "pass": true
+    },
+    {
+      "name": "Detector outage fixture starts with actual protected WSS",
+      "pass": true
+    },
+    {
+      "name": "Primary detector outage with target HTTP 200 preserves verified route",
+      "pass": true
+    },
+    {
+      "name": "Primary detector outage with target HTTP 403 preserves verified route",
+      "pass": true
+    },
+    {
+      "name": "Primary detector outage with target HTTP 429 preserves verified route",
+      "pass": true
+    },
+    {
+      "name": "Primary detector outage with target HTTP 503 preserves verified route",
+      "pass": true
+    },
+    {
+      "name": "Busy health does not issue either primary or secondary request",
+      "pass": true
+    },
+    {
+      "name": "Injected target SSLProtocolException never replaces or stops the actual WSS route",
+      "pass": true
+    },
+    {
+      "name": "Injected target SSLException never replaces or stops the actual WSS route",
+      "pass": true
+    },
+    {
+      "name": "Injected target SSLHandshakeException never replaces or stops the actual WSS route",
+      "pass": true
+    },
+    {
+      "name": "One paired transport failure keeps the route suspect",
+      "pass": true
+    },
+    {
+      "name": "Reachable target clears paired-failure suspicion despite continued primary outage",
+      "pass": true
+    },
+    {
+      "name": "Telemetry scheduling begins with a genuine persistent protected WebSocket",
+      "pass": true
+    },
+    {
+      "name": "Queued automatic sampling yields to a reply that started before execution",
+      "pass": true
+    },
+    {
+      "name": "Deferred automatic sampling resumes idle without a fabricated failure or route change",
+      "pass": true
+    },
+    {
+      "name": "Queued display sampling reuses a newer same-route health sample instead of probing twice",
+      "pass": true
+    },
+    {
+      "name": "Automatic telemetry deferral preserves one WebSocket and the exact core identity",
+      "pass": true
+    },
+    {
+      "name": "Actual failed-chain recovery performs exactly one full exit verification for the new entry",
+      "pass": true
+    },
+    {
+      "name": "Removing duplicate recovery verification preserves the live WebSocket and fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Detector transport classification excludes cancellation TLS identity and configuration failures",
+      "pass": true
+    },
+    {
+      "name": "An unverified changed route rejects detector reset and closes its WSS",
+      "pass": true
+    },
+    {
+      "name": "First connection rejects detector reset without inheriting a route receipt",
+      "pass": true
+    },
+    {
+      "name": "An unverified changed route rejects detector eof and closes its WSS",
+      "pass": true
+    },
+    {
+      "name": "First connection rejects detector eof without inheriting a route receipt",
+      "pass": true
+    },
+    {
+      "name": "Proxy data plane has an independent Android process",
+      "pass": true
+    },
+    {
+      "name": "The independent service owns a live real proxy core",
+      "pass": true
+    },
+    {
+      "name": "A new control client adopts the running tunnel",
+      "pass": true
+    },
+    {
+      "name": "Client recreation keeps the exact core and port",
+      "pass": true
+    },
+    {
+      "name": "Adoption restores probe indices from the running configuration",
+      "pass": true
+    },
+    {
+      "name": "Adoption rechecks the fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Independent network service retains the same WSS and core during exit HTTP failure",
+      "pass": true
+    },
+    {
+      "name": "Independent network service retains the same WSS and core during a real exit timeout",
+      "pass": true
+    },
+    {
+      "name": "Independent network service retains the same WSS and core during invalid exit response",
+      "pass": true
+    },
+    {
+      "name": "Independent network service retains the same WSS and core during detector reset",
+      "pass": true
+    },
+    {
+      "name": "Detector reset preflight admits only the retained verified WSS route",
+      "pass": true
+    },
+    {
+      "name": "Independent network service retains the same WSS and core during detector eof",
+      "pass": true
+    },
+    {
+      "name": "Detector eof preflight admits only the retained verified WSS route",
+      "pass": true
+    },
+    {
+      "name": "Independent network service renews exit proof without replacing the original WebSocket",
+      "pass": true
+    },
+    {
+      "name": "Concurrent environments own different kernels and ports",
+      "pass": true
+    },
+    {
+      "name": "A separate environment control process observes its tunnel",
+      "pass": true
+    },
+    {
+      "name": "Killing the environment control process keeps its proxy kernel",
+      "pass": true
+    },
+    {
+      "name": "Actual core exit is pushed to the control client",
+      "pass": true
+    },
+    {
+      "name": "One core exiting leaves the other environment usable",
+      "pass": true
+    },
+    {
+      "name": "Restart creates a new generation that ignores the old exit event",
+      "pass": true
+    },
+    {
+      "name": "Restarting one tunnel keeps the other kernel and port",
+      "pass": true
+    },
+    {
+      "name": "A stop acknowledgement confirms the targeted core is closed",
+      "pass": true
+    },
+    {
+      "name": "Stopping one environment does not stop the other",
+      "pass": true
+    },
+    {
+      "name": "Service process death closes the client's network admission",
+      "pass": true
+    },
+    {
+      "name": "A replacement service restores and verifies the environment",
+      "pass": true
+    },
+    {
+      "name": "A service mismatch cancellation fixture starts from a verified live WSS",
+      "pass": true
+    },
+    {
+      "name": "A confirmed service exit mismatch still stops the core when maintenance is concurrently cancelled",
+      "pass": true
+    },
+    {
+      "name": "The last tunnel stops through the service",
+      "pass": true
+    }
+  ],
+  "exitTransportContinuity": [
+    {
+      "kind": "changed-route",
+      "fault": "reset",
+      "detectorRequests": 2,
+      "wireFaultRequests": 2,
+      "classification": "transport-reset-or-eof",
+      "sendAccepted": false,
+      "ready": false,
+      "coreAlive": false,
+      "receiptCurrent": false,
+      "entryChanged": true,
+      "webSocketClosed": true,
+      "webSocketConnections": 1
+    },
+    {
+      "kind": "first-route",
+      "fault": "reset",
+      "detectorRequests": 1,
+      "wireFaultRequests": 1,
+      "classification": "transport-reset-or-eof",
+      "startAccepted": false,
+      "ready": false,
+      "coreAlive": false,
+      "receiptCurrent": false,
+      "startupBeganAt": 202560,
+      "controllerPort": 42145
+    },
+    {
+      "kind": "changed-route",
+      "fault": "eof",
+      "detectorRequests": 2,
+      "wireFaultRequests": 2,
+      "classification": "transport-reset-or-eof",
+      "sendAccepted": false,
+      "ready": false,
+      "coreAlive": false,
+      "receiptCurrent": false,
+      "entryChanged": true,
+      "webSocketClosed": true,
+      "webSocketConnections": 1
+    },
+    {
+      "kind": "first-route",
+      "fault": "eof",
+      "detectorRequests": 1,
+      "wireFaultRequests": 1,
+      "classification": "transport-reset-or-eof",
+      "startAccepted": false,
+      "ready": false,
+      "coreAlive": false,
+      "receiptCurrent": false,
+      "startupBeganAt": 203652,
+      "controllerPort": 38953
+    },
+    {
+      "kind": "verified",
+      "fault": "reset",
+      "serviceProcess": true,
+      "before": {
+        "pid": 6320,
+        "servicePid": 6304,
+        "generation": "1d71b2ef-58fa-4bc3-bea4-0fd692069fd5",
+        "configuration": "cc7089e4cdc0f3e05d93befbc4c4a20b239a3e8e5dcf7752f949a808e19ed7da",
+        "controllerPort": 33411,
+        "proxyPort": 34179,
+        "entry": "Entry|slow",
+        "tokenHash": "6fc4b5289b3137bae1ac4e6db314b47b63259707fe9e860fb431243722e73430",
+        "exitIp": "203.0.113.8",
+        "alive": true
+      },
+      "after": {
+        "pid": 6320,
+        "servicePid": 6304,
+        "generation": "1d71b2ef-58fa-4bc3-bea4-0fd692069fd5",
+        "configuration": "cc7089e4cdc0f3e05d93befbc4c4a20b239a3e8e5dcf7752f949a808e19ed7da",
+        "controllerPort": 33411,
+        "proxyPort": 34179,
+        "entry": "Entry|slow",
+        "tokenHash": "6fc4b5289b3137bae1ac4e6db314b47b63259707fe9e860fb431243722e73430",
+        "exitIp": "203.0.113.8",
+        "alive": true
+      },
+      "classification": "transport-reset-or-eof",
+      "detectorRequests": 3,
+      "wireFaultRequests": 3,
+      "lastVerified": 0,
+      "retryInMs": 899979,
+      "backoffNoRequests": true,
+      "sendAccepted": true,
+      "receiptCurrent": true,
+      "webSocketConnections": 1,
+      "echoesBefore": 54,
+      "echoesAfter": 55
+    },
+    {
+      "kind": "verified",
+      "fault": "eof",
+      "serviceProcess": true,
+      "before": {
+        "pid": 6320,
+        "servicePid": 6304,
+        "generation": "1d71b2ef-58fa-4bc3-bea4-0fd692069fd5",
+        "configuration": "cc7089e4cdc0f3e05d93befbc4c4a20b239a3e8e5dcf7752f949a808e19ed7da",
+        "controllerPort": 33411,
+        "proxyPort": 34179,
+        "entry": "Entry|slow",
+        "tokenHash": "6fc4b5289b3137bae1ac4e6db314b47b63259707fe9e860fb431243722e73430",
+        "exitIp": "203.0.113.8",
+        "alive": true
+      },
+      "after": {
+        "pid": 6320,
+        "servicePid": 6304,
+        "generation": "1d71b2ef-58fa-4bc3-bea4-0fd692069fd5",
+        "configuration": "cc7089e4cdc0f3e05d93befbc4c4a20b239a3e8e5dcf7752f949a808e19ed7da",
+        "controllerPort": 33411,
+        "proxyPort": 34179,
+        "entry": "Entry|slow",
+        "tokenHash": "6fc4b5289b3137bae1ac4e6db314b47b63259707fe9e860fb431243722e73430",
+        "exitIp": "203.0.113.8",
+        "alive": true
+      },
+      "classification": "transport-reset-or-eof",
+      "detectorRequests": 2,
+      "wireFaultRequests": 2,
+      "lastVerified": 0,
+      "retryInMs": 899999,
+      "backoffNoRequests": true,
+      "sendAccepted": true,
+      "receiptCurrent": true,
+      "webSocketConnections": 1,
+      "echoesBefore": 55,
+      "echoesAfter": 57
+    }
+  ],
+  "sourceCommit": "a7202d3053cb954b3378b0d5a535ab759899ea1f"
+}
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_quiet_notifications.py", line 20, in <module>
+    assert 'FATAL EXCEPTION' not in raw,raw
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: --------- beginning of main
+10-16 15:37:22.603  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Background completion reminders are off by default","pass":true}}
+10-16 15:37:22.604  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Browser and network child processes cannot count as visible UI","pass":true}}
+10-16 15:37:23.707  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Upgrade removes old noisy foreground channels","pass":true}}
+10-16 15:37:23.707  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Upgrade removes non-completion regular notifications across profiles","pass":true}}
+10-16 15:37:23.759  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"A real visible app Activity suppresses completion reminders","pass":true}}
+10-16 15:37:23.759  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"An already running default process exposes real zero-Activity lifecycle over private IPC","pass":true}}
+10-16 15:37:23.759  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"A visible Activity is proved by real started lifecycle count","pass":true}}
+10-16 15:37:23.760  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"A private visibility endpoint rejects an obsolete process PID","pass":true}}
+10-16 15:37:24.282  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Foreground replies and downloads stay quiet even after opting in","pass":true}}
+10-16 15:37:24.283  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Already visible completions are remembered without posting","pass":true}}
+10-16 15:37:24.306  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Waiting and disconnected states do not post completion alerts","pass":true}}
+10-16 15:37:24.511  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"reply-background-quiet-v2 remains silent at MIN or system-required LOW","pass":true}}
+10-16 15:37:24.511  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"network-background-quiet-v2 remains silent at MIN or system-required LOW","pass":true}}
+10-16 15:37:24.511  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Reply service keeps a legitimate foreground notification","pass":true}}
+10-16 15:37:24.511  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Network service keeps a legitimate foreground notification","pass":true}}
+10-16 15:37:24.511  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Foreground statuses no longer contain waiting or environment-count messages","pass":true}}
+10-16 15:37:24.511  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Both foreground notices stay off the lock screen","pass":true}}
+10-16 15:37:24.813  6517  6517 I PocketQuietNotifications: {"kind":"check","value":{"name":"Progress polling does not repost a notification","pass":true}}
+10-16 15:37:24.814  6517  6517 I PocketQuietNotifications: {"kind":"homeNeeded","value":{"id":"notification-background-0adf858b-66b8-4058-8002-08b5813c9d6c"}}
+--------- beginning of crash
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: FATAL EXCEPTION: main
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: Process: local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment7_9693571e13584104af339a0d2ff8c97c, PID: 6710
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: java.lang.RuntimeException: Unable to create application local.pocketchat.PocketApplication: java.lang.SecurityException: Isolated process not allowed to call getContentProvider
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7510)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleBindApplication(Unknown Source:0)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2416)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:107)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:232)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:317)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:8705)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:886)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: Caused by: java.lang.SecurityException: Isolated process not allowed to call getContentProvider
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3242)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.os.Parcel.createException(Parcel.java:3226)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3209)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.os.Parcel.readException(Parcel.java:3151)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.app.IActivityManager$Stub$Proxy.getContentProvider(IActivityManager.java:6315)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.app.ActivityThread.acquireProvider(ActivityThread.java:7841)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.app.ContextImpl$ApplicationContentResolver.acquireProvider(ContextImpl.java:3757)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.content.ContentResolver.acquireProvider(ContentResolver.java:2526)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.provider.Settings$ContentProviderHolder.getProvider(Settings.java:3316)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.provider.Settings$NameValueCache.getStringForUser(Settings.java:3542)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.provider.Settings$Global.getStringForUser(Settings.java:17999)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.provider.Settings$Global.getString(Settings.java:17982)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.database.sqlite.SQLiteCompatibilityWalFlags.initIfNeeded(SQLiteCompatibilityWalFlags.java:105)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.database.sqlite.SQLiteCompatibilityWalFlags.isLegacyCompatibilityWalEnabled(SQLiteCompatibilityWalFlags.java:57)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.<init>(SQLiteDatabase.java:490)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:1003)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:996)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.database.sqlite.SQLiteOpenHelper.getDatabaseLocked(SQLiteOpenHelper.java:373)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.database.sqlite.SQLiteOpenHelper.getReadableDatabase(SQLiteOpenHelper.java:340)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at local.pocketchat.AppSettings.get(AppSettings.java:6)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at local.pocketchat.AppAppearance.refresh(AppAppearance.java:39)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at local.pocketchat.AppAppearance.install(AppAppearance.java:28)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at local.pocketchat.PocketApplication.onCreate(PocketApplication.java:9)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.app.Instrumentation.callApplicationOnCreate(Instrumentation.java:1386)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:7504)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	... 9 more
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: Caused by: android.os.RemoteException: Remote stack trace:
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.enforceNotIsolatedCaller(ActivityManagerService.java:3127)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at com.android.server.am.ContentProviderHelper.getContentProvider(ContentProviderHelper.java:136)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.getContentProvider(ActivityManagerService.java:7127)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at android.app.IActivityManager$Stub.onTransact(IActivityManager.java:2950)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 	at com.android.server.am.ActivityManagerService.onTransact(ActivityManagerService.java:2812)
+10-16 15:37:24.886  6710  6710 E AndroidRuntime: 
+
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_ui_visuals.py", line 99, in <module>
+    for scene in scenes:capture(variant,width,height,1,scene)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tests/gecko/run_ui_visuals.py", line 44, in capture
+    if 'FATAL EXCEPTION' in runtime:raise AssertionError((variant,scene,'Android UI crashed',runtime[-5000:]))
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('current', 'chat', 'Android UI crashed', ' 7044  7044 E AndroidRuntime: \tat android.os.Handler.dispatchMessage(Handler.java:107)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.os.Looper.loopOnce(Looper.java:232)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.os.Looper.loop(Looper.java:317)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.app.ActivityThread.main(ActivityThread.java:8705)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat java.lang.reflect.Method.invoke(Native Method)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat com.android.internal.os.ZygoteInit.main(ZygoteInit.java:886)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: Caused by: java.lang.SecurityException: Isolated process not allowed to call getContentProvider\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.os.Parcel.createExceptionOrNull(Parcel.java:3242)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.os.Parcel.createException(Parcel.java:3226)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.os.Parcel.readException(Parcel.java:3209)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.os.Parcel.readException(Parcel.java:3151)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.app.IActivityManager$Stub$Proxy.getContentProvider(IActivityManager.java:6315)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.app.ActivityThread.acquireProvider(ActivityThread.java:7841)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.app.ContextImpl$ApplicationContentResolver.acquireProvider(ContextImpl.java:3757)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.content.ContentResolver.acquireProvider(ContentResolver.java:2526)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.provider.Settings$ContentProviderHolder.getProvider(Settings.java:3316)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.provider.Settings$NameValueCache.getStringForUser(Settings.java:3542)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.provider.Settings$Global.getStringForUser(Settings.java:17999)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.provider.Settings$Global.getString(Settings.java:17982)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.database.sqlite.SQLiteCompatibilityWalFlags.initIfNeeded(SQLiteCompatibilityWalFlags.java:105)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.database.sqlite.SQLiteCompatibilityWalFlags.isLegacyCompatibilityWalEnabled(SQLiteCompatibilityWalFlags.java:57)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.database.sqlite.SQLiteDatabase.<init>(SQLiteDatabase.java:490)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:1003)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java:996)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.database.sqlite.SQLiteOpenHelper.getDatabaseLocked(SQLiteOpenHelper.java:373)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.database.sqlite.SQLiteOpenHelper.getReadableDatabase(SQLiteOpenHelper.java:340)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat local.pocketchat.AppSettings.get(AppSettings.java:6)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat local.pocketchat.AppAppearance.refresh(AppAppearance.java:39)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat local.pocketchat.AppAppearance.install(AppAppearance.java:28)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat local.pocketchat.PocketApplication.onCreate(PocketApplication.java:9)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.app.Instrumentation.callApplicationOnCreate(Instrumentation.java:1386)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.app.ActivityThread.handleBindApplication(ActivityThread.java:7504)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \t... 9 more\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: Caused by: android.os.RemoteException: Remote stack trace:\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat com.android.server.am.ActivityManagerService.enforceNotIsolatedCaller(ActivityManagerService.java:3127)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat com.android.server.am.ContentProviderHelper.getContentProvider(ContentProviderHelper.java:136)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat com.android.server.am.ActivityManagerService.getContentProvider(ActivityManagerService.java:7127)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat android.app.IActivityManager$Stub.onTransact(IActivityManager.java:2950)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \tat com.android.server.am.ActivityManagerService.onTransact(ActivityManagerService.java:2812)\n10-16 15:37:34.240  7044  7044 E AndroidRuntime: \n')
