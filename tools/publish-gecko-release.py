@@ -138,6 +138,16 @@ if version_code>=46:
         chain_files.extend(['network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','sealed-file-host-results.json','network-source-results.json','network-source-ui-results.json','network-source-route-results.json','network-safe-idle-results.json','network-safe-idle-trust-host-results.json'])
     for name in chain_files:
         assert json.loads((args.evidence/name).read_text())['sourceCommit']==args.source,'Chain evidence belongs to a different source: '+name
+appearance=None
+if version_code>=59:
+    appearance_raw=(args.evidence/'appearance-results.json').read_bytes()
+    appearance=json.loads(appearance_raw)
+    assert appearance['status']=='passed' and appearance['actualAndroidExecution'] and appearance['systemModeEvents']
+    assert appearance['buildIdentity']['sourceCommit']==args.source and appearance['actualAndroidTaps']>=9
+    assert appearance['checkCount']==len(appearance['checks']) and all(c['pass'] for c in appearance['checks'])
+    assert json.loads((args.evidence/'gecko-performance-results.json').read_text())['actualAppearanceRoundtrip']
+    required={'A faster permitted entrance reduces controlled website cold response time','Fresh website evidence avoids duplicate candidate HEAD requests','Expired candidate evidence is renewed through real website requests','Budgeted website comparison keeps live entry and fixed exit'}
+    assert required<=set(c['name'] for c in network['checks'] if c['pass'])
 build=json.loads((args.evidence/'manifest.json').read_text())
 assert build['sourceCommit']==args.source,'Native evidence does not match the selected source.'
 receipt=json.loads((args.apk.parent/'gecko-apk-verification.json').read_text())
@@ -150,6 +160,8 @@ assert receipt['bytes']==len(raw) and receipt['sha256']==hashlib.sha256(raw).hex
 sdk_build,caret=(verify_derived_release_evidence(args.evidence,args.source,report,build,receipt,args.apk) if version_code>=46 else (None,None))
 manifest=dict(receipt,sourceCommit=args.source,filename=args.apk.name,parts=[],
               nativeRegression='passed',googleLogin='not-tested',physicalArmPhone='not-tested')
+if appearance is not None:
+    manifest['appearanceRegression']=dict(sourceCommit=args.source,checkCount=appearance['checkCount'],reportSha256=hashlib.sha256(appearance_raw).hexdigest(),actualAndroidExecution=True,physicalPhoneAcceptance=False)
 manifest['releaseToolsCommit']=release_tools_commit
 manifest['channel']=args.channel
 if args.channel=='candidate':manifest['candidateNumber']=args.candidate_number
@@ -216,6 +228,7 @@ if caret is not None and caret.get('controlledImeEnvironment'):
 if template_release:performance_files.extend(['gecko-template-results.json','gecko-template-runner-log.json','identity-controller-host-results.json','deferred-browser-host-results.json','identity-bridge-host-results.json'])
 if resource_release:performance_files.extend(['resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json'])
 if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','official-sdk-verification.json','official-sdk-input.json'])
+if version_code>=59:performance_files.extend(['appearance-results.json','appearance-light.png','appearance-dark.png','network-source-sharing-results.json'])
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
 shutil.copy2(args.notes,stage/'RELEASE.md')
 workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkdir(parents=True)
