@@ -58,6 +58,13 @@ final class NetworkShareCodec {
   }
   static byte[] provider(JSONObject node){try{return J.obj("proxies",J.arr(canonical(node))).toString().getBytes(StandardCharsets.UTF_8);}catch(Exception e){throw new IllegalArgumentException("节点无法编码");}}
   static JSONObject manual(JSONObject row)throws Exception{return node(J.obj("name",row.optString("name"),"type","socks5","server",row.optString("host"),"port",row.optInt("port"),"username",row.optString("user"),"password",row.optString("password")),true);}
+  static Object yamlValue(Object value,int depth)throws Exception{
+    if(depth>7)throw invalid();
+    if(value instanceof Map){Map<?,?> source=(Map<?,?>)value;if(source.size()>48)throw invalid();JSONObject result=new JSONObject();for(Map.Entry<?,?> item:source.entrySet()){if(!(item.getKey() instanceof String)||((String)item.getKey()).length()>128)throw invalid();result.put((String)item.getKey(),yamlValue(item.getValue(),depth+1));}return result;}
+    if(value instanceof List){List<?> source=(List<?>)value;if(source.size()>64)throw invalid();JSONArray result=new JSONArray();for(Object item:source)result.put(yamlValue(item,depth+1));return result;}
+    if(value instanceof String||value instanceof Number||value instanceof Boolean){scalarTree(value,depth);return value;}
+    throw invalid();
+  }
   /** Exactly one node, never its subscription address or other nodes. */
   static JSONObject extract(byte[] bytes,String prefixed,String role)throws Exception{
     if(bytes==null||bytes.length>16*1024*1024)throw new IOException("已保存的节点不可读取，请先更新订阅。");
@@ -65,7 +72,7 @@ final class NetworkShareCodec {
     Object raw=new Yaml(new SafeConstructor(limits)).load(new String(bytes,StandardCharsets.UTF_8));
     if(!(raw instanceof Map)||!(((Map<?,?>)raw).get("proxies") instanceof List))throw new IOException("此订阅缓存暂不支持分享，请使用 Clash / Mihomo YAML 节点。");
     String prefix=NetworkCatalog.EXIT.equals(role)?"Exit|":"Entry|";if(!prefixed.startsWith(prefix))throw invalid();String name=prefixed.substring(prefix.length());JSONObject selected=null;
-    for(Object obj:(List<?>)((Map<?,?>)raw).get("proxies"))if(obj instanceof Map&&name.equals(((Map<?,?>)obj).get("name"))){if(selected!=null)throw invalid();selected=new JSONObject((Map<?,?>)obj);}
-    if(selected==null)throw new IOException("当前节点已变化，请重新选择后分享。");return node(selected,NetworkCatalog.EXIT.equals(role));
+    for(Object obj:(List<?>)((Map<?,?>)raw).get("proxies"))if(obj instanceof Map&&name.equals(((Map<?,?>)obj).get("name"))){if(selected!=null)throw invalid();selected=(JSONObject)yamlValue(obj,0);}
+    if(selected==null)throw new IOException("当前节点已变化，请重新选择后分享。");if(selected.opt("port") instanceof String&&selected.optString("port").matches("[0-9]{1,5}"))selected.put("port",Integer.parseInt(selected.optString("port")));return node(selected,NetworkCatalog.EXIT.equals(role));
   }
 }
