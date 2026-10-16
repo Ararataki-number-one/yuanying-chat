@@ -43,6 +43,9 @@ public class MainActivity extends Activity {
     String message=value==null?"":value;lastUiStatus=message;
     if(status==null)return;
     boolean quiet=message.isEmpty()||message.startsWith("已连接")||message.startsWith("正在")||message.startsWith("准备连接")||message.equals("回复完成")||message.equals("已停止")||message.equals("已停止生成")||message.equals("已停止回复")||message.equals("已取消");
+    // Keep binding diagnostics in the delivery record, without a persistent
+    // banner or off-page feedback when the conversation changes.
+    quiet|=message.equals("对话已改变，请检查上次发送；不会自动重发");
     boolean current=session!=null&&TextUtils.equals(message,session.status);
     boolean sessionError=current&&(!session.pageError.isEmpty()&&TextUtils.equals(message,session.pageError)||session.websiteConnectionIssue||!session.networkIssue.isEmpty()&&TextUtils.equals(message,session.networkIssue)&&(session.offline||!session.networkReady&&!session.connecting));
     boolean error=!quiet&&(sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
