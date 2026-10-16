@@ -20,6 +20,7 @@ final class FeatureDialogs {
     EditText user=field(a,box,"出口用户名",saved.optString("exitUser"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
     EditText password=field(a,box,"出口密码",saved.optString("exitPassword"),InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
     password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+    DesignUi.visiblePassword(password);
     EditText[] fields={subscription,host,port,user,password};String[] baseline=new String[fields.length];for(int i=0;i<fields.length;i++)baseline[i]=fields[i].getText().toString();
     DesignUi.note(box,"保存后会重新连接此环境。用户名和密码在本机加密保存；首次下载订阅需要可用网络。");
     TextView notice=DesignUi.text(a,"",13,DesignUi.RED);notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);box.addView(notice);

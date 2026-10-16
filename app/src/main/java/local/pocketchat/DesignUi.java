@@ -72,6 +72,22 @@ final class DesignUi {
     TextView val=text(c,value,14,TEXT);val.setTextIsSelectable(true);row.addView(val,new LinearLayout.LayoutParams(0,-2,1));box.addView(row);
   }
   static EditText input(LinearLayout box,String title,String value,String hint){Context c=box.getContext();TextView label=text(c,title,13,MUTED);label.setPadding(0,dp(c,12),0,dp(c,6));if(!title.isEmpty())box.addView(label);EditText e=new EditText(c);e.setTextSize(14);e.setTextColor(TEXT);e.setHintTextColor(MUTED);e.setSingleLine(true);e.setContentDescription(title);e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);e.setText(value);e.setHint(hint);e.setPadding(dp(c,10),0,dp(c,10),0);e.setBackground(surface(c,CARD,12,LINE));box.addView(e,new LinearLayout.LayoutParams(-1,dp(c,48)));return e;}
+  static void visiblePassword(EditText input){
+    Context c=input.getContext();LinearLayout parent=(LinearLayout)input.getParent();int index=parent.indexOfChild(input);ViewGroup.LayoutParams layout=input.getLayoutParams();
+    input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+    input.setImeOptions(input.getImeOptions()|android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
+    input.setTransformationMethod(null);
+    parent.removeView(input);FrameLayout row=new FrameLayout(c);parent.addView(row,index,layout);
+    input.setPadding(input.getPaddingLeft(),input.getPaddingTop(),dp(c,76),input.getPaddingBottom());row.addView(input,new FrameLayout.LayoutParams(-1,-1));
+    Button toggle=ReferenceUi.link(c,"隐藏",()->{});toggle.setContentDescription("隐藏密码");
+    toggle.setOnClickListener(v->{
+      int start=input.getSelectionStart(),end=input.getSelectionEnd();boolean hide=input.getTransformationMethod()==null;
+      input.setTransformationMethod(hide?android.text.method.PasswordTransformationMethod.getInstance():null);
+      if(start>=0&&end>=0)input.setSelection(Math.min(start,input.length()),Math.min(end,input.length()));
+      toggle.setText(hide?"显示":"隐藏");toggle.setContentDescription(hide?"显示密码":"隐藏密码");
+    });
+    row.addView(toggle,new FrameLayout.LayoutParams(dp(c,68),-1,Gravity.END|Gravity.CENTER_VERTICAL));
+  }
   static LinearLayout tabs(Context c,String[] labels,int selected,java.util.function.IntConsumer onClick){return ReferenceUi.tabs(c,labels,selected,onClick);}
   static LinearLayout nav(Activity a,int selected,java.util.function.IntConsumer action,Button[] buttons){return ReferenceUi.nav(a,selected,action,buttons);}
   static void markNav(Activity a,Button[] tabs,int selected){ReferenceUi.markNav(tabs,selected);}

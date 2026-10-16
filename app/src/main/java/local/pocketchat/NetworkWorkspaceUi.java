@@ -281,7 +281,7 @@ final class NetworkWorkspaceUi {
   void exitForm(JSONObject existing,Runnable next){
     boolean editing=existing!=null;ReferenceUi.Modal d=new ReferenceUi.Modal(a,editing?"编辑固定出口":"添加固定出口");
     EditText name=DesignUi.input(d.body,"出口名称",editing?existing.optString("name"):"","例如：工作出口"),region=DesignUi.input(d.body,"地区（可选）",editing?existing.optString("region"):"","填写你已知的出口地区"),server=DesignUi.input(d.body,"SOCKS5 服务器",editing?existing.optString("host"):"","域名或 IP"),port=DesignUi.input(d.body,"端口",editing?Integer.toString(existing.optInt("port")):"","1–65535"),user=DesignUi.input(d.body,"用户名（可选）",editing?existing.optString("user"):"",""),password=DesignUi.input(d.body,"密码（可选）",editing?existing.optString("password"):"","");
-    port.setInputType(InputType.TYPE_CLASS_NUMBER);password.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+    port.setInputType(InputType.TYPE_CLASS_NUMBER);DesignUi.visiblePassword(password);
     TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);d.body.addView(error);final boolean[] saving={false};
     d.buttons("取消",d::dismiss,"保存出口",()->{
       if(saving[0])return;String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("填写出口名称");return;}
