@@ -66,6 +66,16 @@ jobs:
               subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',m['sourceCommit']],check=True)
           report=json.loads(pathlib.Path('device-results.json').read_text())
           assert report['sourceCommit']==m['sourceCommit'] and report['status']=='passed' and report['actualAndroidExecution'] and report['releaseMode']
+          if m['versionCode']>=59:
+              raw=pathlib.Path('appearance-results.json').read_bytes();a=json.loads(raw)
+              assert a['status']=='passed' and a['actualAndroidExecution'] and a['systemModeEvents']
+              assert a['buildIdentity']['sourceCommit']==m['sourceCommit'] and a['actualAndroidTaps']>=9
+              assert a['checkCount']==len(a['checks']) and all(c['pass'] for c in a['checks'])
+              assert m['appearanceRegression']==dict(sourceCommit=m['sourceCommit'],checkCount=a['checkCount'],reportSha256=hashlib.sha256(raw).hexdigest(),actualAndroidExecution=True,physicalPhoneAcceptance=False)
+              assert json.loads(pathlib.Path('gecko-performance-results.json').read_text())['actualAppearanceRoundtrip']
+              network=json.loads(pathlib.Path('network-performance-results.json').read_text())
+              required={'A faster permitted entrance reduces controlled website cold response time','Fresh website evidence avoids duplicate candidate HEAD requests','Expired candidate evidence is renewed through real website requests','Budgeted website comparison keeps live entry and fixed exit'}
+              assert required<=set(c['name'] for c in network['checks'] if c['pass'])
           if m['versionCode']>=43:
               from tools.gecko.check_performance_evidence import verify_performance_evidence
               assert verify_performance_evidence(pathlib.Path('.'),m['sourceCommit'])==m['performanceRegression']
