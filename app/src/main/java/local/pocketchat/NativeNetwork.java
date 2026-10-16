@@ -67,10 +67,15 @@ class NativeNetwork {
   NativeNetwork(Context c){this(c,new File(c.getNoBackupFilesDir(),"network-runtime"),true);}
   NativeNetwork(Context c,File directory,boolean monitor){context=c.getApplicationContext();quality=new RouteQuality(context);websiteQuality=new RouteQuality(context,"website-quality");dns=new NetworkDns(context);traffic=new TrafficMonitor(this);secrets=new SecretStore(c);root=directory;root.mkdirs();transport=root.getName().equals("network-runtime")?new NetworkTransportClient(context,this::transportChanged):null;if(monitor)worker.scheduleWithFixedDelay(()->runHealth(),30,30,TimeUnit.SECONDS);}
   static void validateSourceUrl(String url,String role)throws Exception{URI u=new URI(url);if(!"https".equals(u.getScheme())||u.getHost()==null||u.getUserInfo()!=null)throw new IOException("请填写 HTTPS 格式的"+role+"订阅地址");}
+  static void validateBoundSource(JSONObject config,String prefix,String field,String label)throws Exception{
+    String url=config.optString(field),id=config.optString(prefix+"SubscriptionId");
+    if(id.matches("[0-9a-f-]{36}")&&url.equals("pocketnet:"+id))return;
+    validateSourceUrl(url,label);
+  }
   static boolean subscribedExit(JSONObject s){return "subscription".equals(s.optString("exitSource"));}
   static void validate(JSONObject s)throws Exception{
-    validateSourceUrl(s.optString("subscriptionUrl"),"入口");
-    if(subscribedExit(s)){validateSourceUrl(s.optString("exitSubscriptionUrl"),"出口");if(s.optString("exitSubscriptionId").isEmpty()||!s.optString("exitNodeKey").matches("[0-9a-f]{64}")||!s.optString("exitNodeName").startsWith("Exit|")||s.optString("exitNodeName").length()<=5)throw new IOException("请选择出口订阅中的固定 SOCKS5 节点");return;}
+    validateBoundSource(s,"entry","subscriptionUrl","入口");
+    if(subscribedExit(s)){validateBoundSource(s,"exit","exitSubscriptionUrl","出口");if(s.optString("exitSubscriptionId").isEmpty()||!s.optString("exitNodeKey").matches("[0-9a-f]{64}")||!s.optString("exitNodeName").startsWith("Exit|")||s.optString("exitNodeName").length()<=5)throw new IOException("请选择出口订阅中的固定 SOCKS5 节点");return;}
     String host=s.optString("exitHost");if(host.isEmpty()||host.matches(".*[\\s/\\\\@].*"))throw new IOException("请填写有效的固定出口地址");int port=s.optInt("exitPort");if(port<1||port>65535)throw new IOException("固定出口端口应为 1–65535");
   }
   static String exitIdentity(JSONObject s){return subscribedExit(s)?hash("subscription|"+s.optString("exitSubscriptionId")+"|"+s.optString("exitNodeKey")):NetworkCatalog.exitId(s);}
@@ -249,6 +254,7 @@ class NativeNetwork {
     NativeNetwork reader=new NativeNetwork(c,new File(c.getNoBackupFilesDir(),"subscription-preview-"+UUID.randomUUID()),false);
     reader.worker.execute(()->{JSONArray nodes=new JSONArray(),details=new JSONArray();byte[] provider=null;String error="";try{
       if(!NetworkCatalog.ENTRY.equals(role)&&!NetworkCatalog.EXIT.equals(role))throw new IOException("订阅类型无效");
+      if(cache==null&&url.startsWith("pocketnet:"))throw new IOException("本地分享缓存不可用，请重新导入");
       reader.settings=J.obj("subscriptionUrl",url);reader.token=UUID.randomUUID().toString();reader.controllerPort=freePort();reader.proxyPort=freePort();
       if(cache!=null)try(FileOutputStream out=new FileOutputStream(new File(reader.root,"subscription.yaml"))){out.write(cache);}
       JSONObject config=reader.config(true,cache==null);config.put("proxies",new JSONArray());config.put("proxy-groups",new JSONArray());String prefix=NetworkCatalog.EXIT.equals(role)?"Exit|":"Entry|";
@@ -314,6 +320,7 @@ class NativeNetwork {
     groups.put(J.obj("name",name,"type","select","proxies",new JSONArray(),"use",J.arr(providerName),"filter","^(?:"+literalRegex(name)+")$","empty-fallback","REJECT","interval",0,"hidden",true));
   }
   JSONObject config(boolean bootstrap,boolean download){
+    if(download&&settings.optString("subscriptionUrl").startsWith("pocketnet:"))throw new IllegalStateException("本地分享缓存不可用，请重新导入");
     JSONObject provider=J.obj("type",download?"http":"file","path","./subscription.yaml","health-check",J.obj("enable",false),"override",J.obj("additional-prefix","Entry|","dialer-proxy",""));
     if(download)try{provider.put("url",settings.optString("subscriptionUrl"));provider.put("interval",0);provider.put("proxy","DIRECT");provider.put("size-limit",16*1024*1024);provider.put("header",J.obj("User-Agent",J.arr("mihomo")));}catch(Exception ignored){}
     JSONObject providers=J.obj("Subscription",provider);JSONArray proxies=new JSONArray(),groups=J.arr(group("EntryChoice",!bootstrap&&!settings.optString("entryMode").isEmpty()?EntrySelection.filter(names):null));configuredExit("FixedExit","EntryChoice","ExitSource",providers,proxies,groups);if(!bootstrap){groups.put(group("WebProbeEntry",EntrySelection.filter(names)));configuredExit("WebProbeExit","WebProbeEntry","WebExitSource",providers,proxies,groups);}if(!bootstrap)for(int i=0;i<names.size();i++){groups.put(group("ProbeEntry"+i,"^(?:"+literalRegex(names.get(i))+")$"));configuredExit("ProbeExit"+i,"ProbeEntry"+i,"ProbeExitSource"+i,providers,proxies,groups);}

@@ -149,6 +149,22 @@ final class NetworkCatalog {
     File[] files=Profiles.context(c,0).getNoBackupFilesDir().listFiles();if(files==null)return;
     for(File file:files){String name=file.getName();if(!name.matches("source-pool-(entry|exit)-[a-p]+[.]sealed([.](bak|new))?"))continue;String slot=name.replaceFirst("[.]sealed([.](bak|new))?$","");if(!keep.contains(slot))try{store.remove(slot);}catch(Exception unavailable){/* A later successful library write retries cleanup. */}}
   }
+  static boolean local(JSONObject row){return row!=null&&"local".equals(row.optString("sourceType"));}
+  /** Immutable payloads precede one atomic library publication for both roles. */
+  JSONObject importLocalSources(JSONObject entry,byte[] entryBytes,JSONObject exit,byte[] exitBytes)throws Exception{
+    return write(latest->{JSONObject result=new JSONObject();
+      JSONObject[] items={entry,exit};byte[][] payloads={entryBytes,exitBytes};String[] roles={ENTRY,EXIT};
+      for(int n=0;n<2;n++)if(items[n]!=null){JSONObject item=items[n];byte[] bytes=payloads[n];String role=roles[n];
+        if(bytes==null||bytes.length==0||bytes.length>1024*1024||item.optJSONArray("nodes")==null||item.optJSONArray("nodes").length()!=1||item.optJSONArray("nodeDetails")==null||item.optJSONArray("nodeDetails").length()!=1)throw new IOException("分享节点未完成解析");
+        String hash=NativeNetwork.hash(new String(bytes,StandardCharsets.UTF_8));JSONArray rows=latest.optJSONArray(key(role));JSONObject found=null;
+        for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(local(row)&&hash.equals(row.optString("sharePayloadHash"))){found=row;break;}}
+        if(found==null){String id=UUID.randomUUID().toString(),url="pocketnet:"+id,cache=encodedSlot("source-pool-"+role+"-",id);long now=System.currentTimeMillis();store.put(cache,bytes);
+          found=J.obj("id",id,"role",role,"sourceType","local","name",item.optString("name"),"url",url,"urlHash",NativeNetwork.hash(url),"sharePayloadHash",hash,"revision",1L,"addressRevision",1L,"cacheAddressRevision",1L,"cacheSlot",cache,"cacheUrl",url,"nodes",copy(item.optJSONArray("nodes")),"nodeDetails",copy(item.optJSONArray("nodeDetails")),"stale",false,"updatedAt",now,"lastSuccessAt",now);rows.put(found);
+        }else if(cache(found)==null){throw new IOException("已导入节点缓存不可用，请删除该本地来源后重新导入");}
+        put(result,role,found.optString("id"));
+      }return result;
+    });
+  }
   JSONObject addSubscription(String name,String url)throws Exception{return addSubscription(ENTRY,name,url);}
   JSONObject addSubscription(String role,String name,String url)throws Exception{
     String title=name==null?"":name.trim(),address=url==null?"":url.trim();validateSource(role,title,address);
@@ -158,7 +174,7 @@ final class NetworkCatalog {
   }
   JSONObject editSubscription(String role,String id,String name,String url)throws Exception{
     String title=name==null?"":name.trim(),address=url==null?"":url.trim();validateSource(role,title,address);
-    return write(latest->{JSONObject row=require(latest,role,id);JSONArray all=latest.optJSONArray(key(role));for(int i=0;i<all.length();i++){JSONObject other=all.optJSONObject(i);if(other!=row&&address.equals(other.optString("url")))throw new IOException("此订阅地址已存在");}
+    return write(latest->{JSONObject row=require(latest,role,id);if(local(row))throw new IOException("本地分享节点没有订阅地址");JSONArray all=latest.optJSONArray(key(role));for(int i=0;i<all.length();i++){JSONObject other=all.optJSONObject(i);if(other!=row&&address.equals(other.optString("url")))throw new IOException("此订阅地址已存在");}
       put(row,"name",title);if(!address.equals(row.optString("url"))){
         // Detach any v1 owner cache before changing the address. The owner may
         // later update or be deleted; the library keeps its own previous bytes.
@@ -170,7 +186,7 @@ final class NetworkCatalog {
     write(latest->{JSONObject row=require(latest,role,id);JSONObject tombstone=J.obj("id",row.optString("id"),"role",role,"aliases",copy(row.optJSONArray("aliases")),"deletedAt",System.currentTimeMillis(),"revision",row.optLong("revision")+1);alias(tombstone,row.optString("urlHash"));latest.optJSONArray("subscriptionTombstones").put(tombstone);remove(latest.optJSONArray(key(role)),row.optString("id"));return null;});
   }
   RefreshToken beginRefresh(String role,String id)throws Exception{
-    return write(latest->{JSONObject row=require(latest,role,id);put(row,"refreshToken",UUID.randomUUID().toString());put(row,"lastAttemptAt",System.currentTimeMillis());put(row,"updating",true);bump(row);return new RefreshToken(row);});
+    return write(latest->{JSONObject row=require(latest,role,id);if(local(row))throw new IOException("本地分享节点无需更新订阅");put(row,"refreshToken",UUID.randomUUID().toString());put(row,"lastAttemptAt",System.currentTimeMillis());put(row,"updating",true);bump(row);return new RefreshToken(row);});
   }
   static JSONObject current(JSONObject latest,RefreshToken token)throws IOException{
     if(token==null)throw new IOException("订阅更新已失效");JSONObject row=find(latest.optJSONArray(key(token.role)),token.id);

@@ -76,9 +76,9 @@ final class ExitNodePickerUi {
       else{
         row=DesignUi.row(a);row.setPadding(dp(10),dp(5),dp(10),dp(5));row.setMinimumHeight(rowHeight());
         TextView mark=ReferenceUi.text(a,"",20,ReferenceUi.BLUE,false);row.addView(mark,new LinearLayout.LayoutParams(dp(30),-2));
-        LinearLayout labels=DesignUi.column(a);TextView name=ReferenceUi.text(a,"",14,ReferenceUi.TEXT,true);ReferenceUi.single(name);labels.addView(name);labels.addView(ReferenceUi.secondary(a,""));row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout labels=DesignUi.column(a);TextView name=ReferenceUi.text(a,"",14,ReferenceUi.TEXT,true);ReferenceUi.single(name);labels.addView(name);labels.addView(ReferenceUi.secondary(a,""));row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));row.addView(ReferenceUi.more(a,()->{}),new LinearLayout.LayoutParams(dp(44),dp(44)));
       }
-      String name=getItem(position);JSONObject node=byName.get(name);String key=node==null?"":node.optString("configFingerprint");
+      String name=getItem(position);View more=row.getChildAt(2);more.setVisibility(callback==null?View.VISIBLE:View.GONE);more.setOnClickListener(v->NetworkShareUi.nodeMenu(a,source,name));JSONObject node=byName.get(name);String key=node==null?"":node.optString("configFingerprint");
       boolean supported=NetworkSourceSelection.socks5(node)&&!key.isEmpty();
       boolean chosen=callback!=null&&!key.isEmpty()&&key.equals(selectedKey)&&name.equals(selectedName);
       TextView mark=(TextView)row.getChildAt(0);mark.setVisibility(callback==null?View.GONE:View.VISIBLE);mark.setText(chosen?"◉":"○");mark.setTextColor(supported?ReferenceUi.BLUE:ReferenceUi.MUTED);

@@ -46,6 +46,7 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
     else if("/gecko-pool".equals(uri.getPath()))name="gecko-pool-results.json";
     else if("/preconnect".equals(uri.getPath()))name="preconnect-results.json";
     else if("/network-source-route".equals(uri.getPath()))name="network-source-route-results.json";
+    else if("/network-source-sharing".equals(uri.getPath()))name="network-source-sharing-results.json";
     else if("/network-source".equals(uri.getPath()))name="network-source-results.json";
     else if("/network-source-ui-state".equals(uri.getPath()))name="network-source-ui-state.json";
     else if("/network-source-ui".equals(uri.getPath()))name="network-source-ui-results.json";
