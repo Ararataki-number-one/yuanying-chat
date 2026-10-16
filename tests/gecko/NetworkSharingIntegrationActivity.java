@@ -5,7 +5,7 @@ import org.json.*;import java.io.*;import java.nio.charset.StandardCharsets;impo
 
 /** Synthetic Android/core/encrypted-store integration; never real user credentials. */
 public final class NetworkSharingIntegrationActivity extends Activity {
-  final JSONArray checks=new JSONArray();JSONObject buildIdentity;JSONObject entry,exit;JSONObject[] records=new JSONObject[2];byte[][] payloads=new byte[2][];NetworkCatalog catalog;String entryId,exitId;Context profile;SecretStore vault;byte[] before;Uri file;
+  final JSONArray checks=new JSONArray();JSONObject buildIdentity;JSONObject entry,exit;JSONObject[] records=new JSONObject[2];byte[][] payloads=new byte[2][];NetworkCatalog catalog;String entryId,exitId;Context profile;SecretStore vault;byte[] before;Uri file;NetworkOptimizationIntegrationActivity.HttpFixture site,plain;PreconnectIntegrationActivity.TraceSocks wireEntry,wireExit;
   void check(String name,boolean passed){checks.put(J.obj("name",name,"pass",passed));if(!passed)throw new AssertionError(name);}
   interface Attempt{void run()throws Exception;}
   void rejects(String name,Attempt attempt)throws Exception{boolean rejected=false;try{attempt.run();}catch(Exception expected){rejected=true;}check(name,rejected);}
@@ -26,7 +26,10 @@ public final class NetworkSharingIntegrationActivity extends Activity {
     String yaml="proxies:\n  - name: Sharing Entry\n    type: vless\n    server: example.invalid\n    port: 443\n    uuid: 00000000-0000-4000-8000-000000000000\n    tls: true\n    network: ws\n    ws-opts:\n      path: /transport\n      headers:\n        Host: example.invalid\n  - name: Hidden Other\n    type: socks5\n    server: other.invalid\n    port: 1080\n    password: never-export-this\n";
     JSONObject extracted=NetworkShareCodec.extract(yaml.getBytes(StandardCharsets.UTF_8),"Entry|Sharing Entry",NetworkCatalog.ENTRY);check("YAML export preserves nested transport",extracted.getJSONObject("ws-opts").getString("path").equals("/transport"));check("YAML exports no unrelated node",!extracted.toString().contains("never-export-this"));
     rejects("YAML object tags rejected",()->NetworkShareCodec.extract("!!java.net.URL [https://example.invalid]".getBytes(StandardCharsets.UTF_8),"Entry|Sharing Entry",NetworkCatalog.ENTRY));
-    file=NetworkShareProvider.create(this,valid);check("Share URI uses dedicated provider",file.getAuthority().equals(getPackageName()+".network-shares"));check("Share file roundtrip",NetworkShareCodec.decode(new String(java.nio.file.Files.readAllBytes(NetworkShareProvider.resolve(this,file).toPath()),StandardCharsets.UTF_8)).kind.equals("route"));
+    NativeProbeIntegrationActivity.TlsFixture tls=new NativeProbeIntegrationActivity.TlsFixture(this,"network-fixture.p12");site=new NetworkOptimizationIntegrationActivity.HttpFixture(tls.context);plain=new NetworkOptimizationIntegrationActivity.HttpFixture(null);site.start();plain.start();
+    wireExit=new PreconnectIntegrationActivity.TraceSocks("shared-exit",0,site.port(),plain.port());wireEntry=new PreconnectIntegrationActivity.TraceSocks("shared-entry",0,wireExit.port());wireExit.start();wireEntry.start();
+    entry.put("port",wireEntry.port());exit.put("port",wireExit.port());for(JSONObject n:new JSONObject[]{entry,exit}){n.put("username",PreconnectIntegrationActivity.USER);n.put("password",PreconnectIntegrationActivity.PASSWORD);}
+    file=NetworkShareProvider.create(this,new NetworkShareCodec.Bundle("Synthetic route",entry,exit).encode());check("Share URI uses dedicated provider",file.getAuthority().equals(getPackageName()+".network-shares"));check("Share file roundtrip",NetworkShareCodec.decode(new String(java.nio.file.Files.readAllBytes(NetworkShareProvider.resolve(this,file).toPath()),StandardCharsets.UTF_8)).kind.equals("route"));
     rejects("Provider path traversal rejected",()->NetworkShareProvider.resolve(this,Uri.parse("content://"+getPackageName()+".network-shares/../network.sealed")));
     rejects("Provider wrong authority rejected",()->NetworkShareProvider.resolve(this,Uri.parse("content://other/"+file.getLastPathSegment())));
     catalog=new NetworkCatalog(this);
@@ -45,9 +48,27 @@ public final class NetworkSharingIntegrationActivity extends Activity {
     check("Imported complete route produces validated candidate",entryId.equals(candidate.getString("entrySubscriptionId"))&&exitId.equals(candidate.getString("exitSubscriptionId")));
     NetworkSourceSelection.Sources sources=NetworkSourceSelection.resolve(restored,candidate);check("Resolve uses exact imported encrypted bytes",Arrays.equals(payloads[0],sources.entryBytes)&&Arrays.equals(payloads[1],sources.exitBytes));
     check("Candidate does not write live configuration",Arrays.equals(before,vault.get("network")));
+    proveLocalRoute(sources,candidate);
     rejects("Local source cannot refresh remotely",()->restored.beginRefresh("entry",entryId));
     byte[] libraryBefore=restored.store.get("network-catalog");rejects("Partial bundle rejected before publication",()->restored.importLocalSources(records[0],"changed payload".getBytes(StandardCharsets.UTF_8),new JSONObject(),payloads[1]));check("Failed bundle leaves entire prior library",Arrays.equals(libraryBefore,restored.store.get("network-catalog")));
     byte[] sealed=java.nio.file.Files.readAllBytes(restored.store.file(e.getString("cacheSlot")).toPath());check("Credentials not stored as plaintext",!new String(sealed,StandardCharsets.ISO_8859_1).contains("synthetic"));
+  }
+  void proveLocalRoute(NetworkSourceSelection.Sources sources,JSONObject candidate)throws Exception{
+    Context scratch=Profiles.context(this,5);SecretStore store=new SecretStore(scratch);Map<String,byte[]> saved=new LinkedHashMap<>();for(String key:NetworkSourceSelection.ActiveSnapshot.RECORDS)saved.put(key,store.get(key));
+    NativeNetwork network=new NativeNetwork(scratch,new File(scratch.getNoBackupFilesDir(),"sharing-route-fixture"),false){
+      @Override String exitCheckUrl(){return site.url("/ip");}
+      @Override String probeUrl(){return plain.url("/probe");}
+      @Override String websiteUrl(){return site.url("/website");}
+      @Override java.net.HttpURLConnection openProbeConnection(String url,int port)throws IOException{java.net.HttpURLConnection c=super.openProbeConnection(url,port);if(c instanceof javax.net.ssl.HttpsURLConnection){if(!url.startsWith(site.url("/")))throw new IOException("Controlled detector only");((javax.net.ssl.HttpsURLConnection)c).setSSLSocketFactory(site.tls.getSocketFactory());}return c;}
+    };
+    try{
+      new NetworkSourceSelection.ActiveSnapshot(store).write(sources,candidate);network.startNow();
+      check("Local sharing source starts through production core",network.ready&&network.startupCached&&network.currentEntry.equals("Entry|Sharing Entry"));
+      check("Receiver verifies exit over the imported authenticated chain",wireEntry.contacts(wireExit.port())>0&&wireExit.contacts(site.port())>0&&network.verifiedRoute!=null);
+      JSONObject config=J.parse(new String(java.nio.file.Files.readAllBytes(new File(network.root,"config.json").toPath()),StandardCharsets.UTF_8));
+      JSONObject providers=config.getJSONObject("proxy-providers");check("Local sources cannot become HTTP subscription downloads","file".equals(providers.getJSONObject("Subscription").getString("type"))&&"file".equals(providers.getJSONObject("ExitSource").getString("type")));
+      check("No sharing test traffic leaves loopback",wireEntry.denied.get()==0&&wireExit.denied.get()==0);
+    }finally{network.stopNow();network.worker.shutdownNow();network.probes.shutdownNow();network.closers.shutdownNow();network.traffic.reader.shutdownNow();for(Map.Entry<String,byte[]> row:saved.entrySet())NetworkSourceSelection.restore(store,row.getKey(),row.getValue());for(AutoCloseable f:new AutoCloseable[]{site,plain,wireEntry,wireExit})if(f!=null)f.close();}
   }
   void ui()throws Exception{
     NetworkShareUi.show(this,new NetworkShareCodec.Bundle("Synthetic route",entry,exit));
