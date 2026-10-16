@@ -26,6 +26,7 @@ public final class UiVisualIntegrationActivity extends Activity {
     setContentView(root);ReferenceUi.insets(this,root);
     workspace=new NetworkWorkspaceUi(this,host);workspace.show(0);
     workspace.afterRead=()->{
+      if("exit-password".equals(action))workspace.exitForm(J.obj("id","synthetic-exit","name","测试出口","host","127.0.0.1","port",1080,"user","fixture","password","Synthetic-exit-7!"),null);
       if("proxy".equals(action))workspace.external(0,true);
       if("entries".equals(action))try{
         JSONObject sub=workspace.catalog.subscriptions().getJSONObject(0);

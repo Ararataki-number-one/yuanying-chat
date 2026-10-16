@@ -98,6 +98,27 @@ try:
         for width,height in [(360,640),(412,640)]:
             for scene in scenes:capture(variant,width,height,1,scene)
         for scene in ['proxy','entries','browser','preferences','chat']:capture(variant,360,640,2,scene)
+    # Exercise the actual exit form with synthetic credentials and Android taps.
+    exit_password=[]
+    for width,scale in [(360,1),(360,2)]:
+        adb('shell','am','force-stop',package);adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
+        adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction','exit-password')
+        deadline=time.monotonic()+35
+        while True:
+            xml=dump(deadline=deadline)
+            if '隐藏密码' in xml and 'Synthetic-exit-7!' in xml:break
+            if time.monotonic()>deadline:raise AssertionError(('Exit password is not visible by default',xml))
+            scroll=next((n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView' and n.attrib.get('scrollable')=='true'),None)
+            if scroll is not None:
+                left,top,right,bottom=map(int,re.findall(r'\d+',scroll.attrib['bounds']));x=(left+right)//2
+                adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350')
+            else:time.sleep(.3)
+        click(xml,'隐藏');xml=dump();assert '显示密码' in xml and 'Synthetic-exit-7!' not in xml,xml
+        click(xml,'显示');xml=dump();assert '隐藏密码' in xml and 'Synthetic-exit-7!' in xml,xml
+        stem=f'exit-password-{width}-font{scale}'
+        (out/(stem+'.xml')).write_text(xml)
+        (out/(stem+'.png')).write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+        exit_password.append(dict(viewport=width,fontScale=scale,defaultVisible=True,hideShowPreservesValue=True,actualAndroidTaps=2,image=stem+'.png'))
     # Supplementary native screens for the new mode, with trusted Android taps.
     optimization=[]
     for width,scale in [(360,1),(412,1),(360,2)]:
@@ -281,7 +302,7 @@ try:
     assert len(records)==19 and all(record['variant']=='current' for record in records),records
     build=json.loads((out/'ui-build-comparison.json').read_text())
     assert build['comparisonMode']=='current-only' and not build['historicalUIRebuilt'] and build['coreSourceCommit']==source,build
-    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse,'scope':'Current GeckoView-only production UI with local synthetic records, 19 current-source captures; historical UI is not rebuilt. Website content, login and network core are not replaced.'}
+    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse,'exitPassword':exit_password,'scope':'Current GeckoView-only production UI with local synthetic records, 19 current-source captures plus exit password checks; historical UI is not rebuilt. Website content, login and network core are not replaced.'}
 except Exception as error:
     report={'status':'failed','actualAndroidExecution':True,'sourceCommit':source,'diagnosticOnly':False,'error':repr(error),'screenshots':records}
     (out/'ui-visual-log.txt').write_text(adb('logcat','-d'))

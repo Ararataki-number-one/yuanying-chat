@@ -160,6 +160,7 @@ jobs:
       - name: Publish unsigned build for local original signing
         run: python3 tools/gecko/publish_ci.py
       - name: Boot Android and verify editing performance
+        id: editing
         shell: bash
         run: |
           set -euo pipefail
@@ -187,7 +188,9 @@ jobs:
             checks_failed=1
           fi
           python3 tools/gecko/publish_ci.py
-          if [ "$checks_failed" -ne 0 ]; then exit 1; fi
+          # An ordinary input fixture failure remains a failed qualification,
+          # but must not prevent independent UI/network evidence collection.
+          if [ "$checks_failed" -ne 0 ]; then echo 'fixture_failed=true' >> "$GITHUB_OUTPUT"; fi
       - name: Verify network performance and compact chrome
         shell: bash
         run: |
@@ -309,3 +312,8 @@ jobs:
       - name: Publish synthetic regression evidence
         if: always()
         run: python3 tools/gecko/publish_ci.py
+      - name: Preserve failed editing qualification
+        if: always() && steps.editing.outputs.fixture_failed == 'true'
+        run: |
+          echo 'Input compatibility fixture failed. Independent reports do not qualify this input behavior as passed.'
+          exit 1
