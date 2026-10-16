@@ -23,6 +23,8 @@ public final class AppearanceColorsTest {
     check(contrast(0xff2468f2,0xffffffff)>=4.5,"primary blue button stays readable");
     check(AppearanceColors.text(0xffffffff,true)==0xffffffff,"primary/brand white foreground is retained");
     check(AppearanceColors.color(0x00000000,true)==0x00000000,"transparency preserved");
+    check(AppearanceColors.text(AppearanceColors.text(0x61172033,true),false)==0x61172033,"disabled text keeps alpha across night/day roundtrip");
+    check(AppearanceColors.text(AppearanceColors.text(0x61000000,true),false)==0x61172033,"native translucent black returns to readable day foreground");
     System.out.println("Appearance palette: "+checks+" checks passed");
   }
 }

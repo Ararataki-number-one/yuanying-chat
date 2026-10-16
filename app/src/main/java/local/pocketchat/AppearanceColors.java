@@ -20,6 +20,11 @@ final class AppearanceColors {
     // White is intentional on primary buttons and the brand screen.
     if(value==0xffffffff)return value;
     if((value&0x00ffffff)==0&&(value>>>24)>0)return (color(0xff172033,dark)&0x00ffffff)|(value&0xff000000);
+    if((value>>>24)>0&&(value>>>24)<255)for(int[] pair:PAIRS){
+      if(pair[0]==0xffffffff)continue;
+      int rgb=value&0x00ffffff;
+      if(rgb==(pair[0]&0x00ffffff)||rgb==(pair[1]&0x00ffffff))return (value&0xff000000)|(pair[dark?1:0]&0x00ffffff);
+    }
     return color(value,dark);
   }
 }
