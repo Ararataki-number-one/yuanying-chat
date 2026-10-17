@@ -57,6 +57,15 @@ try:
  check('Manual choice survives process restart',persisted['instance']!=instance)
  tap('打开外观设置');tap('跟随系统');theme(True,'system');tap('完成');adb('shell','cmd','uimode','night','no');day=theme(False,'system')
  check('Returning to automatic follows subsequent system changes',day['textColor']==signed(0xff172033) and not day['systemDark'])
+ tap('打开反馈');tap('预览反馈');snapshot('feedback-preview');tap('打开 GitHub 提交')
+ feedback=wait(report,lambda r:bool(r.get('feedbackUrl')))
+ from urllib.parse import urlparse,parse_qs
+ link=urlparse(feedback['feedbackUrl']);query=parse_qs(link.query)
+ check('Feedback opens only the public repository issue form without submitting',link.scheme=='https' and link.netloc=='github.com' and link.path=='/Ararataki-number-one/yuanying-chat/issues/new')
+ check('Reviewed feedback title and content reach the issue form',query['title']==['[问题] Upload picker missing'] and 'Tap add attachment; picker does not appear.' in query['body'][0])
+ check('Device details can be excluded from public feedback','系统：' not in query['body'][0])
+ check('Feedback remains a local draft after opening GitHub',json.loads(feedback['feedbackDraft'])['title']=='Upload picker missing')
+ tap('返回修改');tap('保存草稿')
  result={'status':'passed','actualAndroidExecution':True,'actualAndroidTaps':len(taps),'systemModeEvents':True,'buildIdentity':identity,'checks':checks,'checkCount':len(checks),'taps':taps}
  (out/'appearance-results.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
 except Exception as e:

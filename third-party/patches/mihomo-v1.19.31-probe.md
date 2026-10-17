@@ -101,3 +101,7 @@ python3 tools/build-mihomo.py --build --target all --test --install
 补丁保留十项原 HTTP/TLS/取消主测试及 36 项协议、实际选择器、池并发与监听器重试主测试，并增加 7 项稳定身份与 11 项出口选择/真实 provider-group-listener/API 线路测试。重建时全部 64 项必须通过一次；测试源码和二进制来自同一份补丁，独立构建日志绑定所有通过记录。
 
 Linux 双 SOCKS fixture 验证探测机制，不代表 Android 上已验收，也不代表用户节点的实际速度。正式版本还必须通过真实 Android 双 SOCKS、受保护浏览器连接连续性和对应源码的应用回归。
+
+## Bounded burst preparation (2.0.7)
+
+`pocket-preconnect-capacity` defaults to one and clamps to four for the named FixedExit only. The app uses four for both manual and provider-backed fixed exits. A mutex reserves a ready slot before other requests can take it; no caller waits for preparation. A successful real CONNECT refills missing slots once, retaining the existing eight-second TTL and route/network/cancellation gates. URL-test traffic still bypasses the pool. The burst tests cover simultaneous reservation, real socket timings, no target payload during preparation, no periodic refill, invalidation and capacity clamping. This is a new-connection optimization, not a reduction of a healthy reused-connection WAN RTT.

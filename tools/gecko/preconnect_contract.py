@@ -22,7 +22,7 @@ def verify_preconnect(report, receipt):
                 'expired', 'dead-idle', 'rejected-auth', 'auth-restored', 'guard-blocked', 'guard-restored',
                 'inflight-trigger', 'refill-bounded-0', 'refill-bounded-1', 'refill-bounded-2'}
     assert set(requests) == required
-    observed = [row for row in report['server']['requests'] if row['path'] == '/bytes']
+    observed = [row for row in report['server']['requests'] if row['path'] == '/bytes' and not row.get('id', '').startswith('burst-')]
     assert len(observed) == len(required) - 2
     assert {row['id'] for row in observed} == required - {'rejected-auth', 'guard-blocked'}
     assert not any(row.get('unexpectedHttp1') for row in report['server']['requests'])
@@ -115,8 +115,24 @@ def verify_preconnect(report, receipt):
     for circuit in report['fixedWire']:
         assert circuit['connectAtNs'] == 0 or circuit['connectAtNs'] > circuit['authAtNs'] > 0
         assert circuit['connectAtNs'] != 0 or circuit['targetPort'] == 0
+    if receipt['recipe'].get('fixedExitBurstCapacity') == 4:
+        trials = report['burstTrials']
+        assert len(trials) == 2
+        for trial, capacity in zip(trials, (1, 4)):
+            assert trial['capacity'] == trial['prepared'] == trial['idleAfter'] == capacity
+            assert len(trial['wires']) == len(trial['responses']) == 4
+            assert sum(w['authAtNs'] < trial['beganAtNs'] for w in trial['wires']) == capacity
+            assert all(w['connectAtNs'] >= trial['beganAtNs'] and w['targetPort'] == 9878 for w in trial['wires'])
+            assert len({r['connection'] for r in trial['responses']}) == 4
+            for i, response in enumerate(trial['responses']):
+                assert response['ok'] and response['protocol'] == 'h2' and response['body'] == PAYLOAD
+                actual = [r for r in report['server']['requests'] if r.get('id') == f'burst-{capacity}-{i}']
+                assert len(actual) == 1 and actual[0]['connection'] == response['connection']
+        assert trials[0]['durationMs'] - trials[1]['durationMs'] > report['authStageDelayMs']
     return {'actualAndroidExecution': True, 'actualGeckoHttp2Execution': True,
             'actualAuthenticatedSocksChain': True, 'pairedColdRequests': 3,
             'targetContactsBeforeConnect': 0, 'nativeProbeSemanticsPreserved': True,
             'controlledSavingsMs': [row['savedMs'] for row in report['pairedTrials']],
+            'preparedBurstCapacity': receipt['recipe'].get('fixedExitBurstCapacity', 1),
+            'controlledBurstTrials': [{'capacity': t['capacity'], 'durationMs': t['durationMs']} for t in report.get('burstTrials', [])],
             'wanSpeedClaim': False, 'checks': len(report['checks'])}

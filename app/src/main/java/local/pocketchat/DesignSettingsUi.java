@@ -17,6 +17,7 @@ final class DesignSettingsUi {
     group(a,box,"后台完成提醒",AppSettings.backgroundCompletionNotice(a)?"离开应用后提醒回复和下载完成":"已关闭 · 使用时保持安静","chat",()->completionReminders(a,refresh));
     group(a,box,"通知与电池设置","通知提醒与后台运行权限","chat",()->FeatureDialogs.backgroundSettings(a));
     DesignUi.section(box,"帮助与能力","");
+    group(a,box,"问题与建议","提交反馈 · 查看处理进度","chat",()->FeedbackUi.open(a));
     group(a,box,"应用更新",AppSettings.get(a,"updateLabel","当前版本 "+AppVersion.name(a)),"download",()->AppUpdates.open(a));
     group(a,box,"关于与使用帮助","版本与使用说明","settings",()->about(a));
     group(a,box,"功能支持范围","查看支持的功能","shield",()->capabilities(a));
