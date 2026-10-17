@@ -5,7 +5,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -119,8 +118,5 @@ final class NormalCaretSdkReceipt {
         ||((String)path).contains("..")||((String)path).indexOf('\0')>=0)throw new IOException("Repository-relative SDK source artifact required");
     positive(value,"bytes");hash(value,"sha256");
   }
-  private static String sha256(byte[] bytes)throws Exception{
-    StringBuilder value=new StringBuilder();for(byte part:MessageDigest.getInstance("SHA-256").digest(bytes))
-      value.append(String.format(java.util.Locale.ROOT,"%02x",part&255));return value.toString();
-  }
+  private static String sha256(byte[] bytes){return Sha256.hash(bytes);}
 }

@@ -56,6 +56,7 @@ def main():
     source = ROOT / "app/src/main/java/local/pocketchat"
     tests = ROOT / "tests/browser-runtime"
     groups = [
+        ("Sha256Test", ["Sha256"]),
         ("NetworkHealthPolicyTest", ["NetworkHealthPolicy"]),
         ("NetworkOptimizationPolicyTest", ["NetworkOptimizationPolicy"]),
         ("NetworkStatusPolicyTest", ["NetworkStatusPolicy"]),

@@ -14,7 +14,7 @@ java = str(a.java_home / 'bin/java') if a.java_home else shutil.which('java')
 javac = str(a.java_home / 'bin/javac') if a.java_home else shutil.which('javac')
 if not java or not javac or not a.json_jar.is_file():
     p.error('An explicit org.json jar and JDK are required')
-names = ('J.java', 'EnvironmentSpec.java', 'EnvironmentSpecMigration.java',
+names = ('Sha256.java','J.java', 'EnvironmentSpec.java', 'EnvironmentSpecMigration.java',
          'EnvironmentSpecRuntime.java', 'NetworkChanges.java', 'NetworkCatalog.java',
          'NetworkSubscriptionCatalogPolicy.java', 'NetworkSourceSelection.java',
          'EntrySelection.java', 'NetworkDraft.java', 'NetworkOptimizationPolicy.java', 'SealedFileIo.java')

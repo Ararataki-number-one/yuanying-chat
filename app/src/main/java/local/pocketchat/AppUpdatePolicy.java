@@ -16,8 +16,8 @@ final class AppUpdatePolicy {
     if(version==null||!version.matches("[0-9]+[.][0-9]+[.][0-9]+")||code<=0||code>Integer.MAX_VALUE||bytes<=0||bytes>MAX_APK||sha==null||!sha.matches("[a-f0-9]{64}")||!SIGNER.equals(signer)||!asset(version).equals(url)||!"local.pocketchat".equals(pkg)||!"arm64-v8a".equals(abi)||minSdk<26||minSdk>100)throw new IOException("更新信息不完整，请稍后重新检查");
   }
   static boolean feedRedirect(String url){try{URI u=new URI(url);return "https".equals(u.getScheme())&&u.getUserInfo()==null&&(u.getPort()==-1||u.getPort()==443)&&"raw.githubusercontent.com".equals(u.getHost())&&("/"+REPO+"/app-updates/latest.json").equals(u.getPath());}catch(Exception e){return false;}}
-  static String hash(byte[] data){try{return hex(MessageDigest.getInstance("SHA-256").digest(data));}catch(Exception e){throw new IllegalStateException(e);}}
-  static String hex(byte[] data){StringBuilder out=new StringBuilder();for(byte b:data)out.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return out.toString();}
+  static String hash(byte[] data){try{return Sha256.hash(data);}catch(Exception e){throw new IllegalStateException(e);}}
+  static String hex(byte[] data){return Sha256.hex(data);}
   static void copyVerified(InputStream in,File target,long bytes,String hash,java.util.function.BooleanSupplier cancelled)throws IOException {
     boolean ok=false;long count=0;
     try(FileOutputStream out=new FileOutputStream(target)){

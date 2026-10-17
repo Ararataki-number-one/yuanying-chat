@@ -80,7 +80,7 @@ final class NetworkSourceSelection {
     References refs=validateRefs(catalog,config);byte[] entryBytes=catalog.cache(refs.entry),exitBytes=refs.exit==null?null:catalog.cache(refs.exit);
     if(entryBytes==null||entryBytes.length==0||refs.exit!=null&&(exitBytes==null||exitBytes.length==0))throw new IOException("所选订阅缓存不可用，请更新后重试");return new Sources(refs.entry,refs.exit,entryBytes,exitBytes);
   }
-  static String payloadHash(byte[] bytes){try{byte[] hash=java.security.MessageDigest.getInstance("SHA-256").digest(bytes);StringBuilder value=new StringBuilder();for(byte b:hash)value.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return value.toString();}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}}
+  static String payloadHash(byte[] bytes){return Sha256.hash(bytes);}
   interface SourceAction<T>{T run(Sources sources)throws Exception;}
   interface SnapshotAction<T>{T run()throws Exception;}
   private static final Map<String,java.util.concurrent.locks.ReentrantLock> snapshotLocks=new java.util.concurrent.ConcurrentHashMap<>();
@@ -108,8 +108,8 @@ final class NetworkSourceSelection {
       withActiveSnapshot(vault.context,()->{
         if(writing||!matches(before))throw new IOException("环境网络快照已变化，请重新保存");
         writing=true;try{
-          vault.put("subscription",sources.entryBytes);vault.put("subscription-meta",metadata(sources.entry,sources.entryBytes).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));vault.put("subscription-ui",uiMetadata(sources.entry,sources.entryBytes).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-          if(sources.exit!=null){vault.put("exit-subscription",sources.exitBytes);vault.put("exit-subscription-meta",metadata(sources.exit,sources.exitBytes).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));vault.put("exit-subscription-ui",uiMetadata(sources.exit,sources.exitBytes).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+          writeSource("subscription",sources.entry,sources.entryBytes);
+          if(sources.exit!=null){writeSource("exit-subscription",sources.exit,sources.exitBytes);}
           else for(String key:new String[]{"exit-subscription","exit-subscription-meta","exit-subscription-ui"})restore(vault,key,null);
           vault.save(candidate);readInto(after);
         }catch(Exception failure){
@@ -120,6 +120,19 @@ final class NetworkSourceSelection {
         }return null;
       });
     }
+    /** Called inside the existing snapshot lease and rollback boundary. */
+    private void writeSource(String slot,JSONObject source,byte[] bytes)throws Exception{
+      vault.put(slot,bytes);
+      JSONObject receipt=metadata(source,bytes);
+      vault.put(slot+"-meta",receipt.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      // Preserve the UI record's original insertion order as well as its fields.
+      // Reuse this write's digest, never a cache surviving a credential change.
+      JSONObject ui=uiMetadata(source);
+      NetworkCatalog.put(ui,"payloadHash",receipt.optString("payloadHash"));
+      NetworkCatalog.put(ui,"cacheGeneration",receipt.optString("cacheGeneration"));
+      NetworkCatalog.put(ui,"sourceCacheGeneration",receipt.optString("sourceCacheGeneration"));
+      vault.put(slot+"-ui",ui.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
     void restoreBefore()throws Exception{Exception failure=null;for(Map.Entry<String,byte[]> previous:before.entrySet())try{restore(vault,previous.getKey(),previous.getValue());}catch(Exception error){if(failure==null)failure=error;}if(failure!=null)throw failure;}
     void rollback()throws Exception{withActiveSnapshot(vault.context,()->{if(!writing)return null;if(after.isEmpty()||!matches(after))throw new IOException("环境网络快照已变化，未覆盖较新的设置");restoreBefore();writing=false;return null;});}
   }
@@ -127,10 +140,21 @@ final class NetworkSourceSelection {
   static JSONObject metadata(JSONObject row){return J.obj("sourceId",row.optString("id"),"sourceUrl",row.optString("url"),"role",row.optString("role"),"urlHash",NativeNetwork.hash(row.optString("url")),"addressRevision",row.optLong("addressRevision"),"updatedAt",row.optLong("updatedAt"));}
   static String snapshotGeneration(String role,String id,long addressRevision,byte[] bytes){
     NetworkSubscriptionCatalogPolicy.role(role);if(id==null||id.isEmpty()||addressRevision<1||bytes==null||bytes.length==0)throw new IllegalArgumentException("来源快照身份不完整");
-    return "snapshot-"+payloadHash((role+"|"+id+"|"+addressRevision+"|"+payloadHash(bytes)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    return snapshotGenerationFromHash(role,id,addressRevision,payloadHash(bytes));
   }
-  static void snapshotMetadata(JSONObject value,JSONObject row,byte[] bytes){NetworkCatalog.put(value,"payloadHash",payloadHash(bytes));NetworkCatalog.put(value,"cacheGeneration",snapshotGeneration(row.optString("role"),row.optString("id"),row.optLong("addressRevision"),bytes));NetworkCatalog.put(value,"sourceCacheGeneration",row.optString("cacheSlot"));}
+  private static String snapshotGenerationFromHash(String role,String id,long revision,String hash){
+    NetworkSubscriptionCatalogPolicy.role(role);if(id==null||id.isEmpty()||revision<1)throw new IllegalArgumentException("来源快照身份不完整");
+    return "snapshot-"+Sha256.hash(role+"|"+id+"|"+revision+"|"+hash);
+  }
+  static void snapshotMetadata(JSONObject value,JSONObject row,byte[] bytes){
+    if(bytes==null||bytes.length==0)throw new IllegalArgumentException("来源快照身份不完整");
+    String hash=payloadHash(bytes);
+    NetworkCatalog.put(value,"payloadHash",hash);
+    NetworkCatalog.put(value,"cacheGeneration",snapshotGenerationFromHash(row.optString("role"),row.optString("id"),row.optLong("addressRevision"),hash));
+    NetworkCatalog.put(value,"sourceCacheGeneration",row.optString("cacheSlot"));
+  }
   static JSONObject metadata(JSONObject row,byte[] bytes){JSONObject value=metadata(row);snapshotMetadata(value,row,bytes);return value;}
   static JSONObject uiMetadata(JSONObject row,byte[] bytes){JSONObject value=uiMetadata(row);snapshotMetadata(value,row,bytes);return value;}
-  static JSONObject uiMetadata(JSONObject row){JSONObject value=metadata(row);NetworkCatalog.put(value,"nodes",NetworkCatalog.copy(row.optJSONArray("nodes")));NetworkCatalog.put(value,"nodeDetails",NetworkCatalog.copy(row.optJSONArray("nodeDetails")));return value;}
+  static JSONObject uiMetadata(JSONObject row){JSONObject value=metadata(row);addNodeDetails(value,row);return value;}
+  private static void addNodeDetails(JSONObject value,JSONObject row){NetworkCatalog.put(value,"nodes",NetworkCatalog.copy(row.optJSONArray("nodes")));NetworkCatalog.put(value,"nodeDetails",NetworkCatalog.copy(row.optJSONArray("nodeDetails")));}
 }

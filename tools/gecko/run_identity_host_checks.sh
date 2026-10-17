@@ -30,6 +30,7 @@ allowed={'3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed','3ea
 if hashlib.sha256(path.read_bytes()).hexdigest() not in allowed:raise SystemExit('SDK receipt host JSON dependency differs from the pinned workflow inputs.')
 PYSDK
 "${task_compiler[@]}" -encoding UTF-8 -cp "$task_json:$task_output/classes" -d "$task_output/classes" \
+  app/src/main/java/local/pocketchat/Sha256.java \
   app/src/main/java/local/pocketchat/NormalCaretSdkReceipt.java \
   tests/sdk-receipt-host/android/content/Context.java \
   tests/sdk-receipt-host/android/content/res/AssetManager.java \

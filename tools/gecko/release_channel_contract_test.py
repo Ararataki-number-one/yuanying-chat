@@ -89,6 +89,13 @@ class DirectReleaseTests(unittest.TestCase):
         record['userRequest'] = '继续优化'
         with self.assertRaises(ReleaseChannelError):verify_direct_release(record, self.identity)
 
+    def test_explicit_continue_and_publish_is_not_a_vague_continuation(self):
+        record = dict(self.record, userRequest='继续，然后发布新版本')
+        self.assertEqual(verify_direct_release(record, self.identity)['physicalArmPhone'], 'not-tested')
+        for request in ('继续', '继续优化', '继续，然后不要发布新版本', '继续，然后发布新版本？'):
+            with self.subTest(request=request), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(record, userRequest=request), self.identity)
+
     def test_each_exact_apk_identity_field_is_bound(self):
         changed = dict(sourceCommit='d'*40, sha256='d'*64, version='2.0.3', versionCode=56,
                        signerSha256='d'*64, bytes=119000001)

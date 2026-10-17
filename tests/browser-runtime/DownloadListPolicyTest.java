@@ -31,6 +31,13 @@ public final class DownloadListPolicyTest {
     for(String state:new String[]{"paused","failed","cancelled","saved"})check(!DownloadListPolicy.matches(row("done",0,state,1),1),"Live filter excludes "+state);
     check(DownloadListPolicy.matches(old,2)&&!DownloadListPolicy.matches(busy,2),"Completed filter uses actual state");
     check(DownloadListPolicy.matches(row("error",0,"failed",1),3)&&!DownloadListPolicy.matches(row("paused",0,"paused",1),3),"Failed filter does not mislabel paused tasks");
+    JSONObject changing=row("changing",2,"downloading",1),done=row("done",2,"saved",10);
+    check(DownloadListPolicy.ordered(new JSONArray().put(done),new JSONArray().put(changing)).getJSONObject(0)==changing,"Active row sorts first before completion");
+    changing.put("state","saved");
+    check(DownloadListPolicy.ordered(new JSONArray().put(done),new JSONArray().put(changing)).getJSONObject(0)==done,"A later refresh reads the changed state rather than reusing stale sort fields");
+    changing.put("time",20);
+    check(DownloadListPolicy.ordered(new JSONArray().put(done),new JSONArray().put(changing)).getJSONObject(0)==changing,"A later refresh also reads the real completion timestamp");
+    check(!DownloadListPolicy.busy(null),"Null state remains inactive");
     System.out.println("DownloadListPolicyTest: "+checks+" checks passed (JVM policy only)");
   }
 }

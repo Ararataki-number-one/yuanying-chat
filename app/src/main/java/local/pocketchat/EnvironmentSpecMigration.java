@@ -1,11 +1,10 @@
 package local.pocketchat;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -41,11 +40,12 @@ final class EnvironmentSpecMigration {
    * than node labels. Pool identity is independent of ordering and renames. */
   private static String sourceRevision(JSONObject network,String side,boolean includePool){
     String addressKey=side+"SubscriptionAddressRevision";
-    List<String> keys=new ArrayList<>();
-    if(includePool){JSONArray pool=network.optJSONArray("entryPoolKeys");if(pool!=null)for(int i=0;i<pool.length();i++){String key=pool.optString(i);if(!key.isEmpty()&&!keys.contains(key))keys.add(key);}Collections.sort(keys);}
+    Set<String> uniqueKeys=new LinkedHashSet<>();
+    if(includePool){JSONArray pool=network.optJSONArray("entryPoolKeys");if(pool!=null)for(int i=0;i<pool.length();i++){String key=pool.optString(i);if(!key.isEmpty())uniqueKeys.add(key);}}
+    List<String> keys=new ArrayList<>(uniqueKeys);Collections.sort(keys);
     if(!network.has(addressKey)&&keys.isEmpty())return "";
     JSONObject value=J.obj("addressRevision",network.optLong(addressKey),"nodeKeys",new JSONArray(keys));
     return hash(value.toString());
   }
-  private static String hash(String text){try{byte[] value=MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte b:value)out.append(String.format(Locale.ROOT,"%02x",b&255));return out.toString();}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}}
+  private static String hash(String text){return Sha256.hash(text);}
 }

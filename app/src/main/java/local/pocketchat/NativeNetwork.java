@@ -7,7 +7,6 @@ import org.json.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
@@ -503,5 +502,5 @@ class NativeNetwork {
   boolean stopNow(){if(maintenanceCancelled())Thread.interrupted();invalidateVerifiedRoute();ready=false;currentProbe=null;latencyReading=new JSONObject();websiteResult=new JSONObject();lastProbeDuration=0;lastProbeDurationAt=0;lastProbeEntry="";if(transport!=null){try{return !transport.call("stop","").optBoolean("alive");}catch(Exception e){message="独立网络停止尚未确认";return false;}}else{if(process!=null){process.destroy();process=null;}cleanupOwnedPid();return !coreAlive();}}
   void cleanupOwnedPid(){try{File pidFile=new File(root,"core.pid");if(!pidFile.exists())return;int pid;try(FileInputStream in=new FileInputStream(pidFile)){pid=Integer.parseInt(J.text(in,32).trim());}if(pid<=1||pid==android.os.Process.myPid())return;String cmd,status;try(FileInputStream in=new FileInputStream("/proc/"+pid+"/cmdline")){cmd=J.text(in,8192);}try(FileInputStream in=new FileInputStream("/proc/"+pid+"/status")){status=J.text(in,8192);}if(cmd.contains("libmihomo.so")&&cmd.contains(root.getAbsolutePath())&&status.matches("(?s).*Uid:\\s+"+android.os.Process.myUid()+"\\s+.*"))android.os.Process.killProcess(pid);pidFile.delete();}catch(Exception ignored){}}
   static String display(String name){return name.startsWith("Entry|")?name.substring(6):name;}
-  static String hash(String s){try{byte[] b=MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte x:b)out.append(String.format(Locale.ROOT,"%02x",x&255));return out.toString();}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}}
+  static String hash(String s){return Sha256.hash(s);}
 }
