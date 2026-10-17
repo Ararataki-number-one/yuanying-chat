@@ -129,3 +129,8 @@
 ## 许可
 
 第三方组件保留各自许可与署名，见 [third-party](third-party/README.md)。本项目自有源码暂未另行声明开源许可证。
+
+
+## 后续版本候选
+
+1.6.0 候选基于正式 v1.5.23-gecko，保留新版双订阅、安全延后应用、缩放与键盘行为；补充准确线路准入、健康交叉检查、目录格式保护及独立环境配置。尚未发布安装包。合并与验证见 [docs/MERGE-AND-ACCEPTANCE.md](docs/MERGE-AND-ACCEPTANCE.md)。

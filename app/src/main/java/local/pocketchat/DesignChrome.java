@@ -1,5 +1,6 @@
 package local.pocketchat;
 
+import android.annotation.TargetApi;
 import android.graphics.*;
 import android.os.SystemClock;
 import android.text.TextUtils;
@@ -178,6 +179,7 @@ final class DesignChrome {
       if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL)active=null;
       return handled;
     }
+    @TargetApi(29)
     @Override public AccessibilityNodeInfo.TouchDelegateInfo getTouchDelegateInfo(){
       Map<Region,View> map=new LinkedHashMap<>();
       for(int i=0;i<targets.length;i++)map.put(new Region(bounds[i]),targets[i]);
