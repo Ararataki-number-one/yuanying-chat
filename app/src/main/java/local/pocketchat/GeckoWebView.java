@@ -20,6 +20,7 @@ import java.util.concurrent.*;
 @SuppressWarnings("deprecation")
 class GeckoWebView extends FrameLayout {
   final GeckoSettings metadata=new GeckoSettings();
+  BrowserIdentitySpec identityPolicy;
   final MutableContextWrapper displayContext;
   static boolean wantsGecko(ChatSession session){return BrowserRuntimePolicy.usesGecko();}
   GeckoSettings getSettings(){return metadata;}
@@ -60,7 +61,7 @@ class GeckoWebView extends FrameLayout {
   final ExecutorService uploadWorker=Executors.newSingleThreadExecutor();
   final List<GeckoUploadFiles.Selection> uploadFiles=new ArrayList<>();
   GeckoSession.SessionState startupState;
-  boolean checkpointReady,routePrepared;float readingLayout=1;long zoomEpoch,recoveryWindow;int contentRecoveries;
+  boolean checkpointReady,routePrepared,identityPrepared;float readingLayout=1;long zoomEpoch,recoveryWindow;int contentRecoveries;
   GeckoSession zoomTarget;long zoomStarted;float zoomX,zoomY,zoomRadius;int readingFocusScrolls;boolean readingFocusHadClipping;float readingFocusScrollDelta;
   final Runnable recovery=()->recoverClosed();
   final Runnable checkpoint=this::saveCheckpoint;
@@ -74,7 +75,7 @@ class GeckoWebView extends FrameLayout {
   ResponseDownload responseDownload;
   WebViewClient client;WebChromeClient chrome;DownloadListener download;
   final boolean enabled=true;
-  boolean ready,failed,desktop,canBack,destroyed,privacyReady,fingerprintingProtected;int protectionLevel=-1;String url="",queued="";float scale=1;
+  boolean ready,failed,desktop,canBack,destroyed,privacyReady,fingerprintingProtected;int protectionLevel=-1,configuredProtection=-1,requestedProtection=-1;long identityPolicyRevision,protectionRequest;String url="",queued="";float scale=1;
 
   GeckoWebView(Context context,ChatSession session){
     super(context);owner=session;displayContext=new MutableContextWrapper(context);sessionStore=new BrowserSessionStore(context);
@@ -102,7 +103,7 @@ class GeckoWebView extends FrameLayout {
       runtime=GeckoRuntime.create(new GeckoEnvironmentContext(owner.context),new GeckoRuntimeSettings.Builder()
         .arguments(new String[]{"-profile",directory.getAbsolutePath()}).configFilePath(config.getAbsolutePath())
         .isolatedProcessEnabled(Build.VERSION.SDK_INT>=29).appZygoteProcessEnabled(false)
-        .remoteDebuggingEnabled(false).consoleOutput(false).trustedRecursiveResolverMode(5)
+        .remoteDebuggingEnabled(false).consoleOutput(false).trustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_DISABLED)
         .forceUserScalableEnabled(true).inputAutoZoomEnabled(true).build());
       runtime.getWebExtensionController().ensureBuiltIn("resource://android/assets/gecko/","browser@pocketchat.local")
         .accept(value->{if(destroyed)return;extension=value;extension.setMessageDelegate(routeMessages,"pocketroute");maybeOpen();},error->{if(!destroyed)failure("浏览器初始化失败，请重新打开当前环境重试");});
@@ -115,15 +116,15 @@ class GeckoWebView extends FrameLayout {
       routePort=port;port.setDelegate(new WebExtension.PortDelegate(){
         @Override public void onPortMessage(Object message,WebExtension.Port incoming){
           if(!(message instanceof JSONObject)||incoming!=routePort)return;JSONObject data=(JSONObject)message;
-          if("protectionReady".equals(data.optString("kind"))){if(data.optInt("level")==owner.privacy.level()){privacyReady=true;protectionLevel=data.optInt("level");fingerprintingProtected=data.optBoolean("fingerprinting");if(ready&&!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}maybeOpen();}return;}
+          if("protectionReady".equals(data.optString("kind"))){if(data.optLong("token",-1)==protectionRequest&&data.optInt("level")==requestedProtection&&requestedProtection==owner.privacy.level()){privacyReady=true;protectionLevel=data.optInt("level");fingerprintingProtected=data.optBoolean("fingerprinting");metadata.rfpAcknowledged=data.optBoolean("acknowledged");acknowledgeIdentity();if(ready&&!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}maybeOpen();}return;}
           if("ready".equals(data.optString("kind"))){routePrepared=true;maybeOpen();return;}
           if("cookieRecoveryError".equals(data.optString("kind"))){failure("登录状态暂未恢复，请重新打开当前环境");return;}
           if("cookies".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optBoolean("error")?null:data.optString("value"));
         }
-        @Override public void onDisconnect(WebExtension.Port incoming){if(routePort==incoming)routePort=null;cookieCallbacks.cancel(incoming);}
+        @Override public void onDisconnect(WebExtension.Port incoming){if(routePort==incoming){routePort=null;privacyReady=false;protectionRequest++;metadata.policyAcknowledged=false;metadata.rfpAcknowledged=false;}cookieCallbacks.cancel(incoming);}
       });
       if(previous!=null&&previous!=port)cookieCallbacks.cancel(previous);
-      port.postMessage(J.obj("kind","prepare","level",owner.privacy.level()));
+      requestProtection(port,"prepare",owner.privacy.level());
     }
     @Override public GeckoResult<Object> onMessage(String app,Object message,WebExtension.MessageSender sender){
       if(!"pocketroute".equals(app)||!(message instanceof JSONObject)||sender.environmentType!=WebExtension.MessageSender.ENV_TYPE_EXTENSION)return GeckoResult.fromValue(blocked().toString());
@@ -170,7 +171,8 @@ class GeckoWebView extends FrameLayout {
     primary=newSession();current=primary;primary.open(runtime);surface.setSession(primary);configure(desktop,owner.privacy.level());ready=true;
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
   }
-  private void maybeOpen(){if(!destroyed&&!failed&&!ready&&extension!=null&&checkpointReady&&routePrepared&&privacyReady)open();}
+  void identityConfigurationReady(){identityPrepared=true;maybeOpen();}
+  private void maybeOpen(){if(!destroyed&&!failed&&!ready&&extension!=null&&checkpointReady&&identityPrepared&&routePrepared&&privacyReady)open();}
   GeckoSession newSession(){
     // Isolation comes from existing Android processes and distinct profile directories.
     // Default cookie storage remains usable by the official cookie API in this runtime.
@@ -285,6 +287,7 @@ class GeckoWebView extends FrameLayout {
             owner.changed();return;
           }
           if("result".equals(kind))callbacks.complete(incoming,data.optInt("id"),data.optString("result","null"));
+          else if("auditResult".equals(kind)){String value=data.optString("result","null");if(value.length()<=64000)callbacks.complete(incoming,data.optInt("id"),value);}
           else if("reply".equals(kind)&&MainActivity.chatUrl(port.sender.url)&&MainActivity.chatUrl(getUrl())&&owner.webObserver!=null){String text=data.optString("text");if(text.length()<=2*1024*1024)owner.webObserver.receive(J.parse(text));}
           else if("ready".equals(kind)&&owner.webObserver!=null)owner.webObserver.pageReady();
         }
@@ -357,12 +360,37 @@ class GeckoWebView extends FrameLayout {
     }
   }
   void configure(boolean desktop,int protection){
-    this.desktop=desktop;
-    if(runtime!=null){org.mozilla.geckoview.ContentBlocking.Settings policy=runtime.getSettings().getContentBlocking();policy.setAntiTracking(protection>0?org.mozilla.geckoview.ContentBlocking.AntiTracking.DEFAULT|org.mozilla.geckoview.ContentBlocking.AntiTracking.FINGERPRINTING|org.mozilla.geckoview.ContentBlocking.AntiTracking.CRYPTOMINING:org.mozilla.geckoview.ContentBlocking.AntiTracking.NONE);}
-    if(routePort!=null&&protectionLevel>=0&&protectionLevel!=protection){privacyReady=false;routePort.postMessage(J.obj("kind","protection","level",protection));}
-    for(GeckoSession session:new ArrayList<>(locations.keySet())){session.getSettings().setUserAgentMode(desktop?GeckoSessionSettings.USER_AGENT_MODE_DESKTOP:GeckoSessionSettings.USER_AGENT_MODE_MOBILE);session.getSettings().setViewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE);session.getSettings().setUseTrackingProtection(protection>0);}
-    if(current!=null&&current.isOpen()){GeckoSession source=current;source.getUserAgent().accept(value->{if(!destroyed&&source==current&&this.desktop==desktop)metadata.userAgent=value;},error->{});}
+    this.desktop=desktop;configuredProtection=protection;long revision=++identityPolicyRevision;
+    metadata.desktop=desktop;metadata.policyAcknowledged=false;metadata.userAgent="";metadata.acceptedBrowserIdentity=new JSONObject();
+    GeckoPolicyAdapter.applyRuntime(runtime,protection);
+    applyIdentityLocales();
+    if(routePort!=null&&(requestedProtection!=protection||privacyReady&&!metadata.rfpAcknowledged))requestProtection(routePort,"protection",protection);
+    for(GeckoSession session:new ArrayList<>(locations.keySet()))GeckoPolicyAdapter.applySession(session,desktop,protection);
+    if(current!=null&&current.isOpen()){GeckoSession source=current;source.getUserAgent().accept(value->{if(!destroyed&&source==current&&this.desktop==desktop&&identityPolicyRevision==revision){metadata.userAgent=value;acknowledgeIdentity();}},error->{});}
   }
+  void acknowledgeIdentity(){
+    metadata.policyAcknowledged=runtime!=null&&current!=null&&current.isOpen()&&privacyReady&&protectionLevel==configuredProtection&&!metadata.userAgent.isEmpty()&&metadata.rfpAcknowledged&&metadata.localesAcknowledged&&(protectionLevel<2||fingerprintingProtected);
+    metadata.policyError=metadata.policyAcknowledged?"":protectionLevel>=2&&!fingerprintingProtected?"原生强化设置尚未确认生效":"等待内核确认";
+    if(metadata.policyAcknowledged){metadata.acceptedBrowserIdentity=BrowserIdentitySpec.legacy(desktop,configuredProtection).withLocales(identityPolicy==null?Collections.emptyList():identityPolicy.locales).json();owner.identityPolicyAcknowledged();}
+  }
+  private void requestProtection(WebExtension.Port port,String kind,int level){
+    privacyReady=false;requestedProtection=level;metadata.rfpAcknowledged=false;metadata.policyAcknowledged=false;
+    port.postMessage(J.obj("kind",kind,"level",level,"token",++protectionRequest));
+  }
+  void configureIdentity(BrowserIdentitySpec specification){
+    String issue=specification.validate();if(!issue.isEmpty())throw new IllegalArgumentException(issue);
+    identityPolicyRevision++;identityPolicy=specification;metadata.policyAcknowledged=false;metadata.acceptedBrowserIdentity=new JSONObject();applyIdentityLocales();
+  }
+  private void applyIdentityLocales(){
+    ArrayList<String> selected=new ArrayList<>();
+    if(identityPolicy!=null&&!identityPolicy.locales.isEmpty())selected.addAll(identityPolicy.locales);
+    else{android.os.LocaleList system=owner.context.getResources().getConfiguration().getLocales();for(int i=0;i<system.size()&&i<3;i++)selected.add(system.get(i).toLanguageTag());}
+    if(selected.isEmpty())selected.add(Locale.getDefault().toLanguageTag());
+    String[] locales=selected.toArray(new String[0]);
+    try{metadata.localesAcknowledged=GeckoPolicyAdapter.applyLocales(runtime,locales);metadata.appliedLocales=metadata.localesAcknowledged?runtime.getSettings().getLocales().clone():new String[0];}
+    catch(Exception failure){metadata.localesAcknowledged=false;metadata.appliedLocales=new String[0];}
+  }
+  String identityLanguage(){return metadata.appliedLocales.length>0?metadata.appliedLocales[0]:Locale.getDefault().toLanguageTag();}
   void useEngine(boolean value){if(!value)throw new IllegalStateException("正式应用仅使用 Firefox 内核");}
   boolean closePopup(){
     return closePopup(current);
@@ -392,6 +420,14 @@ class GeckoWebView extends FrameLayout {
     int id=callbacks.add(port,callback==null?null:callback::onReceiveValue,10000);
     try{port.postMessage(J.obj("kind","evaluate","id",id,"code",code));}catch(Exception error){callbacks.complete(port,id,"null");}
   }
+  void runEnvironmentAudit(JSONObject configuration,ValueCallback<String> callback){
+    WebExtension.Port port=ports.get(current);
+    if(destroyed||port==null){callback.onReceiveValue("null");return;}
+    int request=callbacks.add(port,callback::onReceiveValue,14000);
+    try{port.postMessage(J.obj("kind","audit","id",request,"configuration",configuration));}
+    catch(Exception error){callbacks.complete(port,request,"null");}
+  }
+  void cancelEnvironmentAudit(){WebExtension.Port port=ports.get(current);if(port!=null)try{port.postMessage(J.obj("kind","auditCancel"));}catch(Exception ignored){}}
   public void stopLoading(){queued="";if(current!=null){loadingTargets.remove(current);pendingLoads.remove(current);current.stop();}}
   public void setWebViewClient(WebViewClient value){client=value;}
   public void setWebChromeClient(WebChromeClient value){chrome=value;}

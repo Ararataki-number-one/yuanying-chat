@@ -18,6 +18,6 @@
     const workerJob=new Promise(resolve=>{let worker,url,done=false;const finish=value=>{if(done)return;done=true;clearTimeout(timer);worker?.terminate();if(url)URL.revokeObjectURL(url);resolve(value);};cleanup.push(()=>finish({error:'Cancelled'}));const timer=setTimeout(()=>finish({error:'Worker unavailable'}),9000);try{url=URL.createObjectURL(new Blob(['('+signal.toString()+')().then(async value=>{if('+JSON.stringify(cfg.network)+')value.ip=await ('+get.toString()+')('+JSON.stringify(cfg.ipv4)+');postMessage(value);});'],{type:'application/javascript'}));worker=new Worker(url);worker.onmessage=e=>finish(e.data);worker.onerror=()=>finish({error:'Worker unavailable'});}catch{finish({error:'Worker unavailable'});}});
     const netJob=cfg.network?Promise.all([get(cfg.ipv4),get(cfg.ipv6),get(cfg.headers)]):Promise.resolve([]);
     const [frame,worker,network]=await Promise.all([frameJob,workerJob,netJob]);
-    if(cancelled)return;cleanup.length=0;window.__pocketAuditResult={id:nonce,parent,frame,worker,network:cfg.network?{ipv4:network[0],ipv6:network[1],headers:network[2]}:{}};
+    if(cancelled)return;cleanup.length=0;window.__pocketAuditResult={id:nonce,parent,frame,worker,provenance:'extension-isolated-world-legacy',coverage:{frame:'same-origin-srcdoc',worker:'dedicated-blob',crossOriginFrame:false,sharedWorker:false,serviceWorker:false},network:cfg.network?{ipv4:network[0],ipv6:network[1],headers:network[2],provenance:'gecko-content-fetch'}:{}};
   };
 })();
