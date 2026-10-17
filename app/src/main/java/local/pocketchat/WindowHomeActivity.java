@@ -220,7 +220,7 @@ public class WindowHomeActivity extends Activity {
       }else{TextView number=DesignUi.text(this,String.format(Locale.ROOT,"%02d",id+1),12,DesignUi.MUTED);number.setGravity(Gravity.CENTER);head.addView(number,new LinearLayout.LayoutParams(dp(24),-2));}
       LinearLayout title=DesignUi.column(this);title.setPadding(dp(10),0,dp(6),0);
       TextView name=DesignUi.text(this,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"),16,DesignUi.TEXT);
-      name.setTypeface(android.graphics.Typeface.create("sans-serif-medium",0));name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);title.addView(name);
+      name.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);title.addView(name);
       String group=row.optString("group").isEmpty()?"未分组":row.optString("group");
       TextView sub=DesignUi.text(this,(selecting?String.format(Locale.ROOT,"%02d",id+1)+" · ":"")+(row.optBoolean("desktopSite")?"电脑版 · ":"")+group+(id==AppSettings.defaultSlot(this)?" · 默认":"")+(!row.optString("draft").isEmpty()?" · 草稿":""),12,DesignUi.MUTED);
       sub.setSingleLine();sub.setEllipsize(TextUtils.TruncateAt.END);title.addView(sub);

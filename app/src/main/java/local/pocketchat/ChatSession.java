@@ -22,6 +22,8 @@ final class ChatSession {
   JSONObject draftConflict,approvedDraft;JSONObject sentAttachments=new JSONObject();JSONObject state=new JSONObject();long stateEpoch=-1;boolean googleLoginBlocked;volatile JSONObject pending;JSONArray entries=new JSONArray(),attachments=new JSONArray();boolean networkReady=false,uiVisible=false,submitting=false,operation=false,inFlight=false;
   boolean showingCache=false,offline=false,connecting=false,recoveryScheduled=false,manualAttention=false;int recoveryAttempt=0;long recoveryToken=0;volatile long connectionEpoch=0;String networkIdentity="",networkIssue="",connectionStage="未连接";final ConversationStore cache;final WebTranscriptMirror webMirror=new WebTranscriptMirror();final WebTranscriptStore webStore;long lastWebSnapshot=0,syncRun=0;String lastWebUrl="",lastDeliverySignature="";final DeliveryStore deliveries;String activeDeliveryId="";volatile boolean transferActive=false;
   boolean deleted=false,configurationCapture=false;long lastDeferredBrowserAttempt=0;final int environmentGeneration;boolean navigating=false,navigationFailed=false;String navigationTarget="",navigationLabel="";long navigationEpoch=0,navigationStarted=0;long connectionStarted=0,proxyReadyAt=0,navigationMono=0,firstPageVisible=0,pageUsableAt=0;
+  final IdentityTemplateController identity;boolean identityApplicationPending;
+  final java.util.concurrent.ExecutorService environmentIo=java.util.concurrent.Executors.newSingleThreadExecutor();String environmentSpecIssue="";
   final ConnectionTrace trace=new ConnectionTrace();final PageMemory pageMemory=new PageMemory(this);final NetworkPoolIdentity.DefaultNetwork browserDefaultNetwork=new NetworkPoolIdentity.DefaultNetwork();String appliedIdentity="",requestedConversation="";boolean keepPageCandidate=false,browserPaused=false,spaTransition=false,documentNavigationSeen=false,backgroundAttachmentCheck=false;String spaBefore="",spaSignature="",lastDocumentId="",priorDocumentId="";boolean navigationDispatched=true,awaitNewDocument=false;int spaStable=0,backgroundAttachmentStable=0;
   String stableReply="",progressJob="",progressSignature="";long lastReplyProgress=0;int stableTicks=0;long operationGeneration=0;boolean websiteConnectionIssue,websiteRecovering;
   String observedReplyJob="",observedReplyUrl="",observedReplyKey="",observedReplyRevision="",observedReplyMarkdown="";boolean observedReplyHasFiles;
@@ -36,7 +38,7 @@ final class ChatSession {
     }
     if(pending!=null)activeDeliveryId=pending.optString("id");try{entries=new JSONArray();try(InputStream in=context.getAssets().open("page-driver.js")){driver=J.text(in,512*1024);}}catch(Exception ignored){}conversation=prefs.getString("conversation","");
     try(InputStream in=context.getAssets().open("attachment-driver.js")){attachmentDriver=J.text(in,512*1024);}catch(Exception ignored){}
-    guard=new BrowserNetworkGuard(this);web=browserFactory.create(context,this);reading=new BrowserReading(this);privacy=new BrowserPrivacy(this);webObserver=new WebReplyObserver(this);webObserver.install();webObserver.restorePending();web.setWebViewClient(client());web.setWebChromeClient(new WebChromeClient());int width=Math.max(400,context.getResources().getDisplayMetrics().widthPixels),height=Math.max(800,context.getResources().getDisplayMetrics().heightPixels);web.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));web.layout(0,0,width,height);audit=new EnvironmentAudit(this);handler.post(tick);watchNetwork();
+    guard=new BrowserNetworkGuard(this);web=browserFactory.create(context,this);reading=new BrowserReading(this);privacy=new BrowserPrivacy(this);webObserver=new WebReplyObserver(this);webObserver.install();webObserver.restorePending();web.setWebViewClient(client());web.setWebChromeClient(new WebChromeClient());int width=Math.max(400,context.getResources().getDisplayMetrics().widthPixels),height=Math.max(800,context.getResources().getDisplayMetrics().heightPixels);web.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));web.layout(0,0,width,height);audit=new EnvironmentAudit(this);identity=new IdentityTemplateController(this);identity.load();handler.post(tick);watchNetwork();
   }
   WebViewClient client(){return new WebViewClient(){
     @Override public void onScaleChanged(WebView v,float oldScale,float newScale){reading.scaled(newScale);}
@@ -52,7 +54,13 @@ final class ChatSession {
   void checkGoogleLogin(String url){final long epoch=navigationEpoch;web.evaluateJavascript(LoginPagePolicy.blockedScript(),raw->{
     if(epoch!=navigationEpoch||!url.equals(web.getUrl())||!"true".equals(raw))return;googleLoginBlocked=true;awaitLogin("Google 暂不接受应用内浏览器登录，可打开登录帮助");
   });}
+  void applyIdentityTemplate(MainActivity activity,BrowserIdentitySpec specification,java.util.function.Consumer<String> done){identity.apply(activity,specification,done);}
+  void identityPolicyAcknowledged(){if(identity!=null)identity.acknowledge();}
+  void identityObserved(JSONObject report){if(identity!=null)identity.observe(report);}
+  long identityAuditAppliedRevision(){return identity==null?0:identity.appliedRevision();}
+  void browserIdentitySaved(int level,boolean desktop){identity.legacySaved(level,desktop);}
   void applyBrowserSettings(boolean protectionChanged){
+    identityApplicationPending=false;identity.prepareRuntime();
     // A confirmed user task was checked before entering this method. Replace only
     // idle navigation/retry work, and invalidate callbacks belonging to it.
     boolean reconnect=protectionChanged||connecting||!networkReady;
@@ -163,7 +171,7 @@ final class ChatSession {
   void applyProxy(String proxy){applyProxy(proxy,connectionEpoch);}
   String networkIdentity(){try{if(internalNetwork()){NativeNetwork n=NativeNetwork.get(context);return "internal:"+n.fingerprint+":"+NativeNetwork.hash(n.settings==null?"":n.settings.optString("subscriptionUrl"));}return "external:"+prefs.getString("proxy","");}catch(Exception e){return "";}}
   void applyProxy(String proxy,long epoch){if(guard.requiresVpn()&&!guard.vpnActive()){connectionFailed(epoch,"手机 VPN 未连接，已暂停网页联网；请先连接 VPN 后重连",false);connectionStage="等待手机 VPN";return;}String identity=networkIdentity();boolean keep=keepPageCandidate&&!appliedIdentity.isEmpty()&&appliedIdentity.equals(identity);Runnable done=()->{
-      if(epoch!=connectionEpoch||offline)return;if(!guard.routeProtected()){connectionFailed(epoch,"受保护连接已中断，网页联网已暂停",false);return;}connecting=false;networkReady=true;proxyReadyAt=SystemClock.elapsedRealtime();trace.network(internalNetwork()?NativeNetwork.get(context):null);appliedIdentity=identity;connectionStage="正在核对网页";guard.setBlocked(false);audit.refresh(true);
+      if(epoch!=connectionEpoch||offline)return;if(!guard.routeProtected()){connectionFailed(epoch,"受保护连接已中断，网页联网已暂停",false);return;}connecting=false;networkReady=true;proxyReadyAt=SystemClock.elapsedRealtime();trace.network(internalNetwork()?NativeNetwork.get(context):null);appliedIdentity=identity;connectionStage="正在核对网页";guard.setBlocked(false);identityPolicyAcknowledged();audit.refresh(true);
       String target=resumeUrl();if(!keep||pending!=null){navigate(target,"正在恢复 ChatGPT 对话…");return;}
       asyncDriver("page-recover",J.obj("expectedUrl",target),3200,result->{if(epoch!=connectionEpoch||offline)return;trace.recoveryProbe=(long)ConnectionTrace.bounded(result.optDouble("probeMs",-1));
         if(result.optBoolean("ok")&&pending==null&&!submitting&&!operation&&WebReplyObserver.same(target,web.getUrl())){

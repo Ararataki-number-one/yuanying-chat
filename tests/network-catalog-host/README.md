@@ -5,6 +5,17 @@ coverage. Four independent JVM writers and one stale writer verify the actual
 production cross-process file locks. Publication failure is injected between the
 immutable provider write and atomic catalogue pointer commit.
 
+The suite contains 113 checks. Manual-exit cases distinguish historical aliases
+from current endpoint duplicates, including re-adding A after editing A to B,
+occupied legacy IDs, distinct credential tuples sharing a legacy delimited hash,
+and editing to a released historical endpoint. Format cases
+reject future/fractional versions, wrong list/row/node/port types, duplicate IDs,
+wrong roles, malformed UTF-8 and trailing content. Fresh and stale writers must
+preserve rejected documents byte for byte. Valid unversioned and version-1
+catalogues migrate without changing existing source/exit identities or provider
+payloads. All persistence assertions remain host-fixture checks, not evidence of
+Android encryption or device execution.
+
 Compile the production NetworkCatalog.java, NetworkSubscriptionCatalogPolicy.java
 and J.java with all Java files in this directory, using org.json on the classpath.
 Run local.pocketchat.NetworkCatalogHostTest.

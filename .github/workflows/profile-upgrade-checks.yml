@@ -1,0 +1,87 @@
+name: Profile upgrade host and official SDK build checks
+on:
+  push:
+    branches: ['codex/v1.6-network-environments', 'codex/v1.7-templates-audit', 'codex/v2.0-maintenance-capabilities']
+    paths: ['app/**', 'tests/**', 'tools/gecko/**', 'tools/export-profile-upgrades.py', 'third-party/sdk/**', 'third-party/patches/**', 'build.gradle', 'settings.gradle', 'gradle.properties', '.github/workflows/profile-upgrade-checks.yml']
+  pull_request:
+    paths: ['app/**', 'tests/**', 'tools/gecko/**', 'tools/export-profile-upgrades.py', 'third-party/sdk/**', 'third-party/patches/**', 'build.gradle', 'settings.gradle', 'gradle.properties', '.github/workflows/profile-upgrade-checks.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: profile-upgrade-checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  host-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Run source model, parser and protocol checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$JAVA_HOME_17_X64/bin:$PATH"
+          mkdir -p work/profile-host
+          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar -o work/profile-host/json.jar
+          echo '3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  work/profile-host/json.jar' | sha256sum -c -
+          python3 tools/gecko/run_profile_host_checks.py --json-jar work/profile-host/json.jar
+          if [ -f tools/gecko/run_identity_host_checks.sh ]; then
+            bash tools/gecko/run_identity_host_checks.sh
+          fi
+          if compgen -G 'tests/profile_*_test.py' >/dev/null; then
+            python3 -m unittest discover -s tests -p 'profile_*_test.py'
+          fi
+      - name: State host verification scope
+        run: |
+          printf '%s\n' 'Host model and protocol checks only. No Android execution, real account login, native fingerprint support or performance claim is implied.' >> "$GITHUB_STEP_SUMMARY"
+  official-sdk-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify core and prepare locked SDK toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/build-mihomo.py --verify
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          mkdir -p work/profile-build
+          "$JAVA_HOME_17_X64/bin/keytool" -genkeypair -keystore work/profile-build/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
+          curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/profile-build/gradle.zip
+          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/profile-build/gradle.zip' | sha256sum -c -
+          unzip -q work/profile-build/gradle.zip -d work/profile-build/gradle
+          task_sdk_url=https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250
+          curl -fsSL --retry 3 "$task_sdk_url.aar" -o work/profile-build/geckoview.aar
+          curl -fsSL --retry 3 "$task_sdk_url.pom" -o work/profile-build/geckoview.pom
+          curl -fsSL --retry 3 "$task_sdk_url-sources.jar" -o work/profile-build/geckoview-sources.jar
+          echo '15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268  work/profile-build/geckoview.aar' | sha256sum -c -
+          python3 tools/gecko/verify_official_sdk.py --aar work/profile-build/geckoview.aar --pom work/profile-build/geckoview.pom --sources work/profile-build/geckoview-sources.jar
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+      - name: Compile release and synthetic test APKs with official SDK; run lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          work/profile-build/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration :app:lintRelease -PtestSigningKey="$PWD/work/profile-build/integration-test.jks" --console=plain 2>&1 | tee work/profile-build/build.log
+          python3 tools/gecko/verify_official_sdk.py --aar work/profile-build/geckoview.aar --pom work/profile-build/geckoview.pom --sources work/profile-build/geckoview-sources.jar --gradle-cache "${GRADLE_USER_HOME:-$HOME/.gradle}" | tee work/profile-build/official-sdk-verification.json
+      - name: State build verification scope
+        run: |
+          printf '%s\n' 'Official SDK release/test APK compilation and lint passed. APKs remain unsigned or signed with an ephemeral synthetic key. No emulator/ARM execution, real ChatGPT login or WAN measurement is implied; no release is published.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve build logs and lint report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: profile-upgrade-build-evidence
+          path: |
+            work/profile-build/build.log
+            work/profile-build/official-sdk-verification.json
+            app/build/reports/lint-results-release.*
+          if-no-files-found: ignore
