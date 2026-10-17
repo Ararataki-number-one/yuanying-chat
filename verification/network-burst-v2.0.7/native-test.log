@@ -1,0 +1,130 @@
+=== RUN   TestPocketEpochFailClosed
+--- PASS: TestPocketEpochFailClosed (0.00s)
+=== RUN   TestPocketPreparedSocketHasNoConnectOrPayload
+--- PASS: TestPocketPreparedSocketHasNoConnectOrPayload (0.13s)
+=== RUN   TestPocketWrongAuthAndRepNeverRetry
+=== RUN   TestPocketWrongAuthAndRepNeverRetry/auth
+=== RUN   TestPocketWrongAuthAndRepNeverRetry/rep
+--- PASS: TestPocketWrongAuthAndRepNeverRetry (0.07s)
+    --- PASS: TestPocketWrongAuthAndRepNeverRetry/auth (0.03s)
+    --- PASS: TestPocketWrongAuthAndRepNeverRetry/rep (0.03s)
+=== RUN   TestPocketDeadIdleFreshOnceBeforePayload
+--- PASS: TestPocketDeadIdleFreshOnceBeforePayload (0.01s)
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge/selector
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge/config
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge/epoch
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge/expiry
+=== RUN   TestPocketRouteEpochExpiryAndClosePurge/close
+--- PASS: TestPocketRouteEpochExpiryAndClosePurge (0.24s)
+    --- PASS: TestPocketRouteEpochExpiryAndClosePurge/selector (0.05s)
+    --- PASS: TestPocketRouteEpochExpiryAndClosePurge/config (0.06s)
+    --- PASS: TestPocketRouteEpochExpiryAndClosePurge/epoch (0.06s)
+    --- PASS: TestPocketRouteEpochExpiryAndClosePurge/expiry (0.07s)
+    --- PASS: TestPocketRouteEpochExpiryAndClosePurge/close (0.00s)
+=== RUN   TestPocketCancelPendingAndBoundedRefill
+--- PASS: TestPocketCancelPendingAndBoundedRefill (0.00s)
+=== RUN   TestPocketTraceBypassDoesNotConsumeOrRefill
+--- PASS: TestPocketTraceBypassDoesNotConsumeOrRefill (0.01s)
+=== RUN   TestPocketUnsupportedOrBlockedKeepsOriginalChain
+=== RUN   TestPocketUnsupportedOrBlockedKeepsOriginalChain/blockedEpoch
+=== RUN   TestPocketUnsupportedOrBlockedKeepsOriginalChain/unsupportedRoute
+--- PASS: TestPocketUnsupportedOrBlockedKeepsOriginalChain (0.00s)
+    --- PASS: TestPocketUnsupportedOrBlockedKeepsOriginalChain/blockedEpoch (0.00s)
+    --- PASS: TestPocketUnsupportedOrBlockedKeepsOriginalChain/unsupportedRoute (0.00s)
+=== RUN   TestPocketEnvironmentIsolation
+--- PASS: TestPocketEnvironmentIsolation (0.01s)
+=== RUN   TestPocketReadyRepRejectionNeverFreshRetries
+--- PASS: TestPocketReadyRepRejectionNeverFreshRetries (0.01s)
+=== RUN   TestPocketNetworkChangeDuringConnectReturnsNoBrowserSocket
+--- PASS: TestPocketNetworkChangeDuringConnectReturnsNoBrowserSocket (0.05s)
+=== RUN   TestPocketReturnedConnectionNeverClosedByLeaseWatcher
+--- PASS: TestPocketReturnedConnectionNeverClosedByLeaseWatcher (0.05s)
+=== RUN   TestPocketPendingPreparationCancelledByEpoch
+--- PASS: TestPocketPendingPreparationCancelledByEpoch (0.24s)
+=== RUN   TestPocketDeadIdleRetryCannotStealConcurrentPreparedSocket
+--- PASS: TestPocketDeadIdleRetryCannotStealConcurrentPreparedSocket (0.01s)
+=== RUN   TestPocketCancelledPreparerRetainsSlotUntilWorkerRetires
+--- PASS: TestPocketCancelledPreparerRetainsSlotUntilWorkerRetires (0.06s)
+=== RUN   TestPocketBurstPreparedConnections
+=== RUN   TestPocketBurstPreparedConnections/1
+    socks5_preconnect_test.go:700: capacity=1 burst=245.498409ms
+=== RUN   TestPocketBurstPreparedConnections/4
+    socks5_preconnect_test.go:700: capacity=4 burst=61.340915ms
+--- PASS: TestPocketBurstPreparedConnections (1.74s)
+    --- PASS: TestPocketBurstPreparedConnections/1 (0.96s)
+    --- PASS: TestPocketBurstPreparedConnections/4 (0.78s)
+=== RUN   TestPocketBurstInvalidation
+=== RUN   TestPocketBurstInvalidation/network
+=== RUN   TestPocketBurstInvalidation/route
+=== RUN   TestPocketBurstInvalidation/close
+--- PASS: TestPocketBurstInvalidation (0.42s)
+    --- PASS: TestPocketBurstInvalidation/network (0.16s)
+    --- PASS: TestPocketBurstInvalidation/route (0.16s)
+    --- PASS: TestPocketBurstInvalidation/close (0.10s)
+=== RUN   TestPocketBurstCapacityBound
+--- PASS: TestPocketBurstCapacityBound (0.00s)
+PASS
+ok  	github.com/metacubex/mihomo/adapter/outbound	3.082s
+=== RUN   TestPocketSelectedExitExactFingerprintSurvivesRefreshRename
+--- PASS: TestPocketSelectedExitExactFingerprintSurvivesRefreshRename (0.00s)
+=== RUN   TestPocketSelectedExitRejectsMissingAndCredentialRotation
+=== RUN   TestPocketSelectedExitRejectsMissingAndCredentialRotation/password
+=== RUN   TestPocketSelectedExitRejectsMissingAndCredentialRotation/server
+--- PASS: TestPocketSelectedExitRejectsMissingAndCredentialRotation (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsMissingAndCredentialRotation/password (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsMissingAndCredentialRotation/server (0.00s)
+=== RUN   TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames
+=== RUN   TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames/Tokyo
+=== RUN   TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames/Alias_Tokyo
+--- PASS: TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames/Tokyo (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsAmbiguousAliasesAndDuplicateNames/Alias_Tokyo (0.00s)
+=== RUN   TestPocketSelectedExitRejectsUnsupportedProtocolAndMux
+=== RUN   TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/http
+=== RUN   TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/mux
+=== RUN   TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/mux-quoted-bool
+--- PASS: TestPocketSelectedExitRejectsUnsupportedProtocolAndMux (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/http (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/mux (0.00s)
+    --- PASS: TestPocketSelectedExitRejectsUnsupportedProtocolAndMux/mux-quoted-bool (0.00s)
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute/no-selected
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute/bad-sha
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute/wrong-name
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute/wrong-entry
+=== RUN   TestPocketSelectedExitValidatesTrustedPrivateRoute/relative-epoch
+--- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute (0.00s)
+    --- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute/no-selected (0.00s)
+    --- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute/bad-sha (0.00s)
+    --- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute/wrong-name (0.00s)
+    --- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute/wrong-entry (0.00s)
+    --- PASS: TestPocketSelectedExitValidatesTrustedPrivateRoute/relative-epoch (0.00s)
+=== RUN   TestPocketSelectedExitStripsSubscriptionPoolAliasesAndPreservesNestedData
+--- PASS: TestPocketSelectedExitStripsSubscriptionPoolAliasesAndPreservesNestedData (0.00s)
+=== RUN   TestPocketSelectedExitProbeRolesNeverEnablePreconnect
+=== RUN   TestPocketSelectedExitProbeRolesNeverEnablePreconnect/ProbeExit
+=== RUN   TestPocketSelectedExitProbeRolesNeverEnablePreconnect/WebProbeExit
+--- PASS: TestPocketSelectedExitProbeRolesNeverEnablePreconnect (0.00s)
+    --- PASS: TestPocketSelectedExitProbeRolesNeverEnablePreconnect/ProbeExit (0.00s)
+    --- PASS: TestPocketSelectedExitProbeRolesNeverEnablePreconnect/WebProbeExit (0.00s)
+=== RUN   TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions
+=== RUN   TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions/.type_=_"http"
+=== RUN   TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions/.smux.enabled_=_true
+--- PASS: TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions (0.00s)
+    --- PASS: TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions/.type_=_"http" (0.00s)
+    --- PASS: TestPocketSelectedExitPoolOverrideIsAppliedAfterExpressions/.smux.enabled_=_true (0.00s)
+=== RUN   TestPocketSelectedExitMultipleNameFiltersCountSourceOnce
+--- PASS: TestPocketSelectedExitMultipleNameFiltersCountSourceOnce (0.00s)
+=== RUN   TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes
+=== RUN   TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/unknown-protocol
+=== RUN   TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/malformed-port
+=== RUN   TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/ambiguous-auth-alias
+--- PASS: TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes (0.00s)
+    --- PASS: TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/unknown-protocol (0.00s)
+    --- PASS: TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/malformed-port (0.00s)
+    --- PASS: TestPocketSelectedExitIgnoresUnrelatedMalformedSourceNodes/ambiguous-auth-alias (0.00s)
+=== RUN   TestPocketBurstProviderCapacity
+--- PASS: TestPocketBurstProviderCapacity (0.00s)
+PASS
+ok  	github.com/metacubex/mihomo/adapter/provider	0.054s
