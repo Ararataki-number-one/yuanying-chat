@@ -256,9 +256,11 @@ public class GeckoIdentityPrototypeIntegrationActivity extends Activity {
     reportPut(report,"androidCleartextPolicy",J.obj("globalPermitted",policy.isCleartextTrafficPermitted(),"loopbackPermitted",policy.isCleartextTrafficPermitted("127.0.0.1"),"localhostPermitted",policy.isCleartextTrafficPermitted("localhost"),"scope","Observed Android policy only; no policy override"));
     if(site!=null){reportPut(report,"allRequestHeaders",site.allRecords());reportPut(report,"localServer",site.diagnostics());}
     if(failure!=null){reportPut(report,"error",String.valueOf(failure));reportPut(report,"failureType",failure.getClass().getName());reportPut(report,"currentCase",caseIndex);reportPut(report,"partialObservations",new JSONObject(rawObservations));reportPut(report,"nativeRequests",new JSONObject(nativeAgents));}
-    configureReport(report);Log.i(reportTag(),report.toString());
+    // Freeze the report on the callback thread before teardown can append
+    // more route observations. The storage worker must not traverse live JSON.
+    configureReport(report);final String reportJson=report.toString();Log.i(reportTag(),reportJson);
     if(view!=null)view.destroy();if(owner!=null){owner.handler.removeCallbacks(owner.tick);owner.deleted=true;}if(site!=null)site.close();
-    storage.execute(()->{try{File file=new File(getFilesDir(),reportFile()),tmp=new File(getFilesDir(),reportFile()+".tmp");try(FileOutputStream out=new FileOutputStream(tmp)){out.write(report.toString().getBytes(StandardCharsets.UTF_8));out.getFD().sync();}if(!tmp.renameTo(file))throw new IOException("Atomic report publication failed");}catch(Throwable error){Log.e(reportTag(),"Report export failed",error);}finally{storage.shutdown();}});
+    storage.execute(()->{try{File file=new File(getFilesDir(),reportFile()),tmp=new File(getFilesDir(),reportFile()+".tmp");try(FileOutputStream out=new FileOutputStream(tmp)){out.write(reportJson.getBytes(StandardCharsets.UTF_8));out.getFD().sync();}if(!tmp.renameTo(file))throw new IOException("Atomic report publication failed");}catch(Throwable error){Log.e(reportTag(),"Report export failed",error);}finally{storage.shutdown();}});
   }
   int passedChecks(){int count=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))count++;return count;}
   static void reportPut(JSONObject object,String key,Object value){try{object.put(key,value);}catch(JSONException impossible){throw new IllegalStateException(impossible);}}
