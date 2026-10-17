@@ -1704,7 +1704,16 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
         mFocusedToken = null;
       }
     } else if (type == SessionTextInput.EditableListener.NOTIFY_IME_REPLY_EVENT) {
-      geckoActionReply(mActions.poll());
+      // Keep the action pending while its reply copies composing spans into
+      // current text. Otherwise the IC thread can see an empty queue and sync
+      // the span-less intermediate text over the still-composing shadow text.
+      final Action completedAction = mActions.peek();
+      geckoActionReply(completedAction);
+      if (completedAction != null) {
+        // A focus reset may have cleared the queue and installed newer work.
+        // Remove this exact action, never the new head.
+        mActions.remove(completedAction);
+      }
       if (!mActions.isEmpty()) {
         // Only post to IC thread below when the queue is empty.
         return;

@@ -37,6 +37,7 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
           export JAVA_HOME="$JAVA_HOME_17_X64"
+          python3 tools/gecko/run_reply_handoff_host.py --upstream-sources work/gecko-integration/geckoview-sources.jar | tee work/gecko-integration/reply-handoff-host-results.json
           python3 tools/gecko/caret_workflow.py prepare --work work/gecko-integration
       - name: Compile release and native regression package
         run: |

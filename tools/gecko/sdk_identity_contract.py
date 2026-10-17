@@ -14,11 +14,11 @@ from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[2]
 SDK_COORDINATE = 'org.mozilla.geckoview:geckoview:157.0.20261005135250'
-SDK_RUNTIME_COORDINATE = 'local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket1'
+SDK_RUNTIME_COORDINATE = 'local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket2'
 SDK_AAR_SHA256 = '15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268'
 SDK_CLASSES_SHA256 = '73b9e0b8a6a1d5842010f2dd06f5a50408981238027b481cef162984d1896c8e'
 SDK_EDITABLE_SHA256 = '608461e22cae3ed19572aa43a0dc38d4926d48709bd456c91853935462f5fa54'
-DERIVED_EDITABLE_SHA256 = '787e56f101767671ba0fe9a275eb6a0b87939ec5596edd78a74ffedad8b43585'
+DERIVED_EDITABLE_SHA256 = 'f207f6e05f83f2d1aaf07530b09ca8af1e8667402beb816bd3cb173cb81991ad'
 UPSTREAM_REVISION = '737ec77d798755890b062aab541a90d6c75afd19'
 DERIVED_MANIFEST = 'third-party/sdk/geckoview-157.0.1-editable-selection.json'
 SDK_ASSET = 'assets/pocketchat-sdk-build.json'

@@ -6,10 +6,17 @@ The upstream input is Mozilla GeckoView 157.0.1, Maven coordinate
 `GeckoEditable.java` retains its upstream MPL 2.0 notice. The adjacent patch
 records the complete local source change against the pinned sources archive.
 
-The correction is confined to non-composition, unstyled single UTF-16 characters
+The caret correction is confined to non-composition, unstyled single UTF-16 characters
 with a collapsed action and shadow selection and exactly one submitted
 non-modifier key down. It retains the existing fallback and explicit selection
 paths. A returned submission is not a native acceptance acknowledgement.
+
+The `pocket2` build also keeps a pending action in the queue until its reply has
+finished updating current text and composing spans. Removing it before that work
+allows the IC thread to synchronize an incomplete state. Completion removes the
+exact action, preserving newer work after a queue reset. The host barrier test
+executes the actual queue and synchronization methods against controlled doubles;
+it is separate from Android composition acceptance.
 
 `tools/gecko/build_caret_sdk.py` verifies the upstream archives, applies the patch
 without fuzz, compiles original and candidate source with Java 17, checks sibling
