@@ -31,7 +31,7 @@ NDK_VERSION = '29.0.13113456'
 NDK_ARCHIVE = 'android-ndk-r29-beta1-linux.zip'
 NDK_SHA = '0bbaf4d0632152dcdcf3d0a5d385c760949898c88488375b18971dd669094388'
 NDK_BYTES = 773995428
-VERSION = 'v1.19.31-pocket-burst1'
+VERSION = 'v1.19.31-pocket-reading1'
 BUILD_TIME = 'source-2026-09-14T11:59:30Z'
 FLAGS = ['-mod=readonly', '-p=4', '-tags=with_gvisor', '-trimpath', '-buildvcs=false']
 LDFLAGS = ('-X github.com/metacubex/mihomo/constant.Version=' + VERSION +
@@ -153,6 +153,8 @@ def recipe():
             'ndkVersion': NDK_VERSION, 'ndkArchiveSha256': NDK_SHA,
             'androidApi': 26, 'version': VERSION, 'buildTime': BUILD_TIME,
             'fixedExitPreconnect': True, 'fixedExitBurstCapacity': 4,
+            'fixedExitIdleWindowMs': 30000, 'fixedExitPrepareBudgetMs': 8000,
+            'firstRequestPhaseTrace': 1,
             'nodeFingerprint': True, 'roleSpecificExitProvider': True,
             'flags': FLAGS, 'ldflags': LDFLAGS,
             'androidExternalLdflags': '-Wl,--build-id=none,-z,max-page-size=16384',

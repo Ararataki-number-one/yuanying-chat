@@ -105,3 +105,18 @@ Linux 双 SOCKS fixture 验证探测机制，不代表 Android 上已验收，�
 ## Bounded burst preparation (2.0.7)
 
 `pocket-preconnect-capacity` defaults to one and clamps to four for the named FixedExit only. The app uses four for both manual and provider-backed fixed exits. A mutex reserves a ready slot before other requests can take it; no caller waits for preparation. A successful real CONNECT refills missing slots once, retaining the existing eight-second TTL and route/network/cancellation gates. URL-test traffic still bypasses the pool. The burst tests cover simultaneous reservation, real socket timings, no target payload during preparation, no periodic refill, invalidation and capacity clamping. This is a new-connection optimization, not a reduction of a healthy reused-connection WAN RTT.
+
+
+## Reading-pause retention and phase traces (2.0.9)
+
+Version `v1.19.31-pocket-reading1` retains authenticated unused sockets for up to
+30 seconds from preparation start; preparation still has an independent maximum
+8-second context/deadline. Capacity stays four, with no periodic refill or target
+traffic. Existing route/epoch/cancellation and stale-idle retry gates are unchanged.
+
+`probe.phaseSchema=1` adds first-request `chainMs`, `tlsMs` and `responseWaitMs`.
+The latter two use actual transport TLS and request/first-byte hooks. `dnsMs=-1`
+means DNS was not separately observable, including remote SOCKS resolution;
+it must not be rendered as zero. These optional fields do not change delay or
+cold/warm classifications. New tests compare a nine-second reading pause under
+both retention policies and check real HTTP/TLS phase timings.

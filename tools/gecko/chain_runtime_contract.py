@@ -28,6 +28,10 @@ def verify_native_probe(report, receipt):
         assert row['httpStatus'] == 200 and p['schema'] == 1 and p['kind'] == kind, row
         assert p['warmAttempted'] and isinstance(p['secondConnectionReused'], bool), row
         assert p['firstMs'] > 0 and p['warmMs'] >= 0, row
+        if receipt['recipe'].get('firstRequestPhaseTrace') == 1:
+            assert p['phaseSchema'] == 1 and p['dnsMs'] == -1, row
+            for phase in ('chainMs', 'tlsMs', 'responseWaitMs'):
+                assert type(p[phase]) is int and 0 <= p[phase] <= p['firstMs'], row
         assert p['totalMs'] >= p['firstMs'] + p['warmMs'], row
         ids = row['wireConnectionIds']
         assert p['dialCount'] == row['entryCircuits'] == row['fixedExitCircuits'], row

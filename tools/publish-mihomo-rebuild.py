@@ -72,8 +72,8 @@ def prepare():
         patch = (ROOT / value['inputs']['patch']).read_text('utf-8')
         expected = set(re.findall(r'^\+func (Test(?:Pocket|Preconnect|SelectorPreconnect)\w+)\(', patch, re.MULTILINE))
         probe = [name for name in passed if name.startswith('TestPocketProbe')]
-        if len(probe) != 10 or len(expected) < 46 or set(passed) != expected or len(passed) != len(expected):
-            raise ValueError('Every reviewed native regression must pass exactly once, including the ten original probe tests')
+        if len(probe) != (11 if value['recipe'].get('firstRequestPhaseTrace') == 1 else 10) or len(expected) < 46 or set(passed) != expected or len(passed) != len(expected):
+            raise ValueError('Every reviewed native regression must pass exactly once, including all original probe tests and enabled phase tests')
         fingerprint = [name for name in passed if name.startswith('TestPocketNodeFingerprint')]
         selected_exit = [name for name in passed if name.startswith('TestPocketSelectedExit')]
         subscription_patch = value['recipe'].get('nodeFingerprint') or value['recipe'].get('roleSpecificExitProvider')

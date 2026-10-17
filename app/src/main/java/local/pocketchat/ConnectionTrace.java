@@ -40,6 +40,6 @@ final class ConnectionTrace {
     JSONObject sample=NativeNetwork.get(context).probeSnapshot();long now=System.currentTimeMillis(),at=sample.optLong("at");
     if(at<=0||now<at-60000||now-at>90000)return value+"\n当前线路测速：尚无近期记录";
     JSONObject display=new JSONObject();try{display.put("latest",sample.optInt("delay",-1));display.put("lastAt",at);display.put("probe",sample.optJSONObject("probe"));}catch(Exception ignored){}
-    return value+"\n当前线路测速："+(sample.optInt("delay",-1)>0?LatencyProbePolicy.label(sample.optString("kind","unknown"),sample.optInt("delay")):"未通过")+NetworkMetricsUi.probeDetail(display);
+    return value+"\n检测地址："+NativeNetwork.PROBE+"\nHEAD · 当前入口 → 固定出口 → 检测网站\n当前线路测速："+(sample.optInt("delay",-1)>0?LatencyProbePolicy.label(sample.optString("kind","unknown"),sample.optInt("delay")):"未通过")+NetworkMetricsUi.probeDetail(display);
   }
 }

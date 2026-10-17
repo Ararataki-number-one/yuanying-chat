@@ -77,7 +77,11 @@ def verify_preconnect(report, receipt):
     assert network_b['epochAfterHash'] == network_a['epochBeforeHash']
     assert network_b['epochBeforeHash'] != network_a['epochAfterHash']
     expiry = cases['expiry']['stale']
-    assert 7_000_000_000 <= expiry['eofAtNs'] - expiry['authAtNs'] <= 10_000_000_000
+    ttl_ms = receipt['recipe'].get('fixedExitIdleWindowMs', 8000)
+    assert (ttl_ms - 1500) * 1_000_000 <= expiry['eofAtNs'] - expiry['authAtNs'] <= (ttl_ms + 2000) * 1_000_000
+    if ttl_ms == 30000:
+        reading = requests['enabled-0']
+        assert reading['beganAtNs'] - reading['fixedCircuit']['authAtNs'] >= 9_000_000_000
     assert cases['dead-idle']['stale']['serverClosed']
     assert cases['auth-rejection']['deniedAfter'] > cases['auth-rejection']['deniedBefore']
     probe = cases['native-probe-bypass']

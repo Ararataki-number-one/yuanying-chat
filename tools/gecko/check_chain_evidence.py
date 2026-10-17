@@ -37,7 +37,7 @@ def verify_chain_evidence(directory, source):
     assert isinstance(subscriptions_enabled, bool)
     if manifest_path.is_file() and manifest['versionCode'] >= 49:
         assert subscriptions_enabled and core['recipe'].get('nodeFingerprint') is True, 'This release requires independent subscription providers and native node identities'
-    assert core['recipe']['version'] == ('v1.19.31-pocket-burst1' if core['recipe'].get('fixedExitBurstCapacity') == 4 else 'v1.19.31-pocket-subscriptions1' if subscriptions_enabled else 'v1.19.31-pocket-preconnect1' if preconnect_enabled else 'v1.19.31-pocket-probe1')
+    assert core['recipe']['version'] == ('v1.19.31-pocket-reading1' if core['recipe'].get('fixedExitIdleWindowMs') == 30000 else 'v1.19.31-pocket-burst1' if core['recipe'].get('fixedExitBurstCapacity') == 4 else 'v1.19.31-pocket-subscriptions1' if subscriptions_enabled else 'v1.19.31-pocket-preconnect1' if preconnect_enabled else 'v1.19.31-pocket-probe1')
     assert core['recipe']['androidApi'] == 26 and core['recipe']['goModuleFlags'] == 'readonly'
     verify_native_probe(native, core)
     pool = android('gecko-pool-results.json')
