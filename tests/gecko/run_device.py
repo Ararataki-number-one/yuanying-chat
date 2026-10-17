@@ -516,7 +516,7 @@ def main():
             adb('shell','wm','size',size)
             result=run(1,'reading','reading');reading.append(dict(size=size,**result))
             assert result['mobileViewport'] and result['desktopIdentity'] and 'Android' not in result['userAgent'],result
-            assert abs(result['viewport']*result['density']-result['nativeWidth'])<5 and abs(result['scale']-1)<.02,result
+            assert result['compositorMeasured'] and result['nativeScale']>0 and abs(result['viewport']*result['nativeScale']-result['nativeWidth'])<5 and abs(result['scale']-1)<.02,result
             assert result['sidebarHidden'] and result['composerWidth']>=result['viewport']-34 and result['draft']=='Unsent draft stays here',result
             (OUT/f'reading-{size}.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         report['responsiveReading']=reading

@@ -455,11 +455,17 @@ public class GeckoIntegrationTestActivity extends Activity {
     if(serial!=run)return;
     session.web.evaluateJavascript("(()=>{if(!document.getElementById('composer'))return null;const box=document.getElementById('composer').getBoundingClientRect();return {command:new URL(location.href).searchParams.get('command'),viewport:document.documentElement.clientWidth,density:devicePixelRatio,scale:visualViewport.scale,sidebarHidden:getComputedStyle(document.getElementById('sidebar')).display==='none',composerWidth:box.width,userAgent:navigator.userAgent,draft:document.getElementById('composer').value}})()",raw->{
       if(serial!=run)return;JSONObject result=J.parse(raw);
-      if(String.valueOf(serial).equals(result.optString("command"))&&result.optInt("viewport")>0&&Math.abs(result.optDouble("viewport")*result.optDouble("density")-session.web.getWidth())<5&&session.web.painted.contains(session.web.current)){
+      // Page DPR is an observable identity value, not the compositor's
+      // CSS-to-surface transform. It can be rounded or privacy-protected.
+      // Assert physical fit against the real transform, as reading bounds do.
+      float nativeScale=session.web.getScale();
+      boolean measured=session.web.readingScaleMeasured();
+      try{result.put("nativeScale",nativeScale).put("nativeWidth",session.web.getWidth()).put("compositorMeasured",measured).put("painted",session.web.painted.contains(session.web.current)).put("url",session.web.getUrl()).put("requestedCommand",serial);}catch(JSONException error){throw new IllegalStateException(error);}
+      if(String.valueOf(serial).equals(result.optString("command"))&&result.optInt("viewport")>0&&measured&&Float.isFinite(nativeScale)&&nativeScale>0&&Math.abs(result.optDouble("viewport")*nativeScale-session.web.getWidth())<5&&session.web.painted.contains(session.web.current)){
         try{result.put("nativeWidth",session.web.getWidth());result.put("mobileViewport",session.web.current.getSettings().getViewportMode()==org.mozilla.geckoview.GeckoSessionSettings.VIEWPORT_MODE_MOBILE);result.put("desktopIdentity",session.web.current.getSettings().getUserAgentMode()==org.mozilla.geckoview.GeckoSessionSettings.USER_AGENT_MODE_DESKTOP);}catch(Exception ignored){}
         event(serial,"reading",result);return;
       }
-      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","responsive fixture not painted","paused",session.browserPaused,"shown",session.web.isShown()));return;}
+      if(SystemClock.elapsedRealtime()>deadline){event(serial,"error",J.obj("error","responsive fixture did not reach its requested document and physical viewport","measurement",result,"paused",session.browserPaused,"shown",session.web.isShown()));return;}
       session.handler.postDelayed(()->readingResult(serial,deadline),200);
     });
   }
