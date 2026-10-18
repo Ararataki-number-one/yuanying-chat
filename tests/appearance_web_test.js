@@ -4,7 +4,7 @@ const script=fs.readFileSync('app/src/main/assets/gecko/appearance.js','utf8');
 let checks=0;
 function fixture(origin='https://chatgpt.com',top=true,storageThrows=false){
   const classes=new Set(['light','official-page']),events={},values=new Map([['theme','light'],['draft','中文草稿'],['session','synthetic-login']]);
-  const root={classList:{toggle(name,on){if(on)classes.add(name);else classes.delete(name)}},style:{}};
+  const root={classList:{contains:name=>classes.has(name),toggle(name,on){if(on)classes.add(name);else classes.delete(name)}},style:{}};
   const doc={documentElement:root,addEventListener(name,fn){events[name]=fn},cookie:'session=synthetic'};
   const win={addEventListener(name,fn){events[name]=fn}};win.top=top?win:{};
   const context={location:{origin},window:win,document:doc,localStorage:{getItem:k=>values.get(k),setItem(k,v){if(storageThrows)throw Error('unavailable');values.set(k,v)}}};

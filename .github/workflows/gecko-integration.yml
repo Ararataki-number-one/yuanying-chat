@@ -77,6 +77,7 @@ jobs:
           javac -encoding UTF-8 -d work/gecko-integration/snapshot-host app/src/main/java/local/pocketchat/FileSnapshotCache.java tests/browser-runtime/FileSnapshotCacheTest.java
           java -cp work/gecko-integration/snapshot-host local.pocketchat.FileSnapshotCacheTest | tee work/gecko-integration/snapshot-host-results.json
           npm install --prefix work/browser-perf-host --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+          JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node --test tests/appearance_lifecycle_test.cjs
           java -cp work/gecko-integration/reading-host local.pocketchat.BrowserReadingFocusScript > work/gecko-integration/reading-focus.js
           python3 tools/gecko/run_resource_observer_host.py --jsdom-module "$PWD/work/browser-perf-host/node_modules/jsdom" --output work/gecko-integration/resource-observer-host-results.json
           JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-reading-focus.cjs work/gecko-integration/reading-focus.js | tee work/gecko-integration/reading-focus-host-results.json
