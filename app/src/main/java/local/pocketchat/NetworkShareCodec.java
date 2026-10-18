@@ -62,7 +62,10 @@ final class NetworkShareCodec {
     if(value instanceof JSONObject){JSONObject out=new JSONObject(),o=(JSONObject)value;List<String> names=new ArrayList<>();for(Iterator<String> it=o.keys();it.hasNext();)names.add(it.next());Collections.sort(names);for(String name:names)out.put(name,canonical(o.opt(name)));return out;}
     if(value instanceof JSONArray){JSONArray out=new JSONArray(),a=(JSONArray)value;for(int i=0;i<a.length();i++)out.put(canonical(a.opt(i)));return out;}return value;
   }
-  static byte[] provider(JSONObject node){try{return J.obj("proxies",J.arr(canonical(node))).toString().getBytes(StandardCharsets.UTF_8);}catch(Exception e){throw new IllegalArgumentException("节点无法编码");}}
+  // Android's JSON encoder escapes '/', which Mihomo's YAML reader rejects.
+  // Consume escape pairs so literal backslashes in credentials remain intact.
+  static String yamlJson(String json){StringBuilder out=new StringBuilder(json.length());for(int i=0;i<json.length();i++){char c=json.charAt(i);if(c=='\\'&&i+1<json.length()){char next=json.charAt(++i);if(next!='/')out.append(c);out.append(next);}else out.append(c);}return out.toString();}
+  static byte[] provider(JSONObject node){try{return yamlJson(J.obj("proxies",J.arr(canonical(node))).toString()).getBytes(StandardCharsets.UTF_8);}catch(Exception e){throw new IllegalArgumentException("节点无法编码");}}
   static JSONObject manual(JSONObject row)throws Exception{String name=row.optString("name");if(name.trim().isEmpty())name=row.optString("host");return node(J.obj("name",name,"type","socks5","server",row.optString("host"),"port",row.optInt("port"),"username",row.optString("user"),"password",row.optString("password")),true);}
   static Object yamlValue(Object value,int depth)throws Exception{
     if(depth>7)throw invalid();

@@ -2,6 +2,11 @@ package local.pocketchat;
 import org.json.*;import java.nio.file.*;import java.nio.charset.StandardCharsets;
 public final class NetworkShareCodecTest {
   static int checks;
+  static boolean same(Object a,Object b){
+    if(a instanceof JSONObject&&b instanceof JSONObject){JSONObject x=(JSONObject)a,y=(JSONObject)b;if(x.length()!=y.length())return false;for(java.util.Iterator<String> it=x.keys();it.hasNext();){String k=it.next();if(!y.has(k)||!same(x.opt(k),y.opt(k)))return false;}return true;}
+    if(a instanceof JSONArray&&b instanceof JSONArray){JSONArray x=(JSONArray)a,y=(JSONArray)b;if(x.length()!=y.length())return false;for(int i=0;i<x.length();i++)if(!same(x.opt(i),y.opt(i)))return false;return true;}
+    return java.util.Objects.equals(a,b);
+  }
   static void check(boolean ok,String name){if(!ok)throw new AssertionError(name);checks++;}
   interface Attempt {void run()throws Exception;}
   static void reject(Attempt action,String name)throws Exception{try{action.run();}catch(Exception e){checks++;return;}throw new AssertionError(name);}
@@ -15,11 +20,17 @@ public final class NetworkShareCodecTest {
     for(String kind:new String[]{"entry","exit","route"}){
       NetworkShareCodec.Bundle b=new NetworkShareCodec.Bundle("Route",kind.equals("exit")?null:e,kind.equals("entry")?null:x);
       NetworkShareCodec.Bundle d=NetworkShareCodec.decode(b.encode());check(d.kind.equals(kind),kind+" role");
-      if(d.entry!=null)check(d.entry.similar(e),kind+" all parameters preserved");
-      if(d.exit!=null)check(d.exit.similar(x),kind+" exit credentials preserved");
+      if(d.entry!=null)check(same(d.entry,e),kind+" all parameters preserved");
+      if(d.exit!=null)check(same(d.exit,x),kind+" exit credentials preserved");
       check(!b.encode().contains("never-export-other-node")&&!b.encode().contains("subscriptionUrl"),kind+" only selected nodes");
     }
-    JSONObject again=NetworkShareCodec.extract(NetworkShareCodec.provider(e),"Entry|Portable VLESS","entry");check(again.similar(e),"exported provider reparse");
+    JSONObject again=NetworkShareCodec.extract(NetworkShareCodec.provider(e),"Entry|Portable VLESS","entry");check(same(again,e),"exported provider reparse");
+    for(String password:new String[]{"/", "\\/", "\\\\/", "https://example.invalid/path?q=1", "空 / \\ \n 🔐"}){
+      JSONObject special=new JSONObject(x.toString());special.put("password",password);
+      JSONObject decoded=new JSONObject(new String(NetworkShareCodec.provider(special),StandardCharsets.UTF_8)).getJSONArray("proxies").getJSONObject(0);
+      check(decoded.getString("password").equals(password),"JSON/YAML slash normalization preserves credential value");
+      check(NetworkShareCodec.extract(NetworkShareCodec.provider(special),"Exit|Fixed Exit","exit").getString("password").equals(password),"YAML parser preserves credential value");
+    }
     for(String key:new String[]{"dialer-proxy","interface-name","routing-mark","certificate-path","pocket-preconnect","unknown-option"}){
       JSONObject bad=new JSONObject(e.toString());bad.put(key,"PRIVATE-MARKER");
       try{NetworkShareCodec.node(bad,false);throw new AssertionError(key);}catch(NetworkShareCodec.Failure err){check(!NetworkShareCodec.explanation(err).contains("PRIVATE-MARKER"),"safe error "+key);}
