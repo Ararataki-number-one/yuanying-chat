@@ -84,6 +84,14 @@ public final class NetworkSourcesUiIntegrationActivity extends Activity {
     if(command==null)return;NetworkCatalog c=new NetworkCatalog(this);ui.catalog=c;ui.windows=WindowNetworkState.windows(this);NetworkWorkspaceUi.readUiMetadata(this,ui.windows);stage=command;
     switch(command){
       case "window-tab":ui.select(0);break;
+      case "open-window-details":ui.details(window());break;
+      case "assert-diagnostics-copied":{
+        ClipboardManager clipboard=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip=clipboard.getPrimaryClip();String copied=clip==null||clip.getItemCount()==0?"":clip.getItemAt(0).coerceToText(this).toString();
+        check("Actual diagnostic copy button exports the selected environment",copied.contains("窗口编号：6")&&copied.contains("线路模式：入口 → 固定出口"));
+        check("Actual diagnostic clipboard omits credentials and source addresses",!copied.contains(ENTRY_URL)&&!copied.contains("synthetic")&&!copied.contains("127.0.0.1"));
+        unchanged();break;
+      }
       case "entry-tab":ui.select(1);break;
       case "exit-tab":ui.select(2);break;
       case "open-editor":

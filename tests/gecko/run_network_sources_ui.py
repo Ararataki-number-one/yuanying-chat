@@ -286,6 +286,22 @@ def main():
     tree = xml()
     check("Window card displays the entrance-to-fixed-exit combination", bool(matching(tree, part="Entry A → ManualSource")))
     check("Only the three requested network tabs are visible", all(matching(tree, text=text) for text in ("窗口网络", "入口", "出口")) and not matching(tree, text="订阅"))
+    command("open-window-details")
+    centered("窗口详情 · UI Window")
+    for _ in range(4):
+        if matching(xml(), text="查看耗时诊断"):
+            break
+        size = adb("shell", "wm", "size")
+        width, height = map(int, re.findall(r"(\d+)x(\d+)", size)[-1])
+        adb("shell", "input", "swipe", str(width // 2), str(height * 7 // 10), str(width // 2), str(height * 4 // 10), "350")
+    tap(text="查看耗时诊断")
+    centered("耗时诊断 · UI Window")
+    tap(text="复制诊断")
+    node(text="已复制")
+    check("Diagnostic copy confirms inline without leaving the dialog", bool(matching(xml(), desc="耗时诊断 · UI Window")))
+    command("assert-diagnostics-copied")
+    tap(text="返回")
+    tap(text="关闭")
     command("entry-tab")
     tap(text="EntrySource")
     centered("入口订阅详情")
@@ -373,8 +389,8 @@ def main():
     RUNNER_REPORT = report
     report["actualAdbTouchExecution"] = True
     (OUT / "network-source-ui-results.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
-    assert report["status"] == "passed" and report["checkCount"] == len(report["checks"]) == 77
-    assert len(UI_CHECKS) == 24 and all(item["pass"] for item in report["checks"] + UI_CHECKS)
+    assert report["status"] == "passed" and report["checkCount"] == len(report["checks"]) == 85
+    assert len(UI_CHECKS) == 27 and all(item["pass"] for item in report["checks"] + UI_CHECKS)
     assert report["actualAndroidExecution"] and report["actualNativeExecution"] and report["actualKeystoreEncryption"] and not report["actualRouteApplication"]
     if ARGS.expected_apk_sha:
         assert report["installedApkSha256"] == ARGS.expected_apk_sha, "Installed integration APK differs from the build receipt"
