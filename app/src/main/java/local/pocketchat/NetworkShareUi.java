@@ -6,7 +6,7 @@ import org.json.*;import java.nio.charset.StandardCharsets;
 /** Export only selected nodes. Core reparse binds extracted bytes to the chosen identity. */
 final class NetworkShareUi {
   interface Load { NetworkShareCodec.Bundle run()throws Exception; }
-  static void manual(Activity a,JSONObject row){prepare(a,()->new NetworkShareCodec.Bundle(row.optString("name"),null,NetworkShareCodec.manual(row)),"","");}
+  static void manual(Activity a,JSONObject row){prepare(a,()->{JSONObject exit=NetworkShareCodec.manual(row);return new NetworkShareCodec.Bundle(exit.getString("name"),null,exit);},"","");}
   static void node(Activity a,JSONObject source,String name){
     String role=source.optString("role"),key=NetworkSourceSelection.fingerprint(source,name);
     prepare(a,()->{NetworkCatalog fresh=new NetworkCatalog(a);JSONObject current=fresh.subscription(role,source.optString("id"));
