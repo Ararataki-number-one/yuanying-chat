@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.11",
-  "versionCode": 64,
+  "version": "2.0.12",
+  "versionCode": 65,
   "abi": "arm64-v8a",
   "minSdk": 26,
   "bytes": 119123336,
-  "sha256": "af26a6263f081e106f671a2912dfc5a31e060b99289b57b08ce21e1c4a85953f",
+  "sha256": "0ac9d9db8ea9db982a353e059829805b541b21ddee2c17388ffc0a0476a870ae",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.11-gecko/PocketChat-2.0.11-gecko-arm64.apk",
-  "notes": "# 2.0.11：ChatGPT 网页深色模式同步\n\n- 修复应用外层已进入深色模式，但 ChatGPT 网页仍显示白色的问题。网页首次加载、后续初始化、切换聊天和页面恢复时持续同步当前主题。\n- 跟随系统模式时，网页随系统的浅色／深色设置变化；应用手动选择浅色或深色时，网页同步该选择。\n- 沿用 ChatGPT 网页自身的主题，不反转图片颜色；主题同步不刷新网页，不清除登录、Cookie 或草稿。\n- 仅观察网页根元素的主题属性，避免扫描聊天内容或反复处理流式回复，减少额外开销。\n\n新增 6 项主题生命周期回归，覆盖后续主题覆盖、单页导航、页面恢复和输入状态保留；原有 25 项主题检查通过。发布构建沿用官方 GeckoView、原签名和现有环境目录，可覆盖安装。\n\n自动化验证使用受控页面；真实 ChatGPT 登录页面及 ARM 手机的视觉效果仍需实际使用确认。按用户指令发布，发布授权不等于真机验收通过。本版不宣称新增公网网络提速效果。",
-  "sourceCommit": "4d82c4f1325c312c0f5c4701cb8921c39455f614"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.12-gecko/PocketChat-2.0.12-gecko-arm64.apk",
+  "notes": "# 2.0.12：修复整条线路分享的入口参数兼容性\n\n- 修复 Android 导出 JSON 时的斜杠转义与内核 YAML 解析器不兼容，避免带 WebSocket 路径等参数的有效节点在分享校验时解析失败。规范化编码不改变路径、密码或其他参数的实际值。\n- 补齐分享导出对当前内核已支持的 VLESS encryption、XUDP、packet-addr、smux 及旧式 WebSocket 请求头等连接参数的支持。完整保留参数，继续使用实际内核重解析并比较节点指纹。\n- 修复旧手工出口没有显示名称时无法分享的问题，使用服务器地址作为名称。\n- 分享失败时区分不支持的参数、缓存不可读取、线路已变化、内核解析失败与节点身份不一致，不再只显示同一个笼统提示。错误提示不输出账号、密码或原始内核错误。\n- 保留单独分享入口、出口与整条线路；导入仍须先预览再选择环境。分享不改变原线路或 ChatGPT 登录数据。\n\n新增主机回归覆盖完整参数往返与不支持字段拒绝；Android 回归从生产“分享整条线路”读取活动快照、执行内核身份校验，再通过实际界面导入 VLESS 与固定出口。旧版导出器在相同受控 VLESS 配置上可复现失败。\n\n受控配置不包含用户订阅和凭据。用户实际订阅与 ARM 真机尚未验收；本版修复已复现的兼容性缺口，不能据此断言截图中的节点只有这一种失败原因。沿用原签名，可覆盖安装。",
+  "sourceCommit": "2e6c3cc3a1ea3b3e179257e6aeb271555c6dd763"
 }
