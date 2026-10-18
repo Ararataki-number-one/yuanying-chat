@@ -107,6 +107,9 @@ jobs:
           set -euo pipefail
           curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar -o work/gecko-integration/catalog-json.jar
           echo '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed  work/gecko-integration/catalog-json.jar' | sha256sum -c -
+          curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/yaml/snakeyaml/2.3/snakeyaml-2.3.jar -o work/gecko-integration/sharing-yaml.jar
+          echo '63a76fe66b652360bd4c2c107e6f0258daa7d4bb492008ba8c26fcd230ff9146  work/gecko-integration/sharing-yaml.jar' | sha256sum -c -
+          python3 tests/network-sharing-host/run.py --json-jar work/gecko-integration/catalog-json.jar --yaml-jar work/gecko-integration/sharing-yaml.jar
           python3 tests/network-catalog-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-catalog-host-results.json
           python3 tests/network-source-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-source-host-results.json
           python3 tests/network-lineage-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-lineage-host-results.json

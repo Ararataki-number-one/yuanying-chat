@@ -1,0 +1,38 @@
+proxies:
+  - name: Portable VLESS
+    type: vless
+    server: sharing.example.invalid
+    port: '443'
+    uuid: 00000000-0000-4000-8000-000000000001
+    tls: true
+    servername: sharing.example.invalid
+    client-fingerprint: chrome
+    encryption: none
+    xudp: true
+    packet-addr: false
+    packet-encoding: xudp
+    network: ws
+    ws-headers:
+      Host: sharing.example.invalid
+    ws-opts:
+      path: /transport
+      headers:
+        Host: sharing.example.invalid
+    smux:
+      enabled: true
+      protocol: h2mux
+      max-connections: 2
+      min-streams: 4
+      max-streams: 16
+      padding: true
+      statistic: false
+      only-tcp: true
+      brutal-opts:
+        enabled: false
+        up: '10'
+        down: '20'
+  - name: Not Selected
+    type: socks5
+    server: hidden.example.invalid
+    port: 1080
+    password: never-export-other-node

@@ -33,7 +33,7 @@ try:
  wait(xml,lambda t:bool(nodes(t,'导入预览')),30);tap('导入并选择环境');wait(xml,lambda t:bool(nodes(t,'选择应用环境')),90)
  # Repeated file import must offer the actual existing environment and a separate apply step.
  tap('Sharing Window');wait(xml,lambda t:bool(nodes(t,'保存并应用')),30)
- tree=xml();text=' '.join(n.get('text','') for n in tree.iter('node'));assert 'Sharing Entry' in text and 'Sharing Exit' in text,text
+ tree=xml();text=' '.join(n.get('text','') for n in tree.iter('node'));assert 'Portable VLESS' in text and 'Sharing Exit' in text,text
  tap('取消')
  (out/'network-source-sharing-screen.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
  r['uiChecks']=checks;r['actualAndroidTaps']=len(checks);r['cancelledBeforeRouteApplication']=True

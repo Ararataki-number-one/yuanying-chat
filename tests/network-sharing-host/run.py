@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""Exercise production share codec with JSON/YAML libraries, no Android mocks in codec."""
+import argparse,pathlib,shutil,subprocess
+p=argparse.ArgumentParser();p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--yaml-jar',required=True,type=pathlib.Path);p.add_argument('--java-home',type=pathlib.Path);a=p.parse_args()
+root=pathlib.Path(__file__).resolve().parents[2];classes=root/'work/network-sharing-host/classes';classes.mkdir(parents=True,exist_ok=True)
+java=str(a.java_home/'bin/java') if a.java_home else shutil.which('java');javac=str(a.java_home/'bin/javac') if a.java_home else shutil.which('javac')
+cp=str(a.json_jar.resolve())+':'+str(a.yaml_jar.resolve())
+sources=[root/'app/src/main/java/local/pocketchat'/n for n in ['J.java','NetworkShareCodec.java']]+list(pathlib.Path(__file__).parent.glob('*.java'))
+subprocess.run([javac,'-encoding','UTF-8','-cp',cp,'-d',str(classes),*map(str,sources)],check=True)
+subprocess.run([java,'-cp',str(classes)+':'+cp,'local.pocketchat.NetworkShareCodecTest'],cwd=root,check=True)

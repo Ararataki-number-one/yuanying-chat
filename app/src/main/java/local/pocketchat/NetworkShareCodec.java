@@ -13,10 +13,13 @@ final class NetworkShareCodec {
   static final int LIMIT=1024*1024;
   static final String MIME="application/vnd.pocketchat.network";
   static final Set<String> TYPES=set("socks5 http ss ssr vmess vless trojan hysteria2 tuic");
-  static final Set<String> FIELDS=set("name type server port username password uuid cipher alterId tls skip-cert-verify servername sni network flow client-fingerprint fingerprint alpn udp packet-encoding ws-opts grpc-opts h2-opts http-opts reality-opts plugin plugin-opts protocol protocol-param obfs obfs-param udp-relay-mode congestion-controller reduce-rtt disable-sni heartbeat-interval fast-open auth-str token up down tfo mptcp ip-version");
+  static final Set<String> FIELDS=set("name type server port username password uuid cipher alterId tls skip-cert-verify servername sni network flow client-fingerprint fingerprint alpn udp packet-encoding ws-opts grpc-opts h2-opts http-opts reality-opts plugin plugin-opts protocol protocol-param obfs obfs-param udp-relay-mode congestion-controller reduce-rtt disable-sni heartbeat-interval fast-open auth-str token up down tfo mptcp ip-version encryption xudp packet-addr smux ws-headers name-cert-verify global-padding authenticated-length");
+  static final class Failure extends IOException { Failure(String message){super(message);} }
+  static Failure failure(String message){return new Failure(message);}
+  static String explanation(Exception error){return error instanceof Failure?error.getMessage():"读取分享配置失败，请重试；原线路未改变。";}
   static Set<String> set(String s){return new HashSet<>(Arrays.asList(s.split(" ")));}
-  static IOException invalid(){return new IOException("分享配置格式不支持或不完整，请让发送方重新分享。");}
-  static void keys(JSONObject o,Set<String> allowed)throws IOException{for(Iterator<String> it=o.keys();it.hasNext();)if(!allowed.contains(it.next()))throw invalid();}
+  static IOException invalid(){return failure("分享配置格式不支持或不完整，请重新选择节点后分享。");}
+  static void keys(JSONObject o,Set<String> allowed)throws IOException{for(Iterator<String> it=o.keys();it.hasNext();){String key=it.next();if(!allowed.contains(key))throw failure("分享暂不支持参数"+(key.matches("[A-Za-z][A-Za-z0-9-]{0,39}")?"「"+key+"」":"")+"，未生成配置；原线路未改变。");}}
   static String string(JSONObject o,String k,int max,boolean required)throws IOException{Object v=o.opt(k);if(v==null&&!required)return "";if(!(v instanceof String)||((String)v).length()>max||required&&((String)v).isEmpty())throw invalid();return (String)v;}
   static void scalarTree(Object v,int depth)throws IOException{
     if(depth>7)throw invalid();if(v instanceof JSONObject){JSONObject o=(JSONObject)v;if(o.length()>48)throw invalid();for(Iterator<String> i=o.keys();i.hasNext();){String k=i.next();if(k.length()>128)throw invalid();scalarTree(o.opt(k),depth+1);}}
@@ -26,16 +29,19 @@ final class NetworkShareCodec {
   }
   static JSONObject node(JSONObject value,boolean exit)throws Exception{
     keys(value,FIELDS);scalarTree(value,0);String type=string(value,"type",32,true).toLowerCase(Locale.ROOT);
-    if(!TYPES.contains(type)||exit&&!"socks5".equals(type))throw new IOException(exit?"固定出口只支持 SOCKS5。":"此节点协议暂不支持分享。");
+    if(!TYPES.contains(type)||exit&&!"socks5".equals(type))throw failure(exit?"固定出口只支持 SOCKS5。":"此节点协议暂不支持分享。");
     string(value,"name",200,true);String host=string(value,"server",253,true);
     if(host.matches(".*[\\s/\\\\@?#].*")||host.indexOf('\0')>=0)throw invalid();
     Object port=value.opt("port");if(!(port instanceof Number)||((Number)port).doubleValue()!=((Number)port).intValue()||((Number)port).intValue()<1||((Number)port).intValue()>65535)throw invalid();
-    for(String k:new String[]{"username","password","uuid","cipher","flow","servername","sni","network","plugin","fingerprint","client-fingerprint"})if(value.has(k))string(value,k,8192,false);
+    for(String k:new String[]{"username","password","uuid","cipher","flow","servername","sni","network","plugin","fingerprint","client-fingerprint","encryption","name-cert-verify"})if(value.has(k))string(value,k,8192,false);
     Map<String,Set<String>> nested=new HashMap<>();
     nested.put("ws-opts",set("path headers max-early-data early-data-header-name v2ray-http-upgrade v2ray-http-upgrade-fast-open"));
     nested.put("grpc-opts",set("grpc-service-name"));nested.put("h2-opts",set("host path"));nested.put("http-opts",set("method path headers"));
     nested.put("reality-opts",set("public-key short-id support-x25519mlkem768"));nested.put("plugin-opts",set("mode host path tls skip-cert-verify mux headers"));
+    nested.put("smux",set("enabled protocol max-connections min-streams max-streams padding statistic only-tcp brutal-opts"));
     for(Map.Entry<String,Set<String>> rule:nested.entrySet())if(value.has(rule.getKey())){JSONObject opts=value.optJSONObject(rule.getKey());if(opts==null)throw invalid();keys(opts,rule.getValue());}
+    JSONObject mux=value.optJSONObject("smux");if(mux!=null&&mux.has("brutal-opts")){JSONObject opts=mux.optJSONObject("brutal-opts");if(opts==null)throw invalid();keys(opts,set("enabled up down"));}
+    if(value.has("ws-headers")){JSONObject headers=value.optJSONObject("ws-headers");if(headers==null)throw invalid();for(Iterator<String> it=headers.keys();it.hasNext();)string(headers,it.next(),8192,false);}
     JSONObject clean=new JSONObject(value.toString());clean.put("type",type);return clean;
   }
   static final class Bundle {
@@ -57,7 +63,7 @@ final class NetworkShareCodec {
     if(value instanceof JSONArray){JSONArray out=new JSONArray(),a=(JSONArray)value;for(int i=0;i<a.length();i++)out.put(canonical(a.opt(i)));return out;}return value;
   }
   static byte[] provider(JSONObject node){try{return J.obj("proxies",J.arr(canonical(node))).toString().getBytes(StandardCharsets.UTF_8);}catch(Exception e){throw new IllegalArgumentException("节点无法编码");}}
-  static JSONObject manual(JSONObject row)throws Exception{return node(J.obj("name",row.optString("name"),"type","socks5","server",row.optString("host"),"port",row.optInt("port"),"username",row.optString("user"),"password",row.optString("password")),true);}
+  static JSONObject manual(JSONObject row)throws Exception{String name=row.optString("name");if(name.trim().isEmpty())name=row.optString("host");return node(J.obj("name",name,"type","socks5","server",row.optString("host"),"port",row.optInt("port"),"username",row.optString("user"),"password",row.optString("password")),true);}
   static Object yamlValue(Object value,int depth)throws Exception{
     if(depth>7)throw invalid();
     if(value instanceof Map){Map<?,?> source=(Map<?,?>)value;if(source.size()>48)throw invalid();JSONObject result=new JSONObject();for(Map.Entry<?,?> item:source.entrySet()){if(!(item.getKey() instanceof String)||((String)item.getKey()).length()>128)throw invalid();result.put((String)item.getKey(),yamlValue(item.getValue(),depth+1));}return result;}
@@ -67,12 +73,12 @@ final class NetworkShareCodec {
   }
   /** Exactly one node, never its subscription address or other nodes. */
   static JSONObject extract(byte[] bytes,String prefixed,String role)throws Exception{
-    if(bytes==null||bytes.length>16*1024*1024)throw new IOException("已保存的节点不可读取，请先更新订阅。");
+    if(bytes==null||bytes.length>16*1024*1024)throw failure("已保存的节点不可读取，请先更新订阅。");
     LoaderOptions limits=new LoaderOptions();limits.setAllowDuplicateKeys(false);limits.setMaxAliasesForCollections(32);limits.setNestingDepthLimit(12);limits.setCodePointLimit(16*1024*1024);
     Object raw=new Yaml(new SafeConstructor(limits)).load(new String(bytes,StandardCharsets.UTF_8));
-    if(!(raw instanceof Map)||!(((Map<?,?>)raw).get("proxies") instanceof List))throw new IOException("此订阅缓存暂不支持分享，请使用 Clash / Mihomo YAML 节点。");
+    if(!(raw instanceof Map)||!(((Map<?,?>)raw).get("proxies") instanceof List))throw failure("此订阅缓存暂不支持分享，请使用 Clash / Mihomo YAML 节点。");
     String prefix=NetworkCatalog.EXIT.equals(role)?"Exit|":"Entry|";if(!prefixed.startsWith(prefix))throw invalid();String name=prefixed.substring(prefix.length());JSONObject selected=null;
     for(Object obj:(List<?>)((Map<?,?>)raw).get("proxies"))if(obj instanceof Map&&name.equals(((Map<?,?>)obj).get("name"))){if(selected!=null)throw invalid();selected=(JSONObject)yamlValue(obj,0);}
-    if(selected==null)throw new IOException("当前节点已变化，请重新选择后分享。");if(selected.opt("port") instanceof String&&selected.optString("port").matches("[0-9]{1,5}"))selected.put("port",Integer.parseInt(selected.optString("port")));return node(selected,NetworkCatalog.EXIT.equals(role));
+    if(selected==null)throw failure("当前节点已变化，请重新选择后分享。");if(selected.opt("port") instanceof String&&selected.optString("port").matches("[0-9]{1,5}"))selected.put("port",Integer.parseInt(selected.optString("port")));return node(selected,NetworkCatalog.EXIT.equals(role));
   }
 }

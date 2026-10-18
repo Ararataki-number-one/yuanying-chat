@@ -23,7 +23,7 @@ final class NetworkShareUi {
     prepare(a,()->{
       SecretStore vault=new SecretStore(Profiles.context(a,state.slot));
       return NetworkSourceSelection.withActiveSnapshot(vault.context,()->{
-        if(!NativeNetwork.transportFingerprint(config).equals(NativeNetwork.transportFingerprint(vault.settings())))throw new java.io.IOException("线路已变化，请重新打开分享。");
+        if(!NativeNetwork.transportFingerprint(config).equals(NativeNetwork.transportFingerprint(vault.settings())))throw NetworkShareCodec.failure("线路已变化，请重新打开分享。");
         JSONObject e=NetworkShareCodec.extract(vault.get("subscription"),chosen,NetworkCatalog.ENTRY),x;
         if(NativeNetwork.subscribedExit(config))x=NetworkShareCodec.extract(vault.get("exit-subscription"),config.optString("exitNodeName"),NetworkCatalog.EXIT);
         else x=NetworkShareCodec.manual(J.obj("name",config.optString("exitName",config.optString("exitHost")),"host",config.optString("exitHost"),"port",config.optInt("exitPort"),"user",config.optString("exitUser"),"password",config.optString("exitPassword")));
@@ -33,18 +33,19 @@ final class NetworkShareUi {
   }
   static void prepare(Activity a,Load load,String entryKey,String exitKey){
     ReferenceUi.Modal wait=new ReferenceUi.Modal(a,"准备分享");wait.note("正在读取所选节点…");wait.buttons("取消",wait::dismiss,"",()->{});wait.show();
-    NetworkWorkspaceUi.libraryWork(()->{try{NetworkShareCodec.Bundle b=load.run();NetworkShareCodec.decode(b.encode());a.runOnUiThread(()->{if(!a.isDestroyed()&&wait.isShowing())verify(a,wait,b,0,entryKey,exitKey);});}catch(Exception e){a.runOnUiThread(()->failure(a,wait));}});
+    NetworkWorkspaceUi.libraryWork(()->{try{NetworkShareCodec.Bundle b=load.run();NetworkShareCodec.decode(b.encode());a.runOnUiThread(()->{if(!a.isDestroyed()&&wait.isShowing())verify(a,wait,b,0,entryKey,exitKey);});}catch(Exception e){a.runOnUiThread(()->failure(a,wait,NetworkShareCodec.explanation(e)));}});
   }
   static void verify(Activity a,ReferenceUi.Modal wait,NetworkShareCodec.Bundle b,int index,String entryKey,String exitKey){
     if(index==2){wait.dismiss();show(a,b);return;}JSONObject node=index==0?b.entry:b.exit;String expected=index==0?entryKey:exitKey;
     if(node==null){verify(a,wait,b,index+1,entryKey,exitKey);return;}
     NativeNetwork.previewSubscription(a,index==0?NetworkCatalog.ENTRY:NetworkCatalog.EXIT,"",NetworkShareCodec.provider(node),(ok,msg,names,details,bytes)->{
       if(a.isDestroyed()||!wait.isShowing())return;
-      if(!ok||details.length()!=1||!expected.isEmpty()&&!expected.equals(details.optJSONObject(0).optString("configFingerprint"))){failure(a,wait);return;}
+      if(!ok||details.length()!=1||details.optJSONObject(0)==null){failure(a,wait,"内核未能解析分享中的"+(index==0?"入口":"出口")+"，请确认节点配置完整后重试；原线路未改变。");return;}
+      if(!expected.isEmpty()&&!expected.equals(details.optJSONObject(0).optString("configFingerprint"))){failure(a,wait,"分享中的"+(index==0?"入口":"出口")+"与当前线路参数不一致，请重新选择节点后分享；原线路未改变。");return;}
       verify(a,wait,b,index+1,entryKey,exitKey);
     });
   }
-  static void failure(Activity a,ReferenceUi.Modal wait){if(a.isDestroyed()||!wait.isShowing())return;wait.body.removeAllViews();wait.note("暂时无法分享所选节点。请确认节点仍有效；包含不支持的协议参数时不会省略参数分享。");wait.buttons("关闭",wait::dismiss,"",()->{});wait.resize();}
+  static void failure(Activity a,ReferenceUi.Modal wait,String message){if(a.isDestroyed()||!wait.isShowing())return;wait.body.removeAllViews();wait.note(message);wait.buttons("关闭",wait::dismiss,"",()->{});wait.resize();}
   static void show(Activity a,NetworkShareCodec.Bundle bundle){
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,"route".equals(bundle.kind)?"分享整条线路":"entry".equals(bundle.kind)?"分享入口":"分享出口");d.note(bundle.summary());d.note("包含连接账号和密码，不包含 ChatGPT 登录或聊天数据。");
     if("route".equals(bundle.kind)){d.note("分享当前线路中的一个入口和固定出口，接收方默认手动指定入口。");DesignUi.action(d.body,"仅分享入口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.entry.optString("name"),bundle.entry,null));});DesignUi.action(d.body,"仅分享出口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.exit.optString("name"),null,bundle.exit));});}
