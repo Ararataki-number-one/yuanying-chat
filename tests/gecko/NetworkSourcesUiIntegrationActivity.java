@@ -54,7 +54,7 @@ public final class NetworkSourcesUiIntegrationActivity extends Activity {
         check("Real native entrance parser publishes one entrance",nativeEntry&&NetworkSourceSelection.names(e).equals(Collections.singletonList("Entry|Entry A")));
         check("Real native exit parser includes SOCKS5 aliases and HTTP",nativeExit&&NetworkSourceSelection.names(x).size()==3);
         check("Identical exit connection aliases retain one real fingerprint",NetworkSourceSelection.fingerprint(x,"Exit|Tokyo").equals(NetworkSourceSelection.fingerprint(x,"Exit|Tokyo Alias")));
-        ui.catalog=latest;ui.windows=WindowNetworkState.windows(this);NetworkWorkspaceUi.readUiMetadata(this,ui.windows);ui.show(0);ready=true;stage="ready";publish();
+        ui.catalog=latest;ui.windows=WindowNetworkState.windows(this);NetworkWorkspaceUi.readUiMetadata(this,ui.windows);checkDiagnostics();ui.show(0);ready=true;stage="ready";publish();
       }catch(Throwable failed){fail(failed);}
     })));
   }
@@ -66,6 +66,17 @@ public final class NetworkSourcesUiIntegrationActivity extends Activity {
     }catch(Throwable failed){fail(failed);}
   }
   JSONObject parent(){return editor==null?new JSONObject():J.obj("entrySource",editor.draft.subscriptionId,"entry",editor.draft.entry,"pool",new JSONArray(editor.draft.pool),"manualExit",editor.draft.exitId,"exitSource",editor.draft.exitSubscriptionId,"exitNodeKey",editor.draft.exitNodeKey,"exitNodeName",editor.draft.exitNodeName);}
+  void checkDiagnostics(){
+    JSONObject row=window().optJSONObject("row");long now=System.currentTimeMillis();
+    JSONObject runtime=J.obj("mode","internal","at",now,"configured",true,"connected",true,"entry","Entry|Entry A","delayEntry","Entry|Entry A","delay",418,"delayAt",now-120000,"exitId",NativeNetwork.exitIdentity(initial),"subscriptionId",NativeNetwork.hash(ENTRY_URL));
+    String text=ConnectionTrace.windowDiagnostics(this,new WindowNetworkState(this,row,initial,runtime,true,now));
+    check("Window diagnostics use the selected slot rather than the viewing process",text.contains("窗口编号：6")&&text.contains("418 ms"));
+    check("Window diagnostics label historical readings and separate website timings",text.contains("历史记录")&&text.contains("不是 ChatGPT 请求的分项"));
+    check("Window diagnostics exclude subscription and credential values",!text.contains(ENTRY_URL)&&!text.contains("synthetic")&&!text.contains("127.0.0.1"));
+    NetworkCatalog.put(runtime,"exitId","changed-exit");
+    text=ConnectionTrace.windowDiagnostics(this,new WindowNetworkState(this,row,initial,runtime,true,now));
+    check("Window diagnostics do not reuse readings from another exit",text.contains("尚无匹配的分项记录")&&!text.contains("418 ms"));
+  }
   void unchanged()throws Exception{check("Window encrypted settings unchanged at "+stage,Arrays.equals(originalSettings,vault.get("network")));check("Chat draft unchanged at "+stage,"unchanged synthetic chat draft".equals(profile.getSharedPreferences("chat",0).getString("draft","")));}
   JSONObject window(){for(int i=0;i<ui.windows.length();i++){JSONObject item=ui.windows.optJSONObject(i);if(item.optJSONObject("row").optInt("slot")==6)return item;}throw new IllegalStateException("Synthetic window missing");}
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(!ready||finished)return;try{command(intent.getStringExtra("command"));}catch(Throwable failed){fail(failed);}}

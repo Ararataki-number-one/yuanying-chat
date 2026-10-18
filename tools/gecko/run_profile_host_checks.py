@@ -59,6 +59,7 @@ def main():
         ("Sha256Test", ["Sha256"]),
         ("NetworkHealthPolicyTest", ["NetworkHealthPolicy"]),
         ("NetworkOptimizationPolicyTest", ["NetworkOptimizationPolicy"]),
+        ("RouteQualityComparisonTest", ["J", "RouteQuality", "LatencyProbePolicy", "NetworkOptimizationPolicy"]),
         ("NetworkStatusPolicyTest", ["NetworkStatusPolicy"]),
         ("NetworkPoolIdentityTest", ["NetworkPoolIdentity"]),
         ("LatencyProbePolicyTest", ["LatencyProbePolicy"]),
@@ -71,6 +72,7 @@ def main():
         groups.append(("ChromeCollapseDocumentReadyAdapterTest", []))
     files = {source / (name + ".java") for _, names in groups for name in names}
     files.update(tests / (name + ".java") for name, _ in groups)
+    files.update((ROOT / "tests/route-quality-host/android/content").glob("*.java"))
     if (tests / "ChromeCollapseDocumentReadyAdapterTest.java").is_file():
         files.add(ROOT / "tests/gecko/ChromeCollapseDocumentReadyAdapter.java")
     if (tests / "FingerprintTemplateTest.java").is_file():

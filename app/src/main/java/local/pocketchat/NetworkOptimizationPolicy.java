@@ -34,5 +34,6 @@ final class NetworkOptimizationPolicy {
     return new ArrayList<>(chosen);
   }
   static boolean websiteDue(String status,long at,long now){long ttl="restricted".equals(status)||"unsupported".equals(status)?300000:"ok".equals(status)?120000:60000;return at<=0||now<at-60000||now-at>=ttl;}
+  static boolean websiteComparable(String status,long at,long now,int samples,int latest){return "ok".equals(status)&&at>0&&now>=at&&now-at<=300000&&samples>=3&&latest>0;}
   static String websiteStatus(int code){return code>=200&&code<400?"ok":code==401||code==403||code==429?"restricted":code==405||code==501?"unsupported":"http-error";}
 }

@@ -401,8 +401,7 @@ class NativeNetwork {
     if(lowLatency()&&!force)measureWebsiteCandidates(batch);
     maintenanceCheck();String mode=settings==null?"":settings.optString("entryMode"),chosen=currentEntry;
     if(lowLatency()){
-      JSONObject current=websiteQuality.stats(currentEntry,lastScan);boolean enough=current.optInt("samples")>=3&&current.optInt("latest")>0;
-      chosen=(enough&&!force?websiteQuality:quality).choose(batch,currentEntry,force,routeBusy(),System.currentTimeMillis());
+      chosen=quality.chooseWithWebsite(websiteQuality,probeRouteKey().equals(websiteSampleEpoch)?websiteSamples:Collections.emptyMap(),batch,currentEntry,force,routeBusy(),System.currentTimeMillis());
     }else if(mode.isEmpty())chosen=quality.choose(batch,currentEntry,force,routeBusy(),System.currentTimeMillis());
     else if(force&&!mode.equals("manual")){List<String> healthy=new ArrayList<>();for(String name:batch)if(quality.stats(name,lastScan).optInt("latest")>0)healthy.add(name);chosen=EntrySelection.random(healthy,new Random());}
     maintenanceCheck();if(!routeBusy()&&!chosen.isEmpty()&&!chosen.equals(currentEntry)){selectNow(chosen);verifyExit();}

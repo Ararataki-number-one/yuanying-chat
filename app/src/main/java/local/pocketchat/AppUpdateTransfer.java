@@ -3,12 +3,15 @@ package local.pocketchat;
 import java.io.*;
 import java.net.*;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.regex.*;
 
 /** A release-bound resumable transfer. It never decides whether an APK is safe to install. */
 final class AppUpdateTransfer {
-  interface ConnectionFactory { HttpURLConnection open(String url)throws IOException;default void check()throws IOException{}default void finished(){} }
+  interface ConnectionFactory { HttpURLConnection open(String url)throws IOException;default void check()throws IOException{}default void released(HttpURLConnection connection){}default void finished(){} }
   interface Listener { void progress(long received,long total,long bytesPerSecond); }
   static final ConnectionFactory OFFICIAL=url->(HttpURLConnection)new URL(url).openConnection();
   static final class Request {
@@ -20,6 +23,11 @@ final class AppUpdateTransfer {
   static final class InvalidResponse extends IOException { InvalidResponse(String message){super(message);} }
   final File part,meta;final Request request;final ConnectionFactory factory;final Listener listener;
   volatile HttpURLConnection active;volatile boolean cancelled;String etag="";
+  final Set<HttpURLConnection> connections=ConcurrentHashMap.newKeySet();
+  static final long PARALLEL_MIN=8L*1024*1024;
+  boolean parallel;final long[] durable=new long[2],progress=new long[2];
+  long progressTime,progressBytes,progressSpeed;
+  final Object progressLock=new Object();long notifiedBytes=-1;
   AppUpdateTransfer(File root,Request request,ConnectionFactory factory,Listener listener)throws IOException {
     this.request=request;this.factory=factory;this.listener=listener;
     if(!officialOrigin(request.url)||request.code<=0||request.bytes<=0||request.bytes>AppUpdatePolicy.MAX_APK||request.sha==null||!request.sha.matches("[a-f0-9]{64}"))throw new IOException("更新文件身份无效");
@@ -28,18 +36,21 @@ final class AppUpdateTransfer {
     part=new File(root,name+".part");meta=new File(root,name+".resume");load();
   }
   File partial(){return part;}
-  long received(){return part.isFile()?part.length():0;}
+  synchronized long received(){return parallel?progress[0]+progress[1]:part.isFile()?part.length():0;}
   static final java.util.concurrent.ExecutorService closers=java.util.concurrent.Executors.newCachedThreadPool(task->{Thread t=new Thread(task,"app-update-close");t.setDaemon(true);t.setPriority(Thread.MIN_PRIORITY);return t;});
   static void disconnectLater(HttpURLConnection connection){closers.execute(connection::disconnect);}
-  void cancel(){cancelled=true;factory.finished();HttpURLConnection connection=active;if(connection!=null)disconnectLater(connection);}
-  void clear(){part.delete();meta.delete();new File(meta.getPath()+".tmp").delete();etag="";}
+  void cancel(){cancelled=true;for(HttpURLConnection connection:connections)disconnectLater(connection);factory.finished();}
+  synchronized void clear(){part.delete();meta.delete();new File(meta.getPath()+".tmp").delete();etag="";parallel=false;durable[0]=durable[1]=progress[0]=progress[1]=0;}
   void load()throws IOException {
     boolean valid=false;
-    if(meta.isFile())try(InputStream in=new FileInputStream(meta)){Properties p=new Properties();p.load(in);valid=request.identity().equals(p.getProperty("identity"));String saved=p.getProperty("etag","");if(strong(saved))etag=saved;}catch(IOException ignored){}
-    if(!valid||received()>request.bytes){clear();saveMeta();}
+    if(meta.isFile())try(InputStream in=new FileInputStream(meta)){Properties p=new Properties();p.load(in);valid=request.identity().equals(p.getProperty("identity"));String saved=p.getProperty("etag","");if(strong(saved))etag=saved;
+      parallel="2".equals(p.getProperty("segments"));if(parallel){for(int i=0;i<2;i++)progress[i]=durable[i]=Long.parseLong(p.getProperty("durable"+i,"-1"));long split=request.bytes/2;valid&=strong(etag)&&durable[0]>=0&&durable[0]<=split&&durable[1]>=0&&durable[1]<=request.bytes-split&&part.isFile()&&part.length()>=Math.max(durable[0],durable[1]>0?split+durable[1]:0);}
+    }catch(IOException|NumberFormatException ignored){valid=false;}
+    if(!valid||received()>request.bytes||part.length()>request.bytes){clear();saveMeta();}
   }
-  void saveMeta()throws IOException {
+  synchronized void saveMeta()throws IOException {
     Properties p=new Properties();p.setProperty("identity",request.identity());p.setProperty("etag",etag);File temp=new File(meta.getPath()+".tmp");
+    if(parallel){p.setProperty("segments","2");for(int i=0;i<2;i++)p.setProperty("durable"+i,Long.toString(durable[i]));}
     try(FileOutputStream out=new FileOutputStream(temp)){p.store(out,"Release-bound update transfer");out.getFD().sync();}
     if(!temp.renameTo(meta)){temp.delete();throw new IOException("无法保存下载进度，请检查存储空间");}
   }
@@ -48,17 +59,72 @@ final class AppUpdateTransfer {
   static boolean trusted(String url,String origin){try{URI u=new URI(url);if(!"https".equals(u.getScheme())||u.getUserInfo()!=null||u.getFragment()!=null||u.getPort()!=-1&&u.getPort()!=443)return false;String host=u.getHost();return "github.com".equals(host)?url.equals(origin):("release-assets.githubusercontent.com".equals(host)||"objects.githubusercontent.com".equals(host))&&u.getRawPath()!=null&&u.getRawPath().startsWith("/github-production-release-asset");}catch(Exception e){return false;}}
   void checkStopped(BooleanSupplier stopped)throws IOException {if(cancelled||stopped.getAsBoolean()||Thread.currentThread().isInterrupted())throw new Stopped();factory.check();}
   HttpURLConnection connect(long offset,BooleanSupplier stopped)throws IOException {
-    String url=request.url;for(int redirects=0;redirects<5;redirects++){
+    return connect(offset,-1,request.url,stopped);
+  }
+  void close(HttpURLConnection connection){if(connection==null)return;try{connection.disconnect();}finally{connections.remove(connection);factory.released(connection);if(active==connection)active=null;}}
+  HttpURLConnection connect(long offset,long end,String target,BooleanSupplier stopped)throws IOException {
+    String url=target;for(int redirects=0;redirects<5;redirects++){
       checkStopped(stopped);if(!trusted(url,request.url))throw new InvalidResponse("更新下载地址不受信任，已停止下载");
-      HttpURLConnection connection=factory.open(url);active=connection;connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(15000);connection.setReadTimeout(20000);connection.setUseCaches(false);connection.setRequestProperty("Accept-Encoding","identity");connection.setRequestProperty("User-Agent","PocketChat-update");
-      if(offset>0){connection.setRequestProperty("Range","bytes="+offset+"-");if(!etag.isEmpty())connection.setRequestProperty("If-Range",etag);}
-      int code;try{checkStopped(stopped);code=connection.getResponseCode();checkStopped(stopped);}catch(IOException|RuntimeException error){connection.disconnect();active=null;throw error;}
-      if(code==301||code==302||code==303||code==307||code==308){String location=connection.getHeaderField("Location");connection.disconnect();active=null;if(location==null)throw new InvalidResponse("更新服务器跳转异常");url=new URL(new URL(url),location).toString();continue;}
+      HttpURLConnection connection=factory.open(url);connections.add(connection);active=connection;connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(15000);connection.setReadTimeout(20000);connection.setUseCaches(false);connection.setRequestProperty("Accept-Encoding","identity");connection.setRequestProperty("User-Agent","PocketChat-update");
+      if(offset>0||end>=0){connection.setRequestProperty("Range","bytes="+offset+"-"+(end>=0?end:""));if(!etag.isEmpty())connection.setRequestProperty("If-Range",etag);}
+      int code;try{checkStopped(stopped);code=connection.getResponseCode();checkStopped(stopped);}catch(IOException|RuntimeException error){close(connection);throw error;}
+      if(code==301||code==302||code==303||code==307||code==308){String location=connection.getHeaderField("Location");close(connection);if(location==null)throw new InvalidResponse("更新服务器跳转异常");url=new URL(new URL(url),location).toString();continue;}
       return connection;
     }throw new InvalidResponse("更新服务器跳转次数过多");
   }
   static long number(String value)throws InvalidResponse {try{return Long.parseLong(value);}catch(Exception e){throw new InvalidResponse("更新服务器续传范围无效");}}
+  void validateRange(HttpURLConnection connection,long start,long end,String validator)throws IOException {
+    int code=connection.getResponseCode();if(code!=200&&code!=206)throw new IOException("更新下载暂不可用（"+code+"），已保留进度");
+    String encoding=connection.getHeaderField("Content-Encoding");long length=connection.getContentLengthLong();
+    if(connection.getResponseCode()!=206||!("bytes "+start+"-"+end+"/"+request.bytes).equals(connection.getHeaderField("Content-Range"))||length>=0&&length!=end-start+1||encoding!=null&&!encoding.isEmpty()&&!"identity".equalsIgnoreCase(encoding)||!validator.equals(connection.getHeaderField("ETag")))throw new InvalidResponse("更新服务器分段响应不一致，已停止下载");
+  }
+  String prepareParallel(BooleanSupplier stopped)throws IOException {
+    if(!parallel&&request.bytes-received()<PARALLEL_MIN)return null;
+    HttpURLConnection connection=null;
+    try{
+      connection=connect(0,0,request.url,stopped);int code=connection.getResponseCode();if(code!=200&&code!=206)throw new IOException("更新下载暂不可用（"+code+"），已保留进度");String validator=connection.getHeaderField("ETag");
+      if(!parallel&&(connection.getResponseCode()==200||connection.getResponseCode()==206&&!strong(validator)))return null;
+      if(!strong(validator)||!etag.isEmpty()&&!etag.equals(validator))throw new InvalidResponse("更新文件标识发生变化，已停止续传");
+      validateRange(connection,0,0,validator);
+      try(InputStream in=connection.getInputStream()){if(in.read()<0||in.read()!=-1)throw new InvalidResponse("更新服务器分段响应长度无效");}
+      checkStopped(stopped);
+      synchronized(this){if(!parallel){long have=received(),split=request.bytes/2;progress[0]=durable[0]=Math.min(have,split);progress[1]=durable[1]=Math.max(0,have-split);etag=validator;parallel=true;try{saveMeta();}catch(IOException error){parallel=false;throw error;}}}
+      return connection.getURL().toString();
+    }finally{close(connection);}
+  }
+  void segmentProgress(int segment,long bytes,boolean sync)throws IOException {
+    long have,speed;boolean notify;
+    synchronized(this){progress[segment]=bytes;if(sync){durable[segment]=bytes;saveMeta();}long now=System.nanoTime();have=received();notify=sync||now-progressTime>=500000000L;
+      if(now-progressTime>=500000000L){long next=(long)((have-progressBytes)*1000000000.0/(now-progressTime));progressSpeed=progressSpeed==0?next:(progressSpeed*3+next)/4;progressTime=now;progressBytes=have;}speed=progressSpeed;}
+    // Listener may acquire the manager lock. Never hold the transfer lock here.
+    if(notify&&listener!=null)synchronized(progressLock){if(have>=notifiedBytes){notifiedBytes=have;listener.progress(have,request.bytes,speed);}}
+  }
+  void segment(int index,String target,BooleanSupplier stopped)throws IOException {
+    long base=index==0?0:request.bytes/2,limit=index==0?request.bytes/2:request.bytes,count;
+    synchronized(this){count=durable[index];}if(base+count>=limit)return;
+    HttpURLConnection connection=null;
+    try{
+      connection=connect(base+count,limit-1,target,stopped);validateRange(connection,base+count,limit-1,etag);
+      try(InputStream in=connection.getInputStream();RandomAccessFile out=new RandomAccessFile(part,"rw")){
+        out.seek(base+count);byte[] buffer=new byte[65536];long lastSync=System.nanoTime();int read;
+        try{while((read=in.read(buffer))!=-1){checkStopped(stopped);if(read==0)continue;if(read>limit-base-count)throw new InvalidResponse("更新服务器返回的数据超出声明范围");out.write(buffer,0,read);count+=read;long now=System.nanoTime();boolean sync=now-lastSync>=1000000000L;if(sync){out.getFD().sync();lastSync=now;}segmentProgress(index,count,sync);}}
+        finally{out.getFD().sync();segmentProgress(index,count,true);}
+      }
+      checkStopped(stopped);if(base+count!=limit)throw new EOFException("网络中断，已保留分段进度");
+    }finally{close(connection);}
+  }
+  void parallelRun(String target,BooleanSupplier stopped)throws IOException {
+    AtomicBoolean abort=new AtomicBoolean();java.util.concurrent.atomic.AtomicReference<IOException> failure=new java.util.concurrent.atomic.AtomicReference<>();
+    ExecutorService workers=Executors.newFixedThreadPool(2,r->{Thread t=new Thread(r,"app-update-range");t.setPriority(Thread.MIN_PRIORITY);return t;});
+    CountDownLatch ended=new CountDownLatch(2);progressTime=System.nanoTime();progressBytes=received();
+    for(int index=0;index<2;index++){final int segment=index;workers.execute(()->{try{segment(segment,target,()->abort.get()||stopped.getAsBoolean());}catch(Exception error){failure.compareAndSet(null,error instanceof IOException?(IOException)error:new IOException("分段下载失败",error));abort.set(true);for(HttpURLConnection c:connections)disconnectLater(c);}finally{ended.countDown();}});}
+    workers.shutdown();boolean interrupted=false;
+    for(;;)try{ended.await();break;}catch(InterruptedException stop){interrupted=true;abort.set(true);for(HttpURLConnection c:connections)disconnectLater(c);}
+    if(interrupted){Thread.currentThread().interrupt();throw new Stopped();}checkStopped(stopped);if(failure.get()!=null)throw failure.get();
+  }
   void run(BooleanSupplier stopped)throws IOException {try{
+    checkStopped(stopped);if(received()==request.bytes)return;
+    String parallelTarget=prepareParallel(stopped);if(parallelTarget!=null){parallelRun(parallelTarget,stopped);return;}
     long sampleTime=System.nanoTime(),sampleBytes=received(),lastSync=sampleTime;long speed=0;
     if(listener!=null)listener.progress(received(),request.bytes,0);
     while(received()<request.bytes){
@@ -93,7 +159,7 @@ final class AppUpdateTransfer {
         }
         checkStopped(stopped);if(count!=expectedEnd+1)throw new EOFException("网络中断，已保留进度，连接恢复后继续下载");
       }catch(IOException error){if(cancelled||stopped.getAsBoolean()||Thread.currentThread().isInterrupted())throw new Stopped();factory.check();throw error;}
-      finally{HttpURLConnection opened=active;if(connection!=null)connection.disconnect();if(opened!=null&&opened!=connection)opened.disconnect();active=null;}
+      finally{HttpURLConnection opened=active;close(connection);if(opened!=connection)close(opened);}
     }
     checkStopped(stopped);
   }finally{factory.finished();}}

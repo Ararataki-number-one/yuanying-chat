@@ -7,6 +7,8 @@ stage = out / 'public'
 stage.mkdir(parents=True, exist_ok=True)
 if (out / 'reply-handoff-host-results.json').exists():
     shutil.copy2(out / 'reply-handoff-host-results.json', stage / 'reply-handoff-host-results.json')
+if (out / 'update-parallel-host-results.json').exists():
+    shutil.copy2(out / 'update-parallel-host-results.json', stage / 'update-parallel-host-results.json')
 source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
 settings=(root/'app/build.gradle').read_text()
 version=re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'",settings).group(1)

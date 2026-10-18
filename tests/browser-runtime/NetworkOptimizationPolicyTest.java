@@ -23,6 +23,10 @@ public final class NetworkOptimizationPolicyTest {
   check(!NetworkOptimizationPolicy.websiteDue("restricted",1000,300999)&&NetworkOptimizationPolicy.websiteDue("restricted",1000,301000),"Challenges back off instead of increasing request load");
   check(NetworkOptimizationPolicy.websiteDue("ok",0,1000)&&NetworkOptimizationPolicy.websiteDue("ok",100000,1),"Missing or clock-shifted evidence cannot suppress probing");
   check(NetworkOptimizationPolicy.scanInterval(0)==60000&&NetworkOptimizationPolicy.scanInterval(2)==60000&&NetworkOptimizationPolicy.scanInterval(3)==120000,"Three initial bounded discovery rounds then quieter steady state");
+  check(NetworkOptimizationPolicy.websiteComparable("ok",1000,121000,3,180),"Recent repeated successful website measurements can be compared");
+  check(!NetworkOptimizationPolicy.websiteComparable("restricted",1000,2000,5,180),"A challenge cannot reuse older website success to override chain evidence");
+  check(!NetworkOptimizationPolicy.websiteComparable("ok",1000,2000,2,180),"An unconfirmed challenger does not enter website ranking");
+  check(!NetworkOptimizationPolicy.websiteComparable("ok",1000,301001,5,180)&&!NetworkOptimizationPolicy.websiteComparable("ok",1000,999,5,180),"Stale and future website evidence cannot pin selection");
   System.out.println("{\"passed\":"+passed+",\"scope\":\"Production candidate scheduler only; not Android or public latency\"}");
  }
 }

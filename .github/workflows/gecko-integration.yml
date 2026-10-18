@@ -70,8 +70,9 @@ jobs:
           mkdir -p work/gecko-integration/update-host
           javac -encoding UTF-8 -d work/gecko-integration/update-host app/src/main/java/local/pocketchat/Sha256.java app/src/main/java/local/pocketchat/AppUpdatePolicy.java tests/browser-runtime/AppUpdatePolicyTest.java
           java -cp work/gecko-integration/update-host local.pocketchat.AppUpdatePolicyTest | tee work/gecko-integration/update-host-results.json
-          javac --add-modules jdk.httpserver -encoding UTF-8 -d work/gecko-integration/update-host app/src/main/java/local/pocketchat/Sha256.java app/src/main/java/local/pocketchat/AppUpdatePolicy.java app/src/main/java/local/pocketchat/AppUpdateTransfer.java tests/browser-runtime/AppUpdateTransferTest.java
+          javac --add-modules jdk.httpserver -encoding UTF-8 -d work/gecko-integration/update-host app/src/main/java/local/pocketchat/Sha256.java app/src/main/java/local/pocketchat/AppUpdatePolicy.java app/src/main/java/local/pocketchat/AppUpdateTransfer.java tests/browser-runtime/AppUpdateTransferTest.java tests/browser-runtime/AppUpdateParallelTest.java
           java --add-modules jdk.httpserver -cp work/gecko-integration/update-host local.pocketchat.AppUpdateTransferTest | tee work/gecko-integration/update-transfer-host-results.json
+          java --add-modules jdk.httpserver -cp work/gecko-integration/update-host local.pocketchat.AppUpdateParallelTest | tee work/gecko-integration/update-parallel-host-results.json
           mkdir -p work/gecko-integration/snapshot-host
           javac -encoding UTF-8 -d work/gecko-integration/snapshot-host app/src/main/java/local/pocketchat/FileSnapshotCache.java tests/browser-runtime/FileSnapshotCacheTest.java
           java -cp work/gecko-integration/snapshot-host local.pocketchat.FileSnapshotCacheTest | tee work/gecko-integration/snapshot-host-results.json

@@ -27,6 +27,25 @@ final class ConnectionTrace {
     return text+"\n\n以上是阶段耗时，不是线路带宽。缓存或复用连接时，DNS / TLS 可能为零；网页内切换不会产生完整页面请求。";
   }
   String copyText(android.content.Context context,boolean gecko){String webVersion=GeckoWebView.VERSION;return "元婴期院士 "+AppVersion.name(context)+"\nAndroid "+Build.VERSION.RELEASE+" · "+webVersion+"\n\n"+text()+routeDiagnostics(context);}
+  static String windowDiagnostics(android.content.Context context,WindowNetworkState window){
+    String value="元婴期院士 "+AppVersion.name(context)+"\nAndroid "+Build.VERSION.RELEASE+" · "+GeckoWebView.VERSION
+      +"\n窗口编号："+window.slot+"\n网络状态："+window.state+"\n线路延迟："+window.latency;
+    if(!window.internal)return value+"\n线路模式：手机网络 / 外部代理\n内置代理分项不适用于此窗口。";
+    JSONObject runtime=window.runtime;
+    boolean matching=NativeNetwork.exitIdentity(window.config).equals(runtime.optString("exitId"))
+      &&NativeNetwork.hash(window.config.optString("subscriptionUrl")).equals(runtime.optString("subscriptionId"))
+      &&window.entry.equals(runtime.optString("delayEntry"));
+    value+="\n线路模式：入口 → 固定出口 → 检测网站\n检测地址："+NativeNetwork.PROBE+"\n检测方式：HEAD";
+    if(matching&&runtime.optLong("delayAt")>0){
+      long at=runtime.optLong("delayAt");
+      value+="\n测速时间："+new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z",Locale.ROOT).format(new java.util.Date(at));
+      if(window.now-at>90000||window.now<at-60000)value+="（历史记录）";
+      value+=NetworkMetricsUi.probeDetail(J.obj("latest",runtime.optInt("delay",-1),"lastAt",at,"probe",runtime.optJSONObject("delayProbe")));
+    }else value+="\n当前线路尚无匹配的分项记录。";
+    JSONObject site=runtime.optJSONObject("website");
+    value+="\n\nChatGPT 网站："+(matching&&site!=null&&window.entry.equals(site.optString("entry"))?WebsiteProbe.line(site,window.now):"网站响应未测");
+    return value+"\n\n上述建链和 TLS 分项属于检测网站，不是 ChatGPT 请求的分项。网站首响应不是模型生成耗时。\n此诊断不包含节点地址、订阅链接、账号、密码或聊天内容。";
+  }
   static String routeDiagnostics(android.content.Context context){
     String network="尚未确认";
     try{

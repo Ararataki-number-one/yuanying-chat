@@ -28,6 +28,18 @@ final class RouteQuality {
  }
  synchronized String choose(List<String> names,String current,boolean force,boolean busy,long now){String best="";double score=Double.MAX_VALUE;for(String name:names){JSONObject x=stats(name,now);if(LatencyProbePolicy.comparable(x.optString("kind"),x.optInt("latest"))&&x.optInt("warmLatest")>0&&x.optDouble("score")<score){best=name;score=x.optDouble("score");}}if(best.isEmpty())return current;if(best.equals(candidate))wins++;else{candidate=best;wins=1;}save();if(force||current.isEmpty())return best;JSONObject health=stats(current,now);if(health.optInt("latest")<=0)return health.optInt("failures")>=2?best:current;if(health.optInt("warmLatest")<=0||!"warm".equals(health.optString("kind"))||best.equals(current)||busy||cooldown(now)>0||wins<2)return current;JSONObject c=stats(current,now),n=stats(best,now);if(n.optInt("warmSamples")<3||n.optDouble("rate")<.8)return current;double previous=c.optDouble("score");return score<=previous*.75&&previous-score>=100?best:current;}
  synchronized long cooldown(long now){if(switched>now+60000){switched=now;save();}return Math.max(0,Math.min(COOLDOWN,COOLDOWN-(now-switched)));}
+ String chooseWithWebsite(RouteQuality website,Map<String,JSONObject> observations,List<String> names,String current,boolean force,boolean busy,long now){
+  // A mature current route alone is not a comparison. Missing or challenged
+  // challenger evidence must not lock out a proven faster complete chain.
+  List<String> comparable=new ArrayList<>(),reachable=new ArrayList<>();
+  for(String name:names){JSONObject observed=observations.get(name),stats=website.stats(name,now);
+   if(observed!=null&&NetworkOptimizationPolicy.websiteComparable(observed.optString("status"),observed.optLong("at"),now,stats.optInt("warmSamples"),stats.optInt("latest")))comparable.add(name);
+   boolean failed=observed!=null&&"unreachable".equals(observed.optString("status"))&&observed.optLong("at")>0&&now>=observed.optLong("at")&&now-observed.optLong("at")<=300000;
+   if(force||name.equals(current)||!failed)reachable.add(name);
+  }
+  boolean paired=!force&&comparable.contains(current)&&comparable.size()>1;
+  return (paired?website:this).choose(paired?comparable:reachable,current,force,busy,now);
+ }
  synchronized void selected(String name,long now){if(!name.equals(selected)){selected=name;switched=now;candidate="";wins=0;save();}}
  void save(){prefs.edit().putString("scope",scope).putString("samples",data.toString()).putString("selected",selected).putString("candidate",candidate).putLong("switched",switched).putInt("wins",wins).apply();}
 }

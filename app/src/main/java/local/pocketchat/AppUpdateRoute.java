@@ -16,7 +16,6 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 /** Update bytes use an explicitly chosen environment's existing verified route, without its cookies. */
 final class AppUpdateRoute {
@@ -103,20 +102,21 @@ final class AppUpdateRoute {
   static final Opener OFFICIAL=(url,proxy)->(HttpURLConnection)new URL(url).openConnection(proxy);
   static final class Factory implements AppUpdateTransfer.ConnectionFactory {
     final Context context;final Scope scope;final Lease lease;final Opener opener;final AppUpdateTransfer.ConnectionFactory direct;final String origin;
-    final AtomicReference<HttpURLConnection> active=new AtomicReference<>();
+    final java.util.Set<HttpURLConnection> active=java.util.concurrent.ConcurrentHashMap.newKeySet();
     final ScheduledExecutorService watcher=Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"update-route-watch");t.setPriority(Thread.MIN_PRIORITY);return t;});
     volatile IOException failure;volatile boolean closed;
     Factory(Context context,Selection selected,Opener opener,AppUpdateTransfer.ConnectionFactory direct,String origin){this.context=Profiles.global(context);this.scope=selected.scope;this.lease=selected.lease;this.opener=opener;this.direct=direct;this.origin=origin;watcher.scheduleWithFixedDelay(this::watch,1000,1000,TimeUnit.MILLISECONDS);}
     boolean admitted()throws IOException {return lease==null?DIRECT.equals(scope.source)&&validScope(context,scope):valid(context,lease);}
     void watch(){if(closed||failure!=null)return;try{if(!admitted())lose();}catch(IOException unavailable){lose();}}
-    synchronized void lose(){if(closed||failure!=null)return;failure=new Unavailable("环境网络已变化，恢复后继续下载");watcher.shutdown();HttpURLConnection connection=active.get();if(connection!=null)AppUpdateTransfer.disconnectLater(connection);}
+    synchronized void lose(){if(closed||failure!=null)return;failure=new Unavailable("环境网络已变化，恢复后继续下载");watcher.shutdown();for(HttpURLConnection connection:active)AppUpdateTransfer.disconnectLater(connection);}
     @Override public void check()throws IOException {if(failure!=null)throw failure;if(closed)throw new Unavailable("下载已暂停，进度已保留");if(lease==null)direct.check();}
     @Override public HttpURLConnection open(String url)throws IOException {
       if(!(AppUpdatePolicy.FEED.equals(origin)?AppUpdatePolicy.feedRedirect(url):AppUpdateTransfer.officialOrigin(origin)&&AppUpdateTransfer.trusted(url,origin)))throw new AppUpdateTransfer.InvalidResponse("更新下载地址不受信任，已停止下载");
       check();if(!admitted()){lose();throw failure;}check();
-      HttpURLConnection connection=lease==null?direct.open(url):opener.open(url,new Proxy(Proxy.Type.HTTP,new InetSocketAddress("127.0.0.1",lease.port)));active.set(connection);
+      HttpURLConnection connection=lease==null?direct.open(url):opener.open(url,new Proxy(Proxy.Type.HTTP,new InetSocketAddress("127.0.0.1",lease.port)));active.add(connection);
       if(closed||failure!=null){AppUpdateTransfer.disconnectLater(connection);check();}return connection;
     }
-    @Override public synchronized void finished(){if(closed)return;closed=true;watcher.shutdownNow();active.set(null);if(lease==null)direct.finished();}
+    @Override public void released(HttpURLConnection connection){active.remove(connection);if(lease==null)direct.released(connection);}
+    @Override public synchronized void finished(){if(closed)return;closed=true;watcher.shutdownNow();for(HttpURLConnection connection:active)AppUpdateTransfer.disconnectLater(connection);active.clear();if(lease==null)direct.finished();}
   }
 }
