@@ -105,11 +105,22 @@ final class DesignChrome {
     stateWord.setGravity(Gravity.CENTER_VERTICAL);
     int lineHeight=a.dp(18);
     for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})lineHeight=Math.max(lineHeight,textHeight(text)+a.dp(2));
-    networkRow.addView(dot,new LinearLayout.LayoutParams(a.dp(12),lineHeight));
-    networkRow.addView(a.networkLine,new LinearLayout.LayoutParams(0,lineHeight,1));
-    networkRow.addView(latencyWord,new LinearLayout.LayoutParams(-2,lineHeight));
-    networkRow.addView(stateWord,new LinearLayout.LayoutParams(-2,lineHeight));
-    a.toolbar.addView(networkRow,new LinearLayout.LayoutParams(-1,lineHeight));
+    if(a.getResources().getConfiguration().fontScale>=1.4f){
+      networkRow.setOrientation(LinearLayout.VERTICAL);
+      LinearLayout address=DesignUi.row(a),metrics=DesignUi.row(a);
+      address.addView(dot,new LinearLayout.LayoutParams(a.dp(12),lineHeight));
+      address.addView(a.networkLine,new LinearLayout.LayoutParams(0,lineHeight,1));
+      metrics.addView(new View(a),new LinearLayout.LayoutParams(0,1,1));
+      metrics.addView(latencyWord,new LinearLayout.LayoutParams(-2,lineHeight));
+      metrics.addView(stateWord,new LinearLayout.LayoutParams(-2,lineHeight));
+      networkRow.addView(address,new LinearLayout.LayoutParams(-1,lineHeight));networkRow.addView(metrics,new LinearLayout.LayoutParams(-1,lineHeight));
+    }else{
+      networkRow.addView(dot,new LinearLayout.LayoutParams(a.dp(12),lineHeight));
+      networkRow.addView(a.networkLine,new LinearLayout.LayoutParams(0,lineHeight,1));
+      networkRow.addView(latencyWord,new LinearLayout.LayoutParams(-2,lineHeight));
+      networkRow.addView(stateWord,new LinearLayout.LayoutParams(-2,lineHeight));
+    }
+    a.toolbar.addView(networkRow,new LinearLayout.LayoutParams(-1,-2));
     top.setVisibility(View.GONE);networkRow.setVisibility(View.VISIBLE);
     root.addView(a.toolbar,new LinearLayout.LayoutParams(-1,-2));
     actions=new View[]{a.navigation,title,more};

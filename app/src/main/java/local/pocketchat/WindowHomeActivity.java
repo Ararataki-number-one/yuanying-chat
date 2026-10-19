@@ -39,8 +39,8 @@ public class WindowHomeActivity extends ThemedActivity {
     if(largeText)tools.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
     else tools=(LinearLayout)root.getChildAt(0);
     selectionButton=DesignUi.button(this,"多选",false,()->setSelecting(!selecting));
-    tools.addView(selectionButton,new LinearLayout.LayoutParams(dp(64),dp(48)));
-    LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(dp(112),dp(48));
+    tools.addView(selectionButton,new LinearLayout.LayoutParams(dp(largeText?96:64),dp(48)));
+    LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(dp(largeText?164:112),dp(48));
     createParams.leftMargin=dp(8);
     createButton=DesignUi.button(this,"＋ 新建环境",true,()->createWindow());tools.addView(createButton,createParams);
     if(largeText)box.addView(tools);

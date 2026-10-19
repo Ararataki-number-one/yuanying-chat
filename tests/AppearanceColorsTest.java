@@ -16,19 +16,20 @@ public final class AppearanceColorsTest {
       check(AppearanceColors.dark("system",system)==system,"system events control automatic mode");
       check(AppearanceColors.dark("dark",system),"manual dark persists");check(!AppearanceColors.dark("light",system),"manual light persists");
     }
-    Set<Integer> unique=new HashSet<>();
+    Map<Integer,String> roles=new HashMap<>();
     for(int[] pair:AppearanceColors.PAIRS){
-      check(unique.add(pair[0])&&unique.add(pair[1]),"palette colors must not alias roles");
-      check(AppearanceColors.color(pair[0],true)==pair[1],"light to dark");
-      check(AppearanceColors.color(pair[1],false)==pair[0],"dark to light without accumulating changes");
-      check(AppearanceColors.color(pair[1],true)==pair[1],"idempotent native recolor");
+      for(int value:pair){String role=pair[1]+":"+pair[2],old=roles.putIfAbsent(value,role);check(old==null||old.equals(role),"aliases cannot change semantic roles");}
+      check(AppearanceColors.color(pair[0],false)==pair[1],"legacy semantic key resolves to the current light palette");
+      check(AppearanceColors.color(pair[1],true)==pair[2],"light to dark");
+      check(AppearanceColors.color(pair[2],false)==pair[1],"dark to light without accumulating changes");
+      check(AppearanceColors.color(pair[2],true)==pair[2],"idempotent native recolor");
     }
-    for(int background:new int[]{0xff15181e,0xff20242c,0xff181b21})for(int text:new int[]{0xffe3e7ef,0xff9ea8b8,0xff8aafff,0xff65c99b,0xffff8693})check(contrast(background,text)>=4.5,"night text retains readable contrast");
-    check(contrast(0xff2468f2,0xffffffff)>=4.5,"primary blue button stays readable");
+    for(int background:new int[]{0xff0c0c0f,0xff1c1c1e,0xff111114})for(int text:new int[]{0xfff4f4f6,0xffaaaab4,0xff82b3ff,0xff70cf97,0xffff8c96})check(contrast(background,text)>=4.5,"night text retains readable contrast");
+    check(contrast(AppearanceColors.color(0xff1268ff,false),0xffffffff)>=4.5,"primary blue button stays readable");
     check(AppearanceColors.text(0xffffffff,true)==0xffffffff,"primary/brand white foreground is retained");
     check(AppearanceColors.color(0x00000000,true)==0x00000000,"transparency preserved");
-    check(AppearanceColors.text(AppearanceColors.text(0x61172033,true),false)==0x61172033,"disabled text keeps alpha across night/day roundtrip");
-    check(AppearanceColors.text(AppearanceColors.text(0x61000000,true),false)==0x61172033,"native translucent black returns to readable day foreground");
+    check(AppearanceColors.text(AppearanceColors.text(0x61172033,true),false)==0x611b1b1f,"disabled text keeps alpha across night/day roundtrip");
+    check(AppearanceColors.text(AppearanceColors.text(0x61000000,true),false)==0x611b1b1f,"native translucent black returns to readable day foreground");
     System.out.println("Appearance palette: "+checks+" checks passed");
   }
 }

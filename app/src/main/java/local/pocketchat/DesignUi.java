@@ -35,7 +35,7 @@ final class DesignUi {
     Button b=new ActionButton(c);b.setText(title);b.setAllCaps(false);b.setTextSize(14);b.setIncludeFontPadding(false);
     b.setTextColor(primary?Color.WHITE:TEXT);b.setMinWidth(0);b.setMinimumWidth(0);
     b.setMinHeight(dp(c,48));b.setMinimumHeight(dp(c,48));
-    b.setPadding(dp(c,12),dp(c,8),dp(c,12),dp(c,8));b.setStateListAnimator(null);
+    b.setPadding(dp(c,12),dp(c,6),dp(c,12),dp(c,6));b.setStateListAnimator(null);
     b.setBackground(new RippleDrawable(ColorStateList.valueOf(primary?0x33ffffff:0x182563eb),primary?gradient(c):surface(c,FIELD,14,Color.TRANSPARENT),surface(c,Color.WHITE,14,Color.TRANSPARENT)));
     b.setOnClickListener(v->action.run());return b;
   }
