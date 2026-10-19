@@ -31,6 +31,7 @@ final class DesignUi {
     ActionButton(Context c){super(c);}
     @Override public void setEnabled(boolean enabled){super.setEnabled(enabled);setAlpha(enabled?1f:.45f);}
   }
+  static int actionWidth(Button button,int minimumDp){return Math.max(dp(button.getContext(),minimumDp),(int)Math.ceil(button.getPaint().measureText(button.getText().toString()))+button.getCompoundPaddingLeft()+button.getCompoundPaddingRight()+dp(button.getContext(),2));}
   static Button button(Context c,String title,boolean primary,Runnable action){
     Button b=new ActionButton(c);b.setText(title);b.setAllCaps(false);b.setTextSize(14);b.setIncludeFontPadding(false);
     b.setTextColor(primary?Color.WHITE:TEXT);b.setMinWidth(0);b.setMinimumWidth(0);

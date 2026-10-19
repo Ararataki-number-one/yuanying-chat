@@ -1,7 +1,7 @@
 """Required native UI captures, shared by Android capture and publication checks."""
 
 LIGHT_SCENES = ('chat', 'environments', 'network', 'proxy', 'entries', 'browser', 'preferences', 'settings', 'network-menu')
-LARGE_SCENES = ('proxy', 'entries', 'browser', 'preferences', 'chat', 'settings', 'network-menu')
+LARGE_SCENES = ('proxy', 'entries', 'browser', 'preferences', 'chat', 'settings', 'network-menu', 'environments', 'network')
 DARK_SCENES = ('chat', 'environments', 'network', 'settings', 'network-menu')
 
 

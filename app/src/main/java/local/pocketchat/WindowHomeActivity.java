@@ -39,17 +39,17 @@ public class WindowHomeActivity extends ThemedActivity {
     if(largeText)tools.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
     else tools=(LinearLayout)root.getChildAt(0);
     selectionButton=DesignUi.button(this,"多选",false,()->setSelecting(!selecting));
-    tools.addView(selectionButton,new LinearLayout.LayoutParams(dp(largeText?96:64),dp(48)));
-    LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(dp(largeText?164:112),dp(48));
+    tools.addView(selectionButton,new LinearLayout.LayoutParams(DesignUi.actionWidth(selectionButton,64),dp(48)));
+    LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(dp(112),dp(48));
     createParams.leftMargin=dp(8);
-    createButton=DesignUi.button(this,"＋ 新建环境",true,()->createWindow());tools.addView(createButton,createParams);
+    createButton=DesignUi.button(this,"＋ 新建环境",true,()->createWindow());createParams.width=DesignUi.actionWidth(createButton,112);tools.addView(createButton,createParams);
     if(largeText)box.addView(tools);
     preparation=DesignUi.progress(this,"正在创建环境…","完成后会打开新环境，请稍候。");
     preparation.setVisibility(View.GONE);DesignUi.addCard(box,preparation);
     LinearLayout searchRow=DesignUi.row(this),searchBox=DesignUi.column(this);
     search=DesignUi.input(searchBox,"","","搜索环境名称、分组或备注");
     search.setContentDescription("搜索环境");searchRow.addView(searchBox,new LinearLayout.LayoutParams(0,-2,1));
-    filterOptions=DesignUi.button(this,"筛选",false,this::chooseFilters);LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(dp(72),dp(48));op.leftMargin=dp(8);searchRow.addView(filterOptions,op);
+    filterOptions=DesignUi.button(this,"筛选",false,this::chooseFilters);LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(DesignUi.actionWidth(filterOptions,72),dp(48));op.leftMargin=dp(8);searchRow.addView(filterOptions,op);
     LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(8);box.addView(searchRow,sp);
     search.addTextChangedListener(new TextWatcher(){
       public void beforeTextChanged(CharSequence s,int x,int c,int f){}
@@ -188,6 +188,7 @@ public class WindowHomeActivity extends ThemedActivity {
     groupButton.setText((selectedGroup==null?"全部分组":selectedGroup.isEmpty()?"未分组":selectedGroup)+" ▾");
     sortButton.setText(new String[]{"编号排序 ▾","最近使用 ▾","名称排序 ▾"}[sort]);
     filterOptions.setText(selectedGroup!=null||sort!=0?"筛选 ●":"筛选");filterOptions.setContentDescription("筛选与排序，当前分组："+(selectedGroup==null?"全部":selectedGroup.isEmpty()?"未分组":selectedGroup));
+    int filterWidth=DesignUi.actionWidth(filterOptions,72);if(filterOptions.getLayoutParams().width!=filterWidth){filterOptions.getLayoutParams().width=filterWidth;filterOptions.requestLayout();}
     filters.removeAllViews();String[] labels={"全部","收藏","运行中","等待回复","需处理"};
     for(int i=0;i<labels.length;i++){
       final int n=i;
