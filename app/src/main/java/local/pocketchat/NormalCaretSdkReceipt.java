@@ -13,9 +13,9 @@ final class NormalCaretSdkReceipt {
   static final String ASSET="pocketchat-sdk-build.json";
   static final String RECEIPT_ASSET="pocketchat-sdk-build-receipt.json";
   static final String INPUT_COORDINATE="org.mozilla.geckoview:geckoview:157.0.20261005135250";
-  static final String RUNTIME_COORDINATE="local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket2";
+  static final String RUNTIME_COORDINATE="local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3";
   static final String INPUT_AAR_SHA256="15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268";
-  static final String EDITABLE_SHA256="f207f6e05f83f2d1aaf07530b09ca8af1e8667402beb816bd3cb173cb81991ad";
+  static final String EDITABLE_SHA256="e9df13aef0bafcca2c70a8ecba2e3add5b1a13739e41ee6cebc4c97913d57c88";
   static final String UPSTREAM_REVISION="737ec77d798755890b062aab541a90d6c75afd19";
   static final String BUILD_KIND="source-derived-java";
   static final String[] SDK_FIELDS={"sdkBuildKind","sdkCoordinate","sdkInputCoordinate","sdkRuntimeCoordinate",

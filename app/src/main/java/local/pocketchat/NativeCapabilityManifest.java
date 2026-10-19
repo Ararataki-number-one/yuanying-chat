@@ -9,7 +9,7 @@ final class NativeCapabilityManifest {
   static final String SDK_COORDINATE = "org.mozilla.geckoview:geckoview:157.0.20261005135250";
   static final String UPSTREAM_REVISION = "737ec77d798755890b062aab541a90d6c75afd19";
   static final String SDK_INPUT_AAR_SHA256 = "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268";
-  static final String SDK_RUNTIME_COORDINATE = "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket2";
+  static final String SDK_RUNTIME_COORDINATE = "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3";
   static final String SDK_BUILD_KIND = "source-derived-java";
 
   enum Capability { INDEPENDENT_TIMEZONE, CANVAS_READBACK, WEBGL_IDENTITY, AUDIO_IDENTITY, FONT_IDENTITY }

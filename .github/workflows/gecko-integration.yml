@@ -53,6 +53,7 @@ jobs:
         yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
         "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
         export JAVA_HOME="$JAVA_HOME_17_X64"
+        python3 tools/gecko/run_key_order_host.py | tee work/gecko-integration/key-order-host-results.json
         python3 tools/gecko/run_reply_handoff_host.py --upstream-sources work/gecko-integration/geckoview-sources.jar | tee work/gecko-integration/reply-handoff-host-results.json
         python3 tools/gecko/caret_workflow.py prepare --work work/gecko-integration
     - name: Compile release and native regression package
@@ -420,10 +421,73 @@ jobs:
       run: |
         echo 'Input compatibility fixture failed. Independent reports do not qualify this input behavior as passed.'
         exit 1
+  editing-samples:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: ['1', '2']
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - name: Download the immutable compiled build
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: gecko-${{ github.run_id }}-${{ github.run_attempt }}-build
+        path: work/ci-build
+    - name: Restore exact build and verify its source/run/byte hashes
+      run: python3 tools/gecko/ci_bundle.py restore --kind build --bundle work/ci-build/bundle.tar.gz
+    - name: Prepare Android runtime only
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
+    - name: Boot Android for native acceptance
+      shell: bash
+      run: |
+        set -euo pipefail
+        exec > >(tee work/gecko-integration/native-test.log) 2>&1
+        export ANDROID_AVD_HOME="$PWD/work/gecko-integration/avd"
+        export ANDROID_USER_HOME="$PWD/work/gecko-integration/android-user"
+        export ANDROID_EMULATOR_HOME="$PWD/work/gecko-integration/emulator-home"
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+        sudo chmod a+rw /dev/kvm
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/gecko-integration/emulator.log 2>&1 &
+        timeout 180 adb wait-for-device
+        timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        adb shell input keyevent 82
+        adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+    - name: Run one original workload on this independent Android device
+      shell: bash
+      run: |
+        set -euo pipefail
+        exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+        adb shell am force-stop local.pocketchat.test
+        adb shell pm clear local.pocketchat.test
+        adb shell pm grant local.pocketchat.test android.permission.POST_NOTIFICATIONS
+        python3 tools/gecko/run_caret_editing_phase.py --adb "$(command -v adb)" --serial emulator-5554 --root "$PWD" --out work/gecko-integration --build-receipt work/gecko-integration/caret-apk-build-receipt.json --sdk-receipt work/native-caret-sdk/sdk-build-receipt.json --sdk-aar work/native-caret-sdk/geckoview-caret.aar --official-sdk-aar work/gecko-integration/geckoview.aar --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk --release-apk app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
+    - name: Preserve and verify this sample without replay
+      if: ${{ always() }}
+      run: python3 tools/gecko/key_order_samples.py stage --sample '${{ matrix.sample }}' --input work/gecko-integration --out work/key-order-sample
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: ${{ always() }}
+      with:
+        name: key-order-${{ github.run_id }}-${{ github.run_attempt }}-sample-${{ matrix.sample }}
+        path: work/key-order-sample/
+        if-no-files-found: error
+        retention-days: 5
   verify:
     needs:
     - build
     - android
+    - editing-samples
     if: ${{ always() && needs.build.result == 'success' && !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -445,9 +509,23 @@ jobs:
         done
     - name: Publish combined synthetic evidence
       run: python3 tools/gecko/publish_ci.py
+    - name: Collect every predeclared independent input sample
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        pattern: key-order-${{ github.run_id }}-${{ github.run_attempt }}-sample-*
+        path: work/key-order-samples
+    - name: Require all three unchanged editing workloads on the same APK
+      run: python3 tools/gecko/key_order_samples.py collect --ordinary work/gecko-integration/public --samples work/key-order-samples --out work/gecko-integration/public/key-order-samples-results.json
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: key-order-${{ github.run_id }}-${{ github.run_attempt }}-summary
+        path: work/gecko-integration/public/key-order-samples-results.json
+        if-no-files-found: error
+        retention-days: 5
     - name: Require every original release acceptance gate
       env:
         ANDROID_RESULT: ${{ needs.android.result }}
+        INPUT_SAMPLES_RESULT: ${{ needs.editing-samples.result }}
       run: |
         set -euo pipefail
         python3 - <<'PYCODE'
@@ -463,6 +541,7 @@ jobs:
         from gecko.check_client_evidence import verify_client_evidence
         from gecko.check_sdk_build_evidence import verify_sdk_build_evidence
         from gecko.check_caret_compat_evidence import verify_caret_evidence
+        assert os.environ['INPUT_SAMPLES_RESULT']=='success','Every predeclared independent input sample must succeed'
         assert os.environ['ANDROID_RESULT']=='success','Every independent Android phase must succeed'
         directory=pathlib.Path('work/gecko-integration/public');source=os.environ['GITHUB_SHA']
         for check in (verify_performance_evidence,verify_connection_evidence,verify_interaction_transfer_evidence,verify_profile_evidence,verify_template_evidence,verify_resource_evidence,verify_chain_evidence,verify_client_evidence,verify_sdk_build_evidence,verify_caret_evidence):

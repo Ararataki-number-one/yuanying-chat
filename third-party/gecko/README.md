@@ -18,6 +18,19 @@ exact action, preserving newer work after a queue reset. The host barrier test
 executes the actual queue and synchronization methods against controlled doubles;
 it is separate from Android composition acceptance.
 
+The `pocket3` candidate submits hardware key work through the parent Gecko
+Looper, then requests a synchronization reply from the currently focused child
+before releasing one queued key. It preserves FIFO order, waits for the actual
+reply rather than a returned submission, and invalidates queued work on blur.
+There is no fixed delay, selection write, or replay. The parent forwarding fence
+and child synchronization are an ordering hypothesis; APZ touch completion and
+the intermittent rapid-tap failure still require actual Android evidence.
+`run_key_order_host.py` checks the actual candidate queue methods with controlled
+parent/child doubles. It cannot establish native touch completion. CI also
+predeclares two additional independent Android devices, each running the original
+performance and 14-case editing workloads once on the exact same built APK.
+All three results must pass; a failed sample cannot be replaced by a rerun.
+
 `tools/gecko/build_caret_sdk.py` verifies the upstream archives, applies the patch
 without fuzz, compiles original and candidate source with Java 17, checks sibling
 method semantics, and replaces only `org/mozilla/geckoview/GeckoEditable.class`.
