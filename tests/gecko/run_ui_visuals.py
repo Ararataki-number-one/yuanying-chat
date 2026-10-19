@@ -7,9 +7,11 @@ import sys
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
 p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()
 source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
-package='local.pocketchat.test';scenes=['chat','environments','network','proxy','entries','browser','preferences','settings','network-menu'];records=[]
+package='local.pocketchat.test';records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
+from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, verify_captures
+scenes=LIGHT_SCENES
 ui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')
 def adb(*values):return subprocess.check_output([args.adb,'-s',args.serial,*values],timeout=90).decode(errors='replace')
 def dump(deadline=None):
@@ -31,7 +33,7 @@ def click_editor_tab(xml,label):
         else:time.sleep(.2)
         xml=dump()
     raise TimeoutError(('Editor tab did not appear after horizontal scrolling',label,swipes,xml[-3000:]))
-def capture(variant,width,height,scale,scene):
+def capture(variant,width,height,scale,scene,theme='light'):
     adb('shell','am','force-stop',package);adb('logcat','-c')
     if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
     adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
@@ -80,13 +82,13 @@ def capture(variant,width,height,scale,scene):
         assert choices,(variant,scene,'Missing entry choices')
         heights=[int(re.findall(r'\d+',n.attrib['bounds'])[3])-int(re.findall(r'\d+',n.attrib['bounds'])[1]) for n in choices]
         assert max(heights)>=144,(variant,scene,'Entry touch area below 48 dp',heights)
-    stem=f'{variant}-{width}x{height}-font{scale:g}-{scene}'
+    stem=f'{variant}-'+('dark-' if theme=='dark' else '')+f'{width}x{height}-font{scale:g}-{scene}'
     (shots/(stem+'.xml')).write_text(xml)
     raw=subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30)
     pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3),(variant,scene,'Unexpected actual viewport',pixels)
     density=int(re.findall(r'density: (\d+)',adb('shell','wm','density'))[-1]);assert density==480,density
     (shots/(stem+'.png')).write_bytes(raw)
-    record={'variant':variant,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml'}
+    record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml'}
     if scene=='preferences':record.update(preference_check)
     records.append(record)
 try:
@@ -97,10 +99,10 @@ try:
         if int(adb('shell','getprop','ro.build.version.sdk').strip())>=33:adb('shell','pm','grant',package,'android.permission.POST_NOTIFICATIONS')
         for width,height in [(360,640),(412,640)]:
             for scene in scenes:capture(variant,width,height,1,scene)
-        for scene in ['proxy','entries','browser','preferences','chat','settings','network-menu']:capture(variant,360,640,2,scene)
+        for scene in LARGE_SCENES:capture(variant,360,640,2,scene)
     adb('shell','cmd','uimode','night','yes')
     try:
-        for scene in ['chat','environments','network','settings','network-menu']:capture('dark',360,640,1,scene)
+        for scene in DARK_SCENES:capture('current',360,640,1,scene,theme='dark')
     finally:adb('shell','cmd','uimode','night','no')
     # Exercise the actual exit form with synthetic credentials and Android taps.
     exit_password=[]
@@ -303,7 +305,7 @@ try:
     finally:
         reload_http.shutdown();reload_socks.shutdown()
     (out/'compact-chrome-results.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'cases':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse},ensure_ascii=False,indent=2)+'\n')
-    assert len(records)==30 and sum(record['variant']=='current' for record in records)==25 and sum(record['variant']=='dark' for record in records)==5,records
+    verify_captures(records)
     build=json.loads((out/'ui-build-comparison.json').read_text())
     assert build['comparisonMode']=='current-only' and not build['historicalUIRebuilt'] and build['coreSourceCommit']==source,build
     report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse,'exitPassword':exit_password,'scope':'Current GeckoView-only production UI with local synthetic records, 30 current-source captures including light, dark and double-font layouts, plus exit password checks; historical UI is not rebuilt. Website content, login and network core are not replaced.'}

@@ -5,8 +5,10 @@ import json
 import pathlib
 if __package__:
     from .chrome_collapse_contract import verify_auto_collapse
+    from .ui_visual_contract import verify_captures
 else:
     from chrome_collapse_contract import verify_auto_collapse
+    from ui_visual_contract import verify_captures
 
 BASELINE = '835d59991218eda70c7a4fdd73ea9d7ae6052688'
 MAIN_IO = ('mainSealedReads', 'mainSealedWrites', 'mainCatalogReads', 'mainHeartbeatWrites')
@@ -65,12 +67,7 @@ def verify_performance_evidence(directory, source):
     visual = android('ui-visual-results.json')
     assert visual['comparisonMode'] == 'current-only' and visual['historicalUIRebuilt'] is False
     captures = visual['screenshots']
-    assert len(captures) == 19 and all(item['variant'] == 'current' for item in captures)
-    assert {(item['logicalViewport'], item['fontScale'], item['scene']) for item in captures} == {
-        (viewport, 1, scene)
-        for viewport in ('360x640', '412x640')
-        for scene in ('chat', 'environments', 'network', 'proxy', 'entries', 'browser', 'preferences')
-    } | {('360x640', 2, scene) for scene in ('chat', 'proxy', 'entries', 'browser', 'preferences')}
+    verify_captures(captures)
     build = json.loads((directory / 'ui-build-comparison.json').read_text())
     assert build['coreSourceCommit'] == source and build['comparisonMode'] == 'current-only'
     assert build['historicalUIRebuilt'] is False and build['changedForBaseline'] == []

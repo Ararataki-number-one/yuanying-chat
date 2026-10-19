@@ -13,7 +13,40 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('actual_ui_visual_capture', ROOT / 'tools/gecko/ui_visual_capture.py')
 CAPTURE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CAPTURE)
+MATRIX_SPEC = importlib.util.spec_from_file_location('native_ui_matrix', ROOT / 'tools/gecko/ui_visual_contract.py')
+MATRIX = importlib.util.module_from_spec(MATRIX_SPEC)
+MATRIX_SPEC.loader.exec_module(MATRIX)
 XML = b'<?xml version="1.0"?><hierarchy rotation="0"><node text="fresh current native UI" /></hierarchy>'
+
+class NativeCaptureCoverageTest(unittest.TestCase):
+    def records(self):
+        return [dict(variant='current',theme=theme,logicalViewport=viewport,fontScale=scale,scene=scene)
+                for theme,viewport,scale,scene in sorted(MATRIX.required_captures())]
+
+    def test_current_ui_has_thirty_cases_and_retains_every_previous_scene(self):
+        previous={(viewport,1,scene) for viewport in ('360x640','412x640')
+                  for scene in ('chat','environments','network','proxy','entries','browser','preferences')}
+        previous|={('360x640',2,scene) for scene in ('chat','proxy','entries','browser','preferences')}
+        self.assertEqual(len(self.records()),30)
+        self.assertTrue(previous<={(r['logicalViewport'],r['fontScale'],r['scene']) for r in self.records() if r['theme']=='light'})
+        MATRIX.verify_captures(self.records())
+
+    def test_missing_dark_ui_is_rejected(self):
+        with self.assertRaises(AssertionError):MATRIX.verify_captures([r for r in self.records() if r['theme']=='light'])
+
+    def test_duplicate_cannot_replace_a_required_scene(self):
+        records=self.records();records[-1]=records[0]
+        with self.assertRaises(AssertionError):MATRIX.verify_captures(records)
+
+    def test_historical_app_cannot_supply_a_current_ui_capture(self):
+        records=self.records();records[0]['variant']='baseline'
+        with self.assertRaises(AssertionError):MATRIX.verify_captures(records)
+
+    def test_dark_capture_cannot_be_labeled_as_light(self):
+        records=self.records()
+        for row in records:row['theme']='light'
+        with self.assertRaises(AssertionError):MATRIX.verify_captures(records)
+
 
 FAKE_ADB = r'''import json,pathlib,sys,time
 root=pathlib.Path(__file__).parent
