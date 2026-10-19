@@ -119,6 +119,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     // startActivity event is the single observable action, not a second drawer.
   }
 
+  @Override void chooseEnvironment(){super.chooseEnvironment();if(reporting)event("environment");}
   @Override void moreSheet(){
     if(collapse!=null)collapse.menuOpens++;
     super.moreSheet();

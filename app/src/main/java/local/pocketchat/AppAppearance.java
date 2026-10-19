@@ -71,7 +71,7 @@ final class AppAppearance {
     w.setBackgroundDrawable(new ColorDrawable(DesignUi.BG));
   }
   static void watch(Dialog d){dialogs.add(d);}
-  static void shown(Dialog d){watch(d);dialogWindow(d);apply(d.getWindow().getDecorView());}
+  static void shown(Dialog d){watch(d);dialogWindow(d);apply(d.getWindow().getDecorView());NativeControls.form(d.getWindow().getDecorView());}
   private static void dialogWindow(Dialog d){
     if(d.getWindow()==null)return;
     d.getContext().setTheme(d instanceof AlertDialog?(dark?R.style.ChatDialogDark:R.style.ChatDialogTheme):theme());
@@ -92,6 +92,7 @@ final class AppAppearance {
   /** Called only on an appearance event / initial window presentation, not each frame. */
   static void apply(View v){
     if(v instanceof GeckoWebView||v instanceof org.mozilla.geckoview.GeckoView||v instanceof android.webkit.WebView)return;
+    NativeControls.prepare(v);
     drawable(v.getBackground());
     if(v instanceof TextView){
       TextView t=(TextView)v;t.setTextColor(colors(t.getTextColors(),true));t.setHintTextColor(colors(t.getHintTextColors(),true));t.setLinkTextColor(colors(t.getLinkTextColors(),true));
@@ -110,7 +111,8 @@ final class AppAppearance {
     int[] values=new int[states.length];for(int i=0;i<values.length;i++){int value=source.getColorForState(states[i],source.getDefaultColor());values[i]=foreground?text(value):color(value);}return new ColorStateList(states,values);
   }
   private static void drawable(Drawable d){
-    if(d instanceof Glass)((Glass)d).refresh();
+    if(d instanceof NativeControls.Field)((NativeControls.Field)d).refresh();
+    else if(d instanceof Glass)((Glass)d).refresh();
     else if(d instanceof Surface)((Surface)d).refresh();
     else if(d instanceof ColorDrawable)((ColorDrawable)d).setColor(color(((ColorDrawable)d).getColor()));
     else if(d instanceof Ui.Icon){Ui.Icon icon=(Ui.Icon)d;icon.color=text(icon.color);icon.invalidateSelf();}

@@ -1,8 +1,30 @@
 package local.pocketchat;
-import android.app.*;import android.content.*;import android.graphics.*;import android.graphics.drawable.GradientDrawable;import android.os.*;import android.view.*;import android.widget.*;import java.io.*;
 
-/** First-run brand screen, then the user's selected default entry. No hidden chat session. */
+import android.content.Intent;
+import android.graphics.Typeface;
+import android.os.Bundle;
+import android.view.Gravity;
+import android.widget.*;
+
+/** First-run introduction shares the same readable native surfaces as the workspaces. */
 public class BrandLaunchActivity extends ThemedActivity {
   void route(){AppUpdates.schedule(this);AppSettings.put(this,"brandSeen","true");if(AppSettings.bool(this,"startupDirect",true)){int id=AppSettings.defaultSlot(this);ProfileCatalog.get(this).opened(id);startActivity(new Intent(this,Profiles.activity(id)).putExtra("openWindowAction","chat").putExtra("forceWebMode",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}else startActivity(new Intent(this,WindowHomeActivity.class));finish();}
-  @Override public void onCreate(Bundle state){super.onCreate(state);DesignUi.chrome(this);if(AppSettings.bool(this,"brandSeen",false)&&!getIntent().getBooleanExtra("previewBrand",false)){route();return;}FrameLayout frame=new FrameLayout(this);frame.setFitsSystemWindows(true);frame.setBackgroundColor(DesignUi.BG);ImageView art=new ImageView(this);art.setScaleType(ImageView.ScaleType.CENTER_CROP);try(InputStream in=getAssets().open("brand-portal.png")){art.setImageBitmap(BitmapFactory.decodeStream(in));}catch(Exception ignored){}frame.addView(art,new FrameLayout.LayoutParams(-1,-1));View shade=new View(this);shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x4404101e,0x0004101e,0xee04101e}));frame.addView(shade,new FrameLayout.LayoutParams(-1,-1));LinearLayout content=DesignUi.column(this);content.setPadding(DesignUi.dp(this,24),DesignUi.dp(this,34),DesignUi.dp(this,24),DesignUi.dp(this,28));content.setGravity(Gravity.CENTER_HORIZONTAL);ImageView logo=DesignUi.icon(this,"brand",DesignUi.CYAN,72);content.addView(logo);TextView name=DesignUi.text(this,"元婴期院士",30,android.graphics.Color.WHITE);name.setGravity(Gravity.CENTER);name.setTypeface(Typeface.create("sans-serif",Typeface.BOLD_ITALIC));name.setShadowLayer(12,0,0,DesignUi.BLUE);name.setPadding(0,DesignUi.dp(this,14),0,DesignUi.dp(this,5));content.addView(name);TextView subtitle=DesignUi.text(this,"Android ChatGPT 网页客户端",13,android.graphics.Color.WHITE);subtitle.setGravity(Gravity.CENTER);content.addView(subtitle);content.addView(new View(this),new LinearLayout.LayoutParams(1,0,1));TextView slogan=DesignUi.text(this,"连接更大的世界",24,android.graphics.Color.WHITE);slogan.setTypeface(Typeface.DEFAULT_BOLD);slogan.setGravity(Gravity.CENTER);content.addView(slogan);TextView detail=DesignUi.text(this,"独立环境 · 隐私保护\n多网络环境 · 安全 · 可控",14,0xffcbd5e1);detail.setGravity(Gravity.CENTER);detail.setPadding(0,DesignUi.dp(this,9),0,DesignUi.dp(this,24));content.addView(detail);content.addView(DesignUi.button(this,"立即进入  →",true,()->route()),new LinearLayout.LayoutParams(-1,DesignUi.dp(this,48)));TextView footer=DesignUi.text(this,"默认环境直达 · 环境管理 · 下载汇总\n分组配置 · 应用设置\nv"+AppVersion.name(this),11,0xffcbd5e1);footer.setGravity(Gravity.CENTER);footer.setPadding(0,DesignUi.dp(this,16),0,0);content.addView(footer);frame.addView(content,new FrameLayout.LayoutParams(-1,-1));setContentView(frame);}
+  @Override public void onCreate(Bundle state){
+    super.onCreate(state);
+    if(AppSettings.bool(this,"brandSeen",false)&&!getIntent().getBooleanExtra("previewBrand",false)){route();return;}
+    LinearLayout root=DesignUi.screen(this),content=DesignUi.column(this);
+    ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);
+    content.setPadding(DesignUi.dp(this,24),DesignUi.dp(this,36),DesignUi.dp(this,24),DesignUi.dp(this,24));
+    ImageView logo=DesignUi.icon(this,"brand",DesignUi.BLUE,64);content.addView(logo);
+    TextView name=DesignUi.text(this,"元婴期院士",28,DesignUi.TEXT);name.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));name.setPadding(0,DesignUi.dp(this,20),0,DesignUi.dp(this,8));content.addView(name);
+    DesignUi.note(content,"专注你的 ChatGPT 原网页。\n独立环境，清楚掌握每一条连接。");
+    DesignUi.section(content,"为日常使用而设计","");
+    LinearLayout features=DesignUi.group(this);content.addView(features);
+    DesignUi.groupedRow(features,DesignUi.setting(this,"chat","熟悉的原网页","沿用官方输入、模型选择和会话操作。","",null));
+    DesignUi.groupedRow(features,DesignUi.setting(this,"window","彼此独立的环境","分别保存登录、草稿和网络配置。","",null));
+    DesignUi.groupedRow(features,DesignUi.setting(this,"lock","固定出口","入口和出口独立管理，线路状态清楚可见。","",null));
+    DesignUi.action(content,"立即进入",true,this::route);
+    TextView version=DesignUi.text(this,"版本 "+AppVersion.name(this),12,DesignUi.MUTED);version.setGravity(Gravity.CENTER);version.setPadding(0,DesignUi.dp(this,18),0,0);content.addView(version);
+    scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);
+  }
 }

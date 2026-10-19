@@ -36,18 +36,17 @@ public class WindowHomeActivity extends ThemedActivity {
     LinearLayout tools=DesignUi.row(this);
     count=DesignUi.text(this,"",13,DesignUi.MUTED);
     boolean largeText=getResources().getConfiguration().fontScale>=1.4f;
-    if(largeText)tools.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
-    else tools=(LinearLayout)root.getChildAt(0);
+    tools.addView(count,new LinearLayout.LayoutParams(0,-2,1));
     selectionButton=DesignUi.button(this,"多选",false,()->setSelecting(!selecting));
     tools.addView(selectionButton,new LinearLayout.LayoutParams(DesignUi.actionWidth(selectionButton,64),dp(48)));
     LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(dp(112),dp(48));
     createParams.leftMargin=dp(8);
     createButton=DesignUi.button(this,"＋ 新建环境",true,()->createWindow());createParams.width=DesignUi.actionWidth(createButton,112);tools.addView(createButton,createParams);
-    if(largeText)box.addView(tools);
+    box.addView(tools);
     preparation=DesignUi.progress(this,"正在创建环境…","完成后会打开新环境，请稍候。");
     preparation.setVisibility(View.GONE);DesignUi.addCard(box,preparation);
     LinearLayout searchRow=DesignUi.row(this),searchBox=DesignUi.column(this);
-    search=DesignUi.input(searchBox,"","","搜索环境名称、分组或备注");
+    search=DesignUi.searchInput(searchBox,"搜索环境名称、分组或备注");
     search.setContentDescription("搜索环境");searchRow.addView(searchBox,new LinearLayout.LayoutParams(0,-2,1));
     filterOptions=DesignUi.button(this,"筛选",false,this::chooseFilters);LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(DesignUi.actionWidth(filterOptions,72),dp(48));op.leftMargin=dp(8);searchRow.addView(filterOptions,op);
     LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(8);box.addView(searchRow,sp);
@@ -82,10 +81,11 @@ public class WindowHomeActivity extends ThemedActivity {
     favoriteSelectedButton=DesignUi.button(this,"收藏",false,()->batchFavorite(true));
     unfavoriteSelectedButton=DesignUi.button(this,"取消收藏",false,()->batchFavorite(false));
     Button[] actions={batchGroupButton,favoriteSelectedButton,unfavoriteSelectedButton};
+    if(largeText)batchActions.setOrientation(LinearLayout.VERTICAL);
     for(int i=0;i<actions.length;i++){
       actions[i].setTextSize(13);
-      LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,dp(48),1);
-      if(i>0)params.leftMargin=dp(6);
+      LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(largeText?-1:0,-2,largeText?0:1);
+      if(i>0){if(largeText)params.topMargin=dp(6);else params.leftMargin=dp(6);}
       batchActions.addView(actions[i],params);
     }
     selectionBar.addView(batchActions);root.addView(selectionBar);

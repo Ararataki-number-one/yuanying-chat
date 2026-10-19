@@ -14,7 +14,7 @@ final class FeedbackUi {
   static void open(Activity a){
     JSONObject saved=J.parse(AppSettings.get(a,DRAFT,"{}"));
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,"问题与建议");
-    Spinner type=new Spinner(a);type.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,new String[]{"遇到问题","改进建议"}));type.setSelection(saved.optBoolean("suggestion")?1:0);d.body.addView(type);
+    Spinner type=new Spinner(a);type.setContentDescription("反馈类型");type.setAdapter(DesignUi.spinnerAdapter(a,new String[]{"遇到问题","改进建议"}));type.setSelection(saved.optBoolean("suggestion")?1:0);d.body.addView(type,new LinearLayout.LayoutParams(-1,-2));
     EditText title=DesignUi.input(d.body,"一句话说明",saved.optString("title"),"例如：选择图片后没有出现附件");title.setFilters(new InputFilter[]{new InputFilter.LengthFilter(FeedbackReport.TITLE_LIMIT)});
     EditText details=DesignUi.input(d.body,"详细说明",saved.optString("details"),"做了什么、实际发生什么、希望怎样改善？");details.setSingleLine(false);details.setMinLines(3);details.setMaxLines(7);details.setGravity(android.view.Gravity.TOP);details.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);details.setFilters(new InputFilter[]{new InputFilter.LengthFilter(FeedbackReport.DETAIL_LIMIT)});
     CheckBox system=new CheckBox(a);system.setText("附带手机型号和 Android 版本");system.setTextColor(ReferenceUi.TEXT);system.setChecked(saved.optBoolean("system",true));d.body.addView(system);

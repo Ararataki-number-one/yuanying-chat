@@ -73,7 +73,7 @@ final class DesignChrome {
     title.setGravity(Gravity.CENTER);
     title.setPadding(a.dp(12),0,a.dp(12),0);
     title.setBackground(DesignUi.glass(a,20));
-    title.setOnClickListener(v->ProfileUi.show(a));
+    title.setOnClickListener(v->a.chooseEnvironment());
 
     more=ReferenceUi.more(a,()->a.moreSheet());
     // The shared button style reserves 48 dp; this compact shell expands touch separately.

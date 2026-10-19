@@ -4,6 +4,12 @@ LIGHT_SCENES = ('chat', 'environments', 'network', 'proxy', 'entries', 'browser'
 LARGE_SCENES = ('proxy', 'entries', 'browser', 'preferences', 'chat', 'settings', 'network-menu', 'environments', 'network')
 DARK_SCENES = ('chat', 'environments', 'network', 'settings', 'network-menu')
 
+DETAIL_SCENES = ('environment-picker', 'downloads', 'feedback', 'appearance', 'default-entry',
+                 'subscription-form', 'exit-form', 'route-editor', 'import', 'brand', 'templates', 'zoom')
+LIGHT_SCENES += DETAIL_SCENES
+LARGE_SCENES += DETAIL_SCENES
+DARK_SCENES += DETAIL_SCENES
+
 
 def required_captures():
     return {

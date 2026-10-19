@@ -12,7 +12,15 @@ import java.util.concurrent.*;
 final class SavedFileActions {
   static final int EXPORT=85;final Activity a;final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler(Looper.getMainLooper());JSONObject exporting;volatile boolean closed,busy;String deleteProblem="";
   SavedFileActions(Activity a){this.a=a;}
-  void show(JSONObject row){AppAppearance.dialog(a).setTitle(row.optString("name","文件")).setItems(new String[]{"打开","分享","另存为","查看保存位置","删除文件"},(d,n)->{if(n==0)open(a,row);if(n==1)share(a,row);if(n==2)export(row);if(n==3)AppAppearance.dialog(a).setTitle("保存位置").setMessage(row.optString("location","原先选择的保存位置")+"\n\n如果文件被移动或删除，请从原网页重新下载。").setPositiveButton("关闭",null).show();if(n==4)confirmDelete(row);}).show();}
+  void show(JSONObject row){
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,row.optString("name","文件")).asSheet();
+    String[] labels={"打开","分享","另存为","查看保存位置","删除文件"};
+    for(int i=0;i<labels.length;i++){final int n=i;ReferenceUi.menuAction(d,labels[i],()->{
+      d.dismiss();if(n==0)open(a,row);if(n==1)share(a,row);if(n==2)export(row);
+      if(n==3)DesignUi.message(a,"保存位置",row.optString("location","原先选择的保存位置")+"\n\n如果文件被移动或删除，请从原网页重新下载。");
+      if(n==4)confirmDelete(row);
+    });}d.show();
+  }
   AlertDialog confirmDelete(JSONObject row){
     JSONObject selected=J.parse(row.toString());if(!selected.has("slot"))DownloadTasks.put(selected,"slot",Profiles.slot(a));String name=selected.optString("name","文件");
     String detail="会从保存位置永久删除这个文件，释放手机存储空间。";

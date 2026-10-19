@@ -23,11 +23,11 @@ class NativeCaptureCoverageTest(unittest.TestCase):
         return [dict(variant='current',theme=theme,logicalViewport=viewport,fontScale=scale,scene=scene)
                 for theme,viewport,scale,scene in sorted(MATRIX.required_captures())]
 
-    def test_current_ui_has_thirty_two_cases_and_retains_every_previous_scene(self):
+    def test_current_ui_has_eighty_cases_and_retains_every_previous_scene(self):
         previous={(viewport,1,scene) for viewport in ('360x640','412x640')
                   for scene in ('chat','environments','network','proxy','entries','browser','preferences')}
         previous|={('360x640',2,scene) for scene in ('chat','proxy','entries','browser','preferences')}
-        self.assertEqual(len(self.records()),32)
+        self.assertEqual(len(self.records()),80)
         self.assertTrue(previous<={(r['logicalViewport'],r['fontScale'],r['scene']) for r in self.records() if r['theme']=='light'})
         MATRIX.verify_captures(self.records())
 

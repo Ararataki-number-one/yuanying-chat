@@ -22,7 +22,7 @@ final class DesignSettingsUi {
     LinearLayout help=DesignUi.group(a);box.addView(help);
     group(a,help,"问题与建议","提交反馈 · 查看处理进度","chat",()->FeedbackUi.open(a));
     group(a,help,"应用更新",AppSettings.get(a,"updateLabel","当前版本 "+AppVersion.name(a)),"download",()->AppUpdates.open(a));
-    group(a,help,"关于与使用帮助","版本与使用说明","settings",()->about(a));
+    group(a,help,"关于与使用帮助","版本与使用说明","info",()->about(a));
     group(a,help,"功能支持范围","查看支持的功能","shield",()->capabilities(a));
   }
   static void group(Activity a,LinearLayout box,String title,String detail,String icon,Runnable click){DesignUi.groupedRow(box,DesignUi.setting(a,icon,title,detail,"",click));}
@@ -30,7 +30,7 @@ final class DesignSettingsUi {
   static void capabilities(Activity a){DesignUi.message(a,"功能支持范围","• GeckoView 浏览器与 ChatGPT 官方网页\n• 最多 8 个独立环境，支持分组、备注、收藏和删除\n• 每个环境分别保存登录、Cookie、草稿和网络配置\n• 手机网络、订阅入口与固定出口\n• 文件下载和后台回复检测\n\n后台完成提醒需主动开启。浏览器保护范围以自检结果为准。Chrome 扩展尚不支持。\n\n"+NativeCapabilityManifest.officialGecko().unsupportedSummary()+"\n多环境同时运行容量尚未测量。后台空闲只暂停保留会话的活动；回复、上传、下载和维护任务继续受到保护。");}
   static void completionReminders(Activity a,Runnable refresh){
     LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));
-    Switch enabled=new Switch(a);enabled.setText("离开应用后提醒完成");enabled.setTextSize(14);enabled.setTextColor(DesignUi.TEXT);enabled.setChecked(AppSettings.backgroundCompletionNotice(a));box.addView(enabled);
+    Switch enabled=new Switch(a);enabled.setText("离开应用后提醒完成");NativeControls.prepare(enabled);enabled.setChecked(AppSettings.backgroundCompletionNotice(a));box.addView(enabled);
     DesignUi.note(box,"回复和文件下载完成后提醒。使用应用时保持安静；系统仍可能显示后台服务的静默提示。");
     enabled.setOnCheckedChangeListener((button,value)->{AppSettings.put(a,"backgroundCompletionNotice",String.valueOf(value));if(value){ChatService.channels(a);if(android.os.Build.VERSION.SDK_INT>=33&&a.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)a.requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},91);}refresh.run();});
     AppAppearance.dialog(a).setTitle("后台完成提醒").setView(box).setPositiveButton("完成",null).show();
@@ -38,8 +38,8 @@ final class DesignSettingsUi {
   static void defaultEntry(Activity a,Runnable refresh){
     JSONArray rows=ProfileCatalog.get(a).list();List<Integer> ids=new ArrayList<>();List<String> titles=new ArrayList<>();
     for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.optBoolean("created")){ids.add(row.optInt("slot"));titles.add(row.optString("name"));}}
-    LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));Spinner spinner=new Spinner(a);
-    spinner.setAdapter(new ArrayAdapter<>(a,android.R.layout.simple_spinner_dropdown_item,titles));spinner.setSelection(Math.max(0,ids.indexOf(AppSettings.defaultSlot(a))));box.addView(spinner);
+    LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));Spinner spinner=new Spinner(a);spinner.setContentDescription("默认启动环境");
+    spinner.setAdapter(DesignUi.spinnerAdapter(a,titles.toArray(new String[0])));spinner.setSelection(Math.max(0,ids.indexOf(AppSettings.defaultSlot(a))));box.addView(spinner,new LinearLayout.LayoutParams(-1,-2));
     CheckBox direct=new CheckBox(a);direct.setText("启动时直接进入默认环境的原网页");direct.setChecked(AppSettings.bool(a,"startupDirect",true));box.addView(direct);
     DesignUi.note(box,"关闭后先进入环境管理。底部“会话”会回到正在使用的环境。");
     AlertDialog dialog=AppAppearance.dialog(a).setTitle("默认环境与启动入口").setView(box).setPositiveButton("保存",(d,w)->{if(spinner.getSelectedItemPosition()<0)return;AppSettings.defaultSlot(a,ids.get(spinner.getSelectedItemPosition()));AppSettings.put(a,"startupDirect",String.valueOf(direct.isChecked()));refresh.run();if(a instanceof MainActivity&&((MainActivity)a).designChrome!=null)((MainActivity)a).designChrome.update();}).setNegativeButton("取消",null).show();

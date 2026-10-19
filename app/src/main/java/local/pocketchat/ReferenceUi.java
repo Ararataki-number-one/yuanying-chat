@@ -19,14 +19,17 @@ final class ReferenceUi {
   static TextView text(Context c,String value,int size,int color,boolean strong){TextView v=DesignUi.text(c,value,size,color);if(strong)v.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));return v;}
   static void single(TextView v){v.setSingleLine(true);v.setEllipsize(TextUtils.TruncateAt.END);}
   static Drawable surface(Context c,int color,int radius,int border){return DesignUi.surface(c,color,radius,border);}
-  static Button button(Context c,String label,boolean primary,Runnable run){Button b=DesignUi.button(c,label,primary,run);b.setTextColor(primary?Color.WHITE:TEXT);b.setTextSize(14);b.setBackground(new RippleDrawable(ColorStateList.valueOf(primary?0x33ffffff:0x182468f2),primary?DesignUi.gradient(c):surface(c,DesignUi.FIELD,14,Color.TRANSPARENT),null));return b;}
+  static Button button(Context c,String label,boolean primary,Runnable run){return DesignUi.button(c,label,primary,run);}
+  static Button iconButton(Context c,String glyph,String label,Runnable run){Button b=new Ui.IconButton(c,glyph,label,false);b.setOnClickListener(v->run.run());b.setMinimumHeight(dp(c,48));b.setMinimumWidth(dp(c,48));return b;}
   static Button small(Context c,String label,boolean primary,Runnable run){Button b=button(c,label,false,run);b.setTextSize(13);b.setTextColor(primary?BLUE:TEXT);b.setPadding(dp(c,13),0,dp(c,13),0);b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x182468f2),new InsetDrawable(surface(c,primary?BLUE_SOFT:DesignUi.FIELD,12,Color.TRANSPARENT),0,dp(c,6),0,dp(c,6)),null));b.setPadding(dp(c,13),0,dp(c,13),0);return b;}
   static Button link(Context c,String label,Runnable run){Button b=button(c,label,false,run);b.setTextColor(BLUE);b.setPadding(dp(c,4),0,dp(c,4),0);b.setBackground(Ui.ripple(c,Color.TRANSPARENT,9));return b;}
   static Button more(Context c,Runnable run){Button b=new Ui.IconButton(c,"more","更多",false);b.setOnClickListener(v->run.run());b.setMinHeight(dp(c,48));b.setMinimumHeight(dp(c,48));return b;}
   static Button menuAction(Modal panel,String label,Runnable run){
     Context c=panel.a;
     if(panel.body.getChildCount()>0){View line=new View(c);line.setBackgroundColor(LINE);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,Math.max(1,dp(c,1)/2));p.leftMargin=dp(c,12);p.rightMargin=dp(c,12);panel.body.addView(line,p);}
-    Button b=link(c,label,run);b.setTextSize(16);b.setTextColor(TEXT);b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);b.setPadding(dp(c,12),dp(c,10),dp(c,12),dp(c,10));b.setMinHeight(dp(c,52));b.setMinimumHeight(dp(c,52));
+    Button b=link(c,label,run);boolean destructive=label.startsWith("删除")||label.startsWith("清空");b.setTextSize(16);b.setTextColor(destructive?RED:TEXT);b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);b.setPadding(dp(c,12),dp(c,14),dp(c,12),dp(c,14));b.setMinHeight(dp(c,54));b.setMinimumHeight(dp(c,54));
+    String glyph=destructive?"trash":label.contains("分享")?"share":label.contains("编辑")?"new":label.contains("网络")?"globe":label.contains("下载")?"download":label.contains("环境")?"window":label.contains("刷新")||label.contains("重新连接")?"refresh":"info";
+    Ui.Icon icon=new Ui.Icon(glyph,destructive?RED:BLUE);icon.setBounds(0,0,dp(c,21),dp(c,21));b.setCompoundDrawables(icon,null,null,null);b.setCompoundDrawablePadding(dp(c,14));
     panel.body.addView(b,new LinearLayout.LayoutParams(-1,-2));return b;
   }
   static LinearLayout card(Context c){return DesignUi.card(c);}
@@ -63,7 +66,7 @@ final class ReferenceUi {
 
   static final class Modal extends ThemedDialog {
     final Activity a;final LinearLayout root,body,footer,head;final ScrollView scroll;boolean sheet;Runnable cancel=this::dismiss;
-    Modal(Activity a,String title){super(a);this.a=a;root=DesignUi.column(a);root.setPadding(dp(a,16),dp(a,12),dp(a,16),dp(a,16));root.setBackground(surface(a,WHITE,24,Color.TRANSPARENT));head=DesignUi.row(a);TextView heading=text(a,title,18,TEXT,true);heading.setMaxLines(2);heading.setGravity(Gravity.CENTER_VERTICAL);heading.setMinimumHeight(dp(a,48));heading.setContentDescription(title);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));Button close=link(a,"×",()->cancel.run());close.setContentDescription("关闭"+title);close.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,24);close.setTextColor(MUTED);head.addView(close,new LinearLayout.LayoutParams(dp(a,48),dp(a,48)));root.addView(head);body=DesignUi.column(a);scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,-2));footer=DesignUi.row(a);footer.setPadding(0,dp(a,12),0,0);root.addView(footer);setContentView(root);setCanceledOnTouchOutside(false);getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));getWindow().setDimAmount(.28f);getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);getWindow().setGravity(Gravity.CENTER);getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);if(Build.VERSION.SDK_INT>=30)root.setOnApplyWindowInsetsListener((v,in)->{v.post(this::resize);return in;});}
+    Modal(Activity a,String title){super(a);this.a=a;root=DesignUi.column(a);root.setPadding(dp(a,16),dp(a,12),dp(a,16),dp(a,16));root.setBackground(surface(a,WHITE,24,Color.TRANSPARENT));head=DesignUi.row(a);TextView heading=text(a,title,18,TEXT,true);heading.setMaxLines(3);heading.setGravity(Gravity.CENTER_VERTICAL);heading.setMinimumHeight(dp(a,48));heading.setContentDescription(title);if(Build.VERSION.SDK_INT>=28)heading.setAccessibilityHeading(true);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));Button close=iconButton(a,"close","关闭"+title,()->cancel.run());head.addView(close,new LinearLayout.LayoutParams(dp(a,48),dp(a,48)));root.addView(head);body=DesignUi.column(a);scroll=new ScrollView(a);scroll.setFillViewport(false);scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,-2));footer=DesignUi.row(a);footer.setPadding(0,dp(a,12),0,0);root.addView(footer);setContentView(root);setCanceledOnTouchOutside(false);getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));getWindow().setDimAmount(.28f);getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);getWindow().setGravity(Gravity.CENTER);getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE|WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);if(Build.VERSION.SDK_INT>=30)root.setOnApplyWindowInsetsListener((v,in)->{v.post(this::resize);return in;});}
     Modal asSheet(){
       if(sheet)return this;sheet=true;
       FrameLayout grip=new FrameLayout(a);View mark=new View(a);mark.setBackground(surface(a,LINE,2,Color.TRANSPARENT));
@@ -75,9 +78,9 @@ final class ReferenceUi {
     void buttons(String secondary,Runnable back,String primary,Runnable save){
       footer.removeAllViews();boolean stacked=a.getResources().getConfiguration().fontScale>=1.4f;
       footer.setOrientation(stacked?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);
-      if(!secondary.isEmpty())footer.addView(button(a,secondary,false,back),new LinearLayout.LayoutParams(stacked?-1:0,dp(a,48),stacked?0:1));
+      if(!secondary.isEmpty())footer.addView(button(a,secondary,false,back),new LinearLayout.LayoutParams(stacked?-1:0,-2,stacked?0:1));
       if(!primary.isEmpty()){
-        Button b=button(a,primary,true,save);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(stacked?-1:0,dp(a,48),stacked?0:1.5f);
+        Button b=button(a,primary,true,save);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(stacked?-1:0,-2,stacked?0:1.5f);
         if(footer.getChildCount()>0){if(stacked)p.topMargin=dp(a,8);else p.leftMargin=dp(a,8);}footer.addView(b,p);
       }
     }

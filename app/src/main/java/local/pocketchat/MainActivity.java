@@ -37,6 +37,7 @@ public class MainActivity extends ThemedActivity {
   AlertDialog networkDialog; Ui.IconButton navigation; Dialog drawer;
   ReferenceUi.Modal reloadDialog;boolean reloadChecking;
   interface Result {void accept(JSONObject value);}
+  void chooseEnvironment(){ProfileUi.show(this);}
   int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+.5f);}
 
   void status(String value){
@@ -125,7 +126,7 @@ public class MainActivity extends ThemedActivity {
     option(d,"重新加载网页",this::requestReload);
     option(d,"编辑当前环境",()->EnvironmentEditorUi.show(this));
     option(d,"当前环境网络",()->hub.networkFor(Profiles.slot(this)));
-    option(d,"管理全部环境",()->ProfileUi.show(this));
+    option(d,"管理全部环境",()->ProfileUi.manage(this));
     option(d,"下载管理",()->hub.select(AppHub.DOWNLOADS));
     option(d,"应用设置",()->hub.select(AppHub.SETTINGS));
     option(d,"暂存草稿",()->copyLegacyDraft());
@@ -180,7 +181,7 @@ public class MainActivity extends ThemedActivity {
     });
   }
   void option(ReferenceUi.Modal d,String title,Runnable action){ReferenceUi.menuAction(d,title,()->{d.dismiss();action.run();});}
-  void showDrawer(){ProfileUi.show(this);}
+  void showDrawer(){ProfileUi.manage(this);}
 
   /** Recovery is explicit copy-only: never replace the official page's draft. */
   void copyLegacyDraft(){

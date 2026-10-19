@@ -17,6 +17,8 @@ final class LoadingUi {
     wheel=spinner(32);cover.addView(wheel,new LinearLayout.LayoutParams(a.dp(32),a.dp(32)));title=a.label("",16,Ui.INK);title.setGravity(Gravity.CENTER);title.setPadding(0,a.dp(20),0,a.dp(8));title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);cover.addView(title);
     hint=a.label("",13,Ui.MUTED);hint.setGravity(Gravity.CENTER);cover.addView(hint);retry=DesignUi.button(a,"重新加载",true,()->a.session.retryCurrent());cover.addView(retry);
     website=DesignUi.button(a,"检查网络",false,()->NetworkStatusUi.show(a));cover.addView(website);
+    for(Button action:new Button[]{retry,website}){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=a.dp(12);cover.removeView(action);cover.addView(action,p);}
+    title.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
   }
   ProgressBar spinner(int size){ProgressBar p=new ProgressBar(a);p.setIndeterminate(true);p.setIndeterminateTintList(ColorStateList.valueOf(DesignUi.BLUE));return p;}
   void update(){
@@ -34,7 +36,7 @@ final class LoadingUi {
       String value=error?"网页暂时无法打开":"正在打开网页";if(!value.equals(lastTitle)){title.setText(value);lastTitle=value;}
       hint.setText(error?s.status:"加载完成后自动显示");wheel.setVisibility(error?View.GONE:View.VISIBLE);
       retry.setVisibility(error?View.VISIBLE:View.GONE);website.setVisibility(error?View.VISIBLE:View.GONE);
-    }else if(coverShown){coverShown=false;cover.animate().alpha(0).setDuration(180).withEndAction(()->{if(!coverShown)cover.setVisibility(View.GONE);}).start();}
+    }else if(coverShown){coverShown=false;if(android.animation.ValueAnimator.areAnimatorsEnabled())cover.animate().alpha(0).setDuration(180).withEndAction(()->{if(!coverShown)cover.setVisibility(View.GONE);}).start();else{cover.setAlpha(0);cover.setVisibility(View.GONE);}}
     // Official reply progress is part of the website, never a duplicate band.
     band.setVisibility(View.GONE);
   }

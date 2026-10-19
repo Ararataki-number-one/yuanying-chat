@@ -126,7 +126,7 @@ final class EnvironmentEditorUi {
     }
     root.addView(actions);dialog.setOnDismissListener(d->returnToList(a));dialog.setCanceledOnTouchOutside(false);dialog.setContentView(root);dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);dialog.getWindow().setLayout(-1,-1);dialog.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);dialog.getWindow().setStatusBarColor(DesignUi.BG);dialog.getWindow().setNavigationBarColor(DesignUi.BG);AppAppearance.shown(dialog);dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
   }
-  static void updateTabs(MainActivity a,LinearLayout tabs,FrameLayoutHost host,int selected){int n=Math.max(0,Math.min(SECTIONS.length-1,selected));host.page(n);tabs.removeAllViews();tabs.addView(DesignUi.tabs(a,SECTIONS,n,i->updateTabs(a,tabs,host,i)),new LinearLayout.LayoutParams(-1,-2));}
+  static void updateTabs(MainActivity a,LinearLayout tabs,FrameLayoutHost host,int selected){int n=Math.max(0,Math.min(SECTIONS.length-1,selected));host.page(n);NativeControls.form(host);tabs.removeAllViews();tabs.addView(DesignUi.tabs(a,SECTIONS,n,i->updateTabs(a,tabs,host,i)),new LinearLayout.LayoutParams(-1,-2));}
   static boolean apply(MainActivity a,JSONObject value,EditText name){
     String title=value.optString("name").trim();if(title.isEmpty()||title.length()>24){name.setError("请输入 1–24 字名称");return false;}
     if(value.optString("group").length()>12||value.optString("notes").length()>120){a.status("分组最多 12 字，备注最多 120 字");return false;}

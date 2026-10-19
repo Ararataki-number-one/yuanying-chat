@@ -11,13 +11,20 @@ final class Ui {
   static int INK=0xff1e293b,MUTED=0xff64748b,PAPER=0xfff4f6fa,SOFT=0xffeaf1ff;
   static int dp(Context c,int n){return (int)(c.getResources().getDisplayMetrics().density*n+.5f);}
   static GradientDrawable shape(Context c,int color,int radius){GradientDrawable d=new AppAppearance.Surface(color);d.setCornerRadius(dp(c,radius));return d;}
-  static RippleDrawable ripple(Context c,int color,int radius){return new RippleDrawable(ColorStateList.valueOf(0x18000000),shape(c,color,radius),shape(c,Color.WHITE,radius));}
+  static RippleDrawable ripple(Context c,int color,int radius){return new RippleDrawable(ColorStateList.valueOf(AppAppearance.dark()?0x337faeff:0x180067d8),shape(c,color,radius),shape(c,Color.WHITE,radius));}
   static final class Icon extends Drawable {
     String name;final Paint p=new Paint(3);int color;
     Icon(String name,int color){this.name=name;this.color=color;}
     public void draw(Canvas canvas){Rect b=getBounds();canvas.save();canvas.translate(b.left,b.top);canvas.scale(b.width()/24f,b.height()/24f);p.setColor(color);p.setStrokeWidth(1.7f);p.setStyle(Paint.Style.STROKE);p.setStrokeCap(Paint.Cap.ROUND);p.setStrokeJoin(Paint.Join.ROUND);
       Path path=new Path();
       switch(name){
+        case "tray":path.moveTo(6,4);path.lineTo(18,4);path.lineTo(22,15);path.lineTo(22,20);path.lineTo(2,20);path.lineTo(2,15);path.close();canvas.drawPath(path,p);path.reset();path.moveTo(2,15);path.lineTo(8,15);path.lineTo(10,18);path.lineTo(14,18);path.lineTo(16,15);path.lineTo(22,15);canvas.drawPath(path,p);break;
+        case "search":canvas.drawCircle(10,10,6.5f,p);canvas.drawLine(15,15,21,21,p);break;
+        case "refresh":canvas.drawArc(new RectF(4,4,20,20),40,290,false,p);path.moveTo(16,2);path.lineTo(20,7);path.lineTo(14,8);canvas.drawPath(path,p);break;
+        case "share":canvas.drawLine(12,15,12,3,p);path.moveTo(8,7);path.lineTo(12,3);path.lineTo(16,7);canvas.drawPath(path,p);path.reset();path.moveTo(6,10);path.lineTo(4,10);path.lineTo(4,21);path.lineTo(20,21);path.lineTo(20,10);path.lineTo(18,10);canvas.drawPath(path,p);break;
+        case "trash":canvas.drawLine(4,6,20,6,p);canvas.drawLine(9,3,15,3,p);path.moveTo(6,6);path.lineTo(7,21);path.lineTo(17,21);path.lineTo(18,6);canvas.drawPath(path,p);canvas.drawLine(10,10,10,17,p);canvas.drawLine(14,10,14,17,p);break;
+        case "check":path.moveTo(5,12);path.lineTo(10,17);path.lineTo(20,6);canvas.drawPath(path,p);break;
+        case "info":canvas.drawCircle(12,12,9,p);canvas.drawLine(12,11,12,17,p);canvas.drawPoint(12,7,p);break;
         case "window":path.moveTo(12,3);path.lineTo(21,8);path.lineTo(21,18);path.lineTo(12,23);path.lineTo(3,18);path.lineTo(3,8);path.close();canvas.drawPath(path,p);canvas.drawLine(3,8,12,13,p);canvas.drawLine(21,8,12,13,p);canvas.drawLine(12,13,12,23,p);break;
         case "shield":path.moveTo(12,2);path.lineTo(21,6);path.lineTo(20,15);path.quadTo(18,20,12,23);path.quadTo(6,20,4,15);path.lineTo(3,6);path.close();canvas.drawPath(path,p);path.reset();path.moveTo(8,12);path.lineTo(11,15);path.lineTo(17,8);canvas.drawPath(path,p);break;
         case "lock":canvas.drawRoundRect(new RectF(5,10,19,22),3,3,p);canvas.drawArc(new RectF(8,2,16,14),180,180,false,p);canvas.drawCircle(12,15,1,p);canvas.drawLine(12,16,12,18,p);break;
@@ -50,7 +57,7 @@ final class Ui {
   }
   static final class IconButton extends Button {
     final Icon icon;final boolean filled;
-    IconButton(Context c,String glyph,String label,boolean filled){super(c);this.filled=filled;icon=new Icon(glyph,filled?Color.WHITE:INK);setText("");setContentDescription(label);setPadding(0,0,0,0);setMinWidth(0);setMinHeight(0);setMinimumWidth(0);setMinimumHeight(0);setGravity(Gravity.CENTER);setStateListAnimator(null);setElevation(0);setBackground(ripple(c,filled?0xff1268ff:Color.TRANSPARENT,28));}
+    IconButton(Context c,String glyph,String label,boolean filled){super(c);this.filled=filled;icon=new Icon(glyph,filled?Color.WHITE:INK);setText("");setContentDescription(label);setPadding(0,0,0,0);setMinWidth(0);setMinHeight(0);setMinimumWidth(0);setMinimumHeight(0);setGravity(Gravity.CENTER);setStateListAnimator(null);setElevation(0);setBackground(ripple(c,filled?0xff1268ff:Color.TRANSPARENT,14));setTooltipText(label);}
     @Override protected void onDraw(Canvas c){super.onDraw(c);int size=dp(getContext(),filled?21:23);icon.setBounds((getWidth()-size)/2,(getHeight()-size)/2,(getWidth()+size)/2,(getHeight()+size)/2);icon.color=filled?Color.WHITE:MUTED;icon.draw(c);}
     @Override public void setEnabled(boolean enabled){super.setEnabled(enabled);setAlpha(enabled?1f:.35f);}
   }

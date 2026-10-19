@@ -10,13 +10,28 @@ import org.json.*;
 /** Test-only: actual production screens and components, with local synthetic records. */
 public final class UiVisualIntegrationActivity extends Activity {
   NetworkWorkspaceUi workspace;
+  SavedFileActions savedActions;
   final Handler handler=new Handler(Looper.getMainLooper());
   @Override public void onCreate(Bundle state){
     super.onCreate(state);String action=getIntent().getStringExtra("visualAction");
     try{seed();}catch(Exception e){Log.e("PocketUiVisual","fixture setup failed",e);finish();return;}
-    if("settings".equals(action)){
+    if("environment-picker".equals(action)||"templates".equals(action)||"zoom".equals(action)){startActivity(new Intent(this,UiDetailsIntegrationActivity.class).putExtra("detailScene",action));finish();return;}
+    if("brand".equals(action)){startActivity(new Intent(this,BrandLaunchActivity.class).putExtra("previewBrand",true));finish();return;}
+    if("import".equals(action)){startActivity(new Intent(this,NetworkImportActivity.class));finish();return;}
+    if("settings".equals(action)||"appearance".equals(action)||"default-entry".equals(action)||"feedback".equals(action)||"downloads".equals(action)){
       LinearLayout root=DesignUi.screen(this),box=DesignUi.body(this,root,"应用设置",null);
-      DesignSettingsUi.render(this,box,()->{});root.addView(ReferenceUi.nav(this,4,n->{},new Button[5]));setContentView(root);return;
+      if("downloads".equals(action)){
+        savedActions=new SavedFileActions(this);DesignDownloads.Controller controller=new DesignDownloads.Controller(this,box,0,n->{},savedActions);
+        long now=System.currentTimeMillis();JSONArray data=J.arr(
+          J.obj("id","visual-active","slot",0,"name","项目资料与界面设计说明.pdf","state","running","received",1200000,"total",5000000,"time",now,"updated",now),
+          J.obj("id","visual-paused","slot",1,"name","稍后继续的文件.zip","state","paused","received",900000,"total",3000000,"time",now-1000),
+          J.obj("id","visual-failed","slot",0,"name","等待重试的文件.pdf","state","failed","reason","连接中断，可检查网络后重试。","time",now-2000),
+          J.obj("id","visual-saved","slot",0,"name","已保存的笔记.pdf","state","saved","time",now-3000,"location","Download/元婴期院士/"));controller.apply(data,0,now);
+      }else DesignSettingsUi.render(this,box,()->{});
+      root.addView(ReferenceUi.nav(this,4,n->{},new Button[5]));setContentView(root);AppAppearance.apply(root);
+      if("appearance".equals(action))DesignSettingsUi.appearance(this,()->{});
+      if("default-entry".equals(action))DesignSettingsUi.defaultEntry(this,()->{});
+      if("feedback".equals(action))FeedbackUi.open(this);return;
     }
     if("environments".equals(action)){startActivity(new Intent(this,WindowHomeActivity.class));finish();return;}
     if("browser".equals(action)||"preferences".equals(action)||"chat".equals(action)){
@@ -31,6 +46,9 @@ public final class UiVisualIntegrationActivity extends Activity {
     workspace=new NetworkWorkspaceUi(this,host);workspace.show(0);
     workspace.afterRead=()->{
       if("network-menu".equals(action))workspace.networkMore();
+      if("subscription-form".equals(action))workspace.subscriptionForm(NetworkCatalog.ENTRY,null,null);
+      if("exit-form".equals(action))workspace.exitForm(null);
+      if("route-editor".equals(action)&&workspace.windows.length()>0)workspace.editInternal(workspace.windows.optJSONObject(0));
       if("exit-password".equals(action))workspace.exitForm(J.obj("id","synthetic-exit","name","测试出口","host","127.0.0.1","port",1080,"user","fixture","password","Synthetic-exit-7!"),null);
       if("proxy".equals(action))workspace.external(0,true);
       if("entries".equals(action))try{
@@ -60,5 +78,5 @@ public final class UiVisualIntegrationActivity extends Activity {
       library.parsed(sub.getString("id"),J.arr("Entry|日本大阪 03","Entry|日本东京 01","Entry|香港入口"),fixture.getBytes(java.nio.charset.StandardCharsets.UTF_8),System.currentTimeMillis());
     }
   }
-  @Override protected void onDestroy(){if(workspace!=null)workspace.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
+  @Override protected void onDestroy(){if(workspace!=null)workspace.close();if(savedActions!=null)savedActions.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
 }

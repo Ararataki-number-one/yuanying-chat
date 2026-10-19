@@ -22,7 +22,7 @@ final class DesignUi {
     group.addView(row,new LinearLayout.LayoutParams(-1,-2));
   }
   static ArrayAdapter<String> spinnerAdapter(Context c,String[] labels){return new ArrayAdapter<String>(c,android.R.layout.simple_spinner_dropdown_item,labels){
-    TextView style(android.view.View view){TextView text=(TextView)view;text.setTextColor(TEXT);text.setTextSize(15);return text;}
+    TextView style(android.view.View view){TextView text=(TextView)view;text.setTextColor(TEXT);text.setTextSize(15);text.setSingleLine(false);text.setMaxLines(3);text.setMinHeight(dp(c,48));text.setGravity(Gravity.CENTER_VERTICAL);text.setPadding(dp(c,12),dp(c,10),dp(c,28),dp(c,10));return text;}
     @Override public android.view.View getView(int position,android.view.View reused,android.view.ViewGroup parent){return style(super.getView(position,reused,parent));}
     @Override public android.view.View getDropDownView(int position,android.view.View reused,android.view.ViewGroup parent){return style(super.getDropDownView(position,reused,parent));}
   };}
@@ -34,13 +34,14 @@ final class DesignUi {
   static int actionWidth(Button button,int minimumDp){return Math.max(dp(button.getContext(),minimumDp),(int)Math.ceil(button.getPaint().measureText(button.getText().toString()))+button.getCompoundPaddingLeft()+button.getCompoundPaddingRight()+dp(button.getContext(),2));}
   static Button button(Context c,String title,boolean primary,Runnable action){
     Button b=new ActionButton(c);b.setText(title);b.setAllCaps(false);b.setTextSize(14);b.setIncludeFontPadding(false);
-    b.setTextColor(primary?Color.WHITE:TEXT);b.setMinWidth(0);b.setMinimumWidth(0);
+    boolean destructive=title.startsWith("删除")||title.startsWith("清空")||title.equals("放弃修改");
+    b.setTextColor(primary?Color.WHITE:destructive?RED:TEXT);b.setMinWidth(0);b.setMinimumWidth(0);
     b.setMinHeight(dp(c,48));b.setMinimumHeight(dp(c,48));
     b.setPadding(dp(c,12),dp(c,6),dp(c,12),dp(c,6));b.setStateListAnimator(null);
-    b.setBackground(new RippleDrawable(ColorStateList.valueOf(primary?0x33ffffff:0x182563eb),primary?gradient(c):surface(c,FIELD,14,Color.TRANSPARENT),surface(c,Color.WHITE,14,Color.TRANSPARENT)));
-    b.setOnClickListener(v->action.run());return b;
+    b.setBackground(new RippleDrawable(ColorStateList.valueOf(primary?0x33ffffff:0x182563eb),primary?(destructive?surface(c,RED,14,Color.TRANSPARENT):gradient(c)):surface(c,FIELD,14,Color.TRANSPARENT),surface(c,Color.WHITE,14,Color.TRANSPARENT)));
+    b.setOnClickListener(v->action.run());b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));return b;
   }
-  static void action(LinearLayout box,String label,boolean primary,Runnable run){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(box.getContext(),48));p.topMargin=dp(box.getContext(),10);box.addView(button(box.getContext(),label,primary,run),p);}
+  static void action(LinearLayout box,String label,boolean primary,Runnable run){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(box.getContext(),10);box.addView(button(box.getContext(),label,primary,run),p);}
   static void feedback(Activity a,String message){if(a instanceof MainActivity)((MainActivity)a).status(message);else SavedFileActions.problem(a,message);}
   static Runnable protectEdits(Activity a,AlertDialog dialog,java.util.function.BooleanSupplier dirty){
     final AlertDialog[] prompt={null};
@@ -57,7 +58,7 @@ final class DesignUi {
     dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v->close.run());return close;
   }
   static void empty(LinearLayout box,String title,String detail,String action,Runnable run){
-    Context c=box.getContext();LinearLayout card=card(c);TextView h=text(c,title,16,TEXT);h.setTypeface(Typeface.DEFAULT_BOLD);card.addView(h);note(card,detail);
+    Context c=box.getContext();LinearLayout card=card(c);card.setPadding(dp(c,20),dp(c,28),dp(c,20),dp(c,24));ImageView mark=icon(c,"tray",MUTED,44);card.addView(mark);TextView h=text(c,title,17,TEXT);h.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));h.setPadding(0,dp(c,16),0,0);card.addView(h);note(card,detail);
     if(run!=null)action(card,action,false,run);addCard(box,card);
   }
   static LinearLayout progress(Context c,String title,String detail){
@@ -84,18 +85,18 @@ final class DesignUi {
     if(action!=null){r.setClickable(true);r.setFocusable(true);r.setOnClickListener(v->action.run());}return r;
   }
   static void field(LinearLayout box,String title,String value){
-    Context c=box.getContext();LinearLayout row=row(c);row.setGravity(Gravity.TOP);row.setPadding(0,dp(c,7),0,dp(c,7));
-    TextView name=text(c,title,12,MUTED);row.addView(name,new LinearLayout.LayoutParams(dp(c,76),-2));
-    TextView val=text(c,value,14,TEXT);val.setTextIsSelectable(true);row.addView(val,new LinearLayout.LayoutParams(0,-2,1));box.addView(row);
+    Context c=box.getContext();LinearLayout row=row(c);boolean large=c.getResources().getConfiguration().fontScale>=1.4f;row.setOrientation(large?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);row.setGravity(Gravity.TOP);row.setPadding(0,dp(c,9),0,dp(c,9));
+    TextView name=text(c,title,13,MUTED);row.addView(name,new LinearLayout.LayoutParams(large?-1:dp(c,88),-2));
+    TextView val=text(c,value,15,TEXT);val.setTextIsSelectable(true);if(large)val.setPadding(0,dp(c,5),0,0);row.addView(val,new LinearLayout.LayoutParams(large?-1:0,-2,large?0:1));box.addView(row);
   }
-  static EditText input(LinearLayout box,String title,String value,String hint){Context c=box.getContext();TextView label=text(c,title,13,MUTED);label.setPadding(0,dp(c,12),0,dp(c,6));if(!title.isEmpty())box.addView(label);EditText e=new EditText(c);e.setTextSize(16);e.setTextColor(TEXT);e.setHintTextColor(MUTED);e.setSingleLine(true);e.setContentDescription(title);e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);e.setText(value);e.setHint(hint);e.setPadding(dp(c,10),0,dp(c,10),0);e.setBackground(surface(c,FIELD,12,Color.TRANSPARENT));box.addView(e,new LinearLayout.LayoutParams(-1,dp(c,48)));return e;}
+  static EditText input(LinearLayout box,String title,String value,String hint){Context c=box.getContext();TextView label=text(c,title,13,MUTED);label.setPadding(0,dp(c,16),0,dp(c,8));if(!title.isEmpty())box.addView(label);EditText e=new EditText(c);e.setSingleLine(true);NativeControls.prepare(e);e.setContentDescription(title);label.setLabelFor(e.getId());e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);e.setText(value);e.setHint(hint);box.addView(e,new LinearLayout.LayoutParams(-1,-2));return e;}
   static void visiblePassword(EditText input){
     Context c=input.getContext();LinearLayout parent=(LinearLayout)input.getParent();int index=parent.indexOfChild(input);ViewGroup.LayoutParams layout=input.getLayoutParams();
     input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
     input.setImeOptions(input.getImeOptions()|android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
     input.setTransformationMethod(null);
     parent.removeView(input);FrameLayout row=new FrameLayout(c);parent.addView(row,index,layout);
-    input.setPadding(input.getPaddingLeft(),input.getPaddingTop(),dp(c,76),input.getPaddingBottom());row.addView(input,new FrameLayout.LayoutParams(-1,-1));
+    input.setPadding(input.getPaddingLeft(),input.getPaddingTop(),dp(c,76),input.getPaddingBottom());row.addView(input,new FrameLayout.LayoutParams(-1,-2));
     Button toggle=ReferenceUi.link(c,"隐藏",()->{});toggle.setContentDescription("隐藏密码");
     toggle.setOnClickListener(v->{
       int start=input.getSelectionStart(),end=input.getSelectionEnd();boolean hide=input.getTransformationMethod()==null;
@@ -105,16 +106,33 @@ final class DesignUi {
     });
     row.addView(toggle,new FrameLayout.LayoutParams(dp(c,68),-1,Gravity.END|Gravity.CENTER_VERTICAL));
   }
+  static EditText searchInput(LinearLayout parent,String hint){
+    Context c=parent.getContext();LinearLayout field=column(c);EditText input=input(field,"","",hint);field.removeView(input);
+    FrameLayout host=new FrameLayout(c);host.addView(input,new FrameLayout.LayoutParams(-1,-2));
+    Ui.Icon search=new Ui.Icon("search",MUTED);search.setBounds(0,0,dp(c,18),dp(c,18));input.setCompoundDrawables(search,null,null,null);input.setCompoundDrawablePadding(dp(c,8));input.setPadding(input.getPaddingLeft(),input.getPaddingTop(),dp(c,52),input.getPaddingBottom());input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+    Button clear=ReferenceUi.iconButton(c,"close","清除搜索内容",()->input.setText(""));clear.setVisibility(View.GONE);host.addView(clear,new FrameLayout.LayoutParams(dp(c,48),dp(c,48),Gravity.END|Gravity.CENTER_VERTICAL));
+    input.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void afterTextChanged(android.text.Editable value){}public void onTextChanged(CharSequence s,int start,int before,int count){clear.setVisibility(s.length()==0?View.GONE:View.VISIBLE);}});
+    parent.addView(host,new LinearLayout.LayoutParams(-1,-2));return input;
+  }
   static LinearLayout tabs(Context c,String[] labels,int selected,java.util.function.IntConsumer onClick){return ReferenceUi.tabs(c,labels,selected,onClick);}
   static LinearLayout nav(Activity a,int selected,java.util.function.IntConsumer action,Button[] buttons){return ReferenceUi.nav(a,selected,action,buttons);}
   static void markNav(Activity a,Button[] tabs,int selected){ReferenceUi.markNav(tabs,selected);}
   static LinearLayout screen(Activity a){chrome(a);LinearLayout root=column(a);root.setFitsSystemWindows(true);root.setBackground(new Stars(a));return root;}
-  static LinearLayout body(Activity a,LinearLayout root,String title,Runnable back){LinearLayout head=row(a);head.setPadding(dp(a,12),dp(a,8),dp(a,12),dp(a,8));if(back!=null){Button b=button(a,"‹",false,back);b.setContentDescription("返回");head.addView(b,new LinearLayout.LayoutParams(dp(a,48),dp(a,48)));}TextView heading=text(a,title,24,TEXT);heading.setTypeface(Typeface.DEFAULT_BOLD);heading.setPadding(dp(a,8),0,0,0);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));root.addView(head);LinearLayout box=column(a);box.setPadding(dp(a,14),0,dp(a,14),dp(a,18));ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.addView(box);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));return box;}
+  static LinearLayout body(Activity a,LinearLayout root,String title,Runnable back){LinearLayout head=row(a);head.setPadding(dp(a,12),dp(a,8),dp(a,12),dp(a,8));if(back!=null){Button b=ReferenceUi.iconButton(a,"back","返回",back);head.addView(b,new LinearLayout.LayoutParams(dp(a,48),dp(a,48)));}TextView heading=text(a,title,24,TEXT);heading.setTypeface(Typeface.DEFAULT_BOLD);heading.setPadding(dp(a,8),0,0,0);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));root.addView(head);LinearLayout box=column(a);box.setPadding(dp(a,14),0,dp(a,14),dp(a,18));ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.addView(box);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));return box;}
   static void section(LinearLayout box,String title,String detail){TextView h=text(box.getContext(),title,13,MUTED);h.setPadding(dp(box.getContext(),16),dp(box.getContext(),22),dp(box.getContext(),16),dp(box.getContext(),8));if(Build.VERSION.SDK_INT>=28)h.setAccessibilityHeading(true);box.addView(h);if(!detail.isEmpty())note(box,detail);}
   static void scope(MainActivity a,LinearLayout box){
     LinearLayout row=row(a);TextView label=text(a,"环境 · "+Profiles.display(a,Profiles.slot(a)),13,MUTED);label.setSingleLine(true);label.setEllipsize(android.text.TextUtils.TruncateAt.END);
     row.addView(label,new LinearLayout.LayoutParams(0,-2,1));Button change=button(a,"切换",false,()->a.startActivity(new Intent(a,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
     change.setTextSize(12);row.addView(change,new LinearLayout.LayoutParams(dp(a,64),dp(a,48)));box.addView(row);
+  }
+  static void route(LinearLayout box,String entrance,String exit){
+    Context c=box.getContext();LinearLayout route=column(c);route.setPadding(dp(c,12),dp(c,6),dp(c,12),dp(c,6));route.setBackground(surface(c,FIELD,12,Color.TRANSPARENT));
+    String[] labels={"入口","固定出口","目的地"},values={entrance,exit,"ChatGPT"},icons={"globe","lock","chat"};
+    for(int i=0;i<labels.length;i++){
+      LinearLayout stage=row(c);stage.setPadding(0,dp(c,6),0,dp(c,6));ImageView icon=new ImageView(c);icon.setImageDrawable(new Ui.Icon(icons[i],i==1?BLUE:MUTED));stage.addView(icon,new LinearLayout.LayoutParams(dp(c,18),dp(c,18)));
+      LinearLayout content=column(c);content.setPadding(dp(c,10),0,0,0);TextView label=text(c,labels[i],12,MUTED);content.addView(label);TextView name=text(c,values[i],14,TEXT);name.setMaxLines(3);name.setEllipsize(android.text.TextUtils.TruncateAt.END);name.setPadding(0,dp(c,3),0,0);content.addView(name);stage.addView(content,new LinearLayout.LayoutParams(0,-2,1));route.addView(stage);
+    }
+    LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(c,12);box.addView(route,p);
   }
   static AlertDialog message(Activity a,String title,String text){return AppAppearance.dialog(a).setTitle(title).setMessage(text).setPositiveButton("知道了",null).show();}
   static final class Stars extends Drawable {
