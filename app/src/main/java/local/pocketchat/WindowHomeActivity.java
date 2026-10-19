@@ -46,7 +46,7 @@ public class WindowHomeActivity extends ThemedActivity {
     preparation=DesignUi.progress(this,"正在创建环境…","完成后会打开新环境，请稍候。");
     preparation.setVisibility(View.GONE);DesignUi.addCard(box,preparation);
     LinearLayout searchRow=DesignUi.row(this),searchBox=DesignUi.column(this);
-    search=DesignUi.searchInput(searchBox,"搜索环境名称、分组或备注");
+    search=DesignUi.searchInput(searchBox,largeText?"搜索环境":"搜索名称、分组或备注");
     search.setContentDescription("搜索环境");searchRow.addView(searchBox,new LinearLayout.LayoutParams(0,-2,1));
     filterOptions=DesignUi.button(this,"筛选",false,this::chooseFilters);LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(DesignUi.actionWidth(filterOptions,72),dp(48));op.leftMargin=dp(8);searchRow.addView(filterOptions,op);
     LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(8);box.addView(searchRow,sp);

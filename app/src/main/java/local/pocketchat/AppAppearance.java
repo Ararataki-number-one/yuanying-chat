@@ -108,7 +108,14 @@ final class AppAppearance {
   private static ColorStateList colors(ColorStateList source,boolean foreground){
     if(source==null)return ColorStateList.valueOf(DesignUi.TEXT);
     int[][] states={{-android.R.attr.state_enabled},{android.R.attr.state_pressed},{android.R.attr.state_checked},{android.R.attr.state_selected},{android.R.attr.state_focused},{}};
-    int[] values=new int[states.length];for(int i=0;i<values.length;i++){int value=source.getColorForState(states[i],source.getDefaultColor());values[i]=foreground?text(value):color(value);}return new ColorStateList(states,values);
+    int[] values=new int[states.length];for(int i=0;i<values.length;i++){
+      // A query containing only "pressed" (or no states) also matches a
+      // disabled selector. Enabled samples must carry their enabled state.
+      int[] query;
+      if(i==0)query=states[i];
+      else{query=new int[states[i].length+2];query[0]=android.R.attr.state_enabled;query[1]=android.R.attr.state_window_focused;System.arraycopy(states[i],0,query,2,states[i].length);}
+      int value=source.getColorForState(query,source.getDefaultColor());values[i]=foreground?text(value):color(value);
+    }return new ColorStateList(states,values);
   }
   private static void drawable(Drawable d){
     if(d instanceof NativeControls.Field)((NativeControls.Field)d).refresh();

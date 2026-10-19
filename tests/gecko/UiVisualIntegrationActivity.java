@@ -40,6 +40,7 @@ public final class UiVisualIntegrationActivity extends Activity {
     }
     if("environments".equals(action)){startActivity(new Intent(this,WindowHomeActivity.class));finish();return;}
     if("browser".equals(action)||"preferences".equals(action)||"chat".equals(action)){
+      if("browser".equals(action))Profiles.rename(this,0,"长文阅读与文件整理和日常会话的完整环境名称测试");
       Intent target=new Intent(this,MainActivity.class).putExtra("openWindowAction","chat".equals(action)?"native-smoke":"edit");
       startActivity(target);finish();return;
     }
@@ -75,7 +76,7 @@ public final class UiVisualIntegrationActivity extends Activity {
   }
   void seed()throws Exception{
     if(!getPackageName().endsWith(".test"))throw new SecurityException();
-    if(AppSettings.bool(this,"nativeUiSeedV2",false))return;
+    if(AppSettings.bool(this,"nativeUiSeedV2",false)){Profiles.rename(this,0,"日常会话");return;}
     String[] names={"日常会话","资料整理","开发调试","长文阅读与文件整理","翻译与写作","个人收藏","备用环境","项目讨论"};
     ProfileCatalog catalog=ProfileCatalog.get(this);
     for(int slot=0;slot<names.length;slot++){

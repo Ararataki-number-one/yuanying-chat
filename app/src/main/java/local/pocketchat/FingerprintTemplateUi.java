@@ -15,7 +15,8 @@ final class FingerprintTemplateUi {
     edited.environmentIo.execute(()->{EnvironmentSpec state=null;try{state=new EnvironmentSpecRepository(edited.context).load();}catch(Exception ignored){}EnvironmentSpec loaded=state;edited.handler.post(()->{if(!a.isDestroyed()&&!a.isFinishing()&&!edited.deleted&&a.session==edited)showLoaded(a,apply,loaded);});});
   }
   private static void showLoaded(MainActivity a,Apply apply,EnvironmentSpec state){
-    LinearLayout box=new LinearLayout(a);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(a.dp(18),a.dp(8),a.dp(18),a.dp(12));
+    ReferenceUi.Modal dialog=new ReferenceUi.Modal(a,"环境模板");
+    LinearLayout box=dialog.body;box.setPadding(a.dp(2),a.dp(8),a.dp(2),a.dp(12));
     TextView status=a.label(summary(a.session,state),14,Ui.INK);status.setLineSpacing(a.dp(4),1);box.addView(status);
     TextView scope=a.label("仅调整 Firefox 网页显示、语言和现有隐私保护，不提供完整桌面指纹。",13,Ui.MUTED);scope.setPadding(0,a.dp(8),0,a.dp(10));box.addView(scope);
     box.addView(a.label("选择模板",13,Ui.MUTED));
@@ -29,12 +30,11 @@ final class FingerprintTemplateUi {
     TextView note=a.label("电脑版的后台请求（Worker）可能仍使用手机版浏览器信息。强化模板为实验模式，网页兼容性尚待真机验证。",13,Ui.MUTED);note.setPadding(0,a.dp(6),0,0);box.addView(note);
     DesignUi.action(box,"模板说明与状态详情",false,()->showDetails(a,edited));
     TextView result=a.label("",13,Ui.MUTED);box.addView(result);
-    ScrollView scroll=new ScrollView(a);scroll.addView(box);
-    AlertDialog dialog=AppAppearance.dialog(a).setTitle("环境模板").setView(scroll).setPositiveButton("保存模板",null).setNeutralButton("查看环境自检",(d,w)->EnvironmentAuditUi.show(a)).setNegativeButton("关闭",null).create();
-    dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
+    DesignUi.action(box,"查看环境自检",false,()->{dialog.dismiss();EnvironmentAuditUi.show(a);});
+    dialog.buttons("关闭",dialog::dismiss,"保存模板",()->{
       String template=ids[choices.getSelectedItemPosition()];int selectedIndex=language.getSelectedItemPosition();
       String[] locales={"","","zh-CN","en-US","ja-JP"};String selected=locales[selectedIndex];
-      dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);result.setText("正在读取当前配置并保存模板…");
+      dialog.primary().setEnabled(false);result.setText("正在读取当前配置并保存模板…");
       // The dialog stays open after saving. "Keep current" must read the current
       // desired language, including previous saves, rather than its opening value.
       edited.environmentIo.execute(()->{
@@ -46,15 +46,16 @@ final class FingerprintTemplateUi {
         BrowserIdentitySpec specification=requested;String error=failure;
         edited.handler.post(()->{
           if(a.isDestroyed()||a.isFinishing()||a.session!=edited||!dialog.isShowing())return;
-          if(!error.isEmpty()){dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);result.setText(error);return;}
+          if(!error.isEmpty()){dialog.primary().setEnabled(true);result.setText(error);return;}
           apply.apply(specification,issue->{
             if(a.isDestroyed()||a.session!=edited||!dialog.isShowing())return;
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);result.setText(issue==null||issue.isEmpty()?"配置已保存；运行状态与网页观测可分别查看。":issue);
+            dialog.primary().setEnabled(true);result.setText(issue==null||issue.isEmpty()?"配置已保存；运行状态与网页观测可分别查看。":issue);
             edited.environmentIo.execute(()->{EnvironmentSpec updated=null;try{updated=new EnvironmentSpecRepository(edited.context).load();}catch(Exception ignored){}EnvironmentSpec latest=updated;edited.handler.post(()->{if(!a.isDestroyed()&&a.session==edited&&dialog.isShowing())status.setText(summary(edited,latest));});});
           });
         });
       });
     });
+    dialog.show();
   }
   static String summary(ChatSession session,EnvironmentSpec spec){
     String desired=spec==null?"配置暂未读取":templateName(spec.desired().browser())+" · 已保存";

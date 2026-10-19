@@ -65,7 +65,19 @@ def capture(variant,width,height,scale,scene,theme='light'):
                 adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350');readiness_scrolls+=1
         if time.monotonic()>deadline:raise AssertionError((variant,scene,'screen did not appear',xml[-2000:]))
         time.sleep(.5)
-    if scene=='browser':click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
+    if scene=='templates':
+        # Both fixed footer actions must fit without scrolling or clipping.
+        for label in ('关闭','保存模板'):
+            action=next((n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text')==label and n.attrib.get('clickable')=='true'),None)
+            assert action is not None,(variant,scene,'Template footer action missing',label)
+            bounds=list(map(int,re.findall(r'\d+',action.attrib['bounds'])))
+            assert bounds[3]-bounds[1]>=48*3 and 0<=bounds[1]<bounds[3]<=height*3,(variant,scene,'Template footer action clipped',label,bounds)
+    if scene=='browser':
+        headings=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text','').startswith('编辑 · ')]
+        assert headings,(variant,scene,'Missing long environment editor heading')
+        bounds=list(map(int,re.findall(r'\d+',headings[0].attrib['bounds'])))
+        assert bounds[3]-bounds[1]<=130*3,(variant,scene,'Environment title crowds out the editor',bounds)
+        click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
     if scene=='preferences':
         tab_scrolls=click_editor_tab(xml,'使用偏好');time.sleep(.5)
         expected={'保存本机输入草稿','恢复网页滚动位置','后台检测回复','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}

@@ -15,6 +15,7 @@ public final class AppearanceIntegrationActivity extends ThemedActivity {
   final String instance=java.util.UUID.randomUUID().toString();
   String token;String feedbackUrl="";LinearLayout root,settings;EditText draft;TextView sample;Button primary;
   ReferenceUi.Modal modal;int configurations;JSONObject buildIdentity;
+  Button nativeSelector;TextView nativeTitle;
   @Override public void onCreate(Bundle state){super.onCreate(state);token=getIntent().getStringExtra("runToken");
     root=DesignUi.screen(this);settings=DesignUi.body(this,root,"外观测试",null);
     sample=DesignUi.text(this,"正文与辅助信息",16,DesignUi.TEXT);settings.addView(sample);
@@ -22,6 +23,8 @@ public final class AppearanceIntegrationActivity extends ThemedActivity {
     primary=DesignUi.button(this,"打开外观设置",true,()->{DesignSettingsUi.appearance(this,()->{});});settings.addView(primary);
     DesignUi.action(settings,"检查弹窗",false,()->{modal=new ReferenceUi.Modal(this,"弹窗配色");modal.note("网络与下载仍可继续");modal.buttons("关闭",modal::dismiss,"确定",modal::dismiss);modal.show();});
     DesignUi.action(settings,"打开反馈",false,()->{if(AppSettings.get(this,FeedbackUi.DRAFT,"").isEmpty())AppSettings.put(this,FeedbackUi.DRAFT,J.obj("suggestion",false,"title","Upload picker missing","details","Tap add attachment; picker does not appear.","system",false).toString());FeedbackUi.open(this);});
+    nativeSelector=new Button(this);nativeSelector.setId(android.R.id.button1);nativeSelector.setText("可用操作");
+    nativeTitle=new TextView(this);nativeTitle.setTextColor(new android.content.res.ColorStateList(new int[][]{{-android.R.attr.state_enabled},{}},new int[]{0x42000000,0xde000000}));
     setContentView(root);handler.post(write);
   }
   @Override public void startActivity(android.content.Intent intent){
@@ -29,9 +32,13 @@ public final class AppearanceIntegrationActivity extends ThemedActivity {
     super.startActivity(intent);
   }
   JSONObject identity()throws Exception{if(buildIdentity==null)buildIdentity=IntegrationBuildIdentity.read(this);return buildIdentity;}
+  JSONObject nativeColors(){
+    AppAppearance.apply(nativeSelector);nativeSelector.setEnabled(false);int disabled=nativeSelector.getCurrentTextColor();nativeSelector.setEnabled(true);int enabled=nativeSelector.getCurrentTextColor();
+    AppAppearance.apply(nativeTitle);return J.obj("enabled",enabled,"disabled",disabled,"titleAlpha",nativeTitle.getCurrentTextColor()>>>24);
+  }
   final Runnable write=new Runnable(){public void run(){try{
     JSONObject value=J.obj("runToken",token,"instance",instance,"buildIdentity",identity(),"actualAndroidExecution",true,
-      "feedbackUrl",feedbackUrl,"feedbackDraft",AppSettings.get(AppearanceIntegrationActivity.this,FeedbackUi.DRAFT,""),"mode",AppAppearance.mode(),"dark",AppAppearance.dark(),"systemDark",(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES,
+      "feedbackUrl",feedbackUrl,"feedbackDraft",AppSettings.get(AppearanceIntegrationActivity.this,FeedbackUi.DRAFT,""),"mode",AppAppearance.mode(),"dark",AppAppearance.dark(),"nativeColors",nativeColors(),"systemDark",(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES,
       "textColor",sample.getCurrentTextColor(),"cardColor",DesignUi.CARD,"backgroundColor",DesignUi.BG,"primaryText",primary.getCurrentTextColor(),
       "draft",draft.getText().toString(),"selectionStart",draft.getSelectionStart(),"selectionEnd",draft.getSelectionEnd(),"configurations",configurations,
       "systemUi",getWindow().getDecorView().getSystemUiVisibility(),"modalVisible",modal!=null&&modal.isShowing(),"modalColor",modal==null?0:((android.graphics.drawable.GradientDrawable)modal.root.getBackground()).getColor().getDefaultColor());

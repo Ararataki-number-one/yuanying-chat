@@ -39,6 +39,8 @@ def theme(dark,mode):return wait(report,lambda r:r.get('runToken')==token and r.
 try:
  adb('shell','am','force-stop',pkg);adb('shell','pm','clear',pkg);adb('shell','cmd','uimode','night','no');start()
  initial=theme(False,'system');identity=initial['buildIdentity'];instance=initial['instance']
+ check('Enabled native actions keep their enabled color',initial['nativeColors']['enabled']==signed(0xff0067d8) and initial['nativeColors']['disabled']==signed(0xff686873))
+ check('Enabled native titles keep readable opacity',initial['nativeColors']['titleAlpha']==0xde)
  check('Missing preference defaults to follow system',initial['mode']=='system' and not initial['systemDark'])
  source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip();check('Actual installed source matches tested commit',identity['sourceCommit']==source)
  apk=root/'app/build/outputs/apk/integration/app-x86_64-integration.apk';check('Actual installed APK identity matches built APK',identity['apkSha256']==hashlib.sha256(apk.read_bytes()).hexdigest())
@@ -46,6 +48,7 @@ try:
  adb('shell','cmd','uimode','night','yes');night=theme(True,'system')
  check('System event changes appearance without recreating activity',night['instance']==instance and night['configurations']>0)
  check('Native text and background use night palette',night['textColor']==signed(0xfff4f4f6) and night['backgroundColor']==signed(0xff0c0c0f))
+ check('Native selectors retain enabled and disabled states in dark mode',night['nativeColors']['enabled']==signed(0xff82b3ff) and night['nativeColors']['disabled']==signed(0xffaaaab4) and night['nativeColors']['titleAlpha']==0xde)
  check('Already open central modal becomes dark',night['modalVisible'] and night['modalColor']==signed(0xff1c1c1e))
  check('Night status bar uses light icons',night['systemUi']&8192==0 and night['systemUi']&16==0)
  check('Draft and selection survive system theme event',night['draft']==initial['draft'] and night['selectionStart']==initial['selectionStart'] and night['selectionEnd']==initial['selectionEnd'])
@@ -57,6 +60,7 @@ try:
  check('Manual choice survives process restart',persisted['instance']!=instance)
  tap('打开外观设置');tap('跟随系统');theme(True,'system');tap('完成');adb('shell','cmd','uimode','night','no');day=theme(False,'system')
  check('Returning to automatic follows subsequent system changes',day['textColor']==signed(0xff1b1b1f) and not day['systemDark'])
+ check('Repeated theme changes preserve native action states and title opacity',day['nativeColors']['enabled']==signed(0xff0067d8) and day['nativeColors']['disabled']==signed(0xff686873) and day['nativeColors']['titleAlpha']==0xde)
  tap('打开反馈');tap('预览反馈');snapshot('feedback-preview');tap('打开 GitHub 提交')
  feedback=wait(report,lambda r:bool(r.get('feedbackUrl')))
  from urllib.parse import urlparse,parse_qs
