@@ -170,15 +170,15 @@ public final class IdentityControllerHostTest {
     final BrowserIdentitySpec[] last={null};
     FingerprintTemplateUi.show(activity,(selected,done)->{try{EnvironmentSpec old=EnvironmentSpecRepository.value;EnvironmentSpecRepository.value=old.withDesired(old.desiredRevision,new EnvironmentSpec.Configuration(selected.json(),old.desired().network));last[0]=selected;done.accept("");}catch(Exception error){throw new AssertionError(error);}});
     settle(session);
-    android.app.AlertDialog dialog=android.app.AlertDialog.latest;
+    ReferenceUi.Modal dialog=ReferenceUi.Modal.latest;
     android.widget.Spinner templates=android.widget.Spinner.instances.get(0),languages=android.widget.Spinner.instances.get(1);
-    languages.setSelection(4);dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).click();settle(session);settle(session);
+    languages.setSelection(4);dialog.primary().click();settle(session);settle(session);
     check(last[0].locales.equals(Collections.singletonList("ja-JP")),"template dialog saves an explicit language");
-    templates.setSelection(1);languages.setSelection(0);dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).click();settle(session);settle(session);
+    templates.setSelection(1);languages.setSelection(0);dialog.primary().click();settle(session);settle(session);
     check(last[0].desktop()&&last[0].locales.equals(Collections.singletonList("ja-JP")),"keep current language uses previous save in the same open dialog");
-    EnvironmentSpecRepository.readFailure=true;dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).click();settle(session);
+    EnvironmentSpecRepository.readFailure=true;dialog.primary().click();settle(session);
     check(last[0].desktop()&&last[0].locales.equals(Collections.singletonList("ja-JP")),"unreadable current language does not overwrite prior desired settings");
-    check(dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).enabled,"read failure re-enables template editing");EnvironmentSpecRepository.readFailure=false;
+    check(dialog.primary().enabled,"read failure re-enables template editing");EnvironmentSpecRepository.readFailure=false;
   }
   static void failedQueueDoesNotApplyOlderIntent()throws Exception{
     ChatSession session=acknowledgedFixture();MainActivity activity=new MainActivity(session);session.deferred=true;session.queuedLevel=0;session.queuedDesktop=false;session.failQueue=true;

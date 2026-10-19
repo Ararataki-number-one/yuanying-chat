@@ -21,6 +21,17 @@ final class WorkQueue implements Executor {
 final class FakeContext {EnvironmentSpec.NetworkBinding actual;WorkQueue writer;int bindingReads;}
 // Theme presentation is exercised on Android; keep this controller fixture's dialog double.
 final class AppAppearance {static android.app.AlertDialog.Builder dialog(Object context){return new android.app.AlertDialog.Builder(context);}}
+// Layout and actual touch visibility are verified by run_ui_visuals on Android.
+// This double keeps the production save callback executable in controller tests.
+final class ReferenceUi {
+  static final class Modal {
+    static Modal latest;final android.widget.LinearLayout body;final android.widget.Button positive;boolean showing;
+    Modal(MainActivity activity,String title){body=new android.widget.LinearLayout(activity);positive=new android.widget.Button(activity);}
+    void buttons(String secondary,Runnable close,String primary,Runnable save){positive.setText(primary);positive.setOnClickListener(view->save.run());}
+    android.widget.Button primary(){return positive;}
+    void show(){showing=true;latest=this;}boolean isShowing(){return showing;}void dismiss(){showing=false;}
+  }
+}
 final class FakePrefs {
   String mode="external",proxy="";
   String getString(String name,String fallback){return "networkMode".equals(name)?mode:"proxy".equals(name)?proxy:fallback;}
