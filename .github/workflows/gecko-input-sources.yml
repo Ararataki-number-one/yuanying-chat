@@ -28,7 +28,10 @@ jobs:
               assert hashlib.sha256(original).hexdigest()==identity['geckoEditableSourceSha256']
               names=['GeckoEditable.java','PanZoomController.java','GeckoInputConnection.java','SessionTextInput.java','GeckoView.java','GeckoSession.java']
               for name in names:(out/name).write_bytes(archive.read('org/mozilla/geckoview/'+name))
-          native=['widget/android/nsWindow.cpp','widget/android/GeckoEditableSupport.cpp','gfx/layers/apz/src/InputQueue.cpp','gfx/layers/apz/util/APZEventState.cpp']
+          native=['widget/android/nsWindow.cpp','widget/android/GeckoEditableSupport.cpp','widget/android/GeckoEditableSupport.h',
+                  'widget/android/TouchResampler.cpp','widget/android/TouchResampler.h','widget/android/nsAppShell.cpp','widget/android/nsAppShell.h',
+                  'widget/android/AndroidContentController.cpp','gfx/layers/apz/src/InputQueue.cpp','gfx/layers/apz/util/APZEventState.cpp',
+                  'gfx/layers/apz/util/APZCCallbackHelper.cpp','gfx/layers/apz/src/GestureEventListener.cpp','modules/libpref/init/StaticPrefList.yaml']
           def read(name):
               url='https://hg.mozilla.org/releases/mozilla-release/raw-file/'+identity['upstreamRevision']+'/'+name
               try:
