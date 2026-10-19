@@ -38,7 +38,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
     if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
     adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
     adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene)
-    required={'chat':'会话','environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
+    required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
       'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',
       'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]
     deadline=time.monotonic()+35

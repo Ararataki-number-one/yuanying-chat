@@ -34,7 +34,7 @@ final class ReferenceUi {
   }
   static LinearLayout card(Context c){return DesignUi.card(c);}
   static void add(LinearLayout box,View card){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(box.getContext(),10);box.addView(card,p);}
-  static TextView secondary(Context c,String value){TextView t=text(c,value,13,MUTED,false);single(t);t.setPadding(0,dp(c,5),0,0);return t;}
+  static TextView secondary(Context c,String value){TextView t=text(c,value,13,MUTED,false);t.setMaxLines(3);t.setEllipsize(TextUtils.TruncateAt.END);t.setPadding(0,dp(c,5),0,0);return t;}
   static LinearLayout tabs(Context c,String[] labels,int selected,java.util.function.IntConsumer click){
     LinearLayout bar=DesignUi.row(c);bar.setPadding(dp(c,4),0,dp(c,4),0);bar.setBackground(surface(c,0xfff0f2f6,13,Color.TRANSPARENT));
     boolean large=c.getResources().getConfiguration().fontScale>=1.4f;

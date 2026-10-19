@@ -36,7 +36,7 @@ final class NativeControls {
     }else if(view instanceof Button&&!(view instanceof DesignUi.ActionButton)&&!(view instanceof Ui.IconButton)){
       Button button=(Button)view;button.setAllCaps(false);button.setTextSize(15);button.setMinHeight(height(button,48,20));button.setStateListAnimator(null);
       boolean dialogAction=button.getId()==android.R.id.button1||button.getId()==android.R.id.button2||button.getId()==android.R.id.button3;
-      button.setTextColor(dialogAction?DesignUi.BLUE:DesignUi.TEXT);button.setBackground(Ui.ripple(c,dialogAction?Color.TRANSPARENT:DesignUi.FIELD,12));
+      button.setTextColor(new android.content.res.ColorStateList(new int[][]{{-android.R.attr.state_enabled},{}},new int[]{DesignUi.MUTED,dialogAction?DesignUi.BLUE:DesignUi.TEXT}));button.setBackground(Ui.ripple(c,dialogAction?Color.TRANSPARENT:DesignUi.FIELD,12));
       button.setPadding(Ui.dp(c,14),Ui.dp(c,10),Ui.dp(c,14),Ui.dp(c,10));
     }else if(view instanceof Spinner){
       Spinner spinner=(Spinner)view;spinner.setMinimumHeight(Ui.dp(c,50));

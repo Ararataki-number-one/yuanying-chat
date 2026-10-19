@@ -50,6 +50,12 @@ public final class UiVisualIntegrationActivity extends Activity {
     setContentView(root);ReferenceUi.insets(this,root);
     workspace=new NetworkWorkspaceUi(this,host);workspace.show(0);
     workspace.afterRead=()->{
+      if("network".equals(action)&&workspace.windows.length()>0){
+        JSONObject item=workspace.windows.optJSONObject(0);
+        NetworkCatalog.put(item,"config",J.obj("subscriptionUrl","https://example.test/ui-only-subscription","entryMode","manual","entry","Entry|日本大阪 03","exitName","固定测试出口","exitHost","127.0.0.1","exitPort",1080));
+        NetworkCatalog.put(item,"runtime",J.obj("mode","internal","configured",true,"connected",false,"at",System.currentTimeMillis()));
+        workspace.lastRendered="";workspace.render();
+      }
       if("network-menu".equals(action))workspace.networkMore();
       if("subscription-form".equals(action))workspace.subscriptionForm(NetworkCatalog.ENTRY,null,null);
       if("exit-form".equals(action))workspace.exitForm(null);
