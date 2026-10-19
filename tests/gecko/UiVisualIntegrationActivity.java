@@ -20,9 +20,10 @@ public final class UiVisualIntegrationActivity extends Activity {
     if("file-preview".equals(action)){startActivity(new Intent(this,AttachmentPreviewActivity.class).putExtra("uri","content://local.pocketchat.test.upload/image").putExtra("mime","image/png").putExtra("name","界面预览图片.png"));finish();return;}
     if("brand".equals(action)){startActivity(new Intent(this,BrandLaunchActivity.class).putExtra("previewBrand",true));finish();return;}
     if("import".equals(action)){startActivity(new Intent(this,NetworkImportActivity.class));finish();return;}
-    if("settings".equals(action)||"appearance".equals(action)||"default-entry".equals(action)||"feedback".equals(action)||"downloads".equals(action)||"delete-file".equals(action)||"share-preview".equals(action)){
-      LinearLayout root=DesignUi.screen(this),box=DesignUi.body(this,root,"应用设置",null);
-      if("downloads".equals(action)){
+    if("settings".equals(action)||"appearance".equals(action)||"default-entry".equals(action)||"feedback".equals(action)||"downloads".equals(action)||"delete-file".equals(action)){
+      boolean downloads="downloads".equals(action)||"delete-file".equals(action);
+      LinearLayout root=DesignUi.screen(this),box=DesignUi.body(this,root,downloads?"下载中心":"应用设置",this::finish);
+      if(downloads){
         savedActions=new SavedFileActions(this);DesignDownloads.Controller controller=new DesignDownloads.Controller(this,box,0,n->{},savedActions);
         long now=System.currentTimeMillis();JSONArray data=J.arr(
           J.obj("id","visual-active","slot",0,"name","项目资料与界面设计说明.pdf","state","downloading","received",1200000,"total",5000000,"time",now,"updated",now),
@@ -30,12 +31,11 @@ public final class UiVisualIntegrationActivity extends Activity {
           J.obj("id","visual-failed","slot",0,"name","等待重试的文件.pdf","state","failed","reason","连接中断，可检查网络后重试。","time",now-2000),
           J.obj("id","visual-saved","slot",0,"name","已保存的笔记.pdf","state","saved","time",now-3000,"location","Download/元婴期院士/"));controller.apply(data,0,now);
       }else DesignSettingsUi.render(this,box,()->{});
-      root.addView(ReferenceUi.nav(this,4,n->{},new Button[5]));setContentView(root);AppAppearance.apply(root);
+      root.addView(ReferenceUi.nav(this,downloads?2:4,n->{},new Button[5]));setContentView(root);AppAppearance.apply(root);
       if("appearance".equals(action))DesignSettingsUi.appearance(this,()->{});
       if("default-entry".equals(action))DesignSettingsUi.defaultEntry(this,()->{});
       if("feedback".equals(action))FeedbackUi.open(this);
       if("delete-file".equals(action)){savedActions=new SavedFileActions(this);savedActions.confirmDelete(J.obj("name","准备清理的文件.pdf","slot",0));}
-      if("share-preview".equals(action))NetworkShareUi.show(this,new NetworkShareCodec.Bundle("布局测试线路",J.obj("name","测试入口","type","socks5","server","127.0.0.1","port",1080),J.obj("name","固定测试出口","type","socks5","server","127.0.0.1","port",1081)));
       return;
     }
     if("environments".equals(action)){startActivity(new Intent(this,WindowHomeActivity.class));finish();return;}
@@ -50,6 +50,7 @@ public final class UiVisualIntegrationActivity extends Activity {
     setContentView(root);ReferenceUi.insets(this,root);
     workspace=new NetworkWorkspaceUi(this,host);workspace.show(0);
     workspace.afterRead=()->{
+      if("share-preview".equals(action))NetworkShareUi.show(this,new NetworkShareCodec.Bundle("布局测试线路",J.obj("name","测试入口","type","socks5","server","127.0.0.1","port",1080),J.obj("name","固定测试出口","type","socks5","server","127.0.0.1","port",1081)));
       if("network".equals(action)&&workspace.windows.length()>0){
         JSONObject item=workspace.windows.optJSONObject(0);
         NetworkCatalog.put(item,"config",J.obj("subscriptionUrl","https://example.test/ui-only-subscription","entryMode","manual","entry","Entry|日本大阪 03","exitName","固定测试出口","exitHost","127.0.0.1","exitPort",1080));
@@ -74,6 +75,7 @@ public final class UiVisualIntegrationActivity extends Activity {
   }
   void seed()throws Exception{
     if(!getPackageName().endsWith(".test"))throw new SecurityException();
+    if(AppSettings.bool(this,"nativeUiSeedV2",false))return;
     String[] names={"日常会话","资料整理","开发调试","长文阅读与文件整理","翻译与写作","个人收藏","备用环境","项目讨论"};
     ProfileCatalog catalog=ProfileCatalog.get(this);
     for(int slot=0;slot<names.length;slot++){
@@ -89,6 +91,7 @@ public final class UiVisualIntegrationActivity extends Activity {
       String fixture="proxies:\n  - {name: '日本大阪 03', type: socks5, server: 127.0.0.1, port: 1080}\n  - {name: '日本东京 01', type: socks5, server: 127.0.0.1, port: 1081}\n  - {name: '香港入口', type: socks5, server: 127.0.0.1, port: 1082}\n";
       library.parsed(sub.getString("id"),J.arr("Entry|日本大阪 03","Entry|日本东京 01","Entry|香港入口"),fixture.getBytes(java.nio.charset.StandardCharsets.UTF_8),System.currentTimeMillis());
     }
+    AppSettings.put(this,"nativeUiSeedV2","true");
   }
   @Override protected void onDestroy(){if(workspace!=null)workspace.close();if(savedActions!=null)savedActions.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
 }

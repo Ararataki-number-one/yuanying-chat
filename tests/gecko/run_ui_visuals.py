@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Actual Android screenshots of production UI; never touches the formal app."""
 import argparse,json,pathlib,re,struct,subprocess,time,xml.etree.ElementTree as ET
-import http.server,importlib.util,threading,uuid
+import http.server,importlib.util,threading,uuid,os
 import sys
 
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
@@ -10,8 +10,9 @@ source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).st
 package='local.pocketchat.test';records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
-from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, verify_captures
+from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures
 scenes=LIGHT_SCENES
+last_geometry=None
 ui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')
 def adb(*values):return subprocess.check_output([args.adb,'-s',args.serial,*values],timeout=90).decode(errors='replace')
 def dump(deadline=None):
@@ -33,10 +34,20 @@ def click_editor_tab(xml,label):
         else:time.sleep(.2)
         xml=dump()
     raise TimeoutError(('Editor tab did not appear after horizontal scrolling',label,swipes,xml[-3000:]))
+def checkpoint():
+    partial={'status':'in_progress','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'expectedCaptures':len(required_captures()),'scope':'Incomplete capture checkpoint for review; never release acceptance.'}
+    (out/'ui-visual-results.json').write_text(json.dumps(partial,ensure_ascii=False,indent=2)+'\n')
+    if os.environ.get('GITHUB_ACTIONS')=='true':
+        result=subprocess.run([sys.executable,str(root/'tools/gecko/publish_ci.py')],cwd=root)
+        print(json.dumps({'event':'ui-capture-checkpoint','count':len(records),'publishExitCode':result.returncode}),flush=True)
 def capture(variant,width,height,scale,scene,theme='light'):
+    global last_geometry
+    started=time.monotonic();print(json.dumps({'event':'ui-capture-start','scene':scene,'viewport':f'{width}x{height}','fontScale':scale,'theme':theme,'completed':len(records)}),flush=True)
     adb('shell','am','force-stop',package);adb('logcat','-c')
-    if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
-    adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
+    geometry=(width,height,scale)
+    if geometry!=last_geometry:
+        if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
+        adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale));last_geometry=geometry
     adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene)
     required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
       'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',
@@ -98,6 +109,8 @@ def capture(variant,width,height,scale,scene,theme='light'):
     record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}
     if scene=='preferences':record.update(preference_check)
     records.append(record)
+    print(json.dumps({'event':'ui-capture-complete','scene':scene,'count':len(records),'seconds':round(time.monotonic()-started,2)}),flush=True)
+    if len(records)%10==0 or len(records)==len(required_captures()):checkpoint()
 try:
     for variant in ['current']:
         adb('shell','am','force-stop',package)

@@ -28,7 +28,7 @@ final class ReferenceUi {
     Context c=panel.a;
     if(panel.body.getChildCount()>0){View line=new View(c);line.setBackgroundColor(LINE);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,Math.max(1,dp(c,1)/2));p.leftMargin=dp(c,12);p.rightMargin=dp(c,12);panel.body.addView(line,p);}
     Button b=link(c,label,run);boolean destructive=label.startsWith("删除")||label.startsWith("清空");b.setTextSize(16);b.setTextColor(destructive?RED:TEXT);b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);b.setPadding(dp(c,12),dp(c,14),dp(c,12),dp(c,14));b.setMinHeight(dp(c,54));b.setMinimumHeight(dp(c,54));
-    String glyph=destructive?"trash":label.contains("分享")?"share":label.contains("编辑")?"new":label.contains("网络")?"globe":label.contains("下载")?"download":label.contains("环境")?"window":label.contains("刷新")||label.contains("重新连接")?"refresh":"info";
+    String glyph=destructive?"trash":label.contains("分享")?"share":label.contains("复制")?"clipboard":label.contains("另存")||label.contains("保存位置")?"download":label.contains("会话")?"chat":label.equals("打开")?"file":label.contains("编辑")?"new":label.contains("网络")?"globe":label.contains("下载")?"download":label.contains("环境")?"window":label.contains("刷新")||label.contains("重新连接")?"refresh":"info";
     Ui.Icon icon=new Ui.Icon(glyph,destructive?RED:BLUE);icon.setBounds(0,0,dp(c,21),dp(c,21));b.setCompoundDrawables(icon,null,null,null);b.setCompoundDrawablePadding(dp(c,14));
     panel.body.addView(b,new LinearLayout.LayoutParams(-1,-2));return b;
   }

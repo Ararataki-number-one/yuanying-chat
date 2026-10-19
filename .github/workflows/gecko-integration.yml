@@ -171,8 +171,7 @@ jobs:
           "$tools/apksigner" sign --ks work/gecko-integration/update-wrong-key.jks --ks-key-alias fixture --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-wrong-signer.apk work/gecko-integration/update-fixture-unsigned.apk
       - name: Publish unsigned build for local original signing
         run: python3 tools/gecko/publish_ci.py
-      - name: Boot Android and verify editing performance
-        id: editing
+      - name: Boot Android for native acceptance
         shell: bash
         run: |
           set -euo pipefail
@@ -191,6 +190,33 @@ jobs:
           adb shell input keyevent 82
           adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
           python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+      - name: Verify network performance and compact chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+          echo "Starting phase: Verify network performance and compact chrome"
+          checks_failed=0
+          if ! python3 tests/gecko/run_network_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          if ! python3 tests/gecko/run_quiet_notifications.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          if ! python3 tests/gecko/run_ui_visuals.py --adb "$(command -v adb)" --serial emulator-5554; then
+            checks_failed=1
+          fi
+          python3 tools/gecko/publish_ci.py
+          if [ "$checks_failed" -ne 0 ]; then exit 1; fi
+      - name: Verify editing performance after native UI
+        id: editing
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
+          adb shell am force-stop local.pocketchat.test
+          adb shell pm clear local.pocketchat.test
+          adb shell pm grant local.pocketchat.test android.permission.POST_NOTIFICATIONS
           checks_failed=0
           if python3 tools/gecko/run_caret_editing_phase.py --adb "$(command -v adb)" --serial emulator-5554 --root "$PWD" --out work/gecko-integration --build-receipt work/gecko-integration/caret-apk-build-receipt.json --sdk-receipt work/native-caret-sdk/sdk-build-receipt.json --sdk-aar work/native-caret-sdk/geckoview-caret.aar --official-sdk-aar work/gecko-integration/geckoview.aar --integration-apk app/build/outputs/apk/integration/app-x86_64-integration.apk --release-apk app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk; then
             :
@@ -225,24 +251,6 @@ jobs:
           python3 tests/gecko/run_appearance.py --adb "$(command -v adb)" --serial emulator-5554 || result=$?
           python3 tools/gecko/publish_ci.py
           exit "$result"
-      - name: Verify network performance and compact chrome
-        shell: bash
-        run: |
-          set -euo pipefail
-          exec > >(tee -a work/gecko-integration/native-test.log) 2>&1
-          echo "Starting phase: Verify network performance and compact chrome"
-          checks_failed=0
-          if ! python3 tests/gecko/run_network_performance.py --adb "$(command -v adb)" --serial emulator-5554; then
-            checks_failed=1
-          fi
-          if ! python3 tests/gecko/run_quiet_notifications.py --adb "$(command -v adb)" --serial emulator-5554; then
-            checks_failed=1
-          fi
-          if ! python3 tests/gecko/run_ui_visuals.py --adb "$(command -v adb)" --serial emulator-5554; then
-            checks_failed=1
-          fi
-          python3 tools/gecko/publish_ci.py
-          if [ "$checks_failed" -ne 0 ]; then exit 1; fi
       - name: Verify production environments and file transfers
         shell: bash
         run: |
