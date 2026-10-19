@@ -25,7 +25,7 @@ public final class UiVisualIntegrationActivity extends Activity {
       if("downloads".equals(action)){
         savedActions=new SavedFileActions(this);DesignDownloads.Controller controller=new DesignDownloads.Controller(this,box,0,n->{},savedActions);
         long now=System.currentTimeMillis();JSONArray data=J.arr(
-          J.obj("id","visual-active","slot",0,"name","项目资料与界面设计说明.pdf","state","running","received",1200000,"total",5000000,"time",now,"updated",now),
+          J.obj("id","visual-active","slot",0,"name","项目资料与界面设计说明.pdf","state","downloading","received",1200000,"total",5000000,"time",now,"updated",now),
           J.obj("id","visual-paused","slot",1,"name","稍后继续的文件.zip","state","paused","received",900000,"total",3000000,"time",now-1000),
           J.obj("id","visual-failed","slot",0,"name","等待重试的文件.pdf","state","failed","reason","连接中断，可检查网络后重试。","time",now-2000),
           J.obj("id","visual-saved","slot",0,"name","已保存的笔记.pdf","state","saved","time",now-3000,"location","Download/元婴期院士/"));controller.apply(data,0,now);
