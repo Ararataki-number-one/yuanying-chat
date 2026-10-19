@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.12",
-  "versionCode": 65,
+  "version": "2.0.13",
+  "versionCode": 66,
   "abi": "arm64-v8a",
   "minSdk": 26,
-  "bytes": 119123336,
-  "sha256": "0ac9d9db8ea9db982a353e059829805b541b21ddee2c17388ffc0a0476a870ae",
+  "bytes": 119127544,
+  "sha256": "7c492162db7be9a4f649dccd33dda43a07baa5f2d5c1ddcad1807c55af864f10",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.12-gecko/PocketChat-2.0.12-gecko-arm64.apk",
-  "notes": "# 2.0.12：修复整条线路分享的入口参数兼容性\n\n- 修复 Android 导出 JSON 时的斜杠转义与内核 YAML 解析器不兼容，避免带 WebSocket 路径等参数的有效节点在分享校验时解析失败。规范化编码不改变路径、密码或其他参数的实际值。\n- 补齐分享导出对当前内核已支持的 VLESS encryption、XUDP、packet-addr、smux 及旧式 WebSocket 请求头等连接参数的支持。完整保留参数，继续使用实际内核重解析并比较节点指纹。\n- 修复旧手工出口没有显示名称时无法分享的问题，使用服务器地址作为名称。\n- 分享失败时区分不支持的参数、缓存不可读取、线路已变化、内核解析失败与节点身份不一致，不再只显示同一个笼统提示。错误提示不输出账号、密码或原始内核错误。\n- 保留单独分享入口、出口与整条线路；导入仍须先预览再选择环境。分享不改变原线路或 ChatGPT 登录数据。\n\n新增主机回归覆盖完整参数往返与不支持字段拒绝；Android 回归从生产“分享整条线路”读取活动快照、执行内核身份校验，再通过实际界面导入 VLESS 与固定出口。旧版导出器在相同受控 VLESS 配置上可复现失败。\n\n受控配置不包含用户订阅和凭据。用户实际订阅与 ARM 真机尚未验收；本版修复已复现的兼容性缺口，不能据此断言截图中的节点只有这一种失败原因。沿用原签名，可覆盖安装。",
-  "sourceCommit": "2e6c3cc3a1ea3b3e179257e6aeb271555c6dd763"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.13-gecko/PocketChat-2.0.13-gecko-arm64.apk",
+  "notes": "# 2.0.13：原生外壳界面更新\n\n- 顶部环境胶囊采用小面积半透明材质和展开提示，默认保持紧凑；地区、IP、延迟与连接状态继续常显且只读。\n- 环境列表与应用设置改为圆角分组，统一主副文字、间距和细分隔线；浅色、深色分别校准配色与文字对比度。\n- 会话、环境和网络的快捷操作使用底部浮动面板，统一圆角和轻量动效；编辑表单和删除等必要确认保留原有交互。\n- 修正大字体下环境按钮、筛选计数和编号的换行截断，以及入口选择面板的选项遮挡；双倍字体下网络状态分两行显示。\n- 保留单 GeckoView、ChatGPT 原网页、独立环境、登录数据、草稿及固定出口策略。主题和顶部栏动效只更新现有界面，不主动重新加载网页。\n\n安装包沿用原发布签名，可覆盖安装。自动化验证覆盖 360/412 dp、双倍字体、深浅色、实际 Android 点按及受控 Gecko 页面连续性；这些结果不代表 ARM 真机或百度输入法验收。\n\n已知限制：原有快速点按后输入的光标位置偶发问题本版未修复。单轮受控检查通过不代表该问题消失；真机持续使用和百度输入法仍需验证。",
+  "sourceCommit": "0554637df17f2c8f6fe68fb6821bc8f6dad5016c"
 }
