@@ -57,6 +57,9 @@ jobs:
       - name: Check stale messages and continuous bridge use
         run: |
           set -euo pipefail
+          mkdir -p work/gecko-integration/appearance-palette
+          javac -encoding UTF-8 -d work/gecko-integration/appearance-palette app/src/main/java/local/pocketchat/AppearanceColors.java tests/browser-runtime/AppearancePaletteTest.java
+          java -cp work/gecko-integration/appearance-palette local.pocketchat.AppearancePaletteTest | tee work/gecko-integration/appearance-palette-host-results.json
           mkdir -p work/gecko-integration/bridge-host
           javac -encoding UTF-8 -d work/gecko-integration/bridge-host app/src/main/java/local/pocketchat/BrowserBridgeRequests.java tests/browser-runtime/BrowserBridgeRequestsTest.java
           java -cp work/gecko-integration/bridge-host local.pocketchat.BrowserBridgeRequestsTest | tee work/gecko-integration/bridge-host-results.json

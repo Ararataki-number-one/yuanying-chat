@@ -120,7 +120,7 @@ public class MainActivity extends ThemedActivity {
   }
   TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));return v;}
   void moreSheet(){
-    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项");
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项").asSheet();
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
     option(d,"重新加载网页",this::requestReload);
     option(d,"编辑当前环境",()->EnvironmentEditorUi.show(this));
@@ -179,7 +179,7 @@ public class MainActivity extends ThemedActivity {
       });});
     });
   }
-  void option(ReferenceUi.Modal d,String title,Runnable action){Button button=ReferenceUi.link(this,title,()->{d.dismiss();action.run();});button.setTextColor(ReferenceUi.TEXT);button.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);d.body.addView(button,new LinearLayout.LayoutParams(-1,dp(48)));}
+  void option(ReferenceUi.Modal d,String title,Runnable action){ReferenceUi.menuAction(d,title,()->{d.dismiss();action.run();});}
   void showDrawer(){ProfileUi.show(this);}
 
   /** Recovery is explicit copy-only: never replace the official page's draft. */

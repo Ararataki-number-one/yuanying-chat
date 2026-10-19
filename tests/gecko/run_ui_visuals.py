@@ -7,7 +7,7 @@ import sys
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';shots=out/'ui-visuals';shots.mkdir(exist_ok=True)
 p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',required=True);args=p.parse_args()
 source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
-package='local.pocketchat.test';scenes=['chat','environments','network','proxy','entries','browser','preferences'];records=[]
+package='local.pocketchat.test';scenes=['chat','environments','network','proxy','entries','browser','preferences','settings','network-menu'];records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
 ui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')
@@ -36,7 +36,7 @@ def capture(variant,width,height,scale,scene):
     if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
     adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
     adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene)
-    required={'chat':'会话','environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息'}[scene]
+    required={'chat':'会话','environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络'}[scene]
     deadline=time.monotonic()+35
     while True:
         xml=dump(deadline=deadline)
@@ -97,7 +97,11 @@ try:
         if int(adb('shell','getprop','ro.build.version.sdk').strip())>=33:adb('shell','pm','grant',package,'android.permission.POST_NOTIFICATIONS')
         for width,height in [(360,640),(412,640)]:
             for scene in scenes:capture(variant,width,height,1,scene)
-        for scene in ['proxy','entries','browser','preferences','chat']:capture(variant,360,640,2,scene)
+        for scene in ['proxy','entries','browser','preferences','chat','settings','network-menu']:capture(variant,360,640,2,scene)
+    adb('shell','cmd','uimode','night','yes')
+    try:
+        for scene in ['chat','environments','network','settings','network-menu']:capture('dark',360,640,1,scene)
+    finally:adb('shell','cmd','uimode','night','no')
     # Exercise the actual exit form with synthetic credentials and Android taps.
     exit_password=[]
     for width,scale in [(360,1),(360,2)]:

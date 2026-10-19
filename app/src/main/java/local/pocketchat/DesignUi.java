@@ -9,11 +9,18 @@ final class DesignUi {
   static int dp(Context c,int n){return Ui.dp(c,n);}
   static TextView text(Context c,String value,int size,int color){TextView v=new TextView(c);v.setText(value);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));v.setIncludeFontPadding(false);v.setLineSpacing(dp(c,3),1);return v;}
   static GradientDrawable surface(Context c,int color,int radius,int stroke){GradientDrawable d=Ui.shape(c,color,radius);d.setStroke(dp(c,1),stroke);return d;}
-  static GradientDrawable gradient(Context c){GradientDrawable d=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xff2468f2,0xff2468f2});d.setCornerRadius(dp(c,12));d.setStroke(dp(c,1),0xff2468f2);return d;}
+  static GradientDrawable gradient(Context c){return surface(c,0xff1268ff,14,Color.TRANSPARENT);}
+  static Drawable glass(Context c,int radius){return new RippleDrawable(ColorStateList.valueOf(0x142468f2),new AppAppearance.Glass(c,radius),surface(c,Color.WHITE,radius,Color.TRANSPARENT));}
   static void chrome(Activity a){AppAppearance.window(a.getWindow());}
   static LinearLayout column(Context c){LinearLayout v=new LinearLayout(c);v.setOrientation(LinearLayout.VERTICAL);return v;}
   static LinearLayout row(Context c){LinearLayout v=new LinearLayout(c);v.setGravity(Gravity.CENTER_VERTICAL);return v;}
-  static LinearLayout card(Context c){LinearLayout box=column(c);box.setPadding(dp(c,14),dp(c,10),dp(c,14),dp(c,8));box.setBackground(surface(c,CARD,14,LINE));return box;}
+  static LinearLayout card(Context c){LinearLayout box=column(c);box.setPadding(dp(c,16),dp(c,14),dp(c,16),dp(c,12));box.setBackground(surface(c,CARD,18,Color.TRANSPARENT));return box;}
+  static LinearLayout group(Context c){LinearLayout box=column(c);box.setBackground(surface(c,CARD,18,Color.TRANSPARENT));box.setClipToOutline(true);return box;}
+  static void groupedRow(LinearLayout group,View row){
+    Context c=group.getContext();
+    if(group.getChildCount()>0){View line=new View(c);line.setBackgroundColor(LINE);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,Math.max(1,dp(c,1)/2));p.leftMargin=dp(c,60);p.rightMargin=dp(c,16);group.addView(line,p);}
+    group.addView(row,new LinearLayout.LayoutParams(-1,-2));
+  }
   static ArrayAdapter<String> spinnerAdapter(Context c,String[] labels){return new ArrayAdapter<String>(c,android.R.layout.simple_spinner_dropdown_item,labels){
     TextView style(android.view.View view){TextView text=(TextView)view;text.setTextColor(TEXT);text.setTextSize(15);return text;}
     @Override public android.view.View getView(int position,android.view.View reused,android.view.ViewGroup parent){return style(super.getView(position,reused,parent));}
@@ -29,7 +36,7 @@ final class DesignUi {
     b.setTextColor(primary?Color.WHITE:TEXT);b.setMinWidth(0);b.setMinimumWidth(0);
     b.setMinHeight(dp(c,48));b.setMinimumHeight(dp(c,48));
     b.setPadding(dp(c,12),dp(c,8),dp(c,12),dp(c,8));b.setStateListAnimator(null);
-    b.setBackground(new RippleDrawable(ColorStateList.valueOf(primary?0x33ffffff:0x182563eb),primary?gradient(c):surface(c,CARD,12,LINE),null));
+    b.setBackground(new RippleDrawable(ColorStateList.valueOf(primary?0x33ffffff:0x182563eb),primary?gradient(c):surface(c,FIELD,14,Color.TRANSPARENT),surface(c,Color.WHITE,14,Color.TRANSPARENT)));
     b.setOnClickListener(v->action.run());return b;
   }
   static void action(LinearLayout box,String label,boolean primary,Runnable run){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(box.getContext(),48));p.topMargin=dp(box.getContext(),10);box.addView(button(box.getContext(),label,primary,run),p);}
@@ -65,13 +72,22 @@ final class DesignUi {
   static TextView badge(Context c,String label,int color){TextView t=text(c,label,12,color);t.setGravity(Gravity.CENTER);t.setPadding(dp(c,8),dp(c,4),dp(c,8),dp(c,4));t.setBackground(surface(c,(color&0x00ffffff)|0x11000000,7,Color.TRANSPARENT));return t;}
   static void note(LinearLayout box,String s){TextView t=text(box.getContext(),s,13,MUTED);t.setPadding(0,dp(box.getContext(),10),0,dp(box.getContext(),6));box.addView(t);}
   static ImageView icon(Context c,String glyph,int color,int size){ImageView v=new ImageView(c);v.setImageDrawable(new Ui.Icon(glyph,color));v.setPadding(dp(c,7),dp(c,7),dp(c,7),dp(c,7));v.setBackground(surface(c,(color&0xffffff)|0x11000000,10,Color.TRANSPARENT));v.setLayoutParams(new LinearLayout.LayoutParams(dp(c,size),dp(c,size)));return v;}
-  static LinearLayout setting(Context c,String glyph,String title,String detail,String tag,Runnable action){LinearLayout r=row(c);r.setPadding(dp(c,10),dp(c,12),dp(c,10),dp(c,12));ImageView icon=icon(c,glyph,CYAN,34);r.addView(icon);LinearLayout labels=column(c);labels.setPadding(dp(c,10),0,dp(c,8),0);labels.addView(text(c,title,15,TEXT));if(!detail.isEmpty()){TextView sub=text(c,detail,13,MUTED);sub.setPadding(0,dp(c,4),0,0);labels.addView(sub);}r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));r.addView(tag.isEmpty()?text(c,"›",22,MUTED):badge(c,tag,MUTED));r.setBackground(new RippleDrawable(ColorStateList.valueOf(0x182468f2),surface(c,CARD,10,Color.TRANSPARENT),null));if(action!=null){r.setClickable(true);r.setFocusable(true);r.setOnClickListener(v->action.run());}return r;}
+  static LinearLayout setting(Context c,String glyph,String title,String detail,String tag,Runnable action){
+    LinearLayout r=row(c);r.setMinimumHeight(dp(c,64));r.setPadding(dp(c,16),dp(c,13),dp(c,16),dp(c,13));
+    ImageView icon=icon(c,glyph,BLUE,30);r.addView(icon);LinearLayout labels=column(c);labels.setPadding(dp(c,14),0,dp(c,12),0);
+    labels.addView(text(c,title,16,TEXT));if(!detail.isEmpty()){TextView sub=text(c,detail,13,MUTED);sub.setPadding(0,dp(c,5),0,0);labels.addView(sub);}
+    r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+    if(!tag.isEmpty())r.addView(badge(c,tag,MUTED));
+    else if(action!=null){ImageView arrow=new ImageView(c);arrow.setImageDrawable(new Ui.Icon("chevron-right",MUTED));r.addView(arrow,new LinearLayout.LayoutParams(dp(c,14),dp(c,20)));}
+    r.setBackground(new RippleDrawable(ColorStateList.valueOf(0x142468f2),surface(c,CARD,0,Color.TRANSPARENT),null));
+    if(action!=null){r.setClickable(true);r.setFocusable(true);r.setOnClickListener(v->action.run());}return r;
+  }
   static void field(LinearLayout box,String title,String value){
     Context c=box.getContext();LinearLayout row=row(c);row.setGravity(Gravity.TOP);row.setPadding(0,dp(c,7),0,dp(c,7));
     TextView name=text(c,title,12,MUTED);row.addView(name,new LinearLayout.LayoutParams(dp(c,76),-2));
     TextView val=text(c,value,14,TEXT);val.setTextIsSelectable(true);row.addView(val,new LinearLayout.LayoutParams(0,-2,1));box.addView(row);
   }
-  static EditText input(LinearLayout box,String title,String value,String hint){Context c=box.getContext();TextView label=text(c,title,13,MUTED);label.setPadding(0,dp(c,12),0,dp(c,6));if(!title.isEmpty())box.addView(label);EditText e=new EditText(c);e.setTextSize(14);e.setTextColor(TEXT);e.setHintTextColor(MUTED);e.setSingleLine(true);e.setContentDescription(title);e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);e.setText(value);e.setHint(hint);e.setPadding(dp(c,10),0,dp(c,10),0);e.setBackground(surface(c,CARD,12,LINE));box.addView(e,new LinearLayout.LayoutParams(-1,dp(c,48)));return e;}
+  static EditText input(LinearLayout box,String title,String value,String hint){Context c=box.getContext();TextView label=text(c,title,13,MUTED);label.setPadding(0,dp(c,12),0,dp(c,6));if(!title.isEmpty())box.addView(label);EditText e=new EditText(c);e.setTextSize(16);e.setTextColor(TEXT);e.setHintTextColor(MUTED);e.setSingleLine(true);e.setContentDescription(title);e.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_NEXT);e.setText(value);e.setHint(hint);e.setPadding(dp(c,10),0,dp(c,10),0);e.setBackground(surface(c,FIELD,12,Color.TRANSPARENT));box.addView(e,new LinearLayout.LayoutParams(-1,dp(c,48)));return e;}
   static void visiblePassword(EditText input){
     Context c=input.getContext();LinearLayout parent=(LinearLayout)input.getParent();int index=parent.indexOfChild(input);ViewGroup.LayoutParams layout=input.getLayoutParams();
     input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
@@ -92,8 +108,8 @@ final class DesignUi {
   static LinearLayout nav(Activity a,int selected,java.util.function.IntConsumer action,Button[] buttons){return ReferenceUi.nav(a,selected,action,buttons);}
   static void markNav(Activity a,Button[] tabs,int selected){ReferenceUi.markNav(tabs,selected);}
   static LinearLayout screen(Activity a){chrome(a);LinearLayout root=column(a);root.setFitsSystemWindows(true);root.setBackground(new Stars(a));return root;}
-  static LinearLayout body(Activity a,LinearLayout root,String title,Runnable back){LinearLayout head=row(a);head.setPadding(dp(a,12),dp(a,8),dp(a,12),dp(a,8));if(back!=null){Button b=button(a,"‹",false,back);b.setContentDescription("返回");head.addView(b,new LinearLayout.LayoutParams(dp(a,48),dp(a,48)));}TextView heading=text(a,title,20,TEXT);heading.setTypeface(Typeface.DEFAULT_BOLD);heading.setPadding(dp(a,8),0,0,0);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));root.addView(head);LinearLayout box=column(a);box.setPadding(dp(a,14),0,dp(a,14),dp(a,18));ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.addView(box);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));return box;}
-  static void section(LinearLayout box,String title,String detail){TextView h=text(box.getContext(),title,15,TEXT);h.setTypeface(Typeface.DEFAULT_BOLD);h.setPadding(0,dp(box.getContext(),12),0,dp(box.getContext(),4));box.addView(h);if(!detail.isEmpty())note(box,detail);}
+  static LinearLayout body(Activity a,LinearLayout root,String title,Runnable back){LinearLayout head=row(a);head.setPadding(dp(a,12),dp(a,8),dp(a,12),dp(a,8));if(back!=null){Button b=button(a,"‹",false,back);b.setContentDescription("返回");head.addView(b,new LinearLayout.LayoutParams(dp(a,48),dp(a,48)));}TextView heading=text(a,title,24,TEXT);heading.setTypeface(Typeface.DEFAULT_BOLD);heading.setPadding(dp(a,8),0,0,0);head.addView(heading,new LinearLayout.LayoutParams(0,-2,1));root.addView(head);LinearLayout box=column(a);box.setPadding(dp(a,14),0,dp(a,14),dp(a,18));ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.addView(box);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));return box;}
+  static void section(LinearLayout box,String title,String detail){TextView h=text(box.getContext(),title,13,MUTED);h.setPadding(dp(box.getContext(),16),dp(box.getContext(),22),dp(box.getContext(),16),dp(box.getContext(),8));if(Build.VERSION.SDK_INT>=28)h.setAccessibilityHeading(true);box.addView(h);if(!detail.isEmpty())note(box,detail);}
   static void scope(MainActivity a,LinearLayout box){
     LinearLayout row=row(a);TextView label=text(a,"环境 · "+Profiles.display(a,Profiles.slot(a)),13,MUTED);label.setSingleLine(true);label.setEllipsize(android.text.TextUtils.TruncateAt.END);
     row.addView(label,new LinearLayout.LayoutParams(0,-2,1));Button change=button(a,"切换",false,()->a.startActivity(new Intent(a,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));

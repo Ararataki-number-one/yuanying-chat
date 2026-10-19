@@ -43,8 +43,10 @@ final class DesignChrome {
     ReferenceUi.single(compactTitle);
     compactTitle.setMaxWidth(a.dp(240));
     compactTitle.setGravity(Gravity.CENTER);
-    compactTitle.setPadding(a.dp(16),0,a.dp(16),0);
-    compactTitle.setBackground(Ui.ripple(a,0xfff0f2f6,14));
+    compactTitle.setPadding(a.dp(14),0,a.dp(12),0);
+    Ui.Icon disclosure=new Ui.Icon("chevron",ReferenceUi.MUTED);disclosure.setBounds(0,0,a.dp(12),a.dp(12));
+    compactTitle.setCompoundDrawables(null,null,disclosure,null);compactTitle.setCompoundDrawablePadding(a.dp(7));
+    compactTitle.setBackground(DesignUi.glass(a,14));
     compactTitle.setDuplicateParentStateEnabled(true);
     compactTitle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     FrameLayout.LayoutParams compactLabel=new FrameLayout.LayoutParams(-2,-1,Gravity.CENTER);
@@ -70,7 +72,7 @@ final class DesignChrome {
     ReferenceUi.single(title);
     title.setGravity(Gravity.CENTER);
     title.setPadding(a.dp(12),0,a.dp(12),0);
-    title.setBackground(Ui.ripple(a,0xfff0f2f6,18));
+    title.setBackground(DesignUi.glass(a,20));
     title.setOnClickListener(v->ProfileUi.show(a));
 
     more=ReferenceUi.more(a,()->a.moreSheet());
@@ -180,6 +182,9 @@ final class DesignChrome {
     touchTargets=null;a.toolbar.setTouchDelegate(null);
     compact.setVisibility(value?View.VISIBLE:View.GONE);
     top.setVisibility(value?View.GONE:View.VISIBLE);
+    View visible=value?compact:top;
+    visible.animate().cancel();
+    if(android.animation.ValueAnimator.areAnimatorsEnabled()){visible.setAlpha(.65f);visible.animate().alpha(1f).setDuration(140).start();}else visible.setAlpha(1f);
     networkRow.setVisibility(View.VISIBLE);
     if(a.hub==null||a.hub.page==AppHub.CHAT)a.toolbar.setVisibility(View.VISIBLE);
     a.toolbar.post(this::layoutTouchTargets);

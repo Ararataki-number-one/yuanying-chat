@@ -33,6 +33,7 @@ final class Ui {
         case "arrow":canvas.drawLine(12,18,12,5,p);path.moveTo(6,11);path.lineTo(12,5);path.lineTo(18,11);canvas.drawPath(path,p);break;
         case "back":path.moveTo(14,5);path.lineTo(7,12);path.lineTo(14,19);canvas.drawPath(path,p);break;
         case "chevron":path.moveTo(7,10);path.lineTo(12,15);path.lineTo(17,10);canvas.drawPath(path,p);break;
+        case "chevron-right":path.moveTo(9,5);path.lineTo(16,12);path.lineTo(9,19);canvas.drawPath(path,p);break;
         case "close":canvas.drawLine(6,6,18,18,p);canvas.drawLine(18,6,6,18,p);break;
         case "file":path.moveTo(5,3);path.lineTo(14,3);path.lineTo(19,8);path.lineTo(19,21);path.lineTo(5,21);path.close();canvas.drawPath(path,p);path.reset();path.moveTo(14,3);path.lineTo(14,8);path.lineTo(19,8);canvas.drawPath(path,p);canvas.drawLine(8,13,16,13,p);canvas.drawLine(8,17,14,17,p);break;
         case "image":canvas.drawRoundRect(new RectF(3,3,21,21),4,4,p);canvas.drawCircle(8,8,1.4f,p);path.moveTo(4,18);path.lineTo(10,12);path.lineTo(14,16);path.lineTo(17,13);path.lineTo(21,17);canvas.drawPath(path,p);break;

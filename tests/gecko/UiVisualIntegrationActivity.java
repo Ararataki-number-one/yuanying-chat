@@ -14,6 +14,10 @@ public final class UiVisualIntegrationActivity extends Activity {
   @Override public void onCreate(Bundle state){
     super.onCreate(state);String action=getIntent().getStringExtra("visualAction");
     try{seed();}catch(Exception e){Log.e("PocketUiVisual","fixture setup failed",e);finish();return;}
+    if("settings".equals(action)){
+      LinearLayout root=DesignUi.screen(this),box=DesignUi.body(this,root,"应用设置",null);
+      DesignSettingsUi.render(this,box,()->{});root.addView(ReferenceUi.nav(this,4,n->{},new Button[5]));setContentView(root);return;
+    }
     if("environments".equals(action)){startActivity(new Intent(this,WindowHomeActivity.class));finish();return;}
     if("browser".equals(action)||"preferences".equals(action)||"chat".equals(action)){
       Intent target=new Intent(this,MainActivity.class).putExtra("openWindowAction","chat".equals(action)?"native-smoke":"edit");
@@ -26,6 +30,7 @@ public final class UiVisualIntegrationActivity extends Activity {
     setContentView(root);ReferenceUi.insets(this,root);
     workspace=new NetworkWorkspaceUi(this,host);workspace.show(0);
     workspace.afterRead=()->{
+      if("network-menu".equals(action))workspace.networkMore();
       if("exit-password".equals(action))workspace.exitForm(J.obj("id","synthetic-exit","name","测试出口","host","127.0.0.1","port",1080,"user","fixture","password","Synthetic-exit-7!"),null);
       if("proxy".equals(action))workspace.external(0,true);
       if("entries".equals(action))try{

@@ -201,17 +201,19 @@ public class WindowHomeActivity extends ThemedActivity {
     if(sort==2)ordered.sort((l,r)->l.optString("name").compareToIgnoreCase(r.optString("name")));
     cards.removeAllViews();visibleIds.clear();for(int i=0;i<rows.length();i++){JSONObject deleted=rows.optJSONObject(i);if(deleted.optBoolean("deleting")){int id=deleted.optInt("slot");DesignUi.action(cards,"继续清理 · "+deleted.optString("name"),false,()->startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));}}
     for(int i=0;i<rows.length();i++){JSONObject paused=rows.optJSONObject(i);if(paused.optBoolean("resetting")){int id=paused.optInt("slot");DesignUi.action(cards,"继续重置登录 · "+paused.optString("name"),false,()->startReset(id,paused.optInt("generation")-1,paused.optString("environmentId")));}}
+    LinearLayout environmentList=DesignUi.group(this);DesignUi.addCard(cards,environmentList);
     for(JSONObject row:ordered){
       boolean active=running.contains(row.optInt("pid"));
       boolean fresh=row.optLong("seen")>0&&now-row.optLong("seen")<60000;
       if(filter==1&&!row.optBoolean("favorite")||filter==2&&!active||filter==3&&!(row.optBoolean("waiting")&&active)||filter==4&&row.optString("problem").isEmpty()||!matches(row,query,selectedGroup))continue;
       int id=row.optInt("slot");visibleIds.add(id);
       LinearLayout card=DesignUi.card(this);
+      card.setBackground(Ui.ripple(this,DesignUi.CARD,0));
       card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name"));
       card.setClickable(true);card.setFocusable(true);
       card.setOnClickListener(v->{if(selecting)toggleSelection(id);else openWindow(id,"chat");});
       card.setOnLongClickListener(v->{toggleSelection(id);return true;});
-      if(selecting&&selectedIds.contains(id))card.setBackground(DesignUi.surface(this,0xfff0f5ff,14,DesignUi.BLUE));
+      if(selecting&&selectedIds.contains(id))card.setBackground(Ui.ripple(this,0xfff0f5ff,0));
       LinearLayout head=DesignUi.row(this);
       if(selecting){
         CheckBox check=new CheckBox(this);check.setChecked(selectedIds.contains(id));
@@ -241,7 +243,7 @@ public class WindowHomeActivity extends ThemedActivity {
         Button more=ReferenceUi.more(this,()->menu(id));more.setContentDescription("更多操作 "+row.optString("name"));
         LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(dp(48),dp(48));moreParams.leftMargin=dp(6);actions.addView(more,moreParams);card.addView(actions);
       }
-      DesignUi.addCard(cards,card);
+      DesignUi.groupedRow(environmentList,card);
     }
     int maintenance=0;for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.optBoolean("resetting")||row.optBoolean("deleting"))maintenance++;}
     count.setText(counts[0]==0&&maintenance>0?maintenance+" 个环境待完成维护":visibleIds.size()==counts[0]?counts[0]+" 个环境":"显示 "+visibleIds.size()+" / "+counts[0]);
@@ -315,12 +317,14 @@ public class WindowHomeActivity extends ThemedActivity {
     JSONObject row=ProfileCatalog.get(this).item(id);
     if(!ProfileCatalog.get(this).available(id))return;
     String[] labels={"编辑环境","分组与备注",row.optBoolean("favorite")?"取消收藏":"收藏环境",id==AppSettings.defaultSlot(this)?"当前默认环境":"设为默认启动环境","网络配置","选择此环境","复制环境配置","重置登录数据","删除环境"};
-    AppAppearance.dialog(this).setTitle(row.optString("name")).setItems(labels,(d,n)->{
+    ReferenceUi.Modal panel=new ReferenceUi.Modal(this,row.optString("name")).asSheet();
+    for(int i=0;i<labels.length;i++){final int n=i;Button item=ReferenceUi.menuAction(panel,labels[i],()->{panel.dismiss();
       if(n==0)openWindow(id,"edit");if(n==1)metadata(id);
       if(n==2){ProfileCatalog.get(this).favorite(id,!row.optBoolean("favorite"));lastSignature="";refresh();}
       if(n==3){AppSettings.defaultSlot(this,id);lastSignature="";refresh();}
       if(n==4)openWindow(id,"network");if(n==5)toggleSelection(id);if(n==6)copyEnvironment(id);if(n==7)resetEnvironment(id);if(n==8)deleteEnvironment(id);
-    }).setNegativeButton("关闭",null).show();
+    });if(i>=7)item.setTextColor(DesignUi.RED);}
+    panel.show();
   }
   void startReset(int id,int generation,String environmentId){startActivity(new Intent(this,EnvironmentResetActivity.class).putExtra("slot",id).putExtra("confirmedGeneration",generation).putExtra("confirmedEnvironmentId",environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
   void resetEnvironment(int id){

@@ -76,7 +76,7 @@ final class AppAppearance {
     if(d.getWindow()==null)return;
     d.getContext().setTheme(d instanceof AlertDialog?(dark?R.style.ChatDialogDark:R.style.ChatDialogTheme):theme());
     d.getWindow().setStatusBarColor(color(d.getWindow().getStatusBarColor()));d.getWindow().setNavigationBarColor(color(d.getWindow().getNavigationBarColor()));
-    if(d instanceof AlertDialog)d.getWindow().setBackgroundDrawable(DesignUi.surface(d.getContext(),DesignUi.CARD,18,DesignUi.LINE));
+    if(d instanceof AlertDialog)d.getWindow().setBackgroundDrawable(DesignUi.surface(d.getContext(),DesignUi.CARD,24,Color.TRANSPARENT));
     int flags=View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;View decor=d.getWindow().getDecorView();
     decor.setSystemUiVisibility(dark?decor.getSystemUiVisibility()&~flags:decor.getSystemUiVisibility()|flags);
     if(Build.VERSION.SDK_INT>=29)decor.setForceDarkAllowed(false);
@@ -110,7 +110,8 @@ final class AppAppearance {
     int[] values=new int[states.length];for(int i=0;i<values.length;i++){int value=source.getColorForState(states[i],source.getDefaultColor());values[i]=foreground?text(value):color(value);}return new ColorStateList(states,values);
   }
   private static void drawable(Drawable d){
-    if(d instanceof Surface)((Surface)d).refresh();
+    if(d instanceof Glass)((Glass)d).refresh();
+    else if(d instanceof Surface)((Surface)d).refresh();
     else if(d instanceof ColorDrawable)((ColorDrawable)d).setColor(color(((ColorDrawable)d).getColor()));
     else if(d instanceof Ui.Icon){Ui.Icon icon=(Ui.Icon)d;icon.color=text(icon.color);icon.invalidateSelf();}
     if(d instanceof LayerDrawable){LayerDrawable layers=(LayerDrawable)d;for(int i=0;i<layers.getNumberOfLayers();i++)drawable(layers.getDrawable(i));}
@@ -121,5 +122,14 @@ final class AppAppearance {
     Surface(int fill){this.fill=fill;refresh();}
     @Override public void setStroke(int width,int border){this.width=width;this.border=border;super.setStroke(width,color(border));}
     void refresh(){super.setColor(color(fill));super.setStroke(width,color(border));invalidateSelf();}
+  }
+  /** A small tinted material, without a screen-wide blur or browser snapshot. */
+  static final class Glass extends GradientDrawable {
+    final int edge;
+    Glass(Context c,int radius){edge=Math.max(1,Math.round(c.getResources().getDisplayMetrics().density*.5f));setCornerRadius(Ui.dp(c,radius));setOrientation(Orientation.TOP_BOTTOM);refresh();}
+    void refresh(){
+      setColors(dark?new int[]{0xf036363b,0xe62a2a2f}:new int[]{0xfaffffff,0xe6eeeef3});
+      setStroke(edge,dark?0x386e6e77:0x99ffffff);invalidateSelf();
+    }
   }
 }
