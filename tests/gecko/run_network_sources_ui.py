@@ -18,7 +18,7 @@ PARSER.add_argument("--expected-apk-sha", default="")
 ARGS = PARSER.parse_args()
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
-from network_ui_route_contract import visible_route, reveal_modal_action
+from network_ui_route_contract import visible_route, reveal_modal_action, clipboard_overlay_present
 OUT = ROOT / "work/gecko-integration"
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "local.pocketchat.test"
@@ -201,6 +201,29 @@ def reveal_action(text, title):
                         record=lambda **evidence: record_action("reveal-modal-action-scroll", **evidence))
 
 
+def wait_clipboard_overlay():
+    # Android's clipboard preview can consume a tap in the lower left even
+    # when uiautomator exposes the underlying app button. Observe its actual
+    # WindowManager lifetime; never repeat a missed app action or disable it.
+    observations = []
+    first = None
+    def read():
+        nonlocal first
+        raw = adb("shell", "dumpsys", "window", "windows")
+        present = clipboard_overlay_present(raw, PACKAGE)
+        if first is None:
+            first = raw
+        observations.append({"monotonicSeconds": time.monotonic(), "overlayPresent": present,
+                             "sha256": hashlib.sha256(raw.encode()).hexdigest()})
+        (OUT / "network-source-ui-clipboard-windows.json").write_text(json.dumps(
+            {"firstWindowDump": first, "lastWindowDump": raw, "observations": observations},
+            ensure_ascii=False, indent=2) + "\n")
+        return present
+    wait_for(read, lambda present: not present, "Actual system clipboard overlay closed before one app tap", seconds=30)
+    record_action("wait-system-clipboard-overlay", evidence="network-source-ui-clipboard-windows.json",
+                  observations=observations)
+
+
 def assert_fields(expected):
     tree = xml()
     values = {description: [item.attrib for item in matching(tree, desc=description, kind="EditText")]
@@ -314,6 +337,7 @@ def main():
     node(text="已复制")
     check("Diagnostic copy confirms inline without leaving the dialog", bool(matching(xml(), desc="耗时诊断 · UI Window")))
     command("assert-diagnostics-copied")
+    wait_clipboard_overlay()
     tap(text="返回")
     tap(text="关闭")
     command("entry-tab")

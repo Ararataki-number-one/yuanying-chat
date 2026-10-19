@@ -2,6 +2,15 @@
 import re
 
 
+def clipboard_overlay_present(window_dump, package):
+    """Read actual WindowManager entries; stale focus references are not windows."""
+    windows = re.findall(r'^\s*Window #\d+ (Window\{[^\n]*\}):', window_dump, re.MULTILINE)
+    assert windows, 'Expected actual Android WindowManager window entries'
+    assert any(re.search(re.escape(package) + r'(?:/|\s|\})', item) for item in windows), (
+        'Expected the actual app window before the next touch')
+    return any(re.search(r'\bClipboardOverlay\b', item) for item in windows)
+
+
 def visible_route(tree, environment, entrance, fixed_exit):
     parents = {child: parent for parent in tree.iter() for child in parent}
     for title in tree.iter('node'):

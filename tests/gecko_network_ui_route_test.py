@@ -23,6 +23,27 @@ def card(name='UI Window', entrance='Entry A', exit='ManualSource'):
     return root
 
 
+class SystemClipboardWindowTest(unittest.TestCase):
+    app = '  Window #1 Window{abc u0 local.pocketchat.test/local.pocketchat.NetworkSourcesUiIntegrationActivity}:\n'
+    overlay = '  Window #0 Window{def u0 ClipboardOverlay}:\n'
+
+    def test_overlay_blocks_the_next_single_app_touch(self):
+        self.assertTrue(ROUTE.clipboard_overlay_present(self.overlay+self.app,'local.pocketchat.test'))
+
+    def test_absent_overlay_allows_the_next_touch(self):
+        self.assertFalse(ROUTE.clipboard_overlay_present(self.app,'local.pocketchat.test'))
+
+    def test_old_focus_reference_is_not_a_live_overlay_window(self):
+        self.assertFalse(ROUTE.clipboard_overlay_present(self.app+'  mLastFocus=Window{def u0 ClipboardOverlay}\n','local.pocketchat.test'))
+
+    def test_missing_app_window_is_rejected(self):
+        with self.assertRaises(AssertionError):ROUTE.clipboard_overlay_present(self.overlay,'local.pocketchat.test')
+
+    def test_unsupported_or_empty_dump_cannot_mean_unobstructed(self):
+        for raw in ('', 'permission denied', 'mCurrentFocus=Window{abc u0 local.pocketchat.test/Fixture}'):
+            with self.assertRaises(AssertionError):ROUTE.clipboard_overlay_present(raw,'local.pocketchat.test')
+
+
 class NetworkRouteUiTest(unittest.TestCase):
     def check_route(self,*cards):
         tree=ET.Element('hierarchy');tree.extend(cards)
