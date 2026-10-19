@@ -52,8 +52,8 @@ SUFFIX = r'''
 public static void main(String[] args)throws Exception{
  int checks=0;
  {KeyOrder r=new KeyOrder();r.key(0);require(r.sent.isEmpty()&&r.requests==0,"parent gate");checks++;
-  require(XPCOMEventTarget.wakes==1,"native event target wakes idle parent without releasing the key");checks++;
   r.nativeCaret=9;r.parent();require(r.requests==1&&r.sent.isEmpty(),"must await child reply");checks++;
+  require(XPCOMEventTarget.wakes==1,"native event target wakes idle parent without releasing the key");checks++;
   Action a=r.mOrderedKeyBarrier;r.reply(new Action(0));require(r.sent.isEmpty(),"foreign reply");checks++;
   r.reply(a);require(r.sent.equals(List.of(0))&&r.shadowCaret==9,"native state synchronized before one key");checks++;
   r.reply(a);require(r.sent.equals(List.of(0)),"duplicate cannot replay");checks++;}
@@ -106,7 +106,7 @@ def main():
         (p / 'KeyOrder.java').write_text(PREFIX + no_wake + SUFFIX)
         subprocess.run([javac, str(p / 'KeyOrder.java')], check=True)
         negative = subprocess.run([java, '-cp', str(p), 'KeyOrder'], capture_output=True, text=True)
-        assert negative.returncode != 0 and 'native event target wakes idle parent' in negative.stderr
+        assert negative.returncode != 0 and 'must await child reply' in negative.stderr
         result['missingNativeWakeRejected'] = True
     assert result['status'] == 'passed' and result['checkCount'] == 21
     print(json.dumps(result))

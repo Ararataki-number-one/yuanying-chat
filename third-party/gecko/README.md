@@ -18,13 +18,15 @@ exact action, preserving newer work after a queue reset. The host barrier test
 executes the actual queue and synchronization methods against controlled doubles;
 it is separate from Android composition acceptance.
 
-The `pocket3` candidate submits hardware key work through the parent Gecko
+The `pocket3` build submits hardware key work through the parent Gecko
 Looper, then requests a synchronization reply from the currently focused child
 before releasing one queued key. It preserves FIFO order, waits for the actual
 reply rather than a returned submission, and invalidates queued work on blur.
-There is no fixed delay, selection write, or replay. The parent forwarding fence
-and child synchronization are an ordering hypothesis; APZ touch completion and
-the intermittent rapid-tap failure still require actual Android evidence.
+There is no fixed delay, selection write, or replay. A no-op Runnable dispatched
+through the original native XPCOM main-thread target wakes the parent wait; the
+Java Looper fence does not depend on a later page event. Parent forwarding and
+child synchronization alone do not prove APZ completion: actual Android editing
+evidence remains required for every selected source.
 `run_key_order_host.py` checks the actual candidate queue methods with controlled
 parent/child doubles. It cannot establish native touch completion. CI also
 predeclares two additional independent Android devices, each running the original
