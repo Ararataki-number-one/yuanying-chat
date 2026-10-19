@@ -50,6 +50,7 @@ import org.mozilla.gecko.MozLog;
 import org.mozilla.gecko.util.GeckoBundle;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.util.ThreadUtils.AssertBehavior;
+import org.mozilla.gecko.util.XPCOMEventTarget;
 import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEContextFlags;
 import org.mozilla.geckoview.SessionTextInput.EditableListener.IMENotificationType;
 import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
@@ -2838,6 +2839,11 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
     // There is no timer, sleep, key replay, or inference from a Java return.
     if (parent == null || !parent.post(enqueue)) {
       postToInputConnection(key); // Preserve the original startup/shutdown path.
+    } else {
+      // A Java Looper post alone does not wake nsAppShell's native event wait.
+      // Dispatch through its actual main-thread event target as well, so the
+      // forwarding fence never relies on a later page event or repaint.
+      XPCOMEventTarget.mainThread().execute(() -> {});
     }
   }
 

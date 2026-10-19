@@ -21,11 +21,15 @@ static class RemoteException extends Exception {}
 static class Action {static final int TYPE_EVENT=0;Action(int type){}}
 interface IGeckoEditableChild {void onImeSynchronize()throws RemoteException;}
 static class Handler {
- final Queue<Runnable> tasks=new ArrayDeque<>();boolean reject;
+ final Queue<Runnable> tasks=new ArrayDeque<>();boolean reject,awake;
  boolean post(Runnable r){if(reject)return false;tasks.add(r);return true;}
- void drain(){while(!tasks.isEmpty())tasks.remove().run();}
+ void drain(){if(this==ThreadUtils.sGeckoHandler&&!awake)return;while(!tasks.isEmpty())tasks.remove().run();}
 }
 static class ThreadUtils {static Handler sGeckoHandler;}
+static class XPCOMEventTarget {
+ static int wakes;static XPCOMEventTarget mainThread(){return new XPCOMEventTarget();}
+ void execute(Runnable r){wakes++;ThreadUtils.sGeckoHandler.awake=true;r.run();}
+}
 static class Log {static void e(String a,String b,Exception c){}}
 static final String LOGTAG="test";
 final Handler ic=new Handler();
@@ -34,7 +38,7 @@ final ConcurrentLinkedQueue<Runnable> mOrderedKeys=new ConcurrentLinkedQueue<>()
 volatile Action mOrderedKeyBarrier;IGeckoEditableChild mOrderedKeyChild;
 volatile long mOrderedKeyEpoch;IGeckoEditableChild mFocusedChild;Object mListener=new Object();
 final List<Integer> sent=new ArrayList<>();int requests,nativeCaret=2,shadowCaret=2;
-KeyOrder(){ThreadUtils.sGeckoHandler=new Handler();mFocusedChild=()->requests++;}
+KeyOrder(){ThreadUtils.sGeckoHandler=new Handler();XPCOMEventTarget.wakes=0;mFocusedChild=()->requests++;}
 void postToInputConnection(Runnable r){ic.post(r);}
 boolean shouldProcessKey(int code,KeyEvent event){return true;}
 void sendKeyEvent(View view,int action,KeyEvent event){sent.add(action);}
@@ -48,6 +52,7 @@ SUFFIX = r'''
 public static void main(String[] args)throws Exception{
  int checks=0;
  {KeyOrder r=new KeyOrder();r.key(0);require(r.sent.isEmpty()&&r.requests==0,"parent gate");checks++;
+  require(XPCOMEventTarget.wakes==1,"native event target wakes idle parent without releasing the key");checks++;
   r.nativeCaret=9;r.parent();require(r.requests==1&&r.sent.isEmpty(),"must await child reply");checks++;
   Action a=r.mOrderedKeyBarrier;r.reply(new Action(0));require(r.sent.isEmpty(),"foreign reply");checks++;
   r.reply(a);require(r.sent.equals(List.of(0))&&r.shadowCaret==9,"native state synchronized before one key");checks++;
@@ -68,9 +73,11 @@ public static void main(String[] args)throws Exception{
  {KeyOrder r=new KeyOrder();r.mFocusedChild=()->{throw new RemoteException();};r.key(0);r.parent();
   require(r.sent.isEmpty()&&r.mOrderedKeys.isEmpty()&&r.mActions.isEmpty()&&r.mOrderedKeyBarrier==null,"remote failure cannot submit or retry");checks++;}
  {KeyOrder r=new KeyOrder();ThreadUtils.sGeckoHandler=null;r.key(0);r.ic.drain();
-  require(r.sent.equals(List.of(0))&&r.requests==0,"original absent-parent path once");checks++;}
+  require(r.sent.equals(List.of(0))&&r.requests==0,"original absent-parent path once");checks++;
+  require(XPCOMEventTarget.wakes==0,"no native wake for absent parent");checks++;}
  {KeyOrder r=new KeyOrder();ThreadUtils.sGeckoHandler.reject=true;r.key(0);r.ic.drain();
-  require(r.sent.equals(List.of(0))&&r.requests==0,"original closed-parent path once");checks++;}
+  require(r.sent.equals(List.of(0))&&r.requests==0,"original closed-parent path once");checks++;
+  require(XPCOMEventTarget.wakes==0,"no native wake after parent rejection");checks++;}
  {KeyOrder r=new KeyOrder();r.mFocusedChild=null;r.key(0);r.parent();
   require(r.sent.equals(List.of(0)),"original no-focus path once");checks++;}
  {KeyOrder r=new KeyOrder();r.mListener=null;r.key(0);r.parent();
@@ -92,7 +99,16 @@ def main():
         (p / 'KeyOrder.java').write_text(PREFIX + methods + SUFFIX)
         subprocess.run([javac, str(p / 'KeyOrder.java')], check=True)
         result = json.loads(subprocess.check_output([java, '-cp', str(p), 'KeyOrder'], text=True))
-    assert result['status'] == 'passed' and result['checkCount'] == 18
+        # The same actual source with just its native wake removed must fail
+        # while the parent is idle; unconditional Java draining masks this bug.
+        no_wake = methods.replace('XPCOMEventTarget.mainThread().execute(() -> {});', '')
+        assert no_wake != methods
+        (p / 'KeyOrder.java').write_text(PREFIX + no_wake + SUFFIX)
+        subprocess.run([javac, str(p / 'KeyOrder.java')], check=True)
+        negative = subprocess.run([java, '-cp', str(p), 'KeyOrder'], capture_output=True, text=True)
+        assert negative.returncode != 0 and 'native event target wakes idle parent' in negative.stderr
+        result['missingNativeWakeRejected'] = True
+    assert result['status'] == 'passed' and result['checkCount'] == 21
     print(json.dumps(result))
 
 

@@ -1,6 +1,8 @@
 --- a/GeckoEditable.java
 +++ b/GeckoEditable.java
-@@ -82,0 +83,7 @@
+@@ -52,0 +53 @@
++import org.mozilla.gecko.util.XPCOMEventTarget;
+@@ -82,0 +84,7 @@
 +  // Hardware keys must not use the direct IC -> child path to overtake older
 +  // touch events still queued in the parent. Each key first crosses the parent
 +  // event loop, then waits for a real focused-child IME synchronize reply.
@@ -8,10 +10,10 @@
 +  private volatile Action mOrderedKeyBarrier;
 +  private IGeckoEditableChild mOrderedKeyChild; // IC thread only.
 +  private volatile long mOrderedKeyEpoch;
-@@ -754 +761 @@
+@@ -754 +762 @@
 -        sendCharKeyEvents(action);
 +        final int submittedKeyDowns = sendCharKeyEvents(action);
-@@ -764,0 +772,15 @@
+@@ -764,0 +773,15 @@
 +        final int sequenceLength = action.mSequence.length();
 +        final boolean plainSingleCharacter =
 +            sequenceLength == 1
@@ -27,23 +29,23 @@
 +            submittedKeyDowns == 1
 +                && plainSingleCharacter
 +                && selStartOnShadow == action.mStart + sequenceLength;
-@@ -772 +794,2 @@
+@@ -772 +795,2 @@
 -            && action.mStart == selStartOnShadow + action.mSequence.toString().length()) {
 +            && (action.mStart == selStartOnShadow + action.mSequence.toString().length()
 +                || useNativeCaretForSubmittedCharacter)) {
-@@ -804 +827 @@
+@@ -804 +828 @@
 -  private void sendCharKeyEvents(final Action action) throws RemoteException {
 +  private int sendCharKeyEvents(final Action action) throws RemoteException {
-@@ -811 +834 @@
+@@ -811 +835 @@
 -      return;
 +      return 0;
-@@ -815,2 +838,3 @@
+@@ -815,2 +839,3 @@
 -      return;
 -    }
 +      return 0;
 +    }
 +    int submittedKeyDowns = 0;
-@@ -833 +857,6 @@
+@@ -833 +858,6 @@
 -    }
 +      // Count after the original non-modifier call returns, within this action.
 +      if (event.getAction() == KeyEvent.ACTION_DOWN) {
@@ -51,11 +53,11 @@
 +      }
 +    }
 +    return submittedKeyDowns;
-@@ -1679,0 +1709,3 @@
+@@ -1679,0 +1710,3 @@
 +        // Work submitted for the old focus must never replay into a new field
 +        // or document after the child/token is replaced.
 +        geckoCancelOrderedKeys();
-@@ -1685 +1717,13 @@
+@@ -1685 +1718,13 @@
 -      geckoActionReply(mActions.poll());
 +      // Keep the action pending while its reply copies composing spans into
 +      // current text. Otherwise the IC thread can see an empty queue and sync
@@ -70,10 +72,10 @@
 +      if (completedAction != null && completedAction == mOrderedKeyBarrier) {
 +        postToInputConnection(() -> icCompleteOrderedKey(completedAction));
 +      }
-@@ -2773 +2817 @@
+@@ -2773 +2818 @@
 -    postToInputConnection(
 +    postOrderedKey(
-@@ -2780,0 +2825,68 @@
+@@ -2780,0 +2826,73 @@
 +  }
 +
 +  private void postOrderedKey(final Runnable key) {
@@ -90,6 +92,11 @@
 +    // There is no timer, sleep, key replay, or inference from a Java return.
 +    if (parent == null || !parent.post(enqueue)) {
 +      postToInputConnection(key); // Preserve the original startup/shutdown path.
++    } else {
++      // A Java Looper post alone does not wake nsAppShell's native event wait.
++      // Dispatch through its actual main-thread event target as well, so the
++      // forwarding fence never relies on a later page event or repaint.
++      XPCOMEventTarget.mainThread().execute(() -> {});
 +    }
 +  }
 +
