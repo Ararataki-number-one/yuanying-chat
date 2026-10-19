@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
+from unittest.mock import Mock
 
 ROOT=Path(__file__).resolve().parents[1]
 SPEC=importlib.util.spec_from_file_location('network_ui_route',ROOT/'tools/gecko/network_ui_route_contract.py')
@@ -38,6 +39,52 @@ class NetworkRouteUiTest(unittest.TestCase):
         value=card();value[1][1][1].set('clickable','true');self.assertFalse(self.check_route(value))
     def test_old_combined_line_cannot_replace_the_new_stage_checks(self):
         value=card();value.remove(value[1]);value.insert(1,text('Entry A → ManualSource'));self.assertFalse(self.check_route(value))
+
+
+class ModalActionScrollTest(unittest.TestCase):
+    def tree(self, visible=False, title='入口订阅详情', scrollable=True):
+        tree=ET.Element('hierarchy');heading=text('详情');heading.set('content-desc',title);tree.append(heading)
+        body=ET.SubElement(tree,'node',{'class':'android.widget.ScrollView','package':'local.pocketchat.test',
+                                      'scrollable':str(scrollable).lower(),'bounds':'[100,200][900,1600]'})
+        if visible:
+            action=text('删除订阅');action.set('class','android.widget.Button');action.set('package','local.pocketchat.test');action.set('enabled','true');action.set('clickable','true');action.set('bounds','[120,1400][880,1530]');body.append(action)
+        return tree
+
+    def reveal(self, read, swipe, **kwargs):
+        return ROUTE.reveal_modal_action(read,swipe,'入口订阅详情','删除订阅','local.pocketchat.test',**kwargs)
+
+    def test_visible_action_does_not_scroll_or_invoke_it(self):
+        value=self.tree(True);swipe=Mock();self.assertIs(self.reveal(lambda:value,swipe),value);swipe.assert_not_called()
+
+    def test_hidden_action_uses_one_actual_scroll_inside_the_modal(self):
+        hidden,visible=self.tree(),self.tree(True);read=Mock(side_effect=[hidden,visible]);swipe=Mock();record=Mock()
+        self.assertIs(self.reveal(read,swipe,record=record),visible)
+        swipe.assert_called_once_with(500,1320,500,480);record.assert_called_once()
+
+    def test_another_modal_is_rejected_without_a_gesture(self):
+        swipe=Mock()
+        with self.assertRaises(AssertionError):self.reveal(lambda:self.tree(title='其他弹窗'),swipe)
+        swipe.assert_not_called()
+
+    def test_absent_scroll_body_cannot_fall_back_to_screen_swipes(self):
+        swipe=Mock()
+        with self.assertRaises(AssertionError):self.reveal(lambda:self.tree(scrollable=False),swipe)
+        swipe.assert_not_called()
+
+    def test_scroll_budget_is_finite_and_missing_action_stays_failed(self):
+        swipe=Mock()
+        with self.assertRaises(AssertionError):self.reveal(lambda:self.tree(),swipe,max_scrolls=2)
+        self.assertEqual(swipe.call_count,2)
+
+    def test_nonclickable_label_cannot_replace_an_actual_action(self):
+        value=self.tree(True);value[-1][0].set('clickable','false');swipe=Mock()
+        with self.assertRaises(AssertionError):self.reveal(lambda:value,swipe)
+        swipe.assert_not_called()
+
+    def test_disabled_action_is_not_accepted_or_force_clicked(self):
+        value=self.tree(True);value[-1][0].set('enabled','false');swipe=Mock()
+        with self.assertRaises(AssertionError):self.reveal(lambda:value,swipe)
+        swipe.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()

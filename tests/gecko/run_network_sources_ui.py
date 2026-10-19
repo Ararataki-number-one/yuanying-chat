@@ -18,7 +18,7 @@ PARSER.add_argument("--expected-apk-sha", default="")
 ARGS = PARSER.parse_args()
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
-from network_ui_route_contract import visible_route
+from network_ui_route_contract import visible_route, reveal_modal_action
 OUT = ROOT / "work/gecko-integration"
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "local.pocketchat.test"
@@ -192,6 +192,15 @@ def reveal_field(description, title):
     raise AssertionError("Actual modal scroll did not reveal field: " + description)
 
 
+def reveal_action(text, title):
+    wait_for(xml, lambda tree: len(matching(tree, desc=title)) == 1,
+             "Actual modal before revealing " + text, seconds=20)
+    reveal_modal_action(xml,
+                        lambda x1, y1, x2, y2: adb("shell", "input", "swipe", str(x1), str(y1), str(x2), str(y2), "600"),
+                        title, text, PACKAGE,
+                        record=lambda **evidence: record_action("reveal-modal-action-scroll", **evidence))
+
+
 def assert_fields(expected):
     tree = xml()
     values = {description: [item.attrib for item in matching(tree, desc=description, kind="EditText")]
@@ -266,6 +275,7 @@ def edit_source(role):
 
 def delete_source(role):
     command("open-" + role + "-detail")
+    reveal_action("删除订阅", ("入口" if role == "entry" else "出口") + "订阅详情")
     tap(text="删除订阅")
     centered("删除" + ("入口" if role == "entry" else "出口") + "订阅")
     expected = "1 个窗口" if role == "entry" else "0 个窗口"
@@ -357,6 +367,7 @@ def main():
         tap(text="关闭")
 
     command("open-manual-detail")
+    reveal_action("编辑出口", "出口详情")
     tap(text="编辑出口")
     centered("编辑固定出口")
     fill("出口名称", "ManualEdited")
@@ -368,6 +379,7 @@ def main():
     delete_source("entry")
     delete_source("exit")
     command("open-manual-detail")
+    reveal_action("删除出口", "出口详情")
     tap(text="删除出口")
     centered("删除固定出口")
     check("Manual deletion includes its referencing window", "1 个窗口" in node(part="1 个窗口").attrib["text"])
