@@ -15,10 +15,12 @@ public final class UiVisualIntegrationActivity extends Activity {
   @Override public void onCreate(Bundle state){
     super.onCreate(state);String action=getIntent().getStringExtra("visualAction");
     try{seed();}catch(Exception e){Log.e("PocketUiVisual","fixture setup failed",e);finish();return;}
-    if("environment-picker".equals(action)||"templates".equals(action)||"zoom".equals(action)){startActivity(new Intent(this,UiDetailsIntegrationActivity.class).putExtra("detailScene",action));finish();return;}
+    if("environment-picker".equals(action)||"templates".equals(action)||"zoom".equals(action)||"audit".equals(action)){startActivity(new Intent(this,UiDetailsIntegrationActivity.class).putExtra("detailScene",action));finish();return;}
+    if("update".equals(action)){startActivity(new Intent(this,AppUpdateActivity.class));finish();return;}
+    if("file-preview".equals(action)){startActivity(new Intent(this,AttachmentPreviewActivity.class).putExtra("uri","content://local.pocketchat.test.upload/image").putExtra("mime","image/png").putExtra("name","界面预览图片.png"));finish();return;}
     if("brand".equals(action)){startActivity(new Intent(this,BrandLaunchActivity.class).putExtra("previewBrand",true));finish();return;}
     if("import".equals(action)){startActivity(new Intent(this,NetworkImportActivity.class));finish();return;}
-    if("settings".equals(action)||"appearance".equals(action)||"default-entry".equals(action)||"feedback".equals(action)||"downloads".equals(action)){
+    if("settings".equals(action)||"appearance".equals(action)||"default-entry".equals(action)||"feedback".equals(action)||"downloads".equals(action)||"delete-file".equals(action)||"share-preview".equals(action)){
       LinearLayout root=DesignUi.screen(this),box=DesignUi.body(this,root,"应用设置",null);
       if("downloads".equals(action)){
         savedActions=new SavedFileActions(this);DesignDownloads.Controller controller=new DesignDownloads.Controller(this,box,0,n->{},savedActions);
@@ -31,7 +33,10 @@ public final class UiVisualIntegrationActivity extends Activity {
       root.addView(ReferenceUi.nav(this,4,n->{},new Button[5]));setContentView(root);AppAppearance.apply(root);
       if("appearance".equals(action))DesignSettingsUi.appearance(this,()->{});
       if("default-entry".equals(action))DesignSettingsUi.defaultEntry(this,()->{});
-      if("feedback".equals(action))FeedbackUi.open(this);return;
+      if("feedback".equals(action))FeedbackUi.open(this);
+      if("delete-file".equals(action)){savedActions=new SavedFileActions(this);savedActions.confirmDelete(J.obj("name","准备清理的文件.pdf","slot",0));}
+      if("share-preview".equals(action))NetworkShareUi.show(this,new NetworkShareCodec.Bundle("布局测试线路",J.obj("name","测试入口","type","socks5","server","127.0.0.1","port",1080),J.obj("name","固定测试出口","type","socks5","server","127.0.0.1","port",1081)));
+      return;
     }
     if("environments".equals(action)){startActivity(new Intent(this,WindowHomeActivity.class));finish();return;}
     if("browser".equals(action)||"preferences".equals(action)||"chat".equals(action)){
@@ -70,6 +75,7 @@ public final class UiVisualIntegrationActivity extends Activity {
       catalog.favorite(slot,slot==0||slot==4);catalog.browserDisplay(slot,slot==0||slot==3);
       Profiles.context(this,slot).getSharedPreferences("chat",0).edit().putString("browserEngine","gecko").putString("networkMode","external").putBoolean("networkConfigured",false).putBoolean("pageMode",true).putBoolean("environmentInitialized",true).commit();
     }
+    android.os.Bundle updateOptions=new android.os.Bundle();updateOptions.putBoolean("autoCheck",false);AppUpdates.call(this,"settings",updateOptions);
     AppSettings.defaultSlot(this,0);AppSettings.put(this,"brandSeen","true");AppSettings.put(this,"updateAutoCheck","false");
     NetworkCatalog library=new NetworkCatalog(this);
     if(library.subscriptions().length()==0){

@@ -40,7 +40,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
     adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene)
     required={'chat':'会话','environments':'环境管理','network':'窗口网络','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
       'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',
-      'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放'}[scene]
+      'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]
     deadline=time.monotonic()+35
     while True:
         xml=dump(deadline=deadline)
@@ -313,7 +313,7 @@ try:
     verify_captures(records)
     build=json.loads((out/'ui-build-comparison.json').read_text())
     assert build['comparisonMode']=='current-only' and not build['historicalUIRebuilt'] and build['coreSourceCommit']==source,build
-    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse,'exitPassword':exit_password,'scope':'Current GeckoView-only production UI with local synthetic records, 80 current-source captures including workspaces, secondary forms, light, dark and double-font layouts, plus exit password checks; historical UI is not rebuilt. Website content, login and network core are not replaced.'}
+    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse,'exitPassword':exit_password,'scope':'Current GeckoView-only production UI with local synthetic records, 100 current-source captures including workspaces, secondary forms, light, dark and double-font layouts, plus exit password checks; historical UI is not rebuilt. Website content, login and network core are not replaced.'}
 except Exception as error:
     report={'status':'failed','actualAndroidExecution':True,'sourceCommit':source,'diagnosticOnly':False,'error':repr(error),'screenshots':records}
     (out/'ui-visual-log.txt').write_text(adb('logcat','-d'))

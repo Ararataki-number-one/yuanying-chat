@@ -5,7 +5,7 @@ LARGE_SCENES = ('proxy', 'entries', 'browser', 'preferences', 'chat', 'settings'
 DARK_SCENES = ('chat', 'environments', 'network', 'settings', 'network-menu')
 
 DETAIL_SCENES = ('environment-picker', 'downloads', 'feedback', 'appearance', 'default-entry',
-                 'subscription-form', 'exit-form', 'route-editor', 'import', 'brand', 'templates', 'zoom')
+                 'subscription-form', 'exit-form', 'route-editor', 'import', 'brand', 'templates', 'zoom', 'update', 'audit', 'file-preview', 'delete-file', 'share-preview')
 LIGHT_SCENES += DETAIL_SCENES
 LARGE_SCENES += DETAIL_SCENES
 DARK_SCENES += DETAIL_SCENES

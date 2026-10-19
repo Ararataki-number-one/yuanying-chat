@@ -19,7 +19,6 @@ final class Ui {
       Path path=new Path();
       switch(name){
         case "tray":path.moveTo(6,4);path.lineTo(18,4);path.lineTo(22,15);path.lineTo(22,20);path.lineTo(2,20);path.lineTo(2,15);path.close();canvas.drawPath(path,p);path.reset();path.moveTo(2,15);path.lineTo(8,15);path.lineTo(10,18);path.lineTo(14,18);path.lineTo(16,15);path.lineTo(22,15);canvas.drawPath(path,p);break;
-        case "search":canvas.drawCircle(10,10,6.5f,p);canvas.drawLine(15,15,21,21,p);break;
         case "refresh":canvas.drawArc(new RectF(4,4,20,20),40,290,false,p);path.moveTo(16,2);path.lineTo(20,7);path.lineTo(14,8);canvas.drawPath(path,p);break;
         case "share":canvas.drawLine(12,15,12,3,p);path.moveTo(8,7);path.lineTo(12,3);path.lineTo(16,7);canvas.drawPath(path,p);path.reset();path.moveTo(6,10);path.lineTo(4,10);path.lineTo(4,21);path.lineTo(20,21);path.lineTo(20,10);path.lineTo(18,10);canvas.drawPath(path,p);break;
         case "trash":canvas.drawLine(4,6,20,6,p);canvas.drawLine(9,3,15,3,p);path.moveTo(6,6);path.lineTo(7,21);path.lineTo(17,21);path.lineTo(18,6);canvas.drawPath(path,p);canvas.drawLine(10,10,10,17,p);canvas.drawLine(14,10,14,17,p);break;
