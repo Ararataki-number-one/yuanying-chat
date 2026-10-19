@@ -9,13 +9,15 @@ DETAIL_SCENES = ('environment-picker', 'downloads', 'feedback', 'appearance', 'd
 LIGHT_SCENES += DETAIL_SCENES
 LARGE_SCENES += DETAIL_SCENES
 DARK_SCENES += DETAIL_SCENES
+LANDSCAPE_SCENES = ('chat', 'environments', 'settings', 'environment-picker', 'downloads',
+                    'feedback', 'exit-form', 'route-editor', 'brand', 'templates', 'file-preview')
 
 
 def required_captures():
     return {
         ('light', viewport, 1, scene)
         for viewport in ('360x640', '412x640') for scene in LIGHT_SCENES
-    } | {('light', '360x640', 2, scene) for scene in LARGE_SCENES} | {
+    } | {('light', '640x360', 1, scene) for scene in LANDSCAPE_SCENES} | {('light', '360x640', 2, scene) for scene in LARGE_SCENES} | {
         ('dark', '360x640', 1, scene) for scene in DARK_SCENES
     }
 

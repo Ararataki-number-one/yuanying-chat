@@ -10,7 +10,7 @@ source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).st
 package='local.pocketchat.test';records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
-from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, verify_captures
+from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, verify_captures
 scenes=LIGHT_SCENES
 ui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')
 def adb(*values):return subprocess.check_output([args.adb,'-s',args.serial,*values],timeout=90).decode(errors='replace')
@@ -102,6 +102,7 @@ try:
         for width,height in [(360,640),(412,640)]:
             for scene in scenes:capture(variant,width,height,1,scene)
         for scene in LARGE_SCENES:capture(variant,360,640,2,scene)
+        for scene in LANDSCAPE_SCENES:capture(variant,640,360,1,scene)
     adb('shell','cmd','uimode','night','yes')
     try:
         for scene in DARK_SCENES:capture('current',360,640,1,scene,theme='dark')
@@ -313,7 +314,7 @@ try:
     verify_captures(records)
     build=json.loads((out/'ui-build-comparison.json').read_text())
     assert build['comparisonMode']=='current-only' and not build['historicalUIRebuilt'] and build['coreSourceCommit']==source,build
-    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse,'exitPassword':exit_password,'scope':'Current GeckoView-only production UI with local synthetic records, 100 current-source captures including workspaces, secondary forms, light, dark and double-font layouts, plus exit password checks; historical UI is not rebuilt. Website content, login and network core are not replaced.'}
+    report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse,'exitPassword':exit_password,'scope':'Current GeckoView-only production UI with local synthetic records, 111 current-source captures including workspaces, secondary forms, light, dark and double-font layouts, plus exit password checks; historical UI is not rebuilt. Website content, login and network core are not replaced.'}
 except Exception as error:
     report={'status':'failed','actualAndroidExecution':True,'sourceCommit':source,'diagnosticOnly':False,'error':repr(error),'screenshots':records}
     (out/'ui-visual-log.txt').write_text(adb('logcat','-d'))
