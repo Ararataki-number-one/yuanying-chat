@@ -1,0 +1,51 @@
+name: Read pinned Gecko input sources
+'on':
+  push:
+    branches: [feature/profile-upgrades-2_0]
+    paths: [.github/workflows/gecko-input-sources.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sources:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read immutable public SDK sources for input ordering diagnosis
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import concurrent.futures,hashlib,json,pathlib,urllib.request,zipfile
+          out=pathlib.Path('work/gecko-input-sources');out.mkdir(parents=True)
+          identity=json.loads(pathlib.Path('third-party/sdk/geckoview-157.0.1-official.json').read_text())
+          selected=identity['sources']
+          data=urllib.request.urlopen(selected['url'],timeout=60).read()
+          assert len(data)==selected['bytes'] and hashlib.sha256(data).hexdigest()==selected['sha256']
+          (out/'sources.jar').write_bytes(data)
+          with zipfile.ZipFile(out/'sources.jar') as archive:
+              original=archive.read('org/mozilla/geckoview/GeckoEditable.java')
+              assert hashlib.sha256(original).hexdigest()==identity['geckoEditableSourceSha256']
+              names=['GeckoEditable.java','PanZoomController.java','GeckoInputConnection.java','SessionTextInput.java','GeckoView.java','GeckoSession.java']
+              for name in names:(out/name).write_bytes(archive.read('org/mozilla/geckoview/'+name))
+          native=['widget/android/nsWindow.cpp','widget/android/GeckoEditableSupport.cpp','gfx/layers/apz/src/InputQueue.cpp','gfx/layers/apz/util/APZEventState.cpp']
+          def read(name):
+              url='https://hg.mozilla.org/releases/mozilla-release/raw-file/'+identity['upstreamRevision']+'/'+name
+              try:
+                  raw=urllib.request.urlopen(url,timeout=35).read()
+                  assert raw and not raw.lstrip().startswith(b'<!DOCTYPE'), 'Expected source rather than an HTML error'
+                  (out/pathlib.Path(name).name).write_bytes(raw)
+                  return dict(path=name,url=url,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+              except Exception as error:return dict(path=name,url=url,error=str(error))
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:extra=list(pool.map(read,native))
+          receipt=dict(sourceArchive=selected,upstreamRevision=identity['upstreamRevision'],nativeReads=extra,
+                       scope='Public immutable source research only; no execution, patch, or input acceptance.')
+          (out/'source-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          print(json.dumps(dict(verifiedSdkSourceArchive=True,nativeReads=extra)))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pinned-gecko-input-sources
+          path: work/gecko-input-sources/
+          if-no-files-found: error
+          retention-days: 5
