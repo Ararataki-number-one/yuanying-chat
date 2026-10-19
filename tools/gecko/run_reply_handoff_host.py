@@ -25,6 +25,10 @@ static class ThreadUtils {static void assertOnGeckoThread(){}}
 static class SessionTextInput {static class EditableListener {static final int NOTIFY_IME_REPLY_EVENT=1,NOTIFY_IME_OF_TOKEN=2,NOTIFY_IME_OPEN_VKB=3,NOTIFY_IME_OF_BLUR=4;}}
 static String getConstantName(Class<?> a,String b,int c){return "";}
 IBinder mFocusedToken;Object mListener=new Object();boolean mInBatchMode,mNeedSync=true;
+Action mOrderedKeyBarrier;
+void geckoCancelOrderedKeys(){mOrderedKeyBarrier=null;}
+void postToInputConnection(Runnable r){r.run();}
+void icCompleteOrderedKey(Action a){throw new AssertionError("Unexpected ordered key in span-only host control");}
 final ConcurrentLinkedQueue<Action> mActions=new ConcurrentLinkedQueue<>();
 final CountDownLatch entered=new CountDownLatch(1),finishReply=new CountDownLatch(1);
 volatile boolean currentComplete,prematureCopy;int copies;

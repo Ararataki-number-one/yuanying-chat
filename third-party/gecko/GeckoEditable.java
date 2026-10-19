@@ -80,6 +80,13 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
   private final AsyncText mText;
   private final Editable mProxy;
   private final ConcurrentLinkedQueue<Action> mActions;
+  // Hardware keys must not use the direct IC -> child path to overtake older
+  // touch events still queued in the parent. Each key first crosses the parent
+  // event loop, then waits for a real focused-child IME synchronize reply.
+  private final ConcurrentLinkedQueue<Runnable> mOrderedKeys = new ConcurrentLinkedQueue<>();
+  private volatile Action mOrderedKeyBarrier;
+  private IGeckoEditableChild mOrderedKeyChild; // IC thread only.
+  private volatile long mOrderedKeyEpoch;
   private KeyCharacterMap mKeyMap;
 
   // mIcRunHandler is the Handler that currently runs Gecko-to-IC Runnables
@@ -1699,6 +1706,9 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
 
     if (type == SessionTextInput.EditableListener.NOTIFY_IME_OF_BLUR) {
       synchronized (this) {
+        // Work submitted for the old focus must never replay into a new field
+        // or document after the child/token is replaced.
+        geckoCancelOrderedKeys();
         onTextChange(token, "", 0, Integer.MAX_VALUE, false);
         mActions.clear();
         mFocusedToken = null;
@@ -1713,6 +1723,9 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
         // A focus reset may have cleared the queue and installed newer work.
         // Remove this exact action, never the new head.
         mActions.remove(completedAction);
+      }
+      if (completedAction != null && completedAction == mOrderedKeyBarrier) {
+        postToInputConnection(() -> icCompleteOrderedKey(completedAction));
       }
       if (!mActions.isEmpty()) {
         // Only post to IC thread below when the queue is empty.
@@ -2801,7 +2814,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
       return false;
     }
 
-    postToInputConnection(
+    postOrderedKey(
         new Runnable() {
           @Override
           public void run() {
@@ -2809,6 +2822,74 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
           }
         });
     return true;
+  }
+
+  private void postOrderedKey(final Runnable key) {
+    final long epoch = mOrderedKeyEpoch;
+    final Handler parent = ThreadUtils.sGeckoHandler;
+    final Runnable enqueue = () -> postToInputConnection(() -> {
+      if (epoch != mOrderedKeyEpoch) {
+        return;
+      }
+      mOrderedKeys.offer(key);
+      icStartOrderedKey();
+    });
+    // Parent Looper work runs after queued native input has been forwarded.
+    // There is no timer, sleep, key replay, or inference from a Java return.
+    if (parent == null || !parent.post(enqueue)) {
+      postToInputConnection(key); // Preserve the original startup/shutdown path.
+    }
+  }
+
+  private void icStartOrderedKey() {
+    if (mOrderedKeyBarrier != null || mOrderedKeys.isEmpty()) {
+      return;
+    }
+    if (mFocusedChild == null || mListener == null) {
+      Runnable key;
+      while ((key = mOrderedKeys.poll()) != null) {
+        key.run();
+      }
+      return;
+    }
+    final Action barrier = new Action(Action.TYPE_EVENT);
+    mOrderedKeyChild = mFocusedChild;
+    mOrderedKeyBarrier = barrier;
+    mActions.offer(barrier);
+    try {
+      mFocusedChild.onImeSynchronize();
+    } catch (final RemoteException error) {
+      mActions.remove(barrier);
+      mOrderedKeyBarrier = null;
+      mOrderedKeyChild = null;
+      mOrderedKeys.clear();
+      Log.e(LOGTAG, "Ordered key child disconnected", error);
+    }
+  }
+
+  private void icCompleteOrderedKey(final Action barrier) {
+    if (mOrderedKeyBarrier != barrier) {
+      return; // A blur/reset invalidated this exact reply.
+    }
+    mOrderedKeyBarrier = null;
+    if (mFocusedChild != mOrderedKeyChild || mListener == null) {
+      mOrderedKeyChild = null;
+      mOrderedKeys.clear();
+      return;
+    }
+    mOrderedKeyChild = null;
+    icSyncShadowText();
+    final Runnable key = mOrderedKeys.poll();
+    if (key != null) {
+      key.run();
+    }
+    icStartOrderedKey();
+  }
+
+  private void geckoCancelOrderedKeys() {
+    mOrderedKeyEpoch++;
+    mOrderedKeyBarrier = null;
+    mOrderedKeys.clear();
   }
 
   private static boolean shouldProcessKey(final int keyCode, final KeyEvent event) {

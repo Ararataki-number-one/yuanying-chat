@@ -1,0 +1,41 @@
+name: Compile isolated Gecko key ordering candidate
+'on':
+  push:
+    branches: [debug/gecko-key-ordering]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Prepare exact public compile inputs and run queue controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          mkdir -p work/key-order-input
+          curl -fsSL https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.aar -o work/key-order-input/geckoview.aar
+          curl -fsSL https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250-sources.jar -o work/key-order-input/sources.jar
+          curl -fsSL https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.10.0/annotation-jvm-1.10.0.jar -o work/key-order-input/annotations.jar
+          curl -fsSL https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.10/kotlin-stdlib-2.4.10.jar -o work/key-order-input/kotlin.jar
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1'
+          python3 tools/gecko/run_key_order_host.py
+          python3 tools/gecko/run_reply_handoff_host.py --upstream-sources work/key-order-input/sources.jar
+      - name: Propose compiled SDK hashes with exact sibling and archive comparison
+        shell: bash
+        run: |
+          python3 tools/gecko/derive_caret_candidate.py --aar work/key-order-input/geckoview.aar --sources work/key-order-input/sources.jar --android-jar "$ANDROID_HOME/platforms/android-37.1/android.jar" --annotations-jar work/key-order-input/annotations.jar --kotlin-jar work/key-order-input/kotlin.jar --javac "$JAVA_HOME/bin/javac" --out work/key-order-compile
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: key-order-candidate-compile
+          path: |
+            work/key-order-compile/proposal/
+            work/key-order-compile/*-javac.log
+          if-no-files-found: error
+          retention-days: 5
