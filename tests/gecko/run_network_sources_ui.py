@@ -9,6 +9,7 @@ import shlex
 import subprocess
 import time
 import xml.etree.ElementTree as ET
+import sys
 
 PARSER = argparse.ArgumentParser()
 PARSER.add_argument("--adb", required=True)
@@ -16,6 +17,8 @@ PARSER.add_argument("--serial", default="emulator-5554")
 PARSER.add_argument("--expected-apk-sha", default="")
 ARGS = PARSER.parse_args()
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tools/gecko'))
+from network_ui_route_contract import visible_route
 OUT = ROOT / "work/gecko-integration"
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "local.pocketchat.test"
@@ -282,9 +285,10 @@ def main():
     adb("shell", "am", "start", "-W", "-n", ACTIVITY)
     wait_for(state, lambda item: item.get("ready"), "Native provider seed", seconds=100)
     command("window-tab")
-    node(part="Entry A → ManualSource")
-    tree = xml()
-    check("Window card displays the entrance-to-fixed-exit combination", bool(matching(tree, part="Entry A → ManualSource")))
+    tree = wait_for(xml, lambda tree: visible_route(tree, "UI Window", "Entry A", "ManualSource"),
+                    "Named environment card shows its entrance, fixed exit and ChatGPT destination", seconds=20)
+    record_action("inspect-window-route", environment="UI Window", entrance="Entry A", fixedExit="ManualSource", destination="ChatGPT")
+    check("Window card displays the entrance-to-fixed-exit combination", visible_route(tree, "UI Window", "Entry A", "ManualSource"))
     check("Only the three requested network tabs are visible", all(matching(tree, text=text) for text in ("窗口网络", "入口", "出口")) and not matching(tree, text="订阅"))
     command("open-window-details")
     centered("窗口详情 · UI Window")
