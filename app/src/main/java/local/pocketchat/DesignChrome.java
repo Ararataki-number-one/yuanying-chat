@@ -103,9 +103,10 @@ final class DesignChrome {
     latencyWord.setGravity(Gravity.CENTER_VERTICAL);
     latencyWord.setPadding(a.dp(6),0,a.dp(6),0);
     stateWord.setGravity(Gravity.CENTER_VERTICAL);
+    boolean largeFont=a.getResources().getConfiguration().fontScale>=1.4f;
     int lineHeight=a.dp(18);
-    for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})lineHeight=Math.max(lineHeight,textHeight(text)+a.dp(2));
-    if(a.getResources().getConfiguration().fontScale>=1.4f){
+    for(TextView text:new TextView[]{dot,a.networkLine,latencyWord,stateWord})lineHeight=Math.max(lineHeight,textHeight(text)+a.dp(largeFont?0:2));
+    if(largeFont){
       networkRow.setOrientation(LinearLayout.VERTICAL);
       LinearLayout address=DesignUi.row(a),metrics=DesignUi.row(a);
       address.addView(dot,new LinearLayout.LayoutParams(a.dp(12),lineHeight));
