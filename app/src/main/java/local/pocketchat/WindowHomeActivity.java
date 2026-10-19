@@ -36,7 +36,8 @@ public class WindowHomeActivity extends ThemedActivity {
     LinearLayout tools=DesignUi.row(this);
     count=DesignUi.text(this,"",13,DesignUi.MUTED);
     boolean largeText=getResources().getConfiguration().fontScale>=1.4f;
-    tools.addView(count,new LinearLayout.LayoutParams(0,-2,1));
+    if(largeText){LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.bottomMargin=dp(6);box.addView(count,cp);tools.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);}
+    else tools.addView(count,new LinearLayout.LayoutParams(0,-2,1));
     selectionButton=DesignUi.button(this,"多选",false,()->setSelecting(!selecting));
     tools.addView(selectionButton,new LinearLayout.LayoutParams(DesignUi.actionWidth(selectionButton,64),dp(48)));
     LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(dp(112),dp(48));
@@ -70,10 +71,12 @@ public class WindowHomeActivity extends ThemedActivity {
     selectionBar.setBackground(DesignUi.surface(this,DesignUi.CARD,0,DesignUi.LINE));
     LinearLayout selectionTools=DesignUi.row(this);
     selectionCount=DesignUi.text(this,"",13,DesignUi.TEXT);
-    selectionTools.addView(selectionCount,new LinearLayout.LayoutParams(0,-2,1));
+    if(largeText)selectionTools.setOrientation(LinearLayout.VERTICAL);
+    selectionTools.addView(selectionCount,new LinearLayout.LayoutParams(largeText?-1:0,-2,largeText?0:1));
     visibleSelectionButton=DesignUi.button(this,"全选当前结果",false,()->selectVisible());
     visibleSelectionButton.setTextSize(12);
-    selectionTools.addView(visibleSelectionButton,new LinearLayout.LayoutParams(dp(128),dp(48)));
+    LinearLayout.LayoutParams visibleParams=new LinearLayout.LayoutParams(largeText?-1:dp(128),-2);if(largeText)visibleParams.topMargin=dp(6);
+    selectionTools.addView(visibleSelectionButton,visibleParams);
     selectionBar.addView(selectionTools);
     LinearLayout batchActions=DesignUi.row(this);
     batchActions.setPadding(0,dp(8),0,0);

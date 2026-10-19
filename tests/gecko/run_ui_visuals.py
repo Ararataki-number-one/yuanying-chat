@@ -120,6 +120,22 @@ def capture(variant,width,height,scale,scene,theme='light'):
     (shots/(stem+'.png')).write_bytes(raw)
     record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}
     if scene=='preferences':record.update(preference_check)
+    if scene=='environments':
+        # Exercise the real multi-select footer, including doubled accessibility text.
+        count=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text')=='8 个环境')
+        bounds=list(map(int,re.findall(r'\d+',count.attrib['bounds'])))
+        assert bounds[3]-bounds[1]<=48*3,(variant,scene,'Environment count wraps awkwardly',bounds)
+        click(xml,'多选');xml=dump();click(xml,'全选当前结果');xml=dump()
+        assert '已选 8 个' in xml,(variant,scene,'Actual select-all did not select the visible environments')
+        for label in ('取消当前结果选中','批量分组','收藏','取消收藏'):
+            action=next((n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text')==label and n.attrib.get('class')=='android.widget.Button'),None)
+            assert action is not None and action.attrib.get('enabled')=='true',(variant,scene,'Selection action unavailable',label)
+            left,top,right,bottom=map(int,re.findall(r'\d+',action.attrib['bounds']))
+            assert bottom-top>=48*3 and 0<=left<right<=width*3 and 0<=top<bottom<=height*3,(variant,scene,'Selection action clipped',label,action.attrib['bounds'])
+        selected_stem=stem+'-selection';(shots/(selected_stem+'.xml')).write_text(xml)
+        (shots/(selected_stem+'.png')).write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+        record['selectionCheck']={'actualAndroidTaps':2,'actualAndroidBack':True,'selectedCount':8,'allFourFooterActionsVisible':True,'image':selected_stem+'.png'}
+        adb('shell','input','keyevent','4');assert '批量分组' not in dump()
     records.append(record)
     print(json.dumps({'event':'ui-capture-complete','scene':scene,'count':len(records),'seconds':round(time.monotonic()-started,2)}),flush=True)
     if len(records)%10==0 or len(records)==len(required_captures()):checkpoint()
