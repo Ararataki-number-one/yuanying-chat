@@ -69,6 +69,21 @@ final class EnvironmentSpecRuntime {
       }
     });
   }
+  /** Apply attempts consume the exact saved receipt; they never publish it again.
+   * Validation owns a detached copy because source resolution normalizes input. */
+  static boolean reuseNetworkIntent(Context context,EnvironmentSpec.Identity expected,String action,JSONObject candidate,String baseline,String snapshot)throws Exception{
+    return withIntent(context,()->{
+      requireIdentity(context,expected);JSONObject current=NetworkChanges.pendingStrict(context);
+      if(snapshot.isEmpty()||!snapshot.equals(current.toString()))return false;
+      if(!NetworkChanges.identityMatches(current,expected.json()))throw new java.io.IOException("待应用配置属于已删除的环境");
+      JSONObject marker=NetworkChanges.intent(current);if(marker!=null&&!"ready".equals(marker.optString("state")))throw new java.io.IOException("网络候选尚未完成保存");
+      if(!action.equals(current.optString("action"))||!baseline.equals(current.optString("baseline"))||current.optJSONObject("config")==null||!candidate.toString().equals(current.optJSONObject("config").toString()))throw new java.io.IOException("待应用配置已变化，请重新检查");
+      if(!baseline.equals(NetworkChanges.hash(context)))throw new java.io.IOException("当前配置已变化，请重新编辑待应用设置");
+      NetworkChanges.validateSaved(context,current);
+      requireIdentity(context,expected);
+      return snapshot.equals(NetworkChanges.pendingStrict(context).toString())&&baseline.equals(NetworkChanges.hash(context));
+    });
+  }
   static final class IntentRecoveryRequired extends java.io.IOException {
     IntentRecoveryRequired(Exception cause){super("网络设置保存状态暂未确认，请在存储恢复后检查待应用设置",cause);}
   }

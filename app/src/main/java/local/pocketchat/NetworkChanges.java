@@ -102,6 +102,28 @@ final class NetworkChanges {
     if(lineage==null||expected.optString("transition").isEmpty()||written.isEmpty()||restored.isEmpty()||written.equals(restored)||!written.equals(current.optString("baseline"))||!restored.equals(hash(c))||!expected.optString("transition").equals(lineage.optString("transition"))||!written.equals(lineage.optString("writtenHash"))||!restored.equals(lineage.optString("restoredHash"))||expected.optInt("generation",-1)!=lineage.optInt("generation",-2))return false;
     NetworkCatalog.put(current,"baseline",restored);current.remove("baselineLineage");new SecretStore(c).put("pending-network",current.toString().getBytes(StandardCharsets.UTF_8));return true;
   });}
+  /** Read-only validation of a saved candidate and its encrypted source bytes. */
+  static void validateSaved(Context context,JSONObject saved)throws Exception{
+    JSONObject original=saved.getJSONObject("config"),detached=J.parse(original.toString());String action=saved.optString("action");
+    if("external".equals(action)){validate(context,action,detached);return;}
+    if(!"apply".equals(action))throw new java.io.IOException("网络候选操作无效");
+    withSavedSources(context,saved,sources->null);
+  }
+  static <T>T withSavedSources(Context context,JSONObject saved,NetworkSourceSelection.SourceAction<T> action)throws Exception{
+    JSONObject original=saved.getJSONObject("config"),detached=J.parse(original.toString());
+    return NetworkSourceSelection.withSources(context,detached,sources->{
+      if(!original.toString().equals(detached.toString()))throw new java.io.IOException("所选来源已变化，请重新编辑待应用设置");
+      savedSource(context,saved,"entry",sources.entryBytes);
+      if(sources.exitBytes!=null)savedSource(context,saved,"exit",sources.exitBytes);
+      return action.run(sources);
+    });
+  }
+  private static void savedSource(Context context,JSONObject saved,String role,byte[] actual)throws Exception{
+    String slot=saved.optString(role+"Snapshot");JSONObject metadata=saved.optJSONObject(role+"SnapshotMeta");
+    if(!snapshotSlot(slot)||metadata==null||!NetworkSourceSelection.payloadHash(actual).equals(metadata.optString("payloadHash")))throw new java.io.IOException("所选订阅版本已变化，请重新编辑待应用设置");
+    byte[] retained=new SecretStore(context).get(slot);
+    if(retained==null||!Arrays.equals(retained,actual))throw new java.io.IOException("待应用订阅快照无法确认，原设置已保留");
+  }
   static void validate(Context c,String action,JSONObject value)throws Exception{
     if("external".equals(action)){String proxy=value.optString("proxy");if(!proxy.isEmpty()&&!MainActivity.validProxy(proxy))throw new java.io.IOException("代理地址无效");return;}
     NetworkSourceSelection.resolve(new NetworkCatalog(c),value);

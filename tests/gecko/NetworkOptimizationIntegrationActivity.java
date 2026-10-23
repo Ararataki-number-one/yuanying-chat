@@ -332,7 +332,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     NativeNetwork.get(this);int slot=Profiles.MAX-1;Context scope=Profiles.context(this,slot);ProfileCatalog catalog=ProfileCatalog.get(this);boolean wasCreated=catalog.item(slot).optBoolean("created");catalog.created(slot);
     String baseline=NetworkChanges.hash(scope),oldId="synthetic-deferred-old",newId="synthetic-candidate-new";
     JSONObject oldCandidate=J.obj("proxy","http://127.0.0.1:41001","requireExternalVpn",true),newCandidate=J.obj("proxy","http://127.0.0.1:41002","requireExternalVpn",true);
-    NetworkChanges.save(scope,"external",oldCandidate,baseline);JSONObject queued=NetworkChanges.pending(scope);
+    NetworkChanges.save(scope,"external",oldCandidate,baseline);JSONObject queued=NetworkChanges.pending(scope);byte[] queuedCipher=java.nio.file.Files.readAllBytes(new SecretStore(scope).file("pending-network").toPath());
     CandidateRaceProvider provider=new CandidateRaceProvider(scope,newCandidate.optString("proxy"));
     CountDownLatch oldWorkerFinished=new CountDownLatch(1),releaseNewWorker=new CountDownLatch(1),newWorkerFinished=new CountDownLatch(1),orchestrated=new CountDownLatch(1),inspected=new CountDownLatch(1);
     java.util.concurrent.atomic.AtomicReference<Throwable> failure=new java.util.concurrent.atomic.AtomicReference<>();
@@ -344,7 +344,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
         // until the inspector has been placed between the two main-thread callbacks.
         provider.io.execute(()->{oldWorkerFinished.countDown();try{if(!releaseNewWorker.await(8,TimeUnit.SECONDS))failure.compareAndSet(null,new IOException("candidate race worker barrier timeout"));}catch(InterruptedException interrupted){Thread.currentThread().interrupt();failure.compareAndSet(null,interrupted);}});
         if(!oldWorkerFinished.await(6,TimeUnit.SECONDS))throw new IOException("old candidate worker did not complete");
-        JSONObject storedOld=NetworkChanges.pending(scope).optJSONObject("config");oldWritten[0]=storedOld!=null&&storedOld.toString().equals(oldCandidate.toString());
+        JSONObject storedOld=NetworkChanges.pending(scope).optJSONObject("config");oldWritten[0]=storedOld!=null&&storedOld.toString().equals(oldCandidate.toString())&&queued.toString().equals(NetworkChanges.pendingStrict(scope).toString())&&Arrays.equals(queuedCipher,java.nio.file.Files.readAllBytes(new SecretStore(scope).file("pending-network").toPath()));
         provider.jobs.put(newId,J.obj("done",false));provider.request(newId,"external",newCandidate,baseline);
         provider.request("synthetic-race-measure","measure",new JSONObject(),baseline);
         provider.main.post(()->{try{
@@ -354,9 +354,9 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
         provider.io.execute(newWorkerFinished::countDown);releaseNewWorker.countDown();
         if(!newWorkerFinished.await(6,TimeUnit.SECONDS))throw new IOException("new candidate worker did not complete");
         // Exiting this bounded test-only runnable now releases A callback, inspector,
-        // then B callback. Both sealed writes are already complete at that point.
+        // then B callback. A reused its exact sealed receipt; B alone saved a replacement.
       }catch(Throwable error){failure.compareAndSet(null,error);}finally{releaseNewWorker.countDown();orchestrated.countDown();}});
-      check("Deferred callback race reaches both real encrypted candidate writes",orchestrated.await(15,TimeUnit.SECONDS)&&inspected.await(5,TimeUnit.SECONDS)&&failure.get()==null&&oldWritten[0]);
+      check("Deferred callback race reuses the original encrypted receipt before the new save",orchestrated.await(15,TimeUnit.SECONDS)&&inspected.await(5,TimeUnit.SECONDS)&&failure.get()==null&&oldWritten[0]);
       check("An older deferred callback does not clear the newer sealed candidate",newPreserved[0]);
       check("An older deferred callback keeps the newer request saving state",savingPreserved[0]);
       check("An older deferred callback does not apply the replaced candidate",oldNotApplied[0]);

@@ -163,7 +163,7 @@ def verify_performance_evidence(directory, source):
         'Region and latency UI snapshots cause no main-thread disk reads or writes',
         'Cold profile metadata paths resolve without Android main-thread directory access',
         'Background cold-path resolution restores the correct eight environment snapshots',
-        'Deferred callback race reaches both real encrypted candidate writes',
+        'Deferred callback race reuses the original encrypted receipt before the new save',
         'An older deferred callback does not clear the newer sealed candidate',
         'An older deferred callback keeps the newer request saving state',
         'An older deferred callback does not apply the replaced candidate',

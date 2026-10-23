@@ -140,6 +140,81 @@ public final class EnvironmentIntentHostTest {
     ProfileCatalog.create(c,id.generation+1);new SecretStore(c).remove("environment-spec");rejects("Deleted identity cannot reuse confirmed cache",()->EnvironmentSpecRuntime.reconcileNetwork(c,id,replaced.proof));EnvironmentSpecRuntime.Reconciled reused=EnvironmentSpecRuntime.reconcileNetwork(c,identity(c),replaced.proof);
     check("Reused UUID and generation force fresh model reconciliation",reused.spec!=null&&!reused.proof.equals(replaced.proof));
   }
+  static boolean reuse(Context c,EnvironmentSpec.Identity expected,String receipt)throws Exception{
+    JSONObject row=new JSONObject(receipt);return EnvironmentSpecRuntime.reuseNetworkIntent(c,expected,row.getString("action"),row.getJSONObject("config"),row.getString("baseline"),receipt);
+  }
+  static void reuseStableReceipt()throws Exception{
+    Context c=fresh();SecretStore vault=new SecretStore(c);String receipt=save(c,"reuse.example");EnvironmentSpec.Identity id=identity(c);JSONObject before=pending(c);
+    byte[] pendingBytes=vault.get("pending-network"),modelBytes=vault.get("environment-spec");long writes=SecretStore.putCalls.get(),removes=SecretStore.removeCalls.get();int updates=EnvironmentSpecRepository.updates;boolean accepted=true;
+    for(int i=0;i<30;i++)accepted&=reuse(c,id,receipt);
+    check("Repeated production reuse accepts one committed exact receipt",accepted);
+    check("Repeated reuse preserves exact pending and model bytes",Arrays.equals(pendingBytes,vault.get("pending-network"))&&Arrays.equals(modelBytes,vault.get("environment-spec")));
+    check("Repeated reuse preserves original intent ID and savedAt",NetworkChanges.intent(before).getString("id").equals(NetworkChanges.intent(pending(c)).getString("id"))&&before.getLong("savedAt")==pending(c).getLong("savedAt"));
+    check("Repeated reuse performs zero store puts removals or model updates",writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get()&&updates==EnvironmentSpecRepository.updates);
+    check("Reuse never acknowledges runtime application",model(c).appliedRevision==0&&model(c).observedRevision==0);
+
+    // Hold the production reuse inside its first authoritative read while a
+    // different thread updates browser JSON; no model hook or reuse is mocked.
+    CountDownLatch readEntered=new CountDownLatch(1);java.util.concurrent.atomic.AtomicBoolean productionReadHeld=new java.util.concurrent.atomic.AtomicBoolean();CompletableFuture<Void> edited=new CompletableFuture<>();Thread writer=new Thread(()->{try{if(!readEntered.await(10,TimeUnit.SECONDS))throw new IOException("Reuse read barrier missing");for(int i=0;i<20;i++)browser(c,"parallel browser "+i);edited.complete(null);}catch(Throwable error){edited.completeExceptionally(error);}},"intent-reuse-browser-writer");
+    SecretStore.beforePendingRead=()->{productionReadHeld.set(true);readEntered.countDown();try{edited.get(10,TimeUnit.SECONDS);}catch(Exception failure){throw new IllegalStateException("Browser writer barrier failed",failure);}};
+    writes=SecretStore.putCalls.get();removes=SecretStore.removeCalls.get();updates=EnvironmentSpecRepository.updates;writer.start();accepted=true;try{for(int i=0;i<60;i++)accepted&=reuse(c,id,receipt);}finally{SecretStore.beforePendingRead=null;readEntered.countDown();}edited.get(10,TimeUnit.SECONDS);writer.join(10000);
+    check("Independent browser writes occur inside a production reuse read",productionReadHeld.get()&&edited.isDone()&&!edited.isCompletedExceptionally());
+    check("Reuse and concurrent browser edits retain the original network receipt",accepted&&receipt.equals(pending(c).toString())&&modelProxy(c).equals(NativeNetwork.hash("socks://reuse.example:1080")));
+    check("Concurrent browser writer is the only source of model writes",SecretStore.putCalls.get()==writes+20&&SecretStore.removeCalls.get()==removes&&EnvironmentSpecRepository.updates==updates&&model(c).desired().browser().optString("fixtureBrowser").equals("parallel browser 19"));
+
+    Context legacy=fresh();NetworkChanges.save(legacy,"external",external("reuse-legacy.example"),NetworkChanges.hash(legacy));String legacyReceipt=pending(legacy).toString();byte[] legacyModel=new SecretStore(legacy).get("environment-spec");writes=SecretStore.putCalls.get();removes=SecretStore.removeCalls.get();
+    check("Legacy committed candidate can be reused without inventing an intent",reuse(legacy,identity(legacy),legacyReceipt)&&NetworkChanges.intent(pending(legacy))==null&&legacyReceipt.equals(pending(legacy).toString()));
+    check("Legacy reuse performs no migration or model writes",writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get()&&Arrays.equals(legacyModel,new SecretStore(legacy).get("environment-spec")));
+  }
+  static void reuseRejectsStaleOrInvalid()throws Exception{
+    Context c=fresh();SecretStore vault=new SecretStore(c);EnvironmentSpec.Identity id=identity(c);String old=save(c,"reuse-old.example"),fresh=save(c,"reuse-new.example");long writes=SecretStore.putCalls.get(),removes=SecretStore.removeCalls.get();
+    check("Superseded reuse returns false without replacing the newer candidate",!reuse(c,id,old)&&fresh.equals(pending(c).toString()));
+    check("Superseded reuse makes no store mutation",writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get());
+    JSONObject current=pending(c);rejects("Reuse refuses an action not bound by the saved receipt",()->EnvironmentSpecRuntime.reuseNetworkIntent(c,id,"apply",current.getJSONObject("config"),current.getString("baseline"),fresh));
+    rejects("Reuse refuses different caller candidate bytes",()->EnvironmentSpecRuntime.reuseNetworkIntent(c,id,"external",external("not-saved.example"),current.getString("baseline"),fresh));
+    c.getSharedPreferences("chat",0).values.put("proxy","socks://changed-active.example:1080");rejects("Reuse rejects a changed active baseline",()->reuse(c,id,fresh));
+    check("Rejected reuse preserves the saved candidate and makes no writes",fresh.equals(pending(c).toString())&&writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get());
+
+    Context replaced=fresh();String removedReceipt=save(replaced,"removed.example");EnvironmentSpec.Identity removed=identity(replaced);ProfileCatalog.create(replaced,removed.generation);new SecretStore(replaced).remove("environment-spec");String replacement=save(replaced,"replacement.example");writes=SecretStore.putCalls.get();removes=SecretStore.removeCalls.get();
+    rejects("Reuse rejects an old UUID even when the generation is equal",()->reuse(replaced,removed,removedReceipt));
+    check("Old identity reuse does not touch replacement pending or model",replacement.equals(pending(replaced).toString())&&modelProxy(replaced).equals(NativeNetwork.hash("socks://replacement.example:1080"))&&writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get());
+
+    Context staged=fresh();save(staged,"predecessor.example");EnvironmentSpec.Identity stagedId=identity(staged);NetworkChanges.stageIntent(staged,"external",external("unready.example"),NetworkChanges.hash(staged),new JSONObject(),stagedId.json(),()->EnvironmentSpecRuntime.requireIdentity(staged,stagedId));String unready=pending(staged).toString();byte[] stagedModel=new SecretStore(staged).get("environment-spec");writes=SecretStore.putCalls.get();removes=SecretStore.removeCalls.get();
+    rejects("Reuse cannot promote or recover a staged intent",()->reuse(staged,stagedId,unready));
+    check("Rejected staged reuse preserves predecessor record and model bytes",unready.equals(pending(staged).toString())&&Arrays.equals(stagedModel,new SecretStore(staged).get("environment-spec"))&&writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get());
+
+    Context corrupt=fresh();String valid=save(corrupt,"valid.example");SecretStore corruptStore=new SecretStore(corrupt);byte[] malformed="{broken reuse record".getBytes(StandardCharsets.UTF_8);corruptStore.put("pending-network",malformed);writes=SecretStore.putCalls.get();removes=SecretStore.removeCalls.get();
+    rejects("Reuse distinguishes unreadable pending from a replaced receipt",()->reuse(corrupt,identity(corrupt),valid));
+    check("Malformed reuse record remains byte exact with no cleanup",Arrays.equals(malformed,corruptStore.get("pending-network"))&&writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get());
+    JSONObject future=new JSONObject(valid);future.getJSONObject("environmentIntent").put("schema",99);corruptStore.put("pending-network",future.toString().getBytes(StandardCharsets.UTF_8));String futureReceipt=future.toString();writes=SecretStore.putCalls.get();removes=SecretStore.removeCalls.get();
+    rejects("Reuse rejects a future intent schema",()->reuse(corrupt,identity(corrupt),futureReceipt));
+    check("Future intent reuse preserves all authoritative bytes",futureReceipt.equals(pending(corrupt).toString())&&writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get());
+    JSONObject invalid=new JSONObject(valid);invalid.getJSONObject("config").put("proxy","socks://user:password@invalid.example:1080");corruptStore.put("pending-network",invalid.toString().getBytes(StandardCharsets.UTF_8));String invalidReceipt=invalid.toString();writes=SecretStore.putCalls.get();removes=SecretStore.removeCalls.get();
+    rejects("Reuse validates saved proxy syntax rather than trusting ready state",()->reuse(corrupt,identity(corrupt),invalidReceipt));
+    check("Invalid saved proxy remains available for reediting without writes",invalidReceipt.equals(pending(corrupt).toString())&&writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get());
+  }
+  static void parseSource(NetworkCatalog catalog,String role,String id,String payload,String name,String key,String type)throws Exception{
+    catalog.parsed(catalog.beginRefresh(role,id),J.arr(name),J.arr(J.obj("name",name,"configFingerprint",key,"configFingerprintVersion",1,"type",type)),payload.getBytes(StandardCharsets.UTF_8),System.currentTimeMillis());
+  }
+  static void reusePrivateSnapshots()throws Exception{
+    Context c=fresh();SecretStore vault=new SecretStore(c);NetworkCatalog catalog=new NetworkCatalog(c);String entryKey=NativeNetwork.hash("reuse-entry"),exitKey=NativeNetwork.hash("reuse-exit");
+    JSONObject entry=catalog.addSubscription("entry","Reuse entry","https://fixture.invalid/reuse-entry"),exit=catalog.addSubscription("exit","Reuse exit","https://fixture.invalid/reuse-exit");
+    parseSource(catalog,"entry",entry.getString("id"),"entry-reuse-v1","Entry|A",entryKey,"VLESS");parseSource(catalog,"exit",exit.getString("id"),"exit-reuse-v1","Exit|Fixed",exitKey,"Socks5");
+    JSONObject candidate=J.obj("subscriptionUrl",entry.getString("url"),"entrySubscriptionId",entry.getString("id"),"entryMode","manual","entry","Entry|A","entryNodeKey",entryKey,"entryPool",J.arr("Entry|A"),"exitSource","subscription","exitSubscriptionId",exit.getString("id"),"exitSubscriptionUrl",exit.getString("url"),"exitNodeName","Exit|Fixed","exitNodeKey",exitKey);
+    NetworkChanges.validate(c,"apply",candidate);String receipt=EnvironmentSpecRuntime.saveNetworkIntent(c,identity(c),"apply",candidate,NetworkChanges.hash(c),new JSONObject());JSONObject record=pending(c);String entrySlot=record.getString("entrySnapshot"),exitSlot=record.getString("exitSnapshot");byte[] entryBytes=vault.get(entrySlot),exitBytes=vault.get(exitSlot),modelBytes=vault.get("environment-spec");long writes=SecretStore.putCalls.get(),removes=SecretStore.removeCalls.get();boolean accepted=true;
+    for(int i=0;i<12;i++)accepted&=reuse(c,identity(c),receipt);
+    check("Internal reuse validates both saved private provider snapshots",accepted&&receipt.equals(pending(c).toString())&&Arrays.equals(entryBytes,vault.get(entrySlot))&&Arrays.equals(exitBytes,vault.get(exitSlot)));
+    check("Internal reuse does not rewrite source snapshots pending or model",writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get()&&Arrays.equals(modelBytes,vault.get("environment-spec")));
+    catalog.editSubscription("entry",entry.getString("id"),"Renamed while waiting",entry.getString("url"));JSONObject supplied=new JSONObject(record.getJSONObject("config").toString());String suppliedBefore=supplied.toString();writes=SecretStore.putCalls.get();removes=SecretStore.removeCalls.get();
+    rejects("Reuse rejects source normalization changes instead of silently resaving",()->EnvironmentSpecRuntime.reuseNetworkIntent(c,identity(c),"apply",supplied,record.getString("baseline"),receipt));
+    check("Rejected normalization mutates neither caller config nor persisted receipt",suppliedBefore.equals(supplied.toString())&&receipt.equals(pending(c).toString())&&writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get());catalog.editSubscription("entry",entry.getString("id"),"Reuse entry",entry.getString("url"));
+    byte[] altered="private entry changed".getBytes(StandardCharsets.UTF_8);vault.put(entrySlot,altered);writes=SecretStore.putCalls.get();removes=SecretStore.removeCalls.get();
+    rejects("Reuse rejects altered retained private provider bytes",()->reuse(c,identity(c),receipt));
+    check("Private snapshot rejection does not replace or clean the user's candidate",receipt.equals(pending(c).toString())&&Arrays.equals(altered,vault.get(entrySlot))&&Arrays.equals(exitBytes,vault.get(exitSlot))&&writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get());
+    vault.put(entrySlot,entryBytes);parseSource(catalog,"entry",entry.getString("id"),"entry-reuse-v2","Entry|A",entryKey,"VLESS");writes=SecretStore.putCalls.get();removes=SecretStore.removeCalls.get();
+    rejects("Reuse rejects changed shared payload even when the chosen node key is stable",()->reuse(c,identity(c),receipt));
+    check("Shared payload mismatch preserves saved intent and original private bytes",receipt.equals(pending(c).toString())&&Arrays.equals(entryBytes,vault.get(entrySlot))&&Arrays.equals(exitBytes,vault.get(exitSlot))&&writes==SecretStore.putCalls.get()&&removes==SecretStore.removeCalls.get());
+  }
   static void lease()throws Exception{
     Context c=fresh();String java=new File(System.getProperty("java.home"),"bin/java").getAbsolutePath();Process child=new ProcessBuilder(java,"-XX:ActiveProcessorCount=2","-cp",System.getProperty("java.class.path"),EnvironmentIntentHostTest.class.getName(),"hold",c.root.getAbsolutePath()).redirectError(ProcessBuilder.Redirect.INHERIT).start();Path held=c.root.toPath().resolve("held"),release=c.root.toPath().resolve("release");long deadline=System.nanoTime()+10_000_000_000L;while(!Files.exists(held)){if(System.nanoTime()>deadline)throw new IOException("Child lease not acquired");Thread.sleep(5);}
     File leaseFile=new File(c.getNoBackupFilesDir(),"network-intent.lock");try(RandomAccessFile handle=new RandomAccessFile(leaseFile,"rw")){java.nio.channels.FileLock blocked=handle.getChannel().tryLock();check("Actual cross-JVM lease denies an independent OS tryLock",blocked==null);if(blocked!=null)blocked.close();}
@@ -147,7 +222,7 @@ public final class EnvironmentIntentHostTest {
   }
   public static void main(String[] args)throws Exception{
     if(args.length>0&&args[0].equals("hold")){Context c=new Context(new File(args[1]),2);EnvironmentSpecRuntime.withIntent(c,()->{Files.writeString(c.root.toPath().resolve("held"),"held");long deadline=System.nanoTime()+10_000_000_000L;while(!Files.exists(c.root.toPath().resolve("release"))){if(System.nanoTime()>deadline)throw new IOException("Lease release missing");Thread.sleep(5);}return null;});return;}
-    try{protocolValidation();successAndFailure();newerAndBrowserCas();interruptedStagesAndCancel();identityAndStrictReads();commitAcknowledgement();cacheInvalidation();lease();System.out.println(J.obj("schema",1,"status","passed","passed",checks.length(),"total",checks.length(),"executed",checks.length(),"checks",checks,"actualCrossProcessIntentLease",crossProcess,"actualAndroidExecution",false,"actualNativeExecution",false,"scope","production proxy validation, staged intent/CAS rollback/reconciliation and OS locks; URI syntax adapter and plain JVM repository/preferences doubles, no SQLite/Keystore/Gecko/WAN"));}
+    try{protocolValidation();successAndFailure();newerAndBrowserCas();interruptedStagesAndCancel();identityAndStrictReads();commitAcknowledgement();cacheInvalidation();reuseStableReceipt();reuseRejectsStaleOrInvalid();reusePrivateSnapshots();lease();System.out.println(J.obj("schema",1,"status","passed","passed",checks.length(),"total",checks.length(),"executed",checks.length(),"checks",checks,"actualCrossProcessIntentLease",crossProcess,"actualAndroidExecution",false,"actualNativeExecution",false,"scope","production proxy validation, staged intent/CAS rollback/reconciliation, read-only receipt reuse and OS locks; URI syntax adapter and plain JVM repository/preferences doubles, no SQLite/Keystore/Gecko/WAN"));}
     catch(Throwable failure){System.out.println(J.obj("schema",1,"status","failed","passed",checks.length()-1,"total",checks.length(),"checks",checks,"error",failure.toString(),"actualAndroidExecution",false));throw failure;}
   }
 }
