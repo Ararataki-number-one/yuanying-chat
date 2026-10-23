@@ -1,29 +1,32 @@
-name: Validate explicitly enabled guest TCP debugging before any workload
+name: Compare official emulator transports without application acceptance
+'on':
+  push:
+    branches:
+    - diagnostic/adb-pipe-observation-20261023
 permissions:
   contents: read
-  actions: read
 jobs:
-  diagnose:
+  compare:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        emulator:
+        - 37.2.12
+        - 36.3.10
+    env:
+      COMPARE_EMULATOR: ${{ matrix.emulator }}
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         ref: 10f650a4c0043edada7b865ae0845a6644ecdbcf
-    - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
-      with:
-        name: gecko-39895680073-1-build
-        run-id: 39895680073
-        github-token: ${{ github.token }}
-        path: work/adb-build
-    - name: Extract only the selected APK for transfer diagnostics
-      run: "python3 - <<'PY'\nimport hashlib,json,pathlib,tarfile\nout=pathlib.Path('work/adb-diagnostic');out.mkdir(parents=True,exist_ok=True)\nwith tarfile.open('work/adb-build/bundle.tar.gz')\
-        \ as t:\n  index=json.load(t.extractfile('_ci_bundle.json'))\n  assert index['sourceCommit']=='10f650a4c0043edada7b865ae0845a6644ecdbcf' and index['runId']=='39895680073'\n\
-        \  name='app/build/outputs/apk/integration/app-x86_64-integration.apk'\n  item=next(x for x in index['files'] if x['path']==name);raw=t.extractfile(name).read()\n\
-        \  assert len(raw)==item['bytes'] and hashlib.sha256(raw).hexdigest()==item['sha256']\n  pathlib.Path('work/diagnostic.apk').write_bytes(raw);(out/'selected.json').write_text(json.dumps(item))\n\
-        PY\n"
-    - name: Prepare the unchanged stock Android runtime
-      run: 'echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+    - name: Prepare exact selected emulator and unchanged Google API 35 image
+      run: 'set -euo pipefail
+
+        mkdir -p work/adb-diagnostic work/android-image
+
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
 
         echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
 
@@ -31,81 +34,96 @@ jobs:
 
         yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
 
-        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/emulator.json
+        python3 - <<''PYPACKAGE''
+
+        import importlib.util,json,os,pathlib
+
+        from xml.dom import minidom
+
+        spec=importlib.util.spec_from_file_location(''setup'',''tools/gecko/prepare_android_image.py'');setup=importlib.util.module_from_spec(spec);spec.loader.exec_module(setup)
+
+        version=os.environ[''COMPARE_EMULATOR''];pin={''schema'': 1, ''package'': ''emulator'', ''revision'': ''36.3.10'', ''channel'': ''stable'', ''url'':
+        ''https://dl.google.com/android/repository/emulator-linux_x64-14472402.zip'', ''bytes'': 320951246, ''sha1'': ''90cf9a2d3d9f802998345bc8251b482a84f9c72e'',
+        ''sha256'': ''c8ab9ffbc4c2d11c02e06e81a9d9f81970177dc5ab599e3a30eb08a4a5496a67'', ''upstreamPin'': ''https://github.com/mozilla-firefox/firefox/commit/31f228ee75ad25f4870cb28aae24a6220bc4dfa5'',
+        ''scope'': ''Official Google archive also pinned by Firefox CI; transport diagnostic only until same-source application qualification''} if version==''36.3.10''
+        else json.loads(setup.EMULATOR_PIN.read_text())
+
+        assert pin[''revision'']==version
+
+        package=pathlib.Path(''work/adb-diagnostic/emulator-package.xml'');doc=minidom.parse(str(setup.EMULATOR_PACKAGE));rev=doc.getElementsByTagName(''revision'')[0]
+
+        for tag,value in zip((''major'',''minor'',''micro''),version.split(''.'')):rev.getElementsByTagName(tag)[0].firstChild.data=value
+
+        package.write_bytes(doc.toxml(encoding=''utf-8''));archive=pathlib.Path(''work/android-image/emulator.zip'')
+
+        attempts=setup.download(pin,archive)
+
+        if pin.get(''sha256''):assert setup.digest(archive,''sha256'')==pin[''sha256'']
+
+        props=setup.install_emulator(archive,pathlib.Path(os.environ[''ANDROID_HOME''])/''emulator'',package,version)
+
+        report=dict(diagnosticOnly=True,applicationAcceptance=False,setupOnly=True,pin=pin,properties=props,downloadAttempts=attempts,bytes=archive.stat().st_size,sha1=setup.digest(archive,''sha1''),sha256=setup.digest(archive,''sha256''))
+
+        pathlib.Path(''work/adb-diagnostic/emulator.json'').write_text(json.dumps(report,indent=2));archive.unlink()
+
+        PYPACKAGE
 
         python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/image.json
 
         '
-    - name: Boot the unchanged Android runtime
-      run: "export ANDROID_AVD_HOME=\"$PWD/work/adb-avd\"\nexport ANDROID_USER_HOME=\"$PWD/work/adb-user\"\nexport ANDROID_EMULATOR_HOME=\"$PWD/work/adb-emulator-home\"\
-        \nadb kill-server || true\nexport ADB_TRACE=auth\nadb start-server\nif command -v tcpdump >/dev/null; then\n  sudo tcpdump -i lo -n -tttt -l 'tcp\
-        \ port 5037 and (tcp[tcpflags] & (tcp-fin|tcp-rst) != 0)' > work/adb-diagnostic/tcp-close.txt 2>&1 &\nfi\nmkdir -p \"$ANDROID_AVD_HOME\" \"$ANDROID_USER_HOME\"\
-        \ \"$ANDROID_EMULATOR_HOME\"\nsudo chmod a+rw /dev/kvm\necho no | \"$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager\" create avd --force -n geckoproduction\
-        \ -p \"$ANDROID_AVD_HOME/geckoproduction.avd\" -k 'system-images;android-35;google_apis;x86_64'\n\"$ANDROID_HOME/emulator/emulator\" -verbose -avd\
-        \ geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 -qemu\
-        \ -set netdev.virtio-wifi.hostfwd=tcp:127.0.0.1:5555-10.0.2.16:5555 > work/adb-diagnostic/emulator.txt 2>&1 &\ntimeout 180 adb -s emulator-5556\
-        \ wait-for-device\ntimeout 300 bash -c 'until [ \"$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d \"\\r\")\" = \"1\" ]; do sleep\
-        \ 2; done'\nadb -s emulator-5556 shell su 0 ss -ltnp > work/adb-diagnostic/listeners-before-tcpip.txt 2>&1 || true\nadb -s emulator-5556 tcpip 5555\
-        \ > work/adb-diagnostic/explicit-tcpip.txt\ntimeout 30 adb -s emulator-5556 wait-for-device\npython3 - <<'PYNET'\nimport json,pathlib,subprocess,time\n\
-        out=pathlib.Path('work/adb-diagnostic/network-ready.json');rows=[];deadline=time.monotonic()+30\nwhile time.monotonic()<deadline:\n row={}\n for\
-        \ label,parts in [('address',['ip','-4','-o','addr','show','wlan0']),('route',['ip','-4','route','get','10.0.2.2'])]:\n  r=subprocess.run(['adb','-s','emulator-5556','shell',*parts],capture_output=True,text=True,timeout=min(5,max(.01,deadline-time.monotonic())))\n\
-        \  row[label]={'exitCode':r.returncode,'stdout':r.stdout,'stderr':r.stderr}\n rows.append(row)\n if 'inet 10.0.2.16/' in row['address']['stdout']\
-        \ and row['route']['exitCode']==0 and 'dev wlan0' in row['route']['stdout']:break\n time.sleep(min(1,max(0,deadline-time.monotonic())))\nelse:\n\
-        \ out.write_text(json.dumps({'ready':False,'observations':rows},indent=2));raise SystemExit('Guest WLAN address and return route did not become\
-        \ ready')\nout.write_text(json.dumps({'ready':True,'observations':rows},indent=2))\nPYNET\nprintf '%s\\n' 'QEMU native WiFi netdev hostfwd: 127.0.0.1:5555\
-        \ -> 10.0.2.16:5555' > work/adb-diagnostic/redirections.txt\npython3 - <<'PYADB'\nimport socket\nwith socket.create_connection(('127.0.0.1',5037),timeout=5)\
-        \ as channel:\n    channel.sendall(b'0012host:emulator:5555')\nprint('Sent native ADB emulator announcement for actual forwarded TCP port 5555')\n\
-        PYADB\nadb devices -l > work/adb-diagnostic/before-reconnect.txt\nss -tnp '( sport = :5555 or dport = :5555 )' > work/adb-diagnostic/host-adb-socket-state.txt\n\
-        if adb devices | grep -Eq '^emulator-5554[[:space:]]+offline'; then\n  adb -s emulator-5554 reconnect > work/adb-diagnostic/setup-reconnect.txt\n\
-        fi\ntimeout 30 adb -s emulator-5554 wait-for-device\nexport ANDROID_SERIAL=emulator-5554\nadb devices -l > work/adb-diagnostic/adb-devices.txt\n\
-        adb shell input keyevent 82\nadb install work/diagnostic.apk\npython3 tools/gecko/prepare_emulator.py --adb \"$(command -v adb)\" --serial emulator-5554\
-        \ --apk work/diagnostic.apk\n"
-    - name: Observe fixed read-only transfers before any editing workload
-      run: "python3 - <<'PYCODE'\nimport glob,hashlib,json,os,pathlib,shutil,subprocess,sys,time\nout=pathlib.Path('work/adb-diagnostic');selected=json.loads((out/'selected.json').read_text());adb=shutil.which('adb');base=[adb,'-s','emulator-5554']\n\
-        installed=subprocess.check_output(base+['shell','pm','path','local.pocketchat.test'],text=True).strip().removeprefix('package:')\nsys.path.insert(0,'tools/gecko')\n\
-        from installed_apk_read import read_installed_apk,InstalledApkReadError\nfrom caret_build_identity import audit_apk\nrows=[];snapshots=[]\ndef snapshot(label):\n\
-        \  row={'label':label,'wallTimeNs':time.time_ns()}\n  for name,cmd in [('stat',base+['shell','stat','-c','%s:%i:%Y',installed]),('deviceSha256',base+['shell','sha256sum',installed]),('serverProcess',['pgrep','-a','adb']),('vsockNodes',base+['shell','ls','-l','/dev/vsock'])]:\n\
-        \    r=subprocess.run(cmd,capture_output=True,timeout=30);row[name]={'exitCode':r.returncode,'stdout':r.stdout.decode(errors='replace'),'stderr':r.stderr.decode(errors='replace')}\n\
-        \  snapshots.append(row)\nsnapshot('before')\ncompiled=audit_apk(pathlib.Path('work/diagnostic.apk'))\nfor i in range(24):\n  target=pathlib.Path('work')/f'diagnostic-pull-{i}.apk';mode='reader-pipe'\
-        \ if i%2==0 else 'direct-file';began=time.monotonic();row={'index':i,'mode':mode,'wallTimeNs':time.time_ns()}\n  try:\n    if mode=='reader-pipe':\n\
-        \      r=read_installed_apk(adb=adb,serial='emulator-5554',installed_path=installed,destination=target,expected_sha256=selected['sha256'],expected_bytes=selected['bytes'],diagnostics=out/f'reader-{i}.json',label=f'diagnostic-only-{i}')\n\
-        \      row.update(returnCode=r['returnCode'],bytes=r['actualFileBytes'],sha256=r['actualFileSha256'],exact=True)\n    else:\n      env=dict(os.environ,ADB_TRACE='adb,transport,sockets')\n\
-        \      with target.open('xb') as sink:r=subprocess.run(base+['shell','-T','cat',installed],stdin=subprocess.DEVNULL,stdout=sink,stderr=subprocess.PIPE,timeout=30,env=env)\n\
-        \      raw=target.read_bytes();h=hashlib.sha256(raw).hexdigest();row.update(returnCode=r.returncode,bytes=len(raw),sha256=h,exact=r.returncode==0\
-        \ and len(raw)==selected['bytes'] and h==selected['sha256']);(out/f'direct-{i}-stderr.txt').write_bytes(r.stderr)\n    if row.get('exact'):row['actualDefinitionAuditMatches']=audit_apk(target)==compiled\n\
-        \  except InstalledApkReadError as e:row.update(exact=False,errorType=type(e).__name__,receipt=e.diagnostics)\n  except Exception as e:row.update(exact=False,errorType=type(e).__name__,error=str(e))\n\
-        \  finally:target.unlink(missing_ok=True)\n  row['seconds']=time.monotonic()-began;rows.append(row);print(json.dumps(row),flush=True)\n  if not\
-        \ row.get('exact'):snapshot('after-failed-'+str(i))\nsnapshot('after')\nreport=dict(diagnosticOnly=True,applicationAcceptance=False,actualEditingWorkloadExecution=False,sourceCommit='10f650a4c0043edada7b865ae0845a6644ecdbcf',diagnosticWorkflowCommit=os.environ['GITHUB_SHA'],serverTrace=os.environ['DIAGNOSTIC_TRACE'],emulatorBackplane=os.environ['DIAGNOSTIC_PIPE'],selected=selected,installedPath=installed,observations=rows,deviceSnapshots=snapshots)\n\
-        (out/'diagnostic.json').write_text(json.dumps(report,indent=2))\nfor path in glob.glob('/tmp/adb.*.log'):shutil.copyfile(path,out/pathlib.Path(path).name)\n\
-        for name,cmd in [('logcat',base+['logcat','-d']),('memory',['free','-m']),('kernel',['sudo','dmesg'])]:\n  r=subprocess.run(cmd,capture_output=True);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)\n\
-        PYCODE\n"
-      env:
-        DIAGNOSTIC_TRACE: stock
-        DIAGNOSTIC_PIPE: ${{ matrix.pipe }}
-    - name: Preserve actual failed setup and authentication state
+    - name: Boot unchanged stock transport and input settings
+      run: 'set -euo pipefail
+
+        export ANDROID_AVD_HOME="$PWD/work/adb-avd"
+
+        export ANDROID_USER_HOME="$PWD/work/adb-user"
+
+        export ANDROID_EMULATOR_HOME="$PWD/work/adb-emulator-home"
+
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+
+        adb start-server
+
+        sudo chmod a+rw /dev/kvm
+
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k
+        ''system-images;android-35;google_apis;x86_64''
+
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader
+        -memory 3072 -cores 2 > work/adb-diagnostic/emulator.txt 2>&1 &
+
+        timeout 180 adb -s emulator-5554 wait-for-device
+
+        timeout 300 bash -c ''until [ "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done''
+
+        adb -s emulator-5554 shell input keyevent 82
+
+        '
+    - name: Observe 32 fixed synthetic file transfers; no application workload
+      run: "python3 - <<'PYDATA'\nimport hashlib,json,os,pathlib,re,subprocess,time\nout=pathlib.Path('work/adb-diagnostic');base=['adb','-s','emulator-5554'];run=os.environ['GITHUB_RUN_ID'];assert\
+        \ run.isdigit()\nremote='/data/local/tmp/pocketchat-transfer-'+run;fixture=remote+'/synthetic-zero.bin';size=128*1024*1024;expected=hashlib.sha256(bytes(size)).hexdigest()\n\
+        assert subprocess.check_output(base+['shell','getprop','ro.kernel.qemu'],text=True).strip()=='1'\nsubprocess.run(base+['shell','mkdir',remote],check=True,timeout=10)\n\
+        subprocess.run(base+['shell','dd','if=/dev/zero','of='+fixture,'bs=1048576','count=128'],check=True,timeout=30)\nrows=[];identities=[]\ndef identity(label):\n\
+        \ value={'label':label}\n for name,args in [('size',['stat','-c','%s',fixture]),('sha256',['sha256sum',fixture])]:\n  r=subprocess.run(base+['shell',*args],capture_output=True,text=True,timeout=30);value[name]={'exitCode':r.returncode,'stdout':r.stdout,'stderr':r.stderr}\n\
+        \ identities.append(value)\nidentity('before')\nfor i in range(32):\n target=pathlib.Path('work')/f'actual-synthetic-transfer-{i}.bin';began=time.monotonic();row={'index':i}\n\
+        \ try:\n  with target.open('xb') as f:\n   r=subprocess.run(base+['shell','-T','cat',fixture],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)\n\
+        \   f.write(r.stdout);f.flush()\n  count=target.stat().st_size;digest=hashlib.file_digest(target.open('rb'),'sha256').hexdigest()\n  row.update(returnCode=r.returncode,bytes=count,sha256=digest,exact=r.returncode==0\
+        \ and count==size and digest==expected,stderr=r.stderr[-4096:].decode(errors='replace'))\n except Exception as e:row.update(exact=False,errorType=type(e).__name__,error=str(e))\n\
+        \ finally:target.unlink(missing_ok=True)\n row['seconds']=time.monotonic()-began;rows.append(row);print(json.dumps(row),flush=True)\nidentity('after')\n\
+        report=dict(diagnosticOnly=True,applicationAcceptance=False,releaseAcceptance=False,actualInstalledApkRead=False,actualApplicationWorkloadExecution=False,physicalPhoneAcceptance=False,scope='Only\
+        \ a generated all-zero guest file over the stock emulator transport; no app, input or WAN acceptance',emulatorVersion=os.environ['COMPARE_EMULATOR'],workflowCommit=os.environ['GITHUB_SHA'],sourceCheckout=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),expectedBytes=size,expectedSha256=expected,observations=rows,guestFileIdentities=identities)\n\
+        (out/'synthetic-transport.json').write_text(json.dumps(report,indent=2))\nsubprocess.run(base+['shell','rm',fixture],check=False,timeout=10)\nassert\
+        \ all(x.get('exact') for x in rows),'At least one fixed synthetic transfer failed; no replacement observation is accepted'\nassert all(x['size']['exitCode']==x['sha256']['exitCode']==0\
+        \ and x['size']['stdout'].strip()==str(size) and x['sha256']['stdout'].split()[0]==expected for x in identities)\nPYDATA\n"
+    - name: Preserve only setup and ADB status logs
       if: always()
-      run: "python3 - <<'PYADB'\nimport glob,hashlib,json,os,pathlib,shutil,subprocess\nout=pathlib.Path('work/adb-diagnostic');out.mkdir(exist_ok=True)\n\
-        for p in glob.glob('/tmp/adb.*.log'):shutil.copyfile(p,out/pathlib.Path(p).name)\ncommands={\n'devices':['adb','devices','-l'],\n'guest-listener-owner':['adb','-s','emulator-5556','shell','su','0','ss','-ltnp'],\n\
-        'guest-input-firewall':['adb','-s','emulator-5556','shell','su','0','iptables','-nvL','INPUT'],\n'guest-policy-rules':['adb','-s','emulator-5556','shell','ip','rule'],\n\
-        'guest-auth':['adb','-s','emulator-5556','shell','getprop','ro.adb.secure'],\n'guest-adb':['adb','-s','emulator-5556','shell','dumpsys','adb'],\n\
-        'guest-listeners':['adb','-s','emulator-5556','shell','ss','-tn'],\n'guest-addresses':['adb','-s','emulator-5556','shell','ip','-4','addr'],\n'guest-routes':['adb','-s','emulator-5556','shell','ip','-4','route','show','table','all'],\n\
-        'guest-logcat':['adb','-s','emulator-5556','logcat','-d','-s','adbd:V','*:*'],\n}\nfor name,cmd in commands.items():\n try:\n  r=subprocess.run(cmd,capture_output=True,timeout=8);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)\n\
-        \ except Exception as e:(out/(name+'.txt')).write_text(str(e))\nkeys=[]\nfor p in {pathlib.Path.home()/'.android/adbkey.pub',pathlib.Path('work/adb-user/adbkey.pub')}:\n\
-        \ if p.exists():keys.append(dict(path=str(p),publicKeySha256=hashlib.sha256(p.read_bytes().strip()).hexdigest()))\ntry:\n r=subprocess.run(['adb','-s','emulator-5556','shell','getprop','ro.boot.qemu.adb.pubkey'],capture_output=True,timeout=8)\n\
-        \ keys.append(dict(guestBootPublicKeySha256=hashlib.sha256(r.stdout.strip()).hexdigest(),exitCode=r.returncode))\nexcept Exception as e:keys.append(dict(guestBootPublicKeyError=str(e)))\n\
-        (out/'auth-key-fingerprints.json').write_text(json.dumps(keys,indent=2))\nPYADB\n"
+      run: "python3 - <<'PYLOG'\nimport glob,pathlib,shutil,subprocess\nout=pathlib.Path('work/adb-diagnostic');out.mkdir(exist_ok=True)\nfor p in glob.glob('/tmp/adb.*.log'):shutil.copyfile(p,out/pathlib.Path(p).name)\n\
+        for name,cmd in [('adb-version',['adb','version']),('devices',['adb','devices','-l']),('adbd-log',['adb','-s','emulator-5554','logcat','-d','-s','adbd:V','*:S']),('memory',['free','-m'])]:\n\
+        \ try:\n  r=subprocess.run(cmd,capture_output=True,timeout=8);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)\n except Exception as e:(out/(name+'.txt')).write_text(str(e))\n\
+        PYLOG\n"
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
       with:
-        name: adb-explicit-guest-tcpip
+        name: emulator-transfer-${{ matrix.emulator }}
         path: work/adb-diagnostic/
         retention-days: 5
-    strategy:
-      fail-fast: false
-      matrix:
-        pipe:
-        - tcp
-'on':
-  push:
-    branches:
-    - diagnostic/adb-pipe-observation-20261023
