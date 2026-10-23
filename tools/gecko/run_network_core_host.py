@@ -32,8 +32,10 @@ def main():
     java=str(args.java_home/'bin/java') if args.java_home else os.environ.get('PROFILE_JAVA','java')
     work=ROOT/'work/plan-repairs/network-core/host';work.mkdir(parents=True,exist_ok=True)
     methods=['  void runStartOperation(int mode)','  void scanSubset(', '  void selectNow(', '  void rescan(', '  void health(boolean reuseRecent)', '  static long exitRetryDelayMs(', '  boolean retainVerifiedRoute(']
-    added=['  void recoverExistingRoute(', '  RetainedRouteFailure retained(', '  boolean retainedFailure(', '  boolean unchangedVerifiedSelection(', '  void commitSelection(', '  void selectVerifiedRoute(', '  void verifyExitWhenDue(', '  boolean retainedOutcomeCurrent(', '  void stopFailedTransaction(', '  void clearReadyState(']
+    added=['  void recoverExistingRoute(', '  RetainedRouteFailure retained(', '  boolean retainedFailure(', '  boolean unchangedVerifiedSelection(', '  void commitSelection(', '  void selectVerifiedRoute(String name,boolean measure)', '  void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap)', '  private StartupRoute startupRoute(', '  JSONObject startupState(', '  void abortStartup(', '  void verifyExitWhenDue(', '  boolean retainedOutcomeCurrent(', '  void stopFailedTransaction(', '  void stopOwnedCore(', '  void clearReadyState(']
     classes=block(source,'  static final class ExitRouteReceipt ')
+    if '  static final class StartupRoute ' in source:classes+='\n'+block(source,'  static final class StartupRoute ')+'\n'+block(source,'  static final class StartupRouteFailure ')
+    else:classes+='\nstatic final class StartupRoute {ExitRouteReceipt core;} static final class StartupRouteFailure extends IOException {StartupRouteFailure(Exception cause){super(cause);}}'
     if '  static final class RetainedRouteFailure ' in source:classes+='\n'+block(source,'  static final class RetainedRouteFailure ')
     for signature in ['  enum RecoveryState ', '  static final class RecoveryOutcome ', '  interface RecoveryCallback ', '  static final class RecoveryAdapter ', '  static final class RouteTransactionFailure ']:
         if signature in source:classes+='\n'+block(source,signature)
@@ -43,6 +45,8 @@ def main():
         if m in source:bodies.append(block(source,m))
     if '  void selectVerifiedRoute(' not in source:
         bodies.append('void selectVerifiedRoute(String name,boolean measure)throws Exception{selectNow(name);verifyExit();}')
+    if '  private StartupRoute startupRoute(' not in source:
+        bodies.append('private StartupRoute startupRoute(ExitRouteReceipt owned){return new StartupRoute();} void abortStartup(ExitRouteReceipt owned,Exception failed)throws StartupRouteFailure{stopNow();throw new StartupRouteFailure(failed);} void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap)throws Exception{selectVerifiedRoute(name,measure);}')
     if '  boolean retainedOutcomeCurrent(' not in source:bodies.append('boolean retainedOutcomeCurrent(RecoveryOutcome outcome){return false;}')
     template=ROOT/'tests/network-core-host/NativeNetworkHarness.java.txt'
     harness=template.read_text().replace('// PRODUCTION_CLASSES',classes).replace('// PRODUCTION_METHODS','\n'.join(bodies))
@@ -54,7 +58,7 @@ def main():
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True))
     subprocess.run([java,'-m','jdk.compiler/com.sun.tools.javac.Main','-encoding','UTF-8','-cp',str(jar),'-d',str(classes_path),str(work/'NativeNetwork.java'),str(work/'SystemClock.java'),*map(str,production)],check=True,timeout=60)
     run=subprocess.run([java,'-cp',str(classes_path)+os.pathsep+str(jar),'local.pocketchat.NativeNetwork'],capture_output=True,text=True,timeout=30)
-    result=json.loads(run.stdout);result['sourceFile']=str(source_path);result['sourceSha256']=hashlib.sha256(source.encode()).hexdigest();result['files']=hashes;result['sourceCommit']=commit;result['sourceDirty']=dirty;result['executionInputsUnchanged']=source_path.read_text()==source and all(hashlib.sha256((ROOT/f).read_bytes()).hexdigest()==h for f,h in hashes.items());result['extractedMethods']=methods+[m for m in added if m in source];result['harnessSha256']=hashlib.sha256(harness.encode()).hexdigest();result['stderr']=run.stderr
+    result=json.loads(run.stdout);result['sourceFile']=str(source_path);result['sourceSha256']=hashlib.sha256(source.encode()).hexdigest();result['files']=hashes;result['sourceCommit']=commit;result['sourceDirty']=dirty;result['executionInputsUnchanged']=source_path.read_text()==source and all(hashlib.sha256((ROOT/f).read_bytes()).hexdigest()==h for f,h in hashes.items());result['legacyBootstrapInvocationAdapter']='  private StartupRoute startupRoute(' not in source;result['bootstrapReplayScope']='Legacy sources delegate the new bootstrap call shape to their unchanged strict selectVerifiedRoute; absent scope/owned-cleanup APIs are compatibility adapters, not historical production methods.';result['extractedMethods']=methods+[m for m in added if m in source];result['harnessSha256']=hashlib.sha256(harness.encode()).hexdigest();result['stderr']=run.stderr
     if not result['executionInputsUnchanged']:result['status']='failed'
     output=args.output or work/'results.json';output.parent.mkdir(parents=True,exist_ok=True);output.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'status':result['status'],'passed':result['passed'],'total':result['total'],'report':str(output)}));raise SystemExit(run.returncode or (0 if result['executionInputsUnchanged'] else 1))
 if __name__=='__main__':main()

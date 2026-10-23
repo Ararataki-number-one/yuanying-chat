@@ -5,7 +5,8 @@ import pathlib
 import sys
 import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
-from tools.gecko.check_connection_evidence import NETWORK_REPAIR_CHECKS, verify_network_repair_evidence
+from tools.gecko.check_connection_evidence import NETWORK_REPAIR_CHECKS, verify_network_repair_evidence, BUSY_BOOTSTRAP_CHECKS, verify_busy_bootstrap_evidence
+from tools.gecko.network_sources_contract import verify_route_busy_bootstrap
 
 
 def fixture():
@@ -67,6 +68,59 @@ class NetworkRepairEvidenceTests(unittest.TestCase):
         del report['networkRepairEvidence']
         with self.assertRaises(KeyError):
             verify_network_repair_evidence(report)
+
+
+def bootstrap_fixture():
+    rows = []
+    for path in ('remembered', 'first-verified'):
+        first = dict(alive=True, pid=200, servicePid=201, controllerPort=10000, proxyPort=10001,
+                     generation='first', configuration='fixed-config', entry='entry-a', exitIp='203.0.113.8', tokenHash='a'*64)
+        second = dict(first, generation='replacement', pid=202)
+        rows.append(dict(path=path, busyBefore=True, busyAfter=True, callbackAccepted=True,
+                         receiptCurrent=True, busyLiveSwitchBlocked=True, exitRequests=1, first=first,
+                         directRebuild=dict(verified=True, busyAfter=True, exitRequests=1, replacement=second)))
+    return dict(checks=[], busyBootstrap=rows)
+
+
+class BootstrapEvidenceTests(unittest.TestCase):
+    def good(self):
+        value = bootstrap_fixture()
+        value['checks'] = [{'name': name, 'pass': True} for name in BUSY_BOOTSTRAP_CHECKS]
+        return value
+
+    def test_valid_synthetic_receipt(self):
+        self.assertTrue(verify_busy_bootstrap_evidence(self.good())['busyInitialRouteVerified'])
+
+    def test_every_bootstrap_case_is_required(self):
+        for name in BUSY_BOOTSTRAP_CHECKS:
+            value = self.good(); value['checks'] = [r for r in value['checks'] if r['name'] != name]
+            with self.assertRaises(AssertionError): verify_busy_bootstrap_evidence(value)
+
+    def test_no_boolean_or_identity_can_be_invented(self):
+        for field in ('busyBefore', 'busyAfter', 'callbackAccepted', 'receiptCurrent', 'busyLiveSwitchBlocked'):
+            value = self.good(); value['busyBootstrap'][0][field] = False
+            with self.assertRaises(AssertionError): verify_busy_bootstrap_evidence(value)
+        for count in (0, -1, True, '1', 1.0):
+            value = self.good(); value['busyBootstrap'][0]['exitRequests'] = count
+            with self.assertRaises(AssertionError): verify_busy_bootstrap_evidence(value)
+        for field in ('pid', 'generation'):
+            value = self.good(); row = value['busyBootstrap'][0]; row['directRebuild']['replacement'][field] = row['first'][field]
+            with self.assertRaises(AssertionError): verify_busy_bootstrap_evidence(value)
+        for field in ('configuration', 'exitIp'):
+            value = self.good(); value['busyBootstrap'][0]['directRebuild']['replacement'][field] = 'changed'
+            with self.assertRaises(AssertionError): verify_busy_bootstrap_evidence(value)
+
+    def test_actual_session_witness_cannot_clear_busy(self):
+        value = {'checks': [{'name': 'A fresh manual core verifies its exit while the same real session remains navigation-busy', 'pass': True}],
+                 'legacyBusyBootstrap': dict(actualSession=True, busyClearedForStartup=False, receiptCurrent=True, exitRequests=1,
+                     before=dict(navigating=True, routeBusy=True, pending=False, fileWorkActive=False),
+                     after=dict(navigating=True, routeBusy=True, pending=False, fileWorkActive=False))}
+        self.assertTrue(verify_route_busy_bootstrap(value)['realSessionBusyPreserved'])
+        for field in ('navigating', 'routeBusy'):
+            bad = copy.deepcopy(value); bad['legacyBusyBootstrap']['after'][field] = False
+            with self.assertRaises(AssertionError): verify_route_busy_bootstrap(bad)
+        bad = copy.deepcopy(value); bad['legacyBusyBootstrap']['busyClearedForStartup'] = True
+        with self.assertRaises(AssertionError): verify_route_busy_bootstrap(bad)
 
 
 if __name__ == '__main__':

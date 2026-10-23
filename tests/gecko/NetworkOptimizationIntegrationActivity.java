@@ -137,7 +137,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       n.quality.configure("synthetic-old-modes");for(int i=0;i<5;i++){n.quality.record("Entry|slow",500,now+i);n.quality.record("Entry|fast",30,now+i);}n.quality.selected("Entry|slow",now-RouteQuality.COOLDOWN-1000);NetworkCatalog.put(n.settings,"entryMode","random");n.scanAndSelect(false);check("Healthy random mode is not silently optimized",n.currentEntry.equals("Entry|slow"));NetworkCatalog.put(n.settings,"entryMode","manual");n.scanSubset(Collections.singletonList("Entry|slow"),false,false);check("Manual mode keeps the specified entry",n.currentEntry.equals("Entry|slow"));
       NetworkCatalog.put(n.settings,"entryMode","latency");n.websiteQuality.configure("synthetic-low-latency");for(int i=0;i<5;i++){n.websiteQuality.record("Entry|slow",900,now+i);n.websiteQuality.record("Entry|fast",50,now+i);}n.websiteQuality.selected("Entry|slow",now-RouteQuality.COOLDOWN-1000);n.websiteQuality.choose(n.names,n.currentEntry,false,true,now);n.scanSubset(n.names,false,true);check("Low latency selects a proven better candidate",n.currentEntry.equals("Entry|fast"));check("Optimizing preserves the fixed exit IP",n.exitIp.equals("203.0.113.8"));
       n.ready=true;site.ip="203.0.113.9";boolean mismatch=false;try{n.verifyExit();}catch(NativeNetwork.ExitMismatch expected){mismatch=true;}check("Exit IP changes still trigger the original protection",mismatch&&n.recoveryBlocked);
-      site.ip="203.0.113.8";exitVerificationContinuityChecks(n,site,plain,fixed,slow,fast);healthDetectorContinuityChecks(n,site,plain);displaySchedulingChecks(n,site,plain,report);transportFailureRejectionChecks(n,site,plain);testTransport(site,plain,config,yaml);networkRepairChecks(n,site,plain);
+      site.ip="203.0.113.8";exitVerificationContinuityChecks(n,site,plain,fixed,slow,fast);healthDetectorContinuityChecks(n,site,plain);displaySchedulingChecks(n,site,plain,report);transportFailureRejectionChecks(n,site,plain);testTransport(site,plain,config,yaml);networkRepairChecks(n,site,plain);bootstrapBusyChecks(site,plain,report);
       NetworkCatalog.put(report,"independentNetworkService","passed");NetworkCatalog.put(report,"status","passed");
     }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());}
     finally{if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
@@ -479,6 +479,26 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       try{n.selectVerifiedRoute(entry,false);}catch(IOException expected){failedClosed=true;}
       check("A failed rollback verification stops admission instead of reusing the old receipt",failedClosed&&!n.ready&&!n.coreAlive()&&!n.verifiedRouteCurrent()&&stream.awaitClosed());NetworkCatalog.put(repairEvidence,"failedRollback",J.obj("ready",n.ready,"coreAlive",n.coreAlive(),"receiptCurrent",n.verifiedRouteCurrent(),"webSocketClosed",stream.awaitClosed()));
     }finally{n.busy=false;n.failCandidateControl=false;n.failVerificationEntry="";site.ipStatus=200;site.websiteTransportFailure="";plain.forcedProbeFailures.set(0);}
+  }
+  /** Busy is injected, but startup, fixed-exit TLS, service identity and route commits are real. */
+  void bootstrapBusyChecks(HttpFixture site,HttpFixture plain,JSONObject report)throws Exception{
+    JSONArray outcomes=new JSONArray();NetworkCatalog.put(report,"busyBootstrap",outcomes);
+    for(String path:new String[]{"remembered","first-verified"}){
+      TestNetwork current=new TestNetwork(this,site,plain,true);current.busy=true;
+      getSharedPreferences("chat",0).edit().putString("lastGoodEntry",path.equals("remembered")?"Entry|slow":"").commit();
+      try{
+        int requests=site.ipRequests.get();CountDownLatch started=new CountDownLatch(1);final boolean[] accepted={false};current.start((ok,message)->{accepted[0]=ok;started.countDown();});
+        boolean done=started.await(30,TimeUnit.SECONDS);JSONObject first=current.transport.call("snapshot","");
+        check("Busy fresh service startup verifies its fixed exit through "+path,done&&accepted[0]&&current.busy&&current.ready&&current.verifiedRouteCurrent()&&current.startupPath.equals(path)&&site.ipRequests.get()>requests&&first.optBoolean("alive")&&first.optInt("pid")>1&&first.optInt("servicePid")>1&&!first.optString("generation").isEmpty()&&first.optString("configuration").equals(NativeNetwork.transportFingerprint(current.settings)));
+        JSONObject row=J.obj("path",path,"busyBefore",true,"busyAfter",current.busy,"callbackAccepted",accepted[0],"exitRequests",site.ipRequests.get()-requests,"receiptCurrent",current.verifiedRouteCurrent(),"first",transportIdentity(current));outcomes.put(row);
+        String entry=current.currentEntry;NativeNetwork.ExitRouteReceipt receipt=current.verifiedRoute;long serial=current.routeSerial;requests=site.ipRequests.get();CountDownLatch switched=new CountDownLatch(1);accepted[0]=true;current.starting=true;
+        current.select(entry.equals("Entry|slow")?"Entry|fast":"Entry|slow",(ok,message)->{accepted[0]=ok;switched.countDown();});boolean blocked=switched.await(5,TimeUnit.SECONDS)&&!accepted[0]&&serial==current.routeSerial&&requests==site.ipRequests.get()&&entry.equals(current.currentEntry)&&receipt==current.verifiedRoute&&current.verifiedRouteCurrent();current.starting=false;
+        check("Busy admitted service route cannot borrow startup permission in "+path,blocked);NetworkCatalog.put(row,"busyLiveSwitchBlocked",blocked);
+        requests=site.ipRequests.get();current.startNow();JSONObject replacement=current.transport.call("snapshot","");
+        boolean direct=current.busy&&current.ready&&current.verifiedRouteCurrent()&&site.ipRequests.get()>requests&&!first.getString("generation").equals(replacement.optString("generation"))&&first.getInt("pid")!=replacement.optInt("pid");
+        check("Direct rebuild retires stale ready state and verifies a new busy core in "+path,direct);NetworkCatalog.put(row,"directRebuild",J.obj("verified",direct,"busyAfter",current.busy,"exitRequests",site.ipRequests.get()-requests,"replacement",transportIdentity(current)));
+      }finally{current.stopNow();current.worker.shutdownNow();current.probes.shutdownNow();current.closers.shutdownNow();current.traffic.reader.shutdownNow();}
+    }
   }
   JSONObject transportIdentity(TestNetwork n)throws Exception{JSONObject state=n.transport.call("snapshot","");return J.obj("pid",state.optInt("pid"),"servicePid",state.optInt("servicePid"),"generation",state.optString("generation"),"configuration",state.optString("configuration"),"controllerPort",state.optInt("controllerPort"),"proxyPort",state.optInt("proxyPort"),"entry",n.currentEntry,"tokenHash",NativeNetwork.hash(n.token),"exitIp",n.exitIp,"alive",state.optBoolean("alive"));}
   void transportFailureRejectionChecks(TestNetwork n,HttpFixture site,HttpFixture plain)throws Exception{

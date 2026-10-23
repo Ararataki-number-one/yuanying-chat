@@ -163,7 +163,7 @@ class NativeNetwork {
     }catch(Exception e){
       // Retention is useful admission evidence, but is not a completed recovery.
       boolean retained=retainedFailure(e)||retainVerifiedRoute(e);retainedResult=retained;ok=false;
-      if(!retained&&!(e instanceof RouteTransactionFailure)){note(NetworkDiagnostics.Event.FAILURE,e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.START_FAILED,NetworkDiagnostics.Stage.RECOVER,mode);stopNow(e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.START_FAILED);if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException&&e.getMessage()!=null?e.getMessage():"应用网络连接失败，请检查节点与固定出口");}
+      if(!retained&&!(e instanceof RouteTransactionFailure)&&!(e instanceof StartupRouteFailure)){note(NetworkDiagnostics.Event.FAILURE,e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.START_FAILED,NetworkDiagnostics.Stage.RECOVER,mode);stopNow(e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.START_FAILED);if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException&&e.getMessage()!=null?e.getMessage():"应用网络连接失败，请检查节点与固定出口");}
     }
     final boolean success=ok;final String detail=message;final ExitRouteReceipt kept=retainedResult&&verifiedRouteCurrent()?verifiedRoute:null;final RecoveryOutcome outcome=new RecoveryOutcome(ok?RecoveryState.RECOVERED:kept!=null?RecoveryState.RETAINED:RecoveryState.FAILED,detail,kept);final List<Callback> callbacks;synchronized(this){if(restartQueued){restartQueued=false;worker.execute(()->runStartOperation(2));return;}starting=false;callbacks=new ArrayList<>(startWaiters);startWaiters.clear();}main.post(()->{for(Callback cb:callbacks)if(cb instanceof RecoveryAdapter)((RecoveryAdapter)cb).complete(outcome);else cb.done(success,detail);});
   }
@@ -199,7 +199,8 @@ class NativeNetwork {
     report("正在恢复独立网络连接并核实固定出口…");verifyExit();ready=true;recoveryBlocked=false;startupPath="service-adopted";return true;
   }
   void startNow()throws Exception{
-    bindDiagnostics();invalidateVerifiedRoute();long startupBegan=android.os.SystemClock.elapsedRealtime();startupBeganAt=startupBegan;startupDuration=coreDuration=providerDuration=0;startupPath="";optimizationRounds=0;optimizationFailures=0;nextOptimizationAt=0;
+    bindDiagnostics();clearReadyState();long startupBegan=android.os.SystemClock.elapsedRealtime();startupBeganAt=startupBegan;startupDuration=coreDuration=providerDuration=0;startupPath="";optimizationRounds=0;optimizationFailures=0;nextOptimizationAt=0;
+    LaunchOwnership launch=new LaunchOwnership();try{
     settings=secrets.settings();validate(settings);if(transport==null)cleanupOwnedPid();token=UUID.randomUUID().toString()+UUID.randomUUID();controllerPort=freePort();proxyPort=freePort();webProbePort=freePort();
     fingerprint=exitIdentity(settings);
     String scope=fingerprint+":"+hash(settings.optString("subscriptionUrl"));quality.configure(MEASUREMENT_PROFILE+":"+scope);websiteQuality.configure("chatgpt-head-v1:"+scope);dns.configure(scope);activeDns=dns.primary(System.currentTimeMillis());byte[] cached=secrets.get("subscription");JSONObject meta=J.parse(new String(Optional.ofNullable(secrets.get("subscription-meta")).orElse(new byte[0]),StandardCharsets.UTF_8));
@@ -208,7 +209,7 @@ class NativeNetwork {
     if(fromCache)try(FileOutputStream out=new FileOutputStream(new File(root,"subscription.yaml"))){out.write(cached);}
     J.write(new File(root,"config.json"),config(true,!fromCache).toString().replace("\\/","/"));
     report(fromCache?"正在从加密缓存启动手机独立网络…":"正在下载订阅并启动手机独立网络…");
-    launchCore();
+    launchCore(launch);
     coreDuration=android.os.SystemClock.elapsedRealtime()-startupBegan;long providerBegan=android.os.SystemClock.elapsedRealtime();
     JSONArray nodes=readProvider();names=new ArrayList<>(providerNames(nodes));
     long updated=fromCache?meta.optLong("updatedAt"):System.currentTimeMillis();
@@ -218,28 +219,34 @@ class NativeNetwork {
     EntrySelection.validate(settings,names);names=EntrySelection.allowed(settings,names);if(lowLatency())names=rankedRoutes();
     String remembered=context.getSharedPreferences("chat",0).getString("lastGoodEntry","");if(names.remove(remembered))names.add(0,remembered);totalEntries=names.size();if(names.isEmpty())throw new IOException("订阅未读到可用节点；请确认它是 Clash / Mihomo 格式");if(names.size()>64&&!lowLatency())names=new ArrayList<>(names.subList(0,64));
     J.write(new File(root,"config.json"),config(false,false).toString().replace("\\/","/"));api("PUT","/configs?force=true",J.obj("path",new File(root,"config.json").getAbsolutePath()),5000);
-    providerDuration=android.os.SystemClock.elapsedRealtime()-providerBegan;chooseStartupRoute();writeTransportMetadata(true);ready=true;recoveryBlocked=false;failures=0;startupDuration=android.os.SystemClock.elapsedRealtime()-startupBegan;report("手机独立网络已连接 · "+display(currentEntry));
+    providerDuration=android.os.SystemClock.elapsedRealtime()-providerBegan;StartupRoute bootstrap=startupRoute(launch.core);
+    chooseStartupRoute(bootstrap);JSONObject admitted=startupState(bootstrap,false);if(verifiedRoute==null||!verifiedRoute.matches(this,admitted))throw new IOException("启动线路核验回执已变化");writeTransportMetadata(true);ready=true;recoveryBlocked=false;failures=0;startupDuration=android.os.SystemClock.elapsedRealtime()-startupBegan;report("手机独立网络已连接 · "+display(currentEntry));}
+    catch(Exception failure){abortStartup(launch.core,failure);}
+
   }
 
   // A successful HTTPS exit check already proves that the entire selected chain works.
   // Keep the persisted exit-IP gate, and avoid probing every entry before trying it.
-  void chooseStartupRoute()throws Exception{
+  void chooseStartupRoute()throws Exception{chooseStartupRoute(null);}
+  void chooseStartupRoute(StartupRoute bootstrap)throws Exception{
     results=new JSONArray();String remembered=context.getSharedPreferences("chat",0).getString("lastGoodEntry","");
     if(names.contains(remembered)){
       report("正在恢复上次可用入口并核实固定出口…");
-      try{selectVerifiedRoute(remembered,false);startupPath="remembered";lastScan=System.currentTimeMillis();return;}
+      try{selectVerifiedRoute(remembered,false,bootstrap);startupPath="remembered";lastScan=System.currentTimeMillis();return;}
+      catch(StartupRouteFailure stale){throw stale;}
       catch(ExitMismatch mismatch){throw mismatch;}
       catch(ExitCheckUnavailable unavailable){throw unavailable;}
       catch(Exception unavailable){quality.record(remembered,-1,System.currentTimeMillis());}
     }
-    firstVerifiedRoute(remembered);
+    firstVerifiedRoute(remembered,bootstrap);
   }
   static final class RouteProbe{final String name;final int delay;final ProbeResult sample;RouteProbe(String n,int d){name=n;delay=d;sample=null;}RouteProbe(String n,ProbeResult result){name=n;delay=result.delay;sample=result;}}
   RouteProbe startupProbe(String name,int index,String epoch){
     if(!epoch.equals(token)||Thread.currentThread().isInterrupted())return new RouteProbe(name,-1);
     try{api("PUT","/proxies/ProbeEntry"+index,J.obj("name",name),3000);if(!epoch.equals(token)||Thread.currentThread().isInterrupted())return new RouteProbe(name,-1);return new RouteProbe(name,probeMeasured("ProbeExit"+index,name));}catch(Exception unavailable){return new RouteProbe(name,-1);}
   }
-  void firstVerifiedRoute(String rejected)throws Exception{
+  void firstVerifiedRoute(String rejected)throws Exception{firstVerifiedRoute(rejected,null);}
+  void firstVerifiedRoute(String rejected,StartupRoute bootstrap)throws Exception{
     report("正在寻找可用入口并核实固定出口…");
     final List<String> candidates=new ArrayList<>(names);final String epoch=token;
     // Startup normally has no parent maintenance scope. Own every candidate's
@@ -261,7 +268,8 @@ class NativeNetwork {
         if(!epoch.equals(token))throw new IOException("网络连接已改变，请重试");
         long now=System.currentTimeMillis();if(r.sample!=null)recordProbe(r.sample,now);else quality.record(r.name,r.delay,now,"unknown",new JSONObject());measured.put(J.obj("name",display(r.name),"internalName",r.name,"delay",r.delay,"probe",r.sample==null?new JSONObject():r.sample.publicSummary()));results=measured;
         if(r.delay<=0)continue;
-        try{selectVerifiedRoute(r.name,false);startupPath="first-verified";lastScan=System.currentTimeMillis();return;}
+        try{selectVerifiedRoute(r.name,false,bootstrap);startupPath="first-verified";lastScan=System.currentTimeMillis();return;}
+        catch(StartupRouteFailure stale){throw stale;}
         catch(RouteTransactionFailure failed){throw failed;}
         catch(RetainedRouteFailure restored){throw restored;}
         catch(ExitMismatch mismatch){throw mismatch;}
@@ -275,12 +283,15 @@ class NativeNetwork {
   void writeTransportMetadata(boolean active)throws IOException{
     if(transport==null)return;android.util.AtomicFile file=new android.util.AtomicFile(new File(root,"transport.json"));FileOutputStream out=file.startWrite();try{out.write(J.obj("proxyPort",proxyPort,"webProbePort",webProbePort,"ready",active,"names",new JSONArray(names)).toString().getBytes(StandardCharsets.UTF_8));file.finishWrite(out);}catch(Exception e){file.failWrite(out);throw new IOException("网络运行状态未能保存",e);}
   }
-  void launchCore()throws Exception{
+  static final class LaunchOwnership {ExitRouteReceipt core;}
+  void launchCore()throws Exception{launchCore(null);}
+  void launchCore(LaunchOwnership ownership)throws Exception{
     bindDiagnostics();coreGeneration=UUID.randomUUID().toString();coreStopReason=new java.util.concurrent.atomic.AtomicReference<>(NetworkDiagnostics.Reason.UNKNOWN);diagnostics.record(NetworkDiagnostics.Event.CORE_START,transport==null?coreGeneration:NetworkDiagnostics.UNKNOWN,NetworkDiagnostics.Reason.UNKNOWN,NetworkDiagnostics.Stage.START,0);
     File binary=new File(context.getApplicationInfo().nativeLibraryDir,"libmihomo.so");if(!binary.isFile())throw new IOException("该手机架构没有可用的内置网络内核");
-    if(transport!=null){writeTransportMetadata(false);transport.call("launch",transportFingerprint(settings));}
+    if(transport!=null){writeTransportMetadata(false);JSONObject launched=transport.call("launch",transportFingerprint(settings));if(ownership!=null&&launched!=null)ownership.core=new ExitRouteReceipt(this,launched);}
     else{
     process=new ProcessBuilder("/system/bin/sh","-c","umask 077; echo $$ > \"$1/core.pid\"; exec \"$2\" -d \"$1\" -f \"$1/config.json\"","pocket-core",root.getAbsolutePath(),binary.getAbsolutePath()).redirectErrorStream(true).start();
+    if(ownership!=null)ownership.core=new ExitRouteReceipt(this,null);
     final java.lang.Process owned=process;final String lifetime=coreGeneration;final java.util.concurrent.atomic.AtomicReference<NetworkDiagnostics.Reason> stopReason=coreStopReason;
     new Thread(()->{try(NetworkDiagnostics.Output output=diagnostics.output(lifetime);InputStream in=owned.getInputStream()){byte[] b=new byte[4096];int count;while((count=in.read(b))>=0)output.add(count);}catch(Exception unavailable){diagnostics.record(NetworkDiagnostics.Event.FAILURE,lifetime,NetworkDiagnostics.Reason.CONTROL_UNAVAILABLE,NetworkDiagnostics.Stage.OUTPUT,0);}},"core-output-count").start();
     new Thread(()->{try{int code=owned.waitFor();diagnostics.record(NetworkDiagnostics.Event.CORE_EXIT,lifetime,stopReason.get(),NetworkDiagnostics.Stage.CORE,code);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}},"core-exit-diagnostics").start();
@@ -486,18 +497,42 @@ class NativeNetwork {
     if(!name.equals(api("GET","/proxies/EntryChoice",null,3000).optString("now")))throw new IOException("入口切换未得到确认");currentEntry=name;
   }
   void commitSelection(){long now=System.currentTimeMillis();quality.selected(currentEntry,now);websiteQuality.selected(currentEntry,now);websiteResult=new JSONObject();}
+  /** Only startNow can grant initial-route admission for a newly launched core.
+   * It is not derived from starting/busy or a receipt invalidated by a live switch. */
+  static final class StartupRoute {
+    final ExitRouteReceipt core;final String configuration;
+    private StartupRoute(ExitRouteReceipt core,String configuration){this.core=core;this.configuration=configuration;}
+  }
+  static final class StartupRouteFailure extends IOException {StartupRouteFailure(Exception cause){super(cause.getMessage()==null?"初始网络连接未完成":cause.getMessage(),cause);}}
+  private StartupRoute startupRoute(ExitRouteReceipt owned)throws Exception{
+    maintenanceCheck();if(ready||verifiedRoute!=null)throw new IOException("已有线路不能使用初始建路流程");
+    JSONObject state=transport==null?null:transport.call("snapshot","");
+    if(owned==null||!owned.sameCore(this,state)||!configurationMatches()||transport!=null&&!transportFingerprint(settings).equals(owned.configuration))throw new IOException("初始网络实例或保存配置尚未就绪");
+    return new StartupRoute(owned,transportFingerprint(settings));
+  }
+  JSONObject startupState(StartupRoute bootstrap,boolean selecting)throws Exception{
+    maintenanceCheck();try{JSONObject state=transport==null?null:transport.call("snapshot","");
+      if(bootstrap==null||ready||selecting&&verifiedRoute!=null||!bootstrap.core.sameCore(this,state)||!bootstrap.configuration.equals(transportFingerprint(settings))||!configurationMatches())throw new IOException("初始网络实例或保存配置已变化，启动结果未应用");
+      return state;
+    }catch(Exception failure){throw new StartupRouteFailure(failure);}
+  }
+  void abortStartup(ExitRouteReceipt owned,Exception failure)throws StartupRouteFailure{
+    if(owned==null){clearReadyState();note(NetworkDiagnostics.Event.FAILURE,NetworkDiagnostics.Reason.CONTROL_UNAVAILABLE,NetworkDiagnostics.Stage.START,0);}else stopOwnedCore(owned,failure instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.START_FAILED);
+    if(failure instanceof ExitMismatch)recoveryBlocked=true;report(failure.getMessage()==null?"初始网络连接未完成":failure.getMessage());throw failure instanceof StartupRouteFailure?(StartupRouteFailure)failure:new StartupRouteFailure(failure);
+  }
   /** Manual, optimization and recovery use the same select/verify/commit transaction.
    * A failed tentative selection can only retain a newly verified rollback receipt. */
-  void selectVerifiedRoute(String name,boolean measure)throws Exception{
-    maintenanceCheck();if(routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");
-    ExitRouteReceipt previous=verifiedRouteCurrent()?verifiedRoute:null;String old=currentEntry;
-    maintenanceCheck();if(routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");
+  void selectVerifiedRoute(String name,boolean measure)throws Exception{selectVerifiedRoute(name,measure,null);}
+  void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap)throws Exception{
+    maintenanceCheck();if(bootstrap==null&&routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");
+    ExitRouteReceipt previous=bootstrap==null&&verifiedRouteCurrent()?verifiedRoute:null;String old=currentEntry;
+    maintenanceCheck();if(bootstrap!=null)startupState(bootstrap,true);else if(routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");
     try{
       selectNow(name);ProbeResult sample=null;
       if(measure){sample=probeMeasured("FixedExit",name);if(sample.delay<=0||!probeCurrent(sample))throw new IOException("候选入口未通过探测");}
-      verifyExit();ExitRouteReceipt candidate=verifiedRoute;JSONObject observed=transport==null?null:transport.call("snapshot","");
+      verifyExit();ExitRouteReceipt candidate=verifiedRoute;JSONObject observed=bootstrap!=null?startupState(bootstrap,false):transport==null?null:transport.call("snapshot","");
       if(candidate==null||candidate!=verifiedRoute||!name.equals(candidate.entry)||!candidate.matches(this,observed))throw new IOException("提交入口前网络实例已变化");
-      maintenanceCheck();if(routeBusy())throw new InterruptedIOException("当前操作需要保留原入口");
+      maintenanceCheck();if(bootstrap==null&&routeBusy())throw new InterruptedIOException("当前操作需要保留原入口");
       commitSelection();if(sample!=null)publishCurrentProbe(sample);return;
     }catch(Exception failed){
       if(previous==null)throw failed;
@@ -516,16 +551,17 @@ class NativeNetwork {
     }
   }
   /** A stale transaction can revoke its own admission, never stop a replacement core. */
-  void stopFailedTransaction(ExitRouteReceipt owned){
+  void stopFailedTransaction(ExitRouteReceipt owned){stopOwnedCore(owned,NetworkDiagnostics.Reason.ROLLBACK_FAILED);}
+  void stopOwnedCore(ExitRouteReceipt owned,NetworkDiagnostics.Reason reason){
     Thread.interrupted();clearReadyState();
     try{
-      if(transport!=null)transport.call("stop","",NetworkDiagnostics.Reason.ROLLBACK_FAILED,owned.generation);
+      if(transport!=null){if(owned.generation.isEmpty()){note(NetworkDiagnostics.Event.FAILURE,NetworkDiagnostics.Reason.CONTROL_UNAVAILABLE,NetworkDiagnostics.Stage.STOP,0);return;}transport.call("stop","",reason,owned.generation);}
       else if(owned.process!=null){
-        if(process==owned.process)coreStopReason.set(NetworkDiagnostics.Reason.ROLLBACK_FAILED);
+        if(process==owned.process)coreStopReason.set(reason);
         owned.process.destroy();if(!owned.process.waitFor(2,TimeUnit.SECONDS)){owned.process.destroyForcibly();owned.process.waitFor(2,TimeUnit.SECONDS);}
         if(process==owned.process)process=null;
       }
-    }catch(Exception unavailable){note(NetworkDiagnostics.Event.FAILURE,NetworkDiagnostics.Reason.ROLLBACK_FAILED,NetworkDiagnostics.Stage.STOP,0);}
+    }catch(Exception unavailable){note(NetworkDiagnostics.Event.FAILURE,reason,NetworkDiagnostics.Stage.STOP,0);}
   }
   String verifyExit()throws Exception{long began=android.os.SystemClock.elapsedRealtime();try{return verifyExitRequest();}finally{exitCheckDuration=android.os.SystemClock.elapsedRealtime()-began;}}
   static boolean validExitIp(String ip){

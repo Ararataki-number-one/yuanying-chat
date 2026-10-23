@@ -77,6 +77,40 @@ def verify_network_repair_evidence(network):
             'candidateFailureKeepsVerifiedRoute': True, 'rollbackRequiresNewVerification': True}
 
 
+BUSY_BOOTSTRAP_CHECKS = frozenset(
+    prefix + path for path in ('remembered', 'first-verified') for prefix in (
+        'Busy fresh service startup verifies its fixed exit through ',
+        'Busy admitted service route cannot borrow startup permission in ',
+        'Direct rebuild retires stale ready state and verifies a new busy core in '))
+
+
+def verify_busy_bootstrap_evidence(network):
+    checks = {row['name']: row['pass'] for row in network['checks']}
+    assert BUSY_BOOTSTRAP_CHECKS <= checks.keys()
+    assert all(checks[name] is True for name in BUSY_BOOTSTRAP_CHECKS)
+    rows = network['busyBootstrap']
+    assert len(rows) == 2 and [row['path'] for row in rows] == ['remembered', 'first-verified']
+    for row in rows:
+        for field in ('busyBefore', 'busyAfter', 'callbackAccepted', 'receiptCurrent', 'busyLiveSwitchBlocked'):
+            assert row[field] is True, field
+        assert type(row['exitRequests']) is int and row['exitRequests'] > 0
+        first, rebuilt = row['first'], row['directRebuild']
+        assert rebuilt['verified'] is True and rebuilt['busyAfter'] is True
+        assert type(rebuilt['exitRequests']) is int and rebuilt['exitRequests'] > 0
+        second = rebuilt['replacement']
+        for state in (first, second):
+            assert state['alive'] is True
+            for field in ('pid', 'servicePid', 'controllerPort', 'proxyPort'):
+                assert type(state[field]) is int and state[field] > 1
+            for field in ('generation', 'configuration', 'entry', 'exitIp'):
+                assert isinstance(state[field], str) and state[field]
+            assert isinstance(state['tokenHash'], str) and len(state['tokenHash']) == 64
+        assert first['generation'] != second['generation'] and first['pid'] != second['pid']
+        assert first['configuration'] == second['configuration'] and first['exitIp'] == second['exitIp']
+    return {'busyInitialRouteVerified': True, 'liveSwitchStillFenced': True,
+            'directRebuildUsesNewVerifiedCore': True}
+
+
 def verify_connection_evidence(directory, source):
     directory = pathlib.Path(directory)
 
@@ -163,6 +197,7 @@ def verify_connection_evidence(directory, source):
     } <= names, 'Real protected WebSocket continuity and unknown-route rejection are required.'
     transport = verify_detector_transport_evidence(network)
     repairs = verify_network_repair_evidence(network)
+    bootstrap = verify_busy_bootstrap_evidence(network)
 
     host = json.loads((directory / 'reply-binding-host-results.json').read_text())
     assert host['passed'] == host['total'] >= 41 and all(check['pass'] for check in host['checks'])
@@ -176,7 +211,7 @@ def verify_connection_evidence(directory, source):
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True,
             'actualMihomoExecution': True, 'geckoChecks': gecko['checkCount'],
             'networkChecks': len(network['checks']), 'bindingHostChecks': host['total'],
-            'detectorTransport': transport, 'networkRepairs': repairs}
+            'detectorTransport': transport, 'networkRepairs': repairs, 'busyBootstrap': bootstrap}
 
 
 if __name__ == '__main__':

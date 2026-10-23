@@ -93,6 +93,21 @@ def _core_matches(report, receipt):
     assert report['coreSha256'] == receipt['binaries']['x86_64']['sha256']
 
 
+def verify_route_busy_bootstrap(report):
+    required = 'A fresh manual core verifies its exit while the same real session remains navigation-busy'
+    assert any(row['name'] == required and row['pass'] is True for row in report['checks'])
+    evidence = report['legacyBusyBootstrap']
+    assert evidence['actualSession'] is True and evidence['busyClearedForStartup'] is False
+    assert evidence['receiptCurrent'] is True
+    assert type(evidence['exitRequests']) is int and evidence['exitRequests'] > 0
+    before, after = evidence['before'], evidence['after']
+    for value in (before, after):
+        assert value['navigating'] is True and value['routeBusy'] is True
+        assert type(value['pending']) is bool and type(value['fileWorkActive']) is bool
+    assert before['pending'] == after['pending'] and before['fileWorkActive'] == after['fileWorkActive']
+    return {'realSessionBusyPreserved': True, 'freshCoreExitVerified': True}
+
+
 def _verify_route_session_restorations(report):
     assert len(report['checks']) >= 71
     required = {name + ' releases the browser guard through the production reconnect callback'
@@ -347,6 +362,7 @@ def verify_source_route(report,server,receipt,source):
         blocked=[row for row in report['routes'] if '/bytes?id='+name in row['url']]
         assert blocked and all(row['route']['type']=='socks' and row['route']['host']=='127.0.0.1' and row['route']['port']==9 for row in blocked)
     _verify_route_session_restorations(report)
+    verify_route_busy_bootstrap(report)
     return {'actualAndroidExecution':True,'actualGeckoHttp2Execution':True,'actualAuthenticatedSocksChain':True,
             'sameSourceFixedExitAcrossEntrySwitch':True,'independentProbesPreserveBusinessConnection':True,
             'snapshotAndNodeMismatchRejections':4,'legacyManualPathPreserved':True,'checks':len(report['checks']),
