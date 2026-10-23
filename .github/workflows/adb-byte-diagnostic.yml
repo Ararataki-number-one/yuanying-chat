@@ -1,113 +1,177 @@
-name: Compare host ADB versions on fresh Android instances
+name: Inspect actual QEMU network backend before native ADB qualification
 permissions:
   contents: read
   actions: read
 jobs:
   diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
-        ref: d7436687c18932eab51df512c89a4e92942c6b10
+        ref: 10bd0078c1f02937ef7e59e9bca9967b32e529f7
     - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
       with:
-        name: gecko-39914207334-1-build
-        run-id: 39914207334
+        name: gecko-39918328409-1-build
+        run-id: 39918328409
         github-token: ${{ github.token }}
         path: work/adb-build
     - name: Extract only the selected APK for transfer diagnostics
-      run: "python3 - <<'PY'\nimport hashlib,json,pathlib,tarfile\nout=pathlib.Path('work/adb-diagnostic');out.mkdir(parents=True,exist_ok=True)\nwith tarfile.open('work/adb-build/bundle.tar.gz')\
-        \ as t:\n  index=json.load(t.extractfile('_ci_bundle.json'))\n  assert index['sourceCommit']=='d7436687c18932eab51df512c89a4e92942c6b10' and index['runId']=='39914207334'\n\
-        \  name='app/build/outputs/apk/integration/app-x86_64-integration.apk'\n  item=next(x for x in index['files'] if x['path']==name);raw=t.extractfile(name).read()\n\
-        \  assert len(raw)==item['bytes'] and hashlib.sha256(raw).hexdigest()==item['sha256']\n  pathlib.Path('work/diagnostic.apk').write_bytes(raw);(out/'selected.json').write_text(json.dumps(item))\n\
-        PY\n"
+      run: |
+        python3 - <<'PY'
+        import hashlib,json,pathlib,tarfile
+        out=pathlib.Path('work/adb-diagnostic');out.mkdir(parents=True,exist_ok=True)
+        with tarfile.open('work/adb-build/bundle.tar.gz') as t:
+          index=json.load(t.extractfile('_ci_bundle.json'))
+          assert index['sourceCommit']=='10bd0078c1f02937ef7e59e9bca9967b32e529f7' and index['runId']=='39918328409'
+          name='app/build/outputs/apk/integration/app-x86_64-integration.apk'
+          item=next(x for x in index['files'] if x['path']==name);raw=t.extractfile(name).read()
+          assert len(raw)==item['bytes'] and hashlib.sha256(raw).hexdigest()==item['sha256']
+          pathlib.Path('work/diagnostic.apk').write_bytes(raw);(out/'selected.json').write_text(json.dumps(item))
+        PY
     - name: Prepare the unchanged stock Android runtime
-      run: "echo \"JAVA_HOME=$JAVA_HOME_17_X64\" >> \"$GITHUB_ENV\"\necho \"$JAVA_HOME_17_X64/bin\" >> \"$GITHUB_PATH\"\necho \"$ANDROID_HOME/platform-tools\"\
-        \ >> \"$GITHUB_PATH\"\nyes | \"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager\" --licenses >/dev/null || true\npython3 tools/gecko/prepare_android_image.py\
-        \ --component emulator --sdk-root \"$ANDROID_HOME\" --cache work/android-image --report work/adb-diagnostic/emulator.json\npython3 tools/gecko/prepare_android_image.py\
-        \ --sdk-root \"$ANDROID_HOME\" --cache work/android-image --report work/adb-diagnostic/image.json\n\npython3 - <<'PYPIN'\nimport hashlib,json,os,pathlib,shutil,stat,subprocess,urllib.request,zipfile\n\
-        out=pathlib.Path('work/adb-diagnostic');sdk=pathlib.Path(os.environ['ANDROID_HOME']);dest=sdk/'platform-tools';version=os.environ['DIAGNOSTIC_ADB']\n\
-        record={'diagnosticOnly':True,'applicationAcceptance':False,'selected':version,'ambientVersion':subprocess.check_output([str(dest/'adb'),'version'],text=True),'ambientAdbSha256':hashlib.file_digest((dest/'adb').open('rb'),'sha256').hexdigest()}\n\
-        subprocess.run([str(dest/'adb'),'kill-server'],check=True)\nif version=='35.0.2':\n archive=pathlib.Path('work/platform-tools-35.0.2.zip');url='https://dl.google.com/android/repository/platform-tools_r35.0.2-linux.zip'\n\
-        \ with urllib.request.urlopen(url,timeout=120) as response,archive.open('xb') as sink:shutil.copyfileobj(response,sink)\n assert archive.stat().st_size==7472902\
-        \ and hashlib.file_digest(archive.open('rb'),'sha256').hexdigest()=='acfdcccb123a8718c46c46c059b2f621140194e5ec1ac9d81715be3d6ab6cd0a'\n stage=pathlib.Path('work/selected-platform-tools');stage.mkdir()\n\
-        \ with zipfile.ZipFile(archive) as z:\n  assert z.testzip() is None and 'Pkg.Revision=35.0.2' in z.read('platform-tools/source.properties').decode()\n\
-        \  for member in z.infolist():\n   path=pathlib.PurePosixPath(member.filename);assert not path.is_absolute() and '..' not in path.parts\n   extracted=pathlib.Path(z.extract(member,stage));mode=(member.external_attr>>16)&0o777\n\
-        \   if extracted.is_file() and mode:extracted.chmod(mode)\n shutil.move(str(dest),'work/ambient-platform-tools');shutil.move(str(stage/'platform-tools'),str(dest));record.update(url=url,archiveSha256=hashlib.file_digest(archive.open('rb'),'sha256').hexdigest())\n\
-        record.update(actualVersion=subprocess.check_output([str(dest/'adb'),'version'],text=True),actualAdbSha256=hashlib.file_digest((dest/'adb').open('rb'),'sha256').hexdigest())\n\
-        (out/'platform-tools.json').write_text(json.dumps(record,indent=2));print(json.dumps(record))\nPYPIN\n"
+      run: |
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/emulator.json
+        python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/image.json
+
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
     - name: Boot the unchanged Android runtime
-      run: 'set -euo pipefail
-
+      run: |
+        set -euo pipefail
         export ANDROID_AVD_HOME="$PWD/work/adb-avd"
-
         export ANDROID_USER_HOME="$PWD/work/adb-user"
-
         export ANDROID_EMULATOR_HOME="$PWD/work/adb-emulator-home"
-
         mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
-
         adb start-server
-
         sudo chmod a+rw /dev/kvm
-
-        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k
-        ''system-images;android-35;google_apis;x86_64''
-
-        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader
-        -memory 3072 -cores 2 > work/adb-diagnostic/emulator.txt 2>&1 &
-
-        timeout 180 adb -s emulator-5554 wait-for-device
-
-        timeout 300 bash -c ''until [ "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done''
-
-        adb -s emulator-5554 shell input keyevent 82
-
-
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 -qemu -monitor "unix:$PWD/work/qemu-monitor.sock,server=on,wait=off" > work/adb-diagnostic/emulator.txt 2>&1 &
+        timeout 180 adb -s emulator-5556 wait-for-device
+        timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        adb -s emulator-5556 shell input keyevent 82
+        adb -s emulator-5556 tcpip 5555
+        timeout 30 adb -s emulator-5556 wait-for-device
+        python3 - <<'PYSETUP'
+        import json,os,pathlib,socket,subprocess,time
+        out=pathlib.Path('work/adb-diagnostic');base=['adb','-s','emulator-5556'];record={'diagnosticOnly':True,'applicationAcceptance':False,'backend':os.environ['DIAGNOSTIC_BACKEND']}
+        def adb(*parts):return subprocess.check_output(base+list(parts),text=True,timeout=8)
+        deadline=time.monotonic()+30
+        while True:
+         addresses=adb('shell','ip','-4','-o','addr','show','wlan0');route=adb('shell','ip','-4','route','get','10.0.2.2')
+         if 'inet 10.0.2.16/' in addresses and 'dev wlan0' in route:break
+         if time.monotonic()>deadline:raise TimeoutError('Actual WiFi address/return route not ready')
+         time.sleep(.25)
+        record.update(wifiAddresses=addresses,returnRoute=route)
+        def monitor(command):
+         with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as s:
+          s.settimeout(5);s.connect('work/qemu-monitor.sock')
+          data=b''
+          while b'(qemu)' not in data:data+=s.recv(65536)
+          s.sendall(command.encode()+b'\n');data=b''
+          while b'(qemu)' not in data:
+           block=s.recv(65536)
+           if not block:break
+           data+=block
+           if len(data)>1024*1024:raise ValueError('Unexpected large metadata response')
+          return data.decode(errors='replace')
+        record['beforeUsernet']=monitor('info usernet')
+        record['networkDevices']=monitor('info network')
+        if os.environ['DIAGNOSTIC_BACKEND']=='wifi-explicit':
+         record['forwardResult']=monitor('hostfwd_add virtio-wifi tcp:127.0.0.1:5555-10.0.2.16:5555')
+        else:record['forwardResult']=adb('emu','redir','add','tcp:5555:5555')
+        record['afterUsernet']=monitor('info usernet')
+        (out/'qemu-forward.json').write_text(json.dumps(record,indent=2));print(json.dumps(record),flush=True)
+        with socket.create_connection(('127.0.0.1',5037),timeout=5) as s:
+         command=b'host:emulator:5555';s.sendall(('%04x'%len(command)).encode()+command);record['announcement']=s.recv(4).decode(errors='replace')
+        deadline=time.monotonic()+30
+        while True:
+         r=subprocess.run(['adb','-s','emulator-5554','get-state'],capture_output=True,text=True,timeout=5)
+         if r.returncode==0 and r.stdout.strip()=='device':break
+         if time.monotonic()>deadline:
+          record['nativeReady']=False;(out/'qemu-forward.json').write_text(json.dumps(record,indent=2));raise TimeoutError('Native TCP transport not device; no workload started')
+         time.sleep(.25)
+        record['nativeReady']=True;(out/'qemu-forward.json').write_text(json.dumps(record,indent=2))
+        PYSETUP
         adb -s emulator-5554 install work/diagnostic.apk
-
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk work/diagnostic.apk
-
-        '
-    - name: Observe 32 fixed actual APK reads without original input workloads
-      run: "python3 - <<'PYOBSERVE'\nimport glob,hashlib,json,os,pathlib,shutil,subprocess,sys,time\nout=pathlib.Path('work/adb-diagnostic');selected=json.loads((out/'selected.json').read_text());adb=shutil.which('adb');base=[adb,'-s','emulator-5554']\n\
-        installed=subprocess.check_output(base+['shell','pm','path','local.pocketchat.test'],text=True).strip().removeprefix('package:')\nsys.path.insert(0,'tools/gecko');from\
-        \ installed_apk_read import read_installed_apk,InstalledApkReadError\nfrom caret_build_identity import audit_apk\ncompiled=audit_apk(pathlib.Path('work/diagnostic.apk'));rows=[];snapshots=[]\n\
-        def snapshot(label,hash_file=False):\n row={'label':label,'at':time.time_ns()};commands=[('state',base+['get-state']),('stat',base+['shell','stat','-c','%s:%i:%Y',installed]),('adbdProcess',base+['shell','pidof','adbd'])]\n\
-        \ if hash_file:commands.append(('deviceSha256',base+['shell','sha256sum',installed]))\n for name,cmd in commands:\n  try:\n   r=subprocess.run(cmd,capture_output=True,timeout=30);row[name]={'returnCode':r.returncode,'stdout':r.stdout.decode(errors='replace'),'stderr':r.stderr.decode(errors='replace')}\n\
-        \  except Exception as e:row[name]={'error':str(e)}\n snapshots.append(row)\n# No device SHA256/content read warms the first transfer. No input\
-        \ workload runs.\nsnapshot('before-first-read-without-content-hash')\nfor i in range(32):\n target=pathlib.Path('work')/f'actual-transfer-{i}.apk';mode='ranged'\
-        \ if i%2==0 else 'whole';began=time.monotonic();row={'index':i,'mode':mode}\n try:\n  if mode=='ranged':\n   r=read_installed_apk(adb=adb,serial='emulator-5554',installed_path=installed,destination=target,expected_sha256=selected['sha256'],expected_bytes=selected['bytes'],diagnostics=out/f'read-{i}.json',label=f'host-adb-diagnostic-only-{i}')\n\
-        \   row.update(returnCode=r['returnCode'],bytes=r['actualFileBytes'],sha256=r['actualFileSha256'],exact=True)\n  else:\n   r=subprocess.run(base+['shell','-T','cat',installed],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30,env=dict(os.environ,ADB_TRACE='adb,transport,sockets'))\n\
-        \   target.write_bytes(r.stdout);digest=hashlib.file_digest(target.open('rb'),'sha256').hexdigest();row.update(returnCode=r.returncode,bytes=len(r.stdout),sha256=digest,exact=r.returncode==0\
-        \ and len(r.stdout)==selected['bytes'] and digest==selected['sha256']);(out/f'whole-{i}-stderr.txt').write_bytes(r.stderr)\n  if row.get('exact'):row['actualDefinitionAuditMatches']=audit_apk(target)==compiled\n\
-        \ except InstalledApkReadError as e:row.update(exact=False,error=e.diagnostics['error'],returnCode=e.diagnostics['returnCode'],bytes=e.diagnostics['actualFileBytes'])\n\
-        \ except Exception as e:row.update(exact=False,error=str(e))\n finally:target.unlink(missing_ok=True)\n row['seconds']=time.monotonic()-began;rows.append(row);print(json.dumps(row),flush=True)\n\
-        \ if not row.get('exact'):snapshot('after-failed-'+str(i))\nsnapshot('after-all-fixed-observations',True)\nreport=dict(diagnosticOnly=True,applicationAcceptance=False,actualOriginalInputWorkloadExecution=False,scope='32\
-        \ predeclared actual installed APK observations per fresh device; no original input workloads or release acceptance',sourceCommit='d7436687c18932eab51df512c89a4e92942c6b10',sourceRun='39914207334',workflowCommit=os.environ['GITHUB_SHA'],adbVersion=os.environ['DIAGNOSTIC_ADB'],bootSample=os.environ['BOOT_SAMPLE'],selected=selected,observations=rows,deviceSnapshots=snapshots)\n\
-        (out/'diagnostic.json').write_text(json.dumps(report,indent=2))\nfor path in glob.glob('/tmp/adb.*.log'):shutil.copyfile(path,out/pathlib.Path(path).name)\n\
-        for name,cmd in [('adbd-log',base+['logcat','-d','-s','adbd:V','*:S']),('host-kernel',['uname','-a']),('devices',[adb,'devices','-l'])]:\n try:\n\
-        \  r=subprocess.run(cmd,capture_output=True,timeout=10);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)\n except Exception as e:(out/(name+'.txt')).write_text(str(e))\n\
-        assert all(r.get('exact') and r.get('actualDefinitionAuditMatches') for r in rows),'At least one fixed observation failed; no replacement'\nPYOBSERVE\n"
+        adb -s emulator-5554 shell am start -W -n local.pocketchat.test/.MainActivity
+    - name: Observe 64 fixed real installed APK reads with the production shell open
+      run: |
+        python3 - <<'PYOBSERVE'
+        import glob,hashlib,json,os,pathlib,shutil,subprocess,sys,time
+        out=pathlib.Path('work/adb-diagnostic');selected=json.loads((out/'selected.json').read_text());adb=shutil.which('adb');base=[adb,'-s','emulator-5554']
+        installed=subprocess.check_output(base+['shell','pm','path','local.pocketchat.test'],text=True).strip().removeprefix('package:')
+        sys.path.insert(0,'tools/gecko');from installed_apk_read import read_installed_apk,InstalledApkReadError
+        from caret_build_identity import audit_apk
+        compiled=audit_apk(pathlib.Path('work/diagnostic.apk'));rows=[];snapshots=[]
+        def snapshot(label,hash_file=False):
+         row={'label':label,'at':time.time_ns()};commands=[('state',base+['get-state']),('stat',base+['shell','stat','-c','%s:%i:%Y',installed]),('adbdProcess',base+['shell','pidof','adbd'])]
+         if hash_file:commands.append(('deviceSha256',base+['shell','sha256sum',installed]))
+         for name,cmd in commands:
+          try:
+           r=subprocess.run(cmd,capture_output=True,timeout=30);row[name]={'returnCode':r.returncode,'stdout':r.stdout.decode(errors='replace'),'stderr':r.stderr.decode(errors='replace')}
+          except Exception as e:row[name]={'error':str(e)}
+         snapshots.append(row)
+        # No device SHA256/content read warms the first transfer. No input workload runs.
+        snapshot('before-first-read-without-content-hash')
+        for i in range(64):
+         target=pathlib.Path('work')/f'actual-transfer-{i}.apk';mode='ranged' if i%2==0 else 'whole';began=time.monotonic();row={'index':i,'mode':mode}
+         try:
+          if mode=='ranged':
+           r=read_installed_apk(adb=adb,serial='emulator-5554',installed_path=installed,destination=target,expected_sha256=selected['sha256'],expected_bytes=selected['bytes'],diagnostics=out/f'read-{i}.json',label=f'host-adb-diagnostic-only-{i}')
+           row.update(returnCode=r['returnCode'],bytes=r['actualFileBytes'],sha256=r['actualFileSha256'],exact=True)
+          else:
+           r=subprocess.run(base+['shell','-T','cat',installed],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30,env=dict(os.environ,ADB_TRACE='adb,transport,sockets'))
+           target.write_bytes(r.stdout);digest=hashlib.file_digest(target.open('rb'),'sha256').hexdigest();row.update(returnCode=r.returncode,bytes=len(r.stdout),sha256=digest,exact=r.returncode==0 and len(r.stdout)==selected['bytes'] and digest==selected['sha256']);(out/f'whole-{i}-stderr.txt').write_bytes(r.stderr)
+          if row.get('exact'):row['actualDefinitionAuditMatches']=audit_apk(target)==compiled
+         except InstalledApkReadError as e:row.update(exact=False,error=e.diagnostics['error'],returnCode=e.diagnostics['returnCode'],bytes=e.diagnostics['actualFileBytes'])
+         except Exception as e:row.update(exact=False,error=str(e))
+         finally:target.unlink(missing_ok=True)
+         row['seconds']=time.monotonic()-began;rows.append(row);print(json.dumps(row),flush=True)
+         if not row.get('exact'):snapshot('after-failed-'+str(i))
+        snapshot('after-all-fixed-observations',True)
+        report=dict(diagnosticOnly=True,applicationAcceptance=False,actualOriginalInputWorkloadExecution=False,scope='64 predeclared actual installed APK observations per fresh device; no original input workloads or release acceptance',sourceCommit='10bd0078c1f02937ef7e59e9bca9967b32e529f7',sourceRun='39918328409',workflowCommit=os.environ['GITHUB_SHA'],backend=os.environ['DIAGNOSTIC_BACKEND'],bootSample=os.environ['BOOT_SAMPLE'],selected=selected,observations=rows,deviceSnapshots=snapshots)
+        (out/'diagnostic.json').write_text(json.dumps(report,indent=2))
+        for path in glob.glob('/tmp/adb.*.log'):shutil.copyfile(path,out/pathlib.Path(path).name)
+        for name,cmd in [('adbd-log',base+['logcat','-d','-s','adbd:V','*:S']),('host-kernel',['uname','-a']),('devices',[adb,'devices','-l'])]:
+         try:
+          r=subprocess.run(cmd,capture_output=True,timeout=10);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)
+         except Exception as e:(out/(name+'.txt')).write_text(str(e))
+        assert all(r.get('exact') and r.get('actualDefinitionAuditMatches') for r in rows),'At least one fixed observation failed; no replacement'
+        PYOBSERVE
+    - name: Always preserve connection and listener metadata only
+      if: always()
+      run: |
+        python3 - <<'PYMETA'
+        import pathlib,subprocess
+        out=pathlib.Path('work/adb-diagnostic');out.mkdir(parents=True,exist_ok=True)
+        for name,cmd in [('devices',['adb','devices','-l']),('guest-addresses',['adb','-s','emulator-5556','shell','ip','-4','addr']),('guest-routes',['adb','-s','emulator-5556','shell','ip','-4','route','show','table','all']),('guest-listeners',['adb','-s','emulator-5556','shell','ss','-tn']),('host-listeners',['ss','-tnp'])]:
+         try:
+          r=subprocess.run(cmd,capture_output=True,timeout=10);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)
+         except Exception as e:(out/(name+'.txt')).write_text(str(e))
+        PYMETA
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
       with:
-        name: host-adb-${{ matrix.adb }}-fresh-${{ matrix.sample }}
+        name: qemu-native-${{ matrix.backend }}-${{ matrix.sample }}
         path: work/adb-diagnostic/
         retention-days: 5
     strategy:
       fail-fast: false
       matrix:
-        adb:
-        - runner
-        - 35.0.2
+        backend:
+        - console-default
+        - wifi-explicit
         sample:
-        - 1
-        - 2
-        - 3
+        - '1'
+        - '2'
+        - '3'
     env:
-      DIAGNOSTIC_ADB: ${{ matrix.adb }}
+      DIAGNOSTIC_BACKEND: ${{ matrix.backend }}
       BOOT_SAMPLE: ${{ matrix.sample }}
 'on':
   push:
