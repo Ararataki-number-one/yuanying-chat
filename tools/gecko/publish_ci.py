@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Publish unsigned APK chunks and strictly synthetic evidence; never signing keys."""
 import hashlib, json, os, pathlib, re, shutil, subprocess
+from ci_git_publish import push_tree
 root = pathlib.Path(__file__).resolve().parents[2]
 out = root / 'work/gecko-integration'
 stage = out / 'public'
@@ -69,18 +70,8 @@ branch = 'apk/gecko-integration-build-20261003'
 env = dict(os.environ, GIT_INDEX_FILE=str(out/'public-index'), GIT_WORK_TREE=str(stage),
     GIT_AUTHOR_NAME='PocketChat build', GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',
     GIT_COMMITTER_NAME='PocketChat build', GIT_COMMITTER_EMAIL='pocketchat@users.noreply.github.com')
-parents = ['-p', source]
-previous = subprocess.check_output(['git','ls-remote','origin','refs/heads/'+branch], text=True).split()
-if previous:
-    # Only the current artifact tree/parent is needed. Older immutable APK
-    # ancestry remains on origin and must not accumulate on this CI runner.
-    subprocess.run(['git','fetch','--depth=1','--no-tags','origin','refs/heads/'+branch], check=True)
-    fetched = subprocess.check_output(['git','rev-parse','FETCH_HEAD'], text=True).strip()
-    if fetched != previous[0]:
-        raise RuntimeError('Public artifact branch changed during bounded fetch')
-    parents += ['-p', previous[0]]
 subprocess.run(['git','read-tree','--empty'], check=True, env=env)
 subprocess.run(['git','add','-f','--',*[p.name for p in stage.iterdir()]], check=True, env=env)
 tree = subprocess.check_output(['git','write-tree'], text=True, env=env).strip()
-commit = subprocess.check_output(['git','commit-tree',tree,*parents,'-m','Publish unsigned Gecko integration build and synthetic checks'], text=True, env=env).strip()
-subprocess.run(['git','-c','http.postBuffer=524288000','push','origin',commit+':refs/heads/'+branch], check=True)
+push_tree(root=root, source=source, tree=tree, branch=branch, env=env,
+          message='Publish unsigned Gecko integration build and synthetic checks')
