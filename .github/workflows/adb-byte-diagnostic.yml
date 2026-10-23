@@ -1,32 +1,29 @@
-name: Compare official emulator transports without application acceptance
-'on':
-  push:
-    branches:
-    - diagnostic/adb-pipe-observation-20261023
+name: Compare bounded actual installed APK transfer
 permissions:
   contents: read
+  actions: read
 jobs:
-  compare:
+  diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        emulator:
-        - 37.2.12
-        - 36.3.10
-    env:
-      COMPARE_EMULATOR: ${{ matrix.emulator }}
+    timeout-minutes: 25
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
-        ref: 10f650a4c0043edada7b865ae0845a6644ecdbcf
-    - name: Prepare exact selected emulator and unchanged Google API 35 image
-      run: 'set -euo pipefail
-
-        mkdir -p work/adb-diagnostic work/android-image
-
-        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        ref: 877854e4718c7c6018abf8268147d60aeb432b3e
+    - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: gecko-39906714305-1-build
+        run-id: 39906714305
+        github-token: ${{ github.token }}
+        path: work/adb-build
+    - name: Extract only the selected APK for transfer diagnostics
+      run: "python3 - <<'PY'\nimport hashlib,json,pathlib,tarfile\nout=pathlib.Path('work/adb-diagnostic');out.mkdir(parents=True,exist_ok=True)\nwith tarfile.open('work/adb-build/bundle.tar.gz')\
+        \ as t:\n  index=json.load(t.extractfile('_ci_bundle.json'))\n  assert index['sourceCommit']=='877854e4718c7c6018abf8268147d60aeb432b3e' and index['runId']=='39906714305'\n\
+        \  name='app/build/outputs/apk/integration/app-x86_64-integration.apk'\n  item=next(x for x in index['files'] if x['path']==name);raw=t.extractfile(name).read()\n\
+        \  assert len(raw)==item['bytes'] and hashlib.sha256(raw).hexdigest()==item['sha256']\n  pathlib.Path('work/diagnostic.apk').write_bytes(raw);(out/'selected.json').write_text(json.dumps(item))\n\
+        PY\n"
+    - name: Prepare the unchanged stock Android runtime
+      run: 'echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
 
         echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
 
@@ -34,44 +31,12 @@ jobs:
 
         yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
 
-        python3 - <<''PYPACKAGE''
-
-        import importlib.util,json,os,pathlib
-
-        from xml.dom import minidom
-
-        spec=importlib.util.spec_from_file_location(''setup'',''tools/gecko/prepare_android_image.py'');setup=importlib.util.module_from_spec(spec);spec.loader.exec_module(setup)
-
-        version=os.environ[''COMPARE_EMULATOR''];pin={''schema'': 1, ''package'': ''emulator'', ''revision'': ''36.3.10'', ''channel'': ''stable'', ''url'':
-        ''https://dl.google.com/android/repository/emulator-linux_x64-14472402.zip'', ''bytes'': 320951246, ''sha1'': ''90cf9a2d3d9f802998345bc8251b482a84f9c72e'',
-        ''sha256'': ''c8ab9ffbc4c2d11c02e06e81a9d9f81970177dc5ab599e3a30eb08a4a5496a67'', ''upstreamPin'': ''https://github.com/mozilla-firefox/firefox/commit/31f228ee75ad25f4870cb28aae24a6220bc4dfa5'',
-        ''scope'': ''Official Google archive also pinned by Firefox CI; transport diagnostic only until same-source application qualification''} if version==''36.3.10''
-        else json.loads(setup.EMULATOR_PIN.read_text())
-
-        assert pin[''revision'']==version
-
-        package=pathlib.Path(''work/adb-diagnostic/emulator-package.xml'');doc=minidom.parse(str(setup.EMULATOR_PACKAGE));rev=doc.getElementsByTagName(''revision'')[0]
-
-        for tag,value in zip((''major'',''minor'',''micro''),version.split(''.'')):rev.getElementsByTagName(tag)[0].firstChild.data=value
-
-        package.write_bytes(doc.toxml(encoding=''utf-8''));archive=pathlib.Path(''work/android-image/emulator.zip'')
-
-        attempts=setup.download(pin,archive)
-
-        if pin.get(''sha256''):assert setup.digest(archive,''sha256'')==pin[''sha256'']
-
-        props=setup.install_emulator(archive,pathlib.Path(os.environ[''ANDROID_HOME''])/''emulator'',package,version)
-
-        report=dict(diagnosticOnly=True,applicationAcceptance=False,setupOnly=True,pin=pin,properties=props,downloadAttempts=attempts,bytes=archive.stat().st_size,sha1=setup.digest(archive,''sha1''),sha256=setup.digest(archive,''sha256''))
-
-        pathlib.Path(''work/adb-diagnostic/emulator.json'').write_text(json.dumps(report,indent=2));archive.unlink()
-
-        PYPACKAGE
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/emulator.json
 
         python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/image.json
 
         '
-    - name: Boot unchanged stock transport and input settings
+    - name: Boot the unchanged Android runtime
       run: 'set -euo pipefail
 
         export ANDROID_AVD_HOME="$PWD/work/adb-avd"
@@ -98,32 +63,111 @@ jobs:
 
         adb -s emulator-5554 shell input keyevent 82
 
+
+        adb -s emulator-5554 install work/diagnostic.apk
+
+        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk work/diagnostic.apk
+
         '
-    - name: Observe 32 fixed synthetic file transfers; no application workload
-      run: "python3 - <<'PYDATA'\nimport hashlib,json,os,pathlib,re,subprocess,time\nout=pathlib.Path('work/adb-diagnostic');base=['adb','-s','emulator-5554'];run=os.environ['GITHUB_RUN_ID'];assert\
-        \ run.isdigit()\nremote='/data/local/tmp/pocketchat-transfer-'+run;fixture=remote+'/synthetic-zero.bin';size=128*1024*1024;expected=hashlib.sha256(bytes(size)).hexdigest()\n\
-        assert subprocess.check_output(base+['shell','getprop','ro.kernel.qemu'],text=True).strip()=='1'\nsubprocess.run(base+['shell','mkdir',remote],check=True,timeout=10)\n\
-        subprocess.run(base+['shell','dd','if=/dev/zero','of='+fixture,'bs=1048576','count=128'],check=True,timeout=30)\nrows=[];identities=[]\ndef identity(label):\n\
-        \ value={'label':label}\n for name,args in [('size',['stat','-c','%s',fixture]),('sha256',['sha256sum',fixture])]:\n  r=subprocess.run(base+['shell',*args],capture_output=True,text=True,timeout=30);value[name]={'exitCode':r.returncode,'stdout':r.stdout,'stderr':r.stderr}\n\
-        \ identities.append(value)\nidentity('before')\nfor i in range(32):\n target=pathlib.Path('work')/f'actual-synthetic-transfer-{i}.bin';began=time.monotonic();row={'index':i}\n\
-        \ try:\n  with target.open('xb') as f:\n   r=subprocess.run(base+['shell','-T','cat',fixture],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)\n\
-        \   f.write(r.stdout);f.flush()\n  count=target.stat().st_size;digest=hashlib.file_digest(target.open('rb'),'sha256').hexdigest()\n  row.update(returnCode=r.returncode,bytes=count,sha256=digest,exact=r.returncode==0\
-        \ and count==size and digest==expected,stderr=r.stderr[-4096:].decode(errors='replace'))\n except Exception as e:row.update(exact=False,errorType=type(e).__name__,error=str(e))\n\
-        \ finally:target.unlink(missing_ok=True)\n row['seconds']=time.monotonic()-began;rows.append(row);print(json.dumps(row),flush=True)\nidentity('after')\n\
-        report=dict(diagnosticOnly=True,applicationAcceptance=False,releaseAcceptance=False,actualInstalledApkRead=False,actualApplicationWorkloadExecution=False,physicalPhoneAcceptance=False,scope='Only\
-        \ a generated all-zero guest file over the stock emulator transport; no app, input or WAN acceptance',emulatorVersion=os.environ['COMPARE_EMULATOR'],workflowCommit=os.environ['GITHUB_SHA'],sourceCheckout=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),expectedBytes=size,expectedSha256=expected,observations=rows,guestFileIdentities=identities)\n\
-        (out/'synthetic-transport.json').write_text(json.dumps(report,indent=2))\nsubprocess.run(base+['shell','rm',fixture],check=False,timeout=10)\nassert\
-        \ all(x.get('exact') for x in rows),'At least one fixed synthetic transfer failed; no replacement observation is accepted'\nassert all(x['size']['exitCode']==x['sha256']['exitCode']==0\
-        \ and x['size']['stdout'].strip()==str(size) and x['sha256']['stdout'].split()[0]==expected for x in identities)\nPYDATA\n"
-    - name: Preserve only setup and ADB status logs
-      if: always()
-      run: "python3 - <<'PYLOG'\nimport glob,pathlib,shutil,subprocess\nout=pathlib.Path('work/adb-diagnostic');out.mkdir(exist_ok=True)\nfor p in glob.glob('/tmp/adb.*.log'):shutil.copyfile(p,out/pathlib.Path(p).name)\n\
-        for name,cmd in [('adb-version',['adb','version']),('devices',['adb','devices','-l']),('adbd-log',['adb','-s','emulator-5554','logcat','-d','-s','adbd:V','*:S']),('memory',['free','-m'])]:\n\
-        \ try:\n  r=subprocess.run(cmd,capture_output=True,timeout=8);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)\n except Exception as e:(out/(name+'.txt')).write_text(str(e))\n\
-        PYLOG\n"
+    - name: Compare 32 fixed actual installed APK reads without input workloads
+      run: "python3 - <<'PYREADER'\nfrom pathlib import Path\np=Path('work/diagnostic-reader');p.mkdir(exist_ok=True)\n(p/'installed_apk_read.py').write_text('\"\
+        \"\"Read actual installed APK ranges through framed, non-PTY ADB, without retries.\"\"\"\\nimport hashlib\\nimport json\\nimport math\\nimport os\\\
+        nfrom pathlib import Path, PurePosixPath\\nimport re\\nimport shutil\\nimport stat\\nimport subprocess\\nimport sys\\nimport time\\n\\n\\nclass\
+        \ InstalledApkReadError(ValueError):\\n    def __init__(self, diagnostics):\\n        self.diagnostics = diagnostics\\n        super().__init__(\\\
+        'Actual installed APK read failed: \\' + json.dumps(diagnostics, sort_keys=True))\\n\\n\\n# Bound each stream and its host allocation. Ranges are\
+        \ contiguous, read once,\\n# and checked individually as well as by the unchanged whole-file identity.\\nRANGE_BYTES = 4 * 1024 * 1024\\n\\n\\ndef\
+        \ _disk(path):\\n    try:\\n        usage = shutil.disk_usage(path)\\n        return dict(total=usage.total, used=usage.used, free=usage.free)\\\
+        n    except OSError as error:\\n        return dict(error=str(error))\\n\\n\\ndef _stderr(raw):\\n    raw = raw or b\\'\\'\\n    if isinstance(raw,\
+        \ str):\\n        raw = raw.encode(\\'utf-8\\', errors=\\'replace\\')\\n    limit = 65536\\n    return dict(stderr=raw[-limit:].decode(\\'utf-8\\\
+        ', errors=\\'replace\\'), stderrBytes=len(raw),\\n                stderrTruncated=len(raw) > limit)\\n\\n\\ndef _file_identity(path):\\n    digest,\
+        \ size = hashlib.sha256(), 0\\n    with path.open(\\'rb\\') as stream:\\n        for block in iter(lambda: stream.read(1024 * 1024), b\\'\\'):\\\
+        n            size += len(block); digest.update(block)\\n    return size, digest.hexdigest()\\n\\n\\ndef _record(path, receipt):\\n    try:\\n  \
+        \      path.parent.mkdir(parents=True, exist_ok=True)\\n        path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + \\'\\\\n\\')\\n\
+        \    except OSError as error:\\n        # A full filesystem must not replace the original transfer failure.\\n        receipt[\\'diagnosticsWriteError\\\
+        '] = str(error)\\n    if receipt[\\'status\\'] != \\'verified-bytes\\':\\n        print(json.dumps(receipt, sort_keys=True), file=sys.stderr, flush=True)\\\
+        n\\n\\ndef read_installed_apk(*, adb, serial, installed_path, destination, expected_sha256,\\n                       expected_bytes, diagnostics,\
+        \ label, timeout=30):\\n    \"\"\"One bounded read of each APK range, followed by exact size/hash verification.\\n\\n    The caller still audits\
+        \ ZIP/DEX/SDK/source assets on this actual transferred\\n    file. Failure removes only our exclusive partial file; no retry, install,\\n    test\
+        \ invocation, shell metacharacters or compiled-file substitution exists.\\n    \"\"\"\\n    destination, diagnostics = Path(destination), Path(diagnostics)\\\
+        n    receipt = dict(schema=1, scope=\\'host-read-only-installed-apk-byte-transfer\\', status=\\'failed\\',\\n                   transport=\\'adb-shell-v2-no-pty-ranged\\\
+        ', dataSource=\\'binary-stdout-destination-file\\',\\n                   adbTrace=\\'adb,transport,sockets\\',\\n                   label=label,\
+        \ installedApkPath=installed_path, destination=str(destination),\\n                   expectedBytes=expected_bytes, expectedSha256=expected_sha256,\\\
+        n                   timeoutSeconds=timeout, returnCode=None, stdoutBytes=0, stdoutSha256=None,\\n                   actualFileBytes=0, actualFileSha256=None,\\\
+        n                   stderr=\\'\\', stderrBytes=0, stderrTruncated=False,\\n                   cliStdout=\\'\\', cliStdoutBytes=0, cliStdoutSha256=None,\
+        \ cliStdoutTruncated=False,\\n                   hostDiskBefore=_disk(destination.parent), startedAtMonotonicNanos=time.monotonic_ns(),\\n     \
+        \              actualInstalledApkRead=False, actualAndroidFixtureExecution=False,\\n                   retryPerformed=False, compiledFileFallback=False,\
+        \ partialCleaned=False,\\n                   rangeBytes=RANGE_BYTES, ranges=[])\\n    owned = False\\n    owned_identity = None\\n    try:\\n  \
+        \      # Retain the canonical actual pm path guard; never select a compiled file.\\n        if (not isinstance(installed_path, str)\\n         \
+        \       or not re.fullmatch(r\\'/data/app/[A-Za-z0-9_./~+=-]+/base\\\\.apk\\', installed_path)\\n                or str(PurePosixPath(installed_path))\
+        \ != installed_path\\n                or \\'..\\' in PurePosixPath(installed_path).parts):\\n            raise ValueError(\\'Unsafe or noncanonical\
+        \ actual installed base APK path\\')\\n        if type(expected_bytes) is not int or expected_bytes <= 0 or not isinstance(expected_sha256, str)\
+        \ or not re.fullmatch(\\'[0-9a-f]{64}\\', expected_sha256):\\n            raise ValueError(\\'Exact selected APK byte count and SHA256 required\\\
+        ')\\n        if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 30:\\n            raise ValueError(\\'Installed\
+        \ byte read must use a finite deadline at most 30 seconds\\')\\n        # Reserve the destination exclusively. Shell v2 supplies remote exit\\n\
+        \        # statuses and separate stderr; -T forbids terminal transformations.\\n        # Never replay a failed range or resume across a transport\
+        \ failure.\\n        with destination.open(\\'xb\\') as output:\\n            owned = True\\n            before = os.fstat(output.fileno())\\n \
+        \           owned_identity = (before.st_dev, before.st_ino)\\n            # The canonical absolute path cannot be an option and the whitelist\\\
+        n            # excludes shell syntax. No login shell, PTY, or alternate file is used.\\n            environment = dict(os.environ, ADB_TRACE=receipt[\\\
+        'adbTrace\\'])\\n            deadline = time.monotonic() + timeout\\n            for index, offset in enumerate(range(0, expected_bytes, RANGE_BYTES)):\\\
+        n                count = min(RANGE_BYTES, expected_bytes - offset)\\n                command = [str(adb), \\'-s\\', serial, \\'shell\\', \\'-T\\\
+        ', \\'dd\\',\\n                           \\'if=\\' + installed_path, \\'bs=\\' + str(RANGE_BYTES),\\n                           \\'skip=\\' + str(index),\
+        \ \\'count=1\\', \\'status=none\\']\\n                receipt[\\'command\\'] = command\\n                part = dict(index=index, offset=offset,\
+        \ expectedBytes=count, returnCode=None,\\n                            actualBytes=0, status=\\'failed\\')\\n                receipt[\\'ranges\\\
+        '].append(part)\\n                remaining = deadline - time.monotonic()\\n                if remaining <= 0:\\n                    raise subprocess.TimeoutExpired(command,\
+        \ timeout)\\n                try:\\n                    result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,\\n  \
+        \                                          stderr=subprocess.PIPE, timeout=remaining, check=False,\\n                                          \
+        \  env=environment)\\n                except subprocess.TimeoutExpired as error:\\n                    # Record partial bytes, never decode APK\
+        \ contents into logs.\\n                    if error.stdout:\\n                        output.write(error.stdout)\\n                        output.flush()\\\
+        n                        part[\\'actualBytes\\'] = len(error.stdout)\\n                    raise\\n                output.write(result.stdout)\\\
+        n                output.flush()\\n                part.update(returnCode=result.returncode, actualBytes=len(result.stdout),\\n                 \
+        \           sha256=hashlib.sha256(result.stdout).hexdigest())\\n                receipt.update(returnCode=result.returncode, **_stderr(result.stderr))\\\
+        n                after = destination.lstat()\\n                if not stat.S_ISREG(after.st_mode) or (after.st_dev, after.st_ino) != owned_identity:\\\
+        n                    raise ValueError(\\'Actual installed APK destination ownership changed\\')\\n                if result.returncode != 0:\\n\
+        \                    raise ValueError(\\'ADB direct range read returned nonzero exit status\\')\\n                if len(result.stdout) != count:\\\
+        n                    raise ValueError(\\'Actual installed APK range has incorrect byte count\\')\\n                part[\\'status\\'] = \\'verified-length\\\
+        '\\n        # Compatibility names describe actual raw device bytes. No progress or\\n        # log text is accepted instead, even when the ADB process\
+        \ exits zero.\\n        receipt[\\'stdoutBytes\\'], receipt[\\'stdoutSha256\\'] = _file_identity(destination)\\n        receipt.update(actualFileBytes=receipt[\\\
+        'stdoutBytes\\'], actualFileSha256=receipt[\\'stdoutSha256\\'])\\n        if result.returncode != 0:\\n            raise ValueError(\\'ADB direct\
+        \ read returned nonzero exit status\\')\\n        if receipt[\\'stdoutBytes\\'] != expected_bytes or receipt[\\'stdoutSha256\\'] != expected_sha256:\\\
+        n            raise ValueError(\\'Actual installed bytes differ from selected APK size/SHA256\\')\\n        receipt.update(status=\\'verified-bytes\\\
+        ', actualInstalledApkRead=True)\\n    except Exception as error:\\n        receipt.update(failureType=type(error).__name__, error=str(error))\\\
+        n        if isinstance(error, subprocess.TimeoutExpired):\\n            receipt.update(**_stderr(error.stderr))\\n        own_path = False\\n  \
+        \      if owned:\\n            try:\\n                current = destination.lstat()\\n                own_path = stat.S_ISREG(current.st_mode) and\
+        \ (current.st_dev, current.st_ino) == owned_identity\\n            except OSError as inspection_error:\\n                receipt[\\'partialOwnershipInspectionError\\\
+        '] = str(inspection_error)\\n        if own_path:\\n            try:\\n                receipt[\\'stdoutBytes\\'], receipt[\\'stdoutSha256\\'] =\
+        \ _file_identity(destination)\\n                receipt.update(actualFileBytes=receipt[\\'stdoutBytes\\'], actualFileSha256=receipt[\\'stdoutSha256\\\
+        '])\\n            except OSError as read_error:\\n                receipt[\\'partialInspectionError\\'] = str(read_error)\\n            try:\\n\
+        \                destination.unlink(); receipt[\\'partialCleaned\\'] = True\\n            except OSError as cleanup_error:\\n                receipt[\\\
+        'partialCleanupError\\'] = str(cleanup_error)\\n        elif owned:\\n            receipt[\\'partialCleanupSkipped\\'] = \\'Destination no longer\
+        \ refers to the exclusively reserved file\\'\\n        receipt.update(hostDiskAfter=_disk(destination.parent), completedAtMonotonicNanos=time.monotonic_ns())\\\
+        n        _record(diagnostics, receipt)\\n        raise InstalledApkReadError(receipt) from error\\n    receipt.update(hostDiskAfter=_disk(destination.parent),\
+        \ completedAtMonotonicNanos=time.monotonic_ns())\\n    _record(diagnostics, receipt)\\n    return receipt\\n')\nPYREADER\npython3 - <<'PYCODE'\n\
+        import glob,hashlib,json,os,pathlib,shutil,subprocess,sys,time\nout=pathlib.Path('work/adb-diagnostic');selected=json.loads((out/'selected.json').read_text());adb=shutil.which('adb');base=[adb,'-s','emulator-5554']\n\
+        installed=subprocess.check_output(base+['shell','pm','path','local.pocketchat.test'],text=True).strip().removeprefix('package:')\nsys.path.insert(0,'tools/gecko');sys.path.insert(0,'work/diagnostic-reader')\n\
+        from installed_apk_read import read_installed_apk,InstalledApkReadError\nfrom caret_build_identity import audit_apk\nrows=[];snapshots=[]\ndef snapshot(label):\n\
+        \  row={'label':label,'wallTimeNs':time.time_ns()}\n  for name,cmd in [('stat',base+['shell','stat','-c','%s:%i:%Y',installed]),('deviceSha256',base+['shell','sha256sum',installed]),('serverProcess',['pgrep','-a','adb'])]:\n\
+        \    r=subprocess.run(cmd,capture_output=True,timeout=30);row[name]={'exitCode':r.returncode,'stdout':r.stdout.decode(errors='replace'),'stderr':r.stderr.decode(errors='replace')}\n\
+        \  snapshots.append(row)\nsnapshot('before')\ncompiled=audit_apk(pathlib.Path('work/diagnostic.apk'))\nfor i in range(32):\n  target=pathlib.Path('work')/f'diagnostic-pull-{i}.apk';mode='bounded-ranges'\
+        \ if i%2==0 else 'direct-file';began=time.monotonic();row={'index':i,'mode':mode,'wallTimeNs':time.time_ns()}\n  try:\n    if mode=='bounded-ranges':\n\
+        \      r=read_installed_apk(adb=adb,serial='emulator-5554',installed_path=installed,destination=target,expected_sha256=selected['sha256'],expected_bytes=selected['bytes'],diagnostics=out/f'reader-{i}.json',label=f'diagnostic-only-{i}')\n\
+        \      row.update(returnCode=r['returnCode'],bytes=r['actualFileBytes'],sha256=r['actualFileSha256'],exact=True)\n    else:\n      env=dict(os.environ,ADB_TRACE='adb,transport,sockets')\n\
+        \      with target.open('xb') as sink:r=subprocess.run(base+['shell','-T','cat',installed],stdin=subprocess.DEVNULL,stdout=sink,stderr=subprocess.PIPE,timeout=30,env=env)\n\
+        \      raw=target.read_bytes();h=hashlib.sha256(raw).hexdigest();row.update(returnCode=r.returncode,bytes=len(raw),sha256=h,exact=r.returncode==0\
+        \ and len(raw)==selected['bytes'] and h==selected['sha256']);(out/f'direct-{i}-stderr.txt').write_bytes(r.stderr)\n    if row.get('exact'):row['actualDefinitionAuditMatches']=audit_apk(target)==compiled\n\
+        \  except InstalledApkReadError as e:row.update(exact=False,errorType=type(e).__name__,receipt=e.diagnostics)\n  except Exception as e:row.update(exact=False,errorType=type(e).__name__,error=str(e))\n\
+        \  finally:target.unlink(missing_ok=True)\n  row['seconds']=time.monotonic()-began;rows.append(row);print(json.dumps(row),flush=True)\n  if not\
+        \ row.get('exact'):snapshot('after-failed-'+str(i))\nsnapshot('after')\nreport=dict(diagnosticOnly=True,applicationAcceptance=False,actualEditingWorkloadExecution=False,sourceCommit='877854e4718c7c6018abf8268147d60aeb432b3e',diagnosticWorkflowCommit=os.environ['GITHUB_SHA'],scope='Fixed\
+        \ real installed APK transport observations; no original input workload or release acceptance',selected=selected,installedPath=installed,observations=rows,deviceSnapshots=snapshots)\n\
+        (out/'diagnostic.json').write_text(json.dumps(report,indent=2))\nfor path in glob.glob('/tmp/adb.*.log'):shutil.copyfile(path,out/pathlib.Path(path).name)\n\
+        for name,cmd in [('logcat',base+['logcat','-d','-s','adbd:V','*:S']),('memory',['free','-m']),('kernel',['sudo','dmesg'])]:\n  r=subprocess.run(cmd,capture_output=True);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)\n\
+        PYCODE\n"
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
       with:
-        name: emulator-transfer-${{ matrix.emulator }}
+        name: bounded-installed-apk-transport
         path: work/adb-diagnostic/
         retention-days: 5
+'on':
+  push:
+    branches:
+    - diagnostic/adb-pipe-observation-20261023
