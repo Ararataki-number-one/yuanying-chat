@@ -27,9 +27,29 @@ final class ConnectionTrace {
     return text+"\n\n以上是阶段耗时，不是线路带宽。缓存或复用连接时，DNS / TLS 可能为零；网页内切换不会产生完整页面请求。";
   }
   String copyText(android.content.Context context,boolean gecko){String webVersion=GeckoWebView.VERSION;return "元婴期院士 "+AppVersion.name(context)+"\nAndroid "+Build.VERSION.RELEASE+" · "+webVersion+"\n\n"+text()+routeDiagnostics(context);}
+  static final java.util.concurrent.ExecutorService exports=java.util.concurrent.Executors.newSingleThreadExecutor();
+  static final android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());
+  /** Snapshot in memory on the caller, read the bounded journal only off the UI thread. */
+  void copyTextAsync(android.content.Context context,boolean gecko,java.util.function.Consumer<String> done){
+    ChatSession owner=ChatSession.peek();android.content.Context app=context.getApplicationContext();
+    if(owner==null||Profiles.slot(owner.context)!=Profiles.slot(app)){done.accept("环境尚未就绪，诊断不可用");return;}
+    String id=owner.environmentId;long generation=owner.environmentGeneration;String text=copyText(context,gecko);
+    exports.execute(()->{String value=appendJournal(app,id,generation,text);main.post(()->done.accept(owner==ChatSession.peek()&&!owner.deleted?value:"环境已变化，诊断不可用"));});
+  }
+  static void windowDiagnosticsAsync(android.content.Context context,WindowNetworkState window,java.util.function.Consumer<String> done){
+    android.content.Context app=context.getApplicationContext();String text=windowDiagnostics(context,window);
+    exports.execute(()->{android.content.Context scoped=Profiles.context(app,window.slot);String value=appendJournal(scoped,window.environmentId,window.environmentGeneration,text);main.post(()->done.accept(value));});
+  }
+  static String appendJournal(android.content.Context context,String id,long generation,String text){
+    try{String journal=NetworkDiagnosticStore.summary(context,id,generation);
+      JSONObject current=ProfileCatalog.get(context).item(Profiles.slot(context));
+      if(!id.equals(current.optString("environmentId"))||generation!=current.optLong("generation")||!current.optBoolean("created")||current.optBoolean("deleting")||current.optBoolean("resetting"))return "环境已变化，诊断不可用";
+      return text+"\n\n"+journal;
+    }catch(Exception unavailable){return text+"\n\n网络事件诊断暂不可用";}
+  }
   static String windowDiagnostics(android.content.Context context,WindowNetworkState window){
     String value="元婴期院士 "+AppVersion.name(context)+"\nAndroid "+Build.VERSION.RELEASE+" · "+GeckoWebView.VERSION
-      +"\n窗口编号："+window.slot+"\n网络状态："+window.state+"\n线路延迟："+window.latency;
+      +"\n窗口编号："+(window.slot+1)+"\n网络状态："+window.state+"\n线路延迟："+window.latency;
     if(!window.internal)return value+"\n线路模式：手机网络 / 外部代理\n内置代理分项不适用于此窗口。";
     JSONObject runtime=window.runtime;
     boolean matching=NativeNetwork.exitIdentity(window.config).equals(runtime.optString("exitId"))

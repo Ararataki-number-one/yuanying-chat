@@ -2,7 +2,9 @@
 from contextlib import ExitStack
 import copy
 import functools
+import hashlib
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -17,6 +19,19 @@ import profile_resource_gate_test as metadata_fixture
 
 spec=importlib.util.spec_from_file_location('derived_resource_contract',OUT/'tools/gecko/resource_invocation_contract.py')
 contract=importlib.util.module_from_spec(spec);spec.loader.exec_module(contract)
+
+# Frozen ordered catalog before the six upload controls were added (33c8d6c):
+# 36 resource assertions followed by 138 SDK/context assertions. The digest
+# covers the ASCII JSON name list with separators=(',', ':'), not just its size.
+ORIGINAL_ORDERED_NAMES_SHA256='f5d8a1d2151db4ef600c40120261da4b52c2947e0162a743d41d54716a3084c6'
+ADDED_UPLOAD_NAMES=(
+    'Open file chooser blocks maintenance and profile changes',
+    'File preparation blocks maintenance and profile changes',
+    'Unknown handed off selections protect maintenance without claiming uploading',
+    'Actual selected uploading card keeps unified file work active',
+    'One actual removal observation retains selection protection',
+    'Two actual removal observations release the selected batch',
+)
 
 
 class DerivedResourceCatalogControls(unittest.TestCase):
@@ -40,12 +55,47 @@ class DerivedResourceCatalogControls(unittest.TestCase):
             return contract.verify_resource_report(self.report,metadata_fixture.NAMES)
 
     def test_derived_identity_retains_all_174_ordered_assertions(self):
-        self.assertEqual(len(self.report['checks']),174)
+        original=[row for row in self.report['checks'] if row['name'] not in ADDED_UPLOAD_NAMES]
+        self.assertEqual(len(original),174)
+        names=json.dumps([row['name'] for row in original],ensure_ascii=True,separators=(',',':')).encode('ascii')
+        self.assertEqual(hashlib.sha256(names).hexdigest(),ORIGINAL_ORDERED_NAMES_SHA256)
+        for row in original:
+            with self.subTest(original=row['name']):self.assertIs(row['pass'],True)
+        self.assertEqual(len(self.report['checks']),180)
+        self.assertEqual(len(self.report['resourceChecks']),42)
+        for field in ('checks','resourceChecks'):
+            added=[row for row in self.report[field] if row['name'] in ADDED_UPLOAD_NAMES]
+            self.assertEqual(added,[{'name':name,'pass':True} for name in ADDED_UPLOAD_NAMES])
         result=self.verify()
         self.assertFalse(result['capacityAcceptance'])
         self.assertFalse(self.report['physicalDeviceAcceptance'])
         self.assertFalse(self.report['fingerprintTemplateAcceptance'])
         self.assertTrue(all(value=='UNSUPPORTED' for value in self.report['nativeCustomCapabilities'].values()))
+
+    def test_original_resource_order_remains_required(self):
+        for field in ('checks','resourceChecks'):
+            self.report[field][0],self.report[field][1]=self.report[field][1],self.report[field][0]
+        with self.assertRaises(ValueError):self.verify()
+
+    def test_each_added_upload_assertion_remains_required(self):
+        original=copy.deepcopy(self.report)
+        for name in ADDED_UPLOAD_NAMES:
+            with self.subTest(name=name):
+                self.report=copy.deepcopy(original)
+                for field in ('checks','resourceChecks'):
+                    self.report[field]=[row for row in self.report[field] if row['name']!=name]
+                self.report['passed']-=1;self.report['total']-=1
+                with self.assertRaises(ValueError):self.verify()
+
+    def test_each_added_upload_assertion_must_pass(self):
+        original=copy.deepcopy(self.report)
+        for name in ADDED_UPLOAD_NAMES:
+            with self.subTest(name=name):
+                self.report=copy.deepcopy(original)
+                for field in ('checks','resourceChecks'):
+                    for row in self.report[field]:
+                        if row['name']==name:row['pass']=False
+                with self.assertRaises(ValueError):self.verify()
 
     def test_missing_original_resource_assertion_remains_rejected(self):
         self.report['resourceChecks'].pop()

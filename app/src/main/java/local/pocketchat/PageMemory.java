@@ -10,9 +10,12 @@ final class PageMemory {
   PageMemory(ChatSession s){session=s;}
   String scope(){try{return session.appliedIdentity+":"+NativeNetwork.hash("gecko:"+session.web.cookieStamp);}catch(Exception e){return "";}}
   static String address(String url){try{android.net.Uri u=android.net.Uri.parse(url);return u.getScheme()+"://"+u.getHost()+u.getPath();}catch(Exception e){return "";}}
+  static boolean completeDraft(JSONObject value){return value!=null&&value.optBoolean("ok")&&value.optBoolean("draftComplete",true)&&value.opt("draft") instanceof String&&value.optString("draft").length()<=300000&&value.optInt("draftLength",value.optString("draft").length())==value.optString("draft").length();}
+  static boolean hasDraft(JSONObject value){return value!=null&&(value.optBoolean("hasDraft")||!value.optString("draft").trim().isEmpty());}
+  void forget(String url){serial++;pages.remove(scope()+"|"+address(url));restorePending=false;}
   String document(String url){JSONObject state=pages.get(scope()+"|"+address(url));return state==null?"":state.optString("documentId");}
   String content(String url){JSONObject state=pages.get(scope()+"|"+address(url));return state==null?"":state.optString("contentKey");}
-  void remember(String namespace,String url,JSONObject state){if(state==null||!state.optBoolean("ok")||!namespace.equals(scope())||!WebReplyObserver.same(url,state.optString("url")))return;pages.put(namespace+"|"+address(url),state);while(pages.size()>8)pages.remove(pages.keySet().iterator().next());}
+  void remember(String namespace,String url,JSONObject state){if(state==null||!state.optBoolean("ok")||!namespace.equals(scope())||!WebReplyObserver.same(url,state.optString("url")))return;serial++;pages.put(namespace+"|"+address(url),state);while(pages.size()>8)pages.remove(pages.keySet().iterator().next());}
   void capture(Runnable done){String url=session.web.getUrl(),namespace=scope();long request=++serial;
     if(!MainActivity.chatUrl(url)||namespace.isEmpty()){done.run();return;}
     session.runDriver("page-state",J.obj("expectedUrl",url),state->{
@@ -22,7 +25,7 @@ final class PageMemory {
   }
   void restore(String url,long epoch){if(!restorePending)return;restorePending=false;
     JSONObject saved=pages.get(scope()+"|"+address(url));if(saved==null){lastRestore=J.obj("ok",false,"reason","no-snapshot");return;}
-    boolean allowDraft=session.pending==null&&!session.submitting&&!session.operation;
+    boolean allowDraft=completeDraft(saved)&&session.pending==null&&!session.submitting&&!session.operation;
     session.asyncDriver("page-restore",J.obj("expectedUrl",url,"state",saved,"allowDraft",allowDraft,"allowScroll",AppPrefs.enabled(session.context,"restoreScroll")),2200,result->{
       if((session.context.getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0)lastRestore=result;
       if(epoch!=session.navigationEpoch||!WebReplyObserver.same(url,session.web.getUrl()))return;

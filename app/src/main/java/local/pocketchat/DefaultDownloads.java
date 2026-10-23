@@ -30,9 +30,16 @@ final class DefaultDownloads {
   static Target local(Context c,String name)throws IOException {
     String clean=FileDownloads.safeName(name);if(clean.equals(".")||clean.equals("..")||clean.equals("payload.part"))clean="文件_"+clean.replace('.','_');String id=UUID.randomUUID().toString();File folder=new File(c.getFilesDir(),"saved-downloads/"+id);if(!folder.mkdirs())throw new IOException("应用文件目录无法创建");Uri uri=new Uri.Builder().scheme("content").authority(c.getPackageName()+".saved-downloads").appendPath(String.valueOf(Profiles.slot(c))).appendPath(id).appendPath(clean).build();return new Target(c,uri,clean,"应用内文件/窗口_"+(Profiles.slot(c)+1)+"/"+clean,new File(folder,clean));
   }
-  static void recover(Context c,JSONObject task){String pending=task.optString("pendingDestination");if(pending.isEmpty())return;boolean saved=false;Uri uri=Uri.parse(pending);try{
+  static void recover(Context c,JSONObject task)throws Exception{
+    if(android.os.Looper.myLooper()==android.os.Looper.getMainLooper())throw new IllegalStateException("Download recovery must run off the main thread");
+    String pending=task.optString("pendingDestination");if(pending.isEmpty())return;
+    SavedFileDeletion.lease(c,Uri.parse(pending),()->{recoverOwned(c,task);return null;});
+  }
+  /** Caller retains the destination lease through metadata publication. */
+  static void recoverOwned(Context c,JSONObject task){String pending=task.optString("pendingDestination");if(pending.isEmpty())return;boolean saved=false;Uri uri=Uri.parse(pending);try{
     if(Build.VERSION.SDK_INT>=29&&"media".equals(uri.getAuthority())){try(Cursor row=c.getContentResolver().query(uri,new String[]{MediaStore.MediaColumns.IS_PENDING,MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.OWNER_PACKAGE_NAME},null,null,null)){if(row!=null&&row.moveToFirst()&&directory(c).equals(row.getString(1))&&c.getPackageName().equals(row.getString(2))){saved=row.getInt(0)==0;if(!saved)c.getContentResolver().delete(uri,null,null);}}}
     else if((c.getPackageName()+".saved-downloads").equals(uri.getAuthority())){File file=SavedDownloadProvider.resolve(c,uri);if(uri.getPathSegments().get(0).equals(String.valueOf(Profiles.slot(c)))){saved=file.isFile();if(!saved){new File(file.getParentFile(),"payload.part").delete();file.getParentFile().delete();}}}
+    if(saved){JSONObject recovered=J.parse(task.toString());DownloadTasks.put(recovered,"uri",pending);saved=!DownloadLibrary.get(c).isRemoved(recovered);}
     if(saved)DownloadTasks.put(task,"state","saved","reason","","uri",pending,"location",task.optString("pendingLocation"),"name",task.optString("pendingName",task.optString("name","文件")));
-  }catch(Exception ignored){}task.remove("pendingDestination");task.remove("pendingLocation");task.remove("pendingName");}
+  }catch(Exception ignored){}DownloadTaskRevisions.clearPending(task);}
 }

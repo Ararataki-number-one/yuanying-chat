@@ -1,0 +1,1 @@
+package android.os;public final class Handler {static final java.util.concurrent.ExecutorService queue=java.util.concurrent.Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"host-main");t.setDaemon(true);return t;});public Handler(Looper ignored){}public boolean post(Runnable r){queue.execute(()->{Looper.IS_MAIN.set(true);r.run();});return true;}}

@@ -109,13 +109,25 @@ final class NetworkWorkspaceUi {
   void openChat(int slot){if(a instanceof MainActivity&&slot==Profiles.slot(a)){((MainActivity)a).hub.select(AppHub.CHAT);return;}a.startActivity(new Intent(a,Profiles.activity(slot)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
   void details(JSONObject item){WindowNetworkState s=state(item);ReferenceUi.Modal d=new ReferenceUi.Modal(a,"窗口详情 · "+s.name);field(d,"网络状态",s.state);field(d,"出口地区",s.region.isEmpty()?"未标注":s.region);field(d,"出口 IP",s.ip.isEmpty()?"未核验":s.ip);field(d,s.internal?"完整线路延迟":"连接响应",s.latency);if(s.internal){JSONObject site=s.runtime.optJSONObject("website");field(d,"ChatGPT 网站响应",site!=null&&s.entry.equals(site.optString("entry"))?WebsiteProbe.line(site,System.currentTimeMillis()):"网站响应未测");}field(d,"入口订阅",s.subscription);if(s.internal){field(d,"入口选择",s.entryMode);field(d,"当前入口",s.entry.isEmpty()?"未选择":NativeNetwork.display(s.entry));field(d,"固定出口",s.config.optString("exitName",s.config.optString("exitHost")));field(d,"出口核验",updated(s.runtime.optLong("verifiedAt")));}if(NetworkChanges.pending(Profiles.context(a,s.slot)).length()>0){d.note("有待应用的网络设置，当前回复继续使用原线路。");final boolean[] cancelling={false};final Button[] cancel={null};TextView cancelError=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);cancelError.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);cancelError.setVisibility(View.GONE);DesignUi.action(d.body,"取消待应用设置",false,()->{if(cancelling[0])return;cancelling[0]=true;cancel[0].setEnabled(false);cancel[0].setText("正在取消…");NetworkBridge.run(a,s.slot,"cancelPending",null,null,(ok,message,snapshot)->{if(!active())return;cancelling[0]=false;reload();if(ok){d.dismiss();return;}if(d.isShowing()){cancelError.setVisibility(View.VISIBLE);cancelError.setText(message==null||message.isEmpty()?"暂时无法取消，请重试。":message);cancel[0].setEnabled(true);cancel[0].setText("取消待应用设置");d.resize();}});});cancel[0]=(Button)d.body.getChildAt(d.body.getChildCount()-1);d.body.addView(cancelError);}if(!s.runtime.optString("issue").isEmpty())d.note(s.runtime.optString("issue"));DesignUi.action(d.body,"查看耗时诊断",false,()->{d.dismiss();diagnostics(item);});d.buttons("关闭",d::dismiss,"编辑网络",()->{d.dismiss();edit(item);});d.show();}
   void diagnostics(JSONObject item){
-    WindowNetworkState window=state(item);String text=ConnectionTrace.windowDiagnostics(a,window);
+    WindowNetworkState window=state(item);String[] text={ConnectionTrace.windowDiagnostics(a,window)};
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,"耗时诊断 · "+window.name);
-    TextView content=ReferenceUi.text(a,text,13,ReferenceUi.TEXT,false);content.setTextIsSelectable(true);d.body.addView(content);
+    TextView content=ReferenceUi.text(a,text[0],13,ReferenceUi.TEXT,false);content.setTextIsSelectable(true);d.body.addView(content);
     d.buttons("返回",()->{d.dismiss();details(item);},"复制诊断",()->{
       ClipboardManager clipboard=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);
-      if(clipboard!=null){clipboard.setPrimaryClip(ClipData.newPlainText("窗口耗时诊断",text));d.primary().setText("已复制");}
-    });d.show();
+      if(clipboard!=null){clipboard.setPrimaryClip(ClipData.newPlainText("窗口耗时诊断",diagnosticWindowCurrent(window)?text[0]:"环境已变化，诊断不可用"));d.primary().setText("已复制");}
+    });d.show();d.primary().setEnabled(false);
+    ConnectionTrace.windowDiagnosticsAsync(a,window,value->{
+      if(!active()||!d.isShowing())return;
+      text[0]=diagnosticWindowCurrent(window)?value:"环境已变化，诊断不可用";content.setText(text[0]);d.primary().setEnabled(true);d.resize();
+    });
+  }
+  boolean diagnosticWindowCurrent(WindowNetworkState window){
+    for(int i=0;i<windows.length();i++){
+      JSONObject item=windows.optJSONObject(i),row=item==null?null:item.optJSONObject("row");
+      if(row!=null&&row.optInt("slot",-1)==window.slot)return !window.environmentId.isEmpty()
+        &&window.environmentId.equals(row.optString("environmentId"))&&window.environmentGeneration==row.optLong("generation")
+        &&row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting");
+    }return false;
   }
   void field(ReferenceUi.Modal d,String name,String value){DesignUi.field(d.body,name,value);}
   void choice(ReferenceUi.Modal d,String name,String detail,boolean selected,Runnable run){LinearLayout row=DesignUi.row(a);row.setPadding(dp(12),dp(9),dp(12),dp(9));row.setMinimumHeight(dp(58));row.setBackground(ReferenceUi.surface(a,selected?0xfff7faff:ReferenceUi.WHITE,14,selected?0xff94b8ff:ReferenceUi.LINE));TextView mark=ReferenceUi.text(a,selected?"◉":"○",20,selected?ReferenceUi.BLUE:ReferenceUi.MUTED,false);row.addView(mark,new LinearLayout.LayoutParams(dp(30),-2));LinearLayout labels=DesignUi.column(a);TextView title=ReferenceUi.text(a,name,15,ReferenceUi.TEXT,true);title.setMaxLines(3);labels.addView(title);if(!detail.isEmpty()){TextView explanation=ReferenceUi.secondary(a,detail);explanation.setSingleLine(false);labels.addView(explanation);}row.addView(labels,new LinearLayout.LayoutParams(0,-2,1));row.setOnClickListener(v->run.run());row.setFocusable(true);row.setContentDescription(name+(selected?"，已选择":""));ReferenceUi.add(d.body,row);}

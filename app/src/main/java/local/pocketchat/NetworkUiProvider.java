@@ -120,7 +120,7 @@ public class NetworkUiProvider extends ContentProvider {
   boolean fenceIdle(Transition transition){
     if(!owns(transition)||saving||!currentEnvironment(transition)||ChatSession.peek()!=transition.session)return false;NativeNetwork network=NativeNetwork.get(profile);if(network.starting||network.measuringLatency)return false;ChatSession session=transition.session;
     if(session==null)return J.parse(profile.getSharedPreferences("chat",0).getString("pending","{}")).length()==0;
-    if(session.deleted||session.pending!=null||session.submitting||session.transferActive||session.uploading()||session.connecting||session.navigating||session.recoveryScheduled||session.operation&&!transition.capture)return false;
+    if(session.deleted||session.pending!=null||session.submitting||session.transferActive||session.fileWorkActive()||session.connecting||session.navigating||session.recoveryScheduled||session.operation&&!transition.capture)return false;
     if(transition.capture&&(transition.epoch!=session.navigationEpoch||!(MainActivity.chatUrl(transition.url)?WebReplyObserver.same(transition.url,session.web.getUrl()):BrowserRuntimePolicy.sameDocument(transition.url,session.web.getUrl()))||!transition.scope.equals(session.pageMemory.scope())))return false;
     return !session.state.optBoolean("busy");
   }
@@ -132,7 +132,7 @@ public class NetworkUiProvider extends ContentProvider {
     session.asyncDriver("inspect",J.obj("expectedUrl",transition.url),2500,inspected->{
       if(!inspectionIdle(transition,inspected,null)){deferTransition(transition);return;}
       session.asyncDriver("page-state",J.obj("expectedUrl",transition.url),2500,state->{
-        if(!fenceIdle(transition)||!state.optBoolean("ok")||!WebReplyObserver.same(transition.url,state.optString("url"))||!state.optString("draft").equals(inspected.optString("draft"))||!state.optString("documentId").equals(inspected.optString("documentId"))){deferTransition(transition);return;}
+        if(!fenceIdle(transition)||!PageMemory.completeDraft(state)||!WebReplyObserver.same(transition.url,state.optString("url"))||!state.optString("draft").equals(inspected.optString("draft"))||!state.optString("documentId").equals(inspected.optString("documentId"))){deferTransition(transition);return;}
         transition.page=state;session.pageMemory.remember(transition.scope,transition.url,state);session.web.checkpointState();
         session.webStore.worker.execute(()->{boolean saved=DraftArchive.get(session.context).save(transition.url,state.optString("draft"),"应用网络设置前的草稿");main.post(()->{
           if(!saved||!fenceIdle(transition)){deferTransition(transition);return;}

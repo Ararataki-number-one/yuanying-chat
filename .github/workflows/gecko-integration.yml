@@ -152,6 +152,21 @@ jobs:
             report=json.loads(path.read_text()); report['sourceCommit']=source
             path.write_text(json.dumps(report,indent=2)+'\n')
         PYCODE
+    - name: Verify recovery, diagnostics and download publication boundaries
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 tests/page-recovery-host/run.py --json-jar work/gecko-integration/catalog-json.jar | tee work/gecko-integration/page-recovery-host-results.json
+        JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/page-recovery.test.cjs | tee work/gecko-integration/page-recovery-script-results.json
+        python3 tests/download-recovery-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/download-recovery-host-results.json
+        python3 tools/gecko/run_network_core_host.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-core-host-results.json
+        python3 tests/network-core-host/test_evidence.py
+        python3 tests/network-diagnostics-host/run.py --output work/gecko-integration/network-diagnostics-host-results.json
+        python3 tools/gecko/run_upload_state_host.py --json-jar "$PWD/work/gecko-integration/catalog-json.jar" --jsdom-module "$PWD/work/browser-perf-host/node_modules/jsdom" --output work/upload-state-host
+        cp work/upload-state-host/results.json work/gecko-integration/upload-state-host-results.json
+        for log in work/upload-state-host/*.stdout.txt work/upload-state-host/*.stderr.txt; do
+          cp "$log" "work/gecko-integration/upload-state-$(basename "$log")"
+        done
     - name: Verify versioned environment models and authoritative intents
       run: |
         set -euo pipefail

@@ -1,0 +1,54 @@
+package local.pocketchat;
+import java.util.*;
+import org.json.*;
+/** Actual extracted production busy predicates, with explicit surrounding stubs.
+ * This tests gate decisions, not Android scheduling or applying a real route. */
+final class ChatSession {
+  static ChatSession selected;static ChatSession peek(){return selected;}
+  boolean deleted,submitting,operation,transferActive,navigating,connecting,recoveryScheduled;
+  int resourceChoosers,resourceFilePreparations;long navigationEpoch=7,resourceWebsiteEpoch=-1;
+  boolean resourceWebsiteUploading;JSONObject pending,state=J.obj("busy",false);JSONArray attachments=new JSONArray();
+  final ResourceUploadState resourceUploads=new ResourceUploadState();final Browser web=new Browser();final Memory pageMemory=new Memory();
+  __UPLOADING__
+  __FILE_WORK_ACTIVE__
+  __RESOURCE_FILES_ACTIVE__
+}
+final class Browser {String getUrl(){return "https://chatgpt.com/c/test";}}
+final class Memory {String scope(){return "scope";}}
+final class MainActivity {static boolean chatUrl(String url){return true;}}
+final class WebReplyObserver {static boolean same(String a,String b){return a.equals(b);}}
+final class BrowserRuntimePolicy {static boolean sameDocument(String a,String b){return a.equals(b);}}
+final class Profile {Prefs getSharedPreferences(String name,int mode){return new Prefs();}}
+final class Prefs {String getString(String key,String fallback){return fallback;}}
+final class NativeNetwork {boolean starting,measuringLatency;static final NativeNetwork instance=new NativeNetwork();static NativeNetwork get(Profile profile){return instance;}}
+final class NetworkRegion {__BACKGROUND_BUSY__}
+final class ProfileUi {__WORKING__}
+final class NetworkUiProvider {
+  boolean saving;final Profile profile=new Profile();
+  static final class Transition {ChatSession session;boolean capture=true;long epoch=7;String url="https://chatgpt.com/c/test",scope="scope";}
+  boolean owns(Transition transition){return true;}
+  boolean currentEnvironment(Transition transition){return true;}
+  __FENCE_IDLE__
+}
+public final class FileWorkConsumersHostTest {
+  static int checks;
+  static void gate(String name,ChatSession session,boolean busy){
+    ChatSession.selected=session;NetworkUiProvider.Transition transition=new NetworkUiProvider.Transition();transition.session=session;
+    if(session.fileWorkActive()!=busy||NetworkRegion.backgroundBusy(session)!=busy||ProfileUi.working(session)!=busy||new NetworkUiProvider().fenceIdle(transition)==busy)throw new AssertionError(name);
+    checks++;System.out.println("PASS "+name);
+  }
+  public static void main(String[] args){
+    ChatSession session=new ChatSession();gate("Idle gates agree before file work",session,false);
+    session.resourceChoosers=1;gate("Chooser blocks maintenance UI and final capture fence",session,true);session.resourceChoosers=0;
+    session.resourceFilePreparations=1;gate("Preparation beginning after capture blocks final settings fence",session,true);session.resourceFilePreparations=0;
+    session.resourceUploads.add(Arrays.asList("report.txt"),"doc",7,1000);gate("Unknown selection blocks every work consumer without fabricating an upload",session,true);
+    String id=session.resourceUploads.batches.keySet().iterator().next();
+    for(int sequence=1;sequence<=2;sequence++)session.resourceUploads.observe(J.obj("ok",true,"documentId","doc","batches",J.arr(J.obj("batchId",id,"sequence",sequence,"files",J.arr(J.obj("name","report.txt","state","removed"))))),"doc",7);
+    gate("Confirmed removal releases all three consumers together",session,false);
+    session.resourceWebsiteEpoch=7;session.resourceWebsiteUploading=true;gate("Current website upload blocks all consumers",session,true);
+    session.resourceWebsiteEpoch=6;gate("An old document upload cannot keep the new page busy",session,false);
+    session.attachments=J.arr(J.obj("state","uploading"));gate("Legacy uploading remains protected during migration",session,true);
+    session.attachments=J.arr(J.obj("state","ready"));gate("Completed legacy files alone do not keep gates busy",session,false);
+    System.out.println("TOTAL "+checks);
+  }
+}

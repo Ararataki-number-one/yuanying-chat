@@ -70,7 +70,7 @@ public final class NetworkSourcesUiIntegrationActivity extends Activity {
     JSONObject row=window().optJSONObject("row");long now=System.currentTimeMillis();
     JSONObject runtime=J.obj("mode","internal","at",now,"configured",true,"connected",true,"entry","Entry|Entry A","delayEntry","Entry|Entry A","delay",418,"delayAt",now-120000,"exitId",NativeNetwork.exitIdentity(initial),"subscriptionId",NativeNetwork.hash(ENTRY_URL));
     String text=ConnectionTrace.windowDiagnostics(this,new WindowNetworkState(this,row,initial,runtime,true,now));
-    check("Window diagnostics use the selected slot rather than the viewing process",text.contains("窗口编号：6")&&text.contains("418 ms"));
+    check("Window diagnostics use the selected slot rather than the viewing process",text.contains("窗口编号：7")&&text.contains("418 ms"));
     check("Window diagnostics label historical readings and separate website timings",text.contains("历史记录")&&text.contains("不是 ChatGPT 请求的分项"));
     check("Window diagnostics exclude subscription and credential values",!text.contains(ENTRY_URL)&&!text.contains("synthetic")&&!text.contains("127.0.0.1"));
     NetworkCatalog.put(runtime,"exitId","changed-exit");
@@ -88,7 +88,7 @@ public final class NetworkSourcesUiIntegrationActivity extends Activity {
       case "assert-diagnostics-copied":{
         ClipboardManager clipboard=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);
         ClipData clip=clipboard.getPrimaryClip();String copied=clip==null||clip.getItemCount()==0?"":clip.getItemAt(0).coerceToText(this).toString();
-        check("Actual diagnostic copy button exports the selected environment",copied.contains("窗口编号：6")&&copied.contains("线路模式：入口 → 固定出口"));
+        check("Actual diagnostic copy button exports the selected environment",copied.contains("窗口编号：7")&&copied.contains("线路模式：入口 → 固定出口"));
         check("Actual diagnostic clipboard omits credentials and source addresses",!copied.contains(ENTRY_URL)&&!copied.contains("synthetic")&&!copied.contains("127.0.0.1"));
         unchanged();break;
       }

@@ -36,6 +36,47 @@ def verify_detector_transport_evidence(network):
             'sameVerifiedServiceWebSocket': True, 'unknownRouteFailClosed': True}
 
 
+NETWORK_REPAIR_CHECKS = frozenset({
+    'A stale generation stop is rejected by the real service without interrupting its WSS',
+    'Unexpected real core exit retains its exact generation and nonzero exit code',
+    'A replacement core preserves the old generation exit history',
+    'Requested stop is distinguished from an unexpected real core exit',
+    'Incomplete recovery provides a separate exact-route retention outcome',
+    'Candidate control failure reports failure without stopping the exact verified WSS route',
+    'Candidate control failures back off optimization without changing detector retry state',
+    'Automatic candidate verification failure reselects and really reverifies the previous entry',
+    'Rollback does not publish the failed candidate as the selected quality route',
+    'Busy reply or attachment work prevents the manual route transaction before mutation',
+    'Reply or upload beginning during fresh identity lookup prevents selection',
+    'Exit detector backoff does not suppress corroborated failed-chain recovery',
+    'All network repair faults preserve one live WSS and fixed exit',
+    'A failed rollback verification stops admission instead of reusing the old receipt',
+})
+
+def verify_network_repair_evidence(network):
+    checks = {item['name']: item['pass'] for item in network['checks']}
+    assert NETWORK_REPAIR_CHECKS <= checks.keys(), 'Network repair regression cases are required.'
+    assert all(checks[name] is True for name in NETWORK_REPAIR_CHECKS)
+    evidence = network['networkRepairEvidence']
+    assert type(evidence['schema']) is int and evidence['schema'] == 1 and evidence['serviceGenerationStopGuard'] is True
+    assert evidence['exitDiagnostics'] is True and evidence['retainedOutcome'] is True
+    candidate = evidence['candidateFailure']
+    assert candidate['accepted'] is False
+    assert all(candidate[key] is True for key in ('sameReceipt', 'sameCore', 'sameEntry', 'verified', 'optimizationBackoff'))
+    rollback = evidence['rollback']
+    assert type(rollback['exitRequests']) is int and rollback['exitRequests'] == 2
+    assert all(rollback[key] is True for key in ('newReceipt', 'sameEntry', 'verified', 'sameCore'))
+    assert evidence['busyBeforeMutation'] is True
+    recovery = evidence['backoffRecovery']
+    assert type(recovery['exitRequests']) is int and recovery['exitRequests'] == 1
+    assert all(recovery[key] is True for key in ('entryChanged', 'verified', 'sameCore', 'sameWebSocket', 'detectorRetryReset'))
+    failed = evidence['failedRollback']
+    assert all(failed[key] is False for key in ('ready', 'coreAlive', 'receiptCurrent'))
+    assert failed['webSocketClosed'] is True
+    return {'boundedExitDiagnostics': True, 'retainedIsNotRecovered': True,
+            'candidateFailureKeepsVerifiedRoute': True, 'rollbackRequiresNewVerification': True}
+
+
 def verify_connection_evidence(directory, source):
     directory = pathlib.Path(directory)
 
@@ -86,7 +127,7 @@ def verify_connection_evidence(directory, source):
         'Exit verification failure schedules bounded retry without claiming fresh success',
         'Exit verification backoff makes no repeated IP requests or WebSocket replacement',
         'Send preflight admits the exact retained route with degraded verification',
-        'Same-route recovery callback reopens admission during detector outage',
+        'Same-route recovery reports incomplete verification while retaining admission during detector outage',
         'Primary detector outage with target HTTP 200 preserves verified route',
         'Primary detector outage with target HTTP 403 preserves verified route',
         'Primary detector outage with target HTTP 429 preserves verified route',
@@ -121,6 +162,7 @@ def verify_connection_evidence(directory, source):
         'Detector transport classification excludes cancellation TLS identity and configuration failures',
     } <= names, 'Real protected WebSocket continuity and unknown-route rejection are required.'
     transport = verify_detector_transport_evidence(network)
+    repairs = verify_network_repair_evidence(network)
 
     host = json.loads((directory / 'reply-binding-host-results.json').read_text())
     assert host['passed'] == host['total'] >= 41 and all(check['pass'] for check in host['checks'])
@@ -134,7 +176,7 @@ def verify_connection_evidence(directory, source):
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True,
             'actualMihomoExecution': True, 'geckoChecks': gecko['checkCount'],
             'networkChecks': len(network['checks']), 'bindingHostChecks': host['total'],
-            'detectorTransport': transport}
+            'detectorTransport': transport, 'networkRepairs': repairs}
 
 
 if __name__ == '__main__':

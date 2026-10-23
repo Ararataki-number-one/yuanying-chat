@@ -290,7 +290,7 @@ class GeckoWebView extends FrameLayout {
               PromptResponse response;
               try{response=prompt.confirm(owner.context,files.files);}
               catch(RuntimeException error){new Thread(files::delete,"upload-cleanup").start();if(!prompt.isComplete())result.complete(prompt.dismiss());owner.setStatus("附件未能交给网页，请重新选择");return;}
-              uploadFiles.add(files);result.complete(response);owner.resourceFilesPrepared(files.files,uploadEpoch);
+              uploadFiles.add(files);owner.resourceFilesPrepared(files.files,uploadEpoch);result.complete(response);
             }finally{uploadPreparationFinished(beforePreparation);}});
           }catch(IOException error){owner.handler.post(()->{uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed&&!cancelled.get())owner.setStatus(error.getMessage());});}});}
           catch(RejectedExecutionException error){uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed)owner.setStatus("附件读取已结束，请重新打开文件选择器");}

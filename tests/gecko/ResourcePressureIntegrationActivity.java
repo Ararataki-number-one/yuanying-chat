@@ -80,7 +80,7 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
   void awaitResourceDocument(){
     if(finished)return;
     if(!target.equals(view.getUrl())||!view.hasVisibleDocument()||view.ports.get(view.current)==null){if(++readyAttempts>100){finish(new IOException("Controlled resource document/port did not become ready"));return;}handler.postDelayed(this::awaitResourceDocument,200);return;}
-    evaluate("(()=>{document.body.innerHTML='<form><textarea id=prompt-textarea></textarea><button id=stop data-testid=stop-button>Stop</button><div id=first data-file-name=first.txt data-upload-state=uploading><button aria-label=\"Remove file\">Remove</button></div><div id=second data-file-name=second.txt data-upload-state=ready><button aria-label=\"Remove file\">Remove</button></div></form>';document.body.dataset.sent='0';document.querySelector('form').addEventListener('submit',e=>{e.preventDefault();document.body.dataset.sent=String(Number(document.body.dataset.sent)+1)});return {url:location.href,busy:!!document.getElementById('stop'),uploading:document.getElementById('first').dataset.uploadState==='uploading'}})()",this::workControls);
+    evaluate("(()=>{document.body.innerHTML='<form><textarea id=prompt-textarea></textarea><button id=stop data-testid=stop-button>Stop</button><div id=first data-file-name=first.txt data-upload-state=uploading><button aria-label=\"Remove file\">Remove</button></div><div id=second data-file-name=second.txt data-upload-state=ready><button aria-label=\"Remove file\">Remove</button></div></form>';document.body.dataset.sent='0';document.querySelector('form').addEventListener('submit',e=>{e.preventDefault();document.body.dataset.sent=String(Number(document.body.dataset.sent)+1)});window.__pocketAttachmentDocumentId="+JSONObject.quote(documentId)+";return {url:location.href,busy:!!document.getElementById('stop'),uploading:document.getElementById('first').dataset.uploadState==='uploading'}})()",this::workControls);
   }
   void evaluate(String code,java.util.function.Consumer<JSONObject> done){
     final GeckoSession selected=view.current;final Object port=view.ports.get(selected);final long epoch=owner.navigationEpoch,started=SystemClock.elapsedRealtime();final String requestedUrl=view.getUrl();
@@ -159,24 +159,42 @@ public final class ResourcePressureIntegrationActivity extends GeckoIdentityProt
       resourceCheck("In flight inspection retains existing browser activity",owner.browserWorkActive()&&!owner.browserPaused&&view.current.isOpen());owner.finishResourceInspection();
       resourceCheck("Inspection completion releases its bounded activity hold",!owner.inFlight);
       resourceCheck("Inspection completion preserves the existing polling cadence",!owner.handler.hasCallbacks(owner.tick));
+      owner.resourceFileWork(true,true);resourceCheck("Open file chooser blocks maintenance and profile changes",owner.fileWorkActive()&&NetworkRegion.backgroundBusy(owner)&&ProfileUi.working(owner));owner.resourceFileWork(true,false);
+      owner.resourceFileWork(false,true);resourceCheck("File preparation blocks maintenance and profile changes",owner.fileWorkActive()&&NetworkRegion.backgroundBusy(owner)&&ProfileUi.working(owner));owner.resourceFileWork(false,false);
       owner.resourceFilesPrepared(new Uri[]{Uri.parse("file:///synthetic/first.txt")},owner.navigationEpoch);JSONArray first=owner.resourceUploadNames;
       owner.resourceFilesPrepared(new Uri[]{Uri.parse("file:///synthetic/second.txt")},owner.navigationEpoch);JSONArray both=owner.resourceUploadNames;
       resourceCheck("Repeated selections retain both outstanding file names",both.length()==2&&both.optString(0).equals("first.txt")&&both.optString(1).equals("second.txt"));
+      resourceCheck("Unknown handed off selections protect maintenance without claiming uploading",owner.resourceFilesUncertain()&&!owner.resourceUploads.uploading(owner.navigationEpoch)&&NetworkRegion.backgroundBusy(owner)&&ProfileUi.working(owner));
       owner.resourceUploadObservation(J.obj("ok",true,"files",J.arr(J.obj("name","first.txt","state","ready"))),owner.navigationEpoch,first,target);
       resourceCheck("Late observation of an older selection cannot release new files",owner.resourceUploadNames==both&&owner.resourceFilesActive());
       inspectAttachments(0);
     }catch(Throwable failure){finish(failure);}
   }
   void inspectAttachments(int step){
-    String script=owner.attachmentDriver.replace("location.protocol!=='https:'||location.hostname!=='chatgpt.com'","location.origin!=="+JSONObject.quote(origin)).replace("__ACTION__",JSONObject.quote("attachment-state")).replace("__ARG__",J.obj("names",owner.resourceUploadNames,"url",target).toString());
+    String script=owner.attachmentDriver.replace("location.protocol!=='https:'||location.hostname!=='chatgpt.com'","location.origin!=="+JSONObject.quote(origin)).replace("__ACTION__",JSONObject.quote("attachment-state")).replace("__ARG__",J.obj("names",owner.resourceUploadNames,"url",target,"documentId",owner.resourceObserverDocument,"batches",owner.resourceUploads.snapshot()).toString());
     new AttachmentResult(actual->{
       try{
         JSONArray names=owner.resourceUploadNames;owner.resourceUploadObservation(actual,owner.navigationEpoch,names,target);owner.handler.removeCallbacks(owner.tick);
         if(step==0){resourceCheck("Actual delayed first attachment retains both selections",owner.resourceFilesActive()&&names.length()==2);evaluate("(()=>{document.getElementById('first').dataset.uploadState='ready';return {updated:true}})()",ignored->inspectAttachments(1));}
         else if(step==1){resourceCheck("One terminal attachment sample does not release selection work",owner.resourceFilesActive()&&owner.resourceUploadStable==1);inspectAttachments(2);}
-        else{resourceCheck("Two actual terminal attachment samples release completed selections",!owner.resourceFilesActive()&&owner.resourceUploadNames.length()==0);beginRetainedPortControls();}
+        else{resourceCheck("Two actual terminal attachment samples release completed selections",!owner.resourceFilesActive()&&owner.resourceUploadNames.length()==0);beginRemovalControls();}
       }catch(Throwable failure){finish(failure);}
     }).start(script);
+  }
+  void beginRemovalControls(){
+    owner.uiVisible=true;owner.updateBrowserActivity();owner.handler.removeCallbacks(owner.tick);
+    evaluate("(()=>{const card=document.createElement('div');card.id='removed-attachment';card.dataset.fileName='removed.txt';card.dataset.uploadState='uploading';card.innerHTML='<button aria-label=\"Remove file\">Remove</button>';document.querySelector('form').append(card);return {created:true}})()",created->{
+      owner.resourceFilesPrepared(new Uri[]{Uri.parse("file:///synthetic/removed.txt")},owner.navigationEpoch);inspectRemovedAttachment(0);
+    });
+  }
+  void inspectRemovedAttachment(int step){
+    String script=owner.attachmentDriver.replace("location.protocol!=='https:'||location.hostname!=='chatgpt.com'","location.origin!=="+JSONObject.quote(origin)).replace("__ACTION__",JSONObject.quote("attachment-state")).replace("__ARG__",J.obj("names",owner.resourceUploadNames,"url",target,"documentId",owner.resourceObserverDocument,"batches",owner.resourceUploads.snapshot()).toString());
+    new AttachmentResult(actual->{try{
+      owner.resourceUploadObservation(actual,owner.navigationEpoch,owner.resourceUploadNames,target);owner.handler.removeCallbacks(owner.tick);
+      if(step==0){resourceCheck("Actual selected uploading card keeps unified file work active",owner.resourceUploads.uploading(owner.navigationEpoch)&&owner.fileWorkActive()&&NetworkRegion.backgroundBusy(owner));evaluate("(()=>{document.getElementById('removed-attachment').remove();return {removed:true}})()",removed->inspectRemovedAttachment(1));}
+      else if(step==1){resourceCheck("One actual removal observation retains selection protection",owner.resourceFilesActive()&&owner.resourceUploadStable==1);inspectRemovedAttachment(2);}
+      else{resourceCheck("Two actual removal observations release the selected batch",!owner.resourceFilesActive()&&!owner.resourceFilesUncertain()&&owner.resourceUploadNames.length()==0);beginRetainedPortControls();}
+    }catch(Throwable failure){finish(failure);}}).start(script);
   }
   void beginRetainedPortControls(){
     try{

@@ -164,7 +164,7 @@ final class EnvironmentEditorUi {
       s.state=inspected;s.stateEpoch=epoch;if(inspected.optBoolean("busy")){DeferredBrowserSettings.release(s);done.accept(guardedApply(a,value,name,current));return;}
       if(inspected.optString("draft").length()>300000||inspected.optString("draftRaw").length()>300000){fail.accept("网页草稿过长，请先保存或发送，再切换显示方式");return;}
       s.asyncDriver("page-state",J.obj("expectedUrl",url),2500,state->{
-        if(!state.optBoolean("ok")||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){
+        if(!PageMemory.completeDraft(state)||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){
           fail.accept("网页草稿暂时无法保留，请稍后重试；环境设置尚未应用");return;
         }
         s.pageMemory.remember(scope,url,state);String draft=state.optString("draft");

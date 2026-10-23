@@ -20,7 +20,7 @@ final class DeferredBrowserSettings {
     s.asyncDriver("inspect",J.obj("expectedUrl",url),2500,inspected->{
       if(!candidateAvailable(s)||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,inspected.optString("url"))||inspected.optBoolean("busy")||inspected.optString("draftRaw").length()>300000){release(s);return;}
       s.asyncDriver("page-state",J.obj("expectedUrl",url),2500,state->{
-        if(!candidateAvailable(s)||!state.optBoolean("ok")||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){release(s);return;}
+        if(!candidateAvailable(s)||!PageMemory.completeDraft(state)||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){release(s);return;}
         s.pageMemory.remember(scope,url,state);s.web.checkpointState();
         s.webStore.worker.execute(()->{boolean saved=DraftArchive.get(s.context).save(url,state.optString("draft"),"应用环境设置前的草稿");s.handler.post(()->{
           if(!saved||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())||!candidateAvailable(s)){release(s);return;}

@@ -13,11 +13,22 @@ import java.util.concurrent.*;
 
 class NativeNetwork {
   interface Callback{void done(boolean ok,String message);}
+  enum RecoveryState { RECOVERED, RETAINED, FAILED }
+  static final class RecoveryOutcome {
+    final RecoveryState state;final String message;final ExitRouteReceipt receipt;
+    RecoveryOutcome(RecoveryState state,String message,ExitRouteReceipt receipt){this.state=state;this.message=message;this.receipt=receipt;}
+  }
+  interface RecoveryCallback {void done(RecoveryOutcome outcome);}
+  static final class RecoveryAdapter implements Callback {
+    final RecoveryCallback callback;RecoveryAdapter(RecoveryCallback callback){this.callback=callback;}
+    public void done(boolean ok,String message){callback.done(new RecoveryOutcome(ok?RecoveryState.RECOVERED:RecoveryState.FAILED,message,null));}
+    void complete(RecoveryOutcome outcome){callback.done(outcome);}
+  }
   private static NativeNetwork instance;
   static synchronized NativeNetwork get(Context c){if(instance==null)instance=new NativeNetwork(c);return instance;}
   final Context context;final SecretStore secrets;final Handler main=new Handler(Looper.getMainLooper());
   final ScheduledExecutorService worker=Executors.newSingleThreadScheduledExecutor();final ExecutorService probes=Executors.newFixedThreadPool(4);final ExecutorService closers=Executors.newFixedThreadPool(4);final ThreadLocal<NetworkWork> maintenance=new ThreadLocal<>();volatile NetworkWork backgroundWork;volatile long maintenanceGeneration=0,lastMaintenanceAt=0;
-  final NetworkTransportClient transport;final RouteQuality quality,websiteQuality;final NetworkDns dns;volatile JSONObject websiteResult=new JSONObject();volatile int webProbePort;int scanCursor,optimizationRounds;final Map<String,JSONObject> websiteSamples=new HashMap<>();String websiteSampleEpoch="";volatile String activeDns="";final TrafficMonitor traffic;volatile boolean measuringLatency=false;volatile long lastManualProbe=-5000;final File root;volatile boolean ready=false,starting=false;volatile String message="未连接",currentEntry="",exitIp="",observedExitIp="";volatile JSONArray results=new JSONArray();
+  final NetworkTransportClient transport;final NetworkDiagnostics diagnostics;volatile String coreGeneration=NetworkDiagnostics.UNKNOWN;volatile java.util.concurrent.atomic.AtomicReference<NetworkDiagnostics.Reason> coreStopReason=new java.util.concurrent.atomic.AtomicReference<>(NetworkDiagnostics.Reason.UNKNOWN);long reconnectAttempts;final RouteQuality quality,websiteQuality;final NetworkDns dns;volatile JSONObject websiteResult=new JSONObject();volatile int webProbePort;int scanCursor,optimizationRounds;final Map<String,JSONObject> websiteSamples=new HashMap<>();String websiteSampleEpoch="";volatile String activeDns="";final TrafficMonitor traffic;volatile boolean measuringLatency=false;volatile long lastManualProbe=-5000;final File root;volatile boolean ready=false,starting=false;volatile String message="未连接",currentEntry="",exitIp="",observedExitIp="";volatile JSONArray results=new JSONArray();
   volatile boolean recoveryBlocked=false;boolean restartQueued=false;final List<Callback> startWaiters=new ArrayList<>();volatile long lastVerified=0,lastObserved=0;
   java.lang.Process process;JSONObject settings;volatile int controllerPort,proxyPort;int failures;volatile String token="";String fingerprint="";List<String> names=new ArrayList<>();long lastScan=0;int totalEntries=0;volatile long startupDuration=0;volatile String startupPath="";volatile long startupBeganAt=0,coreDuration=0,providerDuration=0,exitCheckDuration=0;volatile boolean startupCached=false;
   static final String MEASUREMENT_PROFILE="unified-delay-trace-v2";volatile long lastProbeDuration=0,lastProbeDurationAt=0;volatile String lastProbeEntry="";
@@ -53,18 +64,22 @@ class NativeNetwork {
   volatile ExitRouteReceipt verifiedRoute;volatile long routeSerial,nextExitCheckAt;volatile int exitCheckFailures;
   volatile NetworkHealthPolicy.Admission admission=NetworkHealthPolicy.Admission.BLOCKED;
   volatile String healthStatus="unknown";volatile int healthTargetCode;volatile long healthObservedAt;
+  long nextOptimizationAt;int optimizationFailures;volatile long lastReadOnlyDiagnostic=-120000;volatile boolean readOnlyDiagnosticQueued;
   static final class ExitRouteReceipt {
     final String fingerprint,token,entry,configuration,generation;final long serial;final int controller,proxy,pid,servicePid;final java.lang.Process process;
     ExitRouteReceipt(NativeNetwork n,JSONObject state){fingerprint=n.fingerprint;token=n.token;entry=n.currentEntry;serial=n.routeSerial;controller=n.controllerPort;proxy=n.proxyPort;process=n.process;configuration=state==null?"":state.optString("configuration");generation=state==null?"":state.optString("generation");pid=state==null?0:state.optInt("pid");servicePid=state==null?0:state.optInt("servicePid");}
     boolean matches(NativeNetwork n,JSONObject state){
-      if(fingerprint.isEmpty()||token.isEmpty()||entry.isEmpty()||serial!=n.routeSerial||!fingerprint.equals(n.fingerprint)||!token.equals(n.token)||!entry.equals(n.currentEntry)||controller!=n.controllerPort||proxy!=n.proxyPort)return false;
+      if(entry.isEmpty()||serial!=n.routeSerial||!entry.equals(n.currentEntry))return false;return sameCore(n,state);
+    }
+    boolean sameCore(NativeNetwork n,JSONObject state){
+      if(fingerprint.isEmpty()||token.isEmpty()||!fingerprint.equals(n.fingerprint)||!token.equals(n.token)||controller!=n.controllerPort||proxy!=n.proxyPort)return false;
       if(n.transport==null)return process!=null&&process==n.process&&process.isAlive();
       return state!=null&&state.optBoolean("alive")&&!generation.isEmpty()&&pid>1&&servicePid>1&&generation.equals(state.optString("generation"))&&pid==state.optInt("pid")&&servicePid==state.optInt("servicePid")&&configuration.equals(state.optString("configuration"))&&controller==state.optInt("controllerPort")&&proxy==state.optInt("proxyPort");
     }
   }
   static final String PROBE="https://www.gstatic.com/generate_204";
   NativeNetwork(Context c){this(c,new File(c.getNoBackupFilesDir(),"network-runtime"),true);}
-  NativeNetwork(Context c,File directory,boolean monitor){context=c.getApplicationContext();quality=new RouteQuality(context);websiteQuality=new RouteQuality(context,"website-quality");dns=new NetworkDns(context);traffic=new TrafficMonitor(this);secrets=new SecretStore(c);root=directory;root.mkdirs();transport=root.getName().equals("network-runtime")?new NetworkTransportClient(context,this::transportChanged):null;if(monitor)worker.scheduleWithFixedDelay(()->runHealth(),30,30,TimeUnit.SECONDS);}
+  NativeNetwork(Context c,File directory,boolean monitor){context=c.getApplicationContext();quality=new RouteQuality(context);websiteQuality=new RouteQuality(context,"website-quality");dns=new NetworkDns(context);traffic=new TrafficMonitor(this);secrets=new SecretStore(c);root=directory;root.mkdirs();diagnostics=NetworkDiagnosticStore.forContext(context,root.getName().equals("network-runtime")?NetworkDiagnostics.Source.CONTROL:NetworkDiagnostics.Source.PREVIEW);transport=root.getName().equals("network-runtime")?new NetworkTransportClient(context,this::transportChanged):null;if(monitor)worker.scheduleWithFixedDelay(()->runHealth(),30,30,TimeUnit.SECONDS);}
   static void validateSourceUrl(String url,String role)throws Exception{URI u=new URI(url);if(!"https".equals(u.getScheme())||u.getHost()==null||u.getUserInfo()!=null)throw new IOException("请填写 HTTPS 格式的"+role+"订阅地址");}
   static void validateBoundSource(JSONObject config,String prefix,String field,String label)throws Exception{
     String url=config.optString(field),id=config.optString(prefix+"SubscriptionId");
@@ -93,6 +108,8 @@ class NativeNetwork {
     byte[] bytes=secrets.get("exit-subscription");if(!sourceCacheMatches(settings,NetworkCatalog.EXIT,sourceMeta("exit-subscription-meta"),bytes))throw new IOException("固定出口缓存与所选订阅不一致，请重新保存网络");
     try(FileOutputStream out=new FileOutputStream(file)){out.write(bytes);}
   }
+  void bindDiagnostics(){if(Looper.myLooper()!=Looper.getMainLooper())NetworkDiagnosticStore.bind(diagnostics,context);}
+  void note(NetworkDiagnostics.Event event,NetworkDiagnostics.Reason reason,NetworkDiagnostics.Stage stage,long value){diagnostics.record(event,transport==null?coreGeneration:transport.state.optString("generation",NetworkDiagnostics.UNKNOWN),reason,stage,value);}
   void report(String text){message=text;ChatSession s=ChatSession.peek();WindowNetworkState.save(context,s,this);if(s!=null)main.post(()->s.networkStatus(text,ready));}
   String proxy(){return "http://127.0.0.1:"+proxyPort;}
   static int freePort()throws Exception{try(ServerSocket s=new ServerSocket(0,0,InetAddress.getByName("127.0.0.1"))){return s.getLocalPort();}}
@@ -118,24 +135,59 @@ class NativeNetwork {
   boolean retainVerifiedRoute(Exception failure){
     boolean detectorUnavailable=failure instanceof ExitCheckUnavailable;
     NetworkHealthPolicy.Admission result=NetworkHealthPolicy.afterFailure(detectorUnavailable,detectorUnavailable&&verifiedRouteCurrent());
-    if(!result.usable())return false;admission=result;
+    if(!result.usable())return false;admission=result;note(NetworkDiagnostics.Event.FAILURE,NetworkDiagnostics.Reason.DETECTOR_UNAVAILABLE,NetworkDiagnostics.Stage.VERIFY,exitCheckFailures+1);
     exitCheckFailures=Math.min(4,exitCheckFailures+1);nextExitCheckAt=android.os.SystemClock.elapsedRealtime()+exitRetryDelayMs(exitCheckFailures);
     report("出口核验暂不可用 · 已核验的原线路保持连接");return true;
   }
   void start(Callback callback){startOperation(callback,0);}
   void restart(Callback callback){recoveryBlocked=false;startOperation(callback,2);}
   void recover(Callback callback){if(recoveryBlocked){main.post(()->callback.done(false,message));return;}startOperation(callback,1);}
+  void recoverOutcome(RecoveryCallback callback){recover(new RecoveryAdapter(callback));}
+  /** Main-thread read: the worker already revalidated this exact outcome using fresh IPC. */
+  boolean retainedOutcomeCurrent(RecoveryOutcome outcome){
+    ExitRouteReceipt receipt=outcome==null?null:outcome.receipt;
+    return outcome!=null&&outcome.state==RecoveryState.RETAINED&&receipt!=null&&receipt==verifiedRoute&&ready&&!recoveryBlocked&&admission.usable()&&receipt.matches(this,transport==null?null:transport.state);
+  }
   synchronized void startOperation(Callback callback,int mode){if(mode==0&&connectionAdmission().usable()&&coreAlive()){main.post(()->callback.done(true,message));return;}startWaiters.add(callback);if(starting){if(mode==2)restartQueued=true;return;}starting=true;cancelMaintenance();worker.execute(()->runStartOperation(mode));
   }
-  void runStartOperation(int mode){boolean ok=false;try{if(mode==1&&recoveryBlocked)throw new ExitMismatch();if(mode==1&&ready&&coreAlive()&&configurationMatches()){report("正在检查代理链与固定出口…");try{verifyExit();ok=true;report("手机独立网络已连接 · "+display(currentEntry));}catch(ExitMismatch e){throw e;}catch(ExitCheckUnavailable unavailable){throw unavailable;}catch(Exception transientFailure){ok=false;}}
+  void runStartOperation(int mode){bindDiagnostics();if(mode!=0)note(NetworkDiagnostics.Event.RECONNECT_ATTEMPT,NetworkDiagnostics.Reason.REQUESTED,NetworkDiagnostics.Stage.RECOVER,++reconnectAttempts);boolean ok=false,retainedResult=false;try{
+      if(mode==1&&recoveryBlocked)throw new ExitMismatch();
+      if(mode==1&&ready&&coreAlive()&&configurationMatches()){
+        report("正在检查代理链与固定出口…");
+        if(verifiedRouteCurrent()){recoverExistingRoute();ok=true;}
+        else{try{verifyExit();ok=true;}catch(ExitMismatch|ExitCheckUnavailable e){throw e;}catch(Exception transientFailure){ok=false;}}
+        if(ok)report("手机独立网络已连接 · "+display(currentEntry));
+      }
       if(!ok&&mode!=2)ok=adoptTransport();
-      if(!ok){stopNow();startNow();ok=true;}
-    }catch(Exception e){ok=retainVerifiedRoute(e);if(!ok){stopNow();if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException&&e.getMessage()!=null?e.getMessage():"应用网络连接失败，请检查节点与固定出口");}}
-    final boolean success=ok;final String detail=message;final List<Callback> callbacks;synchronized(this){if(restartQueued){restartQueued=false;worker.execute(()->runStartOperation(2));return;}starting=false;callbacks=new ArrayList<>(startWaiters);startWaiters.clear();}main.post(()->{for(Callback cb:callbacks)cb.done(success,detail);});
+      if(!ok){stopNow(NetworkDiagnostics.Reason.REPLACE);startNow();ok=true;}
+    }catch(Exception e){
+      // Retention is useful admission evidence, but is not a completed recovery.
+      boolean retained=retainedFailure(e)||retainVerifiedRoute(e);retainedResult=retained;ok=false;
+      if(!retained&&!(e instanceof RouteTransactionFailure)){note(NetworkDiagnostics.Event.FAILURE,e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.START_FAILED,NetworkDiagnostics.Stage.RECOVER,mode);stopNow(e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.START_FAILED);if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException&&e.getMessage()!=null?e.getMessage():"应用网络连接失败，请检查节点与固定出口");}
+    }
+    final boolean success=ok;final String detail=message;final ExitRouteReceipt kept=retainedResult&&verifiedRouteCurrent()?verifiedRoute:null;final RecoveryOutcome outcome=new RecoveryOutcome(ok?RecoveryState.RECOVERED:kept!=null?RecoveryState.RETAINED:RecoveryState.FAILED,detail,kept);final List<Callback> callbacks;synchronized(this){if(restartQueued){restartQueued=false;worker.execute(()->runStartOperation(2));return;}starting=false;callbacks=new ArrayList<>(startWaiters);startWaiters.clear();}main.post(()->{for(Callback cb:callbacks)if(cb instanceof RecoveryAdapter)((RecoveryAdapter)cb).complete(outcome);else cb.done(success,detail);});
   }
+  /** A detector's retry timer never suppresses current-chain reachability checks. */
+  void recoverExistingRoute()throws Exception{
+    if(routeBusy())throw retained("正在回复或处理附件，原线路继续保持；尚未完成重连");
+    ProbeResult sample=probeMeasured("FixedExit",currentEntry);
+    if(!probeCurrent(sample)||!verifiedRouteCurrent())throw new IOException("网络实例已变化，请重新连接");
+    if(sample.delay<0&&secondaryHealth(sample)==NetworkHealthPolicy.TargetEvidence.TRANSPORT_UNAVAILABLE){
+      if(routeBusy())throw retained("当前操作继续使用原线路；尚未完成重连");
+      if(settings!=null&&"manual".equals(settings.optString("entryMode")))throw new IOException("指定入口与目标网站连接失败，请重连或编辑网络");
+      firstVerifiedRoute(currentEntry);return;
+    }
+    if(exitCheckFailures>0&&android.os.SystemClock.elapsedRealtime()<nextExitCheckAt)
+      throw retained("出口核验正在等待重试，原线路保持；尚未完成重连");
+    verifyExit();
+  }
+  static final class RouteTransactionFailure extends IOException {RouteTransactionFailure(){super("原入口重新核验未完成，当前窗口连接已暂停");}}
+  static final class RetainedRouteFailure extends IOException {final ExitRouteReceipt receipt;RetainedRouteFailure(String text,ExitRouteReceipt receipt){super(text);this.receipt=receipt;}}
+  RetainedRouteFailure retained(String text){report(text);return new RetainedRouteFailure(text,verifiedRoute);}
+  boolean retainedFailure(Exception failure){return failure instanceof RetainedRouteFailure&&((RetainedRouteFailure)failure).receipt!=null&&verifiedRoute==((RetainedRouteFailure)failure).receipt&&verifiedRouteCurrent();}
   static String transportFingerprint(JSONObject s){List<String> pool=EntrySelection.strings(s.optJSONArray("entryPool"));Collections.sort(pool);JSONObject route=J.obj("subscription",s.optString("subscriptionUrl"),"host",s.optString("exitHost"),"port",s.optInt("exitPort"),"user",s.optString("exitUser"),"password",s.optString("exitPassword"),"mode",s.optString("entryMode"),"pool",new JSONArray(pool),"entry",s.optString("entry"));if(s.has("entrySubscriptionId")||subscribedExit(s)){for(String key:new String[]{"entrySubscriptionId","entrySubscriptionAddressRevision","entryNodeKey","exitSource","exitSubscriptionId","exitSubscriptionUrl","exitSubscriptionAddressRevision","exitNodeKey","exitNodeName"})NetworkCatalog.put(route,key,s.opt(key));List<String> keys=NetworkSourceSelection.keys(s.optJSONArray("entryPoolKeys"));Collections.sort(keys);NetworkCatalog.put(route,"entryPoolKeys",new JSONArray(keys));JSONObject refs=s.optJSONObject("entryPoolNodeKeys"),ordered=new JSONObject();for(String name:pool)if(refs!=null)NetworkCatalog.put(ordered,name,refs.optString(name));NetworkCatalog.put(route,"entryPoolNodeKeys",ordered);}return hash(route.toString());}
   boolean adoptTransport()throws Exception{
-    if(transport==null)return false;JSONObject state=transport.call("snapshot","");JSONObject value=secrets.settings();
+    bindDiagnostics();if(transport==null)return false;JSONObject state=transport.call("snapshot","");JSONObject value=secrets.settings();
     if(!state.optBoolean("alive")||!transportFingerprint(value).equals(state.optString("configuration")))return false;JSONObject meta=J.parse(new String(new android.util.AtomicFile(new File(root,"transport.json")).readFully(),StandardCharsets.UTF_8));if(!meta.optBoolean("ready"))return false;
     invalidateVerifiedRoute();validate(value);settings=value;JSONObject config=J.parse(new String(java.nio.file.Files.readAllBytes(new File(root,"config.json").toPath()),StandardCharsets.UTF_8));
     token=config.optString("secret");controllerPort=state.optInt("controllerPort");proxyPort=state.optInt("proxyPort");webProbePort=state.optInt("webProbePort");
@@ -147,7 +199,7 @@ class NativeNetwork {
     report("正在恢复独立网络连接并核实固定出口…");verifyExit();ready=true;recoveryBlocked=false;startupPath="service-adopted";return true;
   }
   void startNow()throws Exception{
-    invalidateVerifiedRoute();long startupBegan=android.os.SystemClock.elapsedRealtime();startupBeganAt=startupBegan;startupDuration=coreDuration=providerDuration=0;startupPath="";optimizationRounds=0;
+    bindDiagnostics();invalidateVerifiedRoute();long startupBegan=android.os.SystemClock.elapsedRealtime();startupBeganAt=startupBegan;startupDuration=coreDuration=providerDuration=0;startupPath="";optimizationRounds=0;optimizationFailures=0;nextOptimizationAt=0;
     settings=secrets.settings();validate(settings);if(transport==null)cleanupOwnedPid();token=UUID.randomUUID().toString()+UUID.randomUUID();controllerPort=freePort();proxyPort=freePort();webProbePort=freePort();
     fingerprint=exitIdentity(settings);
     String scope=fingerprint+":"+hash(settings.optString("subscriptionUrl"));quality.configure(MEASUREMENT_PROFILE+":"+scope);websiteQuality.configure("chatgpt-head-v1:"+scope);dns.configure(scope);activeDns=dns.primary(System.currentTimeMillis());byte[] cached=secrets.get("subscription");JSONObject meta=J.parse(new String(Optional.ofNullable(secrets.get("subscription-meta")).orElse(new byte[0]),StandardCharsets.UTF_8));
@@ -175,7 +227,7 @@ class NativeNetwork {
     results=new JSONArray();String remembered=context.getSharedPreferences("chat",0).getString("lastGoodEntry","");
     if(names.contains(remembered)){
       report("正在恢复上次可用入口并核实固定出口…");
-      try{selectNow(remembered);verifyExit();startupPath="remembered";lastScan=System.currentTimeMillis();return;}
+      try{selectVerifiedRoute(remembered,false);startupPath="remembered";lastScan=System.currentTimeMillis();return;}
       catch(ExitMismatch mismatch){throw mismatch;}
       catch(ExitCheckUnavailable unavailable){throw unavailable;}
       catch(Exception unavailable){quality.record(remembered,-1,System.currentTimeMillis());}
@@ -209,7 +261,9 @@ class NativeNetwork {
         if(!epoch.equals(token))throw new IOException("网络连接已改变，请重试");
         long now=System.currentTimeMillis();if(r.sample!=null)recordProbe(r.sample,now);else quality.record(r.name,r.delay,now,"unknown",new JSONObject());measured.put(J.obj("name",display(r.name),"internalName",r.name,"delay",r.delay,"probe",r.sample==null?new JSONObject():r.sample.publicSummary()));results=measured;
         if(r.delay<=0)continue;
-        try{selectNow(r.name);verifyExit();startupPath="first-verified";lastScan=System.currentTimeMillis();return;}
+        try{selectVerifiedRoute(r.name,false);startupPath="first-verified";lastScan=System.currentTimeMillis();return;}
+        catch(RouteTransactionFailure failed){throw failed;}
+        catch(RetainedRouteFailure restored){throw restored;}
         catch(ExitMismatch mismatch){throw mismatch;}
         catch(ExitCheckUnavailable unavailable){throw unavailable;}
         catch(Exception unavailable){quality.record(r.name,-1,System.currentTimeMillis());}
@@ -222,13 +276,16 @@ class NativeNetwork {
     if(transport==null)return;android.util.AtomicFile file=new android.util.AtomicFile(new File(root,"transport.json"));FileOutputStream out=file.startWrite();try{out.write(J.obj("proxyPort",proxyPort,"webProbePort",webProbePort,"ready",active,"names",new JSONArray(names)).toString().getBytes(StandardCharsets.UTF_8));file.finishWrite(out);}catch(Exception e){file.failWrite(out);throw new IOException("网络运行状态未能保存",e);}
   }
   void launchCore()throws Exception{
+    bindDiagnostics();coreGeneration=UUID.randomUUID().toString();coreStopReason=new java.util.concurrent.atomic.AtomicReference<>(NetworkDiagnostics.Reason.UNKNOWN);diagnostics.record(NetworkDiagnostics.Event.CORE_START,transport==null?coreGeneration:NetworkDiagnostics.UNKNOWN,NetworkDiagnostics.Reason.UNKNOWN,NetworkDiagnostics.Stage.START,0);
     File binary=new File(context.getApplicationInfo().nativeLibraryDir,"libmihomo.so");if(!binary.isFile())throw new IOException("该手机架构没有可用的内置网络内核");
     if(transport!=null){writeTransportMetadata(false);transport.call("launch",transportFingerprint(settings));}
     else{
     process=new ProcessBuilder("/system/bin/sh","-c","umask 077; echo $$ > \"$1/core.pid\"; exec \"$2\" -d \"$1\" -f \"$1/config.json\"","pocket-core",root.getAbsolutePath(),binary.getAbsolutePath()).redirectErrorStream(true).start();
-    final java.lang.Process owned=process;new Thread(()->{try(InputStream in=owned.getInputStream()){byte[] b=new byte[4096];while(in.read(b)>=0){}}catch(Exception ignored){}},"core-output-discard").start();
+    final java.lang.Process owned=process;final String lifetime=coreGeneration;final java.util.concurrent.atomic.AtomicReference<NetworkDiagnostics.Reason> stopReason=coreStopReason;
+    new Thread(()->{try(NetworkDiagnostics.Output output=diagnostics.output(lifetime);InputStream in=owned.getInputStream()){byte[] b=new byte[4096];int count;while((count=in.read(b))>=0)output.add(count);}catch(Exception unavailable){diagnostics.record(NetworkDiagnostics.Event.FAILURE,lifetime,NetworkDiagnostics.Reason.CONTROL_UNAVAILABLE,NetworkDiagnostics.Stage.OUTPUT,0);}},"core-output-count").start();
+    new Thread(()->{try{int code=owned.waitFor();diagnostics.record(NetworkDiagnostics.Event.CORE_EXIT,lifetime,stopReason.get(),NetworkDiagnostics.Stage.CORE,code);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}},"core-exit-diagnostics").start();
     }
-    long deadline=System.currentTimeMillis()+20000;for(int i=0;i<100;i++){if(System.currentTimeMillis()>deadline)throw new IOException("内置代理启动超时");if(!coreAlive())throw new IOException("安卓代理内核启动后退出");try{api("GET","/version",null,2000);if(transport!=null)transport.call("ready","");return;}catch(Exception e){Thread.sleep(150);}}throw new IOException("内置代理控制服务未就绪");
+    long deadline=System.currentTimeMillis()+20000;for(int i=0;i<100;i++){if(System.currentTimeMillis()>deadline)throw new IOException("内置代理启动超时");if(!coreAlive())throw new IOException("安卓代理内核启动后退出");try{api("GET","/version",null,2000);if(transport!=null)transport.call("ready","");note(NetworkDiagnostics.Event.CORE_STARTED,NetworkDiagnostics.Reason.UNKNOWN,NetworkDiagnostics.Stage.START,0);return;}catch(Exception e){Thread.sleep(150);}}throw new IOException("内置代理控制服务未就绪");
   }
   JSONArray readProvider()throws Exception{
     long deadline=System.currentTimeMillis()+35000;for(int i=0;i<60&&System.currentTimeMillis()<deadline;i++){if(!coreAlive())throw new IOException("订阅解析进程已退出");try{JSONArray nodes=api("GET","/providers/proxies/Subscription",null,3000).optJSONArray("proxies");if(nodes!=null&&nodes.length()>0)return nodes;}catch(Exception ignored){}Thread.sleep(500);}throw new IOException("订阅未读到可用节点，请检查订阅格式或网络");
@@ -262,7 +319,7 @@ class NativeNetwork {
       Set<String> seen=new HashSet<>();for(int i=0;i<parsed.length();i++){JSONObject node=parsed.optJSONObject(i);if(node==null||!node.optString("name").startsWith(prefix))continue;String name=node.optString("name"),key=node.optString("configFingerprint");if(!key.matches("[0-9a-f]{64}")||node.optInt("configFingerprintVersion")!=1)throw new IOException("内核未能识别节点，请更新后重试");if(!seen.add(name))throw new IOException("订阅内有同名节点，请先整理订阅");nodes.put(name);details.put(J.obj("name",name,"type",node.optString("type"),"configFingerprint",key,"configFingerprintVersion",1));}
       if(nodes.length()==0)throw new IOException(NetworkCatalog.EXIT.equals(role)?"订阅没有可读取的出口节点":"订阅没有可选入口");
       try(FileInputStream in=new FileInputStream(new File(reader.root,"subscription.yaml"))){provider=J.read(in,16*1024*1024);}
-    }catch(Exception e){error=e instanceof IOException&&e.getMessage()!=null?e.getMessage():"订阅读取失败，已保留原配置";}finally{reader.stopNow();reader.probes.shutdownNow();reader.closers.shutdownNow();reader.traffic.reader.shutdownNow();reader.worker.shutdown();deletePreview(reader.root);}
+    }catch(Exception e){error=e instanceof IOException&&e.getMessage()!=null?e.getMessage():"订阅读取失败，已保留原配置";}finally{reader.stopNow(NetworkDiagnostics.Reason.PREVIEW_FINISHED);reader.probes.shutdownNow();reader.closers.shutdownNow();reader.traffic.reader.shutdownNow();reader.worker.shutdown();deletePreview(reader.root);}
       final JSONArray result=nodes,metadata=details;final byte[] bytes=provider;final String reason=error;reader.main.post(()->callback.done(reason.isEmpty(),reason,result,metadata,bytes));
     });
   }
@@ -308,7 +365,7 @@ class NativeNetwork {
   }
   void runHealth(){
     if(!ready||starting)return;
-    if(!coreAlive()){stopNow();report("内置网络进程已退出，请重新连接");return;}
+    if(!coreAlive()){stopNow(NetworkDiagnostics.Reason.CORE_EXITED);report("内置网络进程已退出，请重新连接");return;}
     if(routeBusy()){cancelMaintenance();return;}
     long now=android.os.SystemClock.elapsedRealtime();if(now-lastMaintenanceAt<(backgroundIdle()?NetworkOptimizationPolicy.BACKGROUND_INTERVAL:NetworkOptimizationPolicy.ACTIVE_INTERVAL))return;
     NetworkWork work=beginMaintenance(maintenanceGeneration);if(work==null)return;lastMaintenanceAt=now;
@@ -396,23 +453,80 @@ class NativeNetwork {
   void scanAndSelect(boolean force)throws Exception{scanSubset(new ArrayList<>(names),force,false);}
   void scanSubset(List<String> batch,boolean force,boolean background)throws Exception{
     maintenanceCheck();if(!background)report("正在检查线路稳定性 · "+batch.size()+" 个入口");
-    JSONArray measured=new JSONArray();int good=0;final NetworkWork work=maintenance.get();
-    for(int offset=0;offset<batch.size();offset+=2){
+    ExitRouteReceipt before=verifiedRoute;JSONArray measured=new JSONArray();int good=0;final NetworkWork work=maintenance.get();
+    try{for(int offset=0;offset<batch.size();offset+=2){
       maintenanceCheck();List<Future<ProbeResult>> tasks=new ArrayList<>();List<String> round=batch.subList(offset,Math.min(offset+2,batch.size()));
       try{for(String name:round){final int index=names.indexOf(name);if(index<0)throw new IOException("入口池已变化");api("PUT","/proxies/ProbeEntry"+index,J.obj("name",name),3000);Future<ProbeResult> task=probes.submit(()->{if(work!=null)maintenance.set(work);try{return probeMeasured("ProbeExit"+index,name);}finally{maintenance.remove();}});tasks.add(task);if(work!=null)work.add(task);}
         for(int i=0;i<tasks.size();i++){ProbeResult result=tasks.get(i).get();maintenanceCheck();String name=round.get(i);if(!probeCurrent(result)||!name.equals(result.binding.entry))throw new IOException("测速线路已变化");int delay=result.delay;long now=System.currentTimeMillis();recordProbe(result,now);JSONObject stats=quality.stats(name,now);measured.put(J.obj("name",display(name),"internalName",name,"delay",delay,"samples",stats.optInt("samples"),"successRate",stats.optDouble("rate"),"mean",stats.optLong("mean"),"jitter",stats.optLong("jitter"),"score",stats.optDouble("score"),"kind",result.kind(),"probe",result.publicSummary()));if(delay>0)good++;}
       }finally{for(Future<ProbeResult> task:tasks)if(!task.isDone())task.cancel(true);}
     }
-    maintenanceCheck();results=measured;lastScan=System.currentTimeMillis();if(good==0&&background)return;if(good==0)throw new IOException("本轮入口的完整代理链均不可用；不会改为直连");
+    maintenanceCheck();results=measured;lastScan=System.currentTimeMillis();if(good==0)throw new IOException("本轮入口的完整代理链均不可用；不会改为直连");
     if(lowLatency()&&!force)measureWebsiteCandidates(batch);
+    }catch(Exception candidateFailure){
+      if(!maintenanceCancelled()&&unchangedVerifiedSelection(before)){
+        optimizationFailures=Math.min(4,optimizationFailures+1);note(NetworkDiagnostics.Event.CANDIDATE_FAILURE,NetworkDiagnostics.Reason.CANDIDATE_UNAVAILABLE,NetworkDiagnostics.Stage.PROBE,optimizationFailures);nextOptimizationAt=android.os.SystemClock.elapsedRealtime()+exitRetryDelayMs(optimizationFailures);
+        throw retained("候选线路检查暂未完成，已核验的原线路保持连接");
+      }
+      throw candidateFailure;
+    }
+    optimizationFailures=0;nextOptimizationAt=0;
     maintenanceCheck();String mode=settings==null?"":settings.optString("entryMode"),chosen=currentEntry;
     if(lowLatency()){
       chosen=quality.chooseWithWebsite(websiteQuality,probeRouteKey().equals(websiteSampleEpoch)?websiteSamples:Collections.emptyMap(),batch,currentEntry,force,routeBusy(),System.currentTimeMillis());
     }else if(mode.isEmpty())chosen=quality.choose(batch,currentEntry,force,routeBusy(),System.currentTimeMillis());
     else if(force&&!mode.equals("manual")){List<String> healthy=new ArrayList<>();for(String name:batch)if(quality.stats(name,lastScan).optInt("latest")>0)healthy.add(name);chosen=EntrySelection.random(healthy,new Random());}
-    maintenanceCheck();if(!routeBusy()&&!chosen.isEmpty()&&!chosen.equals(currentEntry)){selectNow(chosen);verifyExit();}
+    maintenanceCheck();if(!routeBusy()&&!chosen.isEmpty()&&!chosen.equals(currentEntry))selectVerifiedRoute(chosen,false);
   }
-  void selectNow(String name)throws Exception{invalidateVerifiedRoute();api("PUT","/proxies/EntryChoice",J.obj("name",name),3000);if(!name.equals(api("GET","/proxies/EntryChoice",null,3000).optString("now")))throw new IOException("入口切换未得到确认");currentEntry=name;quality.selected(name,System.currentTimeMillis());websiteQuality.selected(name,System.currentTimeMillis());websiteResult=new JSONObject();}
+  boolean unchangedVerifiedSelection(ExitRouteReceipt expected){
+    if(expected==null||expected!=verifiedRoute||!verifiedRouteCurrent())return false;
+    try{return expected.entry.equals(api("GET","/proxies/EntryChoice",null,3000).optString("now"))&&expected==verifiedRoute&&verifiedRouteCurrent();}catch(Exception unavailable){return false;}
+  }
+  void selectNow(String name)throws Exception{
+    invalidateVerifiedRoute();api("PUT","/proxies/EntryChoice",J.obj("name",name),3000);
+    if(!name.equals(api("GET","/proxies/EntryChoice",null,3000).optString("now")))throw new IOException("入口切换未得到确认");currentEntry=name;
+  }
+  void commitSelection(){long now=System.currentTimeMillis();quality.selected(currentEntry,now);websiteQuality.selected(currentEntry,now);websiteResult=new JSONObject();}
+  /** Manual, optimization and recovery use the same select/verify/commit transaction.
+   * A failed tentative selection can only retain a newly verified rollback receipt. */
+  void selectVerifiedRoute(String name,boolean measure)throws Exception{
+    maintenanceCheck();if(routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");
+    ExitRouteReceipt previous=verifiedRouteCurrent()?verifiedRoute:null;String old=currentEntry;
+    maintenanceCheck();if(routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");
+    try{
+      selectNow(name);ProbeResult sample=null;
+      if(measure){sample=probeMeasured("FixedExit",name);if(sample.delay<=0||!probeCurrent(sample))throw new IOException("候选入口未通过探测");}
+      verifyExit();ExitRouteReceipt candidate=verifiedRoute;JSONObject observed=transport==null?null:transport.call("snapshot","");
+      if(candidate==null||candidate!=verifiedRoute||!name.equals(candidate.entry)||!candidate.matches(this,observed))throw new IOException("提交入口前网络实例已变化");
+      maintenanceCheck();if(routeBusy())throw new InterruptedIOException("当前操作需要保留原入口");
+      commitSelection();if(sample!=null)publishCurrentProbe(sample);return;
+    }catch(Exception failed){
+      if(previous==null)throw failed;
+      note(NetworkDiagnostics.Event.CANDIDATE_FAILURE,NetworkDiagnostics.Reason.CANDIDATE_UNAVAILABLE,NetworkDiagnostics.Stage.SELECT,0);
+      NetworkWork work=maintenance.get();boolean interrupted=Thread.interrupted();maintenance.remove();
+      try{
+        JSONObject state=transport==null?null:transport.call("snapshot","");
+        if(!previous.sameCore(this,state))throw new IOException("回退前网络实例已变化");
+        selectNow(old);verifyExit();
+        state=transport==null?null:transport.call("snapshot","");
+        if(!previous.sameCore(this,state)||verifiedRoute==null||!verifiedRoute.matches(this,state))throw new IOException("原入口重新核验未得到确认");
+        recoveryBlocked=false;commitSelection();optimizationFailures=Math.min(4,optimizationFailures+1);nextOptimizationAt=android.os.SystemClock.elapsedRealtime()+exitRetryDelayMs(optimizationFailures);note(NetworkDiagnostics.Event.ROLLBACK,NetworkDiagnostics.Reason.CANDIDATE_UNAVAILABLE,NetworkDiagnostics.Stage.VERIFY,1);
+      }catch(Exception rollback){note(NetworkDiagnostics.Event.ROLLBACK,NetworkDiagnostics.Reason.ROLLBACK_FAILED,NetworkDiagnostics.Stage.VERIFY,0);stopFailedTransaction(previous);if(rollback instanceof ExitMismatch)recoveryBlocked=true;report("原入口重新核验未完成，当前窗口连接已暂停");throw new RouteTransactionFailure();}
+      finally{if(work!=null)maintenance.set(work);if(interrupted)Thread.currentThread().interrupt();}
+      throw retained("候选入口未通过验证，已恢复并重新核验原入口");
+    }
+  }
+  /** A stale transaction can revoke its own admission, never stop a replacement core. */
+  void stopFailedTransaction(ExitRouteReceipt owned){
+    Thread.interrupted();clearReadyState();
+    try{
+      if(transport!=null)transport.call("stop","",NetworkDiagnostics.Reason.ROLLBACK_FAILED,owned.generation);
+      else if(owned.process!=null){
+        if(process==owned.process)coreStopReason.set(NetworkDiagnostics.Reason.ROLLBACK_FAILED);
+        owned.process.destroy();if(!owned.process.waitFor(2,TimeUnit.SECONDS)){owned.process.destroyForcibly();owned.process.waitFor(2,TimeUnit.SECONDS);}
+        if(process==owned.process)process=null;
+      }
+    }catch(Exception unavailable){note(NetworkDiagnostics.Event.FAILURE,NetworkDiagnostics.Reason.ROLLBACK_FAILED,NetworkDiagnostics.Stage.STOP,0);}
+  }
   String verifyExit()throws Exception{long began=android.os.SystemClock.elapsedRealtime();try{return verifyExitRequest();}finally{exitCheckDuration=android.os.SystemClock.elapsedRealtime()-began;}}
   static boolean validExitIp(String ip){
     if(ip.matches("(?:[0-9]{1,3}\\.){3}[0-9]{1,3}")){for(String part:ip.split("\\."))if(Integer.parseInt(part)>255)return false;return true;}
@@ -452,12 +566,15 @@ class NativeNetwork {
       catch(Exception cancelled){ok=false;text="测速已暂停，当前操作继续进行";}finally{if(work!=null)finishMaintenance(work);measuringLatency=false;WindowNetworkState.save(context,ChatSession.peek(),this);}
       final boolean success=ok;final String message=text;main.post(()->cb.done(success,message));});
   }
-  void checkExit(Callback cb){cancelMaintenance();worker.execute(()->{try{if(!ready||!coreAlive())throw new IOException("请先恢复应用网络");verifyExit();main.post(()->cb.done(true,"出口已核实"));}catch(Exception e){if(!retainVerifiedRoute(e)){stopNow();if(e instanceof ExitMismatch)recoveryBlocked=true;report(e.getMessage()==null?"出口核实失败":e.getMessage());}main.post(()->cb.done(false,message));}});}
-  void beforeSend(Callback cb){cancelMaintenance();worker.execute(()->{try{if(!ready||!coreAlive())throw new IOException("内置网络尚未连接");verifyExit();main.post(()->cb.done(true,""));}catch(Exception e){boolean usable=retainVerifiedRoute(e);if(!usable){stopNow();if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException?e.getMessage():"固定出口验证失败");}final String detail=message;main.post(()->cb.done(usable,detail));}});}
-  void rescan(Callback cb){long generation=maintenanceGeneration;worker.execute(()->{NetworkWork work=beginMaintenance(generation);if(work==null){main.post(()->cb.done(false,"测速已让位于连接恢复，请稍后再测"));return;}try{if(!ready)throw new IOException("请先连接内置网络");scanAndSelect(false);verifyExit();report("测速完成 · "+display(currentEntry));main.post(()->cb.done(true,message));}catch(Exception e){if(work.cancelled&&!(e instanceof ExitMismatch)&&cancelledVerifiedRouteCurrent()){main.post(()->cb.done(false,"测速已让位于连接恢复，请稍后再测"));}else{if(!retainVerifiedRoute(e)){stopNow();if(e instanceof ExitMismatch)recoveryBlocked=true;report("测速或出口验证失败，连接已停止；不会改为直连");}main.post(()->cb.done(false,message));}}finally{finishMaintenance(work);}});}
+  void checkExit(Callback cb){cancelMaintenance();worker.execute(()->{try{if(!ready||!coreAlive())throw new IOException("请先恢复应用网络");verifyExit();main.post(()->cb.done(true,"出口已核实"));}catch(Exception e){if(!retainVerifiedRoute(e)){stopNow(e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.HEALTH_FAILED);if(e instanceof ExitMismatch)recoveryBlocked=true;report(e.getMessage()==null?"出口核实失败":e.getMessage());}main.post(()->cb.done(false,message));}});}
+  void beforeSend(Callback cb){cancelMaintenance();worker.execute(()->{try{if(!ready||!coreAlive())throw new IOException("内置网络尚未连接");verifyExit();main.post(()->cb.done(true,""));}catch(Exception e){boolean usable=retainVerifiedRoute(e);if(!usable){stopNow(e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.HEALTH_FAILED);if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException?e.getMessage():"固定出口验证失败");}final String detail=message;main.post(()->cb.done(usable,detail));}});}
+  void rescan(Callback cb){long generation=maintenanceGeneration;worker.execute(()->{NetworkWork work=beginMaintenance(generation);if(work==null){main.post(()->cb.done(false,"测速已让位于连接恢复，请稍后再测"));return;}try{if(!ready)throw new IOException("请先连接内置网络");scanAndSelect(false);verifyExit();report("测速完成 · "+display(currentEntry));main.post(()->cb.done(true,message));}catch(Exception e){if(work.cancelled&&!(e instanceof ExitMismatch)&&cancelledVerifiedRouteCurrent()){main.post(()->cb.done(false,"测速已让位于连接恢复，请稍后再测"));}else{if(!(e instanceof RouteTransactionFailure)&&!retainedFailure(e)&&!retainVerifiedRoute(e)){stopNow(e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.HEALTH_FAILED);if(e instanceof ExitMismatch)recoveryBlocked=true;report("测速或出口验证失败，连接已停止；不会改为直连");}main.post(()->cb.done(false,message));}}finally{finishMaintenance(work);}});}
 
 
-  void select(String name,Callback cb){cancelMaintenance();worker.execute(()->{String old=currentEntry;try{if(!ready||!names.contains(name))throw new IOException();selectNow(name);ProbeResult result=probeMeasured("FixedExit",name);if(result.delay<0||!probeCurrent(result))throw new IOException();publishCurrentProbe(result);verifyExit();report("已切换入口 · "+display(currentEntry));main.post(()->cb.done(true,message));}catch(Exception e){try{if(old.isEmpty())throw new IOException();selectNow(old);verifyExit();report("该入口不可用，已恢复原入口");}catch(Exception restore){stopNow();report("出口无法通过核实，连接已停止");}main.post(()->cb.done(false,message));}});}
+  void select(String name,Callback cb){cancelMaintenance();worker.execute(()->{
+    try{if(!ready||!names.contains(name))throw new IOException("请先连接并选择有效入口");selectVerifiedRoute(name,true);report("已切换入口 · "+display(currentEntry));main.post(()->cb.done(true,message));}
+    catch(Exception failure){if(!(failure instanceof RouteTransactionFailure)&&!retainedFailure(failure)){if(verifiedRouteCurrent())report("入口未切换，原线路保持连接");else{stopNow(NetworkDiagnostics.Reason.HEALTH_FAILED);report("出口无法通过核实，连接已停止");}}main.post(()->cb.done(false,message));}
+  });}
   /** A bounded HEAD on the current protected route after primary failure only.
    * No cookies, redirects, candidate selection, response body or application replay. */
   NetworkHealthPolicy.TargetEvidence secondaryHealth(ProbeResult primary)throws Exception{
@@ -478,13 +595,9 @@ class NativeNetwork {
     if(!ready||starting||routeBusy())return;
     try{
       maintenanceCheck();if(!coreAlive())throw new IOException("内置网络进程已退出");
-      if(exitCheckFailures>0){
-        if(!verifiedRouteCurrent())throw new IOException("网络实例已变化，请重新核验出口");
-        // Do not let an unrelated Google probe choose a new, unknown route while
-        // the exit detector is unavailable. Its recovery is checked first.
-        if(android.os.SystemClock.elapsedRealtime()<nextExitCheckAt)return;
-        verifyExit();
-      }
+      if(exitCheckFailures>0&&!verifiedRouteCurrent())throw new IOException("网络实例已变化，请重新核验出口");
+      // Backoff belongs only to the exit detector; corroborated transport failure
+      // still permits candidate recovery, whose new exit must pass verification.
       ProbeResult result=currentProbe;long now=System.currentTimeMillis();
       boolean reused=reuseRecent&&probeCurrent(result)&&freshLatency(result.at,now);
       if(!reused)result=probeMeasured("FixedExit",currentEntry);
@@ -500,20 +613,36 @@ class NativeNetwork {
         // Website restrictions/TLS ambiguity are not failed proxy quality samples.
         if(target==NetworkHealthPolicy.TargetEvidence.TRANSPORT_UNAVAILABLE)recordProbe(result,now);
         if(assessed.action==NetworkHealthPolicy.Action.RECOVER){if(settings!=null&&"manual".equals(settings.optString("entryMode")))throw new IOException("指定入口与目标网站连续连接失败，请重连或编辑网络");firstVerifiedRoute(currentEntry);maintenanceCheck();if(routeBusy())return;failures=0;healthStatus="recovered";report("已自动恢复入口 · "+display(currentEntry));}
-        else if(assessed.action==NetworkHealthPolicy.Action.HEALTHY&&now-lastVerified>=NetworkOptimizationPolicy.ACTIVE_INTERVAL)verifyExit();return;
+        else if(assessed.action==NetworkHealthPolicy.Action.HEALTHY)verifyExitWhenDue(now);return;
       }
-      if(!reused)recordProbe(result,now);healthStatus="healthy";healthTargetCode=0;healthObservedAt=now;
-      failures=0;if(now-lastVerified>=NetworkOptimizationPolicy.ACTIVE_INTERVAL)verifyExit();
-      if((lowLatency()||settings!=null&&settings.optString("entryMode").isEmpty())&&now-lastScan>=NetworkOptimizationPolicy.scanInterval(optimizationRounds)&&!backgroundIdle()){
+      if(!reused)recordProbe(result,now);healthStatus=exitCheckFailures>0?"reachable-verification-pending":"healthy";healthTargetCode=0;healthObservedAt=now;
+      failures=0;verifyExitWhenDue(now);
+      if(exitCheckFailures==0&&android.os.SystemClock.elapsedRealtime()>=nextOptimizationAt&&(lowLatency()||settings!=null&&settings.optString("entryMode").isEmpty())&&now-lastScan>=NetworkOptimizationPolicy.scanInterval(optimizationRounds)&&!backgroundIdle()){
         List<String> batch=optimizationBatch();scanSubset(batch,false,true);optimizationRounds++;
       }
       // Website hostnames are handed to the fixed SOCKS exit for remote resolution.
       // Periodically benchmarking unrelated DoH services cannot tune that resolver;
       // keep diagnostics on demand instead of competing with browser traffic.
-    }catch(Exception e){if(maintenanceCancelled()&&!(e instanceof ExitMismatch)&&cancelledVerifiedRouteCurrent())return;if(!retainVerifiedRoute(e)){stopNow();if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException?e.getMessage():"内置网络已停止；请检查节点与固定出口");}}
+    }catch(Exception e){if(maintenanceCancelled()&&!(e instanceof ExitMismatch)&&cancelledVerifiedRouteCurrent())return;if(!(e instanceof RouteTransactionFailure)&&!retainedFailure(e)&&!retainVerifiedRoute(e)){stopNow(e instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.HEALTH_FAILED);if(e instanceof ExitMismatch)recoveryBlocked=true;report(e instanceof IOException?e.getMessage():"内置网络已停止；请检查节点与固定出口");}}
   }
-  void stop(){cancelMaintenance();worker.execute(()->stopNow());}
-  boolean stopNow(){if(maintenanceCancelled())Thread.interrupted();invalidateVerifiedRoute();ready=false;currentProbe=null;latencyReading=new JSONObject();websiteResult=new JSONObject();lastProbeDuration=0;lastProbeDurationAt=0;lastProbeEntry="";if(transport!=null){try{return !transport.call("stop","").optBoolean("alive");}catch(Exception e){message="独立网络停止尚未确认";return false;}}else{if(process!=null){process.destroy();process=null;}cleanupOwnedPid();return !coreAlive();}}
+  void verifyExitWhenDue(long now)throws Exception{if(now-lastVerified>=NetworkOptimizationPolicy.ACTIVE_INTERVAL&&android.os.SystemClock.elapsedRealtime()>=nextExitCheckAt)verifyExit();}
+  /** Bounded observation during a reply; does not alter route, receipt or health state. */
+  synchronized void diagnoseReadOnly(Callback cb){
+    long now=android.os.SystemClock.elapsedRealtime();
+    if(readOnlyDiagnosticQueued||now-lastReadOnlyDiagnostic<120000){main.post(()->cb.done(false,"只读网络检查正在等待下次采样"));return;}
+    readOnlyDiagnosticQueued=true;lastReadOnlyDiagnostic=now;
+    worker.execute(()->{boolean ok=false;String detail="连接状态尚未确认，当前操作继续保留";
+      try{ExitRouteReceipt before=verifiedRoute;if(before!=null&&ready&&coreAlive()&&verifiedRouteCurrent()){
+        ProbeResult sample=probeMeasured("FixedExit",currentEntry);
+        if(before==verifiedRoute&&probeCurrent(sample)&&verifiedRouteCurrent()){ok=sample.delay>0;detail=ok?"当前线路探测可达；网页回复状态仍待确认":"当前线路探测未通过；已保留当前回复和连接";}
+      }}catch(Exception unavailable){detail="只读网络检查暂未完成，当前操作继续保留";}
+      finally{readOnlyDiagnosticQueued=false;}final boolean success=ok;final String text=detail;main.post(()->cb.done(success,text));
+    });
+  }
+  void stop(){cancelMaintenance();worker.execute(()->stopNow(NetworkDiagnostics.Reason.REQUESTED));}
+  void clearReadyState(){invalidateVerifiedRoute();ready=false;currentProbe=null;latencyReading=new JSONObject();websiteResult=new JSONObject();lastProbeDuration=0;lastProbeDurationAt=0;lastProbeEntry="";}
+  boolean stopNow(){return stopNow(NetworkDiagnostics.Reason.REQUESTED);}
+  boolean stopNow(NetworkDiagnostics.Reason reason){bindDiagnostics();note(NetworkDiagnostics.Event.STOP_REQUEST,reason,NetworkDiagnostics.Stage.STOP,0);if(process!=null&&process.isAlive())coreStopReason.set(reason);if(maintenanceCancelled())Thread.interrupted();clearReadyState();if(transport!=null){try{return !transport.call("stop","",reason).optBoolean("alive");}catch(Exception e){note(NetworkDiagnostics.Event.FAILURE,reason,NetworkDiagnostics.Stage.STOP,0);message="独立网络停止尚未确认";return false;}}else{if(process!=null){process.destroy();process=null;}cleanupOwnedPid();return !coreAlive();}}
   void cleanupOwnedPid(){try{File pidFile=new File(root,"core.pid");if(!pidFile.exists())return;int pid;try(FileInputStream in=new FileInputStream(pidFile)){pid=Integer.parseInt(J.text(in,32).trim());}if(pid<=1||pid==android.os.Process.myPid())return;String cmd,status;try(FileInputStream in=new FileInputStream("/proc/"+pid+"/cmdline")){cmd=J.text(in,8192);}try(FileInputStream in=new FileInputStream("/proc/"+pid+"/status")){status=J.text(in,8192);}if(cmd.contains("libmihomo.so")&&cmd.contains(root.getAbsolutePath())&&status.matches("(?s).*Uid:\\s+"+android.os.Process.myUid()+"\\s+.*"))android.os.Process.killProcess(pid);pidFile.delete();}catch(Exception ignored){}}
   static String display(String name){return name.startsWith("Entry|")?name.substring(6):name;}
   static String hash(String s){return Sha256.hash(s);}

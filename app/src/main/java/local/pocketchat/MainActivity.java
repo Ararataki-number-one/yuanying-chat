@@ -48,13 +48,15 @@ public class MainActivity extends ThemedActivity {
     // banner or off-page feedback when the conversation changes.
     quiet|=message.equals("对话已改变，请检查上次发送；不会自动重发");
     boolean current=session!=null&&TextUtils.equals(message,session.status);
-    boolean sessionError=current&&(!session.pageError.isEmpty()&&TextUtils.equals(message,session.pageError)||session.websiteConnectionIssue||!session.networkIssue.isEmpty()&&TextUtils.equals(message,session.networkIssue)&&(session.offline||!session.networkReady&&!session.connecting));
-    boolean error=!quiet&&(sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
+    boolean sessionError=current&&(session.websiteConnectionIssue||!session.pageError.isEmpty()||!session.networkIssue.isEmpty()&&TextUtils.equals(message,session.networkIssue)&&(session.offline||!session.networkReady&&!session.connecting));
+    boolean waiting=current&&session.replyStalled;
+    if(waiting)quiet=false;
+    boolean error=waiting||!quiet&&(sessionError||message.startsWith("网页反馈：")||message.matches(".*(失败|错误|无法|未能|不可用|未完成|待确认|断开|中断|过期|失效|未通过|请检查|请先|暂未|未添加|需要重新|没有可用).*"));
     boolean fileProgress=session!=null&&session.resourceFilePreparations>0&&message.equals("准备附件…");
-    if(error||fileProgress){if(!TextUtils.equals(status.getText(),message))status.setText(message);status.setTextColor(error?DesignUi.RED:DesignUi.MUTED);}
+    if(error||fileProgress){if(!TextUtils.equals(status.getText(),message))status.setText(message);status.setTextColor(error&&!waiting?DesignUi.RED:DesignUi.MUTED);}
     status.setClickable(error);status.setContentDescription(fileProgress?"正在准备所选附件":"网页或网络错误，点按查看详情");
     status.setVisibility((error||fileProgress)&&hub!=null&&hub.page==AppHub.CHAT?View.VISIBLE:View.GONE);
-    if(error&&hub!=null&&hub.page!=AppHub.CHAT)hub.feedback(message,true);
+    if(error&&!waiting&&hub!=null&&hub.page!=AppHub.CHAT)hub.feedback(message,true);
   }
   @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}
   @Override public void onCreate(Bundle state){
@@ -70,7 +72,7 @@ public class MainActivity extends ThemedActivity {
     ReferenceUi.insets(this,root,visible->{keyboardVisible=visible;updateReadingLayout();});
     designChrome=new DesignChrome(this,root);
     status=label("",12,DesignUi.RED);status.setPadding(dp(14),dp(4),dp(14),dp(4));status.setMaxLines(2);status.setEllipsize(TextUtils.TruncateAt.END);status.setVisibility(View.GONE);status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-    status.setContentDescription("网页或网络错误，点按查看详情");status.setOnClickListener(v->NetworkStatusUi.show(this));root.addView(status,new LinearLayout.LayoutParams(-1,-2));
+    status.setContentDescription("网页或网络错误，点按查看详情");status.setOnClickListener(v->{if(session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())ReplyState.show(this);else NetworkStatusUi.show(this);});root.addView(status,new LinearLayout.LayoutParams(-1,-2));
     loading=new LoadingUi(this);FrameLayout stack=new FrameLayout(this);root.addView(stack,new LinearLayout.LayoutParams(-1,0,1));
     remote=session.web;if(remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);remote.setHost(this);remote.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
     attachments=new Attachments(this);downloads=new FileDownloads(this);remote.setWebViewClient(remoteClient());remote.setWebChromeClient(attachments.chrome());
@@ -124,6 +126,7 @@ public class MainActivity extends ThemedActivity {
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项").asSheet();
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
     option(d,"重新加载网页",this::requestReload);
+    if(session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())option(d,"恢复网页连接",()->ReplyState.websiteConnection(this));
     option(d,"编辑当前环境",()->EnvironmentEditorUi.show(this));
     option(d,"当前环境网络",()->hub.networkFor(Profiles.slot(this)));
     option(d,"管理全部环境",()->ProfileUi.manage(this));
@@ -133,51 +136,63 @@ public class MainActivity extends ThemedActivity {
     if(LoginPagePolicy.google(remote.getUrl()))option(d,"登录帮助",()->LoginHelpUi.show(this));
     d.show();
   }
+  boolean reloadMatches(ChatSession.ReloadTarget target){return !destroyed&&session!=null&&target.matches(session)&&remote==session.web;}
   void requestReload(){
     if(reloadChecking||reloadDialog!=null||destroyed)return;
-    String url=remote.getUrl();long epoch=session.navigationEpoch;
-    boolean known=ProfileUi.working(session)||session.state.optBoolean("busy");
-    if(!remote.hasVisibleDocument()||!MainActivity.chatUrl(url)){confirmReload(url,epoch,known||remote.hasVisibleDocument(),false);return;}
+    ChatSession.ReloadTarget target=session.reloadTarget();String url=target.url;
+    if(!remote.hasVisibleDocument()||!MainActivity.chatUrl(url)){confirmIndependentReload(target,"无法完整读取当前网页中的输入或表单内容。");return;}
     reloadChecking=true;
     session.asyncDriver("web-inspect",new JSONObject(),2500,state->{
-      if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl())){reloadChecking=false;return;}
-      if(!WebReplyObserver.same(url,state.optString("url"))){confirmReload(url,epoch,true,false);return;}
-      session.archiveWebsiteNavigation(state);
+      if(!reloadMatches(target)){reloadChecking=false;return;}
+      if(WebReplyObserver.same(url,state.optString("url")))session.archiveWebsiteNavigation(state);
+      if(!reloadMatches(target)){reloadChecking=false;return;}
       boolean busy=ProfileUi.working(session)||state.optBoolean("busy");
-      // Capture the browser's own draft; never fill or send its composer.
       session.asyncDriver("page-state",J.obj("expectedUrl",url),2500,page->{
-        if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl())){reloadChecking=false;return;}
-        boolean draft=page.optBoolean("ok")&&!page.optString("draft").trim().isEmpty();
-        confirmReload(url,epoch,busy||ProfileUi.working(session)||!page.optBoolean("ok"),draft);
+        if(!reloadMatches(target)){reloadChecking=false;return;}
+        if(!target.matchesSnapshot(page)){
+          String why=page.optString("draftOmittedReason").equals("too-long")?"当前输入共有 "+page.optInt("draftLength")+" 个字符，超过自动暂存范围。":"网页通信暂不可用，无法完整读取当前输入。";
+          confirmIndependentReload(target,why);return;
+        }
+        confirmReload(target,busy||ProfileUi.working(session),page);
       });
     });
   }
-  void confirmReload(String url,long epoch,boolean interrupted,boolean draft){
-    reloadChecking=false;
-    if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl()))return;
-    if(!interrupted&&!draft){reloadCurrent(url,epoch);return;}
+  void confirmReload(ChatSession.ReloadTarget target,boolean interrupted,JSONObject page){
+    reloadChecking=false;if(!reloadMatches(target))return;
+    boolean draft=PageMemory.hasDraft(page);
+    if(!interrupted&&!draft){reloadCurrent(target,page);return;}
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"重新加载网页？");reloadDialog=d;
-    d.note(!MainActivity.chatUrl(url)?"重新加载会关闭当前网页，未提交的登录信息或表单内容可能丢失。":interrupted?"重新加载可能中断正在生成的回复、上传或其他网页操作；未发送的输入可能无法自动恢复。它不会自动重发提问。":"重新加载会关闭当前网页，未发送的输入可能无法自动恢复。");
+    d.note(interrupted?"重新加载可能中断正在生成的回复、上传或其他网页操作；未发送的输入可能无法自动恢复。它不会自动重发提问。":"重新加载会关闭当前网页，未发送的输入可能无法自动恢复。");
     if(draft)d.note("当前输入会先暂存。正在回复时，恢复后的网页不会自动填入这份草稿，可从暂存草稿中复制。");
+    if(session.resourceFilesUncertain())d.note("附件状态待确认。请先核对网页中的附件；继续重新加载可能中断上传，需重新选择文件。");
     d.setOnDismissListener(unused->{if(reloadDialog==d)reloadDialog=null;});
-    d.buttons("取消",d::dismiss,"重新加载",()->{d.dismiss();reloadCurrent(url,epoch);});d.show();
+    d.buttons("取消",d::dismiss,"重新加载",()->{d.dismiss();reloadCurrent(target,page);});d.show();
   }
-  void reloadCurrent(String url,long epoch){
-    if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl()))return;
-    if(!MainActivity.chatUrl(url)){session.retryCurrent(url);return;}
-    session.asyncDriver("page-state",J.obj("expectedUrl",url),2500,page->{
-      if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl()))return;
-      if(!page.optBoolean("ok")){session.setStatus("暂时无法读取当前输入，请先复制草稿再重新加载");return;}
-      String draft=page.optString("draft");
-      if(draft.trim().isEmpty()){session.retryCurrent(url);return;}
-      session.webStore.worker.execute(()->{boolean saved=DraftArchive.get(session.context).save(url,draft,"重新加载网页前草稿");handler.post(()->{
-        if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl()))return;
-        if(!saved){session.setStatus("草稿暂存失败，请先复制当前输入再重新加载");return;}
-        session.asyncDriver("page-state",J.obj("expectedUrl",url),2500,latest->{
-          if(destroyed||epoch!=session.navigationEpoch||!BrowserRuntimePolicy.sameDocument(url,remote.getUrl()))return;
-          if(!latest.optBoolean("ok")||!page.optString("documentId").equals(latest.optString("documentId"))||!draft.equals(latest.optString("draft"))){session.setStatus("当前输入已变化，请保留草稿，需要时再重新加载");return;}session.retryCurrent(url);
-        });
-      });});
+  void confirmIndependentReload(ChatSession.ReloadTarget target,String reason){
+    reloadChecking=false;if(!reloadMatches(target))return;
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"手动保存后重新加载？");reloadDialog=d;
+    d.note(reason+"\n\n请先取消并复制需要保留的输入。继续会关闭当前网页，未保存的草稿、表单或正在进行的回复、上传可能丢失；不会自动重发提问。");
+    if(session.resourceFilesUncertain())d.note("附件状态待确认。请先核对网页中的附件；继续重新加载可能中断上传，需重新选择文件。");
+    d.setOnDismissListener(unused->{if(reloadDialog==d)reloadDialog=null;});
+    d.buttons("取消，先保存",d::dismiss,"已保存，重新加载",()->{d.dismiss();if(reloadMatches(target))session.reloadConfirmed(target,null,true);});d.show();
+  }
+  void reloadCurrent(ChatSession.ReloadTarget target,JSONObject page){
+    if(!reloadMatches(target)||!target.matchesSnapshot(page))return;
+    String draft=page.optString("draft");
+    if(draft.trim().isEmpty()){verifyReloadDraft(target,page);return;}
+    session.webStore.worker.execute(()->{boolean saved=DraftArchive.get(session.context).save(target.url,draft,"重新加载网页前草稿");handler.post(()->{
+      if(!reloadMatches(target))return;
+      if(!saved){confirmIndependentReload(target,"当前输入暂存失败，网页尚未重新加载。");return;}
+      verifyReloadDraft(target,page);
+    });});
+  }
+  void verifyReloadDraft(ChatSession.ReloadTarget target,JSONObject page){
+    if(!reloadMatches(target))return;
+    session.asyncDriver("page-state",J.obj("expectedUrl",target.url),2500,latest->{
+      if(!reloadMatches(target))return;
+      if(!target.matchesSnapshot(latest)){confirmIndependentReload(target,"无法再次核对当前输入，网页尚未重新加载。");return;}
+      if(!page.optString("documentId").equals(latest.optString("documentId"))||!page.optString("draft").equals(latest.optString("draft"))){session.setStatus("当前输入已变化，请保留草稿，需要时再重新加载");return;}
+      session.reloadConfirmed(target,latest,false);
     });
   }
   void option(ReferenceUi.Modal d,String title,Runnable action){ReferenceUi.menuAction(d,title,()->{d.dismiss();action.run();});}

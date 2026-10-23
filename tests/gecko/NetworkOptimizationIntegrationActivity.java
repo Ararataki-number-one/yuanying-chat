@@ -17,8 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Actual Android/Mihomo with two loopback SOCKS hops. Never uses personal or public routes. */
 public final class NetworkOptimizationIntegrationActivity extends Activity {
-  final JSONArray checks=new JSONArray(),transportEvidence=new JSONArray();
-  JSONObject firstConnectionDiagnostic;
+  final JSONArray checks=new JSONArray(),transportEvidence=new JSONArray();final JSONObject repairEvidence=new JSONObject();
+  JSONObject firstConnectionDiagnostic;boolean diagnosedUnexpectedExit,diagnosedRequestedStop,diagnosedOldGeneration,diagnosedStaleStop;
   static String diagnosticText(String value,int limit){return value==null?"":value.length()>limit?value.substring(0,limit)+"…":value;}
   static JSONObject diagnosticFailure(Exception failure){StringWriter stack=new StringWriter();failure.printStackTrace(new PrintWriter(stack));return J.obj("class",failure.getClass().getName(),"message",diagnosticText(failure.getMessage(),160),"stack",diagnosticText(stack.toString(),1200));}
   static String diagnosticEvent(JSONObject value){
@@ -37,7 +37,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
   void transportTrace(JSONObject value){transportEvidence.put(value);Log.i("PocketNetworkPerformance",J.obj("kind","exitTransportEvidence","value",value).toString());}
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test"))throw new SecurityException();new Thread(this::run,"network-optimization-fixture").start();}
   static class TestNetwork extends NativeNetwork {
-    final HttpFixture site,plain;final SSLSocketFactory trustFactory;volatile boolean busy;volatile String exitFailureReason="";volatile boolean cancelOnMismatch;volatile IOException secondaryFailure;
+    final HttpFixture site,plain;final SSLSocketFactory trustFactory;volatile boolean busy;volatile String exitFailureReason="";volatile boolean cancelOnMismatch;volatile IOException secondaryFailure;volatile boolean failCandidateControl,busyAfterIdentityCheck;volatile String failVerificationEntry="";
     TestNetwork(Context c,HttpFixture site,HttpFixture plain){this(c,site,plain,false);}
     TestNetwork(Context c,HttpFixture site,HttpFixture plain,boolean isolated){this(c,site,plain,new File(c.getNoBackupFilesDir(),isolated?"network-runtime":"network-performance-test"));}
     TestNetwork(Context c,HttpFixture site,HttpFixture plain,File directory){super(c,directory,false);this.site=site;this.plain=plain;trustFactory=site.tls.getSocketFactory();}
@@ -49,7 +49,9 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     @Override String websiteUrl(){return site.url("/website");}
     @Override String probeUrl(){return plain.url("/probe");}
     @Override String exitCheckUrl(){return site.url("/ip");}
-    @Override String verifyExit()throws Exception{exitFailureReason="";try{return super.verifyExit();}catch(ExitCheckUnavailable unavailable){exitFailureReason=unavailable.reason;throw unavailable;}catch(ExitMismatch mismatch){if(cancelOnMismatch)cancelMaintenance();throw mismatch;}}
+    @Override JSONObject api(String method,String path,JSONObject body,int timeout)throws Exception{if(failCandidateControl&&method.equals("PUT")&&path.startsWith("/proxies/ProbeEntry"))throw new IOException("controlled candidate group request failure");return super.api(method,path,body,timeout);}
+    @Override String verifyExit()throws Exception{exitFailureReason="";int status=site.ipStatus;if(currentEntry.equals(failVerificationEntry))site.ipStatus=503;try{return super.verifyExit();}catch(ExitCheckUnavailable unavailable){exitFailureReason=unavailable.reason;throw unavailable;}catch(ExitMismatch mismatch){if(cancelOnMismatch)cancelMaintenance();throw mismatch;}finally{site.ipStatus=status;}}
+    @Override boolean verifiedRouteCurrent(){boolean current=super.verifiedRouteCurrent();if(busyAfterIdentityCheck){busyAfterIdentityCheck=false;busy=true;}return current;}
     @Override boolean routeBusy(){return busy;}
     @Override boolean backgroundIdle(){return false;}
     @Override void report(String value){message=value;}
@@ -135,11 +137,11 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       n.quality.configure("synthetic-old-modes");for(int i=0;i<5;i++){n.quality.record("Entry|slow",500,now+i);n.quality.record("Entry|fast",30,now+i);}n.quality.selected("Entry|slow",now-RouteQuality.COOLDOWN-1000);NetworkCatalog.put(n.settings,"entryMode","random");n.scanAndSelect(false);check("Healthy random mode is not silently optimized",n.currentEntry.equals("Entry|slow"));NetworkCatalog.put(n.settings,"entryMode","manual");n.scanSubset(Collections.singletonList("Entry|slow"),false,false);check("Manual mode keeps the specified entry",n.currentEntry.equals("Entry|slow"));
       NetworkCatalog.put(n.settings,"entryMode","latency");n.websiteQuality.configure("synthetic-low-latency");for(int i=0;i<5;i++){n.websiteQuality.record("Entry|slow",900,now+i);n.websiteQuality.record("Entry|fast",50,now+i);}n.websiteQuality.selected("Entry|slow",now-RouteQuality.COOLDOWN-1000);n.websiteQuality.choose(n.names,n.currentEntry,false,true,now);n.scanSubset(n.names,false,true);check("Low latency selects a proven better candidate",n.currentEntry.equals("Entry|fast"));check("Optimizing preserves the fixed exit IP",n.exitIp.equals("203.0.113.8"));
       n.ready=true;site.ip="203.0.113.9";boolean mismatch=false;try{n.verifyExit();}catch(NativeNetwork.ExitMismatch expected){mismatch=true;}check("Exit IP changes still trigger the original protection",mismatch&&n.recoveryBlocked);
-      site.ip="203.0.113.8";exitVerificationContinuityChecks(n,site,plain,fixed,slow,fast);healthDetectorContinuityChecks(n,site,plain);displaySchedulingChecks(n,site,plain,report);transportFailureRejectionChecks(n,site,plain);testTransport(site,plain,config,yaml);
+      site.ip="203.0.113.8";exitVerificationContinuityChecks(n,site,plain,fixed,slow,fast);healthDetectorContinuityChecks(n,site,plain);displaySchedulingChecks(n,site,plain,report);transportFailureRejectionChecks(n,site,plain);testTransport(site,plain,config,yaml);networkRepairChecks(n,site,plain);
       NetworkCatalog.put(report,"independentNetworkService","passed");NetworkCatalog.put(report,"status","passed");
     }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());}
     finally{if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
-    NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"exitTransportContinuity",transportEvidence);if(firstConnectionDiagnostic!=null)NetworkCatalog.put(report,"firstConnectionDiagnostic",firstConnectionDiagnostic);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
+    NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"exitTransportContinuity",transportEvidence);NetworkCatalog.put(report,"networkRepairEvidence",repairEvidence);if(firstConnectionDiagnostic!=null)NetworkCatalog.put(report,"firstConnectionDiagnostic",firstConnectionDiagnostic);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
     report.remove("checks");report.remove("exitTransportContinuity");report.remove("firstConnectionDiagnostic");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
   }
   /** New library selections require identities from the actual bundled parser. */
@@ -232,7 +234,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       // Recovery must use the applied settings, not the fixture-only manual mode.
       NetworkCatalog.put(n.settings,"entryMode",mode);echoes=stream.echoes.get();CountDownLatch recovered=new CountDownLatch(1);final boolean[] recoveryAccepted={false};
       n.recover((ok,message)->{recoveryAccepted[0]=ok;recovered.countDown();});
-      check("Same-route recovery callback reopens admission during detector outage",recovered.await(25,TimeUnit.SECONDS)&&recoveryAccepted[0]&&n.connectionAdmission()==NetworkHealthPolicy.Admission.DEGRADED_VERIFICATION&&n.ready&&corePid(n)==pid&&token.equals(n.token)&&entry.equals(n.currentEntry)&&stream.awaitEchoes(echoes));NetworkCatalog.put(n.settings,"entryMode","manual");
+      check("Same-route recovery reports incomplete verification while retaining admission during detector outage",recovered.await(25,TimeUnit.SECONDS)&&!recoveryAccepted[0]&&n.connectionAdmission()==NetworkHealthPolicy.Admission.DEGRADED_VERIFICATION&&n.ready&&corePid(n)==pid&&token.equals(n.token)&&entry.equals(n.currentEntry)&&stream.awaitEchoes(echoes));NetworkCatalog.put(n.settings,"entryMode","manual");
       site.ipStatus=200;n.nextExitCheckAt=0;n.health();
       check("A recovered exit service renews proof and resets the retry state",n.lastVerified>=verified&&n.exitCheckFailures==0&&n.nextExitCheckAt==0&&n.verifiedRouteCurrent()&&stream.failure==null);
       check("All temporary verification faults retain one WebSocket and one core generation",site.webSocketConnections.get()==1&&corePid(n)==pid&&token.equals(n.token)&&entry.equals(n.currentEntry)&&n.proxyPort==port&&ip.equals(n.exitIp));
@@ -380,9 +382,10 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       check("A separate environment control process observes its tunnel",observed.await(10,TimeUnit.SECONDS)&&child[0]!=null&&child[0].optInt("corePid")==b.getInt("pid")&&child[0].optInt("clientPid")!=android.os.Process.myPid());
       Thread.sleep(500);check("Killing the environment control process keeps its proxy kernel",second.transport.call("snapshot","").getInt("pid")==b.getInt("pid")&&second.coreAlive());
       android.os.Process.killProcess(pid);long deadline=android.os.SystemClock.elapsedRealtime()+5000;while(adopted.coreAlive()&&android.os.SystemClock.elapsedRealtime()<deadline)Thread.sleep(25);
-      check("Actual core exit is pushed to the control client",!adopted.coreAlive()&&!adopted.ready);check("One core exiting leaves the other environment usable",second.coreAlive()&&second.verifyExit().equals("203.0.113.8"));
-      adopted.startNow();JSONObject restarted=adopted.transport.call("snapshot","");Thread.sleep(250);check("Restart creates a new generation that ignores the old exit event",restarted.getInt("pid")!=pid&&!restarted.getString("generation").equals(attached.getString("generation"))&&adopted.coreAlive()&&adopted.ready);check("Restarting one tunnel keeps the other kernel and port",second.transport.call("snapshot","").getInt("pid")==b.getInt("pid")&&second.proxyPort==b.getInt("proxyPort"));
-      check("A stop acknowledgement confirms the targeted core is closed",adopted.stopNow());check("Stopping one environment does not stop the other",second.coreAlive());
+      check("Actual core exit is pushed to the control client",!adopted.coreAlive()&&!adopted.ready);diagnosedUnexpectedExit=awaitDiagnostic(this,attached.getString("generation"),"CORE_EXIT","CORE_EXITED",true);check("One core exiting leaves the other environment usable",second.coreAlive()&&second.verifyExit().equals("203.0.113.8"));
+      adopted.startNow();JSONObject restarted=adopted.transport.call("snapshot","");Thread.sleep(250);check("Restart creates a new generation that ignores the old exit event",restarted.getInt("pid")!=pid&&!restarted.getString("generation").equals(attached.getString("generation"))&&adopted.coreAlive()&&adopted.ready);diagnosedOldGeneration=awaitDiagnostic(this,attached.getString("generation"),"CORE_EXIT","CORE_EXITED",true)&&awaitDiagnostic(this,restarted.getString("generation"),"CORE_START","UNKNOWN",false);check("Restarting one tunnel keeps the other kernel and port",second.transport.call("snapshot","").getInt("pid")==b.getInt("pid")&&second.proxyPort==b.getInt("proxyPort"));
+      diagnosedStaleStop=diagnosedStaleStop&&staleGenerationStopKeepsReplacement(adopted,site,attached.getString("generation"));
+      check("A stop acknowledgement confirms the targeted core is closed",adopted.stopNow());diagnosedRequestedStop=awaitDiagnostic(this,restarted.getString("generation"),"CORE_EXIT","REQUESTED",false);check("Stopping one environment does not stop the other",second.coreAlive());
       android.os.Process.killProcess(b.getInt("servicePid"));deadline=android.os.SystemClock.elapsedRealtime()+5000;while(second.coreAlive()&&android.os.SystemClock.elapsedRealtime()<deadline)Thread.sleep(25);check("Service process death closes the client's network admission",!second.coreAlive()&&!second.ready);
       second.startNow();JSONObject recovered=second.transport.call("snapshot","");check("A replacement service restores and verifies the environment",recovered.getInt("servicePid")!=b.getInt("servicePid")&&recovered.getInt("pid")!=b.getInt("pid")&&second.ready&&second.exitIp.equals("203.0.113.8"));serviceMismatchCancellationChecks(second,site);check("The last tunnel stops through the service",second.stopNow()&&!second.coreAlive());
     }finally{for(TestNetwork net:new TestNetwork[]{first,second,adopted})if(net!=null){net.stopNow();net.worker.shutdownNow();net.probes.shutdownNow();net.closers.shutdownNow();net.traffic.reader.shutdownNow();}}
@@ -399,6 +402,10 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
   void serviceExitContinuityChecks(TestNetwork n,HttpFixture site)throws Exception{
     JSONObject before=n.transport.call("snapshot","");String token=n.token,entry=n.currentEntry,ip=n.exitIp,mode=n.settings.optString("entryMode");NetworkCatalog.put(n.settings,"entryMode","manual");int connections=site.webSocketConnections.get();
     try(WebSocketStream stream=new WebSocketStream(n,site)){
+      if(!stream.awaitEchoes(0))throw new IOException("Stale stop guard needs a live service-owned WSS");int guardedEchoes=stream.echoes.get();boolean rejected=false;
+      String stale="00000000-0000-0000-0000-000000000000";if(stale.equals(before.getString("generation")))stale="00000000-0000-0000-0000-000000000001";
+      try{n.transport.call("stop","",NetworkDiagnostics.Reason.ROLLBACK_FAILED,stale);}catch(IOException expected){rejected=true;}
+      JSONObject guarded=n.transport.call("snapshot","");diagnosedStaleStop=rejected&&guarded.optBoolean("alive")&&before.getString("generation").equals(guarded.optString("generation"))&&before.getInt("pid")==guarded.optInt("pid")&&n.verifiedRouteCurrent()&&stream.awaitEchoes(guardedEchoes);
       String[] reasons={"http-503","timeout","invalid-response"};String[] names={"Independent network service retains the same WSS and core during exit HTTP failure","Independent network service retains the same WSS and core during a real exit timeout","Independent network service retains the same WSS and core during invalid exit response"};
       for(int fault=0;fault<reasons.length;fault++){
         site.ipStatus=fault==0?503:200;site.ipDelay=fault==1?11000:0;site.ipBody=fault==2?"{invalid-service-json":null;n.lastVerified=0;n.nextExitCheckAt=0;int requests=site.ipRequests.get(),echoes=stream.echoes.get();n.health();JSONObject after=n.transport.call("snapshot","");
@@ -419,6 +426,59 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       site.ipStatus=200;site.ipDelay=0;site.ipBody=null;n.nextExitCheckAt=0;n.health();
       check("Independent network service renews exit proof without replacing the original WebSocket",n.verifiedRouteCurrent()&&n.lastVerified>0&&n.exitCheckFailures==0&&n.nextExitCheckAt==0&&site.webSocketConnections.get()==connections+1&&stream.failure==null&&before.optInt("pid")==n.transport.call("snapshot","").optInt("pid"));
     }finally{site.ipStatus=200;site.ipDelay=0;site.ipBody=null;site.ipTransportFailure="";site.ip="203.0.113.8";NetworkCatalog.put(n.settings,"entryMode",mode);}
+  }
+  boolean staleGenerationStopKeepsReplacement(TestNetwork n,HttpFixture site,String previousGeneration)throws Exception{
+    JSONObject replacement=n.transport.call("snapshot","");if(previousGeneration.equals(replacement.optString("generation")))return false;
+    try(WebSocketStream stream=new WebSocketStream(n,site)){
+      if(!stream.awaitEchoes(0))return false;int echoes=stream.echoes.get();boolean rejected=false;
+      try{n.transport.call("stop","",NetworkDiagnostics.Reason.ROLLBACK_FAILED,previousGeneration);}catch(IOException expected){rejected=true;}
+      JSONObject after=n.transport.call("snapshot","");return rejected&&after.optBoolean("alive")&&replacement.getString("generation").equals(after.optString("generation"))&&replacement.getInt("pid")==after.optInt("pid")&&n.verifiedRouteCurrent()&&stream.awaitEchoes(echoes);
+    }
+  }
+  boolean awaitDiagnostic(Context scope,String generation,String event,String reason,boolean nonzero)throws Exception{
+    long deadline=android.os.SystemClock.elapsedRealtime()+3000;
+    while(android.os.SystemClock.elapsedRealtime()<deadline){
+      String text=NetworkDiagnosticStore.summary(scope);
+      for(String line:text.split("\n")){String[] fields=line.split("\t",-1);if(fields.length==12&&"SERVICE".equals(fields[3])&&generation.equals(fields[7])&&event.equals(fields[8])&&reason.equals(fields[9])&&(!nonzero||Long.parseLong(fields[11])!=0))return true;}
+      Thread.sleep(20);
+    }return false;
+  }
+  /** New faults run after the original checklist; no deadline or original gate is loosened. */
+  void networkRepairChecks(TestNetwork n,HttpFixture site,HttpFixture plain)throws Exception{
+    check("A stale generation stop is rejected by the real service without interrupting its WSS",diagnosedStaleStop);
+    check("Unexpected real core exit retains its exact generation and nonzero exit code",diagnosedUnexpectedExit);
+    check("A replacement core preserves the old generation exit history",diagnosedOldGeneration);
+    check("Requested stop is distinguished from an unexpected real core exit",diagnosedRequestedStop);
+    NetworkCatalog.put(repairEvidence,"schema",1);NetworkCatalog.put(repairEvidence,"serviceGenerationStopGuard",diagnosedStaleStop);NetworkCatalog.put(repairEvidence,"exitDiagnostics",diagnosedUnexpectedExit&&diagnosedOldGeneration&&diagnosedRequestedStop);
+    n.startNow();NetworkCatalog.put(n.settings,"entryMode","random");
+    final String token=n.token,entry=n.currentEntry;final int pid=corePid(n),connections=site.webSocketConnections.get();
+    try(WebSocketStream stream=new WebSocketStream(n,site)){
+      if(!stream.awaitEchoes(0)||!n.verifiedRouteCurrent())throw new IOException("Repair fixture requires an actual verified WSS");
+      n.exitCheckFailures=1;n.nextExitCheckAt=android.os.SystemClock.elapsedRealtime()+60000;n.admission=NetworkHealthPolicy.Admission.DEGRADED_VERIFICATION;
+      CountDownLatch retainedDone=new CountDownLatch(1);final NativeNetwork.RecoveryOutcome[] retained={null};String repairMode=n.settings.optString("entryMode");NetworkCatalog.put(n.settings,"entryMode",n.secrets.settings().optString("entryMode"));
+      n.recoverOutcome(outcome->{retained[0]=outcome;retainedDone.countDown();});
+      check("Incomplete recovery provides a separate exact-route retention outcome",retainedDone.await(15,TimeUnit.SECONDS)&&retained[0]!=null&&retained[0].state==NativeNetwork.RecoveryState.RETAINED&&n.retainedOutcomeCurrent(retained[0])&&retained[0].receipt==n.verifiedRoute&&n.ready&&corePid(n)==pid&&token.equals(n.token)&&entry.equals(n.currentEntry)&&stream.failure==null);NetworkCatalog.put(repairEvidence,"retainedOutcome",n.retainedOutcomeCurrent(retained[0])&&retained[0].state==NativeNetwork.RecoveryState.RETAINED);NetworkCatalog.put(n.settings,"entryMode",repairMode);n.verifyExit();
+      NativeNetwork.ExitRouteReceipt original=n.verifiedRoute;CountDownLatch scan=new CountDownLatch(1);final boolean[] accepted={true};int echoes=stream.echoes.get();
+      n.failCandidateControl=true;n.rescan((ok,message)->{accepted[0]=ok;scan.countDown();});
+      check("Candidate control failure reports failure without stopping the exact verified WSS route",scan.await(15,TimeUnit.SECONDS)&&!accepted[0]&&n.ready&&n.verifiedRoute==original&&n.verifiedRouteCurrent()&&entry.equals(n.currentEntry)&&token.equals(n.token)&&corePid(n)==pid&&stream.awaitEchoes(echoes));
+      check("Candidate control failures back off optimization without changing detector retry state",n.optimizationFailures==1&&n.nextOptimizationAt>android.os.SystemClock.elapsedRealtime()&&n.exitCheckFailures==0);NetworkCatalog.put(repairEvidence,"candidateFailure",J.obj("accepted",accepted[0],"sameReceipt",n.verifiedRoute==original,"sameCore",token.equals(n.token)&&corePid(n)==pid,"sameEntry",entry.equals(n.currentEntry),"verified",n.verifiedRouteCurrent(),"optimizationBackoff",n.nextOptimizationAt>android.os.SystemClock.elapsedRealtime()));n.failCandidateControl=false;
+      String candidate=entry.equals("Entry|slow")?"Entry|fast":"Entry|slow";n.failVerificationEntry=candidate;int requests=site.ipRequests.get();echoes=stream.echoes.get();boolean rolledBack=false;
+      try{n.scanSubset(Collections.singletonList(candidate),true,false);}catch(NativeNetwork.RetainedRouteFailure expected){rolledBack=true;}
+      check("Automatic candidate verification failure reselects and really reverifies the previous entry",rolledBack&&site.ipRequests.get()==requests+2&&entry.equals(n.currentEntry)&&n.verifiedRoute!=original&&n.verifiedRouteCurrent()&&n.ready&&token.equals(n.token)&&corePid(n)==pid&&stream.awaitEchoes(echoes));
+      check("Rollback does not publish the failed candidate as the selected quality route",entry.equals(n.quality.selected)&&entry.equals(n.websiteQuality.selected)&&!n.recoveryBlocked);NetworkCatalog.put(repairEvidence,"rollback",J.obj("exitRequests",site.ipRequests.get()-requests,"newReceipt",n.verifiedRoute!=original,"sameEntry",entry.equals(n.currentEntry),"verified",n.verifiedRouteCurrent(),"sameCore",token.equals(n.token)&&corePid(n)==pid));n.failVerificationEntry="";
+      n.busy=true;long serial=n.routeSerial;requests=site.ipRequests.get();CountDownLatch selection=new CountDownLatch(1);accepted[0]=true;
+      n.select(candidate,(ok,message)->{accepted[0]=ok;selection.countDown();});
+      check("Busy reply or attachment work prevents the manual route transaction before mutation",selection.await(5,TimeUnit.SECONDS)&&!accepted[0]&&serial==n.routeSerial&&requests==site.ipRequests.get()&&entry.equals(n.currentEntry)&&n.verifiedRouteCurrent());n.busy=false;
+      n.busyAfterIdentityCheck=true;serial=n.routeSerial;requests=site.ipRequests.get();boolean deferred=false;try{n.selectVerifiedRoute(candidate,false);}catch(NativeNetwork.RetainedRouteFailure expected){deferred=true;}
+      check("Reply or upload beginning during fresh identity lookup prevents selection",deferred&&n.busy&&serial==n.routeSerial&&requests==site.ipRequests.get()&&entry.equals(n.currentEntry)&&n.verifiedRouteCurrent());NetworkCatalog.put(repairEvidence,"busyBeforeMutation",n.busy&&serial==n.routeSerial&&requests==site.ipRequests.get());n.busy=false;
+      n.exitCheckFailures=1;n.nextExitCheckAt=android.os.SystemClock.elapsedRealtime()+60000;n.admission=NetworkHealthPolicy.Admission.DEGRADED_VERIFICATION;n.failures=1;plain.forcedProbeFailures.set(2);site.websiteTransportFailure="reset";requests=site.ipRequests.get();echoes=stream.echoes.get();
+      n.health();
+      check("Exit detector backoff does not suppress corroborated failed-chain recovery",candidate.equals(n.currentEntry)&&n.verifiedRouteCurrent()&&n.exitCheckFailures==0&&n.nextExitCheckAt==0&&site.ipRequests.get()==requests+1&&n.ready&&token.equals(n.token)&&corePid(n)==pid&&stream.awaitEchoes(echoes));
+      check("All network repair faults preserve one live WSS and fixed exit",site.webSocketConnections.get()==connections+1&&stream.failure==null&&n.exitIp.equals("203.0.113.8"));NetworkCatalog.put(repairEvidence,"backoffRecovery",J.obj("exitRequests",site.ipRequests.get()-requests,"entryChanged",!entry.equals(n.currentEntry),"verified",n.verifiedRouteCurrent(),"sameCore",token.equals(n.token)&&corePid(n)==pid,"sameWebSocket",site.webSocketConnections.get()==connections+1&&stream.failure==null,"detectorRetryReset",n.exitCheckFailures==0&&n.nextExitCheckAt==0));
+      site.websiteTransportFailure="";plain.forcedProbeFailures.set(0);site.ipStatus=503;boolean failedClosed=false;
+      try{n.selectVerifiedRoute(entry,false);}catch(IOException expected){failedClosed=true;}
+      check("A failed rollback verification stops admission instead of reusing the old receipt",failedClosed&&!n.ready&&!n.coreAlive()&&!n.verifiedRouteCurrent()&&stream.awaitClosed());NetworkCatalog.put(repairEvidence,"failedRollback",J.obj("ready",n.ready,"coreAlive",n.coreAlive(),"receiptCurrent",n.verifiedRouteCurrent(),"webSocketClosed",stream.awaitClosed()));
+    }finally{n.busy=false;n.failCandidateControl=false;n.failVerificationEntry="";site.ipStatus=200;site.websiteTransportFailure="";plain.forcedProbeFailures.set(0);}
   }
   JSONObject transportIdentity(TestNetwork n)throws Exception{JSONObject state=n.transport.call("snapshot","");return J.obj("pid",state.optInt("pid"),"servicePid",state.optInt("servicePid"),"generation",state.optString("generation"),"configuration",state.optString("configuration"),"controllerPort",state.optInt("controllerPort"),"proxyPort",state.optInt("proxyPort"),"entry",n.currentEntry,"tokenHash",NativeNetwork.hash(n.token),"exitIp",n.exitIp,"alive",state.optBoolean("alive"));}
   void transportFailureRejectionChecks(TestNetwork n,HttpFixture site,HttpFixture plain)throws Exception{

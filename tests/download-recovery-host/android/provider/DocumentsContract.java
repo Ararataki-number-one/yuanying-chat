@@ -1,0 +1,1 @@
+package android.provider;import android.content.*;import android.net.Uri;public final class DocumentsContract {public static boolean isDocumentUri(Context c,Uri u){return false;}public static boolean deleteDocument(ContentResolver r,Uri u){throw new UnsupportedOperationException("SAF not emulated");}}

@@ -124,10 +124,52 @@ final class DownloadDeletionIntegration {
     check("Cancelling the rendered confirmation preserves the file and its metadata",library.saved(privateRemainingRow)!=null&&!library.isRemoved(privateRemainingRow)&&Arrays.equals(read(privateRemaining.uri),remainingBytes));
     check("Unrelated same-name saved files remain readable after every deletion and failure case",library.saved(remainingRow)!=null&&Arrays.equals(read(remainingTarget.uri),remainingBytes)&&Arrays.equals(read(privateRemaining.uri),remainingBytes));
     stableDownloadRows();
+    recoveryPublicationBarrier(false,false);
+    recoveryPublicationBarrier(true,false);
+    recoveryPublicationBarrier(false,true);
+    recoveryPublicationBarrier(true,true);
     report.put("actualMediaStoreExecution",true).put("actualPrivateProviderExecution",true).put("actualWorkerThreadDeletion",true)
         .put("profileSlot",7).put("freedMediaStoreBytes",publicFreed).put("freedPrivateBytes",privateFreed)
         .put("alreadyAbsentPrivateFreedBytes",absentPrivateFreed).put("alreadyAbsentMediaStoreFreedBytes",absentMediaFreed)
         .put("staleMenuFreedBytes",staleFreed).put("cancelConfirmation","Android negative Button.performClick; no ADB gesture");
+  }
+
+  void recoveryPublicationBarrier(boolean privateFile,boolean cancelled)throws Exception{
+    Context context=privateFile?seven:main;String kind=(privateFile?"Private":"MediaStore")+(cancelled?" cancelled":" committed");
+    DefaultDownloads.Target target=privateFile?DefaultDownloads.local(context,"recovery-"+UUID.randomUUID()+".bin"):DefaultDownloads.create(context,"recovery-"+UUID.randomUUID()+".bin","application/octet-stream");
+    targets.add(target);ownUris.add(target.uri.toString());
+    final DownloadTasks[] owner={null},reopened={null};final JSONObject[] row={null};
+    android.os.Handler ui=new android.os.Handler(Looper.getMainLooper());
+    SavedFileDeletion.onMain(ui,()->{owner[0]=new DownloadTasks(context);row[0]=owner[0].add("","","");DownloadTasks.put(row[0],"state","saving");owner[0].save();});
+    ownIds.add(row[0].optString("id"));String generation=UUID.randomUUID().toString();byte[] payload=bytes(4103,113);
+    CountDownLatch published=new CountDownLatch(1),release=new CountDownLatch(1),done=new CountDownLatch(1);AtomicReference<Throwable> failure=new AtomicReference<>();
+    Thread writer=new Thread(()->{try{SavedFilePublication.run(context,target.uri,ui,()->owner[0].beginSave(row[0],target.uri,target.location,target.name,generation),()->{
+      write(target,payload);published.countDown();if(!release.await(8,TimeUnit.SECONDS))throw new IllegalStateException("Recovery writer release missing");return null;
+    },()->{
+      if(cancelled)throw new IllegalStateException("Synthetic cancellation before durable record");
+      owner[0].finishSave(row[0],target.uri,generation,()->DownloadTasks.put(row[0],"state","saved","uri",target.uri.toString(),"name",target.name,"location",target.location));owner[0].release();
+    },target::abort);}catch(Throwable error){failure.set(error);}finally{done.countDown();}},"recovery-publication-fixture");
+    writer.start();
+    try{
+      if(!published.await(8,TimeUnit.SECONDS))throw new IllegalStateException("Recovery fixture writer never published",failure.get());
+      SavedFileDeletion.onMain(ui,()->reopened[0]=new DownloadTasks(context));
+      check(kind+" save permits main-thread recreation before the old URI lease is released",done.getCount()==1&&reopened[0].recovering);
+      final boolean[] heartbeat={false};SavedFileDeletion.onMain(ui,()->heartbeat[0]=true);
+      check(kind+" recovery does not block the main callback needed by the old publisher",heartbeat[0]&&done.getCount()==1);
+    }finally{release.countDown();if(!done.await(8,TimeUnit.SECONDS))throw new IllegalStateException("Recovery publication did not drain");}
+    long deadline=SystemClock.elapsedRealtime()+8000;while(reopened[0].recovering&&SystemClock.elapsedRealtime()<deadline)Thread.sleep(5);
+    check(kind+" recovery drains without a lock cycle",!reopened[0].recovering&&reopened[0].recoveryFailure==null);
+    JSONArray stored=new JSONArray(context.getSharedPreferences("download-tasks",0).getString("rows","[]"));JSONObject current=DownloadTaskRevisions.find(stored,row[0].optString("id"));
+    if(cancelled){
+      check(kind+" recovery never registers an aborted publication as saved",failure.get()!=null&&current!=null&&!"saved".equals(current.optString("state"))&&!current.has("pendingDestination")&&!indexed(target.uri)&&(privateFile?!target.file.exists():mediaMissing(target.uri)));
+    }else{
+      check(kind+" recovery retains exact published bytes and durable saved identity",failure.get()==null&&current!=null&&"saved".equals(current.optString("state"))&&library.saved(J.obj("slot",Profiles.slot(context),"id",current.optString("id"),"time",current.optLong("time"),"uri",target.uri.toString()))!=null&&Arrays.equals(read(target.uri),payload));
+      DownloadTasks.put(current,"slot",Profiles.slot(context));SavedFileDeletion.remove(activity,current);
+      SavedFileDeletion.onMain(ui,()->{DownloadTasks.put(row[0],"reason","late publisher callback");owner[0].save();owner[0].clearPending(row[0],target.uri,generation);});
+      check(kind+" late owner cannot resurrect a subsequently deleted file",!indexed(target.uri)&&!contains(owner[0].rows,target.uri)&&(privateFile?!target.file.exists():mediaMissing(target.uri)));
+    }
+    SavedFileDeletion.onMain(ui,()->owner[0].release());
+    report.put("actualDownloadRecoveryPublicationRace",true).put("mainThreadRemainedAvailableDuringRecovery",true);
   }
 
   DefaultDownloads.Target create(Context context,String filename,byte[] data,boolean privateFile)throws Exception{

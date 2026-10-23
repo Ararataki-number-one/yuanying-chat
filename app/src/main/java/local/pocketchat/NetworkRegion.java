@@ -37,7 +37,7 @@ final class NetworkRegion {
     return left;
   }
   static Proxy proxy(String value)throws Exception{if(value.isEmpty())return Proxy.NO_PROXY;URI address=new URI(value);return new Proxy("socks".equals(address.getScheme())?Proxy.Type.SOCKS:Proxy.Type.HTTP,new InetSocketAddress(address.getHost(),address.getPort()));}
-  static boolean backgroundBusy(ChatSession s){return s!=null&&(s.pending!=null||s.submitting||s.operation||s.transferActive||s.uploading()||s.navigating||s.state.optBoolean("busy"));}
+  static boolean backgroundBusy(ChatSession s){return s!=null&&(s.pending!=null||s.submitting||s.operation||s.transferActive||s.fileWorkActive()||s.navigating||s.state.optBoolean("busy"));}
   static void latencyGate(ChatSession s,long epoch,String route)throws IOException{if(s.deleted||s.internalNetwork()||!s.prefs.getBoolean("networkConfigured",false)||s.offline||!s.networkReady||s.connecting||epoch!=s.connectionEpoch||!s.guard.allowed()||!route.equals(latencyRoute(s)))throw new IOException("连接已变化");}
   static void latencyGate(ChatSession s,long epoch,String route,boolean automatic)throws IOException{latencyGate(s,epoch,route);}
   /** Native-proxy quality and external connection response use different measurement sources. */
