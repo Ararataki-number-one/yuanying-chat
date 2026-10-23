@@ -114,7 +114,12 @@ if version_code>=42:
     chrome=json.loads((args.evidence/'compact-chrome-results.json').read_text())
     assert quiet['status']=='passed' and quiet['actualAndroidExecution'] and quiet['sourceCommit']==args.source and quiet['checkCount']>=24 and all(c['pass'] for c in quiet['checks']),'Quiet service and completion reminder regression is required.'
     assert chrome['status']=='passed' and chrome['actualAndroidExecution'] and chrome['sourceCommit']==args.source and len(chrome['cases'])==3 and all(c['readOnlyStatus'] and len(c['actualAndroidTaps'])==3 for c in chrome['cases']),'Compact chrome and real Android touch regression is required.'
-    current_sample={'Automatic display sampling makes no requests while a reply is busy','The current route gets a real first sample after the reply becomes idle'} if version_code>=45 else {'The current route automatically gets a real first sample while reply is busy'}
+    if version_code>=68:
+        from gecko.check_interaction_transfer_evidence import verify_display_sampling
+        verify_display_sampling(network)
+        current_sample={'Automatic display sampling measures the current route while a reply is busy','A fresh busy-route sample is reused after the reply becomes idle'}
+    else:
+        current_sample={'Automatic display sampling makes no requests while a reply is busy','The current route gets a real first sample after the reply becomes idle'} if version_code>=45 else {'The current route automatically gets a real first sample while reply is busy'}
     required=current_sample|{'External measured response is shown instead of permanently unmeasured','A blocked external route makes no test request or direct fallback'}
     assert required<=set(c['name'] for c in network['checks'] if c['pass']),'Real latency refresh regression is required.'
 if version_code>=43:
