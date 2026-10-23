@@ -64,11 +64,11 @@ class BoundPerformanceControls(unittest.TestCase):
         raise AssertionError(command)
 
     def run_once(self, command, **kwargs):
-        if command[3:6] == ['pull','-Z','/data/app/controlled/base.apk']:
+        if command[3:6] == ['exec-out','cat','/data/app/controlled/base.apk']:
             self.installed_reads += 1
             data=self.apk.read_bytes()+(b'changed' if self.change_after and self.installed_reads == 2 else b'')
-            Path(command[6]).write_bytes(data)
-            return subprocess.CompletedProcess(command,0,stdout=b'1 file pulled\n',stderr=b'')
+            kwargs['stdout'].write(data)
+            return subprocess.CompletedProcess(command,0,stdout=None,stderr=b'')
         self.invocations.append(command)
         (self.out/'gecko-performance-results.json').write_bytes(self.raw)
         return subprocess.CompletedProcess(command, self.returncode)

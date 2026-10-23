@@ -1,4 +1,4 @@
-"""Read one actual installed APK with uncompressed ADB SYNC and no byte fallback."""
+"""Read one actual installed APK through a raw ADB stream, with no fallback."""
 import hashlib
 import json
 import math
@@ -9,7 +9,6 @@ import shutil
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 
 
@@ -67,7 +66,7 @@ def _record(path, receipt):
 
 def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha256,
                        expected_bytes, diagnostics, label, timeout=30):
-    """One bounded binary read, followed by exact size/hash verification.
+    """One bounded raw binary read, followed by exact size/hash verification.
 
     The caller still audits ZIP/DEX/SDK/source assets on this actual transferred
     file. Failure removes only our exclusive partial file; no retry, install,
@@ -75,8 +74,8 @@ def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha
     """
     destination, diagnostics = Path(destination), Path(diagnostics)
     receipt = dict(schema=1, scope='host-read-only-installed-apk-byte-transfer', status='failed',
-                   transport='adb-sync-uncompressed', dataSource='destination-file',
-                   adbTrace='sync,transport,sockets,sysdeps',
+                   transport='adb-exec-out-raw', dataSource='raw-stdout-destination-file',
+                   adbTrace='transport,sockets,sysdeps',
                    label=label, installedApkPath=installed_path, destination=str(destination),
                    expectedBytes=expected_bytes, expectedSha256=expected_sha256,
                    timeoutSeconds=timeout, returnCode=None, stdoutBytes=0, stdoutSha256=None,
@@ -99,47 +98,29 @@ def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha
             raise ValueError('Exact selected APK byte count and SHA256 required')
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 30:
             raise ValueError('Installed byte read must use a finite deadline at most 30 seconds')
-        # Reserve the final file exclusively. ADB only writes a new file inside
-        # our private 0700 staging directory, never an existing caller pathname.
+        # Reserve the destination exclusively and hand ADB that open binary FD.
+        # This avoids SYNC's silent partial-file deletion on a failed pull and
+        # preserves the exact received bytes for failure diagnostics. There is
+        # one device read; no compiled-file substitution or retry is possible.
         with destination.open('xb') as output:
             owned = True
             before = os.fstat(output.fileno())
             owned_identity = (before.st_dev, before.st_ino)
-            with tempfile.TemporaryDirectory(prefix='.installed-apk-pull-', dir=destination.parent) as staging:
-                transferred = Path(staging) / 'actual-installed.apk'
-                command = [str(adb), '-s', serial, 'pull', '-Z', installed_path, str(transferred)]
-                receipt['command'] = command
-                try:
-                    # SYNC can return rc1 and delete its partial file without
-                    # printing the underlying read/EOF error. Trace this one
-                    # host-side identity read only, outside the input workload.
-                    # Do not change its command, deadline, or once-only rule.
-                    environment = dict(os.environ, ADB_TRACE=receipt['adbTrace'])
-                    result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                            stderr=subprocess.PIPE, timeout=timeout, check=False,
-                                            env=environment)
-                    receipt.update(returnCode=result.returncode, **_stderr(result.stderr), **_stdout(result.stdout))
-                finally:
-                    # This is a host-local copy of the one actual device read,
-                    # including partial bytes on failure; it cannot use a build APK.
-                    try:
-                        transferred_state = transferred.lstat()
-                    except FileNotFoundError:
-                        transferred_state = None
-                    if transferred_state is not None:
-                        if not stat.S_ISREG(transferred_state.st_mode):
-                            raise ValueError('ADB staging destination is not a regular file')
-                        handle = os.open(transferred, os.O_RDONLY | os.O_NOFOLLOW)
-                        with os.fdopen(handle, 'rb') as actual:
-                            if (os.fstat(actual.fileno()).st_dev, os.fstat(actual.fileno()).st_ino) != (transferred_state.st_dev, transferred_state.st_ino):
-                                raise ValueError('ADB staging file ownership changed')
-                            shutil.copyfileobj(actual, output, 1024 * 1024)
-                        output.flush()
+            # The canonical absolute path cannot be an option and the whitelist
+            # excludes shell syntax. This is the same command as the raw-read diagnostic.
+            command = [str(adb), '-s', serial, 'exec-out', 'cat', installed_path]
+            receipt['command'] = command
+            environment = dict(os.environ, ADB_TRACE=receipt['adbTrace'])
+            result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=output,
+                                    stderr=subprocess.PIPE, timeout=timeout, check=False,
+                                    env=environment)
+            output.flush()
+            receipt.update(returnCode=result.returncode, **_stderr(result.stderr))
             after = destination.lstat()
             if not stat.S_ISREG(after.st_mode) or (after.st_dev, after.st_ino) != owned_identity:
                 raise ValueError('Actual installed APK destination ownership changed')
-        # Compatibility names describe the actual destination file, not ADB's
-        # progress text. CLI stdout is separately bounded diagnostic evidence.
+        # Compatibility names describe actual raw device bytes. No progress or
+        # log text is accepted instead, even when the ADB process exits zero.
         receipt['stdoutBytes'], receipt['stdoutSha256'] = _file_identity(destination)
         receipt.update(actualFileBytes=receipt['stdoutBytes'], actualFileSha256=receipt['stdoutSha256'])
         if result.returncode != 0:
