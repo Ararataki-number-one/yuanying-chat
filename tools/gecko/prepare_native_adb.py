@@ -93,6 +93,30 @@ def persistent_network(commands, record, identity):
         raise ValueError('Actual persistent SDK connection not usable')
 
 
+def announce_native(record):
+    # host:emulator is a one-way notification. AOSP's own test sends the
+    # framed request and closes; unlike ordinary services it has no OKAY reply.
+    # Device readiness must be checked separately, never inferred from this.
+    with socket.create_connection(('127.0.0.1', 5037), timeout=5) as stream:
+        request = b'host:emulator:5555'
+        stream.sendall(('%04x' % len(request)).encode('ascii') + request)
+    record['announcementSent'] = True
+    record['announcementIsNotificationOnly'] = True
+
+
+def wait_native(adb, record):
+    deadline = time.monotonic() + 30
+    while True:
+        result = subprocess.run([adb, '-s', ACCEPTANCE, 'get-state'],
+                                capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip() == 'device':
+            record['nativeReady'] = True
+            return
+        if time.monotonic() > deadline:
+            raise TimeoutError('Native TCP target did not become ready')
+        time.sleep(.25)
+
+
 def native_transport(adb, monitor_path, record):
     base = [adb, '-s', BOOTSTRAP]
     def command(*parts):
@@ -120,23 +144,8 @@ def native_transport(adb, monitor_path, record):
     verify_forward(record['afterUsernet'])
     # Register the real native emulator service once; no serial aliases, server
     # restart, transport fallback or application/installed-byte retry exists.
-    with socket.create_connection(('127.0.0.1', 5037), timeout=5) as stream:
-        request = b'host:emulator:5555'
-        stream.sendall(('%04x' % len(request)).encode('ascii') + request)
-        reply = stream.recv(4)
-        record['announcement'] = reply.decode(errors='replace')
-        if reply != b'OKAY':
-            raise ValueError('Native emulator service announcement failed')
-    deadline = time.monotonic() + 30
-    while True:
-        result = subprocess.run([adb, '-s', ACCEPTANCE, 'get-state'],
-                                capture_output=True, text=True, timeout=5)
-        if result.returncode == 0 and result.stdout.strip() == 'device':
-            record['nativeReady'] = True
-            return
-        if time.monotonic() > deadline:
-            raise TimeoutError('Native TCP target did not become ready')
-        time.sleep(.25)
+    announce_native(record)
+    wait_native(adb, record)
 
 
 def main():

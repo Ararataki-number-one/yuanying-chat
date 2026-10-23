@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import time
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -18,6 +19,33 @@ class FakeCommands:
 
 
 class NativeSetupControls(unittest.TestCase):
+    def test_emulator_notification_sends_one_frame_without_reading_a_status(self):
+        record={}
+        with patch.object(setup.socket,'create_connection') as connection:
+            stream=connection.return_value.__enter__.return_value
+            stream.recv.side_effect=AssertionError('One-way service has no reply')
+            setup.announce_native(record)
+            stream.sendall.assert_called_once_with(b'0012host:emulator:5555')
+            stream.recv.assert_not_called()
+        self.assertTrue(record['announcementSent'])
+        self.assertNotIn('nativeReady',record)
+
+    def test_notification_does_not_replace_actual_native_readiness(self):
+        record={'announcementSent':True}
+        offline=subprocess.CompletedProcess([],0,stdout='offline\n',stderr='')
+        ready=subprocess.CompletedProcess([],0,stdout='device\n',stderr='')
+        with patch.object(setup.subprocess,'run',side_effect=[offline,ready]),patch.object(setup.time,'sleep'):
+            setup.wait_native('adb',record)
+        self.assertTrue(record['nativeReady'])
+
+    def test_missing_or_failed_native_state_still_fails_the_bounded_setup(self):
+        for result in (subprocess.CompletedProcess([],0,stdout='offline\n',stderr=''),
+                       subprocess.CompletedProcess([],1,stdout='device\n',stderr='error')):
+            record={'announcementSent':True}
+            with patch.object(setup.subprocess,'run',return_value=result),patch.object(setup.time,'monotonic',side_effect=[0,31]):
+                with self.assertRaises(TimeoutError):setup.wait_native('adb',record)
+            self.assertNotIn('nativeReady',record)
+
     def test_targets_are_explicit_and_normal_guard_is_unchanged(self):
         for serial in ('physical-phone','emulator-5554','emulator-5558'):
             with self.assertRaises(ValueError):setup.BootstrapCommands('adb',serial,{},10)
