@@ -224,6 +224,111 @@ jobs:
         if-no-files-found: error
         retention-days: 1
         compression-level: 0
+  # Runs as soon as the immutable build is available. These two fresh-device
+  # diagnostics never replace or feed the five Android release qualification phases.
+  chrome-diagnostic:
+    name: Chrome diagnostic (${{ matrix.scenario }})
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    continue-on-error: true
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [cold, after-reload]
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - name: Download the immutable compiled build
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: gecko-${{ github.run_id }}-${{ github.run_attempt }}-build
+        path: work/ci-build
+    - name: Restore exact build and verify its source/run/byte hashes
+      run: python3 tools/gecko/ci_bundle.py restore --kind build --bundle work/ci-build/bundle.tar.gz
+    - name: Prepare Android runtime only
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-emulator-package-results.json
+        python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-system-image-results.json
+    - name: Boot Android for focused diagnostics
+      id: android_boot
+      shell: bash
+      run: |
+        set -euo pipefail
+        exec > >(tee work/gecko-integration/native-test.log) 2>&1
+        export ANDROID_AVD_HOME="$PWD/work/gecko-integration/avd"
+        export ANDROID_USER_HOME="$PWD/work/gecko-integration/android-user"
+        export ANDROID_EMULATOR_HOME="$PWD/work/gecko-integration/emulator-home"
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+        sudo chmod a+rw /dev/kvm
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-platform-tools-results.json
+        adb start-server
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 -qemu -monitor "unix:$PWD/work/gecko-integration/qemu-monitor.sock,server=on,wait=off" > work/gecko-integration/emulator.log 2>&1 &
+        timeout 180 adb -s emulator-5556 wait-for-device
+        timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        adb -s emulator-5556 shell input keyevent 82
+        adb -s emulator-5556 install app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
+        echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
+        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+    - name: Diagnose original chrome collapse flow only
+      id: focused
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p work/chrome-collapse-diagnostic
+        exec > >(tee work/chrome-collapse-diagnostic/runner.log) 2>&1
+        python3 tests/gecko/run_chrome_collapse_diagnostic.py --adb "$(command -v adb)" --serial emulator-5554 --scenario "${{ matrix.scenario }}" --out work/chrome-collapse-diagnostic
+    - name: Preserve diagnostic job identity and outcome
+      if: always()
+      shell: bash
+      env:
+        CHROME_DIAGNOSTIC_SCENARIO: ${{ matrix.scenario }}
+        CHROME_DIAGNOSTIC_BOOT_OUTCOME: ${{ steps.android_boot.outcome }}
+        CHROME_DIAGNOSTIC_RUNNER_OUTCOME: ${{ steps.focused.outcome }}
+      run: |
+        python3 - <<'PYCODE'
+        import hashlib,json,os,pathlib,subprocess
+        out=pathlib.Path('work/chrome-collapse-diagnostic');out.mkdir(parents=True,exist_ok=True)
+        build=pathlib.Path('work/gecko-integration/ci-build-index.json')
+        boot=os.environ['CHROME_DIAGNOSTIC_BOOT_OUTCOME'];runner=os.environ['CHROME_DIAGNOSTIC_RUNNER_OUTCOME']
+        status='passed' if boot==runner=='success' else ('failed' if 'failure' in (boot,runner) else 'incomplete')
+        report=dict(schema=1,diagnosticOnly=True,releaseAcceptance=False,status=status,
+          sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+          sourceTree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),
+          runId=os.environ['GITHUB_RUN_ID'],runAttempt=os.environ.get('GITHUB_RUN_ATTEMPT','1'),
+          scenario=os.environ['CHROME_DIAGNOSTIC_SCENARIO'],bootOutcome=boot,runnerOutcome=runner,
+          buildIndexSha256=hashlib.sha256(build.read_bytes()).hexdigest() if build.is_file() else None,
+          scope='One fresh Android VM per predeclared scenario; original full UI qualification remains independently required.')
+        (out/'job-outcome.json').write_text(json.dumps(report,indent=2)+'\n')
+        PYCODE
+    - name: Upload focused chrome diagnostics only
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: chrome-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.scenario }}
+        path: |
+          work/chrome-collapse-diagnostic/
+          work/gecko-integration/ci-build-index.json
+          work/gecko-integration/native-test.log
+          work/gecko-integration/emulator.log
+          work/gecko-integration/native-adb-setup-results.json
+          work/gecko-integration/emulator-bootstrap-results.json
+          work/gecko-integration/android-system-image-results.json
+          work/gecko-integration/android-emulator-package-results.json
+          work/gecko-integration/android-platform-tools-results.json
+        if-no-files-found: error
+        retention-days: 3
+        compression-level: 6
   android:
     needs: build
     runs-on: ubuntu-24.04

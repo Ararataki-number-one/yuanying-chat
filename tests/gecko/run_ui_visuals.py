@@ -371,9 +371,14 @@ try:
         requests=[r for r in reload_loopback.TRACE if r['kind']=='http'];routes=[r for r in reload_loopback.TRACE if r['kind']=='socks' and r['accepted']];blocked=[r for r in reload_loopback.TRACE if r['kind']=='socks' and not r['accepted']]
         reload_check('All reload documents use the actual controlled SOCKS route without extra loads',len(requests)==3 and [r['documentMarker'] for r in requests]==[initial['document'],confirmed['document'],idle['document']] and len({r['documentMarker'] for r in requests})==3 and [r['path'] for r in requests]==['/c/reload-A','/c/reload-B','/c/reload-B'] and routes and all(r['port']==8765 and r['host']=='127.0.0.1' for r in routes))
         reload_confirmation={'actualAndroidExecution':True,'actualGeckoExecution':True,'sourceCommit':source,'checks':reload_checks,'actualAndroidTaps':reload_taps,'cancelMatched':all(cancelled[k]==initial[k] for k in ['body','draft','cookie','document']),'noStopNoLoad':cancelled['stops']==cancelled['loads']==0,'noSend':confirmed['sendCount']==idle['sendCount']==0,'fullDraftCookieUnchanged':cancelled['draft']==initial['draft'] and cancelled['cookie']==initial['cookie'],'explicitConfirmCurrentURI':confirmed['requested']==initial['currentUrl'],'notOldURI':confirmed['requested']!=initial['cachedResumeUrl'],'idleNoModal':not idle['modal'],'initial':initial,'cancelled':cancelled,'stale':stale,'confirmed':confirmed,'idle':idle,'fixtureRequests':requests,'controlledProxyRoutes':routes,'blockedRequests':blocked}
+        # Preserve this exact completed object before the next scenario clears logcat.
+        # This partial file cannot replace compact-chrome-results or full UI acceptance.
+        (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\n')
+        (out/'ui-reload-log.txt').write_text(adb('logcat','-d'))
         from run_chrome_collapse import run as run_chrome_collapse
         auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus)
     finally:
+        (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\n')
         reload_http.shutdown();reload_socks.shutdown()
     (out/'compact-chrome-results.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'cases':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse},ensure_ascii=False,indent=2)+'\n')
     verify_captures(records)
