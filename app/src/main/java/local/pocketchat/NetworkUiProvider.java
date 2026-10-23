@@ -26,8 +26,8 @@ public class NetworkUiProvider extends ContentProvider {
     ChatSession session=observedSession;if(session==null||session.deleted||maintenanceStopped)return;
     boolean idle=session.pending==null&&!session.submitting&&!session.transferActive&&!session.fileWorkActive()&&!session.connecting&&!session.navigating&&!session.recoveryScheduled&&!session.state.optBoolean("busy");
     boolean page=session.stateEpoch==session.navigationEpoch&&WebReplyObserver.same(session.web.getUrl(),session.state.optString("url"))&&!session.state.optString("documentId").isEmpty()&&session.state.optString("error").isEmpty();
-    String event=session.environmentId+":"+session.environmentGeneration+":"+session.navigationEpoch+":"+session.resourceObserverBinding+":"+session.lastDocumentId+":"+idle+":"+page;
-    if(retry.observe(event,idle&&page)){main.removeCallbacks(pendingWake);main.post(pendingWake);}
+    String event=session.environmentId+":"+session.environmentGeneration+":"+session.navigationEpoch+":"+session.resourceObserverBinding+":"+session.lastDocumentId;
+    if(retry.observePage(event,idle,page,session.state.optBoolean("composer"))){main.removeCallbacks(pendingWake);main.post(pendingWake);}
   }
   public static class Profile1 extends NetworkUiProvider{}public static class Profile2 extends NetworkUiProvider{}public static class Profile3 extends NetworkUiProvider{}public static class Profile4 extends NetworkUiProvider{}public static class Profile5 extends NetworkUiProvider{}public static class Profile6 extends NetworkUiProvider{}public static class Profile7 extends NetworkUiProvider{}
   @Override public boolean onCreate(){profile=Profiles.context(getContext(),Profiles.processSlot());updateRoutes=new AppUpdateRoute.Server(profile);main.post(drain);return true;}

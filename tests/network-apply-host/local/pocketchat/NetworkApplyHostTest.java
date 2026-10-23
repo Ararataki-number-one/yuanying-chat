@@ -12,6 +12,13 @@ public final class NetworkApplyHostTest {
     retry.defer("saved-a","等待网页恢复",at);long next=retry.nextAttempt;
     for(int i=0;i<100;i++)if(retry.observe("document-ready",true))throw new AssertionError("Repeated status reset retry");
     check("Repeated unchanged observations retain backoff",retry.nextAttempt==next&&!retry.due("saved-a",at));
+    retry.observePage("same-document",true,true,false);retry.defer("saved-a","等待完整草稿",at);long composerDeadline=retry.nextAttempt;
+    check("Missing composer keeps pending backoff",!retry.observePage("same-document",true,true,false)&&retry.nextAttempt==composerDeadline);
+    check("Composer recovery wakes the same unchanged document",retry.observePage("same-document",true,true,true)&&retry.nextAttempt==0);
+    retry.defer("saved-a","等待完整草稿",at);long draftDeadline=retry.nextAttempt;
+    for(int i=0;i<100;i++)if(retry.observePage("same-document",true,true,true))throw new AssertionError("Text editing must not wake the retry");
+    check("Draft text changes are not event data and preserve backoff",retry.nextAttempt==draftDeadline);
+    check("Incomplete draft fallback remains bounded at thirty seconds",draftDeadline-at==30000);
     check("New candidate starts without old candidate backoff",retry.due("saved-b",at)&&retry.failures==0&&retry.reason.isEmpty());
     retry.defer("saved-b","等待回复和文件操作结束",at);retry.clear();check("Cancellation removes pending retry identity",retry.key.isEmpty()&&retry.reason.isEmpty()&&retry.nextAttempt==0);
     NetworkUiProvider provider=new NetworkUiProvider();android.os.SystemClock.now=1000;
