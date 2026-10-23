@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Synthetic validator tests; passing these is never Android or release evidence."""
 import copy
+import json
 import pathlib
+import re
+import subprocess
 import sys
 import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
@@ -145,7 +148,12 @@ def phase_boundary_fixture():
     after = copy.deepcopy(before); after.update(navigating=False, routeBusy=False)
     document = dict(url='https://127.0.0.1:9879/pool', controlled=True,
                     timeOrigin=1700000000123.5, draft='unsent pool draft', sends=0)
+    observed = dict(ok=True, url=document['url'], document=document)
+    observations = [dict(phase=phase, scope='Gecko WebExtension isolated-world controlled document observation',
+        expectedUrl=document['url'], beganAtNs=1001+i*2, endedAtNs=1002+i*2, validated=True,
+        raw=json.dumps(observed), result=copy.deepcopy(observed)) for i, phase in enumerate(('before', 'after'))]
     return dict(checks=[{'name': name, 'pass': True} for name in names],
+        legacyPhaseDocumentObservations=observations,
         legacyBusyBootstrap=dict(actualSession=True, busyClearedForStartup=False, receiptCurrent=True,
             exitRequests=1, before=copy.deepcopy(busy), after=copy.deepcopy(busy)),
         legacyBusyPhaseBoundary=dict(schema=1, method='test-only end of controlled navigation-busy phase',
@@ -218,6 +226,66 @@ class BusyPhaseBoundaryEvidenceTests(unittest.TestCase):
             report['sessionRestorations'][0]['beganAtNs'] = reconnect
             with self.subTest(times=(began, ended, reconnect)), self.assertRaises(AssertionError): verify_route_busy_phase_boundary(report)
         report = phase_boundary_fixture(); report['sessionRestorations'] = []
+        with self.assertRaises(AssertionError): verify_route_busy_phase_boundary(report)
+
+
+class PhaseDocumentScriptTests(unittest.TestCase):
+    """Execute the Java fixture's exact JS in a host vm, never Android/Gecko evidence."""
+    @classmethod
+    def setUpClass(cls):
+        source = (pathlib.Path(__file__).resolve().parents[1] / 'gecko/NetworkSourcesRouteIntegrationActivity.java').read_text()
+        literal = re.search(r'  static final String PHASE_DOCUMENT_SCRIPT=("(?:[^"\\]|\\.)*");', source)
+        assert literal, 'Read the actual Java fixture script, not a duplicate host script'
+        cls.script = json.loads(literal.group(1))
+        runner = r'''
+const vm=require('node:vm'),fs=require('node:fs'),script=JSON.parse(fs.readFileSync(0,'utf8')).script;
+const output={};
+for(const mode of ['normal','content-performance-unavailable','performance-throws','performance-missing','time-origin-missing','time-origin-nan','textarea-missing','empty-document']){
+  const context={location:{href:'https://127.0.0.1:9879/pool'},performance:{timeOrigin:1700000000123.5},
+    document:{getElementById:id=>mode==='empty-document'?null:id==='pool-ready'?{}:id==='prompt-textarea'?(mode==='textarea-missing'?null:{value:'unsent pool draft'}):id==='send-count'?{textContent:'0'}:null}};
+  if(mode==='content-performance-unavailable')context.content={get performance(){throw new Error('content alias unavailable');}};
+  if(mode==='performance-throws')Object.defineProperty(context,'performance',{get(){throw new TypeError('host controlled performance failure');}});
+  if(mode==='performance-missing')delete context.performance;
+  if(mode==='time-origin-missing')context.performance={};
+  if(mode==='time-origin-nan')context.performance.timeOrigin=NaN;
+  output[mode]=vm.runInNewContext(script,context,{timeout:1000});
+}
+process.stdout.write(JSON.stringify({scope:'Host vm controls of actual Java fixture JS; no Android/Gecko execution',output}));
+'''
+        result = subprocess.run(['node', '-e', runner], input=json.dumps({'script': cls.script}),
+                                text=True, capture_output=True, check=True, timeout=15)
+        cls.values = json.loads(result.stdout)['output']
+
+    def report_for(self, observed):
+        report = phase_boundary_fixture()
+        for row in report['legacyPhaseDocumentObservations']:
+            row.update(raw=json.dumps(observed), result=copy.deepcopy(observed))
+        return report
+
+    def test_actual_java_script_observes_global_performance_without_content_alias(self):
+        for mode in ('normal', 'content-performance-unavailable'):
+            value = self.values[mode]
+            self.assertTrue(value['ok']);self.assertEqual(value['document']['timeOrigin'], 1700000000123.5)
+            self.assertTrue(verify_route_busy_phase_boundary(self.report_for(value))['actualDocumentPreserved'])
+
+    def test_actual_js_exceptions_and_missing_fields_remain_explicit_and_rejected(self):
+        for mode in ('performance-throws', 'performance-missing', 'time-origin-missing', 'time-origin-nan', 'textarea-missing', 'empty-document'):
+            value = self.values[mode]
+            with self.subTest(mode=mode):
+                self.assertFalse(value['ok']);self.assertEqual(value['url'], 'https://127.0.0.1:9879/pool')
+                self.assertTrue(value['error']['name']);self.assertTrue(value['error']['message'])
+                with self.assertRaises(AssertionError): verify_route_busy_phase_boundary(self.report_for(value))
+
+    def test_empty_null_invalid_and_replaced_raw_observations_cannot_pass(self):
+        for raw in ('', 'null', '{}', '[]', 'not-json', '{', json.dumps({'ok': True})):
+            report = phase_boundary_fixture();report['legacyPhaseDocumentObservations'][0]['raw'] = raw
+            with self.subTest(raw=raw), self.assertRaises((AssertionError, ValueError, KeyError)):
+                verify_route_busy_phase_boundary(report)
+        for field, value in [('validated', False), ('scope', 'invented fallback'), ('expectedUrl', 'https://chatgpt.com/'),
+                             ('beganAtNs', 999), ('endedAtNs', 3000), ('error', {'type': 'java.io.IOException'})]:
+            report = phase_boundary_fixture();report['legacyPhaseDocumentObservations'][0][field] = value
+            with self.subTest(field=field), self.assertRaises(AssertionError): verify_route_busy_phase_boundary(report)
+        report = phase_boundary_fixture();report['legacyPhaseDocumentObservations'].reverse()
         with self.assertRaises(AssertionError): verify_route_busy_phase_boundary(report)
 
 

@@ -85,14 +85,26 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
     for(Iterator<String> keys=busy.keys();keys.hasNext();){String key=keys.next();NetworkCatalog.put(value,key,busy.opt(key));}
     return value;
   }
-  JSONObject phaseDocument()throws Exception{return eval("({url:location.href,controlled:!!document.getElementById('pool-ready'),timeOrigin:content.performance.timeOrigin,draft:document.getElementById('prompt-textarea').value,sends:Number(document.getElementById('send-count').textContent)})");}
+  static final String PHASE_DOCUMENT_SCRIPT="(()=>{let url='';try{url=String(location.href);const value={url,controlled:!!document.getElementById('pool-ready'),timeOrigin:performance.timeOrigin,draft:document.getElementById('prompt-textarea').value,sends:Number(document.getElementById('send-count').textContent)};if(typeof value.timeOrigin!=='number'||!Number.isFinite(value.timeOrigin)||value.timeOrigin<=0||typeof value.draft!=='string'||!Number.isInteger(value.sends))throw new TypeError('Incomplete controlled document observation');return {ok:true,url,document:value};}catch(error){return {ok:false,url,error:{name:String(error?.name||'Error'),message:String(error?.message||error)}}}})()";
+  JSONObject phaseDocument(JSONObject report,String phase)throws Exception{
+    JSONArray observations=report.optJSONArray("legacyPhaseDocumentObservations");if(observations==null){observations=new JSONArray();NetworkCatalog.put(report,"legacyPhaseDocumentObservations",observations);}
+    JSONObject observed=J.obj("phase",phase,"scope","Gecko WebExtension isolated-world controlled document observation","expectedUrl",ORIGIN+"/pool","beganAtNs",now(),"validated",false);observations.put(observed);
+    try{
+      CompletableFuture<String> result=new CompletableFuture<>();ui(()->{view.evaluateJavascript(PHASE_DOCUMENT_SCRIPT,result::complete);return null;});String raw=result.get(15,TimeUnit.SECONDS);NetworkCatalog.put(observed,"raw",raw==null?JSONObject.NULL:raw);
+      JSONObject envelope=new JSONObject(raw);NetworkCatalog.put(observed,"result",envelope);if(!Boolean.TRUE.equals(envelope.opt("ok")))throw new IOException("Controlled document script failed: "+envelope.optJSONObject("error"));
+      JSONObject value=envelope.getJSONObject("document");Object origin=value.opt("timeOrigin"),sends=value.opt("sends");
+      if(!(value.opt("url") instanceof String)||!value.getString("url").equals(ORIGIN+"/pool")||!value.getString("url").equals(envelope.opt("url"))||!(value.opt("controlled") instanceof Boolean)||!(value.opt("draft") instanceof String)||!(origin instanceof Number)||!Double.isFinite(((Number)origin).doubleValue())||((Number)origin).doubleValue()<=0||!(sends instanceof Number)||!Double.isFinite(((Number)sends).doubleValue())||((Number)sends).doubleValue()!=Math.rint(((Number)sends).doubleValue()))throw new IOException("Incomplete controlled document fields");
+      NetworkCatalog.put(observed,"validated",true);return value;
+    }catch(Exception error){NetworkCatalog.put(observed,"error",J.obj("type",error.getClass().getName(),"message",String.valueOf(error.getMessage())));throw error;}
+    finally{NetworkCatalog.put(observed,"endedAtNs",now());event("phaseDocument",observed);}
+  }
   void endBusyBootstrapPhase(JSONObject report)throws Exception{
     // This local-only fixture denies the public navigation requested by
     // applyProxy. End its synthetic busy phase only after the bootstrap checks;
     // this is not a DOM-ready callback and does not admit browser traffic.
-    int bootstrapCheckCount=checks.length();long began=now();JSONObject documentBefore=phaseDocument();
+    int bootstrapCheckCount=checks.length();long began=now();JSONObject documentBefore=phaseDocument(report,"before");
     JSONObject boundary=ui(()->{JSONObject before=busyPhaseState();session.navigating=false;return J.obj("before",before,"after",busyPhaseState());});
-    JSONObject documentAfter=phaseDocument();
+    JSONObject documentAfter=phaseDocument(report,"after");
     NetworkCatalog.put(boundary,"schema",1);NetworkCatalog.put(boundary,"method","test-only end of controlled navigation-busy phase");NetworkCatalog.put(boundary,"domReadyInferred",false);NetworkCatalog.put(boundary,"bootstrapCheckCount",bootstrapCheckCount);NetworkCatalog.put(boundary,"beganAtNs",began);NetworkCatalog.put(boundary,"endedAtNs",now());NetworkCatalog.put(boundary,"documentBefore",documentBefore);NetworkCatalog.put(boundary,"documentAfter",documentAfter);NetworkCatalog.put(report,"legacyBusyPhaseBoundary",boundary);event("legacyBusyPhaseBoundary",boundary);
     JSONObject before=boundary.getJSONObject("before"),after=boundary.getJSONObject("after"),beforeStable=J.parse(before.toString()),afterStable=J.parse(after.toString());for(String key:new String[]{"navigating","routeBusy"}){beforeStable.remove(key);afterStable.remove(key);}
     check("The controlled busy phase ends after bootstrap without changing browser admission or the verified route",before.getBoolean("navigating")&&before.getBoolean("routeBusy")&&!after.getBoolean("navigating")&&!after.getBoolean("routeBusy")&&beforeStable.toString().equals(afterStable.toString())&&before.getBoolean("coreReady")&&before.getBoolean("nativeReceiptCurrent"));
