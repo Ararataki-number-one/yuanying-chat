@@ -1,4 +1,4 @@
-name: Validate guest TCP ADB after reproduced vsock transport loss
+name: Validate explicit native TCP ADB discovery
 permissions:
   contents: read
   actions: read
@@ -45,8 +45,10 @@ jobs:
         \ geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 > work/adb-diagnostic/emulator.txt\
         \ 2>&1 &\ntimeout 180 adb -s emulator-5556 wait-for-device\ntimeout 300 bash -c 'until [ \"$(adb -s emulator-5556 shell getprop sys.boot_completed\
         \ | tr -d \"\\r\")\" = \"1\" ]; do sleep 2; done'\nadb -s emulator-5556 emu redir add tcp:5555:5555\nadb -s emulator-5556 emu redir list > work/adb-diagnostic/redirections.txt\n\
-        adb kill-server\nadb start-server\ntimeout 30 adb -s emulator-5554 wait-for-device\nexport ANDROID_SERIAL=emulator-5554\nadb devices -l > work/adb-diagnostic/adb-devices.txt\n\
-        adb shell input keyevent 82\nadb install work/diagnostic.apk\npython3 tools/gecko/prepare_emulator.py --adb \"$(command -v adb)\" --serial emulator-5554\
+        adb kill-server\nadb start-server\npython3 - <<'PYADB'\nimport socket\nwith socket.create_connection(('127.0.0.1',5037),timeout=5) as channel:\n\
+        \    channel.sendall(b'0012host:emulator:5555')\nprint('Sent native ADB emulator announcement for actual forwarded TCP port 5555')\nPYADB\ntimeout\
+        \ 30 adb -s emulator-5554 wait-for-device\nexport ANDROID_SERIAL=emulator-5554\nadb devices -l > work/adb-diagnostic/adb-devices.txt\nadb shell\
+        \ input keyevent 82\nadb install work/diagnostic.apk\npython3 tools/gecko/prepare_emulator.py --adb \"$(command -v adb)\" --serial emulator-5554\
         \ --apk work/diagnostic.apk\n"
     - name: Observe fixed read-only transfers before any editing workload
       run: "python3 - <<'PYCODE'\nimport glob,hashlib,json,os,pathlib,shutil,subprocess,sys,time\nout=pathlib.Path('work/adb-diagnostic');selected=json.loads((out/'selected.json').read_text());adb=shutil.which('adb');base=[adb,'-s','emulator-5554']\n\
@@ -73,7 +75,7 @@ jobs:
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
       with:
-        name: adb-tcp-backplane
+        name: adb-tcp-explicit-discovery
         path: work/adb-diagnostic/
         retention-days: 5
     strategy:
