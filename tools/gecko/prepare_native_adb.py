@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -20,6 +21,8 @@ import prepare_emulator as normal
 
 BOOTSTRAP = 'emulator-5556'
 ACCEPTANCE = 'emulator-5554'
+RULE = 'hostfwd_add virtio-wifi tcp:127.0.0.1:5555-10.0.2.16:5555'
+CNXN = int.from_bytes(b'CNXN', 'little')
 
 
 class BootstrapCommands:
@@ -33,9 +36,14 @@ class BootstrapCommands:
         self.executable, self.serial, self.record, self.deadline = executable, serial, record, deadline
 
 
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
 def monitor(path, command):
-    if command not in ('info usernet', 'info network'):
-        raise ValueError('Unexpected QEMU metadata/setup command')
+    require(command in ('help hostfwd_add', 'info usernet', 'info network', RULE),
+            'Unexpected experimental monitor command')
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
         stream.settimeout(5)
         stream.connect(str(path))
@@ -44,31 +52,32 @@ def monitor(path, command):
             while b'(qemu)' not in raw:
                 data = stream.recv(65536)
                 if not data:
-                    raise ValueError('QEMU monitor closed without a complete response')
+                    raise ValueError('QEMU monitor closed before response')
                 raw += data
-                if len(raw) > 1024 * 1024:
-                    raise ValueError('Oversized QEMU metadata response')
+                require(len(raw) <= 1024 * 1024, 'Oversized QEMU monitor response')
             return raw.decode(errors='replace')
         response()
         stream.sendall(command.encode('ascii') + b'\n')
-        # HMP echoes input with ANSI cursor movement. The actual reply follows
-        # its first CRLF; retain only that bounded metadata reply in the report.
         return response().split('\r\n', 1)[-1]
 
 
+def verify_backend(text):
+    require(re.search(r'(?m)^virtio-wifi-device: [^\r\n]*\r?\n\s*\\ virtio-wifi: [^\r\n]*type=user,net=10\.0\.2\.0(?:,|\r?$)', text),
+            'Actual Wi-Fi NIC/user backend not proven')
+
+
 def verify_forward(text):
-    active = None
-    found = []
+    backend, forwards = None, []
     for line in text.splitlines():
         match = re.fullmatch(r'VLAN -1 \(([^)]+)\):', line.strip())
         if match:
-            active = match[1]
+            backend = match[1]
         elif 'TCP[HOST_FORWARD]' in line:
             fields = line.split()
-            if len(fields) == 8 and fields[2:6] == ['127.0.0.1', '5555', '10.0.2.15', '5555']:
-                found.append(active)
-    if found != ['mynet']:
-        raise ValueError('Actual native forwarding backend/address differs')
+            if len(fields) == 8 and fields[3] == '5555':
+                forwards.append((backend, fields[2:6]))
+    require(forwards == [('virtio-wifi', ['127.0.0.1', '5555', '10.0.2.16', '5555'])],
+            'Unique actual Wi-Fi native forwarding rule differs')
 
 
 def persistent_network(commands, record, identity):
@@ -117,12 +126,67 @@ def wait_native(adb, record):
         time.sleep(.25)
 
 
+def endpoint_probe(deadline):
+    """One CNXN attempt, header only, constrained by the shared total deadline."""
+    row = {'address': '127.0.0.1', 'port': 5555, 'tcpAccepted': False,
+           'payloadRead': False, 'authResponseSent': False, 'applicationCommandsSent': False}
+    started = time.monotonic()
+    try:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Endpoint deadline expired')
+        with socket.create_connection(('127.0.0.1', 5555), timeout=min(1, remaining)) as stream:
+            row['tcpAccepted'] = True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('Endpoint deadline expired before CNXN')
+            stream.settimeout(min(1, remaining))
+            banner = b'host::\0'
+            stream.sendall(struct.pack('<6I', CNXN, 0x01000000, 1024 * 1024,
+                                       len(banner), sum(banner), CNXN ^ 0xffffffff) + banner)
+            raw = b''
+            header_deadline = min(deadline, time.monotonic() + 3)
+            while len(raw) < 24:
+                remaining = header_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError('Endpoint response header deadline expired')
+                stream.settimeout(remaining)
+                block = stream.recv(24 - len(raw))
+                if not block:
+                    raise EOFError('Endpoint closed before a complete header')
+                raw += block
+            command, arg0, arg1, size, checksum, magic = struct.unpack('<6I', raw)
+            require(magic == command ^ 0xffffffff and size <= 1024 * 1024,
+                    'Invalid ADB protocol header')
+            name = command.to_bytes(4, 'little').decode('ascii', errors='replace')
+            require(name in ('CNXN', 'AUTH', 'CLSE'), 'Unexpected ADB response command')
+            row.update(responseCommand=name, argument0=arg0, argument1=arg1,
+                       payloadBytesAdvertised=size)
+    except (OSError, EOFError, ValueError) as error:
+        row.update(errorType=type(error).__name__, error=str(error))
+    row['elapsedMs'] = (time.monotonic() - started) * 1000
+    return row
+
+
+def wait_endpoint(record):
+    deadline = time.monotonic() + 8
+    record.update(endpointDeadlineSeconds=8, endpointProbeAttempts=[],
+                  endpointProtocolReachable=False)
+    while True:
+        row = endpoint_probe(deadline)
+        record['endpointProbeAttempts'].append(row)
+        if row.get('responseCommand') in ('CNXN', 'AUTH'):
+            record['endpointProtocolReachable'] = True
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Real Wi-Fi native endpoint did not answer ADB within 8 seconds')
+        time.sleep(min(.25, remaining))
+
+
 def native_transport(adb, monitor_path, record):
+    require(record.get('confirmedQemu') is True, 'Confirmed synthetic QEMU required')
     base = [adb, '-s', BOOTSTRAP]
-    def command(*parts):
-        return subprocess.check_output(base + list(parts), text=True, timeout=8)
-    record['tcpService'] = command('tcpip', '5555')
-    subprocess.run(base + ['wait-for-device'], check=True, timeout=30)
     deadline = time.monotonic() + 30
     while True:
         address = subprocess.run(base + ['shell', 'ip', '-4', '-o', 'addr', 'show', 'wlan0'],
@@ -138,12 +202,38 @@ def native_transport(adb, monitor_path, record):
             raise TimeoutError('Actual SDK Wi-Fi address/return route not ready')
         time.sleep(.25)
     record['networkDevices'] = monitor(monitor_path, 'info network')
+    verify_backend(record['networkDevices'])
+    record['hostfwdHelp'] = monitor(monitor_path, 'help hostfwd_add')
+    require('hostfwd_add' in record['hostfwdHelp'] and 'netdev' in record['hostfwdHelp'],
+            'Pinned emulator does not advertise explicit-backend forwarding')
     record['beforeUsernet'] = monitor(monitor_path, 'info usernet')
-    record['forwardResult'] = command('emu', 'redir', 'add', 'tcp:5555:5555')
+    require(not re.search(r'(?m)TCP\[HOST_FORWARD\]\s+\S+\s+\S+\s+5555\s', record['beforeUsernet']),
+            'Fresh native endpoint must not replace an existing forward')
+    record['forwardCommand'] = RULE
+    record['forwardResult'] = monitor(monitor_path, RULE)
     record['afterUsernet'] = monitor(monitor_path, 'info usernet')
     verify_forward(record['afterUsernet'])
-    # Register the real native emulator service once; no serial aliases, server
-    # restart, transport fallback or application/installed-byte retry exists.
+    command = base + ['tcpip', '5555']
+    record['tcpipCommand'] = {'command': command, 'invocations': 1,
+                            'startedMonotonicNs': time.monotonic_ns()}
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=8)
+    except subprocess.TimeoutExpired as error:
+        record['tcpipCommand'].update(exitCode=None, timedOut=True,
+            stdout=str(error.stdout or ''), stderr=str(error.stderr or ''))
+        raise
+    finally:
+        record['tcpipCommand']['elapsedMs'] = (time.monotonic_ns() - record['tcpipCommand']['startedMonotonicNs']) / 1000000
+    row = record['tcpipCommand']
+    row.update(exitCode=result.returncode, stdout=result.stdout, stderr=result.stderr,
+               timedOut=False, commandSucceeded=result.returncode == 0)
+    closed = result.returncode == 1 and result.stderr.strip() == 'error: closed' and not result.stdout.strip()
+    row['completionUncertainClosed'] = closed
+    if result.returncode != 0 and not closed:
+        result.check_returncode()
+    # No VSock command follows the transition. Protocol readiness is separate
+    # from command success, and cannot satisfy the final native device gate.
+    wait_endpoint(record)
     announce_native(record)
     wait_native(adb, record)
 
