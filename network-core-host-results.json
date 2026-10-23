@@ -1,0 +1,87 @@
+{
+  "synthetic": true,
+  "total": 11,
+  "checks": [
+    {
+      "pass": true,
+      "name": "detector retention is not recovery success"
+    },
+    {
+      "pass": true,
+      "name": "detector backoff still checks and recovers corroborated transport failure"
+    },
+    {
+      "pass": true,
+      "name": "candidate-only controller failure retains exact live route and backs off"
+    },
+    {
+      "pass": true,
+      "name": "automatic failed candidate is selected back and reverified before retention"
+    },
+    {
+      "pass": true,
+      "name": "failed rollback cannot reuse any former receipt"
+    },
+    {
+      "pass": true,
+      "name": "busy flow blocks route mutation"
+    },
+    {
+      "pass": true,
+      "name": "work arriving before commit restores newly verified original selection"
+    },
+    {
+      "pass": true,
+      "name": "retained outcome authorizes only its exact current receipt"
+    },
+    {
+      "pass": true,
+      "name": "retained outcome cannot authorize a changed core route or superseding receipt"
+    },
+    {
+      "pass": true,
+      "name": "fresh identity observation cannot hide work arriving before selection"
+    },
+    {
+      "pass": true,
+      "name": "failed old transaction never destroys a replacement local core"
+    }
+  ],
+  "actualAndroidExecution": false,
+  "passed": 11,
+  "status": "passed",
+  "sourceFile": "/home/runner/work/yuanying-chat/yuanying-chat/app/src/main/java/local/pocketchat/NativeNetwork.java",
+  "sourceSha256": "32b309c3d5abecf49b53119cb1585b4491f6d39ac4e68f7280c24294625f8ef6",
+  "files": {
+    "app/src/main/java/local/pocketchat/NetworkHealthPolicy.java": "08279fe9e9a05be1634d3883bf0a52a4c791c79a49b9bf28913523986a29018b",
+    "app/src/main/java/local/pocketchat/NetworkOptimizationPolicy.java": "018fd67ae6e1411de0534b1ed0ba3f15edf17fccd3daaf32e72c20925fccb5c3",
+    "app/src/main/java/local/pocketchat/NetworkWork.java": "de34134adc227c8dcc48e52db9a23937537e95ae05abf5192b426224295446bf",
+    "app/src/main/java/local/pocketchat/NetworkDiagnostics.java": "eb7cd6127b79ddf24e1f909af7d06c3ade6c84d04453f1bf9e8e0467143d9be9",
+    "tests/network-core-host/NativeNetworkHarness.java.txt": "acf317071a5cd1405070ddb48f0d58b8d10b8c329b91adc92c01d8254c22f015",
+    "tools/gecko/run_network_core_host.py": "ca495ed7e53c73dc20ced0632cb35ba3072503b0d4212235f247857adf2f195c"
+  },
+  "sourceCommit": "10213f5fbe4eb61181c94840064ececfa5397d45",
+  "sourceDirty": false,
+  "executionInputsUnchanged": true,
+  "extractedMethods": [
+    "  void runStartOperation(int mode)",
+    "  void scanSubset(",
+    "  void selectNow(",
+    "  void rescan(",
+    "  void health(boolean reuseRecent)",
+    "  static long exitRetryDelayMs(",
+    "  boolean retainVerifiedRoute(",
+    "  void recoverExistingRoute(",
+    "  RetainedRouteFailure retained(",
+    "  boolean retainedFailure(",
+    "  boolean unchangedVerifiedSelection(",
+    "  void commitSelection(",
+    "  void selectVerifiedRoute(",
+    "  void verifyExitWhenDue(",
+    "  boolean retainedOutcomeCurrent(",
+    "  void stopFailedTransaction(",
+    "  void clearReadyState("
+  ],
+  "harnessSha256": "501ef963e1e316e74b14b93ccdadfac54eea53254941be93abd4ed6bddc7478e",
+  "stderr": "automatic fixture outcome=RetainedRouteFailure entry=old selected=old verifies=2 stops=0 receiptCurrent=true\n"
+}
