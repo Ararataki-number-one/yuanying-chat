@@ -22,18 +22,30 @@ def archive(extra=None,revision=9):
         if extra:out.writestr(extra,b'unexpected')
     return body.getvalue()
 
+def emulator_archive(revision='37.2.12'):
+    body=io.BytesIO()
+    with zipfile.ZipFile(body,'w') as out:
+        out.writestr('emulator/source.properties',f'Pkg.Desc=Android Emulator\nPkg.Revision={revision}\n')
+        for name in ('emulator','qemu/linux-x86_64/qemu-system-x86_64'):
+            entry=zipfile.ZipInfo('emulator/'+name);entry.external_attr=0o100755<<16;out.writestr(entry,b'controlled-executable')
+    return body.getvalue()
+
 class Response(io.BytesIO):
     def __init__(self,data):super().__init__(data);self.headers={'Content-Length':str(len(data))}
 
 class ImageSetupTest(unittest.TestCase):
     def test_package_registration_matches_official_pinned_revision(self):
         pin=json.loads(setup.PIN.read_text());doc=minidom.parse(str(setup.PACKAGE));root=doc.documentElement
-        self.assertEqual(root.namespaceURI,'http://schemas.android.com/repository/android/generic/02')
+        self.assertEqual(root.namespaceURI,'http://schemas.android.com/repository/android/common/02')
         self.assertEqual(root.getAttribute('xmlns:sys-img'),'http://schemas.android.com/sdk/android/repo/sys-img2/03')
         local=doc.getElementsByTagName('localPackage')[0]
         self.assertEqual(local.getAttribute('path'),pin['package'])
         self.assertEqual(int(local.getElementsByTagName('major')[0].firstChild.data),pin['revision'])
         self.assertTrue(pin['url'].endswith('/x86_64-35_r09.zip'))
+        emulator=json.loads(setup.EMULATOR_PIN.read_text());doc=minidom.parse(str(setup.EMULATOR_PACKAGE))
+        self.assertEqual(emulator['channel'],'stable');self.assertEqual(emulator['revision'],'37.2.12')
+        self.assertEqual(doc.getElementsByTagName('localPackage')[0].getAttribute('path'),'emulator')
+        self.assertEqual(doc.documentElement.namespaceURI,'http://schemas.android.com/repository/android/common/02')
 
     def test_download_rejects_partial_body_before_accepting_verified_setup(self):
         raw=archive();pin=dict(url='https://dl.google.com/controlled-fixture.zip',bytes=len(raw),sha1=hashlib.sha1(raw).hexdigest())
@@ -86,5 +98,33 @@ class ImageSetupTest(unittest.TestCase):
             path=Path(base)/'image.zip';path.write_bytes(raw);target=Path(base)/'sdk/x86_64'
             with self.assertRaises(zipfile.BadZipFile):setup.install(path,target,setup.PACKAGE,9)
             self.assertFalse(target.exists());self.assertFalse(list(target.parent.glob('verified-image-*')))
+
+    def test_original_image_can_create_user_data_at_avd_boot(self):
+        body=io.BytesIO(archive());clean=io.BytesIO()
+        with zipfile.ZipFile(body) as source,zipfile.ZipFile(clean,'w') as out:
+            for info in source.infolist():
+                if not info.filename.endswith('/userdata.img'):out.writestr(info,source.read(info))
+        with tempfile.TemporaryDirectory() as base:
+            path=Path(base)/'image.zip';path.write_bytes(clean.getvalue());target=Path(base)/'sdk/x86_64'
+            setup.install(path,target,setup.PACKAGE,9)
+            self.assertTrue((target/'system.img').is_file());self.assertFalse((target/'userdata.img').exists())
+
+    def test_pinned_emulator_keeps_executable_modes_and_updates_sdk_tool_only(self):
+        with tempfile.TemporaryDirectory() as base:
+            path=Path(base)/'emulator.zip';path.write_bytes(emulator_archive());target=Path(base)/'sdk/emulator';target.mkdir(parents=True)
+            (target/'source.properties').write_text('Pkg.Desc=Android Emulator\nPkg.Revision=37.1.0\n');(target/'old-tool').write_text('old')
+            avd=target.parent/'separate-avd';avd.mkdir();(avd/'draft').write_text('retained')
+            props=setup.install_emulator(path,target,setup.EMULATOR_PACKAGE,'37.2.12')
+            self.assertEqual(props['Pkg.Revision'],'37.2.12');self.assertTrue((target/'emulator').stat().st_mode&0o100)
+            self.assertFalse((target/'old-tool').exists());self.assertEqual((avd/'draft').read_text(),'retained')
+
+    def test_wrong_emulator_revision_and_foreign_target_are_rejected(self):
+        with tempfile.TemporaryDirectory() as base:
+            path=Path(base)/'emulator.zip';target=Path(base)/'sdk/emulator';target.mkdir(parents=True);(target/'keep').write_text('keep')
+            path.write_bytes(emulator_archive('37.3.5'))
+            with self.assertRaises(ValueError):setup.install_emulator(path,target,setup.EMULATOR_PACKAGE,'37.2.12')
+            path.write_bytes(emulator_archive())
+            with self.assertRaises(ValueError):setup.install_emulator(path,target,setup.EMULATOR_PACKAGE,'37.2.12')
+            self.assertEqual((target/'keep').read_text(),'keep')
 
 if __name__=='__main__':unittest.main()

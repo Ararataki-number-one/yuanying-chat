@@ -232,7 +232,8 @@ jobs:
         echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
         echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
         yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator'
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-emulator-package-results.json
         python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-system-image-results.json
     - name: Boot Android for native acceptance
       shell: bash
@@ -452,7 +453,8 @@ jobs:
         echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
         echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
         yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0' 'emulator'
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-emulator-package-results.json
         python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-system-image-results.json
     - name: Boot Android for native acceptance
       shell: bash
