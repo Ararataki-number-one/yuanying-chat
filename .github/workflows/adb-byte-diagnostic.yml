@@ -41,6 +41,7 @@ jobs:
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
     - name: Boot the unchanged Android runtime
       run: |
         set -euo pipefail
@@ -68,7 +69,20 @@ jobs:
          run=original.Commands.run
          def __init__(self):
           self.executable=shutil.which('adb');self.serial='emulator-5556';self.record=record;self.deadline=time.monotonic()+33
-        try:original.preflight(DiagnosticBootstrapCommands(),record,identity)
+        try:
+         commands=DiagnosticBootstrapCommands();original.preflight(commands,record,identity)
+         assert record['confirmedQemu'] and record['disabledStateConfirmed']
+         # SDK request teardown can happen after an immediately healthy CM snapshot.
+         # Dispose that connection before creating a persistent SDK AP connection.
+         commands.run('shell','cmd','wifi','set-wifi-enabled','disabled')
+         while True:
+          addresses=commands.run('shell','ip','-4','-o','addr','show','wlan0')
+          record.setdefault('wifiResetAddresses',[]).append(addresses)
+          if 'inet ' not in addresses:break
+          if commands.deadline-time.monotonic()<=1:raise TimeoutError('SDK WiFi teardown did not finish')
+          time.sleep(.25)
+         original.provision_sdk_wifi(commands,record,identity,'persistent-sdk-wifi-after-setup','after-persistent-sdk-wifi')
+         assert original.network_observation(commands,record,identity,'persistent-sdk-wifi-confirmation')
         finally:pathlib.Path('work/adb-diagnostic/bootstrap-network.json').write_text(json.dumps(record,indent=2))
         assert record['status']=='passed' and record['confirmedQemu'] and record['disabledStateConfirmed']
         print(json.dumps(dict(bootstrapNetworkStatus=record['status'],diagnosticOnly=True,applicationAcceptance=False)))
