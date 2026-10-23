@@ -1,0 +1,254 @@
+{
+  "status": "failed",
+  "actualAndroidExecution": true,
+  "actualMihomoExecution": true,
+  "initialDisplaySampling": {
+    "busyRequests": 2,
+    "idleRequests": 2
+  },
+  "firstWebsiteReading": {
+    "entry": "Entry|slow",
+    "at": 1792764256372,
+    "firstMs": 122,
+    "warmMs": 2,
+    "code": 200,
+    "status": "ok"
+  },
+  "headConnectionIds": [
+    33022,
+    33022
+  ],
+  "controlledWebsiteReadings": [
+    {
+      "entry": "Entry|slow",
+      "at": 1792764256372,
+      "firstMs": 122,
+      "warmMs": 2,
+      "code": 200,
+      "status": "ok"
+    },
+    {
+      "entry": "Entry|fast",
+      "at": 1792764256554,
+      "firstMs": 150,
+      "warmMs": 22,
+      "code": 200,
+      "status": "ok"
+    }
+  ],
+  "error": "java.lang.AssertionError: A faster permitted entrance reduces controlled website cold response time",
+  "networkRepairEvidence": {},
+  "checkCount": 52,
+  "checks": [
+    {
+      "name": "Eight encrypted environment regions stay isolated across alternating reads",
+      "pass": true
+    },
+    {
+      "name": "Repeated multi-window reads reuse decrypted region snapshots",
+      "pass": true
+    },
+    {
+      "name": "Replacing one sealed region updates only that environment",
+      "pass": true
+    },
+    {
+      "name": "Deleting a sealed region clears its cached identity",
+      "pass": true
+    },
+    {
+      "name": "Network list reads pending draft metadata on its background reader",
+      "pass": true
+    },
+    {
+      "name": "Network list refresh sees draft removal without a global pending cache",
+      "pass": true
+    },
+    {
+      "name": "Actual Android main-thread region and cold latency reads complete",
+      "pass": true
+    },
+    {
+      "name": "Region and latency UI snapshots cause no main-thread disk reads or writes",
+      "pass": true
+    },
+    {
+      "name": "Cold profile metadata paths resolve without Android main-thread directory access",
+      "pass": true
+    },
+    {
+      "name": "Background cold-path resolution restores the correct eight environment snapshots",
+      "pass": true
+    },
+    {
+      "name": "Deferred callback race reaches both real encrypted candidate writes",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback does not clear the newer sealed candidate",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback keeps the newer request saving state",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback does not apply the replaced candidate",
+      "pass": true
+    },
+    {
+      "name": "Intervening non-saving network operations preserve the newest save ownership",
+      "pass": true
+    },
+    {
+      "name": "The latest network candidate is applied once after the stale callback is ignored",
+      "pass": true
+    },
+    {
+      "name": "Low latency permits a pool without a preselected entry",
+      "pass": true
+    },
+    {
+      "name": "Foreign subscription nodes are rejected",
+      "pass": true
+    },
+    {
+      "name": "An empty optimization pool is rejected",
+      "pass": true
+    },
+    {
+      "name": "Actual native parser supplies identities for the original permitted entry pool",
+      "pass": true
+    },
+    {
+      "name": "Draft restores the low latency mode",
+      "pass": true
+    },
+    {
+      "name": "Draft saves only the permitted pool",
+      "pass": true
+    },
+    {
+      "name": "Changing subscription clears candidates and pool",
+      "pass": true
+    },
+    {
+      "name": "Maintenance rounds stay bounded",
+      "pass": true
+    },
+    {
+      "name": "Round robin explores the whole allowed pool",
+      "pass": true
+    },
+    {
+      "name": "Production Mihomo starts with ARC DNS and TCP concurrency",
+      "pass": true
+    },
+    {
+      "name": "Startup verifies the same controlled fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Remembered route starts without an invented delay",
+      "pass": true
+    },
+    {
+      "name": "Automatic display sampling measures the current route while a reply is busy",
+      "pass": true
+    },
+    {
+      "name": "A fresh busy-route sample is reused after the reply becomes idle",
+      "pass": true
+    },
+    {
+      "name": "Display sampling preserves entry core and fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Repeated UI reads do not repeatedly probe the route",
+      "pass": true
+    },
+    {
+      "name": "A stale real sample remains visible and is explicitly marked previous",
+      "pass": true
+    },
+    {
+      "name": "A real failed sample is not mislabeled unmeasured",
+      "pass": true
+    },
+    {
+      "name": "Display does not reuse a different fixed exit's sample",
+      "pass": true
+    },
+    {
+      "name": "A blocked display probe reports its failure while preserving the usable connection",
+      "pass": true
+    },
+    {
+      "name": "Display-only failure does not poison route quality or trigger switching",
+      "pass": true
+    },
+    {
+      "name": "A newer display-only sample cannot hide the original health failure",
+      "pass": true
+    },
+    {
+      "name": "Legacy saved runtime keeps its original health failure semantics",
+      "pass": true
+    },
+    {
+      "name": "External connection response can be measured over an explicit existing proxy",
+      "pass": true
+    },
+    {
+      "name": "External measured response is shown instead of permanently unmeasured",
+      "pass": true
+    },
+    {
+      "name": "Switching the actual phone network invalidates the previous response",
+      "pass": true
+    },
+    {
+      "name": "A blocked external route makes no test request or direct fallback",
+      "pass": true
+    },
+    {
+      "name": "TCP concurrency is enabled by the running core",
+      "pass": true
+    },
+    {
+      "name": "DNS nameservers remain guarded by the fixed exit",
+      "pass": true
+    },
+    {
+      "name": "First and repeat website headers are measured",
+      "pass": true
+    },
+    {
+      "name": "HEAD repeat reuses the same controlled HTTP connection",
+      "pass": true
+    },
+    {
+      "name": "Website probes contain no account Cookie or Authorization",
+      "pass": true
+    },
+    {
+      "name": "A different candidate uses a new probe connection",
+      "pass": true
+    },
+    {
+      "name": "Candidate probing leaves the live route unchanged",
+      "pass": true
+    },
+    {
+      "name": "Both entry routes and the same fixed exit carry real requests",
+      "pass": true
+    },
+    {
+      "name": "A faster permitted entrance reduces controlled website cold response time",
+      "pass": false
+    }
+  ],
+  "exitTransportContinuity": [],
+  "sourceCommit": "498abbf447dcb3125de846ccfe72bc0cbb2e64ad"
+}
