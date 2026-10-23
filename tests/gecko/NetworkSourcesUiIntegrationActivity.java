@@ -31,7 +31,7 @@ public final class NetworkSourcesUiIntegrationActivity extends Activity {
     super.onCreate(saved);if(!getPackageName().equals("local.pocketchat.test"))throw new SecurityException("Synthetic UI fixture only");
     if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
     LinearLayout root=DesignUi.column(this);ReferenceUi.insets(this,root);FrameLayout host=new FrameLayout(this);root.addView(host,new LinearLayout.LayoutParams(-1,0,1));
-    root.addView(ReferenceUi.nav(this,3,n->{},new android.widget.Button[5]));setContentView(root);ui=new NetworkWorkspaceUi(this,host);ui.show(0);
+    root.addView(ReferenceUi.nav(this,3,n->{},new android.widget.Button[5]));setContentView(root);ui=new NetworkWorkspaceUi(this,host);ui.layout();
     handler.post(tick);io.execute(()->{try{seed();}catch(Throwable failed){fail(failed);}});
   }
   byte[] provider(boolean exit){
@@ -48,15 +48,18 @@ public final class NetworkSourcesUiIntegrationActivity extends Activity {
     profile=Profiles.context(this,6);vault=new SecretStore(profile);ProfileCatalog.get(this).created(6);ProfileCatalog.get(this).rename(6,"UI Window");
     initial=J.obj("subscriptionUrl",ENTRY_URL,"subscriptionName","EntrySource","exitHost","127.0.0.1","exitPort",19120,"exitUser","synthetic","exitPassword","synthetic","exitName","ManualSource","exitLibraryId",manualId,"exitSource","manual","entryMode","manual","entry","Entry|Entry A","entryPool",J.arr("Entry|Entry A"));
     vault.save(initial);originalSettings=vault.get("network");profile.getSharedPreferences("chat",0).edit().putString("networkMode","internal").putBoolean("networkConfigured",true).putString("draft","unchanged synthetic chat draft").commit();
-    parse(NetworkCatalog.ENTRY,entryId,entryRaw,()->parse(NetworkCatalog.EXIT,exitId,exitRaw,()->handler.post(()->{
+    parse(NetworkCatalog.ENTRY,entryId,entryRaw,()->parse(NetworkCatalog.EXIT,exitId,exitRaw,()->{
       try{NetworkCatalog latest=new NetworkCatalog(this);JSONObject e=latest.subscription(NetworkCatalog.ENTRY,entryId),x=latest.subscription(NetworkCatalog.EXIT,exitId);entrySuccessAt=e.optLong("lastSuccessAt");exitSuccessAt=x.optLong("lastSuccessAt");
         latest.parsed(entryId,NetworkCatalog.copy(e.optJSONArray("nodes")),entryRaw,entrySuccessAt);e=latest.subscription(NetworkCatalog.ENTRY,entryId);if(e.optJSONArray("nodeDetails").length()!=0||!Arrays.equals(entryRaw,latest.cache(e)))throw new AssertionError("Names-only legacy migration seed was not created");
-        check("Real native entrance parser publishes one entrance",nativeEntry&&NetworkSourceSelection.names(e).equals(Collections.singletonList("Entry|Entry A")));
+        JSONArray windows=WindowNetworkState.windows(this);NetworkWorkspaceUi.readUiMetadata(this,windows);final JSONObject parsedEntry=e;
+        handler.post(()->{try{if(isDestroyed())return;
+        check("Real native entrance parser publishes one entrance",nativeEntry&&NetworkSourceSelection.names(parsedEntry).equals(Collections.singletonList("Entry|Entry A")));
         check("Real native exit parser includes SOCKS5 aliases and HTTP",nativeExit&&NetworkSourceSelection.names(x).size()==3);
         check("Identical exit connection aliases retain one real fingerprint",NetworkSourceSelection.fingerprint(x,"Exit|Tokyo").equals(NetworkSourceSelection.fingerprint(x,"Exit|Tokyo Alias")));
-        ui.catalog=latest;ui.windows=WindowNetworkState.windows(this);NetworkWorkspaceUi.readUiMetadata(this,ui.windows);checkDiagnostics();ui.show(0);ready=true;stage="ready";publish();
+        ui.catalog=latest;ui.windows=windows;ui.lastRead=SystemClock.elapsedRealtime();checkDiagnostics();ui.show(0);WindowNetworkState shown=ui.state(window());check("Saved source settings alone do not create a running route summary",!shown.connected&&NetworkWorkspaceUi.runningConfiguration(shown)==null&&"未运行".equals(shown.state));ready=true;stage="ready";publish();
+        }catch(Throwable failed){fail(failed);}});
       }catch(Throwable failed){fail(failed);}
-    })));
+    }));
   }
   void parse(String role,String id,byte[] raw,Runnable next){
     try{NetworkCatalog c=new NetworkCatalog(this);NetworkCatalog.RefreshToken token=c.beginRefresh(role,id);
@@ -80,8 +83,11 @@ public final class NetworkSourcesUiIntegrationActivity extends Activity {
   void unchanged()throws Exception{check("Window encrypted settings unchanged at "+stage,Arrays.equals(originalSettings,vault.get("network")));check("Chat draft unchanged at "+stage,"unchanged synthetic chat draft".equals(profile.getSharedPreferences("chat",0).getString("draft","")));}
   JSONObject window(){for(int i=0;i<ui.windows.length();i++){JSONObject item=ui.windows.optJSONObject(i);if(item.optJSONObject("row").optInt("slot")==6)return item;}throw new IllegalStateException("Synthetic window missing");}
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(!ready||finished)return;try{command(intent.getStringExtra("command"));}catch(Throwable failed){fail(failed);}}
-  void command(String command)throws Exception{
-    if(command==null)return;NetworkCatalog c=new NetworkCatalog(this);ui.catalog=c;ui.windows=WindowNetworkState.windows(this);NetworkWorkspaceUi.readUiMetadata(this,ui.windows);stage=command;
+  void command(String command){
+    if(command==null)return;io.execute(()->{try{NetworkCatalog catalog=new NetworkCatalog(this);JSONArray windows=WindowNetworkState.windows(this);NetworkWorkspaceUi.readUiMetadata(this,windows);handler.post(()->{try{if(finished||isDestroyed())return;applyCommand(command,catalog,windows);}catch(Throwable failed){fail(failed);}});}catch(Throwable failed){fail(failed);}});
+  }
+  void applyCommand(String command,NetworkCatalog c,JSONArray windows)throws Exception{
+    ui.catalog=c;ui.windows=windows;ui.lastRead=SystemClock.elapsedRealtime();stage=command;
     switch(command){
       case "window-tab":ui.select(0);break;
       case "open-window-details":ui.details(window());break;

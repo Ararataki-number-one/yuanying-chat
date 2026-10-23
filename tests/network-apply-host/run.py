@@ -19,7 +19,7 @@ def method(signature,text=source):
         end+=1
     return text[start:end]
 
-names=['static boolean internalJob(', 'void pruneJobs(', 'void recordResult(', 'void observeSession(', 'void sessionChanged(']
+names=['static boolean internalJob(', 'void pruneJobs(', 'void recordResult(String id,boolean ok,String message){', 'void recordResult(String id,boolean ok,String message,JSONObject operationResult){', 'void observeSession(', 'void sessionChanged(']
 methods=[method(name) for name in names]
 constants=re.search(r'static final long JOB_RETENTION=\d+;static final int MAX_JOBS=\d+;',source).group(0)
 generated=work/'generated/local/pocketchat/NetworkUiProvider.java';generated.parent.mkdir(parents=True,exist_ok=True)

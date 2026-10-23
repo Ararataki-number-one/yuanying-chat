@@ -66,6 +66,10 @@ public final class NetworkApplyHostTest {
     android.os.SystemClock.now++;provider.pruneJobs();check("Expired completions retire without deleting active work",provider.jobs.size()==1&&provider.jobs.containsKey("running"));
     provider.recordResult("external-0",true,"late after expiration");check("Expired callback cannot resurrect its result",provider.jobs.size()==1);
     check("Retention exceeds the actual 160 second bridge poll",NetworkUiProvider.JOB_RETENTION>160000);
+    NetworkUiProvider receipts=new NetworkUiProvider();receipts.jobs.put("result",J.obj("done",false));JSONObject operation=J.obj("candidateId","candidate-a","savedRevision",7,"applicationState","pending");receipts.recordResult("result",true,"saved",operation);operation.put("candidateId","new-candidate");
+    check("Operation outcome is frozen atomically with job completion",receipts.jobs.get("result").optBoolean("done")&&receipts.jobs.get("result").optJSONObject("operationResult").optString("candidateId").equals("candidate-a"));
+    receipts.recordResult("result",false,"late",J.obj("candidateId","late"));check("Late completion cannot replace an operation outcome",receipts.jobs.get("result").optJSONObject("operationResult").optString("candidateId").equals("candidate-a"));
+    receipts.jobs.remove("result");receipts.recordResult("result",true,"retired",operation);check("An outcome-bearing callback cannot resurrect a retired job",receipts.jobs.isEmpty());
     providerObservation();concurrentRetirement();
     System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualProviderInvocation",false,"productionRetryClass",true,"productionJobMethodsExtractedVerbatim",true,"productionObserverMethodsExtractedVerbatim",true,"twoActualThreads",true));
   }

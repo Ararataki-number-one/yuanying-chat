@@ -18,7 +18,7 @@ PARSER.add_argument("--expected-apk-sha", default="")
 ARGS = PARSER.parse_args()
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
-from network_ui_route_contract import visible_route, reveal_modal_action, clipboard_overlay_present
+from network_ui_route_contract import visible_inactive_route, reveal_modal_action, clipboard_overlay_present
 OUT = ROOT / "work/gecko-integration"
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "local.pocketchat.test"
@@ -318,10 +318,11 @@ def main():
     adb("shell", "am", "start", "-W", "-n", ACTIVITY)
     wait_for(state, lambda item: item.get("ready"), "Native provider seed", seconds=100)
     command("window-tab")
-    tree = wait_for(xml, lambda tree: visible_route(tree, "UI Window", "Entry A", "ManualSource"),
-                    "Named environment card shows its entrance, fixed exit and ChatGPT destination", seconds=20)
-    record_action("inspect-window-route", environment="UI Window", entrance="Entry A", fixedExit="ManualSource", destination="ChatGPT")
-    check("Window card displays the entrance-to-fixed-exit combination", visible_route(tree, "UI Window", "Entry A", "ManualSource"))
+    tree = wait_for(xml, lambda tree: visible_inactive_route(tree, "UI Window"),
+                    "Saved-only environment is visibly inactive without inventing a running route", seconds=20)
+    record_action("inspect-inactive-window-route", environment="UI Window", actualRouteApplication=False,
+                  scope="Saved source configuration and UI layout only; no running core", runningSummary="absent")
+    check("Saved-only window card does not claim a running entrance-to-exit route", visible_inactive_route(tree, "UI Window"))
     check("Only the three requested network tabs are visible", all(matching(tree, text=text) for text in ("窗口网络", "入口", "出口")) and not matching(tree, text="订阅"))
     command("open-window-details")
     centered("窗口详情 · UI Window")

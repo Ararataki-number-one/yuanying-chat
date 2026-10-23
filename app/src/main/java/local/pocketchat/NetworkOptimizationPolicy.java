@@ -5,7 +5,7 @@ import java.util.*;
 /** Small bounded rounds; the caller rechecks activity before every request and switch. */
 final class NetworkOptimizationPolicy {
   static final long ACTIVE_INTERVAL=120000, BACKGROUND_INTERVAL=180000, SCAN_INTERVAL=120000;
-  static String label(String mode){return "latency".equals(mode)?"低延迟优先":"manual".equals(mode)?"手动指定":"random".equals(mode)?"自动随机":"自动选择";}
+  static String label(String mode){return "latency".equals(mode)?"自动优选":"manual".equals(mode)?"手动指定":"random".equals(mode)?"自动随机":"自动选择";}
   static boolean pooled(String mode){return "random".equals(mode)||"latency".equals(mode);}
   static List<String> batch(List<String> nodes,List<String> ranked,String current,int cursor){
     LinkedHashSet<String> chosen=new LinkedHashSet<>();if(nodes.contains(current))chosen.add(current);

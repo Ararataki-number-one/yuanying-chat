@@ -62,6 +62,38 @@ class NetworkRouteUiTest(unittest.TestCase):
         value=card();value.remove(value[1]);value.insert(1,text('Entry A → ManualSource'));self.assertFalse(self.check_route(value))
 
 
+class InactiveNetworkRouteUiTest(unittest.TestCase):
+    def card(self, name='UI Window'):
+        value = card(name=name)
+        value.remove(value[1])
+        value.insert(1, text('● 未运行'))
+        value.insert(2, text('当前没有运行线路'))
+        return value
+
+    def visible(self, *cards):
+        tree = ET.Element('hierarchy'); tree.extend(cards)
+        return ROUTE.visible_inactive_route(tree, 'UI Window')
+
+    def test_saved_configuration_is_explicitly_inactive(self):
+        self.assertTrue(self.visible(self.card()))
+
+    def test_synthetic_running_route_is_rejected(self):
+        value = self.card(); value.append(card()[1])
+        self.assertFalse(self.visible(value))
+        value = self.card(); value.append(text('运行线路 · 自动优选'))
+        self.assertFalse(self.visible(value))
+
+    def test_each_state_is_required_in_the_named_card(self):
+        for index in (1, 2):
+            value = self.card(); value.remove(value[index])
+            self.assertFalse(self.visible(value, self.card('Other window')))
+
+    def test_hidden_or_interactive_state_is_rejected(self):
+        for field, data in (('bounds', '[0,0][0,0]'), ('clickable', 'true')):
+            value = self.card(); value[2].set(field, data)
+            self.assertFalse(self.visible(value))
+
+
 class ModalActionScrollTest(unittest.TestCase):
     def tree(self, visible=False, title='入口订阅详情', scrollable=True):
         tree=ET.Element('hierarchy');heading=text('详情');heading.set('content-desc',title);tree.append(heading)

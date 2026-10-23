@@ -41,6 +41,37 @@ def visible_route(tree, environment, entrance, fixed_exit):
     return False
 
 
+def visible_inactive_route(tree, environment):
+    """A saved-only fixture has no running-route evidence to display."""
+    parents = {child: parent for parent in tree.iter() for child in parent}
+    for title in tree.iter('node'):
+        if title.attrib.get('text') != environment:
+            continue
+        card = parents.get(title)
+        while card is not None:
+            if any(node.attrib.get('text') == '编辑网络' and
+                   node.attrib.get('class') == 'android.widget.Button'
+                   for node in card.iter('node')):
+                values = [node for node in card.iter('node') if node.attrib.get('text')]
+                labels = [node.attrib['text'] for node in values]
+                if any(label in labels for label in ('入口', '固定出口', '目的地')):
+                    return False
+                if any(label.startswith('运行线路 ·') for label in labels):
+                    return False
+                for label in ('● 未运行', '当前没有运行线路'):
+                    matches = [node for node in values if node.attrib['text'] == label]
+                    if len(matches) != 1:
+                        return False
+                    value = matches[0]
+                    bounds = list(map(int, re.findall(r'\d+', value.attrib.get('bounds', ''))))
+                    if (len(bounds) != 4 or bounds[2] <= bounds[0] or bounds[3] <= bounds[1]
+                            or value.attrib.get('clickable') != 'false'):
+                        return False
+                return True
+            card = parents.get(card)
+    return False
+
+
 def reveal_modal_action(read, swipe, title, text, package, record=None, max_scrolls=6):
     """Reveal an actual action with bounded swipes inside the named modal only.
 
