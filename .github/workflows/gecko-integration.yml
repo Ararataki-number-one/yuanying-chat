@@ -36,6 +36,7 @@ jobs:
       run: |
         python3 tests/gecko_prepare_image_test.py
         python3 tests/gecko_platform_tools_test.py
+        python3 tests/gecko_native_adb_setup_test.py
         python3 tests/gecko_annotation_download_test.py
         python3 tests/gecko_ci_publish_test.py
         python3 tools/build-mihomo.py --verify
@@ -252,11 +253,13 @@ jobs:
         echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-platform-tools-results.json
         adb start-server
-        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/gecko-integration/emulator.log 2>&1 &
-        timeout 180 adb wait-for-device
-        timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
-        adb shell input keyevent 82
-        adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 -qemu -monitor "unix:$PWD/work/gecko-integration/qemu-monitor.sock,server=on,wait=off" > work/gecko-integration/emulator.log 2>&1 &
+        timeout 180 adb -s emulator-5556 wait-for-device
+        timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        adb -s emulator-5556 shell input keyevent 82
+        adb -s emulator-5556 install app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
+        echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
     - name: Verify network performance and compact chrome
       shell: bash
@@ -475,11 +478,13 @@ jobs:
         echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-platform-tools-results.json
         adb start-server
-        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/gecko-integration/emulator.log 2>&1 &
-        timeout 180 adb wait-for-device
-        timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
-        adb shell input keyevent 82
-        adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 -qemu -monitor "unix:$PWD/work/gecko-integration/qemu-monitor.sock,server=on,wait=off" > work/gecko-integration/emulator.log 2>&1 &
+        timeout 180 adb -s emulator-5556 wait-for-device
+        timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        adb -s emulator-5556 shell input keyevent 82
+        adb -s emulator-5556 install app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
+        echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
     - name: Run one original workload on this independent Android device
       shell: bash
