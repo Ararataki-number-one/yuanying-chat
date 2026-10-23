@@ -1,4 +1,4 @@
-name: Validate explicit native TCP ADB discovery
+name: Diagnose native TCP ADB discovery and authentication
 permissions:
   contents: read
   actions: read
@@ -38,8 +38,8 @@ jobs:
         '
     - name: Boot the unchanged Android runtime
       run: "export ANDROID_AVD_HOME=\"$PWD/work/adb-avd\"\nexport ANDROID_USER_HOME=\"$PWD/work/adb-user\"\nexport ANDROID_EMULATOR_HOME=\"$PWD/work/adb-emulator-home\"\
-        \nadb kill-server || true\nunset ADB_TRACE\nadb start-server\nif command -v tcpdump >/dev/null; then\n  sudo tcpdump -i lo -n -tttt -l 'tcp port\
-        \ 5037 and (tcp[tcpflags] & (tcp-fin|tcp-rst) != 0)' > work/adb-diagnostic/tcp-close.txt 2>&1 &\nfi\nmkdir -p \"$ANDROID_AVD_HOME\" \"$ANDROID_USER_HOME\"\
+        \nadb kill-server || true\nexport ADB_TRACE=auth\nadb start-server\nif command -v tcpdump >/dev/null; then\n  sudo tcpdump -i lo -n -tttt -l 'tcp\
+        \ port 5037 and (tcp[tcpflags] & (tcp-fin|tcp-rst) != 0)' > work/adb-diagnostic/tcp-close.txt 2>&1 &\nfi\nmkdir -p \"$ANDROID_AVD_HOME\" \"$ANDROID_USER_HOME\"\
         \ \"$ANDROID_EMULATOR_HOME\"\nsudo chmod a+rw /dev/kvm\necho no | \"$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager\" create avd --force -n geckoproduction\
         \ -p \"$ANDROID_AVD_HOME/geckoproduction.avd\" -k 'system-images;android-35;google_apis;x86_64'\n\"$ANDROID_HOME/emulator/emulator\" -verbose -avd\
         \ geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 > work/adb-diagnostic/emulator.txt\
@@ -72,10 +72,20 @@ jobs:
       env:
         DIAGNOSTIC_TRACE: stock
         DIAGNOSTIC_PIPE: ${{ matrix.pipe }}
+    - name: Preserve actual failed setup and authentication state
+      if: always()
+      run: "python3 - <<'PYADB'\nimport glob,hashlib,json,os,pathlib,shutil,subprocess\nout=pathlib.Path('work/adb-diagnostic');out.mkdir(exist_ok=True)\n\
+        for p in glob.glob('/tmp/adb.*.log'):shutil.copyfile(p,out/pathlib.Path(p).name)\ncommands={\n'devices':['adb','devices','-l'],\n'guest-auth':['adb','-s','emulator-5556','shell','getprop','ro.adb.secure'],\n\
+        'guest-adb':['adb','-s','emulator-5556','shell','dumpsys','adb'],\n'guest-listeners':['adb','-s','emulator-5556','shell','ss','-ltn'],\n'guest-logcat':['adb','-s','emulator-5556','logcat','-d','-s','adbd:V','*:*'],\n\
+        }\nfor name,cmd in commands.items():\n try:\n  r=subprocess.run(cmd,capture_output=True,timeout=8);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)\n\
+        \ except Exception as e:(out/(name+'.txt')).write_text(str(e))\nkeys=[]\nfor p in {pathlib.Path.home()/'.android/adbkey.pub',pathlib.Path(os.environ['ANDROID_USER_HOME'])/'adbkey.pub'}:\n\
+        \ if p.exists():keys.append(dict(path=str(p),publicKeySha256=hashlib.sha256(p.read_bytes().strip()).hexdigest()))\ntry:\n r=subprocess.run(['adb','-s','emulator-5556','shell','getprop','ro.boot.qemu.adb.pubkey'],capture_output=True,timeout=8)\n\
+        \ keys.append(dict(guestBootPublicKeySha256=hashlib.sha256(r.stdout.strip()).hexdigest(),exitCode=r.returncode))\nexcept Exception as e:keys.append(dict(guestBootPublicKeyError=str(e)))\n\
+        (out/'auth-key-fingerprints.json').write_text(json.dumps(keys,indent=2))\nPYADB\n"
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
       with:
-        name: adb-tcp-explicit-discovery
+        name: adb-tcp-authentication
         path: work/adb-diagnostic/
         retention-days: 5
     strategy:
