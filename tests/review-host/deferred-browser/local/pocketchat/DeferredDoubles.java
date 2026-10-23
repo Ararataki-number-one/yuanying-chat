@@ -19,8 +19,8 @@ final class FakePrefs {
 final class FakeContext {boolean desktop,saved=true;int displayWrites,draftWrites;}
 final class IdentityTemplateController {boolean queueUnavailable;}
 final class FakePrivacy {final ChatSession session;FakePrivacy(ChatSession session){this.session=session;}int level(){return session.prefs.getInt("privacyLevel",1);}boolean wantsDesktop(){return session.context.desktop;}}
-final class FakeWeb {boolean failed;String url="https://chatgpt.com/c/synthetic";String getUrl(){return url;}void checkpointState(){}}
-final class FakePage {String scope(){return "synthetic-draft-scope";}void remember(String scope,String url,JSONObject state){}}
+final class FakeWeb {boolean failed;int checkpoints;String url="https://chatgpt.com/c/synthetic";String getUrl(){return url;}void checkpointState(){checkpoints++;}}
+final class FakePage {int remembered;String scope(){return "synthetic-draft-scope";}void remember(String scope,String url,JSONObject state){remembered++;}}
 final class FakeStore {final WorkQueue worker=new WorkQueue();}
 final class ChatSession {
   final FakePrefs prefs=new FakePrefs();final FakeContext context=new FakeContext();final IdentityTemplateController identity=new IdentityTemplateController();
