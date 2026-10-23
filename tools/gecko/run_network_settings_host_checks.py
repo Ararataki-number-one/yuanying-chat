@@ -10,7 +10,7 @@ import subprocess
 import sys
 import unittest
 
-from network_sources_contract import SETTINGS_HOST_MINIMUMS, SETTINGS_JSON_SHA256, SETTINGS_PARSER_SUITES
+from network_sources_contract import SETTINGS_HOST_MINIMUMS, SETTINGS_JSON_SHA256, SETTINGS_PARSER_SUITES, verify_settings_ui_host
 
 ROOT = Path(__file__).resolve().parents[2]
 HOSTS = {'receipt': 'tests/network-application-host/run.py',
@@ -28,10 +28,7 @@ def bind_host_report(value, kind, source, implementation, digest):
     if kind == 'ui':
         # This existing runner's schema has two result objects, no status field.
         assert value.get('status', 'passed') == 'passed'
-        assert set(value['results']) == {'UiSnapshotTest', 'NetworkOptimizationPolicyTest'}
-        for test, minimum in (('UiSnapshotTest', 39), ('NetworkOptimizationPolicyTest', 49)):
-            row = value['results'][test]
-            assert row['passed'] == row['total'] >= minimum
+        verify_settings_ui_host(value['results'])
     else:
         assert value['status'] == 'passed'
         assert value['passed'] == len(value['checks']) >= SETTINGS_HOST_MINIMUMS[kind]

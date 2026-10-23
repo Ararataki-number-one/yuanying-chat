@@ -35,7 +35,7 @@ class HostWrapperTest(unittest.TestCase):
             if kind == 'ui':
                 value.pop('status')
                 value['results'] = {'UiSnapshotTest': {'passed': 39, 'total': 39},
-                                    'NetworkOptimizationPolicyTest': {'passed': 49, 'total': 49}}
+                                    'NetworkOptimizationPolicyTest': {'passed': 49, 'scope': 'Synthetic control of actual passed-only schema'}}
             else:
                 count = C.SETTINGS_HOST_MINIMUMS[kind]
                 value.update(passed=count, checks=[{'name': str(i), 'pass': True} for i in range(count)])
@@ -47,7 +47,10 @@ class HostWrapperTest(unittest.TestCase):
                          lambda r: r.update(dirty=True)]
             if kind == 'ui':
                 mutations += [lambda r: r.pop('results'), lambda r: r['results'].clear(),
-                              lambda r: r['results']['UiSnapshotTest'].update(passed=0)]
+                              lambda r: r['results']['UiSnapshotTest'].update(passed=0),
+                              lambda r: r['results']['NetworkOptimizationPolicyTest'].pop('passed'),
+                              lambda r: r['results']['NetworkOptimizationPolicyTest'].update(passed=48),
+                              lambda r: r['results']['NetworkOptimizationPolicyTest'].update(total=48)]
             else:
                 mutations += [lambda r: r.pop('checks'), lambda r: r['checks'].clear(),
                               lambda r: r['checks'][0].update({'pass': False})]
@@ -81,7 +84,7 @@ class SettingsReleaseGateTest(unittest.TestCase):
                              ciHost={'jsonImplementation': implementation, 'jsonJarSha256': digest})
                 if kind == 'ui':
                     value['results'] = {'UiSnapshotTest': {'passed': 39, 'total': 39},
-                                        'NetworkOptimizationPolicyTest': {'passed': 49, 'total': 49}}
+                                        'NetworkOptimizationPolicyTest': {'passed': 49, 'scope': 'Synthetic control of actual passed-only schema'}}
                 else:
                     value.update(passed=minimum, checks=[{'name': 'synthetic-' + str(i), 'pass': True} for i in range(minimum)])
                 self.reports['network-settings-' + kind + '-' + implementation + '-host-results.json'] = value

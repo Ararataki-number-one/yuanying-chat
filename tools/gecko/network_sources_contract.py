@@ -44,6 +44,18 @@ SETTINGS_REPORTS = [
 ] + ['network-settings-parser-negative-results.json']
 
 
+def verify_settings_ui_host(results):
+    assert set(results) == {'UiSnapshotTest', 'NetworkOptimizationPolicyTest'}
+    ui, policy = results['UiSnapshotTest'], results['NetworkOptimizationPolicyTest']
+    assert type(ui['passed']) is int and ui['passed'] == ui['total'] >= 39
+    # The production policy test emits passed + scope, without a total field.
+    # Keep that actual schema instead of adding a fabricated total to its receipt.
+    assert type(policy['passed']) is int and policy['passed'] >= 49
+    if 'total' in policy:
+        assert policy['total'] == policy['passed']
+    return ui['passed'] + policy['passed']
+
+
 def _settings_verifier(mode):
     name = 'run_network_settings_' + mode + '.py'
     source = pathlib.Path(__file__).resolve().parents[2] / 'tests/gecko' / name
@@ -126,11 +138,7 @@ def verify_network_settings(directory, source, receipt, apk_sha256):
             assert value['actualAndroidExecution'] is False and value['ciSourceDirty'] is False
             assert value['ciHost'] == {'jsonImplementation': implementation, 'jsonJarSha256': jar_sha}
             if kind == 'ui':
-                assert set(value['results']) == {'UiSnapshotTest', 'NetworkOptimizationPolicyTest'}
-                for test, minimum in (('UiSnapshotTest', 39), ('NetworkOptimizationPolicyTest', 49)):
-                    result = value['results'][test]
-                    assert result['passed'] == result['total'] >= minimum
-                host_counts[implementation + '-' + kind] = sum(r['passed'] for r in value['results'].values())
+                host_counts[implementation + '-' + kind] = verify_settings_ui_host(value['results'])
             else:
                 checks = value['checks']
                 assert value['passed'] == len(checks) >= SETTINGS_HOST_MINIMUMS[kind]
