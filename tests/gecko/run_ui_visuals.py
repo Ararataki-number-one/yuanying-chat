@@ -233,7 +233,7 @@ try:
         sample=chrome_event(command,'ready')
         assert sample['geckoOnly'] and sample['pageMode'] and sample['noNativeChat'] and sample['systemWebViews']==0,sample
         assert [control['name'] for control in sample['controls']]==['drawer','environment','more'],sample
-        assert sample['latency']==sample['expectedLatency']=='42 ms',sample
+        assert sample['latency']==sample['expectedLatency']=='42 ms（02:00）',sample
         assert not sample['networkClickable'] and not sample['networkFocusable'] and sample['networkBackground']=='none' and '点击' not in sample['networkDescription'],sample
         assert sample['toolbarHeightDp']<= (59 if scale==1 else 100),sample
         assert sample['topHeightDp']>=40 and sample['networkHeightDp']>=18,sample
@@ -242,7 +242,7 @@ try:
         for text in sample['texts']:
             assert text['fontHeight']<=text['contentHeight']+1,(sample,text)
             assert text['text'] not in ['简洁','原网页'],(sample,text)
-            if text['text'] in ['42 ms','已连接']:assert not text['ellipsized'] and text['inkWidth']<=text['contentWidth']+1,(sample,text)
+            if text['text'] in ['42 ms（02:00）','已连接']:assert not text['ellipsized'] and text['inkWidth']<=text['contentWidth']+1,(sample,text)
         if scale==2:assert sample['texts'][0]['ellipsized'],sample
         for control in sample['controls']:
             assert control['widthDp']>=47.9 and control['heightDp']>=47.9,(sample,control)

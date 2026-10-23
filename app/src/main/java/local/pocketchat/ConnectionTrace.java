@@ -39,7 +39,7 @@ final class ConnectionTrace {
     if(matching&&runtime.optLong("delayAt")>0){
       long at=runtime.optLong("delayAt");
       value+="\n测速时间："+new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z",Locale.ROOT).format(new java.util.Date(at));
-      if(window.now-at>90000||window.now<at-60000)value+="（历史记录）";
+      if(window.now-at>=LatencyRefreshPolicy.INTERVAL||window.now<at-60000)value+="（历史记录）";
       value+=NetworkMetricsUi.probeDetail(J.obj("latest",runtime.optInt("delay",-1),"lastAt",at,"probe",runtime.optJSONObject("delayProbe")));
     }else value+="\n当前线路尚无匹配的分项记录。";
     JSONObject site=runtime.optJSONObject("website");
@@ -57,7 +57,7 @@ final class ConnectionTrace {
     if(session==null||!session.internalNetwork())return value+"\n线路模式：手机网络 / 外部代理";
     value+="\n线路模式：应用内置入口 → 固定出口";
     JSONObject sample=NativeNetwork.get(context).probeSnapshot();long now=System.currentTimeMillis(),at=sample.optLong("at");
-    if(at<=0||now<at-60000||now-at>90000)return value+"\n当前线路测速：尚无近期记录";
+    if(at<=0||now<at-60000||now-at>=LatencyRefreshPolicy.INTERVAL)return value+"\n当前线路测速：尚无近期记录";
     JSONObject display=new JSONObject();try{display.put("latest",sample.optInt("delay",-1));display.put("lastAt",at);display.put("probe",sample.optJSONObject("probe"));}catch(Exception ignored){}
     return value+"\n检测地址："+NativeNetwork.PROBE+"\nHEAD · 当前入口 → 固定出口 → 检测网站\n当前线路测速："+(sample.optInt("delay",-1)>0?LatencyProbePolicy.label(sample.optString("kind","unknown"),sample.optInt("delay")):"未通过")+NetworkMetricsUi.probeDetail(display);
   }
