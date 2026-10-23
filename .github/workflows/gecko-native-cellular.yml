@@ -1,0 +1,104 @@
+name: Diagnose synthetic cellular absence and native ADB
+'on':
+  push:
+    branches: [debug/gecko-native-cellular-2_0_16]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ['fault-1', 'fault-2', 'control-1']
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+    - name: Check observation forwarding and payload exclusion
+      run: |
+        python3 tests/gecko_native_readiness_diagnostic_test.py
+        python3 tests/gecko_native_cellular_diagnostic_test.py
+    - name: Checkout unchanged original application and setup
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: 757e0a500f2c59e02caf719c4e6a24e0d64c120b
+        path: work/native-cellular/baseline
+        persist-credentials: false
+    - name: Download the exact original build once
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: gecko-39935761203-1-build
+        run-id: 39935761203
+        github-token: ${{ github.token }}
+        path: work/native-cellular/download
+    - name: Restore with the original source and build identity
+      shell: bash
+      run: |
+        set -euo pipefail
+        GITHUB_RUN_ID=39935761203 GITHUB_RUN_ATTEMPT=1 python3 work/native-cellular/baseline/tools/gecko/ci_bundle.py restore --kind build --bundle "$PWD/work/native-cellular/download/bundle.tar.gz"
+    - name: Prepare the unchanged pinned runtime
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        mkdir -p work/native-cellular/output
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+        python3 work/native-cellular/baseline/tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/native-cellular/output/android-emulator-package-results.json
+        python3 work/native-cellular/baseline/tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/native-cellular/output/android-system-image-results.json
+        python3 work/native-cellular/baseline/tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/native-cellular/output/android-platform-tools-results.json
+    - name: Observe the original bootstrap exactly once on this fresh device
+      env:
+        DIAGNOSTIC_CASE: ${{ matrix.case }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        out="$PWD/work/native-cellular/output"
+        exec > >(tee "$out/bootstrap.log") 2>&1
+        finish() {
+          result=$?
+          set +e
+          # These are host transport/socket logs only: no AUTH or packet trace.
+          trace_file="${TMPDIR:-/tmp}/adb.$(id -u).log"
+          if [ -f "$trace_file" ]; then
+            PYTHONPATH=tools/gecko python3 -c 'import sys; from diagnose_native_cellular import export_transport_trace; export_transport_trace(sys.argv[1], sys.argv[2])' "$trace_file" "$out/adb-server-transport.log"
+          fi
+          exit "$result"
+        }
+        trap finish EXIT
+        export ANDROID_AVD_HOME="$PWD/work/native-cellular/avd"
+        export ANDROID_USER_HOME="$PWD/work/native-cellular/android-user"
+        export ANDROID_EMULATOR_HOME="$PWD/work/native-cellular/emulator-home"
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+        sudo chmod a+rw /dev/kvm
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
+        python3 - <<'PY'
+        import socket
+        with socket.socket() as probe:
+            probe.settimeout(.2)
+            assert probe.connect_ex(('127.0.0.1',5037)) != 0, 'Fresh diagnostic runner must not reuse a pre-existing ADB server'
+        PY
+        ADB_TRACE=transport,sockets adb start-server
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 -qemu -monitor "unix:$PWD/work/native-cellular/qemu-monitor.sock,server=on,wait=off" > "$out/emulator.log" 2>&1 &
+        timeout 180 adb -s emulator-5556 wait-for-device
+        timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        adb -s emulator-5556 shell input keyevent 82
+        baseline_root="$PWD/work/native-cellular/baseline"
+        adb -s emulator-5556 install "$baseline_root/app/build/outputs/apk/integration/app-x86_64-integration.apk"
+        python3 tools/gecko/diagnose_native_cellular.py --baseline-root "$baseline_root" --adb "$(command -v adb)" --monitor "$PWD/work/native-cellular/qemu-monitor.sock" --out "$out" --case "$DIAGNOSTIC_CASE"
+    - name: Retain every diagnostic outcome without replacing failed samples
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: native-cellular-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.case }}
+        path: work/native-cellular/output
+        retention-days: 30
+        if-no-files-found: warn
