@@ -17,7 +17,52 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   int actionCount;
   JSONObject performance=new JSONObject();
   boolean reloadFixture;String reloadBefore="",reloadArchivedDraft="";int reloadDocuments;
+  int reloadTraceSequence,reloadTraceDropped;boolean reloadTraceTerminalRecorded;
   ChromeCollapseIntegration collapse;
+  // Test-only observation. Keep production guards/callbacks authoritative and never
+  // log draft text, cookies, configuration, proxy identity, or database contents.
+  static String reloadTraceId(String value){return value!=null&&value.matches("[a-zA-Z0-9-]{0,80}")?value:"<outside-fixture>";}
+  static String reloadTraceUrl(String value){return value!=null&&value.matches("(?:https://chatgpt\\.com|http://127\\.0\\.0\\.1:8765)/c/reload-[ABC]")?value:"<outside-fixture>";}
+  void reloadTrace(String phase,ChatSession.ReloadTarget target,Boolean originalResult){
+    if(!reloadFixture)return;
+    boolean terminal="modal-timeout".equals(phase);
+    if(terminal){if(reloadTraceTerminalRecorded)return;reloadTraceTerminalRecorded=true;}
+    if(reloadTraceSequence>=128&&!terminal){reloadTraceDropped++;return;}
+    ChatSession s=session;
+    JSONObject value=J.obj("schema",1,"sequence",++reloadTraceSequence,"dropped",reloadTraceDropped,"elapsedMs",SystemClock.elapsedRealtime(),"phase",phase,
+      "command",command!=null&&command.length()<=96&&command.matches("reload-[a-zA-Z]+-[0-9]+")?command:"<outside-fixture>","originalResult",originalResult==null?JSONObject.NULL:originalResult,
+      "reloadChecking",reloadChecking,"modalPresent",reloadDialog!=null,"destroyed",destroyed,"sessionPresent",s!=null,
+      "catalogReadByTrace",false,"diagnosticOnly",true);
+    if(s!=null){
+      String url=s.web.getUrl();boolean files=s.fileWorkActive(),reply=s.currentReplyActive();JSONObject pending=s.pending;
+      JSONObject current=J.obj("sessionRef",System.identityHashCode(s),"browserRef",System.identityHashCode(s.web.current),"slot",Profiles.slot(s.context),
+        "generation",s.environmentGeneration,"environmentId",reloadTraceId(s.environmentId),"navigationEpoch",s.navigationEpoch,"connectionEpoch",s.connectionEpoch,
+        "fileWorkGeneration",s.fileWorkGeneration,"filesActive",files,"replyActive",reply,"url",reloadTraceUrl(url),"document",reloadTraceId(s.lastDocumentId),
+        "pendingPresent",pending!=null,"pendingRef",System.identityHashCode(pending),"job",pending==null?"":reloadTraceId(pending.optString("id")),
+        "stateEpoch",s.stateEpoch,"stateUrl",reloadTraceUrl(s.state.optString("url")),"stateBusy",s.state.optBoolean("busy"),"inFlight",s.inFlight,
+        "navigating",s.navigating,"deleted",s.deleted,"visibleDocument",s.web.hasVisibleDocument(),"resourceWebsiteEpoch",s.resourceWebsiteEpoch,"resourceWebsiteBusy",s.resourceWebsiteBusy);
+      try{value.put("current",current);
+        if(target!=null){
+          value.put("target",J.obj("sessionRef",System.identityHashCode(target.owner),"browserRef",System.identityHashCode(target.browser),"slot",target.slot,
+            "generation",target.generation,"environmentId",reloadTraceId(target.environmentId),"navigationEpoch",target.epoch,"fileWorkGeneration",target.fileWork,
+            "filesActive",target.filesActive,"replyActive",target.replyActive,"url",reloadTraceUrl(target.url),"document",reloadTraceId(target.document),
+            "pendingPresent",target.pendingJob!=null,"pendingRef",System.identityHashCode(target.pendingJob),"job",reloadTraceId(target.job)));
+          value.put("memoryMatches",J.obj("owner",target.owner==s,"browser",target.browser==s.web.current,"slot",target.slot==Profiles.slot(s.context),
+            "generation",target.generation==s.environmentGeneration,"environmentId",target.environmentId.equals(s.environmentId),"navigationEpoch",target.epoch==s.navigationEpoch,
+            "url",target.url.equals(url),"document",target.document.equals(s.lastDocumentId),"identity",target.identity.equals(s.appliedIdentity),
+            "fileWorkGeneration",target.fileWork==s.fileWorkGeneration,"filesGuard",!files||target.filesActive,"replyGuard",!reply||target.replyActive,
+            "pendingReference",target.pendingJob==pending,"job",target.job.equals(pending==null?"":pending.optString("id")),"remote",remote==s.web,"notDeleted",!s.deleted));
+        }
+      }catch(JSONException failure){throw new IllegalStateException(failure);}
+    }
+    // Separate bounded records survive a failed workload; no final report is needed.
+    Log.i("PocketReloadTrace",value.toString());
+  }
+  @Override boolean reloadMatches(ChatSession.ReloadTarget target){boolean result=super.reloadMatches(target);reloadTrace("matches",target,result);return result;}
+  @Override void requestReload(){reloadTrace("request-before",null,null);super.requestReload();reloadTrace("request-return",null,null);}
+  @Override void confirmReload(ChatSession.ReloadTarget target,boolean interrupted,JSONObject page){reloadTrace("confirm-before",target,null);super.confirmReload(target,interrupted,page);reloadTrace("confirm-return",target,null);}
+  @Override void confirmIndependentReload(ChatSession.ReloadTarget target,String reason){reloadTrace("independent-before",target,null);super.confirmIndependentReload(target,reason);reloadTrace("independent-return",target,null);}
+  @Override protected void onResume(){reloadTrace("resume-before",null,null);super.onResume();reloadTrace("resume-return",null,null);}
   static class ReloadView extends GeckoWebView {
     static final String LOCAL="http://127.0.0.1:8765/";boolean tracking;int stops,loads;String requested="";
     final String reloadRun;JSONObject documentReadyEvidence=new JSONObject();
@@ -138,7 +183,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       for(int i=0;i<reloadDialog.footer.getChildCount();i++){View view=reloadDialog.footer.getChildAt(i);if(view instanceof Button){Rect visible=new Rect();Rect bounds=screenBounds(view);laidOut&=view.isShown()&&view.getGlobalVisibleRect(visible)&&visible.width()>0&&visible.height()>0&&bounds.width()>0&&bounds.height()>0&&view.isEnabled()&&view.isClickable();controls.put(J.obj("label",((Button)view).getText().toString(),"bounds",J.arr(bounds.left,bounds.top,bounds.right,bounds.bottom),"x",bounds.centerX(),"y",bounds.centerY(),"enabled",view.isEnabled(),"clickable",view.isClickable()));}}
       if(laidOut&&controls.length()==2){reloadEvent("reloadModal",J.obj("centered",reloadDialog.getWindow().getAttributes().gravity==Gravity.CENTER,"controls",controls));return;}
     }
-    if(SystemClock.elapsedRealtime()>deadline){reloadEvent("error",J.obj("error","Reload confirmation did not appear"));return;}handler.postDelayed(()->waitReloadModal(deadline),50);
+    if(SystemClock.elapsedRealtime()>deadline){reloadTrace("modal-timeout",null,null);reloadEvent("error",J.obj("error","Reload confirmation did not appear"));return;}handler.postDelayed(()->waitReloadModal(deadline),50);
   }
   void reloadSnapshot(String event){remote.evaluateJavascript("({body:document.documentElement.outerHTML,draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.getAttribute('data-reload-document')})",raw->{
     JSONObject result=J.parse(raw);ReloadView web=(ReloadView)remote;try{result.put("documents",reloadDocuments).put("stops",web.stops).put("loads",web.loads).put("requested",web.requested).put("currentUrl",web.getUrl()).put("nativeUrl",web.rawUrl()).put("nativeSession",System.identityHashCode(web.current)).put("visibleDocument",web.hasVisibleDocument()).put("documentReadyEvidence",web.documentReadyEvidence).put("cachedResumeUrl",session.resumeUrl()).put("modal",reloadDialog!=null&&reloadDialog.isShowing());}catch(Exception ignored){}
