@@ -1,0 +1,112 @@
+name: Diagnose ADB raw and framed read termination
+on:
+  push:
+    branches: [diagnostic/adb-byte-transfer-20261023]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: 6fc6e9834b6332f4508a373224328852989ce881
+    - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: gecko-39893645542-1-build
+        run-id: 39893645542
+        github-token: ${{ github.token }}
+        path: work/adb-build
+    - name: Extract only the selected APK for transfer diagnostics
+      run: |
+        python3 - <<'PY'
+        import hashlib,json,pathlib,tarfile
+        out=pathlib.Path('work/adb-diagnostic');out.mkdir(parents=True,exist_ok=True)
+        with tarfile.open('work/adb-build/bundle.tar.gz') as t:
+          index=json.load(t.extractfile('_ci_bundle.json'))
+          assert index['sourceCommit']=='6fc6e9834b6332f4508a373224328852989ce881' and index['runId']=='39893645542'
+          name='app/build/outputs/apk/integration/app-x86_64-integration.apk'
+          item=next(x for x in index['files'] if x['path']==name);raw=t.extractfile(name).read()
+          assert len(raw)==item['bytes'] and hashlib.sha256(raw).hexdigest()==item['sha256']
+          pathlib.Path('work/diagnostic.apk').write_bytes(raw);(out/'selected.json').write_text(json.dumps(item))
+        PY
+    - name: Prepare the unchanged stock Android runtime
+      run: |
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/emulator.json
+        python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/image.json
+    - name: Boot the unchanged Android runtime
+      run: |
+        export ANDROID_AVD_HOME="$PWD/work/adb-avd"
+        export ANDROID_USER_HOME="$PWD/work/adb-user"
+        export ANDROID_EMULATOR_HOME="$PWD/work/adb-emulator-home"
+        export ADB_TRACE=adb,transport,sockets
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+        sudo chmod a+rw /dev/kvm
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/adb-diagnostic/emulator.txt 2>&1 &
+        timeout 180 adb wait-for-device
+        timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        adb shell input keyevent 82
+        adb install work/diagnostic.apk
+        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk work/diagnostic.apk
+    - name: Run one diagnostic-only original workload then compare read terminations
+      run: |
+        python3 - <<'PY'
+        import glob,hashlib,json,os,pathlib,shutil,subprocess,time
+        out=pathlib.Path('work/adb-diagnostic');selected=json.loads((out/'selected.json').read_text());adb=shutil.which('adb');base=[adb,'-s','emulator-5554']
+        installed=subprocess.check_output(base+['shell','pm','path','local.pocketchat.test'],text=True).strip().removeprefix('package:')
+        (out/'adb-version.txt').write_text(subprocess.check_output([adb,'version'],text=True))
+        rows=[]
+        import sys
+        sys.path.insert(0,'tools/gecko')
+        from caret_launcher_guard import LauncherGuard
+        identity=dict(schema=1,sourceCommit='6fc6e9834b6332f4508a373224328852989ce881',sourceTree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),runId=os.environ['GITHUB_RUN_ID'],runAttempt=os.environ['GITHUB_RUN_ATTEMPT'])
+        guard_record={}
+        def guard_adb(*parts):return subprocess.check_output(base+list(parts),text=True,timeout=8).strip()
+        guard=LauncherGuard(adb=guard_adb,identity=identity,record=guard_record,nonce='0123456789abcdef0123456789abcdef')
+        performance={}
+        def observe():
+          subprocess.run(base+['shell','am','force-stop','local.pocketchat.test'],check=True)
+          subprocess.run(base+['shell','pm','clear','local.pocketchat.test'],check=True)
+          subprocess.run(base+['shell','pm','grant','local.pocketchat.test','android.permission.POST_NOTIFICATIONS'],check=True)
+          result=subprocess.run([sys.executable,'tests/gecko/run_gecko_performance.py','--adb',adb,'--serial','emulator-5554'],check=False)
+          performance['originalDriverExitCode']=result.returncode
+          for i in range(20):
+            target=pathlib.Path('work')/f'diagnostic-pull-{i}.apk';env=dict(os.environ);env['ADB_TRACE']='adb,transport,sockets'
+            is_sync=False;mode='exec-out' if i%2==0 else 'shell-v2';command=base+(['exec-out','cat',installed] if i%2==0 else ['shell','-T','cat',installed])
+            began=time.monotonic()
+            try:
+              with target.open('xb') if not is_sync else open(os.devnull,'wb') as sink:
+                r=subprocess.run(command,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE if is_sync else sink,stderr=subprocess.PIPE,timeout=30,env=env)
+              raw=target.read_bytes() if target.exists() else b''
+              row=dict(index=i,mode=mode,returnCode=r.returncode,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),seconds=time.monotonic()-began,exact=len(raw)==selected['bytes'] and hashlib.sha256(raw).hexdigest()==selected['sha256'])
+              (out/f'pull-{i}-stderr.txt').write_bytes(r.stderr)
+              if is_sync:(out/f'pull-{i}-stdout.txt').write_bytes(r.stdout)
+            except Exception as e:row=dict(index=i,mode=mode,error=str(e),seconds=time.monotonic()-began)
+            finally:target.unlink(missing_ok=True)
+            rows.append(row);print(json.dumps(row),flush=True)
+          return 0
+        try:guard.run(observe)
+        finally:(out/'launcher-guard.json').write_text(json.dumps(guard_record,indent=2))
+        report=dict(diagnosticOnly=True,applicationAcceptance=False,actualEditingWorkloadExecution=True,originalPerformance=performance,sourceCommit='6fc6e9834b6332f4508a373224328852989ce881',diagnosticWorkflowCommit=os.environ['GITHUB_SHA'],selected=selected,installedPath=installed,observations=rows)
+        (out/'diagnostic.json').write_text(json.dumps(report,indent=2))
+        for path in glob.glob('/tmp/adb.*.log'):shutil.copyfile(path,out/pathlib.Path(path).name)
+        for name,cmd in [('mounts',base+['shell','cat','/proc/mounts']),('logcat',base+['logcat','-d']),('memory',['free','-m'])]:
+          r=subprocess.run(cmd,capture_output=True);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)
+        PY
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: adb-byte-transfer-diagnostic
+        path: |
+          work/adb-diagnostic/
+          work/gecko-integration/gecko-performance-results.json
+          work/gecko-integration/gecko-performance-failure*.txt
+          work/gecko-integration/gecko-scroll*.json
+        retention-days: 5
