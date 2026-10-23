@@ -17,9 +17,10 @@ public class NetworkUiProvider extends ContentProvider {
   static boolean internalJob(String id){return id.startsWith("internal:");}
   void pruneJobs(){long now=SystemClock.elapsedRealtime();jobs.entrySet().removeIf(row->row.getValue().optBoolean("done")&&row.getValue().has("finishedAt")&&now-row.getValue().optLong("finishedAt")>=JOB_RETENTION);}
   void recordResult(String id,boolean ok,String message){
-    if(internalJob(id)||!jobs.containsKey(id)){jobs.remove(id);return;}
-    JSONObject old=jobs.get(id);if(old!=null&&old.optBoolean("done"))return;
-    jobs.put(id,J.obj("done",true,"ok",ok,"message",message,"finishedAt",SystemClock.elapsedRealtime()));
+    if(internalJob(id)){jobs.remove(id);return;}
+    // Binder admission may prune concurrently with a main-thread completion.
+    // Update only an extant receipt atomically; a retired ID can never reappear.
+    jobs.computeIfPresent(id,(key,old)->old.optBoolean("done")?old:J.obj("done",true,"ok",ok,"message",message,"finishedAt",SystemClock.elapsedRealtime()));
   }
   void observeSession(){ChatSession current=ChatSession.peek();if(current==observedSession)return;if(observedSession!=null)observedSession.remove(sessionObserver);observedSession=current;if(current!=null)current.add(sessionObserver);}
   void sessionChanged(){
