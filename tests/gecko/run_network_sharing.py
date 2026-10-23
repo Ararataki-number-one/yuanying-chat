@@ -24,7 +24,9 @@ try:
  adb('shell','am','force-stop',pkg)
  adb('shell','am','start','-W','-n',pkg+'/local.pocketchat.NetworkSharingIntegrationActivity','--es','runToken',token)
  r=wait(report,lambda r:r.get('runToken')==token,300);assert r['status']=='passed',r
- assert r.get('schemaFingerprintCount')==19 and len(r.get('schemaFingerprintEvidence',[]))==19 and all(x.get('actualNativeFingerprintVerified') and x['originalFingerprint']==x['exportFingerprint'] for x in r['schemaFingerprintEvidence']),r
+ expected_schema=[x['id'] for x in json.loads((root/'tests/gecko/assets/sharing-schema-matrix.json').read_text())['cases']]
+ assert len(expected_schema)==31 and r.get('schemaFingerprintCount')==31 and [x.get('case') for x in r.get('schemaFingerprintEvidence',[])]==expected_schema,r
+ assert all(x.get('actualNativeFingerprintVerified') is True and x['originalFingerprint']==x['exportFingerprint'] and x.get('actualEncryptedCatalogCandidate') is True and x.get('activeSnapshotPreserved') is True and x.get('temporarySourceDeleted') is True for x in r['schemaFingerprintEvidence']),r
  assert r['actualAndroidExecution'] and r['actualNativeExecution'] and len(r['checks'])>=30 and all(x['pass'] for x in r['checks'])
  source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip();assert r['buildIdentity']['sourceCommit']==source
  installed=hashlib.sha256((root/'app/build/outputs/apk/integration/app-x86_64-integration.apk').read_bytes()).hexdigest();assert r['buildIdentity']['apkSha256']==installed

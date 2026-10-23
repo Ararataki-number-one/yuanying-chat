@@ -14,3 +14,7 @@ subprocess.run([java,'-cp',str(classes)+':'+cp,'local.pocketchat.NetworkShareSna
 flow=['python3',str(pathlib.Path(__file__).parent/'ui_flow.py'),'--json-jar',str(a.json_jar.resolve()),'--yaml-jar',str(a.yaml_jar.resolve())]
 if a.java_home:flow+=['--java-home',str(a.java_home.resolve())]
 subprocess.run(flow,cwd=root,check=True)
+
+numeric=['python3',str(pathlib.Path(__file__).parent/'numeric_cache.py'),'--json-jar',str(a.json_jar.resolve()),'--yaml-jar',str(a.yaml_jar.resolve())]
+if a.java_home:numeric+=['--java-home',str(a.java_home.resolve())]
+subprocess.run(numeric,cwd=root,check=True)

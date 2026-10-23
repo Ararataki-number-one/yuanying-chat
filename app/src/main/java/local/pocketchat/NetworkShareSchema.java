@@ -91,7 +91,13 @@ final class NetworkShareSchema {
       case "s":return string(value);
       case "i":return integer(value,64,false);
       case "u32":return integer(value,32,true);
-      case "u64":return integer(value,64,true);
+      case "u64":{
+        Number number=integer(value,64,true);
+        // Android JSON reads integers beyond signed long as doubles. Keep only
+        // these typed uint64 fields as exact decimal strings; Mihomo's uint64
+        // decoder accepts them, and metadata/sidecar/share copies stay lossless.
+        return new BigInteger(number.toString()).compareTo(BigInteger.valueOf(Long.MAX_VALUE))>0?number.toString():number;
+      }
       case "b":if(value instanceof Boolean)return value;if(integral(value))return new BigInteger(value.toString()).signum()!=0;throw NetworkShareCodec.invalid();
       case "list":if(!(value instanceof JSONArray))throw NetworkShareCodec.invalid();JSONArray values=(JSONArray)value,out=new JSONArray();for(int i=0;i<values.length();i++)out.put(string(values.opt(i)));return out;
       case "headers":case "headerLists":
@@ -110,7 +116,25 @@ final class NetworkShareSchema {
     if(value instanceof String)return (String)value;
     if(integral(value))return value.toString();
     if(value instanceof Number){double number=((Number)value).doubleValue();if(!Double.isFinite(number))throw NetworkShareCodec.invalid();if(number==0)return (Double.doubleToRawLongBits(number)<0?"-":"")+"0E+00";
-      BigDecimal decimal=BigDecimal.valueOf(number).stripTrailingZeros();int exponent=decimal.precision()-decimal.scale()-1;
+      // Match strconv.FormatFloat(number, 'E', -1, 64). JDK 17's generic
+      // Double.toString is not always shortest (e.g. 1e23 and Double.MIN_VALUE).
+      // At powers of two the binary round-trip interval is asymmetric: the
+      // nearest decimal can miss its narrow side while an adjacent decimal
+      // with the same precision fits the wide side. Check both neighbours,
+      // then prefer nearest/even among equally short round-tripping values.
+      BigDecimal exact=new BigDecimal(number),decimal=null;long bits=Double.doubleToRawLongBits(number);
+      int magnitude=exact.precision()-exact.scale()-1;
+      for(int precision=1;precision<=17;precision++){
+        BigDecimal rounded=exact.round(new MathContext(precision,RoundingMode.HALF_EVEN)),step=BigDecimal.ONE.scaleByPowerOfTen(magnitude-precision+1),distance=null;
+        for(int neighbour=-1;neighbour<=1;neighbour++){
+          BigDecimal candidate=rounded.add(step.multiply(BigDecimal.valueOf(neighbour))).stripTrailingZeros();
+          if(candidate.precision()>precision||Double.doubleToRawLongBits(Double.parseDouble(candidate.toString()))!=bits)continue;
+          BigDecimal difference=candidate.subtract(exact).abs();
+          if(distance==null||difference.compareTo(distance)<0||difference.compareTo(distance)==0&&!candidate.divide(step).toBigIntegerExact().testBit(0)){decimal=candidate;distance=difference;}
+        }
+        if(decimal!=null)break;
+      }
+      if(decimal==null)throw NetworkShareCodec.invalid();int exponent=decimal.precision()-decimal.scale()-1;
       return decimal.movePointLeft(exponent).toPlainString()+"E"+(exponent<0?"-":"+")+String.format(Locale.ROOT,"%02d",Math.abs(exponent));}
     throw NetworkShareCodec.invalid();
   }
@@ -127,7 +151,7 @@ final class NetworkShareSchema {
     BigInteger number;
     if(value instanceof String)number=parseInteger((String)value);
     else if(integral(value))number=new BigInteger(value.toString());
-    else if(value instanceof Number){double n=((Number)value).doubleValue();if(!Double.isFinite(n))throw NetworkShareCodec.invalid();number=BigDecimal.valueOf(n).toBigInteger();}
+    else if(value instanceof Number){double n=((Number)value).doubleValue();if(!Double.isFinite(n))throw NetworkShareCodec.invalid();number=new BigDecimal(n).toBigInteger();}
     else throw NetworkShareCodec.invalid();
     BigInteger min=unsigned?BigInteger.ZERO:BigInteger.ONE.shiftLeft(bits-1).negate(),max=BigInteger.ONE.shiftLeft(unsigned?bits:bits-1).subtract(BigInteger.ONE);
     if(number.compareTo(min)<0||number.compareTo(max)>0)throw NetworkShareCodec.invalid();return number.bitLength()<63?number.longValue():number;

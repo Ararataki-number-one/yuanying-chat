@@ -74,13 +74,20 @@ public final class NetworkSharingIntegrationActivity extends Activity {
     try{JSONObject sample=schemaSamples.getJSONObject(index);String id=sample.getString("id");byte[] raw=sample.getString("source").getBytes(StandardCharsets.UTF_8);
       NativeNetwork.previewSubscription(this,NetworkCatalog.ENTRY,"",raw,(ok,message,names,details,bytes)->{try{
         check("Native original schema accepted: "+id,ok&&details.length()==1);String expected=details.getJSONObject(0).getString("configFingerprint");
-        NetworkShareSnapshot.Parts parts=NetworkShareSnapshot.split(details,raw);JSONObject candidate=NetworkShareSnapshot.select(parts.index,raw,"Entry|Selected",expected);
-        check("Parser-worker candidate binds original native identity: "+id,candidate!=null&&!parts.details.toString().contains("shareCandidate"));
+        byte[] activeBefore=vault.get("network"),entryBefore=vault.get("subscription"),exitBefore=vault.get("exit-subscription");
+        JSONObject item=J.obj("name","Schema "+id,"nodes",names,"nodeDetails",details);NetworkCatalog sourceCatalog=new NetworkCatalog(this);
+        String sourceId=sourceCatalog.importLocalSources(item,raw,null,null).getString(NetworkCatalog.ENTRY);JSONObject candidate;
+        try{NetworkCatalog restored=new NetworkCatalog(this);JSONObject source=restored.subscription(NetworkCatalog.ENTRY,sourceId);
+          candidate=restored.shareCandidate(source,restored.cache(source),"Entry|Selected",expected);
+          check("Parser-worker candidate binds original native identity: "+id,candidate!=null&&!source.getJSONArray("nodeDetails").toString().contains("shareCandidate"));
+          check("Schema candidate uses encrypted sidecar: "+id,!source.optString("shareCacheSlot").isEmpty()&&candidate!=null);
+        }finally{new NetworkCatalog(this).deleteSubscription(NetworkCatalog.ENTRY,sourceId);}
+        check("Schema import and cleanup preserve active snapshot: "+id,Arrays.equals(activeBefore,vault.get("network"))&&Arrays.equals(entryBefore,vault.get("subscription"))&&Arrays.equals(exitBefore,vault.get("exit-subscription")));
         JSONObject exported=NetworkShareCodec.decode(new NetworkShareCodec.Bundle(id,NetworkShareCodec.node(candidate,false),null).encode()).entry;byte[] provider=NetworkShareCodec.provider(exported);
         NativeNetwork.previewSubscription(this,NetworkCatalog.ENTRY,"",provider,(accepted,reason,exportNames,exportDetails,exportBytes)->{try{
           check("Native exported schema accepted: "+id,accepted&&exportDetails.length()==1);String actual=exportDetails.getJSONObject(0).getString("configFingerprint");
           check("Native fingerprint preserved for schema: "+id,expected.equals(actual));
-          schemaEvidence.put(J.obj("case",id,"sourceHash",NetworkShareSnapshot.hash(raw),"exportHash",NetworkShareSnapshot.hash(provider),"originalFingerprint",expected,"exportFingerprint",actual,"actualNativeFingerprintVerified",true));schemaMatrix(index+1);
+          schemaEvidence.put(J.obj("case",id,"sourceHash",NetworkShareSnapshot.hash(raw),"exportHash",NetworkShareSnapshot.hash(provider),"originalFingerprint",expected,"exportFingerprint",actual,"actualNativeFingerprintVerified",true,"actualEncryptedCatalogCandidate",true,"activeSnapshotPreserved",true,"temporarySourceDeleted",true));schemaMatrix(index+1);
         }catch(Throwable error){fail(error);}});
       }catch(Throwable error){fail(error);}});
     }catch(Throwable error){fail(error);}

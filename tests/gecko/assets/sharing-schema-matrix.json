@@ -76,6 +76,54 @@
     {
       "id": "xhttp-download-settings",
       "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: vless, port: 443, uuid: 00000000-0000-0000-0000-000000000001, network: xhttp, xhttp-opts: {path: /up, mode: packet-up, download-settings: {path: /down, server: 127.0.0.2, port: '0x20fb', tls: false, headers: {Host: down.invalid}, reuse-settings: {max-connections: '1-2'}}}}\n"
+    },
+    {
+      "id": "credential-float-shortest",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: 1e23}\n"
+    },
+    {
+      "id": "credential-float-subnormal",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: 4.9406564584124654e-324}\n"
+    },
+    {
+      "id": "credential-float-negative-zero",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: -0.0}\n"
+    },
+    {
+      "id": "credential-float-max-finite",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: 1.7976931348623157e308}\n"
+    },
+    {
+      "id": "credential-float-rounding",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: 1.0000000000000002}\n"
+    },
+    {
+      "id": "hy2-u64-signed-boundary",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: hysteria2, port: 443, password: synthetic, initial-stream-receive-window: 9223372036854775807}\n"
+    },
+    {
+      "id": "hy2-u64-above-signed",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: hysteria2, port: 443, password: synthetic, initial-stream-receive-window: 9223372036854775808}\n"
+    },
+    {
+      "id": "hy2-u64-max",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: hysteria2, port: 443, password: synthetic, max-connection-receive-window: 18446744073709551615}\n"
+    },
+    {
+      "id": "hy2-u64-binary-float",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: hysteria2, port: 443, password: synthetic, initial-stream-receive-window: 9.223372036854776e18}\n"
+    },
+    {
+      "id": "credential-binade-small",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: 7.120236347223045e-307}\n"
+    },
+    {
+      "id": "credential-binade-negative",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: -7.120236347223045e-307}\n"
+    },
+    {
+      "id": "credential-binade-large",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: 6.386688990511104e293}\n"
     }
   ]
 }
