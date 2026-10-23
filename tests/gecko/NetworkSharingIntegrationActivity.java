@@ -5,6 +5,7 @@ import org.json.*;import java.io.*;import java.nio.charset.StandardCharsets;impo
 
 /** Synthetic Android/core/encrypted-store integration; never real user credentials. */
 public final class NetworkSharingIntegrationActivity extends Activity {
+  final JSONArray schemaEvidence=new JSONArray();JSONArray schemaSamples;
   byte[] portableRaw;JSONObject portableEntry;String portableFingerprint;JSONArray portableDetails;
   JSONObject uiConfig,result;String portableSourceId;final Map<String,byte[]> shareSnapshot=new LinkedHashMap<>();
   final JSONArray checks=new JSONArray();JSONObject buildIdentity;JSONObject entry,exit;JSONObject[] records=new JSONObject[2];byte[][] payloads=new byte[2][];NetworkCatalog catalog;String entryId,exitId;Context profile;SecretStore vault;byte[] before;Uri file;NetworkOptimizationIntegrationActivity.HttpFixture site,plain;PreconnectIntegrationActivity.TraceSocks wireEntry,wireExit;
@@ -14,6 +15,7 @@ public final class NetworkSharingIntegrationActivity extends Activity {
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!"local.pocketchat.test".equals(getPackageName()))throw new SecurityException();TextView title=new TextView(this);title.setText("网络分享验证");setContentView(title);new Thread(()->{try{model();runOnUiThread(this::portableOriginal);}catch(Throwable e){fail(e);}}).start();}
   void model()throws Exception{
     buildIdentity=IntegrationBuildIdentity.read(this);
+    try(InputStream in=getAssets().open("sharing-schema-matrix.json")){schemaSamples=new JSONObject(new String(J.read(in,NetworkShareCodec.LIMIT),StandardCharsets.UTF_8)).getJSONArray("cases");}
     profile=Profiles.context(this,6);ProfileCatalog.get(this).created(6);ProfileCatalog.get(this).rename(6,"Sharing Window");vault=new SecretStore(profile);before=vault.get("network");profile.getSharedPreferences("chat",0).edit().putString("draft","sharing-preserved-draft").commit();
     entry=J.obj("name","Sharing Entry","type","socks5","server","127.0.0.1","port",19131,"username","synthetic","password","空 : @ / \\\n🔐");exit=J.obj("name","Sharing Exit","type","socks5","server","127.0.0.1","port",19132,"username","synthetic","password","");
     for(String kind:new String[]{"entry","exit","route"}){NetworkShareCodec.Bundle b=new NetworkShareCodec.Bundle("Synthetic",kind.equals("exit")?null:entry,kind.equals("entry")?null:exit);NetworkShareCodec.Bundle decoded=NetworkShareCodec.decode(b.encode());check(kind+" roundtrip role",kind.equals(decoded.kind));check(kind+" contains only selected connection data",!b.encode().contains("subscriptionUrl")&&!b.encode().contains("environmentId")&&!b.encode().contains("cookies"));}
@@ -64,9 +66,25 @@ public final class NetworkSharingIntegrationActivity extends Activity {
     NativeNetwork.previewSubscription(this,NetworkCatalog.ENTRY,"",NetworkShareCodec.provider(decoded.entry),(accepted,message,sharedNames,sharedDetails,sharedBytes)->{try{
       check("Exported VLESS reparses as exactly one node",accepted&&sharedDetails.length()==1);
       check("Export and import preserve actual native VLESS fingerprint",portableFingerprint.equals(sharedDetails.getJSONObject(0).optString("configFingerprint")));
-      parse(0);
+      schemaMatrix(0);
     }catch(Throwable e){fail(e);}});
   }catch(Throwable e){fail(e);}});}
+  void schemaMatrix(int index){
+    if(index==schemaSamples.length()){parse(0);return;}
+    try{JSONObject sample=schemaSamples.getJSONObject(index);String id=sample.getString("id");byte[] raw=sample.getString("source").getBytes(StandardCharsets.UTF_8);
+      NativeNetwork.previewSubscription(this,NetworkCatalog.ENTRY,"",raw,(ok,message,names,details,bytes)->{try{
+        check("Native original schema accepted: "+id,ok&&details.length()==1);String expected=details.getJSONObject(0).getString("configFingerprint");
+        NetworkShareSnapshot.Parts parts=NetworkShareSnapshot.split(details,raw);JSONObject candidate=NetworkShareSnapshot.select(parts.index,raw,"Entry|Selected",expected);
+        check("Parser-worker candidate binds original native identity: "+id,candidate!=null&&!parts.details.toString().contains("shareCandidate"));
+        JSONObject exported=NetworkShareCodec.decode(new NetworkShareCodec.Bundle(id,NetworkShareCodec.node(candidate,false),null).encode()).entry;byte[] provider=NetworkShareCodec.provider(exported);
+        NativeNetwork.previewSubscription(this,NetworkCatalog.ENTRY,"",provider,(accepted,reason,exportNames,exportDetails,exportBytes)->{try{
+          check("Native exported schema accepted: "+id,accepted&&exportDetails.length()==1);String actual=exportDetails.getJSONObject(0).getString("configFingerprint");
+          check("Native fingerprint preserved for schema: "+id,expected.equals(actual));
+          schemaEvidence.put(J.obj("case",id,"sourceHash",NetworkShareSnapshot.hash(raw),"exportHash",NetworkShareSnapshot.hash(provider),"originalFingerprint",expected,"exportFingerprint",actual,"actualNativeFingerprintVerified",true));schemaMatrix(index+1);
+        }catch(Throwable error){fail(error);}});
+      }catch(Throwable error){fail(error);}});
+    }catch(Throwable error){fail(error);}
+  }
   void parse(int i){if(i==2){new Thread(()->{try{imported();runOnUiThread(()->{try{ui();}catch(Throwable e){fail(e);}});}catch(Throwable e){fail(e);}}).start();return;}
     JSONObject node=i==0?entry:exit;byte[] raw;
     try{raw=completeProvider(NetworkShareCodec.provider(node));}catch(Exception e){fail(e);return;}
@@ -77,6 +95,8 @@ public final class NetworkSharingIntegrationActivity extends Activity {
     JSONObject e=restored.subscription("entry",entryId),x=restored.subscription("exit",exitId);check("Both local sources atomically readable",e!=null&&x!=null&&NetworkCatalog.local(e)&&NetworkCatalog.local(x));
     check("Local sources use no fabricated HTTP URL",e.getString("url").equals("pocketnet:"+entryId)&&x.getString("url").equals("pocketnet:"+exitId));
     check("Receiver does not inherit verification",!x.has("verifiedIp")&&!x.has("verifiedAt"));
+    check("Imported native candidates survive encrypted library storage",restored.shareCandidate(e,payloads[0],"Entry|Sharing Entry",NetworkSourceSelection.fingerprint(e,"Entry|Sharing Entry"))!=null&&restored.shareCandidate(x,payloads[1],"Exit|Sharing Exit",NetworkSourceSelection.fingerprint(x,"Exit|Sharing Exit"))!=null);
+    check("Imported public metadata excludes private candidates",!e.optJSONArray("nodeDetails").toString().contains("shareCandidate")&&!x.optJSONArray("nodeDetails").toString().contains("shareCandidate"));
     JSONObject twice=restored.importLocalSources(records[0],payloads[0],records[1],payloads[1]);check("Repeated import reuses exact source IDs",entryId.equals(twice.getString("entry"))&&exitId.equals(twice.getString("exit")));
     check("Library import preserves active network",Arrays.equals(before,vault.get("network")));check("Library import preserves chat draft",profile.getSharedPreferences("chat",0).getString("draft","").equals("sharing-preserved-draft"));
     NetworkDraft draft=new NetworkDraft(6,vault.settings(),restored);draft.subscription(entryId,restored);draft.mode="manual";draft.chooseEntry("Entry|Sharing Entry",restored);draft.exitSubscription(exitId,restored);draft.exitNode(NetworkSourceSelection.fingerprint(x,"Exit|Sharing Exit"),"Exit|Sharing Exit",restored);JSONObject candidate=draft.candidate(restored);
@@ -119,12 +139,14 @@ public final class NetworkSharingIntegrationActivity extends Activity {
     action(controls,"测试入口分享",()->NetworkShareUi.node(this,new NetworkCatalog(this).subscription("entry",portableSourceId),"Entry|Portable VLESS"));
     action(controls,"测试出口分享",()->NetworkShareUi.node(this,new NetworkCatalog(this).subscription("exit",exitId),"Exit|Sharing Exit"));
     action(controls,"测试固定出口分享",()->NetworkShareUi.manual(this,J.obj("name",exit.getString("name"),"host",exit.getString("server"),"port",exit.getInt("port"),"user",exit.getString("username"),"password",exit.getString("password"))));
+    action(controls,"测试入口失败后仅分享出口",()->{NetworkSourceSelection.withActiveSnapshot(vault.context,()->{vault.put("subscription","unsupported synthetic source".getBytes(StandardCharsets.UTF_8));return null;});rememberSnapshot();openRoute();});
+    action(controls,"恢复分享测试线路",()->{unchanged("Failed entry sharing preserves its captured snapshot");NetworkSourceSelection.withActiveSnapshot(vault.context,()->{vault.put("subscription",portableRaw);return null;});rememberSnapshot();result.put("partialSharePreservesActiveSnapshot",true);saveResult();});
     action(controls,"检查分享未改动线路",()->{unchanged("Subscribed route and individual shares preserve the active snapshot");check("All sharing paths preserve the existing draft","sharing-preserved-draft".equals(profile.getSharedPreferences("chat",0).getString("draft","")));result.put("sharePreparationPreservesActiveSnapshot",true);saveResult();});
     // Exercise the production active-snapshot extraction and fingerprint guard,
     // rather than opening the already prepared dialog directly.
     uiConfig=J.obj("subscriptionUrl","pocketnet:sharing-fixture","entry","Entry|Portable VLESS","entryMode","manual","entryNodeKey",portableFingerprint,"exitName",exit.getString("name"),"exitHost",exit.getString("server"),"exitPort",exit.getInt("port"),"exitUser",exit.getString("username"),"exitPassword",exit.getString("password"));
     NetworkSourceSelection.withActiveSnapshot(vault.context,()->{vault.put("subscription",portableRaw);vault.save(uiConfig);return null;});rememberSnapshot();openRoute();
-    result=J.obj("runToken",getIntent().getStringExtra("runToken"),"buildIdentity",buildIdentity,"status","passed","actualAndroidExecution",true,"actualNativeExecution",true,"physicalPhone",false,"checks",checks,"checkCount",checks.length(),"shareUri",file.toString(),"entryId",entryId,"exitId",exitId,"beforeNetworkHash",before==null?"":NetworkSourceSelection.payloadHash(before));
+    result=J.obj("runToken",getIntent().getStringExtra("runToken"),"buildIdentity",buildIdentity,"status","passed","actualAndroidExecution",true,"actualNativeExecution",true,"physicalPhone",false,"schemaFingerprintEvidence",schemaEvidence,"schemaFingerprintCount",schemaEvidence.length(),"checks",checks,"checkCount",checks.length(),"shareUri",file.toString(),"entryId",entryId,"exitId",exitId,"beforeNetworkHash",before==null?"":NetworkSourceSelection.payloadHash(before));
     saveResult();
   }
   void action(LinearLayout controls,String title,Attempt action){Button button=new Button(this);button.setText(title);button.setOnClickListener(v->{try{action.run();}catch(Throwable e){fail(e);}});controls.addView(button);}

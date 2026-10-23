@@ -105,10 +105,11 @@ final class NetworkCatalog {
       JSONArray rows=value.optJSONArray(name);if(rows==null)throw invalidCatalog();Set<String> identities=new HashSet<>();
       for(int i=0;i<rows.length();i++){
         JSONObject row=rows.optJSONObject(i);if(row==null||!(row.opt("id") instanceof String)||row.optString("id").isEmpty()||!identities.add(row.optString("id")))throw invalidCatalog();
-        textFields(row,"name","role","url","urlHash","host","user","password","region","verifiedIp","cacheSlot","previousCacheSlot","cacheUrl","cacheUrlHash","refreshToken","lastError");
+        textFields(row,"name","role","url","urlHash","host","user","password","region","verifiedIp","cacheSlot","previousCacheSlot","shareCacheSlot","previousShareCacheSlot","cacheUrl","cacheUrlHash","refreshToken","lastError");
         numbers(row,1,"revision","addressRevision");numbers(row,0,"cacheAddressRevision","updatedAt","cacheUpdatedAt","lastSuccessAt","lastAttemptAt","lastFailureAt","deletedAt");
         for(String field:new String[]{"stale","updating"})if(row.has(field)&&!(row.opt(field) instanceof Boolean))throw invalidCatalog();
         for(String field:new String[]{"cacheSlot","previousCacheSlot"})if(row.has(field)&&!row.optString(field).matches("[a-z-]+"))throw invalidCatalog();
+        for(String field:new String[]{"shareCacheSlot","previousShareCacheSlot"})if(row.has(field)&&!row.optString(field).isEmpty()&&!row.optString(field).matches("source-pool-(entry|exit)-[a-p]+"))throw invalidCatalog();
         stringList(row,"aliases");
         if("subscriptions".equals(name)||"exitSubscriptions".equals(name)){
           String role="subscriptions".equals(name)?ENTRY:EXIT;if(!(row.opt("url") instanceof String)||row.optString("url").isEmpty()||row.has("role")&&!role.equals(row.optString("role")))throw invalidCatalog();
@@ -145,11 +146,16 @@ final class NetworkCatalog {
   static void validateSource(String role,String name,String url)throws Exception{NetworkSubscriptionCatalogPolicy.role(role);if(name==null||name.trim().isEmpty())throw new IOException("填写订阅名称");NativeNetwork.validate(J.obj("subscriptionUrl",url,"exitHost","localhost","exitPort",1));}
   /** Current and previous successful generations are bounded per source. */
   void cleanCacheGenerations(JSONObject latest){
-    Set<String> keep=new HashSet<>();for(String role:new String[]{ENTRY,EXIT}){JSONArray all=latest.optJSONArray(key(role));for(int i=0;i<all.length();i++){JSONObject row=all.optJSONObject(i);if(row!=null){keep.add(row.optString("cacheSlot"));keep.add(row.optString("previousCacheSlot"));}}}
+    Set<String> keep=new HashSet<>();for(String role:new String[]{ENTRY,EXIT}){JSONArray all=latest.optJSONArray(key(role));for(int i=0;i<all.length();i++){JSONObject row=all.optJSONObject(i);if(row!=null){keep.add(row.optString("cacheSlot"));keep.add(row.optString("previousCacheSlot"));keep.add(row.optString("shareCacheSlot"));keep.add(row.optString("previousShareCacheSlot"));}}}
     File[] files=Profiles.context(c,0).getNoBackupFilesDir().listFiles();if(files==null)return;
     for(File file:files){String name=file.getName();if(!name.matches("source-pool-(entry|exit)-[a-p]+[.]sealed([.](bak|new))?"))continue;String slot=name.replaceFirst("[.]sealed([.](bak|new))?$","");if(!keep.contains(slot))try{store.remove(slot);}catch(Exception unavailable){/* A later successful library write retries cleanup. */}}
   }
   static boolean local(JSONObject row){return row!=null&&"local".equals(row.optString("sourceType"));}
+  /** Optional acceleration cannot block a validated source publication. */
+  String saveShareIndex(String slot,NetworkShareSnapshot.Parts share){
+    if(share.index==null)return "";
+    try{store.put(slot,share.index);return slot;}catch(Exception unavailable){for(int i=0;i<share.details.length();i++){JSONObject row=share.details.optJSONObject(i);if(row!=null&&"candidate".equals(row.optString("shareAvailability")))put(row,"shareAvailability","unavailable");}return "";}
+  }
   /** Immutable payloads precede one atomic library publication for both roles. */
   JSONObject importLocalSources(JSONObject entry,byte[] entryBytes,JSONObject exit,byte[] exitBytes)throws Exception{
     return write(latest->{JSONObject result=new JSONObject();
@@ -158,8 +164,8 @@ final class NetworkCatalog {
         if(bytes==null||bytes.length==0||bytes.length>1024*1024||item.optJSONArray("nodes")==null||item.optJSONArray("nodes").length()!=1||item.optJSONArray("nodeDetails")==null||item.optJSONArray("nodeDetails").length()!=1)throw new IOException("分享节点未完成解析");
         String hash=NativeNetwork.hash(new String(bytes,StandardCharsets.UTF_8));JSONArray rows=latest.optJSONArray(key(role));JSONObject found=null;
         for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(local(row)&&hash.equals(row.optString("sharePayloadHash"))){found=row;break;}}
-        if(found==null){String id=UUID.randomUUID().toString(),url="pocketnet:"+id,cache=encodedSlot("source-pool-"+role+"-",id);long now=System.currentTimeMillis();store.put(cache,bytes);
-          found=J.obj("id",id,"role",role,"sourceType","local","name",item.optString("name"),"url",url,"urlHash",NativeNetwork.hash(url),"sharePayloadHash",hash,"revision",1L,"addressRevision",1L,"cacheAddressRevision",1L,"cacheSlot",cache,"cacheUrl",url,"nodes",copy(item.optJSONArray("nodes")),"nodeDetails",copy(item.optJSONArray("nodeDetails")),"stale",false,"updatedAt",now,"lastSuccessAt",now);rows.put(found);
+        if(found==null){String id=UUID.randomUUID().toString(),url="pocketnet:"+id,cache=encodedSlot("source-pool-"+role+"-",id),shareCache=encodedSlot("source-pool-"+role+"-",id+"|share-v1");NetworkShareSnapshot.Parts share=NetworkShareSnapshot.split(copy(item.optJSONArray("nodeDetails")),bytes);long now=System.currentTimeMillis();store.put(cache,bytes);shareCache=saveShareIndex(shareCache,share);
+          found=J.obj("id",id,"role",role,"sourceType","local","name",item.optString("name"),"url",url,"urlHash",NativeNetwork.hash(url),"sharePayloadHash",hash,"revision",1L,"addressRevision",1L,"cacheAddressRevision",1L,"cacheSlot",cache,"shareCacheSlot",shareCache,"cacheUrl",url,"nodes",copy(item.optJSONArray("nodes")),"nodeDetails",share.details,"stale",false,"updatedAt",now,"lastSuccessAt",now);rows.put(found);
         }else if(cache(found)==null){throw new IOException("已导入节点缓存不可用，请删除该本地来源后重新导入");}
         put(result,role,found.optString("id"));
       }return result;
@@ -193,9 +199,10 @@ final class NetworkCatalog {
     if(row==null||!NetworkSubscriptionCatalogPolicy.current(token.id,token.role,token.url,token.addressRevision,token.refreshToken,row.optString("id"),row.optString("role"),row.optString("url"),row.optLong("addressRevision"),row.optString("refreshToken"),row.optBoolean("updating")))throw new IOException("订阅已编辑、删除或重新更新，旧结果未应用");return row;
   }
   void parsed(RefreshToken token,JSONArray nodes,JSONArray nodeDetails,byte[] bytes,long at)throws Exception{
-    if(bytes==null||bytes.length==0||bytes.length>16*1024*1024)throw new IOException("订阅缓存为空或文件过大");JSONArray names=copy(nodes),details=copy(nodeDetails);
+    if(bytes==null||bytes.length==0||bytes.length>16*1024*1024)throw new IOException("订阅缓存为空或文件过大");JSONArray names=copy(nodes);NetworkShareSnapshot.Parts share=NetworkShareSnapshot.split(copy(nodeDetails),bytes);JSONArray details=share.details;
     if(names.length()==0)throw new IOException("订阅没有可选节点");Set<String> seen=new HashSet<>();for(int i=0;i<names.length();i++){String name=names.optString(i);if(name.isEmpty()||!seen.add(name))throw new IOException("订阅节点名称无效或重复");}
-    write(latest->{JSONObject row=current(latest,token);String slot=encodedSlot("source-pool-"+token.role+"-",token.id+"|"+token.refreshToken);store.put(slot,bytes);
+    write(latest->{JSONObject row=current(latest,token);String slot=encodedSlot("source-pool-"+token.role+"-",token.id+"|"+token.refreshToken);store.put(slot,bytes);String shareSlot=encodedSlot("source-pool-"+token.role+"-",token.id+"|"+token.refreshToken+"|share-v1");shareSlot=saveShareIndex(shareSlot,share);
+      if(!row.optString("shareCacheSlot").isEmpty())put(row,"previousShareCacheSlot",row.optString("shareCacheSlot"));put(row,"shareCacheSlot",shareSlot);
       // Immutable bytes precede the atomic catalogue pointer. Failed publication
       // leaves the prior cache generation valid, including after process death.
       if(!row.optString("cacheSlot").isEmpty())put(row,"previousCacheSlot",row.optString("cacheSlot"));put(row,"cacheSlot",slot);put(row,"cacheAddressRevision",token.addressRevision);put(row,"cacheUrl",token.url);put(row,"cacheUrlHash",NativeNetwork.hash(token.url));put(row,"nodes",names);put(row,"nodeDetails",details);put(row,"updatedAt",at);put(row,"lastSuccessAt",at);put(row,"cacheUpdatedAt",at);put(row,"stale",false);put(row,"lastError","");put(row,"updating",false);put(row,"refreshToken","");bump(row);return null;
@@ -209,6 +216,14 @@ final class NetworkCatalog {
     JSONObject snapshot=subscription(id);if(snapshot==null)throw new IOException("订阅已删除");final long expected=snapshot.optLong("revision");final String address=snapshot.optString("url");
     RefreshToken token=write(latest->{JSONObject row=require(latest,ENTRY,id);if(row.optLong("revision")!=expected||!address.equals(row.optString("url"))||row.optBoolean("updating")||updatedAt<row.optLong("updatedAt"))throw new IOException("订阅已更新，请重新读取当前入口");put(row,"refreshToken",UUID.randomUUID().toString());put(row,"lastAttemptAt",System.currentTimeMillis());put(row,"updating",true);bump(row);return new RefreshToken(row);});
     try{parsed(token,nodes,new JSONArray(),bytes,updatedAt);}catch(Exception error){try{failed(token,"订阅缓存未能保存",System.currentTimeMillis());}catch(Exception ignored){}throw error;}
+  }
+  JSONObject shareCandidate(JSONObject row,byte[] bytes,String name,String fingerprint)throws Exception{
+    if(row==null||fingerprint==null||!fingerprint.matches("[0-9a-f]{64}"))return null;
+    synchronized(lock){JSONObject current=lookup(saved().optJSONArray(key(row.optString("role"))),row.optString("id"));
+      if(current==null||current.optBoolean("stale")||current.optLong("cacheAddressRevision")!=current.optLong("addressRevision")||current.optLong("revision")!=row.optLong("revision")||!current.optString("cacheSlot").equals(row.optString("cacheSlot"))||!current.optString("shareCacheSlot").equals(row.optString("shareCacheSlot")))return null;
+      boolean identity=false;JSONArray details=current.optJSONArray("nodeDetails");if(details!=null)for(int i=0;i<details.length();i++){JSONObject node=details.optJSONObject(i);if(node!=null&&name.equals(node.optString("name"))&&fingerprint.equals(node.optString("configFingerprint"))&&node.optInt("configFingerprintVersion")==1)identity=true;}
+      String slot=current.optString("shareCacheSlot");return !identity||slot.isEmpty()?null:NetworkShareSnapshot.select(store.get(slot),bytes,name,fingerprint);
+    }
   }
   byte[] cache(String role,String id){JSONObject row=subscription(role,id);return row==null?null:cache(row);}
   byte[] cache(JSONObject subscription){

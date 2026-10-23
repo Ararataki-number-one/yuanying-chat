@@ -4,6 +4,8 @@ import org.json.*;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.composer.Composer;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.constructor.AbstractConstruct;
+import java.math.BigInteger;
 import org.yaml.snakeyaml.error.YAMLException;
 import org.yaml.snakeyaml.events.Event;
 import org.yaml.snakeyaml.nodes.*;
@@ -19,9 +21,8 @@ import java.util.*;
 final class NetworkShareCodec {
   static final int LIMIT=1024*1024;
   static final String MIME="application/vnd.pocketchat.network";
-  static final Set<String> TYPES=set("socks5 http ss ssr vmess vless trojan hysteria2 tuic");
-  static final Set<String> FIELDS=set("name type server port username password uuid cipher alterId tls skip-cert-verify servername sni network flow client-fingerprint fingerprint alpn udp packet-encoding ws-opts grpc-opts h2-opts http-opts reality-opts plugin plugin-opts protocol protocol-param obfs obfs-param udp-relay-mode congestion-controller reduce-rtt disable-sni heartbeat-interval fast-open auth-str token up down tfo mptcp ip-version encryption xudp packet-addr smux ws-headers name-cert-verify global-padding authenticated-length");
-  static final class Failure extends IOException { Failure(String message){super(message);} }
+  static class Failure extends IOException { Failure(String message){super(message);} }
+  static final class BudgetFailure extends Failure {BudgetFailure(String message){super(message);}}
   static Failure failure(String message){return new Failure(message);}
   static String explanation(Exception error){return error instanceof Failure?error.getMessage():"读取分享配置失败，请重试；原线路未改变。";}
   static Set<String> set(String s){return new HashSet<>(Arrays.asList(s.split(" ")));}
@@ -34,23 +35,7 @@ final class NetworkShareCodec {
     else if(v instanceof String){if(((String)v).length()>8192)throw invalid();}
     else if(!(v instanceof Boolean)&&!(v instanceof Number))throw invalid();
   }
-  static JSONObject node(JSONObject value,boolean exit)throws Exception{
-    keys(value,FIELDS);scalarTree(value,0);String type=string(value,"type",32,true).toLowerCase(Locale.ROOT);
-    if(!TYPES.contains(type)||exit&&!"socks5".equals(type))throw failure(exit?"固定出口只支持 SOCKS5。":"此节点协议暂不支持分享。");
-    string(value,"name",200,true);String host=string(value,"server",253,true);
-    if(host.matches(".*[\\s/\\\\@?#].*")||host.indexOf('\0')>=0)throw invalid();
-    Object port=value.opt("port");if(!(port instanceof Number)||((Number)port).doubleValue()!=((Number)port).intValue()||((Number)port).intValue()<1||((Number)port).intValue()>65535)throw invalid();
-    for(String k:new String[]{"username","password","uuid","cipher","flow","servername","sni","network","plugin","fingerprint","client-fingerprint","encryption","name-cert-verify"})if(value.has(k))string(value,k,8192,false);
-    Map<String,Set<String>> nested=new HashMap<>();
-    nested.put("ws-opts",set("path headers max-early-data early-data-header-name v2ray-http-upgrade v2ray-http-upgrade-fast-open"));
-    nested.put("grpc-opts",set("grpc-service-name"));nested.put("h2-opts",set("host path"));nested.put("http-opts",set("method path headers"));
-    nested.put("reality-opts",set("public-key short-id support-x25519mlkem768"));nested.put("plugin-opts",set("mode host path tls skip-cert-verify mux headers"));
-    nested.put("smux",set("enabled protocol max-connections min-streams max-streams padding statistic only-tcp brutal-opts"));
-    for(Map.Entry<String,Set<String>> rule:nested.entrySet())if(value.has(rule.getKey())){JSONObject opts=value.optJSONObject(rule.getKey());if(opts==null)throw invalid();keys(opts,rule.getValue());}
-    JSONObject mux=value.optJSONObject("smux");if(mux!=null&&mux.has("brutal-opts")){JSONObject opts=mux.optJSONObject("brutal-opts");if(opts==null)throw invalid();keys(opts,set("enabled up down"));}
-    if(value.has("ws-headers")){JSONObject headers=value.optJSONObject("ws-headers");if(headers==null)throw invalid();for(Iterator<String> it=headers.keys();it.hasNext();)string(headers,it.next(),8192,false);}
-    JSONObject clean=new JSONObject(value.toString());clean.put("type",type);return clean;
-  }
+  static JSONObject node(JSONObject value,boolean exit)throws Exception{return NetworkShareSchema.node(value,exit);}
   static final class Bundle {
     final String name,kind;final JSONObject entry,exit;
     Bundle(String name,JSONObject entry,JSONObject exit){this.name=name;this.entry=entry;this.exit=exit;kind=entry!=null&&exit!=null?"route":entry!=null?"entry":"exit";}
@@ -82,8 +67,26 @@ final class NetworkShareCodec {
     throw invalid();
   }
   /** Compose aliases as references; never construct unrelated subscription data. */
+  static final class NativeResolver extends Resolver {
+    static final java.util.regex.Pattern FLOAT=java.util.regex.Pattern.compile("[-+]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][-+]?[0-9]+)?");
+    @Override public Tag resolve(NodeId kind,String value,boolean implicit){
+      if(kind!=NodeId.scalar||!implicit)return super.resolve(kind,value,implicit);
+      if(value.equals("true")||value.equals("True")||value.equals("TRUE")||value.equals("false")||value.equals("False")||value.equals("FALSE"))return Tag.BOOL;
+      if(value.isEmpty()||value.equals("~")||value.equals("null")||value.equals("Null")||value.equals("NULL"))return Tag.NULL;
+      if(value.equals("<<"))return Tag.MERGE;
+      String numeric=value.replace("_","");
+      try{BigInteger number=NetworkShareSchema.parseInteger(numeric);if(number.compareTo(BigInteger.ONE.shiftLeft(63).negate())>=0&&number.compareTo(BigInteger.ONE.shiftLeft(64).subtract(BigInteger.ONE))<=0)return Tag.INT;}catch(IOException ignored){}
+      if(FLOAT.matcher(numeric).matches()||numeric.matches("[-+]?[.](?:inf|Inf|INF)|[.](?:nan|NaN|NAN)"))return Tag.FLOAT;
+      // yaml.v3 does not implicitly resolve YAML 1.1 yes/no/on/off or sexagesimal numbers.
+      Tag old=super.resolve(kind,value,implicit);return Tag.TIMESTAMP.equals(old)?old:Tag.STR;
+    }
+  }
   static final class SelectedConstructor extends SafeConstructor {
-    SelectedConstructor(LoaderOptions limits){super(limits);}
+    SelectedConstructor(LoaderOptions limits){super(limits);
+      yamlConstructors.put(Tag.BOOL,new AbstractConstruct(){public Object construct(Node raw){String text=((ScalarNode)raw).getValue();if(text.equals("true")||text.equals("True")||text.equals("TRUE"))return true;if(text.equals("false")||text.equals("False")||text.equals("FALSE"))return false;throw new YAMLException("Invalid boolean scalar");}});
+      yamlConstructors.put(Tag.INT,new AbstractConstruct(){public Object construct(Node raw){try{BigInteger n=NetworkShareSchema.parseInteger(((ScalarNode)raw).getValue().replace("_",""));return n.bitLength()<63?n.longValue():n;}catch(IOException invalid){throw new YAMLException("Invalid numeric scalar");}}});
+      yamlConstructors.put(Tag.FLOAT,new AbstractConstruct(){public Object construct(Node raw){String text=((ScalarNode)raw).getValue().replace("_","");if(!NativeResolver.FLOAT.matcher(text).matches())throw new YAMLException("Invalid numeric scalar");try{double n=Double.parseDouble(text);if(!Double.isFinite(n))throw new NumberFormatException();return n;}catch(NumberFormatException invalid){throw new YAMLException("Invalid numeric scalar");}}});
+    }
     Object selected(Node node){return constructDocument(node);}
   }
   static final class YamlLimit extends YAMLException {YamlLimit(){super("Subscription syntax budget exceeded");}}
@@ -104,7 +107,7 @@ final class NetworkShareCodec {
     }
   }
   static Failure yamlFailure(){return failure("订阅内容无法解析，请更新订阅后重试；原线路未改变。");}
-  static Failure complexYaml(){return failure("订阅或所选节点结构过于复杂，请精简配置后重试；原线路未改变。");}
+  static Failure complexYaml(){return new BudgetFailure("订阅或所选节点结构过于复杂，请精简配置后重试；原线路未改变。");}
   static String yamlKey(Node node)throws IOException{
     if(!(node instanceof ScalarNode)||!Tag.STR.equals(node.getTag())&&!Tag.MERGE.equals(node.getTag()))throw yamlFailure();
     return ((ScalarNode)node).getValue();
@@ -168,32 +171,40 @@ final class NetworkShareCodec {
       }finally{active.remove(node);}
     }
   }
+  static final class Source {
+    final Map<String,MappingNode> byName=new HashMap<>();final Set<String> duplicates=new HashSet<>();final SelectedConstructor constructor;int remaining=262144;
+    static Node directName(MappingNode node)throws IOException{
+      Node found=null;for(NodeTuple field:node.getValue()){Node key=field.getKeyNode();if(key instanceof ScalarNode&&Tag.STR.equals(key.getTag())&&"name".equals(((ScalarNode)key).getValue())){if(found!=null)throw yamlFailure();found=field.getValueNode();}}return found;
+    }
+    Source(byte[] bytes)throws Exception {
+      if(bytes==null||bytes.length>16*1024*1024)throw failure("已保存的节点不可读取，请先更新订阅。");
+      LoaderOptions limits=new LoaderOptions();limits.setAllowDuplicateKeys(false);limits.setMaxAliasesForCollections(65536);limits.setNestingDepthLimit(64);limits.setCodePointLimit(16*1024*1024);limits.setTagInspector(tag->true);constructor=new SelectedConstructor(limits);
+      Composer documents=new Composer(new YamlSyntaxBudget(new StringReader(new String(bytes,StandardCharsets.UTF_8)),limits),new NativeResolver(),limits);
+      Node raw=documents.checkNode()?documents.getNode():null;
+      if(!(raw instanceof MappingNode))throw failure("此来源暂不支持独立分享；请使用 Clash / Mihomo YAML 节点。");
+      uniqueYamlKeys((MappingNode)raw);Node proxies=new YamlLookup("proxies").find((MappingNode)raw);
+      if(!(proxies instanceof SequenceNode))throw failure("此来源暂不支持独立分享；请使用 Clash / Mihomo YAML 节点。");
+      YamlLookup names=new YamlLookup("name");for(Node candidate:((SequenceNode)proxies).getValue())if(candidate instanceof MappingNode){try{Node name=directName((MappingNode)candidate);if(name==null)name=names.find((MappingNode)candidate);if(name instanceof ScalarNode&&Tag.STR.equals(name.getTag())){String key=((ScalarNode)name).getValue();if(byName.put(key,(MappingNode)candidate)!=null)duplicates.add(key);}}catch(IOException unsupportedName){/* One unrelated malformed name graph cannot suppress another native-selected node. */}}
+    }
+    JSONObject select(String prefixed,String role)throws Exception {
+      String prefix=NetworkCatalog.EXIT.equals(role)?"Exit|":"Entry|";if(prefixed==null||!prefixed.startsWith(prefix))throw invalid();String name=prefixed.substring(prefix.length());
+      if(duplicates.contains(name))throw invalid();MappingNode selected=byName.get(name);if(selected==null)throw failure("当前节点已变化，请重新选择后分享。");
+      SelectedYamlBudget budget=new SelectedYamlBudget();budget.inspect(selected,0);remaining-=8192-budget.remaining;if(remaining<0)throw complexYaml();return node((JSONObject)yamlValue(constructor.selected(selected),0),NetworkCatalog.EXIT.equals(role));
+    }
+  }
   /** Exactly one node, never its subscription address or other nodes. */
   static JSONObject extract(byte[] bytes,String prefixed,String role)throws Exception{
-    if(bytes==null||bytes.length>16*1024*1024)throw failure("已保存的节点不可读取，请先更新订阅。");
-    String prefix=NetworkCatalog.EXIT.equals(role)?"Exit|":"Entry|";if(prefixed==null||!prefixed.startsWith(prefix))throw invalid();String name=prefixed.substring(prefix.length());
-    LoaderOptions limits=new LoaderOptions();limits.setAllowDuplicateKeys(false);limits.setMaxAliasesForCollections(65536);limits.setNestingDepthLimit(64);limits.setCodePointLimit(16*1024*1024);
-    // Tags in ignored sections are syntax only. The selected graph is checked
-    // against scalar/container tags before any object construction occurs.
-    limits.setTagInspector(tag->true);SelectedConstructor constructor=new SelectedConstructor(limits);
-    try{
-      Composer documents=new Composer(new YamlSyntaxBudget(new StringReader(new String(bytes,StandardCharsets.UTF_8)),limits),new Resolver(),limits);
-      Node raw=documents.checkNode()?documents.getNode():null;
-      if(!(raw instanceof MappingNode))throw failure("此订阅缓存暂不支持分享，请使用 Clash / Mihomo YAML 节点。");
-      uniqueYamlKeys((MappingNode)raw);Node proxies=new YamlLookup("proxies").find((MappingNode)raw);
-      if(!(proxies instanceof SequenceNode))throw failure("此订阅缓存暂不支持分享，请使用 Clash / Mihomo YAML 节点。");
-      MappingNode selected=null;YamlLookup names=new YamlLookup("name");
-      for(Node candidate:((SequenceNode)proxies).getValue())if(candidate instanceof MappingNode){
-        Node candidateName=names.find((MappingNode)candidate);
-        if(candidateName instanceof ScalarNode&&name.equals(((ScalarNode)candidateName).getValue())){
-          if(selected!=null)throw invalid();selected=(MappingNode)candidate;
-        }
-      }
-      if(selected==null)throw failure("当前节点已变化，请重新选择后分享。");
-      new SelectedYamlBudget().inspect(selected,0);
-      JSONObject value=(JSONObject)yamlValue(constructor.selected(selected),0);
-      if(value.opt("port") instanceof String&&value.optString("port").matches("[0-9]{1,5}"))value.put("port",Integer.parseInt(value.optString("port")));
-      return node(value,NetworkCatalog.EXIT.equals(role));
-    }catch(YamlLimit limit){throw complexYaml();}catch(YAMLException|NumberFormatException parse){throw yamlFailure();}catch(JSONException value){throw invalid();}
+    try{return new Source(bytes).select(prefixed,role);}
+    catch(YamlLimit limit){throw complexYaml();}catch(YAMLException|NumberFormatException parse){throw yamlFailure();}catch(JSONException value){throw invalid();}
+  }
+  /** Called once on the subscription parser worker. Candidates are untrusted until
+   * the share UI reparses them with the actual native fingerprint implementation. */
+  static JSONArray candidates(byte[] bytes,String role,JSONArray metadata){
+    JSONArray out=new JSONArray();Source source=null;String availability="candidate",hash=bytes==null?"":NetworkShareSnapshot.hash(bytes);
+    try{source=new Source(bytes);}catch(Exception unavailable){availability=unavailable instanceof BudgetFailure||unavailable instanceof YamlLimit?"budget":"unsupported-format";}
+    int total=0;for(int i=0;i<metadata.length();i++){JSONObject detail=metadata.optJSONObject(i);if(detail==null)continue;JSONObject row=J.parse(detail.toString());String status=availability;
+      if(source!=null){try{if(i>=4096||total>NetworkShareSnapshot.LIMIT)throw complexYaml();JSONObject candidate=source.select(row.optString("name"),role);total+=candidate.toString().length()*2;row.put("shareCandidate",candidate);row.put("shareSourceHash",hash);row.put("shareVersion",NetworkShareSnapshot.VERSION);}catch(Exception unavailable){status=unavailable instanceof BudgetFailure?"budget":"unsupported-node";}}
+      try{row.put("shareAvailability",status);}catch(JSONException impossible){throw new IllegalStateException(impossible);}out.put(row);
+    }return out;
   }
 }

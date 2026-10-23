@@ -23,7 +23,7 @@ jar = args.json_jar.resolve()
 if not jar.is_file():
     parser.error('--json-jar must point to an org.json JAR')
 sources = [root / 'app/src/main/java/local/pocketchat' / name for name in (
-    'J.java', 'NetworkCatalog.java', 'NetworkSubscriptionCatalogPolicy.java')]
+    'J.java', 'NetworkCatalog.java','NetworkShareSnapshot.java', 'NetworkSubscriptionCatalogPolicy.java')]
 sources += sorted(pathlib.Path(__file__).parent.rglob('*.java'))
 subprocess.run([javac, '-encoding', 'UTF-8', '-cp', str(jar), '-d', str(classes),
                 *map(str, sources)], check=True)

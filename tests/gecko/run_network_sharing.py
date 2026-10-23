@@ -23,7 +23,8 @@ def report():return json.loads(adb('exec-out','content','read','--uri','content:
 try:
  adb('shell','am','force-stop',pkg)
  adb('shell','am','start','-W','-n',pkg+'/local.pocketchat.NetworkSharingIntegrationActivity','--es','runToken',token)
- r=wait(report,lambda r:r.get('runToken')==token,180);assert r['status']=='passed',r
+ r=wait(report,lambda r:r.get('runToken')==token,300);assert r['status']=='passed',r
+ assert r.get('schemaFingerprintCount')==19 and len(r.get('schemaFingerprintEvidence',[]))==19 and all(x.get('actualNativeFingerprintVerified') and x['originalFingerprint']==x['exportFingerprint'] for x in r['schemaFingerprintEvidence']),r
  assert r['actualAndroidExecution'] and r['actualNativeExecution'] and len(r['checks'])>=30 and all(x['pass'] for x in r['checks'])
  source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip();assert r['buildIdentity']['sourceCommit']==source
  installed=hashlib.sha256((root/'app/build/outputs/apk/integration/app-x86_64-integration.apk').read_bytes()).hexdigest();assert r['buildIdentity']['apkSha256']==installed
@@ -35,6 +36,12 @@ try:
  tap('检查分享未改动线路')
  r=wait(report,lambda value:value.get('sharePreparationPreservesActiveSnapshot') is True or value.get('status')=='failed',20)
  assert r['status']=='passed' and r['sharePreparationPreservesActiveSnapshot'] and all(x['pass'] for x in r['checks']),r
+ tap('测试入口失败后仅分享出口');partial=wait(xml,lambda t:bool(nodes(t,'分享出口')),40)
+ partial_text=' '.join(n.get('text','') for n in partial.iter('node'));assert '入口读取阶段' in partial_text and '整条线路未生成' in partial_text,partial_text
+ assert not nodes(partial,'仅分享入口')
+ tap('复制配置');tap('恢复分享测试线路')
+ r=wait(report,lambda value:value.get('partialSharePreservesActiveSnapshot') is True or value.get('status')=='failed',20)
+ assert r['status']=='passed' and r['partialSharePreservesActiveSnapshot'],r
  # Open a real provider file through the production Activity; preview must be explicit.
  adb('shell','am','start','-W','-n',pkg+'/local.pocketchat.NetworkImportActivity','-a','android.intent.action.VIEW','-d',r['shareUri'],'-t','application/vnd.pocketchat.network')
  wait(xml,lambda t:bool(nodes(t,'导入预览')),30);tap('导入并选择环境');wait(xml,lambda t:bool(nodes(t,'选择应用环境')),90)

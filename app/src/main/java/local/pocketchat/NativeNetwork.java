@@ -330,6 +330,7 @@ class NativeNetwork {
       Set<String> seen=new HashSet<>();for(int i=0;i<parsed.length();i++){JSONObject node=parsed.optJSONObject(i);if(node==null||!node.optString("name").startsWith(prefix))continue;String name=node.optString("name"),key=node.optString("configFingerprint");if(!key.matches("[0-9a-f]{64}")||node.optInt("configFingerprintVersion")!=1)throw new IOException("内核未能识别节点，请更新后重试");if(!seen.add(name))throw new IOException("订阅内有同名节点，请先整理订阅");nodes.put(name);details.put(J.obj("name",name,"type",node.optString("type"),"configFingerprint",key,"configFingerprintVersion",1));}
       if(nodes.length()==0)throw new IOException(NetworkCatalog.EXIT.equals(role)?"订阅没有可读取的出口节点":"订阅没有可选入口");
       try(FileInputStream in=new FileInputStream(new File(reader.root,"subscription.yaml"))){provider=J.read(in,16*1024*1024);}
+      details=NetworkShareCodec.candidates(provider,role,details);
     }catch(Exception e){error=e instanceof IOException&&e.getMessage()!=null?e.getMessage():"订阅读取失败，已保留原配置";}finally{reader.stopNow(NetworkDiagnostics.Reason.PREVIEW_FINISHED);reader.probes.shutdownNow();reader.closers.shutdownNow();reader.traffic.reader.shutdownNow();reader.worker.shutdown();deletePreview(reader.root);}
       final JSONArray result=nodes,metadata=details;final byte[] bytes=provider;final String reason=error;reader.main.post(()->callback.done(reason.isEmpty(),reason,result,metadata,bytes));
     });

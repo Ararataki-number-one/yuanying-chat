@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "id": "numeric-credentials",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, username: 12345, password: 98765}\n"
+    },
+    {
+      "id": "credential-on",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: on}\n"
+    },
+    {
+      "id": "credential-NO",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: NO}\n"
+    },
+    {
+      "id": "credential-float",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, password: 0.25}\n"
+    },
+    {
+      "id": "port-quoted-octal",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: '01000'}\n"
+    },
+    {
+      "id": "port-quoted-hex",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: '0x1bb'}\n"
+    },
+    {
+      "id": "unique-field-alias",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, tls: true, skip_cert_verify: true}\n"
+    },
+    {
+      "id": "integer-boolean",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: socks5, port: 1080, udp: 1}\n"
+    },
+    {
+      "id": "http-proxy-headers",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: http, port: 8080, headers: {X_Count: 123, Host: synthetic.invalid}}\n"
+    },
+    {
+      "id": "ws-headers",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: vless, port: 443, uuid: 00000000-0000-0000-0000-000000000001, network: ws, ws_opts: {path: /socket, headers: {X_Count: 123, Host: synthetic.invalid}}}\n"
+    },
+    {
+      "id": "http-transport-header-list",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: vmess, port: 443, uuid: 00000000-0000-0000-0000-000000000001, alterId: 0, cipher: auto, network: http, http-opts: {method: GET, path: [/one, /two], headers: {Host: [synthetic.invalid], X_Count: [123, 'kept']}}}\n"
+    },
+    {
+      "id": "hy2-ports-only",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: hysteria2, ports: '443,8443-8445', password: synthetic, hop-interval: '10-20'}\n"
+    },
+    {
+      "id": "hy2-options",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: hysteria2, port: 443, password: 12345, obfs: salamander, obfs-password: 98765, up: 100, down: '200 Mbps', udp-mtu: 1197, handshake-timeout: 5}\n"
+    },
+    {
+      "id": "tuic-options",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: tuic, port: 443, uuid: 00000000-0000-0000-0000-000000000001, password: 12345, ip: 127.0.0.1, request-timeout: 9000, max-open-streams: 12, udp-over-stream: true, udp-over-stream-version: 2, heartbeat-interval: 3000, disable-mtu-discovery: true}\n"
+    },
+    {
+      "id": "grpc-options",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: vless, port: 443, uuid: 00000000-0000-0000-0000-000000000001, tls: true, network: grpc, grpc_opts: {grpc-service-name: 123, grpc-user-agent: synthetic, ping-interval: 30, max-connections: 2, min-streams: 1, max-streams: 8}}\n"
+    },
+    {
+      "id": "ss-plugin-raw-values",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: ss, port: 443, cipher: aes-128-gcm, password: synthetic, plugin: v2ray-plugin, plugin-opts: {mode: websocket, Host: 123, headers: {X_Count: 321}, mux: 1, v2ray-http-upgrade: true}}\n"
+    },
+    {
+      "id": "ss-simple-obfs",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: ss, port: 443, cipher: aes-128-gcm, password: synthetic, plugin: obfs, plugin-opts: {mode: http, host: synthetic.invalid}, udp-over-tcp: true, udp-over-tcp-version: 2}\n"
+    },
+    {
+      "id": "xhttp-options",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: vless, port: 443, uuid: 00000000-0000-0000-0000-000000000001, network: xhttp, xhttp-opts: {path: /x, host: synthetic.invalid, mode: auto, headers: {X_Count: 7}, no-grpc-header: true, x-padding-bytes: '10-20', x-padding-obfs-mode: true, reuse-settings: {max-concurrency: '2-4', h-keep-alive-period: 30}}}\n"
+    },
+    {
+      "id": "xhttp-download-settings",
+      "source": "metadata: {other-account: SYNTHETIC-PRIVATE-MARKER}\nproxies:\n  - {name: Selected, server: 127.0.0.1, type: vless, port: 443, uuid: 00000000-0000-0000-0000-000000000001, network: xhttp, xhttp-opts: {path: /up, mode: packet-up, download-settings: {path: /down, server: 127.0.0.2, port: '0x20fb', tls: false, headers: {Host: down.invalid}, reuse-settings: {max-connections: '1-2'}}}}\n"
+    }
+  ]
+}
