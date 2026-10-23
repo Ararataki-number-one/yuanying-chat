@@ -1,4 +1,4 @@
-name: Validate native TCP ADB after actual guest network readiness
+name: Validate TCP ADB on the actual guest WiFi network backend
 permissions:
   contents: read
   actions: read
@@ -42,20 +42,21 @@ jobs:
         \ port 5037 and (tcp[tcpflags] & (tcp-fin|tcp-rst) != 0)' > work/adb-diagnostic/tcp-close.txt 2>&1 &\nfi\nmkdir -p \"$ANDROID_AVD_HOME\" \"$ANDROID_USER_HOME\"\
         \ \"$ANDROID_EMULATOR_HOME\"\nsudo chmod a+rw /dev/kvm\necho no | \"$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager\" create avd --force -n geckoproduction\
         \ -p \"$ANDROID_AVD_HOME/geckoproduction.avd\" -k 'system-images;android-35;google_apis;x86_64'\n\"$ANDROID_HOME/emulator/emulator\" -verbose -avd\
-        \ geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 > work/adb-diagnostic/emulator.txt\
-        \ 2>&1 &\ntimeout 180 adb -s emulator-5556 wait-for-device\ntimeout 300 bash -c 'until [ \"$(adb -s emulator-5556 shell getprop sys.boot_completed\
-        \ | tr -d \"\\r\")\" = \"1\" ]; do sleep 2; done'\npython3 - <<'PYNET'\nimport json,pathlib,subprocess,time\nout=pathlib.Path('work/adb-diagnostic/network-ready.json');rows=[];deadline=time.monotonic()+30\n\
+        \ geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 -qemu\
+        \ -set netdev.virtio-wifi.hostfwd=tcp:127.0.0.1:5555-10.0.2.16:5555 > work/adb-diagnostic/emulator.txt 2>&1 &\ntimeout 180 adb -s emulator-5556\
+        \ wait-for-device\ntimeout 300 bash -c 'until [ \"$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d \"\\r\")\" = \"1\" ]; do sleep\
+        \ 2; done'\npython3 - <<'PYNET'\nimport json,pathlib,subprocess,time\nout=pathlib.Path('work/adb-diagnostic/network-ready.json');rows=[];deadline=time.monotonic()+30\n\
         while time.monotonic()<deadline:\n row={}\n for label,parts in [('address',['ip','-4','-o','addr','show','wlan0']),('route',['ip','-4','route','get','10.0.2.2'])]:\n\
         \  r=subprocess.run(['adb','-s','emulator-5556','shell',*parts],capture_output=True,text=True,timeout=min(5,max(.01,deadline-time.monotonic())))\n\
         \  row[label]={'exitCode':r.returncode,'stdout':r.stdout,'stderr':r.stderr}\n rows.append(row)\n if 'inet 10.0.2.16/' in row['address']['stdout']\
         \ and row['route']['exitCode']==0 and 'dev wlan0' in row['route']['stdout']:break\n time.sleep(min(1,max(0,deadline-time.monotonic())))\nelse:\n\
         \ out.write_text(json.dumps({'ready':False,'observations':rows},indent=2));raise SystemExit('Guest WLAN address and return route did not become\
-        \ ready')\nout.write_text(json.dumps({'ready':True,'observations':rows},indent=2))\nPYNET\nadb -s emulator-5556 emu redir add tcp:5555:5555\nadb\
-        \ -s emulator-5556 emu redir list > work/adb-diagnostic/redirections.txt\nadb kill-server\nadb start-server\npython3 - <<'PYADB'\nimport socket\n\
-        with socket.create_connection(('127.0.0.1',5037),timeout=5) as channel:\n    channel.sendall(b'0012host:emulator:5555')\nprint('Sent native ADB\
-        \ emulator announcement for actual forwarded TCP port 5555')\nPYADB\ntimeout 30 adb -s emulator-5554 wait-for-device\nexport ANDROID_SERIAL=emulator-5554\n\
-        adb devices -l > work/adb-diagnostic/adb-devices.txt\nadb shell input keyevent 82\nadb install work/diagnostic.apk\npython3 tools/gecko/prepare_emulator.py\
-        \ --adb \"$(command -v adb)\" --serial emulator-5554 --apk work/diagnostic.apk\n"
+        \ ready')\nout.write_text(json.dumps({'ready':True,'observations':rows},indent=2))\nPYNET\nprintf '%s\\n' 'QEMU native WiFi netdev hostfwd: 127.0.0.1:5555\
+        \ -> 10.0.2.16:5555' > work/adb-diagnostic/redirections.txt\npython3 - <<'PYADB'\nimport socket\nwith socket.create_connection(('127.0.0.1',5037),timeout=5)\
+        \ as channel:\n    channel.sendall(b'0012host:emulator:5555')\nprint('Sent native ADB emulator announcement for actual forwarded TCP port 5555')\n\
+        PYADB\ntimeout 30 adb -s emulator-5554 wait-for-device\nexport ANDROID_SERIAL=emulator-5554\nadb devices -l > work/adb-diagnostic/adb-devices.txt\n\
+        adb shell input keyevent 82\nadb install work/diagnostic.apk\npython3 tools/gecko/prepare_emulator.py --adb \"$(command -v adb)\" --serial emulator-5554\
+        \ --apk work/diagnostic.apk\n"
     - name: Observe fixed read-only transfers before any editing workload
       run: "python3 - <<'PYCODE'\nimport glob,hashlib,json,os,pathlib,shutil,subprocess,sys,time\nout=pathlib.Path('work/adb-diagnostic');selected=json.loads((out/'selected.json').read_text());adb=shutil.which('adb');base=[adb,'-s','emulator-5554']\n\
         installed=subprocess.check_output(base+['shell','pm','path','local.pocketchat.test'],text=True).strip().removeprefix('package:')\nsys.path.insert(0,'tools/gecko')\n\
@@ -92,7 +93,7 @@ jobs:
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
       with:
-        name: adb-tcp-network-ready
+        name: adb-tcp-explicit-wifi-backend
         path: work/adb-diagnostic/
         retention-days: 5
     strategy:
