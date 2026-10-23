@@ -71,7 +71,7 @@ final class ChatSession {
     if(reconnect){audit.cancel();invalidateConnection();privacy.apply();if(!offline)openConnection(false,protectionChanged);}
     else{privacy.apply();if(!offline)navigate(resumeUrl(),"正在应用网页设置…");}
   }
-  void beginNavigation(String url,String label){resourceObserverEpoch=-1;resetReplyStability();replyStalled=false;websiteConnectionIssue=false;navigationEpoch++;navigating=true;navigationFailed=false;navigationTarget=url;navigationLabel=label;spaTransition=false;documentNavigationSeen=false;navigationDispatched=true;priorDocumentId=lastDocumentId;awaitNewDocument=!priorDocumentId.isEmpty();spaStable=0;spaSignature="";navigationStarted=System.currentTimeMillis();trace.page("网页加载");navigationMono=SystemClock.elapsedRealtime();firstPageVisible=0;pageUsableAt=0;long epoch=navigationEpoch;setStatus(label);handler.postDelayed(()->navigationTimeout(epoch),45000);}
+  void beginNavigation(String url,String label){resourceObserverEpoch=-1;resetReplyStability();replyStalled=false;websiteConnectionIssue=false;navigationEpoch++;navigating=true;navigationFailed=false;navigationTarget=url;navigationLabel=label;spaTransition=false;documentNavigationSeen=false;navigationDispatched=true;if(!lastDocumentId.isEmpty())priorDocumentId=lastDocumentId;lastDocumentId="";awaitNewDocument=!priorDocumentId.isEmpty();spaStable=0;spaSignature="";navigationStarted=System.currentTimeMillis();trace.page("网页加载");navigationMono=SystemClock.elapsedRealtime();firstPageVisible=0;pageUsableAt=0;long epoch=navigationEpoch;setStatus(label);handler.postDelayed(()->navigationTimeout(epoch),45000);}
   void navigationTimeout(long epoch){
     if(!navigating||navigationEpoch!=epoch||web.resourceDeferred)return;
     // Readiness is a DOM observation, not evidence that the verified route died.
@@ -199,6 +199,7 @@ final class ChatSession {
     boolean matches(ChatSession session){return sameWork(session)&&pendingJob==session.pending&&job.equals(session.pending==null?"":session.pending.optString("id"));}
     /** Observation may register this exact port's first document and retire only its captured old job. */
     boolean sameInspection(ChatSession session,JSONObject inspected){
+      if(session.navigating&&session.awaitNewDocument&&session.priorDocumentId.equals(inspected.optString("documentId")))return false;
       if(!sameNativePage(session)||!samePort(session)||!unchangedWork(session))return false;
       boolean inspectedBusy=inspected.optBoolean("busy"),firstReply=initialReplyObservation(session,inspected);
       if(replyObserved&&!replyActive&&inspectedBusy||!replyObserved&&document.isEmpty()&&inspectedBusy&&!firstReply||session.currentReplyActive()&&!replyActive&&!firstReply)return false;

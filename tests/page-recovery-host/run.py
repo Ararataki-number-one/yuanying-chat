@@ -27,7 +27,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--json-jar',required=True,type=pathlib.Path);a=p.parse_args()
     source=ROOT/'app/src/main/java/local/pocketchat'
     selections={
-      'CHAT':('ChatSession.java',['void awaitLogin(','boolean pageMayReportConnected(','void inspectPageStatus(','void sync(','void networkStatus(','void navigationTimeout(','void finishNavigation(String error,boolean retry)','void scheduleRecovery(','void runRecovery(','void acceptTranscript(','static final class ReloadTarget','ReloadTarget reloadTarget(','void reloadConfirmed(','void observeReplyProgress(','void diagnoseStalledReply(','void observeWebsiteProbe(','boolean retainExistingConnection(']),
+      'CHAT':('ChatSession.java',['void beginNavigation(','void awaitLogin(','boolean pageMayReportConnected(','void inspectPageStatus(','void sync(','void networkStatus(','void navigationTimeout(','void finishNavigation(String error,boolean retry)','void scheduleRecovery(','void runRecovery(','void acceptTranscript(','static final class ReloadTarget','ReloadTarget reloadTarget(','void reloadConfirmed(','void observeReplyProgress(','void diagnoseStalledReply(','void observeWebsiteProbe(','boolean retainExistingConnection(']),
       'PROVIDER':('NetworkUiProvider.java',['void captureTransition(']),
       'DEFERRED':('DeferredBrowserSettings.java',['static void drain(','static void release(']),
       'EDITOR':('EnvironmentEditorUi.java',['static void applySafely(MainActivity a,JSONObject value,EditText name,java.util.function.BooleanSupplier current,java.util.function.Consumer<Boolean> done)']),
