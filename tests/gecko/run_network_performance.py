@@ -9,7 +9,7 @@ p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument
 def adb(*args):return subprocess.check_output([a.adb,'-s',a.serial,*args],text=True,timeout=30)
 adb('shell','am','force-stop','local.pocketchat.test');adb('shell','pm','clear','local.pocketchat.test');adb('logcat','-c')
 adb('shell','am','start','-W','-n','local.pocketchat.test/local.pocketchat.NetworkOptimizationIntegrationActivity')
-checks={};transport_evidence={}
+checks={};transport_evidence={};first_connection_diagnostic=None
 deadline=time.monotonic()+240
 while time.monotonic()<deadline:
     raw=adb('logcat','-d','-s','PocketNetworkPerformance:I','AndroidRuntime:E','*:S')
@@ -18,13 +18,23 @@ while time.monotonic()<deadline:
         raise AssertionError(raw)
     for line in raw.splitlines():
         if 'PocketNetworkPerformance' not in line or '{' not in line:continue
-        report=json.loads(line[line.index('{'):])
+        try:report=json.loads(line[line.index('{'):])
+        except json.JSONDecodeError:
+            # Preserve the exact observed bytes before requesting the full log.
+            (out/'network-performance-unparsed-log.txt').write_text(raw)
+            (out/'network-performance-failure-log.txt').write_text(adb('logcat','-d'))
+            raise
         if report.get("kind")=="check":
             checks[report["value"]["name"]]=report["value"];continue
         if report.get('kind')=='exitTransportEvidence':
             value=report['value'];transport_evidence[(value['kind'],value['fault'])]=value;continue
+        if report.get('kind')=='firstConnectionDiagnostic':
+            first_connection_diagnostic=report['value']
+            (out/'network-first-connection-diagnostic.json').write_text(json.dumps(first_connection_diagnostic,indent=2)+'\n')
+            continue
         report["checks"]=list(checks.values())
         report['exitTransportContinuity']=list(transport_evidence.values())
+        if first_connection_diagnostic is not None:report['firstConnectionDiagnostic']=first_connection_diagnostic
         assert report["checkCount"]==len(checks),report
         report['sourceCommit']=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
         (out/'network-performance-results.json').write_text(json.dumps(report,indent=2)+'\n')

@@ -18,6 +18,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Actual Android/Mihomo with two loopback SOCKS hops. Never uses personal or public routes. */
 public final class NetworkOptimizationIntegrationActivity extends Activity {
   final JSONArray checks=new JSONArray(),transportEvidence=new JSONArray();
+  JSONObject firstConnectionDiagnostic;
+  static String diagnosticText(String value,int limit){return value==null?"":value.length()>limit?value.substring(0,limit)+"…":value;}
+  static JSONObject diagnosticFailure(Exception failure){StringWriter stack=new StringWriter();failure.printStackTrace(new PrintWriter(stack));return J.obj("class",failure.getClass().getName(),"message",diagnosticText(failure.getMessage(),160),"stack",diagnosticText(stack.toString(),1200));}
+  static String diagnosticEvent(JSONObject value){
+    JSONObject event=J.obj("kind","firstConnectionDiagnostic","value",value);String encoded=event.toString();
+    // Android's log limit is bytes, including JSON escaping. Preserve every predicate.
+    while(encoded.getBytes(StandardCharsets.UTF_8).length>3500){
+      JSONObject failure=value.optJSONObject("startupFailure"),callback=value.optJSONObject("callback");String stack=failure.optString("stack"),message=failure.optString("message"),detail=callback.optString("message");
+      if(!stack.isEmpty()){NetworkCatalog.put(failure,"stack",stack.substring(0,stack.length()/2));NetworkCatalog.put(failure,"stackTruncated",true);}
+      else if(!message.isEmpty()||!detail.isEmpty()){NetworkCatalog.put(failure,"message",message.substring(0,message.length()/2));NetworkCatalog.put(callback,"message",detail.substring(0,detail.length()/2));NetworkCatalog.put(value,"messagesTruncated",true);}
+      else{value.remove("supplementaryAfterPredicate");NetworkCatalog.put(value,"supplementaryOmittedForLogLimit",true);}
+      encoded=event.toString();
+    }
+    return encoded;
+  }
   void check(String name,boolean passed){JSONObject value=J.obj("name",name,"pass",passed);checks.put(value);Log.i("PocketNetworkPerformance",J.obj("kind","check","value",value).toString());if(!passed)throw new AssertionError(name);}
   void transportTrace(JSONObject value){transportEvidence.put(value);Log.i("PocketNetworkPerformance",J.obj("kind","exitTransportEvidence","value",value).toString());}
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test"))throw new SecurityException();new Thread(this::run,"network-optimization-fixture").start();}
@@ -124,8 +139,8 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       NetworkCatalog.put(report,"independentNetworkService","passed");NetworkCatalog.put(report,"status","passed");
     }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());}
     finally{if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
-    NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"exitTransportContinuity",transportEvidence);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
-    report.remove("checks");report.remove("exitTransportContinuity");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
+    NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"exitTransportContinuity",transportEvidence);if(firstConnectionDiagnostic!=null)NetworkCatalog.put(report,"firstConnectionDiagnostic",firstConnectionDiagnostic);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
+    report.remove("checks");report.remove("exitTransportContinuity");report.remove("firstConnectionDiagnostic");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
   }
   /** New library selections require identities from the actual bundled parser. */
   void parseLibraryPool(NetworkCatalog library,JSONObject row,byte[] raw)throws Exception{
@@ -231,11 +246,26 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       site.ipStatus=503;accepted=awaitNetworkCallback(n,false);
       check("An unverified changed route fails closed when the exit service is unavailable",!accepted&&!n.ready&&!n.coreAlive()&&stream.awaitClosed());
     }finally{site.ipStatus=200;site.ipDelay=0;site.ipBody=null;site.ip="203.0.113.8";plain.probeStatus=204;NetworkCatalog.put(n.settings,"entryMode",mode);}
-    File unverifiedRoot=new File(getNoBackupFilesDir(),"network-unverified-test");TestNetwork unverified=new TestNetwork(this,site,plain,unverifiedRoot){@Override long startupSearchBudgetMs(){return 2000;}};
+    final java.util.concurrent.atomic.AtomicReference<JSONObject> startupFailure=new java.util.concurrent.atomic.AtomicReference<>(new JSONObject()),callbackEvidence=new java.util.concurrent.atomic.AtomicReference<>(J.obj("count",0));
+    final AtomicInteger verificationCalls=new AtomicInteger(),callbackCount=new AtomicInteger();final java.util.concurrent.atomic.AtomicReference<String> verificationOutcome=new java.util.concurrent.atomic.AtomicReference<>("not-called");
+    File unverifiedRoot=new File(getNoBackupFilesDir(),"network-unverified-test");TestNetwork unverified=new TestNetwork(this,site,plain,unverifiedRoot){
+      @Override long startupSearchBudgetMs(){return 2000;}
+      @Override void startNow()throws Exception{try{super.startNow();}catch(Exception failure){startupFailure.set(diagnosticFailure(failure));throw failure;}}
+      @Override String verifyExit()throws Exception{verificationCalls.incrementAndGet();try{String value=super.verifyExit();verificationOutcome.set("returned");return value;}catch(Exception failure){verificationOutcome.set(failure.getClass().getName());throw failure;}}
+    };
     try{
       check("A new core has no inherited in-memory verification receipt",!unverified.verifiedRouteCurrent());
-      site.ipStatus=503;int initialExitRequests=site.ipRequests.get();CountDownLatch started=new CountDownLatch(1);final boolean[] startup={true};unverified.start((ok,message)->{startup[0]=ok;started.countDown();});
-      check("First connection requires actual exit verification and never accepts an outage",started.await(20,TimeUnit.SECONDS)&&!startup[0]&&!unverified.ready&&!unverified.coreAlive()&&unverified.startupBeganAt>0&&unverified.controllerPort>0&&site.ipRequests.get()>initialExitRequests);
+      site.ipStatus=503;int initialExitRequests=site.ipRequests.get();CountDownLatch started=new CountDownLatch(1);final boolean[] startup={true};unverified.start((ok,message)->{startup[0]=ok;callbackEvidence.set(J.obj("count",callbackCount.incrementAndGet(),"ok",ok,"message",diagnosticText(message,160)));started.countDown();});
+      // Capture the original seven predicate inputs once, before diagnostics or cleanup.
+      // The same captured values decide the original assertion; later fields are supplementary.
+      boolean completed=started.await(20,TimeUnit.SECONDS),acceptedAtCheck=startup[0],readyAtCheck=unverified.ready,aliveAtCheck=unverified.coreAlive();long beganAtCheck=unverified.startupBeganAt;int controllerAtCheck=unverified.controllerPort,requestsAtCheck=site.ipRequests.get();
+      boolean passed=completed&&!acceptedAtCheck&&!readyAtCheck&&!aliveAtCheck&&beganAtCheck>0&&controllerAtCheck>0&&requestsAtCheck>initialExitRequests;
+      firstConnectionDiagnostic=J.obj("schema",1,"capture","after-original-predicate-snapshot-before-check-and-cleanup","capturedAt",android.os.SystemClock.elapsedRealtime(),"passed",passed,
+        "conditions",J.obj("callbackCompleted",completed,"callbackRejected",!acceptedAtCheck,"notReady",!readyAtCheck,"coreStopped",!aliveAtCheck,"startupBegan",beganAtCheck>0,"controllerAllocated",controllerAtCheck>0,"actualExitRequest",requestsAtCheck>initialExitRequests),
+        "predicateValues",J.obj("callbackOk",acceptedAtCheck,"ready",readyAtCheck,"coreAlive",aliveAtCheck,"startupBeganAt",beganAtCheck,"controllerPort",controllerAtCheck,"ipRequestsBefore",initialExitRequests,"ipRequestsAfter",requestsAtCheck),
+        "callback",callbackEvidence.get(),"startupFailure",startupFailure.get(),"supplementaryAfterPredicate",J.obj("verifyCalls",verificationCalls.get(),"verifyOutcome",verificationOutcome.get(),"exitFailureReason",unverified.exitFailureReason,"proxyPort",unverified.proxyPort,"webProbePort",unverified.webProbePort,"currentEntry",unverified.currentEntry,"startupPath",unverified.startupPath,"coreDuration",unverified.coreDuration,"providerDuration",unverified.providerDuration,"exitCheckDuration",unverified.exitCheckDuration));
+      Log.i("PocketNetworkPerformance",diagnosticEvent(firstConnectionDiagnostic));
+      check("First connection requires actual exit verification and never accepts an outage",passed);
     }finally{site.ipStatus=200;unverified.stopNow();unverified.worker.shutdownNow();unverified.probes.shutdownNow();unverified.closers.shutdownNow();unverified.traffic.reader.shutdownNow();NativeNetwork.deletePreview(unverifiedRoot);}
     n.startNow();
     try(WebSocketStream stream=new WebSocketStream(n,site)){
