@@ -108,6 +108,69 @@ def verify_route_busy_bootstrap(report):
     return {'realSessionBusyPreserved': True, 'freshCoreExitVerified': True}
 
 
+def verify_route_busy_phase_boundary(report):
+    """The test ends its busy phase; only a later real reconnect may admit traffic."""
+    verify_route_busy_bootstrap(report)
+    boundary = report['legacyBusyPhaseBoundary']
+    assert boundary['schema'] == 1
+    assert boundary['method'] == 'test-only end of controlled navigation-busy phase'
+    assert boundary['domReadyInferred'] is False
+    count = boundary['bootstrapCheckCount']
+    assert type(count) is int and count >= 3
+    checks = report['checks']
+    expected = [
+        'Legacy manual exit starts through the same production path',
+        'A fresh manual core verifies its exit while the same real session remains navigation-busy',
+        'Manual path keeps its ordinary SOCKS proxy and removes subscribed exit files',
+        'The controlled busy phase ends after bootstrap without changing browser admission or the verified route',
+        'Ending the controlled busy phase preserves the actual Gecko document and unsent draft',
+    ]
+    observed = checks[count - 3:count + 2]
+    assert [row['name'] for row in observed] == expected
+    assert all(row['pass'] is True for row in observed)
+    before, after = boundary['before'], boundary['after']
+    for key in ('navigating', 'routeBusy', 'pending', 'fileWorkActive'):
+        assert before[key] is report['legacyBusyBootstrap']['after'][key], key
+    assert before['navigating'] is True and before['routeBusy'] is True
+    assert after['navigating'] is False and after['routeBusy'] is False
+    changed = {'navigating', 'routeBusy'}
+    assert {key: value for key, value in before.items() if key not in changed} == {
+        key: value for key, value in after.items() if key not in changed}
+    for value in (before, after):
+        for key in ('pending', 'fileWorkActive', 'submitting', 'operation', 'transferActive', 'stateBusy'):
+            assert value[key] is False, key
+        for key in ('networkReady', 'guardAllowed', 'guardBlocked', 'connecting', 'offline',
+                    'coreStarting', 'defaultNetworkUsable'):
+            assert type(value[key]) is bool, key
+        assert value['coreReady'] is True and value['nativeReceiptCurrent'] is True
+        assert value['nativeReceiptObservation'] == 'pushed-service-state'
+        for key in ('connectionEpoch', 'navigationEpoch', 'routeSerial'):
+            assert type(value[key]) is int and value[key] >= 0, key
+        for key in ('browserIdentity', 'geckoSessionIdentity'):
+            assert type(value[key]) is int and value[key] > 0, key
+        assert isinstance(value['sessionDocumentId'], str)
+        assert isinstance(value['appliedIdentity'], str) and value['appliedIdentity']
+        receipt = value['receipt']
+        for key in ('fingerprint', 'tokenHash', 'configurationHash'):
+            assert _hash(receipt[key]), key
+        for key in ('entry', 'generation'):
+            assert isinstance(receipt[key], str) and receipt[key], key
+        assert type(receipt['serial']) is int and receipt['serial'] == value['routeSerial']
+        for key in ('controller', 'proxy', 'pid', 'servicePid'):
+            assert type(receipt[key]) is int and receipt[key] > 1, key
+    assert boundary['documentBefore'] == boundary['documentAfter']
+    document = boundary['documentAfter']
+    assert document['url'] == 'https://127.0.0.1:9879/pool' and document['controlled'] is True
+    assert type(document['timeOrigin']) in (int, float) and math.isfinite(document['timeOrigin']) and document['timeOrigin'] > 0
+    assert document['draft'] == 'unsent pool draft' and type(document['sends']) is int and document['sends'] == 0
+    began, ended = boundary['beganAtNs'], boundary['endedAtNs']
+    assert type(began) is int and type(ended) is int and 0 < began <= ended
+    manual = [row for row in report['sessionRestorations'] if row['name'] == 'legacy-manual']
+    assert len(manual) == 1 and type(manual[0]['beganAtNs']) is int and ended <= manual[0]['beganAtNs']
+    return {'syntheticBusyPhaseEndedAfterBootstrap': True, 'browserAdmissionAndReceiptUnchanged': True,
+            'actualDocumentPreserved': True, 'requiresSubsequentProductionReconnect': True}
+
+
 def _verify_route_session_restorations(report):
     assert len(report['checks']) >= 71
     required = {name + ' releases the browser guard through the production reconnect callback'
@@ -363,6 +426,7 @@ def verify_source_route(report,server,receipt,source):
         assert blocked and all(row['route']['type']=='socks' and row['route']['host']=='127.0.0.1' and row['route']['port']==9 for row in blocked)
     _verify_route_session_restorations(report)
     verify_route_busy_bootstrap(report)
+    verify_route_busy_phase_boundary(report)
     return {'actualAndroidExecution':True,'actualGeckoHttp2Execution':True,'actualAuthenticatedSocksChain':True,
             'sameSourceFixedExitAcrossEntrySwitch':True,'independentProbesPreserveBusinessConnection':True,
             'snapshotAndNodeMismatchRejections':4,'legacyManualPathPreserved':True,'checks':len(report['checks']),
