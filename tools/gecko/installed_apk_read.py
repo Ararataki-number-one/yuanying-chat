@@ -1,4 +1,4 @@
-"""Read one actual installed APK through a raw ADB stream, with no fallback."""
+"""Read one actual installed APK through framed, non-PTY ADB, with no fallback."""
 import hashlib
 import json
 import math
@@ -35,16 +35,6 @@ def _stderr(raw):
                 stderrTruncated=len(raw) > limit)
 
 
-def _stdout(raw):
-    raw = raw or b''
-    if isinstance(raw, str):
-        raw = raw.encode('utf-8', errors='replace')
-    limit = 65536
-    return dict(cliStdout=raw[-limit:].decode('utf-8', errors='replace'),
-                cliStdoutBytes=len(raw), cliStdoutSha256=hashlib.sha256(raw).hexdigest(),
-                cliStdoutTruncated=len(raw) > limit)
-
-
 def _file_identity(path):
     digest, size = hashlib.sha256(), 0
     with path.open('rb') as stream:
@@ -74,8 +64,8 @@ def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha
     """
     destination, diagnostics = Path(destination), Path(diagnostics)
     receipt = dict(schema=1, scope='host-read-only-installed-apk-byte-transfer', status='failed',
-                   transport='adb-exec-out-raw', dataSource='raw-stdout-destination-file',
-                   adbTrace='transport,sockets,sysdeps',
+                   transport='adb-shell-v2-no-pty', dataSource='binary-stdout-destination-file',
+                   adbTrace='adb,transport,sockets',
                    label=label, installedApkPath=installed_path, destination=str(destination),
                    expectedBytes=expected_bytes, expectedSha256=expected_sha256,
                    timeoutSeconds=timeout, returnCode=None, stdoutBytes=0, stdoutSha256=None,
@@ -98,22 +88,31 @@ def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha
             raise ValueError('Exact selected APK byte count and SHA256 required')
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 30:
             raise ValueError('Installed byte read must use a finite deadline at most 30 seconds')
-        # Reserve the destination exclusively and hand ADB that open binary FD.
-        # This avoids SYNC's silent partial-file deletion on a failed pull and
-        # preserves the exact received bytes for failure diagnostics. There is
-        # one device read; no compiled-file substitution or retry is possible.
+        # Reserve the destination exclusively. Shell v2 supplies a remote exit
+        # status and separate stderr; -T forbids terminal byte transformations.
+        # Capture binary stdout through a pipe, avoiding exec-out's unchecked
+        # stdio copy directly into our file. There is exactly one device read.
         with destination.open('xb') as output:
             owned = True
             before = os.fstat(output.fileno())
             owned_identity = (before.st_dev, before.st_ino)
             # The canonical absolute path cannot be an option and the whitelist
-            # excludes shell syntax. This is the same command as the raw-read diagnostic.
-            command = [str(adb), '-s', serial, 'exec-out', 'cat', installed_path]
+            # excludes shell syntax. No login shell, PTY, or alternate file is used.
+            command = [str(adb), '-s', serial, 'shell', '-T', 'cat', installed_path]
             receipt['command'] = command
             environment = dict(os.environ, ADB_TRACE=receipt['adbTrace'])
-            result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=output,
-                                    stderr=subprocess.PIPE, timeout=timeout, check=False,
-                                    env=environment)
+            try:
+                result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE, timeout=timeout, check=False,
+                                        env=environment)
+            except subprocess.TimeoutExpired as error:
+                # Preserve partial binary bytes in the ordinary size/hash
+                # diagnostics; never decode APK contents into public log text.
+                if error.stdout:
+                    output.write(error.stdout)
+                    output.flush()
+                raise
+            output.write(result.stdout)
             output.flush()
             receipt.update(returnCode=result.returncode, **_stderr(result.stderr))
             after = destination.lstat()
@@ -131,7 +130,7 @@ def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha
     except Exception as error:
         receipt.update(failureType=type(error).__name__, error=str(error))
         if isinstance(error, subprocess.TimeoutExpired):
-            receipt.update(**_stderr(error.stderr), **_stdout(error.stdout))
+            receipt.update(**_stderr(error.stderr))
         own_path = False
         if owned:
             try:

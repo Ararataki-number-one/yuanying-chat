@@ -25,7 +25,7 @@ base=pathlib.Path(__file__).parent
 config=json.loads((base/'config.json').read_text())
 final=pathlib.Path(config['finalPath']);fd=os.fstat(1);state=final.stat()
 record=dict(argv=sys.argv[1:],stdoutIsRegularFile=stat.S_ISREG(fd.st_mode),
-            outputMode=stat.S_IMODE(fd.st_mode),
+            outputMode=stat.S_IMODE(fd.st_mode),finalPreReserved=final.is_file(),
             reservedFileDescriptor=(fd.st_dev,fd.st_ino)==(state.st_dev,state.st_ino),
             trace=os.environ.get('ADB_TRACE'))
 with (base/'commands.jsonl').open('a') as log:log.write(json.dumps(record)+'\n')
@@ -67,9 +67,10 @@ class InstalledApkReadTests(unittest.TestCase):
         p=self.directory/'commands.jsonl';return [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
     def assert_once(self):
         rows=self.commands();self.assertEqual(len(rows),1)
-        self.assertEqual(rows[0]['argv'],['-s',SERIAL,'exec-out','cat',INSTALLED])
-        self.assertTrue(rows[0]['stdoutIsRegularFile']);self.assertTrue(rows[0]['reservedFileDescriptor'])
-        self.assertEqual(rows[0]['trace'],'transport,sockets,sysdeps')
+        self.assertEqual(rows[0]['argv'],['-s',SERIAL,'shell','-T','cat',INSTALLED])
+        self.assertFalse(rows[0]['stdoutIsRegularFile']);self.assertFalse(rows[0]['reservedFileDescriptor'])
+        self.assertTrue(rows[0]['finalPreReserved'])
+        self.assertEqual(rows[0]['trace'],'adb,transport,sockets')
     def failure(self,**kwargs):
         with contextlib.redirect_stderr(io.StringIO()),self.assertRaises(READER.InstalledApkReadError):self.read(**kwargs)
         receipt=self.receipt();self.assertEqual(receipt['status'],'failed')
@@ -80,14 +81,14 @@ class InstalledApkReadTests(unittest.TestCase):
         self.assertEqual(receipt['actualFileSha256'],hashlib.sha256(raw).hexdigest())
         self.assertEqual(receipt['stdoutBytes'],len(raw));self.assertTrue(receipt['partialCleaned'])
         self.assertFalse(self.destination.exists())
-    def test_one_raw_binary_stream_targets_the_exclusively_reserved_fd(self):
+    def test_one_framed_binary_stream_is_captured_before_writing_reserved_file(self):
         with patch.object(READER.subprocess,'run',wraps=subprocess.run) as process:r=self.read()
         process.assert_called_once();options=process.call_args.kwargs
         self.assertEqual(options['stdin'],subprocess.DEVNULL);self.assertEqual(options['stderr'],subprocess.PIPE)
-        self.assertEqual(options['stdout'].name,str(self.destination));self.assertEqual(options['stdout'].mode,'xb')
+        self.assertEqual(options['stdout'],subprocess.PIPE)
         self.assertEqual(options['timeout'],30);self.assertIs(options['check'],False);self.assertFalse(options.get('shell',False))
         self.assert_once();self.assertEqual(self.destination.read_bytes(),PAYLOAD)
-        self.assertEqual(r,self.receipt());self.assertEqual(r['transport'],'adb-exec-out-raw')
+        self.assertEqual(r,self.receipt());self.assertEqual(r['transport'],'adb-shell-v2-no-pty')
         self.assertEqual(r['status'],'verified-bytes');self.assertTrue(r['actualInstalledApkRead'])
         self.assertFalse(r['actualAndroidFixtureExecution']);self.assertFalse(r['retryPerformed']);self.assertFalse(r['compiledFileFallback'])
         self.assertEqual(r['actualFileBytes'],len(PAYLOAD));self.assertEqual(r['actualFileSha256'],hashlib.sha256(PAYLOAD).hexdigest())
