@@ -17,9 +17,7 @@ def push_tree(*, root, source, tree, branch, env, message, attempts=3):
             subprocess.run(['git', 'fetch', '--depth=1', '--no-tags', 'origin', ref], cwd=root, check=True)
             fetched = subprocess.check_output(['git', 'rev-parse', 'FETCH_HEAD'], cwd=root, text=True).strip()
             if fetched != previous[0]:
-                if attempt + 1 < attempts:
-                    continue
-                raise RuntimeError('Artifact ref kept changing during bounded fetch')
+                raise RuntimeError('Public artifact branch changed during bounded fetch')
             parents += ['-p', fetched]
         commit = subprocess.check_output(['git', 'commit-tree', tree, *parents, '-m', message],
                                          cwd=root, env=env, text=True).strip()

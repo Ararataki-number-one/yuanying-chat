@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Publish unsigned APK chunks and strictly synthetic evidence; never signing keys."""
-import hashlib, json, os, pathlib, re, shutil, subprocess
+import hashlib, json, os, pathlib, re, shutil, subprocess, sys
+sys.dont_write_bytecode = True
 from ci_git_publish import push_tree
 root = pathlib.Path(__file__).resolve().parents[2]
 out = root / 'work/gecko-integration'
