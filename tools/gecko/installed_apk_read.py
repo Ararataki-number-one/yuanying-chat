@@ -76,6 +76,7 @@ def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha
     destination, diagnostics = Path(destination), Path(diagnostics)
     receipt = dict(schema=1, scope='host-read-only-installed-apk-byte-transfer', status='failed',
                    transport='adb-sync-uncompressed', dataSource='destination-file',
+                   adbTrace='sync,transport,sockets,sysdeps',
                    label=label, installedApkPath=installed_path, destination=str(destination),
                    expectedBytes=expected_bytes, expectedSha256=expected_sha256,
                    timeoutSeconds=timeout, returnCode=None, stdoutBytes=0, stdoutSha256=None,
@@ -109,8 +110,14 @@ def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha
                 command = [str(adb), '-s', serial, 'pull', '-Z', installed_path, str(transferred)]
                 receipt['command'] = command
                 try:
+                    # SYNC can return rc1 and delete its partial file without
+                    # printing the underlying read/EOF error. Trace this one
+                    # host-side identity read only, outside the input workload.
+                    # Do not change its command, deadline, or once-only rule.
+                    environment = dict(os.environ, ADB_TRACE=receipt['adbTrace'])
                     result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                            stderr=subprocess.PIPE, timeout=timeout, check=False)
+                                            stderr=subprocess.PIPE, timeout=timeout, check=False,
+                                            env=environment)
                     receipt.update(returnCode=result.returncode, **_stderr(result.stderr), **_stdout(result.stdout))
                 finally:
                     # This is a host-local copy of the one actual device read,

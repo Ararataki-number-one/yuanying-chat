@@ -147,6 +147,8 @@ class InstalledApkReadTests(unittest.TestCase):
         self.assertEqual(parameters['stdout'], subprocess.PIPE)
         self.assertEqual(parameters['stderr'], subprocess.PIPE)
         self.assertEqual(parameters['timeout'], 30)
+        self.assertEqual(parameters['env']['ADB_TRACE'], 'sync,transport,sockets,sysdeps')
+        self.assertEqual(receipt['adbTrace'], parameters['env']['ADB_TRACE'])
         self.assertIs(parameters['check'], False)
         self.assertFalse(parameters.get('shell', False))
         self.assertEqual(self.destination.read_bytes(), PAYLOAD)
