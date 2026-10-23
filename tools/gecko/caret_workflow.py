@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Prepare exact source SDK inputs and record actual APKs for controlled editing."""
 import argparse
+import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -9,6 +11,21 @@ import urllib.request
 import zipfile
 from sdk_identity_contract import ROOT, file_digest, sdk_from_apk
 from caret_build_identity import audit_apk, embedded_identity, validate_sdk_receipt
+
+ANNOTATION_SHA256='ddd072ddbb553178e205517ce777b2f05aa9e412982d9ecb4eedc74f1212f697'
+
+def download_annotation(url, target, expected=ANNOTATION_SHA256):
+    """Retry a locked build dependency only; no Android workload runs here."""
+    if target.is_file() and file_digest(target)==expected:return
+    for attempt in range(1,4):
+        try:
+            with urllib.request.urlopen(url,timeout=60) as response:data=response.read(1024*1024+1)
+            if len(data)>1024*1024 or hashlib.sha256(data).hexdigest()!=expected:raise ValueError('Locked annotation dependency differs')
+            staged=target.with_suffix('.download');staged.write_bytes(data);staged.replace(target);return
+        except (OSError,http.client.HTTPException,ValueError) as error:
+            print(json.dumps(dict(dependencyDownloadAttempt=attempt,status='failed',reason=str(error))),flush=True)
+            if isinstance(error,urllib.error.HTTPError) and error.code in (401,403,404):raise
+            if attempt==3:raise
 
 
 def main():
@@ -29,13 +46,9 @@ def main():
           '--out',str(native),'--run-id',os.environ['GITHUB_RUN_ID'],
           '--run-attempt',os.environ.get('GITHUB_RUN_ATTEMPT','1')]
     if a.mode=='prepare':
-        if not annotation.exists():
-            url='https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.10.0/annotation-jvm-1.10.0.jar'
-            with urllib.request.urlopen(url,timeout=60)as response:
-                data=response.read(1024*1024+1)
-            assert len(data)<=1024*1024
-            annotation.write_bytes(data)
-        assert file_digest(annotation)=='ddd072ddbb553178e205517ce777b2f05aa9e412982d9ecb4eedc74f1212f697'
+        url='https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.10.0/annotation-jvm-1.10.0.jar'
+        download_annotation(url,annotation)
+        assert file_digest(annotation)==ANNOTATION_SHA256
         subprocess.run(base,cwd=ROOT,check=True)
         subprocess.run(['python3',str(ROOT/'tools/gecko/stage_caret_build_identity.py'),
             '--sdk-receipt',str(native/'sdk-build-receipt.json'),'--sdk-aar',str(native/'geckoview-caret.aar'),
