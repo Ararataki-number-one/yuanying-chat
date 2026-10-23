@@ -299,11 +299,31 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     // The visual comparison also compiles this fixture with historical UI sources.
     // Current UI exposes the helper and must execute both unchanged assertions.
     java.lang.reflect.Method uiMetadata=null;try{uiMetadata=NetworkWorkspaceUi.class.getDeclaredMethod("readUiMetadata",Context.class,JSONArray.class);}catch(NoSuchMethodException historicalUi){}
-    if(uiMetadata!=null){JSONArray list=new JSONArray();for(int slot=0;slot<Profiles.MAX;slot++)list.put(J.obj("row",J.obj("slot",slot)));
-      Context queued=Profiles.context(this,6);NetworkChanges.save(queued,"external",J.obj("proxy","http://127.0.0.1:1"),"synthetic-ui-only");uiMetadata.invoke(null,this,list);
-      check("Network list reads pending draft metadata on its background reader",list.optJSONObject(6).optBoolean("pendingNetwork")&&!list.optJSONObject(7).optBoolean("pendingNetwork"));
-      NetworkChanges.clear(queued);uiMetadata.invoke(null,this,list);
-      check("Network list refresh sees draft removal without a global pending cache",!list.optJSONObject(6).optBoolean("pendingNetwork"));
+    if(uiMetadata!=null){
+      ProfileCatalog profiles=ProfileCatalog.get(this);JSONObject[] originalRows={profiles.item(6),profiles.item(7)};SecretStore[] stores={new SecretStore(Profiles.context(this,6)),new SecretStore(Profiles.context(this,7))};
+      byte[][] originalSpecs={stores[0].get(EnvironmentSpecRepository.STORE),stores[1].get(EnvironmentSpecRepository.STORE)};byte[] originalPending=stores[0].get("pending-network");
+      if(originalPending!=null||stores[1].get("pending-network")!=null)throw new IOException("Metadata fixture requires the runner's clean pending state");
+      Context queued=Profiles.context(this,6);
+      try{
+        // The production list supplies created catalog identities. Slot-only rows
+        // intentionally fail A01's UUID/generation guard before any pending read.
+        for(int i=0;i<2;i++){if(!originalRows[i].optBoolean("created"))stores[i].remove(EnvironmentSpecRepository.STORE);profiles.created(6+i);}
+        JSONObject queuedItem=J.obj("row",profiles.item(6)),idleItem=J.obj("row",profiles.item(7));JSONArray list=J.arr(queuedItem,idleItem);
+        NetworkChanges.save(queued,"external",J.obj("proxy","http://127.0.0.1:1"),"synthetic-ui-only");String saved=NetworkChanges.pendingStrict(queued).toString();uiMetadata.invoke(null,this,list);
+        EnvironmentSpec.Identity expected=profiles.identity(6);JSONObject metadata=queuedItem.optJSONObject("uiMetadata");
+        boolean scoped=metadata!=null&&metadata.optBoolean("available")&&expected.environmentId.equals(metadata.optString("environmentId"))&&expected.generation==metadata.optInt("generation",-1)&&idleItem.optJSONObject("uiMetadata").optBoolean("available");
+        JSONArray invalid=new JSONArray();invalid.put(J.obj("row",J.obj("slot",6)));
+        JSONObject oldId=J.parse(profiles.item(6).toString());oldId.put("environmentId",UUID.randomUUID().toString());invalid.put(J.obj("row",oldId));
+        JSONObject oldGeneration=J.parse(profiles.item(6).toString());oldGeneration.put("generation",expected.generation+1);invalid.put(J.obj("row",oldGeneration));uiMetadata.invoke(null,this,invalid);
+        boolean rejected=true;for(int i=0;i<invalid.length();i++)rejected&=!invalid.optJSONObject(i).optBoolean("pendingNetwork")&&!invalid.optJSONObject(i).optJSONObject("uiMetadata").optBoolean("available");
+        boolean pendingPreserved=saved.equals(NetworkChanges.pendingStrict(queued).toString());repairEvidence.put("uiMetadataIdentity",J.obj("actualAndroidExecution",true,"catalogIdentity",expected.json(),"availableWithExactIdentity",scoped,"legacyExternalPending",NetworkChanges.intent(NetworkChanges.pendingStrict(queued))==null,"missingAndStaleIdentitiesRejected",rejected,"pendingUnchangedByRejectedReads",pendingPreserved));
+        check("Network list reads pending draft metadata on its background reader",queuedItem.optBoolean("pendingNetwork")&&!idleItem.optBoolean("pendingNetwork")&&scoped&&rejected&&pendingPreserved);
+        NetworkChanges.clear(queued);uiMetadata.invoke(null,this,list);
+        check("Network list refresh sees draft removal without a global pending cache",!queuedItem.optBoolean("pendingNetwork")&&queuedItem.optJSONObject("uiMetadata").optBoolean("available")&&queuedItem.optJSONObject("uiMetadata").optString("candidateId").isEmpty());
+      }finally{
+        if(originalPending==null)stores[0].remove("pending-network");else stores[0].put("pending-network",originalPending);
+        for(int i=0;i<2;i++){if(originalSpecs[i]==null)stores[i].remove(EnvironmentSpecRepository.STORE);else stores[i].put(EnvironmentSpecRepository.STORE,originalSpecs[i]);android.content.ContentValues restored=new android.content.ContentValues();restored.put("created",originalRows[i].optBoolean("created")?1:0);restored.put("environment_id",originalRows[i].optString("environmentId"));profiles.getWritableDatabase().update("environments",restored,"slot=?",new String[]{String.valueOf(6+i)});}
+      }
     }
     CountDownLatch complete=new CountDownLatch(1);java.util.concurrent.atomic.AtomicInteger disk=new java.util.concurrent.atomic.AtomicInteger();final boolean[] correct={true};
     runOnUiThread(()->{android.os.StrictMode.ThreadPolicy previous=android.os.StrictMode.getThreadPolicy();try{android.os.StrictMode.setThreadPolicy(new android.os.StrictMode.ThreadPolicy.Builder().detectDiskReads().detectDiskWrites().penaltyListener(Runnable::run,violation->disk.incrementAndGet()).build());for(int round=0;round<16;round++)for(int slot=0;slot<Profiles.MAX;slot++){Context context=Profiles.context(this,slot);String expected=slot==Profiles.MAX-1?"韩国 · synthetic-new":"日本 · synthetic-"+slot;correct[0]&=NetworkRegion.region(context,"203.0.113."+(64+slot)).equals(expected);NetworkRegion.readLatency(context);}}catch(Throwable error){correct[0]=false;}finally{android.os.StrictMode.setThreadPolicy(previous);complete.countDown();}});
