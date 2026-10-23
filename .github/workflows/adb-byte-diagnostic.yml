@@ -42,6 +42,7 @@ jobs:
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
     - name: Boot the unchanged Android runtime
       run: |
         set -euo pipefail
@@ -134,7 +135,7 @@ jobs:
         record['nativeReady']=True;(out/'qemu-forward.json').write_text(json.dumps(record,indent=2))
         PYSETUP
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk work/diagnostic.apk
-        adb -s emulator-5554 shell am start -W -n local.pocketchat.test/.MainActivity
+        adb -s emulator-5554 shell am start -W -n local.pocketchat.test/local.pocketchat.MainActivity
     - name: Observe 64 fixed real installed APK reads with the production shell open
       run: |
         python3 - <<'PYOBSERVE'
