@@ -1,11 +1,12 @@
 package local.pocketchat;
 
-import android.app.Activity;import android.content.*;import android.net.Uri;import android.os.Bundle;import android.widget.TextView;
+import android.app.Activity;import android.content.*;import android.net.Uri;import android.os.Bundle;import android.widget.*;
 import org.json.*;import java.io.*;import java.nio.charset.StandardCharsets;import java.util.*;
 
 /** Synthetic Android/core/encrypted-store integration; never real user credentials. */
 public final class NetworkSharingIntegrationActivity extends Activity {
-  byte[] portableRaw;JSONObject portableEntry;String portableFingerprint;
+  byte[] portableRaw;JSONObject portableEntry;String portableFingerprint;JSONArray portableDetails;
+  JSONObject uiConfig,result;String portableSourceId;final Map<String,byte[]> shareSnapshot=new LinkedHashMap<>();
   final JSONArray checks=new JSONArray();JSONObject buildIdentity;JSONObject entry,exit;JSONObject[] records=new JSONObject[2];byte[][] payloads=new byte[2][];NetworkCatalog catalog;String entryId,exitId;Context profile;SecretStore vault;byte[] before;Uri file;NetworkOptimizationIntegrationActivity.HttpFixture site,plain;PreconnectIntegrationActivity.TraceSocks wireEntry,wireExit;
   void check(String name,boolean passed){checks.put(J.obj("name",name,"pass",passed));if(!passed)throw new AssertionError(name);}
   interface Attempt{void run()throws Exception;}
@@ -35,12 +36,28 @@ public final class NetworkSharingIntegrationActivity extends Activity {
     rejects("Provider path traversal rejected",()->NetworkShareProvider.resolve(this,Uri.parse("content://"+getPackageName()+".network-shares/../network.sealed")));
     rejects("Provider wrong authority rejected",()->NetworkShareProvider.resolve(this,Uri.parse("content://other/"+file.getLastPathSegment())));
     catalog=new NetworkCatalog(this);
-    try(InputStream in=getAssets().open("sharing-vless.yaml")){portableRaw=J.read(in,NetworkShareCodec.LIMIT);}
+    try(InputStream in=getAssets().open("sharing-vless.yaml")){portableRaw=completeProvider(J.read(in,NetworkShareCodec.LIMIT));}
     portableEntry=NetworkShareCodec.extract(portableRaw,"Entry|Portable VLESS",NetworkCatalog.ENTRY);
     check("VLESS encryption XUDP and mux exported without omission",portableEntry.getString("encryption").equals("none")&&portableEntry.getBoolean("xudp")&&portableEntry.getJSONObject("smux").getInt("max-streams")==16);
+    check("Complete provider exports only the selected node",!portableEntry.toString().contains("never-export")&&!portableEntry.toString().contains("unrelated"));
+  }
+  /** Real providers commonly contain shared UI/group metadata beyond their proxies. */
+  static byte[] completeProvider(byte[] raw)throws Exception{
+    String provider=new String(raw,StandardCharsets.UTF_8);
+    if(provider.trim().startsWith("{"))provider="proxies: "+NetworkShareCodec.yamlJson(new JSONObject(provider).getJSONArray("proxies").toString())+"\n";
+    StringBuilder full=new StringBuilder(provider).append("\nsharing-labels: &sharing-labels {label: never-export-unrelated}\nsharing-groups:\n");
+    for(int i=0;i<100;i++)full.append("  - *sharing-labels\n");
+    full.append("sharing-metadata: {label: first, label: second}\nsharing-tagged: !unused [never-export-unrelated]\nsharing-deep: ");
+    for(int i=0;i<14;i++)full.append("[");
+    full.append("never-export-unrelated");
+    for(int i=0;i<14;i++)full.append("]");
+    full.append("\n---\nproxies: [{name: never-export-second-document, type: socks5, server: hidden.invalid, port: 1080}]\n");
+    return full.toString().getBytes(StandardCharsets.UTF_8);
   }
   void portableOriginal(){NativeNetwork.previewSubscription(this,NetworkCatalog.ENTRY,"",portableRaw,(ok,msg,names,details,bytes)->{try{
     check("Actual core accepts original VLESS subscription with transport options",ok&&details.length()==2);
+    portableDetails=details;
+    check("Android core accepts complete provider with 100 aliases and unrelated metadata",ok&&Arrays.equals(bytes,portableRaw));
     for(int i=0;i<details.length();i++)if("Entry|Portable VLESS".equals(details.getJSONObject(i).optString("name")))portableFingerprint=details.getJSONObject(i).getString("configFingerprint");
     check("Original VLESS has stable native identity",portableFingerprint!=null&&portableFingerprint.matches("[0-9a-f]{64}"));
     NetworkShareCodec.Bundle decoded=NetworkShareCodec.decode(new NetworkShareCodec.Bundle("Portable route",portableEntry,exit).encode());
@@ -51,7 +68,9 @@ public final class NetworkSharingIntegrationActivity extends Activity {
     }catch(Throwable e){fail(e);}});
   }catch(Throwable e){fail(e);}});}
   void parse(int i){if(i==2){new Thread(()->{try{imported();runOnUiThread(()->{try{ui();}catch(Throwable e){fail(e);}});}catch(Throwable e){fail(e);}}).start();return;}
-    JSONObject node=i==0?entry:exit;byte[] raw=NetworkShareCodec.provider(node);NativeNetwork.previewSubscription(this,i==0?NetworkCatalog.ENTRY:NetworkCatalog.EXIT,"",raw,(ok,msg,names,details,bytes)->{try{check("Actual native parser accepts shared "+i,ok&&names.length()==1&&details.length()==1);records[i]=J.obj("name",node.optString("name"),"nodes",names,"nodeDetails",details);payloads[i]=raw;parse(i+1);}catch(Throwable e){fail(e);}});
+    JSONObject node=i==0?entry:exit;byte[] raw;
+    try{raw=completeProvider(NetworkShareCodec.provider(node));}catch(Exception e){fail(e);return;}
+    NativeNetwork.previewSubscription(this,i==0?NetworkCatalog.ENTRY:NetworkCatalog.EXIT,"",raw,(ok,msg,names,details,bytes)->{try{check("Actual native parser accepts shared "+i,ok&&names.length()==1&&details.length()==1);check("Complete provider extraction preserves node "+i,NetworkShareCodec.extract(raw,(i==0?"Entry|":"Exit|")+node.getString("name"),i==0?NetworkCatalog.ENTRY:NetworkCatalog.EXIT).getString("password").equals(node.getString("password")));records[i]=J.obj("name",node.optString("name"),"nodes",names,"nodeDetails",details);payloads[i]=raw;parse(i+1);}catch(Throwable e){fail(e);}});
   }
   void imported()throws Exception{
     JSONObject ids=catalog.importLocalSources(records[0],payloads[0],records[1],payloads[1]);entryId=ids.getString("entry");exitId=ids.getString("exit");NetworkCatalog restored=new NetworkCatalog(this);
@@ -88,14 +107,30 @@ public final class NetworkSharingIntegrationActivity extends Activity {
   }
   void ui()throws Exception{
     file=NetworkShareProvider.create(this,new NetworkShareCodec.Bundle("Portable route",portableEntry,exit).encode());
+    JSONArray portableNames=new JSONArray();for(int i=0;i<portableDetails.length();i++)portableNames.put(portableDetails.getJSONObject(i).getString("name"));
+    portableSourceId=catalog.addSubscription("entry","Complete provider","https://sharing.example.invalid/provider").getString("id");
+    catalog.parsed(catalog.beginRefresh("entry",portableSourceId),portableNames,portableDetails,portableRaw,System.currentTimeMillis());
+    LinearLayout controls=new LinearLayout(this);controls.setOrientation(LinearLayout.VERTICAL);setContentView(controls);
+    action(controls,"测试订阅整条线路",()->{
+      unchanged("Manual route sharing preserves the active snapshot");
+      uiConfig.put("exitSource","subscription");uiConfig.put("exitSubscriptionId",exitId);uiConfig.put("exitSubscriptionUrl","pocketnet:"+exitId);uiConfig.put("exitNodeName","Exit|Sharing Exit");uiConfig.put("exitNodeKey",records[1].getJSONArray("nodeDetails").getJSONObject(0).getString("configFingerprint"));
+      NetworkSourceSelection.withActiveSnapshot(vault.context,()->{vault.put("exit-subscription",payloads[1]);vault.save(uiConfig);return null;});rememberSnapshot();openRoute();
+    });
+    action(controls,"测试入口分享",()->NetworkShareUi.node(this,new NetworkCatalog(this).subscription("entry",portableSourceId),"Entry|Portable VLESS"));
+    action(controls,"测试出口分享",()->NetworkShareUi.node(this,new NetworkCatalog(this).subscription("exit",exitId),"Exit|Sharing Exit"));
+    action(controls,"测试固定出口分享",()->NetworkShareUi.manual(this,J.obj("name",exit.getString("name"),"host",exit.getString("server"),"port",exit.getInt("port"),"user",exit.getString("username"),"password",exit.getString("password"))));
+    action(controls,"检查分享未改动线路",()->{unchanged("Subscribed route and individual shares preserve the active snapshot");check("All sharing paths preserve the existing draft","sharing-preserved-draft".equals(profile.getSharedPreferences("chat",0).getString("draft","")));result.put("sharePreparationPreservesActiveSnapshot",true);saveResult();});
     // Exercise the production active-snapshot extraction and fingerprint guard,
     // rather than opening the already prepared dialog directly.
-    JSONObject config=J.obj("subscriptionUrl","pocketnet:sharing-fixture","entry","Entry|Portable VLESS","entryMode","manual","entryNodeKey",portableFingerprint,"exitName",exit.getString("name"),"exitHost",exit.getString("server"),"exitPort",exit.getInt("port"),"exitUser",exit.getString("username"),"exitPassword",exit.getString("password"));
-    NetworkSourceSelection.withActiveSnapshot(vault.context,()->{vault.put("subscription",portableRaw);vault.save(config);return null;});
-    long now=System.currentTimeMillis();JSONObject runtime=J.obj("mode","internal","configured",true,"connected",true,"at",now,"subscriptionId",NativeNetwork.hash(config.getString("subscriptionUrl")),"entry","Entry|Portable VLESS");
-    NetworkShareUi.route(this,new WindowNetworkState(this,J.obj("slot",6,"name","Sharing Window"),config,runtime,true,now));
-    JSONObject result=J.obj("runToken",getIntent().getStringExtra("runToken"),"buildIdentity",buildIdentity,"status","passed","actualAndroidExecution",true,"actualNativeExecution",true,"physicalPhone",false,"checks",checks,"checkCount",checks.length(),"shareUri",file.toString(),"entryId",entryId,"exitId",exitId,"beforeNetworkHash",before==null?"":NetworkSourceSelection.payloadHash(before));
-    J.write(new File(getFilesDir(),"network-source-sharing-results.json"),result.toString());
+    uiConfig=J.obj("subscriptionUrl","pocketnet:sharing-fixture","entry","Entry|Portable VLESS","entryMode","manual","entryNodeKey",portableFingerprint,"exitName",exit.getString("name"),"exitHost",exit.getString("server"),"exitPort",exit.getInt("port"),"exitUser",exit.getString("username"),"exitPassword",exit.getString("password"));
+    NetworkSourceSelection.withActiveSnapshot(vault.context,()->{vault.put("subscription",portableRaw);vault.save(uiConfig);return null;});rememberSnapshot();openRoute();
+    result=J.obj("runToken",getIntent().getStringExtra("runToken"),"buildIdentity",buildIdentity,"status","passed","actualAndroidExecution",true,"actualNativeExecution",true,"physicalPhone",false,"checks",checks,"checkCount",checks.length(),"shareUri",file.toString(),"entryId",entryId,"exitId",exitId,"beforeNetworkHash",before==null?"":NetworkSourceSelection.payloadHash(before));
+    saveResult();
   }
+  void action(LinearLayout controls,String title,Attempt action){Button button=new Button(this);button.setText(title);button.setOnClickListener(v->{try{action.run();}catch(Throwable e){fail(e);}});controls.addView(button);}
+  void rememberSnapshot()throws Exception{shareSnapshot.clear();for(String key:NetworkSourceSelection.ActiveSnapshot.RECORDS)shareSnapshot.put(key,vault.get(key));}
+  void unchanged(String name)throws Exception{for(Map.Entry<String,byte[]> saved:shareSnapshot.entrySet())check(name+" "+saved.getKey(),Arrays.equals(saved.getValue(),vault.get(saved.getKey())));}
+  void openRoute(){long now=System.currentTimeMillis();JSONObject runtime=J.obj("mode","internal","configured",true,"connected",true,"at",now,"subscriptionId",NativeNetwork.hash(uiConfig.optString("subscriptionUrl")),"entry","Entry|Portable VLESS");NetworkShareUi.route(this,new WindowNetworkState(this,J.obj("slot",6,"name","Sharing Window"),uiConfig,runtime,true,now));}
+  void saveResult()throws Exception{result.put("checkCount",checks.length());J.write(new File(getFilesDir(),"network-source-sharing-results.json"),result.toString());}
   void fail(Throwable e){try{J.write(new File(getFilesDir(),"network-source-sharing-results.json"),J.obj("runToken",getIntent().getStringExtra("runToken"),"status","failed","error",e.getClass().getSimpleName(),"checks",checks).toString());}catch(Exception ignored){}android.util.Log.e("PocketSharing","Synthetic sharing check failed",e);}
 }

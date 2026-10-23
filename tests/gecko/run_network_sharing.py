@@ -28,6 +28,13 @@ try:
  source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip();assert r['buildIdentity']['sourceCommit']==source
  installed=hashlib.sha256((root/'app/build/outputs/apk/integration/app-x86_64-integration.apk').read_bytes()).hexdigest();assert r['buildIdentity']['apkSha256']==installed
  tap('仅分享入口');wait(xml,lambda t:bool(nodes(t,'分享入口')),20);tap('复制配置')
+ tap('测试订阅整条线路');wait(xml,lambda t:bool(nodes(t,'分享整条线路')),30)
+ tap('仅分享出口');wait(xml,lambda t:bool(nodes(t,'分享出口')),20);tap('复制配置')
+ for trigger,title in [('测试入口分享','分享入口'),('测试出口分享','分享出口'),('测试固定出口分享','分享出口')]:
+  tap(trigger);wait(xml,lambda t:bool(nodes(t,title)),30);tap('复制配置')
+ tap('检查分享未改动线路')
+ r=wait(report,lambda value:value.get('sharePreparationPreservesActiveSnapshot') is True or value.get('status')=='failed',20)
+ assert r['status']=='passed' and r['sharePreparationPreservesActiveSnapshot'] and all(x['pass'] for x in r['checks']),r
  # Open a real provider file through the production Activity; preview must be explicit.
  adb('shell','am','start','-W','-n',pkg+'/local.pocketchat.NetworkImportActivity','-a','android.intent.action.VIEW','-d',r['shareUri'],'-t','application/vnd.pocketchat.network')
  wait(xml,lambda t:bool(nodes(t,'导入预览')),30);tap('导入并选择环境');wait(xml,lambda t:bool(nodes(t,'选择应用环境')),90)

@@ -1,0 +1,188 @@
+name: Measured Android experience on one device
+'on':
+  push:
+    branches: [release/gecko-2.0.16-experience]
+    paths:
+    - tools/gecko/run_experience_comparison.py
+    - tests/gecko_experience_comparison_test.py
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Unchanged baseline repeatability or paired before/after
+        type: choice
+        options: [baseline, compare]
+        default: baseline
+        required: true
+      baseline_source:
+        description: Full 40-character baseline source commit
+        type: string
+        required: true
+      baseline_run:
+        description: Original baseline gecko-integration build run ID
+        type: string
+        required: true
+      baseline_attempt:
+        description: Original baseline build attempt
+        type: string
+        default: '1'
+        required: true
+      candidate_source:
+        description: Full candidate source commit (compare mode only)
+        type: string
+      candidate_run:
+        description: Original candidate gecko-integration build run ID
+        type: string
+      candidate_attempt:
+        description: Original candidate build attempt
+        type: string
+        default: '1'
+      repetitions:
+        description: Predeclared iterations per ABBA phase, 1 to 10
+        type: number
+        default: 3
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+    - name: Check experiment identity and statistics guards
+      run: python3 tests/gecko_experience_comparison_test.py
+    - name: Freeze exact original build selections
+      id: inputs
+      env:
+        GH_TOKEN: ${{ github.token }}
+        MODE: ${{ inputs.mode }}
+        BASELINE_SOURCE: ${{ inputs.baseline_source }}
+        BASELINE_RUN: ${{ inputs.baseline_run }}
+        BASELINE_ATTEMPT: ${{ inputs.baseline_attempt }}
+        CANDIDATE_SOURCE: ${{ inputs.candidate_source }}
+        CANDIDATE_RUN: ${{ inputs.candidate_run }}
+        CANDIDATE_ATTEMPT: ${{ inputs.candidate_attempt }}
+        REPETITIONS: ${{ inputs.repetitions }}
+      run: python3 tools/gecko/run_experience_comparison.py select-inputs --output "$GITHUB_OUTPUT" --report work/experience-selection.json
+    - name: Checkout exact baseline source
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ steps.inputs.outputs.baseline_source }}
+        path: work/experience-inputs/baseline
+        persist-credentials: false
+    - name: Download exact baseline build
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: gecko-${{ steps.inputs.outputs.baseline_run }}-${{ steps.inputs.outputs.baseline_attempt }}-build
+        run-id: ${{ steps.inputs.outputs.baseline_run }}
+        github-token: ${{ github.token }}
+        path: work/experience-downloads/baseline
+    - name: Checkout exact candidate source
+      if: steps.inputs.outputs.mode == 'compare'
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ steps.inputs.outputs.candidate_source }}
+        path: work/experience-inputs/candidate
+        persist-credentials: false
+    - name: Download exact candidate build
+      if: steps.inputs.outputs.mode == 'compare'
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      with:
+        name: gecko-${{ steps.inputs.outputs.candidate_run }}-${{ steps.inputs.outputs.candidate_attempt }}-build
+        run-id: ${{ steps.inputs.outputs.candidate_run }}
+        github-token: ${{ github.token }}
+        path: work/experience-downloads/candidate
+    - name: Restore unchanged build bundles and seal ABBA plan
+      env:
+        MODE: ${{ steps.inputs.outputs.mode }}
+        BASELINE_SOURCE: ${{ steps.inputs.outputs.baseline_source }}
+        BASELINE_RUN: ${{ steps.inputs.outputs.baseline_run }}
+        BASELINE_ATTEMPT: ${{ steps.inputs.outputs.baseline_attempt }}
+        CANDIDATE_SOURCE: ${{ steps.inputs.outputs.candidate_source }}
+        CANDIDATE_RUN: ${{ steps.inputs.outputs.candidate_run }}
+        CANDIDATE_ATTEMPT: ${{ steps.inputs.outputs.candidate_attempt }}
+        REPETITIONS: ${{ steps.inputs.outputs.repetitions }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        selected=(--mode "$MODE" --baseline-root "$PWD/work/experience-inputs/baseline"
+          --baseline-bundle "$PWD/work/experience-downloads/baseline/bundle.tar.gz"
+          --baseline-source "$BASELINE_SOURCE" --baseline-run "$BASELINE_RUN"
+          --baseline-attempt "$BASELINE_ATTEMPT" --repetitions "$REPETITIONS"
+          --plan "$PWD/work/experience-plan.json")
+        if [ "$MODE" = compare ]; then
+          selected+=(--candidate-root "$PWD/work/experience-inputs/candidate"
+            --candidate-bundle "$PWD/work/experience-downloads/candidate/bundle.tar.gz"
+            --candidate-source "$CANDIDATE_SOURCE" --candidate-run "$CANDIDATE_RUN"
+            --candidate-attempt "$CANDIDATE_ATTEMPT")
+        fi
+        python3 tools/gecko/run_experience_comparison.py prepare "${selected[@]}"
+    - name: Prepare identical pinned Android runtime
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        mkdir -p work/experience-runtime
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/experience-runtime/android-emulator-package-results.json
+        python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/experience-runtime/android-system-image-results.json
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/experience-runtime/android-platform-tools-results.json
+    - name: Boot one fresh emulator and retain normal animations
+      shell: bash
+      run: |
+        set -euo pipefail
+        export ANDROID_AVD_HOME="$PWD/work/experience-runtime/avd"
+        export ANDROID_USER_HOME="$PWD/work/experience-runtime/android-user"
+        export ANDROID_EMULATOR_HOME="$PWD/work/experience-runtime/emulator-home"
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+        sudo chmod a+rw /dev/kvm
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoexperience -p "$ANDROID_AVD_HOME/geckoexperience.avd" -k 'system-images;android-35;google_apis;x86_64'
+        adb start-server
+        "$ANDROID_HOME/emulator/emulator" -avd geckoexperience -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 -qemu -monitor "unix:$PWD/work/experience-runtime/qemu-monitor.sock,server=on,wait=off" > work/experience-runtime/emulator.log 2>&1 &
+        timeout 180 adb -s emulator-5556 wait-for-device
+        timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        adb -s emulator-5556 shell input keyevent 82
+        baseline_root="$PWD/work/experience-inputs/baseline"
+        baseline_apk="$baseline_root/app/build/outputs/apk/integration/app-x86_64-integration.apk"
+        adb -s emulator-5556 install "$baseline_apk"
+        python3 "$baseline_root/tools/gecko/prepare_native_adb.py" --adb "$(command -v adb)" --apk "$baseline_apk" --monitor "$PWD/work/experience-runtime/qemu-monitor.sock"
+        cp "$baseline_root/work/gecko-integration/native-adb-setup-results.json" work/experience-runtime/
+        adb -s emulator-5554 shell wm size 1080x1920
+        adb -s emulator-5554 shell wm density 480
+        adb -s emulator-5554 shell settings put system font_scale 1.0
+        for setting in window_animation_scale transition_animation_scale animator_duration_scale; do
+          adb -s emulator-5554 shell settings put global "$setting" 1.0
+        done
+    - name: Measure every predeclared ABBA phase on this device
+      run: python3 tools/gecko/run_experience_comparison.py run --plan "$PWD/work/experience-plan.json" --adb "$ANDROID_HOME/platform-tools/adb" --out "$PWD/work/experience-output"
+    - name: Retain selection, plan, summary and setup failures
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: experience-summary-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          work/experience-selection.json
+          work/experience-plan.json
+          work/experience-output/comparison-results.json
+          work/experience-runtime/*results.json
+          work/experience-inputs/baseline/work/gecko-integration/native-adb-setup-results.json
+        retention-days: 30
+        if-no-files-found: warn
+    - name: Retain all raw observations including failed phases
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: experience-raw-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          work/experience-output
+          work/experience-runtime/emulator.log
+        retention-days: 30
+        if-no-files-found: warn

@@ -1,9 +1,16 @@
 package local.pocketchat;
 
 import org.json.*;
-import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.composer.Composer;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.error.YAMLException;
+import org.yaml.snakeyaml.events.Event;
+import org.yaml.snakeyaml.nodes.*;
+import org.yaml.snakeyaml.parser.Parser;
+import org.yaml.snakeyaml.parser.ParserImpl;
+import org.yaml.snakeyaml.reader.StreamReader;
+import org.yaml.snakeyaml.resolver.Resolver;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -74,14 +81,119 @@ final class NetworkShareCodec {
     if(value instanceof String||value instanceof Number||value instanceof Boolean){scalarTree(value,depth);return value;}
     throw invalid();
   }
+  /** Compose aliases as references; never construct unrelated subscription data. */
+  static final class SelectedConstructor extends SafeConstructor {
+    SelectedConstructor(LoaderOptions limits){super(limits);}
+    Object selected(Node node){return constructDocument(node);}
+  }
+  static final class YamlLimit extends YAMLException {YamlLimit(){super("Subscription syntax budget exceeded");}}
+  /** Bound allocation while composing, including scalar aliases that are not
+   * counted by SnakeYAML's collection-alias limit. Only the first document is read. */
+  static final class YamlSyntaxBudget implements Parser {
+    final Parser parser;int nodes,aliases;
+    YamlSyntaxBudget(Reader input,LoaderOptions limits){parser=new ParserImpl(new StreamReader(input),limits);}
+    public boolean checkEvent(Event.ID id){return parser.checkEvent(id);}
+    public Event peekEvent(){return parser.peekEvent();}
+    public Event getEvent(){
+      Event event=parser.getEvent();
+      if(event!=null){
+        if((event.is(Event.ID.Scalar)||event.is(Event.ID.SequenceStart)||event.is(Event.ID.MappingStart))&&++nodes>65536)throw new YamlLimit();
+        if(event.is(Event.ID.Alias)&&++aliases>65536)throw new YamlLimit();
+      }
+      return event;
+    }
+  }
+  static Failure yamlFailure(){return failure("订阅内容无法解析，请更新订阅后重试；原线路未改变。");}
+  static Failure complexYaml(){return failure("订阅或所选节点结构过于复杂，请精简配置后重试；原线路未改变。");}
+  static String yamlKey(Node node)throws IOException{
+    if(!(node instanceof ScalarNode)||!Tag.STR.equals(node.getTag())&&!Tag.MERGE.equals(node.getTag()))throw yamlFailure();
+    return ((ScalarNode)node).getValue();
+  }
+  static void uniqueYamlKeys(MappingNode node)throws IOException{
+    Set<String> seen=new HashSet<>();
+    for(NodeTuple field:node.getValue())if(!seen.add(yamlKey(field.getKeyNode())))throw failure("订阅存在重复字段，请更新订阅后重试；原线路未改变。");
+  }
+  /** YAML merge precedence: explicit values win; earlier sequence maps win.
+   * Memoization avoids repeatedly walking shared defaults for every proxy. */
+  static final class YamlLookup {
+    final String key;int remaining=262144;
+    final IdentityHashMap<MappingNode,Node> memo=new IdentityHashMap<>();
+    final Set<Node> active=Collections.newSetFromMap(new IdentityHashMap<>());
+    YamlLookup(String key){this.key=key;}
+    Node find(MappingNode node)throws IOException{
+      if(--remaining<0)throw complexYaml();
+      if(memo.containsKey(node))return memo.get(node);
+      if(!active.add(node))throw failure("所选节点包含循环引用，无法分享；原线路未改变。");
+      try{
+        if(active.size()>64)throw complexYaml();
+        uniqueYamlKeys(node);Node direct=null;List<Node> merges=new ArrayList<>();
+        for(NodeTuple field:node.getValue()){
+          if(--remaining<0)throw complexYaml();
+          if(Tag.MERGE.equals(field.getKeyNode().getTag()))merges.add(field.getValueNode());
+          else if(key.equals(yamlKey(field.getKeyNode())))direct=field.getValueNode();
+        }
+        if(direct!=null){memo.put(node,direct);return direct;}
+        Node inherited=null;
+        for(Node merge:merges){
+          if(merge instanceof MappingNode)inherited=find((MappingNode)merge);
+          else if(merge instanceof SequenceNode){for(Node item:((SequenceNode)merge).getValue()){
+            if(!(item instanceof MappingNode))throw yamlFailure();
+            inherited=find((MappingNode)item);if(inherited!=null)break;
+          }}else throw yamlFailure();
+          if(inherited!=null)break;
+        }
+        memo.put(node,inherited);return inherited;
+      }finally{active.remove(node);}
+    }
+  }
+  /** Count expanded visits before SafeConstructor can flatten a merge graph.
+   * The bound includes repeated aliases, including values later overridden. */
+  static final class SelectedYamlBudget {
+    int remaining=8192,textUnits;
+    final Set<Node> active=Collections.newSetFromMap(new IdentityHashMap<>());
+    void inspect(Node node,int depth)throws IOException{
+      if(--remaining<0||depth>32)throw complexYaml();
+      if(!active.add(node))throw failure("所选节点包含循环引用，无法分享；原线路未改变。");
+      try{
+        Tag tag=node.getTag();
+        boolean mapping=node instanceof MappingNode&&Tag.MAP.equals(tag),sequence=node instanceof SequenceNode&&Tag.SEQ.equals(tag);
+        boolean scalar=node instanceof ScalarNode&&(Tag.STR.equals(tag)||Tag.INT.equals(tag)||Tag.FLOAT.equals(tag)||Tag.BOOL.equals(tag)||Tag.NULL.equals(tag)||Tag.MERGE.equals(tag));
+        if(!mapping&&!sequence&&!scalar)throw failure("所选节点包含不支持的数据类型，未生成分享配置；原线路未改变。");
+        if(node instanceof MappingNode){
+          MappingNode map=(MappingNode)node;uniqueYamlKeys(map);
+          for(NodeTuple field:map.getValue()){inspect(field.getKeyNode(),depth+1);inspect(field.getValueNode(),depth+1);}
+        }else if(node instanceof SequenceNode){for(Node item:((SequenceNode)node).getValue())inspect(item,depth+1);}
+        else if(node instanceof ScalarNode){String value=((ScalarNode)node).getValue();textUnits+=value.length();if(value.length()>8192||textUnits>LIMIT)throw complexYaml();}
+        else throw yamlFailure();
+      }finally{active.remove(node);}
+    }
+  }
   /** Exactly one node, never its subscription address or other nodes. */
   static JSONObject extract(byte[] bytes,String prefixed,String role)throws Exception{
     if(bytes==null||bytes.length>16*1024*1024)throw failure("已保存的节点不可读取，请先更新订阅。");
-    LoaderOptions limits=new LoaderOptions();limits.setAllowDuplicateKeys(false);limits.setMaxAliasesForCollections(32);limits.setNestingDepthLimit(12);limits.setCodePointLimit(16*1024*1024);
-    Object raw=new Yaml(new SafeConstructor(limits)).load(new String(bytes,StandardCharsets.UTF_8));
-    if(!(raw instanceof Map)||!(((Map<?,?>)raw).get("proxies") instanceof List))throw failure("此订阅缓存暂不支持分享，请使用 Clash / Mihomo YAML 节点。");
-    String prefix=NetworkCatalog.EXIT.equals(role)?"Exit|":"Entry|";if(!prefixed.startsWith(prefix))throw invalid();String name=prefixed.substring(prefix.length());JSONObject selected=null;
-    for(Object obj:(List<?>)((Map<?,?>)raw).get("proxies"))if(obj instanceof Map&&name.equals(((Map<?,?>)obj).get("name"))){if(selected!=null)throw invalid();selected=(JSONObject)yamlValue(obj,0);}
-    if(selected==null)throw failure("当前节点已变化，请重新选择后分享。");if(selected.opt("port") instanceof String&&selected.optString("port").matches("[0-9]{1,5}"))selected.put("port",Integer.parseInt(selected.optString("port")));return node(selected,NetworkCatalog.EXIT.equals(role));
+    String prefix=NetworkCatalog.EXIT.equals(role)?"Exit|":"Entry|";if(prefixed==null||!prefixed.startsWith(prefix))throw invalid();String name=prefixed.substring(prefix.length());
+    LoaderOptions limits=new LoaderOptions();limits.setAllowDuplicateKeys(false);limits.setMaxAliasesForCollections(65536);limits.setNestingDepthLimit(64);limits.setCodePointLimit(16*1024*1024);
+    // Tags in ignored sections are syntax only. The selected graph is checked
+    // against scalar/container tags before any object construction occurs.
+    limits.setTagInspector(tag->true);SelectedConstructor constructor=new SelectedConstructor(limits);
+    try{
+      Composer documents=new Composer(new YamlSyntaxBudget(new StringReader(new String(bytes,StandardCharsets.UTF_8)),limits),new Resolver(),limits);
+      Node raw=documents.checkNode()?documents.getNode():null;
+      if(!(raw instanceof MappingNode))throw failure("此订阅缓存暂不支持分享，请使用 Clash / Mihomo YAML 节点。");
+      uniqueYamlKeys((MappingNode)raw);Node proxies=new YamlLookup("proxies").find((MappingNode)raw);
+      if(!(proxies instanceof SequenceNode))throw failure("此订阅缓存暂不支持分享，请使用 Clash / Mihomo YAML 节点。");
+      MappingNode selected=null;YamlLookup names=new YamlLookup("name");
+      for(Node candidate:((SequenceNode)proxies).getValue())if(candidate instanceof MappingNode){
+        Node candidateName=names.find((MappingNode)candidate);
+        if(candidateName instanceof ScalarNode&&name.equals(((ScalarNode)candidateName).getValue())){
+          if(selected!=null)throw invalid();selected=(MappingNode)candidate;
+        }
+      }
+      if(selected==null)throw failure("当前节点已变化，请重新选择后分享。");
+      new SelectedYamlBudget().inspect(selected,0);
+      JSONObject value=(JSONObject)yamlValue(constructor.selected(selected),0);
+      if(value.opt("port") instanceof String&&value.optString("port").matches("[0-9]{1,5}"))value.put("port",Integer.parseInt(value.optString("port")));
+      return node(value,NetworkCatalog.EXIT.equals(role));
+    }catch(YamlLimit limit){throw complexYaml();}catch(YAMLException|NumberFormatException parse){throw yamlFailure();}catch(JSONException value){throw invalid();}
   }
 }
