@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Provision the stock emulator and Google API 35 r09 from verified complete archives.
+"""Provision the pinned official emulator and Google API 35 r09 from verified complete archives.
 
 Only download/setup can retry. This never boots Android or runs an app workload.
 """
@@ -27,7 +27,8 @@ def digest(path, algorithm):
     return h.hexdigest()
 
 def verified(path, pin):
-    return path.is_file() and path.stat().st_size==pin['bytes'] and digest(path,'sha1')==pin['sha1']
+    return (path.is_file() and path.stat().st_size==pin['bytes'] and digest(path,'sha1')==pin['sha1']
+            and (not pin.get('sha256') or digest(path,'sha256')==pin['sha256']))
 
 def download(pin, path, attempts=3):
     if verified(path,pin):return 0

@@ -22,7 +22,7 @@ def archive(extra=None,revision=9):
         if extra:out.writestr(extra,b'unexpected')
     return body.getvalue()
 
-def emulator_archive(revision='37.2.12'):
+def emulator_archive(revision='36.3.10'):
     body=io.BytesIO()
     with zipfile.ZipFile(body,'w') as out:
         out.writestr('emulator/source.properties',f'Pkg.Desc=Android Emulator\nPkg.Revision={revision}\n')
@@ -43,7 +43,9 @@ class ImageSetupTest(unittest.TestCase):
         self.assertEqual(int(local.getElementsByTagName('major')[0].firstChild.data),pin['revision'])
         self.assertTrue(pin['url'].endswith('/x86_64-35_r09.zip'))
         emulator=json.loads(setup.EMULATOR_PIN.read_text());doc=minidom.parse(str(setup.EMULATOR_PACKAGE))
-        self.assertEqual(emulator['channel'],'stable');self.assertEqual(emulator['revision'],'37.2.12')
+        self.assertEqual(emulator['channel'],'stable');self.assertEqual(emulator['revision'],'36.3.10')
+        revision=doc.getElementsByTagName('revision')[0]
+        self.assertEqual('.'.join(revision.getElementsByTagName(t)[0].firstChild.data for t in ('major','minor','micro')),emulator['revision'])
         self.assertEqual(doc.getElementsByTagName('localPackage')[0].getAttribute('path'),'emulator')
         self.assertEqual(doc.documentElement.namespaceURI,'http://schemas.android.com/repository/android/common/02')
 
@@ -66,6 +68,14 @@ class ImageSetupTest(unittest.TestCase):
 
     def test_wrong_checksum_never_installs(self):
         raw=archive();pin=dict(url='https://dl.google.com/controlled-fixture.zip',bytes=len(raw),sha1='0'*40)
+        with tempfile.TemporaryDirectory() as base:
+            path=Path(base)/'image.zip'
+            with patch.object(setup.urllib.request,'urlopen',return_value=Response(raw)):
+                with self.assertRaises(ValueError):setup.download(pin,path,attempts=1)
+            self.assertFalse(path.exists())
+
+    def test_sha256_pin_rejects_a_body_even_when_size_and_sha1_match(self):
+        raw=archive();pin=dict(url='https://dl.google.com/controlled-fixture.zip',bytes=len(raw),sha1=hashlib.sha1(raw).hexdigest(),sha256='0'*64)
         with tempfile.TemporaryDirectory() as base:
             path=Path(base)/'image.zip'
             with patch.object(setup.urllib.request,'urlopen',return_value=Response(raw)):
@@ -114,17 +124,17 @@ class ImageSetupTest(unittest.TestCase):
             path=Path(base)/'emulator.zip';path.write_bytes(emulator_archive());target=Path(base)/'sdk/emulator';target.mkdir(parents=True)
             (target/'source.properties').write_text('Pkg.Desc=Android Emulator\nPkg.Revision=37.1.0\n');(target/'old-tool').write_text('old')
             avd=target.parent/'separate-avd';avd.mkdir();(avd/'draft').write_text('retained')
-            props=setup.install_emulator(path,target,setup.EMULATOR_PACKAGE,'37.2.12')
-            self.assertEqual(props['Pkg.Revision'],'37.2.12');self.assertTrue((target/'emulator').stat().st_mode&0o100)
+            props=setup.install_emulator(path,target,setup.EMULATOR_PACKAGE,'36.3.10')
+            self.assertEqual(props['Pkg.Revision'],'36.3.10');self.assertTrue((target/'emulator').stat().st_mode&0o100)
             self.assertFalse((target/'old-tool').exists());self.assertEqual((avd/'draft').read_text(),'retained')
 
     def test_wrong_emulator_revision_and_foreign_target_are_rejected(self):
         with tempfile.TemporaryDirectory() as base:
             path=Path(base)/'emulator.zip';target=Path(base)/'sdk/emulator';target.mkdir(parents=True);(target/'keep').write_text('keep')
             path.write_bytes(emulator_archive('37.3.5'))
-            with self.assertRaises(ValueError):setup.install_emulator(path,target,setup.EMULATOR_PACKAGE,'37.2.12')
+            with self.assertRaises(ValueError):setup.install_emulator(path,target,setup.EMULATOR_PACKAGE,'36.3.10')
             path.write_bytes(emulator_archive())
-            with self.assertRaises(ValueError):setup.install_emulator(path,target,setup.EMULATOR_PACKAGE,'37.2.12')
+            with self.assertRaises(ValueError):setup.install_emulator(path,target,setup.EMULATOR_PACKAGE,'36.3.10')
             self.assertEqual((target/'keep').read_text(),'keep')
 
 if __name__=='__main__':unittest.main()

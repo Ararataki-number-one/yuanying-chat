@@ -247,20 +247,10 @@ jobs:
         mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
         sudo chmod a+rw /dev/kvm
         echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
-        # Keep the fixture serial emulator-5554 on native guest TCP ADB.
-        # The default vsock backplane has dropped whole-device connections;
-        # see docs/validation/2.0.15-adb-transfer.md. No input pacing changes.
-        export ANDROID_SERIAL=emulator-5554
-        echo 'ANDROID_SERIAL=emulator-5554' >> "$GITHUB_ENV"
-        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 > work/gecko-integration/emulator.log 2>&1 &
-        timeout 180 adb -s emulator-5556 wait-for-device
-        timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
-        adb -s emulator-5556 emu redir add tcp:5555:5555
-        adb -s emulator-5556 emu redir list > work/gecko-integration/adb-transport.txt
-        adb kill-server
         adb start-server
-        timeout 30 adb -s emulator-5554 wait-for-device
-        adb devices -l >> work/gecko-integration/adb-transport.txt
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/gecko-integration/emulator.log 2>&1 &
+        timeout 180 adb wait-for-device
+        timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
         adb shell input keyevent 82
         adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
@@ -479,20 +469,10 @@ jobs:
         mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
         sudo chmod a+rw /dev/kvm
         echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
-        # Keep the fixture serial emulator-5554 on native guest TCP ADB.
-        # The default vsock backplane has dropped whole-device connections;
-        # see docs/validation/2.0.15-adb-transfer.md. No input pacing changes.
-        export ANDROID_SERIAL=emulator-5554
-        echo 'ANDROID_SERIAL=emulator-5554' >> "$GITHUB_ENV"
-        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 > work/gecko-integration/emulator.log 2>&1 &
-        timeout 180 adb -s emulator-5556 wait-for-device
-        timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
-        adb -s emulator-5556 emu redir add tcp:5555:5555
-        adb -s emulator-5556 emu redir list > work/gecko-integration/adb-transport.txt
-        adb kill-server
         adb start-server
-        timeout 30 adb -s emulator-5554 wait-for-device
-        adb devices -l >> work/gecko-integration/adb-transport.txt
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/gecko-integration/emulator.log 2>&1 &
+        timeout 180 adb wait-for-device
+        timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
         adb shell input keyevent 82
         adb install app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
