@@ -40,6 +40,7 @@ jobs:
 
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
     - name: Boot the unchanged Android runtime
       run: |
         set -euo pipefail
@@ -54,6 +55,24 @@ jobs:
         timeout 180 adb -s emulator-5556 wait-for-device
         timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
         adb -s emulator-5556 shell input keyevent 82
+        adb -s emulator-5556 install work/diagnostic.apk
+        python3 - <<'PYBOOTSTRAP'
+        import json,pathlib,shutil,subprocess,sys,time
+        sys.path.insert(0,'tools/gecko');import prepare_emulator as original
+        source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip();tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
+        identity=original.expected_build(pathlib.Path('work/diagnostic.apk').resolve(),source,tree,'2.0.15',68)
+        record=dict(schema=2,status='failed',serial='emulator-5556',exactSetupPackage=original.PACKAGE,commands=[],networkObservations=[],diagnostics={},initialInputSettings={},actualAndroidCommands=False,actualIntegrationProviderExecution=False,actualConnectivityManagerExecution=False,applicationAcceptance=False,actualGeckoExecution=False,physicalPhoneAcceptance=False,confirmedQemu=False,applicationOrInputPolicyModified=False,gestureReplayed=False,sdkWifiProvisioningRequested=False,disabledStateConfirmed=False,postSetupNetworkRecoveryRequired=False,sdkWifiProvisioningStages=[],sourceCommit=source,sourceTree=tree,expectedBuildIdentity=identity,diagnosticOnly=True,scope='Diagnostic bootstrap adapter before native transport; actual unchanged preflight logic, no input workloads or application acceptance')
+        class DiagnosticBootstrapCommands:
+         # Explicit independent diagnostic adapter; the original normal constructor,
+         # fixed 5554 acceptance target and every application/input guard remain intact.
+         run=original.Commands.run
+         def __init__(self):
+          self.executable=shutil.which('adb');self.serial='emulator-5556';self.record=record;self.deadline=time.monotonic()+33
+        try:original.preflight(DiagnosticBootstrapCommands(),record,identity)
+        finally:pathlib.Path('work/adb-diagnostic/bootstrap-network.json').write_text(json.dumps(record,indent=2))
+        assert record['status']=='passed' and record['confirmedQemu'] and record['disabledStateConfirmed']
+        print(json.dumps(dict(bootstrapNetworkStatus=record['status'],diagnosticOnly=True,applicationAcceptance=False)))
+        PYBOOTSTRAP
         adb -s emulator-5556 tcpip 5555
         timeout 30 adb -s emulator-5556 wait-for-device
         python3 - <<'PYSETUP'
@@ -100,7 +119,6 @@ jobs:
          time.sleep(.25)
         record['nativeReady']=True;(out/'qemu-forward.json').write_text(json.dumps(record,indent=2))
         PYSETUP
-        adb -s emulator-5554 install work/diagnostic.apk
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk work/diagnostic.apk
         adb -s emulator-5554 shell am start -W -n local.pocketchat.test/.MainActivity
     - name: Observe 64 fixed real installed APK reads with the production shell open
@@ -151,19 +169,10 @@ jobs:
       if: always()
       run: |
         python3 - <<'PYMETA'
-        import pathlib,subprocess
+        import pathlib,subprocess,shutil
         out=pathlib.Path('work/adb-diagnostic');out.mkdir(parents=True,exist_ok=True)
-        for name,cmd in [('devices',['adb','devices','-l']),('guest-addresses',['adb','-s','emulator-5556','shell','ip','-4','addr']),('guest-routes',['adb','-s','emulator-5556','shell','ip','-4','route','show','table','all']),('guest-listeners',['adb','-s','emulator-5556','shell','ss','-tn']),('host-listeners',['ss','-tnp'])]:
-         try:
-          r=subprocess.run(cmd,capture_output=True,timeout=10);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)
-         except Exception as e:(out/(name+'.txt')).write_text(str(e))
-        PYMETA
-    - name: Always preserve connection and listener metadata only
-      if: always()
-      run: |
-        python3 - <<'PYMETA'
-        import pathlib,subprocess
-        out=pathlib.Path('work/adb-diagnostic');out.mkdir(parents=True,exist_ok=True)
+        bootstrap=pathlib.Path('work/gecko-integration/emulator-bootstrap-results.json')
+        if bootstrap.exists():shutil.copyfile(bootstrap,out/'native-preflight.json')
         for name,cmd in [('devices',['adb','devices','-l']),('guest-addresses',['adb','-s','emulator-5556','shell','ip','-4','addr']),('guest-routes',['adb','-s','emulator-5556','shell','ip','-4','route','show','table','all']),('guest-listeners',['adb','-s','emulator-5556','shell','ss','-tn']),('host-listeners',['ss','-tnp'])]:
          try:
           r=subprocess.run(cmd,capture_output=True,timeout=10);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)
