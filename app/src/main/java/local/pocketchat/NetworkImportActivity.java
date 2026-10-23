@@ -49,7 +49,7 @@ public final class NetworkImportActivity extends ThemedActivity {
   void saveError(ReferenceUi.Modal d,TextView error,Runnable retry){if(isFinishing()||isDestroyed()||!d.isShowing())return;retry.run();error.setText("节点无法解析或保存，原环境未改变。请检查配置后重试。");error.setTextColor(ReferenceUi.RED);d.primary().setEnabled(true);d.resize();}
   void chooseEnvironment(JSONObject ids){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"选择应用环境");current=d;d.cancel=this::finish;d.note("配置已保存到网络库。选择环境后仍需点击“保存并应用”；其他一端保留原选择。");
-    NetworkWorkspaceUi.libraryWork(()->{JSONArray windows=WindowNetworkState.windows(this);NetworkCatalog catalog=new NetworkCatalog(this);runOnUiThread(()->{
+    NetworkWorkspaceUi.libraryWork(()->{JSONArray windows=WindowNetworkState.windows(this);NetworkWorkspaceUi.readUiMetadata(this,windows);NetworkCatalog catalog=new NetworkCatalog(this);runOnUiThread(()->{
       if(isFinishing()||isDestroyed()||!d.isShowing())return;workspace.catalog=catalog;workspace.windows=windows;
       for(int i=0;i<windows.length();i++){JSONObject item=windows.optJSONObject(i);JSONObject row=item.optJSONObject("row");int slot=row.optInt("slot");DesignUi.action(d.body,Profiles.display(this,slot),false,()->{
         d.dismiss();workspace.show(0);NetworkWorkspaceUi.EditorSession editor=workspace.editInternal(item);if(editor==null)return;

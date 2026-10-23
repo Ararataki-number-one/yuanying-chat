@@ -21,7 +21,10 @@ def xml():
 def nodes(tree,text):return [n for n in tree.iter('node') if n.get('text')==text]
 def tap(text):
  tree=wait(xml,lambda t:bool(nodes(t,text)),30);n=nodes(tree,text)[0];x1,y1,x2,y2=map(int,re.findall(r'\d+',n.get('bounds')));assert x2>x1 and y2>y1;adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2));checks.append(text)
-def report():return json.loads(adb('exec-out','content','read','--uri','content://'+pkg+'.evidence/network-source-sharing'))
+def report():
+ raw=adb('exec-out','content','read','--uri','content://'+pkg+'.evidence/network-source-sharing')
+ (out/'network-source-sharing-native-raw.json').write_text(raw)
+ return json.loads(raw)
 try:
  adb('shell','am','force-stop',pkg)
  adb('shell','am','start','-W','-n',pkg+'/local.pocketchat.NetworkSharingIntegrationActivity','--es','runToken',token)
