@@ -161,6 +161,7 @@ jobs:
         python3 tests/download-recovery-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/download-recovery-host-results.json
         python3 tools/gecko/run_network_core_host.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-core-host-results.json
         python3 tests/network-core-host/test_evidence.py
+        python3 tests/gecko_cold_website_diagnostic_test.py
         python3 tests/network-diagnostics-host/run.py --output work/gecko-integration/network-diagnostics-host-results.json
         python3 tools/gecko/run_upload_state_host.py --json-jar "$PWD/work/gecko-integration/catalog-json.jar" --jsdom-module "$PWD/work/browser-perf-host/node_modules/jsdom" --output work/upload-state-host
         cp work/upload-state-host/results.json work/gecko-integration/upload-state-host-results.json

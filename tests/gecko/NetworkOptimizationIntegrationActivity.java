@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class NetworkOptimizationIntegrationActivity extends Activity {
   final JSONArray checks=new JSONArray(),transportEvidence=new JSONArray();final JSONObject repairEvidence=new JSONObject();
   JSONObject firstConnectionDiagnostic;boolean diagnosedUnexpectedExit,diagnosedRequestedStop,diagnosedOldGeneration,diagnosedStaleStop;
+  ColdWebsiteTrace coldWebsiteTrace;
   static String diagnosticText(String value,int limit){return value==null?"":value.length()>limit?value.substring(0,limit)+"…":value;}
   static JSONObject diagnosticFailure(Exception failure){StringWriter stack=new StringWriter();failure.printStackTrace(new PrintWriter(stack));return J.obj("class",failure.getClass().getName(),"message",diagnosticText(failure.getMessage(),160),"stack",diagnosticText(stack.toString(),1200));}
   static String diagnosticEvent(JSONObject value){
@@ -105,10 +106,11 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       int guardedRequests=plain.requests;boolean gateRejected=false;try{RouteLatency.measure(plain.url("/probe"),exactProxy,null,()->{throw new IOException("route unavailable");});}catch(IOException expected){gateRejected=true;}check("A blocked external route makes no test request or direct fallback",gateRejected&&plain.requests==guardedRequests);
       JSONObject core=n.api("GET","/configs",null,3000);check("TCP concurrency is enabled by the running core",core.optBoolean("tcp-concurrent"));
       JSONObject runningConfig=J.parse(new String(java.nio.file.Files.readAllBytes(new File(n.root,"config.json").toPath()),StandardCharsets.UTF_8));check("DNS nameservers remain guarded by the fixed exit",runningConfig.getJSONObject("dns").getJSONArray("nameserver").getString(0).endsWith("#FixedExit"));
-      JSONObject first=n.measureWebsite("Entry|slow");check("First and repeat website headers are measured",first.getString("status").equals("ok")&&first.getLong("firstMs")>0&&first.getLong("warmMs")>0);
+      coldWebsiteTrace=new ColdWebsiteTrace();slow.observeColdWebsite(coldWebsiteTrace,"slow");fast.observeColdWebsite(coldWebsiteTrace,"fast");fixed.observeColdWebsite(coldWebsiteTrace,"fixed");site.observeColdWebsite(coldWebsiteTrace,"site");
+      JSONObject first=observeColdWebsite(n,"Entry|slow");check("First and repeat website headers are measured",first.getString("status").equals("ok")&&first.getLong("firstMs")>0&&first.getLong("warmMs")>0);
       NetworkCatalog.put(report,"firstWebsiteReading",first);NetworkCatalog.put(report,"headConnectionIds",new JSONArray(site.headConnections));check("HEAD repeat reuses the same controlled HTTP connection",site.headConnections.size()>=2&&site.headConnections.get(0).equals(site.headConnections.get(1)));
       check("Website probes contain no account Cookie or Authorization",!site.credentialsSeen);
-      JSONObject alternative=n.measureWebsite("Entry|fast");check("A different candidate uses a new probe connection",!site.headConnections.get(1).equals(site.headConnections.get(2)));
+      JSONObject alternative=observeColdWebsite(n,"Entry|fast");coldWebsiteTrace.freeze();slow.observeColdWebsite(null,"");fast.observeColdWebsite(null,"");fixed.observeColdWebsite(null,"");site.observeColdWebsite(null,"");check("A different candidate uses a new probe connection",!site.headConnections.get(1).equals(site.headConnections.get(2)));
       check("Candidate probing leaves the live route unchanged",n.currentEntry.equals("Entry|slow")&&n.api("GET","/proxies/EntryChoice",null,3000).getString("now").equals("Entry|slow"));
       check("Both entry routes and the same fixed exit carry real requests",slow.connections>0&&fast.connections>0&&fixed.connections>=2);
       NetworkCatalog.put(report,"controlledWebsiteReadings",J.arr(first,alternative));
@@ -141,8 +143,28 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       NetworkCatalog.put(report,"independentNetworkService","passed");NetworkCatalog.put(report,"status","passed");
     }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());}
     finally{if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
+    if(coldWebsiteTrace!=null){coldWebsiteTrace.freeze();JSONArray trace=coldWebsiteTrace.events();JSONObject summary=coldWebsiteTrace.summary();NetworkCatalog.put(report,"coldWebsiteProbeDiagnosticSummary",summary);NetworkCatalog.put(report,"coldWebsiteProbeDiagnostics",trace);Log.i("PocketNetworkPerformance",J.obj("kind","coldWebsiteProbeDiagnosticSummary","value",summary).toString());for(int i=0;i<trace.length();i++)Log.i("PocketNetworkPerformance",J.obj("kind","coldWebsiteProbeDiagnostic","value",trace.optJSONObject(i)).toString());}
     NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"exitTransportContinuity",transportEvidence);NetworkCatalog.put(report,"networkRepairEvidence",repairEvidence);if(firstConnectionDiagnostic!=null)NetworkCatalog.put(report,"firstConnectionDiagnostic",firstConnectionDiagnostic);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
-    report.remove("checks");report.remove("exitTransportContinuity");report.remove("firstConnectionDiagnostic");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
+    report.remove("checks");report.remove("exitTransportContinuity");report.remove("firstConnectionDiagnostic");report.remove("coldWebsiteProbeDiagnostics");report.remove("coldWebsiteProbeDiagnosticSummary");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
+  }
+  /** Observes the two original calls without adding requests, retries or warmup.
+   * Call boundaries include controller work; firstMs/warmMs keep their original
+   * production getResponseCode timer and are never reconstructed from this trace. */
+  JSONObject observeColdWebsite(TestNetwork network,String entry)throws Exception{
+    JSONObject call=coldWebsiteTrace.beginCall(entry);try{JSONObject reading=network.measureWebsite(entry);coldWebsiteTrace.endCall(call,reading,null);return reading;}catch(Exception error){coldWebsiteTrace.endCall(call,null,error);throw error;}
+  }
+  static final class ColdWebsiteTrace {
+    final String token=UUID.randomUUID().toString().replace("-","");final List<JSONObject> calls=new ArrayList<>(),circuits=new ArrayList<>();final Map<Socket,JSONObject> sockets=new IdentityHashMap<>();volatile boolean active=true;int currentCall;boolean overflow,inCall;
+    static long now(){return android.os.SystemClock.elapsedRealtimeNanos();}
+    synchronized JSONObject beginCall(String entry){JSONObject row=J.obj("case",++currentCall,"entry",entry,"callBeganAtNs",now());calls.add(row);inCall=true;return row;}
+    synchronized void endCall(JSONObject row,JSONObject value,Exception error){NetworkCatalog.put(row,"callEndedAtNs",now());if(value!=null)NetworkCatalog.put(row,"reading",J.parse(value.toString()));if(error!=null)NetworkCatalog.put(row,"error",diagnosticFailure(error));inCall=false;}
+    synchronized void accept(String role,Socket socket){if(!active||!inCall)return;if(circuits.size()>=16){overflow=true;return;}JSONObject row=J.obj("circuit",circuits.size()+1,"case",currentCall,"role",role,"acceptedAtNs",now(),"listenPort",socket.getLocalPort(),"peerPort",socket.getPort(),"tls",socket instanceof SSLSocket);circuits.add(row);sockets.put(socket,row);}
+    synchronized JSONObject socket(Socket socket){return sockets.get(socket);}
+    synchronized void values(JSONObject row,Object... values){if(!active||row==null)return;for(int i=0;i<values.length;i+=2)NetworkCatalog.put(row,(String)values[i],values[i+1]);}
+    synchronized JSONObject request(JSONObject circuit,String method,String path){if(!active||circuit==null)return null;JSONArray rows=circuit.optJSONArray("requests");if(rows==null){rows=new JSONArray();NetworkCatalog.put(circuit,"requests",rows);}if(rows.length()>=4){overflow=true;return null;}JSONObject row=J.obj("ordinal",rows.length()+1,"method",method,"path",path,"requestLineAtNs",now());rows.put(row);return row;}
+    synchronized void freeze(){active=false;}
+    synchronized JSONArray events(){JSONArray rows=new JSONArray();for(JSONObject row:calls)rows.put(J.obj("token",token,"order",rows.length()+1,"recordKind","call","payload",J.parse(row.toString())));for(JSONObject row:circuits)rows.put(J.obj("token",token,"order",rows.length()+1,"recordKind","circuit","payload",J.parse(row.toString())));return rows;}
+    synchronized JSONObject summary(){return J.obj("schema",1,"token",token,"eventCount",calls.size()+circuits.size(),"callCount",calls.size(),"circuitCount",circuits.size(),"overflow",overflow,"frozen",!active,"clock","Android elapsedRealtimeNanos","timerUnchanged",true,"requestedConnectDelayMs",J.obj("slow",100,"fast",5,"fixed",0),"scope","Test-only bounded socket/call observations; no sampling retry, warmup, timing subtraction or product speed claim. TLS listener time is observation time, not an exact handshake boundary.");}
   }
   /** New library selections require identities from the actual bundled parser. */
   void parseLibraryPool(NetworkCatalog library,JSONObject row,byte[] raw)throws Exception{
@@ -523,18 +545,21 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
   SSLContext tlsContext()throws Exception{KeyStore store=KeyStore.getInstance("PKCS12");try(InputStream in=getAssets().open("network-fixture.p12")){store.load(in,"network-fixture".toCharArray());}KeyManagerFactory keys=KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());keys.init(store,"network-fixture".toCharArray());TrustManagerFactory trust=TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());trust.init(store);SSLContext tls=SSLContext.getInstance("TLS");tls.init(keys.getKeyManagers(),trust.getTrustManagers(),null);return tls;}
   static abstract class LoopServer implements AutoCloseable {
     final ServerSocket listener;final SSLContext tls;final ExecutorService pool=Executors.newCachedThreadPool();final Set<Socket> sockets=ConcurrentHashMap.newKeySet();volatile boolean closed;
+    volatile ColdWebsiteTrace coldTrace;String coldRole;
     LoopServer()throws IOException{this(null);}
     LoopServer(SSLContext tls)throws IOException{this.tls=tls;listener=tls==null?new ServerSocket(0,16,InetAddress.getByName("127.0.0.1")):tls.getServerSocketFactory().createServerSocket(0,16,InetAddress.getByName("127.0.0.1"));}
     int port(){return listener.getLocalPort();}
-    void start(){pool.execute(()->{while(!closed)try{Socket s=listener.accept();sockets.add(s);pool.execute(()->{try{handle(s);}catch(Exception ignored){}finally{sockets.remove(s);try{s.close();}catch(Exception ignored){}}});}catch(IOException e){break;}});}
+    void observeColdWebsite(ColdWebsiteTrace trace,String role){coldRole=role;coldTrace=trace;}
+    void start(){pool.execute(()->{while(!closed)try{Socket s=listener.accept();ColdWebsiteTrace trace=coldTrace;if(trace!=null)trace.accept(coldRole,s);sockets.add(s);pool.execute(()->{try{handle(s);}catch(Exception ignored){}finally{sockets.remove(s);try{s.close();}catch(Exception ignored){}}});}catch(IOException e){break;}});}
     abstract void handle(Socket s)throws Exception;
     public void close(){closed=true;try{listener.close();}catch(Exception ignored){}for(Socket s:sockets)try{s.close();}catch(Exception ignored){}pool.shutdownNow();}
   }
   static final class Socks extends LoopServer {
     final int delay;volatile int connections;Socks(int delay)throws IOException{this.delay=delay;}
     void handle(Socket client)throws Exception{
-      client.setSoTimeout(12000);DataInputStream in=new DataInputStream(client.getInputStream());OutputStream out=client.getOutputStream();if(in.readUnsignedByte()!=5)return;byte[] methods=new byte[in.readUnsignedByte()];in.readFully(methods);out.write(new byte[]{5,0});out.flush();if(in.readUnsignedByte()!=5||in.readUnsignedByte()!=1)return;in.readByte();int type=in.readUnsignedByte();byte[] address=new byte[type==1?4:type==4?16:in.readUnsignedByte()];in.readFully(address);String host=type==3?new String(address,StandardCharsets.US_ASCII):InetAddress.getByAddress(address).getHostAddress();int port=in.readUnsignedShort();if(!host.equals("127.0.0.1"))return;Thread.sleep(delay);connections++;
-      try(Socket upstream=new Socket(host,port)){sockets.add(upstream);out.write(new byte[]{5,0,0,1,127,0,0,1,0,0});out.flush();Future<?> back=pool.submit(()->copy(upstream,client));copy(client,upstream);back.cancel(true);sockets.remove(upstream);}
+      ColdWebsiteTrace trace=coldTrace;JSONObject observed=trace==null?null:trace.socket(client);if(trace!=null)trace.values(observed,"handleBeganAtNs",ColdWebsiteTrace.now());
+      client.setSoTimeout(12000);DataInputStream in=new DataInputStream(client.getInputStream());OutputStream out=client.getOutputStream();if(in.readUnsignedByte()!=5)return;byte[] methods=new byte[in.readUnsignedByte()];in.readFully(methods);out.write(new byte[]{5,0});out.flush();if(in.readUnsignedByte()!=5||in.readUnsignedByte()!=1)return;in.readByte();int type=in.readUnsignedByte();byte[] address=new byte[type==1?4:type==4?16:in.readUnsignedByte()];in.readFully(address);String host=type==3?new String(address,StandardCharsets.US_ASCII):InetAddress.getByAddress(address).getHostAddress();int port=in.readUnsignedShort();if(!host.equals("127.0.0.1"))return;if(trace!=null)trace.values(observed,"targetHost",host,"targetPort",port,"requestedDelayMs",delay,"delayBeganAtNs",ColdWebsiteTrace.now());Thread.sleep(delay);if(trace!=null)trace.values(observed,"delayEndedAtNs",ColdWebsiteTrace.now(),"upstreamConnectBeganAtNs",ColdWebsiteTrace.now());connections++;
+      try(Socket upstream=new Socket(host,port)){if(trace!=null)trace.values(observed,"upstreamConnectEndedAtNs",ColdWebsiteTrace.now(),"upstreamLocalPort",upstream.getLocalPort(),"upstreamRemotePort",upstream.getPort());sockets.add(upstream);out.write(new byte[]{5,0,0,1,127,0,0,1,0,0});out.flush();if(trace!=null)trace.values(observed,"socksReplyFlushedAtNs",ColdWebsiteTrace.now());Future<?> back=pool.submit(()->copy(upstream,client));copy(client,upstream);back.cancel(true);sockets.remove(upstream);}
     }
     static void copy(Socket from,Socket to){try{byte[] bytes=new byte[8192];int n;while((n=from.getInputStream().read(bytes))>=0){to.getOutputStream().write(bytes,0,n);to.getOutputStream().flush();}}catch(IOException ignored){}finally{try{to.shutdownOutput();}catch(IOException ignored){}}}
   }
@@ -544,8 +569,9 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     HttpFixture(SSLContext tls)throws IOException{super(tls);}String url(String path){return (tls==null?"http":"https")+"://127.0.0.1:"+port()+path;}
     byte[] dnsAnswer(){byte[] q=NetworkDns.query(),answer=Arrays.copyOf(q,q.length+16);answer[2]=(byte)0x81;answer[3]=(byte)0x80;answer[7]=1;byte[] rr={(byte)0xc0,12,0,1,0,1,0,0,0,60,0,4,(byte)203,0,113,1};System.arraycopy(rr,0,answer,q.length,rr.length);return answer;}
     void handle(Socket socket)throws Exception{
-      socket.setSoTimeout(15000);BufferedReader in=new BufferedReader(new InputStreamReader(socket.getInputStream(),StandardCharsets.ISO_8859_1));OutputStream out=socket.getOutputStream();String request;
-      while((request=in.readLine())!=null){String[] parts=request.split(" ");if(parts.length<2)return;String method=parts[0],path=parts[1],webSocketKey="";String header;while((header=in.readLine())!=null&&!header.isEmpty()){String lower=header.toLowerCase(Locale.ROOT);if(lower.startsWith("cookie:")||lower.startsWith("authorization:"))credentialsSeen=true;if(lower.startsWith("sec-websocket-key:"))webSocketKey=header.substring(header.indexOf(':')+1).trim();}
+      ColdWebsiteTrace trace=coldTrace;JSONObject observed=trace==null?null:trace.socket(socket);if(trace!=null){trace.values(observed,"handleBeganAtNs",ColdWebsiteTrace.now());if(socket instanceof SSLSocket)((SSLSocket)socket).addHandshakeCompletedListener(event->trace.values(observed,"tlsCompletionListenerAtNs",ColdWebsiteTrace.now()));}
+      socket.setSoTimeout(15000);BufferedReader in=new BufferedReader(new InputStreamReader(socket.getInputStream(),StandardCharsets.ISO_8859_1));OutputStream out=socket.getOutputStream();String request;if(trace!=null)trace.values(observed,"firstReadBeganAtNs",ColdWebsiteTrace.now());
+      while((request=in.readLine())!=null){String[] parts=request.split(" ");if(parts.length<2)return;String method=parts[0],path=parts[1],webSocketKey="";JSONObject requestTrace=trace==null?null:trace.request(observed,method,path);String header;while((header=in.readLine())!=null&&!header.isEmpty()){String lower=header.toLowerCase(Locale.ROOT);if(lower.startsWith("cookie:")||lower.startsWith("authorization:"))credentialsSeen=true;if(lower.startsWith("sec-websocket-key:"))webSocketKey=header.substring(header.indexOf(':')+1).trim();}if(trace!=null)trace.values(requestTrace,"headersReadAtNs",ColdWebsiteTrace.now());
         requests++;byte[] body=new byte[0];int code=200;String type="text/plain",extra="";
         if(path.equals("/websocket")){if(webSocketKey.isEmpty())throw new IOException("Missing WebSocket key");webSocketConnections.incrementAndGet();out.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "+webSocketAccept(webSocketKey)+"\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.flush();echoWebSocket(socket.getInputStream(),out);return;}
         else if(path.startsWith("/website")){if("reset".equals(websiteTransportFailure)){socket.setSoLinger(true,0);return;}int wait=websiteDelay;if(wait>0){if(delayedRequest!=null)delayedRequest.countDown();Thread.sleep(wait);}code=status;headConnections.add(socket.getPort());if(code==302)extra="Location: "+url("/redirect")+"\r\n";}
@@ -555,7 +581,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
         else if(path.startsWith("/ip")){ipRequests.incrementAndGet();String fault=ipTransportFailure;if("reset".equals(fault)){ipResets.incrementAndGet();socket.setSoLinger(true,0);return;}if("eof".equals(fault)){ipEofs.incrementAndGet();socket.shutdownOutput();return;}int wait=ipDelay;if(wait>0)Thread.sleep(wait);code=ipStatus;body=(ipBody==null?"{\"ip\":\""+ip+"\"}":ipBody).getBytes(StandardCharsets.UTF_8);}
         else if(path.startsWith("/dns")){body=dnsAnswer();type="application/dns-message";}
         else if(path.startsWith("/redirect"))redirectSeen=true;
-        String response="HTTP/1.1 "+code+" Fixture\r\nContent-Length: "+body.length+"\r\nContent-Type: "+type+"\r\nConnection: keep-alive\r\n"+extra+"\r\n";out.write(response.getBytes(StandardCharsets.US_ASCII));if(!method.equals("HEAD"))out.write(body);out.flush();
+        String response="HTTP/1.1 "+code+" Fixture\r\nContent-Length: "+body.length+"\r\nContent-Type: "+type+"\r\nConnection: keep-alive\r\n"+extra+"\r\n";if(trace!=null)trace.values(requestTrace,"responseCode",code,"responseWriteBeganAtNs",ColdWebsiteTrace.now());out.write(response.getBytes(StandardCharsets.US_ASCII));if(!method.equals("HEAD"))out.write(body);out.flush();if(trace!=null)trace.values(requestTrace,"responseFlushedAtNs",ColdWebsiteTrace.now());
       }
     }
   }
