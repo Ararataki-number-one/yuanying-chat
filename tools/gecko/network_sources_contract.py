@@ -292,6 +292,21 @@ def verify_route_busy_phase_boundary(report):
     assert document['draft'] == 'unsent pool draft' and type(document['sends']) is int and document['sends'] == 0
     began, ended = boundary['beganAtNs'], boundary['endedAtNs']
     assert type(began) is int and type(ended) is int and 0 < began <= ended
+    documents = report['legacyPhaseDocumentObservations']
+    assert [row['phase'] for row in documents] == ['before', 'after']
+    previous_end = began
+    for observed, key in zip(documents, ('documentBefore', 'documentAfter')):
+        assert observed['scope'] == 'Gecko WebExtension isolated-world controlled document observation'
+        assert observed['expectedUrl'] == 'https://127.0.0.1:9879/pool'
+        assert observed['validated'] is True and 'error' not in observed
+        assert isinstance(observed['raw'], str) and observed['raw']
+        decoded = json.loads(observed['raw'])
+        assert isinstance(decoded, dict) and decoded == observed['result']
+        assert decoded['ok'] is True and 'error' not in decoded
+        assert decoded['document'] == boundary[key] and decoded['url'] == boundary[key]['url']
+        assert type(observed['beganAtNs']) is int and type(observed['endedAtNs']) is int
+        assert previous_end <= observed['beganAtNs'] <= observed['endedAtNs'] <= ended
+        previous_end = observed['endedAtNs']
     manual = [row for row in report['sessionRestorations'] if row['name'] == 'legacy-manual']
     assert len(manual) == 1 and type(manual[0]['beganAtNs']) is int and ended <= manual[0]['beganAtNs']
     return {'syntheticBusyPhaseEndedAfterBootstrap': True, 'browserAdmissionAndReceiptUnchanged': True,
