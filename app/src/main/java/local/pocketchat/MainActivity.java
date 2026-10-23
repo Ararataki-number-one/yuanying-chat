@@ -144,16 +144,16 @@ public class MainActivity extends ThemedActivity {
     reloadChecking=true;
     session.asyncDriver("web-inspect",new JSONObject(),2500,state->{
       if(!reloadMatches(target)){reloadChecking=false;return;}
-      if(WebReplyObserver.same(url,state.optString("url")))session.archiveWebsiteNavigation(state);
-      if(!reloadMatches(target)){reloadChecking=false;return;}
+      ChatSession.ReloadTarget inspected=session.reloadTargetAfterInspection(target,state);
+      if(inspected==null||!reloadMatches(inspected)){reloadChecking=false;return;}
       boolean busy=ProfileUi.working(session)||state.optBoolean("busy");
       session.asyncDriver("page-state",J.obj("expectedUrl",url),2500,page->{
-        if(!reloadMatches(target)){reloadChecking=false;return;}
-        if(!target.matchesSnapshot(page)){
+        if(!reloadMatches(inspected)){reloadChecking=false;return;}
+        if(!inspected.matchesSnapshot(page)){
           String why=page.optString("draftOmittedReason").equals("too-long")?"当前输入共有 "+page.optInt("draftLength")+" 个字符，超过自动暂存范围。":"网页通信暂不可用，无法完整读取当前输入。";
-          confirmIndependentReload(target,why);return;
+          confirmIndependentReload(inspected,why);return;
         }
-        confirmReload(target,busy||ProfileUi.working(session),page);
+        confirmReload(inspected,busy||ProfileUi.working(session),page);
       });
     });
   }

@@ -161,6 +161,8 @@ final class WebReplyObserver {
     if(!session.prefs.edit().putString("archivedWebObservation",job.toString()).remove("pending").commit()){
       session.setStatus("本地等待记录保存失败，请保留原网页核对");return false;
     }
+    // A synchronous preferences listener may already have installed another job.
+    if(session.pending!=job)return false;
     String url=job.optString("confirmedUrl");if(url.isEmpty())url=job.optString("expectedUrl");String prompt=job.optString("prompt");
     session.delivery(job.optString("id"),"uncertain","已离开原对话，本机完成提醒已停止；原网页发送状态未改动",true,job.optString("userKey"),url);
     session.pending=null;session.activeDeliveryId="";session.resetReplyStability();

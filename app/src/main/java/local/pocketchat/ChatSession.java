@@ -167,21 +167,30 @@ final class ChatSession {
   /** Native identity survives a broken page bridge; every destructive confirmation is scoped. */
   static final class ReloadTarget {
     final ChatSession owner;final Object browser;final int slot,generation;
-    final long epoch,fileWork;final boolean filesActive,replyActive;final String url,document,job,identity,environmentId;
+    final long epoch,fileWork;final boolean filesActive,replyActive;final String url,document,job,identity,environmentId;final JSONObject pendingJob;
     ReloadTarget(ChatSession session){owner=session;browser=session.web.current;slot=Profiles.slot(session.context);generation=session.environmentGeneration;environmentId=session.environmentId;
-      epoch=session.navigationEpoch;fileWork=session.fileWorkGeneration;filesActive=session.fileWorkActive();replyActive=session.currentReplyActive();url=session.web.getUrl();document=session.lastDocumentId;job=session.pending==null?"":session.pending.optString("id");identity=session.appliedIdentity;}
+      epoch=session.navigationEpoch;fileWork=session.fileWorkGeneration;filesActive=session.fileWorkActive();replyActive=session.currentReplyActive();url=session.web.getUrl();document=session.lastDocumentId;pendingJob=session.pending;job=pendingJob==null?"":pendingJob.optString("id");identity=session.appliedIdentity;}
     boolean samePage(ChatSession session){
       if(owner!=session||session.deleted||browser!=session.web.current||slot!=Profiles.slot(session.context)||generation!=session.environmentGeneration||!environmentId.equals(session.environmentId))return false;
       JSONObject environment=ProfileCatalog.get(session.context).item(slot);
       return environment.optBoolean("created")&&!environment.optBoolean("deleting")&&!environment.optBoolean("resetting")&&environment.optInt("generation")==generation&&environmentId.equals(environment.optString("environmentId"))
         &&epoch==session.navigationEpoch&&BrowserRuntimePolicy.sameDocument(url,session.web.getUrl())&&document.equals(session.lastDocumentId)&&identity.equals(session.appliedIdentity);
     }
-    boolean matches(ChatSession session){return samePage(session)&&fileWork==session.fileWorkGeneration&&(!session.fileWorkActive()||filesActive)&&(!session.currentReplyActive()||replyActive)
-      &&job.equals(session.pending==null?"":session.pending.optString("id"));}
+    boolean sameWork(ChatSession session){return samePage(session)&&fileWork==session.fileWorkGeneration&&(!session.fileWorkActive()||filesActive)&&(!session.currentReplyActive()||replyActive);}
+    boolean matches(ChatSession session){return sameWork(session)&&pendingJob==session.pending&&job.equals(session.pending==null?"":session.pending.optString("id"));}
     boolean matchesSnapshot(JSONObject snapshot){return PageMemory.completeDraft(snapshot)&&WebReplyObserver.same(url,snapshot.optString("url"))&&!snapshot.optString("documentId").isEmpty()
       &&(document.isEmpty()||document.equals(snapshot.optString("documentId")));}
   }
   ReloadTarget reloadTarget(){return new ReloadTarget(this);}
+  /** Only this synchronous archival may retire the captured job before confirmation. */
+  ReloadTarget reloadTargetAfterInspection(ReloadTarget target,JSONObject inspected){
+    if(target==null||!target.matches(this))return null;
+    JSONObject job=pending;
+    boolean archived=WebReplyObserver.same(target.url,inspected.optString("url"))&&archiveWebsiteNavigation(inspected);
+    if(!archived)return target.matches(this)?target:null;
+    if(job==null||job!=target.pendingJob||pending!=null||!target.sameWork(this))return null;
+    return reloadTarget();
+  }
   /** No second bridge read/capture: the caller already archived, or explicitly accepted loss. */
   void reloadConfirmed(ReloadTarget target,JSONObject snapshot,boolean independent){
     if(target==null||!target.matches(this))return;

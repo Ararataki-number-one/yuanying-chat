@@ -36,7 +36,7 @@ def main():
       'MAIN':('MainActivity.java',['void status(','boolean reloadMatches(','void confirmIndependentReload(']),
       'REPLY':('ReplyState.java',['static String describe(','static void checkWithoutRecovery(','static void websiteConnection('])}
     fixture=pathlib.Path(__file__).parent/'PageRecoveryHost.java'
-    inputs={source/name for name,_ in selections.values()}|{fixture,pathlib.Path(__file__).resolve()}
+    inputs={source/name for name,_ in selections.values()}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py')}
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(inputs)}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     text=fixture.read_text()
@@ -53,9 +53,14 @@ def main():
         if result.returncode:
             print(result.stderr,file=sys.stderr);result.check_returncode()
         report=json.loads(result.stdout);report.update(actualAndroidExecution=False,productionMembers=methods,scope='Exact production Java members with controlled Android adapters; no phone or live-network acceptance')
+        from reload_request import run as run_reload_request
+        report['reloadRequest']=run_reload_request(a.json_jar)
+        if report['reloadRequest']['status']!='passed' or not report['reloadRequest']['executionInputsUnchanged']:
+            report['status']='failed-reload-request'
         unchanged=all(hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==digest for path,digest in hashes.items())
         report.update(sourceCommit=commit,sourceFiles=hashes,jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(),executionInputsUnchanged=unchanged)
         if not unchanged:report['status']='invalid-source-changed'
         print(json.dumps(report,ensure_ascii=False))
+        if report['status']!='passed':raise SystemExit(1)
         if not unchanged:raise SystemExit(1)
 if __name__=='__main__':main()
