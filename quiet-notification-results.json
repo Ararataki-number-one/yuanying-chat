@@ -1,0 +1,242 @@
+{
+  "status": "passed",
+  "actualAndroidExecution": true,
+  "checkCount": 42,
+  "error": "",
+  "foregroundEvidence": {
+    "known": true,
+    "foreground": true,
+    "actualActivityStartedCount": 1,
+    "visibilitySource": "activity-start-stop",
+    "processes": [
+      {
+        "process": "local.pocketchat.test:profile7",
+        "pid": 4654,
+        "importance": 100,
+        "known": true,
+        "actualActivityStartedCount": 1,
+        "visible": true,
+        "activityStarts": 1,
+        "activityStops": 0,
+        "revision": 1,
+        "lastEventAt": 127588
+      },
+      {
+        "process": "local.pocketchat.test",
+        "pid": 4718,
+        "importance": 100,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 0,
+        "activityStops": 0,
+        "revision": 0,
+        "lastEventAt": 0
+      }
+    ]
+  },
+  "homeEvidence": {
+    "known": true,
+    "foreground": false,
+    "actualActivityStartedCount": 0,
+    "visibilitySource": "activity-start-stop",
+    "processes": [
+      {
+        "process": "local.pocketchat.test:profile7",
+        "pid": 4654,
+        "importance": 125,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 1,
+        "activityStops": 1,
+        "revision": 2,
+        "lastEventAt": 131752
+      },
+      {
+        "process": "local.pocketchat.test",
+        "pid": 4718,
+        "importance": 125,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 0,
+        "activityStops": 0,
+        "revision": 0,
+        "lastEventAt": 0
+      }
+    ]
+  },
+  "scope": "Android activity-process importance, channels, real foreground services, real Home, production stable-terminal gate, opt-in completion reminders and a real local MediaStore save; no account or network download",
+  "checks": [
+    {
+      "name": "Background completion reminders are off by default",
+      "pass": true
+    },
+    {
+      "name": "Browser and network child processes cannot count as visible UI",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes old noisy foreground channels",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes non-completion regular notifications across profiles",
+      "pass": true
+    },
+    {
+      "name": "A real visible app Activity suppresses completion reminders",
+      "pass": true
+    },
+    {
+      "name": "An already running default process exposes real zero-Activity lifecycle over private IPC",
+      "pass": true
+    },
+    {
+      "name": "A visible Activity is proved by real started lifecycle count",
+      "pass": true
+    },
+    {
+      "name": "A private visibility endpoint rejects an obsolete process PID",
+      "pass": true
+    },
+    {
+      "name": "Foreground replies and downloads stay quiet even after opting in",
+      "pass": true
+    },
+    {
+      "name": "Already visible completions are remembered without posting",
+      "pass": true
+    },
+    {
+      "name": "Waiting and disconnected states do not post completion alerts",
+      "pass": true
+    },
+    {
+      "name": "reply-background-quiet-v2 remains silent at MIN or system-required LOW",
+      "pass": true
+    },
+    {
+      "name": "network-background-quiet-v2 remains silent at MIN or system-required LOW",
+      "pass": true
+    },
+    {
+      "name": "Reply service keeps a legitimate foreground notification",
+      "pass": true
+    },
+    {
+      "name": "Network service keeps a legitimate foreground notification",
+      "pass": true
+    },
+    {
+      "name": "Foreground statuses no longer contain waiting or environment-count messages",
+      "pass": true
+    },
+    {
+      "name": "Both foreground notices stay off the lock screen",
+      "pass": true
+    },
+    {
+      "name": "Progress polling does not repost a notification",
+      "pass": true
+    },
+    {
+      "name": "Real Home leaves the UI in background while required services keep running",
+      "pass": true
+    },
+    {
+      "name": "Real Home is proved by stopped Activity lifecycle despite browser process priority",
+      "pass": true
+    },
+    {
+      "name": "Home preserves the pending reply and background observation service",
+      "pass": true
+    },
+    {
+      "name": "Background completion stays quiet until the user opts in",
+      "pass": true
+    },
+    {
+      "name": "Explicit opt-in admits completion only after real Home",
+      "pass": true
+    },
+    {
+      "name": "Foreground completions never become delayed background alerts",
+      "pass": true
+    },
+    {
+      "name": "Busy replies cannot trigger a completion notice",
+      "pass": true
+    },
+    {
+      "name": "A first terminal observation cannot alert early",
+      "pass": true
+    },
+    {
+      "name": "A second terminal observation remains quiet",
+      "pass": true
+    },
+    {
+      "name": "Stable terminal reply is accepted only after repeated observations",
+      "pass": true
+    },
+    {
+      "name": "A detected complete reply produces the one regular reminder",
+      "pass": true
+    },
+    {
+      "name": "Completion ends the waiting foreground service",
+      "pass": true
+    },
+    {
+      "name": "An older completed reply cannot re-alert after another reply",
+      "pass": true
+    },
+    {
+      "name": "Aggregate legacy receipts migrate to the indexed ledger without re-alerting",
+      "pass": true
+    },
+    {
+      "name": "Existing single-job notification records are respected",
+      "pass": true
+    },
+    {
+      "name": "The same completion identity in another environment remains independent",
+      "pass": true
+    },
+    {
+      "name": "A disabled reminder is not posted or incorrectly marked delivered",
+      "pass": true
+    },
+    {
+      "name": "A completion can be retried after reminders are enabled",
+      "pass": true
+    },
+    {
+      "name": "Attention and network events remain in-app without separate reminders",
+      "pass": true
+    },
+    {
+      "name": "Background observation remains enabled by default",
+      "pass": true
+    },
+    {
+      "name": "Opted-in background file completion opens the exact saved task",
+      "pass": true
+    },
+    {
+      "name": "The notified local file is fully published and readable",
+      "pass": true
+    },
+    {
+      "name": "A saved download cannot re-alert after dismissal",
+      "pass": true
+    },
+    {
+      "name": "Opting out removes completion cards across environments",
+      "pass": true
+    }
+  ],
+  "sourceCommit": "7aa4601c5fc2f2f74f2ec95d67544d9718147400"
+}
