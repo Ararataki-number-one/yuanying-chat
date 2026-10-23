@@ -5,14 +5,15 @@
     globalThis.PocketAppearance = Object.freeze({apply: () => false});
     return;
   }
-  let selected = null;
+  let selected = null, nativeSelected = false;
   let observedRoot = null, suspended = false;
-  const restore = () => { if (!suspended && selected !== null) apply(selected); };
+  const restore = () => { if (!suspended && selected !== null) apply(selected, false); };
   // Watch only the theme attributes, never the streaming message subtree.
   const rootObserver = typeof MutationObserver === 'function' ? new MutationObserver(restore) : null;
   const documentObserver = typeof MutationObserver === 'function' ? new MutationObserver(restore) : null;
-  const apply = dark => {
+  const apply = (dark, fromNative = true) => {
     if (typeof dark !== 'boolean') return false;
+    if (fromNative) nativeSelected = true;
     selected = dark;
     if (suspended) return false;
     const root = document.documentElement;
@@ -51,8 +52,10 @@
   // native port handshake so a persisted website light theme cannot win startup.
   if (typeof matchMedia === 'function') {
     const scheme = matchMedia('(prefers-color-scheme: dark)');
-    scheme.addEventListener('change', event => apply(event.matches));
-    apply(scheme.matches);
+    // Privacy modes can report a light media query even while the app explicitly
+    // requests dark. Once received, the native appearance owns this document.
+    scheme.addEventListener('change', event => { if (!nativeSelected) apply(event.matches, false); });
+    apply(scheme.matches, false);
   }
   resume();
 })();

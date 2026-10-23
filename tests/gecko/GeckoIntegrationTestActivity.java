@@ -151,6 +151,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("privacy".equals(action)){privacy(serial,0);return;}
     if("completion".equals(action)){completion(serial);return;}
     if("desktopImage".equals(action)){desktopImage(serial);return;}
+    if("desktopOwnImage".equals(action)){desktopImage(serial,true);return;}
     if("uploadLifecycle".equals(action)){GeckoUploadLifecycleIntegration.run(this,serial);return;}
     if("pageContinuity".equals(action)){ChatPageContinuityIntegration.run(this,serial);return;}
     if("usability".equals(action)){usability(serial);return;}
@@ -283,7 +284,8 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   // Only the origin is adapted for the loopback fixture. The production chooser,
   // pending guard, SAF result and Gecko file preparation all run unchanged.
-  void desktopImage(long serial){
+  void desktopImage(long serial){desktopImage(serial,false);}
+  void desktopImage(long serial,boolean ownProvider){
     session.reading.configure(true);session.web.configure(true,session.privacy.level());
     final JSONObject held=J.obj("kind","web","confirmed",true);session.pending=held;
     FixtureView view=(FixtureView)session.web;final boolean[] chooser={false},mime={false};
@@ -292,7 +294,7 @@ public class GeckoIntegrationTestActivity extends Activity {
       @Override void status(String message){if(message.contains("失败"))event(serial,"error",J.obj("error",message));}
       @Override public void startActivityForResult(Intent intent,int request){
         chooser[0]=request==74&&Intent.ACTION_OPEN_DOCUMENT.equals(intent.getAction());mime[0]="image/*".equals(intent.getType())&&intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE,false);
-        session.handler.post(()->{view.chooserOrigin=true;try{attachments.result(Activity.RESULT_OK,new Intent().setData(android.net.Uri.parse("content://synthetic.pocket.upload/image")));}finally{view.chooserOrigin=false;}});
+        session.handler.post(()->{view.chooserOrigin=true;try{attachments.result(Activity.RESULT_OK,new Intent().setData(android.net.Uri.parse(ownProvider?"content://local.pocketchat.test.upload/image":"content://synthetic.pocket.upload/image")));}finally{view.chooserOrigin=false;}});
       }
     };
     host.attachBaseContext(this);host.session=session;host.remote=view;host.prefs=session.prefs;host.pageMode=true;host.status=new TextView(host);host.loading=new LoadingUi(host);host.attachments=new Attachments(host);

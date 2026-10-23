@@ -32,7 +32,9 @@ final class GeckoUploadFiles {
         try{mime=context.getContentResolver().getType(uri);}catch(RuntimeException ignored){}
       }
       name=name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]","_").trim();if(name.isEmpty()||name.equals(".")||name.equals(".."))name="附件";if(name.length()>80)name=name.substring(name.length()-80);
-      if(mime!=null&&(mime.startsWith("image/")||name.equals("附件"))){int dot=name.lastIndexOf('.');String actual=dot<0?null:MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substring(dot+1).toLowerCase(Locale.ROOT));String extension=MimeTypeMap.getSingleton().getExtensionFromMimeType(mime.toLowerCase(Locale.ROOT));if(extension!=null&&!mime.equalsIgnoreCase(actual))name+="."+extension;}
+      // Gecko infers File.type from the prepared path, not the provider MIME.
+      // Also retain document types when a cloud provider gives an extensionless name.
+      if(mime!=null){int dot=name.lastIndexOf('.');String actual=dot<0?null:MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substring(dot+1).toLowerCase(Locale.ROOT));String extension=MimeTypeMap.getSingleton().getExtensionFromMimeType(mime.toLowerCase(Locale.ROOT));if(extension!=null&&(dot<0||mime.startsWith("image/")&&!mime.equalsIgnoreCase(actual)))name+="."+extension;}
       String original=name;int duplicate=1,dot=original.lastIndexOf('.');while(!names.add(name)){String suffix=" ("+(++duplicate)+")";name=dot>0?original.substring(0,dot)+suffix+original.substring(dot):original+suffix;}
       File file=new File(directory,name);
       try(InputStream input=context.getContentResolver().openInputStream(uri);OutputStream output=new FileOutputStream(file)){

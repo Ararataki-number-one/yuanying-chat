@@ -30,14 +30,20 @@ final class NetworkRegion {
   static JSONObject readLatency(Context c){return snapshot(c,"route-latency");}
   static String latencyRoute(ChatSession s){return s.networkIdentity()+"|"+s.networkIdentity;}
   static JSONObject latency(Context c,ChatSession s){JSONObject value=readLatency(c);return s!=null&&latencyRoute(s).equals(value.optString("route"))?value:new JSONObject();}
+  static long latencyRemaining(ChatSession s,long now){
+    if(s==null)return 0;
+    long left=LatencyRefreshPolicy.remaining(latency(s.context,s).optLong("at"),now),mono=android.os.SystemClock.elapsedRealtime();
+    if(latencyRoute(s).equals(latencyAttemptRoute)&&mono>=latencyAttempted)left=Math.max(left,Math.max(0,LatencyRefreshPolicy.INTERVAL-(mono-latencyAttempted)));
+    return left;
+  }
   static Proxy proxy(String value)throws Exception{if(value.isEmpty())return Proxy.NO_PROXY;URI address=new URI(value);return new Proxy("socks".equals(address.getScheme())?Proxy.Type.SOCKS:Proxy.Type.HTTP,new InetSocketAddress(address.getHost(),address.getPort()));}
   static boolean backgroundBusy(ChatSession s){return s!=null&&(s.pending!=null||s.submitting||s.operation||s.transferActive||s.uploading()||s.navigating||s.state.optBoolean("busy"));}
   static void latencyGate(ChatSession s,long epoch,String route)throws IOException{if(s.deleted||s.internalNetwork()||!s.prefs.getBoolean("networkConfigured",false)||s.offline||!s.networkReady||s.connecting||epoch!=s.connectionEpoch||!s.guard.allowed()||!route.equals(latencyRoute(s)))throw new IOException("连接已变化");}
-  static void latencyGate(ChatSession s,long epoch,String route,boolean automatic)throws IOException{latencyGate(s,epoch,route);if(automatic&&backgroundBusy(s))throw new InterruptedIOException("后台探测已让位于当前操作");}
+  static void latencyGate(ChatSession s,long epoch,String route,boolean automatic)throws IOException{latencyGate(s,epoch,route);}
   /** Native-proxy quality and external connection response use different measurement sources. */
   static synchronized void refreshLatency(ChatSession s,NativeNetwork.Callback callback){
     if(s==null||s.internalNetwork()){if(callback!=null&&s!=null)s.handler.post(()->callback.done(false,"请先打开此窗口的会话"));return;}
-    if(callback==null&&backgroundBusy(s))return;
+    if(callback==null&&!s.uiVisible)return;
     String route=latencyRoute(s);long epoch=s.connectionEpoch;
     try{latencyGate(s,epoch,route);}catch(IOException unavailable){if(callback!=null)s.handler.post(()->callback.done(false,"请先恢复此窗口的网络连接"));return;}
     // Local regression fixtures never cause background requests to public services.
@@ -46,14 +52,14 @@ final class NetworkRegion {
     long now=System.currentTimeMillis(),mono=android.os.SystemClock.elapsedRealtime();JSONObject old=latency(s.context,s);long at=old.optLong("at");
     // The first UI read schedules a background cache load; do not probe over a valid saved sample.
     if(callback==null&&!ready(s.context,"route-latency"))return;
-    if(callback==null&&(at>0&&now>=at-60000&&now-at<60000||route.equals(latencyAttemptRoute)&&mono-latencyAttempted<(at>0?60000:10000)))return;
+    if(callback==null&&(NativeNetwork.freshLatency(at,now)||route.equals(latencyAttemptRoute)&&mono>=latencyAttempted&&mono-latencyAttempted<LatencyRefreshPolicy.INTERVAL))return;
     android.net.Network bound=s.guard.requiresVpn()?s.context.getSystemService(android.net.ConnectivityManager.class).getActiveNetwork():null;
     if(s.guard.requiresVpn()&&bound==null){if(callback!=null)s.handler.post(()->callback.done(false,"请先连接手机 VPN"));return;}
     final Proxy transport;try{transport=proxy(s.prefs.getString("proxy",""));}catch(Exception invalid){if(callback!=null)s.handler.post(()->callback.done(false,"代理地址无效"));return;}
     latencyRunning=true;
     latencyWorker.execute(()->{try{
-      // A queued display read must not repeat a newer measurement or compete with a new reply.
-      if(callback==null&&(backgroundBusy(s)||NativeNetwork.freshLatency(latency(s.context,s).optLong("at"),System.currentTimeMillis())))return;
+      // This only opens a probe connection; it never touches the website or changes its route.
+      if(callback==null&&NativeNetwork.freshLatency(latency(s.context,s).optLong("at"),System.currentTimeMillis()))return;
       synchronized(NetworkRegion.class){latencyAttempted=android.os.SystemClock.elapsedRealtime();latencyAttemptRoute=route;}
       int delay=-1;try{delay=RouteLatency.measure(NativeNetwork.PROBE,transport,bound,()->latencyGate(s,epoch,route,callback==null));}catch(IOException ignored){}
       final int measured=delay;final JSONObject sample=J.obj("route",route,"at",System.currentTimeMillis(),"delay",measured,"kind","response","target",NativeNetwork.PROBE);

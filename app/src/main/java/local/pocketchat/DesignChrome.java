@@ -242,7 +242,7 @@ final class DesignChrome {
     text(a.networkLine,address);
     color(a.networkLine,ReferenceUi.TEXT);
     color(dot,state.color());
-    text(latencyWord,state.latency);
+    text(latencyWord,state.latency+state.latencyTimer);
     text(stateWord,state.state.equals("正常")?"已连接":state.state);
     color(stateWord,state.color());
     description(networkRow,"当前环境网络："+state.strip());

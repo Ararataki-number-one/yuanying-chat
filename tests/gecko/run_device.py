@@ -581,6 +581,8 @@ def main():
         report['browserUsability']=usability
         image=run(1,'desktopImage','desktopImage');assert all(image[k] for k in ['productionChooserOpened','imageMimeAndMultiple','pendingPreserved','noPhantomUpload','desktop']) and image['upload']=='ok:photo-123.png:image/png:4x3',image
         report['desktopImageUpload']=image
+        own_image=run(1,'desktopOwnImage','desktopImage');assert all(own_image[k] for k in ['productionChooserOpened','imageMimeAndMultiple','pendingPreserved','noPhantomUpload','desktop']) and own_image['upload']=='ok:photo-123.png:image/png:4x3',own_image
+        report['ownProviderImageUpload']=own_image
         upload_lifecycle=run(1,'uploadLifecycle','uploadLifecycle')
         assert all(upload_lifecycle[k] is True for k in ['atomicHandoff','dismissedOnce','closedPromptResultIgnored','preparationCleanup']),upload_lifecycle
         report['uploadPromptLifecycle']=upload_lifecycle

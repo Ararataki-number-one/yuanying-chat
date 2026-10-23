@@ -281,18 +281,24 @@ class NativeNetwork {
   void untrack(HttpURLConnection c){NetworkWork work=maintenance.get();if(work!=null)work.remove(c);}
   boolean backgroundIdle(){ChatSession s=ChatSession.peek();return s!=null&&!s.uiVisible&&!s.browserWorkActive();}
   long latestLatencyAt(String entry,String epoch){long at=quality.currentSample(entry,System.currentTimeMillis(),probeRouteKey()).optLong("at");JSONObject displayed=latencyReading;if(entry.equals(displayed.optString("entry"))&&epoch.equals(displayed.optString("generation"))&&routeSerial==displayed.optLong("routeSerial"))at=Math.max(at,displayed.optLong("at"));return at;}
-  static boolean freshLatency(long at,long now){return at>0&&now>=at-60000&&now-at<60000;}
+  long latencyRemaining(long now){
+    long left=LatencyRefreshPolicy.remaining(latestLatencyAt(currentEntry,token),now),mono=android.os.SystemClock.elapsedRealtime();
+    if(probeRouteKey().equals(latencyRefreshRoute)&&mono>=latencyRefreshAttempted)left=Math.max(left,Math.max(0,LatencyRefreshPolicy.INTERVAL-(mono-latencyRefreshAttempted)));
+    return left;
+  }
+  static boolean freshLatency(long at,long now){return LatencyRefreshPolicy.fresh(at,now);}
   /** One current-chain sample for the UI; never scans or changes the live route. */
   synchronized void refreshLatency(){
-    if(!ready||starting||!coreAlive()||currentEntry.isEmpty()||latencyRefreshQueued||routeBusy())return;
+    ChatSession visible=ChatSession.peek();if(visible!=null&&!visible.uiVisible)return;
+    if(!ready||starting||!coreAlive()||currentEntry.isEmpty()||latencyRefreshQueued)return;
     long now=System.currentTimeMillis(),mono=android.os.SystemClock.elapsedRealtime();long at=latestLatencyAt(currentEntry,token);
     if(freshLatency(at,now))return;
-    String route=token+"|"+currentEntry;
-    if(route.equals(latencyRefreshRoute)&&mono-latencyRefreshAttempted<(at>0?60000:10000))return;
+    String route=probeRouteKey();
+    if(route.equals(latencyRefreshRoute)&&mono>=latencyRefreshAttempted&&mono-latencyRefreshAttempted<LatencyRefreshPolicy.INTERVAL)return;
     latencyRefreshAttempted=mono;latencyRefreshRoute=route;latencyRefreshQueued=true;
     final String entry=currentEntry,epoch=token;final long generation=maintenanceGeneration;
-    worker.execute(()->{NetworkWork work=beginMaintenance(generation);boolean probed=false;
-      try{if(work==null||!ready||starting||!entry.equals(currentEntry)||!epoch.equals(token)||routeBusy())return;
+    worker.execute(()->{NetworkWork work=beginMaintenance(generation,true);boolean probed=false;
+      try{if(work==null||!ready||starting||!entry.equals(currentEntry)||!epoch.equals(token)||!route.equals(probeRouteKey()))return;
         // Health may have measured the same route while this display request waited.
         if(freshLatency(latestLatencyAt(entry,epoch),System.currentTimeMillis()))return;
         probed=true;ProbeResult result=probeMeasured("FixedExit",entry);maintenanceCheck();if(ready&&!starting&&probeCurrent(result)){publishCurrentProbe(result);if(result.delay>0)recordProbe(result,result.at);}}
@@ -306,7 +312,7 @@ class NativeNetwork {
     if(routeBusy()){cancelMaintenance();return;}
     long now=android.os.SystemClock.elapsedRealtime();if(now-lastMaintenanceAt<(backgroundIdle()?NetworkOptimizationPolicy.BACKGROUND_INTERVAL:NetworkOptimizationPolicy.ACTIVE_INTERVAL))return;
     NetworkWork work=beginMaintenance(maintenanceGeneration);if(work==null)return;lastMaintenanceAt=now;
-    try{health();}finally{finishMaintenance(work);WindowNetworkState.save(context,ChatSession.peek(),this);}
+    try{health(true);}finally{finishMaintenance(work);WindowNetworkState.save(context,ChatSession.peek(),this);}
   }
   JSONObject group(String name,String filter){JSONObject g=J.obj("name",name,"type","select","proxies",J.arr("REJECT"),"use",J.arr("Subscription"),"empty-fallback","REJECT","interval",0,"hidden",true);if(filter!=null)try{g.put("filter",filter);}catch(Exception ignored){}return g;}
   JSONObject exit(String name,String group){JSONObject result=J.obj("name",name,"type","socks5","server",settings.optString("exitHost"),"port",settings.optInt("exitPort"),"username",settings.optString("exitUser"),"password",settings.optString("exitPassword"),"udp",false,"dialer-proxy",group);if("FixedExit".equals(name)){NetworkCatalog.put(result,"pocket-preconnect",true);NetworkCatalog.put(result,"pocket-preconnect-capacity",4);NetworkCatalog.put(result,"pocket-preconnect-epoch-file",new File(root,ExitPreconnectEpoch.FILE).getAbsolutePath());}return result;}
@@ -465,7 +471,10 @@ class NativeNetwork {
     }catch(IOException unavailable){maintenanceCheck();if(Thread.currentThread().isInterrupted()||!probeCurrent(primary)||!verifiedRouteCurrent())return NetworkHealthPolicy.TargetEvidence.INCONCLUSIVE;return NetworkHealthPolicy.failure(unavailable);}
     finally{untrack(c);c.disconnect();}
   }
-  void health(){
+  String healthProbeRoute="";long healthProbeMeasurement;
+  /** Explicit diagnostics request a new observation; periodic checks reuse recent UI probes. */
+  void health(){health(false);}
+  void health(boolean reuseRecent){
     if(!ready||starting||routeBusy())return;
     try{
       maintenanceCheck();if(!coreAlive())throw new IOException("内置网络进程已退出");
@@ -476,8 +485,14 @@ class NativeNetwork {
         if(android.os.SystemClock.elapsedRealtime()<nextExitCheckAt)return;
         verifyExit();
       }
-      ProbeResult result=probeMeasured("FixedExit",currentEntry);maintenanceCheck();if(!probeCurrent(result))return;int delay=result.delay;long now=System.currentTimeMillis();publishCurrentProbe(result);
+      ProbeResult result=currentProbe;long now=System.currentTimeMillis();
+      boolean reused=reuseRecent&&probeCurrent(result)&&freshLatency(result.at,now);
+      if(!reused)result=probeMeasured("FixedExit",currentEntry);
+      maintenanceCheck();if(!probeCurrent(result))return;int delay=result.delay;now=System.currentTimeMillis();publishCurrentProbe(result);
+      boolean assessedBefore=probeRouteKey().equals(healthProbeRoute)&&healthProbeMeasurement==result.binding.measurement;
+      healthProbeRoute=probeRouteKey();healthProbeMeasurement=result.binding.measurement;
       if(delay<0){
+        if(assessedBefore)return;
         healthTargetCode=0;NetworkHealthPolicy.TargetEvidence target=secondaryHealth(result);maintenanceCheck();
         NetworkHealthPolicy.Assessment assessed=NetworkHealthPolicy.assess(routeBusy(),probeCurrent(result)&&verifiedRouteCurrent(),false,target,failures);
         if(assessed.action==NetworkHealthPolicy.Action.DEFER)return;failures=assessed.consecutiveFailures;healthObservedAt=now;
@@ -487,7 +502,7 @@ class NativeNetwork {
         if(assessed.action==NetworkHealthPolicy.Action.RECOVER){if(settings!=null&&"manual".equals(settings.optString("entryMode")))throw new IOException("指定入口与目标网站连续连接失败，请重连或编辑网络");firstVerifiedRoute(currentEntry);maintenanceCheck();if(routeBusy())return;failures=0;healthStatus="recovered";report("已自动恢复入口 · "+display(currentEntry));}
         else if(assessed.action==NetworkHealthPolicy.Action.HEALTHY&&now-lastVerified>=NetworkOptimizationPolicy.ACTIVE_INTERVAL)verifyExit();return;
       }
-      recordProbe(result,now);healthStatus="healthy";healthTargetCode=0;healthObservedAt=now;
+      if(!reused)recordProbe(result,now);healthStatus="healthy";healthTargetCode=0;healthObservedAt=now;
       failures=0;if(now-lastVerified>=NetworkOptimizationPolicy.ACTIVE_INTERVAL)verifyExit();
       if((lowLatency()||settings!=null&&settings.optString("entryMode").isEmpty())&&now-lastScan>=NetworkOptimizationPolicy.scanInterval(optimizationRounds)&&!backgroundIdle()){
         List<String> batch=optimizationBatch();scanSubset(batch,false,true);optimizationRounds++;

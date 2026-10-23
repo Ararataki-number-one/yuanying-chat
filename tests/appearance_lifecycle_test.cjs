@@ -89,6 +89,16 @@ test('document_start without html, root replacement and page cache restore stay 
   w.PocketAppearance.apply(true); w.dispatchEvent(new w.Event('pageshow')); await settle(); darkPage(w);
 });
 
+test('native dark choice wins over later privacy media-query changes', async t => {
+  const {w, root, input, mode} = page(t, {dark: false});
+  w.PocketAppearance.apply(true); await settle(); darkPage(w);
+  mode(false); root.style.colorScheme = 'light'; await settle(); darkPage(w);
+  assert.equal(w.document.getElementById('input'), input);
+  w.PocketAppearance.apply(false); mode(true); await settle();
+  assert.ok(root.classList.contains('light'));
+  assert.equal(w.localStorage.getItem('theme'), 'light');
+});
+
 test('login providers and lookalike origins are not modified or observed', async t => {
   for (const url of ['https://accounts.google.com/', 'https://auth.openai.com/', 'http://chatgpt.com/', 'https://chatgpt.com.example/']) {
     const p = page(t, {url}); await settle(); assert.equal(p.w.PocketAppearance.apply(true), false);

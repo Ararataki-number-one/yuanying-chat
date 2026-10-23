@@ -342,6 +342,9 @@ jobs:
         if ! python3 tests/gecko/run_native_probe.py --adb "$(command -v adb)" --serial emulator-5554; then
           checks_failed=1
         fi
+        if ! python3 tests/gecko/run_ui_fixes.py --adb "$(command -v adb)" --serial emulator-5554; then
+          checks_failed=1
+        fi
         if ! python3 tests/gecko/run_gecko_pool.py --adb "$(command -v adb)" --serial emulator-5554; then
           checks_failed=1
         fi

@@ -24,7 +24,7 @@ tasks.register('prepareGeckoManifest') {
 android {
     namespace 'local.pocketchat'
     compileSdk { version = release(37) { minorApiLevel = 1 } }
-    defaultConfig { applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 67; versionName '2.0.14' }
+    defaultConfig { applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 68; versionName '2.0.15' }
     signingConfigs { debug { if (providers.gradleProperty('testSigningKey').isPresent()) storeFile file(providers.gradleProperty('testSigningKey').get()) } }
     sourceSets {
         main { manifest.srcFile(generatedManifest); assets.srcDir(providers.gradleProperty('caretSdkAssets').orElse('../work/native-caret-sdk/assets').get()) }
@@ -37,7 +37,16 @@ android {
     packaging { jniLibs { useLegacyPackaging = true } }
     splits { abi { enable true; reset(); include 'arm64-v8a', 'x86_64'; universalApk false } }
 }
-tasks.named('preBuild').configure { dependsOn 'prepareGeckoManifest' }
+tasks.register('verifyBrowserExtensionVersion') {
+    inputs.file('src/main/assets/gecko/manifest.json')
+    inputs.property('applicationVersion', provider { android.defaultConfig.versionName + '.' + android.defaultConfig.versionCode })
+    doLast {
+        def extension = new groovy.json.JsonSlurper().parse(file('src/main/assets/gecko/manifest.json'))
+        def expected = android.defaultConfig.versionName + '.' + android.defaultConfig.versionCode
+        if (extension.version != expected) throw new GradleException("Browser extension version must be ${expected}: ensureBuiltIn reuses installed same-version scripts")
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'prepareGeckoManifest', 'verifyBrowserExtensionVersion' }
 dependencies {
     implementation 'org.yaml:snakeyaml:2.3'
     implementation 'androidx.startup:startup-runtime:1.2.0'

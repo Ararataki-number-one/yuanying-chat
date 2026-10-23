@@ -63,6 +63,7 @@ def main():
         ("NetworkStatusPolicyTest", ["NetworkStatusPolicy"]),
         ("NetworkPoolIdentityTest", ["NetworkPoolIdentity"]),
         ("LatencyProbePolicyTest", ["LatencyProbePolicy"]),
+        ("LatencyRefreshPolicyTest", ["LatencyRefreshPolicy"]),
         ("EnvironmentSpecTest", ["J", "EnvironmentSpec", "EnvironmentSpecMigration"]),
         ("EnvironmentLifecyclePolicyTest", ["J", "EnvironmentSpec", "EnvironmentSpecMigration", "EnvironmentResetPlan", "EnvironmentBrowserData", "EnvironmentProcessPolicy"]),
     ]

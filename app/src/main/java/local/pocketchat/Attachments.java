@@ -38,17 +38,19 @@ final class Attachments {
     String type="image".equals(kind)&&types.isEmpty()?"image/*":"*/*";if(types.size()==1)type=types.iterator().next();else if(!types.isEmpty()){boolean images=true;for(String t:types)images&=t.startsWith("image/");if(images)type="image/*";}
     Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);if(types.size()>1)intent.putExtra(Intent.EXTRA_MIME_TYPES,types.toArray(new String[0]));intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,params.getMode()==WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE);return intent;
   }
-  boolean samePage(){return pickerEpoch==a.session.navigationEpoch&&MainActivity.chatUrl(a.remote.getUrl())&&Uri.parse(pickerUrl).getPath().equals(Uri.parse(a.remote.getUrl()).getPath());}
+  boolean samePage(){return pickerEpoch==a.session.navigationEpoch&&MainActivity.chatUrl(a.remote.getUrl())&&Objects.equals(Uri.parse(pickerUrl).getPath(),Uri.parse(a.remote.getUrl()).getPath());}
   void result(int code,Intent data){
     ValueCallback<Uri[]> recipient=callback;if(recipient==null)return;
     if(destroyed||code!=Activity.RESULT_OK||data==null){cancelChooser();return;}
     if(!samePage()){cancelChooser();a.status("对话已改变，未添加附件");return;}
     LinkedHashSet<Uri> selected=new LinkedHashSet<>();
-    if(data.getClipData()!=null)for(int i=0;i<data.getClipData().getItemCount();i++)selected.add(data.getClipData().getItemAt(i).getUri());
-    else if(data.getData()!=null)selected.add(data.getData());
+    if(data.getClipData()!=null)for(int i=0;i<data.getClipData().getItemCount();i++){Uri uri=data.getClipData().getItemAt(i).getUri();if(uri!=null)selected.add(uri);}
+    if(selected.isEmpty()&&data.getData()!=null)selected.add(data.getData());
     if(selected.isEmpty()){cancelChooser();return;}
     for(Uri uri:selected){
-      if(uri==null||!"content".equals(uri.getScheme())||uri.getAuthority()==null||uri.getAuthority().startsWith(a.getPackageName()+".")){cancelChooser();a.status("请选择系统文件选择器中的文件");return;}
+      // DocumentsUI can return this app's exported DownloadsProvider too. The
+      // granted stream, not its provider's package name, determines readability.
+      if(uri==null||!"content".equals(uri.getScheme())||uri.getAuthority()==null){cancelChooser();a.status("请选择系统文件选择器中的文件");return;}
       try{a.getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(SecurityException ignored){}
     }
     callback=null;recipient.onReceiveValue(selected.toArray(new Uri[0]));
