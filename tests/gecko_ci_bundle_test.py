@@ -61,6 +61,42 @@ class CiBundleTest(unittest.TestCase):
         self.assertFalse((target/BUNDLE.OUT/'network-fixture.p12').exists())
         self.assertEqual(manifest['runId'],'123456')
 
+    def test_network_settings_evidence_survives_build_and_connections_roundtrip_without_keys(self):
+        # These bytes exercise transport only; they are not Android results.
+        host_names = [f'network-settings-{kind}-{platform}-host-results.json'
+                      for kind in ('receipt', 'provider', 'retry', 'ui')
+                      for platform in ('desktop', 'android')]
+        device_names = [f'network-settings-{kind}-{suffix}'
+                        for kind in ('application', 'internal', 'retry')
+                        for suffix in ('results.json', 'log.txt', 'final.png')]
+        names = host_names + device_names + ['network-settings-parser-negative-results.json',
+                                             'network-settings-application-failure.xml']
+        evidence = {name: ('Host-only transport fixture: ' + name + '\n').encode() for name in names}
+        build_files = {name: data for name, data in evidence.items()
+                       if '-desktop-' in name or name == 'network-settings-parser-negative-results.json'}
+        phase_files = {name: data for name, data in evidence.items() if name not in build_files}
+        keys = {'network-settings-fixture.jks': b'private synthetic JKS fixture',
+                'network-settings-fixture.p12': b'private synthetic PKCS12 fixture'}
+        for name, data in {**build_files, **keys}.items():
+            (self.root/BUNDLE.OUT/name).write_bytes(data)
+        BUNDLE.pack(self.root, self.build, 'build')
+        connections = self.phase('connections', {**phase_files, **keys})
+
+        for archive, expected in ((self.build, build_files), (connections, phase_files)):
+            with self.subTest(archive=archive.name), tarfile.open(archive, 'r:gz') as contents:
+                members = set(contents.getnames())
+                self.assertTrue({str(BUNDLE.OUT/name) for name in expected} <= members)
+                self.assertFalse({str(BUNDLE.OUT/name) for name in keys} & members)
+        target = self.clone('network-settings-collector')
+        BUNDLE.restore(target, self.build, 'build')
+        BUNDLE.restore(target, connections, 'phase', 'connections')
+        for name, data in evidence.items():
+            with self.subTest(file=name):
+                self.assertEqual((target/BUNDLE.OUT/name).read_bytes(), data)
+                self.assertFalse((target/BUNDLE.OUT/'ci-phases/connections'/name).exists())
+        for name in keys:
+            self.assertFalse((target/BUNDLE.OUT/name).exists())
+
     def test_other_ci_attempt_is_rejected_before_writing_apks(self):
         target=self.clone('other-attempt')
         with patch.dict(os.environ,GITHUB_RUN_ATTEMPT='2'),self.assertRaises(AssertionError):

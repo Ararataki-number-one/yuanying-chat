@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Run native sharing checks and exercise the shipped import/export dialogs via Android taps."""
-import argparse,hashlib,json,pathlib,re,shlex,subprocess,time,uuid,xml.etree.ElementTree as ET
+import argparse,hashlib,json,pathlib,re,shlex,subprocess,sys,time,uuid,xml.etree.ElementTree as ET
 p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument('--serial',default='emulator-5554');a=p.parse_args()
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';out.mkdir(parents=True,exist_ok=True)
+sys.path.insert(0,str(root/'tools'))
+from gecko.network_sources_contract import verify_network_sharing
 pkg='local.pocketchat.test';token=uuid.uuid4().hex;checks=[]
 def adb(*args,binary=False):return subprocess.check_output([a.adb,'-s',a.serial,*args],text=not binary,timeout=40)
 def wait(fn,pred,seconds=90):
@@ -24,12 +26,9 @@ try:
  adb('shell','am','force-stop',pkg)
  adb('shell','am','start','-W','-n',pkg+'/local.pocketchat.NetworkSharingIntegrationActivity','--es','runToken',token)
  r=wait(report,lambda r:r.get('runToken')==token,300);assert r['status']=='passed',r
- expected_schema=[x['id'] for x in json.loads((root/'tests/gecko/assets/sharing-schema-matrix.json').read_text())['cases']]
- assert len(expected_schema)==31 and r.get('schemaFingerprintCount')==31 and [x.get('case') for x in r.get('schemaFingerprintEvidence',[])]==expected_schema,r
- assert all(x.get('actualNativeFingerprintVerified') is True and x['originalFingerprint']==x['exportFingerprint'] and x.get('actualEncryptedCatalogCandidate') is True and x.get('activeSnapshotPreserved') is True and x.get('temporarySourceDeleted') is True for x in r['schemaFingerprintEvidence']),r
- assert r['actualAndroidExecution'] and r['actualNativeExecution'] and len(r['checks'])>=30 and all(x['pass'] for x in r['checks'])
  source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip();assert r['buildIdentity']['sourceCommit']==source
  installed=hashlib.sha256((root/'app/build/outputs/apk/integration/app-x86_64-integration.apk').read_bytes()).hexdigest();assert r['buildIdentity']['apkSha256']==installed
+ verify_network_sharing(r,source,installed,run_token=token)
  tap('仅分享入口');wait(xml,lambda t:bool(nodes(t,'分享入口')),20);tap('复制配置')
  tap('测试订阅整条线路');wait(xml,lambda t:bool(nodes(t,'分享整条线路')),30)
  tap('仅分享出口');wait(xml,lambda t:bool(nodes(t,'分享出口')),20);tap('复制配置')
@@ -53,6 +52,7 @@ try:
  tap('取消')
  (out/'network-source-sharing-screen.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
  r['uiChecks']=checks;r['actualAndroidTaps']=len(checks);r['cancelledBeforeRouteApplication']=True
+ verify_network_sharing(r,source,installed,complete=True,run_token=token)
  (out/'network-source-sharing-results.json').write_text(json.dumps(r,ensure_ascii=False,indent=2)+'\n')
  print(json.dumps({'status':'passed','nativeChecks':len(r['checks']),'actualAndroidTaps':len(checks)}))
 except Exception:

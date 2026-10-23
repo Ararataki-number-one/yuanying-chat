@@ -234,6 +234,9 @@ if template_release:performance_files.extend(['gecko-template-results.json','gec
 if resource_release:performance_files.extend(['resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json'])
 if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','official-sdk-verification.json','official-sdk-input.json'])
 if version_code>=59:performance_files.extend(['appearance-results.json','appearance-light.png','appearance-dark.png','network-source-sharing-results.json'])
+if version_code>=70:
+    from gecko.network_sources_contract import SETTINGS_REPORTS
+    performance_files.extend(SETTINGS_REPORTS)
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
 shutil.copy2(args.notes,stage/'RELEASE.md')
 workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkdir(parents=True)
@@ -261,6 +264,11 @@ if version_code>=45:shutil.copy2(root/'tools/gecko/check_interaction_transfer_ev
 if version_code>=46:
     for name in ['check_chain_evidence.py','chain_runtime_contract.py','preconnect_contract.py','network_sources_contract.py','check_client_evidence.py','check_sdk_build_evidence.py','sdk_identity_contract.py','update_route_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 branch='apk/gecko-release-20261003'
+if version_code>=70:
+    for mode in ('retry','application','internal'):
+        name='run_network_settings_'+mode+'.py'
+        shutil.copy2(root/'tests/gecko'/name,stage/'tools/gecko'/name)
+    shutil.copy2(root/'tests/gecko/assets/sharing-schema-matrix.json',stage/'tools/gecko/sharing-schema-matrix.json')
 env=dict(os.environ,GIT_INDEX_FILE=str(root/'work/gecko-integration/signed-index'),GIT_WORK_TREE=str(stage),
     GIT_AUTHOR_NAME='PocketChat release',GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',
     GIT_COMMITTER_NAME='PocketChat release',GIT_COMMITTER_EMAIL='pocketchat@users.noreply.github.com')

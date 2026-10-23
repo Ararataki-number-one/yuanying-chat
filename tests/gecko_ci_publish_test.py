@@ -1,9 +1,11 @@
-"""Real local Git remotes exercise publication conflicts; no Android acceptance."""
+"""Host-only copy and local Git publication controls; no Android acceptance."""
+import ast
 import contextlib
 import importlib.util
 import io
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -13,6 +15,48 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('ci_git_publish', ROOT/'tools/gecko/ci_git_publish.py')
 P = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(P)
+
+
+class PublicationArtifactCopyTests(unittest.TestCase):
+    def test_actual_network_settings_copy_loops_publish_evidence_without_keys(self):
+        publisher = ROOT/'tools/gecko/publish_ci.py'
+        tree = ast.parse(publisher.read_text(), filename=str(publisher))
+        loops = [node for node in tree.body if isinstance(node, ast.For)
+                 and any(isinstance(value, ast.Constant) and isinstance(value.value, str)
+                         and value.value.startswith('network-settings-')
+                         for value in ast.walk(node.iter))]
+        self.assertTrue(loops, 'Publisher has no network settings evidence copy loop')
+        # Execute only the source-owned copy loops, without publisher setup or Git.
+        for loop in loops:
+            for call in (node for node in ast.walk(loop) if isinstance(node, ast.Call)):
+                self.assertIsInstance(call.func, ast.Attribute)
+                self.assertIsInstance(call.func.value, ast.Name)
+                self.assertIn((call.func.value.id, call.func.attr), (('out', 'glob'), ('shutil', 'copy2')))
+
+        names = [f'network-settings-{kind}-{suffix}'
+                 for kind in ('application', 'internal', 'retry')
+                 for suffix in ('results.json', 'log.txt', 'final.png')]
+        names += [f'network-settings-{kind}-{platform}-host-results.json'
+                  for kind in ('receipt', 'provider', 'retry', 'ui')
+                  for platform in ('desktop', 'android')]
+        names += ['network-settings-parser-negative-results.json', 'network-settings-application-failure.xml']
+        evidence = {name: ('Host-only copy fixture: ' + name + '\n').encode() for name in names}
+        private = {'network-settings-fixture.jks': b'private synthetic JKS fixture',
+                   'network-settings-fixture.p12': b'private synthetic PKCS12 fixture'}
+        with tempfile.TemporaryDirectory(prefix='ci-copy-controls-') as directory:
+            out, stage = Path(directory)/'out', Path(directory)/'stage'
+            out.mkdir();stage.mkdir()
+            for name, data in {**evidence, **private}.items():
+                (out/name).write_bytes(data)
+            code = compile(ast.Module(body=loops, type_ignores=[]), str(publisher), 'exec')
+            exec(code, {'out': out, 'stage': stage, 'shutil': shutil})
+            self.assertEqual({path.name for path in stage.iterdir()}, set(evidence))
+            for name, data in evidence.items():
+                with self.subTest(file=name):
+                    self.assertEqual((stage/name).read_bytes(), data)
+            for name in private:
+                self.assertFalse((stage/name).exists())
+                self.assertEqual((out/name).read_bytes(), private[name])
 
 
 class PublicationTests(unittest.TestCase):

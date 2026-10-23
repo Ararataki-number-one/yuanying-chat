@@ -1,5 +1,6 @@
 """Require independent source libraries, actual Android dialogs and a pinned native chain."""
 import hashlib
+import importlib.util
 import json
 import math
 import pathlib
@@ -28,6 +29,124 @@ SAFE_IDLE_TRUST_FILES = {
     'server.p12': {'sha256': '5fe7edd5f9b89854977cc3f6181faf8b38386eb03f4829ec9d39bd3cbfb6acc3', 'bytes': 3814},
 }
 SAFE_IDLE_TRUST_ASSET_NAMES = sorted(set(SAFE_IDLE_TRUST_FILES) | {'manifest.json', 'README.md'})
+SETTINGS_HOST_MINIMUMS = {'receipt': 22, 'provider': 41, 'retry': 43}
+SETTINGS_JSON_SHA256 = {
+    'desktop': '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed',
+    'android': 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79',
+}
+SETTINGS_PARSER_SUITES = {'gecko_settings_retry_gate_test.py': 5,
+                          'gecko_settings_application_gate_test.py': 10,
+                          'gecko_settings_internal_gate_test.py': 16}
+SETTINGS_REPORTS = [
+    'network-settings-' + mode + '-results.json' for mode in ('retry', 'application', 'internal')
+] + ['network-settings-' + kind + '-' + implementation + '-host-results.json'
+     for implementation in SETTINGS_JSON_SHA256 for kind in (*SETTINGS_HOST_MINIMUMS, 'ui')
+] + ['network-settings-parser-negative-results.json']
+
+
+def _settings_verifier(mode):
+    name = 'run_network_settings_' + mode + '.py'
+    source = pathlib.Path(__file__).resolve().parents[2] / 'tests/gecko' / name
+    # Signed public evidence retains these exact verification sources beside this
+    # contract. Importing them never invokes their guarded Android main functions.
+    if not source.is_file():
+        source = pathlib.Path(__file__).resolve().parent / name
+    spec = importlib.util.spec_from_file_location('required_settings_' + mode, source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module, source
+
+
+def verify_network_sharing(report, source, apk_sha256, complete=False, run_token=None):
+    assert report['status'] == 'passed'
+    assert report['actualAndroidExecution'] is True and report['actualNativeExecution'] is True
+    assert report['buildIdentity']['sourceCommit'] == source
+    assert report['buildIdentity']['apkSha256'] == apk_sha256 and _hash(apk_sha256)
+    assert _hash(report['runToken'], 32)
+    if run_token is not None:
+        assert report['runToken'] == run_token
+    checks = report['checks']
+    assert report['checkCount'] == len(checks) >= 30
+    assert all(row['pass'] is True for row in checks)
+    assert len({row['name'] for row in checks}) == len(checks)
+    matrix = pathlib.Path(__file__).resolve().parents[2] / 'tests/gecko/assets/sharing-schema-matrix.json'
+    if not matrix.is_file():
+        matrix = pathlib.Path(__file__).resolve().parent / 'sharing-schema-matrix.json'
+    cases = json.loads(matrix.read_text())['cases']
+    expected = [case['id'] for case in cases]
+    evidence = report['schemaFingerprintEvidence']
+    assert len(expected) == len(set(expected)) == report['schemaFingerprintCount'] == len(evidence) == 31
+    assert [row['case'] for row in evidence] == expected
+    for row, case in zip(evidence, cases):
+        for field in ('actualNativeFingerprintVerified', 'actualEncryptedCatalogCandidate',
+                      'activeSnapshotPreserved', 'temporarySourceDeleted'):
+            assert row[field] is True, (row['case'], field)
+        assert _hash(row['originalFingerprint']) and row['originalFingerprint'] == row['exportFingerprint']
+        assert row['sourceHash'] == hashlib.sha256(case['source'].encode()).hexdigest()
+        assert _hash(row['exportHash'])
+    if complete:
+        assert report['sharePreparationPreservesActiveSnapshot'] is True
+        assert report['partialSharePreservesActiveSnapshot'] is True
+        assert report['cancelledBeforeRouteApplication'] is True
+        expected_taps = ['仅分享入口', '复制配置', '测试订阅整条线路', '仅分享出口', '复制配置',
+                         '测试入口分享', '复制配置', '测试出口分享', '复制配置', '测试固定出口分享', '复制配置',
+                         '检查分享未改动线路', '测试入口失败后仅分享出口', '复制配置', '恢复分享测试线路',
+                         '导入并选择环境', 'Sharing Window', '取消']
+        assert report['uiChecks'] == expected_taps
+        assert report['actualAndroidTaps'] == len(expected_taps)
+    return {'nativeSchemaFingerprints': len(evidence), 'encryptedCatalogRoundTrip': True,
+            'actualShareDialogsAndExplicitImport': complete}
+
+
+def verify_network_settings(directory, source, receipt, apk_sha256):
+    directory = pathlib.Path(directory)
+    reports = {}
+    for name in SETTINGS_REPORTS:
+        value = json.loads((directory / name).read_text())
+        assert value['sourceCommit'] == source and value['status'] == 'passed', name
+        assert not value.get('diagnosticOnly', False), name
+        reports[name] = value
+    android = {}
+    for mode in ('retry', 'application', 'internal'):
+        value = reports['network-settings-' + mode + '-results.json']
+        assert _hash(value['runNonce'], 32)
+        assert value['installedPackage'] == 'local.pocketchat.test'
+        assert value['installedApkSha256'] == value['buildIdentity']['apkSha256'] == apk_sha256
+        assert value['runnerOneAttempt'] is True
+        verifier, path = _settings_verifier(mode)
+        assert value['runnerSha256'] == hashlib.sha256(path.read_bytes()).hexdigest()
+        verifier.verify(value, source, value['runNonce'], apk_sha256)
+        android[mode] = value['checkCount']
+    _core_matches(reports['network-settings-internal-results.json'], receipt)
+    host_counts = {}
+    for implementation, jar_sha in SETTINGS_JSON_SHA256.items():
+        for kind in (*SETTINGS_HOST_MINIMUMS, 'ui'):
+            name = 'network-settings-' + kind + '-' + implementation + '-host-results.json'
+            value = reports[name]
+            assert value['actualAndroidExecution'] is False and value['ciSourceDirty'] is False
+            assert value['ciHost'] == {'jsonImplementation': implementation, 'jsonJarSha256': jar_sha}
+            if kind == 'ui':
+                assert set(value['results']) == {'UiSnapshotTest', 'NetworkOptimizationPolicyTest'}
+                for test, minimum in (('UiSnapshotTest', 39), ('NetworkOptimizationPolicyTest', 49)):
+                    result = value['results'][test]
+                    assert result['passed'] == result['total'] >= minimum
+                host_counts[implementation + '-' + kind] = sum(r['passed'] for r in value['results'].values())
+            else:
+                checks = value['checks']
+                assert value['passed'] == len(checks) >= SETTINGS_HOST_MINIMUMS[kind]
+                assert all(row['pass'] is True for row in checks)
+                assert len({row['name'] for row in checks}) == len(checks)
+                host_counts[implementation + '-' + kind] = len(checks)
+    parsers = reports['network-settings-parser-negative-results.json']
+    assert parsers['actualAndroidExecution'] is False and parsers['ciSourceDirty'] is False
+    assert set(parsers['suites']) == set(SETTINGS_PARSER_SUITES)
+    for name, minimum in SETTINGS_PARSER_SUITES.items():
+        result = parsers['suites'][name]
+        assert result['testsRun'] >= minimum and result['successful'] is True
+        assert result['failures'] == result['errors'] == result['skipped'] == 0
+        assert _hash(result['sourceSha256'])
+    return {'actualAndroidChecks': android, 'productionHostChecks': host_counts,
+            'requiredParserNegativeSuites': len(parsers['suites']), 'sameIntegrationApk': True}
 MODEL_STORAGE_CHECKS = {
     'Original encrypted record layout and slot AAD remain readable',
     'Unprotected Android AtomicFile creates an actual pending .new',
@@ -524,9 +643,13 @@ def verify_network_sources(directory, source, receipt):
     trust_host = report('network-safe-idle-trust-host-results.json')
     _verify_safe_idle_trust_host(trust_host, source, idle['installedApkSha256'])
     idle_result = verify_safe_idle(idle)
+    sharing = json.loads((directory / 'network-source-sharing-results.json').read_text())
+    sharing_result = verify_network_sharing(sharing, source, ui['installedApkSha256'], complete=True)
+    settings_result = verify_network_settings(directory, source, receipt, ui['installedApkSha256'])
     return {'separateEntryAndExitLibraries': True, 'sourceModelAndroidChecks': model['checkCount'],
             'sourceUiAndroidChecks': ui['checkCount'], 'actualTouchChecks': ui['touchUiCheckCount'],
             'privateEnvironmentSnapshots': True, 'fixedExitRoute': route_result,
             'pendingBaselineLineageHostChecks': lineage['total'], 'actualSafeIdleFences': idle_result,
             'integrationTestCaAssetsVerified': True, 'integrationTestCaAssetFiles': trust_host['integrationApkAssetCount'],
-            'crossJvmStorageLeaseHostChecks': storage['total'], 'actualAndroidStoragePublicationBarrier': True}
+            'crossJvmStorageLeaseHostChecks': storage['total'], 'actualAndroidStoragePublicationBarrier': True,
+            'singleNodeSharing': sharing_result, 'versionedNetworkSettings': settings_result}

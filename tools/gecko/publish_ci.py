@@ -50,6 +50,8 @@ for pattern in ['environment-spec-*.txt','environment-intent-*.txt','gecko-ident
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 for pattern in ['native-adb-setup-results.json','android-emulator-package-results.json','android-system-image-results.json','periodic-latency-*.json','periodic-latency-*.txt','extension-upgrade-*.json','extension-upgrade-*.txt','network-catalog-host-results.json','network-source-host-results.json','network-lineage-host-results.json','sealed-file-host-results.json','network-source-*.json','network-source-*.txt','network-source-*.png','network-source-*.xml','network-safe-idle-*.json','network-safe-idle-*.txt','network-safe-idle-*.png','network-safe-idle-*.xml','appearance-*.json','appearance-*.png','appearance-*.xml']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
+for pattern in ['network-settings-*.json', 'network-settings-*.txt', 'network-settings-*.png', 'network-settings-*.xml']:
+    for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 for name in ['environment-spec-results.json', 'environment-spec-failure-log.txt']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 if (out/'ui-visuals').exists():shutil.copytree(out/'ui-visuals',stage/'ui-visuals',dirs_exist_ok=True)
