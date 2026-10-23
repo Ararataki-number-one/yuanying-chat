@@ -39,6 +39,7 @@ jobs:
         python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/image.json
 
         python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/adb-diagnostic/platform-tools.json
     - name: Boot the unchanged Android runtime
       run: |
         set -euo pipefail
@@ -61,8 +62,11 @@ jobs:
         def adb(*parts):return subprocess.check_output(base+list(parts),text=True,timeout=8)
         deadline=time.monotonic()+30
         while True:
-         addresses=adb('shell','ip','-4','-o','addr','show','wlan0');route=adb('shell','ip','-4','route','get','10.0.2.2')
-         if 'inet 10.0.2.16/' in addresses and 'dev wlan0' in route:break
+         address_result=subprocess.run(base+['shell','ip','-4','-o','addr','show','wlan0'],capture_output=True,text=True,timeout=8)
+         route_result=subprocess.run(base+['shell','ip','-4','route','get','10.0.2.2'],capture_output=True,text=True,timeout=8)
+         addresses=address_result.stdout;route=route_result.stdout
+         record.setdefault('networkObservations',[]).append(dict(addressExit=address_result.returncode,routeExit=route_result.returncode,addresses=addresses,route=route,errors=address_result.stderr+route_result.stderr))
+         if address_result.returncode==route_result.returncode==0 and 'inet 10.0.2.16/' in addresses and 'dev wlan0' in route:break
          if time.monotonic()>deadline:raise TimeoutError('Actual WiFi address/return route not ready')
          time.sleep(.25)
         record.update(wifiAddresses=addresses,returnRoute=route)
@@ -143,6 +147,17 @@ jobs:
          except Exception as e:(out/(name+'.txt')).write_text(str(e))
         assert all(r.get('exact') and r.get('actualDefinitionAuditMatches') for r in rows),'At least one fixed observation failed; no replacement'
         PYOBSERVE
+    - name: Always preserve connection and listener metadata only
+      if: always()
+      run: |
+        python3 - <<'PYMETA'
+        import pathlib,subprocess
+        out=pathlib.Path('work/adb-diagnostic');out.mkdir(parents=True,exist_ok=True)
+        for name,cmd in [('devices',['adb','devices','-l']),('guest-addresses',['adb','-s','emulator-5556','shell','ip','-4','addr']),('guest-routes',['adb','-s','emulator-5556','shell','ip','-4','route','show','table','all']),('guest-listeners',['adb','-s','emulator-5556','shell','ss','-tn']),('host-listeners',['ss','-tnp'])]:
+         try:
+          r=subprocess.run(cmd,capture_output=True,timeout=10);(out/(name+'.txt')).write_bytes(r.stdout+r.stderr)
+         except Exception as e:(out/(name+'.txt')).write_text(str(e))
+        PYMETA
     - name: Always preserve connection and listener metadata only
       if: always()
       run: |
