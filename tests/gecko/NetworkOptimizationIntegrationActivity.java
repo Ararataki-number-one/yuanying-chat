@@ -108,12 +108,12 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       JSONObject runningConfig=J.parse(new String(java.nio.file.Files.readAllBytes(new File(n.root,"config.json").toPath()),StandardCharsets.UTF_8));check("DNS nameservers remain guarded by the fixed exit",runningConfig.getJSONObject("dns").getJSONArray("nameserver").getString(0).endsWith("#FixedExit"));
       coldWebsiteTrace=new ColdWebsiteTrace();slow.observeColdWebsite(coldWebsiteTrace,"slow");fast.observeColdWebsite(coldWebsiteTrace,"fast");fixed.observeColdWebsite(coldWebsiteTrace,"fixed");site.observeColdWebsite(coldWebsiteTrace,"site");
       JSONObject first=observeColdWebsite(n,"Entry|slow");check("First and repeat website headers are measured",first.getString("status").equals("ok")&&first.getLong("firstMs")>0&&first.getLong("warmMs")>0);
-      NetworkCatalog.put(report,"firstWebsiteReading",first);NetworkCatalog.put(report,"headConnectionIds",new JSONArray(site.headConnections));check("HEAD repeat reuses the same controlled HTTP connection",site.headConnections.size()>=2&&site.headConnections.get(0).equals(site.headConnections.get(1)));
+      NetworkCatalog.put(report,"firstWebsiteReading",J.parse(first.toString()));NetworkCatalog.put(report,"headConnectionIds",new JSONArray(site.headConnections));check("HEAD repeat reuses the same controlled HTTP connection",site.headConnections.size()>=2&&site.headConnections.get(0).equals(site.headConnections.get(1)));
       check("Website probes contain no account Cookie or Authorization",!site.credentialsSeen);
       JSONObject alternative=observeColdWebsite(n,"Entry|fast");coldWebsiteTrace.freeze();slow.observeColdWebsite(null,"");fast.observeColdWebsite(null,"");fixed.observeColdWebsite(null,"");site.observeColdWebsite(null,"");check("A different candidate uses a new probe connection",!site.headConnections.get(1).equals(site.headConnections.get(2)));
       check("Candidate probing leaves the live route unchanged",n.currentEntry.equals("Entry|slow")&&n.api("GET","/proxies/EntryChoice",null,3000).getString("now").equals("Entry|slow"));
       check("Both entry routes and the same fixed exit carry real requests",slow.connections>0&&fast.connections>0&&fixed.connections>=2);
-      NetworkCatalog.put(report,"controlledWebsiteReadings",J.arr(first,alternative));
+      NetworkCatalog.put(report,"controlledWebsiteReadings",J.arr(J.parse(first.toString()),J.parse(alternative.toString())));
       check("A faster permitted entrance reduces controlled website cold response time",alternative.getLong("firstMs")<first.getLong("firstMs"));
       NativeNetwork.RouteProbe challenger=n.startupProbe("Entry|fast",n.names.indexOf("Entry|fast"),n.token);check("Challenger has actual native full-chain evidence",challenger.delay>0&&challenger.sample!=null);n.recordProbe(challenger.sample,System.currentTimeMillis());
       int headBefore=site.headConnections.size();n.measureWebsiteCandidates(n.names);

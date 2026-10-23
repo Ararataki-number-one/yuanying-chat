@@ -36,7 +36,7 @@ def main():
       'MAIN':('MainActivity.java',['void status(','boolean reloadMatches(','void confirmIndependentReload(']),
       'REPLY':('ReplyState.java',['static String describe(','static void checkWithoutRecovery(','static void websiteConnection('])}
     fixture=pathlib.Path(__file__).parent/'PageRecoveryHost.java'
-    inputs={source/name for name,_ in selections.values()}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py')}
+    inputs={source/name for name,_ in selections.values()}|{source/name for name in ('WebReplyObserver.java','BrowserRuntimePolicy.java','BrowserSettingsPolicy.java')}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py')}
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(inputs)}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     text=fixture.read_text()

@@ -143,7 +143,7 @@ public class MainActivity extends ThemedActivity {
     if(!remote.hasVisibleDocument()||!MainActivity.chatUrl(url)){confirmIndependentReload(target,"无法完整读取当前网页中的输入或表单内容。");return;}
     reloadChecking=true;
     session.asyncDriver("web-inspect",new JSONObject(),2500,state->{
-      if(!reloadMatches(target)){reloadChecking=false;return;}
+      if(destroyed||session!=target.owner||remote!=session.web){reloadChecking=false;return;}
       ChatSession.ReloadTarget inspected=session.reloadTargetAfterInspection(target,state);
       if(inspected==null||!reloadMatches(inspected)){reloadChecking=false;return;}
       boolean busy=ProfileUi.working(session)||state.optBoolean("busy");

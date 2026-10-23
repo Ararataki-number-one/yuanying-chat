@@ -10,6 +10,7 @@ final class WebReplyObserver {
   final ChatSession session;
   String script = "", completionJob = "", completionSignature = "";
   long completionSince;
+  JSONObject lastNavigationArchivedJob;long navigationArchiveSequence;
   int completionSamples;
   boolean supported;
 
@@ -90,6 +91,7 @@ final class WebReplyObserver {
         String identity = document + ":" + token;
         if (identity.equals(session.prefs.getString("lastWebGesture", ""))) return;
         if (session.pending != null && !webJob(session.pending)) return;
+        session.webWorkGeneration++;
         if (session.pending != null) session.delivery(session.pending.optString("id"), "uncertain",
           "网页已开始另一条提问，原等待记录已保留，请在原对话核对", true, "", "");
         JSONArray names = new JSONArray();
@@ -169,6 +171,7 @@ final class WebReplyObserver {
     session.observedReplyJob=session.observedReplyUrl=session.observedReplyKey=session.observedReplyRevision=session.observedReplyMarkdown="";
     session.observedReplyHasFiles=false;
     final String archivedUrl=url;if(!prompt.isEmpty())session.webStore.worker.execute(()->DraftArchive.get(session.context).save(archivedUrl,prompt,"切换对话前待核对提问"));
+    lastNavigationArchivedJob=job;navigationArchiveSequence++;
     ChatService.end(session.context);session.status="已切换对话";return true;
   }
 
