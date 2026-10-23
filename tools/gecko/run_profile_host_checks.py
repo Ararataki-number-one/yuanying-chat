@@ -71,11 +71,15 @@ def main():
     groups += [(name, names) for name, names in extras if (tests / (name + ".java")).is_file()]
     if (tests / "ChromeCollapseDocumentReadyAdapterTest.java").is_file():
         groups.append(("ChromeCollapseDocumentReadyAdapterTest", []))
+    if (tests / "ReloadDocumentReadyAdapterTest.java").is_file():
+        groups.append(("ReloadDocumentReadyAdapterTest", []))
     files = {source / (name + ".java") for _, names in groups for name in names}
     files.update(tests / (name + ".java") for name, _ in groups)
     files.update((ROOT / "tests/route-quality-host/android/content").glob("*.java"))
     if (tests / "ChromeCollapseDocumentReadyAdapterTest.java").is_file():
         files.add(ROOT / "tests/gecko/ChromeCollapseDocumentReadyAdapter.java")
+    if (tests / "ReloadDocumentReadyAdapterTest.java").is_file():
+        files.add(ROOT / "tests/gecko/ReloadDocumentReadyAdapter.java")
     if (tests / "FingerprintTemplateTest.java").is_file():
         files.add(tests / "fingerprint-report-stubs/BrowserNetworkGuard.java")
     compiler = [java, "-m", "jdk.compiler/com.sun.tools.javac.Main", "-encoding", "UTF-8",

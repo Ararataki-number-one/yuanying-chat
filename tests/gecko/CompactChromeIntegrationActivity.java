@@ -8,6 +8,7 @@ import android.view.*;
 import android.widget.*;
 import java.lang.reflect.*;
 import org.json.*;
+import org.mozilla.geckoview.*;
 
 /** Test-only: actual production chrome, native hit regions and trusted Android taps. */
 public final class CompactChromeIntegrationActivity extends MainActivity {
@@ -19,7 +20,38 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   ChromeCollapseIntegration collapse;
   static class ReloadView extends GeckoWebView {
     static final String LOCAL="http://127.0.0.1:8765/";boolean tracking;int stops,loads;String requested="";
-    ReloadView(Context c,ChatSession owner){super(c,owner);}
+    final String reloadRun;JSONObject documentReadyEvidence=new JSONObject();
+    ReloadView(Context c,ChatSession owner){this(c,owner,"");}
+    ReloadView(Context c,ChatSession owner,String run){super(c,owner);reloadRun=run;}
+    @Override GeckoSession newSession(){
+      GeckoSession sdk=super.newSession();final String registeredRun=reloadRun;
+      // CollapseView has its own fixed-document adapter. Only reloadStart opts in here.
+      if(registeredRun==null||!registeredRun.matches("reload-reloadStart-[0-9]+"))return sdk;
+      sdk.getWebExtensionController().setMessageDelegate(extension,new WebExtension.MessageDelegate(){
+        @Override public void onConnect(WebExtension.Port port){
+          pageMessages.onConnect(port);
+          final WebExtension.PortDelegate original;
+          try{Field field=WebExtension.Port.class.getDeclaredField("delegate");field.setAccessible(true);Object value=field.get(port);if(!(value instanceof WebExtension.PortDelegate))return;original=(WebExtension.PortDelegate)value;}
+          catch(ReflectiveOperationException failure){throw new IllegalStateException("Pinned SDK reload delegate unavailable",failure);}
+          port.setDelegate(new WebExtension.PortDelegate(){
+            @Override public void onPortMessage(Object message,WebExtension.Port incoming){
+              Object forwarded=message;boolean mapped=false;
+              if(message instanceof JSONObject){JSONObject data=(JSONObject)message;
+                mapped=ReloadDocumentReadyAdapter.maps(data.optString("kind"),data.optString("url"),rawUrl(),port.sender.url,getUrl(),registeredRun,reloadRun,incoming==port&&ports.get(sdk)==port&&port.sender.session==sdk&&sdk==current,port.sender.isTopLevel(),port.sender.environmentType==WebExtension.MessageSender.ENV_TYPE_CONTENT_SCRIPT);
+                if(mapped)try{
+                  JSONObject normalized=new JSONObject(data.toString());normalized.put("url",getUrl());forwarded=normalized;
+                  documentReadyEvidence=J.obj("fixtureRun",reloadRun,"registeredRun",registeredRun,"rawMessage",new JSONObject(data.toString()),"senderUrl",port.sender.url,"actualUrl",rawUrl(),"visibleUrl",getUrl(),"nativeSession",System.identityHashCode(port.sender.session),"currentSession",System.identityHashCode(current),"topLevel",port.sender.isTopLevel(),"contentScript",true,"normalizedMessage",new JSONObject(normalized.toString()));
+                }catch(JSONException failure){throw new IllegalStateException(failure);}
+              }
+              // Keep the real native delegate as the sole owner of usable-document admission.
+              original.onPortMessage(forwarded,incoming);
+              if(mapped)try{documentReadyEvidence.put("acceptedByProduction",hasVisibleDocument());}catch(JSONException failure){throw new IllegalStateException(failure);}
+            }
+            @Override public void onDisconnect(WebExtension.Port incoming){original.onDisconnect(incoming);}
+          });
+        }
+      },"pocketpage");return sdk;
+    }
     String rawUrl(){return super.getUrl();}
     @Override protected boolean allowedUrl(String target){return target!=null&&target.startsWith(LOCAL+"c/reload-");}
     @Override public String getUrl(){String raw=super.getUrl();return raw!=null&&raw.startsWith(LOCAL)?MainActivity.ORIGIN+raw.substring(LOCAL.length()):raw;}
@@ -33,7 +65,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
 
   @Override public void onCreate(Bundle state){
     if(!getPackageName().endsWith(".test"))throw new SecurityException();
-    reloadFixture="reloadStart".equals(getIntent().getStringExtra("compactAction"));if(reloadFixture)ChatSession.browserFactory=ReloadView::new;
+    reloadFixture="reloadStart".equals(getIntent().getStringExtra("compactAction"));if(reloadFixture){String run=getIntent().getStringExtra("compactCommand");ChatSession.browserFactory=(c,owner)->new ReloadView(c,owner,run);}
     boolean collapseFixture="collapseStart".equals(getIntent().getStringExtra("compactAction"));if(collapseFixture)ChatSession.browserFactory=ChromeCollapseIntegration.CollapseView::new;
     ProfileCatalog.get(this).created(0);
     Profiles.rename(this,0,getIntent().getBooleanExtra("longName",true)?"长文阅读与文件整理和日常会话测试环境":"默认环境");
@@ -82,7 +114,9 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     if("performance".equals(intent.getStringExtra("compactAction")))handler.post(this::performance);
   }
   void waitReloadDocument(long deadline){
-    remote.evaluateJavascript("({ready:!!document.getElementById('prompt-textarea'),path:location.pathname})",raw->{JSONObject ready=J.parse(raw);if(!ready.optBoolean("ready")){if(SystemClock.elapsedRealtime()>deadline){reloadEvent("error",J.obj("error","Controlled reload document timeout"));return;}handler.postDelayed(()->waitReloadDocument(deadline),100);return;}
+    remote.evaluateJavascript("({ready:!!document.getElementById('prompt-textarea'),path:location.pathname,document:document.documentElement.getAttribute('data-reload-document')})",raw->{JSONObject ready=J.parse(raw);ReloadView web=(ReloadView)remote;
+      if(!ready.optBoolean("ready")||!ready.optString("document").matches("[0-9a-f]{32}")||!remote.hasVisibleDocument()||!web.documentReadyEvidence.optBoolean("acceptedByProduction")||!web.rawUrl().equals(web.documentReadyEvidence.optString("actualUrl"))){if(SystemClock.elapsedRealtime()>deadline){reloadEvent("error",J.obj("error","Controlled reload document timeout","nativeUrl",web.rawUrl(),"visibleDocument",remote.hasVisibleDocument(),"documentReadyEvidence",web.documentReadyEvidence));return;}handler.postDelayed(()->waitReloadDocument(deadline),100);return;}
+      try{web.documentReadyEvidence.put("documentMarker",ready.optString("document"));}catch(JSONException failure){throw new IllegalStateException(failure);}
       String script=session.driver.replace("__ACTION__","action").replace("__ARG__","arg");remote.evaluateJavascript("window.__pocketReadDriver=(action,arg)=>"+script+";({installed:true})",unused->{session.handler.removeCallbacks(session.tick);if(reloadDocuments==1){((ReloadView)remote).tracking=true;reloadCommand("prepareBusy");}else reloadSnapshot("reloaded");});
     });
   }
@@ -107,7 +141,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     if(SystemClock.elapsedRealtime()>deadline){reloadEvent("error",J.obj("error","Reload confirmation did not appear"));return;}handler.postDelayed(()->waitReloadModal(deadline),50);
   }
   void reloadSnapshot(String event){remote.evaluateJavascript("({body:document.documentElement.outerHTML,draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.getAttribute('data-reload-document')})",raw->{
-    JSONObject result=J.parse(raw);ReloadView web=(ReloadView)remote;try{result.put("documents",reloadDocuments).put("stops",web.stops).put("loads",web.loads).put("requested",web.requested).put("currentUrl",web.getUrl()).put("cachedResumeUrl",session.resumeUrl()).put("modal",reloadDialog!=null&&reloadDialog.isShowing());}catch(Exception ignored){}
+    JSONObject result=J.parse(raw);ReloadView web=(ReloadView)remote;try{result.put("documents",reloadDocuments).put("stops",web.stops).put("loads",web.loads).put("requested",web.requested).put("currentUrl",web.getUrl()).put("nativeUrl",web.rawUrl()).put("nativeSession",System.identityHashCode(web.current)).put("visibleDocument",web.hasVisibleDocument()).put("documentReadyEvidence",web.documentReadyEvidence).put("cachedResumeUrl",session.resumeUrl()).put("modal",reloadDialog!=null&&reloadDialog.isShowing());}catch(Exception ignored){}
     if("reloadReady".equals(event)){reloadBefore=result.toString();reloadArchivedDraft=result.optString("draft");}
     if("reloaded".equals(event))session.webStore.worker.execute(()->{boolean saved=false;JSONArray rows=DraftArchive.get(session.context).list(MainActivity.ORIGIN+"c/reload-B");for(int i=0;i<rows.length();i++)saved|=reloadArchivedDraft.equals(rows.optJSONObject(i).optString("body"));boolean archived=saved;handler.post(()->{try{result.put("draftArchived",archived);}catch(Exception ignored){}reloadEvent(event,result);});});else reloadEvent(event,result);
   });}
