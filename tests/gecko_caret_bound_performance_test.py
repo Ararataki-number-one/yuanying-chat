@@ -64,7 +64,8 @@ class BoundPerformanceControls(unittest.TestCase):
         raise AssertionError(command)
 
     def run_once(self, command, **kwargs):
-        if command[3:7] == ['shell','-T','cat','/data/app/controlled/base.apk']:
+        if command[3:7] == ['shell','-T','dd','if=/data/app/controlled/base.apk']:
+            self.assertEqual(command[7:],['bs=4194304','skip=0','count=1','status=none'])
             self.installed_reads += 1
             data=self.apk.read_bytes()+(b'changed' if self.change_after and self.installed_reads == 2 else b'')
             return subprocess.CompletedProcess(command,0,stdout=data,stderr=b'')

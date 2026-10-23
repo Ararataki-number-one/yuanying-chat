@@ -1,4 +1,4 @@
-"""Real binary subprocess tests for the one-shot installed-APK reader; no Android."""
+"""Real binary subprocess controls for strict ranged APK transport; no Android."""
 import contextlib
 import hashlib
 import importlib.util
@@ -30,6 +30,12 @@ record=dict(argv=sys.argv[1:],stdoutIsRegularFile=stat.S_ISREG(fd.st_mode),
             trace=os.environ.get('ADB_TRACE'))
 with (base/'commands.jsonl').open('a') as log:log.write(json.dumps(record)+'\n')
 raw=(base/'payload.bin').read_bytes();mode=config['mode']
+options=dict(x.split('=',1) for x in sys.argv[6:])
+assert sys.argv[5]=='dd' and options['if'].endswith('/base.apk')
+block=int(options['bs']);index=int(options['skip'])
+assert options['count']=='1' and options['status']=='none'
+raw=raw[index*block:(index+1)*block]
+if config.get('failIndex') is not None and index!=config['failIndex']:mode='success'
 if mode in ('empty','stderr-only'):raw=b''
 if mode=='short':raw=raw[:-31]
 if mode=='wrong':raw=bytes([raw[0]^255])+raw[1:]
@@ -67,7 +73,8 @@ class InstalledApkReadTests(unittest.TestCase):
         p=self.directory/'commands.jsonl';return [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
     def assert_once(self):
         rows=self.commands();self.assertEqual(len(rows),1)
-        self.assertEqual(rows[0]['argv'],['-s',SERIAL,'shell','-T','cat',INSTALLED])
+        self.assertEqual(rows[0]['argv'],['-s',SERIAL,'shell','-T','dd','if='+INSTALLED,
+                         'bs='+str(READER.RANGE_BYTES),'skip=0','count=1','status=none'])
         self.assertFalse(rows[0]['stdoutIsRegularFile']);self.assertFalse(rows[0]['reservedFileDescriptor'])
         self.assertTrue(rows[0]['finalPreReserved'])
         self.assertEqual(rows[0]['trace'],'adb,transport,sockets')
@@ -81,18 +88,69 @@ class InstalledApkReadTests(unittest.TestCase):
         self.assertEqual(receipt['actualFileSha256'],hashlib.sha256(raw).hexdigest())
         self.assertEqual(receipt['stdoutBytes'],len(raw));self.assertTrue(receipt['partialCleaned'])
         self.assertFalse(self.destination.exists())
-    def test_one_framed_binary_stream_is_captured_before_writing_reserved_file(self):
+    def test_one_framed_range_is_captured_before_writing_reserved_file(self):
         with patch.object(READER.subprocess,'run',wraps=subprocess.run) as process:r=self.read()
         process.assert_called_once();options=process.call_args.kwargs
         self.assertEqual(options['stdin'],subprocess.DEVNULL);self.assertEqual(options['stderr'],subprocess.PIPE)
         self.assertEqual(options['stdout'],subprocess.PIPE)
-        self.assertEqual(options['timeout'],30);self.assertIs(options['check'],False);self.assertFalse(options.get('shell',False))
+        self.assertGreater(options['timeout'],29);self.assertLessEqual(options['timeout'],30)
+        self.assertIs(options['check'],False);self.assertFalse(options.get('shell',False))
         self.assert_once();self.assertEqual(self.destination.read_bytes(),PAYLOAD)
-        self.assertEqual(r,self.receipt());self.assertEqual(r['transport'],'adb-shell-v2-no-pty')
+        self.assertEqual(r,self.receipt());self.assertEqual(r['transport'],'adb-shell-v2-no-pty-ranged')
         self.assertEqual(r['status'],'verified-bytes');self.assertTrue(r['actualInstalledApkRead'])
         self.assertFalse(r['actualAndroidFixtureExecution']);self.assertFalse(r['retryPerformed']);self.assertFalse(r['compiledFileFallback'])
         self.assertEqual(r['actualFileBytes'],len(PAYLOAD));self.assertEqual(r['actualFileSha256'],hashlib.sha256(PAYLOAD).hexdigest())
         self.assertEqual(r['stderrBytes'],0);self.assertEqual(r['returnCode'],0)
+        self.assertEqual(r['ranges'][0]['offset'],0)
+        self.assertEqual(r['ranges'][0]['status'],'verified-length')
+    def large_payload(self):
+        raw=bytes(range(251))*(READER.RANGE_BYTES*2//251+1)+b'last partial range\x00'
+        (self.directory/'payload.bin').write_bytes(raw)
+        return raw
+    def test_all_contiguous_ranges_once_including_final_partial_are_audited_together(self):
+        raw=self.large_payload()
+        r=self.read(expected_bytes=len(raw),expected_sha256=hashlib.sha256(raw).hexdigest())
+        self.assertEqual(self.destination.read_bytes(),raw)
+        self.assertEqual(len(self.commands()),3)
+        self.assertEqual([x['argv'][7] for x in self.commands()],['skip=0','skip=1','skip=2'])
+        self.assertEqual([x['offset'] for x in r['ranges']],[0,READER.RANGE_BYTES,READER.RANGE_BYTES*2])
+        self.assertEqual(sum(x['actualBytes'] for x in r['ranges']),len(raw))
+        self.assertTrue(all(x['status']=='verified-length' for x in r['ranges']))
+        self.assertFalse(r['retryPerformed']);self.assertFalse(r['compiledFileFallback'])
+    def test_middle_range_failure_is_fatal_without_retry_or_later_ranges(self):
+        raw=self.large_payload()
+        for mode in ('error','short','empty','wrong'):
+            with self.subTest(mode=mode):
+                (self.directory/'commands.jsonl').unlink(missing_ok=True)
+                (self.directory/'config.json').write_text(json.dumps(dict(mode=mode,failIndex=1,finalPath=str(self.destination))))
+                r=self.failure(expected_bytes=len(raw),expected_sha256=hashlib.sha256(raw).hexdigest())
+                expected_commands=3 if mode=='wrong' else 2
+                self.assertEqual(len(self.commands()),expected_commands)
+                self.assertFalse(self.destination.exists());self.assertTrue(r['partialCleaned'])
+                self.assertEqual(r['ranges'][1]['index'],1)
+    def test_aligned_expected_prefix_cannot_hide_appended_installed_bytes(self):
+        raw=self.large_payload();prefix=raw[:READER.RANGE_BYTES]
+        r=self.failure(expected_bytes=len(prefix),expected_sha256=hashlib.sha256(prefix).hexdigest())
+        self.assertEqual(len(self.commands()),2)
+        self.assertEqual(r['ranges'][1]['expectedBytes'],0)
+        self.assertGreater(r['ranges'][1]['actualBytes'],0)
+        self.assertFalse(self.destination.exists())
+    def test_aligned_complete_file_requires_successful_empty_eof_range(self):
+        raw=self.large_payload()[:READER.RANGE_BYTES]
+        (self.directory/'payload.bin').write_bytes(raw)
+        r=self.read(expected_bytes=len(raw),expected_sha256=hashlib.sha256(raw).hexdigest())
+        self.assertEqual(len(self.commands()),2)
+        self.assertEqual(r['ranges'][1]['expectedBytes'],0)
+        self.assertEqual(r['ranges'][1]['actualBytes'],0)
+        self.assertEqual(self.destination.read_bytes(),raw)
+    def test_all_ranges_share_one_deadline_instead_of_renewing_thirty_seconds(self):
+        raw=self.large_payload()
+        with patch.object(READER.time,'monotonic',side_effect=[100,100.1,129.9,130.1]), \
+                patch.object(READER.subprocess,'run',wraps=subprocess.run) as process:
+            r=self.failure(expected_bytes=len(raw),expected_sha256=hashlib.sha256(raw).hexdigest())
+        self.assertEqual(process.call_count,2);self.assertEqual(len(self.commands()),2)
+        self.assertLess(process.call_args.kwargs['timeout'],.11)
+        self.assertEqual(r['failureType'],'TimeoutExpired');self.assertFalse(r['retryPerformed'])
     def test_exact_hash_cannot_replace_wrong_expected_size(self):
         r=self.failure(expected_bytes=len(PAYLOAD)+1);self.assert_once();self.assert_partial(r,PAYLOAD)
     def test_exact_size_cannot_replace_wrong_expected_hash(self):

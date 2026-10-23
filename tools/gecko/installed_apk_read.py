@@ -1,4 +1,4 @@
-"""Read one actual installed APK through framed, non-PTY ADB, with no fallback."""
+"""Read actual installed APK ranges through framed, non-PTY ADB, without retries."""
 import hashlib
 import json
 import math
@@ -16,6 +16,11 @@ class InstalledApkReadError(ValueError):
     def __init__(self, diagnostics):
         self.diagnostics = diagnostics
         super().__init__('Actual installed APK read failed: ' + json.dumps(diagnostics, sort_keys=True))
+
+
+# Bound each stream and its host allocation. Ranges are contiguous, read once,
+# and checked individually as well as by the unchanged whole-file identity.
+RANGE_BYTES = 4 * 1024 * 1024
 
 
 def _disk(path):
@@ -56,7 +61,7 @@ def _record(path, receipt):
 
 def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha256,
                        expected_bytes, diagnostics, label, timeout=30):
-    """One bounded raw binary read, followed by exact size/hash verification.
+    """One bounded read of each APK range, followed by exact size/hash verification.
 
     The caller still audits ZIP/DEX/SDK/source assets on this actual transferred
     file. Failure removes only our exclusive partial file; no retry, install,
@@ -64,7 +69,7 @@ def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha
     """
     destination, diagnostics = Path(destination), Path(diagnostics)
     receipt = dict(schema=1, scope='host-read-only-installed-apk-byte-transfer', status='failed',
-                   transport='adb-shell-v2-no-pty', dataSource='binary-stdout-destination-file',
+                   transport='adb-shell-v2-no-pty-ranged', dataSource='binary-stdout-destination-file',
                    adbTrace='adb,transport,sockets',
                    label=label, installedApkPath=installed_path, destination=str(destination),
                    expectedBytes=expected_bytes, expectedSha256=expected_sha256,
@@ -74,7 +79,8 @@ def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha
                    cliStdout='', cliStdoutBytes=0, cliStdoutSha256=None, cliStdoutTruncated=False,
                    hostDiskBefore=_disk(destination.parent), startedAtMonotonicNanos=time.monotonic_ns(),
                    actualInstalledApkRead=False, actualAndroidFixtureExecution=False,
-                   retryPerformed=False, compiledFileFallback=False, partialCleaned=False)
+                   retryPerformed=False, compiledFileFallback=False, partialCleaned=False,
+                   rangeBytes=RANGE_BYTES, ranges=[])
     owned = False
     owned_identity = None
     try:
@@ -88,36 +94,55 @@ def read_installed_apk(*, adb, serial, installed_path, destination, expected_sha
             raise ValueError('Exact selected APK byte count and SHA256 required')
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 30:
             raise ValueError('Installed byte read must use a finite deadline at most 30 seconds')
-        # Reserve the destination exclusively. Shell v2 supplies a remote exit
-        # status and separate stderr; -T forbids terminal byte transformations.
-        # Capture binary stdout through a pipe, avoiding exec-out's unchecked
-        # stdio copy directly into our file. There is exactly one device read.
+        # Reserve the destination exclusively. Shell v2 supplies remote exit
+        # statuses and separate stderr; -T forbids terminal transformations.
+        # Never replay a failed range or resume across a transport failure.
         with destination.open('xb') as output:
             owned = True
             before = os.fstat(output.fileno())
             owned_identity = (before.st_dev, before.st_ino)
             # The canonical absolute path cannot be an option and the whitelist
             # excludes shell syntax. No login shell, PTY, or alternate file is used.
-            command = [str(adb), '-s', serial, 'shell', '-T', 'cat', installed_path]
-            receipt['command'] = command
             environment = dict(os.environ, ADB_TRACE=receipt['adbTrace'])
-            try:
-                result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE, timeout=timeout, check=False,
-                                        env=environment)
-            except subprocess.TimeoutExpired as error:
-                # Preserve partial binary bytes in the ordinary size/hash
-                # diagnostics; never decode APK contents into public log text.
-                if error.stdout:
-                    output.write(error.stdout)
-                    output.flush()
-                raise
-            output.write(result.stdout)
-            output.flush()
-            receipt.update(returnCode=result.returncode, **_stderr(result.stderr))
-            after = destination.lstat()
-            if not stat.S_ISREG(after.st_mode) or (after.st_dev, after.st_ino) != owned_identity:
-                raise ValueError('Actual installed APK destination ownership changed')
+            deadline = time.monotonic() + timeout
+            # An exactly aligned file requires a final zero-length EOF range;
+            # otherwise a matching prefix could hide appended device bytes.
+            for index, offset in enumerate(range(0, expected_bytes + 1, RANGE_BYTES)):
+                count = min(RANGE_BYTES, expected_bytes - offset)
+                command = [str(adb), '-s', serial, 'shell', '-T', 'dd',
+                           'if=' + installed_path, 'bs=' + str(RANGE_BYTES),
+                           'skip=' + str(index), 'count=1', 'status=none']
+                receipt['command'] = command
+                part = dict(index=index, offset=offset, expectedBytes=count, returnCode=None,
+                            actualBytes=0, status='failed')
+                receipt['ranges'].append(part)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(command, timeout)
+                try:
+                    result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE, timeout=remaining, check=False,
+                                            env=environment)
+                except subprocess.TimeoutExpired as error:
+                    # Record partial bytes, never decode APK contents into logs.
+                    if error.stdout:
+                        output.write(error.stdout)
+                        output.flush()
+                        part['actualBytes'] = len(error.stdout)
+                    raise
+                output.write(result.stdout)
+                output.flush()
+                part.update(returnCode=result.returncode, actualBytes=len(result.stdout),
+                            sha256=hashlib.sha256(result.stdout).hexdigest())
+                receipt.update(returnCode=result.returncode, **_stderr(result.stderr))
+                after = destination.lstat()
+                if not stat.S_ISREG(after.st_mode) or (after.st_dev, after.st_ino) != owned_identity:
+                    raise ValueError('Actual installed APK destination ownership changed')
+                if result.returncode != 0:
+                    raise ValueError('ADB direct range read returned nonzero exit status')
+                if len(result.stdout) != count:
+                    raise ValueError('Actual installed APK range has incorrect byte count')
+                part['status'] = 'verified-length'
         # Compatibility names describe actual raw device bytes. No progress or
         # log text is accepted instead, even when the ADB process exits zero.
         receipt['stdoutBytes'], receipt['stdoutSha256'] = _file_identity(destination)
