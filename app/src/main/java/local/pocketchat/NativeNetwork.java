@@ -47,7 +47,7 @@ class NativeNetwork {
   void recordProbe(ProbeResult result,long now){if(probeCurrent(result))quality.record(result.binding.entry,result.delay,now,result.kind(),result.trace==null?new JSONObject():new JSONObject(result.trace.values()),J.obj("route",hash(result.binding.epoch+"|"+result.binding.route+"|"+result.binding.controller),"measurement",result.binding.measurement,"origin",result.binding.current?"current":"candidate"));}
   /** Already sanitized immutable values; no controller secret, URL, node or raw error. */
   JSONObject probeSnapshot(){ProbeResult result=currentProbe;if(!probeCurrent(result)||!result.binding.current)return new JSONObject();JSONObject value=result.publicSummary();return probeCurrent(result)?value:new JSONObject();}
-  volatile boolean latencyRefreshQueued;volatile JSONObject latencyReading=new JSONObject();long latencyRefreshAttempted=-60000;String latencyRefreshRoute="";
+  volatile boolean latencyRefreshQueued;volatile JSONObject latencyReading=new JSONObject();long latencyRefreshAttempted=-LatencyRefreshPolicy.INTERVAL;String latencyRefreshRoute="";
   // A detector outage can retain connections only for this exact, previously
   // verified route and core lifetime. A saved IP alone is never admission proof.
   volatile ExitRouteReceipt verifiedRoute;volatile long routeSerial,nextExitCheckAt;volatile int exitCheckFailures;
@@ -303,7 +303,7 @@ class NativeNetwork {
         if(freshLatency(latestLatencyAt(entry,epoch),System.currentTimeMillis()))return;
         probed=true;ProbeResult result=probeMeasured("FixedExit",entry);maintenanceCheck();if(ready&&!starting&&probeCurrent(result)){publishCurrentProbe(result);if(result.delay>0)recordProbe(result,result.at);}}
       catch(Exception cancelled){/* A new user operation keeps priority; no failed sample is fabricated. */}
-      finally{if(work!=null)finishMaintenance(work);synchronized(this){if(!probed&&route.equals(latencyRefreshRoute)){latencyRefreshAttempted=-60000;latencyRefreshRoute="";}latencyRefreshQueued=false;}ChatSession s=ChatSession.peek();WindowNetworkState.save(context,s,this);if(s!=null)main.post(s::changed);}
+      finally{if(work!=null)finishMaintenance(work);synchronized(this){if(!probed&&route.equals(latencyRefreshRoute)){latencyRefreshAttempted=-LatencyRefreshPolicy.INTERVAL;latencyRefreshRoute="";}latencyRefreshQueued=false;}ChatSession s=ChatSession.peek();WindowNetworkState.save(context,s,this);if(s!=null)main.post(s::changed);}
     });
   }
   void runHealth(){

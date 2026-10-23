@@ -9,6 +9,29 @@ if __package__:
 else:
     from check_connection_evidence import verify_detector_transport_evidence
 
+def verify_display_sampling(network):
+    assert network['actualMihomoExecution'] is True
+    assert all(item['pass'] is True for item in network['checks'])
+    assert {
+        'Automatic display sampling measures the current route while a reply is busy',
+        'A fresh busy-route sample is reused after the reply becomes idle',
+        'Queued automatic sampling measures without interrupting the newly busy reply',
+        'The queued busy sample remains fresh when the reply becomes idle',
+        'Queued display sampling reuses a newer same-route health sample instead of probing twice',
+        'Automatic telemetry scheduling preserves one WebSocket and the exact core identity',
+        'Actual failed-chain recovery performs exactly one full exit verification for the new entry',
+        'Removing duplicate recovery verification preserves the live WebSocket and fixed exit',
+    } <= {item['name'] for item in network['checks']}
+    telemetry = network['telemetryScheduling']
+    initial=network['initialDisplaySampling']
+    assert all(type(initial[key]) is int for key in ('busyRequests','idleRequests'))
+    assert all(type(telemetry[key]) is int for key in ('queuedBusyRequests','idleSampleRequests','newerSampleDuplicateRequests','recoveryExitRequests','webSocketConnections','webSocketEchoes'))
+    assert initial['busyRequests'] == initial['idleRequests'] == 2
+    assert telemetry['queuedBusyRequests'] == telemetry['idleSampleRequests'] == 2
+    assert telemetry['newerSampleDuplicateRequests'] == 0
+    assert telemetry['recoveryExitRequests'] == 1
+    assert telemetry['webSocketConnections'] == 1 and telemetry['webSocketEchoes'] > 0
+
 UPDATE_CHECKS = {
     'disconnectPreservesPartial', 'rangeOnlyRemaining', 'ifRangeValidator',
     'resumedShaSigner', 'singleFinalApk', 'pauseKeepsPartial',
@@ -363,20 +386,7 @@ def verify_interaction_transfer_evidence(directory, source):
     network = android('network-performance-results.json')
     assert network['actualMihomoExecution'] and len(network['checks']) >= 143
     assert all(item['pass'] for item in network['checks'])
-    assert {
-        'Automatic display sampling makes no requests while a reply is busy',
-        'The current route gets a real first sample after the reply becomes idle',
-        'Queued automatic sampling yields to a reply that started before execution',
-        'Deferred automatic sampling resumes idle without a fabricated failure or route change',
-        'Queued display sampling reuses a newer same-route health sample instead of probing twice',
-        'Automatic telemetry deferral preserves one WebSocket and the exact core identity',
-        'Actual failed-chain recovery performs exactly one full exit verification for the new entry',
-        'Removing duplicate recovery verification preserves the live WebSocket and fixed exit',
-    } <= {item['name'] for item in network['checks']}
-    telemetry = network['telemetryScheduling']
-    assert telemetry['queuedBusyRequests'] == telemetry['newerSampleDuplicateRequests'] == 0
-    assert telemetry['idleSampleRequests'] > 0 and telemetry['recoveryExitRequests'] == 1
-    assert telemetry['webSocketConnections'] == 1 and telemetry['webSocketEchoes'] > 0
+    verify_display_sampling(network)
     detector_transport = verify_detector_transport_evidence(network)
     result = {'actualAndroidExecution': True, 'actualHttpTransfer': True,
             'updateChecks': len(update['checks']), 'httpHostChecks': host['total'],

@@ -24,6 +24,7 @@ def main():
     cases = [('ExtensionUpgradeIntegrationActivity', 'extension-upgrade', 75),
              ('PeriodicLatencyIntegrationActivity', 'periodic-latency', 180)]
     OUT.mkdir(parents=True, exist_ok=True)
+    failures=[]
     for activity, key, timeout in cases:
         target = OUT/(key+'-results.json')
         target.unlink(missing_ok=True)
@@ -58,8 +59,11 @@ def main():
                 time.sleep(1)
             else:
                 raise TimeoutError('No complete report for '+key)
+        except Exception as failure:
+            failures.append((key,str(failure)))
         finally:
             (OUT/(key+'-log.txt')).write_text(adb('logcat', '-d'))
+    if failures:raise AssertionError(failures)
 
 if __name__=='__main__':
     main()
