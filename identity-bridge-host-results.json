@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "actualAndroidExecution": false,
+  "sourceCommit": "eb927d88cee85b49330538cdfa7f5d6a091c3bfa",
+  "sourceTree": "e4b321fdc425af7171d272458c4a79e9174b9f74",
+  "sourceDirty": false,
+  "sourceUnchangedDuringChecks": true,
+  "results": [
+    {
+      "test": "audit-bridge.test.cjs",
+      "passed": 9,
+      "total": 9,
+      "output": "TAP version 13\n# Subtest: page events cannot evaluate code, request URLs or fabricate a native callback\nok 1 - page events cannot evaluate code, request URLs or fabricate a native callback\n  ---\n  duration_ms: 6.849358\n  type: 'test'\n  ...\n# Subtest: wrong nonce and oversized events are ignored; current public signals remain untrusted evidence\nok 2 - wrong nonce and oversized events are ignored; current public signals remain untrusted evidence\n  ---\n  duration_ms: 210.552933\n  type: 'test'\n  ...\n# Subtest: old observations cannot complete a new audit, and cancellation prevents late completion\nok 3 - old observations cannot complete a new audit, and cancellation prevents late completion\n  ---\n  duration_ms: 2.157799\n  type: 'test'\n  ...\n# Subtest: deep attacker fields and non-scalar signals never cross the native JSON boundary\nok 4 - deep attacker fields and non-scalar signals never cross the native JSON boundary\n  ---\n  duration_ms: 6.125638\n  type: 'test'\n  ...\n# Subtest: script rejection is reported as isolated-world fallback with no main-world coverage\nok 5 - script rejection is reported as isolated-world fallback with no main-world coverage\n  ---\n  duration_ms: 1.436803\n  type: 'test'\n  ...\n# Subtest: network audit uses only static endpoints and strips credentials and referrer\nok 6 - network audit uses only static endpoints and strips credentials and referrer\n  ---\n  duration_ms: 2.476634\n  type: 'test'\n  ...\n# Subtest: oversized network bodies are cancelled while streaming and never accepted\nok 7 - oversized network bodies are cancelled while streaming and never accepted\n  ---\n  duration_ms: 2.39416\n  type: 'test'\n  ...\n# Subtest: a missing body reader remains uncovered without unbounded text fallback\nok 8 - a missing body reader remains uncovered without unbounded text fallback\n  ---\n  duration_ms: 1.817273\n  type: 'test'\n  ...\n# Subtest: malformed language arrays stay absent instead of silently becoming complete\nok 9 - malformed language arrays stay absent instead of silently becoming complete\n  ---\n  duration_ms: 1.862728\n  type: 'test'\n  ...\n1..9\n# tests 9\n# suites 0\n# pass 9\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 291.526677\n"
+    },
+    {
+      "test": "protection-handshake.test.cjs",
+      "passed": 3,
+      "total": 3,
+      "output": "TAP version 13\n# Subtest: A-B-A queued native settings retain request tokens and wait for readback\nok 1 - A-B-A queued native settings retain request tokens and wait for readback\n  ---\n  duration_ms: 5.337997\n  type: 'test'\n  ...\n# Subtest: missing native control never becomes an acknowledged setting\nok 2 - missing native control never becomes an acknowledged setting\n  ---\n  duration_ms: 0.945506\n  type: 'test'\n  ...\n# Subtest: a differing readback is reported without an acknowledgement\nok 3 - a differing readback is reported without an acknowledgement\n  ---\n  duration_ms: 0.949323\n  type: 'test'\n  ...\n1..3\n# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 65.476117\n"
+    }
+  ],
+  "files": {
+    "app/src/main/assets/gecko/appearance.js": "8851b04fbe58e23cda9d3305bfd8842a9c55fdff90f0e6b2effa31b9f634043f",
+    "app/src/main/assets/gecko/background.js": "be0a9297c655c0d7e382654160f5bbe0962c13a5e33ac3240db5af550d064cb2",
+    "app/src/main/assets/gecko/content.js": "8d6bc610411213bf463b006cab5608a9c39423fdc15f353fec4c9ef23f86ccc5",
+    "app/src/main/assets/gecko/main-world-audit.js": "f05b15d903d40f6dae4bf91615063e40d2cb15da7bd3176622f84b99c38bb2d6",
+    "tests/review-host/audit-bridge.test.cjs": "f01841c5f6c63bfeb64b8b826387cf8f523bfcc1709fc5bbec1e2052d79c31c1",
+    "tests/review-host/protection-handshake.test.cjs": "ce09dafe9b0acff21635b4a8ffcd1d4693eeab02e7523fc679ee84576f9c8d73"
+  }
+}
