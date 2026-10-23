@@ -29,6 +29,112 @@ ACTION_TRACE = []
 CURRENT_COMMAND = "starting"
 
 
+# Original 85 assertions, in their execution order, retained when the saved-only
+# route assertion was added in 569fbf8. Counts alone cannot detect omissions.
+LEGACY_ANDROID_CHECKS = (
+    'Real native entrance parser publishes one entrance',
+    'Real native exit parser includes SOCKS5 aliases and HTTP',
+    'Identical exit connection aliases retain one real fingerprint',
+    'Window diagnostics use the selected slot rather than the viewing process',
+    'Window diagnostics label historical readings and separate website timings',
+    'Window diagnostics exclude subscription and credential values',
+    'Window diagnostics do not reuse readings from another exit',
+    'Actual diagnostic copy button exports the selected environment',
+    'Actual diagnostic clipboard omits credentials and source addresses',
+    'Window encrypted settings unchanged at assert-diagnostics-copied',
+    'Chat draft unchanged at assert-diagnostics-copied',
+    'Network editor is an actual centered Dialog',
+    'Opening legacy editor reparses existing raw cache without a download',
+    'Cached migration retains the legacy manual entry mode',
+    'Cached migration retains the selected entrance and allowed pool',
+    'Cached migration binds the real native entrance identity',
+    'Window encrypted settings unchanged at assert-legacy-prepared',
+    'Chat draft unchanged at assert-legacy-prepared',
+    'Unsupported exit cannot change the parent draft',
+    'Window encrypted settings unchanged at assert-unselected',
+    'Chat draft unchanged at assert-unselected',
+    'Cancelling a supported exit choice leaves the parent draft unchanged',
+    'Window encrypted settings unchanged at assert-cancelled-picker',
+    'Chat draft unchanged at assert-cancelled-picker',
+    'Confirming the fixed-exit picker changes only the candidate',
+    'Selected alias uses the native configuration fingerprint',
+    'Window encrypted settings unchanged at assert-selected-alias',
+    'Chat draft unchanged at assert-selected-alias',
+    'Cancel closes the actual editor',
+    'Window encrypted settings unchanged at assert-editor-cancelled',
+    'Chat draft unchanged at assert-editor-cancelled',
+    'Touch form saves the new entry source',
+    'New entry source does not appear in the other library',
+    'Window encrypted settings unchanged at assert-entry-added',
+    'Chat draft unchanged at assert-entry-added',
+    'Touch form saves the new exit source',
+    'New exit source does not appear in the other library',
+    'Window encrypted settings unchanged at assert-exit-added',
+    'Chat draft unchanged at assert-exit-added',
+    'Touch edit retains the entry source identity',
+    'Touch edit changes the entry address independently',
+    'Edited entry address is stale until a successful refresh',
+    'Editing entry keeps the previous encrypted source bytes',
+    'Window encrypted settings unchanged at assert-entry-edited',
+    'Chat draft unchanged at assert-entry-edited',
+    'Touch edit retains the exit source identity',
+    'Touch edit changes the exit address independently',
+    'Edited exit address is stale until a successful refresh',
+    'Editing exit keeps the previous encrypted source bytes',
+    'Window encrypted settings unchanged at assert-exit-edited',
+    'Chat draft unchanged at assert-exit-edited',
+    'Actual refused HTTPS entry update completes with a failure',
+    'Failed entry refresh retains all last successful nodes',
+    'Failed entry refresh retains the last successful timestamp',
+    'Failed entry refresh retains the last successful bytes',
+    'Failed entry source is visibly labelled as old address data',
+    'Window encrypted settings unchanged at assert-entry-failed',
+    'Chat draft unchanged at assert-entry-failed',
+    'Actual refused HTTPS exit update completes with a failure',
+    'Failed exit refresh retains all last successful nodes',
+    'Failed exit refresh retains the last successful timestamp',
+    'Failed exit refresh retains the last successful bytes',
+    'Failed exit source is visibly labelled as old address data',
+    'Window encrypted settings unchanged at assert-exit-failed',
+    'Chat draft unchanged at assert-exit-failed',
+    'Touch manual edit retains its library identity',
+    'Touch manual edit saves the changed name and port',
+    'Old endpoint alias still resolves to the edited library row',
+    'Window encrypted settings unchanged at assert-manual-edited',
+    'Chat draft unchanged at assert-manual-edited',
+    'Touch delete removes the entry source',
+    'Deleting entry preserves the separately added source',
+    'Window encrypted settings unchanged at assert-entry-deleted',
+    'Chat draft unchanged at assert-entry-deleted',
+    'Touch delete removes the exit source',
+    'Deleting exit preserves the separately added source',
+    'Window encrypted settings unchanged at assert-exit-deleted',
+    'Chat draft unchanged at assert-exit-deleted',
+    'Touch delete removes the manual exit',
+    'Window encrypted settings unchanged at assert-manual-deleted',
+    'Chat draft unchanged at assert-manual-deleted',
+    'No native global default exit is introduced',
+    'UI metadata does not create a ChatGPT account session',
+    'Window encrypted settings unchanged at finish',
+    'Chat draft unchanged at finish',
+)
+SAVED_ONLY_ROUTE_CHECK = 'Saved source settings alone do not create a running route summary'
+EXPECTED_ANDROID_CHECKS = LEGACY_ANDROID_CHECKS[:7] + (SAVED_ONLY_ROUTE_CHECK,) + LEGACY_ANDROID_CHECKS[7:]
+
+
+def verify_android_checks(report):
+    rows = report.get("checks")
+    count = report.get("checkCount")
+    if report.get("status") != "passed" or type(count) is not int or count != len(EXPECTED_ANDROID_CHECKS):
+        raise AssertionError("Subscription UI did not complete the exact Android assertion contract")
+    if type(rows) is not list or len(rows) != count or any(type(row) is not dict for row in rows):
+        raise AssertionError("Subscription UI assertion rows are missing or malformed")
+    if tuple(row.get("name") for row in rows) != EXPECTED_ANDROID_CHECKS:
+        raise AssertionError("Subscription UI assertion names or order changed")
+    if any(row.get("pass") is not True for row in rows):
+        raise AssertionError("Subscription UI has an unsuccessful Android assertion")
+
+
 def adb(*args, binary=False, timeout=35):
     return subprocess.check_output([ARGS.adb, "-s", ARGS.serial, *args], text=not binary, timeout=timeout)
 
@@ -430,7 +536,7 @@ def main():
     RUNNER_REPORT = report
     report["actualAdbTouchExecution"] = True
     (OUT / "network-source-ui-results.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
-    assert report["status"] == "passed" and report["checkCount"] == len(report["checks"]) == 85
+    verify_android_checks(report)
     assert len(UI_CHECKS) == 27 and all(item["pass"] for item in report["checks"] + UI_CHECKS)
     assert report["actualAndroidExecution"] and report["actualNativeExecution"] and report["actualKeystoreEncryption"] and not report["actualRouteApplication"]
     if ARGS.expected_apk_sha:
