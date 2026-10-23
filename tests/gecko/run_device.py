@@ -10,6 +10,7 @@ sys.path.insert(0,str(ROOT/'tools/gecko'))
 from check_interaction_transfer_evidence import verify_paint_case, verify_saved_file_deletion
 from integration_event_contract import EventTransfer, parse_receipt_line
 from profile_invocation_contract import expected_build, verify_installed
+from page_continuity_contract import verify_page_continuity
 def missing_update_job(return_code, output, package):
     """Only Android's exact not-yet-registered job response is transient."""
     if return_code!=23:return False
@@ -589,6 +590,7 @@ def main():
         continuity=run(1,'pageContinuity','pageContinuity')
         assert continuity['status']=='passed' and all(continuity[k] is True for k in ['readinessNoReload','busyRecoveryPreserved','failedProbePreserved','emptyTimeoutManualOnly','ownedCookieCleaned','resourcesRestored','persistedPendingRestored']),continuity
         assert continuity['checkCount']==len(continuity['checks']) and all(item['pass'] is True for item in continuity['checks']),continuity
+        verify_page_continuity(continuity)
         report['pageContinuity']=continuity
         check(run(1,'seed'),1,True);check(run(2,'read'),2,False)
         check(run(2,'seed'),2,True);check(run(1,'read'),1,True)

@@ -12,6 +12,11 @@ from check_caret_compat_evidence import EVIDENCE_FILES, IME_EVIDENCE_FILES, veri
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLES = ('1', '2')  # The ordinary editing phase is the third independent run.
+SETUP_DIAGNOSTICS = (
+    'native-adb-setup-results.json', 'emulator-bootstrap-results.json',
+    'android-emulator-package-results.json', 'android-system-image-results.json',
+    'android-platform-tools-results.json', 'emulator.log',
+)
 
 
 def sha(path):
@@ -24,6 +29,12 @@ def stage(args):
                      'caret-ime-environment.json'}
     for name in (*EVIDENCE_FILES, *IME_EVIDENCE_FILES):
         original = args.input / ('caret-compat' if name in compatibility else '') / name
+        if original.is_file():
+            shutil.copy2(original, args.out / name)
+    # A setup failure precedes all input evidence. Keep its original commands,
+    # scans and state observations even though the unchanged oracle must fail.
+    for name in SETUP_DIAGNOSTICS:
+        original = args.input / name
         if original.is_file():
             shutil.copy2(original, args.out / name)
     for folder in (args.input, args.input / 'caret-compat'):

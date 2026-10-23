@@ -61,8 +61,10 @@ class Commands:
             raise ValueError('Only the fixed synthetic adb target is allowed')
         self.executable, self.serial, self.record, self.deadline = executable, serial, record, deadline
 
-    def run(self, *parts, check=True, diagnostic=False):
-        remaining = self.deadline - time.monotonic()
+    def run(self, *parts, check=True, diagnostic=False, deadline=None):
+        # A phase may shorten the shared budget, never extend it.
+        effective_deadline = min(self.deadline, deadline if deadline is not None else self.deadline)
+        remaining = effective_deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError('Bounded emulator environment preflight expired')
         command = [self.executable, '-s', self.serial, *parts]
@@ -76,11 +78,13 @@ class Commands:
                 return raw.decode('utf-8', errors='replace') if isinstance(raw, bytes) else (raw or '')
             self.record['commands'].append(dict(command=command, exitCode=None, timedOut=True,
                 stdout=decoded(error.stdout), stderr=decoded(error.stderr),
-                observedAt=time.monotonic(), timeoutSeconds=timeout))
+                observedAt=time.monotonic(), timeoutSeconds=timeout,
+                deadlineMonotonic=effective_deadline))
             raise
         self.record['commands'].append(dict(command=command, exitCode=result.returncode,
             stdout=result.stdout, stderr=result.stderr, timedOut=False,
-            observedAt=time.monotonic(), timeoutSeconds=timeout))
+            observedAt=time.monotonic(), timeoutSeconds=timeout,
+            deadlineMonotonic=effective_deadline))
         self.record['actualAndroidCommands'] = True
         if check:
             result.check_returncode()
@@ -106,15 +110,31 @@ def provision_sdk_wifi(commands, record, identity, phase, observation_phase):
     stage = dict(phase=phase, startedAt=time.monotonic(),
                  firstCommand=len(record['commands']),
                  firstNetworkObservation=len(record['networkObservations']),
-                 wifiScans=[], status='failed')
+                 wifiStatuses=[], wifiScans=[], status='failed')
     record.setdefault('sdkWifiProvisioningStages', []).append(stage)
     try:
         # Reproduce only the SDK image's AndroidWifi provisioning convention.
         # No airplane/mobile-data change, arbitrary SSID, or IME policy change.
         commands.run('shell', 'cmd', 'wifi', 'set-wifi-enabled', 'enabled')
         scan_deadline = min(commands.deadline - 10, time.monotonic() + 8)
+        stage.update(scanDeadlineMonotonic=scan_deadline, networkDeadlineMonotonic=commands.deadline)
+        # Enabling is asynchronous. Observe the actual service state before
+        # requesting one fresh scan; list-scan-results alone reads a cache.
         while True:
-            scan = commands.run('shell', 'cmd', 'wifi', 'list-scan-results')
+            if time.monotonic() >= scan_deadline:
+                raise TimeoutError('SDK Wi-Fi did not report enabled before the scan deadline')
+            status = commands.run('shell', 'cmd', 'wifi', 'status', deadline=scan_deadline)
+            stage['wifiStatuses'].append(dict(raw=status, receivedAt=time.monotonic()))
+            if re.findall(r'^Wifi is (enabled|disabled)\s*$', status, re.M) == ['enabled']:
+                break
+            time.sleep(min(1, max(0, scan_deadline - time.monotonic())))
+        stage['scanRequestResponse'] = commands.run('shell', 'cmd', 'wifi', 'start-scan', deadline=scan_deadline)
+        stage['scanRequestCompletedAt'] = time.monotonic()
+        # Command completion does not prove scan completion or connectivity.
+        while True:
+            if time.monotonic() >= scan_deadline:
+                raise ValueError('The SDK emulator AndroidWifi access point was not observed')
+            scan = commands.run('shell', 'cmd', 'wifi', 'list-scan-results', deadline=scan_deadline)
             record['wifiScan'] = scan
             stage['wifiScans'].append(dict(raw=scan, receivedAt=time.monotonic()))
             # Exact SSID column followed by optional capability flags. Never
@@ -131,6 +151,9 @@ def provision_sdk_wifi(commands, record, identity, phase, observation_phase):
                 raise TimeoutError('Actual Android active network with INTERNET did not become available')
             time.sleep(min(1, max(0, commands.deadline - time.monotonic())))
         stage['status'] = 'passed'
+    except BaseException as failure:
+        stage.update(failureType=type(failure).__name__, reason=str(failure))
+        raise
     finally:
         stage.update(completedAt=time.monotonic(),
                      afterCommand=len(record['commands']),

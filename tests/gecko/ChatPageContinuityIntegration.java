@@ -9,6 +9,7 @@ final class ChatPageContinuityIntegration {
   final GeckoIntegrationTestActivity activity;final ChatSession owner;
   final GeckoIntegrationTestActivity.FixtureView web;final long serial;
   final JSONArray checks=new JSONArray(),snapshots=new JSONArray();final JSONObject previousPending,previousState;
+  JSONObject emptyConditionInputs=new JSONObject();
   final String previousDriver,previousIdentity,previousRawPending;final boolean previousConfigured,previousPendingStored,previousTransfer,previousCapture;
   final int previousChoosers,previousPreparations;final long previousStateEpoch;
   GeckoSession sdk;JSONObject before;String target,pendingBytes;boolean finished,finishing,cookieCleaned;
@@ -82,10 +83,22 @@ final class ChatPageContinuityIntegration {
   }
   void empty(){
     if(!"about:blank".equals(web.getUrl())||web.hasVisibleDocument()){if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Real empty SDK document not observed");later(this::empty,100);return;}
-    owner.beginNavigation(MainActivity.ORIGIN,"controlled empty readiness wait");owner.navigationTimeout(owner.navigationEpoch);owner.handler.removeCallbacks(owner.tick);
-    check("Empty readiness timeout requires user retry without blocking the verified network",owner.navigationFailed&&!owner.navigating&&owner.manualAttention&&!owner.recoveryScheduled&&owner.networkReady&&owner.guard.allowed());
+    JSONObject before=emptyState();web.continuityTracing=true;
+    owner.beginNavigation(MainActivity.ORIGIN,"controlled empty readiness wait");long epoch=owner.navigationEpoch;
+    owner.navigationTimeout(epoch);owner.handler.removeCallbacks(owner.tick);JSONObject after=emptyState();
+    boolean pageFailure=owner.navigationFailed&&!owner.navigating;
+    boolean pageRecovery="网页还未显示，请重试或检查网络".equals(owner.pageError)&&owner.pageError.equals(owner.status);
+    boolean routeAdmitted=before.optBoolean("networkReady")&&before.optBoolean("guardAllowed")&&owner.networkReady&&owner.guard.allowed();
+    boolean noNetworkBlock=!before.optBoolean("manualAttention")&&!owner.manualAttention;
+    boolean retryUnchanged=owner.recoveryToken==before.optLong("recoveryToken")&&owner.recoveryAttempt==before.optInt("recoveryAttempt")&&owner.networkIssue.equals(before.optString("networkIssue"))&&owner.connectionEpoch==before.optLong("connectionEpoch");
+    boolean noAutoReconnect=!before.optBoolean("recoveryScheduled")&&!before.optBoolean("connecting")&&!owner.recoveryScheduled&&!owner.connecting;
+    boolean noAutoReload=web.current==sdk&&"about:blank".equals(web.getUrl())&&!web.hasVisibleDocument()&&owner.navigationEpoch==epoch&&web.continuityLoads==before.optInt("loads")&&web.continuityStops==before.optInt("stops");
+    boolean pendingPreserved=owner.pending!=null&&pendingBytes.equals(owner.pending.toString())&&pendingBytes.equals(owner.prefs.getString("pending",""));
+    emptyConditionInputs=J.obj("before",before,"after",after,"requestedNavigationEpoch",epoch,"pageFailed",pageFailure,"pageRecoveryErrorAvailable",pageRecovery,"routeAdmitted",routeAdmitted,"noNetworkManualBlock",noNetworkBlock,"networkRetryStateUnchanged",retryUnchanged,"noAutoReconnect",noAutoReconnect,"noAutoReload",noAutoReload,"pendingPreserved",pendingPreserved,"uiScope","Actual ChatSession page error; visible recovery action is covered separately by production-method host tests, not an Android UI click");
+    check("Empty readiness timeout requires user retry without blocking the verified network",pageFailure&&pageRecovery&&routeAdmitted&&noNetworkBlock&&retryUnchanged&&noAutoReconnect&&noAutoReload&&pendingPreserved);
     finish(null);
   }
+  JSONObject emptyState(){return J.obj("url",web.getUrl(),"nativeUrl",web.locations.get(web.current),"session",System.identityHashCode(web.current),"visible",web.hasVisibleDocument(),"navigating",owner.navigating,"navigationFailed",owner.navigationFailed,"pageError",owner.pageError,"status",owner.status,"manualAttention",owner.manualAttention,"networkReady",owner.networkReady,"guardAllowed",owner.guard.allowed(),"connecting",owner.connecting,"recoveryScheduled",owner.recoveryScheduled,"recoveryToken",owner.recoveryToken,"recoveryAttempt",owner.recoveryAttempt,"networkIssue",owner.networkIssue,"connectionEpoch",owner.connectionEpoch,"navigationEpoch",owner.navigationEpoch,"loads",web.continuityLoads,"stops",web.continuityStops,"pending",owner.pending==null?"":owner.pending.toString(),"persistedPending",owner.prefs.getString("pending",""));}
   void finish(Exception error){
     if(finished||finishing)return;finishing=true;
     if(!cookieCleaned&&target!=null&&target.equals(web.locations.get(web.current))&&web.ports.get(web.current)!=null){
@@ -100,6 +113,7 @@ final class ChatPageContinuityIntegration {
     owner.navigating=false;owner.navigationFailed=false;owner.manualAttention=false;owner.recoveryScheduled=false;owner.recoveryToken++;
     android.content.SharedPreferences.Editor editor=owner.prefs.edit().putBoolean("networkConfigured",previousConfigured);if(previousPendingStored)editor.putString("pending",previousRawPending);else editor.remove("pending");editor.commit();owner.handler.removeCallbacks(owner.tick);
     JSONObject result=J.obj("schema",1,"status",error==null?"passed":"failed","actualAndroidExecution",true,"actualGeckoExecution",true,"checks",checks,"checkCount",checks.length(),"snapshots",snapshots,"probeResults",web.continuityResults,"ownedCookieCleaned",cookieCleaned,"resourcesRestored",owner.resourceChoosers==previousChoosers&&owner.resourceFilePreparations==previousPreparations&&owner.transferActive==previousTransfer&&owner.configurationCapture==previousCapture,"persistedPendingRestored",owner.prefs.contains("pending")==previousPendingStored&&java.util.Objects.equals(previousRawPending,owner.prefs.getString("pending",null)),"readinessNoReload",error==null,"busyRecoveryPreserved",error==null,"failedProbePreserved",error==null,"emptyTimeoutManualOnly",error==null,"faults",J.obj("readinessDeadline","direct invocation of production navigationTimeout; no elapsed-time claim","busy","rendered stop button in actual controlled DOM","head","controlled server lacks HEAD support (HTTP 501); actual Gecko fetch"),"scope","Actual SDK document/cookie/draft and production ChatSession paths. Timeout invoked directly; external route and busy/HEAD fault are controlled. No real ChatGPT login, WAN speed or physical-device acceptance.");
+    DownloadTasks.put(result,"emptyConditionInputs",emptyConditionInputs);
     if(error!=null)DownloadTasks.put(result,"error",error.toString());
     activity.event(serial,error==null?"pageContinuity":"error",result);
   }

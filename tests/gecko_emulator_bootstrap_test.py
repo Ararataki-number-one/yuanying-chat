@@ -37,6 +37,12 @@ def record():
                 disabledStateConfirmed=False, applicationAcceptance=False)
 
 
+class Clock:
+    def __init__(self):self.value=0
+    def now(self):return self.value
+    def sleep(self,seconds):self.value+=seconds
+
+
 class FakeCommands:
     """A unit double; never a real command receipt."""
     def __init__(self, qemu='1', scan='00:11:22:33:44:55 2412 -45 0 AndroidWifi [ESS]'):
@@ -44,6 +50,8 @@ class FakeCommands:
     def run(self,*parts,**unused):
         self.calls.append(parts)
         if parts==('shell','getprop','ro.kernel.qemu'):return self.qemu
+        if parts==('shell','cmd','wifi','status'):return 'Wifi is enabled'
+        if parts==('shell','cmd','wifi','start-scan'):return 'Scan requested'
         if parts==('shell','cmd','wifi','list-scan-results'):return self.scan
         if parts[:4]==('shell','pm','list','packages'):return 'package:'+bootstrap.PACKAGE
         return ''
@@ -121,15 +129,15 @@ class BootstrapControls(unittest.TestCase):
         # No usable default network after disable, and no exact SDK AP to
         # restore: this original negative control must still fail.
         commands=FakeCommands(scan='00:11:22:33:44:55 2412 -45 0 Other [ESS]')
-        commands.deadline=time.monotonic()+9
-        with patch.object(bootstrap,'network_observation',side_effect=[True,False]):
+        clock=Clock();commands.deadline=30
+        with patch.object(bootstrap.time,'monotonic',clock.now),patch.object(bootstrap.time,'sleep',clock.sleep),patch.object(bootstrap,'network_observation',side_effect=[True,False]):
             with self.assertRaises(ValueError):bootstrap.preflight(commands,record(),identity())
     def test_similar_ssid_never_connects_or_disables_setup(self):
         for ssid in ['AndroidWifi-other','Other-AndroidWifi','OtherAndroidWifi']:
             with self.subTest(ssid=ssid):
                 commands=FakeCommands(scan='00:11:22:33:44:55 2412 -45 0 '+ssid+' [ESS]')
-                commands.deadline=time.monotonic()+9
-                with patch.object(bootstrap,'network_observation',return_value=False):
+                clock=Clock();commands.deadline=30
+                with patch.object(bootstrap.time,'monotonic',clock.now),patch.object(bootstrap.time,'sleep',clock.sleep),patch.object(bootstrap,'network_observation',return_value=False):
                     with self.assertRaises(ValueError):bootstrap.preflight(commands,record(),identity())
                 self.assertFalse(any('connect-network' in cmd or 'disable-user' in cmd for cmd in commands.calls))
     def test_original_stderr_and_per_command_deadline_are_preserved(self):
@@ -226,6 +234,111 @@ class BootstrapControls(unittest.TestCase):
         self.assertEqual([call[-1] for call in commands.calls if 'force-stop' in call
                           or 'disable-user' in call],[bootstrap.PACKAGE,bootstrap.PACKAGE])
         self.assertTrue(all(row['value']['usable'] for row in receipt['networkObservations']))
+
+
+class WifiScanControls(unittest.TestCase):
+    def provision(self,commands,receipt,clock,observations):
+        with patch.object(bootstrap.time,'monotonic',clock.now),patch.object(bootstrap.time,'sleep',clock.sleep),patch.object(bootstrap,'network_observation',side_effect=observations):
+            bootstrap.provision_sdk_wifi(commands,receipt,identity(),'test-provisioning','test-cm')
+
+    def test_enable_and_scan_progress_are_observed_before_single_connect(self):
+        clock=Clock();receipt=record();commands=FakeCommands();commands.deadline=30
+        status=['Wifi is disabled','Wifi is disabled','Wifi is enabled\nWifi scanning is always available']
+        scans=['No scan results','No scan results',commands.scan]
+        original=commands.run
+        def run(*parts,**kwargs):
+            raw=original(*parts,**kwargs)
+            if parts[-1]=='status':return status.pop(0)
+            if parts[-1]=='list-scan-results':return scans.pop(0)
+            return raw
+        commands.run=run
+        self.provision(commands,receipt,clock,[False,True])
+        stage=receipt['sdkWifiProvisioningStages'][0]
+        self.assertEqual(stage['status'],'passed')
+        self.assertEqual([row['raw'] for row in stage['wifiStatuses']][:2],['Wifi is disabled']*2)
+        self.assertEqual([row['raw'] for row in stage['wifiScans']][:2],['No scan results']*2)
+        self.assertEqual(stage['scanRequestResponse'],'Scan requested')
+        self.assertEqual(stage['scanDeadlineMonotonic'],8)
+        self.assertEqual(commands.deadline,30)
+        request=('shell','cmd','wifi','start-scan');connect=('shell','cmd','wifi','connect-network',bootstrap.SSID,'open')
+        self.assertEqual(commands.calls.count(request),1)
+        self.assertEqual(commands.calls.count(connect),1)
+        self.assertLess(max(i for i,call in enumerate(commands.calls) if call[-1]=='status'),commands.calls.index(request))
+        self.assertLess(commands.calls.index(request),min(i for i,call in enumerate(commands.calls) if call[-1]=='list-scan-results'))
+        self.assertLess(max(i for i,call in enumerate(commands.calls) if call[-1]=='list-scan-results'),commands.calls.index(connect))
+        self.assertFalse(receipt['applicationAcceptance'])
+
+    def test_disabled_unknown_and_contradictory_states_never_request_or_connect(self):
+        for state in ('Wifi is disabled','Wifi state unavailable','Wifi is enabled\nWifi is disabled'):
+            with self.subTest(state=state):
+                clock=Clock();receipt=record();commands=FakeCommands();commands.deadline=30
+                original=commands.run
+                def run(*parts,**kwargs):
+                    value=original(*parts,**kwargs)
+                    return state if parts[-1]=='status' else value
+                commands.run=run
+                with self.assertRaises(TimeoutError):self.provision(commands,receipt,clock,[])
+                self.assertEqual(clock.value,8)
+                self.assertFalse(any('start-scan' in call or 'connect-network' in call for call in commands.calls))
+                self.assertEqual(receipt['sdkWifiProvisioningStages'][0]['status'],'failed')
+
+    def test_successful_scan_request_without_observed_ap_remains_failure(self):
+        clock=Clock();receipt=record();commands=FakeCommands(scan='No scan results');commands.deadline=30
+        with self.assertRaisesRegex(ValueError,'access point was not observed'):
+            self.provision(commands,receipt,clock,[])
+        stage=receipt['sdkWifiProvisioningStages'][0]
+        self.assertEqual(stage['scanRequestResponse'],'Scan requested')
+        self.assertEqual(stage['status'],'failed')
+        self.assertEqual(len(stage['wifiScans']),8)
+        self.assertEqual(commands.calls.count(('shell','cmd','wifi','start-scan')),1)
+        self.assertFalse(any('connect-network' in call for call in commands.calls))
+
+    def test_consumed_shared_budget_is_never_reset_for_wifi(self):
+        clock=Clock();clock.value=24;receipt=record();commands=FakeCommands();commands.deadline=33
+        with self.assertRaises(TimeoutError):self.provision(commands,receipt,clock,[])
+        stage=receipt['sdkWifiProvisioningStages'][0]
+        self.assertEqual(stage['scanDeadlineMonotonic'],23)
+        self.assertEqual(commands.deadline,33)
+        self.assertEqual(commands.calls,[('shell','cmd','wifi','set-wifi-enabled','enabled')])
+
+    def test_phase_deadline_shortens_command_timeout_without_extending_total(self):
+        clock=Clock();receipt=record()
+        with patch.object(bootstrap.time,'monotonic',clock.now):
+            commands=bootstrap.Commands('adb',bootstrap.SERIAL,receipt,33)
+            with patch.object(bootstrap.subprocess,'run',return_value=subprocess.CompletedProcess([],0,stdout='Wifi is enabled',stderr='')) as run:
+                commands.run('shell','cmd','wifi','status',deadline=2)
+                self.assertEqual(run.call_args.kwargs['timeout'],2)
+                commands.run('shell','cmd','wifi','status',deadline=100)
+                self.assertEqual(run.call_args.kwargs['timeout'],8)
+        self.assertEqual(commands.deadline,33)
+        self.assertEqual([row['deadlineMonotonic'] for row in receipt['commands']],[2,33])
+
+    def test_failed_scan_command_preserves_raw_streams_and_never_connects(self):
+        clock=Clock();receipt=record()
+        with patch.object(bootstrap.time,'monotonic',clock.now),patch.object(bootstrap.time,'sleep',clock.sleep):
+            commands=bootstrap.Commands('adb',bootstrap.SERIAL,receipt,33)
+            replies=[subprocess.CompletedProcess([],0,stdout='',stderr=''),
+                     subprocess.CompletedProcess([],0,stdout='Wifi is enabled',stderr=''),
+                     subprocess.CompletedProcess([],1,stdout='Scan failed',stderr='scan service unavailable')]
+            with patch.object(bootstrap.subprocess,'run',side_effect=replies),patch.object(bootstrap,'network_observation') as observed:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    bootstrap.provision_sdk_wifi(commands,receipt,identity(),'test-provisioning','test-cm')
+                observed.assert_not_called()
+        self.assertEqual(receipt['commands'][-1]['stdout'],'Scan failed')
+        self.assertEqual(receipt['commands'][-1]['stderr'],'scan service unavailable')
+        self.assertEqual(receipt['commands'][-1]['exitCode'],1)
+        self.assertEqual(receipt['sdkWifiProvisioningStages'][0]['failureType'],'CalledProcessError')
+        self.assertFalse(any('connect-network' in row['command'] for row in receipt['commands']))
+
+    def test_observed_ap_and_successful_connect_still_require_actual_cm(self):
+        clock=Clock();receipt=record();commands=FakeCommands();commands.deadline=12
+        with patch.object(bootstrap.time,'monotonic',clock.now),patch.object(bootstrap.time,'sleep',clock.sleep),patch.object(bootstrap,'network_observation',return_value=False) as observed:
+            with self.assertRaises(TimeoutError):
+                bootstrap.provision_sdk_wifi(commands,receipt,identity(),'test-provisioning','test-cm')
+        self.assertGreater(observed.call_count,0)
+        self.assertEqual(receipt['sdkWifiProvisioningStages'][0]['status'],'failed')
+        self.assertNotEqual(receipt.get('status'),'passed')
+        self.assertEqual(commands.calls.count(('shell','cmd','wifi','start-scan')),1)
 
 
 if __name__=='__main__':unittest.main()
