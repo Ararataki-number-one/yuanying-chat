@@ -1,4 +1,4 @@
-name: Validate TCP ADB on the actual guest WiFi network backend
+name: Observe pre-workload offline TCP connection state without packet capture
 permissions:
   contents: read
   actions: read
@@ -54,7 +54,9 @@ jobs:
         \ ready')\nout.write_text(json.dumps({'ready':True,'observations':rows},indent=2))\nPYNET\nprintf '%s\\n' 'QEMU native WiFi netdev hostfwd: 127.0.0.1:5555\
         \ -> 10.0.2.16:5555' > work/adb-diagnostic/redirections.txt\npython3 - <<'PYADB'\nimport socket\nwith socket.create_connection(('127.0.0.1',5037),timeout=5)\
         \ as channel:\n    channel.sendall(b'0012host:emulator:5555')\nprint('Sent native ADB emulator announcement for actual forwarded TCP port 5555')\n\
-        PYADB\ntimeout 30 adb -s emulator-5554 wait-for-device\nexport ANDROID_SERIAL=emulator-5554\nadb devices -l > work/adb-diagnostic/adb-devices.txt\n\
+        PYADB\nadb devices -l > work/adb-diagnostic/before-reconnect.txt\nss -tnp '( sport = :5555 or dport = :5555 )' > work/adb-diagnostic/host-adb-socket-state.txt\n\
+        if adb devices | grep -Eq '^emulator-5554[[:space:]]+offline'; then\n  adb -s emulator-5554 reconnect > work/adb-diagnostic/setup-reconnect.txt\n\
+        fi\ntimeout 30 adb -s emulator-5554 wait-for-device\nexport ANDROID_SERIAL=emulator-5554\nadb devices -l > work/adb-diagnostic/adb-devices.txt\n\
         adb shell input keyevent 82\nadb install work/diagnostic.apk\npython3 tools/gecko/prepare_emulator.py --adb \"$(command -v adb)\" --serial emulator-5554\
         \ --apk work/diagnostic.apk\n"
     - name: Observe fixed read-only transfers before any editing workload
@@ -93,7 +95,7 @@ jobs:
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       if: always()
       with:
-        name: adb-tcp-explicit-wifi-backend
+        name: adb-tcp-offline-state
         path: work/adb-diagnostic/
         retention-days: 5
     strategy:
