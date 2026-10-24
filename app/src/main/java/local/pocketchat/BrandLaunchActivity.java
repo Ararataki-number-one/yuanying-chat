@@ -8,7 +8,7 @@ import android.widget.*;
 
 /** First-run introduction shares the same readable native surfaces as the workspaces. */
 public class BrandLaunchActivity extends ThemedActivity {
-  void route(){AppUpdates.schedule(this);AppSettings.put(this,"brandSeen","true");if(AppSettings.bool(this,"startupDirect",true)){int id=AppSettings.defaultSlot(this);ProfileCatalog.get(this).opened(id);startActivity(new Intent(this,Profiles.activity(id)).putExtra("openWindowAction","chat").putExtra("forceWebMode",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}else startActivity(new Intent(this,WindowHomeActivity.class));finish();}
+  void route(){AppUpdates.schedule(this);AppSettings.put(this,"brandSeen","true");int id=AppSettings.defaultSlot(this);if(AppSettings.bool(this,"startupDirect",true)&&id>=0&&ProfileCatalog.get(this).available(id)){ProfileCatalog.get(this).opened(id);startActivity(new Intent(this,Profiles.activity(id)).putExtra("openWindowAction","chat").putExtra("forceWebMode",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}else startActivity(new Intent(this,WindowHomeActivity.class));finish();}
   @Override public void onCreate(Bundle state){
     super.onCreate(state);
     if(AppSettings.bool(this,"brandSeen",false)&&!getIntent().getBooleanExtra("previewBrand",false)){route();return;}

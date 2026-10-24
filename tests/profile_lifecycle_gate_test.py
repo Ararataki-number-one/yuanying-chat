@@ -137,11 +137,10 @@ def device_control(cleanup=True):
     # This is metadata, not an Android run. The positive case exercises a parser
     # branch; negative mutations prove that unbacked summaries cannot satisfy it.
     with patch.object(gate,'selected_bytes',side_effect=selected_source):
-        required={action:gate.lifecycle_flag_names(SOURCE,action) for action in ('copyAndReset','resetZero','deleteOne')}
+        required={action:gate.lifecycle_flag_names(SOURCE,action) for action in ('copyAndReset','resetZero','deleteOne','deleteZero')}
     # Independently keep the original required flags. Deriving names must never
     # derive success values or silently erase a currently promised assertion.
     for action,names in required.items():assert set(FLAGS[action]).issubset(names),(action,names)
-    required['deleteZero']=FLAGS['deleteZero']
     management={action:dict(action=action,**{name:True for name in flags}) for action,flags in required.items()}
     def managed(action):return dict(kind='environmentManagement',result=copy.deepcopy(management[action]))
     steps=[cookie_event(1,'seed',True),cookie_event(2,'seed',True),managed('copyAndReset'),
@@ -264,8 +263,14 @@ class LifecycleGateCounterfeitControls(unittest.TestCase):
             value=device_control();mutate(value)
             with self.subTest(mutate=mutate),self.assertRaises(ValueError):self.device(value)
 
+    def test_new_default_deletion_action_cannot_be_omitted(self):
+        value=device_control();value['environmentManagement'].pop('deleteZero')
+        with self.assertRaises(ValueError):self.device(value)
+        value=device_control();value['steps']=[step for step in value['steps'] if not(step['kind']=='environmentManagement' and step['result']['action']=='deleteZero')]
+        with self.assertRaises(ValueError):self.device(value)
+
     def test_every_literal_required_lifecycle_flag_is_required_and_boolean_true(self):
-        for action in ('copyAndReset','resetZero','deleteOne'):
+        for action in ('copyAndReset','resetZero','deleteOne','deleteZero'):
             with patch.object(gate,'selected_bytes',side_effect=selected_source):
                 flags=gate.lifecycle_flag_names(SOURCE,action)
             for flag in flags:
@@ -547,7 +552,7 @@ class LifecycleGateImportControls(unittest.TestCase):
             assert event==report['steps'][0]
             result=gate.verify_lifecycle_device(report,report['sourceCommit'],identity)
             assert result=={'actualLifecycleDeviceAcceptance':True,'physicalPhoneAcceptance':False,
-                            'actions':['copyAndReset','resetZero','deleteOne']}
+                            'actions':['copyAndReset','resetZero','deleteOne','deleteZero']}
             missing=copy.deepcopy(report);missing.pop('readingFixtureCookieCleanup')
             try:
                 gate.verify_lifecycle_device(missing,report['sourceCommit'],identity)

@@ -455,7 +455,8 @@ public class WindowHomeActivity extends ThemedActivity {
     void summary(){
       DesignUi.field(body,"环境名称",title);if(!group.isEmpty())DesignUi.field(body,"分组",group);
       DesignUi.field(body,"网页显示方式",BrowserDisplay.label(desktop));
-      DesignUi.field(body,"网络来源",sourceType==2?"创建后手动配置":Profiles.display(WindowHomeActivity.this,sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot));
+      int selectedSource=sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot;
+      DesignUi.field(body,"网络来源",sourceType==2?"创建后手动配置":selectedSource<0?"来源环境暂不可用":Profiles.display(WindowHomeActivity.this,selectedSource));
       CheckBox selected=new CheckBox(WindowHomeActivity.this);selected.setText("设为默认环境");selected.setTextColor(DesignUi.TEXT);selected.setMinHeight(dp(48));
       DesignUi.note(body,sourceType==2?"创建后会打开网络配置页。保存网络方式后，再登录 ChatGPT。":"创建后会使用复制的网络配置打开会话，请在新环境单独登录 ChatGPT。");
       selected.setChecked(makeDefault);selected.setOnCheckedChangeListener((b,c)->makeDefault=c);body.addView(selected);
@@ -466,9 +467,10 @@ public class WindowHomeActivity extends ThemedActivity {
     }
     void create(){
       // Every new environment uses its own persistent Gecko profile.
-      if(preparing)return;showProblem("");preparing=true;createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);
-      Context source=Profiles.context(WindowHomeActivity.this,sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot);
-      boolean clone=sourceType!=2;dialog.dismiss();
+      if(preparing)return;boolean clone=sourceType!=2;int selectedSource=sourceType==0?AppSettings.defaultSlot(WindowHomeActivity.this):sourceSlot;
+      if(clone&&!AppSettings.selectable(ProfileCatalog.get(WindowHomeActivity.this).item(selectedSource))){DesignUi.message(WindowHomeActivity.this,"来源环境暂不可用","请重新选择来源环境，或使用自己配置网络。");return;}
+      showProblem("");preparing=true;createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);
+      Context source=clone?Profiles.context(WindowHomeActivity.this,selectedSource):Profiles.global(WindowHomeActivity.this);dialog.dismiss();
       final boolean desktopSetting=desktop;
       new Thread(()->{
         String error="";try{Profiles.prepare(source,id,clone);Profiles.rename(source,id,title);ProfileCatalog.get(source).details(id,group,"");ProfileCatalog.get(source).browserDisplay(id,desktopSetting);if(makeDefault)AppSettings.defaultSlot(source,id);}

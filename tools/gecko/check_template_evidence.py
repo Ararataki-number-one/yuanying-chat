@@ -225,14 +225,16 @@ def verify_lifecycle_device(report,source,identity=None):
         verify_installed(report.get('eventTransport',{}).get('buildIdentity',{}),identity)
     management=report.get('environmentManagement',{});steps=report.get('steps')
     if not isinstance(management,dict) or not isinstance(steps,list):raise ValueError('Actual lifecycle management/browser steps missing')
-    indices=[]
-    for action in ('copyAndReset','resetZero','deleteOne'):
+    indices=[];actions=['copyAndReset','resetZero','deleteOne']
+    if 'nonzeroDefaultWithoutZero' in lifecycle_flag_names(source,'deleteZero'):actions.append('deleteZero')
+    for action in actions:
         value=management.get(action)
         if not isinstance(value,dict) or value.get('action')!=action or 'error' in value or any(value.get(key) is not True for key in lifecycle_flag_names(source,action)) or any(item is not True for key,item in value.items() if key!='action'):raise ValueError('Actual lifecycle result is missing/failed: '+action)
         found=[i for i,step in enumerate(steps) if isinstance(step,dict) and step.get('kind')=='environmentManagement' and step.get('result',{}).get('action')==action]
         if len(found)!=1 or steps[found[0]]['result']!=value:raise ValueError('Lifecycle summary differs from its unique actual step: '+action)
         indices.append(found[0])
-    copy_index,reset_index,delete_index=indices
+    copy_index,reset_index,delete_index=indices[:3]
+    if len(indices)>3 and indices[3]<=delete_index:raise ValueError('Default deletion regression order is incomplete')
     if not 2<=copy_index<reset_index<delete_index:raise ValueError('Lifecycle action order is incomplete')
     _cookie_case(steps[copy_index-2],1,'seed',True);_cookie_case(steps[copy_index-1],2,'seed',True)
     for begin,cases in ((copy_index,((2,'read',False),(1,'read',True))), (reset_index,((1,'read',False),(2,'read',True)))):
@@ -244,7 +246,7 @@ def verify_lifecycle_device(report,source,identity=None):
     if not following:raise ValueError('Reused slot has no actual browser read')
     _cookie_case(following[0],2,'read',False)
     if requires_reading_fixture_cleanup(source):verify_reading_fixture_cleanup(report,source,steps,copy_index)
-    return {'actualLifecycleDeviceAcceptance':True,'physicalPhoneAcceptance':False,'actions':['copyAndReset','resetZero','deleteOne']}
+    return {'actualLifecycleDeviceAcceptance':True,'physicalPhoneAcceptance':False,'actions':actions}
 
 
 def selected_bytes(source,path):

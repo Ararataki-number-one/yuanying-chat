@@ -12,7 +12,8 @@ final class DesignSettingsUi {
 
     DesignUi.section(box,"启动与界面","");
     LinearLayout appearance=DesignUi.group(a);box.addView(appearance);
-    group(a,appearance,"默认环境与启动入口","默认："+Profiles.display(a,AppSettings.defaultSlot(a)),"window",()->defaultEntry(a,refresh));
+    int defaultSlot=AppSettings.defaultSlot(a);
+    group(a,appearance,"默认环境与启动入口","默认："+(defaultSlot<0?"暂不可用":Profiles.display(a,defaultSlot)),"window",()->defaultEntry(a,refresh));
     group(a,appearance,"白天与黑夜",AppAppearance.label()+" · 应用与网页外观","brand",()->appearance(a,refresh));
     DesignUi.section(box,"提醒与后台", "");
     LinearLayout background=DesignUi.group(a);box.addView(background);
@@ -37,7 +38,7 @@ final class DesignSettingsUi {
   }
   static void defaultEntry(Activity a,Runnable refresh){
     JSONArray rows=ProfileCatalog.get(a).list();List<Integer> ids=new ArrayList<>();List<String> titles=new ArrayList<>();
-    for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.optBoolean("created")){ids.add(row.optInt("slot"));titles.add(row.optString("name"));}}
+    for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(AppSettings.selectable(row)){ids.add(row.optInt("slot"));titles.add(row.optString("name"));}}
     LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));Spinner spinner=new Spinner(a);spinner.setContentDescription("默认启动环境");
     spinner.setAdapter(DesignUi.spinnerAdapter(a,titles.toArray(new String[0])));spinner.setSelection(Math.max(0,ids.indexOf(AppSettings.defaultSlot(a))));box.addView(spinner,new LinearLayout.LayoutParams(-1,-2));
     CheckBox direct=new CheckBox(a);direct.setText("启动时直接进入默认环境的原网页");direct.setChecked(AppSettings.bool(a,"startupDirect",true));box.addView(direct);

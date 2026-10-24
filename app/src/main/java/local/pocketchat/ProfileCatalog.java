@@ -99,8 +99,10 @@ final class ProfileCatalog extends SQLiteOpenHelper {
       if(!row.optBoolean("created")||row.optBoolean("resetting"))throw new java.io.IOException("此环境已删除或正在重置登录");
       int count=0;JSONArray rows=list();for(int i=0;i<rows.length();i++)if(rows.optJSONObject(i).optBoolean("created"))count++;
       if(count<=1)throw new java.io.IOException("请至少保留一个环境，先新建环境后再删除");
+      int selectedDefault=AppSettings.defaultSlot(root);if(selectedDefault<0&&AppSettings.firstAvailable(rows,-1)>=0)throw new java.io.IOException("默认环境暂时无法更新，环境尚未删除");int storedDefault=AppSettings.requestedDefault(root);JSONObject defaultRow=item(storedDefault);EnvironmentSpec.Identity previousDefault=!AppSettings.eligibleDefault(defaultRow)?null:new EnvironmentSpec.Identity(storedDefault,defaultRow.optInt("generation"),defaultRow.optString("environmentId"));
+      if(row.optInt("generation")==Integer.MAX_VALUE)throw new java.io.IOException("环境代际已达到上限");
       ContentValues v=new ContentValues();v.put("created",0);v.put("deleting",1);v.put("generation",row.optInt("generation")+1);v.put("connected",0);v.put("waiting",0);db.update("environments",v,"slot=?",new String[]{String.valueOf(slot)});
-      if(AppSettings.defaultSlot(root)==slot)for(int i=0;i<rows.length();i++){JSONObject next=rows.optJSONObject(i);if(next.optInt("slot")!=slot&&next.optBoolean("created")){AppSettings.defaultSlot(root,next.optInt("slot"));break;}}
+      if(previousDefault!=null&&previousDefault.slot==slot&&!AppSettings.writeDefault(db,AppSettings.firstAvailable(rows,slot)))throw new java.io.IOException("默认环境暂时无法更新，环境尚未删除");
       db.setTransactionSuccessful();
     }finally{db.endTransaction();}
   }
