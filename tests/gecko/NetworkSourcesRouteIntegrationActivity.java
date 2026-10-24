@@ -43,16 +43,21 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
   /** Only detector/probe endpoints and the isolated test CA differ from production. */
   static final class RouteNetwork extends NativeNetwork {
     final NetworkOptimizationIntegrationActivity.HttpFixture site,plain;final SSLSocketFactory trust;final NetworkSourcesRouteIntegrationActivity test;
+    final SourceRouteStartObservation startObservation=new SourceRouteStartObservation();
     RouteNetwork(NetworkSourcesRouteIntegrationActivity c,NetworkOptimizationIntegrationActivity.HttpFixture site,NetworkOptimizationIntegrationActivity.HttpFixture plain){super(c,new File(c.getNoBackupFilesDir(),"network-runtime"),false);this.test=c;this.site=site;this.plain=plain;trust=site.tls.getSocketFactory();}
+    @Override synchronized void startOperation(Callback callback,int mode){SourceRouteStartObservation.Registration observation=startObservation.registrationBefore(this,callback,mode);try{super.startOperation(callback,mode);}finally{startObservation.registrationAfter(this,observation);}}
+    @Override void runStartOperation(int mode){startObservation.workerBefore(this,mode);try{super.runStartOperation(mode);}finally{startObservation.workerAfter(this,mode);}}
     @Override void recoverOutcome(RecoveryCallback callback){
       int request=++test.recoveryRequestSerial;test.recoveryEvent("recover-request",J.obj("request",request,"state",test.recoveryState()));
       SourceRouteTerminalObserver.Recovery observed=test.terminalObserver.recoveryStarted(request);
-      super.recoverOutcome(outcome->{
+      RecoveryCallback wrapped=outcome->{
         test.recoveryEvent("recover-callback-before",J.obj("request",request,"outcome",outcome.state.name(),"message",outcome.message,"hasReceipt",outcome.receipt!=null,"state",test.recoveryState()));
         try{callback.done(outcome);}finally{test.recoveryEvent("recover-callback-after",J.obj("request",request,"state",test.recoveryState()));test.terminalObserver.recoveryFinished(observed,outcome);}
-      });
+      };
+      SourceRouteTerminalObserver.Scope scope=test.terminalObserver.active;if(scope!=null&&scope.startupRoot!=null)startObservation.recovery(wrapped,request,scope.startupRoot);
+      super.recoverOutcome(wrapped);
     }
-    @Override void stopOwnedCore(ExitRouteReceipt owned,NetworkDiagnostics.Reason reason){JSONObject observation=test.terminalObserver.stopBefore(owned,reason);try{super.stopOwnedCore(owned,reason);}finally{test.terminalObserver.stopAfter(observation);}}
+    @Override void stopOwnedCore(ExitRouteReceipt owned,NetworkDiagnostics.Reason reason){JSONObject observation=test.terminalObserver.stopBefore(owned,reason);startObservation.stopBefore(this,observation);try{super.stopOwnedCore(owned,reason);}finally{test.terminalObserver.stopAfter(observation);startObservation.stopAfter(this,observation);}}
     @Override String exitCheckUrl(){return site.url("/ip");}
     @Override String probeUrl(){return plain.url("/probe");}
     @Override String websiteUrl(){return site.url("/website");}
@@ -97,7 +102,7 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
   }
   void publishOriginal()throws Exception{JSONObject value=J.parse(candidate.toString());new NetworkSourceSelection.ActiveSnapshot(vault).write(NetworkSourceSelection.resolve(catalog,value),value);}
   boolean restart()throws Exception{CompletableFuture<Boolean> done=new CompletableFuture<>();network.restart((ok,message)->{event("startup",J.obj("ok",ok,"message",message));terminalObserver.restartDone(ok);done.complete(ok);});return done.get(75,TimeUnit.SECONDS);}
-  boolean restart(SourceRouteTerminalObserver.Scope scope)throws Exception{CompletableFuture<Boolean> done=new CompletableFuture<>();network.restart((ok,message)->{event("startup",J.obj("ok",ok,"message",message));terminalObserver.restartDone(ok);done.complete(ok);});return done.get(SourceRouteTerminalObserver.remaining(scope),TimeUnit.NANOSECONDS);}
+  boolean restart(SourceRouteTerminalObserver.Scope scope)throws Exception{CompletableFuture<Boolean> done=new CompletableFuture<>();NativeNetwork.Callback callback=(ok,message)->{event("startup",J.obj("ok",ok,"message",message));terminalObserver.restartDone(ok);done.complete(ok);};scope.startupRoot=network.startObservation.root(callback,scope.id,expectedSource,runNonce);network.restart(callback);return done.get(SourceRouteTerminalObserver.remaining(scope),TimeUnit.NANOSECONDS);}
   boolean pushedReceiptCurrent(){NativeNetwork.ExitRouteReceipt receipt=network==null?null:network.verifiedRoute;return network!=null&&network.ready&&!network.recoveryBlocked&&receipt!=null&&receipt.matches(network,network.transport==null?null:network.transport.state);}
   // Gecko routing and browser flags are observed on the UI thread. Its receipt
   // uses pushed service state, as production routing does; fresh IPC is worker-only.

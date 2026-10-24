@@ -561,6 +561,113 @@ def verify_safe_idle(report):
             'safeIdleCases': len(rows), 'actualTrustedGestures': len(gestures), 'checks': report['checkCount'],
             'sourceBoundInstalledApkSha256': report['installedApkSha256'], 'wanSpeedClaim': False}
 
+def _verify_source_route_join(evidence, stop, recovery, source, nonce):
+    """A callback may join one actual restart; a new worker is never a join."""
+    def integer(value, minimum=0):
+        assert type(value) is int and value >= minimum
+        return value
+
+    def yes(value):
+        assert value is True
+
+    def no(value):
+        assert value is False
+
+    case_id = evidence['caseId']
+    observation, proof = evidence['startObservation'], stop['joinedRecovery']
+    for value in (observation, proof):
+        assert type(value['schema']) is int and value['schema'] == 1
+        assert value['caseId'] == case_id and value['sourceCommit'] == source and value['runNonce'] == nonce
+    assert observation['errors'] == []
+    root = observation['rootRegistration']
+    callback = integer(observation['rootCallbackId'], 1)
+    registration = integer(root['registrationId'], 1)
+    assert integer(root['callbackId'], 1) == callback and root['callbackKind'] == 'restart'
+    assert root['caseId'] == case_id and integer(root['mode']) == 2 and integer(root['request']) == 0
+    assert root['waitersBefore'] == [] and root['waitersAfter'] == [callback]
+    for field in ('monitorHeldBefore', 'monitorHeldAfter', 'exactAppend', 'startingAfter'):
+        yes(root[field])
+    for field in ('startingBefore', 'restartQueuedBefore', 'restartQueuedAfter', 'adapterCallbackMatches', 'rootCallbackRetained'):
+        no(root[field])
+    for field in ('invocationIdBefore', 'invocationIdAfter', 'workerThreadIdBefore', 'workerThreadIdAfter'):
+        assert integer(root[field]) == 0
+    root_began = integer(root['beganAtNs'], evidence['restartBeganAtNs'])
+    root_ended = integer(root['endedAtNs'], root_began)
+    workers, admissions = observation['workerInvocations'], observation['admissions']
+    assert isinstance(workers, list) and len(workers) == 1
+    assert isinstance(admissions, list) and len(admissions) == 1
+    worker, admission = workers[0], admissions[0]
+    for record in (root, worker, admission):
+        for field in ('waitersBefore', 'waitersAfter'):
+            assert isinstance(record[field], list)
+            for value in record[field]:
+                integer(value, 1)
+    invocation = integer(worker['invocationId'], 1)
+    thread = integer(worker['javaThreadId'], 1)
+    assert worker['caseId'] == case_id and integer(worker['mode']) == 2
+    assert integer(worker['rootRegistrationId'], 1) == registration
+    assert integer(worker['rootCallbackId'], 1) == callback
+    assert worker['waitersBefore'] == [callback] and worker['waitersAfter'] == []
+    yes(worker['startingBefore'])
+    for field in ('startingAfter', 'restartQueuedBefore', 'restartQueuedAfter'):
+        no(worker[field])
+    worker_began = integer(worker['beganAtNs'], root_ended)
+    worker_ended = integer(worker['endedAtNs'], worker_began)
+    assert worker_ended <= evidence['freshRead']['requestedAtNs']
+    wait = evidence['startObservationWait']
+    assert isinstance(wait, dict) and set(wait) == {'method', 'requestedAtNs', 'completedAtNs'}
+    assert wait['method'] == 'actual-start-worker-observer-completion'
+    waiting = integer(wait['requestedAtNs'], recovery['completedAtNs'])
+    waited = integer(wait['completedAtNs'], max(waiting, worker_ended))
+    assert waited <= evidence['freshRead']['requestedAtNs'] <= evidence['deadlineAtNs']
+    admission_id = integer(admission['registrationId'], registration + 1)
+    added = integer(admission['callbackId'], 1)
+    assert added != callback
+    assert admission['caseId'] == case_id and admission['callbackKind'] == 'recovery'
+    assert integer(admission['mode']) == 1 and integer(admission['request'], 1) == recovery['request']
+    assert admission['waitersBefore'] == [callback] and admission['waitersAfter'] == [callback, added]
+    for field in ('monitorHeldBefore', 'monitorHeldAfter', 'startingBefore', 'startingAfter',
+                  'exactAppend', 'adapterCallbackMatches', 'rootCallbackRetained'):
+        yes(admission[field])
+    for field in ('restartQueuedBefore', 'restartQueuedAfter'):
+        no(admission[field])
+    for field in ('invocationIdBefore', 'invocationIdAfter'):
+        assert integer(admission[field], 1) == invocation
+    for field in ('workerThreadIdBefore', 'workerThreadIdAfter'):
+        assert integer(admission[field], 1) == thread
+    admitted = integer(admission['beganAtNs'], max(worker_began, recovery['requestedAtNs']))
+    admitted_end = integer(admission['endedAtNs'], admitted)
+    assert admitted_end <= worker_ended and admitted_end <= recovery['completedAtNs']
+    owner = stop['startInvocation']
+    assert owner['caseId'] == case_id
+    assert integer(owner['rootRegistrationId'], 1) == registration
+    assert integer(owner['rootCallbackId'], 1) == callback
+    for field in ('invocationId', 'invocationIdAfter'):
+        assert integer(owner[field], 1) == invocation
+    for field in ('javaThreadId', 'javaThreadIdAfter'):
+        assert integer(owner[field], 1) == thread
+    owner_began = integer(owner['beganAtNs'], max(worker_began, stop['beganAtNs']))
+    owner_ended = integer(owner['endedAtNs'], max(owner_began, stop['endedAtNs']))
+    assert owner_ended <= worker_ended
+    assert owner['owned'] == stop['owned'] == proof['owned']
+    for identity in (owner['owned'], proof['owned']):
+        assert type(identity['pid']) is int and type(identity['servicePid']) is int
+    assert integer(proof['request'], 1) == recovery['request']
+    assert integer(proof['registrationId'], 1) == admission_id
+    assert integer(proof['callbackId'], 1) == added
+    assert integer(proof['rootRegistrationId'], 1) == registration
+    assert integer(proof['rootCallbackId'], 1) == callback
+    assert integer(proof['invocationId'], 1) == invocation
+    assert integer(proof['javaThreadId'], 1) == thread
+    assert integer(proof['stopBeganAtNs'], 1) == stop['beganAtNs']
+    assert integer(proof['stopEndedAtNs'], 1) == stop['endedAtNs']
+    assert proof['admission'] == admission
+    # Python considers True == 1; compare JSON too so copied evidence retains types.
+    assert json.dumps(proof['admission'], sort_keys=True) == json.dumps(admission, sort_keys=True)
+    assert json.dumps(proof['owned'], sort_keys=True) == json.dumps(stop['owned'], sort_keys=True)
+    assert json.dumps(owner['owned'], sort_keys=True) == json.dumps(stop['owned'], sort_keys=True)
+
+
 def verify_source_route_terminal(report, source):
     """Require one bounded, identity-bound terminal observation per rejected case."""
     def integer(value, minimum=0):
@@ -735,7 +842,7 @@ def verify_source_route_terminal(report, source):
         stops = evidence['stopObservations']
         assert isinstance(stops, list)
         base_serial = recoveries[0]['request'] - 1 if recoveries else before['recoveryRequestSerial']
-        prior_end, owned_generations = restart_began, set()
+        prior_end, owned_generations, joined_stops = restart_began, set(), set()
         for stop in stops:
             assert stop['caseId'] == case_id and stop['reason'] == 'START_FAILED'
             assert stop['observation'] == 'client cache after original stopOwnedCore returned; not exit proof'
@@ -744,8 +851,14 @@ def verify_source_route_terminal(report, source):
             assert stop_end <= read_at
             prior_end = stop_end
             serial = integer(stop['recoveryRequestSerial'])
-            assert integer(stop['afterRequestSerial']) == serial
-            if serial != base_serial:
+            after_serial = integer(stop['afterRequestSerial'])
+            if after_serial != serial:
+                assert serial == base_serial and after_serial == serial + 1
+                recovery = recovery_by_id[after_serial]
+                assert stop_began <= recovery['requestedAtNs'] <= stop_end <= recovery['completedAtNs']
+                _verify_source_route_join(evidence, stop, recovery, source, nonce)
+                joined_stops.add(id(stop))
+            elif serial != base_serial:
                 recovery = recovery_by_id[serial]
                 assert recovery['requestedAtNs'] <= stop_began <= stop_end <= recovery['completedAtNs']
             elif recoveries:
@@ -769,7 +882,8 @@ def verify_source_route_terminal(report, source):
             assert post['cache']['configuration'] == anchor['configuration']
             if post['cache']['alive']:
                 owners = [stop for stop in stops
-                          if stop['recoveryRequestSerial'] == active_at_cut[0]['request']
+                          if (stop['recoveryRequestSerial'] == active_at_cut[0]['request']
+                              or id(stop) in joined_stops and stop['afterRequestSerial'] == active_at_cut[0]['request'])
                           and all(stop['owned'][key] == post['cache'][key]
                                   for key in ('pid', 'servicePid', 'generation', 'configuration'))]
                 assert len(owners) == 1 and cut <= owners[0]['endedAtNs'], 'Live cut snapshot has no current recovery owner'

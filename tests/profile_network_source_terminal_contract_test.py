@@ -102,6 +102,145 @@ def synthetic_report():
     return report
 
 
+def synthetic_joined_report():
+    """One restart really owns the stop; recovery is only its second waiter."""
+    report = synthetic_report()
+    row = report['negativeCases'][-1]
+    e = row['terminalEvidence']
+    base, case_id = e['startedAtNs'], e['caseId']
+    stop = e['stopObservations'][-1]
+    stop.update(beganAtNs=base + 100, endedAtNs=base + 290,
+                recoveryRequestSerial=0, afterRequestSerial=1)
+    e['stopObservations'] = [stop]
+    e['restartTerminal'].update(atNs=base + 300, cache=copy.deepcopy(e['terminalAnchor']))
+    e['fetchBeganAtNs'] = base + 310
+    e['deadlineAtNs'] = base + 310 + 22_000_000_000
+    row['request']['beganAtNs'] = base + 320
+    report['requests'][-1] = copy.deepcopy(row['request'])
+    e['postFetchCache'].update(coreAlive=False, cache=copy.deepcopy(e['terminalAnchor']),
+                              fence=copy.deepcopy(e['fenceBefore']))
+    e['recoveries'][0].update(requestedAtNs=base + 150, completedAtNs=base + 305)
+    root = dict(registrationId=1, mode=2, callbackId=10, callbackKind='restart',
+        request=0, caseId=case_id, beganAtNs=base+2, endedAtNs=base+4,
+        monitorHeldBefore=True, monitorHeldAfter=True, startingBefore=False,
+        startingAfter=True, restartQueuedBefore=False, restartQueuedAfter=False,
+        waitersBefore=[], waitersAfter=[10], exactAppend=True,
+        adapterCallbackMatches=False, rootCallbackRetained=False,
+        invocationIdBefore=0, invocationIdAfter=0, workerThreadIdBefore=0, workerThreadIdAfter=0)
+    admission = dict(registrationId=2, mode=1, callbackId=11, callbackKind='recovery',
+        request=1, caseId=case_id, beganAtNs=base+160, endedAtNs=base+170,
+        monitorHeldBefore=True, monitorHeldAfter=True, startingBefore=True,
+        startingAfter=True, restartQueuedBefore=False, restartQueuedAfter=False,
+        waitersBefore=[10], waitersAfter=[10,11], exactAppend=True,
+        adapterCallbackMatches=True, rootCallbackRetained=True,
+        invocationIdBefore=20, invocationIdAfter=20, workerThreadIdBefore=30, workerThreadIdAfter=30)
+    worker = dict(invocationId=20, rootRegistrationId=1, rootCallbackId=10,
+        caseId=case_id, mode=2, javaThreadId=30, beganAtNs=base+5, endedAtNs=base+295,
+        waitersBefore=[10], waitersAfter=[], startingBefore=True, startingAfter=False,
+        restartQueuedBefore=False, restartQueuedAfter=False)
+    stop['startInvocation'] = dict(invocationId=20, invocationIdAfter=20,
+        rootRegistrationId=1, rootCallbackId=10, caseId=case_id,
+        javaThreadId=30, javaThreadIdAfter=30, beganAtNs=base+101, endedAtNs=base+291,
+        owned=copy.deepcopy(stop['owned']))
+    stop['joinedRecovery'] = dict(schema=1, caseId=case_id, sourceCommit=SOURCE,
+        runNonce=NONCE, request=1, registrationId=2, callbackId=11,
+        rootRegistrationId=1, rootCallbackId=10, invocationId=20, javaThreadId=30,
+        stopBeganAtNs=stop['beganAtNs'], stopEndedAtNs=stop['endedAtNs'],
+        owned=copy.deepcopy(stop['owned']), admission=copy.deepcopy(admission))
+    e['startObservation'] = dict(schema=1, caseId=case_id, sourceCommit=SOURCE,
+        runNonce=NONCE, rootCallbackId=10, rootRegistration=root,
+        admissions=[admission], workerInvocations=[worker], errors=[])
+    e['startObservationWait'] = dict(method='actual-start-worker-observer-completion',
+                                    requestedAtNs=base+420, completedAtNs=base+430)
+    return report
+
+
+class SourceRouteJoinedStartContractTest(unittest.TestCase):
+    def reject(self, mutate):
+        value = synthetic_joined_report()
+        row = value['negativeCases'][-1]
+        e = row['terminalEvidence']
+        mutate(value, e, e['stopObservations'][0])
+        with self.assertRaises((AssertionError, KeyError, TypeError)):
+            C.verify_source_route_terminal(value, SOURCE)
+
+    def test_exact_registered_join_preserves_all_original_terminal_requirements(self):
+        value = synthetic_joined_report()
+        before = copy.deepcopy(value)
+        self.assertEqual(C.verify_source_route_terminal(value, SOURCE)['cases'], 4)
+        self.assertEqual(value, before)
+
+    def test_count_change_without_monitor_worker_proof_still_fails(self):
+        self.reject(lambda r,e,s:e.pop('startObservation'))
+        self.reject(lambda r,e,s:s.pop('joinedRecovery'))
+        self.reject(lambda r,e,s:s.pop('startInvocation'))
+
+    def test_join_does_not_accept_prior_case_or_different_source_nonce(self):
+        for container in ('startObservation', 'joinedRecovery'):
+            for field,value in [('caseId',identifier(999)),('sourceCommit','0'*40),('runNonce','0'*32)]:
+                self.reject(lambda r,e,s,c=container,f=field,v=value:(e if c=='startObservation' else s)[c].update({f:v}))
+
+    def test_identity_booleans_cannot_masquerade_as_queue_or_worker_numbers(self):
+        self.reject(lambda r,e,s:e['startObservation']['rootRegistration'].update(waitersAfter=[True]))
+        self.reject(lambda r,e,s:e['startObservation']['workerInvocations'][0].update(javaThreadId=True))
+        self.reject(lambda r,e,s:s['joinedRecovery']['admission'].update(mode=True))
+        self.reject(lambda r,e,s:s['startInvocation']['owned'].update(pid=True))
+
+    def test_only_actual_original_monitor_and_exact_callback_append_qualify(self):
+        for field in ('monitorHeldBefore','monitorHeldAfter','exactAppend','adapterCallbackMatches',
+                      'rootCallbackRetained','startingBefore','startingAfter'):
+            self.reject(lambda r,e,s,f=field:e['startObservation']['admissions'][0].update({f:False}))
+        self.reject(lambda r,e,s:e['startObservation']['admissions'][0].update(callbackKind='other'))
+        self.reject(lambda r,e,s:e['startObservation']['admissions'][0].update(waitersAfter=[10,12]))
+        self.reject(lambda r,e,s:e['startObservation']['admissions'][0].update(waitersBefore=[]))
+
+    def test_queued_restart_carrying_original_waiter_is_not_same_operation(self):
+        for which in ('rootRegistration','admissions','workerInvocations'):
+            for field in ('restartQueuedBefore','restartQueuedAfter'):
+                self.reject(lambda r,e,s,w=which,f=field:(e['startObservation'][w] if w=='rootRegistration' else e['startObservation'][w][0]).update({f:True}))
+        self.reject(lambda r,e,s:e['startObservation']['workerInvocations'].append(copy.deepcopy(e['startObservation']['workerInvocations'][0])))
+        self.reject(lambda r,e,s:e['startObservation']['admissions'].append(dict(e['startObservation']['admissions'][0],mode=2)))
+        self.reject(lambda r,e,s:e['startObservation']['errors'].append('queued restart'))
+
+    def test_same_thread_with_different_actual_invocation_rejects(self):
+        for field in ('invocationIdBefore','invocationIdAfter'):
+            self.reject(lambda r,e,s,f=field:e['startObservation']['admissions'][0].update({f:21}))
+        self.reject(lambda r,e,s:s['startInvocation'].update(invocationIdAfter=21))
+        self.reject(lambda r,e,s:e['startObservation']['workerInvocations'][0].update(invocationId=21))
+
+    def test_join_registration_cannot_move_outside_actual_worker_or_before_request(self):
+        self.reject(lambda r,e,s:e['startObservation']['admissions'][0].update(beganAtNs=e['startedAtNs']+120))
+        self.reject(lambda r,e,s:e['startObservation']['admissions'][0].update(endedAtNs=e['startedAtNs']+310))
+        self.reject(lambda r,e,s:e['startObservation']['workerInvocations'][0].update(endedAtNs=e['freshRead']['requestedAtNs']+1))
+        self.reject(lambda r,e,s:e['recoveries'][0].update(requestedAtNs=s['beganAtNs']-1))
+        self.reject(lambda r,e,s:e['recoveries'][0].update(requestedAtNs=s['endedAtNs']+1))
+
+    def test_owned_pid_service_generation_and_raw_copy_cannot_change(self):
+        for field,value in [('pid',123),('servicePid',101),('generation',identifier(999)),('configuration','0'*64)]:
+            self.reject(lambda r,e,s,f=field,v=value:s['startInvocation']['owned'].update({f:v}))
+            self.reject(lambda r,e,s,f=field,v=value:s['joinedRecovery']['owned'].update({f:v}))
+        self.reject(lambda r,e,s:s['joinedRecovery']['admission'].update(callbackId=12))
+
+    def test_original_final_fence_fresh_ipc_and_target_guards_remain_required(self):
+        self.reject(lambda r,e,s:e.pop('fenceAfter'))
+        self.reject(lambda r,e,s:e.pop('finalCache'))
+        self.reject(lambda r,e,s:e['freshRead']['snapshot'].update(alive=True))
+        self.reject(lambda r,e,s:e['contactsAfter'].update(fixedTarget=4))
+        self.reject(lambda r,e,s:e.update(status='failed'))
+
+    def test_two_increment_or_foreign_request_cannot_use_one_join(self):
+        self.reject(lambda r,e,s:s.update(afterRequestSerial=2))
+        self.reject(lambda r,e,s:e['startObservation']['admissions'][0].update(request=2))
+        self.reject(lambda r,e,s:s['joinedRecovery'].update(request=2))
+
+    def test_observer_completion_wait_is_real_bounded_and_before_only_fresh_read(self):
+        self.reject(lambda r,e,s:e.pop('startObservationWait'))
+        self.reject(lambda r,e,s:e['startObservationWait'].update(method='retry-until-closed'))
+        self.reject(lambda r,e,s:e['startObservationWait'].update(requestedAtNs=e['recoveries'][0]['completedAtNs']-1))
+        self.reject(lambda r,e,s:e['startObservationWait'].update(completedAtNs=e['freshRead']['requestedAtNs']+1))
+        self.reject(lambda r,e,s:e['startObservationWait'].update(completedAtNs=e['deadlineAtNs']+1))
+
+
 class SourceRouteTerminalContractTest(unittest.TestCase):
     def reject(self, mutate):
         value = synthetic_report()
