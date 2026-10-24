@@ -189,6 +189,67 @@ class PublicationTests(unittest.TestCase):
             self.publish()
         self.assertEqual(len(calls),1);self.assertEqual(self.git('ls-remote','origin',self.ref),'')
 
+    def advance_before_fetch(self, number):
+        original = subprocess.run
+        self.fetches = []
+        def run(command, **kwargs):
+            if command[:2] == ['git', 'fetch']:
+                self.fetches.append(list(command))
+                if len(self.fetches) <= number:
+                    tip = self.git('ls-remote', 'origin', self.ref).split()[0]
+                    competitor = self.git('commit-tree', self.tree, '-p', tip,
+                                          '-m', 'writer before fetch ' + str(len(self.fetches)))
+                    original(['git', 'push', 'origin', competitor + ':' + self.ref],
+                             cwd=self.root, capture_output=True, text=True, check=True)
+                    self.competitors.append(competitor)
+            if 'push' in command and 'http.postBuffer=524288000' in command:
+                self.pushes.append(list(command))
+            return original(command, **kwargs)
+        return patch.object(P.subprocess, 'run', side_effect=run)
+
+    def test_real_ref_advance_before_fetch_keeps_original_snapshot_and_retries_push(self):
+        first = self.publish()
+        with self.advance_before_fetch(1), contextlib.redirect_stderr(io.StringIO()):
+            commit = self.publish()
+        self.assert_tree(commit)
+        self.assertEqual(len(self.fetches), 2)
+        self.assertEqual(self.fetches[0][-1], first)
+        self.assertEqual(self.fetches[1][-1], self.competitors[0])
+        self.assertEqual(len(self.pushes), 2)
+        self.assertIn(self.competitors[0], self.git('show', '-s', '--format=%P', commit).split())
+        self.assertTrue(all(not any(value.startswith('--force') or value.startswith('+')
+                                    for value in command) for command in self.pushes))
+
+    def test_ref_advances_before_fetch_exhaust_original_bound_without_overwriting_writer(self):
+        self.publish()
+        with self.advance_before_fetch(2), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(subprocess.CalledProcessError):
+            self.publish(attempts=2)
+        self.assertEqual(len(self.fetches), 2)
+        self.assertEqual(len(self.pushes), 2)
+        self.assertEqual(self.git('ls-remote', 'origin', self.ref).split()[0], self.competitors[-1])
+
+    def test_unexpected_fetched_identity_still_fails_before_push(self):
+        self.publish()
+        original = subprocess.check_output
+        def output(command, **kwargs):
+            if command == ['git', 'rev-parse', 'FETCH_HEAD']:
+                return 'f' * 40 + '\n'
+            return original(command, **kwargs)
+        with patch.object(P.subprocess, 'check_output', side_effect=output), self.assertRaisesRegex(RuntimeError, 'immutable identity'):
+            self.publish()
+        self.assertEqual(self.git('ls-remote', 'origin', self.ref).split()[0], self.git('rev-parse', 'FETCH_HEAD'))
+
+    def test_malformed_observed_ref_is_rejected_before_fetch(self):
+        original = subprocess.check_output
+        for observed in ('invalid ' + self.ref, 'a' * 40 + ' refs/heads/apk/other',
+                         'a' * 40, 'a' * 40 + ' ' + self.ref + ' extra'):
+            def output(command, **kwargs):
+                if command == ['git', 'ls-remote', 'origin', self.ref]:
+                    return observed + '\n'
+                return original(command, **kwargs)
+            with self.subTest(observed=observed), patch.object(P.subprocess, 'check_output', side_effect=output), self.assertRaisesRegex(ValueError, 'observed artifact ref'):
+                self.publish()
+
 
 if __name__ == '__main__':
     unittest.main()
