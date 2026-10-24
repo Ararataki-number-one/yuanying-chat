@@ -31,12 +31,32 @@ if os.environ.get('PUBLISH_TEST_MODE')=='fetch-failure' and args and args[0]=='f
     sys.stderr.write('Synthetic local artifact fetch failure\n')
     sys.exit(91)
 result=subprocess.run([real,*args],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-if result.returncode==0 and os.environ.get('PUBLISH_TEST_MODE')=='drift' and args==['ls-remote','origin',os.environ['PUBLISH_TEST_ARTIFACT_REF']]:
+observation=dict(arguments=args,returnCode=result.returncode,stdoutHex=result.stdout.hex(),stderrHex=result.stderr.hex())
+if (result.returncode==0 and os.environ.get('PUBLISH_TEST_MODE')=='drift'
+    and args==['ls-remote','origin',os.environ['PUBLISH_TEST_ARTIFACT_REF']]
+    and result.stdout.decode().split()==[os.environ['PUBLISH_TEST_PREVIOUS_SHA'],os.environ['PUBLISH_TEST_ARTIFACT_REF']]):
+    # Advance only the observation of the original tip. The retry observes
+    # the new tip and must not repeat a stale compare-and-swap in this fixture.
     changed=subprocess.run([real,'--git-dir',os.environ['PUBLISH_TEST_REMOTE'],'update-ref',
         os.environ['PUBLISH_TEST_ARTIFACT_REF'],os.environ['PUBLISH_TEST_RACE_SHA'],
         os.environ['PUBLISH_TEST_PREVIOUS_SHA']],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     if changed.returncode:
         sys.stderr.buffer.write(changed.stderr);sys.exit(changed.returncode)
+    observation['injectedRemoteAdvance']=dict(previous=os.environ['PUBLISH_TEST_PREVIOUS_SHA'],current=os.environ['PUBLISH_TEST_RACE_SHA'])
+if result.returncode==0 and args and args[0]=='fetch':
+    observation['fetchedHeadBeforeFault']=subprocess.check_output([real,'rev-parse','FETCH_HEAD']).decode().strip()
+    if os.environ.get('PUBLISH_TEST_MODE')=='fetch-head-mismatch':
+        # A real local FETCH_HEAD modification after the real fixed-SHA fetch,
+        # not fabricated rev-parse output and not a production fetch retry.
+        path=subprocess.check_output([real,'rev-parse','--git-path','FETCH_HEAD']).decode().strip()
+        with open(path,'rb') as stream:before=stream.read()
+        source=subprocess.check_output([real,'rev-parse','HEAD']).strip()
+        after=source+b'\t\tSynthetic test-only concurrent FETCH_HEAD modification\n'
+        with open(path,'wb') as stream:stream.write(after)
+        observation['injectedFetchHeadChange']=dict(beforeHex=before.hex(),afterHex=after.hex())
+    observation['fetchedHeadAfterFault']=subprocess.check_output([real,'rev-parse','FETCH_HEAD']).decode().strip()
+with open(os.environ['PUBLISH_TEST_GIT_LOG']+'.results','a',encoding='utf-8') as stream:
+    stream.write(json.dumps(observation)+'\n')
 sys.stdout.buffer.write(result.stdout);sys.stderr.buffer.write(result.stderr)
 sys.exit(result.returncode)
 '''
@@ -265,17 +285,82 @@ class BoundedPublisherTest(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(raw).hexdigest(),hashlib.sha256(expected).hexdigest())
         self.assert_source_preserved()
 
-    def test_branch_drift_between_ls_remote_and_fetch_fails_without_push(self):
+    def test_branch_advance_keeps_immutable_fetch_and_retries_same_tree_without_losing_history(self):
         self.prepare()
         prior_tree = self.git('rev-parse',self.previous+'^{tree}',cwd=self.seed).stdout.strip()
         race = self.git('commit-tree',prior_tree,'-p',self.source,'-p',self.previous,'-m','Synthetic concurrent artifact publication',cwd=self.seed).stdout.strip()
         self.git('push','origin',race+':refs/heads/race-object-holder',cwd=self.seed)
         result = self.publish(mode='drift',race=race)
-        self.assertNotEqual(result.returncode,0)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertEqual(self.git('rev-parse','FETCH_HEAD',cwd=self.client).stdout.strip(),race)
-        self.assertEqual(self.published(),race)
-        self.assertFalse(any('push' in command or 'commit-tree' in command for command in self.commands()))
-        self.assertEqual(self.remote_git('merge-base','--is-ancestor',self.old,race,check=False).returncode,0)
+        current = self.published()
+        commands = self.commands()
+        observations = [json.loads(line) for line in Path(str(self.command_log)+'.results').read_text().splitlines()]
+        fetches = [row for row in observations if row['arguments'][0]=='fetch']
+        pushes = [row for row in observations if 'push' in row['arguments']]
+        commits = [row for row in observations if row['arguments'][0]=='commit-tree']
+        self.assertEqual([row['arguments'] for row in fetches],
+            [['fetch','--depth=1','--no-tags','origin',tip] for tip in (self.previous,race)])
+        self.assertEqual([row['fetchedHeadBeforeFault'] for row in fetches],[self.previous,race])
+        self.assertEqual([row['fetchedHeadAfterFault'] for row in fetches],[self.previous,race])
+        self.assertEqual(sum('injectedRemoteAdvance' in row for row in observations),1)
+        self.assertEqual(len(pushes),2);self.assertLessEqual(len(pushes),3)
+        self.assertNotEqual(pushes[0]['returnCode'],0);self.assertEqual(pushes[1]['returnCode'],0)
+        rejection=bytes.fromhex(pushes[0]['stderrHex']).decode()
+        self.assertIn('[rejected]',rejection)
+        self.assertTrue(any(marker in rejection for marker in ('fetch first','non-fast-forward')),rejection)
+        self.assertEqual(len(commits),2)
+        committed = [bytes.fromhex(row['stdoutHex']).decode().strip() for row in commits]
+        self.assertEqual(current,committed[-1])
+        trees = [self.git('rev-parse',commit+'^{tree}',cwd=self.client).stdout.strip() for commit in committed]
+        self.assertEqual(trees[0],trees[1])
+        self.assertEqual(sum(command[0]=='write-tree' for command in commands),1)
+        self.assertEqual(sum(command[0]=='add' for command in commands),1)
+        for commit,tip,row in zip(committed,(self.previous,race),commits):
+            self.assertEqual(row['arguments'][1],trees[0])
+            self.assertEqual(row['arguments'][2:6],['-p',self.source,'-p',tip])
+            self.assertEqual(self.git('show','-s','--format=%P',commit,cwd=self.client).stdout.strip().split(),[self.source,tip])
+        self.assertTrue(all(not any(value.startswith('--force') or value.startswith('+') for value in command) for command in commands))
+        stage=self.client/'work/gecko-integration/public'
+        self.assertEqual(set(self.remote_git('ls-tree','-r','--name-only',current).stdout.splitlines()),{path.name for path in stage.iterdir()})
+        for path in stage.iterdir():
+            published=subprocess.check_output([GIT,'--git-dir',str(self.remote),'show',current+':'+path.name],env=self.environment)
+            self.assertEqual(published,path.read_bytes(),path.name)
+        manifest=json.loads((stage/'manifest.json').read_bytes())
+        self.assertEqual(manifest['sourceCommit'],self.source)
+        self.assertEqual(b''.join((stage/part['file']).read_bytes() for part in manifest['artifacts'][0]['chunks']),self.apk_bytes)
+        for tip in (self.source,self.old,self.previous,race):
+            self.assertEqual(self.remote_git('merge-base','--is-ancestor',tip,current,check=False).returncode,0)
+        self.assertEqual(self.git('cat-file','-e',self.old,cwd=self.client,check=False).returncode,1)
+        self.assertEqual(self.git('cat-file','-e',self.old_blob,cwd=self.client,check=False).returncode,1)
+        self.assertEqual(self.git('cat-file','-e',self.current_blob,cwd=self.client,check=False).returncode,0)
+        self.assertEqual(self.git('show-ref','--tags',cwd=self.client,check=False).returncode,1)
+        self.assertEqual(self.remote_git('cat-file','-e',self.old_blob,check=False).returncode,0)
+        self.assertEqual(self.remote_git('rev-parse','refs/tags/obsolete-artifact-tag').stdout.strip(),self.old)
+        self.assertEqual(self.remote_git('rev-parse','refs/tags/current-artifact-tag').stdout.strip(),self.previous)
+        self.assert_source_preserved()
+
+    def test_real_fetch_head_change_after_immutable_fetch_fails_before_any_commit_or_push(self):
+        self.prepare()
+        result=self.publish(mode='fetch-head-mismatch')
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Fetched artifact commit differs from its immutable identity',result.stderr)
+        self.assertEqual(self.published(),self.previous)
+        self.assertEqual(self.git('rev-parse','FETCH_HEAD',cwd=self.client).stdout.strip(),self.source)
+        commands=self.commands()
+        self.assertEqual([row for row in commands if row[0]=='fetch'],
+                         [['fetch','--depth=1','--no-tags','origin',self.previous]])
+        self.assertEqual(sum(row[0]=='ls-remote' for row in commands),1)
+        self.assertFalse(any('push' in command or 'commit-tree' in command for command in commands))
+        observations=[json.loads(line) for line in Path(str(self.command_log)+'.results').read_text().splitlines()]
+        fetched=[row for row in observations if row['arguments'][0]=='fetch']
+        self.assertEqual(len(fetched),1)
+        self.assertEqual(fetched[0]['fetchedHeadBeforeFault'],self.previous)
+        self.assertEqual(fetched[0]['fetchedHeadAfterFault'],self.source)
+        self.assertTrue(bytes.fromhex(fetched[0]['injectedFetchHeadChange']['beforeHex']).startswith(self.previous.encode()+b'\t'))
+        self.assertEqual(bytes.fromhex(fetched[0]['injectedFetchHeadChange']['afterHex']),
+                         (self.client/'.git/FETCH_HEAD').read_bytes())
+        self.assertEqual(self.remote_git('merge-base','--is-ancestor',self.old,self.previous,check=False).returncode,0)
         self.assert_source_preserved()
 
     def test_failed_previous_fetch_cannot_publish_or_rewrite_remote_history(self):
