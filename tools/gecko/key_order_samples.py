@@ -17,6 +17,7 @@ SETUP_DIAGNOSTICS = (
     'android-emulator-package-results.json', 'android-system-image-results.json',
     'android-platform-tools-results.json', 'emulator.log',
 )
+SCROLL_DIAGNOSTICS = ('gecko-scroll-diagnostics.json', 'gecko-scroll-diagnostic-log.json')
 
 
 def sha(path):
@@ -34,6 +35,12 @@ def stage(args):
     # A setup failure precedes all input evidence. Keep its original commands,
     # scans and state observations even though the unchanged oracle must fail.
     for name in SETUP_DIAGNOSTICS:
+        original = args.input / name
+        if original.is_file():
+            shutil.copy2(original, args.out / name)
+    # Preserve completed runner files byte-for-byte, including failed scrolls.
+    # These are evidence retention only; missing files cannot become a pass.
+    for name in SCROLL_DIAGNOSTICS:
         original = args.input / name
         if original.is_file():
             shutil.copy2(original, args.out / name)
