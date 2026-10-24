@@ -549,6 +549,9 @@ jobs:
         if ! python3 tests/gecko/run_preconnect.py --adb "$(command -v adb)" --serial emulator-5554; then
           checks_failed=1
         fi
+        if ! python3 tests/gecko/run_network_client_binding.py --adb "$(command -v adb)" --serial emulator-5554; then
+          checks_failed=1
+        fi
         if [ "$checks_failed" -ne 0 ]; then exit 1; fi
       if: ${{ matrix.phase == 'connections' }}
     - name: Verify subscription storage and selection UI

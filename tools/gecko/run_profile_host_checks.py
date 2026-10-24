@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import shutil
 import subprocess
 import sys
@@ -39,6 +40,10 @@ def main():
     draft_admission_inputs={path for path in (ROOT/'tests/local-draft-admission-host').rglob('*')
                             if path.is_file() and path.suffix in ('.py','.java','.in','.json')}
     input_paths.update(draft_admission_inputs)
+    transport_client_inputs={path for path in (ROOT/'tests/network-transport-client-host').rglob('*')
+                             if path.is_file() and path.suffix in ('.py','.java','.md','.in','.json')}
+    input_paths.update(transport_client_inputs)
+    input_paths.update(ROOT/'tools/gecko'/name for name in ('network_client_binding_contract.py','sdk_identity_contract.py'))
     input_paths.add(ROOT/'tools/gecko/download_resume_contract.py')
     input_paths.add(ROOT/'tools/gecko/check_interaction_transfer_evidence.py')
     input_paths.add(ROOT/'tools/publish-gecko-release.py')
@@ -312,6 +317,46 @@ def main():
     results.append(dict(test='local-draft-admission-host',report=str(draft_admission_receipt.relative_to(ROOT)),
                         passed=draft_admission['checkCount'],actualAndroidExecution=False,evidence=draft_admission))
     files.update(draft_admission_inputs)
+    client_host=ROOT/'tests/network-transport-client-host/run.py'
+    client_receipt=output/'network-transport-client-host-results.json'
+    client_run=subprocess.run([sys.executable,str(client_host),'--java-home',str(Path(java).resolve().parent.parent),
+        '--json-jar',str(json_jar),'--output',str(client_receipt)],cwd=ROOT,text=True,capture_output=True)
+    if client_run.returncode:
+        raise ValueError('Actual network-client lifecycle controls failed: '+client_run.stdout+client_run.stderr)
+    client_report=json.loads(client_receipt.read_text());client_contract=runpy.run_path(str(client_host))
+    client_sources=transport_client_inputs|{source/'NetworkTransportClient.java',source/'J.java'}
+    expected_client_files={str(path.relative_to(ROOT)):before_hashes[path] for path in client_sources}
+    if (client_report.get('status')!='passed' or type(client_report.get('passed')) is not int or client_report['passed']!=92
+            or client_report.get('sourceIdentity')!={'sourceCommit':source_id,'sourceTree':source_tree,
+                'sourceDirty':bool(source_status.strip()),'sourceFiles':expected_client_files}
+            or client_report.get('oldFailuresReproduced') is not True
+            or client_report.get('executionInputsUnchanged') is not True or client_report.get('fullSelectedClass') is not True
+            or client_report.get('beforeRef')!='3eac2891438d37aa62f695b34a90f0aa02215ca2'
+            or client_report.get('sharedWholeJsonHelperSha256')!=before_hashes[source/'J.java']
+            or any(client_report.get(key) is not False for key in ('actualAndroidExecution','actualBinderExecution','actualServiceExecution'))
+            or client_report.get('jsonJarSha256')!=hashlib.sha256(json_jar.read_bytes()).hexdigest()
+            or not isinstance(client_report.get('runs'),list) or len(client_report['runs'])!=2):
+        raise ValueError('Incomplete source-bound network-client lifecycle controls')
+    for record,name in zip(client_report['runs'],('before','current')):
+        client_contract['verify_raw_run'](record)
+        client_contract['verify_report'](record['report'],expect_pass=name=='current')
+        if (record['name']!=name or record['sourceCommit']!=(source_id if name=='current' else client_report['beforeRef'])
+                or record['clientSha256']!=(before_hashes[source/'NetworkTransportClient.java'] if name=='current' else client_report['beforeClientSha256'])
+                or (record['exitCode']!=0 if name=='current' else record['exitCode']==0)):
+            raise ValueError('Network-client lifecycle execution selection differs')
+    results.append(dict(test='network-transport-client-host',report=str(client_receipt.relative_to(ROOT)),
+                        passed=92,actualAndroidExecution=False,evidence=client_report))
+    files.update(transport_client_inputs)
+    files.update((source/'NetworkTransportClient.java',source/'J.java'))
+    framework_controls=ROOT/'tests/gecko_network_client_binding_test.py'
+    framework_run=subprocess.run([sys.executable,str(framework_controls)],cwd=ROOT,text=True,capture_output=True)
+    framework_count=re.search(r'^Ran (\d+) tests? in ',framework_run.stderr,re.M)
+    if framework_run.returncode or framework_count is None or int(framework_count.group(1))!=41:
+        raise ValueError('Incomplete framework binding evidence controls: '+framework_run.stdout+framework_run.stderr)
+    results.append(dict(test='network-client-framework-evidence-controls',passed=41,actualAndroidExecution=False,
+        output=framework_run.stdout+framework_run.stderr))
+    files.update((framework_controls,ROOT/'tools/gecko/network_client_binding_contract.py',ROOT/'tools/gecko/sdk_identity_contract.py',
+                  ROOT/'tests/gecko/NetworkClientBindingIntegrationActivity.java',ROOT/'tests/gecko/run_network_client_binding.py',ROOT/'tests/gecko/AndroidManifest.xml'))
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest
