@@ -7,9 +7,12 @@ import io
 import json
 from pathlib import Path
 import sys
+import subprocess
+import tempfile
 import time
 import types
 import unittest
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
@@ -68,6 +71,8 @@ class GeckoEventTransportControls(unittest.TestCase):
         bindings=dict(adb=fake_adb,adb_bytes=fake_bytes,identity=identity(),event_transfers=[],
                       uuid=types.SimpleNamespace(uuid4=lambda:types.SimpleNamespace(hex='e'*32)),
                       EventTransfer=transfer.EventTransfer,parse_receipt_line=transfer.parse_receipt_line,
+                      read_with_sequence_failure_diagnostics=transfer.read_with_sequence_failure_diagnostics,
+                      args=types.SimpleNamespace(adb='counterfeit-adb',serial='counterfeit-serial'),
                       has_pixel_launcher=False,launcher='counterfeit-unused-launcher',package='local.pocketchat.test',
                       surface_gestures={},time=time,json=json,report={},logs=[],steps=[],OUT=ROOT/'work/gecko-integration')
         exec(compile(ast.fix_missing_locations(ast.Module(body=[run],type_ignores=[])),
@@ -208,6 +213,175 @@ class GeckoEventTransportControls(unittest.TestCase):
         self.assertEqual(failure.exception.args[0],original)
         self.assertEqual(bindings['steps'],[])
         self.assertEqual(bindings['event_transfers'][0]['events'],[dict(receipt=receipt,rawUtf8=raw.decode())])
+
+
+class SequenceFailureDiagnosticControls(unittest.TestCase):
+    @contextlib.contextmanager
+    def subprocess_control(self, **arguments):
+        # Patch only this contract's command boundary; global subprocess.run
+        # must remain real for the existing selected-source SDK validation.
+        process=Mock(**arguments)
+        with patch.object(transfer,'subprocess',types.SimpleNamespace(run=process,TimeoutExpired=subprocess.TimeoutExpired)):
+            yield process
+
+    def reader(self, *, source=None):
+        return transfer.EventTransfer(identity=source or identity(), nonce='e'*32, slot=0,
+                                      action='read', fetch=lambda uri: self.fail('No provider read before gap rejection'))
+
+    def diagnostic(self, reader, receipt, out, **changes):
+        arguments=dict(filtered_log='原始 host snapshot\r\n', out=out,
+                       adb='counterfeit-adb', serial='counterfeit-serial')
+        arguments.update(changes)
+        return transfer.read_with_sequence_failure_diagnostics(reader, receipt, **arguments)
+
+    def test_original_read_ast_is_exactly_preserved(self):
+        tree=ast.parse((ROOT/'tools/gecko/integration_event_contract.py').read_bytes())
+        owner=next(x for x in tree.body if isinstance(x,ast.ClassDef) and x.name=='EventTransfer')
+        body=next(x for x in owner.body if isinstance(x,ast.FunctionDef) and x.name=='read')
+        self.assertEqual(hashlib.sha256(ast.dump(body,include_attributes=False).encode()).hexdigest(),
+                         '9dc2ad66e76ce290600e51f28f83146e395f204a8201f6eab319ab636f577c8d')
+
+    def test_pass_path_calls_original_read_once_without_diagnostics(self):
+        receipt,raw=packet();reads=[]
+        reader=transfer.EventTransfer(identity=identity(),nonce='e'*32,slot=0,action='read',
+                                      fetch=lambda uri:reads.append(uri) or raw)
+        with tempfile.TemporaryDirectory() as directory,self.subprocess_control() as process:
+            self.assertEqual(self.diagnostic(reader,receipt,Path(directory)),event())
+            process.assert_not_called();self.assertEqual(list(Path(directory).iterdir()),[])
+        self.assertEqual(len(reads),1);self.assertEqual(len(reader.records),1)
+
+    def test_real_local_subprocess_retains_binary_streams_returncodes_and_original_exception(self):
+        receipt,_=packet(sequence=2);reader=self.reader();original_read=transfer.EventTransfer.read;errors=[];calls=[]
+        def observe(instance,value):
+            calls.append(value)
+            try:return original_read(instance,value)
+            except ValueError as error:errors.append(error);raise
+        with tempfile.TemporaryDirectory() as directory:
+            base=Path(directory);out=base/'observations';stub=base/'synthetic-adb'
+            stub.write_text('#!'+sys.executable+'\nimport sys\n'
+                            'assert sys.argv[1:7]==["-s","counterfeit-serial","exec-out","content","read","--uri"]\n'
+                            'assert sys.argv[7].startswith("content://local.pocketchat.test.evidence/gecko-events/0/'+('e'*32)+'/")\n'
+                            'sys.stdout.buffer.write(b"original\\x00\\xff\\r\\n")\n'
+                            'sys.stderr.buffer.write(b"stderr\\x80\\n")\n'
+                            'sys.exit(7 if sys.argv[7].endswith("/1") else 0)\n')
+            stub.chmod(0o700)
+            with patch.object(transfer.EventTransfer,'read',observe),self.assertRaises(ValueError) as failure:
+                self.diagnostic(reader,receipt,out,adb=str(stub))
+            self.assertIs(failure.exception,errors[0]);self.assertEqual(len(calls),1)
+            report=json.loads((out/'device-event-sequence-failure.json').read_bytes())
+            self.assertTrue(report['diagnosticOnly']);self.assertIs(report['acceptance'],False)
+            self.assertEqual(report['sourceCommit'],identity()['sourceCommit'])
+            self.assertEqual(report['buildIdentity'],identity());self.assertEqual(report['runNonce'],'e'*32)
+            self.assertEqual(report['expectedSequence'],1);self.assertEqual(report['observedReceipt'],receipt)
+            self.assertEqual([x['returnCode'] for x in report['reads']],[7,0])
+            self.assertFalse(report['reads'][1]['observedReceiptBytesMatch'])
+            self.assertEqual(len(list(out.iterdir())),6)
+            self.assertEqual((out/report['filteredSnapshot']['file']).read_bytes(),'原始 host snapshot\r\n'.encode())
+            for row in report['reads']:
+                self.assertEqual(row['timeoutSeconds'],5);self.assertIs(row['acceptance'],False)
+                self.assertGreaterEqual(row['hostFinishedMonotonicNs'],row['hostStartedMonotonicNs'])
+                for stream,data in [('stdout',b'original\0\xff\r\n'),('stderr',b'stderr\x80\n')]:
+                    retained=row[stream];self.assertEqual((out/retained['file']).read_bytes(),data)
+                    self.assertEqual(retained['bytes'],len(data));self.assertEqual(retained['sha256'],hashlib.sha256(data).hexdigest())
+            self.assertEqual(reader.records,[]);self.assertEqual(reader._cache,{});self.assertIsNone(reader.command)
+
+    def test_timeout_partial_bytes_are_retained_once_per_path_with_five_second_budget(self):
+        receipt,_=packet(sequence=2);reader=self.reader()
+        def timeout(command,**kwargs):
+            self.assertEqual(kwargs,dict(capture_output=True,timeout=5,check=False))
+            raise subprocess.TimeoutExpired(command,5,output=b'partial\xff',stderr=b'partial-err\x80')
+        with tempfile.TemporaryDirectory() as directory,self.subprocess_control(side_effect=timeout) as process:
+            with self.assertRaisesRegex(ValueError,'missing or out-of-order'):
+                self.diagnostic(reader,receipt,Path(directory))
+            self.assertEqual(process.call_count,2)
+            report=json.loads((Path(directory)/'device-event-sequence-failure.json').read_bytes())
+            self.assertEqual([x['status'] for x in report['reads']],['timeout','timeout'])
+            for row in report['reads']:
+                self.assertIsNone(row['returnCode']);self.assertTrue(row['timeoutStdoutPresent'])
+                self.assertEqual((Path(directory)/row['stdout']['file']).read_bytes(),b'partial\xff')
+                self.assertEqual((Path(directory)/row['stderr']['file']).read_bytes(),b'partial-err\x80')
+
+    def test_timeout_without_observed_streams_is_explicit_and_empty_bytes_preserved(self):
+        receipt,_=packet(sequence=2)
+        with tempfile.TemporaryDirectory() as directory,self.subprocess_control(side_effect=subprocess.TimeoutExpired('stub',5)):
+            with self.assertRaises(ValueError):self.diagnostic(self.reader(),receipt,Path(directory))
+            report=json.loads((Path(directory)/'device-event-sequence-failure.json').read_bytes())
+            for row in report['reads']:
+                self.assertFalse(row['timeoutStdoutPresent']);self.assertFalse(row['timeoutStderrPresent'])
+                for stream in ('stdout','stderr'):
+                    self.assertEqual(row[stream]['bytes'],0);self.assertEqual((Path(directory)/row[stream]['file']).read_bytes(),b'')
+
+    def test_capture_oserror_cannot_replace_original_error_or_retry(self):
+        receipt,_=packet(sequence=2)
+        with tempfile.TemporaryDirectory() as directory,self.subprocess_control(side_effect=FileNotFoundError('synthetic missing command')) as process:
+            with self.assertRaisesRegex(ValueError,'missing or out-of-order'):
+                self.diagnostic(self.reader(),receipt,Path(directory))
+            self.assertEqual(process.call_count,2)
+            report=json.loads((Path(directory)/'device-event-sequence-failure.json').read_bytes())
+            self.assertTrue(all(x['status']=='capture-error' and x['exceptionType']=='FileNotFoundError' for x in report['reads']))
+
+    def test_invalid_receipt_identity_command_nonce_and_path_cannot_launch_diagnostic_read(self):
+        receipt,_=packet(sequence=2)
+        mutants=[dict(receipt,runNonce='../'+'e'*29),dict(receipt,runNonce='f'*32),
+                 dict(receipt,fixtureAction='seed'),dict(receipt,processSlot=1),
+                 dict(receipt,nativeContext='environment-2'),dict(receipt,command=True),
+                 dict(receipt,command=0),dict(receipt,sequence=True),dict(receipt,sequence=4097),
+                 dict(receipt,payloadSha256='bogus'),dict(receipt,payloadBytes=0)]
+        with tempfile.TemporaryDirectory() as directory,self.subprocess_control() as process:
+            for candidate in mutants:
+                with self.subTest(receipt=candidate),self.assertRaises(ValueError):
+                    self.diagnostic(self.reader(),candidate,Path(directory))
+            self.assertEqual(list(Path(directory).iterdir()),[]);process.assert_not_called()
+            reader=self.reader(source=dict(identity(),sourceCommit='invalid'))
+            with self.assertRaises(ValueError):self.diagnostic(reader,receipt,Path(directory))
+            process.assert_not_called()
+
+    def test_prior_accepted_command_and_progress_bind_the_two_paths_without_mutation(self):
+        first,raw=packet();current,_=packet(sequence=3)
+        reader=transfer.EventTransfer(identity=identity(),nonce='e'*32,slot=0,action='read',fetch=lambda uri:raw)
+        reader.read(first);before=copy.deepcopy(reader.records)
+        plan=transfer.sequence_failure_plan(reader,current)
+        self.assertEqual(plan['expectedSequence'],2);self.assertEqual(plan['previouslyAcceptedCommand'],7)
+        self.assertEqual([x['sequence'] for x in plan['paths']],[2,3])
+        self.assertEqual([x['receiptObserved'] for x in plan['paths']],[False,True])
+        self.assertEqual(reader.records,before)
+        with self.assertRaises(ValueError):transfer.sequence_failure_plan(reader,dict(current,command=8))
+        reader._cache[9]=reader._cache[1]
+        with self.assertRaises(ValueError):transfer.sequence_failure_plan(reader,current)
+
+    def test_non_gap_payload_error_never_runs_diagnostics(self):
+        receipt,raw=packet();reader=transfer.EventTransfer(identity=identity(),nonce='e'*32,slot=0,action='read',fetch=lambda uri:raw[:-1])
+        with tempfile.TemporaryDirectory() as directory,self.subprocess_control() as process:
+            with self.assertRaisesRegex(ValueError,'payload length differs'):
+                self.diagnostic(reader,receipt,Path(directory))
+            process.assert_not_called();self.assertEqual(list(Path(directory).iterdir()),[])
+
+    def test_diagnostic_write_failure_or_existing_original_cannot_hide_gap_or_overwrite(self):
+        receipt,_=packet(sequence=2)
+        with tempfile.TemporaryDirectory() as directory,self.subprocess_control() as process:
+            root=Path(directory);original=root/'device-event-sequence-filtered.log';original.write_bytes(b'prior original')
+            with self.assertRaisesRegex(ValueError,'missing or out-of-order'):
+                self.diagnostic(self.reader(),receipt,root)
+            self.assertEqual(original.read_bytes(),b'prior original');process.assert_not_called()
+            with patch.object(Path,'mkdir',side_effect=OSError('synthetic full filesystem')):
+                with self.assertRaisesRegex(ValueError,'missing or out-of-order'):
+                    self.diagnostic(self.reader(),receipt,root/'new')
+            process.assert_not_called()
+
+    def test_actual_device_consumer_keeps_failed_gap_and_does_not_append_business_events(self):
+        receipt,raw=packet(sequence=2);controls=GeckoEventTransportControls()
+        bindings,calls=controls.device_runner_control(receipt,raw)
+        with tempfile.TemporaryDirectory() as directory,self.subprocess_control(return_value=types.SimpleNamespace(returncode=1,stdout=b'',stderr=b'missing original')) as process:
+            bindings['OUT']=Path(directory)
+            with self.assertRaisesRegex(ValueError,'missing or out-of-order'):
+                bindings['run'](1,'read')
+            self.assertEqual(process.call_count,2)
+            self.assertEqual(bindings['steps'],[]);self.assertEqual(bindings['logs'],[])
+            self.assertEqual(bindings['event_transfers'][0]['events'],[])
+            self.assertFalse(any(x[:3]==('exec-out','content','read') for x in calls))
+            report=json.loads((Path(directory)/'device-event-sequence-failure.json').read_bytes())
+            retained=(Path(directory)/report['filteredSnapshot']['file']).read_bytes()
+            self.assertEqual(retained,('10-13 12:00 I PocketGeckoIntegration: '+json.dumps(receipt)+'\n').encode())
 
 
 if __name__ == '__main__':

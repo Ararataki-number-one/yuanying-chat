@@ -80,6 +80,83 @@ class CiBundleTest(unittest.TestCase):
         for name,data in evidence.items():
             self.assertEqual((target/BUNDLE.OUT/name).read_bytes(),data)
 
+    def test_event_sequence_failure_namespace_has_only_six_phase_files(self):
+        expected = {'device-event-sequence-failure.json', 'device-event-sequence-filtered.log',
+                    'device-event-sequence-expected.stdout.log', 'device-event-sequence-expected.stderr.log',
+                    'device-event-sequence-current.stdout.log', 'device-event-sequence-current.stderr.log'}
+        self.assertEqual(BUNDLE.EVENT_SEQUENCE_FAILURE_FILES, expected)
+        for name in expected:
+            self.assertTrue(BUNDLE.allowed(str(BUNDLE.OUT/name), 'phase'), name)
+            self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/name), 'build'), name)
+            for folder in ('nested', 'caret-compat', 'ui-visuals'):
+                self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/folder/name), 'phase'), name)
+        for name in ('device-event-sequence-private.txt', 'device-event-sequence-private.json',
+                     'device-event-sequence-private.log', 'device-event-sequence-filtered.txt',
+                     'device-event-sequence-expected.stdout.log.bak', 'device-event-sequence.json',
+                     'DEVICE-EVENT-SEQUENCE-filtered.log', 'device-event-sequence-fixture.apk',
+                     'device-event-sequence-fixture.jks', 'device-event-sequence-fixture.p12'):
+            for kind in ('build', 'phase'):
+                self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/name), kind), (name, kind))
+
+    def test_original_event_sequence_failure_bytes_survive_phase_roundtrip(self):
+        evidence = {
+            'device-event-sequence-failure.json': b'{"status":"failed","diagnosticOnly":true}\r\n',
+            'device-event-sequence-filtered.log': 'original filtered snapshot\r\n原始\n'.encode(),
+            'device-event-sequence-expected.stdout.log': b'\x00\xffunparsed original provider bytes\r\n',
+            'device-event-sequence-expected.stderr.log': b'',
+            'device-event-sequence-current.stdout.log': b'{"sequence":2}\n',
+            'device-event-sequence-current.stderr.log': b'original error \xc2\n',
+        }
+        excluded = {'device-event-sequence-private.txt': b'not declared',
+                    'device-event-sequence-private.log': b'not declared',
+                    'device-event-sequence-fixture.jks': b'synthetic key excluded',
+                    'device-event-sequence-fixture.apk': b'synthetic executable excluded'}
+        phase = self.phase('files', {**evidence, **excluded})
+        with tarfile.open(phase, 'r:gz') as archive:
+            index = json.loads(archive.extractfile('_ci_bundle.json').read())
+            rows = {row['path']: row for row in index['files']}
+            self.assertEqual(index['phase'], 'files')
+            self.assertEqual(index['runId'], '123456')
+            self.assertEqual(index['runAttempt'], '1')
+            for name, data in evidence.items():
+                row = rows[str(BUNDLE.OUT/name)]
+                self.assertEqual((row['bytes'], row['sha256']),
+                                 (len(data), hashlib.sha256(data).hexdigest()))
+                self.assertEqual(archive.extractfile(str(BUNDLE.OUT/name)).read(), data)
+            self.assertFalse({str(BUNDLE.OUT/name) for name in excluded} & rows.keys())
+        target = self.clone('sequence-failure-collector')
+        BUNDLE.restore(target, self.build, 'build')
+        BUNDLE.restore(target, phase, 'phase', 'files')
+        for name, data in evidence.items():
+            self.assertEqual((target/BUNDLE.OUT/name).read_bytes(), data)
+        for name in excluded:
+            self.assertFalse((target/BUNDLE.OUT/name).exists())
+
+    def test_restore_rejects_undeclared_event_sequence_file_before_any_phase_write(self):
+        phase = self.phase('files', {'device-event-sequence-failure.json': b'{"synthetic":true}'})
+        for number, extra in enumerate(('device-event-sequence-private.txt',
+                                         'device-event-sequence-private.log',
+                                         'device-event-sequence-private.json',
+                                         'device-event-sequence-fixture.jks')):
+            forged = self.base/('forged-sequence-%d.tar.gz' % number)
+            path = str(BUNDLE.OUT/extra); data = b'undeclared synthetic transport bytes'
+            with tarfile.open(phase, 'r:gz') as original, tarfile.open(forged, 'w:gz') as output:
+                for item in original.getmembers():
+                    raw = original.extractfile(item).read()
+                    if item.name == '_ci_bundle.json':
+                        index = json.loads(raw)
+                        index['files'].append(dict(path=path, bytes=len(data), sha256=hashlib.sha256(data).hexdigest()))
+                        raw = json.dumps(index).encode(); item.size = len(raw)
+                    output.addfile(item, io.BytesIO(raw))
+                item = tarfile.TarInfo(path); item.size = len(data)
+                output.addfile(item, io.BytesIO(data))
+            target = self.clone('sequence-failure-reject-%d' % number)
+            BUNDLE.restore(target, self.build, 'build')
+            with self.assertRaisesRegex(AssertionError, 'CI archive path outside'):
+                BUNDLE.restore(target, forged, 'phase', 'files')
+            self.assertFalse((target/BUNDLE.OUT/'device-event-sequence-failure.json').exists())
+            self.assertFalse((target/BUNDLE.OUT/extra).exists())
+
     def test_build_cannot_omit_input_driver(self):
         for name in BUNDLE.INPUT_DRIVER_EVIDENCE:
             path=self.root/name;data=path.read_bytes();path.unlink()

@@ -67,6 +67,14 @@ def verify_runner_consumer(source):
     run=copy.deepcopy(run_node(source))
     dump=lambda node:ast.dump(node,include_attributes=False)
     statement=lambda text:ast.parse(text.encode('utf-8')).body[0]
+    # Only this exact diagnostic wrapper may replace the old read at its
+    # original site. Stripping arbitrary try/except or callbacks would permit
+    # swallowing the sequence failure or changing the consumer's deadline.
+    wrapped=statement('event=read_with_sequence_failure_diagnostics(transfer,receipt,filtered_log=output,out=OUT,adb=args.adb,serial=args.serial)')
+    original_read=statement('event=transfer.read(receipt)')
+    reads=[node for node in ast.walk(run) if isinstance(node,ast.Assign) and dump(node)==dump(wrapped)]
+    require(len(reads)==1,'exact unique sequence-diagnostic read wrapper')
+    reads[0].value=original_read.value
     # F06 owns slot 8 and a copy of its result. Remove only these exact statements
     # at the two reviewed insertion points, then require the original whole AST.
     activity=statement("activity='GeckoIntegrationTestActivity' if context==1 else 'ProfileGeckoIntegrationActivity1'")
@@ -141,6 +149,23 @@ class ReadinessObservationControls(unittest.TestCase):
                  original.replace('slot=context-1','slot=context'),
                  original.replace('event_transfers.append(transfer_record)','event_transfers.clear()'),
                  original.replace("logs.append(output);steps.append(event);print(json.dumps(event),flush=True)","logs.append(output);print(json.dumps(event),flush=True)")]
+        for i,candidate in enumerate(mutants):
+            self.assertNotEqual(candidate,original)
+            with self.subTest(mutant=i),self.assertRaises(ValueError):verify_runner_consumer(candidate)
+
+    def test_sequence_diagnostics_cannot_change_consumer_calls_actions_or_deadline(self):
+        original=(ROOT/'tests/gecko/run_device.py').read_text()
+        wrapper='event=read_with_sequence_failure_diagnostics(transfer,receipt,filtered_log=output,out=OUT,adb=args.adb,serial=args.serial)'
+        mutants=[original.replace(wrapper,'event=transfer.read(receipt)'),
+                 original.replace(wrapper,wrapper+';event=transfer.read(receipt)'),
+                 original.replace('filtered_log=output','filtered_log="replacement"'),
+                 original.replace('out=OUT,adb=args.adb','out=OUT,adb="alternate-adb"'),
+                 original.replace('serial=args.serial)','serial="alternate-device")'),
+                 original.replace(wrapper,wrapper+';deadline=time.monotonic()+120'),
+                 original.replace(wrapper,wrapper+';steps.append(event)'),
+                 original.replace(wrapper,wrapper+';adb("shell","am","force-stop",package)'),
+                 original.replace('deadline=time.monotonic()+120','deadline=time.monotonic()+121'),
+                 original.replace("if receipt.get('runNonce')!=nonce or receipt.get('processSlot')!=context-1:continue",'if False:continue')]
         for i,candidate in enumerate(mutants):
             self.assertNotEqual(candidate,original)
             with self.subTest(mutant=i),self.assertRaises(ValueError):verify_runner_consumer(candidate)
