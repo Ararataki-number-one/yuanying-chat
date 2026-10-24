@@ -17,6 +17,9 @@ LOCAL_REPORTS = {'native-test.log', 'emulator.log', 'runner-health.txt', 'adb-tr
 INTEGRATION = Path('app/build/outputs/apk/integration/app-x86_64-integration.apk')
 RELEASE = Path('app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk')
 SDK = Path('work/native-caret-sdk')
+UPLOAD_LOGS = frozenset('upload-state-' + suite + '.' + stream + '.txt'
+                       for suite in ('compile', 'state', 'consumers', 'browser')
+                       for stream in ('stdout', 'stderr'))
 
 
 def digest(path):
@@ -48,6 +51,8 @@ def allowed(name, kind):
     if kind == 'build' and path.parent == PurePosixPath(str(SDK)):
         return path.name in ('geckoview-caret.aar', 'sdk-build-receipt.json') or path.suffix == '.json'
     if path.parent == PurePosixPath(str(OUT)):
+        if kind == 'build' and path.name in UPLOAD_LOGS:
+            return True
         suffixes = ('.json', '.jar', '.apk', '.aar', '.pom', '.log', '.xml') if kind == 'build' else ('.json', '.png', '.xml', '.txt', '.log')
         return path.suffix in suffixes and path.name not in ('ui-current.apk', BUILD_INDEX.name)
     return kind == 'phase' and path.parent in (PurePosixPath(str(OUT / 'caret-compat')), PurePosixPath(str(OUT / 'ui-visuals'))) and path.suffix in ('.json', '.png', '.xml', '.txt', '.log')

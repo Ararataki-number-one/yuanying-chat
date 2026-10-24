@@ -97,6 +97,34 @@ class CiBundleTest(unittest.TestCase):
         for name in keys:
             self.assertFalse((target/BUNDLE.OUT/name).exists())
 
+    def test_original_upload_logs_survive_build_phase_and_final_collection(self):
+        # Preserve even empty original stderr/compile streams, rather than
+        # reconstructing logs from the summary after the build is restored.
+        logs = {name: (b'' if '.stderr.' in name or '-compile.' in name
+                       else ('synthetic original ' + name + '\n').encode())
+                for name in BUNDLE.UPLOAD_LOGS}
+        for name, data in logs.items():
+            (self.root/BUNDLE.OUT/name).write_bytes(data)
+        unrelated = ('upload-state-private.txt', 'upload-state-browser.stdout.txt.bak',
+                     'private-notes.txt', 'network-settings-private.txt')
+        for name in unrelated:
+            (self.root/BUNDLE.OUT/name).write_bytes(b'not a declared build log')
+        BUNDLE.pack(self.root, self.build, 'build')
+        with tarfile.open(self.build, 'r:gz') as archive:
+            indexed = json.loads(archive.extractfile('_ci_bundle.json').read())
+            rows = {row['path']: row for row in indexed['files']}
+            for name, data in logs.items():
+                self.assertEqual(rows[str(BUNDLE.OUT/name)]['bytes'], len(data))
+            self.assertFalse({str(BUNDLE.OUT/name) for name in unrelated} & rows.keys())
+        phase = self.phase('connections', {'network-settings-retry-results.json': b'{"synthetic":true}'})
+        with tarfile.open(phase, 'r:gz') as archive:
+            self.assertFalse({str(BUNDLE.OUT/name) for name in logs} & set(archive.getnames()))
+        target = self.clone('upload-log-collector')
+        BUNDLE.restore(target, self.build, 'build')
+        BUNDLE.restore(target, phase, 'phase', 'connections')
+        for name, data in logs.items():
+            self.assertEqual((target/BUNDLE.OUT/name).read_bytes(), data)
+
     def test_other_ci_attempt_is_rejected_before_writing_apks(self):
         target=self.clone('other-attempt')
         with patch.dict(os.environ,GITHUB_RUN_ATTEMPT='2'),self.assertRaises(AssertionError):
