@@ -31,6 +31,16 @@ sys.path.insert(0, str(ROOT / 'tools/gecko'))
 from integration_event_contract import EventTransfer, parse_receipt_line, validate_receipt
 from profile_invocation_contract import expected_build, verify_installed
 import experience_scenarios as scenarios
+import native_input_contract as native_input
+from native_input_driver import NativeInputDriver
+
+DRIVER_OBSERVERS = (
+    'tests/native-input-driver/NativeGestureProtocol.java',
+    'tests/native-input-driver/NativeInputInstrumentation.java',
+    'tests/native-input-driver/AndroidManifest.xml',
+    'tools/gecko/native_input_driver.py',
+    'tools/gecko/native_input_contract.py',
+)
 
 
 def error_output(error):
@@ -175,6 +185,7 @@ def make_events(adb, expected, nonce, action, iteration):
                     value = transfer.read(receipt)
                     seen.add(sequence);events.append(value)
                     (iteration / (action + '-events.json')).write_text(json.dumps(events, ensure_ascii=False, indent=2) + '\n')
+                    (iteration / (action + '-transport.json')).write_text(json.dumps(transfer.records, ensure_ascii=False, indent=2) + '\n')
                     assert value['kind'] != 'error', value
             if not receipt_only:
                 for value in events:
@@ -200,6 +211,9 @@ def main():
     p.add_argument('--serial', default='emulator-5554')
     p.add_argument('--apk', type=pathlib.Path, required=True)
     p.add_argument('--source', required=True)
+    p.add_argument('--driver-apk', type=pathlib.Path, required=True)
+    p.add_argument('--driver-build', type=pathlib.Path, required=True)
+    p.add_argument('--target-byte-proof', type=pathlib.Path, required=True)
     p.add_argument('--label', required=True)
     p.add_argument('--out', type=pathlib.Path, required=True)
     p.add_argument('--repetitions', type=int, default=3)
@@ -213,7 +227,7 @@ def main():
     scenario_extras = ['--es', 'scenarioManifest', scenarios.encoded(scenario), '--es', 'scenarioSha256', scenario_hash]
     (args.out / 'scenario-manifest.json').write_text(scenarios.encoded(scenario) + '\n')
     observer_paths = ('tests/gecko/run_experience_benchmark.py', 'tests/gecko/ExperienceBenchmarkActivity.java',
-                      'tests/gecko/ExperienceScenarios.java', 'tools/gecko/experience_scenarios.py')
+                      'tests/gecko/ExperienceScenarios.java', 'tools/gecko/experience_scenarios.py', *DRIVER_OBSERVERS)
     observer_hashes = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in observer_paths}
 
     def adb(*parts, binary=False, timeout=30):
@@ -354,10 +368,13 @@ def main():
               'buildIdentity': installed, 'runnerSha256': hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),
               'activitySha256': hashlib.sha256((ROOT / 'tests/gecko/ExperienceBenchmarkActivity.java').read_bytes()).hexdigest(),
               'scenarioManifest': scenario, 'scenarioManifestSha256': scenario_hash, 'observerFiles': observer_hashes,
+              'targetByteProofSha256': hashlib.sha256(args.target_byte_proof.read_bytes()).hexdigest(),
               'scenarioCoverageGaps': scenarios.GAPS, 'environment': environment, 'predeclaredRepetitions': args.repetitions, 'iterations': [],
               'physicalDeviceAcceptance': False, 'realChatGptAcceptance': False, 'releaseAcceptance': False,
               'protocol': 'Untimed provisioning; process-cold fixture Activity launch and normal production connection; network→chat→downloads→chat→settings→chat; compact expand/upward swipe; settings dark/light via real taps; return chat; HOME and retained warm resume. Same deterministic 240-message/105k reply, no send. All actions are actual Android input; all raw samples retained.',
               'measurementLimits': ['Loopback document loading is not ChatGPT or WAN latency.', 'Cold means process-cold; OS filesystem caches are not purged.', 'Activity fixture startup excludes explicit provisioning and APK hashing, but includes test observation overhead.', 'Native response ends at View draw, not display/compositor presentation. The unchanged gesture metric starts at ACTION_UP; collapse may already occur during ACTION_MOVE, so this metric cannot locate the first swipe response.', 'Choreographer resets on Activity pause/resume; HWUI measures actual submitted native frames. Neither fully observes Gecko compositor jank.', 'Page RAF resets on document visibility changes; snapshots identify native tabs and document visibility, so intervals spanning hidden native panels are not visible-page jank evidence.', 'CPU includes the fixed test evidence/observation overhead; terminated process tails and absent/unknown process attribution are disclosed. PSS is successful dumpsys output only and is serial, not a memory peak or atomic total.', 'Fixture theme uses real CSS prefers-color-scheme and observed computed background via Gecko color preference; the ChatGPT-only native appearance bridge is outside this localhost flow and retains its separate release regression.', 'Normal timers and polling remain enabled, but ChatGPT-origin-only resource/reply observer messages are unavailable on this static localhost page; streaming replies and uploads are not measured.', 'No vendor keyboard, real account, upload or physical-device benchmark in this flow.']}
+
+    report['measurementLimits'].append('Collapse uses the frozen 320ms self-target input driver: 19 MOVE slots, 32ms maximum lateness, and one invocation. Its startup/READY overhead is retained inside the armed action and whole flow and reported separately; it is automation cost, not app startup. Original ACTION_UP-to-draw timing and the 15-second app action deadline are unchanged.')
 
     def persist():
         (args.out / 'experience-results.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
@@ -379,6 +396,13 @@ def main():
             persist()
             adb('shell', 'am', 'force-stop', PACKAGE);adb('logcat', '-c')
             nonce = uuid.uuid4().hex;events = make_events(adb, expected, nonce, 'experienceBenchmark', directory)
+            # The comparison installed this role's exact sidecar before cooldown.
+            # A fresh one-shot controller verifies it without reinstalling or
+            # touching the measured process; its invocation remains inside arm.
+            controller = NativeInputDriver(root=ROOT, out=directory, adb=args.adb, serial=args.serial,
+                nonce=nonce, target_apk=args.apk, expected_source=args.source,
+                driver_apk=args.driver_apk, build_receipt=args.driver_build,
+                target_byte_proof=args.target_byte_proof, install=False)
             samples = [process_sample()];stop = threading.Event()
 
             def sample_cpu():
@@ -410,8 +434,11 @@ def main():
 
                 def measure(name, target, perform):
                     nonlocal snapshot
-                    send('arm', name, target);events('armed', name)
-                    perform()
+                    send('arm', name, target);armed = events('armed', name)
+                    if name == 'collapse':
+                        perform(armed)
+                    else:
+                        perform()
                     result = events('measurement', name, seconds=20)
                     snapshot = events('snapshot', name);preserve(snapshot)
                     if 'webThemeResponseUpperBoundMs' in snapshot:
@@ -438,7 +465,20 @@ def main():
                     measure('return-' + destination, 'chat', lambda point=point: tap_point(point))
                 # Native return reveals chrome; collapse then expand through real input.
                 first, last = snapshot['points']['swipeFrom'], snapshot['points']['swipeTo']
-                measure('collapse', 'collapsed', lambda: adb('shell', 'input', 'swipe', *map(str, [*first, *last]), '320'))
+                def collapse(armed):
+                    assert first[0] == last[0] and all(type(value) is int and value >= 0 for value in first + last)
+                    assert type(armed['armedUptimeMs']) is int and armed['expiresUptimeMs'] == armed['armedUptimeMs'] + 15000
+                    row['collapseInput'] = dict(armed=armed, **{'from': first, 'to': last})
+                    try:
+                        receipt = controller.inject(dict(id='formal-collapse', x=first[0], startY=first[1], endY=last[1]),
+                            expires_uptime_ms=armed['expiresUptimeMs'], purpose='formal-collapse')
+                        actual = native_input.decode((directory / receipt['file']).read_bytes())
+                        row['collapseInput'].update(startupMs=actual['startupMs'], readyUptimeMs=actual['readyUptimeMs'],
+                            armedActionToReadyMs=actual['readyUptimeMs']-armed['armedUptimeMs'],
+                            hostInvocationMs=(receipt['hostCompletedMonotonicNs']-receipt['hostStartedMonotonicNs'])/1000000)
+                    finally:
+                        row['nativeInputDriver'] = controller.evidence(purpose='formal-collapse');persist()
+                measure('collapse', 'collapsed', collapse)
                 point = snapshot['points']['compact'];measure('expand', 'expanded', lambda: tap_point(point))
                 point = snapshot['points']['settings'];measure('theme-settings', 'settings', lambda: tap_point(point))
                 tap_point(label_point('白天与黑夜'))
