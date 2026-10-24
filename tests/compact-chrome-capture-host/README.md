@@ -23,3 +23,22 @@ python3 tests/compact-chrome-capture-host/run.py \
   --java-home /path/to/jdk17 --json-jar /path/to/json.jar \
   --output /path/to/compact-chrome-capture-results.json
 ```
+
+The character adapter now also covers legal Android end ellipsis. It follows
+`Layout.Ellipsizer` and `Layout.ellipsize` from AOSP `android-15.0.0_r1`:
+https://github.com/aosp-mirror/platform_frameworks_base/blob/android-15.0.0_r1/core/java/android/text/Layout.java
+Given an already chosen line range, `getChars`/`charAt`/`subSequence` replace its
+first character with U+2026 and the rest with U+FEFF while preserving source
+length. The host does not calculate fonts, line breaks or real ellipsis bounds.
+The `TextUtils.equals` adapter compares actual characters, including this
+non-String representation, following the same platform version.
+
+`--before-ref 4644e90` runs the current controls against the original full
+fixture methods: legitimate title/address ellipsis prevents a ready report and
+reaches the unchanged 20-second failure. The corrected fixture accepts the real
+laid-out text while retaining exact untransformed model matching. Missing
+Layouts and `setText` followed by pending layout still block capture. The older
+host control which directly replaced `layoutText` without setting a layout
+request was corrected: that adapter invented a stale-text predicate rather
+than modeling Android's legal transformed Layout text. The original Android
+geometry/ellipsis assertions and runner are unchanged.

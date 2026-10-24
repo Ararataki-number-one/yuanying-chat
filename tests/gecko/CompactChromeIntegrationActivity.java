@@ -338,7 +338,9 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   }
   boolean presentationLaidOut(){
     if(!toolbar.isLaidOut()||toolbar.isLayoutRequested()||toolbar.getWidth()<=0||toolbar.getHeight()<=0)return false;
-    for(TextView view:new TextView[]{designChrome.title,networkLine,designChrome.latencyWord,designChrome.stateWord})if(view.isLayoutRequested()||view.getLayout()==null||!android.text.TextUtils.equals(view.getLayout().getText(),view.getText()))return false;
+    // Layout text may legally contain ellipsis/transformation characters.
+    // The untransformed model text is checked by presentationMatches above.
+    for(TextView view:new TextView[]{designChrome.title,networkLine,designChrome.latencyWord,designChrome.stateWord})if(view.isLayoutRequested()||view.getLayout()==null)return false;
     return true;
   }
   void releasePresentation(){if(presentation!=null)presentation.cancel();presentationSerial++;}
