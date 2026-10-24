@@ -45,7 +45,7 @@ def stage(args):
         if original.is_file():
             shutil.copy2(original, args.out / name)
     for folder in (args.input, args.input / 'caret-compat'):
-        for pattern in ('*-failure-*', 'installed-apk-read-*.json', 'native-test.log'):
+        for pattern in ('*-failure-*', 'installed-apk-read-*.json', 'native-test.log', 'native-input-*.json', 'native-input-*.log'):
             for original in folder.glob(pattern):
                 if original.is_file():
                     shutil.copy2(original, args.out / original.name)

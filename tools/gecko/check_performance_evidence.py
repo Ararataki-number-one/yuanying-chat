@@ -3,6 +3,7 @@
 import argparse
 import json
 import pathlib
+import subprocess
 if __package__:
     from .chrome_collapse_contract import verify_auto_collapse
     from .ui_visual_contract import verify_captures
@@ -76,6 +77,16 @@ def verify_performance_evidence(directory, source):
     assert visual['autoCollapse'] == chrome['autoCollapse']
 
     gecko = android('gecko-performance-results.json')
+    source_root = pathlib.Path(__file__).resolve().parents[2]
+    source_reader = lambda commit, name: subprocess.check_output(['git', 'show', commit + ':' + name], cwd=source_root)
+    if b'from native_input_driver import NativeInputDriver' in source_reader(source, 'tests/gecko/run_gecko_performance.py'):
+        if __package__:
+            from .native_input_contract import verify_qualification
+        else:
+            from native_input_contract import verify_qualification
+        installed = json.loads((directory / 'gecko-performance-build-identity.json').read_bytes())
+        assert installed['sourceCommit'] == source
+        verify_qualification(directory, gecko, source, source_reader, installed['integrationApkSha256'], (installed['runId'], installed['runAttempt']))
     manifest_path = directory / 'manifest.json'
     if not manifest_path.exists():
         manifest_path = directory / 'release-manifest.json'
