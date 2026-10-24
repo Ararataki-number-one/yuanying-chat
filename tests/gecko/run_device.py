@@ -8,7 +8,7 @@ ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
 sys.path.insert(0,str(ROOT/'tools/gecko'))
 from check_interaction_transfer_evidence import verify_paint_case, verify_saved_file_deletion
-from integration_event_contract import EventTransfer, parse_receipt_line
+from integration_event_contract import EventTransfer, parse_receipt_line, read_with_sequence_failure_diagnostics
 from profile_invocation_contract import expected_build, verify_installed
 from page_continuity_contract import verify_page_continuity
 def collect_readiness(log,identity,invocations):
@@ -309,7 +309,7 @@ def main():
                 if receipt is None:continue
                 if receipt.get('runNonce')!=nonce or receipt.get('processSlot')!=context-1:continue
                 if receipt.get('kind')=='eventTransportError':raise ValueError('Native complete event publication failed: '+str(receipt))
-                event=transfer.read(receipt)
+                event=read_with_sequence_failure_diagnostics(transfer,receipt,filtered_log=output,out=OUT,adb=args.adb,serial=args.serial)
                 transfer_record['events']=transfer.records
                 if action in {'readingBounds','readingBoundsProtected'} and event.get('kind') in {'readingBoundsBefore','readingBoundsPan'}:
                     if event['kind']=='readingBoundsBefore':bounds_before=event['result']

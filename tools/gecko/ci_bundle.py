@@ -33,6 +33,14 @@ SETTINGS_LOGS = frozenset(
     for stream in ('stdout', 'stderr')
 ) | frozenset('network-settings-gecko_settings_' + mode + '_gate_test-stdout.txt'
               for mode in ('retry', 'application', 'internal'))
+EVENT_SEQUENCE_FAILURE_FILES = frozenset((
+    'device-event-sequence-failure.json',
+    'device-event-sequence-filtered.log',
+    'device-event-sequence-expected.stdout.log',
+    'device-event-sequence-expected.stderr.log',
+    'device-event-sequence-current.stdout.log',
+    'device-event-sequence-current.stderr.log',
+))
 
 
 def digest(path):
@@ -59,6 +67,11 @@ def allowed(name, kind):
         return False
     if path.suffix.lower() in ('.jks', '.p12', '.keystore', '.pem'):
         return False
+    # Only these failed-invocation diagnostics are public; do not widen this
+    # namespace through the existing generic JSON/log/text phase allowance.
+    if path.name.lower().startswith('device-event-sequence'):
+        return (kind == 'phase' and path.parent == PurePosixPath(str(OUT))
+                and path.name in EVENT_SEQUENCE_FAILURE_FILES)
     if kind == 'build' and name in (str(INTEGRATION), str(RELEASE)):
         return True
     if kind == 'build' and path.parent == PurePosixPath(str(SDK)):

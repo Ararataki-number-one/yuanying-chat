@@ -8,6 +8,8 @@ import copy
 import hashlib
 import json
 import re
+import subprocess
+import time
 from pathlib import Path
 
 # Shared SDK expectations come from selected source, never report-provided pins.
@@ -187,3 +189,106 @@ class EventTransfer:
         self._cache[sequence] = (copy.deepcopy(receipt), copy.deepcopy(event))
         self.records.append(dict(receipt=copy.deepcopy(receipt), rawUtf8=raw.decode('utf-8', errors='strict')))
         return copy.deepcopy(event)
+
+
+SEQUENCE_GAP_ERROR = 'Synthetic event transfer: missing or out-of-order event sequence'
+
+
+def sequence_failure_plan(reader, receipt):
+    """Pure, owned diagnostic paths; never invent a missing receipt or event."""
+    _require(type(reader) is EventTransfer, 'diagnostic reader type')
+    validate_receipt(receipt, identity=reader.identity, nonce=reader.nonce, slot=reader.slot,
+                     action=reader.action, command=reader.command)
+    expected = len(reader._cache) + 1
+    _require(set(reader._cache) == set(range(1, expected)) and len(reader.records) == expected - 1,
+             'diagnostic reader progress')
+    observed = receipt['sequence']
+    _require(1 <= expected <= 4096 and 1 <= observed <= 4096
+             and observed != expected and observed not in reader._cache,
+             'diagnostic sequence gap')
+    # A path descriptor is not an authentic receipt for the missing sequence.
+    # event_uri only formats the already validated owner and bounded sequence.
+    paths = []
+    for role, sequence in (('expected', expected), ('current', observed)):
+        path_owner = dict(receipt, sequence=sequence)
+        paths.append(dict(role=role, sequence=sequence, uri=event_uri(path_owner),
+                          receiptObserved=role == 'current'))
+    return dict(schema=1, diagnosticOnly=True, acceptance=False,
+                sourceCommit=reader.identity['sourceCommit'], buildIdentity=copy.deepcopy(reader.identity),
+                runNonce=reader.nonce, processSlot=reader.slot, fixtureAction=reader.action,
+                command=receipt['command'], previouslyAcceptedCommand=reader.command,
+                expectedSequence=expected, observedReceipt=copy.deepcopy(receipt), paths=paths,
+                perReadTimeoutSeconds=5, maximumProviderReads=2,
+                scope='Post-failure existing-file observations only; no missing receipt, accepted event, retry or app assertion')
+
+
+def _capture_sequence_failure(reader, receipt, filtered_log, out, adb, serial):
+    plan = sequence_failure_plan(reader, receipt)
+    _require(type(filtered_log) is str, 'diagnostic host-observed snapshot type')
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    summary_path = out / 'device-event-sequence-failure.json'
+    names = ['device-event-sequence-filtered.log'] + [
+        'device-event-sequence-' + role + '.' + stream + '.log'
+        for role in ('expected', 'current') for stream in ('stdout', 'stderr')]
+    _require(not summary_path.exists() and not any((out / name).exists() for name in names),
+             'diagnostic output already exists')
+    plan.update(originalError=SEQUENCE_GAP_ERROR, acceptedEventCount=len(reader.records),
+                filteredSnapshotEncoding='host-observed UTF-8 (original adb text output)',
+                reads=[], diagnosticErrors=[])
+    def retain(name, data):
+        _require(type(data) is bytes, 'diagnostic stream must be original bytes')
+        with (out / name).open('xb') as target:
+            target.write(data)
+        return dict(file=name, bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+    def summary():
+        summary_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    plan['filteredSnapshot'] = retain(names[0], filtered_log.encode('utf-8'))
+    summary()
+    for path in plan['paths']:
+        row = dict(path, diagnosticOnly=True, acceptance=False, timeoutSeconds=5,
+                   hostStartedMonotonicNs=time.monotonic_ns())
+        stdout = stderr = b''
+        command = [adb, '-s', serial, 'exec-out', 'content', 'read', '--uri', path['uri']]
+        row['commandArguments'] = command
+        try:
+            result = subprocess.run(command, capture_output=True, timeout=5, check=False)
+            row.update(status='completed', returnCode=result.returncode)
+            stdout, stderr = result.stdout, result.stderr
+        except subprocess.TimeoutExpired as error:
+            row.update(status='timeout', returnCode=None, exceptionType=type(error).__name__,
+                       timeoutStdoutPresent=error.stdout is not None,
+                       timeoutStderrPresent=error.stderr is not None)
+            stdout = error.stdout if error.stdout is not None else b''
+            stderr = error.stderr if error.stderr is not None else b''
+        except Exception as error:
+            row.update(status='capture-error', returnCode=None, exceptionType=type(error).__name__,
+                       error=str(error))
+        row['hostFinishedMonotonicNs'] = time.monotonic_ns()
+        plan['reads'].append(row)
+        try:
+            for stream, data in (('stdout', stdout), ('stderr', stderr)):
+                row[stream] = retain('device-event-sequence-' + path['role'] + '.' + stream + '.log', data)
+            if path['receiptObserved'] and row['status'] == 'completed' and row['returnCode'] == 0:
+                # Still diagnostic-only; this does not call read/decode, mutate
+                # the collector, or feed the original application's assertions.
+                row['observedReceiptBytesMatch'] = (len(stdout) == receipt['payloadBytes']
+                    and hashlib.sha256(stdout).hexdigest() == receipt['payloadSha256'])
+        except Exception as error:
+            plan['diagnosticErrors'].append(dict(role=path['role'], error=type(error).__name__ + ': ' + str(error)))
+        summary()
+
+
+def read_with_sequence_failure_diagnostics(reader, receipt, *, filtered_log, out, adb, serial):
+    """One original read; after its exact gap error collect evidence, then re-raise it."""
+    try:
+        return reader.read(receipt)
+    except ValueError as original_error:
+        if str(original_error) == SEQUENCE_GAP_ERROR:
+            try:
+                _capture_sequence_failure(reader, receipt, filtered_log, out, adb, serial)
+            except Exception:
+                # Diagnostic validation/IO cannot replace, hide, or cure the
+                # original failure. No second read or business event is allowed.
+                pass
+        raise

@@ -18,6 +18,39 @@ SPEC.loader.exec_module(P)
 
 
 class PublicationArtifactCopyTests(unittest.TestCase):
+    def test_actual_event_sequence_copy_loop_retains_only_six_original_files(self):
+        publisher = ROOT/'tools/gecko/publish_ci.py'
+        loops = [node for node in ast.parse(publisher.read_text()).body if isinstance(node, ast.For)
+                 and any(isinstance(value, ast.Constant) and isinstance(value.value, str)
+                         and value.value.startswith('device-event-sequence') for value in ast.walk(node.iter))]
+        self.assertEqual(len(loops), 1)
+        evidence = {
+            'device-event-sequence-failure.json': b'{"status":"failed","diagnosticOnly":true}\r\n',
+            'device-event-sequence-filtered.log': 'original filtered snapshot\r\n原始\n'.encode(),
+            'device-event-sequence-expected.stdout.log': b'\x00\xffunparsed original provider bytes\r\n',
+            'device-event-sequence-expected.stderr.log': b'',
+            'device-event-sequence-current.stdout.log': b'{"sequence":2}\n',
+            'device-event-sequence-current.stderr.log': b'original error \xc2\n',
+        }
+        self.assertEqual(ast.literal_eval(loops[0].iter), list(evidence))
+        excluded = {'device-event-sequence-private.txt': b'not declared',
+                    'device-event-sequence-private.log': b'not declared',
+                    'device-event-sequence-private.json': b'not declared',
+                    'device-event-sequence-filtered.txt': b'not declared',
+                    'device-event-sequence.json': b'not declared',
+                    'device-event-sequence-fixture.apk': b'synthetic executable excluded',
+                    'device-event-sequence-fixture.jks': b'synthetic key excluded',
+                    'device-event-sequence-fixture.p12': b'synthetic key excluded'}
+        with tempfile.TemporaryDirectory() as temporary:
+            out, stage = Path(temporary)/'out', Path(temporary)/'stage'
+            out.mkdir(); stage.mkdir()
+            for name, data in {**evidence, **excluded}.items():(out/name).write_bytes(data)
+            exec(compile(ast.Module(body=loops, type_ignores=[]), str(publisher), 'exec'),
+                 {'out': out, 'stage': stage, 'shutil': shutil})
+            self.assertEqual({path.name for path in stage.iterdir()}, set(evidence))
+            for name, data in evidence.items():self.assertEqual((stage/name).read_bytes(), data)
+            for name, data in excluded.items():self.assertEqual((out/name).read_bytes(), data)
+
     def test_failed_driver_build_has_only_the_declared_diagnostic_upload(self):
         source = (ROOT / '.github/workflows/gecko-integration.yml').read_text()
         part = source.split('    - name: Preserve native input build signature diagnostics\n', 1)[1].split('\n    - ', 1)[0]

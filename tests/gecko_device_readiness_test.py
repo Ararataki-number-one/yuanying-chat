@@ -36,6 +36,26 @@ def run_node(source):
     main=next(x for x in ast.parse(source).body if isinstance(x,ast.FunctionDef) and x.name=='main')
     return next(x for x in main.body if isinstance(x,ast.FunctionDef) and x.name=='run')
 
+def require(value,message):
+    if not value:raise ValueError('Readiness preservation: '+message)
+
+def verify_runner_consumer(source):
+    run=copy.deepcopy(run_node(source))
+    dump=lambda node:ast.dump(node,include_attributes=False)
+    statement=lambda text:ast.parse(text.encode('utf-8')).body[0]
+    # Only this exact diagnostic wrapper may replace the old read at its
+    # original site. Stripping arbitrary try/except or callbacks would permit
+    # swallowing the sequence failure or changing the consumer's deadline.
+    wrapped=statement('event=read_with_sequence_failure_diagnostics(transfer,receipt,filtered_log=output,out=OUT,adb=args.adb,serial=args.serial)')
+    original_read=statement('event=transfer.read(receipt)')
+    reads=[node for node in ast.walk(run) if isinstance(node,ast.Assign) and dump(node)==dump(wrapped)]
+    require(len(reads)==1,'exact unique sequence-diagnostic read wrapper')
+    reads[0].value=original_read.value
+    # The measurement source has no F04/F06 fixture additions. Restore only
+    # this one read expression and retain its original complete consumer AST.
+    require(hashlib.sha256(dump(run).encode()).hexdigest()==ORIGINAL_RUN_AST,'original runner consumer changed')
+    return True
+
 class ReadinessObservationControls(unittest.TestCase):
     def test_original_startup_methods_and_callbacks_preserved(self):
         original=SOURCE.read_text()
@@ -48,8 +68,24 @@ class ReadinessObservationControls(unittest.TestCase):
             self.assertNotEqual(hashlib.sha256(unobserve(member(candidate,needle)).encode()).hexdigest(),ORIGINAL_METHODS[needle])
 
     def test_original_runner_consumer_preserved(self):
-        run=copy.deepcopy(run_node((ROOT/'tests/gecko/run_device.py').read_text()))
-        self.assertEqual(hashlib.sha256(ast.dump(run,include_attributes=False).encode()).hexdigest(),ORIGINAL_RUN_AST)
+        self.assertTrue(verify_runner_consumer((ROOT/'tests/gecko/run_device.py').read_text()))
+
+    def test_sequence_diagnostics_cannot_change_consumer_calls_actions_or_deadline(self):
+        original=(ROOT/'tests/gecko/run_device.py').read_text()
+        wrapper='event=read_with_sequence_failure_diagnostics(transfer,receipt,filtered_log=output,out=OUT,adb=args.adb,serial=args.serial)'
+        mutants=[original.replace(wrapper,'event=transfer.read(receipt)'),
+                 original.replace(wrapper,wrapper+';event=transfer.read(receipt)'),
+                 original.replace('filtered_log=output','filtered_log="replacement"'),
+                 original.replace('out=OUT,adb=args.adb','out=OUT,adb="alternate-adb"'),
+                 original.replace('serial=args.serial)','serial="alternate-device")'),
+                 original.replace(wrapper,wrapper+';deadline=time.monotonic()+120'),
+                 original.replace(wrapper,wrapper+';steps.append(event)'),
+                 original.replace(wrapper,wrapper+';adb("shell","am","force-stop",package)'),
+                 original.replace('deadline=time.monotonic()+120','deadline=time.monotonic()+121'),
+                 original.replace("if receipt.get('runNonce')!=nonce or receipt.get('processSlot')!=context-1:continue",'if False:continue')]
+        for i,candidate in enumerate(mutants):
+            self.assertNotEqual(candidate,original)
+            with self.subTest(mutant=i),self.assertRaises(ValueError):verify_runner_consumer(candidate)
 
     def test_command_entry_precedes_wait_and_only_read_is_observed(self):
         command=member(SOURCE.read_text(),'synchronized void command(')

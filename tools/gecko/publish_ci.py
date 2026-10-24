@@ -35,6 +35,10 @@ for name in ['network-performance-results.json','network-performance-failure-log
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['device-readiness-observations.json','device-failure-runtime.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
+for name in ['device-event-sequence-failure.json', 'device-event-sequence-filtered.log',
+             'device-event-sequence-expected.stdout.log', 'device-event-sequence-expected.stderr.log',
+             'device-event-sequence-current.stdout.log', 'device-event-sequence-current.stderr.log']:
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['source-route-terminal-host-results.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['preconnect-results.json','preconnect-log.txt','preconnect-failure-log.txt','preconnect-server.json','preconnect-server-failure.json']:
