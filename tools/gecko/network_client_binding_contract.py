@@ -2,6 +2,7 @@
 import hashlib
 import json
 import math
+from pathlib import Path
 import re
 
 try:
@@ -170,3 +171,11 @@ def verify_runner_report(wrapper,source,reference_identity=None):
     event=decode_event(record.get('receipt'),record['rawUtf8'].encode(),identity=identity,nonce=nonce,slot=0,action=ACTION,command=1)
     require(event.get('kind')==ACTION and same(event.get('result'),wrapper.get('result')),'raw event differs from actual result')
     return verify_binding_result(wrapper['result'],identity,nonce,uid,wrapper.get('androidSdk'))
+
+def verify_framework_binding_files(directory,source):
+    directory=Path(directory)
+    device=parse((directory/'device-results.json').read_text())
+    require(device.get('status')=='passed' and device.get('sourceCommit')==source and device.get('actualAndroidExecution') is True,'current original device evidence')
+    transfer=device.get('eventTransport');require(isinstance(transfer,dict) and isinstance(transfer.get('buildIdentity'),dict),'independent original installed APK identity')
+    wrapper=parse((directory/'network-client-binding-results.json').read_text())
+    return verify_runner_report(wrapper,source,transfer['buildIdentity'])

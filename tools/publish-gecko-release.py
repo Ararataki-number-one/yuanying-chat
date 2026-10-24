@@ -224,6 +224,7 @@ if version_code>=42:
     for name in ['quiet-notification-results.json','compact-chrome-results.json']:shutil.copy2(args.evidence/name,stage/name)
 performance_files=['gecko-performance-results.json','snapshot-host-results.json','reply-observation-host-results.json','ui-visual-results.json','ui-build-comparison.json'] if version_code>=43 else []
 if version_code>=44:performance_files.append('reply-binding-host-results.json')
+if version_code>=44:performance_files.append('network-client-binding-results.json')
 if version_code>=45:performance_files.extend(['update-transfer-results.json','update-transfer-host-results.json','interaction-host-results.json'])
 if version_code>=49:performance_files.extend(['reading-host-results.json','reading-focus-host-results.json','gecko-scroll-diagnostics.json','gecko-scroll-diagnostic-log.json'])
 if roadmap_release:performance_files.extend(['emulator-bootstrap-results.json','environment-spec-results.json','environment-intent-results.json','profile-host-results.json','environment-intent-host-results.json','gecko-proxy-route-host-results.json','gecko-identity-prototype-results.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json'])
@@ -261,6 +262,7 @@ if sdk_build is not None:
 if template_release:
     for name in ['check_template_evidence.py','template_invocation_contract.py','integration_event_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=44:shutil.copy2(root/'tools/gecko/check_connection_evidence.py',stage/'tools/gecko/check_connection_evidence.py')
+if version_code>=44:shutil.copy2(root/'tools/gecko/network_client_binding_contract.py',stage/'tools/gecko/network_client_binding_contract.py')
 if version_code>=45:
     for name in ['check_interaction_transfer_evidence.py','local_draft_contract.py','download_resume_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=46:

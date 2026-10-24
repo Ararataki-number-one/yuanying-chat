@@ -186,4 +186,55 @@ class FixtureSourceControls(unittest.TestCase):
         self.assertNotIn(C.CLASS,(ROOT/'app/src/main/AndroidManifest.xml').read_text())
 
 
+class PublicWiringControls(unittest.TestCase):
+    def evidence(self,directory):
+        value=fixture();device=dict(status='passed',sourceCommit=SOURCE,actualAndroidExecution=True,
+            eventTransport=dict(schema=1,buildIdentity=copy.deepcopy(value['buildIdentity'])))
+        (directory/'device-results.json').write_text(encoded(device))
+        (directory/'network-client-binding-results.json').write_text(encoded(value));return value,device
+    def test_public_file_validator_replays_the_same_complete_wrapper(self):
+        import tempfile
+        with tempfile.TemporaryDirectory()as name:
+            directory=Path(name);self.evidence(directory)
+            self.assertEqual(C.verify_framework_binding_files(directory,SOURCE)['nullCallbacks'],1)
+    def test_original_device_evidence_and_new_report_are_both_mandatory(self):
+        import tempfile
+        for missing in ('device-results.json','network-client-binding-results.json'):
+            with tempfile.TemporaryDirectory()as name:
+                directory=Path(name);self.evidence(directory);(directory/missing).unlink()
+                with self.assertRaises(FileNotFoundError):C.verify_framework_binding_files(directory,SOURCE)
+    def test_public_gate_rejects_a_different_original_apk_or_source(self):
+        import tempfile
+        with tempfile.TemporaryDirectory()as name:
+            directory=Path(name);value,device=self.evidence(directory)
+            device['eventTransport']['buildIdentity']['apkSha256']='0'*64
+            (directory/'device-results.json').write_text(encoded(device))
+            with self.assertRaises(ValueError):C.verify_framework_binding_files(directory,SOURCE)
+            self.evidence(directory)
+            with self.assertRaises(ValueError):C.verify_framework_binding_files(directory,'f'*40)
+    def test_connections_step_keeps_every_original_command_and_condition(self):
+        import subprocess
+        path='.github/workflows/gecko-integration.yml';raw=(ROOT/path).read_text()
+        inserted='        if ! python3 tests/gecko/run_network_client_binding.py --adb "$(command -v adb)" --serial emulator-5554; then\n          checks_failed=1\n        fi\n'
+        self.assertEqual(raw.count(inserted),1)
+        self.assertEqual(raw.replace(inserted,'',1).encode(),subprocess.check_output(['git','show','3d78854:'+path],cwd=ROOT))
+    def test_connection_gate_only_adds_the_mandatory_framework_validator(self):
+        import subprocess
+        path='tools/gecko/check_connection_evidence.py';raw=(ROOT/path).read_text()
+        inserted='if __package__:\n    from .network_client_binding_contract import verify_framework_binding_files\nelse:\n    from network_client_binding_contract import verify_framework_binding_files\n'
+        self.assertEqual(raw.count(inserted),1)
+        restored=raw.replace(inserted,'',1).replace('    framework_binding = verify_framework_binding_files(directory, source)\n','',1).replace(", 'frameworkClientBinding': framework_binding",'',1)
+        self.assertEqual(restored.encode(),subprocess.check_output(['git','show','3d78854:'+path],cwd=ROOT))
+    def test_publisher_actual_selected_ast_copies_report_and_pure_contract(self):
+        import ast
+        import types
+        raw=(ROOT/'tools/publish-gecko-release.py').read_text();tree=ast.parse(raw)
+        nodes=[node for node in tree.body if isinstance(node,ast.If) and ('network-client-binding-results.json'in ast.unparse(node)or'network_client_binding_contract.py'in ast.unparse(node))]
+        self.assertEqual(len(nodes),2);copies=[]
+        ns=dict(version_code=71,performance_files=[],root=ROOT,stage=Path('/tmp/synthetic-binding-stage'),shutil=types.SimpleNamespace(copy2=lambda a,b:copies.append((a,b))))
+        exec(compile(ast.Module(body=nodes,type_ignores=[]),'<actual publisher binding selection>','exec'),ns)
+        self.assertEqual(ns['performance_files'],['network-client-binding-results.json'])
+        self.assertEqual(copies,[(ROOT/'tools/gecko/network_client_binding_contract.py',Path('/tmp/synthetic-binding-stage/tools/gecko/network_client_binding_contract.py'))])
+
+
 if __name__=='__main__':unittest.main()

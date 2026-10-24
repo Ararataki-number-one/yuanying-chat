@@ -43,6 +43,7 @@ def main():
     transport_client_inputs={path for path in (ROOT/'tests/network-transport-client-host').rglob('*')
                              if path.is_file() and path.suffix in ('.py','.java','.md')}
     input_paths.update(transport_client_inputs)
+    input_paths.update(ROOT/'tools/gecko'/name for name in ('network_client_binding_contract.py','sdk_identity_contract.py'))
     input_paths.add(ROOT/'tools/gecko/download_resume_contract.py')
     input_paths.add(ROOT/'tools/gecko/check_interaction_transfer_evidence.py')
     input_paths.add(ROOT/'tools/publish-gecko-release.py')
@@ -331,6 +332,15 @@ def main():
                         passed=92,actualAndroidExecution=False,evidence=client_report))
     files.update(transport_client_inputs)
     files.update((source/'NetworkTransportClient.java',source/'J.java'))
+    framework_controls=ROOT/'tests/gecko_network_client_binding_test.py'
+    framework_run=subprocess.run([sys.executable,str(framework_controls)],cwd=ROOT,text=True,capture_output=True)
+    framework_count=re.search(r'^Ran (\d+) tests? in ',framework_run.stderr,re.M)
+    if framework_run.returncode or framework_count is None or int(framework_count.group(1))!=38:
+        raise ValueError('Incomplete framework binding evidence controls: '+framework_run.stdout+framework_run.stderr)
+    results.append(dict(test='network-client-framework-evidence-controls',passed=38,actualAndroidExecution=False,
+        output=framework_run.stdout+framework_run.stderr))
+    files.update((framework_controls,ROOT/'tools/gecko/network_client_binding_contract.py',ROOT/'tools/gecko/sdk_identity_contract.py',
+                  ROOT/'tests/gecko/NetworkClientBindingIntegrationActivity.java',ROOT/'tests/gecko/run_network_client_binding.py',ROOT/'tests/gecko/AndroidManifest.xml'))
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest

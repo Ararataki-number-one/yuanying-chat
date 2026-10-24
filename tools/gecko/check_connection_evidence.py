@@ -4,6 +4,10 @@ import argparse
 import json
 import pathlib
 import re
+if __package__:
+    from .network_client_binding_contract import verify_framework_binding_files
+else:
+    from network_client_binding_contract import verify_framework_binding_files
 
 
 def collect_cold_website_probe_event(report, events, summary):
@@ -298,11 +302,12 @@ def verify_connection_evidence(directory, source):
         'A real current-turn alert beside its reply body remains recoverable',
         'Read-only waiting, recovery and assignment never resend the question',
     } <= names, 'Current website errors must remain distinct from historical or quoted content.'
+    framework_binding = verify_framework_binding_files(directory, source)
     return {'actualAndroidExecution': True, 'actualGeckoExecution': True,
             'actualMihomoExecution': True, 'geckoChecks': gecko['checkCount'],
             'networkChecks': len(network['checks']), 'bindingHostChecks': host['total'],
             'detectorTransport': transport, 'networkRepairs': repairs, 'busyBootstrap': bootstrap,
-            'coldWebsiteProbeDiagnostic': cold_probe}
+            'coldWebsiteProbeDiagnostic': cold_probe, 'frameworkClientBinding': framework_binding}
 
 
 if __name__ == '__main__':
