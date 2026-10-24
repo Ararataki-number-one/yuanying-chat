@@ -101,6 +101,36 @@ final class DownloadTasks {
   JSONObject initial=J.parse(row.toString());recovering=true;recoveryFailure=null;
   recovery.execute(()->{try{recover(initial);}catch(Exception error){recoveryFailure=error;}finally{main.post(()->{recovering=false;done.run();});}});
  }
+ /** A confirmed user-selected restart retires only an incomplete private cache file.
+  * This is not a saved destination or a publication recovery operation. */
+ boolean beginPartialRetirement(JSONObject row,String generation,String name){
+  save();if(!retirementOwner(row,generation)||retirementFile(row)==null||!DownloadResumePolicy.incomplete(row)||!name.equals(partialName(row))||referencedElsewhere(row,name,rows))return false;
+  JSONObject previous=J.parse(row.toString());
+  try{
+   put(row,"partial","","retiredPartial",name,"received",0,"total",-1,"validator","","resource","","state","cancelled","reason","旧副本清理尚未完成，请重新下载时重试");
+   save(true);return retiredPartialCurrent(row,generation,name);
+  }catch(RuntimeException error){DownloadTaskRevisions.restore(row,previous);throw error;}
+ }
+ boolean retirementOwner(JSONObject row,String generation){return !recovering&&recoveryFailure==null&&owns(row)&&!generation.isEmpty()&&generation.equals(row.optString("taskGeneration"));}
+ static String partialName(JSONObject row){String name=row.optString("partial");return name.isEmpty()?row.optString("retiredPartial"):name;}
+ static boolean referencedElsewhere(JSONObject selected,String name,JSONArray known){
+  for(int i=0;i<known.length();i++){JSONObject row=known.optJSONObject(i);if(row!=null&&!selected.optString("id").equals(row.optString("id"))&&(name.equals(row.optString("partial"))||name.equals(row.optString("retiredPartial"))))return true;}return false;
+ }
+ boolean retiredPartialCurrent(JSONObject row,String generation,String name){
+  if(!retirementOwner(row,generation)||durability.unconfirmed||!DownloadResumePolicy.incomplete(row)||!row.optString("partial").isEmpty()||!name.equals(row.optString("retiredPartial")))return false;
+  JSONObject stored;JSONArray confirmed;
+  try{confirmed=new JSONArray(durability.confirmed);stored=DownloadTaskRevisions.find(confirmed,row.optString("id"));}catch(Exception invalid){return false;}
+  return stored!=null&&DownloadTaskRevisions.value(stored).equals(DownloadTaskRevisions.value(row))&&!referencedElsewhere(row,name,rows)&&!referencedElsewhere(row,name,confirmed);
+ }
+ void finishPartialRetirement(JSONObject row,String generation,String name){
+  if(!retiredPartialCurrent(row,generation,name))return;JSONObject previous=J.parse(row.toString());
+  try{row.remove("retiredPartial");put(row,"reason","旧的未完成副本已清理，请回原网页重新下载");save(true);}
+  catch(RuntimeException error){DownloadTaskRevisions.restore(row,previous);throw error;}
+ }
+ File retirementFile(JSONObject row){
+  String name=partialName(row);if(!name.matches("download-[A-Za-z0-9-]+[.]part"))return null;
+  try{File root=context.getCacheDir().getCanonicalFile(),file=new File(root,name);if(!root.equals(file.getCanonicalFile().getParentFile())||!file.getAbsoluteFile().equals(file.getCanonicalFile()))return null;return file.isFile()||!file.exists()&&row.optString("partial").isEmpty()&&name.equals(row.optString("retiredPartial"))?file:null;}catch(IOException invalid){return null;}
+ }
  File partial(JSONObject r){String n=r.optString("partial");if(!n.matches("download-[A-Za-z0-9-]+[.]part"))return null;File f=new File(context.getCacheDir(),n);return f.isFile()?f:null;}
  static String label(String state){switch(state){case "preparing":return "获取链接中";case "downloading":return "下载中";case "paused":return "已暂停";case "choosing":return "等待选择保存位置";case "saving":return "保存中";case "saved":return "已保存";case "cancelled":return "已取消";default:return "失败待处理";}}
  static String amount(long n){return Attachments.sizeLabel(n);}

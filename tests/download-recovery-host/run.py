@@ -19,7 +19,7 @@ output.unlink(missing_ok=True)
 classes = output.parent / 'classes'
 classes.mkdir(exist_ok=True)
 sources = [root / 'app/src/main/java/local/pocketchat' / name for name in (
-    'J.java', 'DownloadTaskRevisions.java', 'DownloadTasks.java', 'DefaultDownloads.java',
+    'J.java', 'DownloadTaskRevisions.java', 'DownloadTasks.java', 'DownloadResumePolicy.java', 'DefaultDownloads.java',
     'SavedFilePublication.java', 'SavedFileDeletion.java', 'SealedFileIo.java')]
 sources += sorted(Path(__file__).parent.rglob('*.java'))
 sources += [root / 'tests/sealed-file-host/android/util/AtomicFile.java']
