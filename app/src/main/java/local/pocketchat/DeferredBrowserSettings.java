@@ -21,10 +21,11 @@ final class DeferredBrowserSettings {
       if(!candidateAvailable(s)||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,inspected.optString("url"))||inspected.optBoolean("busy")||inspected.optString("draftRaw").length()>300000){release(s);return;}
       s.asyncDriver("page-state",J.obj("expectedUrl",url),2500,state->{
         if(!candidateAvailable(s)||!PageMemory.completeDraft(state)||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){release(s);return;}
-        s.pageMemory.remember(scope,url,state);s.web.checkpointState();
-        s.webStore.worker.execute(()->{boolean saved=DraftArchive.get(s.context).save(url,state.optString("draft"),"应用环境设置前的草稿");s.handler.post(()->{
-          if(!saved||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())||!candidateAvailable(s)){release(s);return;}
-          s.asyncDriver("inspect",J.obj("expectedUrl",url),2500,fresh->{release(s);if(epoch==s.navigationEpoch&&WebReplyObserver.same(url,fresh.optString("url"))&&!fresh.optBoolean("busy")&&fresh.optString("draft").equals(state.optString("draft"))&&candidateAvailable(s)&&idle(s))apply(s);});
+        if(PageMemory.hasDraft(state)&&!LocalDraftPolicy.enabled(s.context)){release(s);return;}
+        long draftRevision=LocalDraftPolicy.revision(s.context);s.pageMemory.remember(scope,url,state);s.web.checkpointState();
+        s.webStore.worker.execute(()->{boolean saved=DraftArchive.get(s.context).save(url,state.optString("draft"),"应用环境设置前的草稿",draftRevision);s.handler.post(()->{
+          if(!saved||PageMemory.hasDraft(state)&&!LocalDraftPolicy.enabled(s.context)||epoch!=s.navigationEpoch||!scope.equals(s.pageMemory.scope())||!candidateAvailable(s)){release(s);return;}
+          s.asyncDriver("inspect",J.obj("expectedUrl",url),2500,fresh->{release(s);if(epoch==s.navigationEpoch&&WebReplyObserver.same(url,fresh.optString("url"))&&!fresh.optBoolean("busy")&&fresh.optString("draft").equals(state.optString("draft"))&&candidateAvailable(s)&&idle(s)&&(!PageMemory.hasDraft(state)||LocalDraftPolicy.enabled(s.context)&&draftRevision==LocalDraftPolicy.revision(s.context)))apply(s);});
         });});
       });
     });

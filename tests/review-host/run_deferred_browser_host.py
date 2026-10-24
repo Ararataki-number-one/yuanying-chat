@@ -51,7 +51,7 @@ def main():
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=ROOT,text=True).strip();status=subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True)
     with tempfile.TemporaryDirectory(prefix='deferred-page-memory-') as generated:
         adapter=Path(generated)/'PageMemory.java'
-        adapter.write_text('package local.pocketchat;\nimport org.json.JSONObject;\nfinal class PageMemory {\n'+production_member(page_memory.read_text(),'static boolean completeDraft(')+'\n}\n')
+        adapter.write_text('package local.pocketchat;\nimport org.json.JSONObject;\nfinal class PageMemory {\n'+production_member(page_memory.read_text(),'static boolean completeDraft(')+'\n'+production_member(page_memory.read_text(),'static boolean hasDraft(')+'\n}\n')
         subprocess.run([java,'-m','jdk.compiler/com.sun.tools.javac.Main','-source','8','-target','8','-encoding','UTF-8','-cp',str(args.json_jar.resolve()),'-d',str(output),*map(str,sources),str(adapter)],cwd=ROOT,check=True)
     run=subprocess.run([java,'-cp',str(output)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.DeferredBrowserHostTest'],cwd=ROOT,text=True,capture_output=True)
     if run.returncode:print(run.stdout);print(run.stderr);raise subprocess.CalledProcessError(run.returncode,run.args)
@@ -59,7 +59,7 @@ def main():
     if report.get('status')!='passed' or report.get('actualAndroidExecution') is not False or report.get('passed')!=report.get('total') or len(report.get('checks',[]))!=report.get('passed') or any(check.get('pass') is not True for check in report['checks']):raise ValueError('Incomplete deferred browser host result')
     if subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()!=commit or subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True)!=status or any(hashlib.sha256((ROOT/path).read_bytes()).hexdigest()!=digest for path,digest in before.items()):raise ValueError('Deferred browser host sources changed during execution')
     report.update(sourceCommit=commit,sourceTree=tree,sourceDirty=bool(status.strip()),sourceUnchangedDuringChecks=True,files=before,
-        productionMembers=['PageMemory.java:static boolean completeDraft('],jsonJarSha256=hashlib.sha256(args.json_jar.read_bytes()).hexdigest())
+        productionMembers=['PageMemory.java:static boolean completeDraft(','PageMemory.java:static boolean hasDraft('],jsonJarSha256=hashlib.sha256(args.json_jar.read_bytes()).hexdigest())
     if args.output:args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps({key:report[key] for key in ['status','passed','total','actualAndroidExecution','sourceCommit','scope']},ensure_ascii=False))
 

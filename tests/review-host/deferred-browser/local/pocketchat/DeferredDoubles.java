@@ -38,4 +38,4 @@ final class ProfileCatalog {final FakeContext context;ProfileCatalog(FakeContext
 final class Profiles {static int slot(FakeContext context){return 0;}}
 final class MainActivity {static boolean chatUrl(String url){return url.startsWith("https://chatgpt.com/");}}
 final class WebReplyObserver {static boolean same(String a,String b){return a.equals(b);}}
-final class DraftArchive {final FakeContext context;DraftArchive(FakeContext context){this.context=context;}static DraftArchive get(FakeContext context){return new DraftArchive(context);}boolean save(String url,String draft,String label){context.draftWrites++;return context.saved;}}
+final class DraftArchive {final FakeContext context;DraftArchive(FakeContext context){this.context=context;}static DraftArchive get(FakeContext context){return new DraftArchive(context);}boolean save(String url,String draft,String label){context.draftWrites++;return context.saved;}boolean save(String url,String draft,String label,long revision){return save(url,draft,label);}}

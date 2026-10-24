@@ -4,7 +4,7 @@ import java.util.*;import org.json.*;
 public class ReloadRequestHost {
  static final JSONArray checks=new JSONArray();
  static void check(String name,boolean passed){checks.put(J.obj("name",name,"passed",passed));}
- static ChatSession route(){ProfileCatalog.generation=4;ProfileCatalog.environmentId="environment-one";ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;Profiles.slot=2;ChatService.ends=0;return new ChatSession();}
+ static ChatSession route(){LocalDraftPolicy.allowed=true;ProfileCatalog.generation=4;ProfileCatalog.environmentId="environment-one";ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;Profiles.slot=2;ChatService.ends=0;return new ChatSession();}
  static JSONObject job(String id,String path){return J.obj("id",id,"kind","web","confirmed",true,"confirmedUrl","https://chatgpt.com/c/"+path,"expectedUrl","https://chatgpt.com/c/"+path,"prompt","already sent fixture question","userKey","id:user");}
  static JSONObject inspect(ChatSession s){return J.obj("url",s.web.url,"documentId",s.lastDocumentId,"composer",true,"hasMessages",true,"busy",true);}
  static JSONObject gesture(String token){return J.obj("url","https://chatgpt.com/c/B","documentId","gesture-document-0001","token",token,"type","intent","capturedAt",System.currentTimeMillis(),"prompt","controlled new user gesture","beforeKeys",new JSONArray());}
@@ -74,6 +74,12 @@ public class ReloadRequestHost {
   s=route();old=job("unchanged-job","B");s.pending=old;String previous=s.lastDocumentId;s.beginNavigation(s.web.url,"first navigation");s.beginNavigation(s.web.url,"superseding navigation");check("Repeated navigation retains the original prior document until a new one is observed",s.lastDocumentId.isEmpty()&&s.priorDocumentId.equals(previous)&&s.awaitNewDocument&&s.pending==old);
   s=route();s.lastDocumentId="previous-native-document-0001";previous=s.lastDocumentId;s.beginNavigation(s.web.url,"navigation still waiting");a=new MainActivity(s);a.requestReload();s.driverResult.accept(inspect(s).put("documentId",previous).put("busy",false));page(a);check("Reload observation cannot register the prior document while navigation awaits its replacement",a.reloadDialog==null&&a.reloadCalls==0&&s.lastDocumentId.isEmpty()&&s.awaitNewDocument);
   s=route();s.beginNavigation(s.web.url,"new document");s.lastDocumentId="registered-current-document-0002";s.awaitNewDocument=false;s.navigating=false;a=new MainActivity(s);a.requestReload();s.lastDocumentId="unexpected-replacement-document-0003";inspect(a);page(a);check("A nonempty document replacement within the same navigation epoch still rejects reload",a.reloadDialog==null&&a.reloadCalls==0);
+  s=route();LocalDraftPolicy.allowed=false;a=new MainActivity(s);a.requestReload();inspect(a);page(a);
+  check("Disabled local saving still captures input and requires independent loss confirmation",s.asyncCalls==2&&a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("已保存，重新加载")&&a.reloadCalls==0&&s.draft.equals("unsent controlled browser draft"));
+  if(a.reloadDialog!=null)a.reloadDialog.negative.run();check("Cancelling disabled-saving reload keeps current input and document",a.reloadDialog==null&&a.reloadCalls==0&&s.draft.equals("unsent controlled browser draft"));
+  s=route();LocalDraftPolicy.allowed=false;a=new MainActivity(s);a.requestReload();inspect(a);s.driverResult.accept(snapshot(s).put("draft",JSONObject.NULL).put("draftComplete",false).put("draftOmittedReason","too-long").put("draftLength",600000));
+  check("Disabled saving never turns an oversized unknown draft into empty reload permission",a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("已保存，重新加载")&&a.reloadCalls==0&&s.draft.equals("unsent controlled browser draft"));
+  LocalDraftPolicy.allowed=true;
   boolean pass=true;for(int i=0;i<checks.length();i++)pass&=checks.getJSONObject(i).getBoolean("passed");System.out.println(J.obj("status",pass?"passed":"failed","checks",checks.length(),"results",checks,"reproduction",reproduction,"actualTraceReproduction",actualTraceReproduction,"idleNavigationReproduction",idleNavigationReproduction));if(!pass)System.exit(1);
  }
 }
@@ -107,3 +113,5 @@ class LoginPagePolicy{static boolean login(String u){return false;}}
 class SystemClock{static long elapsedRealtime(){return 1000;}}class Trace{void page(String label){}}class Handler{void postDelayed(Runnable work,long delay){}}
 class Deliveries{int next;String begin(String u,String p,JSONArray a,String k,Object unused){return "new-production-job-"+(++next);}}
 class J{static JSONObject parse(String value){try{return new JSONObject(value);}catch(Exception e){return new JSONObject();}}static JSONObject obj(Object...v){JSONObject o=new JSONObject();try{for(int i=0;i<v.length;i+=2)o.put((String)v[i],v[i+1]);}catch(Exception e){throw new RuntimeException(e);}return o;}}
+
+class LocalDraftPolicy{static boolean allowed=true;static boolean enabled(Object c){return allowed;}}

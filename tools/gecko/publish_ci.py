@@ -37,7 +37,7 @@ for name in ['preconnect-results.json','preconnect-log.txt','preconnect-failure-
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['network-cold-website-diagnostic-log.txt']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
-for name in ['page-recovery-host-results.json','page-recovery-script-results.json','download-recovery-host-results.json','network-core-host-results.json','network-diagnostics-host-results.json','upload-state-host-results.json']:
+for name in ['page-recovery-host-results.json','page-recovery-script-results.json','local-draft-policy-desktop-results.json','local-draft-policy-android-results.json','download-recovery-host-results.json','network-core-host-results.json','network-diagnostics-host-results.json','upload-state-host-results.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for item in out.glob('upload-state-*.txt'):
     shutil.copy2(item,stage/item.name)

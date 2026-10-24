@@ -1,0 +1,1 @@
+package android.content;import java.util.*;public class ContentValues extends HashMap<String,Object>{public void put(String k,String v){super.put(k,v);}public void put(String k,long v){super.put(k,v);}}

@@ -199,9 +199,10 @@ public class NetworkUiProvider extends ContentProvider {
       if(!inspectionIdle(transition,inspected,null)){transition.waitReason=inspected.optBoolean("busy")?"等待回复和文件操作结束":"等待网页恢复";deferTransition(transition);return;}
       session.asyncDriver("page-state",J.obj("expectedUrl",transition.url),2500,state->{
         if(!fenceIdle(transition)||!PageMemory.completeDraft(state)||!WebReplyObserver.same(transition.url,state.optString("url"))||!state.optString("draft").equals(inspected.optString("draft"))||!state.optString("documentId").equals(inspected.optString("documentId"))){transition.waitReason="等待网页草稿完整可读";deferTransition(transition);return;}
-        transition.page=state;session.pageMemory.remember(transition.scope,transition.url,state);session.web.checkpointState();
-        session.webStore.worker.execute(()->{boolean saved=DraftArchive.get(session.context).save(transition.url,state.optString("draft"),"应用网络设置前的草稿");main.post(()->{
-          if(!saved||!fenceIdle(transition)){if(!saved)transition.waitReason="等待草稿存储恢复";deferTransition(transition);return;}
+        if(PageMemory.hasDraft(state)&&!LocalDraftPolicy.enabled(session.context)){transition.waitReason="等待发送或清空网页草稿（本机草稿保存已关闭）";deferTransition(transition);return;}
+        NetworkCatalog.put(state,"localDraftPolicyRevision",LocalDraftPolicy.revision(session.context));transition.page=state;session.pageMemory.remember(transition.scope,transition.url,state);session.web.checkpointState();
+        session.webStore.worker.execute(()->{boolean saved=DraftArchive.get(session.context).save(transition.url,state.optString("draft"),"应用网络设置前的草稿",state.optLong("localDraftPolicyRevision",-1));main.post(()->{
+          if(!saved||PageMemory.hasDraft(state)&&!LocalDraftPolicy.enabled(session.context)||!fenceIdle(transition)){if(!saved)transition.waitReason=LocalDraftPolicy.unavailable(session.context);deferTransition(transition);return;}
           session.asyncDriver("inspect",J.obj("expectedUrl",transition.url),2500,fresh->{if(!inspectionIdle(transition,fresh,state)){transition.waitReason="等待网页稳定";deferTransition(transition);return;}io.execute(()->commitTransition(transition));});
         });});
       });
@@ -211,7 +212,7 @@ public class NetworkUiProvider extends ContentProvider {
   /** The source/private leases wait only for this short main-thread state check, never HTTP or JS. */
   void commitGate(Transition transition)throws Exception{
     CountDownLatch gate=new CountDownLatch(1);java.util.concurrent.atomic.AtomicBoolean admitted=new java.util.concurrent.atomic.AtomicBoolean(),waiting=new java.util.concurrent.atomic.AtomicBoolean(true);
-    main.post(()->{try{if(!waiting.get()||!fenceIdle(transition))return;ChatSession session=transition.session;if(session!=null){transition.previousBlocked=session.guard.blocked;transition.previousTouch=session.web.touches;transition.touchFence=(view,event)->true;session.web.cancelPendingInputEvents();session.web.setOnTouchListener(transition.touchFence);if(session.web.surface!=null){transition.keyTarget=session.web.surface;transition.keyTarget.cancelPendingInputEvents();transition.keyTarget.setOnKeyListener((view,key,event)->true);}session.guard.setBlocked(true);}transition.fenced=true;admitted.set(true);}finally{gate.countDown();}});
+    main.post(()->{try{if(!waiting.get()||!fenceIdle(transition))return;ChatSession session=transition.session;if(session!=null&&PageMemory.hasDraft(transition.page)&&(!LocalDraftPolicy.enabled(session.context)||transition.page.optLong("localDraftPolicyRevision",-1)!=LocalDraftPolicy.revision(session.context)))return;if(session!=null){transition.previousBlocked=session.guard.blocked;transition.previousTouch=session.web.touches;transition.touchFence=(view,event)->true;session.web.cancelPendingInputEvents();session.web.setOnTouchListener(transition.touchFence);if(session.web.surface!=null){transition.keyTarget=session.web.surface;transition.keyTarget.cancelPendingInputEvents();transition.keyTarget.setOnKeyListener((view,key,event)->true);}session.guard.setBlocked(true);}transition.fenced=true;admitted.set(true);}finally{gate.countDown();}});
     if(!gate.await(3,TimeUnit.SECONDS)){waiting.set(false);throw new DeferredTransition();}waiting.set(false);if(!admitted.get())throw new DeferredTransition();
     if(transition.cancelled||transition.session!=null&&transition.session.pending!=null)throw new DeferredTransition();
   }

@@ -167,12 +167,13 @@ final class EnvironmentEditorUi {
         if(!PageMemory.completeDraft(state)||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())||!state.optString("draft").equals(inspected.optString("draft"))){
           fail.accept("网页草稿暂时无法保留，请稍后重试；环境设置尚未应用");return;
         }
-        s.pageMemory.remember(scope,url,state);String draft=state.optString("draft");
+        if(PageMemory.hasDraft(state)&&(!LocalDraftPolicy.enabled(s.context)||value.opt("saveDraft") instanceof Boolean&&!value.optBoolean("saveDraft"))){fail.accept("本机草稿保存已关闭或将关闭，请先手动保留并发送或清空输入，再切换网页显示");return;}
+        long draftRevision=LocalDraftPolicy.revision(s.context);s.pageMemory.remember(scope,url,state);String draft=state.optString("draft");
         try{s.webStore.worker.execute(()->{
-          boolean stored=false;try{stored=draft.isEmpty()||DraftArchive.get(s.context).save(url,draft,"切换网页显示前的草稿");}catch(RuntimeException ignored){}final boolean saved=stored;
+          boolean stored=false;try{stored=draft.isEmpty()||DraftArchive.get(s.context).save(url,draft,"切换网页显示前的草稿",draftRevision);}catch(RuntimeException ignored){}final boolean saved=stored;
           s.handler.post(()->{
             DeferredBrowserSettings.release(s);s.changed();if(a.isDestroyed()||a.isFinishing()){done.accept(false);return;}
-            if(!saved||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())){a.status("草稿保留未完成或网页已改变，环境设置尚未应用");done.accept(false);return;}
+            if(!saved||PageMemory.hasDraft(state)&&(!LocalDraftPolicy.enabled(s.context)||draftRevision!=LocalDraftPolicy.revision(s.context))||epoch!=s.navigationEpoch||!WebReplyObserver.same(url,s.web.getUrl())||!scope.equals(s.pageMemory.scope())){a.status("草稿保留未完成或网页已改变，环境设置尚未应用");done.accept(false);return;}
             done.accept(guardedApply(a,value,name,current));
           });
         });}catch(RuntimeException ignored){fail.accept("草稿暂时无法保存，请稍后重试；环境设置尚未应用");}

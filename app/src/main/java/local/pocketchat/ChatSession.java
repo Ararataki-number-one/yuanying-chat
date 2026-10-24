@@ -251,17 +251,18 @@ final class ChatSession {
     runDriver("page-state",J.obj("expectedUrl",url),snapshot->{
       if(!target.matches(this)){websiteRecovering=false;return;}
       if(!target.matchesSnapshot(snapshot)){websiteRecovering=false;setStatus("暂时无法完整读取当前输入，请先保存草稿，再点按恢复网页连接");return;}
-      String draft=snapshot.optString("draft");
+      String draft=snapshot.optString("draft");long draftRevision=LocalDraftPolicy.revision(context);
       webStore.worker.execute(()->{
-        boolean saved=DraftArchive.get(context).save(url,draft,"恢复网页连接前草稿");
+        boolean saved=DraftArchive.get(context).save(url,draft,"恢复网页连接前草稿",draftRevision);
         handler.post(()->{
           if(!target.matches(this)||submitting||operation||transferActive||fileWorkActive()){websiteRecovering=false;return;}
-          if(!saved){websiteRecovering=false;setStatus("草稿暂存失败，网页尚未重新加载");return;}
+          if(!saved){websiteRecovering=false;setStatus(LocalDraftPolicy.unavailable(context)+"；可在菜单中手动重新加载");return;}
           // Typing can continue while the archive is written. Never replace a
           // newer draft merely because the route and pending task stayed equal.
           runDriver("page-state",J.obj("expectedUrl",url),latest->{websiteRecovering=false;
             if(!target.matches(this)||submitting||operation||transferActive||fileWorkActive())return;
             if(!target.matchesSnapshot(latest)||!snapshot.optString("documentId").equals(latest.optString("documentId"))||!draft.equals(latest.optString("draft"))){setStatus("草稿已变化，继续编辑；需要时再恢复网页连接");return;}
+            if(PageMemory.hasDraft(latest)&&(!LocalDraftPolicy.enabled(context)||draftRevision!=LocalDraftPolicy.revision(context))){setStatus("草稿保存设置已变化，请先手动保留输入，再从菜单重新加载");return;}
             reloadConfirmed(target,latest,false);
           });
         });

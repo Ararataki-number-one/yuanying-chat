@@ -5,7 +5,7 @@ public class PageRecoveryHost {
  static int checks;
  static void check(String name,boolean pass){if(!pass)throw new AssertionError(name);checks++;}
  static JSONObject j(Object... parts){return J.obj(parts);}
- static ChatSession route(){NativeNetwork.network=new NativeNetwork();ProfileCatalog.generation=4;ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;SystemClock.now=1000;return new ChatSession();}
+ static ChatSession route(){LocalDraftPolicy.allowed=true;NativeNetwork.network=new NativeNetwork();ProfileCatalog.generation=4;ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;SystemClock.now=1000;return new ChatSession();}
  static JSONObject snapshot(ChatSession s,String text){return j("ok",true,"url",s.web.url,"documentId",s.lastDocumentId,"draft",text,"draftComplete",true,"draftLength",text.length());}
  public static void main(String[] args)throws Exception{
    ChatSession s=route();s.networkReady=false;s.recoveryScheduled=true;s.recoveryToken=41;s.recoveryAttempt=3;s.manualAttention=true;s.networkIssue="service disconnected";s.connectionStage="waiting";s.status="service disconnected";s.navigationFailed=true;
@@ -68,6 +68,11 @@ public class PageRecoveryHost {
    s.sync();ChatSession.Result oldDocument=s.driverResult;oldDocument.accept(j("url",s.web.url,"documentId",previous,"composer",true,"busy",false));check("Production sync refuses a prior document before new navigation has committed",s.lastDocumentId.isEmpty()&&s.awaitNewDocument&&!s.inFlight&&s.stateEpoch!=s.navigationEpoch);
    s.sync();s.driverResult.accept(j("url",s.web.url,"documentId","fresh-navigation-document-0002","composer",false,"busy",false));check("Production sync registers the new document in the new epoch without replacing its prior proof",s.lastDocumentId.equals("fresh-navigation-document-0002")&&s.priorDocumentId.equals(previous)&&!s.awaitNewDocument&&s.stateEpoch==s.navigationEpoch);
    s=route();s.sync();ChatSession.Result oldEpoch=s.driverResult;s.beginNavigation(s.web.url,"superseding callback");oldEpoch.accept(j("url",s.web.url,"documentId","late-previous-epoch-document","composer",true,"busy",false));check("A late production sync callback from the previous epoch cannot populate the cleared document",s.lastDocumentId.isEmpty()&&s.awaitNewDocument&&s.stateEpoch!=s.navigationEpoch);
+   s=route();LocalDraftPolicy.allowed=false;DeferredBrowserSettings.applied=0;DraftArchive.saves=0;DeferredBrowserSettings.drain(s);s.driverResult.accept(j("url",s.web.url,"draft","keep","draftRaw","keep"));s.driverResult.accept(snapshot(s,"keep"));
+   check("Disabled draft saving defers browser changes without archiving or discarding the input",DeferredBrowserSettings.applied==0&&DraftArchive.saves==0&&!s.operation&&!s.configurationCapture);
+   s=route();LocalDraftPolicy.allowed=false;provider=new NetworkUiProvider(s);transition=new NetworkUiProvider.Transition(s);DraftArchive.saves=0;provider.captureTransition(transition);s.driverResult.accept(j("url",s.web.url,"draft","keep","documentId",s.lastDocumentId));s.driverResult.accept(snapshot(s,"keep"));
+   check("Disabled draft saving keeps a real nonempty network transition pending",provider.deferred==1&&provider.committed==0&&DraftArchive.saves==0&&transition.waitReason.contains("草稿"));
+   LocalDraftPolicy.allowed=true;
    System.out.println(j("status","passed","checks",checks));
  }
 }
@@ -118,6 +123,10 @@ class CapturedMemory {final ChatSession session;final LinkedHashMap<String,JSONO
 class DeferredBrowserSettings{static int applied;static boolean candidateAvailable(ChatSession s){return true;}static boolean idle(ChatSession s){return true;}static void apply(ChatSession s){applied++;}/* DEFERRED */}
 class EnvironmentEditorUi{static int applied;static boolean guardedApply(MainActivity a,JSONObject v,EditText e,java.util.function.BooleanSupplier c){applied++;return true;}/* EDITOR */}
 class BrowserEditIntent{static boolean preserveFailedCandidate(boolean q,JSONObject v){return false;}static boolean browserIntent(boolean q,JSONObject v,boolean change,boolean pending){return change;}}
-class EditText{}class ProfileUi{static boolean working(ChatSession s){return s.fileWorkActive();}}class Identity{boolean queueUnavailable;}class Privacy{int level(){return 1;}boolean wantsDesktop(){return false;}}class DraftArchive{static int saves;static DraftArchive get(Object c){return new DraftArchive();}boolean save(String u,String d,String o){saves++;return true;}}
+class EditText{}class ProfileUi{static boolean working(ChatSession s){return s.fileWorkActive();}}class Identity{boolean queueUnavailable;}class Privacy{int level(){return 1;}boolean wantsDesktop(){return false;}}class DraftArchive{static int saves;static DraftArchive get(Object c){return new DraftArchive();}boolean save(String u,String d,String o){saves++;return true;}boolean save(String u,String d,String o,long r){return save(u,d,o);}}
 
 class NetworkUiProvider{static class Transition{ChatSession session;String url,scope,waitReason;long epoch;boolean capture;JSONObject page;Transition(ChatSession s){session=s;}}final java.util.concurrent.Executor io=Runnable::run;final Handler main;int deferred,committed;NetworkUiProvider(ChatSession s){main=s.handler;}boolean fenceIdle(Transition t){return true;}boolean inspectionIdle(Transition t,JSONObject i,JSONObject p){return true;}void deferTransition(Transition t){deferred++;}void commitTransition(Transition t){committed++;}/* PROVIDER */}
+
+class LocalDraftPolicy{static boolean allowed=true;static boolean enabled(Object c){return allowed;}static long revision(Object c){return 0;}static JSONObject snapshot(Object c,JSONObject value){return value;}static JSONObject snapshot(Object c,JSONObject value,long revision){return value;}static String unavailable(Object c){return "draft unavailable";}}
+
+class NetworkCatalog{static void put(JSONObject x,String k,Object v){try{x.put(k,v);}catch(Exception e){throw new RuntimeException(e);}}}

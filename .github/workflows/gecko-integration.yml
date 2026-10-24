@@ -167,6 +167,8 @@ jobs:
       run: |
         set -euo pipefail
         python3 tests/page-recovery-host/run.py --json-jar work/gecko-integration/catalog-json.jar | tee work/gecko-integration/page-recovery-host-results.json
+        python3 tests/local-draft-policy-host/run.py --java-home "$JAVA_HOME" --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/local-draft-policy-desktop-results.json
+        python3 tests/local-draft-policy-host/run.py --java-home "$JAVA_HOME" --json-jar work/gecko-integration/sharing-android-json.jar --output work/gecko-integration/local-draft-policy-android-results.json
         JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-runtime/page-recovery.test.cjs | tee work/gecko-integration/page-recovery-script-results.json
         python3 tests/download-recovery-host/run.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/download-recovery-host-results.json
         python3 tools/gecko/run_network_core_host.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-core-host-results.json

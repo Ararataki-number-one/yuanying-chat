@@ -19,6 +19,12 @@ function check(name,pass){assert.ok(pass,name);checks.push({name,pass:true});}
  }
  input.value='未发送🙂\n   原始输入';let snapshot=call('page-state',{expectedUrl:before});check('Unicode and line breaks are preserved with UTF-16 length',snapshot.draft===input.value&&snapshot.draftLength===input.value.length&&snapshot.draftComplete);
  input.value='';let result=await call('page-restore',{expectedUrl:before,state:{...snapshot,draft:'older archived text',draftComplete:false},allowDraft:true});check('Incomplete metadata cannot restore an older draft as the current input',!result.ok&&result.reason==='incomplete-draft'&&input.value==='');
+ const scroll=w.document.querySelector('main');Object.defineProperty(scroll,'scrollHeight',{value:1000});Object.defineProperty(scroll,'clientHeight',{value:100});w.getComputedStyle=()=>({display:'block',visibility:'visible',overflowY:'auto'});
+ input.value='visible draft stays local to the webpage';scroll.scrollTop=0;
+ result=await call('page-restore',{expectedUrl:before,state:{...snapshot,draft:null,draftComplete:false,draftOmittedReason:'local-saving-disabled',scrollTop:120},allowDraft:false,allowScroll:true});
+ check('Disabled local draft copies still permit independent scroll recovery',result.ok&&result.restoredDraft===false&&scroll.scrollTop===120&&input.value==='visible draft stays local to the webpage');
+ result=await call('page-restore',{expectedUrl:before,state:{...snapshot,draft:'old archived text',draftComplete:false,scrollTop:240},allowDraft:false,allowScroll:false});
+ check('Disabled restoration neither inserts retained history nor overrides disabled scroll',result.ok&&result.restoredDraft===false&&scroll.scrollTop===120&&input.value==='visible draft stays local to the webpage');
  input.remove();snapshot=call('page-state',{expectedUrl:before});check('Missing composer is unknown rather than an empty captured input',snapshot.ok&&snapshot.draftComplete===false&&snapshot.draft===null&&snapshot.draftOmittedReason==='composer-unavailable');w.document.body.append(input);
  input.value='keep exact input';w.AbortController=AbortController;w.fetch=async(url,options)=>{assert.equal(options.method,'HEAD');head++;return {ok:false,status:501};};
  result=await call('page-recover',{expectedUrl:before});check('HEAD failure remains an unsuccessful read-only diagnostic',result.ok===false&&head===1&&result.probeMs>=0);

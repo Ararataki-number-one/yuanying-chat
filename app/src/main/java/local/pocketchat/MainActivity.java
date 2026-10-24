@@ -160,6 +160,7 @@ public class MainActivity extends ThemedActivity {
   void confirmReload(ChatSession.ReloadTarget target,boolean interrupted,JSONObject page){
     reloadChecking=false;if(!reloadMatches(target))return;
     boolean draft=PageMemory.hasDraft(page);
+    if(draft&&!LocalDraftPolicy.enabled(session.context)){confirmIndependentReload(target,"本机草稿保存已关闭，当前输入不会自动暂存或恢复。");return;}
     if(!interrupted&&!draft){reloadCurrent(target,page);return;}
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"重新加载网页？");reloadDialog=d;
     d.note(interrupted?"重新加载可能中断正在生成的回复、上传或其他网页操作；未发送的输入可能无法自动恢复。它不会自动重发提问。":"重新加载会关闭当前网页，未发送的输入可能无法自动恢复。");
@@ -179,19 +180,22 @@ public class MainActivity extends ThemedActivity {
   void reloadCurrent(ChatSession.ReloadTarget target,JSONObject page){
     if(!reloadMatches(target)||!target.matchesSnapshot(page))return;
     String draft=page.optString("draft");
-    if(draft.trim().isEmpty()){verifyReloadDraft(target,page);return;}
-    session.webStore.worker.execute(()->{boolean saved=DraftArchive.get(session.context).save(target.url,draft,"重新加载网页前草稿");handler.post(()->{
+    if(!draft.trim().isEmpty()&&!LocalDraftPolicy.enabled(session.context)){confirmIndependentReload(target,"本机草稿保存已关闭，当前输入不会自动暂存或恢复。");return;}
+    if(draft.trim().isEmpty()){verifyReloadDraft(target,page,LocalDraftPolicy.revision(session.context));return;}
+    long draftRevision=LocalDraftPolicy.revision(session.context);
+    session.webStore.worker.execute(()->{boolean saved=DraftArchive.get(session.context).save(target.url,draft,"重新加载网页前草稿",draftRevision);handler.post(()->{
       if(!reloadMatches(target))return;
-      if(!saved){confirmIndependentReload(target,"当前输入暂存失败，网页尚未重新加载。");return;}
-      verifyReloadDraft(target,page);
+      if(!saved){confirmIndependentReload(target,LocalDraftPolicy.unavailable(session.context)+"，网页尚未重新加载。");return;}
+      verifyReloadDraft(target,page,draftRevision);
     });});
   }
-  void verifyReloadDraft(ChatSession.ReloadTarget target,JSONObject page){
+  void verifyReloadDraft(ChatSession.ReloadTarget target,JSONObject page,long draftRevision){
     if(!reloadMatches(target))return;
     session.asyncDriver("page-state",J.obj("expectedUrl",target.url),2500,latest->{
       if(!reloadMatches(target))return;
       if(!target.matchesSnapshot(latest)){confirmIndependentReload(target,"无法再次核对当前输入，网页尚未重新加载。");return;}
       if(!page.optString("documentId").equals(latest.optString("documentId"))||!page.optString("draft").equals(latest.optString("draft"))){session.setStatus("当前输入已变化，请保留草稿，需要时再重新加载");return;}
+      if(PageMemory.hasDraft(latest)&&(!LocalDraftPolicy.enabled(session.context)||draftRevision!=LocalDraftPolicy.revision(session.context))){confirmIndependentReload(target,"本机草稿保存设置已变化，当前输入需要手动保留。");return;}
       session.reloadConfirmed(target,latest,false);
     });
   }
@@ -219,7 +223,10 @@ public class MainActivity extends ThemedActivity {
       TextView body=label(row.optString("body"),14,ReferenceUi.TEXT);body.setTextIsSelectable(true);detail.body.addView(body,new LinearLayout.LayoutParams(-1,-2));
       detail.note("复制后可在网页输入框中粘贴。不会替换当前网页草稿，也不会发送。");
       detail.buttons("关闭",detail::dismiss,"复制",()->{((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("暂存草稿",row.optString("body")));detail.dismiss();});detail.show();
-    }).setNegativeButton("关闭",null).show();
+    }).setNeutralButton("清空网页暂存",(dialog,which)->clearArchivedDrafts()).setNegativeButton("关闭",null).show();
+  }
+  void clearArchivedDrafts(){
+    AppAppearance.dialog(this).setTitle("清空此环境的网页暂存草稿？").setMessage("将删除本机为网页恢复保存的草稿副本。当前网页输入与旧版草稿仍保留；这项删除无法撤销。").setNegativeButton("保留",null).setPositiveButton("清空",(dialog,which)->session.webStore.worker.execute(()->{boolean cleared=DraftArchive.get(session.context).clear();handler.post(()->{if(destroyed||isFinishing())return;if(cleared)copyLegacyDraft();else status("暂存草稿未能清空，请稍后重试");});})).show();
   }
   static String draftPreview(String value){String text=value.replaceAll("\\s+"," ").trim();return text.codePointCount(0,text.length())>160?text.substring(0,text.offsetByCodePoints(0,160))+"…":text;}
   static void addLegacyDraft(JSONArray rows,Set<String> bodies,String origin,String body){if(body!=null&&!body.isEmpty()&&bodies.add(body))rows.put(J.obj("origin",origin==null||origin.isEmpty()?"暂存草稿":origin,"body",body));}
