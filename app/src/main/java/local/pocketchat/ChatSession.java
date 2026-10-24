@@ -86,7 +86,7 @@ final class ChatSession {
     webStore.flush();webStore.current(url);webMirror.reset();lastWebSnapshot=0;lastWebUrl="";
     if(offline||!WebReplyObserver.same(conversation,url)||!WebReplyObserver.same(source,url))entries=webPerformance()?new JSONArray():cache.messages(url);conversation=url;showingCache=entries.length()>0;
     beginNavigation(url,label);navigationDispatched=false;pageMemory.restorePending=true;long epoch=navigationEpoch;if(capture&&MainActivity.chatUrl(source))web.evaluateJavascript("window.__pocketNavigationToken="+epoch,null);
-    if(offline){finishNavigation("当前离线 · 草稿与本地内容已保留");return;}
+    if(offline){finishNavigation("当前离线 · 联网后可继续");return;}
     if(!capture){loadNavigation(url,epoch);return;}
     pageMemory.capture(()->{if(epoch!=navigationEpoch)return;String savedDocument=pageMemory.document(source);if(!savedDocument.isEmpty())priorDocumentId=savedDocument;loadNavigation(url,epoch);});wakePolling();
   }
@@ -105,7 +105,7 @@ final class ChatSession {
     });
   }catch(Exception ignored){browserDefaultNetwork.unknown();}}
   void invalidateConnection(){resetReplyStability();if(pageUsableAt>0)pageMemory.capture(()->{});connectionEpoch++;navigationEpoch++;recoveryToken++;recoveryScheduled=false;connecting=false;networkReady=false;web.stopLoading();guard.setBlocked(true);finishResourceInspection();}
-  void connectivity(boolean available){boolean was=offline;offline=!available;if(offline){if(networkReady)ChatService.networkLost(context);invalidateConnection();navigating=false;navigationFailed=true;showingCache=entries.length()>0;connectionStage="手机网络不可用";networkIssue="当前离线 · 草稿与附件已保留，联网后继续核对";setStatus(networkIssue);}else if(was){manualAttention=false;recoveryAttempt=0;networkIssue="手机网络已恢复";scheduleRecovery();}}
+  void connectivity(boolean available){boolean was=offline;offline=!available;if(offline){if(networkReady)ChatService.networkLost(context);invalidateConnection();navigating=false;navigationFailed=true;showingCache=entries.length()>0;connectionStage="手机网络不可用";networkIssue="当前离线 · 联网后继续核对网页状态";setStatus(networkIssue);}else if(was){manualAttention=false;recoveryAttempt=0;networkIssue="手机网络已恢复";scheduleRecovery();}}
   void networkChanged(){invalidateConnection();manualAttention=false;recoveryAttempt=0;networkIssue="手机网络已切换，正在重新核对连接";scheduleRecovery();}
   static long retryDelay(int attempt){long[] delays={1000,2000,5000,10000,20000};return delays[Math.min(Math.max(attempt,0),delays.length-1)];}
   boolean internalNetwork(){return "internal".equals(prefs.getString("networkMode","external"));}
@@ -162,7 +162,7 @@ final class ChatSession {
   }
 
   void networkStatus(String text,boolean ready){if(audit!=null)audit.refresh(false);if(!internalNetwork())return;NativeNetwork n=NativeNetwork.get(context);if(!ready&&!n.starting&&!connecting){if(networkReady)ChatService.networkLost(context);networkReady=false;guard.setBlocked(true);networkIssue=text;connectionStage="代理连接中断";setStatus(text);if(uiVisible||ChatService.running)scheduleRecovery();}else if(!ready||pending==null)setStatus(text);}
-  void connect(){if(offline){setStatus("当前离线 · 草稿与附件已保留");return;}if(connecting||recoveryScheduled||manualAttention)return;if(networkReady&&(!internalNetwork()||NativeNetwork.get(context).ready&&NativeNetwork.get(context).coreAlive())){changed();return;}openConnection(false,false);}
+  void connect(){if(offline){setStatus("当前离线 · 联网后可继续");return;}if(connecting||recoveryScheduled||manualAttention)return;if(networkReady&&(!internalNetwork()||NativeNetwork.get(context).ready&&NativeNetwork.get(context).coreAlive())){changed();return;}openConnection(false,false);}
   void retryCurrent(){if(web.retryResourceStart())return;manualAttention=false;recoveryAttempt=0;recoveryToken++;recoveryScheduled=false;if(!networkReady||offline||!guard.allowed())reconnect();else if(!web.recoverClosed())navigate(resumeUrl(),"正在重新加载…");}
   /** Native identity survives a broken page bridge; every destructive confirmation is scoped. */
   static final class ReloadTarget {
