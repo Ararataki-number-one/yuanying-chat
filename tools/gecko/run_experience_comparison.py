@@ -38,6 +38,7 @@ DRIVER_BUILD = 'work/gecko-integration/native-input-driver-build.json'
 DRIVER_OBSERVERS = (
     'tests/native-input-driver/NativeGestureProtocol.java',
     'tests/native-input-driver/NativeInputInstrumentation.java',
+    'tests/native-input-driver/NativeInputShell.java',
     'tests/native-input-driver/AndroidManifest.xml',
     'tools/gecko/native_input_driver.py',
     'tools/gecko/native_input_contract.py',
@@ -61,6 +62,7 @@ HARNESS = (
     'tools/gecko/sdk_identity_contract.py',
     'tests/native-input-driver/NativeGestureProtocol.java',
     'tests/native-input-driver/NativeInputInstrumentation.java',
+    'tests/native-input-driver/NativeInputShell.java',
     'tests/native-input-driver/AndroidManifest.xml',
     'tools/gecko/native_input_driver.py',
     'tools/gecko/native_input_contract.py',
@@ -312,7 +314,8 @@ def driver_identity(root, index, source, run, attempt):
             and all(key in build and type(value) is type(build[key]) and value == build[key]
                     for key, value in stamp.items()), 'Embedded input driver identity differs')
     for key in ('schema', 'sourceCommit', 'sourceTree', 'runId', 'runAttempt', 'packageName',
-                'targetPackage', 'instrumentationTargetPackage', 'instrumentation', 'protocols', 'inputs'):
+                'targetPackage', 'instrumentationTargetPackage', 'instrumentation', 'protocols', 'inputs',
+                'executionBackend', 'entryPoint', 'executionUid', 'inputTargetUidEnforced'):
         require(stamp.get(key) == build[key], 'Embedded input driver identity missing: ' + key)
     return dict(apk=str(apk), receipt=str(receipt), apkSha256=sha(apk), apkBytes=apk.stat().st_size,
                 receiptSha256=sha(receipt), signerCertificateSha256=build['signerCertificateSha256'], build=build)
@@ -684,7 +687,7 @@ def summarize(reports):
     result['automation'] = dict(
         driverOnStartToReadyMs=values_summary(startups) if startups else {'count': 0, 'unavailable': True},
         missingIterations=len(rows) - len(startups),
-        scope='Driver onStart-to-READY excludes process creation. Armed-action-to-READY additionally retains event handoff and process launch; host invocation includes transport, the gesture and receipt collection. These are automation intervals, not user app startup or an app bottleneck; no subtraction from original action or whole-flow metrics.')
+        scope='The retained driverOnStartToReadyMs field now measures shell entry-to-READY and excludes process creation. Armed-action-to-READY additionally retains event handoff and process launch; host invocation includes transport, the gesture and receipt collection. These are automation intervals, not user app startup or an app bottleneck; no subtraction from original action or whole-flow metrics.')
     for name in ('armedActionToReadyMs', 'hostInvocationMs'):
         values = [r['collapseInput'][name] for r in rows if name in r.get('collapseInput', {})]
         result['automation'][name] = values_summary(values) if values else {'count': 0, 'unavailable': True}

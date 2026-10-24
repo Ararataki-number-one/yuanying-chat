@@ -42,7 +42,7 @@ class NativeExperienceTests(unittest.TestCase):
         return self.case.verify(self.report)
 
     def test_every_driver_dependency_is_part_of_the_fixed_protocol(self):
-        self.assertEqual(len(M.HARNESS),21);self.assertEqual(len(M.SETUP),13)
+        self.assertEqual(len(M.HARNESS),22);self.assertEqual(len(M.SETUP),13)
         for name in (*M.DRIVER_OBSERVERS,'tools/gecko/build_native_input_driver.py','tools/gecko/VerifyNativeInputSignature.java','tools/gecko/installed_apk_read.py'):
             self.assertIn(name,self.protocol)
             changed=dict(self.protocol);changed[name]='f'*64
@@ -79,6 +79,40 @@ class NativeExperienceTests(unittest.TestCase):
         self.build['nativeInputDriver']['build']['signatureVerifierSourceSha256'] = 'f' * 64
         with self.assertRaisesRegex(ValueError, 'fixed setup'):
             self.verify()
+
+    def test_formal_shell_receipt_rejects_wrong_backend_uid_or_process_identity(self):
+        changes = [('executionBackend', 'self-target-instrumentation'), ('executionUid', 10123),
+                   ('executionUid', True), ('inputTargetUid', 10124), ('targetUidAfter', 10124),
+                   ('targetStartTicksAfter', '201'), ('driverPid', 0), ('driverStartTicks', ''),
+                   ('displayId', 1), ('tracePersistence', 'per-event-file')]
+        for field, value in changes:
+            name, actual, receipt = self.actual()
+            self.change_actual(lambda x: x.update({field: value}))
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                self.verify()
+            receipt['sha256'] = digest(add_file(self.report, self.directory, name, actual))
+
+    def test_formal_shell_focus_cannot_be_expected_only_or_change_mid_gesture(self):
+        changes = [lambda v: v['focusBefore'].update(raw=''),
+                   lambda v: v['focusBefore'].update(raw=v['focusBefore']['raw'].replace('local.pocketchat.test/', 'other.package/')),
+                   lambda v: v['focusAfter'].update(packageName='other.package'),
+                   lambda v: v['focusAfter'].update(displayId=1)]
+        for index, change in enumerate(changes):
+            name, actual, receipt = self.actual()
+            self.change_actual(change)
+            with self.subTest(change=index), self.assertRaises(ValueError):
+                self.verify()
+            receipt['sha256'] = digest(add_file(self.report, self.directory, name, actual))
+
+    def test_formal_observer_inventory_includes_the_actual_shell_runner_source(self):
+        tree = ast.parse((ROOT / 'tests/gecko/run_experience_benchmark.py').read_text())
+        declaration = next(node for node in tree.body if isinstance(node, ast.Assign)
+                           and any(isinstance(target, ast.Name) and target.id == 'DRIVER_OBSERVERS' for target in node.targets))
+        self.assertEqual(ast.literal_eval(declaration.value), M.DRIVER_OBSERVERS)
+        name = 'tests/native-input-driver/NativeInputShell.java'
+        self.assertIn(name, M.HARNESS)
+        self.assertIn(name, M.native_input.INPUTS)
+        self.assertTrue((ROOT / name).is_file())
 
     def test_late_missing_reordered_and_wrong_profile_injections_fail(self):
         changes=[lambda v:v['trace']['events'].pop(), lambda v:v['trace']['events'].reverse(),

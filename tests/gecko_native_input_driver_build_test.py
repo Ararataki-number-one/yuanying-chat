@@ -20,7 +20,8 @@ class InputDriverBuildTest(unittest.TestCase):
         temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup);self.root=Path(temp.name)
         self.git('init','-q');(self.root/'.gitignore').write_text('work/\n')
         folder=self.root/'tests/native-input-driver';folder.mkdir(parents=True)
-        (folder/'NativeInputInstrumentation.java').write_text('// Synthetic builder input, never executed\n')
+        for name in ('NativeInputInstrumentation.java','NativeGestureProtocol.java','NativeInputShell.java'):
+            (folder/name).write_text('// Synthetic builder input, never executed: '+name+'\n')
         self.manifest=folder/'AndroidManifest.xml'
         self.manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.pocketchat.inputdriver"><application/><instrumentation android:name="local.pocketchat.inputdriver.NativeInputInstrumentation" android:targetPackage="local.pocketchat.inputdriver"/></manifest>')
         verifier=self.root/B.VERIFIER;verifier.parent.mkdir(parents=True);verifier.write_text('// synthetic verifier source\n')
@@ -29,7 +30,7 @@ class InputDriverBuildTest(unittest.TestCase):
         self.key.write_bytes(b'synthetic-not-a-key')
         self.chain={name:self.root/'work/tools'/name for name in ('java','javac','jar','androidJar','aapt2','zipalign','apksigner','apksignerJar','d8')}
         for name,path in self.chain.items():path.parent.mkdir(parents=True,exist_ok=True);path.write_text('synthetic tool '+name)
-        self.calls=[];self.mutate=False;self.mutate_jar=False
+        self.calls=[];self.mutate=False;self.mutate_shell=False;self.mutate_jar=False
         self.certificates=b'Verifies\nNumber of signers: 1\nV3.0 Signer: certificate SHA-256 digest: '+b'c'*64+b'\n'
         self.api_mutation=lambda value:None;self.api_raw=None;self.api_code=0
         self.verify_code=0
@@ -50,6 +51,7 @@ class InputDriverBuildTest(unittest.TestCase):
         elif name=='zipalign':shutil.copy2(parts[-2],parts[-1])
         elif name=='java' and '-jar' in parts and 'sign' in parts:shutil.copy2(parts[-1],parts[parts.index('--out')+1])
         elif name=='java' and '-jar' in parts and 'verify' in parts:
+            if self.mutate_shell:(self.root/'tests/native-input-driver/NativeInputShell.java').write_text('shell changed mid-build')
             if self.mutate_jar:self.chain['apksignerJar'].write_text('changed after stamp')
             if self.mutate:(self.root/'tests/native-input-driver/NativeInputInstrumentation.java').write_text('changed mid-build')
             return subprocess.CompletedProcess(parts,self.verify_code,stdout=self.certificates,stderr=b'original signature diagnostics\n')
@@ -92,15 +94,52 @@ class InputDriverBuildTest(unittest.TestCase):
         self.assertEqual(json.loads((out/B.ASSET).read_bytes()),result)
         with zipfile.ZipFile(out/'native-input-driver.apk') as archive:asset=json.loads(archive.read('assets/'+B.ASSET))
         self.assertNotIn('apkSha256',asset);self.assertEqual(asset['inputs'],result['inputs'])
+        expected_execution=dict(executionBackend='shell-input-manager-global-v1',
+            entryPoint='local.pocketchat.inputdriver.NativeInputShell',executionUid=2000,inputTargetUidEnforced=True)
+        for key,value in expected_execution.items():
+            self.assertEqual(result[key],value);self.assertIs(type(result[key]),type(value))
+            self.assertEqual(asset[key],value);self.assertIs(type(asset[key]),type(value))
+        self.assertEqual(set(result['inputs']),{'tests/native-input-driver/'+name for name in
+            ('NativeInputInstrumentation.java','NativeGestureProtocol.java','NativeInputShell.java','AndroidManifest.xml')})
+        shell='tests/native-input-driver/NativeInputShell.java'
+        self.assertEqual(asset['inputs'][shell],B.sha(self.root/shell))
+        self.assertTrue(any(Path(c[0]).name=='javac' and str(self.root/shell) in c for c in self.calls))
+        self.assertEqual(set(result['signatureLogs'])|set(result['signatureApiLogs'])|{B.API,'native-input-driver.apk',B.ASSET},
+            {'native-input-driver-signature-stdout.log','native-input-driver-signature-stderr.log',
+             'native-input-driver-signature-api-stdout.log','native-input-driver-signature-api-stderr.log',
+             'native-input-driver-signature-api.json','native-input-driver.apk','native-input-driver-build.json'})
         signs=[c for c in self.calls if Path(c[0]).name=='java' and 'sign' in c]
         self.assertEqual(len(signs),1);self.assertEqual(signs[0][signs[0].index('--ks')+1],str(self.key))
         self.assertEqual(signs[0][:3],[str(self.chain['java']),'-jar',str(self.chain['apksignerJar'])])
         self.assertFalse(any(Path(c[0]).name=='apksigner' for c in self.calls))
 
+    def test_missing_shell_entry_source_rejected_before_compile(self):
+        (self.root/'tests/native-input-driver/NativeInputShell.java').unlink()
+        self.git('add','.');self.git('commit','-qm','Synthetic missing shell source')
+        with self.assertRaisesRegex(ValueError,'shell entry source'):self.build()
+        self.assertEqual(self.calls,[])
+
+    def test_shell_entry_changed_after_compile_cannot_publish(self):
+        self.mutate_shell=True
+        with self.assertRaisesRegex(ValueError,'clean committed'):self.build()
+        self.assertFalse((self.key.parent/'native-input-driver.apk').exists())
+        self.assertFalse((self.key.parent/B.ASSET).exists())
+
     def test_foreign_instrumentation_target_rejected_before_compile(self):
         self.manifest.write_text(self.manifest.read_text().replace('android:targetPackage="local.pocketchat.inputdriver"','android:targetPackage="local.pocketchat.test"'))
         with self.assertRaisesRegex(ValueError,'target only'):B.inputs(self.root)
         self.assertEqual(self.calls,[])
+
+    def test_shared_uid_rejected_before_compile_or_signing(self):
+        original=self.manifest.read_text()
+        for shared_uid in ('android.uid.system','android.uid.shell',''):
+            self.manifest.write_text(original.replace(
+                'package="local.pocketchat.inputdriver"',
+                'package="local.pocketchat.inputdriver" android:sharedUserId="'+shared_uid+'"'))
+            self.git('add','.');self.git('commit','-qm','Synthetic shared UID '+repr(shared_uid))
+            with self.subTest(shared_uid=shared_uid),self.assertRaisesRegex(ValueError,'sharedUserId'):self.build()
+            self.assertEqual(self.calls,[])
+            self.assertFalse((self.key.parent/B.ASSET).exists())
 
     def test_privileged_permission_and_ui_activity_rejected(self):
         original=self.manifest.read_text()
