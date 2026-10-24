@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Compare production observation assets through real Gecko and the Android native bridge."""
-import argparse, hashlib, http.server, json, pathlib, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse, uuid
+import argparse, hashlib, http.server, json, pathlib, select, socket, socketserver, struct, subprocess, threading, time, urllib.parse, uuid, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / 'work/gecko-integration'
 BASELINE = '835d59991218eda70c7a4fdd73ea9d7ae6052688'
+sys.path.insert(0, str(ROOT / 'tools/gecko'))
+from native_input_driver import NativeInputDriver
+from native_input_contract import verify_qualification
 
 
 def document():
@@ -159,8 +162,10 @@ def main():
 
     def save_scroll_diagnostics():
         scope = ('Read-only scroll-phase diagnostics add passive DOM listeners, bounded native touch/delegate '
-                 'capture, geometry and existing before/after snapshots; no new evaluations or changes to '
-                 'gestures, pacing, timeouts, assertions or typing. First four busy samples are unchanged; '
+                 'capture, geometry and existing before/after snapshots. This passive layer adds no evaluations '
+                 'or changes to polling, timeouts, assertions or typing. Native injection uses the separately '
+                 'declared fixed UiAutomation protocol; controller startup and event timing remain recorded. '
+                 'First four busy samples are unchanged; '
                  'APZ touch dispatch, scroll-phase scheduling and frame timing may be affected by the added work '
                  'and passive touch listeners.')
         source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -183,7 +188,10 @@ def main():
     for server in servers:
         threading.Thread(target=server.serve_forever, daemon=True).start()
     report = None
+    native_driver = None
+    gesture_deadlines = {}
     try:
+        native_driver = NativeInputDriver(root=ROOT, out=OUT, adb=args.adb, serial=args.serial, nonce=diagnostic_run)
         for port in [8767, 1087]:
             adb('reverse', 'tcp:' + str(port), 'tcp:' + str(port))
         package = 'local.pocketchat.test'
@@ -227,7 +235,7 @@ def main():
                     if gesture['id'] not in gestures:
                         gestures[gesture['id']] = gesture
                         if gesture['action'] == 'scroll':
-                            adb('shell', 'input', 'swipe', str(gesture['x']), str(gesture['startY']), str(gesture['x']), str(gesture['endY']), '300')
+                            pass  # Inject once after the fixture exports its original watchdog deadline.
                         elif gesture['action'] == 'input':
                             assert gesture['text'] == '-user-typed', gesture
                             adb('shell', 'input', 'tap', str(gesture['x']), str(gesture['y']))
@@ -235,6 +243,14 @@ def main():
                             # Wait for the activity's actual focus handshake before text.
                         else:
                             raise AssertionError(gesture)
+                elif item['kind'] == 'gestureDeadline':
+                    value = item['value']; name = value['id']
+                    if name not in gesture_deadlines:
+                        assert name in gestures and gestures[name]['action'] == 'scroll', value
+                        assert value['expiresElapsedMs'] - value['sampledElapsedMs'] == 20000, value
+                        assert value['expiresUptimeMs'] - value['sampledUptimeMs'] == 20000, value
+                        gesture_deadlines[name] = value
+                        native_driver.inject(gestures[name], expires_uptime_ms=value['expiresUptimeMs'])
                 elif item['kind'] == 'textNeeded':
                     request = item['value']
                     assert request['id'] == 'current-input' and request['id'] in gestures, request
@@ -273,6 +289,8 @@ def main():
                     scroll_errors[line] = item['value']
             if report:
                 report['scrollDiagnostics'] = save_scroll_diagnostics()
+                report['nativeInputDriver'] = native_driver.evidence()
+                report['actualAndroidGestureDeadlines'] = list(gesture_deadlines.values())
                 report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                               diagnosticOnly=bool(args.input_diagnostics or args.native_input_diagnostics),
                               checks=list(checks.values()), measurements=list(measurements.values()), fixtureRequests=Fixture.requests,
@@ -312,6 +330,7 @@ def main():
                 assert len(decisions) >= 2 and all(item['guardAllowed'] and item['decision']['type'] == 'socks' and item['decision']['host'] == '127.0.0.1' and item['decision']['port'] == 1087 for item in decisions), report
                 if not report['scrollDiagnostics']['actualAndroidFileRead'] or report['scrollDiagnostics'].get('phases') != 2:
                     raise RuntimeError('Actual same-invocation scroll diagnostic phases were not captured')
+                verify_qualification(OUT, report, native_driver.source, native_driver.read_source, native_driver.target_hash)
                 image = subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30)
                 (OUT / 'gecko-performance-screen.png').write_bytes(image)
                 return
@@ -323,6 +342,9 @@ def main():
                           observedActivityReport=False, actualAndroidExecution=False, actualGeckoExecution=False,
                           checkCount=len(checks) if 'checks' in locals() else 0)
         report['scrollDiagnostics'] = save_scroll_diagnostics()
+        if native_driver is not None:
+            report['nativeInputDriver'] = native_driver.evidence()
+        report['actualAndroidGestureDeadlines'] = list(gesture_deadlines.values())
         captures = {}
         ui_remote = '/sdcard/gecko-performance-failure-' + diagnostic_run + '.xml'
         operations = [

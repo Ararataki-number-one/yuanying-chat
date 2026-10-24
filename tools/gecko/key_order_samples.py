@@ -17,6 +17,7 @@ SETUP_DIAGNOSTICS = (
     'android-emulator-package-results.json', 'android-system-image-results.json',
     'android-platform-tools-results.json', 'emulator.log',
 )
+SCROLL_DIAGNOSTICS = ('gecko-scroll-diagnostics.json', 'gecko-scroll-diagnostic-log.json')
 
 
 def sha(path):
@@ -37,8 +38,14 @@ def stage(args):
         original = args.input / name
         if original.is_file():
             shutil.copy2(original, args.out / name)
+    # Preserve completed runner files byte-for-byte, including failed scrolls.
+    # These are evidence retention only; missing files cannot become a pass.
+    for name in SCROLL_DIAGNOSTICS:
+        original = args.input / name
+        if original.is_file():
+            shutil.copy2(original, args.out / name)
     for folder in (args.input, args.input / 'caret-compat'):
-        for pattern in ('*-failure-*', 'installed-apk-read-*.json', 'native-test.log'):
+        for pattern in ('*-failure-*', 'installed-apk-read-*.json', 'native-test.log', 'native-input-*.json', 'native-input-*.log'):
             for original in folder.glob(pattern):
                 if original.is_file():
                     shutil.copy2(original, args.out / original.name)

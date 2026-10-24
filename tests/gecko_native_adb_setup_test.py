@@ -1,10 +1,14 @@
 import importlib.util
+import json
+from contextlib import ExitStack
 from pathlib import Path
 import time
 import struct
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
+from urllib.parse import parse_qs, urlsplit
 
 spec=importlib.util.spec_from_file_location('native_setup_draft',Path(__file__).resolve().parents[1] / 'tools/gecko/prepare_native_adb.py')
 setup=importlib.util.module_from_spec(spec);spec.loader.exec_module(setup)
@@ -234,6 +238,173 @@ class WifiNativeTest(unittest.TestCase):
                 setup.monitor(Path('/fixed/qemu.sock'), 'hostfwd_add mynet tcp:0.0.0.0:22-10.0.2.15:22')
         socket_call.assert_not_called()
 
+
+
+class PreparationTransportBoundary(Exception):
+    """Stop the host control before native TCP; never claim Android acceptance."""
+
+
+class PreparationBudgetControls(unittest.TestCase):
+    """Complete production setup methods with counterfeit adb replies and clock.
+
+    Git/APK discovery is a host boundary double. Commands.run, both provisioning
+    passes, all CM parsing/nonce/installed-identity validation and main's failure
+    persistence are real. Timing is a deterministic control, not an Android replay.
+    """
+    def invoke(self, *, budget=None, edit_final=None, final_seconds=7,
+               timeout_with_complete_stdout=False, final_code=0, never_ready=False):
+        spec=importlib.util.spec_from_file_location('budget_observation_controls',
+            Path(__file__).with_name('gecko_emulator_bootstrap_test.py'))
+        controls=importlib.util.module_from_spec(spec);spec.loader.exec_module(controls)
+        expected=controls.identity();clock=controls.Clock();calls=[];cm_count=0
+        # A 31.98s valid preparation prefix, then a separate seven-second read.
+        # No assertion depends on a guessed decomposition of the original CI.
+        durations=[6.7,2.8,2,1.7,2.2,2.6,2,1.5,6.1]
+        usable=[True,False,False,False,True,True,False,False,True]
+
+        def reply(command, **options):
+            nonlocal cm_count
+            self.assertEqual(command[:3],['adb','-s',setup.BOOTSTRAP])
+            parts=tuple(command[3:]);duration=.02;stdout='';code=0
+            if parts==('shell','getprop','ro.kernel.qemu'):stdout='1'
+            elif parts[:4]==('shell','pm','list','packages'):stdout='package:'+setup.normal.PACKAGE
+            elif parts==('shell','cmd','wifi','status'):stdout='Wifi is enabled'
+            elif parts==('shell','cmd','wifi','list-scan-results'):
+                stdout='00:13:10:85:fe:01 2447 -50 0 AndroidWifi [ESS]'
+            elif parts[:4]==('exec-out','content','read','--uri'):
+                parsed=urlsplit(parts[4]);self.assertEqual(parsed.netloc,setup.normal.AUTHORITY)
+                self.assertEqual(parsed.path,'/default-network')
+                value=controls.observation();value['runNonce']=parse_qs(parsed.query)['runNonce'][0]
+                value['transports']=['wifi'];cm_count+=1
+                ready=usable[cm_count-1] if cm_count<=len(usable) else True
+                duration=durations[cm_count-1] if cm_count<=len(durations) else final_seconds
+                if never_ready and cm_count>=7:ready=False;duration=2
+                if not ready:
+                    value.update(activeNetwork='',activeNetworkAfter='',capabilitiesPresent=False,
+                                 internetCapability=False,stableDuringRead=False,usable=False)
+                if cm_count==10 and not never_ready:
+                    if edit_final:edit_final(value)
+                    code=final_code
+                stdout=json.dumps(value)
+            timeout=options['timeout'];calls.append(dict(command=command,timeout=timeout,started=clock.now()))
+            if duration>timeout or (cm_count==10 and timeout_with_complete_stdout):
+                clock.sleep(timeout)
+                raise subprocess.TimeoutExpired(command,timeout,
+                    output=stdout.encode() if timeout_with_complete_stdout else b'',stderr=b'')
+            clock.sleep(duration)
+            return subprocess.CompletedProcess(command,code,stdout=stdout,
+                                               stderr='synthetic failure' if code else '')
+
+        def git(command, **unused):
+            parts=command[1:]
+            if parts==['status','--porcelain']:return ''
+            if parts==['rev-parse','HEAD']:return expected['sourceCommit']
+            if parts==['rev-parse','HEAD^{tree}']:return expected['sourceTree']
+            if parts==['show',expected['sourceCommit']+':third-party/sdk/geckoview-157.0.1-editable-selection.json']:
+                # The reused historical host identity has no derived manifest.
+                # Keep the SDK validator's real missing-source behavior.
+                raise subprocess.CalledProcessError(128,command,stderr=b'synthetic source has no manifest')
+            raise AssertionError(command)
+
+        error=None
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);(root/'app').mkdir()
+            (root/'app/build.gradle').write_text("versionName '1.6.0'\nversionCode 51\n")
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(setup,'ROOT',root))
+                stack.enter_context(patch.object(setup.sys,'argv',['prepare_native_adb.py','--adb','adb',
+                    '--apk',str(root/'synthetic.apk'),'--monitor',str(root/'synthetic.sock')]))
+                stack.enter_context(patch.dict(setup.os.environ,{'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1'}))
+                stack.enter_context(patch.object(setup.subprocess,'check_output',side_effect=git))
+                stack.enter_context(patch.object(setup.normal,'expected_build',return_value=expected))
+                stack.enter_context(patch.object(setup.subprocess,'run',side_effect=reply))
+                stack.enter_context(patch.object(setup.time,'monotonic',clock.now))
+                stack.enter_context(patch.object(setup.time,'sleep',clock.sleep))
+                transport=stack.enter_context(patch.object(setup,'native_transport',side_effect=PreparationTransportBoundary))
+                if budget is not None:
+                    stack.enter_context(patch.object(setup,'PREPARATION_TIMEOUT_SECONDS',budget))
+                try:setup.main()
+                except BaseException as failure:error=failure
+            receipt=json.loads((root/'work/gecko-integration/native-adb-setup-results.json').read_text())
+        self.assertFalse(receipt['applicationAcceptance'])
+        self.assertFalse(receipt['originalWorkloadInvoked'])
+        self.assertNotIn('nativeReady',receipt)
+        # The deliberate transport boundary, like any error, remains failed in
+        # main's receipt. Passing a host preparation control is not device proof.
+        self.assertEqual(receipt['status'],'failed')
+        return receipt,error,calls,transport.call_count,clock.now()
+
+    def test_fixed_45_budget_leaves_full_command_cap_after_both_validated_cm_reads(self):
+        receipt,error,calls,transport,ended=self.invoke()
+        self.assertIsInstance(error,PreparationTransportBoundary);self.assertEqual(transport,1)
+        self.assertEqual(receipt['preparationBudgetSeconds'],45)
+        self.assertEqual(receipt['preparationStartedAt'],0)
+        self.assertEqual(receipt['preparationDeadlineMonotonic'],45)
+        self.assertAlmostEqual(calls[-1]['started'],31.98)
+        self.assertAlmostEqual(ended,38.98);self.assertEqual(calls[-1]['timeout'],8)
+        self.assertEqual([v['phase'] for v in receipt['networkObservations']][-2:],
+            ['after-persistent-sdk-wifi','persistent-sdk-wifi-confirmation'])
+        final=receipt['networkObservations'][-2:]
+        self.assertTrue(all(v['value']['usable'] for v in final))
+        self.assertNotEqual(final[0]['runNonce'],final[1]['runNonce'])
+        self.assertTrue(all(c['timeoutSeconds']<=8 and c['deadlineMonotonic']<=45 for c in receipt['commands']))
+        self.assertEqual(receipt['sdkWifiProvisioningStages'][-1]['apSelection'],'reused-observed-AP')
+
+    def test_original_33_budget_crops_second_read_and_cannot_promote_first_success(self):
+        receipt,error,calls,transport,ended=self.invoke(budget=33)
+        self.assertIsInstance(error,subprocess.TimeoutExpired);self.assertEqual(transport,0)
+        self.assertAlmostEqual(calls[-1]['timeout'],1.02);self.assertAlmostEqual(ended,33)
+        self.assertEqual(len(receipt['networkObservations']),9)
+        self.assertEqual(receipt['networkObservations'][-1]['phase'],'after-persistent-sdk-wifi')
+        self.assertTrue(receipt['networkObservations'][-1]['value']['usable'])
+        self.assertTrue(receipt['commands'][-1]['timedOut'])
+        self.assertEqual(receipt['preparationDeadlineMonotonic'],33)
+
+    def test_45_budget_does_not_accept_false_or_foreign_second_receipt(self):
+        def unusable(value):
+            value.update(activeNetwork='',activeNetworkAfter='',capabilitiesPresent=False,
+                         internetCapability=False,stableDuringRead=False,usable=False)
+        edits=[unusable,lambda v:v.update(runNonce='f'*32),lambda v:v.update(sourceCommit='f'*40),
+               lambda v:v['buildIdentity'].update(apkSha256='f'*64),
+               lambda v:v['buildIdentity'].update(dirtySource=True)]
+        for edit in edits:
+            with self.subTest(edit=edit):
+                receipt,error,calls,transport,ended=self.invoke(edit_final=edit)
+                self.assertIsInstance(error,ValueError);self.assertEqual(transport,0)
+                self.assertEqual(receipt['preparationDeadlineMonotonic'],45)
+                self.assertEqual(len(receipt['commands']),29)
+                self.assertEqual(calls[-1]['timeout'],8)
+
+    def test_per_command_timeout_still_fails_with_global_budget_remaining(self):
+        receipt,error,calls,transport,ended=self.invoke(final_seconds=9)
+        self.assertIsInstance(error,subprocess.TimeoutExpired);self.assertEqual(transport,0)
+        self.assertEqual(calls[-1]['timeout'],8);self.assertLess(ended,45)
+        self.assertTrue(receipt['commands'][-1]['timedOut'])
+        self.assertEqual(len(receipt['networkObservations']),9)
+
+    def test_complete_looking_stdout_from_timeout_or_nonzero_exit_cannot_pass(self):
+        for options in ({'timeout_with_complete_stdout':True},{'final_code':1}):
+            with self.subTest(options=options):
+                receipt,error,calls,transport,ended=self.invoke(**options)
+                self.assertIsInstance(error,subprocess.SubprocessError);self.assertEqual(transport,0)
+                self.assertTrue(json.loads(receipt['commands'][-1]['stdout'])['usable'])
+                self.assertEqual(len(receipt['networkObservations']),9)
+                self.assertEqual(receipt['preparationDeadlineMonotonic'],45)
+
+    def test_missing_connectivity_expires_without_resetting_shared_45_budget(self):
+        receipt,error,calls,transport,ended=self.invoke(never_ready=True)
+        self.assertIsInstance(error,(TimeoutError,subprocess.TimeoutExpired));self.assertEqual(transport,0)
+        self.assertLessEqual(ended,45);self.assertGreaterEqual(ended,44)
+        self.assertEqual(receipt['preparationDeadlineMonotonic'],45)
+        self.assertFalse(receipt['networkObservations'][-1]['value']['usable'])
+        self.assertNotIn('persistent-sdk-wifi-confirmation',[v['phase'] for v in receipt['networkObservations']])
+        self.assertTrue(all(c['deadlineMonotonic']<=45 for c in receipt['commands']))
+
+    def test_expired_45_budget_refuses_a_command_before_invoking_subprocess(self):
+        record={'commands':[]};commands=setup.BootstrapCommands('adb',setup.BOOTSTRAP,record,45)
+        with patch.object(setup.time,'monotonic',return_value=45),patch.object(setup.subprocess,'run') as run:
+            with self.assertRaises(TimeoutError):commands.run('shell','getprop','ro.kernel.qemu')
+        run.assert_not_called();self.assertEqual(commands.deadline,45);self.assertEqual(record['commands'],[])
 
 
 if __name__=='__main__':unittest.main()

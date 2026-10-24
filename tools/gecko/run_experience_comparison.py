@@ -19,16 +19,29 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import uuid
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 import experience_scenarios as scenarios
+import native_input_contract as native_input
+from native_input_driver import NativeInputDriver
+from installed_apk_read import read_installed_apk
 PACKAGE = 'local.pocketchat.test'
 SERIAL = 'emulator-5554'
 PHASE_TIMEOUT_SECONDS = 1200
 REQUEST_PATH = '.github/experience-request.json'
 APK = 'app/build/outputs/apk/integration/app-x86_64-integration.apk'
+DRIVER_APK = 'work/gecko-integration/native-input-driver.apk'
+DRIVER_BUILD = 'work/gecko-integration/native-input-driver-build.json'
+DRIVER_OBSERVERS = (
+    'tests/native-input-driver/NativeGestureProtocol.java',
+    'tests/native-input-driver/NativeInputInstrumentation.java',
+    'tests/native-input-driver/AndroidManifest.xml',
+    'tools/gecko/native_input_driver.py',
+    'tools/gecko/native_input_contract.py',
+)
 HARNESS = (
     'tests/gecko/ExperienceBenchmarkActivity.java',
     'tests/gecko/ExperienceScenarios.java',
@@ -46,6 +59,11 @@ HARNESS = (
     'tools/gecko/integration_event_contract.py',
     'tools/gecko/profile_invocation_contract.py',
     'tools/gecko/sdk_identity_contract.py',
+    'tests/native-input-driver/NativeGestureProtocol.java',
+    'tests/native-input-driver/NativeInputInstrumentation.java',
+    'tests/native-input-driver/AndroidManifest.xml',
+    'tools/gecko/native_input_driver.py',
+    'tools/gecko/native_input_contract.py',
 )
 SETUP = (
     'tools/gecko/android-emulator.json',
@@ -58,6 +76,8 @@ SETUP = (
     'tools/gecko/prepare_native_adb.py',
     'tools/gecko/prepare_emulator.py',
     'tools/gecko/ci_bundle.py',
+    'tools/gecko/build_native_input_driver.py',
+    'tools/gecko/installed_apk_read.py',
 )
 ACTIONS = (
     'open-network', 'return-network', 'open-downloads', 'return-downloads',
@@ -250,6 +270,101 @@ def matching_protocol(baseline, candidate):
     return baseline
 
 
+def indexed_file(root, index, name):
+    rows = [row for row in index['files'] if row.get('path') == name]
+    require(len(rows) == 1, 'Exactly one original build input is required: ' + name)
+    path = Path(root) / name
+    require(path.is_file() and not path.is_symlink(), 'Missing regular build input: ' + name)
+    require(type(rows[0].get('bytes')) is int and rows[0]['bytes'] == path.stat().st_size
+            and rows[0].get('sha256') == sha(path), 'Original build input bytes differ: ' + name)
+    return path
+
+
+def driver_identity(root, index, source, run, attempt):
+    """Bind each role's own signed helper; source equality is checked separately."""
+    apk = indexed_file(root, index, DRIVER_APK)
+    receipt = indexed_file(root, index, DRIVER_BUILD)
+    build = native_input.decode(receipt.read_bytes())
+    read_source = lambda commit, path: subprocess.check_output(
+        ['git', 'show', commit + ':' + path], cwd=root, timeout=30)
+    native_input.verify_build(build, source, read_source)
+    native_input.verify_signature_logs(receipt.parent, build)
+    for name in build['signatureLogs']:
+        indexed_file(root, index, 'work/gecko-integration/' + name)
+    require(all(build.get(key) == value for key, value in
+                dict(sourceCommit=source, sourceTree=index['sourceTree'], runId=run, runAttempt=attempt).items()),
+            'Input driver belongs to another original build')
+    require(build.get('status') == 'built' and build.get('compileOnly') is False
+            and build.get('testOnly') is True, 'A real test-only driver build is required')
+    require(build.get('apkSha256') == sha(apk) and build.get('apkBytes') == apk.stat().st_size,
+            'Input driver APK differs from its build receipt')
+    require(isinstance(build.get('signerCertificateSha256'), str)
+            and re.fullmatch('[0-9a-f]{64}', build['signerCertificateSha256']),
+            'Original driver signing certificate identity is required')
+    with zipfile.ZipFile(apk) as archive:
+        name = 'assets/native-input-driver-build.json'
+        require(archive.namelist().count(name) == 1 and 'classes.dex' in archive.namelist(),
+                'Input driver has no unique source asset or executable code')
+        raw = archive.read(name)
+    stamp = native_input.decode(raw)
+    require(native_input.sha(raw) == build.get('assetSha256')
+            and all(key in build and type(value) is type(build[key]) and value == build[key]
+                    for key, value in stamp.items()), 'Embedded input driver identity differs')
+    for key in ('schema', 'sourceCommit', 'sourceTree', 'runId', 'runAttempt', 'packageName',
+                'targetPackage', 'instrumentationTargetPackage', 'instrumentation', 'protocols', 'inputs'):
+        require(stamp.get(key) == build[key], 'Embedded input driver identity missing: ' + key)
+    return dict(apk=str(apk), receipt=str(receipt), apkSha256=sha(apk), apkBytes=apk.stat().st_size,
+                receiptSha256=sha(receipt), signerCertificateSha256=build['signerCertificateSha256'], build=build)
+
+
+def prepare_target_proof(build, directory, adb):
+    directory = Path(directory);directory.mkdir(parents=True, exist_ok=False)
+    paths = subprocess.check_output([adb, '-s', SERIAL, 'shell', 'pm', 'path', PACKAGE],
+                                    text=True, timeout=30).splitlines()
+    require(len(paths) == 1 and paths[0].startswith('package:/data/app/'),
+            'Exactly one installed role target APK is required')
+    nonce = uuid.uuid4().hex
+    # The full transferred APK is identical to the already indexed build and
+    # stays in the role checkout's private cache. Preserve the original range
+    # receipt in the raw artifact, without uploading four duplicate large APKs.
+    cache = Path(build['root']) / 'work/experience-installed-readbacks'
+    cache.mkdir(parents=True, exist_ok=True)
+    proof = directory / 'installed-target-byte-proof.json'
+    read_installed_apk(adb=adb, serial=SERIAL, installed_path=paths[0][len('package:'):],
+        destination=cache / (nonce + '.apk'), expected_sha256=build['apkSha256'],
+        expected_bytes=build['apkBytes'], diagnostics=proof, label='experience-phase-' + nonce)
+    actual = native_input.decode(proof.read_bytes())
+    require(actual.get('status') == 'verified-bytes' and actual.get('actualInstalledApkRead') is True
+            and actual.get('actualFileSha256') == build['apkSha256']
+            and actual.get('actualFileBytes') == build['apkBytes'], 'Actual installed target byte proof failed')
+    return dict(path=str(proof), sha256=sha(proof), sourceCommit=build['sourceCommit'],
+                sourceTree=build['sourceTree'], runId=build['runId'], runAttempt=build['runAttempt'],
+                targetApkSha256=build['apkSha256'], preparationOutsideTimedWorkload=True)
+
+
+def prepare_driver(build, directory, adb, target_proof):
+    """Install only this role's self-target driver, outside the timed workload."""
+    selected = build['nativeInputDriver']
+    nonce = uuid.uuid4().hex
+    directory = Path(directory)
+    started = time.monotonic_ns()
+    NativeInputDriver(root=Path(build['root']), out=directory, adb=adb, serial=SERIAL, nonce=nonce,
+        target_apk=Path(build['apk']), expected_source=build['sourceCommit'],
+        driver_apk=Path(selected['apk']), build_receipt=Path(selected['receipt']),
+        target_byte_proof=Path(target_proof), install=True)
+    path = directory / ('native-input-setup-' + nonce + '.json')
+    actual = native_input.decode(path.read_bytes())
+    require(actual.get('sourceCommit') == build['sourceCommit'] and actual.get('nonce') == nonce
+            and actual.get('installationRequested') is True and actual.get('actualInstalledApkRead') is True,
+            'Input driver preparation did not read the installed role APK')
+    for key in ('apkSha256', 'apkBytes', 'signerCertificateSha256'):
+        require(actual.get(key) == selected[key], 'Installed prepared driver identity differs: ' + key)
+    return dict(sourceCommit=build['sourceCommit'], runId=build['runId'], runAttempt=build['runAttempt'],
+                driverApkSha256=selected['apkSha256'], buildReceiptSha256=selected['receiptSha256'],
+                rawSetup=path.name, rawSetupSha256=sha(path), hostStartedMonotonicNs=started,
+                hostCompletedMonotonicNs=time.monotonic_ns(), preparationOutsideTimedWorkload=True)
+
+
 def restore_build(root, bundle, source, run, attempt):
     root, bundle = Path(root).resolve(), Path(bundle).resolve()
     identity = input_identity(source, run, attempt)
@@ -276,11 +391,12 @@ def restore_build(root, bundle, source, run, attempt):
         stamp = json.loads(archive.read('assets/pocketchat-integration-build.json'))
     require(stamp['sourceCommit'] == source and stamp['sourceTree'] == index['sourceTree']
             and stamp['dirtySource'] is False, 'APK source stamp differs')
+    driver = driver_identity(root, index, source, run, attempt)
     return dict(identity, root=str(root), apk=str(apk), apkSha256=digest,
                 apkBytes=apk.stat().st_size, sourceTree=index['sourceTree'],
                 version=stamp['version'], versionCode=stamp['versionCode'],
                 buildIndexSha256=sha(index_path), bundleSha256=sha(bundle),
-                protocol=source_hashes(root, HARNESS + SETUP))
+                protocol=source_hashes(root, HARNESS + SETUP), nativeInputDriver=driver)
 
 
 def product_inventory(root):
@@ -319,6 +435,8 @@ def prepare(args):
             'Planner scenario inputs differ from selected builds')
     require(source_hashes(ROOT, SETUP) == {name: protocol[name] for name in SETUP},
             'Workflow runtime setup differs from selected builds')
+    require(source_hashes(ROOT, DRIVER_OBSERVERS) == {name: protocol[name] for name in DRIVER_OBSERVERS},
+            'Workflow input driver differs from selected builds')
     inventory_a = product_inventory(Path(baseline['root']))
     inventory_b = product_inventory(Path(candidate['root']))
     changed = [name for name in sorted(set(inventory_a) | set(inventory_b))
@@ -354,7 +472,116 @@ def values_summary(values):
                 minimum=min(values), maximum=max(values))
 
 
-def verify_report(report, build, label, repetitions, protocol, scenario=None):
+def retained_raw(report, root, name):
+    require(root is not None, 'Original benchmark raw evidence is required')
+    path = Path(root) / name
+    require(path.is_file() and not path.is_symlink()
+            and Path(root).resolve() in path.resolve().parents, 'Missing original benchmark input evidence: ' + name)
+    rows = [item for item in report.get('rawEvidence', []) if item.get('path') == name]
+    require(len(rows) == 1, 'Missing or duplicate raw evidence index: ' + name)
+    raw = path.read_bytes()
+    require(type(rows[0].get('bytes')) is int and rows[0]['bytes'] == len(raw)
+            and rows[0].get('sha256') == native_input.sha(raw), 'Raw benchmark evidence bytes differ: ' + name)
+    return raw
+
+
+def verify_driver_iteration(report, row, build, protocol, raw_root):
+    selected = build['nativeInputDriver']
+    driver_build = selected['build']
+    require(all(driver_build['inputs'][name] == protocol[name] for name in native_input.INPUTS),
+            'Compiled input driver differs from the fixed protocol')
+    for key in ('sourceCommit', 'sourceTree', 'runId', 'runAttempt'):
+        require(driver_build[key] == build[key], 'Driver role identity differs: ' + key)
+    prefix = 'iteration-%02d/' % row['index']
+    build_raw = retained_raw(report, raw_root, prefix + 'native-input-driver-build.json')
+    require(native_input.sha(build_raw) == selected['receiptSha256']
+            and native_input.decode(build_raw) == driver_build, 'Retained role driver build receipt differs')
+    for name in driver_build['signatureLogs']:
+        retained_raw(report, raw_root, prefix + name)
+    native_input.verify_signature_logs(Path(raw_root) / prefix, driver_build)
+    evidence = row['nativeInputDriver']
+    require(evidence.get('purpose') == 'formal-collapse'
+            and isinstance(evidence.get('nonce'), str) and re.fullmatch('[0-9a-f]{32}', evidence['nonce'])
+            and evidence.get('buildSha256') == selected['receiptSha256'], 'Formal input evidence identity differs')
+    setup = native_input.decode(retained_raw(report, raw_root,
+        prefix + 'native-input-setup-' + evidence['nonce'] + '.json'))
+    require(setup.get('sourceCommit') == build['sourceCommit'] and setup.get('nonce') == evidence['nonce']
+            and setup.get('installationRequested') is False and setup.get('actualInstalledApkRead') is True
+            and all(setup.get(key) == selected[key] for key in ('apkSha256', 'apkBytes', 'signerCertificateSha256')),
+            'Iteration must verify the already prepared role driver without reinstalling')
+    proof_raw = retained_raw(report, raw_root, prefix + 'native-input-target-proof-' + evidence['nonce'] + '.json')
+    require(native_input.sha(proof_raw) == report['targetByteProofSha256'], 'Original target byte proof changed')
+    proof = native_input.decode(proof_raw)
+    native_input.verify_target_proof(proof, build['apkSha256'], build['apkBytes'])
+    receipts = evidence.get('receipts')
+    require(isinstance(receipts, list) and len(receipts) == 1
+            and receipts[0].get('gesture') == 'formal-collapse', 'Exactly one formal collapse invocation is required')
+    receipt = receipts[0]
+    name = 'native-input-' + evidence['nonce'] + '-formal-collapse.json'
+    require(receipt.get('file') == name, 'Unexpected formal input receipt path')
+    raw = retained_raw(report, raw_root, prefix + name)
+    require(receipt.get('sha256') == native_input.sha(raw), 'Actual formal input receipt hash differs')
+    for suffix in ('-stdout.log', '-stderr.log'):
+        retained_raw(report, raw_root, prefix + name[:-5] + suffix)
+    actual = native_input.decode(raw)
+    request = receipt['request']
+    require(request['targetByteProofSha256'] == report['targetByteProofSha256']
+            and request['targetApkPath'] == proof['installedApkPath']
+            and request['targetApkBytes'] == build['apkBytes'], 'Gesture did not use the original role byte proof')
+    observed = row['collapseInput']
+    armed = observed['armed']
+    require(armed.get('name') == 'collapse' and armed.get('target') == 'collapsed'
+            and type(armed.get('armedUptimeMs')) is int and armed['armedUptimeMs'] > 0
+            and type(armed.get('expiresUptimeMs')) is int
+            and armed['expiresUptimeMs'] == armed['armedUptimeMs'] + 15000
+            and request['expiresUptimeMs'] == armed['expiresUptimeMs'], 'Original 15-second action deadline changed')
+    first, last = observed['from'], observed['to']
+    require(len(first) == len(last) == 2 and all(type(n) is int and n >= 0 for n in first + last)
+            and first[0] == last[0] == request['x'] and request['startY'] == first[1]
+            and request['endY'] == last[1], 'Original collapse endpoints changed')
+    native_input.verify_receipt(actual, build=driver_build, purpose='formal-collapse', nonce=evidence['nonce'],
+                                gesture='formal-collapse', target_apk=build['apkSha256'], request=request)
+    require(actual['signerCertificateSha256'] == selected['signerCertificateSha256'],
+            'Installed role driver certificate differs')
+    require(actual['startedUptimeMs'] >= armed['armedUptimeMs'], 'One-shot driver started outside the armed action')
+    require(observed['startupMs'] == actual['startupMs'] and observed['readyUptimeMs'] == actual['readyUptimeMs'],
+            'Automation startup observation differs from its raw receipt')
+    require(type(receipt.get('hostStartedMonotonicNs')) is int
+            and type(receipt.get('hostCompletedMonotonicNs')) is int
+            and 0 < receipt['hostStartedMonotonicNs'] <= receipt['hostCompletedMonotonicNs'],
+            'Driver host invocation interval missing')
+    require(observed.get('armedActionToReadyMs') == actual['readyUptimeMs'] - armed['armedUptimeMs']
+            and observed.get('hostInvocationMs') == (receipt['hostCompletedMonotonicNs'] - receipt['hostStartedMonotonicNs']) / 1000000,
+            'Whole armed/host automation intervals differ from original clocks')
+    action = next(item for item in row['actions'] if item['name'] == 'collapse')
+    touches = actual['trace']['events']
+    require(action['inputUpUptimeMs'] == touches[-1]['eventTime']
+            and action['inputDurationMs'] == touches[-1]['eventTime'] - touches[0]['eventTime']
+            and action['drawUptimeMs'] >= action['inputUpUptimeMs'],
+            'Target ACTION_UP measurement differs from actual driver events')
+    transfers = native_input.decode(retained_raw(report, raw_root, prefix + 'experienceBenchmark-transport.json'))
+    owned = []
+    for transfer in transfers:
+        raw = transfer['rawUtf8'].encode('utf-8')
+        pointer = transfer['receipt']
+        require(pointer['payloadBytes'] == len(raw) and pointer['payloadSha256'] == native_input.sha(raw),
+                'Original app event transport bytes differ')
+        envelope = native_input.decode(raw)
+        require(envelope['runNonce'] == pointer['runNonce'] == evidence['nonce']
+                and envelope['sourceCommit'] == build['sourceCommit']
+                and envelope['buildIdentity']['apkSha256'] == build['apkSha256'],
+                'App observation belongs to another driver invocation or role')
+        owned.append(envelope['event'])
+    require(any(event.get('kind') == 'armed' and event.get('result') == armed for event in owned),
+            'Original owned armed event is missing')
+    require(any(event.get('kind') == 'measurement' and event.get('result') == action for event in owned),
+            'Original target collapse measurement is missing')
+    return tuple(actual[key] for key in ('targetApkPathBefore', 'targetApkBytesBefore',
+                                        'targetLastModifiedBefore', 'targetLastUpdateBefore'))
+
+
+def verify_report(report, build, label, repetitions, protocol, scenario=None, *, raw_root=None,
+                  target_proof_sha256=None):
     require(report.get('schema') == 1 and report.get('status') == 'passed',
             'Benchmark workload did not pass')
     require(report.get('label') == label and report.get('sourceCommit') == build['sourceCommit'],
@@ -363,8 +590,11 @@ def verify_report(report, build, label, repetitions, protocol, scenario=None):
     require(report.get('scenarioManifest') == scenario and report.get('scenarioManifestSha256') == scenarios.digest(scenario),
             'Fixed scenario input manifest differs')
     require(report.get('executionInputsUnchanged') is True, 'Measurement sources changed during execution')
+    require(isinstance(target_proof_sha256, str) and re.fullmatch('[0-9a-f]{64}', target_proof_sha256)
+            and report.get('targetByteProofSha256') == target_proof_sha256,
+            'Benchmark target byte proof is not bound to this phase')
     for name in ('tests/gecko/run_experience_benchmark.py', 'tests/gecko/ExperienceBenchmarkActivity.java',
-                 'tests/gecko/ExperienceScenarios.java', 'tools/gecko/experience_scenarios.py'):
+                 'tests/gecko/ExperienceScenarios.java', 'tools/gecko/experience_scenarios.py', *DRIVER_OBSERVERS):
         require(report.get('observerFiles', {}).get(name) == protocol[name], 'Actual scenario observer differs: ' + name)
     installed = report.get('buildIdentity', {})
     for key in ('sourceCommit', 'sourceTree', 'version', 'versionCode', 'apkSha256', 'apkBytes'):
@@ -381,11 +611,20 @@ def verify_report(report, build, label, repetitions, protocol, scenario=None):
             and report.get('predeclaredRepetitions') == repetitions
             and len(report.get('iterations', [])) == repetitions,
             'A predeclared iteration is missing')
+    original_target_fence = None
+    input_nonces = set()
     for number, row in enumerate(report['iterations'], 1):
         require(type(row.get('index')) is int and row.get('index') == number and row.get('status') == 'passed',
                 'A predeclared iteration failed or was replaced')
         require(tuple(action.get('name') for action in row.get('actions', [])) == ACTIONS,
                 'The fixed action sequence differs')
+        target_fence = verify_driver_iteration(report, row, build, protocol, raw_root)
+        nonce = row['nativeInputDriver']['nonce']
+        require(nonce not in input_nonces, 'An input-driver invocation was reused across iterations')
+        input_nonces.add(nonce)
+        if original_target_fence is None:
+            original_target_fence = target_fence
+        require(target_fence == original_target_fence, 'Measured APK metadata changed while reusing the phase byte proof')
         verify_scenario(row, scenario)
         finite(row['startup']['activityCreateToReadyMs'])
         for action in row['actions']:
@@ -438,6 +677,14 @@ def summarize(reports):
             name: values_summary([a['responseToDrawMs'] for r in rows for a in r['actions'] if a['name'] == name])
             for name in ACTIONS},
     }
+    startups = [r['collapseInput']['startupMs'] for r in rows if 'startupMs' in r.get('collapseInput', {})]
+    result['automation'] = dict(
+        driverOnStartToReadyMs=values_summary(startups) if startups else {'count': 0, 'unavailable': True},
+        missingIterations=len(rows) - len(startups),
+        scope='Driver onStart-to-READY excludes process creation. Armed-action-to-READY additionally retains event handoff and process launch; host invocation includes transport, the gesture and receipt collection. These are automation intervals, not user app startup or an app bottleneck; no subtraction from original action or whole-flow metrics.')
+    for name in ('armedActionToReadyMs', 'hostInvocationMs'):
+        values = [r['collapseInput'][name] for r in rows if name in r.get('collapseInput', {})]
+        result['automation'][name] = values_summary(values) if values else {'count': 0, 'unavailable': True}
     for key, field in (('cpuSecondsObserved', 'cpuSecondsObserved'),
                        ('cpuPercentOfOneCoreObserved', 'percentOfOneCore')):
         available = [r['cpu'][field] for r in rows if r.get('cpu', {}).get('available')]
@@ -520,6 +767,9 @@ def execute(args):
     require(sha(ROOT / 'tools/gecko/experience_scenarios.py') == plan['protocol']['tools/gecko/experience_scenarios.py'],
             'Scenario inputs changed after planning')
     require(plan['comparisonToolSha256'] == sha(__file__), 'Comparison tool changed after planning')
+    require(source_hashes(ROOT, SETUP + DRIVER_OBSERVERS)
+            == {name: plan['protocol'][name] for name in SETUP + DRIVER_OBSERVERS},
+            'Workflow input driver/setup changed after planning')
     require(not args.out.exists(), 'Keep every experiment; choose a new output directory')
     args.out.mkdir(parents=True)
     shutil.copy2(args.plan, args.out / 'plan.json')
@@ -564,6 +814,11 @@ def execute(args):
             require(source_hashes(root, HARNESS + SETUP) == plan['protocol'],
                     'Fixed benchmark/setup protocol changed')
             require(sha(build['apk']) == build['apkSha256'], 'Selected APK changed after planning')
+            index_path = root / 'work/gecko-integration/ci-build-index.json'
+            require(sha(index_path) == build['buildIndexSha256'], 'Original build index changed after planning')
+            require(driver_identity(root, native_input.decode(index_path.read_bytes()), build['sourceCommit'],
+                        build['runId'], build['runAttempt']) == build['nativeInputDriver'],
+                    'Selected role input driver changed after planning')
             require(device() == original_device, 'The emulator rebooted or changed between conditions')
             phase = dict(position=position, condition=condition, label=label,
                          sourceCommit=build['sourceCommit'], apkSha256=build['apkSha256'],
@@ -604,11 +859,18 @@ def execute(args):
             for name in ANIMATIONS:
                 require(float(adb('shell', 'settings', 'get', 'global', name)) == 1,
                         'Normal animations changed before measurement')
+            phase['targetByteProof'] = prepare_target_proof(build, phase_dir / 'target-byte-read', args.adb)
+            phase['nativeInputPreparation'] = prepare_driver(build, phase_dir / 'input-driver-setup', args.adb,
+                                                            phase['targetByteProof']['path'])
+            persist()
             time.sleep(plan['cooldownSeconds'])
             destination = phase_dir / 'workload'
             command = [sys.executable, str(root / 'tests/gecko/run_experience_benchmark.py'),
                        '--adb', args.adb, '--serial', SERIAL, '--apk', build['apk'],
                        '--source', build['sourceCommit'], '--label', label, '--out', str(destination),
+                       '--driver-apk', build['nativeInputDriver']['apk'],
+                       '--driver-build', build['nativeInputDriver']['receipt'],
+                       '--target-byte-proof', phase['targetByteProof']['path'],
                        '--repetitions', str(plan['repetitionsPerPhase']), '--scenario', plan['scenarioManifest']['name']]
             phase['command'] = command;persist()
             with (phase_dir / 'workload.log').open('w') as output:
@@ -616,7 +878,9 @@ def execute(args):
                                stdout=output, stderr=subprocess.STDOUT, check=True, timeout=PHASE_TIMEOUT_SECONDS)
             report_path = destination / 'experience-results.json'
             report = json.loads(report_path.read_text())
-            observed = verify_report(report, build, label, plan['repetitionsPerPhase'], plan['protocol'], plan['scenarioManifest'])
+            observed = verify_report(report, build, label, plan['repetitionsPerPhase'], plan['protocol'],
+                                     plan['scenarioManifest'], raw_root=destination,
+                                     target_proof_sha256=phase['targetByteProof']['sha256'])
             if observed_environment is None:
                 observed_environment = observed
             require(observed_environment == observed, 'Device measurement settings changed between conditions')

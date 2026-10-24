@@ -237,6 +237,7 @@ if version_code>=59:performance_files.extend(['appearance-results.json','appeara
 if version_code>=70:
     from gecko.network_sources_contract import SETTINGS_REPORTS
     performance_files.extend(SETTINGS_REPORTS)
+performance_files.extend(item.name for pattern in ('native-input-*.json','native-input-*.log','native-input-*.txt') for item in args.evidence.glob(pattern) if item.is_file())
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
 shutil.copy2(args.notes,stage/'RELEASE.md')
 workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkdir(parents=True)
@@ -254,7 +255,7 @@ shutil.copy2(root/'tools/gecko/release_channel_contract_test.py',stage/'tools/ge
 if roadmap_release:
     for name in ['check_profile_evidence.py','profile_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if sdk_build is not None:
-    for name in ['check_caret_compat_evidence.py','caret_build_identity.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    for name in ['check_caret_compat_evidence.py','caret_build_identity.py','native_input_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
     if caret.get('controlledImeEnvironment'):
         for name in ['caret_ime_contract.py','caret_ime_guard.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if template_release:

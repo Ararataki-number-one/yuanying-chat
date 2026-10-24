@@ -745,7 +745,7 @@ def verify_report(report, *, build, sdk, audit, source, run_id, run_attempt, bui
 
 
 def verify_original_burst(report, *, source, run_id, run_attempt, identity, sidecar, raw_report, build,
-                          build_hash, sdk_raw, artifact_root=ROOT, source_reader=None):
+                          build_hash, sdk_raw, artifact_root=ROOT, source_reader=None, evidence_directory=None):
     """Extra strict burst checks; all existing full performance gates still apply."""
     require(isinstance(identity, dict) and hex_value(identity.get('sourceTree'), 40)
             and all(hex_value(identity.get(key)) for key in ['sdkManifestSha256', 'sdkBuildReceiptSha256', 'apkSha256']),
@@ -846,6 +846,16 @@ def verify_original_burst(report, *, source, run_id, run_attempt, identity, side
     final = actual_inputs[-1]; draft = final.get('draft')
     require(isinstance(draft, str) and draft.count('-user-typed') == 1
             and draft.replace('-user-typed', '', 1) == request['draft'], 'original burst changed the existing draft')
+    # The selected committed runner decides this requirement, never an optional
+    # report flag. Older immutable evidence keeps its original input protocol.
+    if b'from native_input_driver import NativeInputDriver' in source_reader(source, protected['runnerSha256']):
+        if __package__:
+            from .native_input_contract import verify_qualification
+        else:
+            from native_input_contract import verify_qualification
+        require(evidence_directory is not None, 'native input raw evidence directory missing')
+        verified = verify_qualification(evidence_directory, report, source, source_reader, identity['apkSha256'], (run_id, run_attempt))
+        require(verified['receiptCount'] == 2, 'both declared scrolls must qualify')
     return dict(originalSingleBurst=True, orderedTrustedKeys=11, fullPerformanceChecks=len(checks))
 
 
@@ -908,7 +918,7 @@ def verify_caret_evidence(directory, source, *, artifact_root=ROOT, source_reade
         source=source, run_id=run_id, run_attempt=run_attempt, identity=report['commonInstalledIdentity'],
         sidecar=sidecar, raw_report=raw['gecko-performance-results.json'], build=build,
         build_hash=hashes['caret-apk-build-receipt.json'], sdk_raw=raw['sdk-build-receipt.json'],
-        artifact_root=artifact_root, source_reader=source_reader)
+        artifact_root=artifact_root, source_reader=source_reader, evidence_directory=directory)
     common = report['commonInstalledIdentity']
     controlled_source = selected_controlled_ime(source, artifact_root, source_reader)
     if controlled_source is not None:
@@ -957,7 +967,8 @@ def main():
         result['originalBurst'] = verify_original_burst(performance, source=args.source, run_id=args.run_id,
             run_attempt=args.run_attempt, identity=report['commonInstalledIdentity'], sidecar=sidecar,
             raw_report=Path(args.performance_report).read_bytes(), build=build, build_hash=build_hash,
-            sdk_raw=Path(args.sdk_receipt).read_bytes(), artifact_root=args.artifact_root)
+            sdk_raw=Path(args.sdk_receipt).read_bytes(), artifact_root=args.artifact_root,
+            evidence_directory=Path(args.performance_report).parent)
     print(json.dumps(dict(status='passed', **result), sort_keys=True))
 
 

@@ -222,13 +222,16 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   void finishScrollDiagnostics(String outcome){
     ScrollPhase phase=scrollPhase;if(phase==null)return;FixtureView web=(FixtureView)session.web;web.scrollTracing=false;phase.sdk.setCompositorScrollDelegate(phase.prior);scrollPhase=null;
     scrollDiagnosticPhases.put(J.obj("phase",phase.variant,"outcome",outcome,"url",phase.url,"navigationEpoch",phase.navigationEpoch,"sampleCount",phase.sampleCount,"samplesDropped",Math.max(0,phase.sampleCount-256),"samples",phase.samples,"nativeUpdates",phase.nativeUpdates,"nativeUpdatesCount",phase.updates,"nativeUpdatesDropped",Math.max(0,phase.updates-64),"nativeTouches",web.scrollTouches,"nativeTouchCount",web.scrollTouchCount,"nativeTouchesDropped",Math.max(0,web.scrollTouchCount-64),"domEvents",phase.domEvents));
-    try{J.write(new java.io.File(getFilesDir(),"gecko-scroll-diagnostics.json"),J.obj("schema",1,"run",scrollDiagnosticRun,"scope","Read-only scroll-phase diagnostics; passive DOM listeners, bounded native touch/delegate capture and existing before/after evaluations. No gesture, pacing, timeout, assertion or typing change. Added work and passive touch listeners may affect APZ touch dispatch, scroll-phase scheduling and frame timing; first four busy samples are unchanged.","phases",scrollDiagnosticPhases).toString());}catch(Exception error){event("scrollDiagnosticError",J.obj("error",error.toString()));}
+    try{J.write(new java.io.File(getFilesDir(),"gecko-scroll-diagnostics.json"),J.obj("schema",1,"run",scrollDiagnosticRun,"scope","Read-only scroll-phase diagnostics; passive DOM listeners, bounded native touch/delegate capture and existing before/after evaluations. The passive layer changes no polling, timeout, assertion or typing. Native injection uses the separately declared source-bound fixed UiAutomation protocol. Added work and passive touch listeners may affect APZ touch dispatch, scroll-phase scheduling and frame timing; first four busy samples are unchanged.","phases",scrollDiagnosticPhases).toString());}catch(Exception error){event("scrollDiagnosticError",J.obj("error",error.toString()));}
   }
   void scrollGesture(){beginScrollDiagnostics();evaluate(scrollSnapshotScript(true),false,beforeScroll->{
     scrollPhase.beforeScrollTop=beforeScroll.optDouble("scrollTop");scrollPhase.hasBefore=true;recordScrollSample("before",beforeScroll);
     int[] position=new int[2];session.web.getLocationOnScreen(position);int x=position[0]+session.web.getWidth()/2;
     event("gestureNeeded",J.obj("id",variant+"-scroll","action","scroll","x",x,"startY",position[1]+session.web.getHeight()*3/4,"endY",position[1]+session.web.getHeight()/4));
-    waitScroll(beforeScroll.optDouble("scrollTop"),SystemClock.elapsedRealtime()+20000);
+    long deadlineSampleElapsed=SystemClock.elapsedRealtime(),deadlineSampleUptime=SystemClock.uptimeMillis();
+    long expires=deadlineSampleElapsed+20000;
+    event("gestureDeadline",J.obj("id",variant+"-scroll","sampledElapsedMs",deadlineSampleElapsed,"sampledUptimeMs",deadlineSampleUptime,"expiresElapsedMs",expires,"expiresUptimeMs",deadlineSampleUptime+(expires-deadlineSampleElapsed)));
+    waitScroll(beforeScroll.optDouble("scrollTop"),expires);
   });}
   void waitScroll(double previous,long expires){evaluate(scrollSnapshotScript(false),false,afterScroll->{
     recordScrollSample("after",afterScroll);

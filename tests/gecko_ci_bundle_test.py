@@ -29,6 +29,8 @@ class CiBundleTest(unittest.TestCase):
         for name, data in {
             BUNDLE.INTEGRATION:b'exact synthetic integration bytes',
             BUNDLE.RELEASE:b'exact synthetic release bytes',
+            BUNDLE.INPUT_DRIVER:b'exact synthetic input driver bytes',
+            BUNDLE.INPUT_DRIVER_BUILD:b'{"scope":"input-driver transport fixture only"}',
             BUNDLE.SDK/'geckoview-caret.aar':b'exact synthetic SDK bytes',
             BUNDLE.SDK/'sdk-build-receipt.json':b'{"scope":"transport fixture only"}',
             BUNDLE.OUT/'host-results.json':b'{"synthetic":true}',
@@ -61,6 +63,26 @@ class CiBundleTest(unittest.TestCase):
         self.assertFalse((target/BUNDLE.OUT/'integration-test.jks').exists())
         self.assertFalse((target/BUNDLE.OUT/'network-fixture.p12').exists())
         self.assertEqual(manifest['runId'],'123456')
+
+    def test_input_driver_and_failed_raw_events_keep_exact_bytes_without_keys(self):
+        target=self.clone('input-consumer');BUNDLE.restore(target,self.build,'build')
+        for name in (BUNDLE.INPUT_DRIVER, BUNDLE.INPUT_DRIVER_BUILD):
+            self.assertEqual((target/name).read_bytes(), (self.root/name).read_bytes())
+        evidence={'native-input-baseline-scroll-results.json':b'{"status":"failed","lagMs":319}\r\n',
+                  'native-input-baseline-scroll-stdout.log':b'raw output \xc2\n',
+                  'native-input-baseline-scroll-stderr.log':b'',
+                  'native-input-current-scroll-failure.txt':b'timeout with original evidence\n'}
+        phase=self.phase('editing', evidence)
+        BUNDLE.restore(target,phase,'phase','editing')
+        for name,data in evidence.items():
+            self.assertEqual((target/BUNDLE.OUT/name).read_bytes(),data)
+
+    def test_build_cannot_omit_input_driver(self):
+        for name in (BUNDLE.INPUT_DRIVER, BUNDLE.INPUT_DRIVER_BUILD):
+            path=self.root/name;data=path.read_bytes();path.unlink()
+            with self.assertRaises(AssertionError):
+                BUNDLE.pack(self.root,self.base/'incomplete.tar.gz','build')
+            path.write_bytes(data)
 
     def test_network_settings_evidence_survives_build_and_connections_roundtrip_without_keys(self):
         # These bytes exercise transport only; they are not Android results.

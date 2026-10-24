@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 OUT=ROOT/'work/gecko-integration'
@@ -67,6 +68,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--adb',required=True)
     parser.add_argument('--serial',default='emulator-5554');parser.add_argument('--timeout',type=int,default=420);args=parser.parse_args()
     OUT.mkdir(parents=True,exist_ok=True)
+    source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();run_nonce=uuid.uuid4().hex
     for name in ['network-source-route-results.json','network-source-route-log.txt','network-source-route-server.json',
                  'network-source-route-failure-log.txt','network-source-route-server-failure.json']:(OUT/name).unlink(missing_ok=True)
     for stem in ('network-source-route-logcat','network-source-route-failure-logcat'):
@@ -84,7 +86,7 @@ def main():
         try:
             ready,_,_=select.select([process.stdout],[],[],10);assert ready and json.loads(process.stdout.readline())=={'ready':True,'port':PORT,'protocol':'h2'}
             adb('reverse','tcp:'+str(PORT),'tcp:'+str(PORT));adb('shell','am','force-stop',PACKAGE);adb('shell','pm','clear',PACKAGE);adb('logcat','-c')
-            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.NetworkSourcesRouteIntegrationActivity')
+            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.NetworkSourcesRouteIntegrationActivity','--es','sourceCommit',source,'--es','runNonce',run_nonce)
             deadline=time.monotonic()+args.timeout;report=None
             while time.monotonic()<deadline:
                 raw=log()
@@ -93,10 +95,13 @@ def main():
                     value=adb('exec-out','content','read','--uri','content://'+PACKAGE+'.evidence/network-source-route');report=json.loads(value);break
                 time.sleep(1)
             if report is None:raise TimeoutError('No completed actual Android source route report')
-            source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();report['sourceCommit']=source
+            report['runnerInvocation']={'sourceCommit':source,'runNonce':run_nonce}
             report['androidSdk']=int(adb('shell','getprop','ro.build.version.sdk').strip());server=json.loads((d/'server.json').read_text());report['server']=server
             (OUT/'network-source-route-results.json').write_text(json.dumps(report,indent=2)+'\n');(OUT/'network-source-route-log.txt').write_text(raw)
             (OUT/'network-source-route-server.json').write_text(json.dumps(server,indent=2)+'\n')
+            assert report.get('sourceCommit')==source
+            assert isinstance(report.get('buildIdentity'),dict) and report['buildIdentity'].get('sourceCommit')==source
+            assert report.get('runNonce')==run_nonce
             receipt=json.loads((ROOT/'third-party/patches/mihomo-v1.19.31-probe-build.json').read_text());result=verify(report,server,receipt,source)
             print(json.dumps({'status':'passed','sourceCommit':source,**result}),flush=True)
         except BaseException:

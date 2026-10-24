@@ -18,6 +18,27 @@ SPEC.loader.exec_module(P)
 
 
 class PublicationArtifactCopyTests(unittest.TestCase):
+    def test_actual_input_driver_copy_loops_preserve_failure_bytes_but_exclude_apk_and_keys(self):
+        publisher=ROOT/'tools/gecko/publish_ci.py'
+        loops=[node for node in ast.parse(publisher.read_text()).body if isinstance(node,ast.For)
+               and any(isinstance(value,ast.Constant) and isinstance(value.value,str)
+                       and value.value.startswith('native-input-') for value in ast.walk(node.iter))]
+        self.assertEqual(len(loops),1)
+        evidence={'native-input-driver-build.json':b'{"testOnly":true}\r\n',
+                  'native-input-baseline-scroll-results.json':b'{"status":"failed"}',
+                  'native-input-baseline-scroll-stdout.log':b'original \xc2\n',
+                  'native-input-current-scroll-failure.txt':b'timeout\n'}
+        excluded={'native-input-driver.apk':b'private test executable',
+                  'native-input-driver.jks':b'private synthetic key',
+                  'native-input-driver.p12':b'private synthetic key'}
+        with tempfile.TemporaryDirectory() as temporary:
+            out=Path(temporary)/'out';stage=Path(temporary)/'stage';out.mkdir();stage.mkdir()
+            for name,data in {**evidence,**excluded}.items():(out/name).write_bytes(data)
+            exec(compile(ast.Module(body=loops,type_ignores=[]),str(publisher),'exec'),
+                 {'out':out,'stage':stage,'shutil':shutil})
+            self.assertEqual({p.name for p in stage.iterdir()},set(evidence))
+            for name,data in evidence.items():self.assertEqual((stage/name).read_bytes(),data)
+
     def test_actual_network_settings_copy_loops_publish_evidence_without_keys(self):
         publisher = ROOT/'tools/gecko/publish_ci.py'
         tree = ast.parse(publisher.read_text(), filename=str(publisher))

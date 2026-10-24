@@ -93,7 +93,7 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
     armedName=name;armedTarget=target;armedAt=SystemClock.uptimeMillis();inputDown=inputUp=drawAt=0;completing=false;
     choreographerStart=choreographerGaps.size();windowStart=windowFrameMs.size();
     if("dark".equals(target)||"light".equals(target))observeDialogTouch();
-    emit("armed",J.obj("name",name,"target",target));
+    emit("armed",J.obj("name",name,"target",target,"armedUptimeMs",armedAt,"expiresUptimeMs",armedAt+15000));
     handler.postDelayed(()->{if(name.equals(armedName))fail(new IllegalStateException("Measured action timed out: "+name));},15000);
   }
   @Override public boolean dispatchTouchEvent(MotionEvent event){

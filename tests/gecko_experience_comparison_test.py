@@ -4,7 +4,9 @@ import copy
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
+import tempfile
 import unittest
+from experience_native_input_fixture import attach_driver
 
 SPEC = importlib.util.spec_from_file_location(
     'experience_comparison', Path(__file__).resolve().parents[1] / 'tools/gecko/run_experience_comparison.py')
@@ -44,9 +46,12 @@ class ComparisonTests(unittest.TestCase):
                              viewport='1080x1920', density='480', fontScale='1.0',
                              animationScales={name: '1.0' for name in MODULE.ANIMATIONS},
                              cpuCount=2, clockTicksPerSecond=100))
+        self.raw = tempfile.TemporaryDirectory();self.addCleanup(self.raw.cleanup)
+        attach_driver(MODULE, self.report, self.build, self.protocol, Path(self.raw.name))
 
     def verify(self, report):
-        return MODULE.verify_report(report, self.build, 'baseline-1', 1, self.protocol)
+        return MODULE.verify_report(report, self.build, 'baseline-1', 1, self.protocol,
+            raw_root=Path(self.raw.name), target_proof_sha256=self.report['targetByteProofSha256'])
 
     def test_exact_installed_identity_is_required(self):
         self.verify(self.report)

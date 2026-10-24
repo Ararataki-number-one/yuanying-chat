@@ -35,6 +35,8 @@ for name in ['network-performance-results.json','network-performance-failure-log
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['device-readiness-observations.json','device-failure-runtime.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
+for name in ['source-route-terminal-host-results.json']:
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['preconnect-results.json','preconnect-log.txt','preconnect-failure-log.txt','preconnect-server.json','preconnect-server-failure.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['network-cold-website-diagnostic-log.txt']:
@@ -77,6 +79,8 @@ if core_receipt.exists():
 for screenshot in out.glob('reading-*.png'):
     shutil.copy2(screenshot, stage / screenshot.name)
 for pattern in ['gecko-scroll-*.json','gecko-performance-failure-*.png','gecko-performance-failure-*.xml','gecko-performance-failure-*.txt']:
+    for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
+for pattern in ['native-input-*.json', 'native-input-*.txt', 'native-input-*.log']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 for pattern in ['network-latency-*.png','network-latency-*.xml']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)

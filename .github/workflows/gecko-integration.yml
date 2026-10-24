@@ -194,6 +194,7 @@ jobs:
         python3 tools/gecko/run_profile_host_checks.py --json-jar work/gecko-integration/catalog-json.jar --network-reports work/gecko-integration
         cp work/profile-host/resource-pressure-host-results.json work/gecko-integration/resource-pressure-host-results.json
         cp work/profile-host/results.json work/gecko-integration/profile-host-results.json
+        cp work/profile-host/source-route-terminal-host-results.json work/gecko-integration/source-route-terminal-host-results.json
         cp work/profile-host/caret-document-observer-host-results.json work/gecko-integration/caret-document-observer-host-results.json
         cp work/profile-host/identity-controller-host-results.json work/gecko-integration/identity-controller-host-results.json
         cp work/profile-host/deferred-browser-host-results.json work/gecko-integration/deferred-browser-host-results.json
@@ -204,6 +205,9 @@ jobs:
         python3 -m unittest discover -s tests -p 'gecko_caret_*_test.py'
         python3 -m unittest discover -s tests -p 'gecko_ui_visual_capture_test.py'
         python3 -m unittest discover -s tests -p 'gecko_ci_bundle_test.py'
+        python3 tests/gecko_native_input_driver_build_test.py
+        python3 tests/gecko_native_input_driver_test.py
+        python3 tests/gecko_scroll_stage_test.py
         python3 -m unittest discover -s tests -p 'gecko_network_ui_route_test.py'
         python3 -m unittest discover -s tests -p 'gecko_emulator_bootstrap_test.py'
         python3 -m unittest discover -s tests -p 'gecko_event_transfer_test.py'
@@ -232,6 +236,8 @@ jobs:
         "$tools/apksigner" sign --ks work/gecko-integration/integration-test.jks --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-fixture.apk work/gecko-integration/update-fixture-unsigned.apk
         keytool -genkeypair -keystore work/gecko-integration/update-wrong-key.jks -alias fixture -storepass android -keypass android -dname CN=Synthetic -keyalg RSA -validity 2
         "$tools/apksigner" sign --ks work/gecko-integration/update-wrong-key.jks --ks-key-alias fixture --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-wrong-signer.apk work/gecko-integration/update-fixture-unsigned.apk
+    - name: Build the source-bound self-targeting input driver
+      run: python3 tools/gecko/build_native_input_driver.py --key "$PWD/work/gecko-integration/integration-test.jks"
     - name: Publish unsigned build for local original signing
       run: python3 tools/gecko/publish_ci.py
     - name: Seal one source/run-bound build for every Android phase

@@ -561,6 +561,232 @@ def verify_safe_idle(report):
             'safeIdleCases': len(rows), 'actualTrustedGestures': len(gestures), 'checks': report['checkCount'],
             'sourceBoundInstalledApkSha256': report['installedApkSha256'], 'wanSpeedClaim': False}
 
+def verify_source_route_terminal(report, source):
+    """Require one bounded, identity-bound terminal observation per rejected case."""
+    def integer(value, minimum=0):
+        assert type(value) is int and value >= minimum
+        return value
+
+    def uuid(value):
+        assert isinstance(value, str) and re.fullmatch(
+            r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', value)
+
+    def boolean(value):
+        assert type(value) is bool
+
+    build = report['buildIdentity']
+    assert _hash(source, 40) and report['sourceCommit'] == build['sourceCommit'] == source
+    assert type(build['schema']) is int and build['schema'] == 1
+    assert build['dirtySource'] is False and build['package'] == 'local.pocketchat.test'
+    assert _hash(build['sourceTree'], 40) and _hash(build['apkSha256'])
+    assert _hash(build['buildStampSha256']) and integer(build['apkBytes'], 1)
+    assert integer(build['versionCode'], 70)
+    assert isinstance(build['version'], str) and re.fullmatch(r'\d+\.\d+\.\d+', build['version'])
+    nonce = report['runNonce']
+    assert _hash(nonce, 32) and report['runnerInvocation'] == {'sourceCommit': source, 'runNonce': nonce}
+    identity = report['fixtureIdentity']['identity']
+    uuid(identity['environmentId'])
+    slot = integer(identity['slot'])
+    generation = integer(identity['generation'])
+    service = integer(report['initial']['servicePid'], 1)
+    snapshot_keys = {'slot', 'pid', 'servicePid', 'state', 'alive', 'generation',
+                     'configuration', 'controllerPort', 'proxyPort', 'webProbePort'}
+
+    def snapshot(value, closed=False):
+        assert isinstance(value, dict) and set(value) == snapshot_keys
+        assert integer(value['slot']) == slot and integer(value['servicePid'], 1) == service
+        integer(value['pid'])
+        boolean(value['alive'])
+        uuid(value['generation'])
+        assert _hash(value['configuration'])
+        assert value['state'] in ('closed', 'starting', 'running', 'stopping', 'failed')
+        for field in ('controllerPort', 'proxyPort', 'webProbePort'):
+            assert integer(value[field]) <= 65535
+        if value['alive']:
+            assert value['pid'] > 0
+        if closed:
+            assert value['alive'] is False and value['pid'] == 0 and value['state'] == 'closed'
+
+    immutable_fence = ('caseId', 'sourceCommit', 'runNonce', 'environmentId',
+                       'environmentGeneration', 'slot', 'sessionIdentity', 'browserIdentity', 'transportIdentity')
+    fence_keys = set(immutable_fence) | {'connectionEpoch', 'recoveryToken', 'recoveryRequestSerial',
+                                        'routeSerial', 'starting', 'connecting', 'ready', 'hasVerifiedReceipt'}
+    cases = report['negativeCases']
+    assert isinstance(cases, list) and len(cases) == 4
+    assert {row['name'] for row in cases} == FAILURE
+    case_ids, all_requests = set(), set()
+    requests = {row['id']: row for row in report['requests']}
+    for row in cases:
+        name, evidence = row['name'], row['terminalEvidence']
+        assert type(evidence['schema']) is int and evidence['schema'] == 1
+        assert evidence['status'] == 'passed' and evidence['case'] == name
+        assert evidence['sourceCommit'] == source and evidence['runNonce'] == nonce
+        case_id = evidence['caseId']
+        uuid(case_id)
+        assert case_id not in case_ids
+        case_ids.add(case_id)
+        for field in ('started', 'readyAfter', 'coreAliveAfter'):
+            assert row[field] is False
+        request = row['request']
+        assert request == requests[name] and request['id'] == name
+        assert request['ok'] is request['expected'] is False
+        started = integer(evidence['startedAtNs'], 1)
+        restart_began = integer(evidence['restartBeganAtNs'], started)
+        restart_deadline = integer(evidence['restartDeadlineAtNs'], restart_began)
+        assert restart_deadline - restart_began == 75_000_000_000
+        restart = evidence['restartTerminal']
+        assert restart['ok'] is False
+        restarted = integer(restart['atNs'], restart_began)
+        assert restarted <= restart_deadline
+        snapshot(restart['cache'], closed=True)
+        fetch = integer(evidence['fetchBeganAtNs'], restarted)
+        assert type(evidence['fetchBudgetMs']) is int and evidence['fetchBudgetMs'] == 22000
+        deadline = integer(evidence['deadlineAtNs'], fetch)
+        assert deadline - fetch == 22_000_000_000
+        began = integer(request['beganAtNs'], fetch)
+        ended = integer(request['endedAtNs'], began)
+        post = evidence['postFetchCache']
+        observed = integer(post['atNs'], ended)
+        assert integer(row['postFetchObservedAtNs'], ended) == observed
+        cut = integer(post['cutAtNs'], observed)
+        boolean(post['coreAlive'])
+        assert post['ready'] is False
+        assert isinstance(post['message'], str) and post['message'] == row['message']
+        snapshot(post['cache'])
+
+        def fence(value, terminal=False):
+            assert isinstance(value, dict) and set(value) == fence_keys
+            assert value['caseId'] == case_id and value['sourceCommit'] == source and value['runNonce'] == nonce
+            assert value['environmentId'] == identity['environmentId']
+            assert integer(value['environmentGeneration']) == generation and integer(value['slot']) == slot
+            for field in ('sessionIdentity', 'browserIdentity', 'transportIdentity'):
+                assert type(value[field]) is int and value[field] != 0
+            for field in ('connectionEpoch', 'recoveryToken', 'recoveryRequestSerial', 'routeSerial'):
+                integer(value[field])
+            for field in ('starting', 'connecting', 'ready', 'hasVerifiedReceipt'):
+                boolean(value[field])
+                if terminal:
+                    assert value[field] is False
+
+        before, after = evidence['fenceBefore'], evidence['fenceAfter']
+        fence(post['fence'])
+        fence(before, terminal=True)
+        fence(after, terminal=True)
+        assert before == after
+        assert all(post['fence'][key] == before[key] for key in immutable_fence)
+        assert post['fence']['recoveryRequestSerial'] == before['recoveryRequestSerial']
+        recoveries = evidence['recoveries']
+        assert isinstance(recoveries, list)
+        anchor = restart['cache']
+        previous = None
+        recovery_by_id = {}
+        for recovery in recoveries:
+            number = integer(recovery['request'], 1)
+            assert number not in all_requests
+            all_requests.add(number)
+            recovery_by_id[number] = recovery
+            assert recovery['caseId'] == case_id and recovery['outcome'] == 'FAILED'
+            assert recovery['hasReceipt'] is False
+            token = integer(recovery['recoveryToken'])
+            epoch = integer(recovery['connectionEpoch'], 1)
+            requested = integer(recovery['requestedAtNs'], restart_began)
+            completed = integer(recovery['completedAtNs'], requested)
+            assert requested <= cut
+            snapshot(recovery['terminalCache'], closed=True)
+            terminal = recovery['terminalFence']
+            fence(terminal, terminal=True)
+            assert all(terminal[key] == before[key] for key in immutable_fence)
+            assert terminal['recoveryRequestSerial'] == number and terminal['connectionEpoch'] == epoch
+            assert terminal['recoveryToken'] in (token, token + 1)
+            if previous is not None:
+                assert number == previous['request'] + 1 and requested >= previous['completedAtNs']
+                assert token == previous['terminalFence']['recoveryToken']
+                assert epoch == previous['connectionEpoch'] + 1
+            previous = recovery
+            anchor = recovery['terminalCache']
+        if recoveries:
+            assert recoveries[-1]['request'] == before['recoveryRequestSerial']
+            assert recoveries[-1]['terminalFence'] == before
+            last = recoveries[-1]
+            if last['completedAtNs'] <= cut:
+                assert post['fence'] == before
+            else:
+                assert post['fence']['connectionEpoch'] == last['connectionEpoch']
+                assert post['fence']['recoveryToken'] == last['recoveryToken']
+        else:
+            assert post['fence'] == before
+        if post['coreAlive']:
+            assert any(recovery['requestedAtNs'] <= observed < recovery['completedAtNs']
+                       for recovery in recoveries), 'A live post-fetch core needs an actually overlapping recovery'
+        assert evidence['terminalAnchor'] == anchor
+        snapshot(anchor, closed=True)
+        fresh = evidence['freshRead']
+        assert isinstance(fresh, dict) and set(fresh) == {'method', 'requestedAtNs', 'receivedAtNs', 'snapshot'}
+        assert fresh['method'] == 'NetworkTransportClient.call(snapshot)'
+        read_at = integer(fresh['requestedAtNs'], cut)
+        received = integer(fresh['receivedAtNs'], read_at)
+        completed = integer(evidence['completedAtNs'], received)
+        assert completed <= deadline
+        assert all(recovery['completedAtNs'] <= read_at for recovery in recoveries)
+        snapshot(fresh['snapshot'], closed=True)
+        assert fresh['snapshot'] == anchor
+        snapshot(evidence['finalCache'], closed=True)
+        assert evidence['finalCache'] == fresh['snapshot']
+        stops = evidence['stopObservations']
+        assert isinstance(stops, list)
+        base_serial = recoveries[0]['request'] - 1 if recoveries else before['recoveryRequestSerial']
+        prior_end, owned_generations = restart_began, set()
+        for stop in stops:
+            assert stop['caseId'] == case_id and stop['reason'] == 'START_FAILED'
+            assert stop['observation'] == 'client cache after original stopOwnedCore returned; not exit proof'
+            stop_began = integer(stop['beganAtNs'], prior_end)
+            stop_end = integer(stop['endedAtNs'], stop_began)
+            assert stop_end <= read_at
+            prior_end = stop_end
+            serial = integer(stop['recoveryRequestSerial'])
+            assert integer(stop['afterRequestSerial']) == serial
+            if serial != base_serial:
+                recovery = recovery_by_id[serial]
+                assert recovery['requestedAtNs'] <= stop_began <= stop_end <= recovery['completedAtNs']
+            elif recoveries:
+                assert stop_end <= recoveries[0]['requestedAtNs']
+            owned, live, closed = stop['owned'], stop['beforeCache'], stop['afterCache']
+            snapshot(live)
+            snapshot(closed, closed=True)
+            assert live['alive'] is True and integer(owned['pid'], 1) == live['pid']
+            assert integer(owned['servicePid'], 1) == live['servicePid'] == closed['servicePid']
+            assert owned['generation'] == live['generation'] != closed['generation']
+            assert owned['generation'] not in owned_generations
+            owned_generations.add(owned['generation'])
+            assert owned['configuration'] == live['configuration'] == closed['configuration'] == anchor['configuration']
+        active_at_cut = [recovery for recovery in recoveries
+                         if recovery['requestedAtNs'] <= cut < recovery['completedAtNs']]
+        assert len(active_at_cut) <= 1
+        snapshot_identity = ('slot', 'pid', 'servicePid', 'state', 'alive', 'generation', 'configuration')
+        if not active_at_cut:
+            assert all(post['cache'][key] == anchor[key] for key in snapshot_identity), 'Unowned cut snapshot'
+        else:
+            assert post['cache']['configuration'] == anchor['configuration']
+            if post['cache']['alive']:
+                owners = [stop for stop in stops
+                          if stop['recoveryRequestSerial'] == active_at_cut[0]['request']
+                          and all(stop['owned'][key] == post['cache'][key]
+                                  for key in ('pid', 'servicePid', 'generation', 'configuration'))]
+                assert len(owners) == 1 and cut <= owners[0]['endedAtNs'], 'Live cut snapshot has no current recovery owner'
+            else:
+                snapshot(post['cache'], closed=True)
+        if name.startswith('same-name-'):
+            assert stops and stops[-1]['afterCache'] == fresh['snapshot']
+            assert any(stop['endedAtNs'] <= restarted and stop['afterCache'] == restart['cache'] for stop in stops)
+        contacts = evidence['contactsBefore']
+        assert isinstance(contacts, dict) and set(contacts) == {'fixedTarget', 'decoyTarget', 'ip',
+                                                               'plainProbe', 'fixedAllConnected', 'decoyAllConnected'}
+        for value in contacts.values():
+            integer(value)
+        assert contacts == evidence['contactsAfter'] == row['before'] == row['after'] == request['before'] == request['after']
+    return {'cases': len(cases), 'sameSourceInvocation': True, 'freshClosedTerminalSnapshots': True}
+
+
 def verify_source_route(report,server,receipt,source):
     assert report['schema']==1 and report['sourceCommit']==source and report['status']=='passed',report.get('error')
     for key in ['actualAndroidExecution','actualMihomoExecution','actualGeckoExecution','actualAuthenticatedSocksChain','actualKeystoreEncryption','actualRouteApplication']:
@@ -609,6 +835,7 @@ def verify_source_route(report,server,receipt,source):
     assert before['fixedPlain']<candidate['fixedPlain'] and candidate['fixedSite']<website['fixedSite']
     assert before['fixedBrowser']==candidate['fixedBrowser']==website['fixedBrowser'] and before['decoy']==candidate['decoy']==website['decoy']==0
     negatives={row['name']:row for row in report['negativeCases']};assert set(negatives)==FAILURE
+    verify_source_route_terminal(report, source)
     for name in FAILURE:
         row=negatives[name];req=requests[name]
         assert not row['started'] and not row['readyAfter'] and not row['coreAliveAfter']
@@ -724,6 +951,7 @@ def verify_network_sources(directory, source, receipt):
             'No native global default exit is introduced'} <= {row['name'] for row in ui['checks']}
     route = report('network-source-route-results.json')
     route_result = verify_source_route(route, route['server'], receipt, source)
+    assert route['buildIdentity']['apkSha256'] == ui['installedApkSha256']
     idle = report('network-safe-idle-results.json')
     _core_matches(idle, receipt)
     assert idle['installedApkSha256'] == ui['installedApkSha256'], 'Safe-idle and touch UI must run the same integration APK'

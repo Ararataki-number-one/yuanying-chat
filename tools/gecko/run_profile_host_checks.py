@@ -35,7 +35,7 @@ def main():
     input_paths.add(Path(__file__).resolve())
     input_paths.add(ROOT/'tools/gecko/check_template_evidence.py')
     input_paths.add(ROOT/'tools/gecko/chrome_collapse_contract.py')
-    input_paths.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','page_continuity_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
+    input_paths.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','page_continuity_contract.py','network_sources_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
     input_paths.add(ROOT/'app/src/main/AndroidManifest.xml')
     proxy_script = ROOT / 'app/src/main/assets/gecko/background.js'
     proxy_test = ROOT / 'tests/browser-runtime/gecko-proxy-route.test.cjs'
@@ -170,6 +170,16 @@ def main():
         subprocess.run([sys.executable,str(deferred),"--json-jar",str(json_jar),"--output",str(deferred_receipt)],cwd=ROOT,check=True)
         receipt=json.loads(deferred_receipt.read_text());results.append({"test":"deferred-browser-host","report":str(deferred_receipt.relative_to(ROOT)),"passed":receipt["passed"],"actualAndroidExecution":False})
         files.update(ROOT/path for path in receipt["files"])
+    terminal = ROOT / "tests/source-route-terminal-host/run.py"
+    terminal_receipt = output / "source-route-terminal-host-results.json"
+    subprocess.run([sys.executable, str(terminal), "--java-home", str(Path(shutil.which(java) or java).resolve().parent.parent),
+                    "--json-jar", str(json_jar), "--output", str(terminal_receipt)], cwd=ROOT, check=True)
+    terminal_value = json.loads(terminal_receipt.read_text())
+    results.append({"test":"source-route-terminal", "report":str(terminal_receipt.relative_to(ROOT)),
+                    "passed":terminal_value["total"], "actualAndroidExecution":False})
+    files.update([terminal, ROOT / "tests/source-route-terminal-host/TerminalObserverTest.java", ROOT / "tests/gecko/SourceRouteTerminalObserver.java",
+                  ROOT / "tests/gecko/NetworkSourcesRouteIntegrationActivity.java", ROOT / "tests/gecko/run_network_sources_route.py",
+                  ROOT / "tests/profile_network_source_terminal_contract_test.py"])
     caret_test = ROOT / "tests/browser-runtime/caret-document-observer.test.cjs"
     if caret_test.is_file():
         caret_asset = ROOT / "tests/gecko/assets/caret-document-observer.js"
@@ -210,7 +220,7 @@ def main():
     files.update(source/(name+'.java') for name in lifecycle_sources)
     files.update((ROOT/'app/src/main/AndroidManifest.xml',ROOT/'tests/gecko/EnvironmentManagementIntegrationActivity.java',ROOT/'tests/gecko/run_device.py'))
     files.update((ROOT/'tests/gecko/GeckoIntegrationTestActivity.java',ROOT/'tools/gecko/check_template_evidence.py'))
-    files.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','page_continuity_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
+    files.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','page_continuity_contract.py','network_sources_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
     files.add(ROOT/'tests/fixtures/android-launcher-package-86db516.txt')
     files.update((ROOT/'tests/gecko/GeckoCaretCompatibilityIntegrationActivity.java',
                   ROOT/'tests/gecko_caret_input_diagnostics_test.py'))
