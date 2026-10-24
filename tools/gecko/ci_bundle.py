@@ -20,6 +20,13 @@ SDK = Path('work/native-caret-sdk')
 UPLOAD_LOGS = frozenset('upload-state-' + suite + '.' + stream + '.txt'
                        for suite in ('compile', 'state', 'consumers', 'browser')
                        for stream in ('stdout', 'stderr'))
+SETTINGS_LOGS = frozenset(
+    'network-settings-' + kind + '-' + implementation + '-' + stream + '.txt'
+    for kind in ('receipt', 'provider', 'retry', 'ui')
+    for implementation in ('desktop', 'android')
+    for stream in ('stdout', 'stderr')
+) | frozenset('network-settings-gecko_settings_' + mode + '_gate_test-stdout.txt'
+              for mode in ('retry', 'application', 'internal'))
 
 
 def digest(path):
@@ -51,7 +58,7 @@ def allowed(name, kind):
     if kind == 'build' and path.parent == PurePosixPath(str(SDK)):
         return path.name in ('geckoview-caret.aar', 'sdk-build-receipt.json') or path.suffix == '.json'
     if path.parent == PurePosixPath(str(OUT)):
-        if kind == 'build' and path.name in UPLOAD_LOGS:
+        if kind == 'build' and path.name in UPLOAD_LOGS | SETTINGS_LOGS:
             return True
         suffixes = ('.json', '.jar', '.apk', '.aar', '.pom', '.log', '.xml') if kind == 'build' else ('.json', '.png', '.xml', '.txt', '.log')
         return path.suffix in suffixes and path.name not in ('ui-current.apk', BUILD_INDEX.name)

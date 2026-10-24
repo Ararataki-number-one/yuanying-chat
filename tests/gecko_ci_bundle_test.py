@@ -1,5 +1,6 @@
 """Host-only transfer integrity controls; no Android or application acceptance."""
 import importlib.util
+import hashlib
 import io
 import json
 import os
@@ -130,6 +131,54 @@ class CiBundleTest(unittest.TestCase):
         with patch.dict(os.environ,GITHUB_RUN_ATTEMPT='2'),self.assertRaises(AssertionError):
             BUNDLE.restore(target,self.build,'build')
         self.assertFalse((target/BUNDLE.INTEGRATION).exists())
+
+    def test_settings_build_logs_have_only_the_nineteen_declared_names(self):
+        expected = {f'network-settings-{kind}-{implementation}-{stream}.txt'
+                    for kind in ('receipt', 'provider', 'retry', 'ui')
+                    for implementation in ('desktop', 'android')
+                    for stream in ('stdout', 'stderr')}
+        expected.update({'network-settings-gecko_settings_retry_gate_test-stdout.txt',
+                         'network-settings-gecko_settings_application_gate_test-stdout.txt',
+                         'network-settings-gecko_settings_internal_gate_test-stdout.txt'})
+        self.assertEqual(len(expected), 19)
+        self.assertEqual(BUNDLE.SETTINGS_LOGS, expected)
+        for name in expected:
+            self.assertTrue(BUNDLE.allowed(str(BUNDLE.OUT/name), 'build'), name)
+        for name in ('network-settings-private.txt', 'network-settings-retry-desktop-private.txt',
+                     'network-settings-retry-other-stdout.txt', 'network-settings-other-desktop-stdout.txt',
+                     'network-settings-gecko_settings_internal_gate_test-stderr.txt',
+                     'network-settings-retry-desktop-stdout.txt.bak', 'private-notes.txt',
+                     'nested/network-settings-retry-desktop-stdout.txt'):
+            self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/name), 'build'), name)
+
+    def test_original_settings_logs_survive_build_phase_and_final_collection(self):
+        # These are synthetic transport bytes, including original empty streams;
+        # they must survive the real pack/restore path without reconstruction.
+        logs = {name: (b'' if name.endswith('-stderr.txt') else
+                       ('original synthetic settings output: ' + name + '\n').encode())
+                for name in BUNDLE.SETTINGS_LOGS}
+        unrelated = {'network-settings-private.txt': b'never transfer undeclared text',
+                     'network-settings-gecko_settings_other_gate_test-stdout.txt': b'not declared'}
+        for name, data in {**logs, **unrelated}.items():
+            (self.root/BUNDLE.OUT/name).write_bytes(data)
+        BUNDLE.pack(self.root, self.build, 'build')
+        with tarfile.open(self.build, 'r:gz') as archive:
+            rows = {row['path']: row for row in json.loads(archive.extractfile('_ci_bundle.json').read())['files']}
+            for name, data in logs.items():
+                self.assertEqual(rows[str(BUNDLE.OUT/name)]['bytes'], len(data))
+                self.assertEqual(rows[str(BUNDLE.OUT/name)]['sha256'], hashlib.sha256(data).hexdigest())
+                self.assertEqual(archive.extractfile(str(BUNDLE.OUT/name)).read(), data)
+            self.assertFalse({str(BUNDLE.OUT/name) for name in unrelated} & rows.keys())
+        phase = self.phase('connections', {'network-settings-internal-results.json': b'{"synthetic":true}'})
+        with tarfile.open(phase, 'r:gz') as archive:
+            self.assertFalse({str(BUNDLE.OUT/name) for name in logs} & set(archive.getnames()))
+        target = self.clone('settings-log-collector')
+        BUNDLE.restore(target, self.build, 'build')
+        BUNDLE.restore(target, phase, 'phase', 'connections')
+        for name, data in logs.items():
+            self.assertEqual((target/BUNDLE.OUT/name).read_bytes(), data)
+        for name in unrelated:
+            self.assertFalse((target/BUNDLE.OUT/name).exists())
 
     def test_other_source_is_rejected_before_writing_apks(self):
         target=self.clone('other-source');(target/'changed.txt').write_text('another source')
