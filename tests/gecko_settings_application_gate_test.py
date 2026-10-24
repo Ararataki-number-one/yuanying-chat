@@ -13,6 +13,21 @@ SOURCE, NONCE, APK = 'a' * 40, 'b' * 32, 'c' * 64
 ENV, OTHER = '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'
 
 
+def bootstrap_proof():
+    identity = {'slot': 0, 'generation': 1, 'environmentId': ENV}
+    common = dict(identity=identity, mode='external', browserMatchesAccepted=True, pendingIntent=False,
+                  desiredRevision=1, appliedRevision=0, observedRevision=0, connection=0,
+                  desiredHash='a' * 64, actualHash='b' * 64, appliedHash='',
+                  networkMatchesActual=False, policyAcknowledged=True, networkReady=True,
+                  guardAllowed=True, appliedIdentityCurrent=False, engineVersion='', runtimeEngineVersion='fixture Gecko')
+    before = dict(common, phase='browser-only')
+    aligned = dict(common, phase='reconciled', desiredRevision=2, desiredHash='b' * 64, networkMatchesActual=True)
+    acknowledged = dict(aligned, phase='acknowledged', appliedRevision=2, appliedHash='b' * 64,
+                        connection=1, appliedIdentityCurrent=True, engineVersion='fixture Gecko')
+    return dict(schema=1, migrationIdentity=identity, migrationBeforeFixturePreferences=True,
+                productionReconciliationInvoked=True, observations=[before, aligned, acknowledged])
+
+
 def receipt():
     wanted = {'environmentId': ENV, 'generation': 1, 'candidateId': 'candidate-1', 'savedRevision': 2}
     names = ['Application fixture starts with production external route and model acknowledgement',
@@ -89,6 +104,9 @@ def receipt():
               'applicationCases': cases}
     report['applicationResults'] = [{'id': 'internal:positive', 'internal': True, 'ok': True,
                                     'operationResult': copy.deepcopy(cases[1]['result']['operationResult'])}]
+    report['applicationBootstrap'] = bootstrap_proof()
+    report['checks'].extend({'name': name, 'pass': True} for name in m.BOOTSTRAP_CHECKS)
+    report['checkCount'] = len(report['checks'])
     return report
 
 
@@ -99,6 +117,20 @@ class GateTest(unittest.TestCase):
     def rejected(self, report):
         with self.assertRaises((AssertionError, KeyError, ValueError)):
             self.verify(report)
+
+    def test_bootstrap_requires_observed_stale_migration_and_real_ack(self):
+        for index, field, value in [(0, 'networkMatchesActual', True), (1, 'networkMatchesActual', False),
+                                    (1, 'appliedRevision', 3), (1, 'actualHash', 'e' * 64),
+                                    (2, 'appliedRevision', 1), (2, 'connection', 0),
+                                    (2, 'policyAcknowledged', False), (2, 'guardAllowed', False),
+                                    (2, 'appliedIdentityCurrent', False), (2, 'appliedHash', 'e' * 64)]:
+            with self.subTest(index=index, field=field):
+                report = receipt(); report['applicationBootstrap']['observations'][index][field] = value
+                self.rejected(report)
+        for field in ['migrationBeforeFixturePreferences', 'productionReconciliationInvoked']:
+            report = receipt(); report['applicationBootstrap'][field] = False; self.rejected(report)
+        report = receipt(); report['applicationBootstrap']['migrationIdentity']['generation'] += 1; self.rejected(report)
+        report = receipt(); report['applicationBootstrap']['observations'].pop(); self.rejected(report)
 
     def test_complete_synthetic_control(self):
         self.verify(receipt())

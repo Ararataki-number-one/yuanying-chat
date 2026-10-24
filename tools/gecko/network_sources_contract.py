@@ -35,8 +35,8 @@ SETTINGS_JSON_SHA256 = {
     'android': 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79',
 }
 SETTINGS_PARSER_SUITES = {'gecko_settings_retry_gate_test.py': 5,
-                          'gecko_settings_application_gate_test.py': 10,
-                          'gecko_settings_internal_gate_test.py': 16}
+                          'gecko_settings_application_gate_test.py': 11,
+                          'gecko_settings_internal_gate_test.py': 17}
 SETTINGS_REPORTS = [
     'network-settings-' + mode + '-results.json' for mode in ('retry', 'application', 'internal')
 ] + ['network-settings-' + kind + '-' + implementation + '-host-results.json'

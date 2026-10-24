@@ -21,6 +21,45 @@ CASE_NAMES = ['pending-while-web-busy', 'applied-after-safe-idle', 'saved-receip
 STALE = CASE_NAMES[3:7]
 
 
+BOOTSTRAP_CHECKS = ['Fixture browser-only update preserves the migrated stale network', 'Fixture reconciliation aligns desired network without acknowledging application', 'Fixture bootstrap is acknowledged only by the production reconnect']
+
+
+def verify_application_bootstrap(report, expected):
+    proof = report['applicationBootstrap']
+    assert proof['schema'] == 1 and proof['migrationBeforeFixturePreferences'] is True
+    assert proof['productionReconciliationInvoked'] is True
+    identity = proof['migrationIdentity']
+    assert identity['environmentId'] == expected['environmentId'] and identity['generation'] == expected['generation']
+    assert str(uuid.UUID(identity['environmentId'])) == identity['environmentId']
+    assert type(identity['generation']) is int and identity['generation'] >= 0
+    assert type(identity['slot']) is int and 0 <= identity['slot'] < 8
+    rows = proof['observations']
+    assert [row['phase'] for row in rows] == ['browser-only', 'reconciled', 'acknowledged']
+    before, aligned, acknowledged = rows
+    for row in rows:
+        assert row['identity'] == identity and row['mode'] == 'external'
+        assert row['browserMatchesAccepted'] is True and row['pendingIntent'] is False
+        for field in ['desiredRevision', 'appliedRevision', 'observedRevision', 'connection']:
+            assert type(row[field]) is int and row[field] >= 0
+        for field in ['desiredHash', 'actualHash']:
+            assert isinstance(row[field], str) and len(row[field]) == 64 and all(c in '0123456789abcdef' for c in row[field])
+    assert before['networkMatchesActual'] is False and before['desiredHash'] != before['actualHash']
+    assert before['appliedRevision'] == aligned['appliedRevision'] == 0
+    assert before['appliedHash'] == aligned['appliedHash'] == ''
+    assert before['observedRevision'] == aligned['observedRevision'] == 0
+    assert before['desiredRevision'] > 0 and aligned['desiredRevision'] > before['desiredRevision']
+    assert aligned['networkMatchesActual'] is True and aligned['desiredHash'] == aligned['actualHash']
+    assert before['actualHash'] == aligned['actualHash'] == acknowledged['actualHash']
+    assert before['connection'] == aligned['connection'] < acknowledged['connection']
+    assert acknowledged['desiredRevision'] == acknowledged['appliedRevision'] == aligned['desiredRevision']
+    assert expected['savedRevision'] >= acknowledged['appliedRevision']
+    assert acknowledged['networkMatchesActual'] is True
+    assert acknowledged['desiredHash'] == acknowledged['appliedHash'] == acknowledged['actualHash']
+    assert acknowledged['engineVersion'] == acknowledged['runtimeEngineVersion'] and acknowledged['engineVersion']
+    assert all(acknowledged[field] is True for field in ['policyAcknowledged', 'networkReady', 'guardAllowed', 'appliedIdentityCurrent'])
+    assert set(BOOTSTRAP_CHECKS) <= {row['name'] for row in report['checks']}
+
+
 def verify(report, source, nonce, apk_sha):
     assert report['status'] == 'passed', report
     assert report['sourceCommit'] == report['buildIdentity']['sourceCommit'] == source
@@ -87,6 +126,7 @@ def verify(report, source, nonce, apk_sha):
         assert actual['savedRevision'] == (0 if name == 'saved-receipt-read-failure' else wanted['savedRevision'])
         assert actual['appliedRevision'] == (wanted['savedRevision'] if name == 'applied-after-safe-idle' else 0)
     pending, applied = by_name['pending-while-web-busy'], by_name['applied-after-safe-idle']
+    verify_application_bootstrap(report, pending['expected'])
     assert pending['actualDomBusy'] is True and len(pending['pendingSnapshotHash']) == 64
     assert pending['expected'] == applied['expected'] and applied['sameCandidateAsPending'] is True
     assert pending['result']['ok'] is True and applied['result']['ok'] is True

@@ -218,6 +218,21 @@ public final class IdentityControllerHostTest {
   }
   public static void main(String[] arguments)throws Exception{
     controlledFixtureDesiredConfiguration();explicitFailedOverrideMirrorsAndWakes();failedQueueDoesNotApplyOlderIntent();reusedIdentityAndReceiptFences();finishedActivityPublishesAndWakes(false);finishedActivityPublishesAndWakes(true);unchangedTemplateRequiresActualAcknowledgement();templateDialogKeepsLatestLanguage();staleEditorCompletion();newerEditBeforeMainCallback();legacyAndSessionSupersession();pendingStartupPolicy();interruptedDesiredPersistence();startupConfigurationGate();failedQueueRestoration();acknowledgements();observations();
+    staleFixtureNetworkRequiresReconciliation();
     System.out.println(J.obj("schema",1,"status","passed","passed",checks,"total",checks,"checks",assertions,"actualAndroidExecution",false,"scope","Production IdentityTemplateController and FingerprintTemplateUi/model with queued UI/widgets/binder/persistence doubles; no Android, Gecko, Keystore or real draft capture").toString());
+  }
+  static void staleFixtureNetworkRequiresReconciliation()throws Exception{
+    ChatSession session=fixture();EnvironmentSpec migrated=EnvironmentSpecRepository.value;
+    EnvironmentSpec.NetworkBinding configured=route("configured-after-migration");session.context.actual=configured;
+    JSONObject accepted=BrowserIdentitySpec.preset(BrowserIdentitySpec.DESKTOP).json();session.web.settings.acceptedBrowserIdentity=accepted;
+    EnvironmentSpec browserOnly=migrated.withDesired(migrated.desiredRevision,new EnvironmentSpec.Configuration(accepted,migrated.desired().network));EnvironmentSpecRepository.value=browserOnly;
+    session.identity.acknowledge();settle(session);
+    check(EnvironmentSpecRepository.appliedWrites==0&&EnvironmentSpecRepository.value.appliedRevision==0,"accepted browser plus stale migrated network cannot acknowledge fixture readiness");
+    // Runtime reconciliation itself is exercised by environment-intent-host.
+    // This boundary double supplies its corrected immutable model to the actual controller.
+    EnvironmentSpec aligned=browserOnly.withDesired(browserOnly.desiredRevision,new EnvironmentSpec.Configuration(accepted,configured));EnvironmentSpecRepository.value=aligned;
+    check(EnvironmentSpecRepository.appliedWrites==0&&aligned.appliedRevision==0,"aligned desired model alone never manufactures runtime acknowledgement");
+    session.identity.acknowledge();settle(session);
+    check(EnvironmentSpecRepository.appliedWrites==1&&EnvironmentSpecRepository.value.appliedRevision==aligned.desiredRevision&&EnvironmentSpecRepository.value.applied().equals(aligned.desired()),"only actual controller acknowledgement commits the aligned revision");
   }
 }

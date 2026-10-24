@@ -222,7 +222,24 @@ public final class EnvironmentIntentHostTest {
   }
   public static void main(String[] args)throws Exception{
     if(args.length>0&&args[0].equals("hold")){Context c=new Context(new File(args[1]),2);EnvironmentSpecRuntime.withIntent(c,()->{Files.writeString(c.root.toPath().resolve("held"),"held");long deadline=System.nanoTime()+10_000_000_000L;while(!Files.exists(c.root.toPath().resolve("release"))){if(System.nanoTime()>deadline)throw new IOException("Lease release missing");Thread.sleep(5);}return null;});return;}
-    try{protocolValidation();successAndFailure();newerAndBrowserCas();interruptedStagesAndCancel();identityAndStrictReads();commitAcknowledgement();cacheInvalidation();reuseStableReceipt();reuseRejectsStaleOrInvalid();reusePrivateSnapshots();lease();System.out.println(J.obj("schema",1,"status","passed","passed",checks.length(),"total",checks.length(),"executed",checks.length(),"checks",checks,"actualCrossProcessIntentLease",crossProcess,"actualAndroidExecution",false,"actualNativeExecution",false,"scope","production proxy validation, staged intent/CAS rollback/reconciliation, read-only receipt reuse and OS locks; URI syntax adapter and plain JVM repository/preferences doubles, no SQLite/Keystore/Gecko/WAN"));}
+    try{protocolValidation();successAndFailure();newerAndBrowserCas();interruptedStagesAndCancel();identityAndStrictReads();commitAcknowledgement();cacheInvalidation();reuseStableReceipt();reuseRejectsStaleOrInvalid();reusePrivateSnapshots();lease();fixtureBootstrapReconciliation();System.out.println(J.obj("schema",1,"status","passed","passed",checks.length(),"total",checks.length(),"executed",checks.length(),"checks",checks,"actualCrossProcessIntentLease",crossProcess,"actualAndroidExecution",false,"actualNativeExecution",false,"scope","production proxy validation, staged intent/CAS rollback/reconciliation, read-only receipt reuse and OS locks; URI syntax adapter and plain JVM repository/preferences doubles, no SQLite/Keystore/Gecko/WAN"));}
     catch(Throwable failure){System.out.println(J.obj("schema",1,"status","failed","passed",checks.length()-1,"total",checks.length(),"checks",checks,"error",failure.toString(),"actualAndroidExecution",false));throw failure;}
+  }
+  static void fixtureBootstrapReconciliation()throws Exception{
+    Context c=new Context(Files.createTempDirectory("settings-bootstrap-").toFile(),0);ProfileCatalog.create(c,0);
+    EnvironmentSpec migrated=EnvironmentSpecRuntime.desireActiveNetwork(c);
+    c.getSharedPreferences("chat",0).values.put("proxy","http://127.0.0.1:18080");
+    JSONObject accepted=migrated.desired().browser();accepted.put("fixtureBrowser","actual accepted desktop policy");
+    EnvironmentSpec browserOnly=EnvironmentSpecRuntime.desireBrowser(c,accepted);
+    EnvironmentSpec.NetworkBinding actual=EnvironmentSpecRuntime.binding(c,"external",new JSONObject(),"http://127.0.0.1:18080");
+    check("Browser-only update retains earlier empty-proxy migration",migrated.desired().network.credentialRevision.isEmpty()&&browserOnly.desired().network.credentialRevision.isEmpty()&&!EnvironmentSpecRuntime.routeMatches(browserOnly,actual));
+    EnvironmentSpec reconciled=EnvironmentSpecRuntime.desireActiveNetwork(c);
+    check("Production reconciliation aligns fixture route and preserves accepted browser",reconciled.desired().equals(new EnvironmentSpec.Configuration(accepted,actual))&&reconciled.desiredRevision>browserOnly.desiredRevision);
+    check("Fixture reconciliation cannot fabricate applied or observed revision",browserOnly.appliedRevision==0&&reconciled.appliedRevision==0&&reconciled.observedRevision==0);
+    String candidate=save(c,"saved-candidate.example");long revision=model(c).desiredRevision;
+    c.getSharedPreferences("chat",0).values.put("proxy","http://127.0.0.1:18081");
+    EnvironmentSpec pendingAuthority=EnvironmentSpecRuntime.desireActiveNetwork(c);
+    check("Reconciliation never replaces a saved candidate with current proxy preferences",candidate.equals(pending(c).toString())&&pendingAuthority.desiredRevision==revision&&pendingAuthority.desired().network.credentialRevision.equals(NativeNetwork.hash("socks://saved-candidate.example:1080")));
+    check("Saved candidate reconciliation retains browser and remains unapplied",pendingAuthority.desired().browser().optString("fixtureBrowser").equals("actual accepted desktop policy")&&pendingAuthority.appliedRevision==0);
   }
 }
