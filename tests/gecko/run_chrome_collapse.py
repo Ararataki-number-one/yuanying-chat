@@ -1,11 +1,84 @@
 #!/usr/bin/env python3
 """Actual native swipes and navigation; source/APK/SDK/nonce-bound full snapshots."""
-import json,pathlib,re,subprocess,sys,time,uuid
+import argparse,json,pathlib,re,subprocess,sys,time,uuid
 
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
 from integration_event_contract import EventTransfer,parse_receipt_line
 from profile_invocation_contract import expected_build,verify_installed
+
+
+def component_name(value):
+    match=re.fullmatch(r'([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)',value)
+    if match is None:raise ValueError('Invalid Android component: '+repr(value))
+    package,activity=match.groups()
+    return package+'/'+(package+activity if activity.startswith('.') else activity)
+
+
+def current_resumed(state):
+    """Only current AMS fields count; task history/window mentions are not focus."""
+    result=set()
+    for line in state.splitlines():
+        field=re.fullmatch(r'\s*(?:mResumedActivity|topResumedActivity)\s*[:=]\s*(.*)',line)
+        if field is None or field[1]=='null':continue
+        record=re.fullmatch(r'ActivityRecord\{[^{}]*?\bu([0-9]+)\s+([A-Za-z0-9_.]+/[A-Za-z0-9_.$]+)(?:\s+[^{}]*)?\}',field[1])
+        if record is None:raise ValueError('Unrecognized current resumed activity: '+field[1])
+        result.add((int(record[1]),component_name(record[2])))
+    return result
+
+
+def resume_transport(argv):
+    # Both unchanged callers require these same explicit CLI arguments. Do not
+    # inspect their callback closures or guess a default adb/device.
+    parser=argparse.ArgumentParser(add_help=False,allow_abbrev=False)
+    parser.add_argument('--adb',required=True);parser.add_argument('--serial',required=True)
+    args,_=parser.parse_known_args(argv)
+    if not args.adb or not args.serial:raise ValueError('Explicit adb and serial are required')
+    return [args.adb,'-s',args.serial]
+
+
+def resume_after_home(component,argv=None):
+    """Observe HOME before returning once, within one original 20-second budget."""
+    prefix=resume_transport(sys.argv[1:] if argv is None else argv)
+    target=component_name(component);deadline=time.monotonic()+20;observed={}
+    def remaining(stage):
+        value=deadline-time.monotonic()
+        if value<=0:raise TimeoutError(('HOME resume deadline expired',stage,target,observed))
+        return value
+    def call(stage,*parts):
+        budget=remaining(stage)
+        try:
+            result=subprocess.run(prefix+list(parts),stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                text=True,errors='replace',timeout=min(90,budget),check=True)
+        except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
+            # Preserve actual new command failure/output; never retry an action.
+            failure=TimeoutError if isinstance(error,subprocess.TimeoutExpired) else RuntimeError
+            raise failure(('HOME resume command failed',stage,parts,repr(error),
+                (error.stdout or '')[-3000:],(error.stderr or '')[-3000:],observed)) from error
+        observed[stage]={'stdoutTail':result.stdout[-3000:],'stderrTail':result.stderr[-3000:]}
+        remaining(stage)
+        return result.stdout
+    def wait_for(expected,stage):
+        while True:
+            state=call(stage,'shell','dumpsys','activity','activities')
+            resumed=current_resumed(state)
+            observed['currentResumed']=sorted(resumed);remaining(stage)
+            if resumed=={expected}:return
+            # Poll only after observing an unmet state, using the original cadence.
+            time.sleep(min(.2,remaining(stage)))
+    user_text=call('current-user','shell','am','get-current-user').strip()
+    if re.fullmatch(r'[0-9]+',user_text) is None:raise ValueError('Unrecognized current Android user: '+repr(user_text))
+    user=int(user_text)
+    resolved=call('resolve-home','shell','cmd','package','resolve-activity','--brief','--user',user_text,
+        '-a','android.intent.action.MAIN','-c','android.intent.category.HOME')
+    homes=[line.strip() for line in resolved.splitlines() if re.fullmatch(r'[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+',line.strip())]
+    if len(homes)!=1:raise ValueError('Expected one resolved HOME component: '+repr(resolved))
+    home=component_name(homes[0])
+    if home==target:raise ValueError('HOME component must differ from the tested activity')
+    call('home-key','shell','input','keyevent','KEYCODE_HOME')
+    wait_for((user,home),'home-resumed')
+    call('return-start','shell','am','start','-W','--activity-single-top','-n',component)
+    wait_for((user,target),'app-resumed')
 
 
 def run(adb,adb_bytes,source,trace,out,focus):
@@ -87,9 +160,7 @@ def run(adb,adb_bytes,source,trace,out,focus):
         returned=tap(native,'nativeReturn','chatTap')
         check('Returning from native settings reveals chrome without reloading chat',not hidden_native['expanded'] and native['page']==3 and returned['page']==0 and returned['expanded'] and returned['webHeight']==initial['webHeight'] and unchanged(initial,native) and unchanged(initial,returned))
         hidden_resume=swipe(returned,'upBeforeResume','up')
-        adb('shell','input','keyevent','KEYCODE_HOME')
-        adb('shell','am','start','-W','--activity-single-top','-n',component)
-        focus('local.pocketchat.CompactChromeIntegrationActivity')
+        resume_after_home(component)
         resumed=snapshot('activityResume')
         check('Activity resume preserves the collapsed controls and live SDK page',not hidden_resume['expanded'] and not resumed['expanded'] and resumed['webHeight']==hidden_resume['webHeight'] and unchanged(initial,resumed))
         resume_chat=tap(resumed,'resumeChat','chatTap')
