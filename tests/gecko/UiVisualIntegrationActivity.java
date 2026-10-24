@@ -54,8 +54,10 @@ public final class UiVisualIntegrationActivity extends Activity {
       if("share-preview".equals(action))NetworkShareUi.show(this,new NetworkShareCodec.Bundle("布局测试线路",J.obj("name","测试入口","type","socks5","server","127.0.0.1","port",1080),J.obj("name","固定测试出口","type","socks5","server","127.0.0.1","port",1081)));
       if("network".equals(action)&&workspace.windows.length()>0){
         JSONObject item=workspace.windows.optJSONObject(0);
-        NetworkCatalog.put(item,"config",J.obj("subscriptionUrl","https://example.test/ui-only-subscription","entryMode","manual","entry","Entry|日本大阪 03","exitName","固定测试出口","exitHost","127.0.0.1","exitPort",1080));
-        NetworkCatalog.put(item,"runtime",J.obj("mode","internal","configured",true,"connected",false,"at",System.currentTimeMillis()));
+        JSONObject presentation=networkPresentation(item.optJSONObject("row"),System.currentTimeMillis());
+        NetworkCatalog.put(item,"config",presentation.optJSONObject("config"));
+        NetworkCatalog.put(item,"runtime",presentation.optJSONObject("runtime"));
+        NetworkCatalog.put(item,"live",true);
         workspace.lastRendered="";workspace.render();
       }
       if("network-menu".equals(action))workspace.networkMore();
@@ -73,6 +75,14 @@ public final class UiVisualIntegrationActivity extends Activity {
       }catch(Exception e){Log.e("PocketUiVisual","entry presentation failed",e);}
       Log.i("PocketUiVisual","ready "+action);
     };
+  }
+  /** Synthetic visual data only. Never a core receipt, applied model or network test. */
+  static JSONObject networkPresentation(JSONObject row,long now){
+    if(row==null||row.optString("environmentId").isEmpty()||!row.has("generation")||row.optLong("generation",-1)<0||now<=0)throw new IllegalArgumentException("Visual environment identity required");
+    JSONObject config=J.obj("subscriptionUrl","https://example.test/ui-only-subscription","entryMode","manual","entry","Entry|日本大阪 03","exitName","固定测试出口","exitHost","127.0.0.1","exitPort",1080);
+    JSONObject running=J.obj("environmentId",row.optString("environmentId"),"generation",row.optLong("generation"),"mode","internal","entryMode",config.optString("entryMode"),"entry",config.optString("entry"),"exitName",config.optString("exitName"),"configurationFingerprint",NativeNetwork.hash("ui-visual-synthetic:"+config.toString()),"verified",false,"scope","ui-visual-synthetic");
+    JSONObject runtime=J.obj("environmentId",row.optString("environmentId"),"generation",row.optLong("generation"),"mode","internal","configured",true,"connected",false,"at",now,"runningConfiguration",running,"syntheticPresentationOnly",true,"actualNetworkEvidence",false);
+    return J.obj("config",config,"runtime",runtime);
   }
   void seed()throws Exception{
     if(!getPackageName().endsWith(".test"))throw new SecurityException();
