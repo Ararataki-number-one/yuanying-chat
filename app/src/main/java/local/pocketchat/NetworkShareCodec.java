@@ -188,9 +188,13 @@ final class NetworkShareCodec {
       YamlLookup names=new YamlLookup("name");for(Node candidate:((SequenceNode)proxies).getValue())if(candidate instanceof MappingNode){try{Node name=directName((MappingNode)candidate);if(name==null)name=names.find((MappingNode)candidate);if(name instanceof ScalarNode&&Tag.STR.equals(name.getTag())){String key=((ScalarNode)name).getValue();if(byName.put(key,(MappingNode)candidate)!=null)duplicates.add(key);}}catch(IOException unsupportedName){/* One unrelated malformed name graph cannot suppress another native-selected node. */}}
     }
     JSONObject select(String prefixed,String role)throws Exception {
+      if(remaining<=0)throw complexYaml();
       String prefix=NetworkCatalog.EXIT.equals(role)?"Exit|":"Entry|";if(prefixed==null||!prefixed.startsWith(prefix))throw invalid();String name=prefixed.substring(prefix.length());
       if(duplicates.contains(name))throw invalid();MappingNode selected=byName.get(name);if(selected==null)throw failure("当前节点已变化，请重新选择后分享。");
-      SelectedYamlBudget budget=new SelectedYamlBudget();budget.inspect(selected,0);remaining-=8192-budget.remaining;if(remaining<0)throw complexYaml();return node((JSONObject)yamlValue(constructor.selected(selected),0),NetworkCatalog.EXIT.equals(role));
+      SelectedYamlBudget budget=new SelectedYamlBudget();int allowance=Math.min(remaining,budget.remaining);budget.remaining=allowance;
+      try{budget.inspect(selected,0);return node((JSONObject)yamlValue(constructor.selected(selected),0),NetworkCatalog.EXIT.equals(role));}
+      // Rejected nodes have spent visits too; optional indexing must account for them.
+      finally{remaining-=allowance-budget.remaining;}
     }
   }
   /** Exactly one node, never its subscription address or other nodes. */
