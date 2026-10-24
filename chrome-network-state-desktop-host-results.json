@@ -1,0 +1,173 @@
+{
+  "total": 28,
+  "checks": [
+    {
+      "pass": true,
+      "name": "Initial metadata uses one catalogue read"
+    },
+    {
+      "pass": true,
+      "name": "Production renderer shows fresh matching route with 42 ms and unchanged countdown"
+    },
+    {
+      "pass": true,
+      "name": "One hundred hot-path renders do not read catalogue again"
+    },
+    {
+      "pass": true,
+      "name": "Hot-path renders retain actual identity and sample"
+    },
+    {
+      "pass": true,
+      "name": "Queued repeated UI updates coalesce without catalogue reads"
+    },
+    {
+      "pass": true,
+      "name": "Same-name generation change triggers a new render and rejects old runtime"
+    },
+    {
+      "pass": true,
+      "name": "Matching new generation restores current display"
+    },
+    {
+      "pass": true,
+      "name": "Same-name UUID replacement triggers render and rejects prior environment"
+    },
+    {
+      "pass": true,
+      "name": "Matching new UUID restores current display"
+    },
+    {
+      "pass": true,
+      "name": "Production metadata rejects unavailable catalogue row missing"
+    },
+    {
+      "pass": true,
+      "name": "Production metadata rejects unavailable catalogue row deleting"
+    },
+    {
+      "pass": true,
+      "name": "Production metadata rejects unavailable catalogue row resetting"
+    },
+    {
+      "pass": true,
+      "name": "Production metadata rejects unavailable catalogue row created"
+    },
+    {
+      "pass": true,
+      "name": "Production metadata rejects unavailable catalogue row slot"
+    },
+    {
+      "pass": true,
+      "name": "Production metadata rejects unavailable catalogue row environmentId"
+    },
+    {
+      "pass": true,
+      "name": "Production metadata rejects unavailable catalogue row generation"
+    },
+    {
+      "pass": true,
+      "name": "Stale runtime cannot be displayed as connected"
+    },
+    {
+      "pass": true,
+      "name": "Far future runtime remains rejected"
+    },
+    {
+      "pass": true,
+      "name": "A different measurement route never displays current latency"
+    },
+    {
+      "pass": true,
+      "name": "Expired latency remains explicitly historical"
+    },
+    {
+      "pass": true,
+      "name": "Background query failure clears cached identity without losing title"
+    },
+    {
+      "pass": true,
+      "name": "A later successful metadata read recovers normal display"
+    },
+    {
+      "pass": true,
+      "name": "Appearance refresh error does not discard a successful catalogue identity"
+    },
+    {
+      "pass": true,
+      "name": "Destroy before metadata delivery does not write cache or schedule render"
+    },
+    {
+      "pass": true,
+      "name": "Updates after destroy remain unqueued"
+    },
+    {
+      "pass": true,
+      "name": "An outstanding metadata worker cannot create duplicate queries"
+    },
+    {
+      "pass": true,
+      "name": "Exactly one background read completes the pending metadata refresh"
+    },
+    {
+      "pass": true,
+      "name": "A same-identity rename still updates both visible labels"
+    }
+  ],
+  "observations": [
+    {
+      "connected": true,
+      "timer": "（02:00）",
+      "renders": 1,
+      "latency": "42 ms",
+      "state": "正常",
+      "catalogReads": 2,
+      "case": "current-production-render"
+    }
+  ],
+  "passed": 28,
+  "status": "passed",
+  "sourceCommit": "4644e90b0f00507f15da9b223b808cf19d345e58",
+  "sourceDirty": false,
+  "selectedProductionRef": "working-tree",
+  "selectedProductionSha256": {
+    "DesignChrome": "1ee7c2762c3b077166db3cbea363bd4481e527fc33c2b2491b8db7bffcf9ae43",
+    "WindowNetworkState": "80b412abf3ece148766a839954de4b11c0d8aca17d84d6177323815aeba1dd80",
+    "LatencyRefreshPolicy": "e1121d3a46d4872ef8bd3a7e2ce6a75c30110f0615878195d7eef042bb61ac5b",
+    "LatencyProbePolicy": "0fc03b49af6ef3f187a6a1291a2722d43e33fa017a15794ee84c3c88c0e31099",
+    "NetworkStatusPolicy": "382f0ce1d5c5de09d5c8167adaea965774f1fa59e3dce3add100463c8fed164b",
+    "NetworkOptimizationPolicy": "83c6b42793be16fcef241c1865a89bd0dccbc7b07bf87c4701da43e3a89ccbe3",
+    "Sha256": "2f403cee9f4b998e51b34581f85155c804e95e803ad56fb9b3680fea6778494d",
+    "NativeNetwork": "35f6ac66e3d12adbcbf762901bb825c01d6b9ed98051f5f8bad279478779d05f",
+    "NetworkCatalog": "a6976177a2c43c5633379d4635a7c9b3913170bdd2abcc37e4d3e1ddb71b3c8d"
+  },
+  "sourceFiles": {
+    "app/src/main/java/local/pocketchat/DesignChrome.java": "1ee7c2762c3b077166db3cbea363bd4481e527fc33c2b2491b8db7bffcf9ae43",
+    "app/src/main/java/local/pocketchat/WindowNetworkState.java": "80b412abf3ece148766a839954de4b11c0d8aca17d84d6177323815aeba1dd80",
+    "app/src/main/java/local/pocketchat/LatencyRefreshPolicy.java": "e1121d3a46d4872ef8bd3a7e2ce6a75c30110f0615878195d7eef042bb61ac5b",
+    "app/src/main/java/local/pocketchat/LatencyProbePolicy.java": "0fc03b49af6ef3f187a6a1291a2722d43e33fa017a15794ee84c3c88c0e31099",
+    "app/src/main/java/local/pocketchat/NetworkStatusPolicy.java": "382f0ce1d5c5de09d5c8167adaea965774f1fa59e3dce3add100463c8fed164b",
+    "app/src/main/java/local/pocketchat/NetworkOptimizationPolicy.java": "83c6b42793be16fcef241c1865a89bd0dccbc7b07bf87c4701da43e3a89ccbe3",
+    "app/src/main/java/local/pocketchat/Sha256.java": "2f403cee9f4b998e51b34581f85155c804e95e803ad56fb9b3680fea6778494d",
+    "app/src/main/java/local/pocketchat/NativeNetwork.java": "35f6ac66e3d12adbcbf762901bb825c01d6b9ed98051f5f8bad279478779d05f",
+    "app/src/main/java/local/pocketchat/NetworkCatalog.java": "a6976177a2c43c5633379d4635a7c9b3913170bdd2abcc37e4d3e1ddb71b3c8d",
+    "tests/chrome-network-state-host/ChromeNetworkStateHost.java": "fcc71dc163dfae1e8b9536f11524ba7dbd6cf9874dbf8f30806ecb887bb7c668",
+    "tests/chrome-network-state-host/run.py": "7ebf4af76150dc50edb47b7c10c1cba50c9a975f377e8115aa6413a9c1719557"
+  },
+  "executionInputsUnchanged": true,
+  "jsonJarSha256": "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed",
+  "actualAndroidExecution": false,
+  "actualLatencyMeasurement": false,
+  "extractedChromeMethods": [
+    "void update(",
+    "private void renderLatest(",
+    "private void refreshMetadata(",
+    "private static void text(",
+    "private static void description(",
+    "static String profileLabel(",
+    "static boolean profileAvailable(",
+    "static boolean sameProfile(",
+    "private void applyMetadata("
+  ],
+  "scope": "Complete production WindowNetworkState constructor and exact DesignChrome initial metadata statements/update/renderLatest/refreshMetadata/applyMetadata methods. Deterministic Android view, handler/executor, preferences and catalogue adapters; synthetic preproduced runtime observation. No Android scheduling, SQLite, native service or real network measurements."
+}
