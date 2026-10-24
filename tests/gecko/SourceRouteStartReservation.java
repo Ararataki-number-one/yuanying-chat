@@ -188,7 +188,7 @@ final class SourceRouteStartReservation {
           "delegations",delegations,"callbacks",callbackCount,"failed",failure!=null,"state",state,
           "scopeOwned",gate.owner()==scopeToken,"starting",network.starting,"restartQueued",network.restartQueued,
           "pendingWaiters",network.startWaiters.size(),"workerCompleted",root.completion.isDone(),
-          "workerFailed",root.completion.isCompletedExceptionally(),"rootObservation",observation));
+          "workerFailed",root.completion.isCompletedExceptionally(),"observedAdmissions",root.admissions.length(),"rootObservation",observation));
       remaining();
     }}
   }

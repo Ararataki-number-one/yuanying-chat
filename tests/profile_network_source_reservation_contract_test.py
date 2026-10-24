@@ -143,13 +143,21 @@ class ReservationContractTest(unittest.TestCase):
                           ('adapterCallbackMatches',False),('rootCallbackRetained',False),('invocationIdAfter',999)]:
             with self.subTest(field=key):self.reject(lambda r,k=key,v=value:mutate(r,k,v),joined=True)
 
+    def test_already_observed_join_cannot_be_omitted_from_both_snapshots(self):
+        def erase(r):
+            self.reservation(r)['validation']['rootObservation']['admissions']=[]
+            self.evidence(r)['startObservation']['admissions']=[]
+        self.reject(erase,joined=True)
+        self.reject(lambda r:self.reservation(r)['validation'].update(observedAdmissions=0),joined=True)
+        self.reject(lambda r:self.evidence(r)['startObservation'].update(admissionCount=True),joined=True)
+
     def test_final_observer_cannot_rewrite_original_owned_prefix(self):
         self.reject(lambda r:self.evidence(r)['startObservation']['admissions'][0].update(callbackId=999),joined=True)
         self.reject(lambda r:self.evidence(r)['startObservation'].update(workerInvocations=[]))
         self.reject(lambda r:self.evidence(r)['startObservation'].update(rootCallbackId=999))
 
     def test_policy_blocked_future_recovery_needs_no_invented_start(self):
-        report=F.synthetic_report();self.evidence(report)['startObservation']['admissions']=[]
+        report=F.synthetic_report();self.evidence(report)['startObservation'].update(admissions=[],admissionCount=0)
         self.assertEqual(C.verify_source_route_terminal(report,F.SOURCE)['cases'],4)
 
     def test_recorded_later_recovery_is_bound_and_not_original_owner(self):

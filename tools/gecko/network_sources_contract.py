@@ -749,6 +749,9 @@ def _verify_source_route_reservation(row, evidence, source, nonce):
         assert type(observation['schema']) is int and observation['schema'] == 1
         assert observation['caseId'] == evidence['caseId'] and observation['sourceCommit'] == source
         assert observation['runNonce'] == nonce and observation['errors'] == []
+        assert isinstance(observation['admissions'], list)
+        assert number(observation['admissionCount']) == len(observation['admissions'])
+    assert number(validation['observedAdmissions']) == owned['admissionCount']
     root = owned['rootRegistration']
     assert same(root, reservation['realRegistration']) and same(root, final['rootRegistration'])
     root_callback = number(owned['rootCallbackId'], 1)

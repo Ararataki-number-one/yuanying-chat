@@ -51,8 +51,8 @@ def reservation_protocol(report):
                 startingBefore=False,startingAfter=True,restartQueuedBefore=False,restartQueuedAfter=False,
                 waitersBefore=[],waitersAfter=[callback],exactAppend=True,adapterCallbackMatches=True,
                 rootCallbackRetained=False,invocationIdBefore=0,invocationIdAfter=0,workerThreadIdBefore=0,workerThreadIdAfter=0))
-        observation['admissions']=owned+later
-        owned_observation=copy.deepcopy(observation);owned_observation['admissions']=owned
+        observation['admissions']=owned+later;observation['admissionCount']=len(owned)+len(later)
+        owned_observation=copy.deepcopy(observation);owned_observation['admissions']=owned;owned_observation['admissionCount']=len(owned)
         prepared_began=worker['beganAtNs']+1;prepared_end=prepared_began+1
         callback_at=e['restartTerminal']['atNs']-1;verified=e['restartTerminal']['atNs']+1
         e['reservation']=dict(schema=1,prototypeOnly=True,acceptedAsRepair=False,caseId=case_id,
@@ -72,7 +72,7 @@ def reservation_protocol(report):
             actualCallback=dict(ok=False,message='synthetic rejected source',atNs=callback_at,onUiThread=True,threadId=1),
             validation=dict(atNs=verified,prepared=True,preparations=1,delegations=1,callbacks=1,failed=False,
                 state='prepared',scopeOwned=True,starting=False,restartQueued=False,pendingWaiters=0,
-                workerCompleted=True,workerFailed=False,rootObservation=owned_observation))
+                workerCompleted=True,workerFailed=False,observedAdmissions=len(owned),rootObservation=owned_observation))
     report['reservationDiagnostics']=[row['terminalEvidence'] for row in report['negativeCases']]
     return report
 
