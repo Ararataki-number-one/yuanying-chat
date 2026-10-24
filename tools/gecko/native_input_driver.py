@@ -1,5 +1,7 @@
-"""One predetermined native sequence per gesture, from a separate self-target APK."""
+"""One fixed native sequence from the verified test APK in a separate shell process."""
 import re
+import base64
+import shlex
 import json
 import subprocess
 import time
@@ -42,6 +44,7 @@ class NativeInputDriver:
         paths = self.command('shell', 'pm', 'path', SELF).stdout.decode('utf-8').splitlines()
         require(len(paths) == 1 and paths[0].startswith('package:/data/app/'), 'installed driver base APK')
         installed_path = paths[0][len('package:'):]
+        self.installed_path = installed_path
         require(re.fullmatch(r'/data/app/[A-Za-z0-9/._~+=-]+/base\.apk', installed_path), 'installed APK path')
         require(self.build['apkBytes'] < 4194304, 'bounded small driver APK')
         installed_raw = self.command('shell', '-T', 'dd', 'if=' + installed_path, 'bs=4194304', 'skip=0', 'count=1', 'status=none').stdout
@@ -85,27 +88,34 @@ class NativeInputDriver:
                          source=self.source, tree=self.build['sourceTree'], driverApkSha256=self.build['apkSha256'],
                          targetApkSha256=self.target_hash, targetByteProofSha256=sha(self.target_proof_raw),
                          targetApkPath=self.target_proof['installedApkPath'], targetApkBytes=str(self.target_proof['actualFileBytes']), x=str(request['x']), startY=str(request['startY']), endY=str(request['endY']))
-        command = ['shell', 'am', 'instrument', '-w', '-r']
-        for key, value in arguments.items():
-            command.extend(['-e', key, value])
-        command.append(SELF + '/' + SELF + '.NativeInputInstrumentation')
+        process_name = 'pocketchat-input-' + self.nonce + '-' + name
+        device_dir = '/data/local/tmp/' + process_name
+        require(not self.command('shell', 'pidof', process_name, check=False).stdout.strip(), 'existing owned shell process')
+        # A unique nonce directory must be absent; never read/reuse a former receipt.
+        self.command('shell', 'test', '!', '-e', device_dir)
+        self.command('shell', 'mkdir', '-m', '700', device_dir)
+        encoded = base64.b64encode(json.dumps(arguments, separators=(',', ':')).encode()).decode('ascii')
+        launch = ['env', 'CLASSPATH=' + self.installed_path, '/system/bin/app_process',
+                  '/system/bin', '--nice-name=' + process_name, self.build['entryPoint'], encoded]
+        command = ['shell', '-T', 'exec ' + shlex.join(launch)]
         started = time.monotonic_ns(); result = None; timeout_error = None
         row = dict(file=path.name, sha256=None, gesture=name, request=request,
                    hostStartedMonotonicNs=started, hostCompletedMonotonicNs=None)
         self.receipts.append(row)
         try:
             result = self.command(*command, timeout=20, check=False)
-            require(result.returncode == 0, 'instrumentation transport failed')
+            require(result.returncode == 0, 'shell input process failed')
         except subprocess.TimeoutExpired as error:
             timeout_error = error
             raise
         finally:
-            # A timed-out am/adb client does not stop an Android instrumentation.
-            # Stop only the independent driver, never the measured application.
+            # Losing the adb client cannot revoke an already queued native event.
+            # Terminate only the exact nonce/PID/start-ticks shell owner. A killed
+            # process may have only an initial failed receipt: never synthesize trace.
             cleanup_errors = []
             if result is None or result.returncode != 0:
                 try:
-                    self.command('shell', 'am', 'force-stop', SELF, timeout=5, check=False)
+                    self.stop_owned_shell(device_dir, process_name, name)
                 except Exception as error:
                     cleanup_errors.append('driver stop: ' + str(error))
             if result is not None:
@@ -115,13 +125,19 @@ class NativeInputDriver:
                 (self.out / (base + '-stdout.log')).write_bytes(timeout_error.stdout or b'')
                 (self.out / (base + '-stderr.log')).write_bytes(timeout_error.stderr or b'')
             try:
-                captured = self.command('exec-out', 'run-as', SELF, 'cat', 'files/' + base + '.json', timeout=5, check=False)
+                captured = self.command('exec-out', 'cat', device_dir + '/receipt.json', timeout=5, check=False)
                 (self.out / (base + '-read-stderr.log')).write_bytes(captured.stderr)
                 if captured.returncode == 0:
                     path.write_bytes(captured.stdout)
                     row['sha256'] = sha(captured.stdout)
             except Exception as error:
                 cleanup_errors.append('receipt collection: ' + str(error))
+            try:
+                owner = self.command('exec-out', 'cat', device_dir + '/owner.json', timeout=5, check=False)
+                (self.out / (base + '-owner.json')).write_bytes(owner.stdout)
+                (self.out / (base + '-owner-stderr.log')).write_bytes(owner.stderr)
+            except Exception as error:
+                cleanup_errors.append('owner collection: ' + str(error))
             if cleanup_errors:
                 (self.out / (base + '-collection.json')).write_text(json.dumps(dict(errors=cleanup_errors), indent=2) + '\n')
             row['hostCompletedMonotonicNs'] = time.monotonic_ns()
@@ -130,6 +146,39 @@ class NativeInputDriver:
         after = self.command('shell', 'pidof', TARGET).stdout.decode('ascii').strip()
         require(after == pid, 'measured PID changed after driver')
         return row
+
+    def stop_owned_shell(self, directory, process_name, gesture):
+        raw = self.command('exec-out', 'cat', directory + '/owner.json', timeout=5, check=False)
+        require(raw.returncode == 0 and len(raw.stdout) <= 8192, 'no observed shell owner; no process signalled')
+        owner = decode(raw.stdout)
+        require(owner['nonce'] == self.nonce and owner['gesture'] == gesture
+                and owner['processName'] == process_name and type(owner['pid']) is int and owner['pid'] > 0
+                and type(owner['uid']) is int and owner['uid'] == owner['executionUid'] == 2000
+                and re.fullmatch('[1-9][0-9]*', owner['startTicks']), 'foreign shell owner; no process signalled')
+        pid, ticks = str(owner['pid']), owner['startTicks']
+        # Shell rereads generation, name and UID immediately before signalling.
+        # No package-wide force-stop, guessed PID or global input cleanup.
+        guard = ('stat=$(cat /proc/' + pid + '/stat) || exit 3; '
+                 'rest=${stat##*) }; set -f; set -- $rest; shift 19; '
+                 '[ "$1" = ' + shlex.quote(ticks) + ' ] || exit 4; '
+                 'name=$(tr \'\\000\' \'\\n\' < /proc/' + pid + '/cmdline | head -n 1); '
+                 '[ "$name" = ' + shlex.quote(process_name) + ' ] || exit 5; '
+                 'ok=; while read key a b c d rest; do '
+                 'if [ "$key" = Uid: ] && [ "$a:$b:$c:$d" = 2000:2000:2000:2000 ]; then ok=1; fi; '
+                 'done < /proc/' + pid + '/status; [ "$ok" = 1 ] || exit 6; ')
+        rows = []
+        try:
+            for signal in ('TERM', 'KILL'):
+                result = self.command('shell', '-T', guard + 'kill -' + signal + ' ' + pid, timeout=5, check=False)
+                rows.append(dict(signal=signal, returnCode=result.returncode,
+                                 stdout=result.stdout.decode('utf-8', 'backslashreplace'),
+                                 stderr=result.stderr.decode('utf-8', 'backslashreplace')))
+                if result.returncode == 3: break  # Exact process already exited.
+                require(result.returncode == 0, 'shell generation fence refused cleanup')
+                if signal == 'TERM': time.sleep(0.05)
+        finally:
+            (self.out / ('native-input-' + self.nonce + '-' + gesture + '-cleanup.json')).write_text(
+                json.dumps(dict(owner=owner, signals=rows, queuedEventsCannotBeRevoked=True), indent=2) + '\n')
 
     def evidence(self, purpose='qualification'):
         return dict(purpose=purpose, nonce=self.nonce, buildSha256=sha(self.build_raw),

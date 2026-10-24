@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the self-targeting, emulator-only input driver; never a release APK."""
+"""Build the signed, emulator-only shell input driver; never a release APK."""
 import argparse
 import hashlib
 import json
@@ -21,6 +21,9 @@ API = 'native-input-driver-signature-api.json'
 PACKAGE = 'local.pocketchat.inputdriver'
 INSTRUMENTATION = PACKAGE + '.NativeInputInstrumentation'
 TARGET = 'local.pocketchat.test'
+EXECUTION_BACKEND = 'shell-input-manager-global-v1'
+ENTRY_POINT = PACKAGE + '.NativeInputShell'
+EXECUTION_UID = 2000
 PROTOCOLS = {
     'qualification': dict(durationMs=300, moveCount=19, intervalMs=15, maxLateMs=30, upSynchronous=True),
     'formal-collapse': dict(durationMs=320, moveCount=19, intervalMs=16, maxLateMs=32, upSynchronous=True),
@@ -53,15 +56,17 @@ def inputs(root):
     directory = root / 'tests/native-input-driver'
     files = sorted(directory.glob('*.java')) + [directory / 'AndroidManifest.xml']
     require(len(files) > 1 and all(p.is_file() and not p.is_symlink() for p in files), 'Missing regular driver sources')
+    require(directory/'NativeInputShell.java' in files, 'Missing standalone shell entry source')
     manifest = ET.parse(files[-1]).getroot()
     require(manifest.get('package') == PACKAGE, 'Input driver must use its own package')
+    require(manifest.get(ANDROID + 'sharedUserId') is None, 'Input driver cannot declare sharedUserId')
     entries = manifest.findall('instrumentation')
     require(len(entries) == 1 and entries[0].get(ANDROID + 'name') == INSTRUMENTATION
             and entries[0].get(ANDROID + 'targetPackage') == PACKAGE,
             'Instrumentation must target only the input driver itself')
     application = manifest.find('application')
     require(application is not None and not list(application), 'Input driver cannot declare Activities, services or providers')
-    require(not manifest.findall('uses-permission'), 'UiAutomation must use the instrumentation connection without privileged app permissions')
+    require(not manifest.findall('uses-permission'), 'Input driver cannot request privileged app permissions')
     return files, {p.relative_to(root).as_posix(): sha(p) for p in files}
 
 
@@ -124,7 +129,9 @@ def build(root, java_home, android_sdk, key=None, compile_only=False, android_ja
             and expected_key.is_file(), 'Only this CI run\'s explicit integration-test.jks is permitted')
     stamp = dict(schema=1, **selected, packageName=PACKAGE, instrumentation=INSTRUMENTATION,
                  targetPackage=TARGET, instrumentationTargetPackage=PACKAGE, protocols=PROTOCOLS,
-                 inputs=hashes, toolchain=provenance, testOnly=True)
+                 inputs=hashes, toolchain=provenance, testOnly=True,
+                 executionBackend=EXECUTION_BACKEND, entryPoint=ENTRY_POINT, executionUid=EXECUTION_UID,
+                 inputTargetUidEnforced=True)
     asset_raw = (json.dumps(stamp, sort_keys=True, indent=2)+'\n').encode()
     (assets/ASSET).write_bytes(asset_raw)
     run(chain['jar'], 'cf', work/'classes.jar', '-C', classes, '.')

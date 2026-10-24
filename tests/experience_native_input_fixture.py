@@ -31,6 +31,8 @@ def attach_driver(module, report, build, protocol, root):
         sourceCommit=build['sourceCommit'], sourceTree=build['sourceTree'],
         runId='901', runAttempt='1', packageName=n.SELF, targetPackage=n.TARGET,
         instrumentationTargetPackage=n.SELF, instrumentation=n.SELF + '.NativeInputInstrumentation',
+        executionBackend='shell-input-manager-global-v1', entryPoint=n.SELF + '.NativeInputShell',
+        executionUid=2000, inputTargetUidEnforced=True,
         protocols=copy.deepcopy(n.PROTOCOLS), inputs={name: protocol[name] for name in n.INPUTS},
         signerCertificateSha256='7'*64, apkSha256='8'*64, apkBytes=80)
     signing = signature_files(compiled, protocol[n.SIGNATURE_VERIFIER])
@@ -60,6 +62,9 @@ def attach_driver(module, report, build, protocol, root):
                 callEndUptimeMs=at+1, x=100, y=600-20*i, injected=True, accepted=True,
                 cleanup=False, error='', sync=i==20))
         target = dict(sourceCommit=build['sourceCommit'], sourceTree=build['sourceTree'], dirtySource=False)
+        focus = dict(displayId=0, packageName=n.TARGET,
+            component=n.TARGET + '/local.pocketchat.ExperienceBenchmarkActivity',
+            raw='  mCurrentFocus=Window{abcd u0 local.pocketchat.test/local.pocketchat.ExperienceBenchmarkActivity}\n  mTopFocusedDisplayId=0\n')
         actual = dict(schema=1, status='passed', purpose='formal-collapse', nonce=nonce, gesture='formal-collapse',
             sourceCommit=build['sourceCommit'], sourceTree=build['sourceTree'], packageName=n.SELF,
             targetPackage=n.TARGET, buildIdentity=copy.deepcopy(compiled), targetBuildIdentity=target,
@@ -69,6 +74,11 @@ def attach_driver(module, report, build, protocol, root):
             targetApkPathBefore=proof['installedApkPath'], targetApkPathAfter=proof['installedApkPath'],
             targetApkBytesBefore=build['apkBytes'], targetApkBytesAfter=build['apkBytes'],
             targetLastModifiedBefore=10, targetLastModifiedAfter=10, targetLastUpdateBefore=20, targetLastUpdateAfter=20,
+            executionBackend='shell-input-manager-global-v1', executionUid=2000,
+            inputTargetUid=10123, targetUidBefore=10123, targetUidAfter=10123,
+            targetStartTicksBefore='200', targetStartTicksAfter='200', driverPid=456, driverStartTicks='300',
+            displayId=0, focusBefore=copy.deepcopy(focus), focusAfter=copy.deepcopy(focus),
+            tracePersistence='memory-until-terminal',
             targetPidBefore='123', targetPidAfter='123', createdUptimeMs=840, startedUptimeMs=850,
             connectStartUptimeMs=900, connectEndUptimeMs=940, readyUptimeMs=950,
             startupMs=100, finishedUptimeMs=1322, expiresUptimeMs=15800, trace=trace)

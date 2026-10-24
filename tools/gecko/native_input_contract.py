@@ -7,11 +7,14 @@ from pathlib import Path
 
 SELF = 'local.pocketchat.inputdriver'
 TARGET = 'local.pocketchat.test'
+BACKEND = dict(executionBackend='shell-input-manager-global-v1',
+               entryPoint=SELF+'.NativeInputShell', executionUid=2000, inputTargetUidEnforced=True)
 SIGNATURE_VERIFIER = 'tools/gecko/VerifyNativeInputSignature.java'
 SIGNATURE_API = 'native-input-driver-signature-api.json'
 PROTOCOLS = {name: dict(durationMs=20 * interval, moveCount=19, intervalMs=interval, maxLateMs=2 * interval, upSynchronous=True)
              for name, interval in [('qualification', 15), ('formal-collapse', 16)]}
 INPUTS = {'tests/native-input-driver/NativeGestureProtocol.java',
+          'tests/native-input-driver/NativeInputShell.java',
           'tests/native-input-driver/NativeInputInstrumentation.java', 'tests/native-input-driver/AndroidManifest.xml'}
 
 
@@ -61,6 +64,8 @@ def verify_build(build, source, source_reader):
             and build['instrumentationTargetPackage'] == SELF
             and build['instrumentation'] == SELF + '.NativeInputInstrumentation', 'self-target identity')
     require(build['protocols'] == PROTOCOLS, 'fixed protocol differs')
+    require(all(type(build[key]) is type(expected) and build[key] == expected
+                for key, expected in BACKEND.items()), 'fixed shell backend differs')
     for name, protocol in PROTOCOLS.items():
         require(all(type(build['protocols'][name][key]) is type(value) for key, value in protocol.items()), 'protocol field types')
     require(set(build['inputs']) == INPUTS, 'driver input set')
@@ -117,6 +122,17 @@ def verify_signature_logs(directory, build):
     return value
 
 
+def verify_focus(value):
+    require(type(value['displayId']) is int and value['displayId'] == 0
+            and value['packageName'] == TARGET, 'AUT default display focus required')
+    raw = value['raw']
+    require(type(raw) is str and len(raw) < 8192, 'bounded actual focus observation')
+    display = re.findall(r'^\s*mTopFocusedDisplayId=([0-9]+)\s*$', raw, re.M)
+    focus = re.findall(r'^\s*mCurrentFocus=Window\{[^\n}]*\s([^\s}]+)\}\s*$', raw, re.M)
+    require(display == ['0'] and focus == [value['component']]
+            and value['component'].startswith(TARGET+'/'), 'actual focused window differs')
+
+
 def verify_receipt(value, *, build, purpose, nonce, gesture, target_apk, request):
     require(purpose in PROTOCOLS, 'unknown purpose')
     p = PROTOCOLS[purpose]
@@ -124,8 +140,22 @@ def verify_receipt(value, *, build, purpose, nonce, gesture, target_apk, request
     require(value['purpose'] == purpose and value['nonce'] == nonce and value['gesture'] == gesture, 'invocation identity')
     require(value['sourceCommit'] == build['sourceCommit'] and value['sourceTree'] == build['sourceTree'], 'source identity')
     require(value['packageName'] == SELF and value['targetPackage'] == TARGET, 'package identity')
+    require(value['executionBackend'] == BACKEND['executionBackend']
+            and type(value['executionUid']) is int and value['executionUid'] == 2000
+            and value['tracePersistence'] == 'memory-until-terminal', 'actual shell backend required')
+    require(integer(value['inputTargetUid']) and 10000 <= value['inputTargetUid'] < 100000
+            and type(value['targetUidBefore']) is int and type(value['targetUidAfter']) is int
+            and value['inputTargetUid'] == value['targetUidBefore'] == value['targetUidAfter'], 'target UID fence')
+    require(type(value['displayId']) is int and value['displayId'] == 0, 'injected display changed')
+    require(integer(value['driverPid']) and value['driverPid'] > 0
+            and re.fullmatch('[1-9][0-9]*', value['driverStartTicks'])
+            and re.fullmatch('[1-9][0-9]*', value['targetStartTicksBefore'])
+            and value['targetStartTicksBefore'] == value['targetStartTicksAfter'], 'actual process generation fence')
+    verify_focus(value['focusBefore']); verify_focus(value['focusAfter'])
     asset = value['buildIdentity']
     require(all(asset[key] == build[key] for key in ('schema', 'sourceCommit', 'sourceTree', 'runId', 'runAttempt', 'packageName', 'targetPackage', 'instrumentationTargetPackage', 'instrumentation', 'protocols', 'inputs')), 'embedded driver asset')
+    require(all(type(asset[key]) is type(expected) and asset[key] == build[key] == expected
+                for key, expected in BACKEND.items()), 'embedded shell backend identity')
     require(value['signerCertificateSha256'] == build['signerCertificateSha256'], 'actual driver signing certificate')
     require(value['driverApkSha256'] == build['apkSha256'] and value['targetApkSha256'] == target_apk, 'installed APK mismatch')
     target = value['targetBuildIdentity']

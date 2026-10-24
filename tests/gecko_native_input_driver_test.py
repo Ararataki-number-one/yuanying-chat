@@ -25,6 +25,7 @@ def receipt(purpose='qualification'):
                  instrumentation=C.SELF + '.NativeInputInstrumentation', protocols=C.PROTOCOLS,
                  inputs={name: C.sha((ROOT / name).read_bytes()) for name in C.INPUTS},
                  apkSha256='d' * 64, apkBytes=10, signerCertificateSha256='e' * 64)
+    build.update(C.BACKEND)
     signature_files(build, C.sha((ROOT / C.SIGNATURE_VERIFIER).read_bytes()))
     request = dict(x=540, startY=1469, endY=567, targetPid='1234', expiresUptimeMs=21000,
                    targetByteProofSha256='f' * 64, targetApkPath='/data/app/test/base.apk', targetApkBytes=100)
@@ -47,6 +48,12 @@ def receipt(purpose='qualification'):
                  targetLastModifiedAfter=50, targetLastUpdateBefore=40, targetLastUpdateAfter=40,
                  createdUptimeMs=480, startedUptimeMs=500, connectStartUptimeMs=700, connectEndUptimeMs=850, readyUptimeMs=900, startupMs=400, finishedUptimeMs=1400, expiresUptimeMs=21000,
                  trace=dict(startUptimeMs=1000, expiresUptimeMs=21000, **p, events=rows, error='', cleanup=None))
+    focus = dict(displayId=0,packageName=C.TARGET,component=C.TARGET+'/local.pocketchat.GeckoPerformanceIntegrationActivity',
+                 raw='  mCurrentFocus=Window{abcd u0 local.pocketchat.test/local.pocketchat.GeckoPerformanceIntegrationActivity}\n  mTopFocusedDisplayId=0\n')
+    value.update(executionBackend=C.BACKEND['executionBackend'],executionUid=2000,inputTargetUid=10123,
+                 targetUidBefore=10123,targetUidAfter=10123,targetStartTicksBefore='200',targetStartTicksAfter='200',
+                 driverPid=456,driverStartTicks='300',displayId=0,focusBefore=focus,focusAfter=copy.deepcopy(focus),
+                 tracePersistence='memory-until-terminal')
     kwargs = dict(build=build, purpose=purpose, nonce=nonce, gesture=value['gesture'], target_apk='1' * 64, request=request)
     return value, kwargs
 
@@ -205,27 +212,80 @@ class ContractControls(unittest.TestCase):
         for raw in [b'{"x":1,"x":2}', b'{"x":NaN}']:
             with self.assertRaises(ValueError): C.decode(raw)
 
+    def test_shell_backend_generation_uid_and_focus_required(self):
+        edits = [lambda v:v.update(executionBackend='uiautomation'),lambda v:v.update(executionUid=1000),
+                 lambda v:v.update(inputTargetUid=-1),lambda v:v.update(inputTargetUid=True),
+                 lambda v:v.update(targetUidAfter=10124),lambda v:v.update(targetStartTicksAfter='201'),
+                 lambda v:v.update(driverPid=False),lambda v:v.update(displayId=1),
+                 lambda v:v.update(tracePersistence='per-event-disk'),
+                 lambda v:v['focusBefore'].update(raw='mCurrentFocus=null\n'),
+                 lambda v:v['focusAfter'].update(raw=v['focusAfter']['raw'].replace('DisplayId=0','DisplayId=1')),
+                 lambda v:v['focusAfter'].update(component=C.TARGET+'/wrong.Activity')]
+        for edit in edits:
+            value,kwargs=receipt();edit(value)
+            with self.subTest(edit=edits.index(edit)),self.assertRaises((ValueError,KeyError)):
+                C.verify_receipt(value,**kwargs)
+
     def test_failed_native_command_retains_raw_and_never_replays(self):
         with tempfile.TemporaryDirectory() as temporary:
             d = object.__new__(D.NativeInputDriver); d.out = Path(temporary); d.nonce = 'a' * 32
-            d.invoked = set(); d.receipts = []; d.source = 'b' * 40; d.build = dict(sourceTree='c' * 40, apkSha256='d' * 64)
+            d.invoked = set(); d.receipts = []; d.source = 'b' * 40
+            d.build = dict(sourceTree='c' * 40, apkSha256='d' * 64,**C.BACKEND)
+            d.installed_path='/data/app/driver/base.apk'
             d.target_hash = 'e' * 64; d.target_proof_raw = b'actual proof'; d.target_proof = dict(installedApkPath='/data/app/test/base.apk', actualFileBytes=100)
             commands = []
             def command(*parts, **kwargs):
                 commands.append(parts)
-                if parts[:2] == ('shell', 'pidof'): return subprocess.CompletedProcess([], 0, b'1234\n', b'')
-                if parts[:3] == ('shell', 'am', 'instrument'):
-                    raise subprocess.TimeoutExpired(parts, 20, output=b'original partial stdout\xc2', stderr=b'original stderr')
-                return subprocess.CompletedProcess([], 1, b'', b'no device receipt')
+                if parts == ('shell','pidof',C.TARGET): return subprocess.CompletedProcess([],0,b'1234\n',b'')
+                if parts[:2] == ('shell','pidof'): return subprocess.CompletedProcess([],1,b'',b'')
+                if parts[:2] == ('shell','-T') and parts[2].startswith('exec env '):
+                    raise subprocess.TimeoutExpired(parts,20,output=b'original partial stdout\xc2',stderr=b'original stderr')
+                if parts[:2] in [('shell','mkdir'),('shell','test')]:return subprocess.CompletedProcess([],0,b'',b'')
+                return subprocess.CompletedProcess([],1,b'',b'no device receipt')
             d.command = command
             gesture = dict(id='baseline-scroll', x=540, startY=1469, endY=567)
             with self.assertRaises(subprocess.TimeoutExpired): d.inject(gesture, expires_uptime_ms=21000)
             with self.assertRaisesRegex(ValueError, 'replay'): d.inject(gesture, expires_uptime_ms=21000)
-            self.assertEqual(sum(p[:3] == ('shell', 'am', 'instrument') for p in commands), 1)
-            self.assertIn(('shell', 'am', 'force-stop', C.SELF), commands)
-            self.assertNotIn(('shell', 'am', 'force-stop', C.TARGET), commands)
+            launches=[p for p in commands if p[:2]==('shell','-T') and p[2].startswith('exec env ')]
+            self.assertEqual(len(launches),1)
+            self.assertIn('CLASSPATH=/data/app/driver/base.apk',launches[0][2])
+            self.assertIn('/system/bin/app_process /system/bin --nice-name=pocketchat-input-',launches[0][2])
+            self.assertFalse(any('force-stop' in p or 'instrument' in p for p in commands))
+            self.assertFalse(any(p[:2]==('shell','-T') and 'kill -' in p[2] for p in commands))
             self.assertEqual(next(d.out.glob('*-stdout.log')).read_bytes(), b'original partial stdout\xc2')
             self.assertIsNone(d.receipts[0]['sha256'])
+            self.assertIn('no observed shell owner',next(d.out.glob('*-collection.json')).read_text())
+
+    def test_cleanup_rejects_foreign_owner_without_any_signal(self):
+        d=object.__new__(D.NativeInputDriver);d.nonce='a'*32;calls=[]
+        owner=dict(nonce='b'*32,gesture='baseline-scroll',processName='owned',pid=123,uid=2000,executionUid=2000,startTicks='44')
+        def command(*parts,**kwargs):
+            calls.append(parts);return subprocess.CompletedProcess([],0,json.dumps(owner).encode(),b'')
+        d.command=command
+        with self.assertRaisesRegex(ValueError,'foreign shell owner'):
+            d.stop_owned_shell('/data/local/tmp/owned','owned','baseline-scroll')
+        self.assertEqual(len(calls),1)
+
+    def test_cleanup_generation_guard_executes_against_actual_host_proc_without_signalling(self):
+        # Actual shell/proc negative control; this host is not Android shell UID.
+        if os.getuid()==2000:self.skipTest('This negative requires a different actual UID')
+        with tempfile.TemporaryDirectory() as directory:
+            d=object.__new__(D.NativeInputDriver);d.nonce='a'*32;d.out=Path(directory)
+            pid=os.getpid();name=Path('/proc/self/cmdline').read_bytes().split(b'\0')[0].decode()
+            ticks=Path('/proc/self/stat').read_text().rsplit(') ',1)[1].split()[19]
+            owner=dict(nonce=d.nonce,gesture='baseline-scroll',processName=name,pid=pid,uid=2000,executionUid=2000,startTicks=ticks)
+            codes=[]
+            def command(*parts,**kwargs):
+                if parts[:2]==('exec-out','cat'):return subprocess.CompletedProcess([],0,json.dumps(owner).encode(),b'')
+                result=subprocess.run(['/bin/sh','-c',parts[2]],capture_output=True);codes.append(result.returncode);return result
+            d.command=command
+            with self.assertRaisesRegex(ValueError,'generation fence refused'):
+                d.stop_owned_shell('/not-read',name,'baseline-scroll')
+            self.assertEqual(codes,[6]);self.assertTrue(Path('/proc/'+str(pid)).exists())
+            codes.clear();owner['startTicks']=str(int(ticks)+1)
+            with self.assertRaisesRegex(ValueError,'generation fence refused'):
+                d.stop_owned_shell('/not-read',name,'baseline-scroll')
+            self.assertEqual(codes,[4]);self.assertTrue(Path('/proc/'+str(pid)).exists())
 
     def test_real_scheduler_compiled_and_executed(self):
         java_home = os.environ.get('JAVA_HOME')
@@ -238,6 +298,67 @@ class ContractControls(unittest.TestCase):
             result = subprocess.check_output([str(java), '-cp', temporary, 'local.pocketchat.inputdriver.NativeGestureProtocolHostTest'])
             observed = json.loads(result); self.assertEqual(observed['status'], 'passed'); self.assertGreaterEqual(observed['checks'], 20)
             type(self).scheduler_result = observed
+
+    def test_actual_shell_inject_and_focus_methods_with_explicit_host_adapters(self):
+        source=(ROOT/'tests/native-input-driver/NativeInputShell.java').read_text()
+        inject=source[source.index('  NativeGestureProtocol.Attempt inject('):source.index('  PackageInfo info(')]
+        focus=source[source.index('  static JSONObject parseFocus('):source.index('  String required(')]
+        java=r'''
+package local.pocketchat.inputdriver;
+import java.lang.reflect.*;import java.util.*;import java.util.regex.*;
+class JSONObject extends HashMap<String,Object>{public JSONObject put(String k,Object v){super.put(k,v);return this;}}
+class SystemClock{static long time=1000;public static long uptimeMillis(){return time;}}
+class InputDevice{static final int SOURCE_TOUCHSCREEN=4098;}
+class InputEvent{int display=-1;public void setDisplayId(int id){display=id;}}
+class MotionEvent extends InputEvent{
+  static final int TOOL_TYPE_FINGER=1;boolean recycled;int action;long eventTime,downTime;
+  static class PointerProperties{int id,toolType;}static class PointerCoords{float x,y,size,pressure;}
+  static MotionEvent obtain(long d,long t,int a,int count,PointerProperties[] p,PointerCoords[] c,int m,int b,float xp,float yp,int device,int edge,int src,int flags){MotionEvent v=new MotionEvent();v.action=a;v.eventTime=t;v.downTime=d;return v;}
+  void recycle(){recycled=true;}
+}
+public class NativeShellBoundaryHostTest{
+  static final String TARGET="local.pocketchat.test";
+  Object input;Method injectMethod,setDisplay;int targetUid=10123,deviceId=7;
+  NativeGestureProtocol.Profile profile=NativeGestureProtocol.profile("qualification");
+  static int checks;static void check(boolean ok){if(!ok)throw new AssertionError("check "+checks);checks++;}
+  public static class Global{
+    int calls,mode,uid;MotionEvent last;boolean accepted=true,throwsError;
+    public boolean injectInputEvent(InputEvent event,int mode,int uid){calls++;this.mode=mode;this.uid=uid;last=(MotionEvent)event;if(throwsError)throw new IllegalStateException("controlled Binder failure");return accepted;}
+  }
+  __INJECT__
+  __FOCUS__
+  static void rejects(String raw)throws Exception{try{parseFocus(raw);throw new AssertionError("accepted invalid focus");}catch(IllegalStateException expected){checks++;}}
+  public static void main(String[] args)throws Exception{
+    NativeShellBoundaryHostTest s=new NativeShellBoundaryHostTest();Global g=new Global();s.input=g;
+    s.injectMethod=Global.class.getMethod("injectInputEvent",InputEvent.class,int.class,int.class);
+    s.setDisplay=InputEvent.class.getMethod("setDisplayId",int.class);
+    for(int action:new int[]{0,2,1,3}){
+      NativeGestureProtocol.Attempt row=s.inject(action,1000,1000,21000,540,720,action==3);
+      check(row.injected&&row.accepted&&row.error.isEmpty());
+      check(g.uid==10123&&g.mode==(action==1?2:0)&&g.last.display==0&&g.last.recycled);
+      check(row.eventTime==1000&&row.callStart==1000&&row.callEnd==1000&&row.downTime==1000&&row.sync==(action==1));
+    }
+    int before=g.calls;SystemClock.time=1031;NativeGestureProtocol.Attempt late=s.inject(2,1000,1000,21000,1,2,false);
+    check(!late.injected&&g.calls==before&&!late.error.isEmpty());
+    NativeGestureProtocol.Attempt cleanup=s.inject(3,1000,1000,1001,1,2,true);check(cleanup.cleanup&&cleanup.injected&&g.uid==10123&&g.mode==0);
+    SystemClock.time=1000;g.accepted=false;check(!s.inject(2,1000,1000,21000,1,2,false).accepted);
+    g.throwsError=true;NativeGestureProtocol.Attempt failed=s.inject(2,1000,1000,21000,1,2,false);check(failed.injected&&!failed.accepted&&!failed.error.isEmpty());
+    String raw="  mCurrentFocus=Window{d4d6de4 u0 local.pocketchat.test/local.pocketchat.GeckoPerformanceIntegrationActivity}\n  mTopFocusedDisplayId=0\n";
+    JSONObject actual=parseFocus(raw);check(actual.get("component").equals("local.pocketchat.test/local.pocketchat.GeckoPerformanceIntegrationActivity"));check(actual.get("displayId").equals(0));
+    rejects("mTopFocusedDisplayId=0\n");rejects(raw.replace("DisplayId=0","DisplayId=1"));rejects(raw.replace("local.pocketchat.test/","other.package/"));
+    rejects(raw+raw);rejects(raw.replace("mCurrentFocus=Window", "mCurrentFocus=null Window"));
+    // Optional independent review inputs are real old diagnostic dumps; no device executes.
+    for(String path:args){String text=new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)),java.nio.charset.StandardCharsets.UTF_8);try{parseFocus(text);System.out.println("FOCUS_ACCEPTED "+path);}catch(IllegalStateException denied){System.out.println("FOCUS_REJECTED "+path);}}
+    System.out.println("{\"status\":\"passed\",\"checks\":"+checks+",\"actualAndroidExecution\":false}");
+  }
+}
+'''.replace('__INJECT__',inject).replace('__FOCUS__',focus)
+        home=os.environ.get('JAVA_HOME'); compiler=Path(home)/'bin/javac' if home else Path(shutil.which('javac'))
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'NativeShellBoundaryHostTest.java';path.write_text(java)
+            subprocess.run([str(compiler),'-encoding','UTF-8','-d',temporary,str(path),str(ROOT/'tests/native-input-driver/NativeGestureProtocol.java')],check=True,capture_output=True)
+            result=subprocess.check_output([str(compiler.with_name('java')),'-cp',temporary,'local.pocketchat.inputdriver.NativeShellBoundaryHostTest'])
+            self.assertEqual(json.loads(result)['checks'],23)
 
 
 if __name__ == '__main__':

@@ -37,6 +37,7 @@ from native_input_driver import NativeInputDriver
 DRIVER_OBSERVERS = (
     'tests/native-input-driver/NativeGestureProtocol.java',
     'tests/native-input-driver/NativeInputInstrumentation.java',
+    'tests/native-input-driver/NativeInputShell.java',
     'tests/native-input-driver/AndroidManifest.xml',
     'tools/gecko/native_input_driver.py',
     'tools/gecko/native_input_contract.py',
@@ -374,7 +375,7 @@ def main():
               'protocol': 'Untimed provisioning; process-cold fixture Activity launch and normal production connection; network→chat→downloads→chat→settings→chat; compact expand/upward swipe; settings dark/light via real taps; return chat; HOME and retained warm resume. Same deterministic 240-message/105k reply, no send. All actions are actual Android input; all raw samples retained.',
               'measurementLimits': ['Loopback document loading is not ChatGPT or WAN latency.', 'Cold means process-cold; OS filesystem caches are not purged.', 'Activity fixture startup excludes explicit provisioning and APK hashing, but includes test observation overhead.', 'Native response ends at View draw, not display/compositor presentation. The unchanged gesture metric starts at ACTION_UP; collapse may already occur during ACTION_MOVE, so this metric cannot locate the first swipe response.', 'Choreographer resets on Activity pause/resume; HWUI measures actual submitted native frames. Neither fully observes Gecko compositor jank.', 'Page RAF resets on document visibility changes; snapshots identify native tabs and document visibility, so intervals spanning hidden native panels are not visible-page jank evidence.', 'CPU includes the fixed test evidence/observation overhead; terminated process tails and absent/unknown process attribution are disclosed. PSS is successful dumpsys output only and is serial, not a memory peak or atomic total.', 'Fixture theme uses real CSS prefers-color-scheme and observed computed background via Gecko color preference; the ChatGPT-only native appearance bridge is outside this localhost flow and retains its separate release regression.', 'Normal timers and polling remain enabled, but ChatGPT-origin-only resource/reply observer messages are unavailable on this static localhost page; streaming replies and uploads are not measured.', 'No vendor keyboard, real account, upload or physical-device benchmark in this flow.']}
 
-    report['measurementLimits'].append('Collapse uses the frozen 320ms self-target input driver: 19 MOVE slots, 32ms maximum lateness, and one invocation. Its startup/READY overhead is retained inside the armed action and whole flow and reported separately; it is automation cost, not app startup. Original ACTION_UP-to-draw timing and the 15-second app action deadline are unchanged.')
+    report['measurementLimits'].append('Collapse uses the frozen 320ms shell app_process input driver: 19 MOVE slots, 32ms maximum lateness, and one invocation. Its shell entry/READY overhead is retained inside the armed action and whole flow and reported separately; it is automation cost, not app startup. Original ACTION_UP-to-draw timing and the 15-second app action deadline are unchanged.')
 
     def persist():
         (args.out / 'experience-results.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
