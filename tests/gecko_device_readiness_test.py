@@ -18,8 +18,9 @@ def load(name,path):
 member=load('readiness_member',ROOT/'tests/page-recovery-host/run.py').member
 transport=load('readiness_transport_controls',ROOT/'tests/gecko_event_transfer_test.py')
 SOURCE=ROOT/'tests/gecko/GeckoIntegrationTestActivity.java'
-# Original complete bodies at 62a0ff6; removing only named observation calls must
-# reproduce these exact canonical bodies. This is not a replacement device oracle.
+# Original complete bodies at 62a0ff6; remove only named observation calls and
+# the exact reviewed additions below, then require these unchanged goldens.
+# This is not a replacement device oracle.
 ORIGINAL_METHODS={'synchronized void command(': '28954f98e5807eda05494f3716e3f3d2866217eccdac755185c906769162f6a4', 'void waitReady(long serial)': 'cac08fc6d5c0bb7092bb87905c6547efd5187b7ddb168277fba0690230fa3772', 'boolean processForeground()': 'df65dff28876bad373c0b20b9b820dd60946bb12140ccc97280ff450902c2c04', 'protected void onResume()': 'f5c8d29f9cff599577d6416482f715bbd42097d924529b6e3b9b5308901f6dc0', 'protected void onPause()': 'b6a3f4656b0ecc47fe225fd8710646f00ef9dcbdb18e59b494cac26bbe33ce6e', 'protected void onDestroy()': 'abdf66b2085cda5d994492a77ba22a4b6e7f80b311af7a3e28b10bdcbeb95829', 'void loadFixture(long serial)': 'caf9bf560d4e157f975b27added5f0210b2c81ffda7280d47ba998b1eefa0c65', 'void poll(long serial)': 'a36032d9a1d1b333a9ecd3ef82a96bcb19e2088f121920d5b415291bd47adc4b', 'protected void onNewIntent(Intent intent)': '1825fe08cb019f8ded253ac6fe6ba92b29245581401d656688c2597823ceb93d'}
 ORIGINAL_RUN_AST='6408387c50d14aa180be171f999763cff35d618698937f5601c2f3b0c55be5ed'
 
@@ -33,14 +34,64 @@ def unobserve(text):
     return re.sub(r'\s+','',text)
 
 def run_node(source):
-    main=next(x for x in ast.parse(source).body if isinstance(x,ast.FunctionDef) and x.name=='main')
+    # Parse the actual UTF-8 source bytes so a conflicting coding declaration
+    # cannot make the guard accept different Python runtime string literals.
+    main=next(x for x in ast.parse(source.encode('utf-8')).body if isinstance(x,ast.FunctionDef) and x.name=='main')
     return next(x for x in main.body if isinstance(x,ast.FunctionDef) and x.name=='run')
+
+def require(value,message):
+    if not value:raise ValueError('Readiness preservation: '+message)
+
+def verify_startup_member(source,needle):
+    raw=member(source,needle)
+    body=unobserve(raw)
+    if needle=='void waitReady(long serial)':
+        # F04 adds one dispatch only after the same original ready/route gates.
+        # Its exact location and complete body are required; it is not a general
+        # permission to remove arbitrary action branches before comparing goldens.
+        prior='if("uploadLifecycle".equals(action)){GeckoUploadLifecycleIntegration.run(this,serial);return;}'
+        added='if("localDraftPolicy".equals(action)){GeckoLocalDraftIntegration.run(this,serial);return;}'
+        following='if("pageContinuity".equals(action)){ChatPageContinuityIntegration.run(this,serial);return;}'
+        # The legacy golden removes whitespace even inside literals. Before that
+        # comparison, require the new dispatch's actual literals and identifiers;
+        # only whitespace between tokens may vary in this reviewed addition.
+        tokens=lambda text:re.findall(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_$][A-Za-z0-9_$]*|[^\s]',text)
+        actual=tokens(raw);expected=tokens(prior+added+following)
+        require(sum(actual[i:i+len(expected)]==expected for i in range(len(actual)))==1,'exact F04 dispatch tokens and position')
+        require(body.count(added)==1 and body.count(prior+added+following)==1,'exact F04 dispatch and position')
+        body=body.replace(prior+added+following,prior+following,1)
+    require(hashlib.sha256(body.encode()).hexdigest()==ORIGINAL_METHODS[needle],'original startup body changed: '+needle)
+    return True
+
+def verify_runner_consumer(source):
+    run=copy.deepcopy(run_node(source))
+    dump=lambda node:ast.dump(node,include_attributes=False)
+    statement=lambda text:ast.parse(text.encode('utf-8')).body[0]
+    # F06 owns slot 8 and a copy of its result. Remove only these exact statements
+    # at the two reviewed insertion points, then require the original whole AST.
+    activity=statement("activity='GeckoIntegrationTestActivity' if context==1 else 'ProfileGeckoIntegrationActivity1'")
+    select=statement("if action=='downloadResume':\n assert context==8\n activity='DownloadResumeIntegrationActivity'")
+    result=statement("result=event['result']")
+    retain=statement("if action=='downloadResume':\n report.setdefault('savedFileDeletion',{})['downloadResume']=result")
+    found=[i for i,node in enumerate(run.body) if dump(node)==dump(activity)]
+    require(len(found)==1,'unique original Activity selection')
+    index=found[0]+1
+    require(index<len(run.body) and dump(run.body[index])==dump(select),'exact F06 Activity branch and position')
+    run.body.pop(index)
+    condition=statement("if event.get('kind')==kind:\n pass").test
+    matches=[node for node in ast.walk(run) if isinstance(node,ast.If) and dump(node.test)==dump(condition)]
+    require(len(matches)==1,'unique original result consumer')
+    body=matches[0].body
+    require(len(body)>2 and dump(body[0])==dump(result) and dump(body[1])==dump(retain),'exact F06 result retention and position')
+    body.pop(1)
+    require(hashlib.sha256(dump(run).encode()).hexdigest()==ORIGINAL_RUN_AST,'original runner consumer changed')
+    return True
 
 class ReadinessObservationControls(unittest.TestCase):
     def test_original_startup_methods_and_callbacks_preserved(self):
         original=SOURCE.read_text()
         for needle,sha in ORIGINAL_METHODS.items():
-            with self.subTest(member=needle):self.assertEqual(hashlib.sha256(unobserve(member(original,needle)).encode()).hexdigest(),sha)
+            with self.subTest(member=needle):self.assertTrue(verify_startup_member(original,needle))
 
     def test_preservation_guard_detects_timeout_and_admission_mutants(self):
         original=SOURCE.read_text();needle='void waitReady(long serial)'
@@ -48,8 +99,51 @@ class ReadinessObservationControls(unittest.TestCase):
             self.assertNotEqual(hashlib.sha256(unobserve(member(candidate,needle)).encode()).hexdigest(),ORIGINAL_METHODS[needle])
 
     def test_original_runner_consumer_preserved(self):
-        run=copy.deepcopy(run_node((ROOT/'tests/gecko/run_device.py').read_text()))
-        self.assertEqual(hashlib.sha256(ast.dump(run,include_attributes=False).encode()).hexdigest(),ORIGINAL_RUN_AST)
+        self.assertTrue(verify_runner_consumer((ROOT/'tests/gecko/run_device.py').read_text()))
+
+    def test_exact_new_cases_preserve_original_goldens_and_allow_python_formatting(self):
+        original=(ROOT/'tests/gecko/run_device.py').read_text()
+        self.assertTrue(verify_runner_consumer('# harmless comment\n'+original.replace("action=='downloadResume'", 'action == "downloadResume"')))
+        self.assertTrue(verify_startup_member(SOURCE.read_text().replace('GeckoLocalDraftIntegration.run(this,serial);','GeckoLocalDraftIntegration.run(this, serial);'),'void waitReady(long serial)'))
+        self.assertTrue(verify_startup_member(SOURCE.read_text().replace('if("localDraftPolicy".equals(action)){GeckoLocalDraftIntegration.run(this,serial);return;}',
+            'if ( "localDraftPolicy" . equals ( action ) ) {\n GeckoLocalDraftIntegration . run ( this , serial ) ;\n return ; }'),'void waitReady(long serial)'))
+        self.assertEqual(ORIGINAL_RUN_AST,'6408387c50d14aa180be171f999763cff35d618698937f5601c2f3b0c55be5ed')
+        self.assertEqual(ORIGINAL_METHODS['void waitReady(long serial)'],'cac08fc6d5c0bb7092bb87905c6547efd5187b7ddb168277fba0690230fa3772')
+
+    def test_f04_cannot_bypass_change_duplicate_or_reorder_original_readiness(self):
+        original=SOURCE.read_text();needle='void waitReady(long serial)'
+        line='    if("localDraftPolicy".equals(action)){GeckoLocalDraftIntegration.run(this,serial);return;}\n'
+        mutants=[original.replace(line,''),original.replace(line,line+line),
+                 original.replace('"localDraftPolicy"','"local DraftPolicy"'),
+                 original.replace('GeckoLocalDraftIntegration.run','Gecko LocalDraftIntegration.run'),
+                 original.replace('GeckoLocalDraftIntegration.run(this,serial);','GeckoLocalDraftIntegration.run(this,serial);session.networkReady=true;'),
+                 original.replace(line,'').replace('    if(!web.ready)',line+'    if(!web.ready)'),
+                 original.replace('initialRouteSamples<3','initialRouteSamples<1'),
+                 original.replace('now-initialRouteStableSince<500','now-initialRouteStableSince<0'),
+                 original.replace('!web.ready','false'),original.replace('!activityResumed||!processForeground()','false'),
+                 original.replace('waitReady(serial),50','waitReady(serial),5'),
+                 original.replace('waitReady(serial),100','waitReady(serial),1000'),
+                 original.replace('waitReady(serial),200','waitReady(serial),2000')]
+        for i,candidate in enumerate(mutants):
+            self.assertNotEqual(candidate,original)
+            with self.subTest(mutant=i),self.assertRaises(ValueError):verify_startup_member(candidate,needle)
+
+    def test_f06_cannot_change_original_consumer_or_new_case_ownership(self):
+        original=(ROOT/'tests/gecko/run_device.py').read_text()
+        select="        if action=='downloadResume':\n            assert context==8\n            activity='DownloadResumeIntegrationActivity'\n"
+        retained="                    if action=='downloadResume':\n                        report.setdefault('savedFileDeletion',{})['downloadResume']=result\n"
+        mutants=[original.replace(select,''),original.replace(select,select+select),
+                 original.replace('assert context==8','assert context==1'),
+                 original.replace("activity='DownloadResumeIntegrationActivity'","activity='GeckoIntegrationTestActivity'"),
+                 original.replace(retained,''),original.replace(retained,retained+retained),
+                 original.replace("report.setdefault('savedFileDeletion',{})['downloadResume']=result","steps.append(event)"),
+                 original.replace('deadline=time.monotonic()+120','deadline=time.monotonic()+121'),
+                 original.replace('slot=context-1','slot=context'),
+                 original.replace('event_transfers.append(transfer_record)','event_transfers.clear()'),
+                 original.replace("logs.append(output);steps.append(event);print(json.dumps(event),flush=True)","logs.append(output);print(json.dumps(event),flush=True)")]
+        for i,candidate in enumerate(mutants):
+            self.assertNotEqual(candidate,original)
+            with self.subTest(mutant=i),self.assertRaises(ValueError):verify_runner_consumer(candidate)
 
     def test_command_entry_precedes_wait_and_only_read_is_observed(self):
         command=member(SOURCE.read_text(),'synchronized void command(')
