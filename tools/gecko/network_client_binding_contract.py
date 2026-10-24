@@ -6,10 +6,10 @@ from pathlib import Path
 import re
 
 try:
-    from .integration_event_contract import decode_event
+    from .integration_event_contract import EventTransfer
     from .profile_invocation_contract import verify_installed
 except ImportError:
-    from integration_event_contract import decode_event
+    from integration_event_contract import EventTransfer
     from profile_invocation_contract import verify_installed
 
 PACKAGE='local.pocketchat.test'
@@ -171,7 +171,9 @@ def verify_runner_report(wrapper,source,reference_identity=None):
         raw=wrapper.get(key);require(isinstance(raw,str) and re.findall(r'^package:'+re.escape(PACKAGE)+r' uid:(\d+)\s*$',raw,re.M)==[str(uid)],'actual package UID before/after')
     records=wrapper.get('eventTransport');require(isinstance(records,list) and len(records)==1,'one complete source-bound event')
     record=records[0];require(isinstance(record,dict) and isinstance(record.get('rawUtf8'),str),'original event bytes')
-    event=decode_event(record.get('receipt'),record['rawUtf8'].encode(),identity=identity,nonce=nonce,slot=0,action=ACTION,command=1)
+    transfer=EventTransfer(identity=identity,nonce=nonce,slot=0,action=ACTION,command=1,
+        fetch=lambda uri:record['rawUtf8'].encode())
+    event=transfer.read(record.get('receipt'))
     require(event.get('kind')==ACTION and same(event.get('result'),wrapper.get('result')),'raw event differs from actual result')
     return verify_binding_result(wrapper['result'],identity,nonce,uid,wrapper.get('androidSdk'))
 

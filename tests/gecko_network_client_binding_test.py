@@ -10,6 +10,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
 import network_client_binding_contract as C
+from integration_event_contract import EventTransfer,decode_event
 
 SOURCE='a'*40;NONCE='d'*32;UID=10209
 ENV=dict(slot=0,generation=0,environmentId='12345678-1234-1234-1234-123456789012')
@@ -161,6 +162,28 @@ class BindingControls(unittest.TestCase):
         self.reject(lambda w:w.update(eventTransport=[]),semantic=False)
         self.reject(lambda w:w['eventTransport'][0].update(rawUtf8='{}'),semantic=False)
         self.reject(lambda w:w['installedAfter'].update(sha256='0'*64))
+    def test_legally_reencoded_later_sequence_fails_runner_and_public_replay(self):
+        import tempfile
+        for sequence in (2,3,2**63-1):
+            with self.subTest(sequence=sequence):
+                value=fixture();record=value['eventTransport'][0];envelope=json.loads(record['rawUtf8'])
+                envelope['sequence']=record['receipt']['sequence']=sequence
+                record['rawUtf8']=encoded(envelope);raw=record['rawUtf8'].encode()
+                record['receipt'].update(payloadBytes=len(raw),payloadSha256=hashlib.sha256(raw).hexdigest())
+                options=dict(identity=value['buildIdentity'],nonce=NONCE,slot=0,action=C.ACTION,command=1)
+                # This valid individual event was the independent review's
+                # counterexample: only the complete transfer rejects its gap.
+                self.assertEqual(decode_event(record['receipt'],raw,**options)['result'],value['result'])
+                transfer=EventTransfer(fetch=lambda uri:raw,**options)
+                with self.assertRaisesRegex(ValueError,'missing or out-of-order event sequence'):transfer.read(record['receipt'])
+                with self.assertRaisesRegex(ValueError,'missing or out-of-order event sequence'):C.verify_runner_report(value,SOURCE)
+                with tempfile.TemporaryDirectory()as name:
+                    directory=Path(name)
+                    device=dict(status='passed',sourceCommit=SOURCE,actualAndroidExecution=True,
+                        eventTransport=dict(schema=1,buildIdentity=value['buildIdentity']))
+                    (directory/'device-results.json').write_text(encoded(device))
+                    (directory/'network-client-binding-results.json').write_text(encoded(value))
+                    with self.assertRaisesRegex(ValueError,'missing or out-of-order event sequence'):C.verify_framework_binding_files(directory,SOURCE)
     def test_reference_build_rejects_cross_apk_mixing(self):
         value=fixture();reference=copy.deepcopy(value['buildIdentity']);reference['apkSha256']='0'*64
         with self.assertRaises(ValueError):C.verify_runner_report(value,SOURCE,reference)
