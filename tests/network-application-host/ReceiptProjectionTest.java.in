@@ -1,0 +1,61 @@
+package local.pocketchat;
+import org.json.*;
+
+/** Exact production receipt and integration projection with explicit service adapters. */
+public final class ReceiptProjectionTest {
+  final NativeNetwork network=new NativeNetwork();
+  static final JSONArray checks=new JSONArray();
+  static void check(String name,boolean value){checks.put(J.obj("name",name,"pass",value));if(!value)throw new AssertionError(name);}
+  static JSONObject copy(JSONObject value)throws Exception{return new JSONObject(value.toString());}
+  @IDENTITIES@
+  public static void main(String[] args)throws Exception{
+    ReceiptProjectionTest test=new ReceiptProjectionTest();NativeNetwork n=test.network;
+    JSONObject snapshot=n.transport.state;
+    n.verifiedRoute=new NativeNetwork.ExitRouteReceipt(n,snapshot);
+    NativeNetwork.ExitRouteReceipt captured=n.verifiedRoute;
+    check("Production receipt accepts the complete controlled service snapshot",captured.matches(n,snapshot));
+    JSONObject projection=test.identities();
+    if(Boolean.getBoolean("projection.legacy")){
+      check("Original integration projection omits both required service ports",!projection.has("controllerPort")&&!projection.has("proxyPort"));
+      check("Original projection makes the actual production receipt reject a still valid core",projection.optBoolean("verified")&&projection.optBoolean("receiptMatchesFreshState")&&!captured.matches(n,projection)&&captured.matches(n,snapshot));
+    }else{
+      check("Integration projection retains the actual snapshot controller port",projection.opt("controllerPort") instanceof Number&&projection.getInt("controllerPort")==snapshot.getInt("controllerPort"));
+      check("Integration projection retains the actual snapshot proxy port",projection.opt("proxyPort") instanceof Number&&projection.getInt("proxyPort")==snapshot.getInt("proxyPort"));
+      check("Exact production receipt accepts the complete integration projection",captured.matches(n,projection));
+      check("Integration projection preserves original fresh receipt truth",projection.optBoolean("verified")&&projection.optBoolean("receiptMatchesFreshState"));
+      for(String omitted:new String[]{"controllerPort","proxyPort"}){
+        JSONObject legacy=copy(projection);legacy.remove(omitted);
+        check("Omitted "+omitted+" reproduces the old incomplete projection rejection",!captured.matches(n,legacy));
+      }
+      String[] fields={"controllerPort","proxyPort","pid","servicePid","generation","configuration","alive"};
+      Object[] replacements={31001,31002,9001,9002,"replacement-generation","replacement-configuration",false};
+      for(int i=0;i<fields.length;i++){
+        n.transport.state=copy(snapshot);n.transport.state.put(fields[i],replacements[i]);
+        JSONObject changed=test.identities();
+        check("Changed actual service "+fields[i]+" remains rejected after projection",!captured.matches(n,n.transport.state)&&!captured.matches(n,changed));
+        if(fields[i].endsWith("Port"))check("Projection reads changed "+fields[i]+" from the snapshot rather than the old network field",changed.getInt(fields[i])==((Number)replacements[i]).intValue());
+      }
+      n.transport.state=snapshot;
+      for(String changed:new String[]{"controller","proxy","token","fingerprint","entry","serial"}){
+        int controller=n.controllerPort,proxy=n.proxyPort;long serial=n.routeSerial;String token=n.token,fingerprint=n.fingerprint,entry=n.currentEntry;
+        switch(changed){case "controller":n.controllerPort++;break;case "proxy":n.proxyPort++;break;case "token":n.token+="new";break;case "fingerprint":n.fingerprint+="new";break;case "entry":n.currentEntry="Entry|b";break;case "serial":n.routeSerial++;break;}
+        check("Changed owning network "+changed+" cannot borrow the old complete projection",!captured.matches(n,projection));
+        n.controllerPort=controller;n.proxyPort=proxy;n.routeSerial=serial;n.token=token;n.fingerprint=fingerprint;n.currentEntry=entry;
+      }
+      check("Receipt regression controls leave the owned snapshot unchanged",captured.matches(n,snapshot)&&snapshot.getInt("controllerPort")==21001&&snapshot.getInt("proxyPort")==22001);
+    }
+    System.out.println(J.obj("status",Boolean.getBoolean("projection.legacy")?"expected-baseline-failure":"passed","passed",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualCoreVerification",false,"exactProductionReceipt",true,"exactIntegrationProjection",true));
+  }
+}
+class NativeNetwork {
+  String fingerprint="fixed-exit",token="secret-owner",currentEntry="Entry|a",exitIp="203.0.113.8";
+  int controllerPort=21001,proxyPort=22001;long routeSerial=1;java.lang.Process process;
+  final Transport transport=new Transport();ExitRouteReceipt verifiedRoute;
+  boolean verifiedRouteCurrent(){return verifiedRoute!=null&&verifiedRoute.matches(this,transport.state);}
+  JSONObject api(String method,String path,JSONObject input,int timeout){return path.equals("/version")?J.obj("version","controlled-version"):J.obj("proxies",J.arr(J.obj("configFingerprint","fixed-node-fingerprint")));}
+  @RECEIPT@
+}
+class Transport {
+  JSONObject state=J.obj("alive",true,"pid",2001,"servicePid",2002,"generation","controlled-generation","configuration","controlled-configuration","controllerPort",21001,"proxyPort",22001);
+  JSONObject call(String method,String argument)throws Exception{if(!method.equals("snapshot")||!argument.isEmpty())throw new AssertionError("Unexpected service operation");return new JSONObject(state.toString());}
+}

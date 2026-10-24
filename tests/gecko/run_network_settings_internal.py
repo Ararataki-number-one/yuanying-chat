@@ -110,6 +110,7 @@ def verify_route(route, entry):
     assert route['observation'] == 'fresh-service-snapshot'
     assert route['alive'] is True and route['verified'] is True and route['receiptMatchesFreshState'] is True
     integer(route['pid'], 2); integer(route['servicePid'], 2)
+    integer(route['controllerPort'], 1, 65535); integer(route['proxyPort'], 1, 65535)
     assert str(uuid.UUID(route['generation'])) == route['generation']
     assert route['receiptGeneration'] == route['generation'] and route['receiptPid'] == route['pid']
     assert route['receiptConfiguration'] == route['configuration']; digest(route['configuration'])
@@ -285,7 +286,7 @@ def verify(report, source, nonce, apk_sha):
     assert stale['realCoreStopped'] is False and stale['capturedReceiptMatchesAfter'] is True
     assert stale['stopConfirmed'] is False
     verify_route(stale['after'], 'Entry|a')
-    for field in ['generation', 'pid', 'configuration', 'fixedIdentity', 'fixedNodeFingerprint']:
+    for field in ['generation', 'pid', 'servicePid', 'controllerPort', 'proxyPort', 'configuration', 'fixedIdentity', 'fixedNodeFingerprint']:
         assert stale['before'][field] == stale['after'][field]
     assert stale['modelDesiredRevisionAtPoll'] > stale['expected']['savedRevision']
     assert stale['before']['generation'] not in [stopped['before']['generation'], stopped['after']['generation']]

@@ -21,6 +21,7 @@ def route(index, entry):
     configuration = ('a' if entry == 'Entry|a' else 'b') * 64
     return {'observation': 'fresh-service-snapshot', 'alive': True, 'verified': True,
             'receiptMatchesFreshState': True, 'pid': 200 + index, 'servicePid': 150,
+            'controllerPort': 21000 + index, 'proxyPort': 22000 + index,
             'generation': generation(index), 'receiptGeneration': generation(index),
             'receiptPid': 200 + index, 'configuration': configuration,
             'receiptConfiguration': configuration, 'fixedIdentity': 'e' * 64,
@@ -312,6 +313,24 @@ class GateTest(unittest.TestCase):
         report = receipt(); report['cases'][2]['after']['verified'] = False; self.rejected(report)
         report = receipt(); report['cases'][2]['after'] = route(7, 'Entry|a'); self.rejected(report)
         report = receipt(); report['cases'][2]['before'] = report['cases'][2]['after'] = route(3, 'Entry|a'); self.rejected(report)
+
+    def test_all_live_route_projection_ports_require_actual_integer_range(self):
+        for route_name in ['bootstrap', 'changed', 'stopped-before', 'stale-before', 'stale-after', 'restoration']:
+            for field in ['controllerPort', 'proxyPort']:
+                for value in [None, True, False, '21001', 21001.0, 0, -1, 65536]:
+                    with self.subTest(route=route_name, field=field, value=value):
+                        report = receipt()
+                        target = {'bootstrap': report['bootstrap']['route'], 'changed': report['cases'][0]['route'],
+                                  'stopped-before': report['cases'][1]['before'], 'stale-before': report['cases'][2]['before'],
+                                  'stale-after': report['cases'][2]['after'], 'restoration': report['restoration']}[route_name]
+                        if value is None: del target[field]
+                        else: target[field] = value
+                        self.rejected(report)
+
+    def test_new_desired_model_cannot_hide_changed_core_endpoint_or_service_pid(self):
+        for field in ['controllerPort', 'proxyPort', 'servicePid']:
+            with self.subTest(field=field):
+                report = receipt(); report['cases'][2]['after'][field] += 1; self.rejected(report)
 
     def test_restoration_is_a_new_verified_core_not_old_ready_state(self):
         for field, value in [('verified', False), ('receiptMatchesFreshState', False),

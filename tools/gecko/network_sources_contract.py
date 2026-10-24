@@ -29,14 +29,14 @@ SAFE_IDLE_TRUST_FILES = {
     'server.p12': {'sha256': '5fe7edd5f9b89854977cc3f6181faf8b38386eb03f4829ec9d39bd3cbfb6acc3', 'bytes': 3814},
 }
 SAFE_IDLE_TRUST_ASSET_NAMES = sorted(set(SAFE_IDLE_TRUST_FILES) | {'manifest.json', 'README.md'})
-SETTINGS_HOST_MINIMUMS = {'receipt': 22, 'provider': 41, 'retry': 43}
+SETTINGS_HOST_MINIMUMS = {'receipt': 45, 'provider': 41, 'retry': 43}
 SETTINGS_JSON_SHA256 = {
     'desktop': '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed',
     'android': 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79',
 }
 SETTINGS_PARSER_SUITES = {'gecko_settings_retry_gate_test.py': 5,
                           'gecko_settings_application_gate_test.py': 11,
-                          'gecko_settings_internal_gate_test.py': 17}
+                          'gecko_settings_internal_gate_test.py': 19}
 SETTINGS_REPORTS = [
     'network-settings-' + mode + '-results.json' for mode in ('retry', 'application', 'internal')
 ] + ['network-settings-' + kind + '-' + implementation + '-host-results.json'
