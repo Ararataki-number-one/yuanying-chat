@@ -55,6 +55,12 @@ def main():
         for needle in needles:
             part=member(raw,needle);chunks.append(part);methods.append(dict(file=str(path.relative_to(ROOT)),signature=needle,startLine=raw[:raw.index(needle)].count('\n')+1,sha256=hashlib.sha256(part.encode()).hexdigest()))
         template=template.replace('/* '+marker+' */','\n'.join(chunks))
+    observation_template=(HERE/'RestoreObservationHost.java.in').read_text();observation_parts=[]
+    raw=fixture.read_text()
+    for needle in ('static JSONObject restoreChecks(','static boolean sameCookies('):
+        part=member(raw,needle);observation_parts.append(part)
+        methods.append(dict(file=str(fixture.relative_to(ROOT)),signature=needle,startLine=raw[:raw.index(needle)].count('\n')+1,sha256=hashlib.sha256(part.encode()).hexdigest()))
+    observation_template=observation_template.replace('/* OBSERVATIONS */','\n'.join(observation_parts))
     constants={
       'MAIN_ORIGIN':(source/'MainActivity.java',r'static final String ORIGIN=[^;]+;'),
       'APP_KEYS':(source/'AppPrefs.java',r'static final String\[\] KEYS=[^;]+;'),
@@ -67,6 +73,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='local-draft-admission-') as directory:
         temp=pathlib.Path(directory);package=temp/'local/pocketchat';package.mkdir(parents=True)
         (package/'AdmissionHost.java').write_text(template)
+        (package/'RestoreObservationHost.java').write_text(observation_template)
         (package/'Sha256.java').write_bytes((source/'Sha256.java').read_bytes())
         sources=[*package.glob('*.java'),*sorted((HERE/'adapters').rglob('*.java'))]
         binary=lambda name:str(args.java_home/'bin'/name) if args.java_home else name
@@ -74,6 +81,12 @@ def main():
         execution=subprocess.run([binary('java'),'-cp',str(temp)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.AdmissionHost'],text=True,capture_output=True)
         if not execution.stdout.strip():raise RuntimeError(execution.stderr)
         report=json.loads(execution.stdout)
+        observation_execution=subprocess.run([binary('java'),'-cp',str(temp)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.RestoreObservationHost'],text=True,capture_output=True)
+        if not observation_execution.stdout.strip():raise RuntimeError(observation_execution.stderr)
+        report['restoreObservationControls']=json.loads(observation_execution.stdout)
+        if observation_execution.returncode or report['restoreObservationControls'].get('status')!='passed':
+            report['status']='failed-restore-observation-controls'
+        if observation_execution.stderr:report['restoreObservationStderr']=observation_execution.stderr
     unchanged=all(hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==digest for name,digest in hashes.items())
     report.update(sourceCommit=commit,sourceFiles=hashes,productionMembers=methods,beforeSource=baseline,jsonJarSha256=hashlib.sha256(args.json_jar.read_bytes()).hexdigest(),executionInputsUnchanged=unchanged,actualAndroidExecution=False,actualGeckoExecution=False,realChatGptPageMemoryCapture=False,productionAdmissionExecuted=True,scope='Exact MainActivity.chatUrl, WebReplyObserver.same, PageMemory admission, LocalDraftPolicy and AppPrefs methods with exact F04 fixture adaptation, retainPartial, sha, current and fail methods. java.net.URI is a limited adapter for the explicit absolute URL cases; preferences, event sink and worker shutdown use host adapters. No Android durability, Gecko DOM/SDK capture, cookies, SDK restore or real ChatGPT capture claim.')
     if not unchanged:report['status']='invalid-source-changed'

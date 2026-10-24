@@ -1,0 +1,35 @@
+package local.pocketchat;
+import java.util.*;import org.json.*;
+
+/** Synthetic host observations only; this never runs or repairs Gecko restore. */
+public class RestoreObservationHost {
+ static final JSONArray checks=new JSONArray();
+ static void check(String name,boolean ok){checks.put(J.obj("name",name,"pass",ok));if(!ok)throw new AssertionError(name);}
+ static JSONObject expected(){return J.obj("url","http://127.0.0.1:8765/browser-session?context=2&localDraft=0123456789abcdef0123456789abcdef#f04-saved","draft","","history",3,"scroll",719.9000244140625,"cookie","probe=controlled; f04Draft=kept","token","synthetic-session-2","sends",0);}
+ static boolean all(JSONObject checks)throws Exception{for(Iterator<String> i=checks.keys();i.hasNext();)if(!checks.getBoolean(i.next()))return false;return true;}
+ static void run()throws Exception{
+  JSONObject expected=expected(),dom=new JSONObject(expected.toString());dom.put("ok",true);String before=dom.toString(),expectedBefore=expected.toString();
+  JSONObject complete=restoreChecks(dom,expected,true,false);
+  check("Matching observed fields report ten actual predicates",complete.length()==10&&all(complete));
+  check("Diagnostic predicate reads do not mutate observed or expected input",before.equals(dom.toString())&&expectedBefore.equals(expected.toString()));
+  for(String field:new String[]{"ok","url","draft","history","scroll","cookie","token","sends"}){
+   JSONObject changed=new JSONObject(dom.toString());
+   if(field.equals("ok"))changed.put(field,false);
+   else if(field.equals("history"))changed.put(field,4);
+   else if(field.equals("scroll"))changed.put(field,0);
+   else if(field.equals("sends"))changed.put(field,1);
+   else changed.put(field,"different");
+   JSONObject observed=restoreChecks(changed,expected,true,false);
+   check("Changed "+field+" is visible as a false predicate without qualifying readiness",!observed.getBoolean(field)&&!all(observed));
+  }
+  check("Missing browser fields remain false observations",!all(restoreChecks(new JSONObject(),expected,true,false)));
+  check("Unpainted current SDK session is retained as false",!restoreChecks(dom,expected,false,false).getBoolean("painted"));
+  check("Failed current SDK session is retained as false",!restoreChecks(dom,expected,true,true).getBoolean("notFailed"));
+  JSONObject reordered=new JSONObject(dom.toString());reordered.put("cookie"," f04Draft=kept ; probe=controlled ");
+  check("Original sameCookies comparison permits only ordering and whitespace",all(restoreChecks(reordered,expected,true,false)));
+  reordered.put("cookie","probe=controlled; f04Draft=other");
+  check("Changed cookie value remains a false predicate",!restoreChecks(reordered,expected,true,false).getBoolean("cookie"));
+ }
+ public static void main(String[]args){Throwable error=null;try{run();}catch(Throwable failure){error=failure;}JSONObject report=J.obj("status",error==null?"passed":"failed","checks",checks,"checkCount",checks.length(),"actualAndroidExecution",false,"actualGeckoExecution",false,"diagnosticOnly",true);if(error!=null){NetworkCatalog.put(report,"error",error.toString());error.printStackTrace(System.err);}System.out.println(report);if(error!=null)System.exit(1);}
+ /* OBSERVATIONS */
+}

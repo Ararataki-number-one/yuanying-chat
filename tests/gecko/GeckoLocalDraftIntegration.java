@@ -38,6 +38,7 @@ final class GeckoLocalDraftIntegration {
     if(a.slot!=1)throw new IllegalStateException("F04 owns only the controlled second environment");
     environment=ProfileCatalog.get(a).identity(a.slot);result.put("environmentIdentity",environment.json());
     result.put("phase",phase);
+    observeStage("start");
     if("seed".equals(phase)){
       if(prefs.contains("target"))throw new IllegalStateException("Unfinished F04 invocation exists");
       boolean original=LocalDraftPolicy.enabled(a);AppPrefs.apply(a,J.obj("saveDraft",true));
@@ -58,14 +59,15 @@ final class GeckoLocalDraftIntegration {
   String text(boolean fresh){return (fresh?FRESH:OLD)+prefs.getString("target",target).substring(prefs.getString("target",target).indexOf("&localDraft=")+12);}
   static String quote(String value){return JSONObject.quote(value);}
   void probe(java.util.function.Consumer<JSONObject> done){
-    s.web.evaluateJavascript("(()=>{const e=document.getElementById('session-draft'),n=document.getElementById('f04-sends');return e&&n?{ok:true,url:location.href,draft:e.value,draftLength:e.value.length,draftComplete:true,hasDraft:e.value.length>0,selectionStart:e.selectionStart,selectionEnd:e.selectionEnd,cookie:document.cookie,token:document.getElementById('session-result').textContent,history:history.length,scroll:scrollY,sends:Number(n.textContent),document:performance.timeOrigin}:null})()",raw->{if(current())try{done.accept(J.parse(raw));}catch(Throwable error){fail(error);}});
+    s.web.evaluateJavascript("(()=>{const e=document.getElementById('session-draft'),n=document.getElementById('f04-sends');return e&&n?{ok:true,url:location.href,draft:e.value,draftLength:e.value.length,draftComplete:true,hasDraft:e.value.length>0,selectionStart:e.selectionStart,selectionEnd:e.selectionEnd,cookie:document.cookie,token:document.getElementById('session-result').textContent,history:history.length,scroll:scrollY,sends:Number(n.textContent),document:performance.timeOrigin}:null})()",raw->{if(current())try{retainPartial("probeRaw",raw);done.accept(J.parse(raw));}catch(Throwable error){fail(error);}});
   }
-  void waitSeed(boolean fresh){probe(value->{
+  void waitSeed(boolean fresh){observeStage("capture-wait-document");probe(value->{
     if(!value.optBoolean("ok")||!value.optString("url").startsWith(target)){later(()->waitSeed(fresh));return;}
     String input=text(fresh);
     s.web.evaluateJavascript("(()=>{const e=document.getElementById('session-draft');e.value="+quote(input)+";e.dispatchEvent(new Event('input',{bubbles:true}));if(!location.hash)history.pushState({f04:true},'',location.href+'#f04-saved');document.cookie='"+COOKIE+"=kept; Path=/browser-session; SameSite=Lax';scrollTo(0,720);return e.value})()",raw->{if(current())awaitCaptured(fresh);});
   });}
   void awaitCaptured(boolean fresh){
+    observeStage("capture-wait-sdk");
     s.web.checkpointState();GeckoSession.SessionState state=s.web.states.get(s.web.primary);
     if(state==null){later(()->awaitCaptured(fresh));return;}
     GeckoSession.SessionState copy=new GeckoSession.SessionState(state);
@@ -155,7 +157,7 @@ final class GeckoLocalDraftIntegration {
       }));else post(()->finishAfterCookieCheckpoint(false));
     }catch(Throwable error){store.io.shutdown();post(()->fail(error));}});
   }catch(Throwable error){post(()->fail(error));}}
-  void readAndRestore(boolean fresh){worker.execute(()->{try{
+  void readAndRestore(boolean fresh){observeStage("read-scheduled");worker.execute(()->{try{
     String name=fresh?"fresh":"original";Context isolated=context(name);File file=new File(isolated.getNoBackupFilesDir(),"gecko-session.json");
     byte[] disk=bytes(file);if(!sha(disk).equals(prefs.getString(name+"Sha256","")))throw new IllegalStateException("Frozen checkpoint changed across process death");
     String stamped=new String(disk,StandardCharsets.UTF_8);int end=stamped.indexOf('\n');if(end<0||!stamped.startsWith(LocalDraftPolicy.CHECKPOINT_HEADER))throw new IllegalStateException("Production checkpoint header missing");
@@ -184,12 +186,14 @@ final class GeckoLocalDraftIntegration {
       }
       GeckoSession.SessionState restored=GeckoSession.SessionState.fromString(filtered);
       if(restored==null||restored.size()==0||!GeckoWebView.stateUrl(restored).equals(prefs.getString(name+"Url","")))throw new IllegalStateException("Actual SDK filtered state not restorable");
-      store.io.shutdown();post(()->{s.web.loadUrl("about:blank");waitBlank(restored,fresh);});
+      store.io.shutdown();post(()->{observeRestoreRead(filtered);observeStage("restore-load-blank");s.web.loadUrl("about:blank");waitBlank(restored,fresh);});
     }catch(Throwable error){store.io.shutdown();post(()->fail(error));}});
   }catch(Throwable error){post(()->fail(error));}});}
   void waitBlank(GeckoSession.SessionState state,boolean fresh){
+    observeStage("restore-wait-blank");
     if(!"about:blank".equals(s.web.getUrl())){later(()->waitBlank(state,fresh));return;}
     String name=fresh?"fresh":"original";
+    observeStage("restore-dispatch");
     s.web.restoreCheckpoint(s.web.current,state,prefs.getString(name+"Url",""),readRevision);
     awaitRestored(fresh);
   }
@@ -200,6 +204,7 @@ final class GeckoLocalDraftIntegration {
       &&sameCookies(dom.optString("cookie"),prefs.getString(name+"Cookie",""))&&dom.optString("token").equals(prefs.getString(name+"Token",""))
       &&dom.optInt("sends",-1)==0&&s.web.painted.contains(s.web.current)&&!s.web.failed;
     long now=SystemClock.elapsedRealtime();double document=dom.optDouble("document",-1);
+    observeRestored(fresh,dom,ready,now);
     if(!ready||document!=stableDocument){stableAt=ready?now:0;stableSamples=ready?1:0;stableDocument=document;}
     else stableSamples++;
     if(!ready||stableSamples<5||now-stableAt<1000){later(()->awaitRestored(fresh));return;}
@@ -242,8 +247,47 @@ final class GeckoLocalDraftIntegration {
     };
   }
   void finish(){if(!current())return;try{EnvironmentSpec.Identity after=ProfileCatalog.get(a).identity(a.slot);if(!after.equals(environment))throw new IllegalStateException("F04 environment changed during fixture");result.put("environmentIdentityAfter",after.json());result.put("status","passed").put("actualGeckoSessionState",true);finished=true;worker.shutdown();a.event(serial,ACTION,result);}catch(Throwable error){finished=false;fail(error);}}
+  // Bounded latest observations are emitted only with the existing failure.
+  // They never establish readiness or change a page, cookie, policy or deadline.
+  void observeStage(String stage){try{
+    GeckoSession current=s.web.current;Thread thread=Thread.currentThread();
+    String raw=J.obj("stage",stage,"phase",phase,"elapsedRealtime",SystemClock.elapsedRealtime(),
+      "command",serial,"currentCommand",a.run,"navigationEpoch",s.navigationEpoch,
+      "session",current==null?0:System.identityHashCode(current),"primaryIsCurrent",current==s.web.primary,
+      "sessionOpen",current!=null&&current.isOpen(),"nativeUrl",s.web.getUrl(),"painted",s.web.painted.contains(current),
+      "failed",s.web.failed,"threadId",thread.getId(),"threadName",thread.getName(),
+      "onMainLooper",Looper.myLooper()==Looper.getMainLooper()).toString();
+    retainPartial("stage",raw);
+    if("restore-wait-blank".equals(stage))retainPartial("restoreBlank",raw);
+    if("restore-dispatch".equals(stage))retainPartial("restoreDispatch",raw);
+  }catch(Exception ignored){}}
+  void observeRestoreRead(String filtered){try{
+    JSONObject read=result.optJSONObject("read");if(read!=null)retainPartial("restoreRead",read.toString());
+    retainPartial("sdkRestore",filtered);
+  }catch(Exception ignored){}}
+  void observeRestored(boolean fresh,JSONObject dom,boolean ready,long now){try{
+    observeStage("restore-await-document");String name=fresh?"fresh":"original";
+    JSONObject expected=J.obj("url",prefs.getString(name+"Url",""),"draft",fresh?text(true):"",
+      "history",prefs.getInt(name+"History",-2),"scroll",prefs.getFloat(name+"Scroll",-100),
+      "cookie",prefs.getString(name+"Cookie",""),"token",prefs.getString(name+"Token",""),"sends",0);
+    retainPartial("restoreDom",dom.toString());
+    retainPartial("restoreReadiness",J.obj("observedAtElapsedRealtime",now,"readyFromOriginalExpression",ready,
+      "expected",expected,"checks",restoreChecks(dom,expected,s.web.painted.contains(s.web.current),s.web.failed),
+      "stableAtBeforeUpdate",stableAt,"stableSamplesBeforeUpdate",stableSamples,"stableDocumentBeforeUpdate",stableDocument,
+      "deadlineElapsedRealtime",deadline,"saveDraftEnabled",LocalDraftPolicy.enabled(a),
+      "policyRevision",LocalDraftPolicy.revision(a),"readRevision",readRevision).toString());
+  }catch(Exception ignored){}}
+  static JSONObject restoreChecks(JSONObject dom,JSONObject expected,boolean painted,boolean failed){
+    return J.obj("ok",dom.optBoolean("ok"),"url",dom.optString("url").equals(expected.optString("url")),
+      "draft",expected.optString("draft").equals(dom.optString("draft")),
+      "history",dom.optInt("history",-1)==expected.optInt("history",-2),
+      "scroll",Math.abs(dom.optDouble("scroll")-expected.optDouble("scroll",-100))<=2,
+      "cookie",sameCookies(dom.optString("cookie"),expected.optString("cookie")),
+      "token",dom.optString("token").equals(expected.optString("token")),
+      "sends",dom.optInt("sends",-1)==0,"painted",painted,"notFailed",!failed);
+  }
   void retainPartial(String key,String raw){try{
-    if(!Arrays.asList("sdkSource","domSource","memoryInput","memoryStored").contains(key))throw new IllegalArgumentException("Unknown F04 observation");
+    if(!Arrays.asList("sdkSource","domSource","memoryInput","memoryStored","probeRaw","stage","restoreRead","sdkRestore","restoreBlank","restoreDispatch","restoreDom","restoreReadiness").contains(key))throw new IllegalArgumentException("Unknown F04 observation");
     byte[] data=raw.getBytes(StandardCharsets.UTF_8);JSONObject observed=J.obj("utf8Bytes",data.length,"sha256",sha(data));
     if(data.length<=8192)observed.put("rawUtf8",raw);else observed.put("rawOmitted",true);
     partial.put(key,observed);

@@ -207,6 +207,53 @@ class DraftControls(unittest.TestCase):
             verify_local_draft_policy(value,device=raw,source='a'*40)
 
 
+def restore_observers_preserve_original(text):
+    """Remove only the approved passive observations; all old code stays exact."""
+    additions=(
+        ('    observeStage("start");\n',''),
+        ('retainPartial("probeRaw",raw);done.accept(J.parse(raw));','done.accept(J.parse(raw));'),
+        ('void waitSeed(boolean fresh){observeStage("capture-wait-document");probe(value->{','void waitSeed(boolean fresh){probe(value->{'),
+        ('    observeStage("capture-wait-sdk");\n',''),
+        ('void readAndRestore(boolean fresh){observeStage("read-scheduled");worker.execute','void readAndRestore(boolean fresh){worker.execute'),
+        ('observeRestoreRead(filtered);observeStage("restore-load-blank");s.web.loadUrl("about:blank");','s.web.loadUrl("about:blank");'),
+        ('    observeStage("restore-wait-blank");\n',''),
+        ('    observeStage("restore-dispatch");\n',''),
+        ('    observeRestored(fresh,dom,ready,now);\n',''),
+        ('"memoryStored","probeRaw","stage","restoreRead","sdkRestore","restoreBlank","restoreDispatch","restoreDom","restoreReadiness"','"memoryStored"'),
+    )
+    for new,old in additions:
+        if text.count(new)!=1:return False
+        text=text.replace(new,old,1)
+    start=text.find('  // Bounded latest observations are emitted only with the existing failure.\n')
+    end=text.find('  void retainPartial(',start)
+    if start<0 or end<0:return False
+    text=text[:start]+text[end:]
+    return hashlib.sha256(text.encode()).hexdigest()=='4808b1459b39b47995b54ff5709bdf48019fa883758fccc2958e35efcbe05a81'
+
+
+class RestoreObservationPreservationControls(unittest.TestCase):
+    def setUp(self):self.source=(ROOT/'tests/gecko/GeckoLocalDraftIntegration.java').read_text()
+    def test_all_original_fixture_logic_including_readiness_stays_byte_exact(self):
+        self.assertTrue(restore_observers_preserve_original(self.source))
+    def test_deadline_poll_stability_and_each_original_readiness_guard_cannot_change(self):
+        for old,new in [('elapsedRealtime()+40000','elapsedRealtime()+41000'),('}},100);','}},101);'),
+                        ('stableSamples<5','stableSamples<4'),('now-stableAt<1000','now-stableAt<999'),
+                        ('dom.optBoolean("ok")&&','true&&'),('==prefs.getInt(name+"History",-2)','>=0'),
+                        ('&&sameCookies(dom.optString("cookie"),prefs.getString(name+"Cookie",""))',''),
+                        ('&&s.web.painted.contains(s.web.current)',''),('&&!s.web.failed','')]:
+            with self.subTest(old=old):
+                self.assertIn(old,self.source)
+                self.assertFalse(restore_observers_preserve_original(self.source.replace(old,new,1)))
+    def test_new_readiness_shortcuts_and_extra_page_operations_are_rejected(self):
+        for inserted in ('ready=true;','s.web.loadUrl(target);','s.web.checkpointState();'):
+            changed=self.source.replace('    observeRestored(fresh,dom,ready,now);','    observeRestored(fresh,dom,ready,now);'+inserted,1)
+            self.assertFalse(restore_observers_preserve_original(changed))
+    def test_passive_observer_helpers_have_no_page_policy_or_scheduling_mutation(self):
+        helpers=self.source.split('  // Bounded latest observations are emitted only with the existing failure.\n',1)[1].split('  void retainPartial(',1)[0]
+        for forbidden in ('evaluateJavascript(','.loadUrl(','.restoreCheckpoint(','.checkpointState(','.post(','.postDelayed(','.edit(','.apply(','.commit(','.setActive(','.close(','.add(','.remove('):
+            self.assertNotIn(forbidden,helpers)
+
+
 class PublicStageControls(unittest.TestCase):
     def test_declared_public_stage_imports_without_application_checkout(self):
         # This helper reads only copy declarations from publisher AST. No
