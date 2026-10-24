@@ -1,5 +1,6 @@
 """F04 actual-device evidence; host controls never establish Android acceptance."""
 import hashlib
+import json
 import math
 import re
 import uuid
@@ -16,6 +17,71 @@ def integer(value):
 
 def digest(value):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) is not None
+
+
+def memory_snapshot(raw):
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, 'duplicate raw memory field')
+            value[key] = item
+        return value
+    def invalid_constant(value):
+        raise ValueError('Local draft acceptance: nonfinite raw memory value ' + value)
+    value = json.loads(raw, object_pairs_hook=unique, parse_constant=invalid_constant)
+    # A decimal overflow also becomes infinity in Python; JSONObject cannot emit it.
+    json.dumps(value, allow_nan=False)
+    return value
+
+
+def verify_memory_adapter(phase, nonce, states):
+    adapter = phase['adapter']
+    source_url = 'http://127.0.0.1:8765/browser-session?context=2&localDraft=' + nonce + '#f04-saved'
+    logical_url = 'https://chatgpt.com/c/f04-' + nonce
+    require(type(adapter['schema']) is int and adapter['schema'] == 1
+            and adapter['kind'] == 'page-memory-remember-url-only', 'memory adapter schema')
+    require(adapter['sourceDomUrl'] == source_url and adapter['logicalMemoryUrl'] == logical_url,
+            'memory adapter URL identity')
+    require(adapter['onlyUrlAdapted'] is True and adapter['realChatGPT'] is False,
+            'memory adapter scope')
+    checks = adapter['checks']
+    require(len(checks) == len(states), 'all actual memory calls')
+    canonical = lambda value: json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    for row, (enabled, revision, draft) in zip(checks, states):
+        require(row['enabled'] is enabled and integer(row['policyRevision'])
+                and row['policyRevision'] == revision, 'actual memory policy')
+        require(row['loopbackEntryPresent'] is False and row['storedEntryPresent'] is True,
+                'memory entry admission')
+        require(integer(row['loopbackSerialBefore']) and integer(row['loopbackSerialAfter'])
+                and row['loopbackSerialAfter'] == row['loopbackSerialBefore']
+                and integer(row['storedSerial']) and row['storedSerial'] == row['loopbackSerialBefore'] + 1,
+                'actual rejected/admitted memory calls')
+        require(all(isinstance(row[k], str) for k in
+                    ('sourceDomRaw', 'sourceDomAfterRaw', 'memoryInputRaw', 'storedSnapshotRaw')),
+                'actual raw memory inputs')
+        require(row['sourceDomRaw'] == row['sourceDomAfterRaw'], 'original DOM changed')
+        source = memory_snapshot(row['sourceDomRaw']); adapted = memory_snapshot(row['memoryInputRaw'])
+        stored = memory_snapshot(row['storedSnapshotRaw'])
+        require(type(source) is dict and type(adapted) is dict and type(stored) is dict,
+                'actual nonempty memory snapshot')
+        require(source['ok'] is True and source['url'] == source_url and source['draft'] == draft
+                and source['draftComplete'] is True and source['hasDraft'] is True
+                and integer(source['draftLength']) and source['draftLength'] == len(draft),
+                'actual memory source draft')
+        require(type(source['sends']) is int and source['sends'] == 0
+                and source['token'] == 'synthetic-session-2' and 'f04Draft=kept' in source['cookie'],
+                'actual memory source session')
+        require(integer(source['history']) and type(source['scroll']) in (int, float)
+                and math.isfinite(source['scroll']) and type(source['document']) in (int, float)
+                and math.isfinite(source['document']) and source['document'] > 0,
+                'actual memory source document')
+        expected = dict(source, url=logical_url)
+        require(canonical(adapted) == canonical(expected), 'memory adapter changed non-URL fields')
+        expected['localDraftPolicyRevision'] = revision
+        if not enabled:
+            expected.update(draft=None, draftComplete=False, draftOmittedReason='local-saving-disabled')
+            expected.pop('selectionStart', None); expected.pop('selectionEnd', None)
+        require(canonical(stored) == canonical(expected), 'actual memory policy snapshot')
 
 
 def verify_local_draft_policy(report, *, device=None, source=None):
@@ -38,7 +104,8 @@ def verify_local_draft_policy(report, *, device=None, source=None):
         require(type(phase['schema']) is int and phase['schema'] == 1 and phase['status'] == 'passed', 'phase failure')
         require(all(phase[k] is True for k in common), 'actual execution flags')
         require(phase['automaticStartupSelectionAcceptance'] is False
-                and phase['physicalPhoneAcceptance'] is False, 'scope widened')
+                and phase['physicalPhoneAcceptance'] is False
+                and phase['realChatGptPageMemoryCapture'] is False, 'scope widened')
         require(phase['profileSlot'] == 1 and type(phase['profileSlot']) is int
                 and phase['fixtureNonce'] == nonce, 'environment or fixture changed')
         require(phase['environmentIdentity'] == phase['environmentIdentityAfter'] == environment,
@@ -70,6 +137,10 @@ def verify_local_draft_policy(report, *, device=None, source=None):
             and seed['liveDraftPreservedAfterDisable'] is True
             and seed['disabledBeforeProcessDeath'] is True, 'disabled live-input protection')
     require(integer(seed['currentRevision']) and seed['currentRevision'] == seed['capture']['storedRevision'] + 1, 'disable revision')
+    verify_memory_adapter(seed, nonce, [(True, seed['capture']['storedRevision'], 'f04-enabled-' + nonce),
+                                       (False, seed['currentRevision'], 'f04-enabled-' + nonce)])
+    verify_memory_adapter(stale, nonce, [(True, stale['capture']['storedRevision'], 'f04-fresh-' + nonce)])
+    require('adapter' not in off and 'adapter' not in fresh, 'memory path not executed in this phase')
     require(off['disabledArchiveRejectsNewCopy'] is True
             and off['existingArchiveHistoryPreserved'] is True, 'actual archive boundary')
     require(off['enabledForStaleRead'] is True and integer(off['nextRevision']) and off['nextRevision'] == seed['currentRevision'] + 1,
@@ -130,4 +201,5 @@ def verify_local_draft_policy(report, *, device=None, source=None):
             require(accepted == [expected], 'raw result differs from selected phase')
         raw_bound = True
     return dict(phases=4, realProcessRestarts=3, rawDeviceBindingVerified=raw_bound,
-                automaticStartupSelectionAcceptance=False, physicalPhoneAcceptance=False)
+                automaticStartupSelectionAcceptance=False, physicalPhoneAcceptance=False,
+                pageMemoryRememberUrlAdapted=True, realChatGptPageMemoryCapture=False, realChatGPT=False)

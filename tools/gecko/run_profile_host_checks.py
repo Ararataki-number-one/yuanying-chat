@@ -36,6 +36,9 @@ def main():
     input_paths.add(ROOT/'tools/gecko/check_template_evidence.py')
     input_paths.add(ROOT/'tools/gecko/chrome_collapse_contract.py')
     input_paths.add(ROOT/'tools/gecko/local_draft_contract.py')
+    draft_admission_inputs={path for path in (ROOT/'tests/local-draft-admission-host').rglob('*')
+                            if path.is_file() and path.suffix in ('.py','.java','.in','.json')}
+    input_paths.update(draft_admission_inputs)
     input_paths.add(ROOT/'tools/gecko/download_resume_contract.py')
     input_paths.add(ROOT/'tools/gecko/check_interaction_transfer_evidence.py')
     input_paths.add(ROOT/'tools/publish-gecko-release.py')
@@ -258,12 +261,31 @@ def main():
     draft_contract_test=ROOT/'tests/gecko_local_draft_contract_test.py'
     draft_contract_run=subprocess.run([sys.executable,str(draft_contract_test)],cwd=ROOT,text=True,capture_output=True)
     draft_contract_count=re.search(r'^Ran (\d+) tests? in ',draft_contract_run.stderr,re.M)
-    if draft_contract_run.returncode or draft_contract_count is None or int(draft_contract_count.group(1))<36:
+    if draft_contract_run.returncode or draft_contract_count is None or int(draft_contract_count.group(1))<49:
         raise ValueError('Incomplete F04 counterfeit evidence controls: '+draft_contract_run.stdout+draft_contract_run.stderr)
     results.append(dict(test='local-draft-evidence-controls',passed=int(draft_contract_count.group(1)),actualAndroidExecution=False,
         output=draft_contract_run.stdout+draft_contract_run.stderr))
     files.update((draft_contract_test,ROOT/'tests/profile_lifecycle_gate_test.py',ROOT/'tools/publish-gecko-release.py',
                   ROOT/'tools/gecko/local_draft_contract.py',ROOT/'tests/gecko/GeckoLocalDraftIntegration.java'))
+    draft_admission_receipt=output/'local-draft-admission-host-results.json'
+    draft_admission_run=subprocess.run([sys.executable,str(ROOT/'tests/local-draft-admission-host/run.py'),
+        '--java-home',str(Path(java).resolve().parent.parent),'--json-jar',str(json_jar),
+        '--output',str(draft_admission_receipt)],cwd=ROOT,text=True,capture_output=True)
+    if draft_admission_run.returncode:
+        raise ValueError('Production PageMemory admission controls failed: '+draft_admission_run.stdout+draft_admission_run.stderr)
+    draft_admission=json.loads(draft_admission_receipt.read_text())
+    if (draft_admission.get('status')!='passed' or draft_admission.get('checkCount')!=73
+            or len(draft_admission.get('checks',[]))!=73 or not all(row.get('pass') is True for row in draft_admission['checks'])
+            or draft_admission.get('actualAndroidExecution') is not False
+            or draft_admission.get('actualGeckoExecution') is not False
+            or draft_admission.get('realChatGptPageMemoryCapture') is not False
+            or draft_admission.get('sourceCommit')!=source_id
+            or draft_admission.get('productionAdmissionExecuted') is not True
+            or draft_admission.get('executionInputsUnchanged') is not True):
+        raise ValueError('Incomplete actual PageMemory admission host controls')
+    results.append(dict(test='local-draft-admission-host',report=str(draft_admission_receipt.relative_to(ROOT)),
+                        passed=draft_admission['checkCount'],actualAndroidExecution=False,evidence=draft_admission))
+    files.update(draft_admission_inputs)
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest

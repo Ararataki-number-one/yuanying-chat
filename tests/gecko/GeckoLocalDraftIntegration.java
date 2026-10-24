@@ -21,7 +21,8 @@ final class GeckoLocalDraftIntegration {
   final ExecutorService worker=Executors.newSingleThreadExecutor();
   final JSONObject result=J.obj("schema",1,"actualAndroidExecution",true,"actualGeckoExecution",true,
     "fixtureOwnedStore",true,"explicitSdkRestore",true,"automaticStartupSelectionAcceptance",false,
-    "physicalPhoneAcceptance",false,"pid",android.os.Process.myPid());
+    "physicalPhoneAcceptance",false,"realChatGptPageMemoryCapture",false,"pid",android.os.Process.myPid());
+  final JSONObject partial=new JSONObject();
   boolean finished;String phase,target;long stableAt,readRevision;int stableSamples;double stableDocument=-1;EnvironmentSpec.Identity environment;
   GeckoLocalDraftIntegration(GeckoIntegrationTestActivity activity,long command){
     a=activity;s=a.session;serial=command;deadline=SystemClock.elapsedRealtime()+40000;
@@ -72,21 +73,59 @@ final class GeckoLocalDraftIntegration {
       String payload=copy.toString();JSONObject source=new JSONObject(payload);
       if(!source.has("formdata")||!source.get("formdata").toString().contains(text(fresh))){post(()->later(()->awaitCaptured(fresh)));return;}
       if(!source.has("history")||!source.has("scrolldata")){post(()->later(()->awaitCaptured(fresh)));return;}
-      post(()->probe(dom->{
+      JSONObject observedSdk=J.obj("sourceSdkFormdataContainsUniqueDraft",source.get("formdata").toString().contains(text(fresh)),
+        "formdataRaw",source.get("formdata").toString(),"sourceSdkHistoryPresent",source.has("history"),"sourceSdkScrollDataPresent",source.has("scrolldata"),
+        "payloadBytes",payload.getBytes(StandardCharsets.UTF_8).length,"payloadSha256",sha(payload.getBytes(StandardCharsets.UTF_8)));
+      post(()->{retainPartial("sdkSource",observedSdk.toString());probe(dom->{
+        retainPartial("domSource",dom.toString());
         if(!text(fresh).equals(dom.optString("draft"))||Math.abs(dom.optDouble("scroll")-720)>2||dom.optInt("sends",-1)!=0){later(()->awaitCaptured(fresh));return;}
         if(!dom.optString("cookie").contains(COOKIE+"=kept")||!"synthetic-session-2".equals(dom.optString("token")))throw new IllegalStateException("Live fixture or positive session cookie missing");
         rememberCheck(dom,true);worker.execute(()->storeCaptured(payload,source,dom,fresh));
-      }));
+      });});
     }catch(Throwable error){post(()->fail(error));}});
   }
-  void rememberCheck(JSONObject dom,boolean enabled){
+  static String memoryUrl(String nonce){
+    if(nonce==null||!nonce.matches("[0-9a-f]{32}"))throw new IllegalArgumentException("Invalid F04 memory nonce");
+    return MainActivity.ORIGIN+"c/f04-"+nonce;
+  }
+  static JSONObject memoryInput(JSONObject dom,String nonce)throws JSONException{
+    if(dom==null)throw new IllegalArgumentException("Missing F04 source document");
+    String before=dom.toString();JSONObject copy=new JSONObject(before);copy.put("url",memoryUrl(nonce));
+    verifyMemoryInput(dom,copy,nonce);
+    if(!before.equals(dom.toString()))throw new IllegalStateException("F04 adapter changed original DOM");
+    return copy;
+  }
+  static void verifyMemoryInput(JSONObject dom,JSONObject copy,String nonce)throws JSONException{
+    String logical=memoryUrl(nonce),source="http://127.0.0.1:8765/browser-session?context=2&localDraft="+nonce+"#f04-saved";
+    if(dom==null||copy==null||dom==copy||!(dom.opt("url") instanceof String)||!source.equals(dom.getString("url"))||!(copy.opt("url") instanceof String)||!logical.equals(copy.getString("url")))throw new IllegalArgumentException("Foreign F04 source or logical document");
+    JSONObject restored=new JSONObject(copy.toString());restored.put("url",source);
+    if(!canonical(restored).equals(canonical(dom)))throw new IllegalStateException("F04 adapter changed fields other than URL");
+  }
+  void rememberCheck(JSONObject dom,boolean enabled){try{
     String scope=s.pageMemory.scope();if(scope.isEmpty())throw new IllegalStateException("Actual PageMemory scope missing");
+    String nonce=result.getString("fixtureNonce"),sourceRaw=dom.toString(),sourceUrl=dom.getString("url");
+    retainPartial("domSource",sourceRaw);
+    JSONObject adapted=memoryInput(dom,nonce);String logical=adapted.getString("url"),adaptedRaw=adapted.toString();
+    retainPartial("memoryInput",adaptedRaw);
+    String rejectedKey=scope+"|"+PageMemory.address(sourceUrl);long before=s.pageMemory.serial;int count=s.pageMemory.pages.size();
+    if(s.pageMemory.pages.containsKey(rejectedKey))throw new IllegalStateException("Unexpected loopback PageMemory entry");
+    // Exercise the production ChatGPT-only admission guard before adapting a copy.
+    // The SDK state and actual browser document remain the original loopback page.
     s.pageMemory.remember(scope,dom.optString("url"),dom);
-    JSONObject stored=s.pageMemory.pages.get(scope+"|"+PageMemory.address(dom.optString("url")));
+    long rejectedSerial=s.pageMemory.serial;boolean rejectedEntry=s.pageMemory.pages.containsKey(rejectedKey);
+    if(rejectedEntry||rejectedSerial!=before||s.pageMemory.pages.size()!=count)throw new IllegalStateException("Production loopback admission was not rejected");
+    s.pageMemory.remember(scope,logical,adapted);
+    JSONObject stored=s.pageMemory.pages.get(scope+"|"+PageMemory.address(logical));
+    if(stored!=null)retainPartial("memoryStored",stored.toString());
+    if(stored==null||s.pageMemory.serial!=before+1||!sourceRaw.equals(dom.toString())||!adaptedRaw.equals(adapted.toString()))throw new IllegalStateException("F04 adapted memory missing or input changed");
     boolean valid=stored!=null&&(enabled?text("stale-on".equals(phase)||"fresh-on".equals(phase)).equals(stored.optString("draft"))&&LocalDraftPolicy.mayRestore(a,stored):stored.isNull("draft")&&!PageMemory.completeDraft(stored)&&PageMemory.hasDraft(stored)&&!LocalDraftPolicy.mayRestore(a,stored));
     if(!valid)throw new IllegalStateException("Production PageMemory policy mismatch");
+    JSONObject adapter=result.optJSONObject("adapter");if(adapter==null){adapter=J.obj("schema",1,"kind","page-memory-remember-url-only","sourceDomUrl",sourceUrl,"logicalMemoryUrl",logical,"onlyUrlAdapted",true,"realChatGPT",false,"checks",new JSONArray());result.put("adapter",adapter);}
+    if(!sourceUrl.equals(adapter.getString("sourceDomUrl"))||!logical.equals(adapter.getString("logicalMemoryUrl")))throw new IllegalStateException("F04 adapter identity changed");
+    adapter.getJSONArray("checks").put(J.obj("enabled",enabled,"sourceDomRaw",sourceRaw,"sourceDomAfterRaw",dom.toString(),"memoryInputRaw",adaptedRaw,"storedSnapshotRaw",stored.toString(),
+      "loopbackSerialBefore",before,"loopbackSerialAfter",rejectedSerial,"storedSerial",s.pageMemory.serial,"loopbackEntryPresent",rejectedEntry,"storedEntryPresent",stored!=null,"policyRevision",LocalDraftPolicy.revision(a)));
     NetworkCatalog.put(result,enabled?"enabledPageMemoryKeepsActualDraft":"disabledPageMemoryRedactsActualDraft",true);
-  }
+  }catch(Exception error){throw new IllegalStateException("F04 PageMemory fixture failed",error);}}
   void storeCaptured(String payload,JSONObject source,JSONObject dom,boolean fresh){try{
     String name=fresh?"fresh":"original";long revision=LocalDraftPolicy.revision(a);
     BrowserSessionStore store=new BrowserSessionStore(context(name));store.write(payload);
@@ -178,7 +217,7 @@ final class GeckoLocalDraftIntegration {
       if(!"true".equals(raw))throw new IllegalStateException("Fixture cookie cleanup failed");
       boolean original=prefs.getBoolean("originalEnabled",true);AppPrefs.apply(a,J.obj("saveDraft",original));
       if(LocalDraftPolicy.enabled(a)!=original)throw new IllegalStateException("Original draft setting not restored");
-      s.pageMemory.pages.remove(s.pageMemory.scope()+"|"+PageMemory.address(target));
+      s.pageMemory.pages.remove(s.pageMemory.scope()+"|"+PageMemory.address(memoryUrl(result.getString("fixtureNonce"))));
       worker.execute(()->{try{deleteOwn(directory,directory.getCanonicalFile());prefs.edit().clear().commit();post(()->{NetworkCatalog.put(result,"ownFixtureCleaned",true);NetworkCatalog.put(result,"originalPolicyRestored",true);finishAfterCookieCheckpoint(true);});}catch(Throwable error){post(()->fail(error));}});
     }catch(Throwable error){fail(error);}});
   }
@@ -203,7 +242,13 @@ final class GeckoLocalDraftIntegration {
     };
   }
   void finish(){if(!current())return;try{EnvironmentSpec.Identity after=ProfileCatalog.get(a).identity(a.slot);if(!after.equals(environment))throw new IllegalStateException("F04 environment changed during fixture");result.put("environmentIdentityAfter",after.json());result.put("status","passed").put("actualGeckoSessionState",true);finished=true;worker.shutdown();a.event(serial,ACTION,result);}catch(Throwable error){finished=false;fail(error);}}
-  void fail(Throwable error){if(!current())return;finished=true;worker.shutdown();a.event(serial,"error",J.obj("error","F04 actual SDK regression: "+error,"phase",phase));}
+  void retainPartial(String key,String raw){try{
+    if(!Arrays.asList("sdkSource","domSource","memoryInput","memoryStored").contains(key))throw new IllegalArgumentException("Unknown F04 observation");
+    byte[] data=raw.getBytes(StandardCharsets.UTF_8);JSONObject observed=J.obj("utf8Bytes",data.length,"sha256",sha(data));
+    if(data.length<=8192)observed.put("rawUtf8",raw);else observed.put("rawOmitted",true);
+    partial.put(key,observed);
+  }catch(Exception ignored){/* Missing diagnostics never establish acceptance or replace the original error. */}}
+  void fail(Throwable error){if(!current())return;finished=true;worker.shutdown();a.event(serial,"error",J.obj("error","F04 actual SDK regression: "+error,"phase",phase,"diagnosticOnly",true,"acceptance",false,"partial",partial));}
   static byte[] bytes(File file)throws IOException{try(InputStream in=new FileInputStream(file);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(out.size()+n>BrowserSessionStore.LIMIT+65)throw new IOException("F04 file exceeds existing limit");out.write(b,0,n);}return out.toByteArray();}}
   static String sha(byte[] bytes)throws Exception{StringBuilder value=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))value.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return value.toString();}
   static boolean sameCookies(String left,String right){String[] a=left.split(";"),b=right.split(";");for(int i=0;i<a.length;i++)a[i]=a[i].trim();for(int i=0;i<b.length;i++)b[i]=b[i].trim();Arrays.sort(a);Arrays.sort(b);return Arrays.equals(a,b);}

@@ -26,13 +26,30 @@ def counterfeit():
     for index,name in enumerate(['seed','off','stale-on','fresh-on']):
         value=dict(schema=1,status='passed',phase=name,actualAndroidExecution=True,
             actualGeckoExecution=True,fixtureOwnedStore=True,explicitSdkRestore=True,
-            automaticStartupSelectionAcceptance=False,physicalPhoneAcceptance=False,
+            automaticStartupSelectionAcceptance=False,physicalPhoneAcceptance=False,realChatGptPageMemoryCapture=False,
             actualGeckoSessionState=True,fixtureNonce=nonce,profileSlot=1,pid=1000+index)
         value.update(cookieJournalCheckpointed=True,nativeSessionCookiePresent=True,
             environmentIdentity=dict(slot=1,generation=0,environmentId='12345678-1234-1234-1234-123456789012'),
             environmentIdentityAfter=dict(slot=1,generation=0,environmentId='12345678-1234-1234-1234-123456789012'))
         if name in ('seed','stale-on'):
             value.update(capture=copy.deepcopy(original if name=='seed' else fresh),enabledPageMemoryKeepsActualDraft=True)
+            source_url='http://127.0.0.1:8765/browser-session?context=2&localDraft='+nonce+'#f04-saved'
+            logical='https://chatgpt.com/c/f04-'+nonce;draft=('f04-enabled-' if name=='seed' else 'f04-fresh-')+nonce
+            dom=dict(ok=True,url=source_url,draft=draft,draftLength=len(draft),draftComplete=True,hasDraft=True,
+                     selectionStart=len(draft),selectionEnd=len(draft),cookie='f04Draft=kept',token='synthetic-session-2',
+                     history=8,scroll=720,sends=0,document=1720000000000+index)
+            rows=[]
+            for serial,enabled in enumerate((True,False) if name=='seed' else (True,)):
+                revision=(serial if name=='seed' else 2);adapted=dict(dom,url=logical)
+                stored=dict(adapted,localDraftPolicyRevision=revision)
+                if not enabled:
+                    stored.update(draft=None,draftComplete=False,draftOmittedReason='local-saving-disabled')
+                    stored.pop('selectionStart');stored.pop('selectionEnd')
+                rows.append(dict(enabled=enabled,policyRevision=revision,sourceDomRaw=json.dumps(dom),sourceDomAfterRaw=json.dumps(dom),
+                    memoryInputRaw=json.dumps(adapted),storedSnapshotRaw=json.dumps(stored),loopbackSerialBefore=serial,
+                    loopbackSerialAfter=serial,storedSerial=serial+1,loopbackEntryPresent=False,storedEntryPresent=True))
+            value['adapter']=dict(schema=1,kind='page-memory-remember-url-only',sourceDomUrl=source_url,
+                logicalMemoryUrl=logical,onlyUrlAdapted=True,realChatGPT=False,checks=rows)
         if name=='seed':value.update(disabledPageMemoryRedactsActualDraft=True,
             liveDraftPreservedAfterDisable=True,disabledBeforeProcessDeath=True,currentRevision=1)
         else:
@@ -133,6 +150,61 @@ class DraftControls(unittest.TestCase):
     def test_boolean_policy_revision(self):self.reject(lambda v:v['phases'][0].update(currentRevision=True))
     def test_boolean_capture_send(self):self.reject(lambda v:v['phases'][0]['capture'].update(sends=False))
     def test_boolean_phase_schema(self):self.reject(lambda v:v['phases'][0].update(schema=True))
+    def test_memory_adapter_missing(self):self.reject(lambda v:v['phases'][0].pop('adapter'))
+    def test_memory_scope_cannot_claim_website_capture(self):
+        self.reject(lambda v:v['phases'][0].update(realChatGptPageMemoryCapture=True))
+        self.reject(lambda v:v['phases'][0]['adapter'].update(realChatGPT=True))
+    def test_memory_adapter_foreign_urls(self):
+        for field in ('sourceDomUrl','logicalMemoryUrl'):
+            self.reject(lambda v,field=field:v['phases'][0]['adapter'].update({field:'https://chatgpt.com/c/foreign'}))
+    def test_memory_adapter_flags_do_not_replace_actual_rows(self):
+        self.reject(lambda v:v['phases'][0]['adapter'].update(checks=[]))
+        self.reject(lambda v:v['phases'][0]['adapter']['checks'][0].update(storedSnapshotRaw='null'))
+        self.reject(lambda v:v['phases'][0]['adapter']['checks'][0].update(storedSnapshotRaw='{}'))
+    def test_memory_adapter_only_url_is_allowed(self):
+        for field,replacement in [('draft','other'),('selectionStart',0),('cookie',''),('history',9),('scroll',0),('document',1),('hasDraft',1)]:
+            def change(value):
+                row=value['phases'][0]['adapter']['checks'][0];data=json.loads(row['memoryInputRaw']);data[field]=replacement;row['memoryInputRaw']=json.dumps(data)
+            with self.subTest(field=field):self.reject(change)
+    def test_memory_original_dom_is_not_mutated(self):
+        self.reject(lambda v:v['phases'][0]['adapter']['checks'][0].update(sourceDomAfterRaw='{}'))
+    def test_memory_loopback_call_must_reject(self):
+        self.reject(lambda v:v['phases'][0]['adapter']['checks'][0].update(loopbackEntryPresent=True))
+        self.reject(lambda v:v['phases'][0]['adapter']['checks'][0].update(loopbackSerialAfter=1))
+    def test_memory_adapted_call_must_store(self):
+        self.reject(lambda v:v['phases'][0]['adapter']['checks'][0].update(storedEntryPresent=False))
+        self.reject(lambda v:v['phases'][0]['adapter']['checks'][0].update(storedSerial=0))
+    def test_memory_disabled_snapshot_must_redact(self):
+        def change(value):
+            row=value['phases'][0]['adapter']['checks'][1];row['storedSnapshotRaw']=row['memoryInputRaw']
+        self.reject(change)
+    def test_memory_flags_have_strict_types(self):
+        self.reject(lambda v:v['phases'][0]['adapter'].update(onlyUrlAdapted=1))
+        self.reject(lambda v:v['phases'][0]['adapter'].update(realChatGPT=0))
+        self.reject(lambda v:v['phases'][0]['adapter']['checks'][0].update(policyRevision=False))
+    def test_memory_raw_duplicate_fields_are_rejected(self):
+        for field in ('sourceDomRaw','memoryInputRaw','storedSnapshotRaw'):
+            def change(value):
+                row=value['phases'][0]['adapter']['checks'][0]
+                row[field]='{"draft":"counterfeit",'+row[field][1:]
+                if field=='sourceDomRaw':row['sourceDomAfterRaw']=row[field]
+            with self.subTest(field=field):self.reject(change)
+    def test_memory_raw_nonfinite_fields_are_rejected(self):
+        for invalid in ('NaN','Infinity','1e400'):
+            def change(value):
+                row=value['phases'][0]['adapter']['checks'][0]
+                for field in ('sourceDomRaw','sourceDomAfterRaw','memoryInputRaw','storedSnapshotRaw'):
+                    row[field]='{"extra":'+invalid+','+row[field][1:]
+            with self.subTest(value=invalid):self.reject(change)
+    def test_partial_failure_evidence_cannot_establish_acceptance(self):
+        value=counterfeit();raw=device(value);record=raw['eventTransport']['invocations'][0]['events'][0]
+        envelope=json.loads(record['rawUtf8']);event=envelope['event'];event['kind']='error'
+        event['result']=dict(error='F04 actual SDK regression: retained failure',diagnosticOnly=True,
+            acceptance=False,partial=dict(domSource=dict(rawUtf8=value['phases'][0]['adapter']['checks'][0]['sourceDomRaw'])))
+        encoded=json.dumps(envelope,separators=(',',':'))+'\n';record['rawUtf8']=encoded
+        record['receipt'].update(eventKind='error',payloadBytes=len(encoded.encode()),payloadSha256=hashlib.sha256(encoded.encode()).hexdigest())
+        with self.assertRaisesRegex(ValueError,'raw device error'):
+            verify_local_draft_policy(value,device=raw,source='a'*40)
 
 
 class PublicStageControls(unittest.TestCase):
