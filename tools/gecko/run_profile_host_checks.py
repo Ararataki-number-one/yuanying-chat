@@ -309,7 +309,7 @@ def main():
     client_report=json.loads(client_receipt.read_text());client_contract=runpy.run_path(str(client_host))
     client_sources=transport_client_inputs|{source/'NetworkTransportClient.java',source/'J.java'}
     expected_client_files={str(path.relative_to(ROOT)):before_hashes[path] for path in client_sources}
-    if (client_report.get('status')!='passed' or type(client_report.get('passed')) is not int or client_report['passed']!=74
+    if (client_report.get('status')!='passed' or type(client_report.get('passed')) is not int or client_report['passed']!=92
             or client_report.get('sourceIdentity')!={'sourceCommit':source_id,'sourceTree':source_tree,
                 'sourceDirty':bool(source_status.strip()),'sourceFiles':expected_client_files}
             or client_report.get('oldFailuresReproduced') is not True
@@ -328,7 +328,7 @@ def main():
                 or (record['exitCode']!=0 if name=='current' else record['exitCode']==0)):
             raise ValueError('Network-client lifecycle execution selection differs')
     results.append(dict(test='network-transport-client-host',report=str(client_receipt.relative_to(ROOT)),
-                        passed=74,actualAndroidExecution=False,evidence=client_report))
+                        passed=92,actualAndroidExecution=False,evidence=client_report))
     files.update(transport_client_inputs)
     files.update((source/'NetworkTransportClient.java',source/'J.java'))
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id

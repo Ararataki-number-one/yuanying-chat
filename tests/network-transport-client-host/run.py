@@ -19,8 +19,9 @@ KNOWN_OLD_FAILURES={
 CASE_NAMES={'null lifecycle','disconnect during bind wait','binding death','stale callbacks',
             'pending requests and reply epochs','terminal pending requests','false and exceptional binds',
             'synchronous callbacks','detach fencing','normal call and errors','interruptions',
-            'real reply timeout and duplicate completion'}
-EXPECTED_CHECK_COUNT=74
+            'real reply timeout and duplicate completion','failed attempt dispatcher cleanup',
+            'unattempted queued owner','failed unbind is bounded'}
+EXPECTED_CHECK_COUNT=92
 
 def sha(raw):return hashlib.sha256(raw).hexdigest()
 

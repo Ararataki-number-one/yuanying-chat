@@ -20,7 +20,7 @@ final class NetworkTransportClient {
     Epoch(Binding binding){this.binding=binding;replies=new Messenger(new Handler(Looper.getMainLooper()){public void handleMessage(Message message){receive(Epoch.this,message);}});}
   }
   final class Binding implements ServiceConnection {
-    Epoch epoch=new Epoch(this);boolean finished,accepted,retired,unbindPosted,unbound;
+    Epoch epoch=new Epoch(this);boolean attempted,finished,accepted,retired,unbindPosted,unbound;
     boolean current(){return connection==this&&bound&&!retired;}
     public void onServiceConnected(ComponentName name,IBinder binder){synchronized(NetworkTransportClient.this){
       if(!current()||epoch.target!=null)return;
@@ -68,11 +68,11 @@ final class NetworkTransportClient {
     if(announce)publish(J.obj("slot",slot,"alive",false,"state","failed"));
   }
   void scheduleUnbind(Binding binding){
-    if(!binding.finished||!binding.accepted||!binding.retired||binding.unbindPosted)return;
+    if(!binding.finished||!binding.attempted||!binding.retired||binding.unbindPosted)return;
     binding.unbindPosted=true;main.post(()->unbind(binding));
   }
   void unbind(Binding binding){
-    synchronized(this){if(!binding.finished||!binding.accepted||!binding.retired||binding.unbound)return;binding.unbound=true;}
+    synchronized(this){if(!binding.finished||!binding.attempted||!binding.retired||binding.unbound)return;binding.unbound=true;}
     try{context.unbindService(binding);}catch(Exception ignored){}
   }
   synchronized Binding bind(){
@@ -80,13 +80,17 @@ final class NetworkTransportClient {
     main.post(()->{
       synchronized(NetworkTransportClient.this){if(!binding.current())return;}
       boolean accepted=false;
-      try{accepted=context.bindService(new Intent(context,NetworkTransportService.class),binding,Context.BIND_AUTO_CREATE);if(!accepted)note(NetworkDiagnostics.Event.IPC_BIND_REJECTED,NetworkDiagnostics.Stage.BIND,0);}
+      try{Intent intent=new Intent(context,NetworkTransportService.class);
+        synchronized(NetworkTransportClient.this){if(!binding.current())return;binding.attempted=true;}
+        accepted=context.bindService(intent,binding,Context.BIND_AUTO_CREATE);if(!accepted)note(NetworkDiagnostics.Event.IPC_BIND_REJECTED,NetworkDiagnostics.Stage.BIND,0);}
       catch(Exception failed){note(NetworkDiagnostics.Event.IPC_BIND_EXCEPTION,NetworkDiagnostics.Stage.BIND,0);}
       synchronized(NetworkTransportClient.this){
         binding.finished=true;binding.accepted=accepted;
-        if(!accepted){if(binding.current())retire(binding,false);}
-        else if(binding.retired)scheduleUnbind(binding);
-        else if(binding.current()&&binding.epoch.target!=null){service=binding.epoch.target;binding.epoch.gate.countDown();}
+        if(!accepted&&binding.current())retire(binding,false);
+        // Context retains a ServiceDispatcher even for false/SecurityException.
+        // A synchronous terminal callback may already have retired this owner.
+        if(binding.retired)scheduleUnbind(binding);
+        else if(accepted&&binding.current()&&binding.epoch.target!=null){service=binding.epoch.target;binding.epoch.gate.countDown();}
       }
     });return binding;
   }

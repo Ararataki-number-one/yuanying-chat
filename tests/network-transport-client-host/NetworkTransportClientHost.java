@@ -31,14 +31,16 @@ public final class NetworkTransportClientHost {
  }
  static final class HostContext extends Context {
   final List<ServiceConnection> bindings=new ArrayList<>(),unbindings=new ArrayList<>();final Set<ServiceConnection> registered=Collections.newSetFromMap(new IdentityHashMap<>());
-  boolean nextAccepted=true;RuntimeException nextException;Consumer<ServiceConnection> duringBind;int foreground;
+  boolean nextAccepted=true,insideBind,failUnbindOnce;RuntimeException nextException;Consumer<ServiceConnection> duringBind;int foreground,prematureUnbinds;
   public boolean bindService(Intent intent,ServiceConnection connection,int flags){
    if(Looper.myLooper()!=MAIN)throw new AssertionError("bind must execute on simulated main");
    bindings.add(connection);boolean accepted=nextAccepted;RuntimeException failure=nextException;Consumer<ServiceConnection> hook=duringBind;
-   nextAccepted=true;nextException=null;duringBind=null;if(hook!=null)hook.accept(connection);
-   if(failure!=null)throw failure;if(accepted)registered.add(connection);return accepted;
+   // ContextImpl allocates LoadedApk's ServiceDispatcher before the AMS result.
+   // False/SecurityException still need unbindService to forget that dispatcher.
+   nextAccepted=true;nextException=null;duringBind=null;registered.add(connection);insideBind=true;
+   try{if(hook!=null)hook.accept(connection);if(failure!=null)throw failure;return accepted;}finally{insideBind=false;}
   }
-  public void unbindService(ServiceConnection connection){unbindings.add(connection);if(!registered.remove(connection))throw new IllegalArgumentException("Host connection not registered");}
+  public void unbindService(ServiceConnection connection){unbindings.add(connection);if(insideBind)prematureUnbinds++;if(failUnbindOnce){failUnbindOnce=false;throw new IllegalArgumentException("Synthetic dispatcher release failure");}if(!registered.remove(connection))throw new IllegalArgumentException("Host connection not registered");}
   public ComponentName startForegroundService(Intent intent){foreground++;return NAME;}
   ServiceConnection latest(){return bindings.get(bindings.size()-1);}
  }
@@ -121,7 +123,7 @@ public final class NetworkTransportClientHost {
  }
  static void rejectedAndExceptionalBinds()throws Exception{
   for(boolean throwing:new boolean[]{false,true}){Fixture f=new Fixture();if(throwing)f.context.nextException=new IllegalStateException("synthetic bind failure");else f.context.nextAccepted=false;
-   f.client.bind();CountDownLatch old=gate(f.client);MAIN.drain();check((throwing?"Exception":"False return")+" retires old binding and releases original gate",!bound(f.client)&&old.getCount()==0&&f.client.service==null&&f.context.unbindings.isEmpty());
+   f.client.bind();CountDownLatch old=gate(f.client);MAIN.drain();check((throwing?"Exception":"False return")+" retires old binding, releases original gate and forgets dispatcher once",!bound(f.client)&&old.getCount()==0&&f.client.service==null&&f.context.unbindings.size()==1&&f.context.registered.isEmpty());
    ServiceConnection retired=f.context.latest();connected(retired,new Remote());check((throwing?"Exception":"False return")+" ignores late onServiceConnected",f.client.service==null&&!bound(f.client));
    f.client.bind();MAIN.drain();check((throwing?"Exception":"False return")+" allows fresh pending gate on next demand",f.context.bindings.size()==2&&gate(f.client)!=old&&gate(f.client).getCount()==1);
   }
@@ -131,15 +133,42 @@ public final class NetworkTransportClientHost {
   f.bind();check("Synchronous connected callback does not expose unaccepted binder",withheld[0]);check("Accepted synchronous connected callback activates only after true return",f.client.service!=null&&gate(f.client).getCount()==0&&bound(f.client));
   Fixture nullCase=new Fixture();nullCase.context.duringBind=NetworkTransportClientHost::nullBinding;ServiceConnection owner=nullCase.bind();
   check("Synchronous null followed by true is retired and unbound once",!bound(nullCase.client)&&nullCase.client.service==null&&nullCase.context.unbindings.size()==1&&nullCase.context.unbindings.get(0)==owner);
+  check("Synchronous null cleanup waits for bindService to return",nullCase.context.prematureUnbinds==0&&nullCase.context.registered.isEmpty());
+  Fixture diedCase=new Fixture();diedCase.context.duringBind=NetworkTransportClientHost::died;ServiceConnection dead=diedCase.bind();
+  check("Synchronous death followed by true is retired and unbound once",!bound(diedCase.client)&&diedCase.client.service==null&&diedCase.context.unbindings.size()==1&&diedCase.context.unbindings.get(0)==dead&&diedCase.context.registered.isEmpty());
+  check("Synchronous death cleanup waits for bindService to return",diedCase.context.prematureUnbinds==0);
   for(boolean throwing:new boolean[]{false,true}){Fixture rejected=new Fixture();final CountDownLatch[] captured={null};rejected.context.duringBind=c->{try{captured[0]=gate(rejected.client);}catch(Exception error){throw new IllegalStateException(error);}connected(c,new Remote());};if(throwing)rejected.context.nextException=new IllegalStateException("after synchronous callback");else rejected.context.nextAccepted=false;rejected.bind();
-   check((throwing?"Thrown":"Rejected")+" bind cannot activate synchronous connected callback",!bound(rejected.client)&&rejected.client.service==null&&captured[0].getCount()==0&&rejected.context.unbindings.isEmpty());
+   check((throwing?"Thrown":"Rejected")+" bind cannot activate synchronous connected callback and releases dispatcher",!bound(rejected.client)&&rejected.client.service==null&&captured[0].getCount()==0&&rejected.context.unbindings.size()==1&&rejected.context.registered.isEmpty());
   }
   for(boolean nullCallback:new boolean[]{true,false})for(boolean throwing:new boolean[]{false,true}){
    Fixture terminal=new Fixture();final CountDownLatch[] captured={null};terminal.context.duringBind=c->{try{captured[0]=gate(terminal.client);}catch(Exception error){throw new IllegalStateException(error);}if(nullCallback)nullBinding(c);else died(c);};
    if(throwing)terminal.context.nextException=new IllegalStateException("synchronous terminal then throw");else terminal.context.nextAccepted=false;ServiceConnection retired=terminal.bind();
-   check("Synchronous "+(nullCallback?"null":"death")+" with "+(throwing?"exception":"false return")+" releases waiter without unbinding unaccepted owner",captured[0].getCount()==0&&!bound(terminal.client)&&terminal.client.service==null&&terminal.context.unbindings.isEmpty());
+   check("Synchronous "+(nullCallback?"null":"death")+" with "+(throwing?"exception":"false return")+" releases waiter and dispatcher once",captured[0].getCount()==0&&!bound(terminal.client)&&terminal.client.service==null&&terminal.context.unbindings.size()==1&&terminal.context.registered.isEmpty());
+   check("Synchronous "+(nullCallback?"null":"death")+" with "+(throwing?"exception":"false return")+" defers dispatcher release until bindService finishes",terminal.context.prematureUnbinds==0);
    connected(retired,new Remote());check("Late connect after synchronous "+(nullCallback?"null":"death")+" and "+(throwing?"exception":"false return")+" stays retired",!bound(terminal.client)&&terminal.client.service==null);
   }
+ }
+ static void failedAttemptDispatchers()throws Exception{
+  for(boolean security:new boolean[]{false,true}){
+   Fixture f=new Fixture();for(int i=0;i<20;i++){if(security)f.context.nextException=new SecurityException("Synthetic AMS bind denial");else f.context.nextAccepted=false;f.client.bind();MAIN.drain();}
+   String kind=security?"SecurityException":"False return";
+   check(kind+" twenty explicit attempts all execute without automatic retry",f.context.bindings.size()==20);
+   check(kind+" twenty failed attempts each release their own dispatcher once",f.context.unbindings.size()==20&&new HashSet<>(f.context.unbindings).size()==20);
+   check(kind+" repeated failed attempts leave no retained framework dispatcher",f.context.registered.isEmpty()&&!bound(f.client)&&f.client.service==null);
+  }
+ }
+ static void unattemptedQueuedOwner()throws Exception{
+  Fixture f=new Fixture();f.client.bind();ServiceConnection skipped=connection(f.client);nullBinding(skipped);f.client.bind();MAIN.drain();ServiceConnection active=f.context.latest();
+  check("Retired queued generation never executes its bindService call",f.context.bindings.size()==1&&active!=skipped);
+  check("A queued generation never actually attempted is not unbound",f.context.unbindings.isEmpty()&&f.context.registered.size()==1&&f.context.registered.contains(active));
+  Remote remote=new Remote();connected(active,remote);died(active);MAIN.drain();
+  check("Only the actually attempted replacement dispatcher is released",f.context.unbindings.size()==1&&f.context.unbindings.get(0)==active&&f.context.registered.isEmpty());
+ }
+ static void failedUnbindIsBounded()throws Exception{
+  Fixture f=new Fixture();ServiceConnection old=f.open();f.context.failUnbindOnce=true;nullBinding(old);MAIN.drain();died(old);nullBinding(old);MAIN.drain();
+  check("An unbind exception still permits only one cleanup attempt",f.context.unbindings.size()==1&&!bound(f.client)&&f.client.service==null);
+  ServiceConnection active=f.bind();Remote remote=new Remote();connected(active,remote);died(old);nullBinding(old);MAIN.drain();
+  check("A prior cleanup exception cannot unbind the replacement owner",f.context.unbindings.size()==1&&f.context.bindings.size()==2&&f.context.registered.contains(active)&&bound(f.client)&&f.client.service!=null);
  }
  static void detachFencing()throws Exception{
   Fixture f=new Fixture();ServiceConnection old=f.open();try(Call detach=new Call(f.client,true)){
@@ -192,6 +221,7 @@ public final class NetworkTransportClientHost {
  public static void main(String[]args){
   runCase("null lifecycle",NetworkTransportClientHost::nullLifecycle);runCase("disconnect during bind wait",NetworkTransportClientHost::disconnectPendingBind);runCase("binding death",NetworkTransportClientHost::bindingDied);runCase("stale callbacks",NetworkTransportClientHost::staleCallbacks);runCase("pending requests and reply epochs",NetworkTransportClientHost::pendingRequestsAndReplies);runCase("terminal pending requests",NetworkTransportClientHost::terminalPendingRequests);runCase("false and exceptional binds",NetworkTransportClientHost::rejectedAndExceptionalBinds);runCase("synchronous callbacks",NetworkTransportClientHost::synchronousCallbacks);runCase("detach fencing",NetworkTransportClientHost::detachFencing);runCase("normal call and errors",NetworkTransportClientHost::normalCallAndErrors);runCase("interruptions",NetworkTransportClientHost::interruptions);
   runCase("real reply timeout and duplicate completion",NetworkTransportClientHost::replyTimeoutAndDuplicate);
+  runCase("failed attempt dispatcher cleanup",NetworkTransportClientHost::failedAttemptDispatchers);runCase("unattempted queued owner",NetworkTransportClientHost::unattemptedQueuedOwner);runCase("failed unbind is bounded",NetworkTransportClientHost::failedUnbindIsBounded);
   System.out.println(J.obj("status",failures==0?"passed":"failed","checkCount",checks.length(),"failedCount",failures,"checks",checks,"cases",cases,"replyTimeoutObservation",timeoutObservation,"actualAndroidExecution",false,"actualBinderExecution",false,"actualServiceExecution",false));if(failures!=0)System.exit(1);
  }
 }

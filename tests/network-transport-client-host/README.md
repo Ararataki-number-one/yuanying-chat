@@ -14,6 +14,20 @@ the real JVM future. It retains the elapsed monotonic interval and then checks
 expired and duplicate replies. This is a timeout/correlation correctness test,
 not Android or network performance evidence.
 
+The dispatcher adapter follows Android 15 `Context.bindService` documentation
+and `ContextImpl.bindServiceCommon` / `LoadedApk.getServiceDispatcherCommon`:
+the framework records the connection before the AMS result. A false result or
+`SecurityException` must therefore be followed by `unbindService` too. The
+earlier 74-check candidate incorrectly treated only accepted bindings as owned;
+its reports remain preserved, and its false/exception cleanup oracles are
+explicitly corrected here. The new 92-check suite tests twenty failed explicit
+attempts of each kind, deferred cleanup after synchronous callbacks, generations
+never actually attempted, and bounded cleanup failure.
+
+Official source reference: `aosp-mirror/platform_frameworks_base`, immutable tag
+`android-15.0.0_r1`, `core/java/android/content/Context.java`,
+`core/java/android/app/ContextImpl.java`, and `core/java/android/app/LoadedApk.java`.
+
 The deferred-detach test deliberately delays a posted cleanup while admitting
 a replacement binding. This is a controlled ordering probe for owner fencing,
 not a claim about Android Handler scheduling or a physical-device reproduction.
