@@ -6,6 +6,7 @@ No Android process, installed APK, Keystore operation or device is exercised.
 import hashlib
 import importlib.util
 import json
+import contextlib
 from pathlib import Path
 import subprocess
 import sys
@@ -415,6 +416,169 @@ class ActualRunnerFailureContract(unittest.TestCase):
         self.assertEqual((self.out / 'network-source-route-cleanup-logcat-stdout.raw.log').read_bytes(), log + foreign)
 
 
+class ActualRunnerTeardownContract(unittest.TestCase):
+    """Real main/fence with injected external teardown faults, no Android IO."""
+    setUp = ActualRunnerFailureContract.setUp
+    tearDown = ActualRunnerFailureContract.tearDown
+
+    def run_case(self, *, reverse_timeout=False, terminate_error=False, communicate=(),
+                 kill_error=False, cleanup_error=False, receipt_write_error=False,
+                 passed_business_adapter=False):
+        boundary, timeline, nodes, observed = self.boundary, [], [], {}
+        class FaultyNode(boundary.Node):
+            def __init__(self, command, **kwargs):
+                super().__init__(command, **kwargs)
+                self.waits = 0
+                nodes.append(self)
+            def terminate(self):
+                timeline.append('terminate')
+                if terminate_error:
+                    raise OSError('controlled terminate exception')
+                super().terminate()
+            def communicate(self, timeout=None):
+                timeline.append(('communicate', timeout))
+                self.waits += 1
+                kind = communicate[self.waits - 1] if self.waits <= len(communicate) else None
+                if kind == 'timeout':
+                    raise subprocess.TimeoutExpired(['controlled-node'], timeout)
+                if kind == 'error':
+                    raise OSError('controlled communicate exception')
+                return super().communicate(timeout=timeout)
+            def kill(self):
+                timeline.append('kill')
+                if kill_error:
+                    raise OSError('controlled kill exception')
+                super().kill()
+        class FaultyScenario(boundary.MainScenario):
+            def run(self, command, **kwargs):
+                value = super().run(command, **kwargs)
+                if command[3:] == ['reverse', '--remove', 'tcp:9879']:
+                    timeline.append('reverse-remove')
+                    if reverse_timeout:
+                        raise subprocess.TimeoutExpired(command, 30)
+                return value
+        real_cleanup = self.fence.cleanup
+        def traced_cleanup(*args, **kwargs):
+            observed['primary'] = sys.exception()
+            timeline.append('package-cleanup')
+            if cleanup_error:
+                raise RuntimeError('controlled package cleanup callback exception')
+            return real_cleanup(*args, **kwargs)
+        self.fence.cleanup = traced_cleanup
+        log = self.log
+        provider = None
+        if passed_business_adapter:
+            # Only the terminal business verifier is controlled in these three
+            # qualification tests; this never claims the original77 passed.
+            log = self.log.split(b'FATAL EXCEPTION', 1)[0] + b'PocketNetworkSourceRoute: {"kind":"complete"}\n'
+            provider = json.dumps(dict(schema=1, status='passed', sourceCommit=boundary.COMMIT,
+                runNonce=boundary.NONCE, buildIdentity=self.identity)).encode()
+        scenario = FaultyScenario(log=log, provider=provider)
+        scenario.cleanupFence = self.fence
+        write_text = Path.write_text
+        def controlled_write(path, *args, **kwargs):
+            if receipt_write_error and path.name in ('network-source-route-cleanup.json',
+                                                     'network-source-route-teardown-errors.json'):
+                timeline.append('failed-write:' + path.name)
+                raise OSError('controlled teardown artifact write exception')
+            return write_text(path, *args, **kwargs)
+        error = None
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(boundary, 'Node', FaultyNode))
+            stack.enter_context(mock.patch.object(Path, 'write_text', controlled_write))
+            if passed_business_adapter:
+                stack.enter_context(mock.patch.object(boundary.RUNNER, 'verify', return_value={'controlledBusinessAdapter': True}))
+            try:
+                scenario.execute()
+            except BaseException as failure:
+                error = failure
+        self.assertEqual(len(nodes), 1)
+        self.assertIn('terminate', timeline)
+        self.assertTrue(any(isinstance(row, tuple) and row[0] == 'communicate' for row in timeline))
+        self.assertEqual((self.out / 'network-source-route-logcat-stdout.raw.log').read_bytes(), log)
+        if not passed_business_adapter:
+            self.assertIsInstance(error, AssertionError)
+            self.assertIs(error, observed['primary'], 'Teardown must preserve the original exception object')
+            self.assertIn('FATAL EXCEPTION: original-business-failure', str(error))
+            self.assertEqual((self.out / 'network-source-route-failure-logcat-stdout.raw.log').read_bytes(), log)
+            self.assertEqual(json.loads((self.out / 'network-source-route-server-failure.json').read_text()),
+                             {'server': 'must-survive'})
+            self.assertNotIn('"status": "passed"', scenario.stdout.getvalue())
+        launches = [command for command, _ in scenario.run_calls if command[3:7] == ['shell', 'am', 'start', '-W']]
+        self.assertEqual(len(launches), 1)
+        receipt_path = self.out / 'network-source-route-cleanup.json'
+        receipt = json.loads(receipt_path.read_text()) if receipt_path.exists() else None
+        return dict(error=error, receipt=receipt, timeline=timeline, scenario=scenario, node=nodes[0])
+
+    def test_reverse_timeout_preserves_primary_and_still_shuts_down_node(self):
+        result = self.run_case(reverse_timeout=True)
+        self.assertEqual(result['receipt']['status'], 'cleanupUnknown')
+        self.assertFalse(result['receipt']['teardown']['reverseRemoved'])
+        self.assertTrue(result['receipt']['teardown']['nodeExitConfirmed'])
+        self.assertTrue(result['node'].stopped)
+        self.assertEqual(result['timeline'][-3:], ['reverse-remove', 'terminate', ('communicate', 5)])
+
+    def test_terminate_exception_still_attempts_bounded_communicate(self):
+        result = self.run_case(terminate_error=True)
+        self.assertFalse(result['receipt']['teardown']['nodeTerminateReturned'])
+        self.assertTrue(result['receipt']['teardown']['nodeExitConfirmed'])
+        self.assertEqual(result['receipt']['teardown']['errors'][0]['stage'], 'node-terminate')
+        self.assertEqual(result['timeline'][-2:], ['terminate', ('communicate', 5)])
+
+    def test_communicate_timeout_kills_and_waits_with_second_finite_budget(self):
+        result = self.run_case(communicate=('timeout',))
+        self.assertEqual(result['timeline'][-4:], ['terminate', ('communicate', 5), 'kill', ('communicate', 5)])
+        self.assertTrue(result['receipt']['teardown']['nodeKillReturned'])
+        self.assertTrue(result['receipt']['teardown']['nodeExitConfirmed'])
+        self.assertEqual(result['receipt']['teardown']['errors'][0]['stage'], 'node-communicate')
+
+    def test_kill_exception_does_not_skip_final_wait_and_unconfirmed_exit_stays_unknown(self):
+        result = self.run_case(communicate=('error', 'timeout'), kill_error=True)
+        self.assertEqual(result['timeline'][-4:], ['terminate', ('communicate', 5), 'kill', ('communicate', 5)])
+        self.assertFalse(result['receipt']['teardown']['nodeKillReturned'])
+        self.assertFalse(result['receipt']['teardown']['nodeExitConfirmed'])
+        self.assertEqual(result['receipt']['status'], 'cleanupUnknown')
+        self.assertEqual([x['stage'] for x in result['receipt']['teardown']['errors']],
+                         ['node-communicate', 'node-kill', 'node-communicate-after-kill'])
+
+    def test_package_cleanup_callback_exception_does_not_skip_node_or_replace_primary(self):
+        result = self.run_case(cleanup_error=True)
+        self.assertEqual(result['receipt']['status'], 'cleanupUnknown')
+        self.assertEqual(result['receipt']['teardown']['errors'][0]['stage'], 'package-cleanup')
+        self.assertEqual(self.device.stops(), [])
+        self.assertTrue(result['receipt']['teardown']['nodeExitConfirmed'])
+
+    def test_cleanup_and_error_receipt_write_failures_do_not_replace_primary_or_skip_shutdown(self):
+        result = self.run_case(receipt_write_error=True)
+        self.assertIsNone(result['receipt'])
+        self.assertIn('failed-write:network-source-route-cleanup.json', result['timeline'])
+        self.assertIn('failed-write:network-source-route-teardown-errors.json', result['timeline'])
+        self.assertTrue(result['node'].stopped)
+
+    def test_successful_business_adapter_is_rejected_when_reverse_cleanup_unknown(self):
+        result = self.run_case(reverse_timeout=True, passed_business_adapter=True)
+        self.assertIsInstance(result['error'], RuntimeError)
+        self.assertIn('cleanupUnknown', str(result['error']))
+        self.assertEqual(result['receipt']['status'], 'cleanupUnknown')
+        self.assertFalse(result['receipt']['runnerFailed'])
+        self.assertNotIn('"status": "passed"', result['scenario'].stdout.getvalue())
+
+    def test_successful_business_adapter_is_rejected_when_node_exit_unconfirmed(self):
+        result = self.run_case(communicate=('timeout', 'timeout'), kill_error=True,
+                               passed_business_adapter=True)
+        self.assertIsInstance(result['error'], RuntimeError)
+        self.assertEqual(result['receipt']['status'], 'cleanupUnknown')
+        self.assertFalse(result['receipt']['teardown']['nodeExitConfirmed'])
+        self.assertNotIn('"status": "passed"', result['scenario'].stdout.getvalue())
+
+    def test_successful_business_adapter_can_qualify_only_after_recovered_bounded_node_exit(self):
+        result = self.run_case(communicate=('timeout',), passed_business_adapter=True)
+        self.assertIsNone(result['error'])
+        self.assertEqual(result['receipt']['status'], 'cleaned')
+        self.assertTrue(result['receipt']['teardown']['nodeExitConfirmed'])
+        self.assertIn('"status": "passed"', result['scenario'].stdout.getvalue())
+
+
 class RecordedResult(unittest.TextTestResult):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -440,10 +604,14 @@ if __name__ == '__main__':
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(dict(status='passed' if result.wasSuccessful() else 'failed',
         actualAndroidExecution=False, actualProcessStopped=False, nativeOperationCancelled=False,
+        sourceCommitAtRun=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
+        sourceDirtyAtRun=bool(subprocess.check_output(['git','status','--porcelain','--untracked-files=normal'],cwd=ROOT,text=True).strip()),
+        retainedOriginalControls=38,addedTeardownControls=9,actualRunnerMainControls=12,
+        successfulBusinessVerifierAdapters=3,
         helperSha256=hashlib.sha256(HELPER.read_bytes()).hexdigest(),
         runnerSha256=hashlib.sha256((ROOT / 'tests/gecko/run_network_sources_route.py').read_bytes()).hexdigest(),
         retainedLogcatTestSha256=hashlib.sha256((ROOT / 'tests/gecko_source_route_logcat_test.py').read_bytes()).hexdigest(),
         testSha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        scope='Actual Python cleanup helper plus actual runner failure flow; controlled ADB/server replies, existing expected-build preflight adapter in three main controls; no device qualification',
+        scope='Actual Python cleanup helper and12 actual-main controls with controlled ADB/server and external expected-build preflight adapter; three explicit qualification controls replace the business verifier only, never claim the original77 passed. No Android or process-stop qualification.',
         tests=result.rows), indent=2) + '\n')
     raise SystemExit(0 if result.wasSuccessful() else 1)

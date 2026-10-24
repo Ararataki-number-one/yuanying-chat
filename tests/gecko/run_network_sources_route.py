@@ -99,7 +99,8 @@ def main():
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();run_nonce=uuid.uuid4().hex
     for name in ['network-source-route-results.json','network-source-route-log.txt','network-source-route-server.json',
                  'network-source-route-failure-log.txt','network-source-route-server-failure.json',
-                 'network-source-route-server-cleanup-after.json','network-source-route-cleanup-diagnostic-errors.json']:(OUT/name).unlink(missing_ok=True)
+                 'network-source-route-server-cleanup-after.json','network-source-route-cleanup-diagnostic-errors.json',
+                 'network-source-route-teardown-errors.json']:(OUT/name).unlink(missing_ok=True)
     for stem in ('network-source-route-logcat','network-source-route-failure-logcat','network-source-route-cleanup-logcat'):
         for suffix in ('-stdout.raw.log','-stderr.raw.log','-display.txt','-decode.json'):(OUT/(stem+suffix)).unlink(missing_ok=True)
     (OUT/'network-source-route-diagnostic-errors.json').unlink(missing_ok=True)
@@ -154,32 +155,61 @@ def main():
             save_failure_diagnostics(args.adb,args.serial,d/'server.json')
             raise
         finally:
+            teardown_errors=[]
+            def teardown_step(stage, action):
+                """Every teardown action is bounded and cannot replace a primary failure."""
+                try:return True,action()
+                except BaseException as error:
+                    teardown_errors.append(dict(stage=stage,errorType=type(error).__name__,error=repr(error)))
+                    return False,None
             def final_snapshot():
                 capture_logcat(args.adb,args.serial,stem='network-source-route-cleanup-logcat',check=False)
                 return (OUT/'network-source-route-cleanup-logcat-stdout.raw.log').read_bytes()
             # Preserve the failed original streams/server before any final stop.
-            server_saved=(OUT/('network-source-route-server-failure.json' if failed else 'network-source-route-server.json')).is_file()
-            raw_saved=all((OUT/('network-source-route-logcat-'+label+'.raw.log')).is_file() for label in ('stdout','stderr'))
-            cleanup=fence.cleanup(final_snapshot,server_saved and raw_saved)
+            observed,evidence_saved=teardown_step('saved-evidence-inspection',lambda:
+                (OUT/('network-source-route-server-failure.json' if failed else 'network-source-route-server.json')).is_file()
+                and all((OUT/('network-source-route-logcat-'+label+'.raw.log')).is_file() for label in ('stdout','stderr')))
+            cleanup=dict(status='cleanupUnknown',forceStopAttempted=None,fixtureResultChanged=False,nativeOperationCancelled=False)
+            def cleanup_package():
+                value=fence.cleanup(final_snapshot,observed and evidence_saved)
+                if not isinstance(value,dict) or value.get('status') not in ('cleaned','cleanupUnknown'):
+                    raise ValueError('Package cleanup returned no valid identity-bound receipt')
+                return value
+            package_ok,package_receipt=teardown_step('package-cleanup',cleanup_package)
+            if package_ok:cleanup=package_receipt
             cleanup['runnerFailed']=failed
             # Preserve the server's currently persisted bytes after the stop
             # attempt, before terminating Node. Late contacts may be absent from
             # the earlier failure copy; neither snapshot is a full network cut.
-            try:
+            def server_after_cleanup():
                 late_server=(d/'server.json').read_bytes()
                 (OUT/'network-source-route-server-cleanup-after.json').write_bytes(late_server)
                 cleanup['serverAfterCleanupSnapshot']=dict(scope='Diagnostic current server bytes after cleanup attempt; not a complete network cutoff',
                     bytes=len(late_server),sha256=hashlib.sha256(late_server).hexdigest())
-            except Exception as diagnostic:
-                try:(OUT/'network-source-route-cleanup-diagnostic-errors.json').write_text(json.dumps(dict(
-                    scope='Secondary server-after-cleanup diagnostic error; original result retained',error=repr(diagnostic)),indent=2)+'\n')
-                except Exception:pass
-            try:(OUT/'network-source-route-cleanup.json').write_text(json.dumps(cleanup,indent=2)+'\n')
-            except Exception as error:
-                cleanup['status']='cleanupUnknown';print('Cannot persist cleanup receipt: '+repr(error),file=sys.stderr)
-            adb('reverse','--remove','tcp:'+str(PORT),check=False);process.terminate()
-            try:process.communicate(timeout=5)
-            except subprocess.TimeoutExpired:process.kill();process.communicate()
+            server_ok,_=teardown_step('server-after-cleanup-snapshot',server_after_cleanup)
+            if not server_ok:
+                teardown_step('server-after-cleanup-error-record',lambda:
+                    (OUT/'network-source-route-cleanup-diagnostic-errors.json').write_text(json.dumps(dict(
+                        scope='Secondary server-after-cleanup diagnostic error; original result retained',
+                        error=teardown_errors[-1]),indent=2)+'\n'))
+            reverse_ok,_=teardown_step('reverse-remove',lambda:adb('reverse','--remove','tcp:'+str(PORT)))
+            terminate_ok,_=teardown_step('node-terminate',process.terminate)
+            node_exited,_=teardown_step('node-communicate',lambda:process.communicate(timeout=5))
+            kill_ok=None
+            if not node_exited:
+                kill_ok,_=teardown_step('node-kill',process.kill)
+                node_exited,_=teardown_step('node-communicate-after-kill',lambda:process.communicate(timeout=5))
+            cleanup['teardown']=dict(reverseRemoved=reverse_ok,nodeTerminateReturned=terminate_ok,
+                nodeKillReturned=kill_ok,nodeExitConfirmed=node_exited,errors=teardown_errors)
+            if not reverse_ok or not node_exited:cleanup['status']='cleanupUnknown'
+            receipt_saved,_=teardown_step('cleanup-receipt-write',lambda:
+                (OUT/'network-source-route-cleanup.json').write_text(json.dumps(cleanup,indent=2)+'\n'))
+            if not receipt_saved:cleanup['status']='cleanupUnknown'
+            if teardown_errors:
+                teardown_step('teardown-error-record',lambda:
+                    (OUT/'network-source-route-teardown-errors.json').write_text(json.dumps(dict(
+                        scope='Independent teardown observations; original result retained',
+                        status=cleanup['status'],runnerFailed=failed,errors=teardown_errors),indent=2)+'\n'))
             if not failed and cleanup['status']!='cleaned':raise RuntimeError('Source-route cleanupUnknown; no further invocation is qualified')
         if passed_result is not None:print(json.dumps(passed_result),flush=True)
 
