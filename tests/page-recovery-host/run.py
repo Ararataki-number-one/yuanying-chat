@@ -27,7 +27,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--json-jar',required=True,type=pathlib.Path);a=p.parse_args()
     source=ROOT/'app/src/main/java/local/pocketchat'
     selections={
-      'CHAT':('ChatSession.java',['void awaitLogin(','boolean pageMayReportConnected(','void inspectPageStatus(','void sync(','void networkStatus(','void navigationTimeout(','void finishNavigation(String error,boolean retry)','void scheduleRecovery(','void runRecovery(','void acceptTranscript(','static final class ReloadTarget','ReloadTarget reloadTarget(','void reloadConfirmed(','void observeReplyProgress(','void diagnoseStalledReply(','void observeWebsiteProbe(','boolean retainExistingConnection(']),
+      'CHAT':('ChatSession.java',['void beginNavigation(','void awaitLogin(','boolean pageMayReportConnected(','void inspectPageStatus(','void sync(','void networkStatus(','void navigationTimeout(','void finishNavigation(String error,boolean retry)','void scheduleRecovery(','void runRecovery(','void acceptTranscript(','static final class ReloadTarget','ReloadTarget reloadTarget(','void reloadConfirmed(','void observeReplyProgress(','void diagnoseStalledReply(','void observeWebsiteProbe(','boolean retainExistingConnection(']),
       'PROVIDER':('NetworkUiProvider.java',['void captureTransition(']),
       'DEFERRED':('DeferredBrowserSettings.java',['static void drain(','static void release(']),
       'EDITOR':('EnvironmentEditorUi.java',['static void applySafely(MainActivity a,JSONObject value,EditText name,java.util.function.BooleanSupplier current,java.util.function.Consumer<Boolean> done)']),
@@ -36,7 +36,7 @@ def main():
       'MAIN':('MainActivity.java',['void status(','boolean reloadMatches(','void confirmIndependentReload(']),
       'REPLY':('ReplyState.java',['static String describe(','static void checkWithoutRecovery(','static void websiteConnection('])}
     fixture=pathlib.Path(__file__).parent/'PageRecoveryHost.java'
-    inputs={source/name for name,_ in selections.values()}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py')}
+    inputs={source/name for name,_ in selections.values()}|{source/name for name in ('WebReplyObserver.java','BrowserRuntimePolicy.java','BrowserSettingsPolicy.java')}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py')}
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(inputs)}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     text=fixture.read_text()

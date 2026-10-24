@@ -17,7 +17,7 @@ final class ChatSession {
   static BrowserFactory browserFactory=GeckoWebView::new;
   static ChatSession get(Context c){if(!ProfileCatalog.get(c).available(Profiles.slot(c)))throw new IllegalStateException("此环境正在维护或已删除");if(instance==null)instance=new ChatSession(c);return instance;}
   static ChatSession peek(){return instance;}
-  final Context context;final SharedPreferences prefs;final Handler handler=new Handler(Looper.getMainLooper());final GeckoWebView web;final BrowserReading reading;final BrowserPrivacy privacy;final BrowserNetworkGuard guard;EnvironmentAudit audit;final WebReplyObserver webObserver;long webConfirmationVersion=0;
+  final Context context;final SharedPreferences prefs;final Handler handler=new Handler(Looper.getMainLooper());final GeckoWebView web;final BrowserReading reading;final BrowserPrivacy privacy;final BrowserNetworkGuard guard;EnvironmentAudit audit;final WebReplyObserver webObserver;long webConfirmationVersion=0,webWorkGeneration=0;
   final List<WeakReference<Observer>> observers=new ArrayList<>();String driver="",attachmentDriver="",attachmentOwner="",conversation="",status="准备连接",pageError="",confirmedPrompt="";long confirmationVersion=0;
   JSONObject draftConflict,approvedDraft;JSONObject sentAttachments=new JSONObject();JSONObject state=new JSONObject();long stateEpoch=-1;boolean googleLoginBlocked;volatile JSONObject pending;JSONArray entries=new JSONArray(),attachments=new JSONArray();boolean networkReady=false,uiVisible=false,submitting=false,operation=false,inFlight=false;
   boolean showingCache=false,offline=false,connecting=false,recoveryScheduled=false,manualAttention=false;int recoveryAttempt=0;long recoveryToken=0;volatile long connectionEpoch=0;String networkIdentity="",networkIssue="",connectionStage="未连接";final ConversationStore cache;final WebTranscriptMirror webMirror=new WebTranscriptMirror();final WebTranscriptStore webStore;long lastWebSnapshot=0,syncRun=0;String lastWebUrl="",lastDeliverySignature="";final DeliveryStore deliveries;String activeDeliveryId="";volatile boolean transferActive=false;
@@ -71,7 +71,7 @@ final class ChatSession {
     if(reconnect){audit.cancel();invalidateConnection();privacy.apply();if(!offline)openConnection(false,protectionChanged);}
     else{privacy.apply();if(!offline)navigate(resumeUrl(),"正在应用网页设置…");}
   }
-  void beginNavigation(String url,String label){resourceObserverEpoch=-1;resetReplyStability();replyStalled=false;websiteConnectionIssue=false;navigationEpoch++;navigating=true;navigationFailed=false;navigationTarget=url;navigationLabel=label;spaTransition=false;documentNavigationSeen=false;navigationDispatched=true;priorDocumentId=lastDocumentId;awaitNewDocument=!priorDocumentId.isEmpty();spaStable=0;spaSignature="";navigationStarted=System.currentTimeMillis();trace.page("网页加载");navigationMono=SystemClock.elapsedRealtime();firstPageVisible=0;pageUsableAt=0;long epoch=navigationEpoch;setStatus(label);handler.postDelayed(()->navigationTimeout(epoch),45000);}
+  void beginNavigation(String url,String label){resourceObserverEpoch=-1;resetReplyStability();replyStalled=false;websiteConnectionIssue=false;navigationEpoch++;navigating=true;navigationFailed=false;navigationTarget=url;navigationLabel=label;spaTransition=false;documentNavigationSeen=false;navigationDispatched=true;if(!lastDocumentId.isEmpty())priorDocumentId=lastDocumentId;lastDocumentId="";awaitNewDocument=!priorDocumentId.isEmpty();spaStable=0;spaSignature="";navigationStarted=System.currentTimeMillis();trace.page("网页加载");navigationMono=SystemClock.elapsedRealtime();firstPageVisible=0;pageUsableAt=0;long epoch=navigationEpoch;setStatus(label);handler.postDelayed(()->navigationTimeout(epoch),45000);}
   void navigationTimeout(long epoch){
     if(!navigating||navigationEpoch!=epoch||web.resourceDeferred)return;
     // Readiness is a DOM observation, not evidence that the verified route died.
@@ -166,30 +166,63 @@ final class ChatSession {
   void retryCurrent(){if(web.retryResourceStart())return;manualAttention=false;recoveryAttempt=0;recoveryToken++;recoveryScheduled=false;if(!networkReady||offline||!guard.allowed())reconnect();else if(!web.recoverClosed())navigate(resumeUrl(),"正在重新加载…");}
   /** Native identity survives a broken page bridge; every destructive confirmation is scoped. */
   static final class ReloadTarget {
-    final ChatSession owner;final Object browser;final int slot,generation;
-    final long epoch,fileWork;final boolean filesActive,replyActive;final String url,document,job,identity,environmentId;final JSONObject pendingJob;
-    ReloadTarget(ChatSession session){owner=session;browser=session.web.current;slot=Profiles.slot(session.context);generation=session.environmentGeneration;environmentId=session.environmentId;
-      epoch=session.navigationEpoch;fileWork=session.fileWorkGeneration;filesActive=session.fileWorkActive();replyActive=session.currentReplyActive();url=session.web.getUrl();document=session.lastDocumentId;pendingJob=session.pending;job=pendingJob==null?"":pendingJob.optString("id");identity=session.appliedIdentity;}
-    boolean samePage(ChatSession session){
+    final ChatSession owner;final Object browser,port;final int slot,generation;
+    final long epoch,fileWork,webWork,archiveSequence;final boolean filesActive,replyActive,replyObserved,visible;final String url,document,job,identity,environmentId;final JSONObject pendingJob;
+    ReloadTarget(ChatSession session){this(session,false);}
+    ReloadTarget(ChatSession session,boolean inspectedInitialReply){owner=session;browser=session.web.current;port=session.web.ports.get(session.web.current);slot=Profiles.slot(session.context);generation=session.environmentGeneration;environmentId=session.environmentId;
+      epoch=session.navigationEpoch;fileWork=session.fileWorkGeneration;filesActive=session.fileWorkActive();replyActive=session.currentReplyActive()||inspectedInitialReply;replyObserved=replyStateKnown(session)||inspectedInitialReply;visible=session.web.hasVisibleDocument();url=session.web.getUrl();document=session.lastDocumentId;pendingJob=session.pending;job=pendingJob==null?"":pendingJob.optString("id");identity=session.appliedIdentity;
+      webWork=session.webWorkGeneration;archiveSequence=session.webObserver.navigationArchiveSequence;}
+    boolean sameNativePage(ChatSession session){
       if(owner!=session||session.deleted||browser!=session.web.current||slot!=Profiles.slot(session.context)||generation!=session.environmentGeneration||!environmentId.equals(session.environmentId))return false;
       JSONObject environment=ProfileCatalog.get(session.context).item(slot);
       return environment.optBoolean("created")&&!environment.optBoolean("deleting")&&!environment.optBoolean("resetting")&&environment.optInt("generation")==generation&&environmentId.equals(environment.optString("environmentId"))
-        &&epoch==session.navigationEpoch&&BrowserRuntimePolicy.sameDocument(url,session.web.getUrl())&&document.equals(session.lastDocumentId)&&identity.equals(session.appliedIdentity);
+        &&epoch==session.navigationEpoch&&BrowserRuntimePolicy.sameDocument(url,session.web.getUrl())&&identity.equals(session.appliedIdentity);
     }
-    boolean sameWork(ChatSession session){return samePage(session)&&fileWork==session.fileWorkGeneration&&(!session.fileWorkActive()||filesActive)&&(!session.currentReplyActive()||replyActive);}
+    boolean samePage(ChatSession session){return sameNativePage(session)&&document.equals(session.lastDocumentId);}
+    static boolean replyStateKnown(ChatSession session){
+      boolean stateKnown=session.stateEpoch==session.navigationEpoch&&BrowserRuntimePolicy.sameDocument(session.web.getUrl(),session.state.optString("url"))&&session.state.opt("busy") instanceof Boolean;
+      boolean resourceKnown=session.resourceWebsiteEpoch==session.navigationEpoch&&session.resourceObserverEpoch==session.navigationEpoch&&session.resourceObserverPort!=null&&session.resourceObserverPort==session.web.ports.get(session.web.current)&&!session.resourceObserverBinding.isEmpty()&&!session.resourceObserverDocument.isEmpty()&&BrowserRuntimePolicy.sameDocument(session.web.getUrl(),session.resourceObserverUrl);
+      return stateKnown||resourceKnown;
+    }
+    boolean unchangedWork(ChatSession session){return fileWork==session.fileWorkGeneration&&webWork==session.webWorkGeneration&&(!session.fileWorkActive()||filesActive);}
+    boolean sameWorkState(ChatSession session){return unchangedWork(session)&&(!session.currentReplyActive()||replyActive);}
+    /** Only the first proven observation may discover reply work that native state did not yet know. */
+    boolean initialReplyObservation(ChatSession session,JSONObject inspected){
+      String observed=inspected.optString("documentId");
+      if(replyObserved||!document.isEmpty()||port==null||!visible||!BrowserRuntimePolicy.sameDocument(url,inspected.optString("url"))||!observed.matches("[a-zA-Z0-9-]{16,80}")||!(inspected.opt("busy") instanceof Boolean)||!inspected.optBoolean("busy")||session.resourceWebsiteEpoch==epoch)return false;
+      boolean currentState=session.stateEpoch==epoch&&BrowserRuntimePolicy.sameDocument(url,session.state.optString("url"));
+      if(currentState)return session.state.opt("busy") instanceof Boolean&&session.state.optBoolean("busy")&&observed.equals(session.state.optString("documentId"))&&observed.equals(session.lastDocumentId);
+      return !session.currentReplyActive();
+    }
+    boolean samePort(ChatSession session){return port==session.web.ports.get(session.web.current)&&(!visible||session.web.hasVisibleDocument());}
+    boolean sameWork(ChatSession session){return samePage(session)&&samePort(session)&&sameWorkState(session);}
     boolean matches(ChatSession session){return sameWork(session)&&pendingJob==session.pending&&job.equals(session.pending==null?"":session.pending.optString("id"));}
+    /** Observation may register this exact port's first document and retire only its captured old job. */
+    boolean sameInspection(ChatSession session,JSONObject inspected){
+      if(session.navigating&&session.awaitNewDocument&&session.priorDocumentId.equals(inspected.optString("documentId")))return false;
+      if(!sameNativePage(session)||!samePort(session)||!unchangedWork(session))return false;
+      boolean inspectedBusy=inspected.optBoolean("busy"),firstReply=initialReplyObservation(session,inspected);
+      if(replyObserved&&!replyActive&&inspectedBusy||!replyObserved&&document.isEmpty()&&inspectedBusy&&!firstReply||session.currentReplyActive()&&!replyActive&&!firstReply)return false;
+      String observed=inspected.optString("documentId"),current=session.lastDocumentId;
+      boolean bridge=port!=null&&visible&&BrowserRuntimePolicy.sameDocument(url,inspected.optString("url"));
+      boolean initial=document.isEmpty()&&!observed.isEmpty(),validInitial=!initial||bridge&&observed.matches("[a-zA-Z0-9-]{16,80}");
+      boolean unchanged=document.equals(current),first=initial&&!current.isEmpty()&&current.equals(observed)&&validInitial;
+      if(!validInitial||!unchanged&&!first||!observed.isEmpty()&&!current.isEmpty()&&!observed.equals(current))return false;
+      if(pendingJob==session.pending&&job.equals(session.pending==null?"":session.pending.optString("id")))return true;
+      return bridge&&pendingJob!=null&&job.equals(pendingJob.optString("id"))&&session.pending==null&&session.webObserver.lastNavigationArchivedJob==pendingJob&&session.webObserver.navigationArchiveSequence==archiveSequence+1;
+    }
     boolean matchesSnapshot(JSONObject snapshot){return PageMemory.completeDraft(snapshot)&&WebReplyObserver.same(url,snapshot.optString("url"))&&!snapshot.optString("documentId").isEmpty()
       &&(document.isEmpty()||document.equals(snapshot.optString("documentId")));}
   }
   ReloadTarget reloadTarget(){return new ReloadTarget(this);}
-  /** Only this synchronous archival may retire the captured job before confirmation. */
+  /** Freeze confirmation only after this native page's non-destructive observation has converged. */
   ReloadTarget reloadTargetAfterInspection(ReloadTarget target,JSONObject inspected){
-    if(target==null||!target.matches(this))return null;
-    JSONObject job=pending;
-    boolean archived=WebReplyObserver.same(target.url,inspected.optString("url"))&&archiveWebsiteNavigation(inspected);
-    if(!archived)return target.matches(this)?target:null;
-    if(job==null||job!=target.pendingJob||pending!=null||!target.sameWork(this))return null;
-    return reloadTarget();
+    if(target==null||!target.sameInspection(this,inspected))return null;
+    if(target.pendingJob==pending&&WebReplyObserver.same(target.url,inspected.optString("url")))archiveWebsiteNavigation(inspected);
+    if(!target.sameInspection(this,inspected))return null;
+    String document=inspected.optString("documentId");
+    if(lastDocumentId.isEmpty()&&!document.isEmpty()&&target.port!=null&&BrowserRuntimePolicy.sameDocument(target.url,inspected.optString("url")))lastDocumentId=document;
+    return new ReloadTarget(this,target.initialReplyObservation(this,inspected));
   }
   /** No second bridge read/capture: the caller already archived, or explicitly accepted loss. */
   void reloadConfirmed(ReloadTarget target,JSONObject snapshot,boolean independent){

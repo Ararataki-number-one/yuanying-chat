@@ -6,10 +6,11 @@ from run import member, ROOT
 def run(json_jar):
     source=ROOT/'app/src/main/java/local/pocketchat'
     selections={
-      'CHAT':('ChatSession.java',['static final class ReloadTarget','ReloadTarget reloadTarget(','boolean archiveWebsiteNavigation(']),
+      'CHAT':('ChatSession.java',['static final class ReloadTarget','ReloadTarget reloadTarget(','boolean archiveWebsiteNavigation(','void completeReply(','void abandonWait(','boolean currentReplyActive(','void beginNavigation(']),
       'MAIN':('MainActivity.java',['boolean reloadMatches(','void requestReload(','void confirmReload(','void confirmIndependentReload(']),
-      'OBSERVER':('WebReplyObserver.java',['static boolean same(','static boolean webJob(','boolean archiveNavigation(']),
+      'OBSERVER':('WebReplyObserver.java',['static boolean same(','static boolean webJob(','boolean archiveNavigation(','void receive(JSONObject event,Object port)','static boolean stable(','static boolean bindingRoute(','void finishStopped(']),
       'POLICY':('BrowserRuntimePolicy.java',['static boolean sameDocument(','static boolean leftConversation(','static boolean official(','static String conversationId(']),
+      'REPLY_POLICY':('BrowserSettingsPolicy.java',['static boolean currentReply(']),
       'MEMORY':('PageMemory.java',['static boolean completeDraft(','static boolean hasDraft('])}
     if 'ReloadTarget reloadTargetAfterInspection(' in (source/'ChatSession.java').read_text():
         selections['CHAT'][1].append('ReloadTarget reloadTargetAfterInspection(')
