@@ -40,6 +40,15 @@ while time.monotonic()<deadline:
             raise
         if collected:continue
         report["checks"]=list(checks.values())
+        model_checks=[check for check in checks.values() if check['name'].startswith('Android read-model freshness ')]
+        if model_checks:
+            try:
+                summary=model_checks[0]['readModelSummary']
+                assert all(check['readModelSummary']==summary for check in model_checks),'Mixed read-model summaries'
+                report['networkReadModelFreshness']=dict(summary,cases=[check['readModel'] for check in model_checks])
+            except (AssertionError,KeyError,TypeError):
+                (out/'network-performance-failure-log.txt').write_text(raw)
+                raise
         report['exitTransportContinuity']=list(transport_evidence.values())
         if cold_website_summary is not None:
             report['coldWebsiteProbeDiagnosticSummary']=cold_website_summary

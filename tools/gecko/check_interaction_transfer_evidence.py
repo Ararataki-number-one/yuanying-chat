@@ -37,6 +37,60 @@ def verify_display_sampling(network):
     assert telemetry['newerSampleDuplicateRequests'] == 0
     assert telemetry['recoveryExitRequests'] == 1
     assert telemetry['webSocketConnections'] == 1 and telemetry['webSocketEchoes'] > 0
+    verify_read_model_freshness(network)
+
+READ_MODEL_CASES = (
+    ('fresh', 1000000, 1000000, True, '正常', True),
+    ('age44999', 1000000, 955001, True, '正常', True),
+    ('age45000', 1000000, 955000, True, '状态待核实', False),
+    ('missing-time', 10000, None, True, '状态待核实', False),
+    ('zero-time', 10000, 0, True, '状态待核实', False),
+    ('not-live', 1000000, 1000000, False, '未运行', False),
+    ('wrong-uuid', 1000000, 1000000, True, '状态待核实', False),
+    ('wrong-generation', 1000000, 1000000, True, '状态待核实', False),
+    ('future59999', 1000000, 1059999, True, '正常', True),
+    ('future60000', 1000000, 1060000, True, '正常', True),
+    ('future60001', 1000000, 1060001, True, '状态待核实', False),
+    ('fresh-reported-issue', 1000000, 1000000, True, '需检查', False),
+    ('fresh-blocked-exit', 1000000, 1000000, True, '出口异常', False),
+    ('stale-reported-issue', 1000000, 955000, True, '状态待核实', False),
+)
+
+def verify_read_model_freshness(network):
+    """Controlled Android constructor projections, not IPC or measured latency."""
+    names = {item['name'] for item in network['checks'] if item['pass'] is True}
+    assert {'Android read-model freshness ' + case[0] for case in READ_MODEL_CASES} <= names
+    report = network['networkReadModelFreshness']
+    assert type(report['schema']) is int and report['schema'] == 1
+    assert report['scope'] == 'controlled Android read-model projection; no IPC ownership, live route or real latency claim'
+    row = dict(slot=0, name='controlled read model', environmentId='controlled-model-environment', generation=2)
+    assert report['row'] == row
+    assert all(type(report['row'][key]) is type(value) for key, value in row.items())
+    assert len(report['cases']) == len(READ_MODEL_CASES)
+    summary={key:value for key,value in report.items() if key!='cases'}
+    checks={check['name']:check for check in network['checks']}
+    for actual, (name, now, at, live, state, connected) in zip(report['cases'], READ_MODEL_CASES):
+        assert actual['case'] == name and type(actual['now']) is int and actual['now'] == now
+        assert actual['live'] is live and actual['connected'] is connected and actual['state'] == state
+        expected = dict(environmentId=row['environmentId'], generation=2, mode='external', configured=True,
+                        connected=True, route='controlled-route', delayRoute='controlled-route', delay=42,
+                        delayAt=now, delayKind='response', latencyRemaining=120000, ip='192.0.2.42')
+        if at is not None: expected['at'] = at
+        if name == 'wrong-uuid': expected['environmentId'] = 'another-environment'
+        if name == 'wrong-generation': expected['generation'] = 3
+        if name.endswith('reported-issue'): expected['issue'] = 'controlled reported issue'
+        if name == 'fresh-blocked-exit': expected['blocked'] = True
+        assert actual['input'] == expected and actual['inputUnchanged'] is True
+        assert all(type(actual['input'][key]) is type(value) for key, value in expected.items())
+        assert type(actual['latency']) is str and type(actual['mainline']) is str
+        same_identity=name not in ('wrong-uuid','wrong-generation')
+        if same_identity: assert actual['latency'] == ('42 ms' if connected else '42 ms（上次）')
+        timer = '（02:00）' if connected or name == 'fresh-reported-issue' else '（等待连接）'
+        assert actual['timer'] == timer
+        if same_identity: assert (' · 192.0.2.42 · ' if connected else ' · 上次 192.0.2.42 · ') in actual['mainline']
+        check=checks['Android read-model freshness '+name]
+        assert check['readModel']==actual and check['readModelSummary']==summary
+    return dict(controlledAndroidProjection=True, cases=len(READ_MODEL_CASES), realLatencyMeasurement=False)
 
 UPDATE_CHECKS = {
     'disconnectPreservesPartial', 'rangeOnlyRemaining', 'ifRangeValidator',

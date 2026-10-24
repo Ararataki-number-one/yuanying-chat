@@ -35,6 +35,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     return encoded;
   }
   void check(String name,boolean passed){JSONObject value=J.obj("name",name,"pass",passed);checks.put(value);Log.i("PocketNetworkPerformance",J.obj("kind","check","value",value).toString());if(!passed)throw new AssertionError(name);}
+  void checkReadModel(String name,boolean passed,JSONObject summary,JSONObject reading){JSONObject value=J.obj("name",name,"pass",passed,"readModelSummary",summary,"readModel",reading);String encoded=J.obj("kind","check","value",value).toString();if(encoded.getBytes(StandardCharsets.UTF_8).length>3500)throw new AssertionError("Read-model check exceeds Android log budget");checks.put(value);Log.i("PocketNetworkPerformance",encoded);if(!passed)throw new AssertionError(name);}
   void transportTrace(JSONObject value){transportEvidence.put(value);Log.i("PocketNetworkPerformance",J.obj("kind","exitTransportEvidence","value",value).toString());}
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test"))throw new SecurityException();new Thread(this::run,"network-optimization-fixture").start();}
   static class TestNetwork extends NativeNetwork {
@@ -103,6 +104,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       JSONObject external=J.obj("at",staleNow,"mode","external","configured",true,"connected",true,"route","synthetic-proxy|network-1","delayRoute","synthetic-proxy|network-1","delayAt",staleNow,"delay",responseDelay,"delayKind","response");
       check("External measured response is shown instead of permanently unmeasured",new WindowNetworkState(this,row,new JSONObject(),external,true,staleNow).latency.equals(responseDelay+" ms"));
       NetworkCatalog.put(external,"route","synthetic-proxy|network-2");check("Switching the actual phone network invalidates the previous response",new WindowNetworkState(this,row,new JSONObject(),external,true,staleNow).latency.equals("延迟未测"));
+      readModelFreshnessChecks(report);
       int guardedRequests=plain.requests;boolean gateRejected=false;try{RouteLatency.measure(plain.url("/probe"),exactProxy,null,()->{throw new IOException("route unavailable");});}catch(IOException expected){gateRejected=true;}check("A blocked external route makes no test request or direct fallback",gateRejected&&plain.requests==guardedRequests);
       JSONObject core=n.api("GET","/configs",null,3000);check("TCP concurrency is enabled by the running core",core.optBoolean("tcp-concurrent"));
       JSONObject runningConfig=J.parse(new String(java.nio.file.Files.readAllBytes(new File(n.root,"config.json").toPath()),StandardCharsets.UTF_8));check("DNS nameservers remain guarded by the fixed exit",runningConfig.getJSONObject("dns").getJSONArray("nameserver").getString(0).endsWith("#FixedExit"));
@@ -145,7 +147,32 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     finally{if(n!=null){n.stopNow();n.worker.shutdownNow();n.probes.shutdownNow();n.closers.shutdownNow();n.traffic.reader.shutdownNow();}}
     if(coldWebsiteTrace!=null){coldWebsiteTrace.freeze();JSONArray trace=coldWebsiteTrace.events();JSONObject summary=coldWebsiteTrace.summary();NetworkCatalog.put(report,"coldWebsiteProbeDiagnosticSummary",summary);NetworkCatalog.put(report,"coldWebsiteProbeDiagnostics",trace);Log.i("PocketNetworkPerformance",J.obj("kind","coldWebsiteProbeDiagnosticSummary","value",summary).toString());for(int i=0;i<trace.length();i++)Log.i("PocketNetworkPerformance",J.obj("kind","coldWebsiteProbeDiagnostic","value",trace.optJSONObject(i)).toString());}
     NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"exitTransportContinuity",transportEvidence);NetworkCatalog.put(report,"networkRepairEvidence",repairEvidence);if(firstConnectionDiagnostic!=null)NetworkCatalog.put(report,"firstConnectionDiagnostic",firstConnectionDiagnostic);try{J.write(new File(getFilesDir(),"network-performance-results.json"),report.toString(2));}catch(Exception ignored){}
-    report.remove("checks");report.remove("exitTransportContinuity");report.remove("firstConnectionDiagnostic");report.remove("coldWebsiteProbeDiagnostics");report.remove("coldWebsiteProbeDiagnosticSummary");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
+    report.remove("checks");report.remove("exitTransportContinuity");report.remove("firstConnectionDiagnostic");report.remove("coldWebsiteProbeDiagnostics");report.remove("coldWebsiteProbeDiagnosticSummary");report.remove("networkReadModelFreshness");NetworkCatalog.put(report,"checkCount",checks.length());Log.i("PocketNetworkPerformance",report.toString());runOnUiThread(this::finish);
+  }
+  /** Read-model inputs only. These controlled timestamps are not live IPC or latency evidence. */
+  void readModelFreshnessChecks(JSONObject report)throws Exception{
+    JSONObject row=J.obj("slot",0,"name","controlled read model","environmentId","controlled-model-environment","generation",2),config=new JSONObject();JSONObject summary=J.obj("schema",1,"scope","controlled Android read-model projection; no IPC ownership, live route or real latency claim","row",row);report.put("networkReadModelFreshness",summary);
+    Object[][] cases={
+      {"fresh",1000000L,1000000L,true,"正常",true},
+      {"age44999",1000000L,955001L,true,"正常",true},
+      {"age45000",1000000L,955000L,true,"状态待核实",false},
+      {"missing-time",10000L,null,true,"状态待核实",false},
+      {"zero-time",10000L,0L,true,"状态待核实",false},
+      {"not-live",1000000L,1000000L,false,"未运行",false},
+      {"wrong-uuid",1000000L,1000000L,true,"状态待核实",false},
+      {"wrong-generation",1000000L,1000000L,true,"状态待核实",false},
+      {"future59999",1000000L,1059999L,true,"正常",true},
+      {"future60000",1000000L,1060000L,true,"正常",true},
+      {"future60001",1000000L,1060001L,true,"状态待核实",false},
+      {"fresh-reported-issue",1000000L,1000000L,true,"需检查",false},
+      {"fresh-blocked-exit",1000000L,1000000L,true,"出口异常",false},
+      {"stale-reported-issue",1000000L,955000L,true,"状态待核实",false},
+    };
+    for(Object[] item:cases){String name=(String)item[0];long now=(Long)item[1];boolean live=(Boolean)item[3],connected=(Boolean)item[5],sameIdentity=!name.equals("wrong-uuid")&&!name.equals("wrong-generation");JSONObject runtime=J.obj("environmentId",row.optString("environmentId"),"generation",2,"mode","external","configured",true,"connected",true,"route","controlled-route","delayRoute","controlled-route","delay",42,"delayAt",now,"delayKind","response","latencyRemaining",120000,"ip","192.0.2.42");if(item[2]!=null)runtime.put("at",item[2]);if(name.equals("wrong-uuid"))runtime.put("environmentId","another-environment");if(name.equals("wrong-generation"))runtime.put("generation",3);if(name.endsWith("reported-issue"))runtime.put("issue","controlled reported issue");if(name.equals("fresh-blocked-exit"))runtime.put("blocked",true);
+      String before=runtime.toString();WindowNetworkState value=new WindowNetworkState(this,row,config,runtime,live,now);String latency=connected?"42 ms":"42 ms（上次）",timer=connected||name.equals("fresh-reported-issue")?"（02:00）":"（等待连接）";
+      JSONObject reading=J.obj("case",name,"now",now,"live",live,"input",runtime,"state",value.state,"connected",value.connected,"latency",value.latency,"timer",value.latencyTimer,"mainline",value.mainline(),"inputUnchanged",before.equals(runtime.toString()));
+      checkReadModel("Android read-model freshness "+name,value.state.equals(item[4])&&value.connected==connected&&(!sameIdentity||value.latency.equals(latency)&&value.mainline().contains(connected?" · 192.0.2.42 · ":" · 上次 192.0.2.42 · "))&&value.latencyTimer.equals(timer)&&before.equals(runtime.toString()),summary,reading);
+    }
   }
   /** Observes the two original calls without adding requests, retries or warmup.
    * Call boundaries include controller work; firstMs/warmMs keep their original

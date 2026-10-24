@@ -35,7 +35,8 @@ def main():
  p=argparse.ArgumentParser();p.add_argument('--java-home',required=True,type=pathlib.Path);p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--before-ref');p.add_argument('--output',required=True,type=pathlib.Path);a=p.parse_args()
  names=['DesignChrome','WindowNetworkState','LatencyRefreshPolicy','LatencyProbePolicy','NetworkStatusPolicy','NetworkOptimizationPolicy','Sha256','NativeNetwork','NetworkCatalog']
  selected={name:(subprocess.check_output(['git','show',a.before_ref+':'+PROD+name+'.java'],cwd=ROOT).decode() if a.before_ref else (ROOT/(PROD+name+'.java')).read_text()) for name in names}
- inputs=[ROOT/(PROD+name+'.java') for name in names]+[HERE/'ChromeNetworkStateHost.java',pathlib.Path(__file__).resolve()]
+ device_fixture=ROOT/'tests/gecko/NetworkOptimizationIntegrationActivity.java'
+ inputs=[ROOT/(PROD+name+'.java') for name in names]+[HERE/'ChromeNetworkStateHost.java',pathlib.Path(__file__).resolve(),device_fixture]
  hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs}
  chrome=selected['DesignChrome'];state=selected['WindowNetworkState'];current='static boolean profileAvailable(' in chrome
  methods=['void update(','private void renderLatest(','private void refreshMetadata(','private static void text(','private static void description(']
@@ -44,13 +45,14 @@ def main():
  if current:initial.append(next(line.strip() for line in chrome.splitlines() if line.strip().startswith('profileRow=ProfileCatalog.get(a).item(')))
  initial += [next(line.strip() for line in chrome.splitlines() if line.strip().startswith(prefix)) for prefix in ['compactTitle=ReferenceUi.text(', 'title=ReferenceUi.text(', 'profileName=title.getText()']]
  fields=next(line for line in state.splitlines() if line.startswith('  final int slot;'))
- java=(HERE/'ChromeNetworkStateHost.java').read_text().replace('/* CHROME_METHODS */','\n'.join(member(chrome,needle) for needle in methods)).replace('/* INITIAL_METADATA */','\n'.join(initial)).replace('/* STATE_FIELDS */',fields).replace('/* STATE_CONSTRUCTOR */',member(state,'WindowNetworkState(Context c,'))
+ java=(HERE/'ChromeNetworkStateHost.java').read_text().replace('/* CHROME_METHODS */','\n'.join(member(chrome,needle) for needle in methods)).replace('/* INITIAL_METADATA */','\n'.join(initial)).replace('/* STATE_FIELDS */',fields).replace('/* STATE_CONSTRUCTOR */',member(state,'WindowNetworkState(Context c,')).replace('/* STATE_MAINLINE */',member(state,'String mainline(')).replace('/* DEVICE_READ_MODEL_METHOD */','\n'.join(member(device_fixture.read_text(),needle) for needle in ['void checkReadModel(', 'void readModelFreshnessChecks(']))
  java=java.replace('/* CATALOG_EXIT_ID */',member(selected['NetworkCatalog'],'static String exitId(')).replace('/* NATIVE_METHODS */','\n'.join(member(selected['NativeNetwork'],needle) for needle in ['static boolean subscribedExit(','static String exitIdentity(','static String hash(']))
  with tempfile.TemporaryDirectory(prefix='chrome-network-state-host-') as raw:
   temp=pathlib.Path(raw);src=temp/'src';src.mkdir();(src/'ChromeNetworkStateHost.java').write_text(java)
   for name in ['LatencyRefreshPolicy','LatencyProbePolicy','NetworkStatusPolicy','NetworkOptimizationPolicy','Sha256']:(src/(name+'.java')).write_text(selected[name])
-  stubs={'android/content/Context.java':'package android.content; public class Context{public SharedPreferences getSharedPreferences(String name,int mode){return new SharedPreferences();}}','android/content/SharedPreferences.java':'package android.content; public class SharedPreferences{public String getString(String key,String fallback){return fallback;}public boolean getBoolean(String key,boolean fallback){return fallback;}}','android/os/SystemClock.java':'package android.os; public class SystemClock{public static long now=100000;public static long elapsedRealtime(){return now;}}'}
+  stubs={'android/content/Context.java':'package android.content; public class Context{public SharedPreferences getSharedPreferences(String name,int mode){return new SharedPreferences();}}','android/content/SharedPreferences.java':'package android.content; public class SharedPreferences{public static boolean networkConfigured;public String getString(String key,String fallback){return fallback;}public boolean getBoolean(String key,boolean fallback){return key.equals("networkConfigured")?networkConfigured:fallback;}}','android/os/SystemClock.java':'package android.os; public class SystemClock{public static long now=100000;public static long elapsedRealtime(){return now;}}'}
   for name,text in stubs.items():path=src/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
+  log=src/'android/util/Log.java';log.parent.mkdir(parents=True,exist_ok=True);log.write_text('package android.util; public class Log {public static int i(String tag,String message){return 0;}}')
   classes=temp/'classes';subprocess.run([str(a.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),*map(str,src.rglob('*.java'))],check=True)
   run=subprocess.run([str(a.java_home/'bin/java'),'-Dbefore='+str(not current).lower(),'-cp',str(classes)+':'+str(a.json_jar),'local.pocketchat.ChromeNetworkStateHost'],text=True,capture_output=True)
   if not run.stdout:raise RuntimeError(run.stderr)
