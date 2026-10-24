@@ -33,6 +33,8 @@ for name in ['build.log', 'native-test.log', 'emulator.log', 'runner-health.txt'
         shutil.copy2(out / name, stage / name)
 for name in ['network-performance-results.json','network-performance-failure-log.txt','quiet-notification-results.json','quiet-notification-failure-log.txt','compact-chrome-results.json','ui-visual-results.json','ui-build-comparison.json','ui-visual-log.txt','ui-visual-failure.png','ui-visual-failure.xml','snapshot-host-results.json','reply-observation-host-results.json','reply-binding-host-results.json','interaction-host-results.json','gecko-performance-results.json','gecko-performance-failure-log.txt','gecko-performance-screen.png','network-pool-host-results.json','latency-probe-host-results.json','native-probe-results.json','native-probe-log.txt','native-probe-failure-log.txt','gecko-pool-results.json','gecko-pool-server.json','gecko-pool-server-failure.json','gecko-pool-log.txt','gecko-pool-failure-log.txt','browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','update-route-log.txt','update-route-failure-log.txt','update-route-host-wire.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
+for name in ['device-readiness-observations.json','device-failure-runtime.json']:
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['preconnect-results.json','preconnect-log.txt','preconnect-failure-log.txt','preconnect-server.json','preconnect-server-failure.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['network-cold-website-diagnostic-log.txt']:
