@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bounded real-CM preflight for the fixed synthetic emulator, never app acceptance."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -60,6 +61,7 @@ class Commands:
         if serial != SERIAL:
             raise ValueError('Only the fixed synthetic adb target is allowed')
         self.executable, self.serial, self.record, self.deadline = executable, serial, record, deadline
+        self._sdk_wifi_session, self._sdk_wifi_ap = object(), None
 
     def run(self, *parts, check=True, diagnostic=False, deadline=None):
         # A phase may shorten the shared budget, never extend it.
@@ -105,7 +107,68 @@ def network_observation(commands, record, identity, phase):
     return usable
 
 
-def provision_sdk_wifi(commands, record, identity, phase, observation_phase):
+def exact_sdk_ap(scan):
+    return any(re.search(r'\sAndroidWifi\s*(?:\[[^\n]*\])?\s*$', line)
+               for line in scan.splitlines())
+
+
+class _ObservedSdkAp:
+    """Invocation-local evidence for choosing an SSID, never current connectivity."""
+    def __init__(self, commands, record, identity, stage, scan_index, connect_index, cm_index):
+        self.owner, self.record = commands, record
+        self.session, self.serial = commands._sdk_wifi_session, commands.serial
+        self.identity = json.dumps(identity, sort_keys=True, separators=(',', ':'))
+        self.stage, self.scan, self.connect, self.cm = stage, scan_index, connect_index, cm_index
+        self.evidence = self.fingerprint()
+
+    def fingerprint(self):
+        rows = [self.record['commands'][self.scan], self.record['commands'][self.connect],
+                self.record['networkObservations'][self.cm]]
+        return hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
+
+    def describe(self):
+        return dict(ssid=SSID, sourceStage=self.stage, scanCommandIndex=self.scan,
+                    connectCommandIndex=self.connect, networkObservationIndex=self.cm,
+                    evidenceSha256=self.evidence, currentConnectivityProven=False)
+
+
+def remembered_sdk_ap(commands, record, identity):
+    observed = getattr(commands, '_sdk_wifi_ap', None)
+    if observed is None:
+        return None
+    if (not isinstance(observed, _ObservedSdkAp) or observed.owner is not commands
+            or observed.record is not record or commands.record is not record
+            or observed.session is not commands._sdk_wifi_session
+            or observed.serial != commands.serial
+            or observed.identity != json.dumps(identity, sort_keys=True, separators=(',', ':'))
+            or observed.evidence != observed.fingerprint()):
+        raise ValueError('SDK AP observation belongs to another setup invocation or changed evidence')
+    return observed
+
+
+def remember_sdk_ap(commands, record, identity, stage, scan_index, connect_index):
+    # Only Commands.run's successful, source-validated records can issue this
+    # in-memory capability. Nothing is restored from a prior JSON receipt.
+    if getattr(commands, 'record', None) is not record or not record['networkObservations']:
+        return
+    cm_index = len(record['networkObservations']) - 1
+    cm = record['networkObservations'][cm_index]
+    if (not validate_observation(cm['value'], identity, cm['runNonce'])
+            or type(cm['value'].get('transports')) is not list or 'wifi' not in cm['value']['transports']):
+        return
+    for index, parts in ((scan_index, ('shell', 'cmd', 'wifi', 'list-scan-results')),
+                         (connect_index, ('shell', 'cmd', 'wifi', 'connect-network', SSID, 'open'))):
+        row = record['commands'][index]
+        if (row['command'] != [commands.executable, '-s', commands.serial, *parts]
+                or type(row.get('exitCode')) is not int or row['exitCode'] != 0
+                or row.get('timedOut') is not False):
+            raise ValueError('Successful SDK AP observation commands are not bound to this target')
+    if not exact_sdk_ap(record['commands'][scan_index]['stdout']):
+        raise ValueError('SDK AP was not observed by this invocation')
+    commands._sdk_wifi_ap = _ObservedSdkAp(commands, record, identity, stage, scan_index, connect_index, cm_index)
+
+
+def provision_sdk_wifi(commands, record, identity, phase, observation_phase, *, reuse_observed_ap=False):
     """Restore only the observed SDK AP, within the original preflight deadline."""
     stage = dict(phase=phase, startedAt=time.monotonic(),
                  firstCommand=len(record['commands']),
@@ -113,6 +176,8 @@ def provision_sdk_wifi(commands, record, identity, phase, observation_phase):
                  wifiStatuses=[], wifiScans=[], status='failed')
     record.setdefault('sdkWifiProvisioningStages', []).append(stage)
     try:
+        observed = remembered_sdk_ap(commands, record, identity) if reuse_observed_ap else None
+        commands._sdk_wifi_ap = None
         # Reproduce only the SDK image's AndroidWifi provisioning convention.
         # No airplane/mobile-data change, arbitrary SSID, or IME policy change.
         commands.run('shell', 'cmd', 'wifi', 'set-wifi-enabled', 'enabled')
@@ -128,30 +193,40 @@ def provision_sdk_wifi(commands, record, identity, phase, observation_phase):
             if re.findall(r'^Wifi is (enabled|disabled)\s*$', status, re.M) == ['enabled']:
                 break
             time.sleep(min(1, max(0, scan_deadline - time.monotonic())))
-        stage['scanRequestResponse'] = commands.run('shell', 'cmd', 'wifi', 'start-scan', deadline=scan_deadline)
-        stage['scanRequestCompletedAt'] = time.monotonic()
-        # Command completion does not prove scan completion or connectivity.
-        while True:
-            if time.monotonic() >= scan_deadline:
-                raise ValueError('The SDK emulator AndroidWifi access point was not observed')
-            scan = commands.run('shell', 'cmd', 'wifi', 'list-scan-results', deadline=scan_deadline)
-            record['wifiScan'] = scan
-            stage['wifiScans'].append(dict(raw=scan, receivedAt=time.monotonic()))
-            # Exact SSID column followed by optional capability flags. Never
-            # accept a similarly named AP such as AndroidWifi-other.
-            if any(re.search(r'\sAndroidWifi\s*(?:\[[^\n]*\])?\s*$', line) for line in scan.splitlines()):
-                break
-            if time.monotonic() >= scan_deadline:
-                raise ValueError('The SDK emulator AndroidWifi access point was not observed')
-            time.sleep(min(1, max(0, scan_deadline - time.monotonic())))
+        if observed is not None:
+            stage.update(apSelection='reused-observed-AP', observedAp=observed.describe())
+        else:
+            stage['apSelection'] = 'current-scan'
+            stage['scanRequestResponse'] = commands.run('shell', 'cmd', 'wifi', 'start-scan', deadline=scan_deadline)
+            stage['scanRequestCompletedAt'] = time.monotonic()
+            # Command completion does not prove scan completion or connectivity.
+            while True:
+                if time.monotonic() >= scan_deadline:
+                    raise ValueError('The SDK emulator AndroidWifi access point was not observed')
+                scan = commands.run('shell', 'cmd', 'wifi', 'list-scan-results', deadline=scan_deadline)
+                record['wifiScan'] = scan
+                stage['wifiScans'].append(dict(raw=scan, receivedAt=time.monotonic()))
+                if exact_sdk_ap(scan):
+                    scan_index = len(record['commands']) - 1
+                    break
+                if time.monotonic() >= scan_deadline:
+                    raise ValueError('The SDK emulator AndroidWifi access point was not observed')
+                time.sleep(min(1, max(0, scan_deadline - time.monotonic())))
         commands.run('shell', 'cmd', 'wifi', 'connect-network', SSID, 'open')
+        connect_index = len(record['commands']) - 1
         record['sdkWifiProvisioningRequested'] = True
         while not network_observation(commands, record, identity, observation_phase):
             if commands.deadline - time.monotonic() <= 1:
                 raise TimeoutError('Actual Android active network with INTERNET did not become available')
             time.sleep(min(1, max(0, commands.deadline - time.monotonic())))
+        if observed is None:
+            remember_sdk_ap(commands, record, identity, len(record['sdkWifiProvisioningStages']) - 1,
+                            scan_index, connect_index)
+        else:
+            commands._sdk_wifi_ap = observed
         stage['status'] = 'passed'
     except BaseException as failure:
+        commands._sdk_wifi_ap = None
         stage.update(failureType=type(failure).__name__, reason=str(failure))
         raise
     finally:
@@ -161,6 +236,8 @@ def provision_sdk_wifi(commands, record, identity, phase, observation_phase):
 
 
 def preflight(commands, record, identity):
+    # A second setup, even on a reused Commands object, cannot inherit AP proof.
+    commands._sdk_wifi_session, commands._sdk_wifi_ap = object(), None
     if commands.run('shell', 'getprop', 'ro.kernel.qemu') != '1':
         raise ValueError('The fixed adb target is not a confirmed emulator')
     record['confirmedQemu'] = True
