@@ -33,6 +33,8 @@ for name in ['build.log', 'native-test.log', 'emulator.log', 'runner-health.txt'
         shutil.copy2(out / name, stage / name)
 for name in ['network-performance-results.json','network-performance-failure-log.txt','quiet-notification-results.json','quiet-notification-failure-log.txt','compact-chrome-results.json','ui-visual-results.json','ui-build-comparison.json','ui-visual-log.txt','ui-visual-failure.png','ui-visual-failure.xml','snapshot-host-results.json','reply-observation-host-results.json','reply-binding-host-results.json','interaction-host-results.json','gecko-performance-results.json','gecko-performance-failure-log.txt','gecko-performance-screen.png','network-pool-host-results.json','latency-probe-host-results.json','native-probe-results.json','native-probe-log.txt','native-probe-failure-log.txt','gecko-pool-results.json','gecko-pool-server.json','gecko-pool-server-failure.json','gecko-pool-log.txt','gecko-pool-failure-log.txt','browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','update-route-log.txt','update-route-failure-log.txt','update-route-host-wire.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
+for name in ['device-readiness-observations.json','device-failure-runtime.json']:
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['preconnect-results.json','preconnect-log.txt','preconnect-failure-log.txt','preconnect-server.json','preconnect-server-failure.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['network-cold-website-diagnostic-log.txt']:
@@ -42,6 +44,8 @@ for name in ['page-recovery-host-results.json','page-recovery-script-results.jso
 for item in out.glob('upload-state-*.txt'):
     shutil.copy2(item,stage/item.name)
 for name in ['ui-network-visual-fixture-desktop-host-results.json', 'ui-network-visual-fixture-android-host-results.json']:
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
+for name in ['chrome-network-state-desktop-host-results.json', 'chrome-network-state-android-host-results.json', 'compact-chrome-capture-desktop-host-results.json', 'compact-chrome-capture-android-host-results.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['caret-document-observer-host-results.json','resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json','emulator-bootstrap-results.json','profile-host-results.json','identity-controller-host-results.json','deferred-browser-host-results.json','identity-bridge-host-results.json','environment-intent-host-results.json','gecko-proxy-route-host-results.json','environment-spec-results.json','environment-intent-results.json','gecko-identity-prototype-results.json','gecko-template-results.json','gecko-template-runner-log.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)

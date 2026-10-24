@@ -13,6 +13,9 @@ public class GeckoIntegrationTestActivity extends Activity {
   ChatSession session;int slot;long run;String action;boolean closedSessionRecovery,blockedRecoveryPreservesClosed,pendingFailureRetained,activityResumed;
   long paintCommand,paintRequested,paintStarted,paintVisible,paintFinished,paintFinishedBeforeCancel=-1;String paintTarget="";boolean paintCommitted,paintCancelledBeforeFinish;org.mozilla.geckoview.GeckoSession paintSession;
   String initialRouteNetwork="";long initialRouteStableSince;int initialRouteSamples;
+  // Synthetic read invocations only; observes existing polls without scheduling work.
+  DeviceReadinessObservation readinessObservation;Boolean readinessForeground;
+  JSONObject readinessNetwork;long readinessForegroundAt;
   final int[] readingZoomSamples=new int[4];String readingZoomLast="";long readingZoomLastSample;JSONObject readingZoomReadiness;
   ReadingBoundsCase readingBoundsCase;JSONObject readingBoundsFitResult;
   static final class ReadingBoundsCase {
@@ -118,16 +121,19 @@ public class GeckoIntegrationTestActivity extends Activity {
     action=intent.getStringExtra("fixtureAction");if(action==null)return;long serial=++run;
     try{if(eventBuildIdentity==null)eventBuildIdentity=IntegrationBuildIdentity.read(Profiles.global(this));eventStore=new IntegrationEventStore(this,slot,intent.getStringExtra("eventNonce"),action,serial,eventBuildIdentity);}
     catch(Exception failure){throw new IllegalStateException("Full synthetic result transport unavailable",failure);}
+    readinessObservation="read".equals(action)?new DeviceReadinessObservation(SystemClock.elapsedRealtime()):null;
+    readinessForeground=null;readinessForegroundAt=0;readinessNetwork=null;
+    observeReadiness(serial,"command-entered",true);
     waitReady(serial);
   }
   void waitReady(long serial){
     if(serial!=run)return;GeckoWebView web=(GeckoWebView)session.web;
     // onNewIntent arrives before onResume when bringing another task forward.
     // AndroidX publishes RESUMED in onActivityPostResumed, after Activity.onResume.
-    if(!activityResumed||!processForeground()){session.handler.postDelayed(()->waitReady(serial),50);return;}
+    if(!activityResumed||!processForeground()){observeReadiness(serial,"wait-lifecycle",false);session.handler.postDelayed(()->waitReady(serial),50);return;}
     if("foreignPreferences".equals(action)){event(serial,"foreignPreferences",J.obj("marker",Profiles.context(this,1).getSharedPreferences("chat",0).getString("managementMarker","")));return;}
-    if(web.failed){event(serial,"error",J.obj("error","Gecko startup failed"));return;}
-    if(!web.ready){session.handler.postDelayed(()->waitReady(serial),200);return;}
+    if(web.failed){observeReadiness(serial,"browser-failed",true);event(serial,"error",J.obj("error","Gecko startup failed"));return;}
+    if(!web.ready){observeReadiness(serial,"wait-browser",false);session.handler.postDelayed(()->waitReady(serial),200);return;}
     FixtureView controlled=(FixtureView)web;
     if(!controlled.initialRouteReady){
       android.net.ConnectivityManager manager=getSystemService(android.net.ConnectivityManager.class);
@@ -137,7 +143,8 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(!available){initialRouteNetwork="";initialRouteStableSince=0;initialRouteSamples=0;}
       else if(!identity.equals(initialRouteNetwork)){initialRouteNetwork=identity;initialRouteStableSince=now;initialRouteSamples=1;}
       else initialRouteSamples++;
-      if(!available||initialRouteSamples<3||now-initialRouteStableSince<500){session.handler.postDelayed(()->waitReady(serial),100);return;}
+      observeReadinessNetwork(serial,identity,available,now);
+      if(!available||initialRouteSamples<3||now-initialRouteStableSince<500){observeReadiness(serial,"wait-network",false);session.handler.postDelayed(()->waitReady(serial),100);return;}
       String expected=(slot==0?"socks":"http")+"://127.0.0.1:"+(1080+slot);
       if(session.internalNetwork()||!expected.equals(session.prefs.getString("proxy",""))||session.prefs.getBoolean("requireExternalVpn",true)){event(serial,"error",J.obj("error","Initial controlled fixture route configuration mismatch"));return;}
       // Admit this synthetic route once after the real observer has caught up.
@@ -146,6 +153,7 @@ public class GeckoIntegrationTestActivity extends Activity {
       JSONObject evidence=J.obj("actualNetwork",identity,"internet",true,"observerNetwork",session.networkIdentity,"observerOffline",session.offline,"stableMillis",now-initialRouteStableSince,"stableSamples",initialRouteSamples,"proxy",expected);
       controlled.initialRouteReporter=target->{try{evidence.put("initialTarget",target).put("startupCheckpointUri",GeckoWebView.stateUrl(web.startupState)).put("guardAllowed",session.guard.allowed()).put("networkReady",session.networkReady).put("route",web.route(target));}catch(JSONException error){throw new IllegalStateException(error);}event(serial,"initialRouteReady",evidence);};
     }
+    observeReadiness(serial,"dispatch-ready",true);
     if("backgroundSettings".equals(action)){backgroundSettings(serial);return;}
     if("queuedChanges".equals(action)){queuedChanges(serial);return;}
     if("privacy".equals(action)){privacy(serial,0);return;}
@@ -498,8 +506,59 @@ public class GeckoIntegrationTestActivity extends Activity {
   boolean processForeground(){try{
     Object owner=Class.forName("androidx.lifecycle.ProcessLifecycleOwner").getMethod("get").invoke(null);
     Object lifecycle=owner.getClass().getMethod("getLifecycle").invoke(owner);
-    return "RESUMED".equals(lifecycle.getClass().getMethod("getCurrentState").invoke(lifecycle).toString());
-  }catch(Exception ignored){return false;}}
+    return observeProcessForeground("RESUMED".equals(lifecycle.getClass().getMethod("getCurrentState").invoke(lifecycle).toString()));
+  }catch(Exception ignored){return observeProcessForeground(false);}}
+  boolean observeProcessForeground(boolean observed){
+    if(readinessObservation!=null){readinessForeground=observed;readinessForegroundAt=SystemClock.elapsedRealtime();}
+    return observed;
+  }
+  void observeReadinessNetwork(long serial,String actual,boolean available,long now){
+    if(readinessObservation==null||serial!=run)return;
+    readinessNetwork=J.obj("actualNetwork",actual,"observerNetwork",session.networkIdentity,"observerOffline",session.offline,
+        "available",available,"stableSamples",initialRouteSamples,"stableMillis",initialRouteStableSince==0?0:now-initialRouteStableSince);
+  }
+  void observeReadiness(long serial,String stage,boolean terminal){
+    DeviceReadinessObservation budget=readinessObservation;
+    if(budget==null||serial!=run||session==null||eventStore==null||eventStore.command!=serial)return;
+    long now=SystemClock.elapsedRealtime();if(!budget.sample(now,terminal))return;
+    GeckoWebView web=(GeckoWebView)session.web;
+    JSONObject gates=J.obj("activityResumed",activityResumed,"processForeground",readinessForeground==null?JSONObject.NULL:readinessForeground,
+        "enabled",web.enabled,"destroyed",web.destroyed,"failed",web.failed,"ready",web.ready,"runtimePresent",web.runtime!=null,
+        "extensionPresent",web.extension!=null,"checkpointReady",web.checkpointReady,"checkpointRequested",web.checkpointRequested,
+        "identityPrepared",web.identityPrepared,"routePrepared",web.routePrepared,"privacyReady",web.privacyReady,"routePortPresent",web.routePort!=null,
+        "policyAcknowledged",web.metadata.policyAcknowledged,"rfpAcknowledged",web.metadata.rfpAcknowledged,
+        "requestedProtection",web.requestedProtection,"protectionLevel",web.protectionLevel,"protectionRequest",web.protectionRequest,
+        "primaryPresent",web.primary!=null,"currentPresent",web.current!=null,"ownerDeleted",session.deleted,
+        "networkReady",session.networkReady,"offline",session.offline,"guardBlocked",session.guard.blocked,
+        "initialRouteReady",((FixtureView)web).initialRouteReady,"observerNetwork",session.networkIdentity);
+    JSONObject surface=J.obj("present",web.surface!=null,"attached",web.surface!=null&&web.surface.isAttachedToWindow(),
+        "width",web.surface==null?0:web.surface.getWidth(),"height",web.surface==null?0:web.surface.getHeight(),
+        "webAttached",web.isAttachedToWindow(),"webWidth",web.getWidth(),"webHeight",web.getHeight());
+    // Do not include increasing elapsed/sample counters in the change key.
+    String key=stage+gates.toString()+surface.toString()+(readinessNetwork==null?"":readinessNetwork.optString("actualNetwork")+readinessNetwork.optBoolean("available"));
+    if(!budget.emit(now,key,terminal))return;
+    publishReadiness(serial,J.obj("schema",1,"diagnosticOnly",true,"acceptance",false,"stage",stage,
+        "elapsedMillis",now-budget.started,"observation",budget.emitted,"maxObservations",DeviceReadinessObservation.LIMIT,"capReached",budget.emitted==DeviceReadinessObservation.LIMIT,
+        "pid",android.os.Process.myPid(),"ownerSlot",slot,"displayEnvironment",slot+1,"environmentId",session.environmentId,"environmentGeneration",session.environmentGeneration,
+        "run",run,"eventStoreCommand",eventStore.command,"foregroundObservedAt",readinessForegroundAt,
+        "gates",gates,"surface",surface,"networkObservation",readinessNetwork==null?JSONObject.NULL:readinessNetwork,
+        "scope","Read-only cached synthetic read-startup observation; no JS, reload, reconnect, new polling or admission"));
+  }
+  void publishReadiness(long serial,JSONObject observed){
+    // Independent diagnostic channel: never consume a business event sequence.
+    if(serial!=run||eventStore==null||eventStore.command!=serial)return;
+    JSONObject envelope=J.obj("schema",1,"kind","readinessObservation","diagnosticOnly",true,"acceptance",false,
+        "sourceCommit",eventBuildIdentity.optString("sourceCommit"),"sourceTree",eventBuildIdentity.optString("sourceTree"),
+        "apkSha256",eventBuildIdentity.optString("apkSha256"),"buildStampSha256",eventBuildIdentity.optString("buildStampSha256"),
+        "runNonce",eventStore.nonce,"fixtureAction",eventStore.action,"processSlot",eventStore.slot,"command",serial,
+        "businessSequence",eventStore.sequence,"observedAtElapsedRealtime",SystemClock.elapsedRealtime(),"observation",observed);
+    String raw=envelope.toString();
+    if(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>3500){
+      try{envelope.remove("observation");envelope.put("diagnosticError","snapshot exceeded3500byte bound");}catch(JSONException ignored){}
+      raw=envelope.toString();
+    }
+    Log.i("PocketReadiness",raw);
+  }
   void readingZoom(long serial,int step,JSONArray results,long deadline){
     if(serial!=run)return;float[] choices={.8f,.6f,1.3f,.8f};
     if(step==choices.length){event(serial,"readingZoom",J.obj("checks",results,"readiness",readingZoomReadiness));return;}
@@ -807,7 +866,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   JSONObject eventBuildIdentity;IntegrationEventStore eventStore;
   synchronized void event(long serial,String kind,JSONObject result){if(serial!=run)return;try{if(eventStore==null||eventStore.command!=serial)throw new IllegalStateException("Missing invocation");eventStore.emit(kind,result);}catch(Exception failure){Log.e("PocketGeckoIntegration",J.obj("kind","eventTransportError","error",failure.toString(),"nativeContext","environment-"+(slot+1),"processSlot",slot,"fixtureAction",action,"runNonce",getIntent().getStringExtra("eventNonce"),"command",run).toString());}}
   void readingLifecycle(String phase){if("readingZoom".equals(action)&&session!=null)event(run,"readingZoomLifecycle",J.obj("phase",phase,"uptimeMs",SystemClock.uptimeMillis(),"wallMs",System.currentTimeMillis(),"activityResumed",activityResumed,"browserPaused",session.browserPaused,"nativeScale",session.web.getScale(),"zoomActive",session.web.zoomTarget!=null,"webShown",session.web.isShown(),"windowFocused",hasWindowFocus()));}
-  @Override protected void onResume(){super.onResume();activityResumed=true;if(session!=null)session.foreground(true);readingLifecycle("onResume");}
-  @Override protected void onPause(){activityResumed=false;if(session!=null){session.reading.keyboard(false);session.foreground(false);}readingLifecycle("onPause");super.onPause();}
-  @Override protected void onDestroy(){run++;super.onDestroy();}
+  @Override protected void onResume(){super.onResume();activityResumed=true;if(session!=null)session.foreground(true);readingLifecycle("onResume");observeReadiness(run,"onResume",true);}
+  @Override protected void onPause(){activityResumed=false;if(session!=null){session.reading.keyboard(false);session.foreground(false);}readingLifecycle("onPause");observeReadiness(run,"onPause",true);super.onPause();}
+  @Override protected void onDestroy(){observeReadiness(run,"onDestroy",true);run++;super.onDestroy();}
 }

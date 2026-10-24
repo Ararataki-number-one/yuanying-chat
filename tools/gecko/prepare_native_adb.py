@@ -34,6 +34,7 @@ class BootstrapCommands:
         if serial != BOOTSTRAP:
             raise ValueError('Only the synthetic bootstrap target is allowed')
         self.executable, self.serial, self.record, self.deadline = executable, serial, record, deadline
+        self._sdk_wifi_session, self._sdk_wifi_ap = object(), None
 
 
 def require(condition, message):
@@ -97,7 +98,8 @@ def persistent_network(commands, record, identity):
             raise TimeoutError('SDK Wi-Fi teardown did not finish')
         time.sleep(.25)
     normal.provision_sdk_wifi(commands, record, identity,
-                              'persistent-sdk-wifi-after-setup', 'after-persistent-sdk-wifi')
+                              'persistent-sdk-wifi-after-setup', 'after-persistent-sdk-wifi',
+                              reuse_observed_ap=True)
     if not normal.network_observation(commands, record, identity, 'persistent-sdk-wifi-confirmation'):
         raise ValueError('Actual persistent SDK connection not usable')
 

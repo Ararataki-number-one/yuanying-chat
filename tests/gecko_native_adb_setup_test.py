@@ -85,6 +85,7 @@ class NativeSetupControls(unittest.TestCase):
         with patch.object(setup.normal,'preflight'),patch.object(setup.normal,'provision_sdk_wifi') as provision,patch.object(setup.normal,'network_observation',return_value=False):
             with self.assertRaises(ValueError):setup.persistent_network(commands,record,{})
             provision.assert_called_once()
+            self.assertEqual(provision.call_args.kwargs,{'reuse_observed_ap':True})
         self.assertNotIn('nativeReady',record)
 
 

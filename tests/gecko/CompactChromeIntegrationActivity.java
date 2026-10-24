@@ -13,6 +13,11 @@ import org.mozilla.geckoview.*;
 /** Test-only: actual production chrome, native hit regions and trusted Android taps. */
 public final class CompactChromeIntegrationActivity extends MainActivity {
   boolean reporting;
+  int presentationSerial;
+  CompactChromePresentationCapture presentation;
+  ViewTreeObserver presentationObserver;
+  ViewTreeObserver.OnPreDrawListener presentationListener;
+  Runnable presentationExpiry;
   String command="";
   int actionCount;
   JSONObject performance=new JSONObject();
@@ -146,11 +151,12 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
 
   @Override void startNetwork(){}
 
-  @Override protected void onDestroy(){if(collapse!=null)collapse.close();super.onDestroy();}
+  @Override protected void onDestroy(){releasePresentation();if(collapse!=null)collapse.close();super.onDestroy();}
 
   @Override public boolean dispatchTouchEvent(MotionEvent event){boolean handled=super.dispatchTouchEvent(event);if(collapse!=null)collapse.nativeTouch(event);return handled;}
 
   @Override protected void onNewIntent(Intent intent){
+    releasePresentation();
     super.onNewIntent(intent);
     command=intent.getStringExtra("compactCommand");
     if(collapse!=null)return;
@@ -294,6 +300,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   void performanceFailure(Throwable error){UiPerfStats.end();Log.i("PocketCompactChrome",J.obj("command",command,"event","performance","error",error.toString(),"performance",performance).toString());}
 
   void snapshot(String event){
+    releasePresentation();final int serial=presentationSerial;final String owner=command;final long deadline=SystemClock.elapsedRealtime()+20000;
     try{
       handler.removeCallbacks(ticker);
       session.remove(sessionObserver);
@@ -301,13 +308,45 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       JSONObject config=J.obj("subscriptionUrl","https://example.test/compact-layout","exitHost","example.test","exitPort",1080,"exitRegion","日本 · Tokyo");
       JSONObject runtime=J.obj("at",now,"mode","internal","configured",true,"connected",true,"exitId",NetworkCatalog.exitId(config),"subscriptionId",NativeNetwork.hash(config.optString("subscriptionUrl")),"ip","203.0.113.25","entry","Entry|大阪 03","delayEntry","Entry|大阪 03","latencyRemaining",120000,"latencyMeasuring",false,"delay",42,"delayAt",now);
       WindowNetworkState network=new WindowNetworkState(this,ProfileCatalog.get(this).item(0),config,runtime,true,now);
-      // Invoke the production renderer with explicitly synthetic layout data.
-      Method show=DesignChrome.class.getDeclaredMethod("showNetwork",WindowNetworkState.class);
-      show.setAccessible(true);
-      // onResume may have queued a real chrome render before this fixture took
-      // control. Let it settle, then render the explicitly synthetic layout state.
-      toolbar.postDelayed(()->{try{show.invoke(designChrome,network);toolbar.postDelayed(()->report(event,network),100);}catch(Exception error){Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"error",error.toString()).toString());}},200);
+      // Preserve the original preparation intervals. Queued real renders still
+      // execute; a normal pre-draw frame binds the report to this synthetic model.
+      toolbar.postDelayed(()->{if(destroyed||serial!=presentationSerial||!java.util.Objects.equals(owner,command))return;try{designChrome.showNetwork(network);toolbar.postDelayed(()->capturePresentation(event,network,serial,owner,deadline),100);}catch(Exception error){releasePresentation();Log.i("PocketCompactChrome",J.obj("command",owner,"event",event,"error",error.toString()).toString());}},200);
     }catch(Exception error){Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"error",error.toString()).toString());}
+  }
+
+  void capturePresentation(String event,WindowNetworkState network,int serial,String owner,long deadline){
+    if(destroyed||serial!=presentationSerial||!java.util.Objects.equals(owner,command))return;
+    CompactChromePresentationCapture capture=new CompactChromePresentationCapture(new CompactChromePresentationCapture.Host(){
+      public boolean current(){return !destroyed&&serial==presentationSerial&&java.util.Objects.equals(owner,command);}
+      public boolean matches(){return presentationMatches(network);}
+      public boolean laidOut(){return presentationLaidOut();}
+      public void paint(){designChrome.showNetwork(network);}
+      public void nextFrame(){toolbar.requestLayout();toolbar.postInvalidateOnAnimation();}
+      public void report(){CompactChromeIntegrationActivity.this.report(event,network);}
+      public void failed(Throwable error){Log.i("PocketCompactChrome",J.obj("command",owner,"event",event,"error",error.toString(),"syntheticPresentation",true).toString());}
+      public void release(){detachPresentation(serial);}
+    },deadline);
+    presentation=capture;presentationObserver=toolbar.getViewTreeObserver();
+    presentationListener=()->capture.beforeDraw(SystemClock.elapsedRealtime());
+    presentationExpiry=()->capture.expire(SystemClock.elapsedRealtime());
+    try{presentationObserver.addOnPreDrawListener(presentationListener);handler.postDelayed(presentationExpiry,Math.max(0,deadline-SystemClock.elapsedRealtime()));toolbar.postInvalidateOnAnimation();}
+    catch(Throwable error){capture.cancel();Log.i("PocketCompactChrome",J.obj("command",owner,"event",event,"error",error.toString(),"syntheticPresentation",true).toString());}
+  }
+  boolean presentationMatches(WindowNetworkState network){
+    String address=(network.region.isEmpty()?"地区未标注":network.region)+" · "+(network.ip.isEmpty()?"IP 未核验":network.connected?network.ip:"上次 "+network.ip);
+    return android.text.TextUtils.equals(networkLine.getText(),address)&&android.text.TextUtils.equals(designChrome.latencyWord.getText(),network.latency+network.latencyTimer)&&android.text.TextUtils.equals(designChrome.stateWord.getText(),network.state.equals("正常")?"已连接":network.state)&&android.text.TextUtils.equals(designChrome.networkRow.getContentDescription(),"当前环境网络："+network.strip())&&designChrome.dot.getCurrentTextColor()==network.color()&&designChrome.stateWord.getCurrentTextColor()==network.color();
+  }
+  boolean presentationLaidOut(){
+    if(!toolbar.isLaidOut()||toolbar.isLayoutRequested()||toolbar.getWidth()<=0||toolbar.getHeight()<=0)return false;
+    for(TextView view:new TextView[]{designChrome.title,networkLine,designChrome.latencyWord,designChrome.stateWord})if(view.isLayoutRequested()||view.getLayout()==null||!android.text.TextUtils.equals(view.getLayout().getText(),view.getText()))return false;
+    return true;
+  }
+  void releasePresentation(){if(presentation!=null)presentation.cancel();presentationSerial++;}
+  void detachPresentation(int serial){
+    if(serial!=presentationSerial)return;
+    if(presentationObserver!=null&&presentationObserver.isAlive()&&presentationListener!=null)presentationObserver.removeOnPreDrawListener(presentationListener);
+    if(presentationExpiry!=null)handler.removeCallbacks(presentationExpiry);
+    presentation=null;presentationObserver=null;presentationListener=null;presentationExpiry=null;
   }
 
   void report(String event,WindowNetworkState network){
@@ -335,7 +374,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       TextView dot=designChrome.dot;
       Paint.FontMetrics dotFont=dot.getPaint().getFontMetrics();
       JSONObject decorativeDot=J.obj("textSizeDp",dot.getTextSize()/density(),"inkWidth",dot.getPaint().measureText(dot.getText().toString()),"contentWidth",dot.getWidth()-dot.getPaddingLeft()-dot.getPaddingRight(),"fontHeight",dotFont.bottom-dotFont.top,"contentHeight",dot.getHeight()-dot.getPaddingTop()-dot.getPaddingBottom());
-      Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"actions",actionCount,"page",hub.page,"pageMode",pageMode,"geckoOnly",remote.enabled,"noNativeChat",noNativeChat(),"systemWebViews",systemWebViews(getWindow().getDecorView()),"viewportDp",getResources().getDisplayMetrics().widthPixels/density(),"fontScale",getResources().getConfiguration().fontScale,"toolbar",rect(toolbarBounds),"toolbarHeightDp",toolbar.getHeight()/density(),"topHeightDp",top.getHeight()/density(),"networkHeightDp",designChrome.networkRow.getHeight()/density(),"networkBounds",rect(networkBounds),"networkTap",J.arr(networkBounds.centerX(),networkBounds.centerY()),"stateTap",center(designChrome.stateWord),"networkClickable",designChrome.networkRow.isClickable(),"networkFocusable",designChrome.networkRow.isFocusable(),"networkBackground",designChrome.networkRow.getBackground()==null?"none":designChrome.networkRow.getBackground().getClass().getName(),"networkDescription",String.valueOf(designChrome.networkRow.getContentDescription()),"latency",latency.getText().toString(),"expectedLatency",network.latency+network.latencyTimer,"controls",controls,"texts",texts,"decorativeDot",decorativeDot).toString());
+      Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"syntheticPresentation",true,"actualLatencyMeasurement",false,"actions",actionCount,"page",hub.page,"pageMode",pageMode,"geckoOnly",remote.enabled,"noNativeChat",noNativeChat(),"systemWebViews",systemWebViews(getWindow().getDecorView()),"viewportDp",getResources().getDisplayMetrics().widthPixels/density(),"fontScale",getResources().getConfiguration().fontScale,"toolbar",rect(toolbarBounds),"toolbarHeightDp",toolbar.getHeight()/density(),"topHeightDp",top.getHeight()/density(),"networkHeightDp",designChrome.networkRow.getHeight()/density(),"networkBounds",rect(networkBounds),"networkTap",J.arr(networkBounds.centerX(),networkBounds.centerY()),"stateTap",center(designChrome.stateWord),"networkClickable",designChrome.networkRow.isClickable(),"networkFocusable",designChrome.networkRow.isFocusable(),"networkBackground",designChrome.networkRow.getBackground()==null?"none":designChrome.networkRow.getBackground().getClass().getName(),"networkDescription",String.valueOf(designChrome.networkRow.getContentDescription()),"latency",latency.getText().toString(),"expectedLatency",network.latency+network.latencyTimer,"controls",controls,"texts",texts,"decorativeDot",decorativeDot).toString());
     }catch(Exception error){Log.i("PocketCompactChrome",J.obj("command",command,"event",event,"error",error.toString()).toString());}
   }
 

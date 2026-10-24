@@ -341,4 +341,129 @@ class WifiScanControls(unittest.TestCase):
         self.assertEqual(commands.calls.count(('shell','cmd','wifi','start-scan')),1)
 
 
+class SdkApObservationControls(unittest.TestCase):
+    """Actual command recorder/CM validator with explicitly synthetic adb replies."""
+    real_run=staticmethod(subprocess.run)
+    def reset(self):
+        self.clock=Clock();self.receipt=record();self.expected=identity()
+        self.commands=bootstrap.Commands('adb',bootstrap.SERIAL,self.receipt,33)
+        self.scanning='00:13:10:85:fe:01 2447 -50 10.860 AndroidWifi [ESS]'
+        self.wifi_status='Wifi is enabled';self.cm_usable=True;self.transports=['wifi']
+        self.connect_code=0;self.edit_cm=None
+
+    def setUp(self):
+        self.reset()
+        self.patches=[patch.object(bootstrap.time,'monotonic',lambda:self.clock.now()),
+                      patch.object(bootstrap.time,'sleep',lambda seconds:self.clock.sleep(seconds)),
+                      patch.object(bootstrap.subprocess,'run',side_effect=self.reply)]
+        for item in self.patches:item.start();self.addCleanup(item.stop)
+
+    def reply(self,command,**options):
+        if command[0]!='adb':return self.real_run(command,**options)
+        parts=tuple(command[3:]);output='';code=0;self.clock.value+=min(.02,options['timeout'])
+        if parts[-1]=='status':output=self.wifi_status
+        elif parts[-1]=='list-scan-results':output=self.scanning
+        elif 'connect-network' in parts:code=self.connect_code
+        elif parts[:4]==('exec-out','content','read','--uri'):
+            value=observation();value['runNonce']=parse_qs(urlsplit(parts[4]).query)['runNonce'][0]
+            value['transports']=self.transports
+            if not self.cm_usable:value.update(activeNetwork='',activeNetworkAfter='',capabilitiesPresent=False,
+                                               internetCapability=False,stableDuringRead=False,usable=False)
+            if self.edit_cm:self.edit_cm(value)
+            output=json.dumps(value)
+        return subprocess.CompletedProcess(command,code,stdout=output,stderr='connect failed' if code else '')
+
+    def provision(self,*,reuse=False):
+        bootstrap.provision_sdk_wifi(self.commands,self.receipt,self.expected,'unit-stage','unit-cm',reuse_observed_ap=reuse)
+
+    def issue(self):
+        self.provision();self.assertIsNotNone(self.commands._sdk_wifi_ap)
+        return self.commands._sdk_wifi_ap
+
+    def test_same_invocation_ap_can_select_ssid_without_claiming_a_new_scan(self):
+        proof=self.issue();first_cm=len(self.receipt['networkObservations']);before=len(self.receipt['commands'])
+        self.scanning='No scan results';self.provision(reuse=True)
+        rows=self.receipt['commands'][before:];stage=self.receipt['sdkWifiProvisioningStages'][-1]
+        self.assertEqual(stage['apSelection'],'reused-observed-AP');self.assertEqual(stage['wifiScans'],[])
+        self.assertNotIn('scanRequestResponse',stage);self.assertFalse(stage['observedAp']['currentConnectivityProven'])
+        self.assertFalse(any('start-scan' in row['command'] or 'list-scan-results' in row['command'] for row in rows))
+        self.assertEqual(sum('connect-network' in row['command'] for row in rows),1)
+        self.assertEqual(len(self.receipt['networkObservations']),first_cm+1)
+        self.assertNotEqual(self.receipt['networkObservations'][0]['runNonce'],self.receipt['networkObservations'][-1]['runNonce'])
+        self.assertIs(self.commands._sdk_wifi_ap,proof);self.assertEqual(self.commands.deadline,33)
+
+    def test_missing_proof_still_requires_an_observed_ap(self):
+        self.scanning='No scan results'
+        with self.assertRaisesRegex(ValueError,'access point was not observed'):self.provision(reuse=True)
+        self.assertFalse(any('connect-network' in row['command'] for row in self.receipt['commands']))
+        self.assertIsNone(self.commands._sdk_wifi_ap)
+
+    def test_foreign_command_record_serial_identity_and_session_reject_proof(self):
+        for kind in ('dict','command','record','serial','source','apk','identity-mutation','session','raw-evidence'):
+            with self.subTest(kind=kind):
+                self.reset();proof=self.issue()
+                if kind=='dict':self.commands._sdk_wifi_ap=proof.describe()
+                elif kind=='command':
+                    other=bootstrap.Commands('adb',bootstrap.SERIAL,self.receipt,33);other._sdk_wifi_ap=proof;self.commands=other
+                elif kind=='record':self.receipt=dict(self.receipt)
+                elif kind=='serial':self.commands.serial='emulator-5556'
+                elif kind=='source':self.expected=dict(self.expected,sourceCommit='f'*40)
+                elif kind=='apk':self.expected=dict(self.expected,apkSha256='f'*64)
+                elif kind=='identity-mutation':self.expected['apkSha256']='f'*64
+                elif kind=='session':self.commands._sdk_wifi_session=object()
+                else:self.receipt['commands'][proof.scan]['stdout']='forged AndroidWifi [ESS]'
+                before=len(self.receipt['commands'])
+                with self.assertRaises(ValueError):self.provision(reuse=True)
+                self.assertEqual(len(self.receipt['commands']),before)
+                self.assertEqual(self.receipt['sdkWifiProvisioningStages'][-1]['status'],'failed')
+                self.assertIsNone(self.commands._sdk_wifi_ap)
+
+    def test_new_preflight_on_same_commands_expires_old_proof_before_any_command(self):
+        self.issue();session=self.commands._sdk_wifi_session
+        with patch.object(self.commands,'run',return_value='0'):
+            with self.assertRaises(ValueError):bootstrap.preflight(self.commands,self.receipt,self.expected)
+        self.assertIsNone(self.commands._sdk_wifi_ap);self.assertIsNot(self.commands._sdk_wifi_session,session)
+
+    def test_unconfirmed_wifi_cm_and_failed_connect_cannot_issue_proof(self):
+        for transports in (['cellular'],[],None,'wifi'):
+            with self.subTest(transports=transports):
+                self.reset();self.transports=transports;self.provision()
+                self.assertIsNone(self.commands._sdk_wifi_ap)
+        self.reset();self.connect_code=1
+        with self.assertRaises(subprocess.CalledProcessError):self.provision()
+        self.assertIsNone(self.commands._sdk_wifi_ap);self.assertEqual(self.receipt['networkObservations'],[])
+        self.assertEqual(self.receipt['sdkWifiProvisioningStages'][-1]['status'],'failed')
+
+    def test_cached_ap_cannot_mask_new_disabled_state_failed_connect_or_cm(self):
+        for failure in ('disabled','connect','unusable-cm','foreign-cm'):
+            with self.subTest(failure=failure):
+                self.reset();self.issue()
+                if failure=='disabled':self.wifi_status='Wifi is disabled'
+                elif failure=='connect':self.connect_code=1
+                elif failure=='unusable-cm':self.cm_usable=False
+                else:self.edit_cm=lambda value:value.update(runNonce='f'*32)
+                with self.assertRaises((TimeoutError,ValueError,subprocess.SubprocessError)):self.provision(reuse=True)
+                self.assertIsNone(self.commands._sdk_wifi_ap)
+                self.assertEqual(self.receipt['sdkWifiProvisioningStages'][-1]['status'],'failed')
+                self.assertLessEqual(self.clock.value,33)
+
+    def test_expired_shared_budget_never_gets_a_fresh_budget_from_proof(self):
+        self.issue();self.clock.value=33
+        with self.assertRaises(TimeoutError):self.provision(reuse=True)
+        self.assertEqual(self.commands.deadline,33);self.assertIsNone(self.commands._sdk_wifi_ap)
+
+    def test_failed_evidence_binding_preserves_failure_instead_of_passed_stage(self):
+        original=bootstrap.network_observation
+        def changed(*args,**kwargs):
+            result=original(*args,**kwargs)
+            self.receipt['commands'][2]['exitCode']=1  # Actual scan request record is unrelated to issuance.
+            self.receipt['commands'][3]['timedOut']=True  # Observed-AP result must never issue proof after timeout.
+            return result
+        with patch.object(bootstrap,'network_observation',side_effect=changed):
+            with self.assertRaises(ValueError):self.provision()
+        stage=self.receipt['sdkWifiProvisioningStages'][-1]
+        self.assertEqual(stage['status'],'failed');self.assertIn('failureType',stage)
+        self.assertIsNone(self.commands._sdk_wifi_ap)
+
+
 if __name__=='__main__':unittest.main()
