@@ -10,7 +10,8 @@ public final class LocalDraftPolicyHost {
  static String sdk(){return J.obj("history",J.obj("entries",new JSONArray().put(J.obj("url",url,"title","Keep history")),"index",1),"scrolldata",J.obj("scroll","0,450","children",new JSONArray().put(J.obj("scroll","2,75"))),"formdata",J.obj("url",url,"id",J.obj("prompt","private draft"),"children",new JSONArray().put(J.obj("url",url+"/frame","innerHTML","child draft"))),"unrelated",J.obj("keep",true)).toString();}
  static BrowserSessionStore store(Context c){BrowserSessionStore s=new BrowserSessionStore(c);stores.add(s);return s;}
  static void flush(BrowserSessionStore s)throws Exception{s.io.submit(()->{}).get(5,TimeUnit.SECONDS);}
- static String bytes(Context c)throws Exception{return Files.readString(new File(c.getNoBackupFilesDir(),"gecko-session.json").toPath());}
+ static String diskBytes(Context c)throws Exception{return Files.readString(new File(c.getNoBackupFilesDir(),"gecko-session.json").toPath());}
+ static String bytes(Context c)throws Exception{String raw=diskBytes(c);return raw.startsWith("PocketChat-Session-")?raw.substring(raw.indexOf('\n')+1):raw;}
  static String read(BrowserSessionStore s)throws Exception{CompletableFuture<String> value=new CompletableFuture<>();s.read(value::complete);return value.get(5,TimeUnit.SECONDS);}
  static boolean forms(String value){return value!=null&&J.parse(value).has("formdata");}
  static boolean sameWithoutForms(String value,String original){if(value==null)return false;JSONObject got=J.parse(value),wanted=J.parse(original);wanted.remove("formdata");return canonical(got).equals(canonical(wanted));}
@@ -55,6 +56,26 @@ public final class LocalDraftPolicyHost {
   Context coalesced=context();BrowserSessionStore merging=store(coalesced);merging.write(()->{merging.write(()->{toggle(coalesced,false);toggle(coalesced,true);return null;});return state;});flush(merging);check("Coalesced valid bytes are filtered again after later snapshot toggles",sameWithoutForms(bytes(coalesced),state));
 
  }
+ static void diskPolicy()throws Exception{
+  String state=sdk();Context legacy=context();File file=new File(legacy.getNoBackupFilesDir(),"gecko-session.json");Files.writeString(file.toPath(),state);
+  check("Legacy unstamped SDK checkpoint preserves default revision zero",read(store(legacy)).equals(state));
+  toggle(legacy,false);toggle(legacy,true);String restored=read(store(legacy));
+  check("Legacy disk forms cannot return after an off on cycle",sameWithoutForms(restored,state)&&diskBytes(legacy).equals(state));
+  Context written=context();BrowserSessionStore first=store(written);first.write(state);flush(first);
+  check("New checkpoint persists its write-time revision outside the exact SDK payload",diskBytes(written).equals("PocketChat-Session-1:0\n"+state));
+  toggle(written,false);check("Disabled read of stamped disk retains only SDK history and scroll",sameWithoutForms(read(first),state));toggle(written,true);
+  String cold=read(store(written));check("Cold new store rejects committed forms from an earlier enabled revision",sameWithoutForms(cold,state)&&forms(bytes(written)));
+  GeckoWebView view=new GeckoWebView(written);view.restoreCheckpoint(view.current,GeckoSession.SessionState.fromString(cold),url,LocalDraftPolicy.revision(written));
+  check("Actual SDK restore consumer cannot rebind filtered cold disk forms to current policy",view.current.restores==1&&sameWithoutForms(view.current.last.toString(),state));
+  BrowserSessionStore fresh=store(written);fresh.write(state);flush(fresh);check("A fresh post-enable write is cold-restorable under its persisted new revision",diskBytes(written).startsWith("PocketChat-Session-1:2\n")&&read(store(written)).equals(state));
+  for(String header:new String[]{"PocketChat-Session-1:-1","PocketChat-Session-1:9223372036854775808","PocketChat-Session-1:garbled","PocketChat-Session-2:2"}){
+   Files.writeString(new File(written.getNoBackupFilesDir(),"gecko-session.json").toPath(),header+"\n"+state);check("Invalid or unsupported disk header cannot enable forms: "+header,sameWithoutForms(read(store(written)),state));
+  }
+  check("Truncated checkpoint header fails closed",LocalDraftPolicy.readCheckpoint("PocketChat-Session-1:2",true,2)==null);
+  Context maximum=context();BrowserSessionStore bounded=store(maximum);String limit="x".repeat(BrowserSessionStore.LIMIT);bounded.write(limit);flush(bounded);check("Header does not reduce the existing SDK payload size limit",read(bounded).equals(limit)&&diskBytes(maximum).length()<=BrowserSessionStore.LIMIT+65);
+  Files.writeString(new File(maximum.getNoBackupFilesDir(),"gecko-session.json").toPath(),limit+"x");check("Oversized legacy raw payload still fails the original bound",read(bounded)==null);
+  Files.writeString(new File(maximum.getNoBackupFilesDir(),"gecko-session.json").toPath(),"PocketChat-Session-1:0\n"+limit+"x");check("Header allowance cannot expand SDK payload size",read(bounded)==null);
+ }
  static void restore()throws Exception{
   String state=sdk();Context c=context();GeckoWebView view=new GeckoWebView(c);GeckoSession target=view.current;GeckoSession.SessionState snapshot=GeckoSession.SessionState.fromString(state);view.restoreCheckpoint(target,snapshot,url,LocalDraftPolicy.revision(c));check("Enabled SDK restore keeps existing synchronous path",target.restores==1&&forms(target.last.toString()));
   Context cycled=context();GeckoWebView old=new GeckoWebView(cycled);long previous=LocalDraftPolicy.revision(cycled);toggle(cycled,false);toggle(cycled,true);old.restoreCheckpoint(old.current,GeckoSession.SessionState.fromString(state),url,previous);flush(old.sessionStore);old.owner.handler.runAll();check("Reenabled SDK restore rejects forms from an older policy revision",old.current.restores==1&&sameWithoutForms(old.current.last.toString(),state));
@@ -66,7 +87,7 @@ public final class LocalDraftPolicyHost {
   Context bad=context();toggle(bad,false);GeckoWebView v=new GeckoWebView(bad);v.restoreCheckpoint(v.current,new GeckoSession.SessionState("bad-json"),url,LocalDraftPolicy.revision(bad));flush(v.sessionStore);v.owner.handler.runAll();check("Invalid disabled SDK state falls back to load without raw restore",v.current.restores==0&&v.current.loads==1&&v.current.loaded.equals(url));
  }
  static void baseline()throws Exception{Context c=context();DraftArchive a=new DraftArchive(c);check("Before enabled archive sanity",a.save(url,"retained history","on")&&a.list(url).length()==1);toggle(c,false);check("Disabled production archive must reject new persistent text",!a.save(url,"forbidden disabled text","off")&&a.list(url).length()==1);ChatSession session=new ChatSession(c);PageMemory memory=new PageMemory(session);JSONObject input=snapshot("unsent live draft");memory.remember(memory.scope(),url,input);memory.restorePending=true;memory.restore(url,session.navigationEpoch);check("Disabled production PageMemory must not restore captured draft",session.restore!=null&&!session.restore.optBoolean("allowDraft"));check("Before reproduction leaves supplied live draft unchanged",input.optString("draft").equals("unsent live draft"));}
- public static void main(String[] args)throws Exception{try{if(Boolean.getBoolean("draft.before"))baseline();else{policy();archive();memory();sessionStore();restore();}}finally{for(BrowserSessionStore s:stores)s.io.shutdownNow();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
+ public static void main(String[] args)throws Exception{try{if(Boolean.getBoolean("draft.before"))baseline();else{policy();archive();memory();sessionStore();diskPolicy();restore();}}finally{for(BrowserSessionStore s:stores)s.io.shutdownNow();}int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks));if(passed!=checks.length())System.exit(1);}
 }
 class J{static JSONObject obj(Object... pairs){JSONObject out=new JSONObject();try{for(int i=0;i<pairs.length;i+=2)out.put((String)pairs[i],pairs[i+1]);}catch(JSONException e){throw new RuntimeException(e);}return out;}static JSONObject parse(String value){try{return new JSONObject(value);}catch(Exception e){return new JSONObject();}}}
 class AppPrefs{/* APPPREFS */}

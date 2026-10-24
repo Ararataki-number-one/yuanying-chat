@@ -22,5 +22,23 @@ final class LocalDraftPolicy {
     if(value==null||keepDrafts)return value;
     try{JSONObject state=new JSONObject(value);state.remove("formdata");return state.toString();}catch(JSONException invalid){return null;}
   }
+  static final String CHECKPOINT_MAGIC="PocketChat-Session-",CHECKPOINT_HEADER=CHECKPOINT_MAGIC+"1:";
+  /** The private file header binds policy; the SDK payload itself stays unchanged. */
+  static String readCheckpoint(String value,boolean enabled,long revision){
+    if(value==null)return null;
+    long storedRevision=0;String payload=value;
+    if(value.startsWith(CHECKPOINT_MAGIC)){
+      int end=value.indexOf('\n');if(end<0||end>64)return null;
+      payload=value.substring(end+1);storedRevision=-1;
+      String header=value.substring(0,end);
+      if(header.startsWith(CHECKPOINT_HEADER)){
+        String number=header.substring(CHECKPOINT_HEADER.length());
+        if(number.matches("0|[1-9][0-9]{0,18}"))try{storedRevision=Long.parseLong(number);}catch(NumberFormatException ignored){}
+      }
+    }
+    // Unstamped legacy files belong only to the unchanged legacy policy (zero).
+    // A damaged/newer header never grants form recovery; valid history can survive.
+    return checkpoint(payload,enabled&&storedRevision>=0&&storedRevision==revision);
+  }
   static String unavailable(Context context){return enabled(context)?"草稿暂存未完成，请稍后重试":"本机草稿保存已关闭，请先手动保留输入";}
 }

@@ -26,8 +26,8 @@ final class BrowserSessionStore {
   void read(Consumer<String> done){final long revision=LocalDraftPolicy.revision(context);io.execute(()->{
     String value=null;
     try(InputStream in=file.openRead();ByteArrayOutputStream out=new ByteArrayOutputStream()){
-      byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>LIMIT)throw new IOException("Session too large");out.write(buffer,0,n);}value=new String(out.toByteArray(),StandardCharsets.UTF_8);
-    }catch(IOException ignored){}done.accept(LocalDraftPolicy.checkpoint(value,LocalDraftPolicy.enabled(context)&&revision==LocalDraftPolicy.revision(context)));
+      byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>LIMIT+65)throw new IOException("Session too large");out.write(buffer,0,n);}value=new String(out.toByteArray(),StandardCharsets.UTF_8);int header=value.startsWith(LocalDraftPolicy.CHECKPOINT_MAGIC)?value.indexOf('\n')+1:0;if(header>65)header=0;if(out.size()-header>LIMIT)value=null;
+    }catch(IOException ignored){}done.accept(LocalDraftPolicy.readCheckpoint(value,LocalDraftPolicy.enabled(context)&&revision==LocalDraftPolicy.revision(context),LocalDraftPolicy.revision(context)));
   });}
   void write(String value){if(value!=null&&value.length()<=LIMIT)write(()->value);}
   void write(Supplier<String> snapshot){write(snapshot,LocalDraftPolicy.revision(context));}
@@ -52,7 +52,7 @@ final class BrowserSessionStore {
       // Continuous scrolling/form changes must still leave a durable checkpoint.
       // Bound coalescing to about one second without ever flushing on the UI.
       synchronized(this){if(pending!=null&&(valid==null||System.nanoTime()-validAt<1000000000L))continue;}
-      if(valid!=null){FileOutputStream out=null;try{if(!LocalDraftPolicy.enabled(context)||validRevision!=LocalDraftPolicy.revision(context)){String finalValue=LocalDraftPolicy.checkpoint(new String(valid,StandardCharsets.UTF_8),false);if(finalValue==null){valid=null;continue;}valid=finalValue.getBytes(StandardCharsets.UTF_8);}out=file.startWrite();out.write(valid);file.finishWrite(out);Probe p=probe;if(p!=null)p.written.incrementAndGet();}catch(IOException error){if(out!=null)file.failWrite(out);}valid=null;}
+      if(valid!=null){FileOutputStream out=null;try{if(!LocalDraftPolicy.enabled(context)||validRevision!=LocalDraftPolicy.revision(context)){String finalValue=LocalDraftPolicy.checkpoint(new String(valid,StandardCharsets.UTF_8),false);if(finalValue==null){valid=null;continue;}valid=finalValue.getBytes(StandardCharsets.UTF_8);}out=file.startWrite();out.write((LocalDraftPolicy.CHECKPOINT_HEADER+validRevision+"\n").getBytes(StandardCharsets.UTF_8));out.write(valid);file.finishWrite(out);Probe p=probe;if(p!=null)p.written.incrementAndGet();}catch(IOException error){if(out!=null)file.failWrite(out);}valid=null;}
     }
   }
 }
