@@ -23,7 +23,7 @@ final class SourceRouteTerminalObserver {
   static final class Scope {
     final String name,id;final JSONObject evidence,contacts;
     final ArrayList<Recovery> recoveries=new ArrayList<>();final JSONArray stops=new JSONArray();
-    volatile long deadlineNs;JSONObject restartTerminal;
+    volatile long deadlineNs;JSONObject restartTerminal;volatile SourceRouteStartObservation.Root startupRoot;
     Scope(String name,String nonce,JSONObject contacts){this.name=name;id=UUID.randomUUID().toString();this.contacts=copy(contacts);evidence=J.obj("schema",1,"case",name,"caseId",id,"runNonce",nonce,"startedAtNs",now(),"status","collecting","fetchBudgetMs",22000,"stopObservations",stops);}
   }
   Scope begin(String name,JSONObject contacts)throws Exception{
@@ -61,6 +61,17 @@ final class SourceRouteTerminalObserver {
   }
   static void closed(JSONObject value)throws Exception{snapshot(value);require(!value.getBoolean("alive")&&value.getInt("pid")==0&&value.getString("state").equals("closed"),"service did not prove a closed process");}
   static boolean sameSnapshot(JSONObject a,JSONObject b)throws Exception{for(String key:new String[]{"slot","pid","servicePid","state","alive","generation","configuration"})if(!Objects.equals(a.get(key),b.get(key)))return false;return true;}
+  boolean stopBelongsToRecovery(Scope scope,JSONObject stop,int request)throws Exception{
+    if(stop.getInt("recoveryRequestSerial")==request)return true;
+    if(stop.getInt("afterRequestSerial")!=request||request!=stop.getInt("recoveryRequestSerial")+1||scope.startupRoot==null)return false;
+    JSONObject recovery=null;synchronized(scope){for(Recovery item:scope.recoveries)if(item.record.getInt("request")==request){require(recovery==null,"duplicate joined request");recovery=item.record;}}
+    require(recovery!=null&&recovery.getString("caseId").equals(scope.id)&&recovery.getLong("requestedAtNs")>=stop.getLong("beganAtNs")&&recovery.getLong("requestedAtNs")<=stop.getLong("endedAtNs")&&recovery.getLong("completedAtNs")>=stop.getLong("endedAtNs"),"joined request does not overlap this owned stop");
+    JSONObject proof=test.network.startObservation.joinFor(request,stop);require(proof.getString("caseId").equals(scope.id)&&proof.getString("sourceCommit").equals(test.expectedSource)&&proof.getString("runNonce").equals(test.runNonce),"joined startup identity changed");NetworkCatalog.put(stop,"joinedRecovery",proof);return true;
+  }
+  void awaitJoinedWorker(Scope scope)throws Exception{
+    require(scope.startupRoot!=null,"crossed stop has no registered restart");JSONObject wait=J.obj("method","actual-start-worker-observer-completion","requestedAtNs",now());NetworkCatalog.put(scope.evidence,"startObservationWait",wait);
+    test.network.startObservation.workerCompletion(scope.startupRoot).get(remaining(scope),TimeUnit.NANOSECONDS);NetworkCatalog.put(wait,"completedAtNs",now());
+  }
   void finish(Scope scope,JSONObject negative)throws Exception{
     NetworkCatalog.put(negative,"terminalEvidence",scope.evidence);
     try{
@@ -68,6 +79,8 @@ final class SourceRouteTerminalObserver {
       final ArrayList<Recovery> selected=new ArrayList<>();JSONObject cut=ui(scope,()->{synchronized(scope){selected.addAll(scope.recoveries);}return J.obj("cutAtNs",now(),"cache",cache(),"fence",fence(scope));});for(Iterator<String> keys=cut.keys();keys.hasNext();){String key=keys.next();NetworkCatalog.put(immediate,key,cut.get(key));}
       synchronized(scope){NetworkCatalog.put(scope.evidence,"postFetchCache",immediate);}require(!immediate.getBoolean("ready"),"post-fetch network was ready");
       JSONArray callbacks=new JSONArray();for(Recovery item:selected)callbacks.put(item.done.get(remaining(scope),TimeUnit.NANOSECONDS));NetworkCatalog.put(scope.evidence,"recoveries",callbacks);
+      boolean crossed=false;synchronized(scope){for(int i=0;i<scope.stops.length();i++){JSONObject stop=scope.stops.getJSONObject(i);crossed|=stop.getInt("recoveryRequestSerial")!=stop.getInt("afterRequestSerial");}}
+      if(crossed)awaitJoinedWorker(scope);
       if(immediate.getBoolean("coreAlive")){boolean overlapping=false;long observed=immediate.getLong("atNs");for(int i=0;i<callbacks.length();i++){JSONObject callback=callbacks.getJSONObject(i);overlapping|=callback.getLong("requestedAtNs")<=observed&&observed<callback.getLong("completedAtNs");}require(overlapping,"live post-fetch cache has no overlapping recovery");}
       JSONObject before=ui(scope,()->{synchronized(scope){require(active==scope&&scope.recoveries.size()==selected.size(),"a new recovery crossed the terminal selection");}JSONObject f=fence(scope);require(!f.getBoolean("starting")&&!f.getBoolean("connecting")&&!f.getBoolean("ready")&&!f.getBoolean("hasVerifiedReceipt"),"operation has no rejected terminal callback");return f;});
       NetworkCatalog.put(scope.evidence,"fenceBefore",before);
@@ -77,7 +90,7 @@ final class SourceRouteTerminalObserver {
       JSONObject cutCache=immediate.getJSONObject("cache");snapshot(cutCache);require(cutCache.getInt("slot")==anchor.getInt("slot")&&cutCache.getInt("servicePid")==anchor.getInt("servicePid")&&cutCache.getString("configuration").equals(anchor.getString("configuration")),"cut cache changed service or configuration");
       Set<Integer> activeAtCut=new HashSet<>();long cutAt=immediate.getLong("cutAtNs");for(int i=0;i<callbacks.length();i++){JSONObject cb=callbacks.getJSONObject(i);if(cb.getLong("requestedAtNs")<=cutAt&&cutAt<cb.getLong("completedAtNs"))activeAtCut.add(cb.getInt("request"));}
       if(activeAtCut.isEmpty())require(sameSnapshot(cutCache,anchor),"cut cache has no matching terminal callback");
-      else if(cutCache.getBoolean("alive")){int ownedAtCut=0;synchronized(scope){for(int i=0;i<scope.stops.length();i++){JSONObject stop=scope.stops.getJSONObject(i),owned=stop.getJSONObject("owned");if(activeAtCut.contains(stop.getInt("recoveryRequestSerial"))&&cutAt<=stop.getLong("endedAtNs")&&owned.getInt("pid")==cutCache.getInt("pid")&&owned.getInt("servicePid")==cutCache.getInt("servicePid")&&owned.getString("generation").equals(cutCache.getString("generation"))&&owned.getString("configuration").equals(cutCache.getString("configuration")))ownedAtCut++;}}require(ownedAtCut==1,"live cut cache has no unique observed recovery owner");}
+      else if(cutCache.getBoolean("alive")){int ownedAtCut=0;synchronized(scope){for(int i=0;i<scope.stops.length();i++){JSONObject stop=scope.stops.getJSONObject(i),owned=stop.getJSONObject("owned");boolean requestOwned=false;for(int request:activeAtCut)requestOwned|=stopBelongsToRecovery(scope,stop,request);if(requestOwned&&cutAt<=stop.getLong("endedAtNs")&&owned.getInt("pid")==cutCache.getInt("pid")&&owned.getInt("servicePid")==cutCache.getInt("servicePid")&&owned.getString("generation").equals(cutCache.getString("generation"))&&owned.getString("configuration").equals(cutCache.getString("configuration")))ownedAtCut++;}}require(ownedAtCut==1,"live cut cache has no unique observed recovery owner");}
       else closed(cutCache);
       NetworkTransportClient transport=test.network.transport;require(transport!=null,"missing transport");
       JSONObject read=J.obj("method","NetworkTransportClient.call(snapshot)","requestedAtNs",now());NetworkCatalog.put(scope.evidence,"freshRead",read);
@@ -88,7 +101,8 @@ final class SourceRouteTerminalObserver {
       synchronized(scope){
         for(int i=0;i<scope.stops.length();i++){
           JSONObject stop=scope.stops.getJSONObject(i),owned=stop.getJSONObject("owned"),prior=stop.getJSONObject("beforeCache"),ended=stop.getJSONObject("afterCache");snapshot(prior);closed(ended);
-          require(stop.getString("caseId").equals(scope.id)&&stop.getInt("recoveryRequestSerial")==stop.getInt("afterRequestSerial"),"stop observation crossed a recovery");
+          require(stop.getString("caseId").equals(scope.id),"stop observation crossed cases");
+          require(stop.getInt("recoveryRequestSerial")==stop.getInt("afterRequestSerial")||stopBelongsToRecovery(scope,stop,stop.getInt("afterRequestSerial")),"stop observation crossed a recovery without exact startup registration");
           require(owned.getInt("pid")>0&&prior.getBoolean("alive")&&owned.getInt("pid")==prior.getInt("pid")&&owned.getInt("servicePid")==prior.getInt("servicePid")&&owned.getString("generation").equals(prior.getString("generation"))&&owned.getString("configuration").equals(prior.getString("configuration")),"stop owner was not the observed live process");
           require(!owned.getString("generation").equals(ended.getString("generation"))&&owned.getInt("servicePid")==ended.getInt("servicePid")&&owned.getString("configuration").equals(ended.getString("configuration")),"stop did not retain a distinguishable closure identity");
         }
@@ -97,7 +111,7 @@ final class SourceRouteTerminalObserver {
       JSONObject after=ui(scope,()->{synchronized(scope){require(scope.recoveries.size()==selected.size(),"a new recovery crossed the IPC read");}require(active==scope&&test.network.transport==transport,"case or transport changed");JSONObject f=fence(scope);require(before.toString().equals(f.toString()),"terminal identity changed across IPC");JSONObject finalCache=cache();NetworkCatalog.put(scope.evidence,"finalCache",finalCache);closed(finalCache);require(sameSnapshot(fresh,finalCache),"pushed service identity changed after terminal IPC");JSONObject contacts=test.contacts();NetworkCatalog.put(scope.evidence,"contactsBefore",scope.contacts);NetworkCatalog.put(scope.evidence,"contactsAfter",contacts);require(scope.contacts.toString().equals(contacts.toString()),"a target was contacted while awaiting closure");NetworkCatalog.put(scope.evidence,"completedAtNs",now());active=null;return f;});NetworkCatalog.put(scope.evidence,"fenceAfter",after);
       NetworkCatalog.put(negative,"coreAliveAfter",fresh.getBoolean("alive"));NetworkCatalog.put(negative,"readyAfter",after.getBoolean("ready"));NetworkCatalog.put(scope.evidence,"status","passed");
     }catch(Exception error){NetworkCatalog.put(scope.evidence,"status","failed");NetworkCatalog.put(scope.evidence,"error",error.getClass().getName()+": "+String.valueOf(error.getMessage()));throw error;}
-    finally{if(active==scope)active=null;}
+    finally{if(scope.startupRoot!=null)NetworkCatalog.put(scope.evidence,"startObservation",test.network.startObservation.snapshot(scope.startupRoot));if(active==scope)active=null;}
   }
   void close(){active=null;reader.shutdownNow();}
 }

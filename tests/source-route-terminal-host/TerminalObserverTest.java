@@ -73,6 +73,11 @@ class Profiles {static int slot(Object context){return 0;}}
 class NetworkCatalog {static void put(JSONObject o,String key,Object value){try{o.put(key,value);}catch(JSONException e){throw new RuntimeException(e);}}}
 class NetworkDiagnostics {enum Reason{START_FAILED}}
 class NativeNetwork {
+  final SourceRouteStartObservation startObservation=new SourceRouteStartObservation();
+  final List<Callback> startWaiters=new ArrayList<>();boolean restartQueued;
+  interface Callback{void done(boolean ok,String message);}
+  interface RecoveryCallback{void done(RecoveryOutcome outcome);}
+  static class RecoveryAdapter implements Callback {final RecoveryCallback callback;RecoveryAdapter(RecoveryCallback callback){this.callback=callback;}public void done(boolean ok,String message){callback.done(new RecoveryOutcome());}}
   NetworkTransportClient transport=new NetworkTransportClient();boolean starting,ready;Object verifiedRoute;long routeSerial;String message="fixture";
   boolean coreAlive(){return transport.state.optBoolean("alive");}
   enum RecoveryState{FAILED,RECOVERED}

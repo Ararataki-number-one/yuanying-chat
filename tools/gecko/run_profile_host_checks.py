@@ -187,6 +187,16 @@ def main():
     files.update([terminal, ROOT / "tests/source-route-terminal-host/TerminalObserverTest.java", ROOT / "tests/gecko/SourceRouteTerminalObserver.java",
                   ROOT / "tests/gecko/NetworkSourcesRouteIntegrationActivity.java", ROOT / "tests/gecko/run_network_sources_route.py",
                   ROOT / "tests/profile_network_source_terminal_contract_test.py"])
+    start_observation = ROOT / "tests/source-route-start-host/run.py"
+    start_receipt = output / "source-route-start-host-results.json"
+    subprocess.run([sys.executable, str(start_observation), "--java-home", str(Path(shutil.which(java) or java).resolve().parent.parent),
+                    "--json-jar", str(json_jar), "--output", str(start_receipt)], cwd=ROOT, check=True)
+    start_value = json.loads(start_receipt.read_text())
+    results.append({"test":"source-route-start-observation", "report":str(start_receipt.relative_to(ROOT)),
+                    "passed":start_value["total"], "actualAndroidExecution":False, "evidence":start_value})
+    files.update([start_observation, ROOT / "tests/source-route-start-host/StartObservationTest.java",
+                  ROOT / "tests/source-route-start-host/TerminalJoinTest.java", ROOT / "tests/source-route-start-host/terminal_join.py",
+                  ROOT / "tests/gecko/SourceRouteStartObservation.java", ROOT / "app/src/main/java/local/pocketchat/NativeNetwork.java"])
     caret_test = ROOT / "tests/browser-runtime/caret-document-observer.test.cjs"
     if caret_test.is_file():
         caret_asset = ROOT / "tests/gecko/assets/caret-document-observer.js"
