@@ -45,6 +45,8 @@ for item in out.glob('upload-state-*.txt'):
     shutil.copy2(item,stage/item.name)
 for name in ['ui-network-visual-fixture-desktop-host-results.json', 'ui-network-visual-fixture-android-host-results.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
+for name in ['chrome-network-state-desktop-host-results.json', 'chrome-network-state-android-host-results.json', 'compact-chrome-capture-desktop-host-results.json', 'compact-chrome-capture-android-host-results.json']:
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['caret-document-observer-host-results.json','resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json','emulator-bootstrap-results.json','profile-host-results.json','identity-controller-host-results.json','deferred-browser-host-results.json','identity-bridge-host-results.json','environment-intent-host-results.json','gecko-proxy-route-host-results.json','environment-spec-results.json','environment-intent-results.json','gecko-identity-prototype-results.json','gecko-template-results.json','gecko-template-runner-log.json','environment-spec-runner-log.json','environment-intent-runner-log.json','gecko-identity-prototype-runner-log.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['sdk-build-receipt.json','derived-sdk-verification.json','derived-sdk-input.json','caret-apk-build-receipt.json','gecko-performance-build-identity.json','installed-apk-read-performance-before.json','installed-apk-read-performance-after.json','editing-phase-environment.json']:
