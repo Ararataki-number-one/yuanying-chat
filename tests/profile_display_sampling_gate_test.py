@@ -267,6 +267,10 @@ class DisplayGateTest(unittest.TestCase):
         for jar,label in [('catalog-json.jar','desktop'),('sharing-android-json.jar','android')]:
             line='        python3 tests/window-network-identity-host/run.py --java-home "$JAVA_HOME" --json-jar work/gecko-integration/'+jar+' --output work/gecko-integration/window-network-identity-'+label+'-host-results.json\n'
             self.assertEqual(source.count(line),1);source=source.replace(line,'')
+        # The independently reviewed R02 fixture adds this exact invocation.
+        # Invert only that insertion before checking the unchanged d341 workflow.
+        binding='        if ! python3 tests/gecko/run_network_client_binding.py --adb "$(command -v adb)" --serial emulator-5554; then\n          checks_failed=1\n        fi\n'
+        self.assertEqual(source.count(binding),1);source=source.replace(binding,'',1)
         self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'50fdca828ab3f661aff423bf6755359d2f4e8b24c3e78e0100d8ce29da8120c1')
 
     def test_actual_identity_runner_rejects_partial_or_failed_93_and_14_reports(self):
