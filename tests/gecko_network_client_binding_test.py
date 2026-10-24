@@ -273,7 +273,13 @@ class PublicWiringControls(unittest.TestCase):
         path='.github/workflows/gecko-integration.yml';raw=(ROOT/path).read_text()
         inserted='        if ! python3 tests/gecko/run_network_client_binding.py --adb "$(command -v adb)" --serial emulator-5554; then\n          checks_failed=1\n        fi\n'
         self.assertEqual(raw.count(inserted),1)
-        self.assertEqual(hashlib.sha256(raw.replace(inserted,'',1).encode()).hexdigest(),'50fdca828ab3f661aff423bf6755359d2f4e8b24c3e78e0100d8ce29da8120c1')
+        preserved=raw.replace(inserted,'',1)
+        # Remove only the independently reviewed N15 host additions, then
+        # retain the original d341 workflow's exact byte guard.
+        for jar,label in [('catalog-json.jar','desktop'),('sharing-android-json.jar','android')]:
+            identity='        python3 tests/window-network-identity-host/run.py --java-home "$JAVA_HOME" --json-jar work/gecko-integration/'+jar+' --output work/gecko-integration/window-network-identity-'+label+'-host-results.json\n'
+            self.assertEqual(preserved.count(identity),1);preserved=preserved.replace(identity,'',1)
+        self.assertEqual(hashlib.sha256(preserved.encode()).hexdigest(),'50fdca828ab3f661aff423bf6755359d2f4e8b24c3e78e0100d8ce29da8120c1')
     def test_connection_gate_only_adds_the_mandatory_framework_validator(self):
         path='tools/gecko/check_connection_evidence.py';raw=(ROOT/path).read_text()
         inserted='if __package__:\n    from .network_client_binding_contract import verify_framework_binding_files\nelse:\n    from network_client_binding_contract import verify_framework_binding_files\n'
