@@ -393,6 +393,70 @@ def _verify_safe_idle_trust_host(report, source, apk_sha256):
     assert _hash(apk_sha256) and report['integrationApkSha256'] == apk_sha256
 
 
+def _verify_safe_idle_job(row, events):
+    """Only a proven pre-write deletion rejects application of the saved candidate."""
+    state, job = row['outcome'], row['outcome']['job']
+    assert job['done'] is True
+    if row['name'] != 'capture-delete':
+        assert job['ok'] is True
+        return
+    assert job['ok'] is False and job['recoveryRequired'] is False
+    proof, receipt = row['deletionEvidence'], job['operationResult']
+    assert type(proof['schema']) is int and proof['schema'] == 1
+    assert proof['operation'] == 'ProfileCatalog.beginDelete'
+    assert proof['transactionPresent'] is False and proof['pendingState'] == 'ready'
+    expected, pending = proof['transitionIdentity'], proof['pendingIdentity']
+    assert set(expected) == set(pending) == {'slot', 'generation', 'environmentId'}
+    for identity in (expected, pending):
+        assert type(identity['slot']) is int and identity['slot'] == 0
+        assert type(identity['generation']) is int and identity['generation'] >= 0
+        assert isinstance(identity['environmentId'], str)
+        assert re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', identity['environmentId'])
+    assert pending == expected
+    before, after = proof['catalogBefore'], proof['catalogAfter']
+    for catalog in (before, after):
+        assert set(catalog) == {'slot', 'generation', 'environmentId', 'created', 'deleting', 'resetting'}
+        assert type(catalog['slot']) is int and catalog['slot'] == expected['slot']
+        assert type(catalog['generation']) is int
+        assert catalog['environmentId'] == expected['environmentId'] and catalog['resetting'] is False
+    assert before['generation'] == expected['generation'] and before['created'] is True and before['deleting'] is False
+    assert after['generation'] == before['generation'] + 1 and after['created'] is False and after['deleting'] is True
+    assert type(state['generation']) is int and state['generation'] == after['generation']
+    assert receipt['environmentId'] == expected['environmentId']
+    assert type(receipt['generation']) is int and receipt['generation'] == expected['generation']
+    assert _hash(proof['candidateId'], 32) and receipt['candidateId'] == proof['candidateId']
+    assert type(proof['savedRevision']) is int and proof['savedRevision'] > 0
+    assert type(receipt['savedRevision']) is int and receipt['savedRevision'] == proof['savedRevision']
+    assert type(receipt['appliedRevision']) is int and receipt['appliedRevision'] == 0
+    assert receipt['saveState'] == 'saved' and receipt['applicationState'] == 'pending' and receipt['scope'] == 'session'
+    assert receipt['message'] == job['message'] == '环境已删除或尚未创建'
+    for field in ('operation', 'configurationCapture', 'confirmed', 'fenced'):
+        assert state[field] is False, field
+    assert state['touchRestored'] is True and state['replyId'] == ''
+    assert type(row['reconnectAttempts']) is int and row['reconnectAttempts'] == 0
+    assert row['actualTrustedGesture'] is False and row['injectedState'] == 'delete'
+    assert row['draft'] == 'network fence prompt'
+    selected = {}
+    for kind in ('phase', 'injection', 'candidateSeparation', 'case'):
+        found = [(index, event['value']) for index, event in enumerate(events)
+                 if event.get('kind') == kind and event['value'].get('case', event['value'].get('name')) == row['name']]
+        assert len(found) == 1, kind
+        selected[kind] = found[0]
+    assert selected['phase'][0] < selected['injection'][0] < selected['candidateSeparation'][0] < selected['case'][0]
+    phase, injection, separation = (selected[kind][1] for kind in ('phase', 'injection', 'candidateSeparation'))
+    assert selected['case'][1] == row
+    assert phase['phase'] == 'commit' and phase['operation'] is True and phase['configurationCapture'] is True
+    assert type(state['connectionEpoch']) is int and type(phase['connectionEpoch']) is int
+    assert state['connectionEpoch'] == phase['connectionEpoch']
+    assert injection['kind'] == 'delete' and injection['deletionEvidence'] == proof
+    assert type(injection['realCatalogGeneration']) is int and injection['realCatalogGeneration'] == after['generation']
+    assert injection['scope'] == 'controlled state injected at actual production phase'
+    assert separation['activeUnchanged'] is True and separation['pendingUnchanged'] is True
+    assert _hash(proof['activeBeforeHash']) and _hash(proof['pendingBeforeHash'])
+    assert proof['activeBeforeHash'] == phase['activeHash'] == row['activeBeforeHash'] == row['activeAfterHash'] == row['originalActiveHash'] == separation['activeBeforeHash'] == separation['activeAfterHash']
+    assert proof['pendingBeforeHash'] == phase['pendingCandidateHash'] == row['pendingBeforeHash'] == row['pendingAfterHash'] == separation['pendingBeforeHash'] == separation['pendingAfterHash']
+
+
 def verify_safe_idle(report):
     """Replay the actual report's gestures/events without runner-global state."""
     assert report['status'] == 'passed', report.get('error')
@@ -444,7 +508,7 @@ def verify_safe_idle(report):
                 assert lineage[field] is True, field
         else:
             assert row['pendingBeforeHash'] == row['pendingAfterHash']
-        assert state['job']['done'] is True and state['job']['ok'] is True
+        _verify_safe_idle_job(row, events)
         assert state['confirmed'] is False and row['reconnectAttempts'] == 0
         assert not state['operation'] and not state['configurationCapture'] and state['touchRestored'] is True
         if row['name'].endswith('send'):
