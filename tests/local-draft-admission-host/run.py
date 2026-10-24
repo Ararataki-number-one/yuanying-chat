@@ -27,6 +27,33 @@ def member(text,needle):
         i+=1
     raise ValueError('Unclosed member: '+needle)
 
+def verify_restore_observation_controls(value,expected_source,expected_source_files):
+    """Reject incomplete/foreign synthetic host reports before overall acceptance."""
+    fields={'status','checks','checkCount','actualAndroidExecution','actualGeckoExecution',
+            'diagnosticOnly','sourceCommit','sourceFiles'}
+    if not isinstance(value,dict) or set(value)!=fields:
+        raise ValueError('Restore observation report structure differs')
+    if (value['status']!='passed' or type(value['checkCount']) is not int or value['checkCount']!=15
+            or not isinstance(value['checks'],list) or len(value['checks'])!=15
+            or value['actualAndroidExecution'] is not False or value['actualGeckoExecution'] is not False
+            or value['diagnosticOnly'] is not True):
+        raise ValueError('Incomplete restore observation controls or scope')
+    names=[]
+    for row in value['checks']:
+        if (not isinstance(row,dict) or set(row)!={'name','pass'}
+                or not isinstance(row['name'],str) or not row['name'].strip() or row['pass'] is not True):
+            raise ValueError('Restore observation check is missing or failed')
+        names.append(row['name'])
+    if len(set(names))!=15:
+        raise ValueError('Restore observation check names are duplicated')
+    if (not isinstance(expected_source,str) or re.fullmatch('[0-9a-f]{40}',expected_source) is None
+            or not isinstance(expected_source_files,dict) or not expected_source_files
+            or any(not isinstance(name,str) or not isinstance(digest,str) or re.fullmatch('[0-9a-f]{64}',digest) is None
+                   for name,digest in expected_source_files.items())
+            or value['sourceCommit']!=expected_source or value['sourceFiles']!=expected_source_files):
+        raise ValueError('Restore observation source binding differs')
+    return value
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--java-home',type=pathlib.Path)
@@ -84,7 +111,17 @@ def main():
         observation_execution=subprocess.run([binary('java'),'-cp',str(temp)+os.pathsep+str(args.json_jar.resolve()),'local.pocketchat.RestoreObservationHost'],text=True,capture_output=True)
         if not observation_execution.stdout.strip():raise RuntimeError(observation_execution.stderr)
         report['restoreObservationControls']=json.loads(observation_execution.stdout)
-        if observation_execution.returncode or report['restoreObservationControls'].get('status')!='passed':
+        observations=report['restoreObservationControls']
+        # Source identity is supplied by this actual execution driver, never by
+        # a possibly foreign/malformed child report. Unexpected claims fail.
+        if isinstance(observations,dict) and not {'sourceCommit','sourceFiles'}&set(observations):
+            observations.update(sourceCommit=commit,sourceFiles=hashes)
+        try:
+            verify_restore_observation_controls(observations,commit,hashes)
+        except ValueError as error:
+            report['restoreObservationError']=str(error)
+            report['status']='failed-restore-observation-controls'
+        if observation_execution.returncode:
             report['status']='failed-restore-observation-controls'
         if observation_execution.stderr:report['restoreObservationStderr']=observation_execution.stderr
     unchanged=all(hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==digest for name,digest in hashes.items())
