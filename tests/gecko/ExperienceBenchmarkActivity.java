@@ -16,6 +16,8 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
   static final String TARGET=MainActivity.ORIGIN+"c/reload-collapse";
   static final String SNAPSHOT="(()=>{const e=document.getElementById('prompt-textarea'),r=document.getElementById('benchmark-reply');if(!window.__experienceRaf){const data=window.__experienceRaf={frames:0,sumMs:0,maxMs:0,over32:0,visibilityResets:0};let previous=0;document.addEventListener('visibilitychange',()=>{previous=0;data.visibilityResets++;});function frame(t){if(document.hidden){previous=0;}else{if(previous){const gap=t-previous;data.frames++;data.sumMs+=gap;data.maxMs=Math.max(data.maxMs,gap);if(gap>32)data.over32++;}previous=t;}requestAnimationFrame(frame);}requestAnimationFrame(frame);}const text=r?.textContent||'';let hash=2166136261;for(let i=0;i<text.length;i++)hash=Math.imul(hash^text.charCodeAt(i),16777619);return {ready:!!e&&!!r,document:document.documentElement.dataset.reloadDocument,draft:e?.value,cookie:document.cookie,replyFingerprint:{length:text.length,fnv32:hash>>>0},sendCount:Number(document.getElementById('send-count')?.textContent||0),path:location.pathname,theme:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light',themeBackground:getComputedStyle(document.documentElement).backgroundColor,themeObservation:'fixture-css-prefers-color-scheme',documentHidden:document.hidden,raf:window.__experienceRaf};})()";
   final ArrayList<Double> choreographerGaps=new ArrayList<>();
+  final ArrayList<JSONObject> choreographerRaw=new ArrayList<>();
+  ExperienceScenarios scenario;
   final ArrayList<Double> windowFrameMs=new ArrayList<>();
   final ArrayList<JSONObject> windowFrameRaw=new ArrayList<>();
   final java.util.HashMap<Window,Window.Callback> dialogCallbacks=new java.util.HashMap<>();
@@ -33,7 +35,7 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
   final Choreographer.FrameCallback frameCallback=new Choreographer.FrameCallback(){
     @Override public void doFrame(long value){
       if(benchmarkClosed)return;
-      if(active&&lastFrame>0&&choreographerGaps.size()<30000)choreographerGaps.add((value-lastFrame)/1000000.0);
+      if(active&&lastFrame>0&&choreographerGaps.size()<30000){choreographerGaps.add((value-lastFrame)/1000000.0);choreographerRaw.add(J.obj("previousFrameUptimeMs",lastFrame/1000000.0,"frameUptimeMs",value/1000000.0,"durationMs",(value-lastFrame)/1000000.0));}
       lastFrame=active?value:0;Choreographer.getInstance().postFrameCallback(this);
     }
   };
@@ -45,7 +47,7 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
       if("arm".equals(command))arm(name,i.getStringExtra("target"));
       else if("snapshot".equals(command))snapshot(name,null);
       else if("finish".equals(command))snapshot(name,()->handler.postDelayed(()->emit("finished",J.obj("samples",new JSONArray(measurements),"allNativeHwuiFrames",new JSONArray(windowFrameRaw),"allChoreographerGapsMs",new JSONArray(choreographerGaps),"scope",scope())),100));
-      else throw new IllegalArgumentException("Unknown benchmark command");
+      else if(scenario==null||!scenario.command(command,name))throw new IllegalArgumentException("Unknown benchmark command");
     }catch(Exception failure){fail(failure);}
   }};
 
@@ -57,6 +59,7 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
       events=new IntegrationEventStore(this,0,nonce,"experienceBenchmark",1,buildIdentity);
       ChatSession.browserFactory=ChromeCollapseIntegration.CollapseView::new;
       super.onCreate(state);
+      scenario=new ExperienceScenarios(this,getIntent());
       if(Build.VERSION.SDK_INT>=33)registerReceiver(control,new IntentFilter(ACTION),Context.RECEIVER_EXPORTED);else registerReceiver(control,new IntentFilter(ACTION));
       windowListener=(window,metrics,dropped)->{if(windowFrameMs.size()<30000){double duration=metrics.getMetric(FrameMetrics.TOTAL_DURATION)/1000000.0;windowFrameMs.add(duration);windowFrameRaw.add(J.obj("intendedVsyncUptimeMs",metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP)/1000000.0,"durationMs",duration,"droppedReports",dropped));}};
       getWindow().addOnFrameMetricsAvailableListener(windowListener,handler);
@@ -72,14 +75,15 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
     remote.evaluateJavascript(SNAPSHOT,raw->{
       try{
         JSONObject value=J.parse(raw);
-        if(!value.optBoolean("ready")||!remote.hasVisibleDocument()||loading.cover.getVisibility()!=View.GONE||session.navigating){
+        if(!value.optBoolean("ready")||!remote.hasVisibleDocument()||loading.cover.getVisibility()!=View.GONE||session.navigating||!scenario.ready()){
           if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Normal production page readiness timeout: "+J.obj("snapshot",value,"visibleDocument",remote.hasVisibleDocument(),"loading",loading.cover.getVisibility(),"navigating",session.navigating,"status",session.status));
           handler.postDelayed(()->waitReady(deadline),100);return;
         }
         initial=value;benchmarkReady=true;double observedReadyMs=(SystemClock.elapsedRealtimeNanos()-createdAt)/1000000.0;
         snapshot("ready",()->emit("ready",J.obj("activityCreateToReadyMs",observedReadyMs,
           "productionPageUsableFromActivityCreateMs",session.pageUsableAt>0?session.pageUsableAt-createdAt/1000000.0:JSONObject.NULL,
-          "readinessObservation","Production ready state observed through a 100 ms bounded probe; provisioning/hash excluded", "buildIdentity",buildIdentity,"scope",scope())));
+          "productionElapsedRealtimeMs",J.obj("activityCreated",createdAt/1000000.0,"connectionStarted",session.connectionStarted,"proxyReady",session.proxyReadyAt,"navigationStarted",session.navigationMono,"firstPageVisible",session.firstPageVisible,"pageUsable",session.pageUsableAt,"readyObserved",SystemClock.elapsedRealtime()),
+          "readinessObservation","Production ready state observed through a 100 ms bounded probe; provisioning/hash excluded. Production stage fields are actual elapsedRealtime values (zero means absent); no cross-clock subtraction.", "buildIdentity",buildIdentity,"scope",scope())));
       }catch(Exception failure){fail(failure);}
     });
   }
@@ -114,15 +118,15 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
     if(dialogCallbacks.isEmpty())throw new IllegalStateException("No visible appearance dialog");
   }catch(ReflectiveOperationException failure){throw new IllegalStateException("Visible appearance dialog observation unavailable",failure);}}
   void restoreDialogCallbacks(){for(java.util.Map.Entry<Window,Window.Callback> entry:dialogCallbacks.entrySet())entry.getKey().setCallback(entry.getValue());dialogCallbacks.clear();}
-  @Override protected void onResume(){if("resume".equals(armedTarget)&&!armedName.isEmpty()){inputDown=inputUp=SystemClock.uptimeMillis();}super.onResume();lastFrame=0;Choreographer.getInstance().removeFrameCallback(frameCallback);Choreographer.getInstance().postFrameCallback(frameCallback);}
-  @Override protected void onPause(){lastFrame=0;Choreographer.getInstance().removeFrameCallback(frameCallback);super.onPause();}
+  @Override protected void onResume(){if("resume".equals(armedTarget)&&!armedName.isEmpty()){inputDown=inputUp=SystemClock.uptimeMillis();}super.onResume();if(scenario!=null)scenario.lifecycle(true);lastFrame=0;Choreographer.getInstance().removeFrameCallback(frameCallback);Choreographer.getInstance().postFrameCallback(frameCallback);}
+  @Override protected void onPause(){lastFrame=0;Choreographer.getInstance().removeFrameCallback(frameCallback);super.onPause();if(scenario!=null)scenario.lifecycle(false);}
   boolean targetVisible(){
     if(hub==null)return false;
     switch(armedTarget){
       case "chat":case "resume":return hub.page==AppHub.CHAT&&remote.isShown()&&remote.hasVisibleDocument()&&loading.cover.getVisibility()==View.GONE;
       case "network":return hub.page==AppHub.NETWORK&&hub.networkWorkspace.catalog!=null&&!hub.networkWorkspace.reading&&hub.networkWorkspace.windows.length()>0&&hub.networkWorkspace.box.getHeight()>0;
       case "settings":return hub.page==AppHub.SETTINGS&&hub.panel.getChildCount()>0&&hub.panel.getChildAt(0).getHeight()>0;
-      case "downloads":return hub.page==AppHub.DOWNLOADS&&hub.downloadScreen!=null&&hub.downloadScreen.getHeight()>0;
+      case "downloads":return hub.page==AppHub.DOWNLOADS&&hub.downloadScreen!=null&&hub.downloadScreen.getHeight()>0&&scenario.downloadsVisible();
       case "expanded":return designChrome.expanded()&&designChrome.top.getVisibility()==View.VISIBLE&&designChrome.top.getHeight()>0;
       case "collapsed":return !designChrome.expanded()&&designChrome.compact.getVisibility()==View.VISIBLE&&designChrome.compact.getHeight()>0;
       case "dark":case "light":return armedTarget.equals(AppAppearance.mode());
@@ -182,9 +186,10 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
           .putBoolean("requireExternalVpn",false).putBoolean("networkConfigured",true).putBoolean("environmentInitialized",true)
           .putBoolean("pageMode",true).putString("conversation",TARGET).putString("url",TARGET).commit();
         AppSettings.put(this,"brandSeen","true");AppSettings.put(this,"updateAutoCheck","false");AppSettings.put(this,AppAppearance.KEY,"light");AppAppearance.refresh(this);
+        JSONObject seededScenario=ExperienceScenarios.seed(this,getIntent());
         JSONObject identity=IntegrationBuildIdentity.read(Profiles.global(this));
         J.write(new java.io.File(Profiles.global(this).getFilesDir(),"experience-benchmark-identity.json"),identity.toString());
-        new IntegrationEventStore(this,0,getIntent().getStringExtra("eventNonce"),"experienceSeed",1,identity).emit("seeded",J.obj("status","passed","timed",false));
+        new IntegrationEventStore(this,0,getIntent().getStringExtra("eventNonce"),"experienceSeed",1,identity).emit("seeded",J.obj("status","passed","timed",false,"scenario",seededScenario));
         finish();
       }catch(Exception failure){throw new IllegalStateException("Untimed benchmark provisioning failed",failure);}
     }

@@ -22,11 +22,17 @@ import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tools/gecko'))
+import experience_scenarios as scenarios
 PACKAGE = 'local.pocketchat.test'
 SERIAL = 'emulator-5554'
+PHASE_TIMEOUT_SECONDS = 1200
+REQUEST_PATH = '.github/experience-request.json'
 APK = 'app/build/outputs/apk/integration/app-x86_64-integration.apk'
 HARNESS = (
     'tests/gecko/ExperienceBenchmarkActivity.java',
+    'tests/gecko/ExperienceScenarios.java',
+    'tools/gecko/experience_scenarios.py',
     'tests/gecko/run_experience_benchmark.py',
     'tests/gecko/ChromeCollapseIntegration.java',
     'tests/gecko/CompactChromeIntegrationActivity.java',
@@ -106,17 +112,62 @@ def select_push_run(rows, source, branch):
     return row
 
 
+def declared_inputs(root, source, branch):
+    """A dedicated push declares exact original builds; it never selects a run."""
+    require(isinstance(source, str) and re.fullmatch('[0-9a-f]{40}', source),
+            'Full orchestration source commit required')
+    require(re.fullmatch(r'benchmark/experience-[A-Za-z0-9][A-Za-z0-9._-]{0,79}', branch),
+            'Dedicated benchmark branch required')
+    path = Path(root) / REQUEST_PATH
+    require(path.is_file() and not path.is_symlink(), 'Regular fixed experiment request file required')
+    require(path.stat().st_size <= 16384, 'Experiment request exceeds byte limit')
+    raw = path.read_bytes()
+    require(len(raw) <= 16384, 'Experiment request exceeds byte limit')
+
+    def unique_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            require(key not in result, 'Duplicate experiment request field: ' + key)
+            result[key] = value
+        return result
+
+    value = json.loads(raw.decode('utf-8'), object_pairs_hook=unique_pairs)
+    require(isinstance(value, dict) and type(value.get('schema')) is int and value['schema'] == 1,
+            'Experiment request schema 1 required')
+    require(value.get('mode') in ('baseline', 'compare'), 'Declared baseline or compare required')
+    fields = {'schema', 'mode', 'baseline_source', 'baseline_run', 'baseline_attempt', 'scenario', 'repetitions'}
+    if value['mode'] == 'compare':
+        fields |= {'candidate_source', 'candidate_run', 'candidate_attempt'}
+    require(set(value) == fields, 'Missing or unknown experiment request fields')
+    require(all(isinstance(value[key], str) for key in fields - {'schema', 'repetitions'}),
+            'Build references, mode and scenario must be strings')
+    require(type(value['repetitions']) is int and 1 <= value['repetitions'] <= 10,
+            'Declared repetitions must be an integer from 1 to 10')
+    input_identity(value['baseline_source'], value['baseline_run'], value['baseline_attempt'])
+    if value['mode'] == 'compare':
+        input_identity(value['candidate_source'], value['candidate_run'], value['candidate_attempt'])
+    scenario = scenarios.manifest(value['scenario'])
+    require_phase_budget(scenario, value['repetitions'])
+    selected = {key.upper(): str(item) for key, item in value.items() if key != 'schema'}
+    return selected, dict(path=REQUEST_PATH, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest(),
+                          value=value, orchestrationSource=source, orchestrationBranch=branch,
+                          selection='Explicit original build references; no run discovery or substitution')
+
+
 def select_inputs(args):
     """First push can run without registering dispatch on the default branch."""
     values = {key: os.environ.get(key, '') for key in
               ('MODE', 'BASELINE_SOURCE', 'BASELINE_RUN', 'BASELINE_ATTEMPT',
-               'CANDIDATE_SOURCE', 'CANDIDATE_RUN', 'CANDIDATE_ATTEMPT', 'REPETITIONS')}
+               'CANDIDATE_SOURCE', 'CANDIDATE_RUN', 'CANDIDATE_ATTEMPT', 'REPETITIONS', 'SCENARIO')}
     args.report.parent.mkdir(parents=True, exist_ok=True)
     receipt = dict(schema=1, status='in_progress', event=os.environ['GITHUB_EVENT_NAME'],
                    buildSelectionFrozen=False)
     json_write(args.report, receipt)
     try:
-        if receipt['event'] == 'push':
+        if receipt['event'] == 'push' and os.environ.get('GITHUB_REF_NAME', '').startswith('benchmark/experience-'):
+            values, request = declared_inputs(ROOT, os.environ.get('GITHUB_SHA', ''), os.environ['GITHUB_REF_NAME'])
+            receipt.update(buildSelectionFrozen=True, request=request)
+        elif receipt['event'] == 'push':
             source = os.environ['GITHUB_SHA']
             branch = os.environ['GITHUB_REF_NAME']
             require(branch == 'release/gecko-2.0.16-experience', 'Automatic baseline branch differs')
@@ -152,7 +203,7 @@ def select_inputs(args):
                     if matches:
                         receipt['artifactId'] = matches[0]['id']
                         values.update(MODE='baseline', BASELINE_SOURCE=source, BASELINE_RUN=str(frozen['id']),
-                                      BASELINE_ATTEMPT=str(frozen['run_attempt']), REPETITIONS='3')
+                                      BASELINE_ATTEMPT=str(frozen['run_attempt']), REPETITIONS='3', SCENARIO='core')
                         break
                     require(current['status'] != 'completed', 'Selected original build completed without its exact artifact')
                 time.sleep(20)
@@ -165,13 +216,17 @@ def select_inputs(args):
         if values['MODE'] == 'compare':
             input_identity(values['CANDIDATE_SOURCE'], values['CANDIDATE_RUN'], values['CANDIDATE_ATTEMPT'])
         require(re.fullmatch(r'[1-9]|10', values['REPETITIONS']), 'Require 1..10 fixed repetitions')
+        values['SCENARIO'] = values['SCENARIO'] or 'core'
+        scenario = scenarios.manifest(values['SCENARIO'])
+        require_phase_budget(scenario, int(values['REPETITIONS']))
         with args.output.open('a') as output:
             for key, value in values.items():
                 # Unused candidate fields are omitted, never copied to output unchecked.
                 if key.startswith('CANDIDATE_') and values['MODE'] == 'baseline':
                     continue
                 output.write(key.lower() + '=' + value + '\n')
-        receipt.update(status='passed', selected=values)
+        receipt.update(status='passed', selected=values, scenarioManifest=scenario,
+                       scenarioManifestSha256=scenarios.digest(scenario))
         json_write(args.report, receipt)
     except BaseException as error:
         receipt.update(status='failed', errorType=type(error).__name__, error=str(error))
@@ -233,8 +288,18 @@ def product_inventory(root):
             if path.is_file() and not path.is_symlink()}
 
 
+def require_phase_budget(scenario, repetitions):
+    require(type(repetitions) is int and 1 <= repetitions <= 10, 'Require 1..10 predeclared repetitions')
+    idle = scenario.get('idle', {})
+    minimum = repetitions * (idle.get('foregroundMs', 0) + idle.get('backgroundMs', 0))
+    require(minimum < PHASE_TIMEOUT_SECONDS * 1000,
+            'Fixed idle intervals already consume the entire 1200-second phase budget; reduce repetitions before planning')
+
+
 def prepare(args):
     require(1 <= args.repetitions <= 10, 'Require 1..10 predeclared repetitions')
+    scenario = scenarios.manifest(args.scenario)
+    require_phase_budget(scenario, args.repetitions)
     require(not args.plan.exists(), 'The experiment plan is immutable; choose a new output')
     baseline = restore_build(args.baseline_root, args.baseline_bundle,
                              args.baseline_source, args.baseline_run, args.baseline_attempt)
@@ -249,6 +314,8 @@ def prepare(args):
         require(candidate['sourceCommit'] != baseline['sourceCommit'],
                 'Use baseline mode to measure repeatability of one source')
     protocol = matching_protocol(baseline['protocol'], candidate['protocol'])
+    require(sha(ROOT / 'tools/gecko/experience_scenarios.py') == protocol['tools/gecko/experience_scenarios.py'],
+            'Planner scenario inputs differ from selected builds')
     require(source_hashes(ROOT, SETUP) == {name: protocol[name] for name in SETUP},
             'Workflow runtime setup differs from selected builds')
     inventory_a = product_inventory(Path(baseline['root']))
@@ -256,6 +323,7 @@ def prepare(args):
     changed = [name for name in sorted(set(inventory_a) | set(inventory_b))
                if inventory_a.get(name) != inventory_b.get(name)]
     plan = dict(schema=1, mode=args.mode, order=['A', 'B', 'B', 'A'],
+                scenarioManifest=scenario, scenarioManifestSha256=scenarios.digest(scenario),
                 repetitionsPerPhase=args.repetitions, cooldownSeconds=15,
                 inputs={'A': baseline, 'B': candidate}, protocol=protocol,
                 changedProductFiles=changed,
@@ -265,6 +333,7 @@ def prepare(args):
     args.plan.parent.mkdir(parents=True, exist_ok=True)
     json_write(args.plan, plan)
     print(json.dumps(dict(status='prepared', mode=args.mode, order=plan['order'],
+                          scenarioManifest=scenario, scenarioManifestSha256=scenarios.digest(scenario),
                           repetitionsPerPhase=args.repetitions,
                           changedProductFiles=changed)))
 
@@ -284,11 +353,18 @@ def values_summary(values):
                 minimum=min(values), maximum=max(values))
 
 
-def verify_report(report, build, label, repetitions, protocol):
+def verify_report(report, build, label, repetitions, protocol, scenario=None):
     require(report.get('schema') == 1 and report.get('status') == 'passed',
             'Benchmark workload did not pass')
     require(report.get('label') == label and report.get('sourceCommit') == build['sourceCommit'],
             'Benchmark label/source differs')
+    scenario = scenarios.manifest('core') if scenario is None else scenario
+    require(report.get('scenarioManifest') == scenario and report.get('scenarioManifestSha256') == scenarios.digest(scenario),
+            'Fixed scenario input manifest differs')
+    require(report.get('executionInputsUnchanged') is True, 'Measurement sources changed during execution')
+    for name in ('tests/gecko/run_experience_benchmark.py', 'tests/gecko/ExperienceBenchmarkActivity.java',
+                 'tests/gecko/ExperienceScenarios.java', 'tools/gecko/experience_scenarios.py'):
+        require(report.get('observerFiles', {}).get(name) == protocol[name], 'Actual scenario observer differs: ' + name)
     installed = report.get('buildIdentity', {})
     for key in ('sourceCommit', 'sourceTree', 'version', 'versionCode', 'apkSha256', 'apkBytes'):
         require(installed.get(key) == build[key], 'Installed benchmark identity differs: ' + key)
@@ -309,6 +385,7 @@ def verify_report(report, build, label, repetitions, protocol):
                 'A predeclared iteration failed or was replaced')
         require(tuple(action.get('name') for action in row.get('actions', [])) == ACTIONS,
                 'The fixed action sequence differs')
+        verify_scenario(row, scenario)
         finite(row['startup']['activityCreateToReadyMs'])
         for action in row['actions']:
             finite(action['responseToDrawMs'])
@@ -319,6 +396,37 @@ def verify_report(report, build, label, repetitions, protocol):
             and all(float(value) == 1 for value in environment['animationScales'].values()),
             'Performance workload requires normal animation scales')
     return {key: environment.get(key) for key in ENVIRONMENT}
+
+
+def verify_scenario(row, scenario):
+    name = scenario['name']
+    seed = row.get('seed', {}).get('scenario', {})
+    require(seed.get('manifest') == scenario and seed.get('manifestSha256') == scenarios.digest(scenario),
+            'Actual device seed differs from frozen input')
+    windows = row.get('scenarioWindows', [])
+    expected = ['history-save'] if name.startswith('download-history-') else ['idle-foreground', 'idle-background'] if name == 'idle-120' else []
+    require([w.get('name') for w in windows] == expected, 'Scenario windows missing/reordered/replayed')
+    for window in windows:
+        start, end = window['start'], window['end']
+        elapsed = finite(end['elapsedRealtimeMs'] - start['elapsedRealtimeMs'])
+        require(elapsed == window['elapsedDurationMs'], 'Scenario boundary clocks differ')
+        require(window.get('frameLimitReached') is False and window.get('lifecycleChanges') == 0,
+                'Frame capture truncated or lifecycle changed within fixed window')
+        if name == 'idle-120':
+            require(elapsed >= 120000, 'Idle observation shorter than fixed input')
+        else:
+            saves = window.get('saves', [])
+            require([s.get('step') for s in saves] == list(range(1, 9)), 'Actual save sequence incomplete')
+            for step, save in enumerate(saves, 1):
+                finite(save['durationMs'])
+                require(save.get('received') == step * 65536 and save.get('method') == 'DownloadTasks.save'
+                        and save.get('httpTransferMeasured') is False, 'Persistence workload/scope differs')
+            verify = window.get('verification', {})
+            count = scenario['downloadHistory']['savedRows']
+            require(verify.get('savedRows') == count and verify.get('taskRows') == count + 1
+                    and verify.get('verifiedProgressBytes') == 8 * 65536
+                    and verify.get('actualAndroidSQLite') is True and verify.get('actualAndroidSharedPreferences') is True,
+                    'Actual final persistence verification incomplete')
 
 
 def summarize(reports):
@@ -349,6 +457,33 @@ def summarize(reports):
         available = [value for iteration in observations for value in iteration]
         result[key] = values_summary(available) if available else {'count': 0, 'unavailable': True}
         result[key]['missingIterations'] = sum(not values for values in observations)
+    result['scenarioWindows'] = {}
+    names = sorted({w['name'] for r in rows for w in r.get('scenarioWindows', [])})
+    for name in names:
+        windows = [w for r in rows for w in r.get('scenarioWindows', []) if w['name'] == name]
+        measured = {'elapsedDurationMs': values_summary([w['elapsedDurationMs'] for w in windows]),
+                    'cpuScope': 'Observed process-family lower bound over contained sample envelopes; inspect missing/lifetime/attribution coverage in raw windows.',
+                    'frameScope': 'Delivered native HWUI only, not full Gecko or display presentation. Empty reports mean unobserved.'}
+        for metric, available in (
+            ('cpuSecondsObserved', [w['cpu']['cpuSecondsObserved'] for w in windows if w.get('cpu', {}).get('available')]),
+            ('memoryBeforePssKb', [w['memoryBefore']['totalPssKb'] for w in windows if w.get('memoryBefore', {}).get('available')]),
+            ('memoryAfterPssKb', [w['memoryAfter']['totalPssKb'] for w in windows if w.get('memoryAfter', {}).get('available')])):
+            measured[metric] = values_summary(available) if available else {'count': 0, 'unavailable': True}
+            measured[metric]['missingWindows'] = len(windows)-len(available)
+        saves = [s['durationMs'] for w in windows for s in w.get('saves', [])]
+        if saves:
+            measured['productionSaveDurationMs'] = values_summary(saves)
+            measured['saveScope'] = 'Actual main-thread DownloadTasks.save with controlled paused-record changes; no HTTP transfer.'
+        frames = [f['durationMs'] for w in windows for f in w.get('nativeHwuiFrames', [])]
+        measured['nativeHwuiDurationMs'] = values_summary(frames) if frames else {'count': 0, 'unavailable': True}
+        if frames:
+            measured['nativeHwuiDurationMs'].update(over32MsCount=sum(v > 32 for v in frames), over100MsCount=sum(v > 100 for v in frames),
+                droppedFrameReports=sum(f.get('droppedReports', 0) for w in windows for f in w.get('nativeHwuiFrames', [])))
+        gaps = [f['durationMs'] for w in windows for f in w.get('choreographerFrames', [])]
+        measured['choreographerGapMs'] = values_summary(gaps) if gaps else {'count': 0, 'unavailable': True}
+        if gaps:
+            measured['choreographerGapMs'].update(over32MsCount=sum(v > 32 for v in gaps), over100MsCount=sum(v > 100 for v in gaps))
+        result['scenarioWindows'][name] = measured
     result['measurementScope'] = 'Observed fixture startup and Android View draw, CPU observations and process-family PSS; no WAN, real-account, keyboard or physical compositor acceptance.'
     return result
 
@@ -363,6 +498,11 @@ def deltas(before, after):
                 'productionPageUsableFromActivityCreateMs', 'observedNativeHwuiFrameMs', 'observedChoreographerGapMs'):
         if before[key].get('count') and after[key].get('count'):
             pairs[key] = (before[key], after[key])
+    for name in sorted(set(before.get('scenarioWindows', {})) & set(after.get('scenarioWindows', {}))):
+        a, b = before['scenarioWindows'][name], after['scenarioWindows'][name]
+        for field in ('elapsedDurationMs', 'cpuSecondsObserved', 'memoryBeforePssKb', 'memoryAfterPssKb', 'productionSaveDurationMs', 'nativeHwuiDurationMs'):
+            if a.get(field, {}).get('count') and b.get(field, {}).get('count'):
+                pairs['scenario.' + name + '.' + field] = (a[field], b[field])
     return {name: dict(baselineMedian=a['median'], candidateMedian=b['median'],
                        candidateMinusBaseline=b['median'] - a['median'],
                        percentChange=100 * (b['median'] - a['median']) / a['median'] if a['median'] else None)
@@ -373,6 +513,11 @@ def execute(args):
     plan = json.loads(args.plan.read_text())
     require(plan.get('schema') == 1 and plan.get('order') == ['A', 'B', 'B', 'A'],
             'A predeclared ABBA plan is required')
+    require(plan.get('scenarioManifest') == scenarios.manifest(plan.get('scenarioManifest', {}).get('name'))
+            and plan.get('scenarioManifestSha256') == scenarios.digest(plan['scenarioManifest']), 'Scenario plan differs')
+    require_phase_budget(plan['scenarioManifest'], plan['repetitionsPerPhase'])
+    require(sha(ROOT / 'tools/gecko/experience_scenarios.py') == plan['protocol']['tools/gecko/experience_scenarios.py'],
+            'Scenario inputs changed after planning')
     require(plan['comparisonToolSha256'] == sha(__file__), 'Comparison tool changed after planning')
     require(not args.out.exists(), 'Keep every experiment; choose a new output directory')
     args.out.mkdir(parents=True)
@@ -380,6 +525,7 @@ def execute(args):
     record = dict(schema=1, status='in_progress', mode=plan['mode'], order=plan['order'],
                   comparisonRunId=os.environ.get('GITHUB_RUN_ID', ''),
                   comparisonRunAttempt=os.environ.get('GITHUB_RUN_ATTEMPT', ''),
+                  scenarioManifest=plan['scenarioManifest'], scenarioManifestSha256=plan['scenarioManifestSha256'],
                   sameEmulatorRequired=True, phases=[], workloadReplayed=False,
                   physicalDeviceAcceptance=False, realChatGptAcceptance=False, releaseAcceptance=False)
 
@@ -462,14 +608,14 @@ def execute(args):
             command = [sys.executable, str(root / 'tests/gecko/run_experience_benchmark.py'),
                        '--adb', args.adb, '--serial', SERIAL, '--apk', build['apk'],
                        '--source', build['sourceCommit'], '--label', label, '--out', str(destination),
-                       '--repetitions', str(plan['repetitionsPerPhase'])]
+                       '--repetitions', str(plan['repetitionsPerPhase']), '--scenario', plan['scenarioManifest']['name']]
             phase['command'] = command;persist()
             with (phase_dir / 'workload.log').open('w') as output:
                 subprocess.run(command, cwd=root, env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1'),
-                               stdout=output, stderr=subprocess.STDOUT, check=True, timeout=1200)
+                               stdout=output, stderr=subprocess.STDOUT, check=True, timeout=PHASE_TIMEOUT_SECONDS)
             report_path = destination / 'experience-results.json'
             report = json.loads(report_path.read_text())
-            observed = verify_report(report, build, label, plan['repetitionsPerPhase'], plan['protocol'])
+            observed = verify_report(report, build, label, plan['repetitionsPerPhase'], plan['protocol'], plan['scenarioManifest'])
             if observed_environment is None:
                 observed_environment = observed
             require(observed_environment == observed, 'Device measurement settings changed between conditions')
@@ -517,6 +663,7 @@ def main():
                                type=Path if field in ('root', 'bundle') else str,
                                required=condition == 'baseline')
     stage.add_argument('--repetitions', type=int, default=3)
+    stage.add_argument('--scenario', choices=scenarios.NAMES, default='core')
     stage.add_argument('--plan', type=Path, required=True)
     run = commands.add_parser('run')
     run.add_argument('--plan', type=Path, required=True)

@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 
 SPEC = importlib.util.spec_from_file_location(
@@ -12,6 +13,13 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_impossible_idle_budget_is_rejected_before_any_build_or_device_access(self):
+        for repetitions in range(5, 11):
+            with self.subTest(repetitions=repetitions), self.assertRaisesRegex(ValueError, 'entire 1200-second phase budget'):
+                MODULE.prepare(SimpleNamespace(repetitions=repetitions, scenario='idle-120'))
+        MODULE.require_phase_budget(MODULE.scenarios.manifest('idle-120'), 3)
+        MODULE.require_phase_budget(MODULE.scenarios.manifest('core'), 10)
+
     def setUp(self):
         self.build = dict(sourceCommit='a' * 40, sourceTree='b' * 40, version='2.0.16',
                           versionCode=69, apkSha256='c' * 64, apkBytes=100)
@@ -20,11 +28,16 @@ class ComparisonTests(unittest.TestCase):
             index=1, status='passed', startup={'activityCreateToReadyMs': 100},
             actions=[dict(name=name, responseToDrawMs=20) for name in MODULE.ACTIONS],
             cpu=dict(available=False), memoryReady=dict(available=False), memoryFinal=dict(available=False),
-            frames={'allNativeHwuiFrames': [], 'allChoreographerGapsMs': []})
+            frames={'allNativeHwuiFrames': [], 'allChoreographerGapsMs': []}, scenarioWindows=[],
+            seed={'scenario': {'manifest': MODULE.scenarios.manifest('core'),
+                               'manifestSha256': MODULE.scenarios.digest(MODULE.scenarios.manifest('core'))}})
         self.report = dict(
             schema=1, status='passed', label='baseline-1', sourceCommit=self.build['sourceCommit'],
             buildIdentity=dict(self.build, package=MODULE.PACKAGE, dirtySource=False),
             runnerSha256='d' * 64, activitySha256='d' * 64,
+            scenarioManifest=MODULE.scenarios.manifest('core'),
+            scenarioManifestSha256=MODULE.scenarios.digest(MODULE.scenarios.manifest('core')),
+            observerFiles={name: 'd' * 64 for name in MODULE.HARNESS}, executionInputsUnchanged=True,
             physicalDeviceAcceptance=False, realChatGptAcceptance=False, releaseAcceptance=False,
             predeclaredRepetitions=1, iterations=[iteration],
             environment=dict(serial=MODULE.SERIAL, androidSdk='35', abi='x86_64',
@@ -67,6 +80,19 @@ class ComparisonTests(unittest.TestCase):
                              ('realChatGptAcceptance', True), ('label', 'replacement')]:
             report = copy.deepcopy(self.report)
             report[field] = value
+            with self.assertRaises(ValueError):
+                self.verify(report)
+
+    def test_scenario_input_observer_and_device_seed_are_required(self):
+        for mutate in (
+                lambda r: r['scenarioManifest']['fixture'].update(replyRepeats=1),
+                lambda r: r.update(scenarioManifestSha256='f' * 64),
+                lambda r: r.update(executionInputsUnchanged=False),
+                lambda r: r['observerFiles'].pop('tests/gecko/ExperienceScenarios.java'),
+                lambda r: r['iterations'][0]['seed']['scenario'].update(manifestSha256='f' * 64),
+                lambda r: r['iterations'][0].update(scenarioWindows=[{'name': 'undeclared'}])):
+            report = copy.deepcopy(self.report)
+            mutate(report)
             with self.assertRaises(ValueError):
                 self.verify(report)
 

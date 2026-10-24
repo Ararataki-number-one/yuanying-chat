@@ -1,10 +1,11 @@
 name: Measured Android experience on one device
 'on':
   push:
-    branches: [release/gecko-2.0.16-experience]
+    branches: [release/gecko-2.0.16-experience, benchmark/experience-*]
     paths:
     - tools/gecko/run_experience_comparison.py
     - tests/gecko_experience_comparison_test.py
+    - .github/experience-request.json
   workflow_dispatch:
     inputs:
       mode:
@@ -41,6 +42,12 @@ name: Measured Android experience on one device
         type: number
         default: 3
         required: true
+      scenario:
+        description: One fixed workload for every phase; idle adds four minutes per iteration
+        type: choice
+        options: [core, download-history-0, download-history-1000, download-history-3000, idle-120]
+        default: core
+        required: true
 permissions:
   contents: read
   actions: read
@@ -55,7 +62,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Check experiment identity and statistics guards
-      run: python3 tests/gecko_experience_comparison_test.py
+      run: python3 -m unittest discover -s tests -p 'gecko_experience*_test.py'
     - name: Freeze exact original build selections
       id: inputs
       env:
@@ -68,6 +75,7 @@ jobs:
         CANDIDATE_RUN: ${{ inputs.candidate_run }}
         CANDIDATE_ATTEMPT: ${{ inputs.candidate_attempt }}
         REPETITIONS: ${{ inputs.repetitions }}
+        SCENARIO: ${{ inputs.scenario }}
       run: python3 tools/gecko/run_experience_comparison.py select-inputs --output "$GITHUB_OUTPUT" --report work/experience-selection.json
     - name: Checkout exact baseline source
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -107,6 +115,7 @@ jobs:
         CANDIDATE_RUN: ${{ steps.inputs.outputs.candidate_run }}
         CANDIDATE_ATTEMPT: ${{ steps.inputs.outputs.candidate_attempt }}
         REPETITIONS: ${{ steps.inputs.outputs.repetitions }}
+        SCENARIO: ${{ steps.inputs.outputs.scenario }}
       shell: bash
       run: |
         set -euo pipefail
@@ -114,6 +123,7 @@ jobs:
           --baseline-bundle "$PWD/work/experience-downloads/baseline/bundle.tar.gz"
           --baseline-source "$BASELINE_SOURCE" --baseline-run "$BASELINE_RUN"
           --baseline-attempt "$BASELINE_ATTEMPT" --repetitions "$REPETITIONS"
+          --scenario "$SCENARIO"
           --plan "$PWD/work/experience-plan.json")
         if [ "$MODE" = compare ]; then
           selected+=(--candidate-root "$PWD/work/experience-inputs/candidate"
@@ -170,6 +180,7 @@ jobs:
         name: experience-summary-${{ github.run_id }}-${{ github.run_attempt }}
         path: |
           work/experience-selection.json
+          .github/experience-request.json
           work/experience-plan.json
           work/experience-output/comparison-results.json
           work/experience-runtime/*results.json
