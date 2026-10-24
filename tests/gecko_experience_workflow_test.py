@@ -29,6 +29,22 @@ def declaration(mode='baseline'):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_planning_and_execution_reject_changed_actual_pss_observer_before_device_access(self):
+        protocol=M.source_hashes(ROOT,M.HARNESS+M.SETUP)
+        M.verify_memory_observer(protocol)
+        changed=dict(protocol);changed['tools/gecko/experience_process_identity.py']='0'*64
+        with tempfile.TemporaryDirectory() as folder:
+            directory=Path(folder)
+            args=SimpleNamespace(mode='baseline',repetitions=3,scenario='download-history-1000',plan=directory/'plan.json',
+                baseline_root=directory,baseline_bundle=directory/'bundle',baseline_source='a'*40,baseline_run='123',baseline_attempt='1')
+            with mock.patch.object(M,'restore_build',return_value={'protocol':changed}),self.assertRaisesRegex(ValueError,'Workflow PSS identity observer'):
+                M.prepare(args)
+            self.assertFalse(args.plan.exists())
+            scenario=M.scenarios.manifest('download-history-1000')
+            args.plan.write_text(json.dumps(dict(schema=1,order=['A','B','B','A'],scenarioManifest=scenario,
+                scenarioManifestSha256=M.scenarios.digest(scenario),repetitionsPerPhase=3,protocol=changed)))
+            with self.assertRaisesRegex(ValueError,'Workflow PSS identity observer'):M.execute(args)
+
     def invoke(self, directory, env):
         args = SimpleNamespace(output=directory/'outputs', report=directory/'selection.json')
         with mock.patch.dict(os.environ, env, clear=True):

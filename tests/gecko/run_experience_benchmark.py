@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT / 'tools/gecko'))
 from integration_event_contract import EventTransfer, parse_receipt_line, validate_receipt
 from profile_invocation_contract import expected_build, verify_installed
 import experience_scenarios as scenarios
+import experience_process_identity as memory_identity
 import native_input_contract as native_input
 from native_input_driver import NativeInputDriver
 
@@ -228,7 +229,8 @@ def main():
     scenario_extras = ['--es', 'scenarioManifest', scenarios.encoded(scenario), '--es', 'scenarioSha256', scenario_hash]
     (args.out / 'scenario-manifest.json').write_text(scenarios.encoded(scenario) + '\n')
     observer_paths = ('tests/gecko/run_experience_benchmark.py', 'tests/gecko/ExperienceBenchmarkActivity.java',
-                      'tests/gecko/ExperienceScenarios.java', 'tools/gecko/experience_scenarios.py', *DRIVER_OBSERVERS)
+                      'tests/gecko/ExperienceScenarios.java', 'tools/gecko/experience_scenarios.py',
+                      'tools/gecko/experience_process_identity.py', *DRIVER_OBSERVERS)
     observer_hashes = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in observer_paths}
 
     def adb(*parts, binary=False, timeout=30):
@@ -341,29 +343,7 @@ def main():
                     'raw': error_output(error), 'hostStartedMonotonic': host_started, 'hostObservedMonotonic': time.monotonic()}
 
     def memory_sample():
-        host_started = time.monotonic()
-        processes = process_sample()
-        rows = []
-        for row in processes.get('discoveredProcesses', []):
-            raw = None
-            try:
-                raw = adb('shell', 'dumpsys', 'meminfo', str(row['pid']), timeout=20)
-                value = scenarios.pss_value(raw, row['pid'])
-                if value['observedProcess'] != row['process']:
-                    raise ValueError('dumpsys process name differs from discovery (possible PID reuse)')
-                observed = next((p for p in processes.get('processes', []) if p['pid'] == row['pid']), None)
-                # The raw dumpsys header binds the PSS to this PID/process. CPU
-                # denial cannot suppress a successful PSS, but identity limits stay.
-                rows.append(dict(value, pid=row['pid'], process=row['process'],
-                                 startTicks=observed['startTicks'] if observed else None, raw=raw,
-                                 startTicksSource='preceding proc sample; not an atomic dumpsys identity'))
-            except (ValueError, subprocess.SubprocessError) as error:
-                rows.append({'pid': row['pid'], 'process': row['process'], 'error': str(error),
-                             'raw': raw if raw is not None else error_output(error)})
-        complete = bool(rows) and processes.get('discoveryAvailable') and all('pssKb' in row for row in rows)
-        return {'available': bool(complete), 'totalPssKb': sum(row['pssKb'] for row in rows) if complete else None,
-                'processDiscovery': processes, 'hostStartedMonotonic': host_started, 'hostObservedMonotonic': time.monotonic(),
-                'processes': rows, 'scope': 'Successful PID-bound dumpsys output only; starttime comes from earlier proc read and process restart during dumpsys remains a limitation. Serial actual dumpsys PSS observations of every discovered app/isolated-Gecko/descendant process; not an atomic snapshot.'}
+        return memory_identity.collect(adb, PACKAGE, parse_proc_stat, scenarios.pss_value)
 
     report = {'schema': 1, 'status': 'in_progress', 'label': args.label, 'sourceCommit': args.source,
               'buildIdentity': installed, 'runnerSha256': hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),
@@ -373,7 +353,7 @@ def main():
               'scenarioCoverageGaps': scenarios.GAPS, 'environment': environment, 'predeclaredRepetitions': args.repetitions, 'iterations': [],
               'physicalDeviceAcceptance': False, 'realChatGptAcceptance': False, 'releaseAcceptance': False,
               'protocol': 'Untimed provisioning; process-cold fixture Activity launch and normal production connection; network→chat→downloads→chat→settings→chat; compact expand/upward swipe; settings dark/light via real taps; return chat; HOME and retained warm resume. Same deterministic 240-message/105k reply, no send. All actions are actual Android input; all raw samples retained.',
-              'measurementLimits': ['Loopback document loading is not ChatGPT or WAN latency.', 'Cold means process-cold; OS filesystem caches are not purged.', 'Activity fixture startup excludes explicit provisioning and APK hashing, but includes test observation overhead.', 'Native response ends at View draw, not display/compositor presentation. The unchanged gesture metric starts at ACTION_UP; collapse may already occur during ACTION_MOVE, so this metric cannot locate the first swipe response.', 'Choreographer resets on Activity pause/resume; HWUI measures actual submitted native frames. Neither fully observes Gecko compositor jank.', 'Page RAF resets on document visibility changes; snapshots identify native tabs and document visibility, so intervals spanning hidden native panels are not visible-page jank evidence.', 'CPU includes the fixed test evidence/observation overhead; terminated process tails and absent/unknown process attribution are disclosed. PSS is successful dumpsys output only and is serial, not a memory peak or atomic total.', 'Fixture theme uses real CSS prefers-color-scheme and observed computed background via Gecko color preference; the ChatGPT-only native appearance bridge is outside this localhost flow and retains its separate release regression.', 'Normal timers and polling remain enabled, but ChatGPT-origin-only resource/reply observer messages are unavailable on this static localhost page; streaming replies and uploads are not measured.', 'No vendor keyboard, real account, upload or physical-device benchmark in this flow.']}
+              'measurementLimits': ['Loopback document loading is not ChatGPT or WAN latency.', 'Cold means process-cold; OS filesystem caches are not purged.', 'Activity fixture startup excludes explicit provisioning and APK hashing, but includes test observation overhead.', 'Native response ends at View draw, not display/compositor presentation. The unchanged gesture metric starts at ACTION_UP; collapse may already occur during ACTION_MOVE, so this metric cannot locate the first swipe response.', 'Choreographer resets on Activity pause/resume; HWUI measures actual submitted native frames. Neither fully observes Gecko compositor jank.', 'Page RAF resets on document visibility changes; snapshots identify native tabs and document visibility, so intervals spanning hidden native panels are not visible-page jank evidence.', 'CPU includes the fixed test evidence/observation overhead; terminated process tails and absent/unknown process attribution are disclosed. PSS is serial successful dumpsys output only with complete AM hosting/UID and PID/startTicks fences; missing or unstable process coverage rejects the total. It is not a memory peak or atomic total.', 'Fixture theme uses real CSS prefers-color-scheme and observed computed background via Gecko color preference; the ChatGPT-only native appearance bridge is outside this localhost flow and retains its separate release regression.', 'Normal timers and polling remain enabled, but ChatGPT-origin-only resource/reply observer messages are unavailable on this static localhost page; streaming replies and uploads are not measured.', 'No vendor keyboard, real account, upload or physical-device benchmark in this flow.']}
 
     report['measurementLimits'].append('Collapse uses the frozen 320ms shell app_process input driver: 19 MOVE slots, 32ms maximum lateness, and one invocation. Its shell entry/READY overhead is retained inside the armed action and whole flow and reported separately; it is automation cost, not app startup. Original ACTION_UP-to-draw timing and the 15-second app action deadline are unchanged.')
 
@@ -539,6 +519,25 @@ def main():
                     window['cpu'] = scenarios.cpu_window(samples, hz, window['start']['elapsedRealtimeMs'],
                                                          window['end']['elapsedRealtimeMs'], cpu_summary)
                 persist()
+        # No extra device sampling and no retries: validate every retained memory
+        # observation, then derive negatives from an actual new valid snapshot.
+        # This runs after this phase's original timed iterations, never inside an
+        # action/save interval. Old A0 raw and unavailable totals are not inputs.
+        for observed_row in report['iterations']:
+            snapshots = [observed_row['memoryReady'], observed_row['memoryFinal']]
+            snapshots += [snapshot for window in observed_row['scenarioWindows']
+                          for snapshot in (window['memoryBefore'], window['memoryAfter'])]
+            for snapshot in snapshots:
+                memory_identity.verify(snapshot, PACKAGE, parse_proc_stat, scenarios.pss_value)
+        original_snapshot = report['iterations'][0]['memoryReady']
+        controls = memory_identity.negative_controls(original_snapshot['rawEvidence'], PACKAGE,
+                                                     parse_proc_stat, scenarios.pss_value)
+        controls_path = 'pss-identity-negative-controls.json'
+        (args.out / controls_path).write_text(json.dumps(dict(schema=1,
+            scope='Derived negative copies of a newly captured valid device snapshot; originals unchanged; after timed iterations; no extra device reads.',
+            originalSnapshot=original_snapshot, cases=controls), indent=2) + '\n')
+        report['pssIdentityNegativeControls'] = dict(path=controls_path, count=len(controls),
+            afterTimedIterations=True, extraDeviceReads=0, originalSnapshot='iteration-01.memoryReady')
         installed_after = json.loads(adb('exec-out', 'content', 'read', '--uri', 'content://' + PACKAGE + '.evidence/build-identity'))
         verify_installed(installed_after, expected)
         assert len([r for r in loopback.TRACE if r['kind'] == 'http']) == args.repetitions, 'A benchmark action reloaded the document'

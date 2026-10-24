@@ -25,6 +25,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 import experience_scenarios as scenarios
+import experience_process_identity as memory_identity
 import native_input_contract as native_input
 from native_input_driver import NativeInputDriver
 from installed_apk_read import read_installed_apk
@@ -48,6 +49,7 @@ HARNESS = (
     'tests/gecko/ExperienceScenarios.java',
     'tests/gecko/AndroidManifest.xml',
     'tools/gecko/experience_scenarios.py',
+    'tools/gecko/experience_process_identity.py',
     'tests/gecko/run_experience_benchmark.py',
     'tests/gecko/ChromeCollapseIntegration.java',
     'tests/gecko/CompactChromeIntegrationActivity.java',
@@ -107,6 +109,12 @@ def sha(path):
 
 def json_write(path, value):
     Path(path).write_text(json.dumps(value, indent=2, ensure_ascii=False) + '\n')
+
+
+def verify_memory_observer(protocol):
+    name='tools/gecko/experience_process_identity.py'
+    require(sha(ROOT/name) == protocol[name] and sha(memory_identity.__file__) == protocol[name],
+            'Workflow PSS identity observer differs from the selected protocol')
 
 
 def git(root, *args):
@@ -435,6 +443,7 @@ def prepare(args):
         require(candidate['sourceCommit'] != baseline['sourceCommit'],
                 'Use baseline mode to measure repeatability of one source')
     protocol = matching_protocol(baseline['protocol'], candidate['protocol'])
+    verify_memory_observer(protocol)
     require(sha(ROOT / 'tools/gecko/experience_scenarios.py') == protocol['tools/gecko/experience_scenarios.py'],
             'Planner scenario inputs differ from selected builds')
     require(source_hashes(ROOT, SETUP) == {name: protocol[name] for name in SETUP},
@@ -600,7 +609,8 @@ def verify_report(report, build, label, repetitions, protocol, scenario=None, *,
             and report.get('targetByteProofSha256') == target_proof_sha256,
             'Benchmark target byte proof is not bound to this phase')
     for name in ('tests/gecko/run_experience_benchmark.py', 'tests/gecko/ExperienceBenchmarkActivity.java',
-                 'tests/gecko/ExperienceScenarios.java', 'tools/gecko/experience_scenarios.py', *DRIVER_OBSERVERS):
+                 'tests/gecko/ExperienceScenarios.java', 'tools/gecko/experience_scenarios.py',
+                 'tools/gecko/experience_process_identity.py', *DRIVER_OBSERVERS):
         require(report.get('observerFiles', {}).get(name) == protocol[name], 'Actual scenario observer differs: ' + name)
     installed = report.get('buildIdentity', {})
     for key in ('sourceCommit', 'sourceTree', 'version', 'versionCode', 'apkSha256', 'apkBytes'):
@@ -632,9 +642,26 @@ def verify_report(report, build, label, repetitions, protocol, scenario=None, *,
             original_target_fence = target_fence
         require(target_fence == original_target_fence, 'Measured APK metadata changed while reusing the phase byte proof')
         verify_scenario(row, scenario)
+        snapshots = [row['memoryReady'], row['memoryFinal']]
+        snapshots += [snapshot for window in row['scenarioWindows']
+                      for snapshot in (window['memoryBefore'], window['memoryAfter'])]
+        for snapshot in snapshots:
+            memory_identity.verify(snapshot, PACKAGE, memory_identity.parse_stat, scenarios.pss_value)
         finite(row['startup']['activityCreateToReadyMs'])
         for action in row['actions']:
             finite(action['responseToDrawMs'])
+    controls = report.get('pssIdentityNegativeControls', {})
+    require(controls == dict(path='pss-identity-negative-controls.json', count=6,
+            afterTimedIterations=True, extraDeviceReads=0, originalSnapshot='iteration-01.memoryReady'),
+            'New original-raw PSS identity negative controls missing or scope changed')
+    control_payload = native_input.decode(retained_raw(report, raw_root, controls['path']))
+    original_snapshot = report['iterations'][0]['memoryReady']
+    require(control_payload.get('schema') == 1 and control_payload.get('originalSnapshot') == original_snapshot,
+            'PSS negative controls are not bound to this phase actual original snapshot')
+    expected_controls = memory_identity.negative_controls(original_snapshot['rawEvidence'], PACKAGE,
+                                                         memory_identity.parse_stat, scenarios.pss_value)
+    require(control_payload.get('cases') == expected_controls,
+            'Retained original-raw PSS negative controls differ from strict replay')
     environment = report.get('environment', {})
     require(all(key in environment for key in ENVIRONMENT if key != 'cpuCount'), 'Missing device environment')
     require(environment['serial'] == SERIAL, 'Only the synthetic emulator is supported')
@@ -770,6 +797,7 @@ def execute(args):
     require(plan.get('scenarioManifest') == scenarios.manifest(plan.get('scenarioManifest', {}).get('name'))
             and plan.get('scenarioManifestSha256') == scenarios.digest(plan['scenarioManifest']), 'Scenario plan differs')
     require_phase_budget(plan['scenarioManifest'], plan['repetitionsPerPhase'])
+    verify_memory_observer(plan['protocol'])
     require(sha(ROOT / 'tools/gecko/experience_scenarios.py') == plan['protocol']['tools/gecko/experience_scenarios.py'],
             'Scenario inputs changed after planning')
     require(plan['comparisonToolSha256'] == sha(__file__), 'Comparison tool changed after planning')

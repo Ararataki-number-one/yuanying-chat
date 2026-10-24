@@ -6,7 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 import tempfile
 import unittest
-from experience_native_input_fixture import attach_driver
+from experience_native_input_fixture import attach_driver,add_file
+from experience_memory_fixture import attach_memory,snapshot
 
 SPEC = importlib.util.spec_from_file_location(
     'experience_comparison', Path(__file__).resolve().parents[1] / 'tools/gecko/run_experience_comparison.py')
@@ -48,6 +49,7 @@ class ComparisonTests(unittest.TestCase):
                              cpuCount=2, clockTicksPerSecond=100))
         self.raw = tempfile.TemporaryDirectory();self.addCleanup(self.raw.cleanup)
         attach_driver(MODULE, self.report, self.build, self.protocol, Path(self.raw.name))
+        attach_memory(MODULE,self.report,Path(self.raw.name))
 
     def verify(self, report):
         return MODULE.verify_report(report, self.build, 'baseline-1', 1, self.protocol,
@@ -132,6 +134,7 @@ class ComparisonTests(unittest.TestCase):
             MODULE.matching_protocol(missing, missing)
 
     def test_missing_cpu_memory_and_frames_never_become_zero(self):
+        self.report['iterations'][0].update(memoryReady=dict(available=False),memoryFinal=dict(available=False))
         self.report['iterations'][0]['startup']['productionPageUsableFromActivityCreateMs'] = None
         result = MODULE.summarize([self.report])
         for key in ('cpuSecondsObserved', 'cpuPercentOfOneCoreObserved',
@@ -143,6 +146,41 @@ class ComparisonTests(unittest.TestCase):
         changes = MODULE.deltas(result, result)
         self.assertNotIn('cpuSecondsObserved', changes)
         self.assertEqual(changes['activityCreateToFixtureReadyMs']['percentChange'], 0)
+
+    def test_new_baseline_requires_complete_replayable_memory_and_raw_negative_controls(self):
+        self.verify(self.report)
+        for mutate in (
+                lambda r:r['iterations'][0]['memoryReady'].update(available=False,totalPssKb=None),
+                lambda r:r['iterations'][0]['memoryFinal'].update(totalPssKb=0),
+                lambda r:r['iterations'][0]['memoryReady']['rawEvidence']['after'].update(amRaw=''),
+                lambda r:r.pop('pssIdentityNegativeControls'),
+                lambda r:r['pssIdentityNegativeControls'].update(extraDeviceReads=1),
+                lambda r:r['pssIdentityNegativeControls'].update(count=5)):
+            report=copy.deepcopy(self.report);mutate(report)
+            with self.assertRaises((KeyError,ValueError)):self.verify(report)
+
+    def test_pressure_memory_before_and_after_must_each_replay_from_new_raw(self):
+        report=copy.deepcopy(self.report);scenario=MODULE.scenarios.manifest('download-history-1000')
+        report.update(scenarioManifest=scenario,scenarioManifestSha256=MODULE.scenarios.digest(scenario))
+        row=report['iterations'][0];row['seed']['scenario'].update(manifest=scenario,manifestSha256=MODULE.scenarios.digest(scenario))
+        row['scenarioWindows']=[dict(name='history-save',start={'elapsedRealtimeMs':1000},end={'elapsedRealtimeMs':19000},
+            elapsedDurationMs=18000,frameLimitReached=False,lifecycleChanges=0,
+            saves=[dict(step=i,durationMs=20,received=i*65536,method='DownloadTasks.save',httpTransferMeasured=False)for i in range(1,9)],
+            verification=dict(savedRows=1000,taskRows=1001,verifiedProgressBytes=524288,actualAndroidSQLite=True,actualAndroidSharedPreferences=True),
+            memoryBefore=snapshot(MODULE.memory_identity,MODULE.scenarios.pss_value),memoryAfter=snapshot(MODULE.memory_identity,MODULE.scenarios.pss_value))]
+        MODULE.verify_report(report,self.build,'baseline-1',1,self.protocol,scenario,
+            raw_root=Path(self.raw.name),target_proof_sha256=self.report['targetByteProofSha256'])
+        for field in ('memoryBefore','memoryAfter'):
+            changed=copy.deepcopy(report);changed['iterations'][0]['scenarioWindows'][0][field].update(totalPssKb=None,available=False)
+            with self.assertRaises(ValueError):MODULE.verify_report(changed,self.build,'baseline-1',1,self.protocol,scenario,
+                raw_root=Path(self.raw.name),target_proof_sha256=self.report['targetByteProofSha256'])
+
+    def test_negative_raw_file_must_be_indexed_bound_to_original_and_replay_rejected(self):
+        path=Path(self.raw.name)/'pss-identity-negative-controls.json'
+        payload=MODULE.native_input.decode(path.read_bytes())
+        payload['cases'][0]['observed'].update(available=True,totalPssKb=0)
+        add_file(self.report,Path(self.raw.name),path.name,payload)
+        with self.assertRaisesRegex(ValueError,'strict replay'):self.verify(self.report)
 
     def test_all_observations_include_slow_tail(self):
         second = copy.deepcopy(self.report)
