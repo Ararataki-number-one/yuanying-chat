@@ -27,6 +27,7 @@ final class DesignChrome {
   private boolean queued,metadataPending;
   private long metadataAt;
   private String profileName;
+  private JSONObject profileRow;
   private boolean collapsed=true;
   private final ChromeCollapseGesture swipe;
   private Runnable pendingSwipe;
@@ -39,7 +40,8 @@ final class DesignChrome {
     a.toolbar.setBackgroundColor(ReferenceUi.CHAT_BG);
     a.toolbar.setPadding(a.dp(10),0,a.dp(10),0);
     compact=new FrameLayout(a);
-    compactTitle=ReferenceUi.text(a,Profiles.display(a,Profiles.slot(a)),12,ReferenceUi.TEXT,true);
+    profileRow=ProfileCatalog.get(a).item(Profiles.slot(a));
+    compactTitle=ReferenceUi.text(a,profileLabel(profileRow,Profiles.slot(a)),12,ReferenceUi.TEXT,true);
     ReferenceUi.single(compactTitle);
     compactTitle.setMaxWidth(a.dp(240));
     compactTitle.setGravity(Gravity.CENTER);
@@ -219,18 +221,27 @@ final class DesignChrome {
     description(title,"当前环境："+profileName+"，点击切换环境");
     NativeNetwork network=NativeNetwork.get(a);
     JSONObject config=network.settings==null?new JSONObject():network.settings;
-    // Only slot/name are needed for this strip. Catalog I/O is asynchronous;
-    // timestamps and latency continue to come from the current protected route.
-    showNetwork(new WindowNetworkState(a,J.obj("slot",Profiles.slot(a),"name",profileName),config,WindowNetworkState.live(a.session,network),true,System.currentTimeMillis()));
+    // Reuse the actual catalog identity from the existing metadata read. A
+    // session receipt cannot establish that its own environment still exists.
+    showNetwork(new WindowNetworkState(a,profileRow,config,WindowNetworkState.live(a.session,network),profileAvailable(profileRow,Profiles.slot(a)),System.currentTimeMillis()));
   }
 
   private void refreshMetadata(){
     long now=SystemClock.elapsedRealtime();if(metadataPending||now-metadataAt<2000)return;
     metadataPending=true;metadataAt=now;
     metadataReader.execute(()->{
-      String next=profileName;try{next=Profiles.display(a,Profiles.slot(a));DesignUi.Stars.refresh(a);}catch(Exception ignored){}
-      final String value=next;a.handler.post(()->{metadataPending=false;if(!a.destroyed&&!value.equals(profileName)){profileName=value;update();}});
+      JSONObject row=new JSONObject();String next=profileName;
+      try{row=ProfileCatalog.get(a).item(Profiles.slot(a));next=profileLabel(row,Profiles.slot(a));DesignUi.Stars.refresh(a);}catch(Exception ignored){}
+      final JSONObject value=row;final String name=next;a.handler.post(()->applyMetadata(value,name));
     });
+  }
+  static String profileLabel(JSONObject row,int slot){return row.optString("name",slot==0?"默认环境":"环境 "+(slot+1));}
+  static boolean profileAvailable(JSONObject row,int slot){return row.optInt("slot",-1)==slot&&row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting")&&!row.optString("environmentId").isEmpty()&&row.optLong("generation",-1)>=0;}
+  static boolean sameProfile(JSONObject left,JSONObject right){return left.optInt("slot",-1)==right.optInt("slot",-1)&&left.optString("environmentId").equals(right.optString("environmentId"))&&left.optLong("generation",-1)==right.optLong("generation",-1)&&left.optBoolean("created")==right.optBoolean("created")&&left.optBoolean("deleting")==right.optBoolean("deleting")&&left.optBoolean("resetting")==right.optBoolean("resetting");}
+  private void applyMetadata(JSONObject row,String name){
+    if(a.destroyed)return;metadataPending=false;
+    boolean changed=!sameProfile(profileRow,row)||!name.equals(profileName);profileRow=row;profileName=name;
+    if(changed)update();
   }
 
   private static void text(TextView view,String value){if(!TextUtils.equals(view.getText(),value)){view.setText(value);UiPerfStats.textChange();}}
