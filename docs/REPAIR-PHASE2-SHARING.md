@@ -32,9 +32,10 @@
 | 候选 / snapshot 链路 | 38 项 | 两个 JSON 实现；源 hash / 指纹 / 版本、独立节点、100 aliases、缓存预算、4097 个不同节点、尾部回退 |
 | 生产分享 UI 方法 / 回调 | 24 项 | 两个 JSON 实现；完整 route / nodeMenu / selected / verifyPrepared 方法体、单端失败、迟到回调和真实双线程锁顺序；显式 Android / native 适配器 |
 | 生产网络库 | 165 项 | 两个 JSON 实现；原子源 / sidecar 发布、保存失败、跨实例 / 独立 JVM 代次、缓存清理、本地导入、可选索引失败 |
-| 数值完整缓存链路 | 178 项 | 两个 JSON 实现；生产 candidates → parsed / importLocalSources → shareCandidate → Bundle / provider；大整数、浮点边界和缓存写入失败回退，存储及原生身份为明确的主机适配器 |
+| 数值完整缓存链路 | 260 项 | 两个 JSON 实现；生产 candidates → parsed / importLocalSources → shareCandidate → Bundle / provider；大整数、浮点边界和缓存写入失败回退，存储及原生身份为明确的主机适配器 |
 | 关联来源 / lineage / intent | 100 / 26 / 85 项 | 主机生产路径，Android JSON |
-| 上游原生解析差分 | 44 / 44 | 生产导出前后实际运行 Mihomo v1.19.31 `-t`，逐例检查类型与原始字段保留；原 30 项及其基线记录保留，新增数值边界 |
+| 分享 JSON 边界 | 55 项 | 两个 JSON 实现；精确整数与浮点类型、严格格式 / 资源限制、旧接收端版本拒绝与普通配置兼容 |
+| 上游原生解析差分 | 49 / 49 | 生产导出前后实际运行 Mihomo v1.19.31 `-t`，逐例检查类型与原始字段保留；原 44 项及其基线记录保留，新增插件数值边界 |
 | 浮点凭据原生字节对照 | 30 + 92 组 | 原 30 组边界及 46 个二进制指数边界的正负值；每组读取本机合成 SOCKS5 服务收到的原始 / 导出认证字节，无外部代理连接 |
 | 最短表示固定样本对照 | 16,286 / 16,286 | 同一批二进制值，生产转换与 CPython 最短表示一致；作为跨实现诊断，原生语义另外用上述认证字节核对 |
 
@@ -43,6 +44,14 @@
 本地证据保留在工作区 `work/network-sharing-native-matrix/final/results.json`、`work/network-sharing-host/`、`work/network-share-ui-flow/`、`work/network-catalog-host/` 和 `work/sharing-phase2/summary.json`。测试输入均为合成配置，无用户账号。
 
 独立审查在 `d3d27f6` 上复现了两个额外边界：Android JSON 复制会损失大于 `Long.MAX_VALUE` 的 HY2 `uint64`，JDK 17 的浮点最短表示也会把 `1e23` 凭据导出成与原生不同的文本。修复仅将对应 `uint64` 字段的大值保留为原生支持的精确十进制字符串；浮点字符串按原生 `FormatFloat('E', -1, 64)` 的最短往返规则生成，浮点到整数按真实二进制值截断。后续独立审查又发现仅取最近十进制值会漏掉 2 的整数次幂两侧不对称的往返区间，已补同精度相邻候选，并按距离和偶数舍入选取；原四组失败认证字节与修复后的 92 组正负边界对照均保留。原始插件映射类型保持不变，最终原生指纹核验继续保留。修复前证据、修复后双 JSON / 原生对照保存在 `work/sharing-phase2/independent-review/`。
+
+## 恢复开发后的数值补充修复
+
+独立复核发现 SS 插件原始参数在 Android JSON 往返时仍会损失整数精度或浮点类型。已用真实 Mihomo 向本机合成 WebSocket 服务发送请求，确认 `9223372036854775808`、`18446744073709551615`、`1.0` 和 `-0.0` 的 Host 曾发生变化。分享专用 JSON 读写与复制现在保留原始数值，不改变普通设置的 JSON 行为；候选 sidecar 更新到版本 2，旧缓存按原始订阅回退，可选缓存编码超限仍不阻止来源保存。
+
+普通配置继续使用分享格式版本 1。只有旧 Android 接收端不能无损处理的数值使用格式版本 2，并提示需要 2.0.17 或更新版本；旧接收端会明确拒绝该版本，新接收端仍读取版本 1。原生最终指纹检查、字段白名单和外部依赖限制保持不变。
+
+修复前后各 18 条本机原生请求回执已保留，修复后每组原始配置、缓存导出和分享往返的 Host 相同。该结果证明合成参数的线端语义保留，不代表真实线路测速或真机验证。两项新边界及后续累计预算修复的完整证据保存在工作区 `work/plan-repairs/resume-20261024/`。
 
 ## 复现入口
 
@@ -61,6 +70,6 @@ python3 tests/network-sharing-host/native_matrix.py --java-home "$JAVA_HOME" --j
 
 ## Android 尚待验收
 
-`NetworkSharingIntegrationActivity` 保留原 19 个协议 / 类型样例并增加 12 个数值边界，共 31 个实际 Pocket 指纹往返样例。读取 `sharing-schema-matrix.json`，执行原生原始解析 → 候选 → 真实网络库导入与加密 sidecar → 重新读取 → 导出 / 导入 → 原生导出解析 → 指纹比较；每例清理临时来源并检查活动网络快照字节未变。也保留实际点击“入口读取失败，仅分享出口”的检查。原有 100 aliases、无关 metadata、可运行本地固定出口线路等验证继续保留。
+`NetworkSharingIntegrationActivity` 保留原 19 个协议 / 类型样例并增加 12 个数值边界及 5 个插件数值边界，共 36 个实际 Pocket 指纹往返样例。读取 `sharing-schema-matrix.json`，执行原生原始解析 → 候选 → 真实网络库导入与加密 sidecar → 重新读取 → 导出 / 导入 → 原生导出解析 → 指纹比较；每例清理临时来源并检查活动网络快照字节未变。也保留实际点击“入口读取失败，仅分享出口”的检查。原有 100 aliases、无关 metadata、可运行本地固定出口线路等验证继续保留。
 
 必须在整合后的 Android 构建中完成上述 fixture、既有网络分享 UI 和关联环境网络回归后，才能称本批 Android 验收通过。当前主机生产路径已编译执行，Android fixture 仍需完整 Android / Gecko 编译与运行。不得把 Linux `-t` 或主机适配器结果作为该验收的替代。

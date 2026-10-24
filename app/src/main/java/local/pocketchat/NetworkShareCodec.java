@@ -39,14 +39,15 @@ final class NetworkShareCodec {
   static final class Bundle {
     final String name,kind;final JSONObject entry,exit;
     Bundle(String name,JSONObject entry,JSONObject exit){this.name=name;this.entry=entry;this.exit=exit;kind=entry!=null&&exit!=null?"route":entry!=null?"entry":"exit";}
-    String encode()throws Exception{return J.obj("format","pocketchat-network","schemaVersion",1,"kind",kind,"name",name,"entry",entry,"exit",exit).toString();}
+    int schemaVersion(){return NetworkShareJson.requiresExactNumbers(entry)||NetworkShareJson.requiresExactNumbers(exit)?2:1;}
+    String encode()throws Exception{return NetworkShareJson.encode(J.obj("format","pocketchat-network","schemaVersion",schemaVersion(),"kind",kind,"name",name,"entry",entry,"exit",exit),LIMIT);}
     String summary(){return (entry==null?"":entry.optString("name"))+(entry!=null&&exit!=null?" → ":"")+(exit==null?"":exit.optString("name"))+" → ChatGPT";}
   }
   static Bundle decode(String text)throws Exception{
     if(text==null||text.getBytes(StandardCharsets.UTF_8).length>LIMIT)throw invalid();
     int depth=0;boolean quote=false,escape=false;for(int i=0;i<text.length();i++){char ch=text.charAt(i);if(quote){if(escape)escape=false;else if(ch=='\\')escape=true;else if(ch=='"')quote=false;}else if(ch=='"')quote=true;else if(ch=='{'||ch=='['){if(++depth>12)throw invalid();}else if(ch=='}'||ch==']'){if(--depth<0)throw invalid();}}
-    if(depth!=0||quote)throw invalid();JSONTokener tok=new JSONTokener(text);Object raw=tok.nextValue();if(!(raw instanceof JSONObject)||tok.nextClean()!=0)throw invalid();JSONObject o=(JSONObject)raw;
-    keys(o,set("format schemaVersion kind name entry exit"));if(!"pocketchat-network".equals(o.optString("format"))||!(o.opt("schemaVersion") instanceof Number)||o.getDouble("schemaVersion")!=1)throw new IOException("此分享版本不支持，请更新应用或重新分享。");
+    if(depth!=0||quote)throw invalid();Object raw;try{raw=NetworkShareJson.decode(text,LIMIT);}catch(Exception malformed){throw invalid();}if(!(raw instanceof JSONObject))throw invalid();JSONObject o=(JSONObject)raw;
+    keys(o,set("format schemaVersion kind name entry exit"));if(!"pocketchat-network".equals(o.optString("format"))||!(o.opt("schemaVersion") instanceof Number)||(o.getDouble("schemaVersion")!=1&&o.getDouble("schemaVersion")!=2))throw new IOException("此分享版本不支持，请更新应用或重新分享。");
     JSONObject e=o.optJSONObject("entry"),x=o.optJSONObject("exit");if(e==null&&x==null||o.has("entry")&&!o.isNull("entry")&&e==null||o.has("exit")&&!o.isNull("exit")&&x==null)throw invalid();
     Bundle b=new Bundle(string(o,"name",200,true),e==null?null:node(e,false),x==null?null:node(x,true));if(!b.kind.equals(o.optString("kind")))throw invalid();return b;
   }
@@ -57,7 +58,7 @@ final class NetworkShareCodec {
   // Android's JSON encoder escapes '/', which Mihomo's YAML reader rejects.
   // Consume escape pairs so literal backslashes in credentials remain intact.
   static String yamlJson(String json){StringBuilder out=new StringBuilder(json.length());for(int i=0;i<json.length();i++){char c=json.charAt(i);if(c=='\\'&&i+1<json.length()){char next=json.charAt(++i);if(next!='/')out.append(c);out.append(next);}else out.append(c);}return out.toString();}
-  static byte[] provider(JSONObject node){try{return yamlJson(J.obj("proxies",J.arr(canonical(node))).toString()).getBytes(StandardCharsets.UTF_8);}catch(Exception e){throw new IllegalArgumentException("节点无法编码");}}
+  static byte[] provider(JSONObject node){try{return yamlJson(NetworkShareJson.encode(J.obj("proxies",J.arr(canonical(node))),LIMIT)).getBytes(StandardCharsets.UTF_8);}catch(Exception e){throw new IllegalArgumentException("节点无法编码");}}
   static JSONObject manual(JSONObject row)throws Exception{String name=row.optString("name");if(name.trim().isEmpty())name=row.optString("host");return node(J.obj("name",name,"type","socks5","server",row.optString("host"),"port",row.optInt("port"),"username",row.optString("user"),"password",row.optString("password")),true);}
   static Object yamlValue(Object value,int depth)throws Exception{
     if(depth>7)throw invalid();

@@ -32,7 +32,7 @@ def compile_codec(args, mode, output):
     source.mkdir(parents=True, exist_ok=True)
     names = ['J.java', 'NetworkShareCodec.java']
     if mode == 'current':
-        for optional in ['NetworkShareSchema.java', 'NetworkShareSnapshot.java']:
+        for optional in ['NetworkShareSchema.java', 'NetworkShareSnapshot.java', 'NetworkShareJson.java']:
             if (PRODUCTION / optional).exists():
                 names.append(optional)
     for name in names:

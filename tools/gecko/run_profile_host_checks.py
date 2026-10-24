@@ -115,7 +115,7 @@ def main():
         results.append({"test": directory, "report": str(receipt.relative_to(ROOT)), "passed": report.get("passed"),
                         "actualAndroidExecution": False})
         files.update((ROOT / "tests" / directory).rglob("*.java"))
-    files.update(source / name for name in ("NetworkCatalog.java", "NetworkShareSnapshot.java", "NetworkSubscriptionCatalogPolicy.java",
+    files.update(source / name for name in ("NetworkCatalog.java", "NetworkShareSnapshot.java", "NetworkShareJson.java", "NetworkSubscriptionCatalogPolicy.java",
         "NetworkSourceSelection.java", "EntrySelection.java", "NetworkDraft.java", "NetworkChanges.java",
         "NetworkOptimizationPolicy.java", "SealedFileIo.java", "ProfileCatalog.java",
         "EnvironmentSpecRepository.java", "EnvironmentSpecRuntime.java", "EnvironmentApplyCoordinator.java",

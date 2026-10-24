@@ -87,7 +87,7 @@ def verify_network_sharing(report, source, apk_sha256, complete=False, run_token
     cases = json.loads(matrix.read_text())['cases']
     expected = [case['id'] for case in cases]
     evidence = report['schemaFingerprintEvidence']
-    assert len(expected) == len(set(expected)) == report['schemaFingerprintCount'] == len(evidence) == 31
+    assert len(expected) == len(set(expected)) == report['schemaFingerprintCount'] == len(evidence) == 36
     assert [row['case'] for row in evidence] == expected
     for row, case in zip(evidence, cases):
         for field in ('actualNativeFingerprintVerified', 'actualEncryptedCatalogCandidate',

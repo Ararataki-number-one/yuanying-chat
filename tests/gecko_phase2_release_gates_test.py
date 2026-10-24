@@ -158,10 +158,10 @@ class SharingReleaseGateTest(unittest.TestCase):
         return dict(status='passed', actualAndroidExecution=True, actualNativeExecution=True,
                     buildIdentity={'sourceCommit': SOURCE, 'apkSha256': APK}, runToken='b' * 32,
                     checkCount=66, checks=[{'name': 'synthetic-' + str(i), 'pass': True} for i in range(66)],
-                    schemaFingerprintCount=31, schemaFingerprintEvidence=evidence)
+                    schemaFingerprintCount=36, schemaFingerprintEvidence=evidence)
 
     def test_real_shared_matrix_verifier_accepts_exact_synthetic_control(self):
-        self.assertEqual(C.verify_network_sharing(self.fixture(), SOURCE, APK)['nativeSchemaFingerprints'], 31)
+        self.assertEqual(C.verify_network_sharing(self.fixture(), SOURCE, APK)['nativeSchemaFingerprints'], 36)
 
     def test_matrix_order_native_equivalence_cache_readback_and_identity_fail_closed(self):
         mutations = [lambda r: r['schemaFingerprintEvidence'].pop(),
@@ -213,7 +213,7 @@ class SignedInventoryTest(unittest.TestCase):
                 self.assertEqual(path.read_bytes(), original.read_bytes())
                 self.assertTrue(callable(verifier.verify))
             fixture = SharingReleaseGateTest().fixture()
-            self.assertEqual(staged.verify_network_sharing(fixture, SOURCE, APK)['nativeSchemaFingerprints'], 31)
+            self.assertEqual(staged.verify_network_sharing(fixture, SOURCE, APK)['nativeSchemaFingerprints'], 36)
 
 
 if __name__ == '__main__': unittest.main()

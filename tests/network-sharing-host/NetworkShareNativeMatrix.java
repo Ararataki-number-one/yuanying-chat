@@ -70,7 +70,12 @@ public final class NetworkShareNativeMatrix {
     yes("xhttp-download-settings",VLESS+", network: xhttp, xhttp-opts: {path: /up, mode: packet-up, download-settings: {path: /down, server: 127.0.0.2, port: '0x20fb', tls: false, headers: {Host: down.invalid}, reuse-settings: {max-connections: '1-2'}}}",n->{value(n,"xhttp-opts/download-settings/port",8443);value(n,"xhttp-opts/download-settings/server","127.0.0.2");value(n,"xhttp-opts/download-settings/reuse-settings/max-connections","1-2");}),
     no("blocked-external-dialer","type: socks5, port: 1080, dialer-proxy: OtherPrivateRoute",false),
     no("missing-vless-uuid","type: vless, port: 443",false),
-    no("protocol-case-mismatch","type: SOCKS5, port: 1080",false)
+    no("protocol-case-mismatch","type: SOCKS5, port: 1080",false),
+    yes("ss-plugin-u64-boundary",SS+", plugin: v2ray-plugin, plugin-opts: {mode: websocket, host: 9223372036854775808, tls: false}",n->value(n,"plugin-opts/host",new java.math.BigInteger("9223372036854775808"))),
+    yes("ss-plugin-u64-max",SS+", plugin: v2ray-plugin, plugin-opts: {mode: websocket, host: 18446744073709551615, tls: false}",n->value(n,"plugin-opts/host",new java.math.BigInteger("18446744073709551615"))),
+    yes("ss-plugin-float-integral",SS+", plugin: v2ray-plugin, plugin-opts: {mode: websocket, host: 1.0, tls: false}",n->require(n.getJSONObject("plugin-opts").get("host") instanceof Double&&Double.doubleToRawLongBits(n.getJSONObject("plugin-opts").getDouble("host"))==Double.doubleToRawLongBits(1.0),"Raw plugin floating kind and bits")),
+    yes("ss-plugin-float-negative-zero",SS+", plugin: v2ray-plugin, plugin-opts: {mode: websocket, host: -0.0, tls: false}",n->require(n.getJSONObject("plugin-opts").get("host") instanceof Double&&Double.doubleToRawLongBits(n.getJSONObject("plugin-opts").getDouble("host"))==Double.doubleToRawLongBits(-0.0),"Raw plugin floating kind and bits")),
+    yes("ss-plugin-float-fraction",SS+", plugin: v2ray-plugin, plugin-opts: {mode: websocket, host: 0.25, tls: false}",n->require(n.getJSONObject("plugin-opts").get("host") instanceof Double&&Double.doubleToRawLongBits(n.getJSONObject("plugin-opts").getDouble("host"))==Double.doubleToRawLongBits(0.25),"Raw plugin floating kind and bits"))
   );}
   public static void main(String[] args)throws Exception{
     if(args.length!=2)throw new IllegalArgumentException("output-directory and current|baseline required");Path dir=Paths.get(args[0]);Files.createDirectories(dir);boolean baseline=args[1].equals("baseline");JSONArray rows=new JSONArray();int failed=0;
@@ -79,7 +84,7 @@ public final class NetworkShareNativeMatrix {
       boolean accepted=false,checks=true;
       try{
         JSONObject node=NetworkShareCodec.extract(sample.yaml().getBytes(StandardCharsets.UTF_8),"Entry|Selected",NetworkCatalog.ENTRY);accepted=true;
-        byte[] encoded=NetworkShareCodec.provider(node);Path exported=dir.resolve(sample.id+".exported.yaml");Files.write(exported,encoded);row.put("export",exported.toAbsolutePath().toString());row.put("node",node);
+        JSONObject wire=NetworkShareCodec.decode(new NetworkShareCodec.Bundle(sample.id,node,null).encode()).entry;require(same(node,wire),"Bundle preserves numeric values and scalar kinds");byte[] encoded=NetworkShareCodec.provider(wire);Path exported=dir.resolve(sample.id+".exported.yaml");Files.write(exported,encoded);row.put("export",exported.toAbsolutePath().toString());row.put("node",node);
         require(!node.toString().contains("SYNTHETIC-PRIVATE-MARKER"),"Unrelated account excluded");assertions.put("Only selected node exported");
         sample.verify.run(node);assertions.put("Case-specific typed/raw values preserved");
         JSONObject again=NetworkShareCodec.extract(encoded,"Entry|Selected",NetworkCatalog.ENTRY);require(same(node,again),"Export/reparse exact structured values");assertions.put("Production export/reparse retains exact values and types");
@@ -93,6 +98,7 @@ public final class NetworkShareNativeMatrix {
   static boolean same(Object a,Object b)throws Exception{
     if(a instanceof JSONObject&&b instanceof JSONObject){JSONObject x=(JSONObject)a,y=(JSONObject)b;if(x.length()!=y.length())return false;for(Iterator<String> it=x.keys();it.hasNext();){String k=it.next();if(!y.has(k)||!same(x.get(k),y.get(k)))return false;}return true;}
     if(a instanceof JSONArray&&b instanceof JSONArray){JSONArray x=(JSONArray)a,y=(JSONArray)b;if(x.length()!=y.length())return false;for(int i=0;i<x.length();i++)if(!same(x.get(i),y.get(i)))return false;return true;}
+    if(a instanceof Double||b instanceof Double)return a instanceof Double&&b instanceof Double&&Double.doubleToRawLongBits((Double)a)==Double.doubleToRawLongBits((Double)b);
     if(a instanceof Number&&b instanceof Number)return new java.math.BigDecimal(a.toString()).compareTo(new java.math.BigDecimal(b.toString()))==0;
     return Objects.equals(a,b);
   }

@@ -80,6 +80,7 @@ final class NetworkShareUi {
   static void show(Activity a,NetworkShareCodec.Bundle bundle){show(a,bundle,"");}
   static void show(Activity a,NetworkShareCodec.Bundle bundle,String unavailable){
     ReferenceUi.Modal d=new ReferenceUi.Modal(a,"route".equals(bundle.kind)?"分享整条线路":"entry".equals(bundle.kind)?"分享入口":"分享出口");d.note(bundle.summary());if(!unavailable.isEmpty()){d.note(unavailable);d.note("已单独核验可用的一端，可继续分享；整条线路未生成。");}d.note("包含连接账号和密码，不包含 ChatGPT 登录或聊天数据。");
+    if(bundle.schemaVersion()>1)d.note("此配置需使用 2.0.17 或更新版本导入，以完整保留节点参数。");
     if("route".equals(bundle.kind)){d.note("分享当前线路中的一个入口和固定出口，接收方默认手动指定入口。");DesignUi.action(d.body,"仅分享入口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.entry.optString("name"),bundle.entry,null));});DesignUi.action(d.body,"仅分享出口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.exit.optString("name"),null,bundle.exit));});}
     TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);d.body.addView(error);
     DesignUi.action(d.body,"复制配置",false,()->{try{((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("网络配置",bundle.encode()));d.dismiss();}catch(Exception e){error.setText("配置未复制，请重试。");d.resize();}});

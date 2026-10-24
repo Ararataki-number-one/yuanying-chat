@@ -27,7 +27,7 @@ def member(start):
  return s[i:j]
 needles=['interface RouteLoad','static final class Prepared','static String side(','static String readFailure(','static JSONObject selected(','static void nodeMenu(','static void route(','static void verifyPrepared(']
 source=(pathlib.Path(__file__).parent/'NetworkShareUiFlowHost.java.in').read_text().replace('@PRODUCTION_MEMBERS@','\n'.join(member(x) for x in needles));fixture=work/'NetworkShareUiFlowHost.java';fixture.write_text(source)
-files=[prod/x for x in ['J.java','NetworkShareCodec.java','NetworkShareSchema.java','NetworkShareSnapshot.java']];cp=f'{a.json_jar.resolve()}:{a.yaml_jar.resolve()}';classes=work/'classes';classes.mkdir(exist_ok=True)
+files=[prod/x for x in ['J.java','NetworkShareCodec.java','NetworkShareSchema.java','NetworkShareSnapshot.java','NetworkShareJson.java']];cp=f'{a.json_jar.resolve()}:{a.yaml_jar.resolve()}';classes=work/'classes';classes.mkdir(exist_ok=True)
 subprocess.run([javac,'-encoding','UTF-8','-cp',cp,'-d',str(classes),*map(str,files),str(fixture)],check=True)
 r=subprocess.run([java,'-cp',f'{classes}:{cp}','local.pocketchat.NetworkShareUiFlowHost'],text=True,capture_output=True,check=True);d=json.loads(r.stdout);d['productionSourceSha256']=hashlib.sha256((prod/'NetworkShareUi.java').read_bytes()).hexdigest();d['members']=needles
 out=a.output or work/'results.json';out.parent.mkdir(parents=True,exist_ok=True);out.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n');print(json.dumps(d,ensure_ascii=False))
