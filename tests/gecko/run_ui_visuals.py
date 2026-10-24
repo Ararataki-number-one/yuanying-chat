@@ -10,7 +10,7 @@ source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).st
 package='local.pocketchat.test';records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
-from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures
+from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location
 scenes=LIGHT_SCENES
 last_geometry=None
 ui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'ui-visual-capture-attempts.json')
@@ -48,7 +48,10 @@ def capture(variant,width,height,scale,scene,theme='light'):
     if geometry!=last_geometry:
         if 'com.google.android.apps.nexuslauncher' in adb('shell','pm','list','packages','com.google.android.apps.nexuslauncher'):adb('shell','am','force-stop','com.google.android.apps.nexuslauncher')
         adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale));last_geometry=geometry
-    adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene)
+    label_nonce=uuid.uuid4().hex if scene=='downloads' else None
+    launch=['shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene]
+    if label_nonce:launch.extend(['--es','visualNonce',label_nonce])
+    adb(*launch)
     required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
       'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',
       'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]
@@ -119,6 +122,20 @@ def capture(variant,width,height,scale,scene,theme='light'):
     density=int(re.findall(r'density: (\d+)',adb('shell','wm','density'))[-1]);assert density==480,density
     (shots/(stem+'.png')).write_bytes(raw)
     record={'variant':variant,'theme':theme,'logicalViewport':f'{width}x{height}','actualPixels':list(pixels),'densityDpi':density,'fontScale':scale,'scene':scene,'image':stem+'.png','xml':stem+'.xml','readinessScrolls':readiness_scrolls}
+    if scene=='downloads':
+        # Small native payload from this exact Activity invocation; never infer
+        # drawn text completeness from accessibility XML's full text attribute.
+        label_log=subprocess.check_output([args.adb,'-s',args.serial,'logcat','-d','-s','PocketDownloadLabel:I','*:S'],timeout=30).decode('utf-8')
+        payloads=[]
+        for line in label_log.splitlines():
+            if '{' not in line:continue
+            raw=line[line.index('{'):]
+            value=json.loads(raw)
+            if value.get('nonce')==label_nonce:payloads.append(raw)
+        assert len(payloads)==1,(variant,scene,'Missing or duplicate owned native label observation',payloads)
+        record.update(downloadLocationNonce=label_nonce,downloadLocationRaw=payloads[0])
+        (shots/(stem+'-download-location.json')).write_text(payloads[0]+'\n')
+        verify_download_location(record,source)
     if scene=='preferences':record.update(preference_check)
     if scene=='environments':
         # Exercise the real multi-select footer, including doubled accessibility text.
@@ -381,7 +398,7 @@ try:
         (out/'ui-collapse-server-trace.json').write_text(json.dumps({'sourceCommit':source,'diagnosticOnly':True,'releaseAcceptance':False,'events':reload_loopback.TRACE},ensure_ascii=False,indent=2)+'\n')
         reload_http.shutdown();reload_socks.shutdown()
     (out/'compact-chrome-results.json').write_text(json.dumps({'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'cases':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse},ensure_ascii=False,indent=2)+'\n')
-    verify_captures(records)
+    verify_captures(records,source)
     build=json.loads((out/'ui-build-comparison.json').read_text())
     assert build['comparisonMode']=='current-only' and not build['historicalUIRebuilt'] and build['coreSourceCommit']==source,build
     report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse,'exitPassword':exit_password,'scope':'Current GeckoView-only production UI with local synthetic records, 111 current-source captures including workspaces, secondary forms, light, dark and double-font layouts, plus exit password checks; historical UI is not rebuilt. Website content, login and network core are not replaced.'}

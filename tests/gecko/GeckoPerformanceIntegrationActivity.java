@@ -553,6 +553,8 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     check("Websocket error words in ordinary historical reply text do not become a website fault",ordinary.optString("error").isEmpty()&&ordinary.optString("errorCode").isEmpty()&&ordinary.optBoolean("submitted")&&session.pending==productionJob);
     bindingMutate("document.querySelector('[data-message-id=\"old-answer-0\"]').parentElement.insertAdjacentHTML('beforeend','<div id=\"historical-socket-error\" role=\"alert\">Browser app server websocket closed <button aria-label=\"Retry\">Retry</button></div>');({historicalAlert:true})",historical->{
       check("A rendered historical reply socket alert and retry control do not invalidate the current task",historical.optString("error").isEmpty()&&historical.optString("errorCode").isEmpty()&&historical.optBoolean("submitted")&&session.pending==productionJob);
+    bindingMutate("document.getElementById('historical-socket-error').firstChild.nodeValue='Browser app server websocket failed ';({historicalFailed:true})",historicalFailed->{
+      check("A rendered historical websocket-failed alert cannot interrupt the current production reply",historicalFailed.optString("error").isEmpty()&&historicalFailed.optString("errorCode").isEmpty()&&!historicalFailed.optBoolean("websiteSocketClosed")&&historicalFailed.optBoolean("submitted")&&session.pending==productionJob);
     bindingMutate("document.getElementById('historical-socket-error').remove();document.getElementById('stop-button').remove();({stopped:true})",first->{
       check("The restored real reply has only one valid terminal sample before the website error",first.optBoolean("submitted")&&session.pending==productionJob&&session.webObserver.completionSamples==1);
       later(()->bindingPoll(second->{
@@ -563,13 +565,23 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
           check("Website errors clear native stable samples and never finish or clear the persisted task",session.stableTicks==0&&session.webObserver.completionSamples==0&&session.websiteConnectionIssue&&session.prefs.contains("pending")&&!"completed".equals(session.deliveries.get(productionJob.optString("id")).optString("state")));
           later(()->bindingPoll(again->{
             check("Repeated website error observations cannot accumulate completion samples",!again.optString("errorCode").isEmpty()&&session.pending==productionJob&&session.stableTicks==0&&session.webObserver.completionSamples==0);
-            bindingMutate("document.getElementById('socket-error').remove();({restored:true})",restored->bindingFinal(1,restored));
+            bindingFailedSocketError(()->bindingMutate("document.getElementById('socket-error').remove();({restored:true})",restored->bindingFinal(1,restored)));
           }),1100);
         }),100));
       }),1100);
     });
     });
+    });
   });}
+  void bindingFailedSocketError(Runnable restored){
+    evaluate("document.getElementById('socket-error').textContent='Browser app server websocket failed';({siteFailed:true})",false,unused->later(()->bindingInspect(error->{
+      check("A rendered current websocket-failed alert is recognized by actual native inspection",((FixtureView)session.web).productionInspect!=null&&((FixtureView)session.web).productionInspect.optBoolean("websiteSocketClosed")&&error.optBoolean("recoverable")&&"website_socket_closed".equals(error.optString("errorCode"))&&error.optBoolean("websiteSocketClosed")&&error.optBoolean("submitted")&&!error.optBoolean("bindingLost")&&session.pending==productionJob&&productionJob.optString("userKey").equals(error.optString("userKey"))&&session.websiteConnectionIssue&&session.stableTicks==0&&session.webObserver.completionSamples==0);
+      later(()->bindingPoll(again->{
+        check("Repeated websocket-failed polls preserve the pending task without completion",again.optBoolean("websiteSocketClosed")&&"website_socket_closed".equals(again.optString("errorCode"))&&session.pending==productionJob&&session.prefs.contains("pending")&&session.stableTicks==0&&session.webObserver.completionSamples==0&&!"completed".equals(session.deliveries.get(productionJob.optString("id")).optString("state")));
+        restored.run();
+      }),100);
+    }),100));
+  }
   void bindingFinal(int index,JSONObject value)throws Exception{
     check("Recovered binding terminal sample "+index+" retains the entire real final reply",value.optBoolean("submitted")&&value.optString("error").isEmpty()&&!session.websiteConnectionIssue&&session.observedReplyMarkdown.length()>105000&&session.observedReplyMarkdown.contains("Java retained final tail"));
     if(index<3){

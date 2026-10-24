@@ -68,7 +68,7 @@ def verify_performance_evidence(directory, source):
     visual = android('ui-visual-results.json')
     assert visual['comparisonMode'] == 'current-only' and visual['historicalUIRebuilt'] is False
     captures = visual['screenshots']
-    verify_captures(captures)
+    verify_captures(captures,source)
     build = json.loads((directory / 'ui-build-comparison.json').read_text())
     assert build['coreSourceCommit'] == source and build['comparisonMode'] == 'current-only'
     assert build['historicalUIRebuilt'] is False and build['changedForBaseline'] == []
@@ -116,6 +116,9 @@ def verify_performance_evidence(directory, source):
     assert gecko['checkCount'] == len(gecko['checks']) >= 155 and all(check['pass'] for check in gecko['checks'])
     names = {check['name'] for check in gecko['checks']}
     assert {
+        'A rendered historical websocket-failed alert cannot interrupt the current production reply',
+        'A rendered current websocket-failed alert is recognized by actual native inspection',
+        'Repeated websocket-failed polls preserve the pending task without completion',
         'Actual Gecko streaming bridge payload is reduced by at least 95 percent',
         'Actual growing-body DOM read work is reduced by at least 95 percent',
         'Streaming metadata never rebuilds markdown or files',

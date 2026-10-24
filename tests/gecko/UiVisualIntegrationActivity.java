@@ -11,6 +11,7 @@ import org.json.*;
 public final class UiVisualIntegrationActivity extends Activity {
   NetworkWorkspaceUi workspace;
   SavedFileActions savedActions;
+  DownloadLocationLayoutEvidence downloadLocationEvidence;
   final Handler handler=new Handler(Looper.getMainLooper());
   @Override public void onCreate(Bundle state){
     super.onCreate(state);String action=getIntent().getStringExtra("visualAction");
@@ -32,6 +33,7 @@ public final class UiVisualIntegrationActivity extends Activity {
           J.obj("id","visual-saved","slot",0,"name","已保存的笔记.pdf","state","saved","time",now-3000,"location","Download/元婴期院士/"));controller.apply(data,0,now);
       }else DesignSettingsUi.render(this,box,()->{});
       root.addView(ReferenceUi.nav(this,downloads?2:4,n->{},new Button[5]));setContentView(root);AppAppearance.apply(root);
+      if("downloads".equals(action))downloadLocationEvidence=new DownloadLocationLayoutEvidence(this,root,getIntent().getStringExtra("visualNonce"));
       if("appearance".equals(action))DesignSettingsUi.appearance(this,()->{});
       if("default-entry".equals(action))DesignSettingsUi.defaultEntry(this,()->{});
       if("feedback".equals(action))FeedbackUi.open(this);
@@ -104,5 +106,5 @@ public final class UiVisualIntegrationActivity extends Activity {
     }
     AppSettings.put(this,"nativeUiSeedV2","true");
   }
-  @Override protected void onDestroy(){if(workspace!=null)workspace.close();if(savedActions!=null)savedActions.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
+  @Override protected void onDestroy(){if(downloadLocationEvidence!=null)downloadLocationEvidence.close();if(workspace!=null)workspace.close();if(savedActions!=null)savedActions.close();handler.removeCallbacksAndMessages(null);super.onDestroy();}
 }

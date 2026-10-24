@@ -20,8 +20,65 @@ XML = b'<?xml version="1.0"?><hierarchy rotation="0"><node text="fresh current n
 
 class NativeCaptureCoverageTest(unittest.TestCase):
     def records(self):
-        return [dict(variant='current',theme=theme,logicalViewport=viewport,fontScale=scale,scene=scene)
-                for theme,viewport,scale,scene in sorted(MATRIX.required_captures())]
+        records = []
+        for index, (theme, viewport, scale, scene) in enumerate(sorted(MATRIX.required_captures())):
+            row = dict(variant='current', theme=theme, logicalViewport=viewport, fontScale=scale, scene=scene)
+            if scene == 'downloads':
+                row.update(actualPixels=[int(v)*3 for v in viewport.split('x')], densityDpi=480,
+                           downloadLocationNonce=f'{index:032x}')
+                row['downloadLocationRaw'] = json.dumps(self.label(row))
+            records.append(row)
+        return records
+
+    def label(self, row):
+        # Synthetic parser inputs only; no claim of Android layout execution.
+        return dict(schema=1, status='observed', scene='downloads', sourceCommit='a'*40,
+            nonce=row['downloadLocationNonce'], fontScale=row['fontScale'], density=3,
+            actualAndroidLayout=True, text='保存位置', layoutTextLength=4,
+            viewClass='local.pocketchat.DesignUi$ActionButton', layoutClass='android.text.StaticLayout',
+            width=420, height=144, contentWidth=348, contentHeight=108, layoutWidth=348, layoutHeight=86,
+            left=600, top=250, visibleWidth=420, visibleHeight=144, shown=True, enabled=True,
+            clickable=True, windowFocused=True, layoutRequested=False, scrollX=0, scrollY=0,
+            startedUptimeMs=100, observedUptimeMs=110,
+            lines=[dict(start=0, end=4, left=0, right=288, bottom=86, ellipsisCount=0)])
+
+    def download(self, scale=2):
+        return next(row for row in self.records() if row['scene']=='downloads' and row['fontScale']==scale)
+
+    def test_actual_layout_accepts_full_default_large_and_wrapped_text(self):
+        for scale in (1, 2): MATRIX.verify_download_location(self.download(scale), 'a'*40)
+        row=self.download(); value=json.loads(row['downloadLocationRaw'])
+        value['lines']=[dict(start=0,end=2,left=0,right=140,bottom=43,ellipsisCount=0),dict(start=2,end=4,left=0,right=140,bottom=86,ellipsisCount=0)]
+        row['downloadLocationRaw']=json.dumps(value); MATRIX.verify_download_location(row,'a'*40)
+
+    def test_full_accessibility_text_does_not_hide_native_layout_clipping(self):
+        changes=[lambda v:v['lines'][0].update(end=2),
+                 lambda v:v['lines'][0].update(ellipsisCount=1),
+                 lambda v:v['lines'][0].update(right=349),
+                 lambda v:v.update(layoutHeight=109),
+                 lambda v:v.update(visibleHeight=143),
+                 lambda v:v.update(height=143,visibleHeight=143),
+                 lambda v:v.update(width=143,visibleWidth=143),
+                 lambda v:v.update(scrollX=1),lambda v:v.update(layoutRequested=True)]
+        for change in changes:
+            row=self.download();value=json.loads(row['downloadLocationRaw']);change(value)
+            self.assertEqual(value['text'],'保存位置')
+            row['downloadLocationRaw']=json.dumps(value)
+            with self.subTest(case=changes.index(change)),self.assertRaises(AssertionError):MATRIX.verify_download_location(row,'a'*40)
+
+    def test_download_layout_source_nonce_scale_and_actual_observation_required(self):
+        for key,value in [('sourceCommit','b'*40),('nonce','d'*32),('fontScale',1),('density',2),
+                          ('actualAndroidLayout',False),('windowFocused',False),('status','failed')]:
+            row=self.download();native=json.loads(row['downloadLocationRaw']);native[key]=value;row['downloadLocationRaw']=json.dumps(native)
+            with self.subTest(field=key),self.assertRaises(AssertionError):MATRIX.verify_download_location(row,'a'*40)
+        rows=self.records();next(row for row in rows if row['scene']=='downloads').pop('downloadLocationRaw')
+        with self.assertRaises(KeyError):MATRIX.verify_captures(rows,'a'*40)
+
+    def test_download_layout_duplicate_or_nonfinite_raw_json_rejected(self):
+        row=self.download();row['downloadLocationRaw']='{"schema":1,'+row['downloadLocationRaw'][1:]
+        with self.assertRaises(AssertionError):MATRIX.verify_download_location(row,'a'*40)
+        row=self.download();row['downloadLocationRaw']=row['downloadLocationRaw'].replace('"density": 3','"density": NaN')
+        with self.assertRaises(ValueError):MATRIX.verify_download_location(row,'a'*40)
 
     def test_current_ui_has_full_detail_matrix_and_retains_every_previous_scene(self):
         previous={(viewport,1,scene) for viewport in ('360x640','412x640')
