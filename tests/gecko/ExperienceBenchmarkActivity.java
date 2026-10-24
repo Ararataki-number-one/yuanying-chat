@@ -18,6 +18,7 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
   final ArrayList<Double> choreographerGaps=new ArrayList<>();
   final ArrayList<JSONObject> choreographerRaw=new ArrayList<>();
   ExperienceScenarios scenario;
+  boolean samplingDiagnostic;
   final ArrayList<Double> windowFrameMs=new ArrayList<>();
   final ArrayList<JSONObject> windowFrameRaw=new ArrayList<>();
   final java.util.HashMap<Window,Window.Callback> dialogCallbacks=new java.util.HashMap<>();
@@ -44,6 +45,7 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
     try{
       String command=i.getStringExtra("benchmarkCommand"),name=i.getStringExtra("sampleName");
       if(name==null||!name.matches("[A-Za-z0-9_-]{1,80}"))throw new IllegalArgumentException("Owned measurement name required");
+      if(samplingDiagnostic&&!"diagnostic-history-sampling".equals(command)&&!"diagnostic-stop-sampling".equals(command)&&!"snapshot".equals(command))throw new IllegalArgumentException("Formal commands are unavailable in a diagnostic invocation");
       if("arm".equals(command))arm(name,i.getStringExtra("target"));
       else if("snapshot".equals(command))snapshot(name,null);
       else if("finish".equals(command))snapshot(name,()->handler.postDelayed(()->emit("finished",J.obj("samples",new JSONArray(measurements),"allNativeHwuiFrames",new JSONArray(windowFrameRaw),"allChoreographerGapsMs",new JSONArray(choreographerGaps),"scope",scope())),100));
@@ -56,7 +58,8 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
     nonce=getIntent().getStringExtra("eventNonce");
     try{
       try(java.io.InputStream in=new java.io.FileInputStream(new java.io.File(Profiles.global(this).getFilesDir(),"experience-benchmark-identity.json"))){buildIdentity=new JSONObject(J.text(in,65536));}
-      events=new IntegrationEventStore(this,0,nonce,"experienceBenchmark",1,buildIdentity);
+      samplingDiagnostic=getIntent().getBooleanExtra("historySaveSamplingDiagnostic",false);
+      events=new IntegrationEventStore(this,0,nonce,samplingDiagnostic?"experienceHistorySaveSampling":"experienceBenchmark",1,buildIdentity);
       ChatSession.browserFactory=ChromeCollapseIntegration.CollapseView::new;
       super.onCreate(state);
       scenario=new ExperienceScenarios(this,getIntent());
@@ -169,8 +172,9 @@ public final class ExperienceBenchmarkActivity extends MainActivity {
     });
   }
   void emit(String kind,JSONObject value){try{if(events!=null)events.emit(kind,value);}catch(Exception failure){events.failure(failure);}}
-  void fail(Exception failure){if(benchmarkClosed)return;emit("error",J.obj("error",failure.toString()));benchmarkClosed=true;}
+  void fail(Exception failure){if(benchmarkClosed)return;if(scenario!=null)scenario.abortSampling();emit("error",J.obj("error",failure.toString()));benchmarkClosed=true;}
   @Override protected void onDestroy(){benchmarkClosed=true;try{unregisterReceiver(control);}catch(IllegalArgumentException ignored){}
+    if(scenario!=null)scenario.abortSampling();
     restoreDialogCallbacks();
     Choreographer.getInstance().removeFrameCallback(frameCallback);if(windowListener!=null)getWindow().removeOnFrameMetricsAvailableListener(windowListener);
     if(drawListener!=null&&getWindow().getDecorView().getViewTreeObserver().isAlive())getWindow().getDecorView().getViewTreeObserver().removeOnDrawListener(drawListener);super.onDestroy();}

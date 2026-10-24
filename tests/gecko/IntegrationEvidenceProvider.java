@@ -18,6 +18,15 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
   }
   @Override public ParcelFileDescriptor openFile(Uri uri,String mode)throws FileNotFoundException {
     if(!"r".equals(mode)||Binder.getCallingUid()!=2000)throw new SecurityException("Read-only shell evidence");
+    if(uri.getPath()!=null&&uri.getPath().startsWith("/experience-sampling/")){
+      java.util.List<String> parts=uri.getPathSegments();
+      if(parts.size()!=2||!parts.get(1).matches("[0-9a-f]{32}"))throw new FileNotFoundException("Invalid diagnostic trace path");
+      try{File trace=ExperienceSaveSampling.path(getContext(),parts.get(1));
+        // Empty/partial originals remain readable after a failed capture; the parser rejects them.
+        if(!trace.isFile()||trace.length()>ExperienceSaveSampling.MAX_FILE_BYTES)throw new FileNotFoundException("Diagnostic trace unavailable");
+        return ParcelFileDescriptor.open(trace,ParcelFileDescriptor.MODE_READ_ONLY);
+      }catch(IOException failure){throw new FileNotFoundException("Diagnostic trace unavailable");}
+    }
     if(uri.getPath()!=null&&uri.getPath().startsWith("/gecko-events/")){
       java.util.List<String> parts=uri.getPathSegments();
       if(parts.size()!=4||!parts.get(1).matches("[0-7]")||!parts.get(2).matches("[0-9a-f]{32}")||!parts.get(3).matches("[1-9][0-9]{0,3}"))throw new FileNotFoundException("Invalid synthetic event path");

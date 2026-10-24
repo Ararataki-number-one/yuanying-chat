@@ -19,6 +19,8 @@ final class ExperienceScenarios {
   JSONObject start;
   String phase="";
   int nativeStart,choreoStart,lifecycleChanges;
+  ExperienceSaveSampling sampling;
+  boolean diagnosticFinished;
   ExperienceScenarios(ExperienceBenchmarkActivity activity,Intent intent)throws Exception{
     a=activity;manifest=read(intent);manifestSha=hash(intent.getStringExtra("scenarioManifest"));
     if(manifest.has("downloadHistory")){
@@ -76,6 +78,17 @@ final class ExperienceScenarios {
     return a.hub.downloadController!=null&&a.hub.downloadController.filter==0&&a.hub.downloadController.views.size()==expected&&a.hub.downloadController.list.getChildCount()==expected;
   }
   boolean command(String command,String name)throws Exception{
+    if("diagnostic-stop-sampling".equals(command)){
+      if(!a.samplingDiagnostic)throw new IllegalStateException("Diagnostic stop is not a formal workload command");
+      abortSampling();return true;
+    }
+    if("diagnostic-history-sampling".equals(command)){
+      if(!a.samplingDiagnostic||!a.benchmarkReady||!a.active||!a.armedName.isEmpty()||!a.measurements.isEmpty()||!phase.isEmpty()||sampling!=null||!manifest.has("downloadHistory"))throw new IllegalStateException("Separate untimed history diagnostic required");
+      verifyHistory(0);sampling=new ExperienceSaveSampling(a,a.nonce);sampling.start();begin("diagnostic-history-save-sampling");
+      a.handler.postDelayed(()->{if(!diagnosticFinished){abortSampling();a.fail(new IllegalStateException("Sampling diagnostic deadline exceeded"));}},90000);
+      a.handler.postDelayed(()->saveStep(1),2000);return true;
+    }
+    if(a.samplingDiagnostic)throw new IllegalStateException("Diagnostic invocation cannot enter the formal workload");
     if(!command.startsWith("scenario-"))return false;
     if(!a.benchmarkReady||!a.armedName.isEmpty()||a.measurements.size()!=13)throw new IllegalStateException("Complete unchanged core flow first");
     if("scenario-history".equals(command)){
@@ -108,6 +121,8 @@ final class ExperienceScenarios {
     end(null);
   }catch(Exception error){a.fail(error);}}
   void saveStep(int number){try{
+    if(sampling!=null&&(diagnosticFinished||a.benchmarkClosed))return;
+    if(sampling!=null)ExperienceSaveSampling.requireMain();
     DownloadTasks tasks=a.downloads.tasks;JSONObject row=DownloadTaskRevisions.find(tasks.rows,PROGRESS);
     if(row==null||!"paused".equals(row.optString("state")))throw new IllegalStateException("Controlled progress record changed");
     DownloadTasks.put(row,"received",number*65536L);
@@ -119,8 +134,9 @@ final class ExperienceScenarios {
     if(stored==null||stored.optLong("received")!=number*65536L)throw new IllegalStateException("Actual saved progress differs");
     a.emit("scenarioSave",J.obj("name","history-save-"+number,"step",number,"startElapsedRealtimeNs",started,"endElapsedRealtimeNs",ended,"startUptimeMs",up,"endUptimeMs",endedUp,"durationMs",(ended-started)/1000000.0,"received",stored.optLong("received"),"method","DownloadTasks.save","thread","Android main","httpTransferMeasured",false));
     if(number<8)a.handler.postDelayed(()->saveStep(number+1),2000);
-    else{JSONObject verified=verifyHistory(number);end(verified);}
+    else{JSONObject verified=verifyHistory(number);end(verified);if(sampling!=null){JSONObject captured=sampling.stop(verified);diagnosticFinished=true;a.emit("samplingFinished",captured);}}
   }catch(Exception error){a.fail(error);}}
+  void abortSampling(){if(sampling!=null&&!diagnosticFinished){diagnosticFinished=true;try{a.emit("samplingAborted",sampling.stop(null));}catch(Exception error){a.emit("samplingStopError",J.obj("error",error.toString()));}}}
   JSONObject verifyHistory(int step)throws Exception{
     DownloadTasks tasks=a.downloads.tasks;int count=manifest.getJSONObject("downloadHistory").getInt("savedRows");
     if(tasks.recovering||tasks.recoveryFailure!=null||tasks.indexFailure!=null||tasks.rows.length()!=count+1)throw new IllegalStateException("History recovery/model differs");

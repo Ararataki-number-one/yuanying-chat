@@ -42,8 +42,10 @@ class NativeExperienceTests(unittest.TestCase):
         return self.case.verify(self.report)
 
     def test_every_driver_dependency_is_part_of_the_fixed_protocol(self):
-        self.assertEqual(len(M.HARNESS),23);self.assertEqual(len(M.SETUP),13)
+        self.assertEqual(len(M.HARNESS),26);self.assertEqual(len(M.SETUP),13)
         self.assertIn('tools/gecko/experience_process_identity.py',M.HARNESS)
+        for name in ('tests/gecko/ExperienceSaveSampling.java','tools/gecko/experience_save_trace.py','tools/gecko/run_experience_save_diagnostic.py'):
+            self.assertIn(name,M.HARNESS)
         for name in (*M.DRIVER_OBSERVERS,'tools/gecko/build_native_input_driver.py','tools/gecko/VerifyNativeInputSignature.java','tools/gecko/installed_apk_read.py'):
             self.assertIn(name,self.protocol)
             changed=dict(self.protocol);changed[name]='f'*64

@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 import experience_scenarios as scenarios
 import experience_process_identity as memory_identity
+import experience_save_trace as save_trace
 import native_input_contract as native_input
 from native_input_driver import NativeInputDriver
 from installed_apk_read import read_installed_apk
@@ -47,6 +48,9 @@ DRIVER_OBSERVERS = (
 HARNESS = (
     'tests/gecko/ExperienceBenchmarkActivity.java',
     'tests/gecko/ExperienceScenarios.java',
+    'tests/gecko/ExperienceSaveSampling.java',
+    'tools/gecko/experience_save_trace.py',
+    'tools/gecko/run_experience_save_diagnostic.py',
     'tests/gecko/AndroidManifest.xml',
     'tools/gecko/experience_scenarios.py',
     'tools/gecko/experience_process_identity.py',
@@ -930,6 +934,10 @@ def execute(args):
             record.update(baseline=before, candidate=after,
                           descriptiveMedianChanges=deltas(before, after),
                           interpretation='ABBA condition medians are descriptive. Review raw distributions, observation availability and preservation checks before retaining any single product change; this tool makes no automatic improvement claim.')
+        # Persist the complete original summaries before any profiling starts.
+        persist()
+        run_post_baseline_diagnostic(args, plan, record, reports)
+        require(device() == original_device, 'Device identity changed during the extra diagnostic')
         record.update(status='passed', changedProductFiles=plan['changedProductFiles'])
         persist()
     except BaseException as error:
@@ -946,6 +954,85 @@ def execute(args):
         persist()
     print(json.dumps(dict(status=record['status'], mode=plan['mode'], phases=len(record['phases']),
                           sameDevice=True, workloadReplayed=False)))
+
+
+def diagnostic_preconditions(plan, record, reports):
+    """No extra tracing before every original timed sample was strictly accepted."""
+    if plan['mode'] != 'baseline' or not plan['scenarioManifest']['name'].startswith('download-history-'):
+        return False
+    require(plan['order'] == ['A', 'B', 'B', 'A'] and len(record['phases']) == 4
+            and [phase['condition'] for phase in record['phases']] == plan['order']
+            and all(phase['status'] == 'passed' and phase['iterations'] == plan['repetitionsPerPhase'] for phase in record['phases']),
+            'All original four phases must pass before the extra diagnostic')
+    require(len(reports['A']) == len(reports['B']) == 2
+            and all(len(report['iterations']) == plan['repetitionsPerPhase']
+                    and report['status'] == 'passed'
+                    and all(row['status'] == 'passed' and tuple(action['name'] for action in row['actions']) == ACTIONS for row in report['iterations'])
+                    for report in reports['A'] + reports['B']),
+            'All original timed iterations/actions must complete before the extra diagnostic')
+    require(record.get('baselineRepeatability') == summarize(reports['A'] + reports['B']),
+            'Original timed summary must finish unchanged before extra profiling')
+    require('historySaveSampling' not in record.get('diagnostics', {}), 'Never replay an extra diagnostic')
+    for name in save_trace.OBSERVERS:
+        require(sha(ROOT / name) == plan['protocol'][name], 'Actual workflow diagnostic observer differs: ' + name)
+    require(Path(save_trace.__file__).resolve() == (ROOT / 'tools/gecko/experience_save_trace.py').resolve(), 'Imported diagnostic decoder is outside the verified source')
+    return True
+
+
+def run_post_baseline_diagnostic(args, plan, record, reports):
+    if not diagnostic_preconditions(plan, record, reports):
+        return
+    build = plan['inputs']['A']
+    directory = args.out / 'diagnostics' / 'history-save-sampling'
+    directory.mkdir(parents=True, exist_ok=False)
+    destination = directory / 'capture'
+    entry = dict(status='in_progress', selectedRole='A', sourceCommit=build['sourceCommit'],
+                 sourceTree=build['sourceTree'], runId=build['runId'], runAttempt=build['runAttempt'],
+                 apkSha256=build['apkSha256'], diagnosticOnly=True,
+                 performanceComparisonAllowed=False, priorTimedIterations=4 * plan['repetitionsPerPhase'])
+    record.setdefault('diagnostics', {})['historySaveSampling'] = entry
+    original_error = None
+    try:
+        require(git(Path(build['root']), 'rev-parse', 'HEAD') == build['sourceCommit']
+                and source_hashes(Path(build['root']), HARNESS + SETUP) == plan['protocol'], 'Selected diagnostic source changed after the timed samples')
+        entry['targetByteProofBefore'] = prepare_target_proof(build, directory / 'installed-byte-read-before', args.adb)
+        command = [sys.executable, str(Path(build['root']) / 'tools/gecko/run_experience_save_diagnostic.py'),
+                   '--plan', str(args.plan.resolve()), '--adb', args.adb, '--serial', SERIAL, '--out', str(destination)]
+        entry['command'] = command
+        with (directory / 'diagnostic-runner.log').open('w') as output:
+            result = subprocess.run(command, cwd=build['root'], env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1'),
+                                    stdout=output, stderr=subprocess.STDOUT, timeout=420, check=False)
+        require(result.returncode == 0, 'Extra sampling diagnostic failed; its original trace and failure evidence are retained')
+    except BaseException as error:
+        original_error = error
+    finally:
+        path = destination / save_trace.RESULT_FILE
+        if path.is_file():
+            entry.update(reportPath=str(path.relative_to(args.out)), reportSha256=sha(path))
+            try: entry['captureStatus'] = json.loads(path.read_text()).get('status')
+            except BaseException as error:
+                entry['captureReportParseError'] = type(error).__name__ + ': ' + str(error)
+                if original_error is None: original_error = error
+        if 'targetByteProofBefore' in entry:
+            try: entry['targetByteProofAfter'] = prepare_target_proof(build, directory / 'installed-byte-read-after', args.adb)
+            except BaseException as error:
+                entry['postCaptureByteProofError'] = type(error).__name__ + ': ' + str(error)
+                if original_error is None: original_error = error
+        if original_error is not None:
+            entry.update(status='failed', errorType=type(original_error).__name__, error=str(original_error))
+    if original_error is not None:
+        raise original_error
+    try:
+        require(path.is_file(), 'Original extra diagnostic report missing')
+        # Re-audit the APK's actual embedded source/SDK identity, independent of
+        # report labels, and replay both app envelopes and the original trace.
+        from profile_invocation_contract import expected_build
+        expected = expected_build(Path(build['apk']), build['sourceCommit'], build['sourceTree'], build['version'], build['versionCode'])
+        value = json.loads(path.read_text())
+        save_trace.verify_diagnostic(value, expected, plan['protocol'], plan['scenarioManifest'], destination, build)
+        entry.update(status='passed', additionalRealSaveCalls=8, excludedFromAllTimedStatistics=True)
+    except BaseException as error:
+        entry.update(status='failed', errorType=type(error).__name__, error=str(error)); raise
 
 
 def main():

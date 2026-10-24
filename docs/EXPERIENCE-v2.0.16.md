@@ -144,8 +144,44 @@ Android 回归和正式发布仍待完成。已有分享测试和新增回归也
 新基线逐份重放全部总 PSS 原件，任一缺失阻断该轮通过。每阶段计时流程结束后，
 从新采集的有效原件派生同前缀其他包、跨 UID、PID 复用、退出和 AM 代际变化
 负控；派生副本和索引保留，原件不改，也不额外读取设备。主机解析样例明确为
-合成控制，不能冒称真实 AM 采集。测量依赖为 H23/S13，新增 PSS 观察器同时绑定
+合成控制，不能冒称真实 AM 采集。该 PSS 单独修正阶段的测量依赖为 H23/S13，新增 PSS 观察器同时绑定
 被测源码与编排器实际模块。原 13 操作、手势、时间预算、统计和 CPU 下界口径保留。
 
 该修正仅修改测量工具。新的完整内存基线仍需在同协议的真实 API35 实验中验证；
 序列 PSS 快照不是同时刻总量或内存峰值，采集开销保留在相同的两侧工具中。
+
+## 完整基线之后的独立保存采样诊断
+
+PSS 修正与本项合并后的依赖为 H26/S13：再加入独立诊断 runner、ART 解析器和
+测试专用采样类。原 A0 的 H22/S13、原件和报告不变。正式 `app/` 源码树仍为
+`ed4ab9a0d2d4e46b307eb234717cb21cf2fa4358`，未去掉 `DownloadLibrary final`。
+
+仅 baseline 的 download-history 场景，在四阶段全部严格核验、原统计完成后追加
+一次独立进程诊断。原请求七字段、每阶段三次/合计十二次、156 个操作、96 次计时
+保存、手势和截止时间不变。额外八次真实保存仍按 2000ms 步距，并核验最终真实
+SQLite/prefs；它们只记入 `diagnostics.historySaveSampling`，不进入性能统计。
+诊断前后各保留一次实际安装 APK 的完整分段读取证明，并重新校验源码、SDK、
+安装包身份、独立 nonce 的完整应用事件和 trace 原字节。
+
+测试 Activity 使用公开 `Debug.startMethodTracingSampling`，固定 16MiB 缓冲和
+1000us 名义间隔；完成、失败、超时和销毁均停止采样。trace 只经 shell 专用、
+限 32MiB 的路径读取，保存原字节、SHA256、PID、OS 主线程 TID 和 Java 线程名。
+解析器校验非流式 ART v2/v3 的原文件头、字典、时钟、完整记录及无溢出证明。
+trace 的线程编码另列，通过唯一精确线程名和仅主线程可执行的 `saveStep` 栈交叉
+映射；不把编码数字当 OS TID。方法 ID `0` 合法。
+
+只对 `saveStep → DownloadTasks.save` 后代栈分类。最外层 prune/sync/add 优先，
+其余再分实际提交栈、库外 JSON 栈及组合余项，避免嵌套重复计算。相邻采样栈推导
+的 enter/exit 不是精确方法边界；输出仅为已观察栈变化间的时钟加权驻留估计，
+不当作精确子阶段耗时、真实调用次数或每毫秒样本数，也不推算首尾空白。
+采样开销保留。溢出、缺失或不支持的格式令诊断失败，保留原 trace、部分报告、
+完整日志及原始失败原因；原十二次统计仍保留，但不能称诊断通过。
+
+格式依据为公开 Android15 衍生源码，**不是固定模拟器 ART 二进制的证明**：
+[ART trace.cc](https://github.com/LineageOS/android_art/blob/95cd44650afc3f76f0e31dedcd6b736912d5c4a0/runtime/trace.cc)
+中的 `CompareAndUpdateStackTrace`、`GetThreadEncoding`、`CreateSummary`、
+`GetMethodLine`、`FlushEntriesFormatV1`，及同 revision 的
+[trace.h](https://github.com/LineageOS/android_art/blob/95cd44650afc3f76f0e31dedcd6b736912d5c4a0/runtime/trace.h)。
+[公开 Debug 实现](https://github.com/LineageOS/android_frameworks_base/blob/e1d69875104b9004b7a8bcbd2af590af8f7fd41a/core/java/android/os/Debug.java#L1374)
+为 sampling 传 flags=0。真实格式及热点仍须由新实验原 trace 验证；主机合成负控和
+API35 定向编译均不代表已运行这次诊断，更不能作为真机、ChatGPT 或线路提速结论。
