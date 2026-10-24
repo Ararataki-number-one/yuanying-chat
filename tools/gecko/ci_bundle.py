@@ -18,6 +18,10 @@ INTEGRATION = Path('app/build/outputs/apk/integration/app-x86_64-integration.apk
 RELEASE = Path('app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk')
 INPUT_DRIVER = OUT / 'native-input-driver.apk'
 INPUT_DRIVER_BUILD = OUT / 'native-input-driver-build.json'
+INPUT_DRIVER_EVIDENCE = (INPUT_DRIVER, INPUT_DRIVER_BUILD, *(OUT / name for name in (
+    'native-input-driver-signature-api.json', 'native-input-driver-signature-stdout.log',
+    'native-input-driver-signature-stderr.log', 'native-input-driver-signature-api-stdout.log',
+    'native-input-driver-signature-api-stderr.log')))
 SDK = Path('work/native-caret-sdk')
 UPLOAD_LOGS = frozenset('upload-state-' + suite + '.' + stream + '.txt'
                        for suite in ('compile', 'state', 'consumers', 'browser')
@@ -80,7 +84,7 @@ def pack(root, target, kind, phase=None):
     if kind == 'build':
         candidates += [root / INTEGRATION, root / RELEASE]
         candidates += [p for p in (root / SDK).glob('*') if p.is_file()]
-        assert all((root / name).is_file() for name in (INTEGRATION, RELEASE, INPUT_DRIVER, INPUT_DRIVER_BUILD, SDK / 'sdk-build-receipt.json', SDK / 'geckoview-caret.aar'))
+        assert all((root / name).is_file() for name in (INTEGRATION, RELEASE, *INPUT_DRIVER_EVIDENCE, SDK / 'sdk-build-receipt.json', SDK / 'geckoview-caret.aar'))
     else:
         for directory in ('caret-compat', 'ui-visuals'):
             candidates += [p for p in (root / OUT / directory).glob('*') if p.is_file()]
@@ -122,7 +126,7 @@ def restore(root, bundle, kind, phase=None):
         assert len({row['path'] for row in files}) == len(files)
         assert {m.name for m in members} == {'_ci_bundle.json'} | {row['path'] for row in files}
         if kind == 'build':
-            assert {str(INPUT_DRIVER), str(INPUT_DRIVER_BUILD)} <= {row['path'] for row in files}, 'Input driver build is missing'
+            assert {str(path) for path in INPUT_DRIVER_EVIDENCE} <= {row['path'] for row in files}, 'Input driver build is missing'
         if kind == 'phase':
             assert phase in PHASES and manifest['phase'] == phase, 'Unexpected Android phase'
             assert manifest['buildIndexSha256'] == digest(root / BUILD_INDEX), 'Android phase used another compiled build'

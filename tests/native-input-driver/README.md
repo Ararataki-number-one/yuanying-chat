@@ -48,6 +48,19 @@ download or re-verify the sidecar binary. The exact binary remains required in
 the immutable CI build bundle. Neither private test keys nor this test APK are
 included in the production Release APK list.
 
+Signing verification uses the public `ApkVerifier` API from the same canonical
+SDK 37 JAR used by the signing CLI. It requires one effective certificate, no
+global or per-signer lineage, no ignored or extra signers, and the same sole
+certificate in every verified scheme. Certificate chains, development-target
+rotation, and V3.2/PQC signatures are outside this fresh test-driver contract.
+The original CLI and API streams, API JSON, and build receipt bind the exact
+APK, verifier source, loaded JAR, source commit, and CI run. All seven build
+artifacts are mandatory for restore; API evidence is also retained in each
+measurement sample. A separate always-run diagnostic upload preserves only the
+six explicitly named signature outputs and signed test APK if building fails.
+The missing signature streams from failed run 40067662758 were not recovered;
+the SDK 37 format defect was reproduced separately with an existing public APK.
+
 The failed 64be sample (319 ms DOWN delay, missing MOVE, adjacent skipped frames)
 remains a failed historical sample. Its delay has not been attributed or fixed
 by changing the input driver. Both A/B arms require the same declared driver

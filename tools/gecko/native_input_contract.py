@@ -7,6 +7,8 @@ from pathlib import Path
 
 SELF = 'local.pocketchat.inputdriver'
 TARGET = 'local.pocketchat.test'
+SIGNATURE_VERIFIER = 'tools/gecko/VerifyNativeInputSignature.java'
+SIGNATURE_API = 'native-input-driver-signature-api.json'
 PROTOCOLS = {name: dict(durationMs=20 * interval, moveCount=19, intervalMs=interval, maxLateMs=2 * interval, upSynchronous=True)
              for name, interval in [('qualification', 15), ('formal-collapse', 16)]}
 INPUTS = {'tests/native-input-driver/NativeGestureProtocol.java',
@@ -67,17 +69,52 @@ def verify_build(build, source, source_reader):
     require(re.fullmatch('[0-9a-f]{64}', build['apkSha256']) is not None and integer(build['apkBytes']) and build['apkBytes'] > 0, 'APK identity')
     require(str(build['runId']).isdigit() and str(build['runAttempt']).isdigit(), 'build run identity')
     require(re.fullmatch('[0-9a-f]{64}', build['signerCertificateSha256']) is not None, 'signing certificate identity')
+    require(build['signatureVerifierSourceSha256'] == sha(source_reader(source, SIGNATURE_VERIFIER)), 'signature verifier source')
+    require(build['toolchain']['buildTools'] == '37.0.0'
+            and re.fullmatch('[0-9a-f]{64}', build['toolchain']['tools']['apksignerJar']['sha256']), 'actual pinned verifier JAR identity')
+
 
 
 def verify_signature_logs(directory, build):
+    directory = Path(directory)
     names = {'native-input-driver-signature-stdout.log', 'native-input-driver-signature-stderr.log'}
-    require(set(build['signatureLogs']) == names, 'original signing outputs missing')
-    for name in names:
-        require(sha((Path(directory) / name).read_bytes()) == build['signatureLogs'][name], 'signing output bytes')
-    stdout = (Path(directory) / 'native-input-driver-signature-stdout.log').read_bytes()
-    certificates = re.findall(rb'^Signer #([0-9]+) certificate SHA-256 digest: ([0-9a-fA-F]{64})\s*$', stdout, re.MULTILINE)
-    require(len(certificates) == 1 and certificates[0][0] == b'1'
-            and certificates[0][1].decode('ascii').lower() == build['signerCertificateSha256'], 'actual build signer')
+    api_names = {'native-input-driver-signature-api-stdout.log', 'native-input-driver-signature-api-stderr.log'}
+    for field, required in (('signatureLogs', names), ('signatureApiLogs', api_names)):
+        require(set(build[field]) == required, 'original signing outputs missing: ' + field)
+        for name in required:
+            require(sha((directory / name).read_bytes()) == build[field][name], 'signing output bytes: ' + name)
+    for field in ('signatureCliReturnCode', 'signatureApiReturnCode'):
+        require(type(build[field]) is int and build[field] == 0, 'actual signature command failed')
+    raw = (directory / SIGNATURE_API).read_bytes()
+    require(sha(raw) == build['signatureApiSha256']
+            and raw == (directory / 'native-input-driver-signature-api-stdout.log').read_bytes(), 'original signature API bytes')
+    value = decode(raw)
+    require(type(value['schema']) is int and value['schema'] == 1 and value['status'] == 'passed'
+            and value['verified'] is True and value['containsErrors'] is False and value['error'] == ''
+            and value['inputsUnchangedDuringVerification'] is True, 'actual API verification failed')
+    for field in ('sourceCommit', 'sourceTree', 'runId', 'runAttempt', 'apkSha256', 'apkBytes', 'signerCertificateSha256'):
+        require(type(value[field]) is type(build[field]) and value[field] == build[field], 'signature API identity: ' + field)
+    require(value['apksignerJarSha256'] == build['toolchain']['tools']['apksignerJar']['sha256']
+            and value['verifierSourceSha256'] == build['signatureVerifierSourceSha256']
+            and value['loadedApksignerJarPath'] == build['toolchain']['tools']['apksignerJar']['path'], 'actual API implementation identity')
+    certificate = build['signerCertificateSha256']
+    require(value['effectiveSignerCertificateSha256'] == [certificate], 'exactly one effective signing certificate')
+    require(value['lineagePresent'] is False and value['lineageCertificateSha256'] == []
+            and value['noRotation'] is True and value['v32Detected'] is False
+            and value['ignoredV1SignerCertificateSha256'] == [], 'fresh unrotated signing identity')
+    schemes = value['schemes']
+    require([row['name'] for row in schemes] == ['v1', 'v2', 'v3', 'v31', 'v4'], 'signature scheme inventory')
+    require(any(row['verified'] is True for row in schemes), 'no verified signature scheme')
+    for row in schemes:
+        require(type(row['verified']) is bool
+                and row['signerCertificateSha256'] == ([certificate] if row['verified'] else []), 'single consistent scheme certificate')
+        require(type(row['signers']) is list and len(row['signers']) == (1 if row['verified'] else 0), 'exact scheme signer inventory')
+        for signer in row['signers']:
+            require(signer['certificateSha256'] == certificate and signer['certificateChainSha256'] == [certificate]
+                    and signer['containsErrors'] is False and signer['lineagePresent'] is False
+                    and signer['lineageCertificateSha256'] == [] and signer['rotationTargetsDevRelease'] is False
+                    and signer['signerTargetsDevRelease'] is False, 'fresh self-signed scheme certificate')
+    return value
 
 
 def verify_receipt(value, *, build, purpose, nonce, gesture, target_apk, request):

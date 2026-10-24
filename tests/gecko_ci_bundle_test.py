@@ -38,6 +38,9 @@ class CiBundleTest(unittest.TestCase):
             BUNDLE.OUT/'network-fixture.p12':b'must never transfer this key either',
         }.items():
             path=self.root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+        for name in BUNDLE.INPUT_DRIVER_EVIDENCE:
+            path = self.root / name
+            if not path.exists(): path.write_bytes(b'original synthetic signature evidence\r\n')
         self.build = self.base / 'build.tar.gz'
         BUNDLE.pack(self.root,self.build,'build')
 
@@ -66,7 +69,7 @@ class CiBundleTest(unittest.TestCase):
 
     def test_input_driver_and_failed_raw_events_keep_exact_bytes_without_keys(self):
         target=self.clone('input-consumer');BUNDLE.restore(target,self.build,'build')
-        for name in (BUNDLE.INPUT_DRIVER, BUNDLE.INPUT_DRIVER_BUILD):
+        for name in BUNDLE.INPUT_DRIVER_EVIDENCE:
             self.assertEqual((target/name).read_bytes(), (self.root/name).read_bytes())
         evidence={'native-input-baseline-scroll-results.json':b'{"status":"failed","lagMs":319}\r\n',
                   'native-input-baseline-scroll-stdout.log':b'raw output \xc2\n',
@@ -78,11 +81,28 @@ class CiBundleTest(unittest.TestCase):
             self.assertEqual((target/BUNDLE.OUT/name).read_bytes(),data)
 
     def test_build_cannot_omit_input_driver(self):
-        for name in (BUNDLE.INPUT_DRIVER, BUNDLE.INPUT_DRIVER_BUILD):
+        for name in BUNDLE.INPUT_DRIVER_EVIDENCE:
             path=self.root/name;data=path.read_bytes();path.unlink()
             with self.assertRaises(AssertionError):
                 BUNDLE.pack(self.root,self.base/'incomplete.tar.gz','build')
             path.write_bytes(data)
+
+    def test_restore_rejects_each_missing_signature_artifact_before_extracting(self):
+        for number, missing in enumerate(BUNDLE.INPUT_DRIVER_EVIDENCE):
+            incomplete = self.base / ('missing-signature-%d.tar.gz' % number)
+            with tarfile.open(self.build, 'r:gz') as original, tarfile.open(incomplete, 'w:gz') as output:
+                for item in original.getmembers():
+                    if item.name == str(missing): continue
+                    data = original.extractfile(item).read()
+                    if item.name == '_ci_bundle.json':
+                        index = json.loads(data)
+                        index['files'] = [row for row in index['files'] if row['path'] != str(missing)]
+                        data = json.dumps(index).encode(); item.size = len(data)
+                    output.addfile(item, io.BytesIO(data))
+            target = self.clone('missing-signature-consumer-%d' % number)
+            with self.subTest(missing=missing), self.assertRaisesRegex(AssertionError, 'Input driver build is missing'):
+                BUNDLE.restore(target, incomplete, 'build')
+            self.assertFalse((target / BUNDLE.INTEGRATION).exists())
 
     def test_network_settings_evidence_survives_build_and_connections_roundtrip_without_keys(self):
         # These bytes exercise transport only; they are not Android results.

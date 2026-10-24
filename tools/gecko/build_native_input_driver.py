@@ -7,11 +7,17 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sys
 import subprocess
 import xml.etree.ElementTree as ET
 import zipfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from native_input_contract import decode, verify_signature_logs
+
 ROOT = Path(__file__).resolve().parents[2]
+VERIFIER = 'tools/gecko/VerifyNativeInputSignature.java'
+API = 'native-input-driver-signature-api.json'
 PACKAGE = 'local.pocketchat.inputdriver'
 INSTRUMENTATION = PACKAGE + '.NativeInputInstrumentation'
 TARGET = 'local.pocketchat.test'
@@ -64,8 +70,8 @@ def tools(java_home, android_sdk, android_jar=None):
     build = android_sdk / 'build-tools/37.0.0'
     found = dict(java=java_home/'bin/java', javac=java_home/'bin/javac', jar=java_home/'bin/jar',
                  androidJar=Path(android_jar) if android_jar else android_sdk/'platforms/android-37.1/android.jar',
-                 aapt2=build/'aapt2', zipalign=build/'zipalign', apksigner=build/'apksigner', d8=build/'lib/d8.jar')
-    require(all(p.is_file() for k, p in found.items() if k not in ('aapt2', 'zipalign', 'apksigner', 'd8') or android_jar is None),
+                 aapt2=build/'aapt2', zipalign=build/'zipalign', apksigner=build/'apksigner', apksignerJar=(build/'lib/apksigner.jar').resolve(), d8=build/'lib/d8.jar')
+    require(all(p.is_file() for k, p in found.items() if k not in ('aapt2', 'zipalign', 'apksigner', 'apksignerJar', 'd8') or android_jar is None),
             'Pinned JDK/SDK build tools are missing')
     version = subprocess.check_output([str(found['java']), '-version'], stderr=subprocess.STDOUT, text=True).strip()
     require(re.search(r'version "17[.\"]', version) is not None, 'Input driver requires JDK 17')
@@ -106,6 +112,13 @@ def build(root, java_home, android_sdk, key=None, compile_only=False, android_ja
         (work/'compile-only.json').write_text(json.dumps(result, indent=2)+'\n')
         return result
 
+    verifier = root / VERIFIER
+    require(verifier.is_file() and not verifier.is_symlink(), 'Missing regular signature verifier source')
+    verifier_hash = sha(verifier)
+    verifier_classes = work/'signature-verifier'; verifier_classes.mkdir()
+    run(chain['javac'], '-encoding', 'UTF-8', '-classpath', chain['apksignerJar'],
+        '-d', verifier_classes, verifier)
+
     expected_key = root / 'work/gecko-integration/integration-test.jks'
     require(key is not None and Path(key).absolute() == expected_key and not expected_key.is_symlink()
             and expected_key.is_file(), 'Only this CI run\'s explicit integration-test.jks is permitted')
@@ -127,29 +140,58 @@ def build(root, java_home, android_sdk, key=None, compile_only=False, android_ja
             archive.write(path, path.name)
     run(chain['zipalign'], '-f', '-p', '4', unsigned, aligned)
     # The only accepted key path is the ephemeral key created by this CI build.
-    run(chain['apksigner'], 'sign', '--ks', expected_key, '--ks-key-alias', 'androiddebugkey',
+    run(chain['java'], '-jar', chain['apksignerJar'], 'sign', '--ks', expected_key, '--ks-key-alias', 'androiddebugkey',
         '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', signed, aligned)
-    verification = run(chain['apksigner'], 'verify', '--verbose', '--print-certs', signed, capture=True, check=False)
     output = root/'work/gecko-integration'; output.mkdir(parents=True, exist_ok=True)
+    verification = run(chain['java'], '-jar', chain['apksignerJar'], 'verify', '--verbose', '--print-certs', signed,
+                       capture=True, check=False)
     signature_logs = {}
     for stream in ('stdout', 'stderr'):
         name = 'native-input-driver-signature-' + stream + '.log'
         data = getattr(verification, stream)
         (output/name).write_bytes(data)
         signature_logs[name] = hashlib.sha256(data).hexdigest()
-    verification.check_returncode()
-    certificate_lines = re.findall(rb'^Signer #([0-9]+) certificate SHA-256 digest: ([0-9a-fA-F]{64})\s*$',
-                                   verification.stdout, re.MULTILINE)
-    require(len(certificate_lines) == 1 and certificate_lines[0][0] == b'1', 'Exactly one verified driver signing certificate is required')
-    signer = certificate_lines[0][1].decode('ascii').lower()
+    api = run(chain['java'], '-classpath', str(verifier_classes)+os.pathsep+str(chain['apksignerJar']),
+              'VerifyNativeInputSignature', signed, verifier,
+              *[selected[k] for k in ('sourceCommit','sourceTree','runId','runAttempt')], capture=True, check=False)
+    api_logs = {}
+    for stream in ('stdout', 'stderr'):
+        name = 'native-input-driver-signature-api-' + stream + '.log'
+        data = getattr(api, stream)
+        (output/name).write_bytes(data)
+        api_logs[name] = hashlib.sha256(data).hexdigest()
+    (output/API).write_bytes(api.stdout)
+    try:
+        verification.check_returncode()
+        api.check_returncode()
+        value = decode(api.stdout)
+        signer = value['signerCertificateSha256']
+        evidence = dict(**selected, apkSha256=sha(signed), apkBytes=signed.stat().st_size,
+                        signerCertificateSha256=signer, toolchain=provenance,
+                        signatureVerifierSourceSha256=verifier_hash, signatureLogs=signature_logs,
+                        signatureApiLogs=api_logs, signatureApiSha256=hashlib.sha256(api.stdout).hexdigest(),
+                        signatureCliReturnCode=verification.returncode, signatureApiReturnCode=api.returncode)
+        verify_signature_logs(output, evidence)
+        require(value['loadedApksignerJarPath'] == str(chain['apksignerJar'].resolve())
+                and value['apksignerJarSha256'] == sha(chain['apksignerJar'])
+                and value['verifierSourceSha256'] == sha(verifier) == verifier_hash,
+                'Signature verification implementation changed')
+    except Exception:
+        # These are diagnostic views only; acceptance uses original bytes and the API contract.
+        for label, process in (('CLI', verification), ('API', api)):
+            for stream in ('stdout', 'stderr'):
+                raw = getattr(process, stream)
+                print(label+' '+stream+' (diagnostic display): '+raw[:32768].decode('utf-8', 'backslashreplace'), file=sys.stderr)
+        raise
     with zipfile.ZipFile(signed) as archive:
         require(archive.read('assets/'+ASSET) == asset_raw, 'Signed driver lost its source identity')
         require('classes.dex' in archive.namelist(), 'Signed driver has no executable code')
-    require(identity(root) == selected and inputs(root)[1] == hashes, 'Input source changed during the strict build')
+    require(identity(root) == selected and inputs(root)[1] == hashes and sha(verifier) == verifier_hash, 'Input source changed during the strict build')
     result = dict(stamp, status='built', compileOnly=False, actualAndroidExecution=False,
                   releaseAcceptance=False, apkSha256=sha(signed), apkBytes=signed.stat().st_size,
                   assetSha256=hashlib.sha256(asset_raw).hexdigest(), signerCertificateSha256=signer)
-    result['signatureLogs'] = signature_logs
+    result.update({key: evidence[key] for key in ('signatureLogs','signatureApiLogs','signatureApiSha256',
+                  'signatureVerifierSourceSha256','signatureCliReturnCode','signatureApiReturnCode')})
     shutil.copy2(signed, output/'native-input-driver.apk')
     (output/ASSET).write_text(json.dumps(result, sort_keys=True, indent=2)+'\n')
     (work/'commands.json').write_text(json.dumps(commands, indent=2)+'\n')

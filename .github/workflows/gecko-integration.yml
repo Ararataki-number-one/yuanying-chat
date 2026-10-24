@@ -200,6 +200,7 @@ jobs:
         python3 -m unittest discover -s tests -p 'gecko_ui_visual_capture_test.py'
         python3 -m unittest discover -s tests -p 'gecko_ci_bundle_test.py'
         python3 tests/gecko_native_input_driver_build_test.py
+        python3 tests/gecko_native_input_signature_api_test.py
         python3 tests/gecko_native_input_driver_test.py
         python3 tests/gecko_scroll_stage_test.py
         python3 -m unittest discover -s tests -p 'gecko_network_ui_route_test.py'
@@ -232,6 +233,41 @@ jobs:
         "$tools/apksigner" sign --ks work/gecko-integration/update-wrong-key.jks --ks-key-alias fixture --ks-pass pass:android --key-pass pass:android --out work/gecko-integration/update-wrong-signer.apk work/gecko-integration/update-fixture-unsigned.apk
     - name: Build the source-bound self-targeting input driver
       run: python3 tools/gecko/build_native_input_driver.py --key "$PWD/work/gecko-integration/integration-test.jks"
+    - name: Preserve native input signature host diagnostics
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: native-input-signature-host-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          work/gecko-integration/native-input-signature-api-host-results.json
+          work/gecko-integration/native-input-signature-api-host-compile-stdout.log
+          work/gecko-integration/native-input-signature-api-host-compile-stderr.log
+          work/gecko-integration/native-input-signature-api-host-policy-stdout.log
+          work/gecko-integration/native-input-signature-api-host-policy-stderr.log
+          work/gecko-integration/native-input-signature-api-host-signed-stdout.log
+          work/gecko-integration/native-input-signature-api-host-signed-stderr.log
+          work/gecko-integration/native-input-signature-api-host-unsigned-stdout.log
+          work/gecko-integration/native-input-signature-api-host-unsigned-stderr.log
+          work/gecko-integration/native-input-signature-api-host-tampered-stdout.log
+          work/gecko-integration/native-input-signature-api-host-tampered-stderr.log
+        if-no-files-found: warn
+        retention-days: 7
+        compression-level: 0
+    - name: Preserve native input build signature diagnostics
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: native-input-build-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          work/gecko-integration/native-input-driver-signature-stdout.log
+          work/gecko-integration/native-input-driver-signature-stderr.log
+          work/gecko-integration/native-input-driver-signature-api.json
+          work/gecko-integration/native-input-driver-signature-api-stdout.log
+          work/gecko-integration/native-input-driver-signature-api-stderr.log
+          work/native-input-driver-build/strict/signed.apk
+        if-no-files-found: warn
+        retention-days: 7
+        compression-level: 0
     - name: Publish unsigned build for local original signing
       run: python3 tools/gecko/publish_ci.py
     - name: Seal one source/run-bound build for every Android phase

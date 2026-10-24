@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+from native_input_signature_fixture import signature_files
 
 
 def raw(value):
@@ -32,9 +33,7 @@ def attach_driver(module, report, build, protocol, root):
         instrumentationTargetPackage=n.SELF, instrumentation=n.SELF + '.NativeInputInstrumentation',
         protocols=copy.deepcopy(n.PROTOCOLS), inputs={name: protocol[name] for name in n.INPUTS},
         signerCertificateSha256='7'*64, apkSha256='8'*64, apkBytes=80)
-    signing = {'native-input-driver-signature-stdout.log': ('Signer #1 certificate SHA-256 digest: '+'7'*64+'\n').encode(),
-               'native-input-driver-signature-stderr.log': b''}
-    compiled['signatureLogs'] = {name:digest(value) for name,value in signing.items()}
+    signing = signature_files(compiled, protocol[n.SIGNATURE_VERIFIER])
     compiled_raw = raw(compiled)
     build['nativeInputDriver'] = dict(build=compiled, apkSha256=compiled['apkSha256'], apkBytes=80,
         receiptSha256=digest(compiled_raw), signerCertificateSha256=compiled['signerCertificateSha256'])

@@ -58,7 +58,7 @@ class NativeInputDriver:
         destination = self.out / 'native-input-driver-build.json'
         if destination.resolve() != self.build_path.resolve():
             destination.write_bytes(self.build_raw)
-        for name in self.build['signatureLogs']:
+        for name in (*self.build['signatureLogs'], *self.build['signatureApiLogs'], 'native-input-driver-signature-api.json'):
             target = self.out / name
             if target.resolve() != (self.build_path.parent / name).resolve():
                 target.write_bytes((self.build_path.parent / name).read_bytes())
