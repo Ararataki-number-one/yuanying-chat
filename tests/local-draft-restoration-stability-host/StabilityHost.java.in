@@ -1,0 +1,110 @@
+package local.pocketchat;
+import java.io.File;
+import java.util.*;
+import java.util.function.*;
+import org.json.*;
+import android.os.SystemClock;
+
+/** Controlled DOM/handler/clock adapters around complete selected fixture methods. */
+public final class StabilityHost {
+  static final JSONArray checks=new JSONArray(),runs=new JSONArray();
+  static final ArrayList<GeckoLocalDraftIntegration> fixtures=new ArrayList<>();
+  static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
+  static final class Prefs {
+    final Map<String,Object> values=new HashMap<>();
+    String getString(String name,String fallback){return (String)values.getOrDefault(name,fallback);}
+    int getInt(String name,int fallback){return ((Number)values.getOrDefault(name,fallback)).intValue();}
+    float getFloat(String name,float fallback){return ((Number)values.getOrDefault(name,fallback)).floatValue();}
+  }
+  static final class Handler {
+    Runnable queued;long at;final ArrayList<Long> delays=new ArrayList<>();
+    void postDelayed(Runnable value,long delay){if(queued!=null)throw new AssertionError("overlapping poll");queued=value;at=SystemClock.value+delay;delays.add(delay);}
+    void drain(){int count=0;while(queued!=null){if(++count>1000)throw new AssertionError("unbounded poll");Runnable next=queued;queued=null;SystemClock.value=at;next.run();}}
+  }
+  static final class Web {
+    final Object current=new Object();final Set<Object> painted=new HashSet<>();boolean failed;
+  }
+  static final class ChatSession {final Handler handler=new Handler();final Web web=new Web();}
+  static final class GeckoIntegrationTestActivity {
+    final ChatSession session=new ChatSession();final Prefs prefs=new Prefs();long run=1;
+    Prefs getSharedPreferences(String name,int mode){return prefs;}
+    File getNoBackupFilesDir(){return new File("controlled-unused-no-io");}
+  }
+  static final class LocalDraftPolicy {static boolean enabled(Object ignored){return true;}static long revision(Object ignored){return 1;}}
+  static final class AppPrefs {static void apply(Object ignored,JSONObject value){}}
+  static final class GeckoLocalDraftIntegration {
+    final GeckoIntegrationTestActivity a;final ChatSession s;final long serial,deadline;
+    final Prefs prefs;final File directory;final JSONObject result=new JSONObject();
+    boolean finished;String phase,target;long stableAt,readRevision;int stableSamples;double stableDocument=-1;
+    BiFunction<GeckoLocalDraftIntegration,Integer,JSONObject> script;int probes;boolean accepted;
+    Throwable failure;long acceptedAt;final long began=SystemClock.elapsedRealtime();
+    boolean domUnchanged=true;final JSONArray observations=new JSONArray();
+    /* CONSTANTS */
+    /* METHODS */
+    void probe(Consumer<JSONObject> done){JSONObject dom=script.apply(this,probes++);String before=dom.toString();done.accept(dom);domUnchanged&=before.equals(dom.toString());}
+    void observeRestored(boolean fresh,JSONObject dom,boolean ready,long now){observations.put(J.obj("at",now,"ready",ready,"document",dom.optDouble("document"),"stableAtBefore",stableAt,"stableSamplesBefore",stableSamples));}
+    void closeBlank(){}
+    void fail(Throwable error){failure=error;finished=true;}
+    void cleanup(){accepted=true;acceptedAt=SystemClock.elapsedRealtime();finished=true;}
+    void finishAfterCookieCheckpoint(boolean ignored){cleanup();}
+    void waitSeed(boolean ignored){throw new AssertionError("Not an admitted host phase");}
+  }
+  static JSONObject dom(GeckoLocalDraftIntegration f,boolean fresh){return J.obj("ok",true,"url",f.prefs.getString((fresh?"fresh":"original")+"Url",""),"draft",fresh?f.text(true):"","history",3,"scroll",720,"cookie","probe=controlled; f04Draft=kept","token","synthetic-session-2","sends",0,"document",1720000000000L);}
+  static GeckoLocalDraftIntegration run(String name,long began,boolean fresh,BiFunction<GeckoLocalDraftIntegration,Integer,JSONObject> script){
+    SystemClock.value=began;GeckoIntegrationTestActivity a=new GeckoIntegrationTestActivity();
+    GeckoLocalDraftIntegration f=new GeckoLocalDraftIntegration(a,1);fixtures.add(f);f.phase=fresh?"fresh-on":"off";
+    f.target="http://127.0.0.1:8765/browser-session?context=2&localDraft="+"e".repeat(32);a.prefs.values.put("target",f.target);
+    for(String prefix:new String[]{"fresh","original"}){a.prefs.values.put(prefix+"Url",f.target+"#f04-saved");a.prefs.values.put(prefix+"History",3);a.prefs.values.put(prefix+"Scroll",720f);a.prefs.values.put(prefix+"Cookie","probe=controlled; f04Draft=kept");a.prefs.values.put(prefix+"Token","synthetic-session-2");}
+    f.s.web.painted.add(f.s.web.current);f.script=script;f.awaitRestored(fresh);f.s.handler.drain();
+    runs.put(J.obj("name",name,"began",began,"ended",SystemClock.value,"deadline",f.deadline,"accepted",f.accepted,"acceptedAt",f.acceptedAt,"failure",f.failure==null?"":f.failure.toString(),"probes",f.probes,"restored",f.result.optJSONObject("restored"),"observations",f.observations));return f;
+  }
+  static boolean denied(GeckoLocalDraftIntegration f){return !f.accepted&&f.failure!=null&&f.failure.toString().contains("F04 readiness deadline exceeded")&&f.result.optJSONObject("restored")==null;}
+  static boolean full(GeckoLocalDraftIntegration f,long firstReady){JSONObject v=f.result.optJSONObject("restored");return f.accepted&&f.failure==null&&v!=null&&v.optLong("stableMillis")==1000&&v.optInt("stableSamples")==11&&f.acceptedAt==firstReady+1000;}
+  static void candidate(){
+    GeckoLocalDraftIntegration f=run("ready",334520,true,(v,i)->dom(v,true));
+    check("Always ready requires the full original1000ms and11 actual100ms samples",full(f,334520));
+    f=run("off-ready",334520,false,(v,i)->dom(v,false));
+    check("Original off phase waits the same full window and retains its empty draft",full(f,334520)&&f.result.optJSONObject("restored").optString("draft").isEmpty());
+    f=run("same-document-false-then-ready",334520,true,(v,i)->{JSONObject d=dom(v,true);if(i==0)try{d.put("ok",false);}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("Five ready samples after false cannot report335020ms uptime as stability",full(f,334620)&&f.acceptedAt==335620&&f.probes==12);
+    f=run("five-ready-only",334520,true,(v,i)->{JSONObject d=dom(v,true);try{d.put("ok",i>=1&&i<=5);}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("A400ms five-sample ready burst after false is rejected",denied(f));
+    f=run("continuous-false",334520,true,(v,i)->{JSONObject d=dom(v,true);try{d.put("ok",false);}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("Continuous false readiness expires through the original later method",denied(f));
+    f=run("readiness-jitter",334520,true,(v,i)->{JSONObject d=dom(v,true);try{d.put("ok",i%6!=0);}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("Repeated five-ready bursts never accumulate a stable window",denied(f));
+    f=run("document-churn",334520,true,(v,i)->{JSONObject d=dom(v,true);try{d.put("document",1720000000000L+i/5);}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("Changing the ready document every500ms never qualifies",denied(f));
+    f=run("document-replacement",334520,true,(v,i)->{JSONObject d=dom(v,true);try{d.put("document",i<8?1720000000000L:1720000000001L);}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("A changed document restarts elapsed stability and sample counting",full(f,335320));
+    f=run("ready-interrupted",334520,true,(v,i)->{JSONObject d=dom(v,true);try{d.put("ok",i!=7);}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("One false sample after partial readiness starts a wholly new window",full(f,335320));
+    for(String field:new String[]{"ok","url","draft","history","scroll","cookie","token","sends","painted","notFailed"}){
+      f=run("predicate-"+field,334520,true,(v,i)->{JSONObject d=dom(v,true);try{
+        if(field.equals("painted"))v.s.web.painted.clear();else if(field.equals("notFailed"))v.s.web.failed=true;
+        else d.put(field,field.equals("ok")?false:field.equals("history")?4:field.equals("scroll")?0:field.equals("sends")?1:"different");
+      }catch(Exception e){throw new IllegalStateException(e);}return d;});
+      check("The complete original readiness predicate "+field+" cannot be bypassed",denied(f));
+    }
+    f=run("cookie-order",334520,true,(v,i)->{JSONObject d=dom(v,true);try{d.put("cookie"," f04Draft=kept ; probe=controlled ");}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("The original sameCookies method still permits ordering and whitespace",full(f,334520));
+    f=run("scroll-boundary",334520,true,(v,i)->{JSONObject d=dom(v,true);try{d.put("scroll",722);}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("The unchanged two-pixel scroll tolerance retains its inclusive boundary",full(f,334520));
+    f=run("clock-gap",334520,true,(v,i)->{if(i==1)SystemClock.value+=1200;return dom(v,true);});
+    check("A monotonic clock gap cannot bypass the original minimum five samples",f.accepted&&f.probes==5&&f.result.optJSONObject("restored").optInt("stableSamples")==5&&f.result.optJSONObject("restored").optLong("stableMillis")==1600);
+    f=run("zero-clock",0,true,(v,i)->dom(v,true));
+    check("A valid zero first-ready clock starts once rather than resetting every poll",full(f,0));
+    check("The selected complete method never mutates controlled DOM input",fixtures.stream().allMatch(v->v.domUnchanged));
+    check("Every constructor keeps40000ms and every scheduled poll stays100ms",fixtures.stream().allMatch(v->v.deadline-v.began==40000&&v.s.handler.delays.stream().allMatch(x->x==100)));
+  }
+  static void before(){
+    GeckoLocalDraftIntegration f=run("old-335020",334520,true,(v,i)->{JSONObject d=dom(v,true);try{d.put("ok",i>0);}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("The exact old method reproduces335020ms after only400ms ready",f.accepted&&f.acceptedAt==335020&&f.probes==6&&f.result.optJSONObject("restored").optLong("stableMillis")==335020&&f.result.optJSONObject("restored").optInt("stableSamples")==5);
+    f=run("old-short-burst",334520,true,(v,i)->{JSONObject d=dom(v,true);try{d.put("ok",i>=1&&i<=5);}catch(Exception e){throw new IllegalStateException(e);}return d;});
+    check("The exact old method falsely accepts a burst that never reaches1000ms",f.accepted&&f.acceptedAt==335020);
+  }
+  public static void main(String[] args){boolean old=args.length==1&&args[0].equals("before");Throwable error=null;try{if(old)before();else candidate();}catch(Throwable e){error=e;}
+    JSONObject report=J.obj("status",error==null?(old?"reproduced-old-clock-gap":"passed"):"failed","variant",old?"before-exact-inverse":"candidate","checks",checks,"checkCount",checks.length(),"runs",runs,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualFixtureMethodExecuted",true,"releaseAcceptance",false);
+    if(error!=null){try{report.put("error",error.toString());}catch(Exception ignored){}error.printStackTrace(System.err);}System.out.println(report);if(error!=null)System.exit(1);
+  }
+}

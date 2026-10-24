@@ -195,7 +195,7 @@ def verify_local_draft_policy(report, *, device=None, source=None):
         require(all(restored[k] is True for k in ('cookiePreserved', 'sessionCookiePreserved',
                     'sdkHistoryAndScrollRestored')), 'cookie/history/scroll restore')
         require(integer(restored['stableSamples']) and restored['stableSamples'] >= 5
-                and integer(restored['stableMillis']) and restored['stableMillis'] >= 1000
+                and integer(restored['stableMillis']) and 1000 <= restored['stableMillis'] <= 40000
                 and type(restored['document']) in (int, float) and math.isfinite(restored['document'])
                 and restored['document'] > 0, 'stable actual restored document')
     require(stale['capture']['storedRevision'] == off['nextRevision']

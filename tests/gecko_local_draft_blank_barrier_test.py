@@ -38,8 +38,17 @@ UNCHANGED_MEMBERS={
 
 def digest(raw):return hashlib.sha256(raw).hexdigest()
 
+def undo_restore_stability_clock(text):
+    """Reverse only the reviewed first-ready clock reset; keep every old golden."""
+    repaired='if(!ready||stableSamples==0||document!=stableDocument)'
+    original='if(!ready||document!=stableDocument)'
+    if text.count(repaired)!=1 or original in text:
+        raise ValueError('Exact unique F04 first-ready clock reset missing')
+    return text.replace(repaired,original,1)
+
 def undo_blank_preparation(text):
     """Invert only this exact reviewed preparation; preserve the entire 509 fixture."""
+    text=undo_restore_stability_clock(text)
     def replace_once(current,new,old):
         if current.count(new)!=1:raise ValueError('Exact unique F04 insertion missing: '+new[:80])
         return current.replace(new,old,1)
@@ -100,8 +109,9 @@ class BlankBarrierControls(unittest.TestCase):
     def test_exact_inverse_retains_entire_original_fixture_and_original_waits(self):
         current=FIXTURE.read_text(encoding='utf-8');restored=undo_blank_preparation(current)
         self.assertEqual(digest(restored.encode()),BASE_FIXTURE_SHA)
+        clock_original=undo_restore_stability_clock(current)
         for needle,expected in UNCHANGED_MEMBERS.items():
-            self.assertEqual(digest(members.member(current,needle).encode()),expected,needle)
+            self.assertEqual(digest(members.member(clock_original,needle).encode()),expected,needle)
         for original in ('elapsedRealtime()+40000','}},100);','stableSamples<5','now-stableAt<1000',
                          'dom.optInt("history",-1)==prefs.getInt(name+"History",-2)',
                          's.web.restoreCheckpoint(s.web.current,state,prefs.getString(name+"Url",""),readRevision);'):
@@ -123,6 +133,14 @@ class BlankBarrierControls(unittest.TestCase):
             with self.subTest(old=old):
                 self.assertIn(old,original)
                 with self.assertRaises(ValueError):undo_blank_preparation(original.replace(old,new,1))
+
+    def test_first_ready_clock_reset_has_one_exact_reviewed_inverse(self):
+        original=FIXTURE.read_text(encoding='utf-8')
+        for replacement in ('', '||stableSamples==1', '||stableAt==0',
+                            '||stableSamples==0||true', '||stableSamples==0||stableSamples==0'):
+            with self.subTest(replacement=replacement):
+                changed=original.replace('||stableSamples==0',replacement,1)
+                with self.assertRaises(ValueError):undo_blank_preparation(changed)
 
     def test_inverse_rejects_owner_shortcuts_duplicate_calls_and_hidden_actions(self):
         original=FIXTURE.read_text(encoding='utf-8')

@@ -1,6 +1,7 @@
 """Counterfeit parser controls only; no Android, Gecko, input or restart executes."""
 import copy
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -130,6 +131,12 @@ class DraftControls(unittest.TestCase):
     def test_new_disabled_copy_accepted(self):self.reject(lambda v:v['phases'][1].update(disabledArchiveRejectsNewCopy=False))
     def test_policy_revision_invented(self):self.reject(lambda v:v['phases'][1].update(nextRevision=3))
     def test_dom_not_stable(self):self.reject(lambda v:v['phases'][2]['restored'].update(stableMillis=999))
+    def test_system_uptime_cannot_be_a_restored_stability_duration(self):
+        self.reject(lambda v:v['phases'][3]['restored'].update(stableMillis=335020,stableSamples=5))
+    def test_restored_stability_must_fit_original_40000ms_budget(self):
+        self.reject(lambda v:v['phases'][3]['restored'].update(stableMillis=40001))
+        value=counterfeit();value['phases'][3]['restored']['stableMillis']=40000
+        verify_local_draft_policy(value)
     def test_scope_widened(self):self.reject(lambda v:v.update(automaticStartupSelectionAcceptance=True))
     def test_uncleaned_fixture(self):self.reject(lambda v:v['phases'][3].update(ownFixtureCleaned=False))
     def test_raw_mutation(self):
@@ -336,6 +343,57 @@ class RestoreObservationPreservationControls(unittest.TestCase):
         helpers=self.source.split('  // Bounded latest observations are emitted only with the existing failure.\n',1)[1].split('  void retainPartial(',1)[0]
         for forbidden in ('evaluateJavascript(','.loadUrl(','.restoreCheckpoint(','.checkpointState(','.post(','.postDelayed(','.edit(','.apply(','.commit(','.setActive(','.close(','.add(','.remove('):
             self.assertNotIn(forbidden,helpers)
+
+
+class RestorationStabilityHostReceiptControls(unittest.TestCase):
+    """Counterfeit host receipts exercise the exact validator used by profile."""
+    def setUp(self):
+        spec=importlib.util.spec_from_file_location('f04_stability_receipt_contract',ROOT/'tests/local-draft-restoration-stability-host/run.py')
+        self.contract=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.contract)
+        self.source='a'*40;self.files={'controlled/source.java':'b'*64};self.jar='c'*64
+        self.selected=[dict(signature='controlled selected member',sha256='d'*64)]
+        self.value=dict(status='passed',sourceCommit=self.source,sourceFiles=self.files,
+            jsonJarSha256=self.jar,selectedMembers=self.selected,
+            oldAwaitRestoredSha256='6350f73e7922a795a39faf4a5e55e739e253ddff7bb2b6846aa8d5d57379cec8',
+            executionInputsUnchanged=True,actualAndroidExecution=False,actualGeckoExecution=False,
+            actualFixtureMethodExecuted=True,releaseAcceptance=False)
+        for name,count,status,variant in (('candidate',25,'passed','candidate'),('before',2,'reproduced-old-clock-gap','before-exact-inverse')):
+            self.value[name]=dict(status=status,variant=variant,checkCount=count,
+                checks=[dict(name=name+str(i),**{'pass':True}) for i in range(count)],
+                actualFixtureMethodExecuted=True,actualAndroidExecution=False,actualGeckoExecution=False,releaseAcceptance=False)
+    def verify(self,value):return self.contract.verify_report(value,self.source,self.files,self.jar,self.selected)
+    def test_only_complete_source_bound_host_receipt_is_accepted(self):self.verify(self.value)
+    def test_changed_or_boolean_host_counts_are_rejected(self):
+        for section in ('candidate','before'):
+            for count in (True,0,1,24,26):
+                with self.subTest(section=section,count=count):
+                    value=copy.deepcopy(self.value);value[section]['checkCount']=count
+                    with self.assertRaises(ValueError):self.verify(value)
+    def test_missing_failed_duplicate_or_empty_controls_are_rejected(self):
+        for section in ('candidate','before'):
+            for change in ('missing','failed','duplicate','empty'):
+                value=copy.deepcopy(self.value);rows=value[section]['checks']
+                if change=='missing':rows.pop()
+                elif change=='failed':rows[0]['pass']=False
+                elif change=='duplicate':rows[0]['name']=rows[1]['name']
+                else:rows[0]['name']=' '
+                with self.subTest(section=section,change=change),self.assertRaises(ValueError):self.verify(value)
+    def test_android_or_release_scope_claims_are_rejected(self):
+        for section in (None,'candidate','before'):
+            for field,wrong in (('actualAndroidExecution',True),('actualGeckoExecution',True),('actualFixtureMethodExecuted',False),('releaseAcceptance',True)):
+                value=copy.deepcopy(self.value);row=value if section is None else value[section];row[field]=wrong
+                with self.subTest(section=section,field=field),self.assertRaises(ValueError):self.verify(value)
+    def test_foreign_source_input_or_json_jar_is_rejected(self):
+        for key,wrong in (('sourceCommit','f'*40),('sourceFiles',{}),('jsonJarSha256','f'*64),('executionInputsUnchanged',False)):
+            value=copy.deepcopy(self.value);value[key]=wrong
+            with self.subTest(key=key),self.assertRaises(ValueError):self.verify(value)
+    def test_selected_or_old_full_method_identity_cannot_be_changed(self):
+        for key,wrong in (('selectedMembers',[]),('oldAwaitRestoredSha256','f'*64)):
+            value=copy.deepcopy(self.value);value[key]=wrong
+            with self.subTest(key=key),self.assertRaises(ValueError):self.verify(value)
+    def test_reproduced_old_false_acceptance_cannot_be_promoted_to_passed(self):
+        value=copy.deepcopy(self.value);value['before']['status']='passed'
+        with self.assertRaises(ValueError):self.verify(value)
 
 
 class PublicStageControls(unittest.TestCase):

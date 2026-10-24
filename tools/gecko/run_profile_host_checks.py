@@ -2,6 +2,7 @@
 """Run production model/parser policies on the JVM; never labels them Android evidence."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -52,6 +53,10 @@ def main():
         ROOT/'tests/download-recovery-host/android/os/Looper.java',ROOT/'tests/download-recovery-host/android/net/Uri.java',
         ROOT/'tests/download-resume-host/stubs/android/util/Base64.java',ROOT/'tests/download-resume-host/stubs/android/os/SystemClock.java'}
     input_paths.update(resume_fixture_inputs)
+    draft_stability_inputs={ROOT/'tests/gecko/GeckoLocalDraftIntegration.java',ROOT/'app/src/main/java/local/pocketchat/J.java',
+                            ROOT/'tests/page-recovery-host/run.py',
+                            *[p for p in (ROOT/'tests/local-draft-restoration-stability-host').glob('*') if p.is_file()]}
+    input_paths.update(draft_stability_inputs)
     input_paths.add(ROOT/'tools/gecko/download_resume_contract.py')
     input_paths.add(ROOT/'tools/gecko/check_interaction_transfer_evidence.py')
     input_paths.add(ROOT/'tools/publish-gecko-release.py')
@@ -285,7 +290,7 @@ def main():
     draft_contract_run=subprocess.run([sys.executable,str(draft_contract_test)],cwd=ROOT,text=True,capture_output=True,
         env=dict(os.environ,PROFILE_JSON_JAR=str(json_jar),PROFILE_JAVA=java))
     draft_contract_count=re.search(r'^Ran (\d+) tests? in ',draft_contract_run.stderr,re.M)
-    if draft_contract_run.returncode or draft_contract_count is None or int(draft_contract_count.group(1))<65:
+    if draft_contract_run.returncode or draft_contract_count is None or int(draft_contract_count.group(1))!=75:
         raise ValueError('Incomplete F04 counterfeit evidence controls: '+draft_contract_run.stdout+draft_contract_run.stderr)
     blank_controls=json.loads(draft_contract_run.stdout)['blankBarrierControls']
     blank_inputs={ROOT/'tests/gecko/GeckoLocalDraftBlankBarrier.java',source/'J.java',
@@ -327,6 +332,25 @@ def main():
     results.append(dict(test='download-resume-fixture-host',passed=4,actualAndroidExecution=False,
         output=resume_fixture_run.stdout+resume_fixture_run.stderr,evidence=resume_fixture))
     files.update(resume_fixture_inputs)
+    draft_stability_receipt=output/'local-draft-restoration-stability-host-results.json'
+    draft_stability_run=subprocess.run([sys.executable,str(ROOT/'tests/local-draft-restoration-stability-host/run.py'),
+        '--java-home',str(Path(java).resolve().parent.parent),'--json-jar',str(json_jar),
+        '--output',str(draft_stability_receipt)],cwd=ROOT,text=True,capture_output=True)
+    if draft_stability_run.returncode:
+        raise ValueError('Complete F04 restoration stability method controls failed: '+draft_stability_run.stdout+draft_stability_run.stderr)
+    stability_spec=importlib.util.spec_from_file_location('selected_f04_stability_contract',ROOT/'tests/local-draft-restoration-stability-host/run.py')
+    stability_contract=importlib.util.module_from_spec(stability_spec);stability_spec.loader.exec_module(stability_contract)
+    draft_stability=json.loads(draft_stability_receipt.read_text())
+    selected=[dict(signature=name,sha256=hashlib.sha256(method.encode()).hexdigest()) for name,method in zip(
+        stability_contract.SIGNATURES,stability_contract.select_methods((ROOT/'tests/gecko/GeckoLocalDraftIntegration.java').read_text()))]
+    stability_contract.verify_report(draft_stability,source_id,
+        {str(path.relative_to(ROOT)):before_hashes[path] for path in draft_stability_inputs},
+        hashlib.sha256(json_jar.read_bytes()).hexdigest(),selected)
+    if draft_stability.get('sourceDirty')!=bool(source_status.strip()):
+        raise ValueError('F04 stability host source cleanliness differs')
+    results.append(dict(test='local-draft-restoration-stability-host',report=str(draft_stability_receipt.relative_to(ROOT)),
+        passed=27,candidateControls=25,oldCounterexampleControls=2,actualAndroidExecution=False))
+    files.update(draft_stability_inputs)
     draft_admission_receipt=output/'local-draft-admission-host-results.json'
     draft_admission_run=subprocess.run([sys.executable,str(ROOT/'tests/local-draft-admission-host/run.py'),
         '--java-home',str(Path(java).resolve().parent.parent),'--json-jar',str(json_jar),

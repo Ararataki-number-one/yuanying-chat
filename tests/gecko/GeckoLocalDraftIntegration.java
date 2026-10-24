@@ -224,7 +224,7 @@ final class GeckoLocalDraftIntegration {
       &&dom.optInt("sends",-1)==0&&s.web.painted.contains(s.web.current)&&!s.web.failed;
     long now=SystemClock.elapsedRealtime();double document=dom.optDouble("document",-1);
     observeRestored(fresh,dom,ready,now);
-    if(!ready||document!=stableDocument){stableAt=ready?now:0;stableSamples=ready?1:0;stableDocument=document;}
+    if(!ready||stableSamples==0||document!=stableDocument){stableAt=ready?now:0;stableSamples=ready?1:0;stableDocument=document;}
     else stableSamples++;
     if(!ready||stableSamples<5||now-stableAt<1000){later(()->awaitRestored(fresh));return;}
     try{result.put("restored",J.obj("draft",dom.optString("draft"),"history",dom.optInt("history"),"scroll",dom.optDouble("scroll"),
