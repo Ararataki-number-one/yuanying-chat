@@ -37,7 +37,7 @@ final class DesignDownloads {
     Controller(Activity a,LinearLayout box,int filter,java.util.function.IntConsumer choose,SavedFileActions actions){
       this.a=a;this.box=box;this.choose=choose;this.actions=actions;
       tabs=DesignUi.tabs(a,new String[]{"全部","进行中","已完成","失败"},filter,choose);box.addView(tabs);
-      LinearLayout link=DesignUi.row(a);TextView scope=DesignUi.text(a,"全部环境",12,DesignUi.MUTED);link.addView(scope,new LinearLayout.LayoutParams(0,-2,1));Button folder=DesignUi.button(a,"保存位置",false,()->folder(a));folder.setTextSize(12);link.addView(folder,new LinearLayout.LayoutParams(DesignUi.dp(a,88),DesignUi.dp(a,48)));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=DesignUi.dp(a,10);box.addView(link,lp);
+      LinearLayout link=DesignUi.row(a);TextView scope=DesignUi.text(a,"全部环境",12,DesignUi.MUTED);link.addView(scope,new LinearLayout.LayoutParams(0,-2,1));Button folder=DesignUi.button(a,"保存位置",false,()->folder(a));folder.setTextSize(12);link.addView(folder,new LinearLayout.LayoutParams(DesignUi.actionWidth(folder,88),android.view.ViewGroup.LayoutParams.WRAP_CONTENT));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=DesignUi.dp(a,10);box.addView(link,lp);
       packages=DesignUi.column(a);box.addView(packages);list=DesignUi.column(a);box.addView(list);empty=DesignUi.column(a);box.addView(empty);
       this.filter=filter;refresh(filter);
     }
