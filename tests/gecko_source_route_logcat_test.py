@@ -23,6 +23,7 @@ OLD_MAIN=next(n for n in ast.parse(OLD_SOURCE).body if isinstance(n,ast.Function
 OLD_ADB=next(n for n in OLD_MAIN.body if isinstance(n,ast.FunctionDef) and n.name=='adb')
 OLD_ADB_SOURCE=textwrap.dedent(ast.get_source_segment(OLD_SOURCE,OLD_ADB))
 COMMIT='0'*40  # Controlled verifier identity; no claim about an actual CI commit.
+NONCE='1'*32  # Controlled invocation; never device evidence.
 COMPLETE=b'PocketNetworkSourceRoute: {"kind":"complete"}\n'
 
 class TestBase(unittest.TestCase):
@@ -85,7 +86,7 @@ class Node:
 
 class MainScenario:
  """External commands are mocked; candidate main/JSON/actual verify stay real."""
- def __init__(self,log=COMPLETE,provider=b'{"schema":1,"status":"failed","error":"controlled route failure"}',provider_err=b'',diagnostic_failure=False):self.log=log;self.provider=provider;self.provider_err=provider_err;self.diagnostic_failure=diagnostic_failure;self.provider_reads=0;self.verify_calls=0;self.logs=0;self.clock=0;self.stdout=io.StringIO();self.run_calls=[]
+ def __init__(self,log=COMPLETE,provider=None,provider_err=b'',diagnostic_failure=False):self.log=log;self.provider=provider if provider is not None else json.dumps(dict(schema=1,status='failed',error='controlled route failure',sourceCommit=COMMIT,runNonce=NONCE,buildIdentity=dict(sourceCommit=COMMIT))).encode();self.provider_err=provider_err;self.diagnostic_failure=diagnostic_failure;self.provider_reads=0;self.verify_calls=0;self.logs=0;self.clock=0;self.stdout=io.StringIO();self.run_calls=[]
  def run(self,command,**kwargs):
   self.run_calls.append((command,kwargs));out=b'';err=b''
   if command[0]=='openssl':return subprocess.CompletedProcess(command,0)
@@ -112,6 +113,7 @@ class MainScenario:
   with contextlib.ExitStack() as stack:
    stack.enter_context(mock.patch.object(RUNNER.subprocess,'run',side_effect=self.run));stack.enter_context(mock.patch.object(RUNNER.subprocess,'Popen',side_effect=Node));stack.enter_context(mock.patch.object(RUNNER.subprocess,'check_output',return_value=COMMIT+'\n'))
    stack.enter_context(mock.patch.object(RUNNER.select,'select',side_effect=lambda r,w,e,t:(r,w,e)));stack.enter_context(mock.patch.object(RUNNER.time,'monotonic',side_effect=self.monotonic));stack.enter_context(mock.patch.object(RUNNER.time,'sleep',return_value=None));stack.enter_context(mock.patch.object(RUNNER,'verify',side_effect=verified));stack.enter_context(mock.patch.object(sys,'argv',['runner','--adb','controlled-adb','--timeout','3']));stack.enter_context(contextlib.redirect_stdout(self.stdout))
+   stack.enter_context(mock.patch.object(RUNNER.uuid,'uuid4',return_value=types.SimpleNamespace(hex=NONCE)))
    RUNNER.main()
 
 class MainBoundaryCases(TestBase):
@@ -135,6 +137,19 @@ class MainBoundaryCases(TestBase):
   scenario=MainScenario()
   with self.assertRaises(AssertionError):scenario.execute()
   self.assertEqual(scenario.verify_calls,1);self.assertEqual(json.loads((RUNNER.OUT/'network-source-route-results.json').read_text())['status'],'failed');self.assertNotIn('"status": "passed"',scenario.stdout.getvalue())
+ def reject_identity(self,field,value):
+  report=dict(schema=1,status='failed',sourceCommit=COMMIT,runNonce=NONCE,buildIdentity=dict(sourceCommit=COMMIT));report[field]=value
+  scenario=MainScenario(provider=json.dumps(report).encode())
+  with self.assertRaises(AssertionError):scenario.execute()
+  self.assertEqual(scenario.verify_calls,0)
+  saved=json.loads((RUNNER.OUT/'network-source-route-results.json').read_text())
+  self.assertEqual(saved[field],value);self.assertEqual(saved['runnerInvocation'],dict(sourceCommit=COMMIT,runNonce=NONCE))
+  launches=[command for command,_ in scenario.run_calls if command[3:7]==['shell','am','start','-W']]
+  self.assertEqual(len(launches),1);self.assertEqual(launches[0][-6:],['--es','sourceCommit',COMMIT,'--es','runNonce',NONCE])
+  self.assertNotIn('"status": "passed"',scenario.stdout.getvalue())
+ def test_wrong_producer_source_is_retained_and_rejected(self):self.reject_identity('sourceCommit','2'*40)
+ def test_wrong_producer_nonce_is_retained_and_rejected(self):self.reject_identity('runNonce','2'*32)
+ def test_wrong_installed_build_source_is_retained_and_rejected(self):self.reject_identity('buildIdentity',dict(sourceCommit='2'*40))
  def test_complete_marker_in_unrelated_log_does_not_read_provider(self):
   scenario=MainScenario(log=b'{"kind":"complete"}\n')
   with self.assertRaises(TimeoutError):scenario.execute()
@@ -153,7 +168,7 @@ class RecordedResult(unittest.TextTestResult):
 if __name__=='__main__':
  suite=unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__]);stream=io.StringIO();result=unittest.TextTestRunner(stream=stream,verbosity=2,resultclass=RecordedResult).run(suite)
  unchanged=hashlib.sha256(CANDIDATE.read_bytes()).hexdigest()==START_HASH
- report={'status':'passed' if result.wasSuccessful() and unchanged else 'failed','actualAndroidExecution':False,'candidateSha256':START_HASH,'candidateBytesUnchanged':unchanged,'baseline':'Exact retained nested strict adb helper invoked with logcat arguments; reproduces the prior logcat decoding behavior.','beforeAdbExactSourceSha256':hashlib.sha256(OLD_ADB_SOURCE.encode()).hexdigest(),'tests':result.rows,'scope':{'realSubprocessTests':6,'helperFaultTests':2,'mockedMainTests':7,'actualVerifierUsed':True,'limitations':['RealChildByteCases execute real Python subprocess decoding through a local fake adb executable; no adb/Android/socket execution.','MainBoundaryCases mock external commands, clock and Node process; candidate main, json.loads, diagnostics and the actual source-route verifier execute unchanged.','No assertion claims the Android source-route fixture passed.']},'hostTestSha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'output':stream.getvalue()}
+ report={'status':'passed' if result.wasSuccessful() and unchanged else 'failed','actualAndroidExecution':False,'candidateSha256':START_HASH,'candidateBytesUnchanged':unchanged,'baseline':'Exact retained nested strict adb helper invoked with logcat arguments; reproduces the prior logcat decoding behavior.','beforeAdbExactSourceSha256':hashlib.sha256(OLD_ADB_SOURCE.encode()).hexdigest(),'tests':result.rows,'scope':{'realSubprocessTests':6,'helperFaultTests':2,'mockedMainTests':10,'actualVerifierUsed':True,'limitations':['RealChildByteCases execute real Python subprocess decoding through a local fake adb executable; no adb/Android/socket execution.','MainBoundaryCases mock external commands, clock and Node process; candidate main, json.loads, diagnostics and the actual source-route verifier execute unchanged.','No assertion claims the Android source-route fixture passed.']},'hostTestSha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'output':stream.getvalue()}
  ARGS.output.parent.mkdir(parents=True,exist_ok=True);ARGS.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
  print(json.dumps({k:report[k] for k in ['status','candidateSha256','candidateBytesUnchanged','scope']},ensure_ascii=False));print(stream.getvalue())
  if not result.wasSuccessful() or not unchanged:raise SystemExit(1)
