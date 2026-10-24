@@ -1,0 +1,224 @@
+{
+  "total": 34,
+  "checks": [
+    {
+      "pass": true,
+      "name": "Original 200 ms step paints the synthetic state: report-window"
+    },
+    {
+      "pass": true,
+      "name": "Actual queued production render overwrites at 250 ms: report-window"
+    },
+    {
+      "pass": true,
+      "name": "Current capture waits for a pre-draw frame instead of reporting overwritten UI"
+    },
+    {
+      "pass": true,
+      "name": "Covered first frame repaints through actual showNetwork and defers its report"
+    },
+    {
+      "pass": true,
+      "name": "Next laid-out matching frame reports the unchanged 42 ms and 02:00"
+    },
+    {
+      "pass": true,
+      "name": "Successful report detaches listener and deadline callback"
+    },
+    {
+      "pass": true,
+      "name": "After successful release an actual real render updates the UI normally"
+    },
+    {
+      "pass": true,
+      "name": "Later frames cannot report the old capture twice"
+    },
+    {
+      "pass": true,
+      "name": "Unlaid frame cannot be captured"
+    },
+    {
+      "pass": true,
+      "name": "The same capture succeeds after layout actually completes"
+    },
+    {
+      "pass": true,
+      "name": "Stale text layout is rejected even when displayed text matches"
+    },
+    {
+      "pass": true,
+      "name": "A refreshed text layout releases the waiting capture"
+    },
+    {
+      "pass": true,
+      "name": "Original 20-second deadline fails closed with no success report"
+    },
+    {
+      "pass": true,
+      "name": "Timeout release does not inhibit subsequent production rendering"
+    },
+    {
+      "pass": true,
+      "name": "Actual destroy callback releases the pending capture"
+    },
+    {
+      "pass": true,
+      "name": "A late frame after destroy cannot publish the old report"
+    },
+    {
+      "pass": true,
+      "name": "Actual new-intent callback releases prior command capture"
+    },
+    {
+      "pass": true,
+      "name": "New command release leaves real rendering authoritative"
+    },
+    {
+      "pass": true,
+      "name": "New command cannot receive a stale prior report"
+    },
+    {
+      "pass": true,
+      "name": "New command before the initial paint rejects stale scheduled callbacks"
+    },
+    {
+      "pass": true,
+      "name": "Same-command new action invalidates pending capture at 100 ms"
+    },
+    {
+      "pass": true,
+      "name": "Same-command new action invalidates pending capture at 250 ms"
+    },
+    {
+      "pass": true,
+      "name": "Replacement snapshot releases old ownership and reports only the new event"
+    },
+    {
+      "pass": true,
+      "name": "Report exception records failure and releases frame ownership once"
+    },
+    {
+      "pass": true,
+      "name": "Report-error release still permits actual real rendering"
+    },
+    {
+      "pass": true,
+      "name": "Original 200 ms step paints the synthetic state: paint-error"
+    },
+    {
+      "pass": true,
+      "name": "Actual queued production render overwrites at 250 ms: paint-error"
+    },
+    {
+      "pass": true,
+      "name": "A paint exception cannot report success and detaches capture"
+    },
+    {
+      "pass": true,
+      "name": "Paint-error release leaves subsequent actual updates usable"
+    },
+    {
+      "pass": true,
+      "name": "Listener registration failure reports an error and leaves no ownership"
+    },
+    {
+      "pass": true,
+      "name": "Cancelled helper ignores late frame and deadline callbacks"
+    },
+    {
+      "pass": true,
+      "name": "Current-command guard independently rejects stale frame ownership"
+    },
+    {
+      "pass": true,
+      "name": "The original metadata worker callback executes during capture and updates chrome"
+    },
+    {
+      "pass": true,
+      "name": "Capture recovers from the actual metadata render without discarding its new title"
+    }
+  ],
+  "observations": [
+    {
+      "reports": 1,
+      "recorded": [
+        {
+          "expectedLatency": "42 ms（02:00）",
+          "latency": "42 ms（02:00）",
+          "description": "当前环境网络：日本 · Tokyo · 203.0.113.25 · 42 ms · 已连接",
+          "state": "已连接",
+          "event": "ready"
+        }
+      ],
+      "case": "current-200-250-300-316-332-sequence",
+      "afterReleaseLatency": "延迟未测（等待连接）"
+    }
+  ],
+  "passed": 34,
+  "status": "passed",
+  "sourceCommit": "4644e90b0f00507f15da9b223b808cf19d345e58",
+  "sourceDirty": false,
+  "selectedProductionRef": "working-tree",
+  "selectedSourceSha256": {
+    "app/src/main/java/local/pocketchat/DesignChrome.java": "1ee7c2762c3b077166db3cbea363bd4481e527fc33c2b2491b8db7bffcf9ae43",
+    "app/src/main/java/local/pocketchat/WindowNetworkState.java": "80b412abf3ece148766a839954de4b11c0d8aca17d84d6177323815aeba1dd80",
+    "app/src/main/java/local/pocketchat/LatencyRefreshPolicy.java": "e1121d3a46d4872ef8bd3a7e2ce6a75c30110f0615878195d7eef042bb61ac5b",
+    "app/src/main/java/local/pocketchat/LatencyProbePolicy.java": "0fc03b49af6ef3f187a6a1291a2722d43e33fa017a15794ee84c3c88c0e31099",
+    "app/src/main/java/local/pocketchat/NetworkStatusPolicy.java": "382f0ce1d5c5de09d5c8167adaea965774f1fa59e3dce3add100463c8fed164b",
+    "app/src/main/java/local/pocketchat/NetworkOptimizationPolicy.java": "83c6b42793be16fcef241c1865a89bd0dccbc7b07bf87c4701da43e3a89ccbe3",
+    "app/src/main/java/local/pocketchat/Sha256.java": "2f403cee9f4b998e51b34581f85155c804e95e803ad56fb9b3680fea6778494d",
+    "app/src/main/java/local/pocketchat/NativeNetwork.java": "35f6ac66e3d12adbcbf762901bb825c01d6b9ed98051f5f8bad279478779d05f",
+    "app/src/main/java/local/pocketchat/NetworkCatalog.java": "a6976177a2c43c5633379d4635a7c9b3913170bdd2abcc37e4d3e1ddb71b3c8d",
+    "tests/gecko/CompactChromeIntegrationActivity.java": "03c0c836ab68686d41481935f4ce6f15d42177de0833a333898788e4c71ff267",
+    "tests/gecko/run_ui_visuals.py": "eb44194a7c96c9ef2c11452d5377e911c2d02bc0ac5f6c74eadacb9bd7a7612b"
+  },
+  "sourceFiles": {
+    "app/src/main/java/local/pocketchat/DesignChrome.java": "1ee7c2762c3b077166db3cbea363bd4481e527fc33c2b2491b8db7bffcf9ae43",
+    "app/src/main/java/local/pocketchat/WindowNetworkState.java": "80b412abf3ece148766a839954de4b11c0d8aca17d84d6177323815aeba1dd80",
+    "app/src/main/java/local/pocketchat/LatencyRefreshPolicy.java": "e1121d3a46d4872ef8bd3a7e2ce6a75c30110f0615878195d7eef042bb61ac5b",
+    "app/src/main/java/local/pocketchat/LatencyProbePolicy.java": "0fc03b49af6ef3f187a6a1291a2722d43e33fa017a15794ee84c3c88c0e31099",
+    "app/src/main/java/local/pocketchat/NetworkStatusPolicy.java": "382f0ce1d5c5de09d5c8167adaea965774f1fa59e3dce3add100463c8fed164b",
+    "app/src/main/java/local/pocketchat/NetworkOptimizationPolicy.java": "83c6b42793be16fcef241c1865a89bd0dccbc7b07bf87c4701da43e3a89ccbe3",
+    "app/src/main/java/local/pocketchat/Sha256.java": "2f403cee9f4b998e51b34581f85155c804e95e803ad56fb9b3680fea6778494d",
+    "app/src/main/java/local/pocketchat/NativeNetwork.java": "35f6ac66e3d12adbcbf762901bb825c01d6b9ed98051f5f8bad279478779d05f",
+    "app/src/main/java/local/pocketchat/NetworkCatalog.java": "a6976177a2c43c5633379d4635a7c9b3913170bdd2abcc37e4d3e1ddb71b3c8d",
+    "tests/gecko/CompactChromeIntegrationActivity.java": "03c0c836ab68686d41481935f4ce6f15d42177de0833a333898788e4c71ff267",
+    "tests/gecko/run_ui_visuals.py": "eb44194a7c96c9ef2c11452d5377e911c2d02bc0ac5f6c74eadacb9bd7a7612b",
+    "tests/gecko/CompactChromePresentationCapture.java": "442398652f5ee69b4bc3feceb7003e93529dbb6c89114227c441608a5a0d441d",
+    "tests/compact-chrome-capture-host/CompactChromeCaptureHost.java": "e8ef8944cd61dbf79c21c384a95e19de3962b5d732827953f698a5ab3cba44f3",
+    "tests/compact-chrome-capture-host/run.py": "3dd9f6170656e0a6eaa44e91f144f22afb1a00c9b09510517dce49f5fc5bfebc",
+    "tests/chrome-network-state-host/run.py": "7ebf4af76150dc50edb47b7c10c1cba50c9a975f377e8115aa6413a9c1719557"
+  },
+  "executionInputsUnchanged": true,
+  "jsonJarSha256": "dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79",
+  "actualAndroidExecution": false,
+  "actualLatencyMeasurement": false,
+  "originalGeometryReportPreserved": true,
+  "originalAndroidRunnerPreserved": true,
+  "original42Ms120SecondSamplePreserved": true,
+  "originalPreparationIntervalsPreserved": true,
+  "extractedFixtureMethods": [
+    "void snapshot(",
+    "protected void onDestroy(",
+    "protected void onNewIntent(",
+    "void capturePresentation(",
+    "boolean presentationMatches(",
+    "boolean presentationLaidOut(",
+    "void releasePresentation(",
+    "void detachPresentation("
+  ],
+  "extractedChromeMethods": [
+    "void update(",
+    "private void renderLatest(",
+    "private void refreshMetadata(",
+    "private static void text(",
+    "private static void color(",
+    "private static void description(",
+    "void showNetwork(",
+    "static String profileLabel(",
+    "static boolean profileAvailable(",
+    "static boolean sameProfile(",
+    "private void applyMetadata("
+  ],
+  "scope": "Actual complete fixture snapshot/capture/presentation/lifecycle methods, complete test-only capture helper, actual production chrome render/showNetwork/metadata methods and network-state constructor. Controlled Handler/View/ViewTreeObserver/layout/catalogue/runtime adapters. The geometry report callback records displayed values; the full geometry body and Android runner are source-equality checked, not executed. No real Android frame, Gecko, native network or latency execution."
+}
