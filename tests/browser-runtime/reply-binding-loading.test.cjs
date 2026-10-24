@@ -4,6 +4,52 @@ const {JSDOM}=require(process.env.JSDOM_MODULE||'jsdom');
 const source=fs.readFileSync('app/src/main/assets/page-driver.js','utf8'),performanceSource=fs.readFileSync('app/src/main/assets/web-performance.js','utf8'),checks=[];
 const check=(name,ok)=>{assert.ok(ok,name);checks.push({name,pass:true});};
 const conversation='<article data-message-author-role="user" data-message-id="bound-user"><div data-user-message-bubble>original question</div></article><section data-turn="assistant"><div data-message-author-role="assistant" data-message-id="bound-reply"><div class="markdown"><p>complete original answer</p></div></div><button data-testid="copy-turn-action-button" aria-label="Copy response">Copy</button></section>';
+const socketFixtures=[
+ ['current-alert',true,(w,t)=>w.document.querySelector('section[data-turn="assistant"]').insertAdjacentHTML('beforeend','<div role="alert">'+t+'</div>')],
+ ['global-alert',true,(w,t)=>w.document.body.insertAdjacentHTML('beforeend','<div role="alert">'+t+'</div>')],
+ ['current-retry',true,(w,t)=>w.document.querySelector('section[data-turn="assistant"]').insertAdjacentHTML('beforeend','<span>'+t+'</span><button aria-label="Retry">Retry</button>')],
+ ['global-retry',true,(w,t)=>w.document.body.insertAdjacentHTML('beforeend','<div><span>'+t+'</span><button aria-label="Retry">Retry</button></div>')],
+ ['loading-global-alert',true,(w,t)=>{w.document.querySelector('main').innerHTML='<div role="status">Loading</div>';w.document.body.insertAdjacentHTML('beforeend','<div role="alert">'+t+'</div>');}],
+ ['ordinary-answer',false,(w,t)=>w.document.querySelector('.markdown p').textContent='The phrase '+t+' is discussed as ordinary answer text.'],
+ ['ordinary-answer-with-reply-retry',false,(w,t)=>{w.document.querySelector('.markdown p').textContent=t;w.document.querySelector('[data-message-id="bound-reply"]').insertAdjacentHTML('beforeend','<button aria-label="Retry">Retry</button>');}],
+ ['ordinary-answer-with-global-retry',false,(w,t)=>{w.document.querySelector('.markdown p').textContent=t;w.document.body.insertAdjacentHTML('beforeend','<button aria-label="Retry">Retry</button>');}],
+ ['ordinary-answer-with-shared-wrapper-retry',false,(w,t)=>{w.document.querySelector('.markdown p').textContent=t;const box=w.document.createElement('div');w.document.body.append(box);box.append(w.document.querySelector('main'));box.insertAdjacentHTML('beforeend','<button aria-label="Retry">Retry</button>');}],
+ ['historical-alert',false,(w,t)=>w.document.querySelector('main').insertAdjacentHTML('afterbegin','<section data-turn="assistant"><div data-message-author-role="assistant" data-message-id="past"><div role="alert">'+t+'</div></div></section>')],
+ ['historical-retry',false,(w,t)=>w.document.querySelector('main').insertAdjacentHTML('afterbegin','<section data-turn="assistant"><div data-message-author-role="assistant" data-message-id="past">old answer</div><div>'+t+'<button aria-label="Retry">Retry</button></div></section>')],
+ ['unlabelled-historical-retry',false,(w,t)=>w.document.querySelector('main').insertAdjacentHTML('afterbegin','<section><div data-message-author-role="assistant" data-message-id="past">old answer</div><div>'+t+'<button aria-label="Retry">Retry</button></div></section>')],
+ ['user-quoted-alert',false,(w,t)=>w.document.querySelector('[data-message-id="bound-user"]').insertAdjacentHTML('beforeend','<span role="alert">'+t+'</span>')],
+ ['code-block-alert',false,(w,t)=>w.document.querySelector('.markdown').insertAdjacentHTML('beforeend','<pre><code><span role="alert">'+t+'</span></code></pre>')],
+ ['inline-code-alert',false,(w,t)=>w.document.querySelector('.markdown').insertAdjacentHTML('beforeend','<code><span role="alert">'+t+'</span></code>')],
+ ['code-block-retry',false,(w,t)=>w.document.querySelector('.markdown').insertAdjacentHTML('beforeend','<pre><code>'+t+'<button aria-label="Retry">Retry</button></code></pre>')],
+ ['hidden-alert',false,(w,t)=>w.document.body.insertAdjacentHTML('beforeend','<div role="alert" hidden>'+t+'</div>')],
+ ['aria-hidden-alert',false,(w,t)=>w.document.body.insertAdjacentHTML('beforeend','<div aria-hidden="true"><div role="alert">'+t+'</div></div>')],
+ ['menu-alert',false,(w,t)=>w.document.body.insertAdjacentHTML('beforeend','<div role="menu"><div role="alert">'+t+'</div></div>')],
+ ['body-text-without-error-surface',false,(w,t)=>w.document.body.insertAdjacentHTML('beforeend','<p>'+t+'</p>')]
+];
+async function observeSocket(name,expected,setup,phrase,action){
+ const w=new JSDOM('<!doctype html><body><main>'+conversation+'</main><textarea id="prompt-textarea">keep unsent draft</textarea><button data-testid="send-button" aria-label="Send">Send</button></body>',{url:'https://chatgpt.com/c/original',runScripts:'outside-only'}).window;
+ Object.defineProperty(w.HTMLElement.prototype,'innerText',{get(){return this.hidden?'':this.textContent;}});
+ w.Element.prototype.getClientRects=function(){return this.hidden?[]:[{}];};w.getComputedStyle=()=>({display:'block',visibility:'visible'});
+ let clicks=0,fetches=0;w.document.addEventListener('click',()=>clicks++);w.fetch=()=>{fetches++;return Promise.reject(new Error('unexpected network attempt'));};w.document.cookie='session=keep;path=/';
+ w.eval(performanceSource);
+ setup(w,phrase);await Promise.resolve();await Promise.resolve();
+ const call=(a,arg={})=>w.eval(source.replace('__ACTION__',JSON.stringify(a)).replace('__ARG__',JSON.stringify(arg)));
+ call('web-transcript');
+ const args={kind:'web',confirmed:true,userKey:'id:bound-user',prompt:'original question',expectedUrl:w.location.href,confirmedUrl:w.location.href,export:true,lightObservation:true,incrementalObservation:true};
+ const output=JSON.parse(JSON.stringify(call(action,action==='web-inspect'?{}:args)));
+ const noEffects=clicks===0&&fetches===0&&w.document.cookie==='session=keep'&&w.document.querySelector('textarea').value==='keep unsent draft'&&w.location.href==='https://chatgpt.com/c/original';
+ const classified=!!output.websiteSocketClosed&&output.errorCode==='website_socket_closed'&&output.recoverable===true&&String(output.error).includes('实时连接');
+ const clear=!output.websiteSocketClosed&&!output.errorCode&&output.error==='';
+ const row={fixture:name,phrase,action,expectedWebsiteSocketFailure:expected,pass:(expected?classified:clear)&&noEffects,noEffects,output};
+ w.close();return row;
+}
+async function socketSurfaceMatrix(){
+ const results=[];
+ for(const suffix of ['closed','failed'])for(const [name,expected,setup]of socketFixtures)for(const action of ['web-inspect','poll'])results.push(await observeSocket(name,expected,setup,'Browser app server websocket '+suffix,action));
+ for(const phrase of ['Browser app server websocket failure','database authentication failed'])for(const action of ['web-inspect','poll'])results.push(await observeSocket('unrelated-failure-role-alert',false,(w,t)=>w.document.body.insertAdjacentHTML('beforeend','<div role="alert">'+t+'</div>'),phrase,action));
+ return results;
+}
+
 async function main(){
  const w=new JSDOM('<!doctype html><body><main>'+conversation+'</main><textarea id="prompt-textarea">keep unsent draft</textarea><button data-testid="send-button" aria-label="Send">Send</button></body>',{url:'https://chatgpt.com/c/original',runScripts:'outside-only'}).window;
  Object.defineProperty(w.HTMLElement.prototype,'innerText',{get(){return this.hidden?'':this.textContent;}});
@@ -103,6 +149,11 @@ async function main(){
  check('Removing the website error leaves the original task eligible for exact reinspection',call('poll',assignedArgs).submitted&&call('poll',assignedArgs).error==='');
  check('Read-only waiting, recovery and assignment never resend the question',sends===0);
  check('Login cookies and the unsent draft survive every read-only observation',w.document.cookie.includes('session=keep')&&savedComposer.value==='keep unsent draft');
- w.close();console.log(JSON.stringify({passed:checks.length,total:checks.length,scope:'Production JS DOM fixtures; no live account/network or Android UI claim',checks},null,2));
+ w.close();
+ const bindingChecks=checks.length,socketSurfaces=await socketSurfaceMatrix();
+ for(const row of socketSurfaces)checks.push({name:'Socket surface '+row.fixture+' / '+row.phrase+' / '+row.action,pass:row.pass});
+ const passed=checks.filter(row=>row.pass).length;
+ console.log(JSON.stringify({passed,total:checks.length,bindingChecks,socketSurfaceChecks:socketSurfaces.length,scope:'Production JS DOM fixtures; no live account/network or Android UI claim',checks,socketSurfaces},null,2));
+ assert.equal(passed,checks.length,'All binding and socket surface checks must pass');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

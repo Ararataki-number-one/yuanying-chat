@@ -112,7 +112,7 @@
     return legacyKey(el,index);
   }
   const socketClosedNotice='网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。';
-  const socketClosed=/Browser app server websocket closed|(?:websocket|web socket|实时连接).{0,64}(?:closed|disconnected|connection lost|断开|关闭)|(?:connection closed|connection lost).{0,64}(?:websocket|web socket)/i;
+  const socketClosed=/Browser app server websocket (?:closed|failed)|(?:websocket|web socket|实时连接).{0,64}(?:closed|disconnected|connection lost|断开|关闭)|(?:connection closed|connection lost).{0,64}(?:websocket|web socket)/i;
   const errorMessageSelector='[data-message-author-role],article[data-turn],[data-chatgpt-search-unit-key$=":user"],[data-chatgpt-search-unit-key$=":assistant"],[data-content-search-unit-key$=":user"],[data-content-search-unit-key$=":assistant"]';
   const errorContentSelector=errorMessageSelector+',.markdown,[data-markdown-text-style="assistant-message"],[data-is-reasoning="true"]';
   const errorTurnSelector='[data-turn="user"],[data-turn="assistant"],[data-testid^="conversation-turn-"],[data-content-search-turn-key],[data-turn-key]';
