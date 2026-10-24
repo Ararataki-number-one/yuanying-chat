@@ -262,7 +262,7 @@ if template_release:
     for name in ['check_template_evidence.py','template_invocation_contract.py','integration_event_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=44:shutil.copy2(root/'tools/gecko/check_connection_evidence.py',stage/'tools/gecko/check_connection_evidence.py')
 if version_code>=45:
-    for name in ['check_interaction_transfer_evidence.py','local_draft_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    for name in ['check_interaction_transfer_evidence.py','local_draft_contract.py','download_resume_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=46:
     for name in ['check_chain_evidence.py','chain_runtime_contract.py','preconnect_contract.py','network_sources_contract.py','check_client_evidence.py','check_sdk_build_evidence.py','sdk_identity_contract.py','update_route_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 branch='apk/gecko-release-20261003'

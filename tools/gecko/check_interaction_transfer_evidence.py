@@ -10,8 +10,10 @@ else:
     from local_draft_contract import verify_local_draft_policy
 if __package__:
     from .check_connection_evidence import verify_detector_transport_evidence
+    from .download_resume_contract import verify_download_resume, verify_download_resume_invocation
 else:
     from check_connection_evidence import verify_detector_transport_evidence
+    from download_resume_contract import verify_download_resume, verify_download_resume_invocation
 
 def verify_display_sampling(network):
     assert network['actualMihomoExecution'] is True
@@ -91,6 +93,8 @@ def verify_saved_file_deletion(report):
     assert report['freedMediaStoreBytes'] == 5127 and report['freedPrivateBytes'] == 8197
     assert all(report[key] == 0 for key in ('alreadyAbsentPrivateFreedBytes',
         'alreadyAbsentMediaStoreFreedBytes', 'staleMenuFreedBytes'))
+    if 'downloadResume' in report:
+        verify_download_resume(report['downloadResume'])
     return {'actualAndroidExecution': True, 'checks': report['checkCount'],
             'mediaStoreBytesRemoved': report['freedMediaStoreBytes'],
             'privateBytesRemoved': report['freedPrivateBytes'],
@@ -336,6 +340,8 @@ def verify_interaction_transfer_evidence(directory, source):
             assert deleted['state'] == 'available' and not deleted['uri']
             assert deleted['finalBytes'] == deleted['partialBytes'] == deleted['finalApks'] == 0
             assert deleted['packageDeletion']['afterStoredBytes'] == 0
+        if manifest['versionCode'] >= 71:
+            verify_download_resume_invocation(device,source)
     if 'nativeReadingBounds' in device:
         native_fit = verify_reading_bounds(device['nativeReadingBounds'])
     held_cancel = device['appUpdates']['cancelDuringQuery']

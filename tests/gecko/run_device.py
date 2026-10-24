@@ -12,6 +12,7 @@ from integration_event_contract import EventTransfer, parse_receipt_line
 from profile_invocation_contract import expected_build, verify_installed
 from page_continuity_contract import verify_page_continuity
 from local_draft_contract import verify_local_draft_policy
+from download_resume_contract import verify_download_resume
 def collect_readiness(log,identity,invocations):
     """Diagnostic sidecar only. Never feeds a business decoder or acceptance gate."""
     owners={value['runNonce']:value for value in invocations};observations=[];counts={}
@@ -295,6 +296,9 @@ def main():
         reading_events=set();reading_trace=[];reading_lifecycle=[];reading_geometry=[];reading_readiness=None;bounds_before=None;bounds_pan=None
         surface_gestures[(context,action)]=[]
         activity='GeckoIntegrationTestActivity' if context==1 else 'ProfileGeckoIntegrationActivity1'
+        if action=='downloadResume':
+            assert context==8
+            activity='DownloadResumeIntegrationActivity'
         # This emulator image's Pixel Launcher can ANR during first-boot package
         # optimization and intercept otherwise correct trusted taps. Stop only
         # that unrelated package before returning to the test Activity; never
@@ -359,6 +363,8 @@ def main():
                     logs.append(output);raise AssertionError(event)
                 if event.get('kind')==kind:
                     result=event['result']
+                    if action=='downloadResume':
+                        report.setdefault('savedFileDeletion',{})['downloadResume']=result
                     assert 'error' not in result,event
                     if kind=='fixture' and (result.get('context')!=str(context) or result.get('action')!=action):continue
                     if action=='readingZoom':result.update(trace=reading_trace,lifecycle=reading_lifecycle,geometryTransitions=reading_geometry,readiness=reading_readiness)
@@ -773,7 +779,10 @@ def main():
         report['appUpdates']=dict(downloadManager='passed (real system HTTP transfer)',good=good,failures=update_checks,cancelDuringQuery=held_cancel,provider=access,settingsUi='passed',androidInstaller='passed (opened; synthetic APK not installed)')
         deleted_files=run(1,'deleteDownloads','downloadDeletion')
         verify_saved_file_deletion(deleted_files)
-        report['savedFileDeletion']=deleted_files
+        report['savedFileDeletion']=dict(deleted_files)
+        resumed_files=run(8,'downloadResume','downloadResume')
+        report['savedFileDeletion']['downloadResume']=resumed_files
+        verify_download_resume(resumed_files,identity)
         update_transfers()
         report['appUpdateTransfer']='passed (real HTTP interruption, durable Range resume, Android JobScheduler, pause/resume touch and concurrent controlled browser input)'
         cleanup=run(2,'readingFixtureCookieCleanup','readingFixtureCookieCleanup')

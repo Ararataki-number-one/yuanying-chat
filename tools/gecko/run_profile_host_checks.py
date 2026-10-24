@@ -36,6 +36,8 @@ def main():
     input_paths.add(ROOT/'tools/gecko/check_template_evidence.py')
     input_paths.add(ROOT/'tools/gecko/chrome_collapse_contract.py')
     input_paths.add(ROOT/'tools/gecko/local_draft_contract.py')
+    input_paths.add(ROOT/'tools/gecko/download_resume_contract.py')
+    input_paths.add(ROOT/'tools/gecko/check_interaction_transfer_evidence.py')
     input_paths.add(ROOT/'tools/publish-gecko-release.py')
     input_paths.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','page_continuity_contract.py','network_sources_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
     input_paths.add(ROOT/'app/src/main/AndroidManifest.xml')
@@ -223,6 +225,9 @@ def main():
     files.update((ROOT/'app/src/main/AndroidManifest.xml',ROOT/'tests/gecko/EnvironmentManagementIntegrationActivity.java',ROOT/'tests/gecko/run_device.py'))
     files.update((ROOT/'tests/gecko/GeckoIntegrationTestActivity.java',ROOT/'tools/gecko/check_template_evidence.py'))
     files.update((ROOT/'tests/gecko/GeckoLocalDraftIntegration.java',ROOT/'tools/gecko/local_draft_contract.py'))
+    files.update((ROOT/'tools/gecko/download_resume_contract.py',ROOT/'tests/gecko/DownloadResumeIntegrationActivity.java',ROOT/'tests/gecko/AndroidManifest.xml'))
+    files.add(ROOT/'tools/gecko/check_interaction_transfer_evidence.py')
+    files.add(ROOT/'tools/publish-gecko-release.py')
     files.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','page_continuity_contract.py','network_sources_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
     files.add(ROOT/'tests/fixtures/android-launcher-package-86db516.txt')
     files.update((ROOT/'tests/gecko/GeckoCaretCompatibilityIntegrationActivity.java',

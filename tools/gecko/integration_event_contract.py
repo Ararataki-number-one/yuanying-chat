@@ -96,7 +96,7 @@ def validate_receipt(receipt, *, identity, nonce, slot, action, command=None):
     """Reject foreign receipts even when a caller elects to filter them first."""
     _identity(identity)
     _require(_hex(nonce, 32), 'expected invocation nonce')
-    _require(type(slot) is int and slot in (0, 1), 'expected process slot')
+    _require(type(slot) is int and (slot in (0, 1) or slot == 7 and action == 'downloadResume'), 'expected process slot')
     _require(isinstance(action, str) and bool(action), 'expected fixture action')
     if command is not None:
         _require(_integer(command), 'expected native command')
@@ -111,6 +111,8 @@ def validate_receipt(receipt, *, identity, nonce, slot, action, command=None):
         _require(_integer(receipt.get(key)), 'receipt ' + key)
     _require(command is None or receipt['command'] == command, 'receipt belongs to another native command')
     _require(isinstance(receipt.get('eventKind'), str) and bool(receipt['eventKind']), 'receipt event kind')
+    if slot == 7:
+        _require(receipt['eventKind'] == 'downloadResume', 'isolated file fixture event kind')
     _require(_integer(receipt.get('payloadBytes')) and receipt['payloadBytes'] <= MAX_PAYLOAD_BYTES,
              'receipt payload size')
     _require(_hex(receipt.get('payloadSha256'), 64), 'receipt payload digest')
@@ -120,7 +122,8 @@ def validate_receipt(receipt, *, identity, nonce, slot, action, command=None):
 def event_uri(receipt):
     """Only use a validated receipt to construct this shell-only provider URI."""
     _require(isinstance(receipt, dict) and type(receipt.get('processSlot')) is int
-             and receipt['processSlot'] in (0, 1) and _hex(receipt.get('runNonce'), 32)
+             and (receipt['processSlot'] in (0, 1) or receipt['processSlot'] == 7
+                  and receipt.get('fixtureAction') == receipt.get('eventKind') == 'downloadResume') and _hex(receipt.get('runNonce'), 32)
              and _integer(receipt.get('sequence')), 'invalid evidence URI identity')
     return ('content://' + PACKAGE + '.evidence/gecko-events/' + str(receipt['processSlot'])
             + '/' + receipt['runNonce'] + '/' + str(receipt['sequence']))
