@@ -21,6 +21,7 @@ import prepare_emulator as normal
 
 BOOTSTRAP = 'emulator-5556'
 ACCEPTANCE = 'emulator-5554'
+PREPARATION_TIMEOUT_SECONDS = 45
 RULE = 'hostfwd_add virtio-wifi tcp:127.0.0.1:5555-10.0.2.16:5555'
 CNXN = int.from_bytes(b'CNXN', 'little')
 
@@ -267,7 +268,13 @@ def main():
         code = int(re.search(r'versionCode ([0-9]+)', settings).group(1))
         identity = normal.expected_build(args.apk.resolve(), source, tree, version, code)
         record.update(sourceCommit=source, sourceTree=tree, expectedBuildIdentity=identity)
-        commands = BootstrapCommands(args.adb, BOOTSTRAP, record, time.monotonic() + 33)
+        # One budget covers preflight, the persistent Wi-Fi reset and both fresh
+        # CM observations. Each command still has the original eight-second cap.
+        started = time.monotonic()
+        record.update(preparationBudgetSeconds=PREPARATION_TIMEOUT_SECONDS,
+                      preparationStartedAt=started,
+                      preparationDeadlineMonotonic=started + PREPARATION_TIMEOUT_SECONDS)
+        commands = BootstrapCommands(args.adb, BOOTSTRAP, record, record['preparationDeadlineMonotonic'])
         persistent_network(commands, record, identity)
         native_transport(args.adb, args.monitor, record)
         record['status'] = 'passed'
