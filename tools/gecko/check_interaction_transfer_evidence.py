@@ -5,6 +5,10 @@ import json
 import pathlib
 import math
 if __package__:
+    from .local_draft_contract import verify_local_draft_policy
+else:
+    from local_draft_contract import verify_local_draft_policy
+if __package__:
     from .check_connection_evidence import verify_detector_transport_evidence
 else:
     from check_connection_evidence import verify_detector_transport_evidence
@@ -283,6 +287,7 @@ def verify_interaction_transfer_evidence(directory, source):
     } <= {item['name'] for item in interaction['checks']}
 
     device = android('device-results.json')
+    local_draft = verify_local_draft_policy(device['localDraftPolicy'], device=device, source=source)
     assert len(device['steps']) >= 78 and device['releaseMode']
     legacy = device['legacyEngineCompatibility']
     assert len(legacy) == 2 and {item['context'] for item in legacy} == {1, 2}
@@ -394,6 +399,7 @@ def verify_interaction_transfer_evidence(directory, source):
             'nativeMainSerializations': checkpoint['mainSerialized'],
             'surfaceOriginSyncs': surface['originSyncs'], 'networkChecks': len(network['checks']),
             'detectorTransport': detector_transport}
+    result['localDraftPolicy'] = local_draft
     if native_fit is not None:
         result['nativeReadingFitRegression'] = native_fit
     if 'savedFileDeletion' in device:

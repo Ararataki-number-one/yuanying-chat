@@ -161,6 +161,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("desktopImage".equals(action)){desktopImage(serial);return;}
     if("desktopOwnImage".equals(action)){desktopImage(serial,true);return;}
     if("uploadLifecycle".equals(action)){GeckoUploadLifecycleIntegration.run(this,serial);return;}
+    if("localDraftPolicy".equals(action)){GeckoLocalDraftIntegration.run(this,serial);return;}
     if("pageContinuity".equals(action)){ChatPageContinuityIntegration.run(this,serial);return;}
     if("usability".equals(action)){usability(serial);return;}
     if("deleteDownloads".equals(action)){DownloadDeletionIntegration.run(this,result->{if(serial==run)event(serial,"downloadDeletion",result);});return;}

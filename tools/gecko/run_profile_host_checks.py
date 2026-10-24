@@ -35,6 +35,8 @@ def main():
     input_paths.add(Path(__file__).resolve())
     input_paths.add(ROOT/'tools/gecko/check_template_evidence.py')
     input_paths.add(ROOT/'tools/gecko/chrome_collapse_contract.py')
+    input_paths.add(ROOT/'tools/gecko/local_draft_contract.py')
+    input_paths.add(ROOT/'tools/publish-gecko-release.py')
     input_paths.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','page_continuity_contract.py','network_sources_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
     input_paths.add(ROOT/'app/src/main/AndroidManifest.xml')
     proxy_script = ROOT / 'app/src/main/assets/gecko/background.js'
@@ -220,6 +222,7 @@ def main():
     files.update(source/(name+'.java') for name in lifecycle_sources)
     files.update((ROOT/'app/src/main/AndroidManifest.xml',ROOT/'tests/gecko/EnvironmentManagementIntegrationActivity.java',ROOT/'tests/gecko/run_device.py'))
     files.update((ROOT/'tests/gecko/GeckoIntegrationTestActivity.java',ROOT/'tools/gecko/check_template_evidence.py'))
+    files.update((ROOT/'tests/gecko/GeckoLocalDraftIntegration.java',ROOT/'tools/gecko/local_draft_contract.py'))
     files.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','page_continuity_contract.py','network_sources_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
     files.add(ROOT/'tests/fixtures/android-launcher-package-86db516.txt')
     files.update((ROOT/'tests/gecko/GeckoCaretCompatibilityIntegrationActivity.java',
@@ -247,6 +250,15 @@ def main():
         sourceDirty=bool(source_status.strip()),output=upload_run.stdout),indent=2)+'\n')
     results.append(dict(test='gecko-upload-files-host',report=str(upload_receipt.relative_to(ROOT)),passed=upload_records[0]['checks'],actualAndroidExecution=False))
     files.update((upload_test,source/'GeckoUploadFiles.java'))
+    draft_contract_test=ROOT/'tests/gecko_local_draft_contract_test.py'
+    draft_contract_run=subprocess.run([sys.executable,str(draft_contract_test)],cwd=ROOT,text=True,capture_output=True)
+    draft_contract_count=re.search(r'^Ran (\d+) tests? in ',draft_contract_run.stderr,re.M)
+    if draft_contract_run.returncode or draft_contract_count is None or int(draft_contract_count.group(1))<36:
+        raise ValueError('Incomplete F04 counterfeit evidence controls: '+draft_contract_run.stdout+draft_contract_run.stderr)
+    results.append(dict(test='local-draft-evidence-controls',passed=int(draft_contract_count.group(1)),actualAndroidExecution=False,
+        output=draft_contract_run.stdout+draft_contract_run.stderr))
+    files.update((draft_contract_test,ROOT/'tests/profile_lifecycle_gate_test.py',ROOT/'tools/publish-gecko-release.py',
+                  ROOT/'tools/gecko/local_draft_contract.py',ROOT/'tests/gecko/GeckoLocalDraftIntegration.java'))
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status
             or any(not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest

@@ -11,6 +11,7 @@ from check_interaction_transfer_evidence import verify_paint_case, verify_saved_
 from integration_event_contract import EventTransfer, parse_receipt_line
 from profile_invocation_contract import expected_build, verify_installed
 from page_continuity_contract import verify_page_continuity
+from local_draft_contract import verify_local_draft_policy
 def collect_readiness(log,identity,invocations):
     """Diagnostic sidecar only. Never feeds a business decoder or acceptance gate."""
     owners={value['runNonce']:value for value in invocations};observations=[];counts={}
@@ -231,6 +232,8 @@ class Fixture(fixture.Fixture):
             if query.get('action')==['sessionLogout']:token='none'
             body=(f'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
                 f'<h1>Controlled session continuity</h1><p id="session-result">{token}</p><textarea id="session-draft"></textarea>').encode()
+            if 'localDraft' in query:
+                body+=b'''<button type="button" id="f04-send" onclick="document.getElementById('f04-sends').textContent=Number(document.getElementById('f04-sends').textContent)+1">Send controlled fixture</button><output id="f04-sends">0</output><div style="height:5000px">Controlled SDK scroll restoration</div>'''
         elif address.path=='/slow-resource':
             time.sleep(5);body=b'synthetic-slow-resource'
         else:return super().do_GET()
@@ -658,6 +661,20 @@ def main():
         assert run(1,'sessionRead','session')['token']=='none'
         assert run(2,'sessionRead','session')['token']=='synthetic-session-2'
         report['sessionContinuity']=sessions
+        # F04 uses a separate private fixture store. Each next invocation reads
+        # after Android has killed the previous process, then restores through
+        # the real SDK; it does not replace the original automatic-startup cases.
+        draft_policy=[];draft_stops=[]
+        for phase in ['seed','off','stale-on','fresh-on']:
+            value=run(2,'localDraftPolicy','localDraftPolicy',('--es','draftPhase',phase))
+            draft_policy.append(value)
+            if phase!='fresh-on':
+                command=['shell','am','force-stop',package]
+                draft_stops.append(dict(afterPhase=phase,beforePid=value['pid'],command=command,
+                    stdout=adb(*command),returnCode=0))
+        report['localDraftPolicy']=dict(schema=1,phases=draft_policy,forceStopBetweenPhases=True,
+            forceStops=draft_stops,automaticStartupSelectionAcceptance=False)
+        verify_local_draft_policy(report['localDraftPolicy'])
         paint=run(1,'earlyPaint','paint');assert paint['firstPaintBeforeComplete'],paint
         first_paint_case=verify_paint_case(paint)
         reading_checks()
