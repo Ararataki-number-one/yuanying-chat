@@ -11,6 +11,37 @@ from check_interaction_transfer_evidence import verify_paint_case, verify_saved_
 from integration_event_contract import EventTransfer, parse_receipt_line
 from profile_invocation_contract import expected_build, verify_installed
 from page_continuity_contract import verify_page_continuity
+def collect_readiness(log,identity,invocations):
+    """Diagnostic sidecar only. Never feeds a business decoder or acceptance gate."""
+    owners={value['runNonce']:value for value in invocations};observations=[];counts={}
+    def unique(pairs):
+        value={}
+        for key,item in pairs:
+            if key in value:raise ValueError('duplicate diagnostic JSON key')
+            value[key]=item
+        return value
+    for line in log.splitlines():
+        if ' I PocketReadiness:' not in line:continue
+        raw=line.split(' I PocketReadiness:',1)[1].strip();entry=dict(raw=raw)
+        try:
+            if len(raw.encode('utf-8'))>3500:raise ValueError('diagnostic byte bound')
+            value=json.loads(raw,object_pairs_hook=unique)
+            if value.get('kind')!='readinessObservation' or value.get('schema')!=1 or value.get('diagnosticOnly') is not True or value.get('acceptance') is not False:raise ValueError('diagnostic scope')
+            for key in ('sourceCommit','sourceTree','apkSha256','buildStampSha256'):
+                if value.get(key)!=identity.get(key):raise ValueError('diagnostic identity '+key)
+            owner=owners.get(value.get('runNonce'))
+            if owner is None or value.get('fixtureAction')!=owner['fixtureAction'] or value.get('processSlot')!=owner['processSlot']:raise ValueError('diagnostic invocation ownership')
+            if type(value.get('command')) is not int or value['command']<1:raise ValueError('diagnostic native command')
+            if 'diagnosticError' in value:raise ValueError(value['diagnosticError'])
+            point=value['observation'];index=point['observation'];nonce=value['runNonce']
+            if point.get('diagnosticOnly') is not True or point.get('acceptance') is not False or point.get('maxObservations')!=24 or type(index) is not int or not 1<=index<=24:raise ValueError('diagnostic observation bound')
+            if index!=counts.get(nonce,0)+1:raise ValueError('missing or duplicate diagnostic observation')
+            counts[nonce]=index;entry.update(valid=True,value=value)
+        except Exception as error:entry.update(valid=False,error=f'{type(error).__name__}: {error}')
+        observations.append(entry)
+    return dict(diagnosticOnly=True,acceptance=False,buildIdentity=identity,observations=observations,
+                scope='Original independent bounded log bytes; invalid or absent observations do not complete any device assertion')
+
 def missing_update_job(return_code, output, package):
     """Only Android's exact not-yet-registered job response is transient."""
     if return_code!=23:return False
@@ -786,6 +817,18 @@ def main():
                 (OUT/'failure-ui.xml').write_text(adb('shell','cat','/sdcard/gecko-failure.xml'))
             artifact('failure-ui.xml',failure_ui)
             artifact(prefix+'last-device-log.txt',lambda:(OUT/(prefix+'last-device-log.txt')).write_text(adb('logcat','-d')))
+            artifact(prefix+'device-readiness-observations.json',lambda:(OUT/(prefix+'device-readiness-observations.json')).write_text(json.dumps(collect_readiness((OUT/(prefix+'last-device-log.txt')).read_text(),identity,event_transfers),indent=2)+'\n'))
+            # Read-only post-failure evidence. These commands do not run inside
+            # the original result deadline and cannot turn its error into pass.
+            def failure_runtime():
+                observations=[]
+                for command in [('dumpsys','activity','activities'),('dumpsys','window','windows'),('ps','-A'),('cat','/proc/meminfo')]:
+                    try:
+                        value=subprocess.run([args.adb,'-s',args.serial,'shell',*command],capture_output=True,text=True,timeout=5)
+                        observations.append(dict(command=list(command),returnCode=value.returncode,stdout=value.stdout[:131072],stderr=value.stderr[:4096],truncated=len(value.stdout)>131072 or len(value.stderr)>4096))
+                    except Exception as error:observations.append(dict(command=list(command),error=f'{type(error).__name__}: {error}'))
+                (OUT/(prefix+'device-failure-runtime.json')).write_text(json.dumps(dict(diagnosticOnly=True,acceptance=False,sourceCommit=identity['sourceCommit'],buildIdentity=identity,originalError=report.get('error'),observations=observations),indent=2)+'\n')
+            artifact(prefix+'device-failure-runtime.json',failure_runtime)
         if update_report is not None and update_report.get('status')!='passed':
             artifact(prefix+'update-transfer-failure-log.txt',lambda:(OUT/(prefix+'update-transfer-failure-log.txt')).write_text(adb('logcat','-d')))
         artifact(prefix+'device-route-trace.json',lambda:(OUT/(prefix+'device-route-trace.json')).write_text(json.dumps(fixture.TRACE,indent=2)+'\n'))
