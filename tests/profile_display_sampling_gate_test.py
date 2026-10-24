@@ -124,4 +124,44 @@ class DisplayGateTest(unittest.TestCase):
             with self.assertRaises(AssertionError):self.replay_collector(report,Path(directory),'original controlled failure log')
             self.assertEqual((Path(directory)/'network-performance-failure-log.txt').read_text(),'original controlled failure log')
 
+    def replay_check_snapshot(self,events,checks,out,raw):
+        tree=ast.parse((Path(__file__).resolve().parent/'gecko/run_network_performance.py').read_bytes())
+        reset=next(node for node in ast.walk(tree) if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=='model_snapshot' for target in node.targets))
+        branch=next(node for node in ast.walk(tree) if isinstance(node,ast.If) and isinstance(node.test,ast.Compare) and any(isinstance(value,ast.Constant) and value.value=='check' for value in node.test.comparators))
+        loop=ast.For(target=ast.Name(id='report',ctx=ast.Store()),iter=ast.Name(id='events',ctx=ast.Load()),body=[branch],orelse=[])
+        program=compile(ast.fix_missing_locations(ast.Module(body=[reset,loop],type_ignores=[])),'<actual per-snapshot check guard>','exec')
+        exec(program,dict(events=events,checks=checks,out=out,raw=raw))
+
+    def test_actual_runner_allows_identical_repeated_polls_without_recounting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report=self.fixture();events=[dict(kind='check',value=check) for check in report['checks']];checks={}
+            self.replay_check_snapshot(events,checks,Path(directory),'first poll')
+            self.replay_check_snapshot(copy.deepcopy(events),checks,Path(directory),'same records on next poll')
+            self.assertEqual(len(checks),len(report['checks']))
+            self.assertFalse((Path(directory)/'network-performance-failure-log.txt').exists())
+
+    def test_actual_runner_rejects_new_case_duplicates_before_dictionary_overwrite(self):
+        for conflict in (False,True):
+            with self.subTest(conflict=conflict),tempfile.TemporaryDirectory() as directory:
+                report=self.fixture();events=[dict(kind='check',value=copy.deepcopy(check)) for check in report['checks']]
+                repeated=copy.deepcopy(events[len(NAMES)])
+                if conflict:repeated['value']['pass']=False
+                events.insert(len(NAMES),repeated)
+                raw='original false-before-true raw' if conflict else 'original duplicate raw'
+                with self.assertRaises(AssertionError):self.replay_check_snapshot(events,{},Path(directory),raw)
+                self.assertEqual((Path(directory)/'network-performance-failure-log.txt').read_text(),raw)
+
+    def test_actual_runner_rejects_conflicting_new_case_across_polls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            value=self.fixture()['checks'][len(NAMES)];failed=copy.deepcopy(value);failed['pass']=False;checks={}
+            self.replay_check_snapshot([dict(kind='check',value=failed)],checks,Path(directory),'first failed observation')
+            with self.assertRaises(AssertionError):self.replay_check_snapshot([dict(kind='check',value=value)],checks,Path(directory),'later contradictory observation')
+            self.assertEqual((Path(directory)/'network-performance-failure-log.txt').read_text(),'later contradictory observation')
+
+    def test_original_non_projection_check_dictionary_behavior_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checks={};events=[dict(kind='check',value={'name':NAMES[0],'pass':value}) for value in (False,True)]
+            self.replay_check_snapshot(events,checks,Path(directory),'original non-model events')
+            self.assertIs(checks[NAMES[0]]['pass'],True)
+
 if __name__=='__main__':unittest.main()

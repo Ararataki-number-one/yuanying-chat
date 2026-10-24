@@ -16,6 +16,7 @@ while time.monotonic()<deadline:
     if 'FATAL EXCEPTION' in raw:
         (out/'network-performance-failure-log.txt').write_text(adb('logcat','-d'))
         raise AssertionError(raw)
+    model_snapshot={}
     for line in raw.splitlines():
         if 'PocketNetworkPerformance' not in line or '{' not in line:continue
         try:report=json.loads(line[line.index('{'):])
@@ -25,6 +26,12 @@ while time.monotonic()<deadline:
             (out/'network-performance-failure-log.txt').write_text(adb('logcat','-d'))
             raise
         if report.get("kind")=="check":
+            value=report["value"];name=value["name"]
+            if name.startswith('Android read-model freshness '):
+                if name in model_snapshot or name in checks and checks[name]!=value:
+                    (out/'network-performance-failure-log.txt').write_text(raw)
+                    raise AssertionError('Duplicate or conflicting read-model check: '+name)
+                model_snapshot[name]=value
             checks[report["value"]["name"]]=report["value"];continue
         if report.get('kind')=='exitTransportEvidence':
             value=report['value'];transport_evidence[(value['kind'],value['fault'])]=value;continue
