@@ -157,7 +157,20 @@ class ReservationContractTest(unittest.TestCase):
         self.reject(lambda r:self.evidence(r)['startObservation'].update(rootCallbackId=999))
 
     def test_policy_blocked_future_recovery_needs_no_invented_start(self):
-        report=F.synthetic_report();self.evidence(report)['startObservation'].update(admissions=[],admissionCount=0)
+        report=F.synthetic_report();e=self.evidence(report)
+        e['startObservation'].update(admissions=[],admissionCount=0)
+        # A blocked native recovery only posts FAILED. It creates neither a
+        # new core generation nor a second stop, and leaves routeSerial alone.
+        closed=copy.deepcopy(e['restartTerminal']['cache'])
+        e['stopObservations']=e['stopObservations'][:1]
+        e['terminalAnchor']=copy.deepcopy(closed)
+        e['freshRead']['snapshot']=copy.deepcopy(closed)
+        e['finalCache']=copy.deepcopy(closed)
+        recovery=e['recoveries'][0]
+        recovery['terminalCache']=copy.deepcopy(closed)
+        recovery['completedAtNs']=e['startedAtNs']+405
+        for fence in (e['fenceBefore'],e['fenceAfter'],recovery['terminalFence']):fence['routeSerial']=10
+        e['postFetchCache'].update(coreAlive=False,cache=copy.deepcopy(closed),fence=copy.deepcopy(e['fenceBefore']))
         self.assertEqual(C.verify_source_route_terminal(report,F.SOURCE)['cases'],4)
 
     def test_recorded_later_recovery_is_bound_and_not_original_owner(self):
