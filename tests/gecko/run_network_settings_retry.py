@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import pathlib
+import re
 import subprocess
 import time
 import uuid
@@ -49,6 +50,42 @@ def verify(report, source, nonce, apk_sha):
             assert bound - 150 <= delay < bound + 7000, (case['fault'], index, delay)
         if case['fault'] == 'timeout':
             assert finishes[0]['at'] - starts[0]['at'] >= 2500
+    ledger = report['retryLedger']
+    assert ledger['schema'] == 1 and len(ledger['cases']) == 2
+    owned = {}
+    for case, owner in zip(cases, ledger['cases']):
+        assert owner['case'] == case['case'] == 'retry-' + case['fault'] and owner['closed'] is True
+        assert owner['externalId'] == case['attempts'][0]['id']
+        assert isinstance(owner['environmentId'], str) and re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', owner['environmentId'])
+        assert type(owner['generation']) is int and owner['generation'] >= 0
+        assert isinstance(owner['snapshotHash'], str) and re.fullmatch(r'[0-9a-f]{64}', owner['snapshotHash'])
+        assert (owner['environmentId'], owner['generation']) == (ledger['cases'][0]['environmentId'], ledger['cases'][0]['generation'])
+        attempts = owner['attempts']
+        assert len(attempts) == case['requiredAttempts'] + 1
+        assert attempts[-1]['id'] == case['recoveryId'] and attempts[-1]['id'].startswith('internal:')
+        assert attempts[-1]['started'] == case['recoveryAttemptAt']
+        for index, attempt in enumerate(attempts):
+            assert attempt['id'] not in owned and 0 <= attempt['started'] <= attempt['retired']
+            owned[attempt['id']] = (owner['case'], attempt)
+            if index < case['requiredAttempts']:
+                start, end = case['attempts'][index], case['finishes'][index]
+                assert attempt['id'] == start['id'] == end['id']
+                assert attempt['started'] == start['at'] and attempt['retired'] == end['at']
+                assert attempt['jobCount'] == end['jobCount'] == 1
+    assert ledger['cases'][0]['snapshotHash'] != ledger['cases'][1]['snapshotHash']
+    retired = set()
+    for callback in ledger['callbacks']:
+        assert callback['id'] in owned, 'Unowned callbacks cannot be discarded'
+        name, attempt = owned[callback['id']]
+        assert callback['case'] == name and callback['isRetired'] is True
+        if callback['wasActive'] is True:
+            assert callback['id'] not in retired
+            assert callback['at'] == attempt['retired'] and callback['jobCount'] == attempt['jobCount']
+            retired.add(callback['id'])
+        else:
+            assert callback['wasActive'] is False and callback['id'] in retired
+            assert callback['at'] >= attempt['retired']
+    assert retired == set(owned), 'Every admitted job, including recovery, must actually retire'
     required = {
         'Internal completed and late callbacks leave no job records',
         'New external start retains the 32 still-readable completion receipts',
