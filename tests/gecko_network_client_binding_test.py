@@ -184,10 +184,33 @@ class FixtureSourceControls(unittest.TestCase):
         import re
         names=re.findall(r'check\("([^"\n]+)"',(ROOT/'tests/gecko/NetworkClientBindingIntegrationActivity.java').read_text())
         self.assertEqual(names,list(C.CHECKS))
-    def test_old_production_lifecycle_fixture_stays_byte_exact(self):
-        import subprocess
+    def test_old_lifecycle_and_reviewed_92_oracle_stay_byte_exact(self):
         path='tests/gecko/NetworkTransportLifecycleActivity.java'
-        self.assertEqual((ROOT/path).read_bytes(),subprocess.check_output(['git','show','3eac289:'+path],cwd=ROOT))
+        self.assertEqual(hashlib.sha256((ROOT/path).read_bytes()).hexdigest(),'43358547bea5378e409c8f97290929163905e6dd86e61197064e4f7cde933efe')
+        oracle=ROOT/'tests/network-transport-client-host/NetworkTransportClientHost.java'
+        self.assertEqual(hashlib.sha256(oracle.read_bytes()).hexdigest(),'6decfd84c9f5a0b314948133230ca03347c19e19be2cdb3c175b1467be054f60')
+        # Run the real snapshot loader without any ancestor Git objects. Each
+        # altered provenance/input must fail even when a local file is present.
+        import tempfile
+        selected=ROOT/'tests/network-transport-client-host/run.py'
+        spec=importlib.util.spec_from_file_location('selected_binding_snapshot_loader',selected)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        before,helper,metadata=module.load_before_snapshot()
+        self.assertEqual(metadata['sourceCommit'],'3eac2891438d37aa62f695b34a90f0aa02215ca2')
+        def rejected(change):
+            with tempfile.TemporaryDirectory()as name:
+                temp=Path(name);module.HERE=temp;module.ROOT=temp
+                (temp/'BeforeNetworkTransportClient.java.in').write_bytes(before)
+                target=temp/metadata['sharedHelperPath'];target.parent.mkdir(parents=True);target.write_bytes(helper)
+                altered=copy.deepcopy(metadata);change(temp,altered)
+                (temp/'before-source.json').write_text(encoded(altered))
+                with self.assertRaises(ValueError):module.load_before_snapshot()
+        rejected(lambda p,m:(p/'BeforeNetworkTransportClient.java.in').write_bytes(before+b'\n'))
+        rejected(lambda p,m:(p/metadata['sharedHelperPath']).write_bytes(helper+b'\n'))
+        rejected(lambda p,m:m.update(sourceCommit='f'*40))
+        rejected(lambda p,m:m.update(snapshotFile='../other.java.in'))
+        rejected(lambda p,m:m.update(sha256='f'*64))
+        rejected(lambda p,m:m.update(schema=True))
     def test_fixture_manifest_services_are_private_and_run_outside_client(self):
         import xml.etree.ElementTree as ET
         root=ET.parse(ROOT/'tests/gecko/AndroidManifest.xml').getroot();ns='{http://schemas.android.com/apk/res/android}'
@@ -224,18 +247,16 @@ class PublicWiringControls(unittest.TestCase):
             self.evidence(directory)
             with self.assertRaises(ValueError):C.verify_framework_binding_files(directory,'f'*40)
     def test_connections_step_keeps_every_original_command_and_condition(self):
-        import subprocess
         path='.github/workflows/gecko-integration.yml';raw=(ROOT/path).read_text()
         inserted='        if ! python3 tests/gecko/run_network_client_binding.py --adb "$(command -v adb)" --serial emulator-5554; then\n          checks_failed=1\n        fi\n'
         self.assertEqual(raw.count(inserted),1)
-        self.assertEqual(raw.replace(inserted,'',1).encode(),subprocess.check_output(['git','show','3d78854:'+path],cwd=ROOT))
+        self.assertEqual(hashlib.sha256(raw.replace(inserted,'',1).encode()).hexdigest(),'50fdca828ab3f661aff423bf6755359d2f4e8b24c3e78e0100d8ce29da8120c1')
     def test_connection_gate_only_adds_the_mandatory_framework_validator(self):
-        import subprocess
         path='tools/gecko/check_connection_evidence.py';raw=(ROOT/path).read_text()
         inserted='if __package__:\n    from .network_client_binding_contract import verify_framework_binding_files\nelse:\n    from network_client_binding_contract import verify_framework_binding_files\n'
         self.assertEqual(raw.count(inserted),1)
         restored=raw.replace(inserted,'',1).replace('    framework_binding = verify_framework_binding_files(directory, source)\n','',1).replace(", 'frameworkClientBinding': framework_binding",'',1)
-        self.assertEqual(restored.encode(),subprocess.check_output(['git','show','3d78854:'+path],cwd=ROOT))
+        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'075b666ae597ecf2c4ec3d19eb3713c6a4c0b42359867197086fee1127cccd18')
     def test_publisher_actual_selected_ast_copies_report_and_pure_contract(self):
         import ast
         import types

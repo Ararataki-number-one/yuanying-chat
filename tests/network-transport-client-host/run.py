@@ -6,6 +6,8 @@ ROOT=pathlib.Path(__file__).resolve().parents[2]
 HERE=pathlib.Path(__file__).resolve().parent
 PRODUCTION='app/src/main/java/local/pocketchat/NetworkTransportClient.java'
 BEFORE='3eac2891438d37aa62f695b34a90f0aa02215ca2'
+BEFORE_CLIENT_SHA256='7d573fad4e0ba9adb36d58e7f152e7ec6b5afecc627301c85c780b5d261b82b1'
+BEFORE_J_SHA256='772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493'
 KNOWN_OLD_FAILURES={
     'Null binding releases framework binding exactly once',
     'Null binding retires bound state',
@@ -24,6 +26,19 @@ CASE_NAMES={'null lifecycle','disconnect during bind wait','binding death','stal
 EXPECTED_CHECK_COUNT=92
 
 def sha(raw):return hashlib.sha256(raw).hexdigest()
+
+def load_before_snapshot():
+    metadata=json.loads((HERE/'before-source.json').read_text())
+    expected=dict(schema=1,sourceCommit=BEFORE,sourcePath=PRODUCTION,snapshotFile='BeforeNetworkTransportClient.java.in',
+        bytes=7114,sha256=BEFORE_CLIENT_SHA256,sharedHelperPath='app/src/main/java/local/pocketchat/J.java',
+        sharedHelperBytes=1141,sharedHelperSha256=BEFORE_J_SHA256)
+    if (set(metadata)!=set(expected)|{'scope'} or any(type(metadata.get(key))is not type(value) or metadata.get(key)!=value for key,value in expected.items())
+            or not isinstance(metadata['scope'],str) or not metadata['scope']):
+        raise ValueError('Immutable before-source provenance differs')
+    client=(HERE/metadata['snapshotFile']).read_bytes();helper=(ROOT/metadata['sharedHelperPath']).read_bytes()
+    if len(client)!=metadata['bytes'] or sha(client)!=BEFORE_CLIENT_SHA256 or len(helper)!=metadata['sharedHelperBytes'] or sha(helper)!=BEFORE_J_SHA256:
+        raise ValueError('Immutable full before class or shared whole J differs')
+    return client,helper,metadata
 
 def verify_report(value,*,expect_pass):
     if not isinstance(value,dict) or set(value)!={'status','checkCount','failedCount','checks','cases','replyTimeoutObservation','actualAndroidExecution','actualBinderExecution','actualServiceExecution'}:
@@ -94,15 +109,12 @@ def main():
     parser.add_argument('--before-ref',default=BEFORE)
     args=parser.parse_args()
     args.output=args.output.resolve()
-    if re.fullmatch('[0-9a-f]{40}',args.before_ref) is None:parser.error('Full immutable before ref required')
+    if args.before_ref!=BEFORE:parser.error('Only the pinned complete3eac before-source snapshot is allowed')
     def git(*parts):return subprocess.check_output(['git',*parts],cwd=ROOT,text=True).strip()
-    inputs={ROOT/PRODUCTION,ROOT/'app/src/main/java/local/pocketchat/J.java'}|{p for p in HERE.rglob('*') if p.is_file() and p.suffix in ('.py','.java','.md')}
+    inputs={ROOT/PRODUCTION,ROOT/'app/src/main/java/local/pocketchat/J.java'}|{p for p in HERE.rglob('*') if p.is_file() and p.suffix in ('.py','.java','.md','.in','.json')}
     before=dict(sourceCommit=git('rev-parse','HEAD'),sourceTree=git('rev-parse','HEAD^{tree}'),sourceDirty=bool(git('status','--porcelain')),
                 sourceFiles={str(p.relative_to(ROOT)):sha(p.read_bytes()) for p in sorted(inputs)})
-    baseline=subprocess.check_output(['git','show',args.before_ref+':'+PRODUCTION],cwd=ROOT)
-    baseline_json=subprocess.check_output(['git','show',args.before_ref+':app/src/main/java/local/pocketchat/J.java'],cwd=ROOT)
-    if baseline_json!=(ROOT/'app/src/main/java/local/pocketchat/J.java').read_bytes():
-        raise ValueError('The shared whole J helper changed from the immutable comparison source')
+    baseline,baseline_json,before_snapshot=load_before_snapshot()
     jar=args.json_jar.resolve();args.output.parent.mkdir(parents=True,exist_ok=True)
     run_dir=args.output.parent/(args.output.stem+'-raw');run_dir.mkdir(exist_ok=True)
     (run_dir/'before-NetworkTransportClient.java').write_bytes(baseline)
@@ -144,7 +156,7 @@ def main():
     passed=records[1]['exitCode']==0 and not any(error.startswith('current: ') for error in validation_errors)
     unchanged=(before['sourceCommit']==git('rev-parse','HEAD') and all(p.is_file() and sha(p.read_bytes())==before['sourceFiles'][str(p.relative_to(ROOT))] for p in inputs))
     result=dict(schema=1,status='passed' if passed and old_reproduced and unchanged else 'failed',sourceIdentity=before,
-        beforeRef=args.before_ref,beforeFailuresRequired=sorted(KNOWN_OLD_FAILURES),oldFailuresReproduced=old_reproduced,
+        beforeRef=args.before_ref,beforeSourceSnapshot=before_snapshot,beforeFailuresRequired=sorted(KNOWN_OLD_FAILURES),oldFailuresReproduced=old_reproduced,
         executionInputsUnchanged=unchanged,actualAndroidExecution=False,actualBinderExecution=False,actualServiceExecution=False,
         scope='Complete unchanged production NetworkTransportClient and J compiled directly. Context/ServiceConnection/main Looper queue/Messenger Binder endpoints/diagnostics are explicit host adapters. Synthetic callback ordering and in-process threads only, no Android lifecycle or user-device root cause acceptance.',
         passed=current['checkCount'] if passed else 0,runs=records,jsonJarSha256=sha(jar.read_bytes()),

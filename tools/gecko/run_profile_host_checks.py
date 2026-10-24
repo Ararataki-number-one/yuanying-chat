@@ -41,7 +41,7 @@ def main():
                             if path.is_file() and path.suffix in ('.py','.java','.in','.json')}
     input_paths.update(draft_admission_inputs)
     transport_client_inputs={path for path in (ROOT/'tests/network-transport-client-host').rglob('*')
-                             if path.is_file() and path.suffix in ('.py','.java','.md')}
+                             if path.is_file() and path.suffix in ('.py','.java','.md','.in','.json')}
     input_paths.update(transport_client_inputs)
     input_paths.update(ROOT/'tools/gecko'/name for name in ('network_client_binding_contract.py','sdk_identity_contract.py'))
     input_paths.add(ROOT/'tools/gecko/download_resume_contract.py')

@@ -3,6 +3,13 @@ and `J.java` directly, then runs the same lifecycle assertions against both an
 immutable old source and the candidate. It does not extract or rewrite client
 methods. Old failures stay failed in their original report.
 
+`BeforeNetworkTransportClient.java.in` is the complete verbatim class at
+`3eac2891438d37aa62f695b34a90f0aa02215ca2`, pinned by source path, byte count and
+SHA256 in `before-source.json` and the runner. The current shared `J.java` must
+match that same source's pinned bytes too. The snapshot was checked against
+the original Git blob before committing; execution needs only the current tree,
+so shallow CI never fetches or silently substitutes a different before source.
+
 The adapters implement only the APIs used by this client: a controlled main
 queue, `Context.bindService`/`unbindService` callback scripts, message envelopes,
 and in-process Messenger endpoints. Background calls use real JVM threads,
