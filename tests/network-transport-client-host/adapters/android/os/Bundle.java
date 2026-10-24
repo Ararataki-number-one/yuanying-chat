@@ -1,0 +1,3 @@
+package android.os;
+import java.util.*;
+public final class Bundle {private final Map<String,Object> values=new HashMap<>();public void putString(String key,String value){values.put(key,value);}public String getString(String key){return (String)values.get(key);}public String getString(String key,String fallback){String value=getString(key);return value==null?fallback:value;}public void putInt(String key,int value){values.put(key,value);}public int getInt(String key,int fallback){Object value=values.get(key);return value instanceof Integer?(Integer)value:fallback;}}
