@@ -114,6 +114,18 @@ class ComparisonTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.matching_protocol(self.protocol, changed)
 
+    def test_activity_process_and_lifecycle_manifest_is_frozen(self):
+        name = 'tests/gecko/AndroidManifest.xml'
+        self.assertIn(name, MODULE.HARNESS)
+        changed = dict(self.protocol)
+        changed[name] = 'f' * 64
+        with self.assertRaisesRegex(ValueError, 'Benchmark or environment setup changed between builds'):
+            MODULE.matching_protocol(self.protocol, changed)
+        missing = dict(self.protocol)
+        missing.pop(name)
+        with self.assertRaisesRegex(ValueError, 'Incomplete benchmark protocol'):
+            MODULE.matching_protocol(missing, missing)
+
     def test_missing_cpu_memory_and_frames_never_become_zero(self):
         self.report['iterations'][0]['startup']['productionPageUsableFromActivityCreateMs'] = None
         result = MODULE.summarize([self.report])

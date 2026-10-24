@@ -32,6 +32,7 @@ APK = 'app/build/outputs/apk/integration/app-x86_64-integration.apk'
 HARNESS = (
     'tests/gecko/ExperienceBenchmarkActivity.java',
     'tests/gecko/ExperienceScenarios.java',
+    'tests/gecko/AndroidManifest.xml',
     'tools/gecko/experience_scenarios.py',
     'tests/gecko/run_experience_benchmark.py',
     'tests/gecko/ChromeCollapseIntegration.java',
