@@ -1,0 +1,33 @@
+Loading local repository...                                                     [=========                              ] 25% Loading local repository...       [=========                              ] 25% Fetch remote repository...        [=======================================] 100% Fetch remote repository...       
+Auto-selecting single ABI x86_64
+Do you wish to create a custom hardware profile? [no] cannot connect to daemon at tcp:5037: Connection refused
+{"status": "passed", "setupOnly": true, "applicationAcceptance": false, "actualAndroidExecution": false, "workloadExecuted": false, "package": "platform-tools", "revision": "35.0.2", "url": "https://dl.google.com/android/repository/platform-tools_r35.0.2-linux.zip", "bytes": 7472902, "sha256": "acfdcccb123a8718c46c46c059b2f621140194e5ec1ac9d81715be3d6ab6cd0a", "ambientAdbSha256": "a902be8f45c6c62e76c9efaf6947a0fa747c9cabd89a2ac8e0d16ecb30b3ed01", "installedAdbSha256": "c46d072d4b4ba6d2f961ef6d0f01ffc35ed8093f1c263296659ebf56bccfc777", "actualVersion": "Android Debug Bridge version 1.0.41\nVersion 35.0.2-12147458\nInstalled as /usr/local/lib/android/sdk/platform-tools/adb\nRunning on Linux 6.17.0-1022-azure (x86_64)\n", "properties": {"Pkg.UserSrc": "false", "Pkg.Revision": "35.0.2"}}
+* daemon not running; starting now at tcp:5037
+* daemon started successfully
+Performing Streamed Install
+Success
+Traceback (most recent call last):
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_native_adb.py", line 285, in <module>
+    main()
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_native_adb.py", line 271, in main
+    persistent_network(commands, record, identity)
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_native_adb.py", line 103, in persistent_network
+    if not normal.network_observation(commands, record, identity, 'persistent-sdk-wifi-confirmation'):
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_emulator.py", line 98, in network_observation
+    raw = commands.run('exec-out', 'content', 'read', '--uri',
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/yuanying-chat/yuanying-chat/tools/gecko/prepare_emulator.py", line 75, in run
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 1209, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 2116, in _communicate
+    self._check_timeout(endtime, orig_timeout, stdout, stderr)
+  File "/usr/lib/python3.12/subprocess.py", line 1253, in _check_timeout
+    raise TimeoutExpired(
+subprocess.TimeoutExpired: Command '['/usr/local/lib/android/sdk/platform-tools/adb', '-s', 'emulator-5556', 'exec-out', 'content', 'read', '--uri', 'content://local.pocketchat.test.network-preflight/default-network?runNonce=dac5a5d10a5c4e278916e7efa3b81ad0']' timed out after 1.1916698269999983 seconds
