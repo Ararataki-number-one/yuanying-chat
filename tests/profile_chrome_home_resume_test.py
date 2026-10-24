@@ -7,6 +7,7 @@ import subprocess
 import types
 import unittest
 from unittest.mock import patch
+from ui_visual_preservation_contract import verify_shared_ui_source
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 RUNNER=ROOT/'tests/gecko/run_chrome_collapse.py'
@@ -187,7 +188,7 @@ class HomeResumeTests(unittest.TestCase):
             self.assertIn("add_argument('--serial',required=True)",source)
 
     def test_original_shared_runner_and_remaining_workload_preserved(self):
-        self.assertEqual(hashlib.sha256(SHARED.read_bytes()).hexdigest(),'eb44194a7c96c9ef2c11452d5377e911c2d02bc0ac5f6c74eadacb9bd7a7612b')
+        self.assertTrue(verify_shared_ui_source(SHARED.read_text())['originalWorkloadSemanticsPreserved'])
         tree=ast.parse(RUNNER.read_text());run=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run')
         loop=next(n for n in run.body if isinstance(n,ast.For))
         replacements=[i for i,n in enumerate(loop.body) if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name) and n.value.func.id=='resume_after_home']
@@ -195,6 +196,57 @@ class HomeResumeTests(unittest.TestCase):
         self.assertEqual(ast.unparse(loop.body[at]),'resume_after_home(component)')
         loop.body[at:at+1]=ast.parse(ORIGINAL_SEQUENCE).body
         self.assertEqual(hashlib.sha256(ast.dump(run,include_attributes=False).encode()).hexdigest(),'b663b22628d1868c5348434823505d2ce23956cbe228a08d3c6e4043f39e83d8')
+
+    def test_owned_download_addition_and_nonsemantic_formatting_are_allowed(self):
+        source=SHARED.read_text()
+        self.assertTrue(verify_shared_ui_source(source)['authorizedDownloadLabelAddition'])
+        formatted='# Formatting does not change the protected workload.\n'+ast.unparse(ast.parse(source))+'\n'
+        self.assertTrue(verify_shared_ui_source(formatted)['authorizedDownloadLabelAddition'])
+
+    def test_changed_home_dependencies_capture_or_binding_are_rejected(self):
+        source=SHARED.read_text()
+        changes=[
+            ("def focus(activity):\n        deadline=time.monotonic()+20", "def focus(activity):\n        deadline=time.monotonic()+21"),
+            ("timeout=90).decode(errors='replace')", "timeout=91).decode(errors='replace')"),
+            ("return ui_capture.read(deadline=deadline)", "return ui_capture.read(deadline=None)"),
+            ("deadline=time.monotonic()+35;readiness_scrolls=0", "deadline=time.monotonic()+36;readiness_scrolls=0"),
+            ("adb('shell','am','force-stop',package);adb('logcat','-c')", "adb('shell','am','force-stop',package);adb('shell','input','keyevent','KEYCODE_HOME');adb('logcat','-c')"),
+            ("timeout=90),source,reload_loopback.TRACE,out,focus)", "timeout=91),source,reload_loopback.TRACE,out,focus)"),
+            ("source,reload_loopback.TRACE,out,focus)", "source,reload_loopback.TRACE,out,lambda activity: None)"),
+            ("p.add_argument('--serial',required=True)", "p.add_argument('--serial',required=False)"),
+            ("['git','rev-parse','HEAD']", "['git','rev-parse','HEAD~1']"),
+            ("sample['latency']==sample['expectedLatency']=='42 ms（02:00）'", "True"),
+        ]
+        for before,after in changes:
+            with self.subTest(change=before):
+                self.assertIn(before,source)
+                with self.assertRaises(AssertionError):verify_shared_ui_source(source.replace(before,after,1))
+
+    def test_encoding_cookie_uses_real_utf8_file_semantics(self):
+        source=SHARED.read_text()
+        self.assertTrue(verify_shared_ui_source('# coding: utf-8\n'+source)['authorizedDownloadLabelAddition'])
+        altered='# coding: latin-1\n'+source
+        self.assertNotEqual(ast.dump(ast.parse(altered),include_attributes=False),
+            ast.dump(ast.parse(altered.encode('utf-8')),include_attributes=False))
+        with self.assertRaises(AssertionError):verify_shared_ui_source(altered)
+
+    def test_only_complete_strict_download_observation_is_allowed(self):
+        source=SHARED.read_text()
+        changes=[
+            ("label_nonce=uuid.uuid4().hex if scene=='downloads' else None", "label_nonce=uuid.uuid4().hex"),
+            ("if scene=='downloads':\n        # Small native payload", "if scene in ('downloads','chat'):\n        # Small native payload"),
+            ("if label_nonce:launch.extend(['--es','visualNonce',label_nonce])", "if label_nonce:launch.extend(['--es','visualNonce','unowned'])"),
+            ("if value.get('nonce')==label_nonce:payloads.append(raw)", "payloads.append(raw)"),
+            ("assert len(payloads)==1,", "assert len(payloads)>=0,"),
+            (".decode('utf-8')", ".decode('utf-8',errors='replace')"),
+            ("        verify_download_location(record,source)", "        pass"),
+            ("verify_captures(records,source)", "verify_captures(records)"),
+            (", verify_download_location\n", "\n"),
+        ]
+        for before,after in changes:
+            with self.subTest(change=before):
+                self.assertIn(before,source)
+                with self.assertRaises(AssertionError):verify_shared_ui_source(source.replace(before,after,1))
 
 
 if __name__=='__main__':unittest.main()
