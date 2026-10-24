@@ -44,6 +44,14 @@ def main():
                              if path.is_file() and path.suffix in ('.py','.java','.md','.in','.json')}
     input_paths.update(transport_client_inputs)
     input_paths.update(ROOT/'tools/gecko'/name for name in ('network_client_binding_contract.py','sdk_identity_contract.py'))
+    resume_fixture_inputs={ROOT/'tests/profile_download_resume_fixture_test.py',ROOT/'tests/download-resume-fixture-host/CookieFixtureHost.java.in',
+        ROOT/'tests/download-resume-fixture-host/fixture-preservation.json',ROOT/'tests/gecko/DownloadResumeIntegrationActivity.java',
+        ROOT/'app/src/main/java/local/pocketchat/GeckoWebView.java',ROOT/'app/src/main/java/local/pocketchat/FileDownloads.java',
+        ROOT/'app/src/main/java/local/pocketchat/J.java',ROOT/'app/src/main/java/local/pocketchat/DownloadRange.java',ROOT/'app/src/main/java/local/pocketchat/SealedFileIo.java',
+        ROOT/'tests/download-resume-host/run.py',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java',ROOT/'tests/download-recovery-host/android/os/Handler.java',
+        ROOT/'tests/download-recovery-host/android/os/Looper.java',ROOT/'tests/download-recovery-host/android/net/Uri.java',
+        ROOT/'tests/download-resume-host/stubs/android/util/Base64.java',ROOT/'tests/download-resume-host/stubs/android/os/SystemClock.java'}
+    input_paths.update(resume_fixture_inputs)
     input_paths.add(ROOT/'tools/gecko/download_resume_contract.py')
     input_paths.add(ROOT/'tools/gecko/check_interaction_transfer_evidence.py')
     input_paths.add(ROOT/'tools/publish-gecko-release.py')
@@ -298,6 +306,27 @@ def main():
                   ROOT/'tools/gecko/local_draft_contract.py',ROOT/'tests/gecko/GeckoLocalDraftIntegration.java'))
     files.update((ROOT/'tests/gecko/GeckoLocalDraftBlankBarrier.java',ROOT/'tests/gecko_local_draft_blank_barrier_test.py',ROOT/'tests/page-recovery-host/run.py'))
     files.update((ROOT/'tests/local-draft-blank-host').rglob('*.java'))
+    resume_fixture_receipt=output/'download-resume-fixture-host-results.json'
+    resume_fixture_run=subprocess.run([sys.executable,str(ROOT/'tests/profile_download_resume_fixture_test.py')],cwd=ROOT,text=True,capture_output=True,
+        env=dict(os.environ,PROFILE_JSON_JAR=str(json_jar),PROFILE_JAVA=java,F06_COOKIE_HOST_REPORT=str(resume_fixture_receipt)))
+    resume_fixture_count=re.search(r'^Ran (\d+) tests? in ',resume_fixture_run.stderr,re.M)
+    if resume_fixture_run.returncode or resume_fixture_count is None or int(resume_fixture_count.group(1))!=4:
+        raise ValueError('Incomplete F06 owned Cookie adapter controls: '+resume_fixture_run.stdout+resume_fixture_run.stderr)
+    resume_fixture=json.loads(resume_fixture_receipt.read_text())
+    raw_resume_fixture=json.loads(resume_fixture['runtimeStdout'])
+    resume_raw_keys=('status','checkCount','checks','actualAndroidExecution','actualGeckoExecution','actualLoopbackHttp')
+    if (json.dumps(raw_resume_fixture,sort_keys=True,allow_nan=False)!=json.dumps({key:resume_fixture[key] for key in resume_raw_keys},sort_keys=True,allow_nan=False)
+            or resume_fixture.get('status')!='passed' or type(resume_fixture.get('checkCount')) is not int or resume_fixture['checkCount']!=57
+            or len(resume_fixture.get('checks',[]))!=57 or len({row.get('name') for row in resume_fixture['checks']})!=57
+            or not all(row.get('pass') is True for row in resume_fixture['checks'])
+            or resume_fixture.get('actualAndroidExecution') is not False or resume_fixture.get('actualGeckoExecution') is not False
+            or resume_fixture.get('actualLoopbackHttp') is not True or resume_fixture.get('inputsUnchanged') is not True
+            or resume_fixture.get('sourceCommit')!=source_id or resume_fixture.get('jsonJarSha256')!=hashlib.sha256(json_jar.read_bytes()).hexdigest()
+            or resume_fixture.get('sourceFiles')!={str(path.relative_to(ROOT)):before_hashes[path] for path in resume_fixture_inputs}):
+        raise ValueError('Incomplete exact production F06 Cookie/download host evidence')
+    results.append(dict(test='download-resume-fixture-host',passed=4,actualAndroidExecution=False,
+        output=resume_fixture_run.stdout+resume_fixture_run.stderr,evidence=resume_fixture))
+    files.update(resume_fixture_inputs)
     draft_admission_receipt=output/'local-draft-admission-host-results.json'
     draft_admission_run=subprocess.run([sys.executable,str(ROOT/'tests/local-draft-admission-host/run.py'),
         '--java-home',str(Path(java).resolve().parent.parent),'--json-jar',str(json_jar),

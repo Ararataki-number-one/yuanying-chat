@@ -33,6 +33,7 @@ def metadata():
                          taskIdBefore=task, taskIdAfter=task, state='saved', uri='content://media/external/downloads/1', sourcePartialExists=False))
     return dict(schema=1, status='passed', actualAndroidExecution=True, actualAdbTouchExecution=False,
                 actualDialogPerformClick=True, ownedCleanupCompleted=True, processSlot=7,
+                syntheticCookieReads=[dict(runNonce='a'*32,processSlot=7,taskId=row['taskIdBefore'],url=row['mappedFrom'],ticket=1,emptyCookie=True,realCookieBridge=False) for row in http],
                 filePrepareCallbacks=2, runNonce='a'*32,
                 buildIdentity=dict(schema=1, package='local.pocketchat.test', dirtySource=False,
                                    sdkCoordinate=transfer.SDK_COORDINATE, apkBytes=100,
@@ -68,6 +69,20 @@ class DownloadResumeContractTest(unittest.TestCase):
         report=metadata();edit(report)
         with self.assertRaises(ValueError):
             contract.verify_download_resume(report)
+
+    def test_missing_or_extra_synthetic_cookie_callbacks_are_rejected(self):
+        self.reject(lambda r:r.pop('syntheticCookieReads'))
+        for rows in ([],[{}],[{}, {}, {}]):self.reject(lambda r:r.update(syntheticCookieReads=rows))
+
+    def test_synthetic_cookie_callback_owner_and_url_are_exact(self):
+        for key,value in (('runNonce','b'*32),('processSlot',1),('taskId','foreign'),('url','https://foreign.example/')):
+            self.reject(lambda r:r['syntheticCookieReads'][0].update({key:value}))
+        self.reject(lambda r:r['syntheticCookieReads'].reverse())
+
+    def test_synthetic_cookie_callback_scope_and_types_cannot_be_forged(self):
+        for key,values in (('emptyCookie',(False,1,'true')),('realCookieBridge',(True,0,'false')),('ticket',(0,-1,True,1.0,'1')),('processSlot',(True,7.0,'7'))):
+            for value in values:self.reject(lambda r:r['syntheticCookieReads'][0].update({key:value}))
+        self.reject(lambda r:r['syntheticCookieReads'][0].update(secret='unexpected'))
 
     def test_complete_synthetic_metadata(self):
         report=metadata()

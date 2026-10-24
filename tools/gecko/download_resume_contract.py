@@ -70,6 +70,13 @@ def verify_download_resume(report, identity=None, expected_source=None):
         for actual, label in zip(report['menus'], MENU_LABELS):
             require(actual['label'] == label and actual['performClick'] is True, 'Dialog callback differs from the controlled sequence')
         require(type(report['http']) is list and len(report['http']) == 2, 'Both HTTP response paths are required')
+        cookies=report['syntheticCookieReads']
+        require(type(cookies) is list and len(cookies)==2, 'Both owned synthetic empty-Cookie callbacks are required')
+        for cookie,http_case in zip(cookies,report['http']):
+            require(type(cookie) is dict and set(cookie)=={'runNonce','processSlot','taskId','url','ticket','emptyCookie','realCookieBridge'}, 'Unexpected synthetic Cookie evidence shape')
+            require(cookie['runNonce']==report['runNonce'] and cookie['taskId']==http_case['taskIdBefore'] and cookie['url']==http_case['mappedFrom'], 'Synthetic Cookie callback owner differs')
+            integer(cookie['processSlot'],7);integer(cookie['ticket'])
+            require(cookie['ticket']>0 and cookie['emptyCookie'] is True and cookie['realCookieBridge'] is False, 'Synthetic empty Cookie callback cannot claim real bridge evidence')
         task_ids = []
         for row, code in zip(report['http'], (206, 200)):
             integer(row['code'], code)

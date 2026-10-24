@@ -23,10 +23,10 @@ import org.mozilla.geckoview.WebResponse;
 /** Synthetic Android file lifecycle. Production transfer/publication/retirement methods are inherited. */
 public final class DownloadResumeIntegrationActivity extends MainActivity {
   static final String PAGE=ORIGIN+"c/download-resume-fixture",REMOTE="https://download-fixture.example/";
-  final JSONArray checks=new JSONArray(),http=new JSONArray(),menus=new JSONArray();
+  final JSONArray checks=new JSONArray(),http=new JSONArray(),menus=new JSONArray(),syntheticCookieReads=new JSONArray();
   final JSONObject result=J.obj("schema",1,"status","running","actualAndroidExecution",true,
       "actualAdbTouchExecution",false,"actualDialogPerformClick",true,"processSlot",7,
-      "scope","Synthetic profile-7 Android Activity, actual FileDownloads methods, private partials and MediaStore publication. Fixed synthetic HTTPS identity maps only to an in-process loopback HTTP server (no TLS/WAN claim). File-prepare is a controlled callback; no website download click is claimed. SDK WebResponse carries a synthetic barrier stream. Android Dialog buttons use performClick, not ADB touch.");
+      "scope","Synthetic profile-7 Android Activity, actual FileDownloads methods, private partials and MediaStore publication. Fixed synthetic HTTPS identity maps only to an in-process loopback HTTP server (no TLS/WAN claim). File-prepare and empty-cookie reads are owned controlled callbacks; no real Cookie bridge is claimed; no website download click is claimed. SDK WebResponse carries a synthetic barrier stream. Android Dialog buttons use performClick, not ADB touch.");
   final List<FileDownloads> instances=new ArrayList<>();final List<File> ownedFiles=new ArrayList<>();
   final Set<String> ownIds=new HashSet<>();final List<JSONObject> published=new ArrayList<>();
   final List<BlockedBody> blockedBodies=new ArrayList<>();
@@ -34,7 +34,26 @@ public final class DownloadResumeIntegrationActivity extends MainActivity {
   IntegrationEventStore events;MappedDownloads current;String preparedSource="",preparedUrl="";int prepares;
   JSONObject originalEnvironment;String fixtureEnvironmentId;
   static final class FixtureView extends GeckoWebView {
-    FixtureView(Context context,ChatSession owner){super(context,owner);}
+    final DownloadResumeIntegrationActivity fixture;final ChatSession fixtureSession;final String nonce;
+    FixtureView(Context context,ChatSession owner,DownloadResumeIntegrationActivity fixture,String nonce){super(context,owner);this.fixture=fixture;fixtureSession=owner;this.nonce=nonce;}
+    @Override void readCookies(String target,android.webkit.ValueCallback<String> callback){
+      MappedDownloads d=fixture.current;IntegrationEventStore e=fixture.events;
+      boolean owned=Looper.myLooper()==Looper.getMainLooper()&&"local.pocketchat.test".equals(fixture.getPackageName())
+          &&Profiles.processSlot()==7&&Profiles.slot(fixture)==7&&!fixture.isFinishing()&&!fixture.isDestroyed()
+          &&nonce!=null&&nonce.matches("[0-9a-f]{32}")&&nonce.equals(fixture.getIntent().getStringExtra("eventNonce"))
+          &&e!=null&&e.slot==7&&e.command==1&&"downloadResume".equals(e.action)&&nonce.equals(e.nonce)
+          &&fixture.session==fixtureSession&&fixture.remote==this&&fixtureSession.web==this&&!destroyed
+          &&fixtureSession.networkReady&&!fixtureSession.offline&&!fixtureSession.navigating
+          &&d!=null&&d.a==fixture&&d.endpoint!=null&&!d.endpoint.socket.isClosed()&&d.valid(d.ticket)&&d.task!=null
+          &&fixture.ownIds.contains(d.task.optString("id"))&&fixture.preparedSource.equals(d.sourceId)
+          &&!fixture.preparedSource.isEmpty()&&PAGE.equals(d.sourceUrl)&&PAGE.equals(fixture.conversation)
+          &&target!=null&&target.matches("https://download-fixture[.]example/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[.]bin")
+          &&target.equals(d.expectedUrl)&&target.equals(fixture.preparedUrl)&&target.equals(d.retryUrl);
+      if(!owned){callback.onReceiveValue(null);return;}
+      fixture.syntheticCookieReads.put(J.obj("runNonce",nonce,"processSlot",7,"taskId",d.task.optString("id"),
+          "url",target,"ticket",d.ticket,"emptyCookie",true,"realCookieBridge",false));
+      callback.onReceiveValue("");
+    }
     @Override public String getUrl(){return PAGE;}
     @Override protected boolean allowedUrl(String url){return false;}
   }
@@ -46,7 +65,7 @@ public final class DownloadResumeIntegrationActivity extends MainActivity {
       SharedPreferences p=getSharedPreferences("chat",0);
       for(String key:new String[]{"networkMode","proxy","requireExternalVpn","networkConfigured","environmentInitialized"})oldPrefs.put(key,p.getAll().get(key));
       p.edit().putString("networkMode","external").putString("proxy","").putBoolean("requireExternalVpn",false).putBoolean("networkConfigured",true).putBoolean("environmentInitialized",true).commit();
-      ChatSession.browserFactory=FixtureView::new;ChatSession.get(this).manualAttention=true;
+      ChatSession.browserFactory=(context,owner)->new FixtureView(context,owner,this,getIntent().getStringExtra("eventNonce"));ChatSession.get(this).manualAttention=true;
       getIntent().putExtra("openWindowAction","native-smoke");super.onCreate(state);
       handler.removeCallbacks(ticker);session.remove(sessionObserver);session.handler.removeCallbacks(session.tick);
       session.networkReady=true;session.offline=false;session.navigating=false;session.guard.setBlocked(false);conversation=PAGE;session.conversation=PAGE;
@@ -102,7 +121,7 @@ public final class DownloadResumeIntegrationActivity extends MainActivity {
     }catch(Throwable error){try{result.put("status","failed").put("error",error.toString());}catch(Exception ignored){}}
     finally{
       try{cleanup();result.put("ownedCleanupCompleted",true);}catch(Throwable error){try{result.put("status","failed").put("cleanupError",error.toString());}catch(Exception ignored){}}
-      try{result.put("checks",checks).put("checkCount",checks.length()).put("http",http).put("menus",menus).put("filePrepareCallbacks",prepares);events.emit("downloadResume",result);}catch(Exception error){if(events!=null)events.failure(error);}
+      try{result.put("checks",checks).put("checkCount",checks.length()).put("http",http).put("menus",menus).put("filePrepareCallbacks",prepares).put("syntheticCookieReads",syntheticCookieReads);events.emit("downloadResume",result);}catch(Exception error){if(events!=null)events.failure(error);}
       handler.post(this::finish);
     }
   }
@@ -113,7 +132,8 @@ public final class DownloadResumeIntegrationActivity extends MainActivity {
       JSONObject row=row(d,"http-range",file,false,source);String id=row.optString("id");
       ui(()->{d.endpoint=endpoint;d.expectedUrl=url;DownloadTasks.put(row,"validator","\"f06-v1\"","resource",DownloadRange.resource(url));d.tasks.save();if(!d.loadTask(row))throw new IllegalStateException("Range row");current=d;preparedSource=source;preparedUrl=url;d.taskActions(row);return null;});
       check("HTTP "+code+" paused task renders the real continue-download action","继续下载".contentEquals(visibleButton("继续下载").getText()));
-      click("继续下载");endpoint.done.get(10,TimeUnit.SECONDS);drain(d);
+      try{click("继续下载");endpoint.done.get(10,TimeUnit.SECONDS);drain(d);}
+      catch(Exception failure){observeRangeFailure(endpoint,row);throw failure;}
       JSONObject saved=ui(()->new JSONObject(row.toString()).put("slot",7));Uri uri=Uri.parse(saved.optString("uri"));if(!uri.toString().isEmpty())published.add(saved);
       byte[] actual=read(uri);
       JSONObject observation=J.obj("code",code,"mappedFrom",url,"mappedTo",endpoint.address(),"request",endpoint.request,"method",endpoint.method,
@@ -126,6 +146,17 @@ public final class DownloadResumeIntegrationActivity extends MainActivity {
       check("HTTP "+code+" retired-partial cleanup cannot delete the published destination",Arrays.equals(expected,preserved)&&DownloadLibrary.get(this).indexed(uri));
       ui(()->{d.destroy();return null;});
     }
+  }
+  void observeRangeFailure(Endpoint endpoint,JSONObject row){
+    try{
+      JSONObject observed=endpoint.failureSnapshot();observed.put("diagnosticOnly",true).put("acceptance",false)
+          .put("runNonce",events.nonce).put("processSlot",7).put("command",1).put("buildIdentity",events.buildIdentity)
+          .put("task",ui(()->new JSONObject(row.toString()))).put("filePrepareCallbacks",prepares)
+          .put("syntheticCookieReads",new JSONArray(syntheticCookieReads.toString()));
+      byte[] bytes=observed.toString().getBytes(StandardCharsets.UTF_8);
+      result.put("rangeFailureObservation",bytes.length<=8192?observed:J.obj("diagnosticOnly",true,"acceptance",false,
+          "omitted",true,"bytes",bytes.length,"sha256",sha(bytes),"limit",8192));
+    }catch(Throwable observationFailure){try{result.put("rangeFailureObservationError",observationFailure.getClass().getName());}catch(Throwable ignored){}}
   }
   void retirement()throws Exception{
     MappedDownloads d=fresh();File selected=partial(new byte[]{10,11,12}),other=partial(new byte[]{21,22});JSONObject row=row(d,"gecko-response",selected,false,"");String oldId=row.optString("id");
@@ -219,15 +250,24 @@ public final class DownloadResumeIntegrationActivity extends MainActivity {
   }
   static final class Endpoint implements AutoCloseable {
     final ServerSocket socket;final CompletableFuture<Void> done=new CompletableFuture<>();final int code;final byte[] bytes;
-    volatile String request="",method="",range="",validator="";
+    volatile String request="",method="",range="",validator="",stage="created";volatile Throwable failure;
+    final long createdAt=SystemClock.elapsedRealtime();volatile long acceptStartedAt,acceptedAt,requestReadAt,headersReadAt,completedAt;
     Endpoint(int code,byte[] bytes)throws Exception{this.code=code;this.bytes=bytes;socket=new ServerSocket(0,1,InetAddress.getByName("127.0.0.1"));socket.setSoTimeout(10000);new Thread(this::serve,"f06-owned-http").start();}
     String address(){return "http://127.0.0.1:"+socket.getLocalPort()+"/owned.bin";}
-    void serve(){try(Socket client=socket.accept()){
-      client.setSoTimeout(10000);BufferedReader reader=new BufferedReader(new InputStreamReader(client.getInputStream(),StandardCharsets.ISO_8859_1));request=reader.readLine();if(request==null)throw new IOException("Missing HTTP request");method=request.split(" ")[0];
-      for(String line;(line=reader.readLine())!=null&&!line.isEmpty();){int colon=line.indexOf(':');if(colon<0)throw new IOException("Invalid header");String name=line.substring(0,colon),value=line.substring(colon+1).trim();if("Range".equalsIgnoreCase(name))range=value;if("If-Range".equalsIgnoreCase(name))validator=value;}
-      String headers="HTTP/1.1 "+code+(code==206?" Partial Content":" OK")+"\r\nContent-Type: application/octet-stream\r\nContent-Length: "+bytes.length+"\r\nETag: \"f06-v1\"\r\nConnection: close\r\n"+(code==206?"Content-Range: bytes 4-8/9\r\n":"")+"\r\n";
-      OutputStream out=client.getOutputStream();out.write(headers.getBytes(StandardCharsets.ISO_8859_1));out.write(bytes);out.flush();done.complete(null);
-    }catch(Throwable failure){done.completeExceptionally(failure);}}
+    void serve(){stage="accept";acceptStartedAt=SystemClock.elapsedRealtime();try(Socket client=socket.accept()){
+      acceptedAt=SystemClock.elapsedRealtime();stage="request-line";
+      client.setSoTimeout(10000);BufferedReader reader=new BufferedReader(new InputStreamReader(client.getInputStream(),StandardCharsets.ISO_8859_1));request=reader.readLine();requestReadAt=SystemClock.elapsedRealtime();if(request==null)throw new IOException("Missing HTTP request");method=request.split(" ")[0];
+      stage="headers";for(String line;(line=reader.readLine())!=null&&!line.isEmpty();){int colon=line.indexOf(':');if(colon<0)throw new IOException("Invalid header");String name=line.substring(0,colon),value=line.substring(colon+1).trim();if("Range".equalsIgnoreCase(name))range=value;if("If-Range".equalsIgnoreCase(name))validator=value;}
+      headersReadAt=SystemClock.elapsedRealtime();stage="response";String headers="HTTP/1.1 "+code+(code==206?" Partial Content":" OK")+"\r\nContent-Type: application/octet-stream\r\nContent-Length: "+bytes.length+"\r\nETag: \"f06-v1\"\r\nConnection: close\r\n"+(code==206?"Content-Range: bytes 4-8/9\r\n":"")+"\r\n";
+      OutputStream out=client.getOutputStream();out.write(headers.getBytes(StandardCharsets.ISO_8859_1));out.write(bytes);out.flush();completedAt=SystemClock.elapsedRealtime();stage="completed";done.complete(null);
+    }catch(Throwable error){failure=error;done.completeExceptionally(error);}}
+    JSONObject failureSnapshot(){
+      Throwable error=failure;JSONArray stack=new JSONArray();if(error!=null){StackTraceElement[] frames=error.getStackTrace();for(int i=0;i<Math.min(frames.length,24);i++)stack.put(frames[i].toString());}
+      return J.obj("stage",stage,"createdAt",createdAt,"acceptStartedAt",acceptStartedAt,"acceptedAt",acceptedAt,
+          "requestReadAt",requestReadAt,"headersReadAt",headersReadAt,"completedAt",completedAt,
+          "request",request==null?JSONObject.NULL:request,"method",method,"range",range,"ifRange",validator,
+          "error",error==null?JSONObject.NULL:error.toString(),"stack",stack,"stackLimit",24);
+    }
     @Override public void close()throws IOException{socket.close();}
   }
 }
