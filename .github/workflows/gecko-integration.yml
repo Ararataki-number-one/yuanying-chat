@@ -40,6 +40,7 @@ jobs:
         python3 tests/gecko_annotation_download_test.py
         python3 tests/gecko_ci_publish_test.py
         python3 tests/gecko_source_route_logcat_test.py
+        python3 -m unittest discover -s tests -p 'gecko_experience*_test.py'
         python3 tools/build-mihomo.py --verify
     - name: Prepare locked toolchain
       shell: bash
