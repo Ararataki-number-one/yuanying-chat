@@ -66,7 +66,10 @@ class FixtureBase {
  /* BASE */
 }
 class BeforeFixture extends FixtureBase{/* BEFORE */}
-class Fixture extends FixtureBase{/* FIXTURE */}
+class Fixture extends FixtureBase{
+  // These Android observer/cleanup hooks are outside this original 73-case host scope.
+  void observeFailure(){}void closeBlank(){}
+  /* FIXTURE */}
 class EventContext extends Context{long run=7,lastSerial;int events;String lastKind;JSONObject lastEvent;void event(long serial,String kind,JSONObject value){events++;lastSerial=serial;lastKind=kind;lastEvent=value;}}
 class Worker{boolean stopped;void shutdown(){stopped=true;}}
 class ChatSession {final Context context;final Web web=new Web();final PageMemory pageMemory;String appliedIdentity="host-environment-fixed-route";ChatSession(Context c){context=c;pageMemory=new PageMemory(this);}}

@@ -23,6 +23,7 @@ final class GeckoLocalDraftIntegration {
     "fixtureOwnedStore",true,"explicitSdkRestore",true,"automaticStartupSelectionAcceptance",false,
     "physicalPhoneAcceptance",false,"realChatGptPageMemoryCapture",false,"pid",android.os.Process.myPid());
   final JSONObject partial=new JSONObject();
+  GeckoLocalDraftBlankBarrier blankBarrier;
   boolean finished;String phase,target;long stableAt,readRevision;int stableSamples;double stableDocument=-1;EnvironmentSpec.Identity environment;
   GeckoLocalDraftIntegration(GeckoIntegrationTestActivity activity,long command){
     a=activity;s=a.session;serial=command;deadline=SystemClock.elapsedRealtime()+40000;
@@ -31,7 +32,7 @@ final class GeckoLocalDraftIntegration {
   static void run(GeckoIntegrationTestActivity a,long serial){new GeckoLocalDraftIntegration(a,serial).start();}
   boolean current(){return !finished&&serial==a.run;}
   void post(Runnable task){s.handler.post(()->{if(current())try{task.run();}catch(Throwable error){fail(error);}});}
-  void later(Runnable task){if(SystemClock.elapsedRealtime()>deadline){fail(new IllegalStateException("F04 readiness deadline exceeded"));return;}s.handler.postDelayed(()->{if(current())try{task.run();}catch(Throwable error){fail(error);}},100);}
+  void later(Runnable task){if(SystemClock.elapsedRealtime()>deadline){fail(new IllegalStateException("F04 readiness deadline exceeded"));return;}s.handler.postDelayed(()->{if(!current())closeBlank();if(current())try{task.run();}catch(Throwable error){fail(error);}},100);}
   void start(){try{
     phase=a.getIntent().getStringExtra("draftPhase");
     if(!Arrays.asList("seed","off","stale-on","fresh-on").contains(phase))throw new IllegalArgumentException("Unknown F04 phase");
@@ -186,12 +187,30 @@ final class GeckoLocalDraftIntegration {
       }
       GeckoSession.SessionState restored=GeckoSession.SessionState.fromString(filtered);
       if(restored==null||restored.size()==0||!GeckoWebView.stateUrl(restored).equals(prefs.getString(name+"Url","")))throw new IllegalStateException("Actual SDK filtered state not restorable");
-      store.io.shutdown();post(()->{observeRestoreRead(filtered);observeStage("restore-load-blank");s.web.loadUrl("about:blank");waitBlank(restored,fresh);});
+      store.io.shutdown();post(()->{observeRestoreRead(filtered);startBlank(restored,fresh);});
     }catch(Throwable error){store.io.shutdown();post(()->fail(error));}});
   }catch(Throwable error){post(()->fail(error));}});}
+  void startBlank(GeckoSession.SessionState state,boolean fresh){
+    GeckoSession owned=s.web.current;long connection=s.connectionEpoch;
+    String nonce=a.getIntent().getStringExtra("eventNonce");
+    blankBarrier=new GeckoLocalDraftBlankBarrier(owned,nonce,serial,phase,deadline,
+      new GeckoLocalDraftBlankBarrier.Owner(){
+        public boolean current(){return GeckoLocalDraftIntegration.this.current()&&!s.deleted
+          &&s.web.current==owned&&s.web.primary==owned&&s.connectionEpoch==connection&&s.guard.allowed()
+          &&nonce.equals(a.getIntent().getStringExtra("eventNonce"));}
+        public long epoch(){return s.navigationEpoch;}
+        public boolean committed(String uri){return uri.equals(s.web.getUrl())&&uri.equals(s.web.locations.get(owned))&&!s.web.pendingLoads.contains(owned);}
+      },SystemClock::elapsedRealtime,this::fail);
+    observeStage("restore-load-blank");
+    // A unique, script-free local page is explicit fixture preparation. It
+    // cannot be satisfied by the startup about:blank cached URL or callbacks.
+    s.web.loadUrl(blankBarrier.uri);waitBlank(state,fresh);
+  }
+  void closeBlank(){if(blankBarrier!=null)blankBarrier.close();}
   void waitBlank(GeckoSession.SessionState state,boolean fresh){
     observeStage("restore-wait-blank");
-    if(!"about:blank".equals(s.web.getUrl())){later(()->waitBlank(state,fresh));return;}
+    if(blankBarrier==null||!blankBarrier.ready()){if(current())later(()->waitBlank(state,fresh));return;}
+    JSONObject proof=blankBarrier.proof();NetworkCatalog.put(result,"blankBarrier",proof);retainPartial("restoreBarrier",proof.toString());closeBlank();
     String name=fresh?"fresh":"original";
     observeStage("restore-dispatch");
     s.web.restoreCheckpoint(s.web.current,state,prefs.getString(name+"Url",""),readRevision);
@@ -246,7 +265,7 @@ final class GeckoLocalDraftIntegration {
       @Override public SQLiteDatabase openOrCreateDatabase(String name,int mode,SQLiteDatabase.CursorFactory factory,DatabaseErrorHandler handler){return SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name).getPath(),factory,handler);}
     };
   }
-  void finish(){if(!current())return;try{EnvironmentSpec.Identity after=ProfileCatalog.get(a).identity(a.slot);if(!after.equals(environment))throw new IllegalStateException("F04 environment changed during fixture");result.put("environmentIdentityAfter",after.json());result.put("status","passed").put("actualGeckoSessionState",true);finished=true;worker.shutdown();a.event(serial,ACTION,result);}catch(Throwable error){finished=false;fail(error);}}
+  void finish(){if(!current())return;try{EnvironmentSpec.Identity after=ProfileCatalog.get(a).identity(a.slot);if(!after.equals(environment))throw new IllegalStateException("F04 environment changed during fixture");result.put("environmentIdentityAfter",after.json());result.put("status","passed").put("actualGeckoSessionState",true);closeBlank();finished=true;worker.shutdown();a.event(serial,ACTION,result);}catch(Throwable error){finished=false;fail(error);}}
   // Bounded latest observations are emitted only with the existing failure.
   // They never establish readiness or change a page, cookie, policy or deadline.
   void observeStage(String stage){try{
@@ -286,13 +305,22 @@ final class GeckoLocalDraftIntegration {
       "token",dom.optString("token").equals(expected.optString("token")),
       "sends",dom.optInt("sends",-1)==0,"painted",painted,"notFailed",!failed);
   }
+  void observeFailure(){try{
+    if(blankBarrier!=null)retainPartial("restoreBarrier",blankBarrier.proof().toString());
+    GeckoSession current=s.web.current;GeckoSession.SessionState cached=s.web.states.get(current);
+    retainPartial("sdkCurrentOwner",J.obj("command",serial,"currentCommand",a.run,
+      "elapsedRealtime",SystemClock.elapsedRealtime(),"navigationEpoch",s.navigationEpoch,
+      "session",current==null?0:System.identityHashCode(current),"primaryIsCurrent",current==s.web.primary,
+      "cachedPresent",cached!=null,"cacheOnly",true,"diagnosticOnly",true,"acceptance",false).toString());
+    if(cached!=null)retainPartial("sdkCurrent",new GeckoSession.SessionState(cached).toString());
+  }catch(Exception ignored){/* Preserve the original failure if cached serialization is unavailable. */}}
   void retainPartial(String key,String raw){try{
-    if(!Arrays.asList("sdkSource","domSource","memoryInput","memoryStored","probeRaw","stage","restoreRead","sdkRestore","restoreBlank","restoreDispatch","restoreDom","restoreReadiness").contains(key))throw new IllegalArgumentException("Unknown F04 observation");
+    if(!Arrays.asList("sdkSource","domSource","memoryInput","memoryStored","probeRaw","stage","restoreRead","sdkRestore","restoreBlank","restoreDispatch","restoreDom","restoreReadiness","restoreBarrier","sdkCurrent","sdkCurrentOwner").contains(key))throw new IllegalArgumentException("Unknown F04 observation");
     byte[] data=raw.getBytes(StandardCharsets.UTF_8);JSONObject observed=J.obj("utf8Bytes",data.length,"sha256",sha(data));
     if(data.length<=8192)observed.put("rawUtf8",raw);else observed.put("rawOmitted",true);
     partial.put(key,observed);
   }catch(Exception ignored){/* Missing diagnostics never establish acceptance or replace the original error. */}}
-  void fail(Throwable error){if(!current())return;finished=true;worker.shutdown();a.event(serial,"error",J.obj("error","F04 actual SDK regression: "+error,"phase",phase,"diagnosticOnly",true,"acceptance",false,"partial",partial));}
+  void fail(Throwable error){if(!current())return;observeFailure();closeBlank();finished=true;worker.shutdown();a.event(serial,"error",J.obj("error","F04 actual SDK regression: "+error,"phase",phase,"diagnosticOnly",true,"acceptance",false,"partial",partial));}
   static byte[] bytes(File file)throws IOException{try(InputStream in=new FileInputStream(file);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(out.size()+n>BrowserSessionStore.LIMIT+65)throw new IOException("F04 file exceeds existing limit");out.write(b,0,n);}return out.toByteArray();}}
   static String sha(byte[] bytes)throws Exception{StringBuilder value=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))value.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return value.toString();}
   static boolean sameCookies(String left,String right){String[] a=left.split(";"),b=right.split(";");for(int i=0;i<a.length;i++)a[i]=a[i].trim();for(int i=0;i<b.length;i++)b[i]=b[i].trim();Arrays.sort(a);Arrays.sort(b);return Arrays.equals(a,b);}

@@ -84,6 +84,35 @@ def verify_memory_adapter(phase, nonce, states):
         require(canonical(stored) == canonical(expected), 'actual memory policy snapshot')
 
 
+def verify_blank_barrier(phase, *, nonce=None, command=None):
+    proof = phase['blankBarrier']
+    fields = {'schema','kind','nonce','command','phase','uri','session',
+              'requestedAtElapsedRealtime','startedAtElapsedRealtime','committedAtElapsedRealtime',
+              'stoppedAtElapsedRealtime','deadlineElapsedRealtime','requestEpoch','commitEpoch',
+              'completed','error','fixturePreparation','realChatGPT'}
+    require(type(proof) is dict and set(proof) == fields, 'blank barrier complete receipt')
+    require(type(proof['schema']) is int and proof['schema'] == 1
+            and proof['kind'] == 'nonce-owned-local-blank-navigation'
+            and proof['phase'] == phase['phase'] and phase['phase'] in ('off','stale-on','fresh-on'),
+            'blank barrier phase')
+    require(isinstance(proof['nonce'], str) and re.fullmatch('[0-9a-f]{32}', proof['nonce']) is not None
+            and integer(proof['command']) and proof['command'] > 0
+            and integer(proof['session']) and proof['session'] > 0, 'blank barrier owner')
+    require(proof['uri'] == 'http://127.0.0.1:8765/f04-restore-blank?nonce=' + proof['nonce']
+            + '&command=' + str(proof['command']) + '&phase=' + phase['phase'], 'blank barrier exact URL')
+    require(proof['completed'] is True and proof['error'] == ''
+            and proof['fixturePreparation'] is True and proof['realChatGPT'] is False, 'blank barrier scope/success')
+    times = [proof[key] for key in ('requestedAtElapsedRealtime','startedAtElapsedRealtime',
+             'committedAtElapsedRealtime','stoppedAtElapsedRealtime','deadlineElapsedRealtime')]
+    require(all(integer(value) for value in times) and times == sorted(times)
+            and 0 < times[-1] - times[0] <= 40000, 'blank barrier actual ordered callbacks/deadline')
+    require(integer(proof['requestEpoch']) and integer(proof['commitEpoch'])
+            and proof['commitEpoch'] in (proof['requestEpoch'], proof['requestEpoch'] + 1), 'blank barrier epoch')
+    if nonce is not None:
+        require(proof['nonce'] == nonce and proof['command'] == command, 'blank barrier invocation binding')
+    return proof
+
+
 def verify_local_draft_policy(report, *, device=None, source=None):
     require(type(report['schema']) is int and report['schema'] == 1, 'schema')
     require(report['forceStopBetweenPhases'] is True
@@ -147,6 +176,7 @@ def verify_local_draft_policy(report, *, device=None, source=None):
             'production re-enable revision')
     for phase, capture, forms in ((off, seed['capture'], False),
                                    (stale, seed['capture'], False), (fresh, stale['capture'], True)):
+        verify_blank_barrier(phase)
         read = phase['read']; restored = phase['restored']
         require(read['checkpointSha256'] == capture['checkpointSha256']
                 and read['sourceSdkFormdataContainsUniqueDraft'] is True, 'cold source bytes or precondition')
@@ -192,6 +222,8 @@ def verify_local_draft_policy(report, *, device=None, source=None):
             accepted = []
             require(invocation['events'], 'raw invocation is empty')
             command = invocation['events'][0]['receipt']['command']
+            if expected['phase'] != 'seed':
+                verify_blank_barrier(expected, nonce=invocation['runNonce'], command=command)
             for index, record in enumerate(invocation['events'], 1):
                 require(record['receipt']['sequence'] == index, 'raw sequence gap')
                 event = decode_event(record['receipt'], record['rawUtf8'].encode('utf-8'), identity=identity,

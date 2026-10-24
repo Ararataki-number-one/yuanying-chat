@@ -225,6 +225,13 @@ class Fixture(fixture.Fixture):
             body=b'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
             <title>Controlled responsive reading fixture</title><style>body{margin:0;font:18px sans-serif}main{padding:16px;box-sizing:border-box}#sidebar{width:260px;float:left}textarea{width:100%;height:72px;box-sizing:border-box;font:inherit}pre{overflow:auto}@media(max-width:760px){#sidebar{display:none}}</style>
             <aside id="sidebar">Controlled sidebar</aside><main id="reading-main"><h1>Controlled readable content</h1><p id="reading-paragraph">This fixture checks native viewport settings; it does not replace ChatGPT. Both left and right edges must remain readable at fit.</p><pre id="reading-code">Long code remains horizontally scrollable.........................................................................................</pre><textarea id="composer">Unsent draft stays here</textarea><div id="reading-long"></div></main><output id="reading-send-count" hidden>0</output><script>document.cookie='readingBounds=controlled-fixture; Path=/';if(new URL(location.href).searchParams.has('bounds'))for(let i=0;i<50;i++){const p=document.createElement('p');p.textContent='Controlled long reply paragraph '+i+' remains readable across fit, rotation and Android keyboard changes.';document.getElementById('reading-long').appendChild(p);}</script>'''
+        elif address.path=='/f04-restore-blank':
+            if (set(query)!={'nonce','command','phase'}
+                    or len(query['nonce'])!=1 or re.fullmatch('[0-9a-f]{32}',query['nonce'][0]) is None
+                    or len(query['command'])!=1 or re.fullmatch('[1-9][0-9]{0,18}',query['command'][0]) is None
+                    or query['phase'] not in (['off'],['stale-on'],['fresh-on'])):
+                self.send_error(400,'Invalid F04 blank owner');return
+            body=b'<!doctype html><meta charset="utf-8"><title>Owned F04 restore preparation</title>'
         elif address.path=='/browser-session':
             token='none'
             for cookie in self.headers.get('Cookie','').split(';'):

@@ -269,14 +269,30 @@ def main():
     results.append(dict(test='gecko-upload-files-host',report=str(upload_receipt.relative_to(ROOT)),passed=upload_records[0]['checks'],actualAndroidExecution=False))
     files.update((upload_test,source/'GeckoUploadFiles.java'))
     draft_contract_test=ROOT/'tests/gecko_local_draft_contract_test.py'
-    draft_contract_run=subprocess.run([sys.executable,str(draft_contract_test)],cwd=ROOT,text=True,capture_output=True)
+    draft_contract_run=subprocess.run([sys.executable,str(draft_contract_test)],cwd=ROOT,text=True,capture_output=True,
+        env=dict(os.environ,PROFILE_JSON_JAR=str(json_jar),PROFILE_JAVA=java))
     draft_contract_count=re.search(r'^Ran (\d+) tests? in ',draft_contract_run.stderr,re.M)
-    if draft_contract_run.returncode or draft_contract_count is None or int(draft_contract_count.group(1))<49:
+    if draft_contract_run.returncode or draft_contract_count is None or int(draft_contract_count.group(1))<65:
         raise ValueError('Incomplete F04 counterfeit evidence controls: '+draft_contract_run.stdout+draft_contract_run.stderr)
+    blank_controls=json.loads(draft_contract_run.stdout)['blankBarrierControls']
+    blank_inputs={ROOT/'tests/gecko/GeckoLocalDraftBlankBarrier.java',source/'J.java',
+                  *list((ROOT/'tests/local-draft-blank-host').rglob('*.java'))}
+    if (blank_controls.get('status')!='passed' or blank_controls.get('checks')!=96
+            or len(blank_controls.get('results',[]))!=96
+            or len({row.get('name') for row in blank_controls['results']})!=96
+            or not all(row.get('pass') is True for row in blank_controls['results'])
+            or blank_controls.get('actualAndroidExecution') is not False
+            or blank_controls.get('actualGeckoExecution') is not False
+            or blank_controls.get('executionInputsUnchanged') is not True
+            or blank_controls.get('jsonJarSha256')!=hashlib.sha256(json_jar.read_bytes()).hexdigest()
+            or blank_controls.get('sourceFiles')!={str(path.relative_to(ROOT)):before_hashes[path] for path in blank_inputs}):
+        raise ValueError('Incomplete actual F04 blank-preparation helper controls')
     results.append(dict(test='local-draft-evidence-controls',passed=int(draft_contract_count.group(1)),actualAndroidExecution=False,
-        output=draft_contract_run.stdout+draft_contract_run.stderr))
+        output=draft_contract_run.stdout+draft_contract_run.stderr,blankBarrierControls=blank_controls))
     files.update((draft_contract_test,ROOT/'tests/profile_lifecycle_gate_test.py',ROOT/'tools/publish-gecko-release.py',
                   ROOT/'tools/gecko/local_draft_contract.py',ROOT/'tests/gecko/GeckoLocalDraftIntegration.java'))
+    files.update((ROOT/'tests/gecko/GeckoLocalDraftBlankBarrier.java',ROOT/'tests/gecko_local_draft_blank_barrier_test.py',ROOT/'tests/page-recovery-host/run.py'))
+    files.update((ROOT/'tests/local-draft-blank-host').rglob('*.java'))
     draft_admission_receipt=output/'local-draft-admission-host-results.json'
     draft_admission_run=subprocess.run([sys.executable,str(ROOT/'tests/local-draft-admission-host/run.py'),
         '--java-home',str(Path(java).resolve().parent.parent),'--json-jar',str(json_jar),

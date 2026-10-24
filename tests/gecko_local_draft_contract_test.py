@@ -12,6 +12,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
 from local_draft_contract import verify_local_draft_policy
+from gecko_local_draft_blank_barrier_test import BlankBarrierControls, undo_blank_preparation
 
 
 def counterfeit():
@@ -53,6 +54,12 @@ def counterfeit():
         if name=='seed':value.update(disabledPageMemoryRedactsActualDraft=True,
             liveDraftPreservedAfterDisable=True,disabledBeforeProcessDeath=True,currentRevision=1)
         else:
+            owned_nonce=str(index+1)*32
+            value['blankBarrier']=dict(schema=1,kind='nonce-owned-local-blank-navigation',nonce=owned_nonce,
+                command=index+1,phase=name,uri='http://127.0.0.1:8765/f04-restore-blank?nonce='+owned_nonce+'&command='+str(index+1)+'&phase='+name,
+                session=1000+index,requestedAtElapsedRealtime=100,startedAtElapsedRealtime=200,
+                committedAtElapsedRealtime=300,stoppedAtElapsedRealtime=400,deadlineElapsedRealtime=40000,
+                requestEpoch=0,commitEpoch=1,completed=True,error='',fixturePreparation=True,realChatGPT=False)
             forms=name=='fresh-on';source=fresh if forms else original
             value['read']=dict(checkpointSha256=source['checkpointSha256'],sourceSdkFormdataContainsUniqueDraft=True,
                 storedRevision=source['storedRevision'],currentRevision=1 if name=='off' else 2,
@@ -209,6 +216,8 @@ class DraftControls(unittest.TestCase):
 
 def restore_observers_preserve_original(text):
     """Remove only the approved passive observations; all old code stays exact."""
+    try:text=undo_blank_preparation(text)
+    except ValueError:return False
     additions=(
         ('    observeStage("start");\n',''),
         ('retainPartial("probeRaw",raw);done.accept(J.parse(raw));','done.accept(J.parse(raw));'),
@@ -229,6 +238,81 @@ def restore_observers_preserve_original(text):
     if start<0 or end<0:return False
     text=text[:start]+text[end:]
     return hashlib.sha256(text.encode()).hexdigest()=='4808b1459b39b47995b54ff5709bdf48019fa883758fccc2958e35efcbe05a81'
+
+
+class BlankPreparationServerControls(unittest.TestCase):
+    def respond(self,path):
+        # Execute the actual two HTTP handler methods with an in-memory socket
+        # adapter. No real server, Android, browser or network is started.
+        import ast, io, re, urllib.parse
+        source=(ROOT/'tests/gecko/run_device.py').read_text()
+        tree=ast.parse(source);kind=next(x for x in tree.body if isinstance(x,ast.ClassDef) and x.name=='Fixture')
+        methods=[copy.deepcopy(x) for x in kind.body if isinstance(x,ast.FunctionDef) and x.name in ('do_GET','end_headers')]
+        class Base:
+            def send_response(self,value):self.code=value
+            def send_header(self,key,value):self.headers_sent.append((key,value))
+            def send_error(self,value,message):self.code=value;self.error=message
+            def end_headers(self):pass
+        node=ast.ClassDef(name='Fixture',bases=[ast.Name(id='Base',ctx=ast.Load())],keywords=[],body=methods,decorator_list=[])
+        module=ast.fix_missing_locations(ast.Module(body=[node],type_ignores=[]));scope={'Base':Base,'re':re,'urllib':urllib}
+        exec(compile(module,'actual-f04-http-handler','exec'),scope)
+        value=scope['Fixture']();value.path=path;value.headers={};value.headers_sent=[];value.wfile=io.BytesIO()
+        value.do_GET();return value
+    def test_owned_blank_has_no_script_history_form_cookie_or_external_resource(self):
+        value=self.respond('/f04-restore-blank?nonce='+'a'*32+'&command=1&phase=off')
+        self.assertEqual(value.code,200)
+        self.assertEqual(value.wfile.getvalue(),b'<!doctype html><meta charset="utf-8"><title>Owned F04 restore preparation</title>')
+        self.assertEqual(dict(value.headers_sent)['Cache-Control'],'no-store')
+        self.assertNotIn('Set-Cookie',dict(value.headers_sent))
+    def test_foreign_duplicate_or_missing_blank_owner_is_rejected(self):
+        base='/f04-restore-blank?nonce='+'a'*32+'&command=1&phase=off'
+        for path in (base+'&nonce='+'a'*32,base+'&extra=1',base.replace('&command=1',''),
+                     base.replace('command=1','command=0'),base.replace('phase=off','phase=seed'),base.replace('a'*32,'bad')):
+            with self.subTest(path=path):
+                value=self.respond(path);self.assertEqual(value.code,400);self.assertEqual(value.wfile.getvalue(),b'')
+
+
+class BlankBarrierEvidenceControls(unittest.TestCase):
+    def test_all_callback_receipt_fields_are_required(self):
+        from local_draft_contract import verify_blank_barrier
+        phase=counterfeit()['phases'][1]
+        for key in phase['blankBarrier']:
+            with self.subTest(key=key):
+                broken=copy.deepcopy(phase);del broken['blankBarrier'][key]
+                with self.assertRaises((ValueError,KeyError,TypeError)):verify_blank_barrier(broken)
+    def test_callback_order_and_original_deadline_are_strict(self):
+        from local_draft_contract import verify_blank_barrier
+        phase=counterfeit()['phases'][1]
+        changes={'startedAtElapsedRealtime':99,'committedAtElapsedRealtime':199,
+                 'stoppedAtElapsedRealtime':299,'deadlineElapsedRealtime':40101}
+        for key,value in changes.items():
+            with self.subTest(key=key):
+                broken=copy.deepcopy(phase);broken['blankBarrier'][key]=value
+                with self.assertRaises(ValueError):verify_blank_barrier(broken)
+    def test_old_blank_foreign_nonce_command_phase_epoch_and_uncompleted_fail(self):
+        from local_draft_contract import verify_blank_barrier
+        phase=counterfeit()['phases'][1]
+        changes={'uri':'about:blank','nonce':'3'*32,'command':4,'phase':'fresh-on',
+                 'commitEpoch':3,'completed':False,'error':'failed','fixturePreparation':False,'realChatGPT':True}
+        for key,value in changes.items():
+            with self.subTest(key=key):
+                broken=copy.deepcopy(phase);broken['blankBarrier'][key]=value
+                with self.assertRaises(ValueError):verify_blank_barrier(broken,nonce='2'*32,command=2)
+    def test_bool_and_missing_observed_times_are_not_integer_receipts(self):
+        from local_draft_contract import verify_blank_barrier
+        phase=counterfeit()['phases'][1]
+        for key in ('schema','command','session','requestedAtElapsedRealtime','startedAtElapsedRealtime',
+                    'committedAtElapsedRealtime','stoppedAtElapsedRealtime','deadlineElapsedRealtime','requestEpoch','commitEpoch'):
+            for value in (True,-1,None):
+                with self.subTest(key=key,value=value):
+                    broken=copy.deepcopy(phase);broken['blankBarrier'][key]=value
+                    with self.assertRaises((ValueError,TypeError)):verify_blank_barrier(broken)
+    def test_actual_event_owner_cannot_be_rebound_even_when_phase_payload_matches(self):
+        value=counterfeit();phase=value['phases'][1];proof=phase['blankBarrier']
+        proof['nonce']='f'*32;proof['uri']=proof['uri'].replace('2'*32,'f'*32)
+        raw=device(value)
+        with self.assertRaisesRegex(ValueError,'blank barrier invocation binding'):
+            verify_local_draft_policy(value,device=raw,source='a'*40)
 
 
 class RestoreObservationPreservationControls(unittest.TestCase):
@@ -278,4 +362,7 @@ class PublicStageControls(unittest.TestCase):
             self.assertIn('local_draft_contract',rejected.stderr)
 
 
-if __name__=='__main__':unittest.main()
+if __name__=='__main__':
+    program=unittest.main(exit=False)
+    print(json.dumps({'blankBarrierControls':BlankBarrierControls.host_report},sort_keys=True))
+    raise SystemExit(0 if program.result.wasSuccessful() else 1)
