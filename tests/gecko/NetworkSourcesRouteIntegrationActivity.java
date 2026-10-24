@@ -3,6 +3,7 @@ package local.pocketchat;
 import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 import android.webkit.WebView;
@@ -25,6 +26,8 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
   final JSONArray checks=new JSONArray(),requests=new JSONArray(),negatives=new JSONArray(),routes=new JSONArray(),sessionRestorations=new JSONArray();
   final ExecutorService runner=Executors.newSingleThreadExecutor();
   final SourceRouteTerminalObserver terminalObserver=new SourceRouteTerminalObserver(this);
+  final JSONArray reservationDiagnostics=new JSONArray();
+  volatile SourceRouteStartReservation reservedStart;volatile Throwable reservationFailure;
   String expectedSource,runNonce;JSONObject installedBuildIdentity;
   final JSONArray recoveryEvents=new JSONArray();int recoveryEventsDropped;volatile int recoveryRequestSerial;boolean recoveryEventsClosed;long navigationPhase;String lastRecoveryState="";ChatSession.Observer recoveryObserver;
   NetworkOptimizationIntegrationActivity.HttpFixture site,plain;
@@ -46,7 +49,11 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
     final SourceRouteStartObservation startObservation=new SourceRouteStartObservation();
     RouteNetwork(NetworkSourcesRouteIntegrationActivity c,NetworkOptimizationIntegrationActivity.HttpFixture site,NetworkOptimizationIntegrationActivity.HttpFixture plain){super(c,new File(c.getNoBackupFilesDir(),"network-runtime"),false);this.test=c;this.site=site;this.plain=plain;trust=site.tls.getSocketFactory();}
     @Override synchronized void startOperation(Callback callback,int mode){SourceRouteStartObservation.Registration observation=startObservation.registrationBefore(this,callback,mode);try{super.startOperation(callback,mode);}finally{startObservation.registrationAfter(this,observation);}}
-    @Override void runStartOperation(int mode){startObservation.workerBefore(this,mode);try{super.runStartOperation(mode);}finally{startObservation.workerAfter(this,mode);}}
+    @Override void runStartOperation(int mode){startObservation.workerBefore(this,mode);try{
+      SourceRouteStartReservation reserved=test.reservedStart;SourceRouteStartObservation.Invocation invocation=startObservation.current.get();
+      if(reserved!=null&&invocation!=null&&invocation.root==reserved.root)reserved.runReservedWorker(mode,()->super.runStartOperation(mode));
+      else super.runStartOperation(mode);
+    }finally{startObservation.workerAfter(this,mode);}}
     @Override void recoverOutcome(RecoveryCallback callback){
       int request=++test.recoveryRequestSerial;test.recoveryEvent("recover-request",J.obj("request",request,"state",test.recoveryState()));
       SourceRouteTerminalObserver.Recovery observed=test.terminalObserver.recoveryStarted(request);
@@ -101,8 +108,7 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
     catalog.parsed(token,names,details,bytes,System.currentTimeMillis());return catalog.subscription(role,row.getString("id"));
   }
   void publishOriginal()throws Exception{JSONObject value=J.parse(candidate.toString());new NetworkSourceSelection.ActiveSnapshot(vault).write(NetworkSourceSelection.resolve(catalog,value),value);}
-  boolean restart()throws Exception{CompletableFuture<Boolean> done=new CompletableFuture<>();network.restart((ok,message)->{event("startup",J.obj("ok",ok,"message",message));terminalObserver.restartDone(ok);done.complete(ok);});return done.get(75,TimeUnit.SECONDS);}
-  boolean restart(SourceRouteTerminalObserver.Scope scope)throws Exception{CompletableFuture<Boolean> done=new CompletableFuture<>();NativeNetwork.Callback callback=(ok,message)->{event("startup",J.obj("ok",ok,"message",message));terminalObserver.restartDone(ok);done.complete(ok);};scope.startupRoot=network.startObservation.root(callback,scope.id,expectedSource,runNonce);network.restart(callback);return done.get(SourceRouteTerminalObserver.remaining(scope),TimeUnit.NANOSECONDS);}
+  boolean restart()throws Exception{CompletableFuture<Boolean> done=new CompletableFuture<>();network.restart((ok,message)->{event("startup",J.obj("ok",ok,"message",message));done.complete(ok);});return done.get(75,TimeUnit.SECONDS);}
   boolean pushedReceiptCurrent(){NativeNetwork.ExitRouteReceipt receipt=network==null?null:network.verifiedRoute;return network!=null&&network.ready&&!network.recoveryBlocked&&receipt!=null&&receipt.matches(network,network.transport==null?null:network.transport.state);}
   // Gecko routing and browser flags are observed on the UI thread. Its receipt
   // uses pushed service state, as production routing does; fresh IPC is worker-only.
@@ -204,16 +210,52 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
     else check(id+" cannot contact either exit target",before.optInt("fixedTarget")==after.optInt("fixedTarget")&&before.optInt("decoyTarget")==after.optInt("decoyTarget"));
     return row;
   }
+  /** Fixture ownership only. The real restart owns native starting/waiters. */
+  final class ReservedCaseGate implements SourceRouteStartReservation.Gate {
+    final SourceRouteTerminalObserver.Scope scope;
+    ReservedCaseGate(SourceRouteTerminalObserver.Scope scope){this.scope=scope;}
+    public boolean onUiThread(){return Looper.myLooper()==Looper.getMainLooper();}
+    public Object owner(){return terminalObserver.active;}
+    public boolean connecting(){return session.connecting;}
+    public JSONObject contacts(){return NetworkSourcesRouteIntegrationActivity.this.contacts();}
+    public void claim(SourceRouteStartReservation reservation)throws Exception{
+      SourceRouteTerminalObserver.require(reservationFailure==null&&terminalObserver.active==null&&scope.contacts.length()==0
+          &&scope.restartCallback==null&&reservation.scopeToken==scope&&Thread.holdsLock(network),"reserved fixture claim changed");
+      for(Iterator<String> keys=reservation.admissionContacts.keys();keys.hasNext();){String key=keys.next();scope.contacts.put(key,reservation.admissionContacts.get(key));}
+      scope.restartCallback=reservation.callback;terminalObserver.active=scope;reservedStart=reservation;
+    }
+    public void completed(SourceRouteStartReservation reservation,boolean ok,String message)throws Exception{
+      SourceRouteTerminalObserver.require(reservedStart==reservation&&reservation.scopeToken==scope
+          &&scope.startupRoot==reservation.root&&scope.id.equals(reservation.caseId),"reserved callback changed its operation");
+      event("startup",J.obj("ok",ok,"message",message,"caseId",scope.id,"sourceCommit",expectedSource,"runNonce",runNonce));
+      terminalObserver.restartDone(scope,reservation.callback,ok);
+    }
+  }
   void reject(String name,Work<Void> mutation)throws Exception{
-    publishOriginal();network.stopNow();check(name+" begins with the managed core stopped",!network.coreAlive());mutation.run();JSONObject settings=vault.settings();boolean entryHashValid=NativeNetwork.sourceCacheMatches(settings,NetworkCatalog.ENTRY,network.sourceMeta("subscription-meta"),vault.get("subscription")),exitHashValid=NativeNetwork.sourceCacheMatches(settings,NetworkCatalog.EXIT,network.sourceMeta("exit-subscription-meta"),vault.get("exit-subscription"));JSONObject before=contacts();SourceRouteTerminalObserver.Scope scope=terminalObserver.begin(name,before);boolean ok=restart(scope);JSONObject after=contacts();
-    check(name+" rejects production startup and closes the core",!ok&&!network.ready&&!network.coreAlive());check(name+" contacts no verification, probe or website target",before.toString().equals(after.toString()));
-    JSONObject row=fetch(name,false,scope);long observedAt=now();JSONObject negative=J.obj("name",name,"started",ok,"coreAliveAfter",network.coreAlive(),"readyAfter",network.ready,"entrySnapshotHashValid",entryHashValid,"exitSnapshotHashValid",exitHashValid,"before",before,"after",after,"request",row,"message",network.message,"postFetchObservedAtNs",observedAt);negatives.put(negative);terminalObserver.finish(scope,negative);
+    SourceRouteTerminalObserver.require(reservationFailure==null,"an earlier reserved case permanently failed");
+    SourceRouteTerminalObserver.Scope scope=new SourceRouteTerminalObserver.Scope(name,runNonce,null);
+    SourceRouteStartReservation reservation=new SourceRouteStartReservation(network,network.startObservation,new ReservedCaseGate(scope),scope,scope.id,expectedSource,runNonce,()->{
+      publishOriginal();network.stopNow();check(name+" begins with the managed core stopped",!network.coreAlive());mutation.run();JSONObject settings=vault.settings();boolean entryHashValid=NativeNetwork.sourceCacheMatches(settings,NetworkCatalog.ENTRY,network.sourceMeta("subscription-meta"),vault.get("subscription")),exitHashValid=NativeNetwork.sourceCacheMatches(settings,NetworkCatalog.EXIT,network.sourceMeta("exit-subscription-meta"),vault.get("exit-subscription"));JSONObject before=contacts();
+      return J.obj("managedCoreStopped",!network.coreAlive(),"contacts",before,"entrySnapshotHashValid",entryHashValid,"exitSnapshotHashValid",exitHashValid);
+    });
+    scope.deadlineNs=reservation.deadlineNs;NetworkCatalog.put(scope.evidence,"restartBeganAtNs",reservation.beganAtNs);NetworkCatalog.put(scope.evidence,"restartDeadlineAtNs",scope.deadlineNs);NetworkCatalog.put(scope.evidence,"sourceCommit",expectedSource);reservationDiagnostics.put(scope.evidence);
+    try{
+      while(!terminalObserver.ui(scope,()->{boolean admitted=reservation.tryReserve();if(admitted)scope.startupRoot=reservation.root;return admitted;}))
+        TimeUnit.NANOSECONDS.sleep(Math.min(TimeUnit.MILLISECONDS.toNanos(40),SourceRouteTerminalObserver.remaining(scope)));
+      boolean ok=reservation.awaitCallback();network.startObservation.workerCompletion(reservation.root).get(SourceRouteTerminalObserver.remaining(scope),TimeUnit.NANOSECONDS);reservation.verifyAccepted();
+      JSONObject prepared=reservation.snapshot().getJSONObject("preparationResult"),before=prepared.getJSONObject("contacts"),after=contacts();boolean entryHashValid=prepared.getBoolean("entrySnapshotHashValid"),exitHashValid=prepared.getBoolean("exitSnapshotHashValid");
+      check(name+" rejects production startup and closes the core",!ok&&!network.ready&&!network.coreAlive());check(name+" contacts no verification, probe or website target",before.toString().equals(after.toString()));
+      JSONObject row=fetch(name,false,scope);long observedAt=now();JSONObject negative=J.obj("name",name,"started",ok,"coreAliveAfter",network.coreAlive(),"readyAfter",network.ready,"entrySnapshotHashValid",entryHashValid,"exitSnapshotHashValid",exitHashValid,"before",before,"after",after,"request",row,"message",network.message,"postFetchObservedAtNs",observedAt);negatives.put(negative);terminalObserver.finish(scope,negative);
+    }catch(Throwable failure){
+      reservationFailure=failure;reservation.fail(failure);NetworkCatalog.put(scope.evidence,"status","failed");NetworkCatalog.put(scope.evidence,"error",failure.getClass().getName()+": "+String.valueOf(failure.getMessage()));
+      if(failure instanceof Error)throw (Error)failure;if(failure instanceof Exception)throw (Exception)failure;throw new IOException("Reserved case failed",failure);
+    }finally{NetworkCatalog.put(scope.evidence,"reservation",reservation.snapshot());}
   }
   String coreSha()throws Exception{MessageDigest digest=MessageDigest.getInstance("SHA-256");try(InputStream in=new FileInputStream(new File(getApplicationInfo().nativeLibraryDir,"libmihomo.so"))){byte[] b=new byte[65536];for(int n;(n=in.read(b))!=-1;)digest.update(b,0,n);}StringBuilder s=new StringBuilder();for(byte b:digest.digest())s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();}
   JSONObject runtimeConfig()throws Exception{JSONObject config=J.parse(new String(java.nio.file.Files.readAllBytes(new File(network.root,"config.json").toPath()),StandardCharsets.UTF_8));config.remove("secret");return config;}
   void run(){JSONObject report=J.obj("schema",1,"status","failed","actualAndroidExecution",true,"actualMihomoExecution",true,"actualGeckoExecution",true,"actualAuthenticatedSocksChain",true,"actualKeystoreEncryption",true,"actualRouteApplication",true,"publicNetworkTraffic",false,"coreAbi",android.os.Build.SUPPORTED_ABIS[0],"protocol","h2","scope","Production source snapshots/config/startNow and guarded Gecko H2 with real authenticated local entry/fixed-exit sockets. Only detector URLs/test CA differ; no mocked probe, fingerprints, config or network state.");
     try{
-      expectedSource=getIntent().getStringExtra("sourceCommit");runNonce=getIntent().getStringExtra("runNonce");installedBuildIdentity=IntegrationBuildIdentity.read(this);if(expectedSource==null||!expectedSource.matches("[0-9a-f]{40}")||!expectedSource.equals(installedBuildIdentity.getString("sourceCommit"))||runNonce==null||!runNonce.matches("[0-9a-f]{32}"))throw new IOException("Exact source and invocation identity required");NetworkCatalog.put(report,"sourceCommit",expectedSource);NetworkCatalog.put(report,"runNonce",runNonce);NetworkCatalog.put(report,"buildIdentity",installedBuildIdentity);
+      expectedSource=getIntent().getStringExtra("sourceCommit");runNonce=getIntent().getStringExtra("runNonce");installedBuildIdentity=IntegrationBuildIdentity.read(this);if(expectedSource==null||!expectedSource.matches("[0-9a-f]{40}")||!expectedSource.equals(installedBuildIdentity.getString("sourceCommit"))||runNonce==null||!runNonce.matches("[0-9a-f]{32}"))throw new IOException("Exact source and invocation identity required");NetworkCatalog.put(report,"sourceCommit",expectedSource);NetworkCatalog.put(report,"runNonce",runNonce);NetworkCatalog.put(report,"buildIdentity",installedBuildIdentity);event("invocation",J.obj("sourceCommit",expectedSource,"runNonce",runNonce,"package",getPackageName(),"buildIdentity",installedBuildIdentity,"pid",android.os.Process.myPid(),"uid",android.os.Process.myUid()));
       NativeProbeIntegrationActivity.TlsFixture tls=new NativeProbeIntegrationActivity.TlsFixture(this,"network-fixture.p12");site=new NetworkOptimizationIntegrationActivity.HttpFixture(tls.context);plain=new NetworkOptimizationIntegrationActivity.HttpFixture(null);site.start();plain.start();
       fixed=new PreconnectIntegrationActivity.TraceSocks("selected-exit",0,9879,site.port(),plain.port());decoy=new PreconnectIntegrationActivity.TraceSocks("unselected-exit",0,9879,site.port(),plain.port());entryA=new PreconnectIntegrationActivity.TraceSocks("entry-a",0,fixed.port(),decoy.port());entryB=new PreconnectIntegrationActivity.TraceSocks("entry-b",0,fixed.port(),decoy.port());replacementEntry=new PreconnectIntegrationActivity.TraceSocks("replacement-entry",0,fixed.port(),decoy.port());for(PreconnectIntegrationActivity.TraceSocks s:new PreconnectIntegrationActivity.TraceSocks[]{fixed,decoy,entryA,entryB,replacementEntry})s.start();
       catalog=new NetworkCatalog(this);entrySource=catalog.addSubscription(NetworkCatalog.ENTRY,"Fixture entry source","https://synthetic.invalid/sources");exitSource=catalog.addSubscription(NetworkCatalog.EXIT,"Fixture exit source","https://synthetic.invalid/sources");entryRaw=provider(node("a",entryA.port()),node("b",entryB.port()));exitRaw=provider(node("Tokyo",fixed.port()),node("Decoy",decoy.port()));entrySource=parse(NetworkCatalog.ENTRY,entrySource,entryRaw);exitSource=parse(NetworkCatalog.EXIT,exitSource,exitRaw);
@@ -250,6 +292,6 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
       check("No stale subscribed exit or replacement entry contacted any target",decoy.serial.get()==0&&replacementEntry.serial.get()==0);check("All real SOCKS targets remained inside the fixture allowlists",entryA.denied.get()==0&&entryB.denied.get()==0&&fixed.denied.get()==0&&decoy.denied.get()==0);JSONObject draft=eval("({draft:document.getElementById('prompt-textarea').value,sends:Number(document.getElementById('send-count').textContent)})");check("The controlled page draft survives source changes without sending",draft.optString("draft").equals("unsent pool draft")&&draft.optInt("sends")==0);NetworkCatalog.put(report,"status","passed");
     }catch(Throwable failure){NetworkCatalog.put(report,"error",failure.toString());Log.e(TAG,"Network sources route failed",failure);if(view!=null&&fixtureIdentity!=null)try{ui(()->{JSONObject state=GeckoConnectionPoolIntegrationActivity.startupState(session,view,fixtureIdentity);event("failedControlledLoadState",state);NetworkCatalog.put(report,"failedControlledLoadState",state);return null;});}catch(Exception diagnostic){NetworkCatalog.put(report,"startupDiagnosticError",diagnostic.toString());}}
     finally{terminalObserver.close();if(view!=null)try{ui(()->{session.handler.removeCallbacks(session.tick);if(recoveryObserver!=null)session.remove(recoveryObserver);view.destroy();return null;});}catch(Exception ignored){}if(network!=null){try{network.stopNow();}catch(Exception ignored){}network.worker.shutdownNow();network.probes.shutdownNow();network.closers.shutdownNow();network.traffic.reader.shutdownNow();}if(fixed!=null)NetworkCatalog.put(report,"fixedWire",fixed.evidence());if(decoy!=null)NetworkCatalog.put(report,"decoyWire",decoy.evidence());if(entryA!=null)NetworkCatalog.put(report,"entryAWire",entryA.evidence());if(entryB!=null)NetworkCatalog.put(report,"entryBWire",entryB.evidence());if(replacementEntry!=null)NetworkCatalog.put(report,"replacementEntryWire",replacementEntry.evidence());for(AutoCloseable fixture:new AutoCloseable[]{site,plain,fixed,decoy,entryA,entryB,replacementEntry})if(fixture!=null)try{fixture.close();}catch(Exception ignored){}}
-    NetworkCatalog.put(report,"recoveryDiagnostics",recoveryDiagnostics());NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"requests",requests);NetworkCatalog.put(report,"negativeCases",negatives);NetworkCatalog.put(report,"sessionRestorations",sessionRestorations);synchronized(routes){NetworkCatalog.put(report,"routes",routes);}try{File temporary=new File(getFilesDir(),"network-source-route-results.json.tmp");J.write(temporary,report.toString(2));if(!temporary.renameTo(new File(getFilesDir(),"network-source-route-results.json")))throw new IOException("Could not publish route report");}catch(Exception failure){Log.e(TAG,"Cannot persist route report",failure);}event("complete",J.obj("status",report.optString("status"),"checks",checks.length(),"error",report.optString("error")));runOnUiThread(this::finish);runner.shutdown();
+    NetworkCatalog.put(report,"recoveryDiagnostics",recoveryDiagnostics());NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"requests",requests);NetworkCatalog.put(report,"negativeCases",negatives);NetworkCatalog.put(report,"reservationDiagnostics",reservationDiagnostics);NetworkCatalog.put(report,"sessionRestorations",sessionRestorations);synchronized(routes){NetworkCatalog.put(report,"routes",routes);}try{File temporary=new File(getFilesDir(),"network-source-route-results.json.tmp");J.write(temporary,report.toString(2));if(!temporary.renameTo(new File(getFilesDir(),"network-source-route-results.json")))throw new IOException("Could not publish route report");}catch(Exception failure){Log.e(TAG,"Cannot persist route report",failure);}event("complete",J.obj("status",report.optString("status"),"checks",checks.length(),"error",report.optString("error")));runOnUiThread(this::finish);runner.shutdown();
   }
 }

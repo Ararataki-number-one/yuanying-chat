@@ -25,7 +25,12 @@ public final class TerminalJoinTest {
     @Override void stopOwnedCore(ExitRouteReceipt owned,NetworkDiagnostics.Reason reason){JSONObject row=fixture.observer.stopBefore(owned,reason);startObservation.stopBefore(this,row);try{super.stopOwnedCore(owned,reason);}finally{fixture.observer.stopAfter(row);startObservation.stopAfter(this,row);}}
     @Override void stopTransport(int index)throws Exception{entered[index].countDown();await(release[index]);transport.state=snapshot(false,index+1);}
     void begin(String mismatch)throws Exception{
-      Callback callback=(ok,message)->{rootCallbacks++;fixture.observer.restartDone(ok);fixture.rootDone.complete(ok);};
+      final Callback[] operation=new Callback[1];Callback callback=operation[0]=(ok,message)->{rootCallbacks++;try{
+        try{fixture.observer.getClass().getDeclaredMethod("restartDone",SourceRouteTerminalObserver.Scope.class,Callback.class,boolean.class).invoke(fixture.observer,fixture.scope,operation[0],ok);}
+        catch(NoSuchMethodException legacy){fixture.observer.getClass().getDeclaredMethod("restartDone",boolean.class).invoke(fixture.observer,ok);}
+        fixture.rootDone.complete(ok);
+      }catch(Throwable failure){fixture.rootDone.completeExceptionally(failure);}};
+      try{Field field=SourceRouteTerminalObserver.Scope.class.getDeclaredField("restartCallback");field.setAccessible(true);field.set(fixture.scope,callback);}catch(NoSuchFieldException beforeObserver){}
       root=startObservation.root(callback,mismatch.equals("case")?"99999999-9999-4999-8999-999999999999":fixture.scope.id,mismatch.equals("source")?"b".repeat(40):SOURCE,mismatch.equals("nonce")?"f".repeat(32):NONCE);
       try{Field field=SourceRouteTerminalObserver.Scope.class.getDeclaredField("startupRoot");field.setAccessible(true);field.set(fixture.scope,root);}catch(NoSuchFieldException beforeObserver){}
       restart(callback);

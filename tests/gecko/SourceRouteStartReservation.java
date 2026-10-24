@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 
-/** Test-only reservation prototype. Not wired into the Android qualification.
+/** Test-only reservation candidate. Android execution remains required.
  * A real start waiter reserves the original worker; no recovery/busy bit is set.
  * A preparation that never returns keeps that real worker reserved. At the
  * original deadline the fixture must fail and admit no next case; thread
@@ -20,6 +20,7 @@ final class SourceRouteStartReservation {
     boolean connecting();
     JSONObject contacts();
     void claim(SourceRouteStartReservation reservation)throws Exception;
+    default void completed(SourceRouteStartReservation reservation,boolean ok,String message)throws Exception{}
   }
   interface Preparation {JSONObject run()throws Exception;}
   static final long BUDGET_NS=TimeUnit.SECONDS.toNanos(75);
@@ -49,6 +50,7 @@ final class SourceRouteStartReservation {
   static void require(boolean value,String message)throws IOException{if(!value)throw new IOException("Reservation prototype: "+message);}
   synchronized void put(String key,Object value){try{evidence.put(key,value);}catch(Throwable error){if(failure==null)failure=error;}}
   synchronized void fail(Throwable error){if(failure==null){failure=error;put("failure",error.getClass().getName()+": "+String.valueOf(error.getMessage()));}}
+  synchronized JSONObject snapshot(){return copy(evidence);}
   long remaining()throws IOException{long value=deadlineNs-now();require(value>0,"original 75s budget exhausted");return value;}
   static JSONObject copy(JSONObject value){return SourceRouteStartObservation.copy(value);}
   static boolean same(JSONObject first,JSONObject second){
@@ -149,7 +151,9 @@ final class SourceRouteStartReservation {
   void completed(boolean ok,String message){
     try{
       callbackCount++;put("callbackCount",callbackCount);put("actualCallback",J.obj("ok",ok,"message",message,"atNs",now()));
-      require(gate.owner()==scopeToken&&prepared&&callbackCount==1,"late, duplicate, wrong-scope, or unprepared callback");
+      require(gate.owner()==scopeToken&&callbackCount==1,"late, duplicate, or wrong-scope callback");
+      gate.completed(this,ok,message);
+      require(prepared,"unprepared callback");
       if(failure!=null)throw new IOException("preparation permanently failed",failure);
       actualCallback.complete(ok);
     }catch(Throwable error){fail(error);actualCallback.completeExceptionally(error);}

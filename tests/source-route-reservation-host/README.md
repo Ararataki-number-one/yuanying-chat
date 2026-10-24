@@ -40,3 +40,15 @@ can demonstrate failed-flow containment; they do not turn the prototype green.
 The original 77 Android
 business checks, the real terminal IPC, and the full Activity fixture have not
 executed here. No workflow/profile/release entry includes this directory.
+
+`activity.py` is a separate candidate integration probe. It extracts the complete
+actual `ReservedCaseGate`, `reject`, native worker/registration hooks, and scoped
+terminal callback methods. Its real Java UI queue executes admission on its own
+identified UI thread. Eighteen controls cover normal completion, real retry join,
+finite preparation failure with preserved successful startup side effects, queued
+mode2 ABA, mode0 during preparation and after the original body enters, changed
+contacts and stale callbacks. Private source IO, Gecko fetch and terminal finish
+remain explicit host adapters. The complete terminal observer has separate host
+controls; none of these run the original77 Android checks or a real fresh IPC.
+Its success means `host-controls-passed-android-candidate`; Android and process
+cleanup evidence remain required before qualifying the candidate source.

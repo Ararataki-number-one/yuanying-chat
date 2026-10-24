@@ -110,7 +110,14 @@ class MainScenario:
  def execute(self):
   actual_verify=RUNNER.verify
   def verified(*a,**k):self.verify_calls+=1;return actual_verify(*a,**k)
+  # These retained cases test strict log/provider failure boundaries. The new
+  # external APK/ownership setup is controlled here; its actual helper has a
+  # separate source_route_cleanup_contract_test.py suite with negative controls.
+  class ControlledCleanup:
+   def poll(self,raw):pass
+   def cleanup(self,snapshot,evidence_saved):return dict(status='cleaned',fixtureResultChanged=False)
   with contextlib.ExitStack() as stack:
+   stack.enter_context(mock.patch.object(RUNNER,'prepare_cleanup_fence',return_value=getattr(self,'cleanupFence',ControlledCleanup()),side_effect=getattr(self,'cleanupPreparationError',None)))
    stack.enter_context(mock.patch.object(RUNNER.subprocess,'run',side_effect=self.run));stack.enter_context(mock.patch.object(RUNNER.subprocess,'Popen',side_effect=Node));stack.enter_context(mock.patch.object(RUNNER.subprocess,'check_output',return_value=COMMIT+'\n'))
    stack.enter_context(mock.patch.object(RUNNER.select,'select',side_effect=lambda r,w,e,t:(r,w,e)));stack.enter_context(mock.patch.object(RUNNER.time,'monotonic',side_effect=self.monotonic));stack.enter_context(mock.patch.object(RUNNER.time,'sleep',return_value=None));stack.enter_context(mock.patch.object(RUNNER,'verify',side_effect=verified));stack.enter_context(mock.patch.object(sys,'argv',['runner','--adb','controlled-adb','--timeout','3']));stack.enter_context(contextlib.redirect_stdout(self.stdout))
    stack.enter_context(mock.patch.object(RUNNER.uuid,'uuid4',return_value=types.SimpleNamespace(hex=NONCE)))
@@ -168,7 +175,7 @@ class RecordedResult(unittest.TextTestResult):
 if __name__=='__main__':
  suite=unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__]);stream=io.StringIO();result=unittest.TextTestRunner(stream=stream,verbosity=2,resultclass=RecordedResult).run(suite)
  unchanged=hashlib.sha256(CANDIDATE.read_bytes()).hexdigest()==START_HASH
- report={'status':'passed' if result.wasSuccessful() and unchanged else 'failed','actualAndroidExecution':False,'candidateSha256':START_HASH,'candidateBytesUnchanged':unchanged,'baseline':'Exact retained nested strict adb helper invoked with logcat arguments; reproduces the prior logcat decoding behavior.','beforeAdbExactSourceSha256':hashlib.sha256(OLD_ADB_SOURCE.encode()).hexdigest(),'tests':result.rows,'scope':{'realSubprocessTests':6,'helperFaultTests':2,'mockedMainTests':10,'actualVerifierUsed':True,'limitations':['RealChildByteCases execute real Python subprocess decoding through a local fake adb executable; no adb/Android/socket execution.','MainBoundaryCases mock external commands, clock and Node process; candidate main, json.loads, diagnostics and the actual source-route verifier execute unchanged.','No assertion claims the Android source-route fixture passed.']},'hostTestSha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'output':stream.getvalue()}
+ report={'status':'passed' if result.wasSuccessful() and unchanged else 'failed','actualAndroidExecution':False,'candidateSha256':START_HASH,'candidateBytesUnchanged':unchanged,'baseline':'Exact retained nested strict adb helper invoked with logcat arguments; reproduces the prior logcat decoding behavior.','beforeAdbExactSourceSha256':hashlib.sha256(OLD_ADB_SOURCE.encode()).hexdigest(),'tests':result.rows,'scope':{'realSubprocessTests':6,'helperFaultTests':2,'mockedMainTests':10,'actualVerifierUsed':True,'limitations':['RealChildByteCases execute real Python subprocess decoding through a local fake adb executable; no adb/Android/socket execution.','MainBoundaryCases mock external commands, clock, Node process and the added external APK/cleanup fence; candidate main, strict adb/json.loads, diagnostics and the actual source-route verifier still execute. All original case assertions remain.','Cleanup identity/negative controls execute the actual helper separately in source_route_cleanup_contract_test.py; these boundary mocks are not cleanup or Android qualification.','No assertion claims the Android source-route fixture passed.']},'hostTestSha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'output':stream.getvalue()}
  ARGS.output.parent.mkdir(parents=True,exist_ok=True);ARGS.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
  print(json.dumps({k:report[k] for k in ['status','candidateSha256','candidateBytesUnchanged','scope']},ensure_ascii=False));print(stream.getvalue())
  if not result.wasSuccessful() or not unchanged:raise SystemExit(1)

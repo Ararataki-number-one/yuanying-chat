@@ -190,6 +190,34 @@ def main():
     files.update([start_observation, ROOT / "tests/source-route-start-host/StartObservationTest.java",
                   ROOT / "tests/source-route-start-host/TerminalJoinTest.java", ROOT / "tests/source-route-start-host/terminal_join.py",
                   ROOT / "tests/gecko/SourceRouteStartObservation.java", ROOT / "app/src/main/java/local/pocketchat/NativeNetwork.java"])
+    reservation_host = ROOT / "tests/source-route-reservation-host/activity.py"
+    reservation_receipt = output / "source-route-reservation-activity-results.json"
+    subprocess.run([sys.executable, str(reservation_host), "--java-home", str(Path(shutil.which(java) or java).resolve().parent.parent),
+                    "--json-jar", str(json_jar), "--output", str(reservation_receipt)], cwd=ROOT, check=True)
+    reservation_value = json.loads(reservation_receipt.read_text())
+    results.append({"test":"source-route-reservation-activity", "report":str(reservation_receipt.relative_to(ROOT)),
+                    "passed":reservation_value["total"], "actualAndroidExecution":False, "evidence":reservation_value})
+    files.update([reservation_host, ROOT / "tests/source-route-reservation-host/ActivityReservationHost.java",
+                  ROOT / "tests/source-route-reservation-host/run.py", ROOT / "tests/source-route-reservation-host/ReservationHost.java",
+                  ROOT / "tests/gecko/SourceRouteStartReservation.java", ROOT / "app/src/main/java/local/pocketchat/ChatSession.java",
+                  ROOT / "tests/gecko/source_route_cleanup.py", ROOT / "tests/source_route_cleanup_contract_test.py"])
+    cleanup_test = ROOT / "tests/source_route_cleanup_contract_test.py"
+    subprocess.run([sys.executable, str(cleanup_test)], cwd=ROOT, check=True)
+    cleanup_value = json.loads((ROOT / "work/reservation-host/cleanup-contract-results.json").read_text())
+    cleanup_inputs = {"helperSha256":"tests/gecko/source_route_cleanup.py",
+                      "runnerSha256":"tests/gecko/run_network_sources_route.py",
+                      "retainedLogcatTestSha256":"tests/gecko_source_route_logcat_test.py",
+                      "testSha256":"tests/source_route_cleanup_contract_test.py"}
+    if (cleanup_value.get("status") != "passed" or cleanup_value.get("actualAndroidExecution") is not False
+            or cleanup_value.get("actualProcessStopped") is not False or cleanup_value.get("nativeOperationCancelled") is not False
+            or len(cleanup_value.get("tests", [])) != 38 or not all(item.get("passed") is True for item in cleanup_value["tests"])
+            or any(cleanup_value.get(key) != hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for key, path in cleanup_inputs.items())):
+        raise ValueError("Incomplete source-route cleanup host controls")
+    cleanup_receipt = output / "source-route-cleanup-host-results.json"
+    cleanup_receipt.write_text(json.dumps(cleanup_value, indent=2) + "\n")
+    results.append({"test":"source-route-cleanup", "report":str(cleanup_receipt.relative_to(ROOT)),
+                    "passed":38, "actualAndroidExecution":False})
+    files.update(ROOT / path for path in cleanup_inputs.values())
     caret_test = ROOT / "tests/browser-runtime/caret-document-observer.test.cjs"
     if caret_test.is_file():
         caret_asset = ROOT / "tests/gecko/assets/caret-document-observer.js"

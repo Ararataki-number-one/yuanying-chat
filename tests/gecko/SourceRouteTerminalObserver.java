@@ -24,6 +24,7 @@ final class SourceRouteTerminalObserver {
     final String name,id;final JSONObject evidence,contacts;
     final ArrayList<Recovery> recoveries=new ArrayList<>();final JSONArray stops=new JSONArray();
     volatile long deadlineNs;JSONObject restartTerminal;volatile SourceRouteStartObservation.Root startupRoot;
+    volatile NativeNetwork.Callback restartCallback;
     Scope(String name,String nonce,JSONObject contacts){this.name=name;id=UUID.randomUUID().toString();this.contacts=copy(contacts);evidence=J.obj("schema",1,"case",name,"caseId",id,"runNonce",nonce,"startedAtNs",now(),"status","collecting","fetchBudgetMs",22000,"stopObservations",stops);}
   }
   Scope begin(String name,JSONObject contacts)throws Exception{
@@ -47,7 +48,11 @@ final class SourceRouteTerminalObserver {
       "starting",test.network.starting,"connecting",test.session.connecting,"ready",test.network.ready,"hasVerifiedReceipt",test.network.verifiedRoute!=null);
   }
   JSONObject cache(){return copy(test.network.transport==null?null:test.network.transport.state);}
-  void restartDone(boolean ok){Scope scope=active;if(scope!=null)synchronized(scope){scope.restartTerminal=J.obj("ok",ok,"atNs",now(),"cache",cache());}}
+  void restartDone(Scope scope,NativeNetwork.Callback operation,boolean ok)throws Exception{
+    require(scope!=null&&active==scope&&operation!=null&&scope.restartCallback==operation,"restart callback crossed its scope or operation");
+    require(scope.startupRoot==null||scope.startupRoot.callback==operation,"restart callback does not own the observed operation");
+    synchronized(scope){scope.restartTerminal=J.obj("ok",ok,"atNs",now(),"cache",cache());}
+  }
   Recovery recoveryStarted(int request){Scope scope=active;if(scope==null)return null;Recovery item=new Recovery(J.obj("request",request,"caseId",scope.id,"recoveryToken",test.session.recoveryToken,"connectionEpoch",test.session.connectionEpoch,"requestedAtNs",now()));synchronized(scope){scope.recoveries.add(item);}return item;}
   void recoveryFinished(Recovery item,NativeNetwork.RecoveryOutcome outcome){if(item==null)return;Scope scope=active;try{require(scope!=null&&scope.id.equals(item.record.getString("caseId")),"recovery callback crossed cases");synchronized(scope){NetworkCatalog.put(item.record,"completedAtNs",now());NetworkCatalog.put(item.record,"outcome",outcome.state.name());NetworkCatalog.put(item.record,"hasReceipt",outcome.receipt!=null);NetworkCatalog.put(item.record,"terminalCache",cache());NetworkCatalog.put(item.record,"terminalFence",fence(scope));}item.done.complete(copy(item.record));}catch(Exception error){item.done.completeExceptionally(error);}}
   JSONObject stopBefore(NativeNetwork.ExitRouteReceipt owned,NetworkDiagnostics.Reason reason){Scope scope=active;if(scope==null||owned==null)return null;JSONObject row=J.obj("caseId",scope.id,"beganAtNs",now(),"recoveryRequestSerial",test.recoveryRequestSerial,"reason",reason.name(),"owned",J.obj("pid",owned.pid,"servicePid",owned.servicePid,"generation",owned.generation,"configuration",owned.configuration),"beforeCache",cache());synchronized(scope){scope.stops.put(row);}return row;}

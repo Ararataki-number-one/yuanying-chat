@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import pathlib
+import re
 import select
 import subprocess
 import sys
@@ -24,10 +25,12 @@ FAILURE={'invalid-entry-snapshot-sha','invalid-exit-snapshot-sha','same-name-cha
 
 sys.path.insert(0,str(ROOT))
 from tools.gecko.network_sources_contract import verify_source_route as verify
+from tools.gecko.profile_invocation_contract import expected_build, verify_installed
+from source_route_cleanup import RouteCleanupFence
 
 def capture_logcat(adb_path, serial, filters=(), stem='network-source-route-logcat', check=True):
     """Preserve original log bytes; decoded text is diagnostic display only."""
-    command=[adb_path,'-s',serial,'logcat','-d',*filters]
+    command=[adb_path,'-s',serial,'logcat','-d','-v','threadtime',*filters]
     def save(stdout, stderr, returncode, timed_out=False):
         streams={}
         for label, raw in (('stdout',stdout or b''),('stderr',stderr or b'')):
@@ -64,25 +67,65 @@ def save_failure_diagnostics(adb_path, serial, server_path):
         except Exception:pass
 
 
+def prepare_cleanup_fence(args, source, run_nonce):
+    """Reuse the existing source stamp/provider before launching this invocation."""
+    tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],cwd=ROOT,text=True).strip()
+    if subprocess.check_output(['git','status','--porcelain','--untracked-files=normal'],cwd=ROOT,text=True).strip():
+        raise ValueError('Source-route execution requires a clean committed source tree')
+    settings=(ROOT/'app/build.gradle').read_text()
+    version=re.search(r"versionName '([0-9]+\.[0-9]+\.[0-9]+)'",settings).group(1)
+    code=int(re.search(r'versionCode ([0-9]+)',settings).group(1))
+    expected=expected_build(args.apk.resolve(),source,tree,version,code)
+    # The existing provider is used only before launch. Calling it after failure
+    # could start a new process and would destroy the original PID observation.
+    command=[args.adb,'-s',args.serial,'exec-out','content','read','--uri','content://'+PACKAGE+'.evidence/build-identity']
+    actual=subprocess.run(command,capture_output=True,timeout=30,check=False)
+    (OUT/'network-source-route-prelaunch-identity.raw.json').write_bytes(actual.stdout)
+    (OUT/'network-source-route-prelaunch-identity.stderr.raw.log').write_bytes(actual.stderr)
+    if actual.returncode:raise subprocess.CalledProcessError(actual.returncode,command,output=actual.stdout,stderr=actual.stderr)
+    installed=verify_installed(json.loads(actual.stdout.decode('utf-8',errors='strict')),expected)
+    fence=RouteCleanupFence(args.adb,args.serial,source,run_nonce,installed,run=subprocess.run)
+    fence.preflight()
+    (OUT/'network-source-route-prelaunch.json').write_text(json.dumps(fence.receipt,indent=2)+'\n')
+    return fence
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--adb',required=True)
-    parser.add_argument('--serial',default='emulator-5554');parser.add_argument('--timeout',type=int,default=420);args=parser.parse_args()
+    parser.add_argument('--serial',default='emulator-5554');parser.add_argument('--timeout',type=int,default=420)
+    parser.add_argument('--apk',type=pathlib.Path,default=ROOT/'app/build/outputs/apk/integration/app-x86_64-integration.apk')
+    args=parser.parse_args()
     OUT.mkdir(parents=True,exist_ok=True)
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();run_nonce=uuid.uuid4().hex
     for name in ['network-source-route-results.json','network-source-route-log.txt','network-source-route-server.json',
-                 'network-source-route-failure-log.txt','network-source-route-server-failure.json']:(OUT/name).unlink(missing_ok=True)
-    for stem in ('network-source-route-logcat','network-source-route-failure-logcat'):
+                 'network-source-route-failure-log.txt','network-source-route-server-failure.json',
+                 'network-source-route-server-cleanup-after.json','network-source-route-cleanup-diagnostic-errors.json']:(OUT/name).unlink(missing_ok=True)
+    for stem in ('network-source-route-logcat','network-source-route-failure-logcat','network-source-route-cleanup-logcat'):
         for suffix in ('-stdout.raw.log','-stderr.raw.log','-display.txt','-decode.json'):(OUT/(stem+suffix)).unlink(missing_ok=True)
     (OUT/'network-source-route-diagnostic-errors.json').unlink(missing_ok=True)
+    for name in ('network-source-route-cleanup.json','network-source-route-prelaunch.json',
+                 'network-source-route-prelaunch-identity.raw.json','network-source-route-prelaunch-identity.stderr.raw.log'):
+        (OUT/name).unlink(missing_ok=True)
     def adb(*parts,check=True):
         result=subprocess.run([args.adb,'-s',args.serial,*parts],text=True,capture_output=True,timeout=30,check=check);return result.stdout
     def log():return capture_logcat(args.adb,args.serial,('-s','PocketNetworkSourceRoute:I','AndroidRuntime:E','*:S'))
+    try:fence=prepare_cleanup_fence(args,source,run_nonce)
+    except BaseException as error:
+        # Preflight cannot authorize a stop, including when the existing identity
+        # provider itself could not be verified. Keep the original exception.
+        try:(OUT/'network-source-route-cleanup.json').write_text(json.dumps(dict(schema=1,
+            status='cleanupUnknown',package=PACKAGE,serial=args.serial,sourceCommit=source,
+            runNonce=run_nonce,stage='prelaunch',reason=repr(error),forceStopAttempted=False,
+            fixtureResultChanged=False,nativeOperationCancelled=False),indent=2)+'\n')
+        except Exception:pass
+        raise
     with tempfile.TemporaryDirectory(prefix='pocket-source-route-') as temporary:
         d=pathlib.Path(temporary)
         subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-sha256','-days','1','-subj','/CN=127.0.0.1',
                         '-addext','subjectAltName=IP:127.0.0.1','-keyout',str(d/'key.pem'),'-out',str(d/'cert.pem')],
                        check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         (d/'fixture.js').write_text(NODE);process=subprocess.Popen(['node',str(d/'fixture.js'),str(d/'key.pem'),str(d/'cert.pem'),str(d/'server.json')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        failed=False;passed_result=None
         try:
             ready,_,_=select.select([process.stdout],[],[],10);assert ready and json.loads(process.stdout.readline())=={'ready':True,'port':PORT,'protocol':'h2'}
             adb('reverse','tcp:'+str(PORT),'tcp:'+str(PORT));adb('shell','am','force-stop',PACKAGE);adb('shell','pm','clear',PACKAGE);adb('logcat','-c')
@@ -90,9 +133,11 @@ def main():
             deadline=time.monotonic()+args.timeout;report=None
             while time.monotonic()<deadline:
                 raw=log()
+                fence.poll((OUT/'network-source-route-logcat-stdout.raw.log').read_bytes())
                 if 'FATAL EXCEPTION' in raw:raise AssertionError(raw)
                 if any('PocketNetworkSourceRoute' in line and '"kind":"complete"' in line for line in raw.splitlines()):
-                    value=adb('exec-out','content','read','--uri','content://'+PACKAGE+'.evidence/network-source-route');report=json.loads(value);break
+                    value=adb('exec-out','content','read','--uri','content://'+PACKAGE+'.evidence/network-source-route')
+                    report=json.loads(value);break
                 time.sleep(1)
             if report is None:raise TimeoutError('No completed actual Android source route report')
             report['runnerInvocation']={'sourceCommit':source,'runNonce':run_nonce}
@@ -103,14 +148,40 @@ def main():
             assert isinstance(report.get('buildIdentity'),dict) and report['buildIdentity'].get('sourceCommit')==source
             assert report.get('runNonce')==run_nonce
             receipt=json.loads((ROOT/'third-party/patches/mihomo-v1.19.31-probe-build.json').read_text());result=verify(report,server,receipt,source)
-            print(json.dumps({'status':'passed','sourceCommit':source,**result}),flush=True)
+            passed_result={'status':'passed','sourceCommit':source,**result}
         except BaseException:
+            failed=True
             save_failure_diagnostics(args.adb,args.serial,d/'server.json')
             raise
         finally:
-            adb('shell','am','force-stop',PACKAGE,check=False);adb('reverse','--remove','tcp:'+str(PORT),check=False);process.terminate()
+            def final_snapshot():
+                capture_logcat(args.adb,args.serial,stem='network-source-route-cleanup-logcat',check=False)
+                return (OUT/'network-source-route-cleanup-logcat-stdout.raw.log').read_bytes()
+            # Preserve the failed original streams/server before any final stop.
+            server_saved=(OUT/('network-source-route-server-failure.json' if failed else 'network-source-route-server.json')).is_file()
+            raw_saved=all((OUT/('network-source-route-logcat-'+label+'.raw.log')).is_file() for label in ('stdout','stderr'))
+            cleanup=fence.cleanup(final_snapshot,server_saved and raw_saved)
+            cleanup['runnerFailed']=failed
+            # Preserve the server's currently persisted bytes after the stop
+            # attempt, before terminating Node. Late contacts may be absent from
+            # the earlier failure copy; neither snapshot is a full network cut.
+            try:
+                late_server=(d/'server.json').read_bytes()
+                (OUT/'network-source-route-server-cleanup-after.json').write_bytes(late_server)
+                cleanup['serverAfterCleanupSnapshot']=dict(scope='Diagnostic current server bytes after cleanup attempt; not a complete network cutoff',
+                    bytes=len(late_server),sha256=hashlib.sha256(late_server).hexdigest())
+            except Exception as diagnostic:
+                try:(OUT/'network-source-route-cleanup-diagnostic-errors.json').write_text(json.dumps(dict(
+                    scope='Secondary server-after-cleanup diagnostic error; original result retained',error=repr(diagnostic)),indent=2)+'\n')
+                except Exception:pass
+            try:(OUT/'network-source-route-cleanup.json').write_text(json.dumps(cleanup,indent=2)+'\n')
+            except Exception as error:
+                cleanup['status']='cleanupUnknown';print('Cannot persist cleanup receipt: '+repr(error),file=sys.stderr)
+            adb('reverse','--remove','tcp:'+str(PORT),check=False);process.terminate()
             try:process.communicate(timeout=5)
             except subprocess.TimeoutExpired:process.kill();process.communicate()
+            if not failed and cleanup['status']!='cleaned':raise RuntimeError('Source-route cleanupUnknown; no further invocation is qualified')
+        if passed_result is not None:print(json.dumps(passed_result),flush=True)
 
 
 if __name__=='__main__':main()
