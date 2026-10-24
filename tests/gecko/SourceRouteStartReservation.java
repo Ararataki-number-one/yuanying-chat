@@ -50,7 +50,10 @@ final class SourceRouteStartReservation {
   static void require(boolean value,String message)throws IOException{if(!value)throw new IOException("Reservation prototype: "+message);}
   synchronized void put(String key,Object value){try{evidence.put(key,value);}catch(Throwable error){if(failure==null)failure=error;}}
   synchronized void fail(Throwable error){if(failure==null){failure=error;put("failure",error.getClass().getName()+": "+String.valueOf(error.getMessage()));}}
-  synchronized JSONObject snapshot(){return copy(evidence);}
+  synchronized JSONObject snapshot(){
+    put("prepared",prepared);put("preparationCount",preparations);put("delegationCount",delegations);
+    put("callbackCount",callbackCount);put("failed",failure!=null);put("state",state);return copy(evidence);
+  }
   long remaining()throws IOException{long value=deadlineNs-now();require(value>0,"original 75s budget exhausted");return value;}
   static JSONObject copy(JSONObject value){return SourceRouteStartObservation.copy(value);}
   static boolean same(JSONObject first,JSONObject second){
@@ -70,6 +73,9 @@ final class SourceRouteStartReservation {
       require(gate.owner()==null,"another fixture scope is active");
       if(network.starting||gate.connecting()){put("busyObservedAtNs",now());return false;}
       require(!network.restartQueued&&network.startWaiters.isEmpty(),"idle flags hide queued waiters");
+      put("admission",J.obj("atNs",now(),"onUiThread",gate.onUiThread(),"monitorHeld",Thread.holdsLock(network),
+          "ownerWasEmpty",gate.owner()==null,"starting",network.starting,"connecting",gate.connecting(),
+          "restartQueued",network.restartQueued,"pendingWaiters",network.startWaiters.size()));
       admissionContacts=copy(gate.contacts());put("admissionContacts",copy(admissionContacts));
       try{
         gate.claim(this);require(gate.owner()==scopeToken,"fixture claim did not bind this scope");
@@ -118,6 +124,7 @@ final class SourceRouteStartReservation {
       put("invocationId",invocationId);put("prepareBeganAtNs",now());
     }}
     // No network monitor or UI dispatcher is held during the actual private IO.
+    put("prepareMonitorHeld",Thread.holdsLock(network));put("prepareThreadId",Thread.currentThread().getId());
     require(!Thread.holdsLock(network),"preparation would run under the network monitor");
     JSONObject result=null;
     try{
@@ -143,14 +150,14 @@ final class SourceRouteStartReservation {
   void runReservedWorker(int mode,Runnable original){
     try{try{prepareAtWorkerEntry(mode);}catch(Throwable error){fail(error);state="failed";}}
     finally{
-      delegations++;put("originalDelegations",delegations);put("originalBeganAtNs",now());
+      delegations++;put("originalDelegations",delegations);put("originalThreadId",Thread.currentThread().getId());put("originalBeganAtNs",now());
       try{original.run();}
       finally{put("originalEndedAtNs",now());try{put("actualContactsAfterOriginal",copy(gate.contacts()));}catch(Throwable error){fail(error);}}
     }
   }
   void completed(boolean ok,String message){
     try{
-      callbackCount++;put("callbackCount",callbackCount);put("actualCallback",J.obj("ok",ok,"message",message,"atNs",now()));
+      callbackCount++;put("callbackCount",callbackCount);put("actualCallback",J.obj("ok",ok,"message",message,"atNs",now(),"onUiThread",gate.onUiThread(),"threadId",Thread.currentThread().getId()));
       require(gate.owner()==scopeToken&&callbackCount==1,"late, duplicate, or wrong-scope callback");
       gate.completed(this,ok,message);
       require(prepared,"unprepared callback");
@@ -176,6 +183,13 @@ final class SourceRouteStartReservation {
           &&root.completion.isDone()&&!root.completion.isCompletedExceptionally()
           &&!network.starting&&!network.restartQueued&&network.startWaiters.isEmpty(),
           "actual reserved operation has not uniquely retired");
+      JSONObject observation=observer.snapshot(root);remaining();
+      put("validation",J.obj("atNs",now(),"prepared",prepared,"preparations",preparations,
+          "delegations",delegations,"callbacks",callbackCount,"failed",failure!=null,"state",state,
+          "scopeOwned",gate.owner()==scopeToken,"starting",network.starting,"restartQueued",network.restartQueued,
+          "pendingWaiters",network.startWaiters.size(),"workerCompleted",root.completion.isDone(),
+          "workerFailed",root.completion.isCompletedExceptionally(),"rootObservation",observation));
+      remaining();
     }}
   }
 }

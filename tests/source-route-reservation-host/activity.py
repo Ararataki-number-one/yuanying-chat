@@ -35,7 +35,7 @@ def run(java_home,json_jar,output):
     native=ROOT/'app/src/main/java/local/pocketchat/NativeNetwork.java';session=ROOT/'app/src/main/java/local/pocketchat/ChatSession.java'
     activity=ROOT/'tests/gecko/NetworkSourcesRouteIntegrationActivity.java';terminal=ROOT/'tests/gecko/SourceRouteTerminalObserver.java'
     observer=ROOT/'tests/gecko/SourceRouteStartObservation.java';reservation=ROOT/'tests/gecko/SourceRouteStartReservation.java';whole_json=ROOT/'app/src/main/java/local/pocketchat/J.java'
-    inputs=[native,session,activity,terminal,observer,reservation,whole_json,HERE/'ActivityReservationHost.java',HERE/'run.py',Path(__file__).resolve(),ROOT/'tests/source-route-start-host/run.py']
+    inputs=[native,session,activity,terminal,observer,reservation,whole_json,HERE/'ActivityReservationHost.java',HERE/'run.py',Path(__file__).resolve(),ROOT/'tests/source-route-start-host/run.py',ROOT/'tools/gecko/network_sources_contract.py']
     hashes={str(p.relative_to(ROOT)):sha(p) for p in inputs}
     preserved_checks=original_checks(activity.read_text())
     hook_source=member(activity.read_text(),'static final class RouteNetwork')
@@ -54,7 +54,19 @@ def run(java_home,json_jar,output):
         executed=subprocess.run([str(java_home/'bin/java'),'-cp',str(d)+':'+str(json_jar),'local.pocketchat.ActivityReservationHost',str(output)],capture_output=True,timeout=30)
         (raw/'stdout.log').write_bytes(executed.stdout);(raw/'stderr.log').write_bytes(executed.stderr)
         if executed.returncode:raise RuntimeError(executed.stderr.decode())
-    report=json.loads(output.read_text());report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceDirty=bool(subprocess.check_output(['git','status','--short'],cwd=ROOT,text=True).strip()),sourceFiles=hashes,executionInputsUnchanged=all(sha(ROOT/p)==v for p,v in hashes.items()),jsonJarSha256=sha(json_jar),activityMembers=ACTIVITY,workerHooks=HOOKS,terminalMembers=TERMINAL,originalBusinessExpressionsSha256=preserved_checks,originalBusinessExpressionCount=39,generatedSha256=hashlib.sha256(generated.encode()).hexdigest(),rawFiles={str(p):dict(bytes=p.stat().st_size,sha256=sha(p)) for p in raw.iterdir() if p.is_file()})
+    report=json.loads(output.read_text())
+    contract_spec=importlib.util.spec_from_file_location('actual_activity_reservation_contract',ROOT/'tools/gecko/network_sources_contract.py')
+    contract=importlib.util.module_from_spec(contract_spec);contract_spec.loader.exec_module(contract)
+    replayed=[]
+    for case in report['cases']:
+        if case['name'] in ('actual Activity successful negative','actual Activity natural mode1'):
+            rows=case['evidence']['negativeCases'];assert len(rows)==1
+            row=rows[0];e=case['evidence']['reservationDiagnostics'][0]
+            operation=contract._verify_source_route_reservation(row,e,e['sourceCommit'],e['runNonce'])
+            replayed.append(dict(case=case['name'],operation=list(operation)))
+    assert len(replayed)==2
+    report['publicReservationReplay']=dict(passed=True,cases=replayed,scope='Actual JVM reservation/root/counters/callback/validation records plus explicit host recovery timing adapter. Direct reservation verifier only; not full terminal/Android/IPC qualification.')
+    report.update(sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceDirty=bool(subprocess.check_output(['git','status','--short'],cwd=ROOT,text=True).strip()),sourceFiles=hashes,executionInputsUnchanged=all(sha(ROOT/p)==v for p,v in hashes.items()),jsonJarSha256=sha(json_jar),activityMembers=ACTIVITY,workerHooks=HOOKS,terminalMembers=TERMINAL,originalBusinessExpressionsSha256=preserved_checks,originalBusinessExpressionCount=39,generatedSha256=hashlib.sha256(generated.encode()).hexdigest(),rawFiles={str(p):dict(bytes=p.stat().st_size,sha256=sha(p)) for p in raw.iterdir() if p.is_file()})
     output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     assert report['status']=='host-controls-passed-android-candidate' and report['passed']==report['total']==18 and len(report['checks'])==18 and len(report['cases'])==8 and all(c['pass'] is True for c in report['checks']) and report['executionInputsUnchanged'] and not report['actualAndroidExecution'] and not report['acceptedAsRepair']
     print(json.dumps(dict(status=report['status'],passed=report['passed'],total=report['total'],output=str(output))))

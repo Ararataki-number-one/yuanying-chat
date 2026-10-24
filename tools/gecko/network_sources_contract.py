@@ -668,6 +668,182 @@ def _verify_source_route_join(evidence, stop, recovery, source, nonce):
     assert json.dumps(owner['owned'], sort_keys=True) == json.dumps(stop['owned'], sort_keys=True)
 
 
+def _verify_source_route_reservation(row, evidence, source, nonce):
+    """Close admission, preparation and original-operation evidence for this case.
+
+    The validation snapshot is taken before fetch while the native monitor still
+    proves the original worker retired. Later ordinary recovery registrations
+    remain separate from that immutable original-operation snapshot.
+    """
+    def number(value, minimum=0):
+        assert type(value) is int and value >= minimum
+        return value
+
+    def at(value):
+        return number(value, 1)
+
+    def contacts(value):
+        assert isinstance(value, dict) and set(value) == {'fixedTarget', 'decoyTarget', 'ip',
+            'plainProbe', 'fixedAllConnected', 'decoyAllConnected'}
+        for item in value.values():
+            number(item)
+        return value
+
+    def flag(value, expected):
+        assert type(value) is bool and value is expected
+
+    def waiter_ids(value):
+        assert isinstance(value, list)
+        for item in value:
+            number(item, 1)
+        return value
+
+    def same(first, second):
+        # Python considers True == 1; independent JSON observations must retain
+        # exact scalar types as well as dictionary/list values.
+        return json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+
+    reservation = evidence['reservation']
+    assert type(reservation['schema']) is int and reservation['schema'] == 1
+    assert reservation['caseId'] == evidence['caseId'] and reservation['sourceCommit'] == source
+    assert reservation['runNonce'] == nonce and 'failure' not in reservation
+    flag(reservation['failed'], False)
+    flag(reservation['prepared'], True)
+    assert reservation['state'] == 'prepared'
+    for key in ('preparationCount', 'delegationCount', 'callbackCount', 'originalDelegations'):
+        assert number(reservation[key], 1) == 1
+    began, deadline = at(reservation['beganAtNs']), at(reservation['deadlineNs'])
+    assert number(reservation['budgetNs']) == deadline - began == 75_000_000_000
+    assert began == evidence['restartBeganAtNs'] and deadline == evidence['restartDeadlineAtNs']
+    admission = reservation['admission']
+    admitted = at(reservation['admittedAtNs'])
+    assert began <= at(admission['atNs']) <= admitted < deadline
+    for key in ('onUiThread', 'monitorHeld', 'ownerWasEmpty'):
+        flag(admission[key], True)
+    for key in ('starting', 'connecting', 'restartQueued'):
+        flag(admission[key], False)
+    assert number(admission['pendingWaiters']) == 0
+    baseline = contacts(reservation['admissionContacts'])
+    assert baseline == contacts(reservation['actualPreparationContacts']) == contacts(reservation['actualContactsAfterOriginal'])
+    for value in (evidence['contactsBefore'], evidence['contactsAfter'], row['before'], row['after'],
+                  row['request']['before'], row['request']['after']):
+        assert baseline == contacts(value)
+    prepared = reservation['preparationResult']
+    flag(prepared['managedCoreStopped'], True)
+    assert contacts(prepared['contacts']) == baseline
+    for key in ('entrySnapshotHashValid', 'exitSnapshotHashValid'):
+        assert type(prepared[key]) is bool and type(row[key]) is bool and prepared[key] is row[key]
+    flag(reservation['prepareMonitorHeld'], False)
+    validation = reservation['validation']
+    verified = at(validation['atNs'])
+    assert admitted <= verified < deadline and verified <= evidence['fetchBeganAtNs']
+    for key in ('prepared', 'scopeOwned', 'workerCompleted'):
+        flag(validation[key], True)
+    for key in ('failed', 'starting', 'restartQueued', 'workerFailed'):
+        flag(validation[key], False)
+    assert validation['state'] == 'prepared' and number(validation['pendingWaiters']) == 0
+    for key in ('preparations', 'delegations', 'callbacks'):
+        assert number(validation[key], 1) == 1
+    owned, final = validation['rootObservation'], evidence['startObservation']
+    for observation in (owned, final):
+        assert type(observation['schema']) is int and observation['schema'] == 1
+        assert observation['caseId'] == evidence['caseId'] and observation['sourceCommit'] == source
+        assert observation['runNonce'] == nonce and observation['errors'] == []
+    root = owned['rootRegistration']
+    assert same(root, reservation['realRegistration']) and same(root, final['rootRegistration'])
+    root_callback = number(owned['rootCallbackId'], 1)
+    assert number(final['rootCallbackId'], 1) == number(root['callbackId'], 1) == root_callback
+    registration = number(root['registrationId'], 1)
+    assert root['caseId'] == evidence['caseId'] and root['callbackKind'] == 'restart'
+    assert number(root['mode']) == 2 and number(root['request']) == 0
+    assert waiter_ids(root['waitersBefore']) == [] and waiter_ids(root['waitersAfter']) == [root_callback]
+    for key in ('monitorHeldBefore', 'monitorHeldAfter', 'startingAfter', 'exactAppend'):
+        flag(root[key], True)
+    for key in ('startingBefore', 'restartQueuedBefore', 'restartQueuedAfter', 'adapterCallbackMatches', 'rootCallbackRetained'):
+        flag(root[key], False)
+    for key in ('invocationIdBefore', 'invocationIdAfter', 'workerThreadIdBefore', 'workerThreadIdAfter'):
+        assert number(root[key]) == 0
+    assert isinstance(owned['workerInvocations'], list) and len(owned['workerInvocations']) == 1
+    assert same(owned['workerInvocations'], final['workerInvocations'])
+    worker = owned['workerInvocations'][0]
+    invocation, thread = number(worker['invocationId'], 1), number(worker['javaThreadId'], 1)
+    assert number(reservation['invocationId'], 1) == invocation
+    assert worker['caseId'] == evidence['caseId'] and number(worker['mode']) == 2
+    assert number(worker['rootRegistrationId'], 1) == registration
+    assert number(worker['rootCallbackId'], 1) == root_callback
+    flag(worker['startingBefore'], True)
+    for key in ('startingAfter', 'restartQueuedBefore', 'restartQueuedAfter'):
+        flag(worker[key], False)
+    assert waiter_ids(worker['waitersAfter']) == []
+    rb, re = at(root['beganAtNs']), at(root['endedAtNs'])
+    wb, we = at(worker['beganAtNs']), at(worker['endedAtNs'])
+    pb, pe = at(reservation['prepareBeganAtNs']), at(reservation['prepareEndedAtNs'])
+    ob, oe = at(reservation['originalBeganAtNs']), at(reservation['originalEndedAtNs'])
+    assert admitted <= rb <= re <= wb <= pb <= pe <= ob <= oe <= we <= verified < deadline
+    assert number(reservation['prepareThreadId'], 1) == number(reservation['originalThreadId'], 1) == thread
+    callback = reservation['actualCallback']
+    flag(callback['ok'], False)
+    flag(callback['onUiThread'], True)
+    assert number(callback['threadId'], 1) != thread
+    assert isinstance(callback['message'], str)
+    cb = at(callback['atNs'])
+    assert ob <= cb <= evidence['restartTerminal']['atNs'] <= verified
+    assert callback['ok'] is evidence['restartTerminal']['ok'] is row['started'] is False
+    admissions, all_admissions = owned['admissions'], final['admissions']
+    assert isinstance(admissions, list) and isinstance(all_admissions, list)
+    assert same(all_admissions[:len(admissions)], admissions)
+    recoveries = {item['request']: item for item in evidence['recoveries']}
+    callbacks, registrations, requests = {root_callback}, {registration}, set()
+    previous_end, waiters, before_worker = re, [root_callback], [root_callback]
+    for index, joined in enumerate(all_admissions):
+        assert joined['caseId'] == evidence['caseId'] and joined['callbackKind'] == 'recovery'
+        assert number(joined['mode']) == 1
+        request = number(joined['request'], 1)
+        assert request not in requests and request in recoveries
+        requests.add(request)
+        callback_id, register_id = number(joined['callbackId'], 1), number(joined['registrationId'], 1)
+        assert callback_id not in callbacks and register_id not in registrations
+        callbacks.add(callback_id); registrations.add(register_id)
+        jb, je = at(joined['beganAtNs']), at(joined['endedAtNs'])
+        assert previous_end <= jb <= je <= recoveries[request]['completedAtNs']
+        assert recoveries[request]['requestedAtNs'] <= jb
+        previous_end = je
+        for key in ('monitorHeldBefore', 'monitorHeldAfter', 'startingAfter', 'exactAppend', 'adapterCallbackMatches'):
+            flag(joined[key], True)
+        for key in ('restartQueuedBefore', 'restartQueuedAfter'):
+            flag(joined[key], False)
+        assert waiter_ids(joined['waitersAfter']) == waiter_ids(joined['waitersBefore']) + [callback_id]
+        if index < len(admissions):
+            flag(joined['startingBefore'], True)
+            flag(joined['rootCallbackRetained'], True)
+            assert joined['waitersBefore'] == waiters and je <= we
+            waiters = joined['waitersAfter']
+            if je <= wb:
+                before_worker = list(waiters)
+                expected_invocation, expected_thread = 0, 0
+            else:
+                assert wb <= jb
+                expected_invocation, expected_thread = invocation, thread
+        else:
+            # Subsequent default recovery is a fresh original operation. The
+            # terminal contract separately requires its failed callback/closure.
+            assert verified <= jb
+            flag(joined['startingBefore'], False)
+            flag(joined['rootCallbackRetained'], False)
+            assert joined['waitersBefore'] == []
+            expected_invocation, expected_thread = 0, 0
+        for key in ('invocationIdBefore', 'invocationIdAfter'):
+            assert number(joined[key]) == expected_invocation
+        for key in ('workerThreadIdBefore', 'workerThreadIdAfter'):
+            assert number(joined[key]) == expected_thread
+    assert waiter_ids(worker['waitersBefore']) == before_worker
+    # NativeNetwork.recover may deliver FAILED immediately when recoveryBlocked,
+    # without entering startOperation. Its terminal callback/closure remain
+    # mandatory in the original terminal verifier; no admission is invented.
+    assert requests <= set(recoveries)
+    return root_callback, registration, invocation
+
+
 def verify_source_route_terminal(report, source):
     """Require one bounded, identity-bound terminal observation per rejected case."""
     def integer(value, minimum=0):
@@ -720,6 +896,10 @@ def verify_source_route_terminal(report, source):
                                         'routeSerial', 'starting', 'connecting', 'ready', 'hasVerifiedReceipt'}
     cases = report['negativeCases']
     assert isinstance(cases, list) and len(cases) == 4
+    diagnostics = report['reservationDiagnostics']
+    assert isinstance(diagnostics, list) and len(diagnostics) == 4
+    assert json.dumps(diagnostics, sort_keys=True) == json.dumps([row['terminalEvidence'] for row in cases], sort_keys=True)
+    original_callbacks, original_registrations, original_invocations = set(), set(), set()
     assert {row['name'] for row in cases} == FAILURE
     case_ids, all_requests = set(), set()
     requests = {row['id']: row for row in report['requests']}
@@ -898,6 +1078,10 @@ def verify_source_route_terminal(report, source):
         for value in contacts.values():
             integer(value)
         assert contacts == evidence['contactsAfter'] == row['before'] == row['after'] == request['before'] == request['after']
+        callback_id, registration_id, invocation_id = _verify_source_route_reservation(row, evidence, source, nonce)
+        for value, seen in ((callback_id, original_callbacks), (registration_id, original_registrations), (invocation_id, original_invocations)):
+            assert value not in seen
+            seen.add(value)
     return {'cases': len(cases), 'sameSourceInvocation': True, 'freshClosedTerminalSnapshots': True}
 
 

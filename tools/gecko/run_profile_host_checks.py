@@ -200,7 +200,8 @@ def main():
     files.update([reservation_host, ROOT / "tests/source-route-reservation-host/ActivityReservationHost.java",
                   ROOT / "tests/source-route-reservation-host/run.py", ROOT / "tests/source-route-reservation-host/ReservationHost.java",
                   ROOT / "tests/gecko/SourceRouteStartReservation.java", ROOT / "app/src/main/java/local/pocketchat/ChatSession.java",
-                  ROOT / "tests/gecko/source_route_cleanup.py", ROOT / "tests/source_route_cleanup_contract_test.py"])
+                  ROOT / "tests/gecko/source_route_cleanup.py", ROOT / "tests/source_route_cleanup_contract_test.py",
+                  ROOT / "tests/profile_network_source_reservation_contract_test.py"])
     cleanup_test = ROOT / "tests/source_route_cleanup_contract_test.py"
     subprocess.run([sys.executable, str(cleanup_test)], cwd=ROOT, check=True)
     cleanup_value = json.loads((ROOT / "work/reservation-host/cleanup-contract-results.json").read_text())
@@ -210,13 +211,13 @@ def main():
                       "testSha256":"tests/source_route_cleanup_contract_test.py"}
     if (cleanup_value.get("status") != "passed" or cleanup_value.get("actualAndroidExecution") is not False
             or cleanup_value.get("actualProcessStopped") is not False or cleanup_value.get("nativeOperationCancelled") is not False
-            or len(cleanup_value.get("tests", [])) != 38 or not all(item.get("passed") is True for item in cleanup_value["tests"])
+            or len(cleanup_value.get("tests", [])) != 47 or not all(item.get("passed") is True for item in cleanup_value["tests"])
             or any(cleanup_value.get(key) != hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for key, path in cleanup_inputs.items())):
         raise ValueError("Incomplete source-route cleanup host controls")
     cleanup_receipt = output / "source-route-cleanup-host-results.json"
     cleanup_receipt.write_text(json.dumps(cleanup_value, indent=2) + "\n")
     results.append({"test":"source-route-cleanup", "report":str(cleanup_receipt.relative_to(ROOT)),
-                    "passed":38, "actualAndroidExecution":False})
+                    "passed":47, "actualAndroidExecution":False})
     files.update(ROOT / path for path in cleanup_inputs.values())
     caret_test = ROOT / "tests/browser-runtime/caret-document-observer.test.cjs"
     if caret_test.is_file():

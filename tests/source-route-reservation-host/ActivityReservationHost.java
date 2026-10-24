@@ -26,7 +26,7 @@ public final class ActivityReservationHost {
     app.uiQueue.drain();app.network.main.drain();app.network.worker.submit(()->{}).get(3,TimeUnit.SECONDS);
     try{future.get();return null;}catch(ExecutionException error){return error.getCause();}
   }
-  static JSONObject evidence(NetworkSourcesRouteIntegrationActivity app){return J.obj("reservationDiagnostics",app.reservationDiagnostics,"businessChecksExecuted",app.checks,"finishAdapterCalls",app.finishCalls,"fetchAdapterCalls",app.fetchCalls,"launches",app.network.launches,"callbacks",app.network.callbacks,"contacts",app.contacts(),"failure",String.valueOf(app.reservationFailure));}
+  static JSONObject evidence(NetworkSourcesRouteIntegrationActivity app){return J.obj("reservationDiagnostics",app.reservationDiagnostics,"negativeCases",app.negatives,"businessChecksExecuted",app.checks,"finishAdapterCalls",app.finishCalls,"fetchAdapterCalls",app.fetchCalls,"launches",app.network.launches,"callbacks",app.network.callbacks,"contacts",app.contacts(),"failure",String.valueOf(app.reservationFailure));}
   static void simple()throws Exception{
     try(NetworkSourcesRouteIntegrationActivity app=new NetworkSourcesRouteIntegrationActivity()){
       Throwable error=run(app,()->{app.network.order.add("mutation");return null;},a->{});
@@ -105,7 +105,13 @@ class ActualNetwork extends NativeNetwork {
   ActualNetwork(NetworkSourcesRouteIntegrationActivity test){this.test=test;}
   /* ACTUAL_ACTIVITY_WORKER_HOOKS */
   @Override void startNow()throws Exception{startEntered.countDown();if(startBlock!=null)ActivityReservationHost.await(startBlock);super.startNow();}
-  @Override void recoverOutcome(RecoveryCallback callback){SourceRouteStartObservation.Root root=test.terminalObserver.active==null?null:test.terminalObserver.active.startupRoot;startObservation.recovery(callback,++test.recoveryRequestSerial,root);super.recoverOutcome(callback);}
+  @Override void recoverOutcome(RecoveryCallback callback){
+    SourceRouteTerminalObserver.Scope scope=test.terminalObserver.active;SourceRouteStartObservation.Root root=scope==null?null:scope.startupRoot;
+    int request=++test.recoveryRequestSerial;JSONObject observed=J.obj("request",request,"requestedAtNs",SystemClock.elapsedRealtimeNanos());
+    if(scope!=null){JSONArray rows=scope.evidence.optJSONArray("recoveries");if(rows==null){rows=new JSONArray();NetworkCatalog.put(scope.evidence,"recoveries",rows);}rows.put(observed);}
+    RecoveryCallback wrapped=outcome->{NetworkCatalog.put(observed,"completedAtNs",SystemClock.elapsedRealtimeNanos());callback.done(outcome);};
+    startObservation.recovery(wrapped,request,root);super.recoverOutcome(wrapped);
+  }
 }
 class Transport {final NativeNetwork network;volatile boolean alive;JSONObject state=J.obj("alive",false);Transport(NativeNetwork network){this.network=network;}JSONObject call(String action,String value,NetworkDiagnostics.Reason reason){network.stops.incrementAndGet();network.order.add("stopNow");alive=false;state=J.obj("alive",false);return state;}}
 class Dispatcher {final BlockingQueue<Runnable> queue=new LinkedBlockingQueue<>();void post(Runnable task){queue.add(task);}void postDelayed(Runnable task,long delay){queue.add(task);}void drain(){Runnable task;while((task=queue.poll())!=null)task.run();}}
@@ -123,7 +129,7 @@ class NetworkSourcesRouteIntegrationActivity implements AutoCloseable {
   void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}static long now(){return SystemClock.elapsedRealtimeNanos();}
   void publishOriginal(){network.order.add("publishOriginal");}
   JSONObject contacts(){return J.obj("fixedTarget",network.contacts.get(),"decoyTarget",0,"ip",0,"plainProbe",0,"fixedAllConnected",network.connections.get(),"decoyAllConnected",0);}
-  JSONObject fetch(String name,boolean expected,SourceRouteTerminalObserver.Scope scope){fetchCalls++;lastScope=scope;terminalObserver.beginFetch(scope);return J.obj("ok",false);}
+  JSONObject fetch(String name,boolean expected,SourceRouteTerminalObserver.Scope scope){JSONObject before=contacts();fetchCalls++;lastScope=scope;terminalObserver.beginFetch(scope);return J.obj("ok",false,"before",before,"after",contacts());}
   /* ACTUAL_ACTIVITY_GATE_AND_REJECT */
   public void close(){if(network.startBlock!=null)network.startBlock.countDown();network.worker.shutdownNow();runner.shutdownNow();}
 }
@@ -131,7 +137,13 @@ class SourceRouteTerminalObserver {
   final NetworkSourcesRouteIntegrationActivity test;volatile Scope active;SourceRouteTerminalObserver(NetworkSourcesRouteIntegrationActivity test){this.test=test;}
   /* ACTUAL_TERMINAL_MEMBERS */
   JSONObject cache(){return copy(test.network.transport.state);}
-  void finish(Scope scope,JSONObject negative)throws Exception{require(active==scope,"host finish received another scope");test.finishCalls++;test.lastScope=scope;NetworkCatalog.put(scope.evidence,"status","host-finish-adapter");active=null;}
+  void finish(Scope scope,JSONObject negative)throws Exception{
+    require(active==scope,"host finish received another scope");test.finishCalls++;test.lastScope=scope;
+    NetworkCatalog.put(scope.evidence,"status","host-finish-adapter");NetworkCatalog.put(scope.evidence,"restartTerminal",copy(scope.restartTerminal));
+    NetworkCatalog.put(scope.evidence,"contactsBefore",copy(scope.contacts));NetworkCatalog.put(scope.evidence,"contactsAfter",test.contacts());
+    NetworkCatalog.put(scope.evidence,"startObservation",test.network.startObservation.snapshot(scope.startupRoot));
+    if(!scope.evidence.has("recoveries"))NetworkCatalog.put(scope.evidence,"recoveries",new JSONArray());active=null;
+  }
 }
 class SecretStore {JSONObject settings(){return new JSONObject();}byte[] get(String name){return new byte[0];}}
 class NetworkHealthPolicy {enum Admission{BLOCKED;boolean usable(){return false;}}}

@@ -19,6 +19,64 @@ def identifier(number):
     return '00000000-0000-4000-8000-' + str(number).zfill(12)
 
 
+def reservation_protocol(report):
+    """Coherent synthetic parser controls; never Android or physical IO evidence."""
+    for index, row in enumerate(report['negativeCases']):
+        e = row['terminalEvidence']; base = e['startedAtNs']; case_id = e['caseId']
+        row['entrySnapshotHashValid'] = row['name'] != 'invalid-entry-snapshot-sha'
+        row['exitSnapshotHashValid'] = row['name'] != 'invalid-exit-snapshot-sha'
+        if 'startObservation' not in e:
+            callback_id, registration_id, invocation_id, thread_id = 100+index*100, 101+index*100, 1000+index, 30+index
+            root = dict(registrationId=registration_id, mode=2, callbackId=callback_id, callbackKind='restart',
+                request=0, caseId=case_id, beganAtNs=base+2, endedAtNs=base+4,
+                monitorHeldBefore=True, monitorHeldAfter=True, startingBefore=False, startingAfter=True,
+                restartQueuedBefore=False, restartQueuedAfter=False, waitersBefore=[],waitersAfter=[callback_id],
+                exactAppend=True,adapterCallbackMatches=False,rootCallbackRetained=False,
+                invocationIdBefore=0,invocationIdAfter=0,workerThreadIdBefore=0,workerThreadIdAfter=0)
+            worker = dict(invocationId=invocation_id,rootRegistrationId=registration_id,rootCallbackId=callback_id,
+                caseId=case_id,mode=2,javaThreadId=thread_id,beganAtNs=base+5,endedAtNs=e['restartTerminal']['atNs']-2,
+                waitersBefore=[callback_id],waitersAfter=[],startingBefore=True,startingAfter=False,
+                restartQueuedBefore=False,restartQueuedAfter=False)
+            e['startObservation'] = dict(schema=1,caseId=case_id,sourceCommit=SOURCE,runNonce=NONCE,
+                rootCallbackId=callback_id,rootRegistration=root,admissions=[],workerInvocations=[worker],errors=[])
+        observation=e['startObservation'];root=observation['rootRegistration'];worker=observation['workerInvocations'][0]
+        owned=[copy.deepcopy(a) for a in observation['admissions'] if a['rootCallbackRetained']]
+        owned_requests={a['request'] for a in owned}
+        later=[]
+        for number, recovery in enumerate(r for r in e['recoveries'] if r['request'] not in owned_requests):
+            callback=root['callbackId']+10+number;registration=root['registrationId']+10+number
+            later.append(dict(registrationId=registration,mode=1,callbackId=callback,callbackKind='recovery',
+                request=recovery['request'],caseId=case_id,beganAtNs=recovery['requestedAtNs']+1,
+                endedAtNs=recovery['requestedAtNs']+2,monitorHeldBefore=True,monitorHeldAfter=True,
+                startingBefore=False,startingAfter=True,restartQueuedBefore=False,restartQueuedAfter=False,
+                waitersBefore=[],waitersAfter=[callback],exactAppend=True,adapterCallbackMatches=True,
+                rootCallbackRetained=False,invocationIdBefore=0,invocationIdAfter=0,workerThreadIdBefore=0,workerThreadIdAfter=0))
+        observation['admissions']=owned+later
+        owned_observation=copy.deepcopy(observation);owned_observation['admissions']=owned
+        prepared_began=worker['beganAtNs']+1;prepared_end=prepared_began+1
+        callback_at=e['restartTerminal']['atNs']-1;verified=e['restartTerminal']['atNs']+1
+        e['reservation']=dict(schema=1,prototypeOnly=True,acceptedAsRepair=False,caseId=case_id,
+            sourceCommit=SOURCE,runNonce=NONCE,beganAtNs=e['restartBeganAtNs'],deadlineNs=e['restartDeadlineAtNs'],
+            budgetNs=75_000_000_000,prepared=True,preparationCount=1,delegationCount=1,originalDelegations=1,
+            callbackCount=1,failed=False,state='prepared',admittedAtNs=root['beganAtNs'],
+            admission=dict(atNs=e['restartBeganAtNs'],onUiThread=True,monitorHeld=True,ownerWasEmpty=True,
+                starting=False,connecting=False,restartQueued=False,pendingWaiters=0),
+            admissionContacts=copy.deepcopy(row['before']),actualPreparationContacts=copy.deepcopy(row['before']),
+            actualContactsAfterOriginal=copy.deepcopy(row['before']),
+            preparationResult=dict(managedCoreStopped=True,contacts=copy.deepcopy(row['before']),
+                entrySnapshotHashValid=row['entrySnapshotHashValid'],exitSnapshotHashValid=row['exitSnapshotHashValid']),
+            realRegistration=copy.deepcopy(root),invocationId=worker['invocationId'],prepareMonitorHeld=False,
+            prepareThreadId=worker['javaThreadId'],originalThreadId=worker['javaThreadId'],
+            prepareBeganAtNs=prepared_began,prepareEndedAtNs=prepared_end,originalBeganAtNs=prepared_end+1,
+            originalEndedAtNs=worker['endedAtNs']-1,
+            actualCallback=dict(ok=False,message='synthetic rejected source',atNs=callback_at,onUiThread=True,threadId=1),
+            validation=dict(atNs=verified,prepared=True,preparations=1,delegations=1,callbacks=1,failed=False,
+                state='prepared',scopeOwned=True,starting=False,restartQueued=False,pendingWaiters=0,
+                workerCompleted=True,workerFailed=False,rootObservation=owned_observation))
+    report['reservationDiagnostics']=[row['terminalEvidence'] for row in report['negativeCases']]
+    return report
+
+
 def synthetic_report():
     """Three cases without recovery and one real-shaped overlapping callback."""
     report = dict(sourceCommit=SOURCE, runNonce=NONCE,
@@ -99,7 +157,7 @@ def synthetic_report():
             coreAliveAfter=False, postFetchObservedAtNs=base + 400,
             message='rejected synthetic candidate', before=copy.deepcopy(contacts),
             after=copy.deepcopy(contacts), request=request, terminalEvidence=e))
-    return report
+    return reservation_protocol(report)
 
 
 def synthetic_joined_report():
@@ -152,7 +210,7 @@ def synthetic_joined_report():
         admissions=[admission], workerInvocations=[worker], errors=[])
     e['startObservationWait'] = dict(method='actual-start-worker-observer-completion',
                                     requestedAtNs=base+420, completedAtNs=base+430)
-    return report
+    return reservation_protocol(report)
 
 
 class SourceRouteJoinedStartContractTest(unittest.TestCase):
@@ -342,6 +400,7 @@ class SourceRouteTerminalContractTest(unittest.TestCase):
         e['recoveries'].insert(0,first)
         e['fenceBefore']=copy.deepcopy(second['terminalFence'])
         e['fenceAfter']=copy.deepcopy(second['terminalFence'])
+        reservation_protocol(value)  # Add matching registrations for both unchanged terminal recoveries.
         self.assertEqual(C.verify_source_route_terminal(value,SOURCE)['cases'],4)
         for change in ('token','request','order'):
             bad=copy.deepcopy(value);rows=bad['negativeCases'][-1]['terminalEvidence']['recoveries']
