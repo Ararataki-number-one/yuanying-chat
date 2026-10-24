@@ -90,6 +90,9 @@ def journal(value,env):
     for line in rows:
         row=line.split('\t');require(row[2:7]==['0','CONTROL',owner,env['environmentId'],str(env['generation'])],'owned journal scope')
         require(all(re.fullmatch('[0-9]+',row[i]) for i in (0,1)) and re.fullmatch('-?[0-9]+',row[11]),'journal numeric fields')
+        require(row[8] in ('IPC_NULL_BINDING','IPC_BIND_TIMEOUT','IPC_CONNECTED','IPC_DETACH','IPC_BIND_REJECTED')
+                and row[9]==('UNKNOWN' if row[8] in ('IPC_CONNECTED','IPC_DETACH') else 'CONTROL_UNAVAILABLE')
+                and row[10]==('IPC' if row[8]=='IPC_DETACH' else 'BIND') and row[11]=='0','actual callback/command diagnostic provenance')
         events[row[8]]=events.get(row[8],0)+1
     return owner,events
 
@@ -104,7 +107,7 @@ def verify_binding_result(report,identity,nonce,uid,sdk):
     for key in ('actualAndroidExecution','actualFrameworkBinding','actualMessengerIpc','actualProductionClient'):require(report.get(key) is True,key)
     for key in ('actualProductionNetworkService','actualMihomoExecution','actualGeckoExecution','automaticBindRetryAdded','securityExceptionAndroidAcceptance','bindingDiedAndroidAcceptance','physicalPhoneAcceptance','realUserProxyAcceptance'):require(report.get(key) is False,key)
     require(report.get('manualServiceConnectionCallbacks')==0 and type(report.get('manualServiceConnectionCallbacks')) is int,'manual callback scope')
-    require(report.get('clientUid')==uid and integer(uid,1) and integer(report.get('clientPid'),2) and report.get('clientProcess')==ACTIVITY_PROCESS,'actual client UID/process')
+    require(report.get('clientUid')==uid and type(report.get('clientUid')) is int and integer(uid,1) and integer(report.get('clientPid'),2) and report.get('clientProcess')==ACTIVITY_PROCESS,'actual client UID/process')
     require(report.get('androidSdk')==sdk and integer(sdk,28),'actual Android SDK')
     require([(key,report.get(key)) for key in ('bindingTimeoutSeconds','replyTimeoutSeconds','detachTimeoutSeconds')]==[('bindingTimeoutSeconds',10),('replyTimeoutSeconds',15),('detachTimeoutSeconds',5)],'original deadlines')
     checks=report.get('checks');require(isinstance(checks,list) and report.get('checkCount')==len(CHECKS) and type(report.get('checkCount')) is int
@@ -116,7 +119,7 @@ def verify_binding_result(report,identity,nonce,uid,sdk):
         require(value.get('schema')==1 and type(value.get('schema')) is int and value.get('runNonce')==nonce and value.get('sourceCommit')==identity['sourceCommit'],'Service source and nonce')
         verify_installed(value.get('buildIdentity',{}),identity)
         require(value.get('role')==role and value.get('serviceClass')==CLASS+('$NullService' if role=='null' else '$MessengerService')
-                and value.get('serviceUid')==uid and integer(value.get('servicePid'),2) and value['servicePid']!=report['clientPid']
+                and value.get('serviceUid')==uid and type(value.get('serviceUid')) is int and integer(value.get('servicePid'),2) and value['servicePid']!=report['clientPid']
                 and value.get('serviceProcess')==SERVICE_PROCESS and value.get('onBindMainLooper') is True and integer(value.get('onBindAt')),'actual private Service process/onBind')
         require(value.get('returnedNull') is (role=='null'),'Service null versus Messenger binder')
     first=report['nullService'];normal=report['messengerService'];state=report.get('recoveredState',{})
@@ -129,7 +132,7 @@ def verify_binding_result(report,identity,nonce,uid,sdk):
         require(isinstance(row.get('id'),str) and re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',row['id']),'actual correlated request ID');ids.append(row['id'])
         require(row.get('slot')==0 and type(row.get('slot')) is int and row.get('configuration')==''
                 and row.get('generation')==('' if index==0 else 'fixture-'+nonce) and row.get('stopReason')=='UNKNOWN'
-                and row.get('expectedGeneration')=='' and row.get('sendingUid')==uid and row.get('replySent') is True
+                and row.get('expectedGeneration')=='' and row.get('sendingUid')==uid and type(row.get('sendingUid')) is int and row.get('replySent') is True
                 and integer(row.get('receivedAt')) and row['receivedAt']>=normal['onBindAt'],'original command fields/sender/reply')
     require(ids[0]!=ids[1],'request IDs must remain distinct')
     bindings=report.get('bindings');require(isinstance(bindings,list) and len(bindings)==2,'two explicit fault contexts')

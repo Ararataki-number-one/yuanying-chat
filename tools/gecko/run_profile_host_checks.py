@@ -335,9 +335,9 @@ def main():
     framework_controls=ROOT/'tests/gecko_network_client_binding_test.py'
     framework_run=subprocess.run([sys.executable,str(framework_controls)],cwd=ROOT,text=True,capture_output=True)
     framework_count=re.search(r'^Ran (\d+) tests? in ',framework_run.stderr,re.M)
-    if framework_run.returncode or framework_count is None or int(framework_count.group(1))!=38:
+    if framework_run.returncode or framework_count is None or int(framework_count.group(1))!=40:
         raise ValueError('Incomplete framework binding evidence controls: '+framework_run.stdout+framework_run.stderr)
-    results.append(dict(test='network-client-framework-evidence-controls',passed=38,actualAndroidExecution=False,
+    results.append(dict(test='network-client-framework-evidence-controls',passed=40,actualAndroidExecution=False,
         output=framework_run.stdout+framework_run.stderr))
     files.update((framework_controls,ROOT/'tools/gecko/network_client_binding_contract.py',ROOT/'tools/gecko/sdk_identity_contract.py',
                   ROOT/'tests/gecko/NetworkClientBindingIntegrationActivity.java',ROOT/'tests/gecko/run_network_client_binding.py',ROOT/'tests/gecko/AndroidManifest.xml'))

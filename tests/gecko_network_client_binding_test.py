@@ -144,6 +144,17 @@ class BindingControls(unittest.TestCase):
         self.result(lambda r:r['nullCallbackJournal']['environmentIdentity'].update(generation=1))
     def test_missing_bind_has_its_own_rejection_owner(self):
         self.result(lambda r:r.update(missingCallbackJournal=copy.deepcopy(r['completedCallbackJournal'])))
+    def test_owned_callback_rows_require_the_production_reason_and_stage(self):
+        for column,replacement in ((9,'REQUESTED'),(10,'PROBE'),(11,'1')):
+            def change(r):
+                value=r['nullCallbackJournal'];row=value['ownedRows'][0].split('\t');row[column]=replacement
+                value['ownedRows'][0]='\t'.join(row);value['rawSummary']='\n'.join(value['ownedRows'])+'\n'
+            self.result(change)
+    def test_unexpected_owned_event_cannot_stand_in_for_a_callback(self):
+        def change(r):
+            value=r['nullCallbackJournal'];row=value['ownedRows'][0].split('\t');row[8]='CORE_START'
+            value['ownedRows'][0]='\t'.join(row);value['rawSummary']='\n'.join(value['ownedRows'])+'\n'
+        self.result(change)
     def test_diagnostic_wait_clock_does_not_replace_actual_call_clock(self):
         self.result(lambda r:r['nullCallbackJournal'].update(diagnosticWaitLimitMs=30000));self.result(lambda r:r['nullCallbackJournal'].update(journalMonotonicClock='elapsedRealtime'))
     def test_provider_envelope_and_installed_bytes_are_independently_required(self):
