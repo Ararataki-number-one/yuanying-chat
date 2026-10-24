@@ -18,6 +18,35 @@ SPEC.loader.exec_module(P)
 
 
 class PublicationArtifactCopyTests(unittest.TestCase):
+    def test_failed_driver_build_has_only_the_declared_diagnostic_upload(self):
+        source = (ROOT / '.github/workflows/gecko-integration.yml').read_text()
+        part = source.split('    - name: Preserve native input build signature diagnostics\n', 1)[1].split('\n    - ', 1)[0]
+        self.assertIn('      if: always()\n', part)
+        paths = part.split('        path: |\n', 1)[1].split('        if-no-files-found:', 1)[0]
+        self.assertEqual({line.strip() for line in paths.splitlines() if line.strip()}, {
+            'work/gecko-integration/native-input-driver-signature-stdout.log',
+            'work/gecko-integration/native-input-driver-signature-stderr.log',
+            'work/gecko-integration/native-input-driver-signature-api.json',
+            'work/gecko-integration/native-input-driver-signature-api-stdout.log',
+            'work/gecko-integration/native-input-driver-signature-api-stderr.log',
+            'work/native-input-driver-build/strict/signed.apk'})
+        for name in ('Publish unsigned build for local original signing',
+                     'Seal one source/run-bound build for every Android phase',
+                     'Transfer exact compiled APKs and SDK inputs'):
+            step = source.split('    - name: ' + name + '\n', 1)[1].split('\n    - ', 1)[0]
+            self.assertNotIn('if: always()', step)
+
+    def test_signature_host_failure_upload_uses_only_the_explicit_public_logs(self):
+        source = (ROOT / '.github/workflows/gecko-integration.yml').read_text()
+        part = source.split('    - name: Preserve native input signature host diagnostics\n', 1)[1].split('\n    - ', 1)[0]
+        self.assertIn('      if: always()\n', part)
+        paths = part.split('        path: |\n', 1)[1].split('        if-no-files-found:', 1)[0]
+        expected = {'work/gecko-integration/native-input-signature-api-host-results.json'}
+        expected.update('work/gecko-integration/native-input-signature-api-host-' + label + '-' + stream + '.log'
+                        for label in ('compile', 'policy', 'signed', 'unsigned', 'tampered')
+                        for stream in ('stdout', 'stderr'))
+        self.assertEqual({line.strip() for line in paths.splitlines() if line.strip()}, expected)
+
     def test_actual_input_driver_copy_loops_preserve_failure_bytes_but_exclude_apk_and_keys(self):
         publisher=ROOT/'tools/gecko/publish_ci.py'
         loops=[node for node in ast.parse(publisher.read_text()).body if isinstance(node,ast.For)
@@ -25,6 +54,9 @@ class PublicationArtifactCopyTests(unittest.TestCase):
                        and value.value.startswith('native-input-') for value in ast.walk(node.iter))]
         self.assertEqual(len(loops),1)
         evidence={'native-input-driver-build.json':b'{"testOnly":true}\r\n',
+                  'native-input-driver-signature-api.json':b'{"status":"failed"}\r\n',
+                  'native-input-driver-signature-api-stdout.log':b'{"status":"failed"}\r\n',
+                  'native-input-driver-signature-api-stderr.log':b'original API diagnostics \xc2\n',
                   'native-input-baseline-scroll-results.json':b'{"status":"failed"}',
                   'native-input-baseline-scroll-stdout.log':b'original \xc2\n',
                   'native-input-current-scroll-failure.txt':b'timeout\n'}

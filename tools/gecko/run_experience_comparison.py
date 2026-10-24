@@ -77,6 +77,7 @@ SETUP = (
     'tools/gecko/prepare_emulator.py',
     'tools/gecko/ci_bundle.py',
     'tools/gecko/build_native_input_driver.py',
+    'tools/gecko/VerifyNativeInputSignature.java',
     'tools/gecko/installed_apk_read.py',
 )
 ACTIONS = (
@@ -289,7 +290,7 @@ def driver_identity(root, index, source, run, attempt):
         ['git', 'show', commit + ':' + path], cwd=root, timeout=30)
     native_input.verify_build(build, source, read_source)
     native_input.verify_signature_logs(receipt.parent, build)
-    for name in build['signatureLogs']:
+    for name in (*build['signatureLogs'], *build['signatureApiLogs'], native_input.SIGNATURE_API):
         indexed_file(root, index, 'work/gecko-integration/' + name)
     require(all(build.get(key) == value for key, value in
                 dict(sourceCommit=source, sourceTree=index['sourceTree'], runId=run, runAttempt=attempt).items()),
@@ -490,13 +491,15 @@ def verify_driver_iteration(report, row, build, protocol, raw_root):
     driver_build = selected['build']
     require(all(driver_build['inputs'][name] == protocol[name] for name in native_input.INPUTS),
             'Compiled input driver differs from the fixed protocol')
+    require(driver_build['signatureVerifierSourceSha256'] == protocol[native_input.SIGNATURE_VERIFIER],
+            'Input signature verifier differs from the fixed setup')
     for key in ('sourceCommit', 'sourceTree', 'runId', 'runAttempt'):
         require(driver_build[key] == build[key], 'Driver role identity differs: ' + key)
     prefix = 'iteration-%02d/' % row['index']
     build_raw = retained_raw(report, raw_root, prefix + 'native-input-driver-build.json')
     require(native_input.sha(build_raw) == selected['receiptSha256']
             and native_input.decode(build_raw) == driver_build, 'Retained role driver build receipt differs')
-    for name in driver_build['signatureLogs']:
+    for name in (*driver_build['signatureLogs'], *driver_build['signatureApiLogs'], native_input.SIGNATURE_API):
         retained_raw(report, raw_root, prefix + name)
     native_input.verify_signature_logs(Path(raw_root) / prefix, driver_build)
     evidence = row['nativeInputDriver']

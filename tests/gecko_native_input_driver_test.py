@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 import native_input_contract as C
 import native_input_driver as D
+from native_input_signature_fixture import signature_files
 
 
 def receipt(purpose='qualification'):
@@ -24,6 +25,7 @@ def receipt(purpose='qualification'):
                  instrumentation=C.SELF + '.NativeInputInstrumentation', protocols=C.PROTOCOLS,
                  inputs={name: C.sha((ROOT / name).read_bytes()) for name in C.INPUTS},
                  apkSha256='d' * 64, apkBytes=10, signerCertificateSha256='e' * 64)
+    signature_files(build, C.sha((ROOT / C.SIGNATURE_VERIFIER).read_bytes()))
     request = dict(x=540, startY=1469, endY=567, targetPid='1234', expiresUptimeMs=21000,
                    targetByteProofSha256='f' * 64, targetApkPath='/data/app/test/base.apk', targetApkBytes=100)
     p = C.PROTOCOLS[purpose]; rows = []
@@ -52,11 +54,8 @@ def receipt(purpose='qualification'):
 class ContractControls(unittest.TestCase):
     def qualification(self, directory):
         value, kwargs = receipt(); build = kwargs['build']; nonce = value['nonce']
-        signature = b'Signer #1 certificate SHA-256 digest: ' + build['signerCertificateSha256'].encode() + b'\n'
-        build['signatureLogs'] = {}
-        for suffix, raw in [('stdout', signature), ('stderr', b'')]:
-            name = 'native-input-driver-signature-' + suffix + '.log'
-            (directory / name).write_bytes(raw); build['signatureLogs'][name] = C.sha(raw)
+        for name, raw in signature_files(build, C.sha((ROOT / C.SIGNATURE_VERIFIER).read_bytes())).items():
+            (directory / name).write_bytes(raw)
         (directory / 'native-input-driver-build.json').write_text(json.dumps(build))
         proof = dict(schema=1, status='verified-bytes', actualInstalledApkRead=True, compiledFileFallback=False,
                      retryPerformed=False, returnCode=0, transport='adb-shell-v2-no-pty-ranged',
@@ -148,6 +147,59 @@ class ContractControls(unittest.TestCase):
         with self.assertRaises(ValueError): C.verify_build(bad, build['sourceCommit'], reader)
         bad = copy.deepcopy(build); bad['inputs'][next(iter(C.INPUTS))] = '0' * 64
         with self.assertRaises(ValueError): C.verify_build(bad, build['sourceCommit'], reader)
+        bad = copy.deepcopy(build); bad['signatureVerifierSourceSha256'] = '0' * 64
+        with self.assertRaises(ValueError): C.verify_build(bad, build['sourceCommit'], reader)
+
+    def test_signature_api_rejects_semantic_substitution_even_with_rebound_file_hashes(self):
+        changes = [lambda v: v.update(verified=False), lambda v: v.update(containsErrors=True),
+                   lambda v: v.update(inputsUnchangedDuringVerification=False),
+                   lambda v: v.pop('inputsUnchangedDuringVerification'),
+                   lambda v: v.update(sourceCommit='0' * 40), lambda v: v.update(runId='999'),
+                   lambda v: v.update(apkSha256='0' * 64), lambda v: v.update(apkBytes=11),
+                   lambda v: v.update(apksignerJarSha256='0' * 64),
+                   lambda v: v.update(loadedApksignerJarPath='shadow/apksigner.jar'),
+                   lambda v: v.update(verifierSourceSha256='0' * 64),
+                   lambda v: v.update(effectiveSignerCertificateSha256=['e' * 64, 'e' * 64]),
+                   lambda v: v.update(lineagePresent=True, lineageCertificateSha256=['e' * 64]),
+                   lambda v: v.update(ignoredV1SignerCertificateSha256=['e' * 64]),
+                   lambda v: v.update(v32Detected=True),
+                   lambda v: v['schemes'][0].update(signerCertificateSha256=['e' * 64]),
+                   lambda v: v['schemes'][2].update(signerCertificateSha256=['f' * 64]),
+                   lambda v: v['schemes'][2]['signers'][0].update(certificateChainSha256=['e' * 64, 'e' * 64]),
+                   lambda v: v['schemes'][2]['signers'][0].update(containsErrors=True),
+                   lambda v: v['schemes'][2]['signers'][0].update(lineagePresent=True),
+                   lambda v: v['schemes'][2]['signers'][0].update(signerTargetsDevRelease=True),
+                   lambda v: v['schemes'][2]['signers'][0].update(rotationTargetsDevRelease=True)]
+        for change in changes:
+            with self.subTest(case=changes.index(change)), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary); _, _, build = self.qualification(directory)
+                value = C.decode((directory / C.SIGNATURE_API).read_bytes()); change(value)
+                raw = json.dumps(value).encode()
+                (directory / C.SIGNATURE_API).write_bytes(raw)
+                (directory / 'native-input-driver-signature-api-stdout.log').write_bytes(raw)
+                build['signatureApiSha256'] = C.sha(raw)
+                build['signatureApiLogs']['native-input-driver-signature-api-stdout.log'] = C.sha(raw)
+                with self.assertRaises((ValueError, KeyError)):
+                    C.verify_signature_logs(directory, build)
+
+    def test_signature_api_original_files_and_exit_codes_are_required(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary); _, _, build = self.qualification(directory)
+            C.verify_signature_logs(directory, build)
+            for name in (*build['signatureLogs'], *build['signatureApiLogs'], C.SIGNATURE_API):
+                path = directory / name; raw = path.read_bytes(); path.unlink()
+                with self.subTest(missing=name), self.assertRaises(FileNotFoundError):
+                    C.verify_signature_logs(directory, build)
+                path.write_bytes(raw)
+                path.write_bytes(raw + b' ')
+                with self.subTest(changed=name), self.assertRaises(ValueError):
+                    C.verify_signature_logs(directory, build)
+                path.write_bytes(raw)
+            for field in ('signatureCliReturnCode', 'signatureApiReturnCode'):
+                for bad in (1, False, '0'):
+                    changed = copy.deepcopy(build); changed[field] = bad
+                    with self.subTest(field=field, bad=bad), self.assertRaises(ValueError):
+                        C.verify_signature_logs(directory, changed)
 
     def test_strict_json_duplicate_and_nonfinite(self):
         for raw in [b'{"x":1,"x":2}', b'{"x":NaN}']:

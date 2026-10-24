@@ -21,8 +21,10 @@ class ScrollStageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary); source = root / 'input'; source.mkdir()
             payload = b'{\r\n  "status": "failed", "label": "\xe6\xbb\x9a\xe5\x8a\xa8"\r\n}\n'
+            names = (*STAGE.SCROLL_DIAGNOSTICS, 'native-input-driver-signature-api.json',
+                     'native-input-driver-signature-api-stdout.log', 'native-input-driver-signature-api-stderr.log')
             if present:
-                for name in STAGE.SCROLL_DIAGNOSTICS:
+                for name in names:
                     (source / name).write_bytes(payload)
             args = types.SimpleNamespace(input=source, out=root / 'out', sample='2')
             with patch.object(STAGE, 'verify_caret_evidence', side_effect=ValueError('original workload failed')), \
@@ -33,7 +35,7 @@ class ScrollStageTest(unittest.TestCase):
             receipt = json.loads((args.out / 'sample-receipt.json').read_bytes())
             self.assertEqual(receipt['status'], 'failed')
             self.assertFalse(receipt['workloadRerun'])
-            for name in STAGE.SCROLL_DIAGNOSTICS:
+            for name in names:
                 self.assertEqual((args.out / name).exists(), present)
                 self.assertEqual(name in receipt['files'], present)
                 if present:

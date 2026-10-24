@@ -14,6 +14,7 @@ import zipfile
 
 import gecko_experience_comparison_test as original
 from experience_native_input_fixture import add_file, attach_driver, digest, raw
+from native_input_signature_fixture import signature_files
 
 M = original.MODULE
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,8 +42,8 @@ class NativeExperienceTests(unittest.TestCase):
         return self.case.verify(self.report)
 
     def test_every_driver_dependency_is_part_of_the_fixed_protocol(self):
-        self.assertEqual(len(M.HARNESS),21);self.assertEqual(len(M.SETUP),12)
-        for name in (*M.DRIVER_OBSERVERS,'tools/gecko/build_native_input_driver.py','tools/gecko/installed_apk_read.py'):
+        self.assertEqual(len(M.HARNESS),21);self.assertEqual(len(M.SETUP),13)
+        for name in (*M.DRIVER_OBSERVERS,'tools/gecko/build_native_input_driver.py','tools/gecko/VerifyNativeInputSignature.java','tools/gecko/installed_apk_read.py'):
             self.assertIn(name,self.protocol)
             changed=dict(self.protocol);changed[name]='f'*64
             missing=dict(self.protocol);missing.pop(name)
@@ -73,6 +74,11 @@ class NativeExperienceTests(unittest.TestCase):
             value=self.report['observerFiles'].pop(name)
             with self.subTest(observer=name),self.assertRaises(ValueError):self.verify()
             self.report['observerFiles'][name]=value
+
+    def test_original_build_signature_verifier_must_match_the_fixed_setup(self):
+        self.build['nativeInputDriver']['build']['signatureVerifierSourceSha256'] = 'f' * 64
+        with self.assertRaisesRegex(ValueError, 'fixed setup'):
+            self.verify()
 
     def test_late_missing_reordered_and_wrong_profile_injections_fail(self):
         changes=[lambda v:v['trace']['events'].pop(), lambda v:v['trace']['events'].reverse(),
@@ -206,18 +212,17 @@ class NativeExperienceTests(unittest.TestCase):
     def test_driver_restore_requires_both_original_indexed_inputs(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);source='a'*40;tree='b'*40
-            sources={p:('actual fixture source '+p).encode() for p in M.native_input.INPUTS}
+            sources={p:('actual fixture source '+p).encode() for p in (*M.native_input.INPUTS, M.native_input.SIGNATURE_VERIFIER)}
             stamp=copy.deepcopy(self.build['nativeInputDriver']['build'])
-            stamp.update(inputs={p:digest(v) for p,v in sources.items()},testOnly=True)
-            for key in ('apkSha256','apkBytes'):stamp.pop(key)
+            stamp.update(inputs={p:digest(sources[p]) for p in M.native_input.INPUTS},testOnly=True)
+            for key in list(stamp):
+                if key in ('apkSha256','apkBytes') or key.startswith('signature'): stamp.pop(key)
             apk=root/M.DRIVER_APK;apk.parent.mkdir(parents=True)
             with zipfile.ZipFile(apk,'w') as z:
                 z.writestr('assets/native-input-driver-build.json',raw(stamp));z.writestr('classes.dex',b'host fixture only')
             built=dict(stamp,status='built',compileOnly=False,apkSha256=M.sha(apk),apkBytes=apk.stat().st_size,assetSha256=digest(raw(stamp)))
-            signing={'native-input-driver-signature-stdout.log':('Signer #1 certificate SHA-256 digest: '+built['signerCertificateSha256']+'\n').encode(),
-                     'native-input-driver-signature-stderr.log':b''}
+            signing = signature_files(built, digest(sources[M.native_input.SIGNATURE_VERIFIER]))
             for name,value in signing.items():(apk.parent/name).write_bytes(value)
-            built['signatureLogs']={name:digest(value) for name,value in signing.items()}
             receipt=root/M.DRIVER_BUILD;receipt.write_bytes(raw(built))
             indexed=(M.DRIVER_APK,M.DRIVER_BUILD,*('work/gecko-integration/'+name for name in signing))
             index=dict(sourceTree=tree,files=[dict(path=n,bytes=(root/n).stat().st_size,sha256=M.sha(root/n)) for n in indexed])
