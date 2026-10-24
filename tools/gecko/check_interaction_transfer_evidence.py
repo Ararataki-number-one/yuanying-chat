@@ -38,6 +38,7 @@ def verify_display_sampling(network):
     assert telemetry['recoveryExitRequests'] == 1
     assert telemetry['webSocketConnections'] == 1 and telemetry['webSocketEchoes'] > 0
     verify_read_model_freshness(network)
+    verify_read_model_identity(network)
 
 READ_MODEL_CASES = (
     ('fresh', 1000000, 1000000, True, '正常', True),
@@ -85,12 +86,75 @@ def verify_read_model_freshness(network):
         assert type(actual['latency']) is str and type(actual['mainline']) is str
         same_identity=name not in ('wrong-uuid','wrong-generation')
         if same_identity: assert actual['latency'] == ('42 ms' if connected else '42 ms（上次）')
+        else: assert actual['latency'] == '延迟未测' and actual['mainline'] == '地区未标注 · IP 未核验 · 延迟未测'
         timer = '（02:00）' if connected or name == 'fresh-reported-issue' else '（等待连接）'
         assert actual['timer'] == timer
         if same_identity: assert (' · 192.0.2.42 · ' if connected else ' · 上次 192.0.2.42 · ') in actual['mainline']
         check=checks['Android read-model freshness '+name]
         assert check['readModel']==actual and check['readModelSummary']==summary
     return dict(controlledAndroidProjection=True, cases=len(READ_MODEL_CASES), realLatencyMeasurement=False)
+
+READ_MODEL_IDENTITY_CASES = ('fresh','stale','missing-time','not-live','foreign-uuid','foreign-generation',
+    'missing-id','missing-generation','empty-id','string-generation','fractional-generation','overflow-generation',
+    'nested-foreign-uuid','nested-string-generation')
+
+def identity_projection_fixture(name):
+    """Fixed counterfeit/parser inputs; these constants never qualify a device run."""
+    import copy
+    import hashlib
+    assert name in READ_MODEL_IDENTITY_CASES
+    row=dict(slot=0,name='controlled identity model',environmentId='controlled-identity-environment',generation=2)
+    config=dict(subscriptionUrl='https://identity-model.invalid/subscription',subscriptionName='Saved subscription',
+        exitHost='192.0.2.9',exitPort=1080,entry='Saved entry',entryMode='manual',exitRegion='Saved region')
+    exit_id=hashlib.sha256(b'192.0.2.9:1080::').hexdigest();subscription=hashlib.sha256(config['subscriptionUrl'].encode()).hexdigest()
+    observed=dict(environmentId=row['environmentId'],generation=2,mode='internal',configurationFingerprint='controlled-fingerprint',
+        entryMode='latency',subscriptionName='Observed subscription',exitRegion='Observed region',exitId=exit_id,subscriptionId=subscription)
+    runtime=dict(environmentId=row['environmentId'],generation=2,runningConfiguration=observed,at=1000000,mode='internal',
+        configured=True,connected=True,uiLive=True,exitId=exit_id,subscriptionId=subscription,ip='192.0.2.42',observedIp='192.0.2.99',
+        entry='Observed entry',delayEntry='Observed entry',delay=42,delayAt=1000000,delayKind='response',latencyRemaining=120000,
+        healthDelay=20,healthDelayAt=1000000)
+    if name=='stale':runtime['at']=955000
+    if name=='missing-time':del runtime['at']
+    if name=='foreign-uuid':runtime['environmentId']='foreign-environment'
+    if name=='foreign-generation':runtime['generation']=3
+    if name=='missing-id':del runtime['environmentId']
+    if name=='missing-generation':del runtime['generation']
+    if name=='empty-id':runtime['environmentId']=''
+    if name=='string-generation':runtime['generation']='2'
+    if name=='fractional-generation':runtime['generation']=2.5
+    if name=='overflow-generation':runtime['generation']=2147483648
+    if name=='nested-foreign-uuid':observed['environmentId']='foreign-environment'
+    if name=='nested-string-generation':observed['generation']='2'
+    foreign=name not in ('fresh','stale','missing-time','not-live') and not name.startswith('nested-')
+    if foreign:runtime.update(configured=False,mode='external',healthDelay=-1,blocked=True,issue='foreign issue',latencyMeasuring=True)
+    live=name!='not-live';connected=not foreign and name not in ('stale','missing-time') and live
+    keep_observed=not foreign and not name.startswith('nested-');view={} if foreign else copy.deepcopy(runtime)
+    if name.startswith('nested-'):del view['runningConfiguration']
+    output=dict(state='正常' if connected else '未运行' if not live else '状态待核实',connected=connected,internal=True,
+        ip='' if foreign else '192.0.2.42',region='Observed region' if keep_observed else 'Saved region',
+        entry='Saved entry' if foreign else 'Observed entry',entryMode='自动优选' if keep_observed else '手动指定',
+        subscription='Observed subscription' if keep_observed else 'Saved subscription',
+        latency='延迟未测' if foreign else '42 ms' if connected else '42 ms（上次）',timer='（02:00）' if connected else '（等待连接）',runtime=view)
+    summary=dict(schema=1,scope='controlled Android identity read-model projection; no IPC ownership, live route or real latency claim',row=row,config=config)
+    return summary,dict(case=name,now=1000000,live=live,input=runtime,output=output,inputUnchanged=True)
+
+def verify_read_model_identity(network):
+    """Replay all fixed Android projections, retaining original raw input/output."""
+    def exact(left,right):
+        if type(left) is not type(right):return False
+        if isinstance(left,dict):return left.keys()==right.keys() and all(exact(left[key],right[key])for key in left)
+        if isinstance(left,list):return len(left)==len(right) and all(exact(a,b)for a,b in zip(left,right))
+        return left==right
+    report=network['networkReadModelIdentity'];summary={key:value for key,value in report.items()if key!='cases'}
+    assert exact(summary,identity_projection_fixture('fresh')[0])
+    cases=report['cases'];assert type(cases) is list and len(cases)==len(READ_MODEL_IDENTITY_CASES)
+    checks=[check for check in network['checks']if check['name'].startswith('Android read-model identity ')]
+    assert len(checks)==len(READ_MODEL_IDENTITY_CASES)
+    for check,actual,name in zip(checks,cases,READ_MODEL_IDENTITY_CASES):
+        assert check['name']=='Android read-model identity '+name and check['pass'] is True
+        assert exact(actual,identity_projection_fixture(name)[1])
+        assert exact(check['readModel'],actual) and exact(check['readModelSummary'],summary)
+    return dict(controlledAndroidIdentityProjection=True,cases=len(cases),realLatencyMeasurement=False)
 
 UPDATE_CHECKS = {
     'disconnectPreservesPartial', 'rangeOnlyRemaining', 'ifRangeValidator',

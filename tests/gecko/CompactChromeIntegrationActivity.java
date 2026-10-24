@@ -306,8 +306,9 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       session.remove(sessionObserver);
       long now=System.currentTimeMillis();
       JSONObject config=J.obj("subscriptionUrl","https://example.test/compact-layout","exitHost","example.test","exitPort",1080,"exitRegion","日本 · Tokyo");
-      JSONObject runtime=J.obj("at",now,"mode","internal","configured",true,"connected",true,"exitId",NetworkCatalog.exitId(config),"subscriptionId",NativeNetwork.hash(config.optString("subscriptionUrl")),"ip","203.0.113.25","entry","Entry|大阪 03","delayEntry","Entry|大阪 03","latencyRemaining",120000,"latencyMeasuring",false,"delay",42,"delayAt",now);
-      WindowNetworkState network=new WindowNetworkState(this,ProfileCatalog.get(this).item(0),config,runtime,true,now);
+      JSONObject row=ProfileCatalog.get(this).item(0);
+      JSONObject runtime=J.obj("environmentId",row.optString("environmentId"),"generation",row.optLong("generation"),"at",now,"mode","internal","configured",true,"connected",true,"exitId",NetworkCatalog.exitId(config),"subscriptionId",NativeNetwork.hash(config.optString("subscriptionUrl")),"ip","203.0.113.25","entry","Entry|大阪 03","delayEntry","Entry|大阪 03","latencyRemaining",120000,"latencyMeasuring",false,"delay",42,"delayAt",now);
+      WindowNetworkState network=new WindowNetworkState(this,row,config,runtime,true,now);
       // Preserve the original preparation intervals. Queued real renders still
       // execute; a normal pre-draw frame binds the report to this synthetic model.
       toolbar.postDelayed(()->{if(destroyed||serial!=presentationSerial||!java.util.Objects.equals(owner,command))return;try{designChrome.showNetwork(network);toolbar.postDelayed(()->capturePresentation(event,network,serial,owner,deadline),100);}catch(Exception error){releasePresentation();Log.i("PocketCompactChrome",J.obj("command",owner,"event",event,"error",error.toString()).toString());}},200);

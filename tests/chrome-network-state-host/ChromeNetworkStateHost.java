@@ -8,7 +8,7 @@ public final class ChromeNetworkStateHost {
   static JSONObject copy(JSONObject value){try{return new JSONObject(value.toString());}catch(Exception e){throw new RuntimeException(e);}}
   static JSONObject row(){return J.obj("slot",0,"name","Same title","environmentId","scope-a","generation",2,"created",true,"deleting",false,"resetting",false);}
   static JSONObject observation(){return J.obj("environmentId","scope-a","generation",2,"at",System.currentTimeMillis(),"mode","external","configured",true,"connected",true,"route","controlled-route","delayRoute","controlled-route","delay",42,"delayAt",System.currentTimeMillis(),"delayKind","response","latencyRemaining",120000);}
-  static MainActivity activity(){ProfileCatalog.reads=0;ProfileCatalog.failure=false;ProfileCatalog.value=row();DesignUi.Stars.fail=false;DesignUi.Stars.refreshes=0;DesignChrome.metadataReader.clear();SystemClock.now=100000;MainActivity a=new MainActivity();a.runtime=observation();return a;}
+  static MainActivity activity(){SharedPreferences.networkConfigured=true;ProfileCatalog.reads=0;ProfileCatalog.failure=false;ProfileCatalog.value=row();DesignUi.Stars.fail=false;DesignUi.Stars.refreshes=0;DesignChrome.metadataReader.clear();SystemClock.now=100000;MainActivity a=new MainActivity();a.runtime=observation();return a;}
   static DesignChrome ready(MainActivity a){DesignChrome c=new DesignChrome(a);c.update();a.handler.drain();DesignChrome.metadataReader.drain();a.handler.drain();return c;}
   static void change(DesignChrome c,JSONObject row){ProfileCatalog.value=row;SystemClock.now+=2000;c.update();c.a.handler.drain();DesignChrome.metadataReader.drain();c.a.handler.drain();}
   static boolean normal(DesignChrome c){return c.last!=null&&c.last.connected&&c.last.state.equals("正常")&&c.last.latency.equals("42 ms")&&c.last.latencyTimer.equals("（02:00）");}
@@ -31,7 +31,7 @@ public final class ChromeNetworkStateHost {
     a=activity();c=ready(a);JSONObject previous=c.profileRow;changed=row();changed.put("generation",3);ProfileCatalog.value=changed;SystemClock.now+=2000;c.update();a.handler.drain();DesignChrome.metadataReader.drain();startRenders=c.renders;a.destroyed=true;a.handler.drain();check("Destroy before metadata delivery does not write cache or schedule render",c.profileRow==previous&&c.renders==startRenders&&a.handler.size()==0);c.update();check("Updates after destroy remain unqueued",a.handler.size()==0);
     a=activity();c=ready(a);SystemClock.now+=2000;startReads=ProfileCatalog.reads;c.update();a.handler.drain();for(int i=0;i<100;i++){c.update();a.handler.drain();}check("An outstanding metadata worker cannot create duplicate queries",DesignChrome.metadataReader.size()==1&&ProfileCatalog.reads==startReads);DesignChrome.metadataReader.drain();a.handler.drain();check("Exactly one background read completes the pending metadata refresh",ProfileCatalog.reads==startReads+1&&normal(c));
     a=activity();c=ready(a);changed=row();changed.put("name","Renamed title");change(c,changed);check("A same-identity rename still updates both visible labels",c.title.getText().equals("Renamed title")&&c.compactTitle.getText().equals("Renamed title")&&normal(c));
-    stateMatrix();new DeviceProjection().readModelFreshnessChecks(deviceProjection);
+    stateMatrix();SharedPreferences.networkConfigured=true;try{new DeviceProjection().readModelFreshnessChecks(deviceProjection);}finally{SharedPreferences.networkConfigured=false;}
   }
 
   static WindowNetworkState state(JSONObject runtime,JSONObject config,boolean live,long now){return new WindowNetworkState(new Context(),row(),config,runtime,live,now);}
@@ -51,8 +51,10 @@ public final class ChromeNetworkStateHost {
     SharedPreferences.networkConfigured=true;try{matrix("missing complete snapshot in configured live environment",new JSONObject(),config,true,10000,"状态待核实",false,"延迟未测","（等待连接）");matrix("missing complete snapshot with no live environment",new JSONObject(),config,false,10000,"未运行",false,"延迟未测","（等待连接）");}finally{SharedPreferences.networkConfigured=false;}
     value=runtime(now);matrix("not live with matching recent snapshot",value,config,false,now,"未运行",false,"42 ms（上次）","（等待连接）");
     value=runtime(now);value.put("at",now-45000);matrix("not live and stale",value,config,false,now,"未运行",false,"42 ms（上次）","（等待连接）");
-    for(String key:new String[]{"environmentId","generation"}){value=runtime(now);value.put(key,key.equals("environmentId")?"another-environment":3);matrix("live but different "+key,value,config,true,now,"状态待核实",false,"42 ms（上次）","（等待连接）",false);}
-    value=runtime(now);value.remove("environmentId");value.remove("generation");matrix("legacy runtime identity allowance unchanged",value,config,true,now,"正常",true,"42 ms","（02:00）");
+    SharedPreferences.networkConfigured=true;try{
+      for(String key:new String[]{"environmentId","generation"}){value=runtime(now);value.put(key,key.equals("environmentId")?"another-environment":3);matrix("live but different "+key,value,config,true,now,"状态待核实",false,"42 ms（上次）","（等待连接）",false);}
+      value=runtime(now);value.remove("environmentId");value.remove("generation");matrix("legacy runtime without identity is unverified",value,config,true,now,"状态待核实",false,"延迟未测","（等待连接）");
+    }finally{SharedPreferences.networkConfigured=false;}
     for(String key:new String[]{"offline","blocked","starting","issue","connected"}){
       value=runtime(now);if(key.equals("issue"))value.put(key,"controlled reported issue");else value.put(key,!key.equals("connected"));String expected=key.equals("offline")?"离线":key.equals("blocked")?"出口异常":key.equals("starting")?"连接中":key.equals("issue")?"需检查":"未连接";String timer=key.equals("issue")?"（02:00）":"（等待连接）";
       matrix("fresh original "+key,value,config,true,now,expected,false,"42 ms（上次）",timer);
@@ -90,6 +92,7 @@ class DesignChrome {
 }
 class WindowNetworkState {
   /* STATE_FIELDS */
+  /* STATE_IDENTITY */
   /* STATE_CONSTRUCTOR */
   /* STATE_MAINLINE */
   static JSONObject live(Object session,NativeNetwork n){return n.owner.runtime;}

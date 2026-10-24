@@ -71,7 +71,7 @@ public final class NetworkSourcesUiIntegrationActivity extends Activity {
   JSONObject parent(){return editor==null?new JSONObject():J.obj("entrySource",editor.draft.subscriptionId,"entry",editor.draft.entry,"pool",new JSONArray(editor.draft.pool),"manualExit",editor.draft.exitId,"exitSource",editor.draft.exitSubscriptionId,"exitNodeKey",editor.draft.exitNodeKey,"exitNodeName",editor.draft.exitNodeName);}
   void checkDiagnostics(){
     JSONObject row=window().optJSONObject("row");long now=System.currentTimeMillis();
-    JSONObject runtime=J.obj("mode","internal","at",now,"configured",true,"connected",true,"entry","Entry|Entry A","delayEntry","Entry|Entry A","delay",418,"delayAt",now-120000,"exitId",NativeNetwork.exitIdentity(initial),"subscriptionId",NativeNetwork.hash(ENTRY_URL));
+    JSONObject runtime=J.obj("environmentId",row.optString("environmentId"),"generation",row.optLong("generation"),"mode","internal","at",now,"configured",true,"connected",true,"entry","Entry|Entry A","delayEntry","Entry|Entry A","delay",418,"delayAt",now-120000,"exitId",NativeNetwork.exitIdentity(initial),"subscriptionId",NativeNetwork.hash(ENTRY_URL));
     String text=ConnectionTrace.windowDiagnostics(this,new WindowNetworkState(this,row,initial,runtime,true,now));
     check("Window diagnostics use the selected slot rather than the viewing process",text.contains("窗口编号：7")&&text.contains("418 ms"));
     check("Window diagnostics label historical readings and separate website timings",text.contains("历史记录")&&text.contains("不是 ChatGPT 请求的分项"));

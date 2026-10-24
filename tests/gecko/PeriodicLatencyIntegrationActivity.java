@@ -14,7 +14,7 @@ public final class PeriodicLatencyIntegrationActivity extends Activity {
   void check(String name,boolean passed){checks.put(J.obj("name",name,"pass",passed));if(!passed)throw new AssertionError(name);}
   @Override public void onCreate(Bundle saved){super.onCreate(saved);if(!getPackageName().endsWith(".test"))throw new SecurityException();new Thread(this::run,"periodic-latency-fixture").start();}
   void run(){
-    JSONObject report=J.obj("status","failed","actualAndroidExecution",true,"actualMihomoExecution",true,"controlledLocalChain",true,"realChatGptAcceptance",false);
+    JSONObject report=J.obj("status","failed","actualAndroidExecution",true,"actualMihomoExecution",true,"controlledLocalChain",true,"realChatGptAcceptance",false,"readModelIdentityScope","controlled projection only; no session or provider ownership");
     NativeProbeIntegrationActivity.ProbeNetwork n=null;
     try{
       NativeProbeIntegrationActivity.TlsFixture tls=new NativeProbeIntegrationActivity.TlsFixture(this,"network-fixture.p12");
@@ -66,5 +66,5 @@ public final class PeriodicLatencyIntegrationActivity extends Activity {
     Log.i("PocketPeriodicLatency",J.obj("status",report.optString("status"),"error",report.optString("error")).toString());runOnUiThread(this::finish);
   }
   void checkNoEarlyProbe(NativeProbeIntegrationActivity.ProbeFixture target){if(target.count("/periodic")!=2)throw new AssertionError("Unexpected probe before the two-minute deadline");}
-  WindowNetworkState state(NativeNetwork n,JSONObject config){return new WindowNetworkState(this,J.obj("slot",0,"name","Periodic fixture"),config,WindowNetworkState.live(null,n),true,System.currentTimeMillis());}
+  WindowNetworkState state(NativeNetwork n,JSONObject config){JSONObject row=J.obj("slot",0,"name","Periodic fixture","environmentId","controlled-periodic-read-model","generation",2);return new WindowNetworkState(this,row,config,NetworkOptimizationIntegrationActivity.controlledReadModel(WindowNetworkState.live(null,n),row),true,System.currentTimeMillis());}
 }

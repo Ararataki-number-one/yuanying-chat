@@ -4,8 +4,21 @@ import android.app.ActivityManager;import android.content.*;import android.os.Bu
 /** Read model shared by the chat strip and window cards; missing/stale readings stay explicit. */
 final class WindowNetworkState {
   final int slot;final String environmentId;final long environmentGeneration;final String name,state,region,ip,latency,latencyTimer,entry,subscription,entryMode;final JSONObject config,runtime;final boolean internal,connected;final long now;
+  /** A saved slot or a coercible/missing value cannot establish observation ownership. */
+  static boolean sameEnvironment(JSONObject row,JSONObject observation){
+    if(row==null||observation==null)return false;
+    Object id=row.opt("environmentId"),generation=row.opt("generation"),observedId=observation.opt("environmentId"),observedGeneration=observation.opt("generation");
+    return id instanceof String&&!((String)id).isEmpty()&&id.equals(observedId)
+      &&(generation instanceof Integer||generation instanceof Long)&&(observedGeneration instanceof Integer||observedGeneration instanceof Long)
+      &&((Number)generation).longValue()>=0&&((Number)generation).longValue()<=Integer.MAX_VALUE
+      &&((Number)observedGeneration).longValue()==((Number)generation).longValue();
+  }
   WindowNetworkState(Context c,JSONObject row,JSONObject config,JSONObject runtime,boolean live,long now){
-    this.slot=row.optInt("slot");environmentId=row.optString("environmentId");environmentGeneration=row.optLong("generation");name=row.optString("name");this.config=config;this.runtime=runtime;this.now=now;SharedPreferences prefs=Profiles.context(c,slot).getSharedPreferences("chat",0);JSONObject observed=runtime.optJSONObject("runningConfiguration");boolean hasObserved=observed!=null&&environmentId.equals(observed.optString("environmentId"))&&environmentGeneration==observed.optLong("generation",-1);JSONObject shown=hasObserved?observed:config;internal="internal".equals(runtime.optString("mode",prefs.getString("networkMode","external")));boolean configured=runtime.has("configured")?runtime.optBoolean("configured"):prefs.getBoolean("networkConfigured",false);long observedAt=runtime.optLong("at");boolean fresh=live&&(runtime.optString("environmentId").isEmpty()||environmentId.equals(runtime.optString("environmentId"))&&environmentGeneration==runtime.optLong("generation",-1))&&observedAt>0&&now>=observedAt-60000&&now-observedAt<45000;
+    if(!sameEnvironment(row,runtime))runtime=new JSONObject();
+    else if(runtime.has("runningConfiguration")&&!sameEnvironment(row,runtime.optJSONObject("runningConfiguration"))){
+      try{runtime=new JSONObject(runtime.toString());runtime.remove("runningConfiguration");}catch(JSONException invalid){runtime=new JSONObject();}
+    }
+    this.slot=row.optInt("slot");environmentId=row.optString("environmentId");environmentGeneration=row.optLong("generation");name=row.optString("name");this.config=config;this.runtime=runtime;this.now=now;SharedPreferences prefs=Profiles.context(c,slot).getSharedPreferences("chat",0);JSONObject observed=runtime.optJSONObject("runningConfiguration");boolean hasObserved=observed!=null;JSONObject shown=hasObserved?observed:config;internal="internal".equals(runtime.optString("mode",prefs.getString("networkMode","external")));boolean configured=runtime.has("configured")?runtime.optBoolean("configured"):prefs.getBoolean("networkConfigured",false);long observedAt=runtime.optLong("at");boolean fresh=live&&observedAt>0&&now>=observedAt-60000&&now-observedAt<45000;
     boolean independentHealth=runtime.has("healthDelayAt");long healthAt=runtime.optLong(independentHealth?"healthDelayAt":"delayAt");int healthDelay=runtime.optInt(independentHealth?"healthDelay":"delay",-1);
     boolean targetAnswered=NetworkStatusPolicy.freshTargetResponse(runtime.optString("healthStatus"),runtime.optInt("healthTargetCode"),runtime.optLong("healthObservedAt"),now);
     boolean healthFailed=!targetAnswered&&internal&&(independentHealth||runtime.optBoolean("delayHealth",true))&&healthAt>0&&now-healthAt<90000&&healthDelay<=0;

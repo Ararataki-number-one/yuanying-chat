@@ -25,9 +25,12 @@ projection shape with host adapters; it is not Android execution. The Android
 fixture must execute those same 14 named checks on the selected APK, and the
 existing interaction gate requires every case and its recorded input/output.
 The existing per-check log transport carries bounded raw projections; the final
-Android log message does not grow by the full matrix. Identity-mismatched readings
-are retained as observations without requiring their IP or latency to remain
-visible or treating them as trusted history.
+Android log message does not grow by the full matrix. Identity-mismatched raw
+readings remain in the test observations; their visible IP and latency must now
+be absent. The original legacy-without-identity positive assertion is explicitly
+updated to require an unverified, unmeasured projection. Catalogue/preference
+adapters supply saved configuration independently of an untrusted runtime.
+The separate `window-network-identity-host` suite tests the full identity boundary.
 
 Run once per pinned Android and desktop JSON library:
 

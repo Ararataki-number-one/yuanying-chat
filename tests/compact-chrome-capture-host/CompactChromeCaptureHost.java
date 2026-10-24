@@ -57,7 +57,7 @@ class DesignChrome{
   DesignChrome(MainActivity a){this.a=a;/* INITIAL_METADATA */}
   /* CHROME_METHODS */
 }
-class WindowNetworkState{/* STATE_FIELDS *//* STATE_METHODS */static JSONObject live(Session s,NativeNetwork n){return n.owner.runtime;}}
+class WindowNetworkState{/* STATE_FIELDS *//* STATE_IDENTITY *//* STATE_METHODS */static JSONObject live(Session s,NativeNetwork n){return n.owner.runtime;}}
 class Scheduler{
   static Scheduler current;long now,sequence;final PriorityQueue<Task> tasks=new PriorityQueue<>();static class Task implements Comparable<Task>{final long at,serial;final Runnable run;Task(long at,long serial,Runnable run){this.at=at;this.serial=serial;this.run=run;}public int compareTo(Task other){int by=Long.compare(at,other.at);return by==0?Long.compare(serial,other.serial):by;}}
   Scheduler(){SystemClock.now=0;}void post(Runnable r){postDelayed(r,0);}void postDelayed(Runnable r,long delay){tasks.add(new Task(now+delay,++sequence,r));}void removeCallbacks(Runnable r){tasks.removeIf(t->t.run==r);}int delayedCount(){return tasks.size();}

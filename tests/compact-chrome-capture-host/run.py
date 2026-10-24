@@ -29,6 +29,7 @@ def main():
  fields=next(line for line in state.splitlines() if line.startswith('  final int slot;'))
  java=(HERE/'CompactChromeCaptureHost.java').read_text().replace('/* CHROME_METHODS */','\n'.join(member(chrome,n) for n in methods)).replace('/* INITIAL_METADATA */','\n'.join(initial)).replace('/* STATE_FIELDS */',fields).replace('/* STATE_METHODS */','\n'.join(member(state,n) for n in ['WindowNetworkState(Context c,','int color(','String mainline(','String strip('])).replace('/* FIXTURE_METHODS */','\n'.join(member(fixture,n) for n in fixture_methods))
  java=java.replace('/* CATALOG_EXIT_ID */',member(selected[PROD+'NetworkCatalog.java'],'static String exitId(')).replace('/* NATIVE_METHODS */','\n'.join(member(selected[PROD+'NativeNetwork.java'],n) for n in ['static boolean subscribedExit(','static String exitIdentity(','static String hash(']))
+ java=java.replace('/* STATE_IDENTITY */',member(state,'static boolean sameEnvironment(') if 'static boolean sameEnvironment(' in state else '')
  final_report=member(fixture,'void report(String event,').replace('"syntheticPresentation",true,"actualLatencyMeasurement",false,','')
  assert hashlib.sha256(final_report.encode()).hexdigest()==ORIGINAL_REPORT_SHA256,'Original geometry/touch/text report body changed'
  runner_contract=contract.verify_shared_ui_source(selected['tests/gecko/run_ui_visuals.py'])
