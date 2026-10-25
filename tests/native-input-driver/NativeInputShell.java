@@ -30,7 +30,7 @@ public final class NativeInputShell {
     boolean success=driver.run(command);System.exit(success?0:1);
   }
   boolean run(String[] command){
-    boolean passed=false;long started=SystemClock.uptimeMillis();
+    boolean passed=false;long started=SystemClock.uptimeMillis();OwnedClock clock=null;
     try{
       if(command.length!=1||command[0].length()>16384)throw new IllegalArgumentException("One bounded request required");
       args=new JSONObject(new String(Base64.decode(command[0],Base64.NO_WRAP),StandardCharsets.UTF_8));
@@ -92,7 +92,7 @@ public final class NativeInputShell {
       long ready=SystemClock.uptimeMillis();report.put("readyUptimeMs",ready).put("startupMs",ready-started);
       // Preparation is outside T0; the original AUT/action deadline never moves.
       write(output,report);
-      NativeGestureProtocol.Clock clock=new NativeGestureProtocol.Clock(){public long now(){return SystemClock.uptimeMillis();}public void until(long time){long wait=time-now();if(wait>0)SystemClock.sleep(wait);}};
+      clock=new OwnedClock();try{clock.before=OwnedClock.threadSnapshot();}catch(Throwable ignored){}
       NativeGestureProtocol.Trace trace=NativeGestureProtocol.run(clock,this::inject,t->observed=t,profile,expires,x,from,to);
       report.put("trace",NativeInputInstrumentation.json(trace));
       JSONObject afterProcess=process(expectedPid,targetUid,TARGET);PackageInfo after=info(TARGET,0);
@@ -110,10 +110,60 @@ public final class NativeInputShell {
       report.put("targetBuildIdentityAfter",afterBuild).put("status","passed");passed=true;
     }catch(Throwable failure){try{report.put("status","failed").put("error",failure.toString());}catch(Exception ignored){}}
     finally{
+      if(clock!=null)try{report.put("ownedClockObservation",clock.evidence());}
+      catch(Throwable failure){try{report.put("ownedClockObservationError",failure.toString());}catch(Throwable ignored){}}
       try{if(observed!=null)report.put("trace",NativeInputInstrumentation.json(observed));report.put("finishedUptimeMs",SystemClock.uptimeMillis());if(output!=null)write(output,report);}
       catch(Throwable failure){passed=false;System.err.println("Driver receipt unavailable: "+failure);}
     }
     return passed;
+  }
+  /** Diagnostic-only: bounded memory writes around the unchanged owned wait. */
+  static final class OwnedClock implements NativeGestureProtocol.Clock {
+    final long[][] slots=new long[NativeGestureProtocol.MOVE_COUNT+2][7];
+    int count,dropped,cpuErrors,uptimeErrors,pending=-1;JSONObject before;
+    public long now(){
+      long value=SystemClock.uptimeMillis();
+      if(pending>=0){slots[pending][6]=value;pending=-1;}
+      return value;
+    }
+    public void until(long time){
+      long entered=SystemClock.uptimeMillis(),wait=time-entered;
+      int index=count<slots.length?count++:-1;
+      if(index<0)dropped++;
+      long cpu=cpu();
+      try{if(wait>0)SystemClock.sleep(wait);}
+      finally{
+        if(index>=0){
+          long[] row=slots[index];row[0]=time;row[1]=entered;row[2]=wait;row[3]=cpu;
+          row[4]=uptime();row[5]=cpu();pending=index;
+        }
+      }
+    }
+    long cpu(){try{return android.os.Debug.threadCpuTimeNanos();}catch(Throwable failure){cpuErrors++;return -1;}}
+    long uptime(){try{return SystemClock.uptimeMillis();}catch(Throwable failure){uptimeErrors++;return -1;}}
+    JSONObject evidence()throws Exception{
+      JSONObject after=threadSnapshot();org.json.JSONArray values=new org.json.JSONArray();
+      for(int i=0;i<count;i++){
+        long[] row=slots[i];values.put(new JSONObject().put("index",i).put("plannedUptimeMs",row[0])
+          .put("untilEnteredUptimeMs",row[1]).put("requestedSleepMs",row[2]).put("threadCpuBeforeNs",row[3])
+          .put("untilReturnedUptimeMs",row[4]).put("threadCpuAfterNs",row[5]).put("nextNowUptimeMs",row[6]));
+      }
+      return new JSONObject().put("diagnosticOnly",true).put("timingPerturbationPossible",true)
+        .put("scope","Owned shell thread only; not application CPU or a scheduler root-cause finding")
+        .put("storage","Preallocated bounded memory during protocol; terminal JSON and proc reads outside T0")
+        .put("capacity",slots.length).put("dropped",dropped).put("cpuObservationErrors",cpuErrors)
+        .put("uptimeObservationErrors",uptimeErrors).put("before",before).put("after",after).put("slots",values);
+    }
+    static JSONObject threadSnapshot(){
+      JSONObject value=new JSONObject();
+      try{
+        int tid=android.os.Process.myTid();value.put("tid",tid).put("uptimeMs",SystemClock.uptimeMillis())
+          .put("threadCpuNs",android.os.Debug.threadCpuTimeNanos()).put("priority",android.os.Process.getThreadPriority(tid));
+        try{value.put("schedstat",readFile("/proc/self/task/"+tid+"/schedstat").trim()).put("schedstatAvailable",true);}
+        catch(Throwable failure){value.put("schedstatAvailable",false).put("schedstatError",failure.toString());}
+      }catch(Throwable failure){try{value.put("observationError",failure.toString());}catch(Throwable ignored){}}
+      return value;
+    }
   }
   NativeGestureProtocol.Attempt inject(int action,long down,long planned,long deadline,float x,float y,boolean cleanup){
     NativeGestureProtocol.Attempt row=new NativeGestureProtocol.Attempt();row.action=action;row.downTime=down;row.planned=planned;row.x=x;row.y=y;row.cleanup=cleanup;
