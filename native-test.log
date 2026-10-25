@@ -1,0 +1,459 @@
+Loading local repository...                                                     [=========                              ] 25% Loading local repository...       [=========                              ] 25% Fetch remote repository...        [=======================================] 100% Fetch remote repository...       
+Auto-selecting single ABI x86_64
+Do you wish to create a custom hardware profile? [no] cannot connect to daemon at tcp:5037: Connection refused
+{"status": "passed", "setupOnly": true, "applicationAcceptance": false, "actualAndroidExecution": false, "workloadExecuted": false, "package": "platform-tools", "revision": "35.0.2", "url": "https://dl.google.com/android/repository/platform-tools_r35.0.2-linux.zip", "bytes": 7472902, "sha256": "acfdcccb123a8718c46c46c059b2f621140194e5ec1ac9d81715be3d6ab6cd0a", "ambientAdbSha256": "a902be8f45c6c62e76c9efaf6947a0fa747c9cabd89a2ac8e0d16ecb30b3ed01", "installedAdbSha256": "c46d072d4b4ba6d2f961ef6d0f01ffc35ed8093f1c263296659ebf56bccfc777", "actualVersion": "Android Debug Bridge version 1.0.41\nVersion 35.0.2-12147458\nInstalled as /usr/local/lib/android/sdk/platform-tools/adb\nRunning on Linux 6.17.0-1022-azure (x86_64)\n", "properties": {"Pkg.UserSrc": "false", "Pkg.Revision": "35.0.2"}}
+* daemon not running; starting now at tcp:5037
+* daemon started successfully
+Performing Streamed Install
+Success
+{"status": "passed", "setupOnly": true, "applicationAcceptance": false, "actualForwardingVerified": true, "normalPreflightStillRequired": true}
+{"sourceCommit": "f5130509c494763688636137bbd97d3b8a162b78", "status": "passed", "initialNetworkUsable": true, "sdkWifiProvisioningRequested": false, "disabledStateConfirmed": true, "actualConnectivityManagerExecution": true, "applicationAcceptance": false}
+Starting phase: Verify browser connection reuse and preauthentication
+{
+  "status": "passed",
+  "sourceCommit": "f5130509c494763688636137bbd97d3b8a162b78",
+  "checkCount": 70,
+  "webSocketEchoes": 26,
+  "cancellations": [
+    {
+      "path": "/cancel-first",
+      "mechanism": "raw-controller-client",
+      "expectedHeads": 1,
+      "actualHeads": 1,
+      "controllerClosedAt": 92326,
+      "targetObservedNativeEofAt": 92328,
+      "nativeCloseMs": 2,
+      "nativeTimeoutMs": 6000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false
+    },
+    {
+      "path": "/cancel-second",
+      "mechanism": "raw-controller-client",
+      "expectedHeads": 2,
+      "actualHeads": 2,
+      "controllerClosedAt": 92907,
+      "targetObservedNativeEofAt": 92908,
+      "nativeCloseMs": 1,
+      "nativeTimeoutMs": 6000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false
+    },
+    {
+      "path": "/cancel-java-first",
+      "mechanism": "production-maintenance",
+      "expectedHeads": 1,
+      "actualHeads": 1,
+      "controllerClosedAt": 93408,
+      "targetObservedNativeEofAt": 93409,
+      "nativeCloseMs": 1,
+      "nativeTimeoutMs": 8000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false,
+      "javaProbeDelay": -1
+    },
+    {
+      "path": "/cancel-java-second",
+      "mechanism": "production-maintenance",
+      "expectedHeads": 2,
+      "actualHeads": 2,
+      "controllerClosedAt": 94033,
+      "targetObservedNativeEofAt": 94034,
+      "nativeCloseMs": 1,
+      "nativeTimeoutMs": 8000,
+      "serverClosedSocketBeforeEof": false,
+      "javaFutureCancelled": false,
+      "javaProbeDelay": -1
+    }
+  ],
+  "startupSearches": [
+    {
+      "name": "winner-cleanup",
+      "mechanism": "production-firstVerifiedRoute",
+      "result": {
+        "parentMaintenancePresent": false,
+        "parentInterrupted": false,
+        "selectedEntry": "Entry|winner",
+        "endedAt": 95757
+      },
+      "parentFutureCancelled": false,
+      "before": {
+        "pid": 4384,
+        "entry": "Entry|winner",
+        "generationHash": "3f9a16b2cff142c3bba570b8bf932d86305bbceb42823dcef81739f4f6bd5ec7",
+        "exitFingerprint": "02338efd05b438db3454d8fbce40efdc88e31528a367eed79f5d7cf028ad5d46",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 46507,
+        "controllerPort": 43311,
+        "verified": true,
+        "routeSerial": 2
+      },
+      "after": {
+        "pid": 4384,
+        "entry": "Entry|winner",
+        "generationHash": "3f9a16b2cff142c3bba570b8bf932d86305bbceb42823dcef81739f4f6bd5ec7",
+        "exitFingerprint": "02338efd05b438db3454d8fbce40efdc88e31528a367eed79f5d7cf028ad5d46",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 46507,
+        "controllerPort": 43311,
+        "verified": true,
+        "routeSerial": 3
+      },
+      "winnerPath": "/startup-win",
+      "winnerHeads": 2,
+      "losers": [
+        {
+          "path": "/startup-loser",
+          "expectedHeads": 1,
+          "actualHeads": 1,
+          "cleanupRequestedAt": 95757,
+          "targetObservedNativeEofAt": 95760,
+          "nativeCloseMs": 3,
+          "nativeTimeoutMs": 8000,
+          "serverClosedSocketBeforeEof": false
+        }
+      ]
+    },
+    {
+      "name": "parent-cancellation",
+      "mechanism": "production-firstVerifiedRoute",
+      "parentMaintenancePresent": true,
+      "parentFutureCancelled": false,
+      "result": {
+        "cancelled": true,
+        "cause": "InterruptedException",
+        "endedAt": 96245
+      },
+      "cancelRequestedAt": 96244,
+      "before": {
+        "pid": 4384,
+        "entry": "Entry|winner",
+        "generationHash": "3f9a16b2cff142c3bba570b8bf932d86305bbceb42823dcef81739f4f6bd5ec7",
+        "exitFingerprint": "02338efd05b438db3454d8fbce40efdc88e31528a367eed79f5d7cf028ad5d46",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 46507,
+        "controllerPort": 43311,
+        "verified": true,
+        "routeSerial": 3
+      },
+      "after": {
+        "pid": 4384,
+        "entry": "Entry|winner",
+        "generationHash": "3f9a16b2cff142c3bba570b8bf932d86305bbceb42823dcef81739f4f6bd5ec7",
+        "exitFingerprint": "02338efd05b438db3454d8fbce40efdc88e31528a367eed79f5d7cf028ad5d46",
+        "exitIp": "203.0.113.8",
+        "proxyPort": 46507,
+        "controllerPort": 43311,
+        "verified": true,
+        "routeSerial": 3
+      },
+      "losers": [
+        {
+          "path": "/startup-cancel-a",
+          "expectedHeads": 1,
+          "actualHeads": 1,
+          "cleanupRequestedAt": 96244,
+          "targetObservedNativeEofAt": 96249,
+          "nativeCloseMs": 5,
+          "nativeTimeoutMs": 8000,
+          "serverClosedSocketBeforeEof": false
+        },
+        {
+          "path": "/startup-cancel-b",
+          "expectedHeads": 1,
+          "actualHeads": 1,
+          "cleanupRequestedAt": 96244,
+          "targetObservedNativeEofAt": 96249,
+          "nativeCloseMs": 5,
+          "nativeTimeoutMs": 8000,
+          "serverClosedSocketBeforeEof": false
+        }
+      ]
+    }
+  ]
+}
+{"test": "extension-upgrade", "status": "passed", "checks": 5}
+{"test": "periodic-latency", "status": "passed", "checks": 7}
+{"status": "passed", "checks": 71, "actualHttp2Requests": 13, "webSocketFrames": 21, "sourceCommit": "f5130509c494763688636137bbd97d3b8a162b78"}
+{"status": "passed", "checks": 183, "pairedTrials": 3, "sourceCommit": "f5130509c494763688636137bbd97d3b8a162b78", "controlledSavingsMs": [389, 322, 360], "actualColdHttp2Requests": 22}
+{"actualAndroidExecution": true, "actualFrameworkBinding": true, "actualMessengerIpc": true, "bindingDiedAndroidAcceptance": false, "checks": 18, "frameworkBindCalls": 3, "nullCallbacks": 1, "physicalPhoneAcceptance": false, "productionNetworkServiceFaulted": false, "securityExceptionAndroidAcceptance": false, "successfulFrameworkUnbindCalls": 3}
+Starting phase: Verify subscription storage and selection UI
+{
+  "kind": "result",
+  "status": "passed",
+  "checkCount": 63,
+  "actualAndroidExecution": true,
+  "actualNativeExecution": true,
+  "actualMihomoExecution": true,
+  "coreVersion": "v1.19.31-pocket-reading1",
+  "coreSha256": "9a7e852127d20ecad46ae27423121219eefe33eecda737f6c469c30e4fa2fc72",
+  "coreAbi": "x86_64",
+  "actualKeystoreEncryption": true,
+  "actualAtomicFilePublicationRace": true,
+  "actualSealedFileIoLease": true,
+  "actualRouteApplication": false,
+  "failure": "",
+  "scope": "Official app-local Mihomo parsing, Android Keystore snapshots, actual unsafe AtomicFile .new deletion reproduction and formal encrypted publication barriers. Cross-JVM storage leases have a separate host gate. No public subscription, actual proxy connection or real account is used; live route application is verified separately.",
+  "checks": [
+    {
+      "name": "Original encrypted record layout and slot AAD remain readable",
+      "pass": true
+    },
+    {
+      "name": "Unprotected Android AtomicFile creates an actual pending .new",
+      "pass": true
+    },
+    {
+      "name": "Unprotected Android recovery deletes another writer's .new",
+      "pass": true
+    },
+    {
+      "name": "Unprotected Android finishWrite returns without publishing the new value",
+      "pass": true
+    },
+    {
+      "name": "Formal encrypted writer reaches Android startWrite before publication",
+      "pass": true
+    },
+    {
+      "name": "Formal encrypted reader waits instead of deleting the writer's .new",
+      "pass": true
+    },
+    {
+      "name": "Formal encrypted reader decrypts the whole newly published value",
+      "pass": true
+    },
+    {
+      "name": "Successful formal publication leaves no pending .new",
+      "pass": true
+    },
+    {
+      "name": "Formal storage reports Android's quiet rename failure as IOException",
+      "pass": true
+    },
+    {
+      "name": "Rejected encrypted publication keeps the previously committed value",
+      "pass": true
+    },
+    {
+      "name": "Rejected encrypted publication leaves no pending staging file",
+      "pass": true
+    },
+    {
+      "name": "Formal encrypted removal waits for an active publication",
+      "pass": true
+    },
+    {
+      "name": "Formal encrypted removal clears both committed and pending files",
+      "pass": true
+    },
+    {
+      "name": "Different physical files on one stripe support safe nested leases",
+      "pass": true
+    },
+    {
+      "name": "Dynamic storage slots keep at most 64 stable lock inodes",
+      "pass": true
+    },
+    {
+      "name": "Removing dynamic slots leaves no committed or pending payloads",
+      "pass": true
+    },
+    {
+      "name": "Storage race fixtures preserve the environment's encrypted route",
+      "pass": true
+    },
+    {
+      "name": "Installed native artifact exposes its actual core version and SHA",
+      "pass": true
+    },
+    {
+      "name": "Native parses entry source generation 1 with a configuration fingerprint",
+      "pass": true
+    },
+    {
+      "name": "Native parses exit source generation 2 with a configuration fingerprint",
+      "pass": true
+    },
+    {
+      "name": "Identical subscription URLs have separate stable source IDs",
+      "pass": true
+    },
+    {
+      "name": "Native role prefixes keep source node names independent",
+      "pass": true
+    },
+    {
+      "name": "Different SOCKS endpoints have different node fingerprints",
+      "pass": true
+    },
+    {
+      "name": "Old environment retains its manual entry mode",
+      "pass": true
+    },
+    {
+      "name": "Legacy node reference migrates by name once",
+      "pass": true
+    },
+    {
+      "name": "New environment defaults to low-latency entry mode",
+      "pass": true
+    },
+    {
+      "name": "Candidate records independent entry and exit source references",
+      "pass": true
+    },
+    {
+      "name": "Subscribed exit retains one fixed fingerprint",
+      "pass": true
+    },
+    {
+      "name": "Draft selection does not write active encrypted settings",
+      "pass": true
+    },
+    {
+      "name": "Subscribed candidate has no stale manual credentials",
+      "pass": true
+    },
+    {
+      "name": "Pending entry payload is stored independently in the environment",
+      "pass": true
+    },
+    {
+      "name": "Pending exit payload is stored independently in the environment",
+      "pass": true
+    },
+    {
+      "name": "Pending payload receipts bind SHA-256 to their generation",
+      "pass": true
+    },
+    {
+      "name": "Pending edits do not replace live provider files",
+      "pass": true
+    },
+    {
+      "name": "Other environments do not share private candidate payloads",
+      "pass": true
+    },
+    {
+      "name": "Active entry payload is independently encrypted and unchanged",
+      "pass": true
+    },
+    {
+      "name": "Active fixed-exit payload is independently encrypted and unchanged",
+      "pass": true
+    },
+    {
+      "name": "Both active metadata receipts match their own raw bytes",
+      "pass": true
+    },
+    {
+      "name": "Applying snapshots does not clear a profile's text/attachment draft",
+      "pass": true
+    },
+    {
+      "name": "Identified provider receipts require their own role and source URL",
+      "pass": true
+    },
+    {
+      "name": "Identified provider receipts reject a changed private generation",
+      "pass": true
+    },
+    {
+      "name": "Creating an environment copies both private provider payloads",
+      "pass": true
+    },
+    {
+      "name": "Copied provider metadata retains both validated source identities",
+      "pass": true
+    },
+    {
+      "name": "Copied UI snapshots retain actual entry and exit fingerprints",
+      "pass": true
+    },
+    {
+      "name": "Creating an environment excludes pending network operations",
+      "pass": true
+    },
+    {
+      "name": "Creating an environment excludes the source chat draft",
+      "pass": true
+    },
+    {
+      "name": "Creating an environment rejects a provider receipt with the wrong SHA",
+      "pass": true
+    },
+    {
+      "name": "Rejected provider copy leaves the new environment without partial payloads",
+      "pass": true
+    },
+    {
+      "name": "A failed environment copy leaves source payloads and drafts unchanged",
+      "pass": true
+    },
+    {
+      "name": "Clearing a pending candidate removes both payloads and its record",
+      "pass": true
+    },
+    {
+      "name": "Native parses entry source generation 3 with a configuration fingerprint",
+      "pass": true
+    },
+    {
+      "name": "Native parses exit source generation 4 with a configuration fingerprint",
+      "pass": true
+    },
+    {
+      "name": "Native entry fingerprint survives a provider-name change",
+      "pass": true
+    },
+    {
+      "name": "Native fixed-exit fingerprint survives a provider-name change",
+      "pass": true
+    },
+    {
+      "name": "Normalized entry names use the refreshed provider payload",
+      "pass": true
+    },
+    {
+      "name": "Normalized exit names use the refreshed provider payload",
+      "pass": true
+    },
+    {
+      "name": "Library refresh does not rewrite an active environment's snapshot",
+      "pass": true
+    },
+    {
+      "name": "Native parses exit source generation 5 with a configuration fingerprint",
+      "pass": true
+    },
+    {
+      "name": "Native fingerprint changes when the same-named exit endpoint changes",
+      "pass": true
+    },
+    {
+      "name": "Same-name changed endpoint cannot replace a fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Rejected refresh keeps both active provider snapshots",
+      "pass": true
+    },
+    {
+      "name": "Deleted shared exit source rejects candidate application",
+      "pass": true
+    },
+    {
+      "name": "Deleting a source does not erase active profile raw bytes",
+      "pass": true
+    }
+  ],
+  "sourceCommit": "f5130509c494763688636137bbd97d3b8a162b78"
+}
+{"status": "passed", "androidChecks": 86, "touchUiChecks": 27}
+Starting phase: Verify fixed-exit routing and deferred application
+{"status": "passed", "sourceCommit": "f5130509c494763688636137bbd97d3b8a162b78", "actualAndroidExecution": true, "actualGeckoHttp2Execution": true, "actualAuthenticatedSocksChain": true, "sameSourceFixedExitAcrossEntrySwitch": true, "independentProbesPreserveBusinessConnection": true, "snapshotAndNodeMismatchRejections": 4, "legacyManualPathPreserved": true, "checks": 77, "publicNetworkTraffic": false, "wanSpeedClaim": false}
+{"status": "passed", "checkCount": 59, "cases": 7, "realTrustedGestures": 2, "report": "/home/runner/work/yuanying-chat/yuanying-chat/work/gecko-integration/network-safe-idle-results.json"}
+{"status": "passed", "checks": 32, "source": "f5130509c494763688636137bbd97d3b8a162b78", "nonce": "f96d05ebaae4459eabeee99bd81d295c"}
+{"status": "passed", "checks": 43, "source": "f5130509c494763688636137bbd97d3b8a162b78", "nonce": "f3ebf4d33c5846e9bae1982ac5662f79"}
+{"status": "passed", "checks": 43, "source": "f5130509c494763688636137bbd97d3b8a162b78", "nonce": "3d63a6dc31864aa18bfaa6e021d2e5cb"}
