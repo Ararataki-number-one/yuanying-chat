@@ -20,6 +20,9 @@ function check(name,pass){assert.ok(pass,name);checks.push({name,pass:true});}
  input.value='未发送🙂\n   原始输入';let snapshot=call('page-state',{expectedUrl:before});check('Unicode and line breaks are preserved with UTF-16 length',snapshot.draft===input.value&&snapshot.draftLength===input.value.length&&snapshot.draftComplete);
  input.value='';let result=await call('page-restore',{expectedUrl:before,state:{...snapshot,draft:'older archived text',draftComplete:false},allowDraft:true});check('Incomplete metadata cannot restore an older draft as the current input',!result.ok&&result.reason==='incomplete-draft'&&input.value==='');
  const scroll=w.document.querySelector('main');Object.defineProperty(scroll,'scrollHeight',{value:1000});Object.defineProperty(scroll,'clientHeight',{value:100});w.getComputedStyle=()=>({display:'block',visibility:'visible',overflowY:'auto'});
+ // Capture the actual scroll geometry and position before changing it. A
+ // pre-layout snapshot cannot authorize a pixel fallback after layout changes.
+ scroll.scrollTop=120;snapshot=call('page-state',{expectedUrl:before});
  input.value='visible draft stays local to the webpage';scroll.scrollTop=0;
  result=await call('page-restore',{expectedUrl:before,state:{...snapshot,draft:null,draftComplete:false,draftOmittedReason:'local-saving-disabled',scrollTop:120},allowDraft:false,allowScroll:true});
  check('Disabled local draft copies still permit independent scroll recovery',result.ok&&result.restoredDraft===false&&scroll.scrollTop===120&&input.value==='visible draft stays local to the webpage');
