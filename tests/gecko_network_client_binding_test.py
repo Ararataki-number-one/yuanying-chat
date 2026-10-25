@@ -271,6 +271,24 @@ class PublicWiringControls(unittest.TestCase):
             with self.assertRaises(ValueError):C.verify_framework_binding_files(directory,'f'*40)
     def test_connections_step_keeps_every_original_command_and_condition(self):
         path='.github/workflows/gecko-integration.yml';raw=(ROOT/path).read_text()
+        # Invert only the reviewed four-core resource preparation before the
+        # original whole-workflow guard; retain its exact protected payload.
+        marker='env:\n  ANDROID_CAPACITY_PREFLIGHT: |\n';self.assertEqual(raw.count(marker),1)
+        start=raw.index(marker);end=raw.index('jobs:\n',start)
+        self.assertEqual(hashlib.sha256(raw[start:end].encode()).hexdigest(),'f817e9de4446864d9ff66b752a091ca932095abd910a3920ec66b40c325880eb')
+        raw=raw[:start]+raw[end:]
+        self.assertEqual(raw.count(' -cores 4 '),3);self.assertNotIn(' -cores 2 ',raw)
+        raw=raw.replace(' -cores 4 ',' -cores 2 ')
+        for key in ('scenario','phase','sample'):
+            for mode in ('host','guest'):
+                line='        python3 -c "$ANDROID_CAPACITY_PREFLIGHT" '+mode+" '${{ matrix."+key+" }}'\n"
+                self.assertEqual(raw.count(line),1);raw=raw.replace(line,'',1)
+        artifact='    - name: Preserve actual CPU capacity for this sample\n';self.assertEqual(raw.count(artifact),1)
+        start=raw.index(artifact);end=raw.index('  verify:\n',start)
+        self.assertEqual(hashlib.sha256(raw[start:end].encode()).hexdigest(),'94e7ca62493b8fe7f254315ab7479281c9889b7c118bcc079e8a8ff83e6df6be')
+        raw=raw[:start]+raw[end:]
+        resource='          work/gecko-integration/android-capacity-*.json\n'
+        self.assertEqual(raw.count(resource),1);raw=raw.replace(resource,'',1)
         inserted='        if ! python3 tests/gecko/run_network_client_binding.py --adb "$(command -v adb)" --serial emulator-5554; then\n          checks_failed=1\n        fi\n'
         self.assertEqual(raw.count(inserted),1)
         preserved=raw.replace(inserted,'',1)

@@ -264,6 +264,24 @@ class DisplayGateTest(unittest.TestCase):
 
     def test_host_wiring_only_adds_two_identity_commands_to_the_original_workflow(self):
         root=Path(__file__).resolve().parents[1];source=(root/'.github/workflows/gecko-integration.yml').read_text()
+        # Invert only the reviewed four-core resource preparation, preserving
+        # the original workflow golden and every original command below.
+        marker='env:\n  ANDROID_CAPACITY_PREFLIGHT: |\n';self.assertEqual(source.count(marker),1)
+        start=source.index(marker);end=source.index('jobs:\n',start)
+        self.assertEqual(hashlib.sha256(source[start:end].encode()).hexdigest(),'f817e9de4446864d9ff66b752a091ca932095abd910a3920ec66b40c325880eb')
+        source=source[:start]+source[end:]
+        self.assertEqual(source.count(' -cores 4 '),3);self.assertNotIn(' -cores 2 ',source)
+        source=source.replace(' -cores 4 ',' -cores 2 ')
+        for key in ('scenario','phase','sample'):
+            for mode in ('host','guest'):
+                line='        python3 -c "$ANDROID_CAPACITY_PREFLIGHT" '+mode+" '${{ matrix."+key+" }}'\n"
+                self.assertEqual(source.count(line),1);source=source.replace(line,'',1)
+        artifact='    - name: Preserve actual CPU capacity for this sample\n';self.assertEqual(source.count(artifact),1)
+        start=source.index(artifact);end=source.index('  verify:\n',start)
+        self.assertEqual(hashlib.sha256(source[start:end].encode()).hexdigest(),'94e7ca62493b8fe7f254315ab7479281c9889b7c118bcc079e8a8ff83e6df6be')
+        source=source[:start]+source[end:]
+        resource='          work/gecko-integration/android-capacity-*.json\n'
+        self.assertEqual(source.count(resource),1);source=source.replace(resource,'',1)
         for jar,label in [('catalog-json.jar','desktop'),('sharing-android-json.jar','android')]:
             line='        python3 tests/window-network-identity-host/run.py --java-home "$JAVA_HOME" --json-jar work/gecko-integration/'+jar+' --output work/gecko-integration/window-network-identity-'+label+'-host-results.json\n'
             self.assertEqual(source.count(line),1);source=source.replace(line,'')
