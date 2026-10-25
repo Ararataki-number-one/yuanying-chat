@@ -43,6 +43,16 @@ def same(left, right):
     return json.dumps(left,sort_keys=True,separators=(',',':'),allow_nan=False)==json.dumps(right,sort_keys=True,separators=(',',':'),allow_nan=False)
 
 
+def same_installed_identity(left, right):
+    """The Android reader adds one fixed explanatory field to the byte identity."""
+    scope = 'Installed synthetic integration APK bytes and embedded source stamp only'
+    for value in (left, right):
+        if type(value) is not dict or ('scope' in value and value['scope'] != scope):
+            return False
+    return same({key:value for key,value in left.items() if key != 'scope'},
+                {key:value for key,value in right.items() if key != 'scope'})
+
+
 def verify_download_resume(report, identity=None, expected_source=None):
     try:
         integer(report['schema'], 1)
@@ -128,7 +138,7 @@ def verify_download_resume_invocation(device, source):
         identity=transport['buildIdentity'];require(identity['sourceCommit']==source,'F06 installed source differs')
         value=device['savedFileDeletion']['downloadResume']
         summary=verify_download_resume(value,identity,source)
-        require(same(value['buildIdentity'],identity),'F06 nested installed identity differs')
+        require(same_installed_identity(value['buildIdentity'],identity),'F06 nested installed identity differs')
         invocations=transport['invocations'];require(type(invocations) is list and all(type(row) is dict for row in invocations),'F06 invocation list missing')
         owned=[row for row in invocations if row.get('fixtureAction')=='downloadResume']
         nonce=[row for row in invocations if row.get('runNonce')==value['runNonce']]
