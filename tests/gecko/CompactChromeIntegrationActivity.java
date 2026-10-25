@@ -221,10 +221,14 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
     if("idleReload".equals(action)){session.pending=null;session.prefs.edit().remove("pending").commit();session.state=new JSONObject();remote.evaluateJavascript("document.getElementById('stop-button')?.remove();document.getElementById('prompt-textarea').value='   ';({idle:true})",raw->{requestReload();});}
   }
   void waitReloadModal(long deadline){
-    if(reloadDialog!=null&&reloadDialog.isShowing()){
+    ReferenceUi.Modal modal=reloadDialog;
+    if(modal!=null&&modal.isShowing()){
+      View decor=modal.getWindow().getDecorView();
       JSONArray controls=new JSONArray();boolean laidOut=true;
-      for(int i=0;i<reloadDialog.footer.getChildCount();i++){View view=reloadDialog.footer.getChildAt(i);if(view instanceof Button){Rect visible=new Rect();Rect bounds=screenBounds(view);laidOut&=view.isShown()&&view.getGlobalVisibleRect(visible)&&visible.width()>0&&visible.height()>0&&bounds.width()>0&&bounds.height()>0&&view.isEnabled()&&view.isClickable();controls.put(J.obj("label",((Button)view).getText().toString(),"bounds",J.arr(bounds.left,bounds.top,bounds.right,bounds.bottom),"x",bounds.centerX(),"y",bounds.centerY(),"enabled",view.isEnabled(),"clickable",view.isClickable()));}}
-      if(laidOut&&controls.length()==2){reloadEvent("reloadModal",J.obj("centered",reloadDialog.getWindow().getAttributes().gravity==Gravity.CENTER,"controls",controls));return;}
+      for(int i=0;i<modal.footer.getChildCount();i++){View view=modal.footer.getChildAt(i);if(view instanceof Button){Rect visible=new Rect();Rect bounds=screenBounds(view);laidOut&=view.isShown()&&view.getGlobalVisibleRect(visible)&&visible.width()>0&&visible.height()>0&&bounds.width()>0&&bounds.height()>0&&view.isEnabled()&&view.isClickable();controls.put(J.obj("label",((Button)view).getText().toString(),"bounds",J.arr(bounds.left,bounds.top,bounds.right,bounds.bottom),"x",bounds.centerX(),"y",bounds.centerY(),"enabled",view.isEnabled(),"clickable",view.isClickable()));}}
+      boolean attached=decor.isAttachedToWindow(),focused=decor.hasWindowFocus();
+      if(reloadDialog==modal&&attached&&focused&&laidOut&&controls.length()==2){reloadEvent("reloadModal",J.obj("centered",modal.getWindow().getAttributes().gravity==Gravity.CENTER,"controls",controls,
+        "inputReady",J.obj("sameDialog",reloadDialog==modal,"modalRef",System.identityHashCode(modal),"attached",attached,"windowFocus",focused,"elapsedMs",SystemClock.elapsedRealtime())));return;}
     }
     if(SystemClock.elapsedRealtime()>deadline){reloadTrace("modal-timeout",null,null);reloadEvent("error",J.obj("error","Reload confirmation did not appear"));return;}handler.postDelayed(()->waitReloadModal(deadline),50);
   }
