@@ -1,0 +1,136 @@
+name: Owned native input priority hypothesis AB BA
+'on':
+  push:
+    branches: ['debug/gecko-owned-priority-*']
+permissions:
+  contents: read
+concurrency:
+  group: input-priority-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        order: [AB, BA]
+    env:
+      ORDER: ${{ matrix.order }}
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - name: Freeze two exact real source worktrees
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --no-tags --depth=1 origin 02f447ba873fd216c2fac063a7c92afb7422eb51
+        python3 tests/gecko_input_priority_comparison_test.py
+        python3 tools/gecko/run_input_priority_comparison.py prepare --order "$ORDER"
+        echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+        echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+        echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        echo "FIRST_ROOT=$PWD/work/priority-roles/${ORDER:0:1}" >> "$GITHUB_ENV"
+    - name: Fetch the original locked shared build dependencies
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p work/priority-downloads
+        cd work/priority-downloads
+        curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o gradle.zip
+        echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  gradle.zip' | sha256sum -c -
+        unzip -q gradle.zip -d gradle
+        curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.aar -o geckoview.aar
+        echo '15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268  geckoview.aar' | sha256sum -c -
+        curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.pom -o geckoview.pom
+        curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250-sources.jar -o geckoview-sources.jar
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+    - name: Build each source SDK APK and signed driver without identity overrides
+      shell: bash
+      run: |
+        set -euo pipefail
+        shared="$PWD/work/priority-downloads"
+        for role in A B; do
+          (
+            cd "work/priority-roles/$role"
+            mkdir -p work/gecko-integration
+            cp "$shared/geckoview.aar" "$shared/geckoview.pom" "$shared/geckoview-sources.jar" work/gecko-integration/
+            ln -s "$shared/gradle" work/gecko-integration/gradle
+            "$JAVA_HOME/bin/keytool" -genkeypair -keystore work/gecko-integration/integration-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticIntegration -keyalg RSA -validity 2
+            exec > >(tee work/gecko-integration/build.log) 2>&1
+            python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --upstream-only
+            python3 tools/gecko/caret_workflow.py prepare --work work/gecko-integration
+            work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration :app:writeCaretResolvedArtifacts -PtestSigningKey="$PWD/work/gecko-integration/integration-test.jks" --console=plain
+            python3 tools/gecko/caret_workflow.py record --work work/gecko-integration
+            python3 tools/gecko/build_native_input_driver.py --key "$PWD/work/gecko-integration/integration-test.jks"
+          )
+        done
+    - name: Boot one pinned emulator for this complete ordered pair
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p work/gecko-integration
+        exec > >(tee work/gecko-integration/native-test.log) 2>&1
+        python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-emulator-package-results.json
+        python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-system-image-results.json
+        export ANDROID_AVD_HOME="$PWD/work/priority-emulator/avd"
+        export ANDROID_USER_HOME="$PWD/work/priority-emulator/android-user"
+        export ANDROID_EMULATOR_HOME="$PWD/work/priority-emulator/emulator-home"
+        mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+        sudo chmod a+rw /dev/kvm
+        echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n geckoproduction -p "$ANDROID_AVD_HOME/geckoproduction.avd" -k 'system-images;android-35;google_apis;x86_64'
+        python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/gecko-integration/android-platform-tools-results.json
+        adb start-server
+        monitor="$PWD/work/priority-emulator/qemu-monitor.sock"
+        "$ANDROID_HOME/emulator/emulator" -avd geckoproduction -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5556 -gpu swiftshader -memory 3072 -cores 2 -qemu -monitor "unix:$monitor,server=on,wait=off" > work/gecko-integration/emulator.log 2>&1 &
+        timeout 180 adb -s emulator-5556 wait-for-device
+        timeout 300 bash -c 'until [ "$(adb -s emulator-5556 shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+        adb -s emulator-5556 shell input keyevent 82
+        adb -s emulator-5556 install "$FIRST_ROOT/app/build/outputs/apk/integration/app-x86_64-integration.apk"
+        cd "$FIRST_ROOT"
+        python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$monitor"
+        echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
+    - name: Run exactly one original performance per role on the same emulator
+      shell: bash
+      run: python3 tools/gecko/run_input_priority_comparison.py run --order "$ORDER" --adb "$(command -v adb)"
+    - name: Preserve exact synthetic original bytes even after failure
+      if: always()
+      shell: bash
+      run: python3 tools/gecko/run_input_priority_comparison.py retain --order "$ORDER"
+    - name: Upload this order without release publication
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: input-priority-${{ matrix.order }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: work/priority-comparison/
+        if-no-files-found: warn
+        retention-days: 7
+  decision:
+    needs: compare
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - name: Obtain only the exact baseline Git objects
+      run: git fetch --no-tags --depth=1 origin 02f447ba873fd216c2fac063a7c92afb7422eb51
+    - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      continue-on-error: true
+      with:
+        name: input-priority-AB-${{ github.run_id }}-${{ github.run_attempt }}
+        path: work/priority-inputs/AB
+    - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      continue-on-error: true
+      with:
+        name: input-priority-BA-${{ github.run_id }}-${{ github.run_attempt }}
+        path: work/priority-inputs/BA
+    - name: Apply the predeclared decision without replacing any failure
+      if: always()
+      run: python3 tools/gecko/run_input_priority_comparison.py decide --inputs work/priority-inputs
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: always()
+      with:
+        name: input-priority-decision-${{ github.run_id }}-${{ github.run_attempt }}
+        path: work/priority-comparison/priority-decision.json
+        if-no-files-found: warn
+        retention-days: 7
