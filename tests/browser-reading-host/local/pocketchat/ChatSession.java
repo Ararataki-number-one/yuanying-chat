@@ -12,11 +12,12 @@ final class ChatSession {
   interface Layout {void changed(Object v,int l,int t,int r,int b,int ol,int ot,int or,int ob);}
   interface Touch {boolean touch(Object v,android.view.MotionEvent event);}
   static class Web {
-    int width=1080,height=1600,initial,zoomCalls,scriptCalls,alignCalls,focusApplications;float scale=3,scrollY,readingLayout=1,lastAlignedY=Float.NaN;boolean measuredViewportRequired,nativeZoomActive,nativeMeasured=true,deferFocus;String url="https://chatgpt.com/c/one",script="";Layout layout;Touch touch;BrowserReading reading;java.util.function.BooleanSupplier focusFence;
+    int width=1080,height=1600,initial,zoomCalls,scriptCalls,alignCalls,focusApplications,touchSlop=8;float scale=3,scrollY,readingLayout=1,lastAlignedY=Float.NaN;boolean measuredViewportRequired,nativeZoomActive,nativeMeasured=true,deferFocus;String url="https://chatgpt.com/c/one",script="";Layout layout;Touch touch;BrowserReading reading;java.util.function.BooleanSupplier focusFence;
     boolean requiresViewportMeasurement(){return measuredViewportRequired;}
     boolean readingPage(String target){return BrowserReadingPolicy.chat(target);}
     boolean setReadingLayout(float choice){return false;}
     boolean readingZoomActive(){return nativeZoomActive;}
+    int readingTouchSlop(){return touchSlop;}
     boolean readingScaleMeasured(){return nativeMeasured;}
     float readingScrollY(){return nativeMeasured?scrollY:Float.NaN;}
     void alignReadingLeft(float savedY){alignCalls++;lastAlignedY=savedY;if(Float.isFinite(savedY))scrollY=savedY;}
