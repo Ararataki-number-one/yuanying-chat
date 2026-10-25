@@ -1,0 +1,60 @@
+name: Export original Oil UI diagnostic bytes
+on:
+  push:
+    branches: ['debug/oil-ui-export-*']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: oil-ui-export-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read the fixed completed capture artifact and export original bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/gecko/export_oil_ui_artifact.py
+      - name: Preserve source and byte provenance, including failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: oil-ui-export-provenance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/oil-ui-artifact-export/provenance/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Preserve verified original diagnostics part 1
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: oil-ui-export-part-01-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/oil-ui-artifact-export/part-01/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Preserve verified original diagnostics part 2
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: oil-ui-export-part-02-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/oil-ui-artifact-export/part-02/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Preserve verified original diagnostics part 3
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: oil-ui-export-part-03-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/oil-ui-artifact-export/part-03/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Preserve verified original diagnostics part 4
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: oil-ui-export-part-04-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/oil-ui-artifact-export/part-04/
+          if-no-files-found: warn
+          retention-days: 30
