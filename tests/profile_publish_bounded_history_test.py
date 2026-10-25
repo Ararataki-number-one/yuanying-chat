@@ -79,6 +79,7 @@ class BoundedPublisherTest(unittest.TestCase):
         (self.seed/'tools/gecko').mkdir(parents=True)
         shutil.copy2(PUBLISHER,self.seed/'tools/gecko/publish_ci.py')
         shutil.copy2(PUBLISHER.with_name('ci_git_publish.py'),self.seed/'tools/gecko/ci_git_publish.py')
+        shutil.copy2(PUBLISHER.with_name('network_scope_artifacts.py'),self.seed/'tools/gecko/network_scope_artifacts.py')
         (self.seed/'app').mkdir()
         (self.seed/'app/build.gradle').write_text("android { defaultConfig { versionName '2.0.0'; versionCode 53 } }\n")
         (self.seed/'.gitignore').write_text('work/\napp/build/\n')
