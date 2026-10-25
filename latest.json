@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.19",
-  "versionCode": 72,
+  "version": "2.0.20",
+  "versionCode": 73,
   "abi": "arm64-v8a",
   "minSdk": 26,
   "bytes": 119201272,
-  "sha256": "a4bb0a716344666d74d7af2f1f3ca94f17674fe1ecb54fe1914bb24086678332",
+  "sha256": "1a908082024ee3a142b6606f0c05ccbf460ef9fb779ab3661e54295a9de9081c",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.19-gecko/PocketChat-2.0.19-gecko-arm64.apk",
-  "notes": "# 2.0.19：阅读位置稳定性\n\nversionCode 72，基于 2.0.18，保留单 GeckoView 与 ChatGPT 原网页。\n\n- 触摸、滚轮和滚动键操作会使旧的网页恢复任务失效，执行前再次校验文档、页面状态和阅读交互。\n- 开始触摸时取消旧的缩放对齐、阅读恢复与键盘辅助任务；拖动期间停止这些辅助滚动，保留正常点击后的输入行为。\n- 阅读恢复优先使用消息和可见段落锚点。补入历史、图片改变高度后按原消息计算偏移；浏览器已保持位置时不再写入。原消息消失、匹配不唯一或变换不支持时保留当前视口。\n\n固定离线流程已复现并验证跳位缺口；主线程扫描候选未得到稳定收益，已撤销，没有纳入本版。不能据此声称手机帧率或真实代理线路延迟改善。详细对照见 [阅读稳定性报告](https://github.com/Ararataki-number-one/yuanying-chat/blob/739398a120706e3a9018d63d96630df7047890d8/docs/READING-STABILITY-20261025.md)。\n\n本次同源码的完整受控 Android 发布检查已通过。离线浏览器、主机检查、受控 Android 回归与手机实际使用分别记录；真实 ChatGPT、百度输入法和手机 Gecko 滑动帧耗时仍需现场验证。",
-  "sourceCommit": "739398a120706e3a9018d63d96630df7047890d8"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.20-gecko/PocketChat-2.0.20-gecko-arm64.apk",
+  "notes": "# 2.0.20：界面细节优化\n\nversionCode 73，基于 2.0.19，保留现有苹果风格、五项导航、环境胶囊、单 GeckoView 与 ChatGPT 原网页。\n\n- 第一轮改善大字体设置标题的换行，统一网络恢复说明与“重新加载”按钮的名称。\n- 第二轮让大字体说明按语义分行，保持短动作词组完整；订阅地址使用简短占位提示，完整格式说明可换行显示。\n- 横屏空白页的两个恢复操作并排显示，短窗口中的说明可滚动，避免按钮被压小。一般的设置已应用提示不再充当网页未打开的原因。\n- 长表单确实溢出时，在正文与固定按钮区之间显示一条细分隔线；保留字段、取消／保存操作、密码显隐与原有校验。\n\n两轮均以实际 Android 原生画面检查，保留既有布局、配色和主要操作。过程、取舍与验证边界见 [两轮界面细节记录](https://github.com/Ararataki-number-one/yuanying-chat/blob/da5004111eaf3e20322ca1fca3f756db82f44c90/docs/UI-DETAILS-TWO-ROUNDS-20261026.md)。\n\n本次同源码的完整受控 Android 发布检查已通过。模拟器界面、受控功能回归与真机体验分别记录；本版没有手机帧率或真实代理线路提速结论。",
+  "sourceCommit": "da5004111eaf3e20322ca1fca3f756db82f44c90"
 }
