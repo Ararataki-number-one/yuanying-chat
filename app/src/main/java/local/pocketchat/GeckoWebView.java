@@ -531,6 +531,7 @@ class GeckoWebView extends FrameLayout {
   }
   boolean readingScaleMeasured(){return current!=null&&measuredCompositors.contains(current);}
   boolean readingZoomActive(){return zoomTarget!=null;}
+  int readingTouchSlop(){return ViewConfiguration.get(getContext()).getScaledTouchSlop();}
   float readingScrollY(){
     if(destroyed||failed||current==null||!current.isOpen()||!readingScaleMeasured())return Float.NaN;
     current.getClientToSurfaceMatrix(readingMatrix);readingMatrix.getValues(readingValues);

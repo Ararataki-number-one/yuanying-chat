@@ -1,6 +1,36 @@
 /* Trusted host bridge in the extension's isolated world; never exposed to page scripts. */
 (() => {
   'use strict';
+  // Installed at document_start, before a delayed page-state request can race
+  // with an already active drag. Keep this separate from send-message intent.
+  if (window === window.top && location.origin === 'https://chatgpt.com' && !window.__pocketReadingInteraction) {
+    let revision=0,lifecycle=0,touches=0,lastMotion=-Infinity,live=true;
+    const pointers=new Set(),clock=()=>performance.now();
+    const moving=()=>pointers.size>0||touches>0||clock()-lastMotion<450;
+    const note=()=>{revision++;lastMotion=clock();};
+    const listen=(type,run)=>document.addEventListener(type,event=>{if(event.isTrusted)run(event);},{capture:true,passive:true});
+    listen('pointerdown',event=>{pointers.add(event.pointerId);note();});
+    listen('pointermove',event=>{if(pointers.has(event.pointerId))note();});
+    for(const type of ['pointerup','pointercancel'])listen(type,event=>{if(pointers.delete(event.pointerId))note();});
+    listen('touchstart',event=>{touches=event.touches.length;note();});
+    listen('touchmove',event=>{touches=event.touches.length;note();});
+    for(const type of ['touchend','touchcancel'])listen(type,event=>{touches=event.touches.length;note();});
+    listen('wheel',note);
+    listen('keydown',event=>{
+      if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','PageUp','PageDown','Home','End',' ','Spacebar'].includes(event.key))return;
+      const target=event.target instanceof Element?event.target:event.target?.parentElement;
+      if(!target?.closest('textarea,input,[contenteditable]:not([contenteditable="false"]),[role="textbox"]'))note();
+    });
+    // Continue the user's interaction through momentum. A quiet, programmatic
+    // scroll (including our own restoration) does not become a new gesture.
+    listen('scroll',()=>{if(moving())note();});
+    const leave=()=>{lifecycle++;pointers.clear();touches=0;lastMotion=-Infinity;};
+    window.addEventListener('pagehide',()=>{live=false;leave();});
+    window.addEventListener('pageshow',()=>{if(!live){live=true;lifecycle++;}});
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')leave();});
+    window.__pocketReadingInteraction=Object.freeze({revision:()=>revision,lifecycle:()=>lifecycle,
+      available:()=>live&&document.visibilityState!=='hidden',interacting:moving});
+  }
   const port = browser.runtime.connectNative('pocketpage');
   let auditCancel=()=>{};
   const text=value=>typeof value==='string'?value.slice(0,2048):'';
