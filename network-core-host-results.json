@@ -1,0 +1,162 @@
+{
+  "synthetic": true,
+  "total": 28,
+  "checks": [
+    {
+      "pass": true,
+      "name": "detector retention is not recovery success"
+    },
+    {
+      "pass": true,
+      "name": "detector backoff still checks and recovers corroborated transport failure"
+    },
+    {
+      "pass": true,
+      "name": "candidate-only controller failure retains exact live route and backs off"
+    },
+    {
+      "pass": true,
+      "name": "automatic failed candidate is selected back and reverified before retention"
+    },
+    {
+      "pass": true,
+      "name": "failed rollback cannot reuse any former receipt"
+    },
+    {
+      "pass": true,
+      "name": "busy flow blocks route mutation"
+    },
+    {
+      "pass": true,
+      "name": "work arriving before commit restores newly verified original selection"
+    },
+    {
+      "pass": true,
+      "name": "retained outcome authorizes only its exact current receipt"
+    },
+    {
+      "pass": true,
+      "name": "retained outcome cannot authorize a changed core route or superseding receipt"
+    },
+    {
+      "pass": true,
+      "name": "fresh identity observation cannot hide work arriving before selection"
+    },
+    {
+      "pass": true,
+      "name": "failed old transaction never destroys a replacement local core"
+    },
+    {
+      "pass": true,
+      "name": "explicit fresh core bootstrap verifies and commits while page work remains busy"
+    },
+    {
+      "pass": true,
+      "name": "starting alone cannot bypass a healthy route busy fence"
+    },
+    {
+      "pass": true,
+      "name": "bootstrap capability cannot be minted for an admitted core"
+    },
+    {
+      "pass": true,
+      "name": "missing receipt alone never permits a busy route switch"
+    },
+    {
+      "pass": true,
+      "name": "bootstrap identity replacement is rejected before mutation"
+    },
+    {
+      "pass": true,
+      "name": "bootstrap core replacement during verification never commits or destroys replacement"
+    },
+    {
+      "pass": true,
+      "name": "bootstrap rejects a changed configuration before mutation"
+    },
+    {
+      "pass": true,
+      "name": "bootstrap still obeys cancellation before selection"
+    },
+    {
+      "pass": true,
+      "name": "consumed bootstrap scope cannot replace its already verified candidate"
+    },
+    {
+      "pass": true,
+      "name": "bootstrap rereads durable configuration before selection"
+    },
+    {
+      "pass": true,
+      "name": "bootstrap detector failure closes only its owned core without admission"
+    },
+    {
+      "pass": true,
+      "name": "bootstrap requires service configuration to equal requested durable configuration"
+    },
+    {
+      "pass": true,
+      "name": "replacement before scope mint is never adopted or stopped"
+    },
+    {
+      "pass": true,
+      "name": "missing launch ownership revokes admission without stopping unknown core"
+    },
+    {
+      "pass": true,
+      "name": "startup failure callback cannot issue a second unowned stop"
+    },
+    {
+      "pass": true,
+      "name": "configuration changed after exit response retires candidate proof and owned core"
+    },
+    {
+      "pass": true,
+      "name": "incomplete service generation cannot turn owned cleanup into an unqualified stop"
+    }
+  ],
+  "actualAndroidExecution": false,
+  "passed": 28,
+  "status": "passed",
+  "sourceFile": "/home/runner/work/yuanying-chat/yuanying-chat/app/src/main/java/local/pocketchat/NativeNetwork.java",
+  "sourceSha256": "35f6ac66e3d12adbcbf762901bb825c01d6b9ed98051f5f8bad279478779d05f",
+  "files": {
+    "app/src/main/java/local/pocketchat/NetworkHealthPolicy.java": "08279fe9e9a05be1634d3883bf0a52a4c791c79a49b9bf28913523986a29018b",
+    "app/src/main/java/local/pocketchat/NetworkOptimizationPolicy.java": "83c6b42793be16fcef241c1865a89bd0dccbc7b07bf87c4701da43e3a89ccbe3",
+    "app/src/main/java/local/pocketchat/NetworkWork.java": "de34134adc227c8dcc48e52db9a23937537e95ae05abf5192b426224295446bf",
+    "app/src/main/java/local/pocketchat/NetworkDiagnostics.java": "eb7cd6127b79ddf24e1f909af7d06c3ade6c84d04453f1bf9e8e0467143d9be9",
+    "tests/network-core-host/NativeNetworkHarness.java.txt": "33d3d62745257a53bc19bd6f52d79c69feeb6fbdefdbcca168f339d4fc36782f",
+    "tools/gecko/run_network_core_host.py": "23d56b27087f032256fad8f1fd02f9ffdb34f73bc21c21b57ff76a6cca07188d"
+  },
+  "sourceCommit": "c42294cab3bae316f28b11d5bc49db8006c51cfc",
+  "sourceDirty": false,
+  "executionInputsUnchanged": true,
+  "legacyBootstrapInvocationAdapter": false,
+  "bootstrapReplayScope": "Legacy sources delegate the new bootstrap call shape to their unchanged strict selectVerifiedRoute; absent scope/owned-cleanup APIs are compatibility adapters, not historical production methods.",
+  "extractedMethods": [
+    "  void runStartOperation(int mode)",
+    "  void scanSubset(",
+    "  void selectNow(",
+    "  void rescan(",
+    "  void health(boolean reuseRecent)",
+    "  static long exitRetryDelayMs(",
+    "  boolean retainVerifiedRoute(",
+    "  void recoverExistingRoute(",
+    "  RetainedRouteFailure retained(",
+    "  boolean retainedFailure(",
+    "  boolean unchangedVerifiedSelection(",
+    "  void commitSelection(",
+    "  void selectVerifiedRoute(String name,boolean measure)",
+    "  void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap)",
+    "  private StartupRoute startupRoute(",
+    "  JSONObject startupState(",
+    "  void abortStartup(",
+    "  void verifyExitWhenDue(",
+    "  boolean retainedOutcomeCurrent(",
+    "  void stopFailedTransaction(",
+    "  void stopOwnedCore(",
+    "  void clearReadyState("
+  ],
+  "harnessSha256": "38d2827528a83bf367633407ff712aaa654625684427054295a68768f6c46f89",
+  "stderr": "automatic fixture outcome=RetainedRouteFailure entry=old selected=old verifies=2 stops=0 receiptCurrent=true\n"
+}
