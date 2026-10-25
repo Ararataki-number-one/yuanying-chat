@@ -30,7 +30,7 @@ public final class NativeInputShell {
     boolean success=driver.run(command);System.exit(success?0:1);
   }
   boolean run(String[] command){
-    boolean passed=false;long started=SystemClock.uptimeMillis();OwnedClock clock=null;
+    boolean passed=false;long started=SystemClock.uptimeMillis();OwnedClock clock=null;OwnedPriority priority=null;
     try{
       if(command.length!=1||command[0].length()>16384)throw new IllegalArgumentException("One bounded request required");
       args=new JSONObject(new String(Base64.decode(command[0],Base64.NO_WRAP),StandardCharsets.UTF_8));
@@ -89,6 +89,7 @@ public final class NativeInputShell {
       report.put("connectEndUptimeMs",SystemClock.uptimeMillis());
       float x=Float.parseFloat(required("x","[0-9]+")),from=Float.parseFloat(required("startY","[0-9]+")),to=Float.parseFloat(required("endY","[0-9]+"));
       if(SystemClock.uptimeMillis()+profile.duration>expires)throw new IllegalStateException("Original deadline expired during setup");
+      priority=new OwnedPriority();priority.apply();
       long ready=SystemClock.uptimeMillis();report.put("readyUptimeMs",ready).put("startupMs",ready-started);
       // Preparation is outside T0; the original AUT/action deadline never moves.
       write(output,report);
@@ -112,10 +113,52 @@ public final class NativeInputShell {
     finally{
       if(clock!=null)try{report.put("ownedClockObservation",clock.evidence());}
       catch(Throwable failure){try{report.put("ownedClockObservationError",failure.toString());}catch(Throwable ignored){}}
+      if(priority!=null){
+        try{priority.restore();}
+        catch(Throwable failure){passed=false;try{report.put("status","failed").put("priorityRestoreError",failure.toString());if(!report.has("error"))report.put("error",failure.toString());}catch(Throwable ignored){}}
+        try{report.put("ownedPriorityExperiment",priority.evidence());}
+        catch(Throwable failure){passed=false;try{report.put("status","failed").put("priorityObservationError",failure.toString());if(!report.has("error"))report.put("error",failure.toString());}catch(Throwable ignored){}}
+      }
       try{if(observed!=null)report.put("trace",NativeInputInstrumentation.json(observed));report.put("finishedUptimeMs",SystemClock.uptimeMillis());if(output!=null)write(output,report);}
       catch(Throwable failure){passed=false;System.err.println("Driver receipt unavailable: "+failure);}
     }
     return passed;
+  }
+  /** Reversible hypothesis experiment for this shell main thread only. */
+  static final class OwnedPriority {
+    final int tid,pid,uid,original;final int requested=android.os.Process.THREAD_PRIORITY_DISPLAY;
+    boolean attempted,applied,restoreAttempted,restoreVerified;Integer actualApplied,actualRestored;
+    long applyUptime,restoreUptime;
+    OwnedPriority(){
+      tid=android.os.Process.myTid();pid=android.os.Process.myPid();uid=android.os.Process.myUid();
+      if(tid!=pid||uid!=2000)throw new IllegalStateException("Owned shell main thread required for priority experiment");
+      original=android.os.Process.getThreadPriority(tid);
+    }
+    void apply(){
+      if(attempted)throw new IllegalStateException("Priority experiment cannot be replayed");
+      attempted=true;applyUptime=SystemClock.uptimeMillis();
+      android.os.Process.setThreadPriority(tid,requested);
+      actualApplied=android.os.Process.getThreadPriority(tid);
+      if(actualApplied!=requested)throw new IllegalStateException("Requested shell priority was not applied");
+      applied=true;
+    }
+    void restore(){
+      if(!attempted)return;
+      restoreAttempted=true;restoreUptime=SystemClock.uptimeMillis();
+      if(android.os.Process.myTid()!=tid||android.os.Process.myPid()!=pid||android.os.Process.myUid()!=uid)
+        throw new IllegalStateException("Owned thread changed before priority restoration");
+      android.os.Process.setThreadPriority(tid,original);
+      actualRestored=android.os.Process.getThreadPriority(tid);
+      if(actualRestored!=original)throw new IllegalStateException("Exact original shell priority was not restored");
+      restoreVerified=true;
+    }
+    JSONObject evidence()throws Exception{
+      return new JSONObject().put("experimentalOnly",true).put("hypothesis","Owned shell main-thread display priority may reduce controller scheduling delay; not a proved root-cause fix")
+        .put("tid",tid).put("pid",pid).put("uid",uid).put("originalPriority",original).put("requestedPriority",requested)
+        .put("attempted",attempted).put("applied",applied).put("actualAppliedPriority",actualApplied==null?JSONObject.NULL:actualApplied)
+        .put("applyUptimeMs",applyUptime).put("restoreAttempted",restoreAttempted).put("restoreVerified",restoreVerified)
+        .put("actualRestoredPriority",actualRestored==null?JSONObject.NULL:actualRestored).put("restoreUptimeMs",restoreUptime);
+    }
   }
   /** Diagnostic-only: bounded memory writes around the unchanged owned wait. */
   static final class OwnedClock implements NativeGestureProtocol.Clock {
