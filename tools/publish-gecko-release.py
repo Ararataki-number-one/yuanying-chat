@@ -2,6 +2,7 @@
 """Stage only verified signed APK chunks and public synthetic test evidence."""
 import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, urllib.request
 from gecko.release_channel_contract import release_tag, requires_manual_acceptance, verify_manual_acceptance, verify_direct_release
+from gecko.network_scope_artifacts import copy_network_scope_evidence
 
 
 def verify_existing_release_identity(current, previous, tag_source, actual_bytes, actual_sha256):
@@ -240,6 +241,7 @@ if version_code>=70:
     performance_files.extend(SETTINGS_REPORTS)
 performance_files.extend(item.name for pattern in ('native-input-*.json','native-input-*.log','native-input-*.txt') for item in args.evidence.glob(pattern) if item.is_file())
 for name in performance_files:shutil.copy2(args.evidence/name,stage/name)
+performance_files.extend(copy_network_scope_evidence(args.evidence, stage))
 shutil.copy2(args.notes,stage/'RELEASE.md')
 workflow=stage/'.github/workflows/publish-gecko-release.yml';workflow.parent.mkdir(parents=True)
 shutil.copy2(root/'.github/workflows/publish-gecko-release.yml',workflow)
@@ -252,6 +254,7 @@ if version_code>=43:
     shutil.copy2(root/'tools/gecko/ui_visual_contract.py',stage/'tools/gecko/ui_visual_contract.py')
     if (root/'tools/gecko/chrome_collapse_contract.py').is_file():shutil.copy2(root/'tools/gecko/chrome_collapse_contract.py',stage/'tools/gecko/chrome_collapse_contract.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract.py',stage/'tools/gecko/release_channel_contract.py')
+shutil.copy2(root/'tools/gecko/network_scope_artifacts.py',stage/'tools/gecko/network_scope_artifacts.py')
 shutil.copy2(root/'tools/gecko/release_channel_contract_test.py',stage/'tools/gecko/release_channel_contract_test.py')
 if roadmap_release:
     for name in ['check_profile_evidence.py','profile_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)

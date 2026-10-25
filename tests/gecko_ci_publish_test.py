@@ -18,6 +18,183 @@ SPEC.loader.exec_module(P)
 
 
 class PublicationArtifactCopyTests(unittest.TestCase):
+    def network_scope_copy(self):
+        helper = ROOT/'tools/gecko/network_scope_artifacts.py'
+        spec = importlib.util.spec_from_file_location('actual_network_scope_artifacts', helper)
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        return module.copy_network_scope_evidence
+
+    def network_scope_files(self):
+        values = {'network-client-binding-results.json': b'{"status":"failed"}\r\n',
+                  'network-client-binding-native-event.raw.json': b'{"original":true}\r\n',
+                  'network-client-binding-adb-0001-stdout.raw.log': b'\x00\xfforiginal provider bytes\r\n',
+                  'network-client-binding-adb-0001-stderr.raw.log': b'',
+                  'network-client-binding-adb-10000-stdout.raw.log': b'original final error\xc2\n'}
+        for implementation in ('desktop', 'android'):
+            stem = 'window-network-identity-' + implementation + '-host-results'
+            values[stem + '.json'] = b'{"status":"failed","hostOnly":true}\n'
+            for name in ('manifest.json', 'compile.stdout.raw', 'compile.stderr.raw',
+                         'execute.stdout.raw', 'execute.stderr.raw',
+                         'device-projection.stdout.raw', 'device-projection.stderr.raw'):
+                values[stem + '-raw/' + name] = (b'' if name.endswith('stderr.raw')
+                                                else (implementation + '/' + name).encode() + b'\r\n\x00\xff')
+        return values
+
+    def test_actual_network_scope_copy_preserves_exact_owned_binary_and_empty_streams(self):
+        copy = self.network_scope_copy(); evidence = self.network_scope_files()
+        excluded = {'network-client-binding-private.json': b'excluded',
+                    'network-client-binding-private.log': b'excluded',
+                    'network-client-binding-adb-0000-stdout.raw.log': b'excluded',
+                    'network-client-binding-adb-1-stdout.raw.log': b'excluded',
+                    'network-client-binding-adb-00001-stdout.raw.log': b'excluded',
+                    'network-client-binding-adb-0001-password.raw.log': b'excluded',
+                    'network-client-binding-adb-0001-stdout.raw.log.jks': b'excluded',
+                    'window-network-identity-private-host-results.json': b'excluded',
+                    'window-network-identity-desktop-host-results-raw/private.txt': b'excluded',
+                    'window-network-identity-desktop-host-results-raw/private.jks': b'excluded',
+                    'window-network-identity-desktop-host-results-raw/classes/Fixture.class': b'excluded',
+                    'window-network-identity-desktop-host-results-raw/src/Fixture.java': b'excluded'}
+        with tempfile.TemporaryDirectory() as temporary:
+            out, stage = Path(temporary)/'out', Path(temporary)/'stage'; out.mkdir(); stage.mkdir()
+            for name, data in {**evidence, **excluded}.items():
+                path = out/name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data)
+            self.assertEqual(set(copy(out, stage)), set(evidence))
+            self.assertEqual({path.relative_to(stage).as_posix() for path in stage.rglob('*')
+                              if path.is_file()}, set(evidence))
+            for name, data in evidence.items():self.assertEqual((stage/name).read_bytes(), data)
+            for name, data in excluded.items():self.assertEqual((out/name).read_bytes(), data)
+
+    def test_network_scope_copy_refuses_source_and_destination_symlinks(self):
+        copy = self.network_scope_copy()
+        for location in ('source-file', 'source-directory', 'destination-file', 'destination-directory',
+                         'source-root', 'destination-root'):
+            with self.subTest(location=location), tempfile.TemporaryDirectory() as temporary:
+                base = Path(temporary); out, stage = base/'out', base/'stage'; out.mkdir(); stage.mkdir()
+                outside = base/'outside'; outside.mkdir(); (outside/'sentinel').write_bytes(b'unchanged')
+                name = 'window-network-identity-desktop-host-results-raw'
+                if location == 'source-file':(out/'network-client-binding-results.json').symlink_to(outside/'sentinel')
+                elif location == 'source-directory':(out/name).symlink_to(outside, target_is_directory=True)
+                elif location == 'destination-file':
+                    (out/'network-client-binding-results.json').write_bytes(b'{}')
+                    (stage/'network-client-binding-results.json').symlink_to(outside/'sentinel')
+                elif location == 'destination-directory':
+                    (out/name).mkdir(); (out/name/'manifest.json').write_bytes(b'{}')
+                    (stage/name).symlink_to(outside, target_is_directory=True)
+                elif location == 'source-root':out.rmdir(); out.symlink_to(outside, target_is_directory=True)
+                else:stage.rmdir(); stage.symlink_to(outside, target_is_directory=True)
+                with self.assertRaisesRegex(AssertionError, 'symlink'):copy(out, stage)
+                self.assertEqual((outside/'sentinel').read_bytes(), b'unchanged')
+                self.assertEqual({path.name for path in outside.iterdir()}, {'sentinel'})
+
+    def test_network_scope_copy_refuses_symlink_ancestors_of_both_roots(self):
+        copy = self.network_scope_copy()
+        for side in ('source', 'destination'):
+            with self.subTest(side=side), tempfile.TemporaryDirectory() as temporary:
+                base = Path(temporary); outside = base/'outside'; outside.mkdir()
+                link = base/'linked-parent'; link.symlink_to(outside, target_is_directory=True)
+                out = (link if side == 'source' else base/'source')/'gecko-integration'
+                stage = (link if side == 'destination' else base/'output')/'public'
+                out.mkdir(parents=True); stage.mkdir(parents=True)
+                (out/'network-client-binding-results.json').write_bytes(b'original synthetic report\n')
+                before = {path.relative_to(outside).as_posix(): path.read_bytes()
+                          for path in outside.rglob('*') if path.is_file()}
+                self.assertFalse(out.is_symlink()); self.assertFalse(stage.is_symlink())
+                with self.assertRaisesRegex(AssertionError, 'ancestor symlink'):copy(out, stage)
+                self.assertEqual({path.relative_to(outside).as_posix(): path.read_bytes()
+                                  for path in outside.rglob('*') if path.is_file()}, before)
+                self.assertEqual(list(stage.iterdir()), [])
+
+    def test_network_scope_copy_refuses_nonregular_and_over_one_gib_files(self):
+        copy = self.network_scope_copy()
+        for invalid in ('directory', 'over-limit'):
+            with self.subTest(invalid=invalid), tempfile.TemporaryDirectory() as temporary:
+                out, stage = Path(temporary)/'out', Path(temporary)/'stage'; out.mkdir(); stage.mkdir()
+                target = out/'network-client-binding-results.json'
+                if invalid == 'directory':target.mkdir()
+                else:
+                    with target.open('wb') as stream:stream.truncate(1024 ** 3 + 1)
+                with self.assertRaisesRegex(AssertionError, 'Invalid network evidence file'):copy(out, stage)
+                self.assertEqual(list(stage.iterdir()), [])
+
+    def test_network_scope_copy_is_called_by_real_publisher_and_missing_files_stay_missing(self):
+        tree = ast.parse((ROOT/'tools/gecko/publish_ci.py').read_bytes())
+        calls = [node for node in tree.body if isinstance(node, ast.Expr)
+                 and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
+                 and node.value.func.id == 'copy_network_scope_evidence']
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(ast.unparse(calls[0]), 'copy_network_scope_evidence(out, stage)')
+        with tempfile.TemporaryDirectory() as temporary:
+            out, stage = Path(temporary)/'out', Path(temporary)/'stage'; out.mkdir(); stage.mkdir()
+            self.assertEqual(self.network_scope_copy()(out, stage), [])
+            self.assertEqual(list(stage.iterdir()), [])
+
+    def test_network_scope_helper_import_is_isolated_and_has_no_publisher_side_effects(self):
+        helper = ROOT/'tools/gecko/network_scope_artifacts.py'
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary); copied = base/helper.name; copied.write_bytes(helper.read_bytes())
+            spec = importlib.util.spec_from_file_location('standalone_network_scope_artifacts', copied)
+            module = importlib.util.module_from_spec(spec)
+            with patch.object(subprocess, 'run', side_effect=AssertionError('Import must not run commands')), \
+                 patch.object(subprocess, 'check_output', side_effect=AssertionError('Import must not read Git')), \
+                 patch('sys.dont_write_bytecode', True):
+                spec.loader.exec_module(module)
+            self.assertEqual({p.name for p in base.iterdir()}, {helper.name})
+            self.assertEqual(module.NETWORK_IDENTITY_RAW_DIRS, frozenset(
+                'window-network-identity-' + platform + '-host-results-raw'
+                for platform in ('desktop', 'android')))
+            self.assertEqual(len(module.NETWORK_IDENTITY_RAW_FILES), 7)
+            self.assertEqual(len(module.NETWORK_SCOPE_REPORT_FILES), 4)
+
+    def test_both_publishers_import_same_helper_and_signed_staging_keeps_raw_git_paths(self):
+        paths = (ROOT/'tools/gecko/publish_ci.py', ROOT/'tools/publish-gecko-release.py')
+        for path, module in zip(paths, ('network_scope_artifacts', 'gecko.network_scope_artifacts')):
+            tree = ast.parse(path.read_bytes())
+            imports = [node for node in tree.body if isinstance(node, ast.ImportFrom)
+                       and node.module == module]
+            self.assertEqual(len(imports), 1)
+            self.assertEqual([(row.name, row.asname) for row in imports[0].names],
+                             [('copy_network_scope_evidence', None)])
+            self.assertFalse(any(isinstance(node, ast.FunctionDef) and node.name == 'copy_network_scope_evidence'
+                                 for node in tree.body))
+        signed = paths[1]; tree = ast.parse(signed.read_bytes())
+        staging = [node for node in tree.body if isinstance(node, ast.Expr)
+                   and isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == 'performance_files.extend'
+                   and any(isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+                           and child.func.id == 'copy_network_scope_evidence' for child in ast.walk(node))]
+        self.assertEqual(len(staging), 1)
+        self.assertEqual(ast.unparse(staging[0]),
+                         'performance_files.extend(copy_network_scope_evidence(args.evidence, stage))')
+        helper_copy = [node for node in tree.body if isinstance(node, ast.Expr)
+                       and isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == 'shutil.copy2'
+                       and any(isinstance(child, ast.Constant) and child.value == 'tools/gecko/network_scope_artifacts.py'
+                               for child in ast.walk(node))]
+        self.assertEqual(len(helper_copy), 1)
+        git_add = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                   and ast.unparse(node.func) == 'subprocess.run' and node.args
+                   and isinstance(node.args[0], ast.List)
+                   and any(isinstance(child, ast.Constant) and child.value == 'add' for child in node.args[0].elts)]
+        self.assertEqual(len(git_add), 1)
+        self.assertTrue(any(isinstance(child, ast.Starred) and isinstance(child.value, ast.Name)
+                            and child.value.id == 'performance_files' for child in git_add[0].args[0].elts))
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary); out, stage = base/'out', base/'signed'; out.mkdir(); stage.mkdir()
+            evidence = self.network_scope_files()
+            for name, data in evidence.items():
+                path = out/name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data)
+            namespace = dict(args=type('Args', (), {'evidence': out})(), stage=stage,
+                             performance_files=['original-required-file.json'],
+                             copy_network_scope_evidence=self.network_scope_copy())
+            exec(compile(ast.Module(body=staging, type_ignores=[]), str(signed), 'exec'), namespace)
+            self.assertEqual(set(namespace['performance_files']), {'original-required-file.json'} | set(evidence))
+            for name, data in evidence.items():self.assertEqual((stage/name).read_bytes(), data)
+            # Execute the actual module-copy statement; importing the staged
+            # standalone helper must not depend on the repository checkout.
+            (stage/'tools/gecko').mkdir(parents=True)
+            exec(compile(ast.Module(body=helper_copy, type_ignores=[]), str(signed), 'exec'),
+                 dict(root=ROOT, stage=stage, shutil=shutil))
+            self.assertEqual((stage/'tools/gecko/network_scope_artifacts.py').read_bytes(),
+                             (ROOT/'tools/gecko/network_scope_artifacts.py').read_bytes())
+
     def test_actual_event_sequence_copy_loop_retains_only_six_original_files(self):
         publisher = ROOT/'tools/gecko/publish_ci.py'
         loops = [node for node in ast.parse(publisher.read_text()).body if isinstance(node, ast.For)

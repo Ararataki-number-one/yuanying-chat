@@ -14,6 +14,68 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 
+ANDROID_JSON_SHA256 = 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79'
+
+
+def verify_client_json_run(value, source_id, source_tree, source_dirty, files, jar_sha, contract):
+    """Same exact production and immutable-before proof for either JSON implementation."""
+    if (value.get('status')!='passed' or type(value.get('passed')) is not int or value['passed']!=92
+            or json.dumps(value.get('sourceIdentity'),sort_keys=True,allow_nan=False)!=json.dumps({'sourceCommit':source_id,'sourceTree':source_tree,'sourceDirty':source_dirty,'sourceFiles':files},sort_keys=True,allow_nan=False)
+            or value.get('oldFailuresReproduced') is not True or value.get('executionInputsUnchanged') is not True
+            or value.get('fullSelectedClass') is not True or value.get('beforeRef')!=contract['BEFORE']
+            or value.get('beforeClientSha256')!=contract['BEFORE_CLIENT_SHA256']
+            or value.get('sharedWholeJsonHelperSha256')!=files['app/src/main/java/local/pocketchat/J.java']
+            or any(value.get(key) is not False for key in ('actualAndroidExecution','actualBinderExecution','actualServiceExecution'))
+            or value.get('jsonJarSha256')!=jar_sha or value.get('validationErrors')!=[]
+            or value.get('beforeFailuresRequired')!=sorted(contract['KNOWN_OLD_FAILURES'])
+            or not isinstance(value.get('runs'),list) or len(value['runs'])!=2):
+        raise ValueError('Incomplete paired network-client JSON lifecycle evidence')
+    for record,name in zip(value['runs'],('before','current')):
+        contract['verify_raw_run'](record);contract['verify_report'](record['report'],expect_pass=name=='current')
+        if (json.dumps(json.loads(record['rawStdout']),sort_keys=True,allow_nan=False)!=json.dumps(record['report'],sort_keys=True,allow_nan=False)
+                or record['name']!=name or record['sourceCommit']!=(source_id if name=='current' else value['beforeRef'])
+                or record['clientSha256']!=(files['app/src/main/java/local/pocketchat/NetworkTransportClient.java'] if name=='current' else value['beforeClientSha256'])
+                or (record['exitCode']!=0 if name=='current' else record['exitCode']==0)):
+            raise ValueError('Paired network-client JSON execution selection differs')
+    return value
+
+
+def verify_stability_raw(value):
+    """Keep complete before/candidate stdout bound to the embedded report."""
+    for variant in ('candidate','before'):
+        row=value[variant]
+        stream_keys={'compileStdout','compileStderr','runtimeStdout','runtimeStderr'}
+        if any(not isinstance(row.get(key),str) for key in stream_keys):
+            raise ValueError('F04 stability original streams missing')
+        actual=json.loads(row['runtimeStdout'])
+        projected={key:item for key,item in row.items() if key not in stream_keys}
+        if json.dumps(actual,sort_keys=True,allow_nan=False)!=json.dumps(projected,sort_keys=True,allow_nan=False):
+            raise ValueError('F04 stability original stdout differs')
+    return value
+
+
+def run_optional_android_client(root,output,java,client_host,source_id,source_tree,source_dirty,files,contract):
+    """Execute the real paired JVM controls only with the pipeline's pinned jar."""
+    android_jar=root/'work/gecko-integration/sharing-android-json.jar'
+    android_client=dict(status='not-run',reason='Android JSON dependency is absent in this host pipeline',
+        dependencyPath='work/gecko-integration/sharing-android-json.jar',actualAndroidExecution=False)
+    if android_jar.exists() or android_jar.is_symlink():
+        if android_jar.is_symlink() or not android_jar.is_file() or hashlib.sha256(android_jar.read_bytes()).hexdigest()!=ANDROID_JSON_SHA256:
+            raise ValueError('Paired network-client Android JSON dependency differs')
+        android_client_receipt=output/'network-transport-client-android-host-results.json'
+        android_client_run=subprocess.run([sys.executable,str(client_host),'--java-home',str(Path(java).resolve().parent.parent),
+            '--json-jar',str(android_jar),'--output',str(android_client_receipt)],cwd=root,text=True,capture_output=True)
+        if android_client_run.returncode:
+            raise ValueError('Actual Android-JSON network-client controls failed: '+android_client_run.stdout+android_client_run.stderr)
+        android_value=json.loads(android_client_receipt.read_text())
+        verify_client_json_run(android_value,source_id,source_tree,source_dirty,files,ANDROID_JSON_SHA256,contract)
+        if hashlib.sha256(android_jar.read_bytes()).hexdigest()!=ANDROID_JSON_SHA256:
+            raise ValueError('Android JSON dependency changed during paired execution')
+        android_client=dict(status='passed',jsonRuntime='android',passed=92,actualAndroidExecution=False,
+            output=android_client_run.stdout+android_client_run.stderr,evidence=android_value)
+    return android_client
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--json-jar", type=Path, default=os.environ.get("PROFILE_JSON_JAR"))
@@ -36,6 +98,7 @@ def main():
     input_paths.update(ROOT/'tools/gecko'/name for name in ('caret_ime_guard.py','caret_ime_contract.py','ui_visual_capture.py','caret_build_identity.py'))
     input_paths.add(Path(__file__).resolve())
     input_paths.add(ROOT/'tools/gecko/check_template_evidence.py')
+    input_paths.add(ROOT/'tools/gecko/network_scope_artifacts.py')
     input_paths.add(ROOT/'tools/gecko/chrome_collapse_contract.py')
     input_paths.add(ROOT/'tools/gecko/local_draft_contract.py')
     draft_admission_inputs={path for path in (ROOT/'tests/local-draft-admission-host').rglob('*')
@@ -258,6 +321,7 @@ def main():
     files.update((ROOT/'tests/gecko/GeckoLocalDraftIntegration.java',ROOT/'tools/gecko/local_draft_contract.py'))
     files.update((ROOT/'tools/gecko/download_resume_contract.py',ROOT/'tests/gecko/DownloadResumeIntegrationActivity.java',ROOT/'tests/gecko/AndroidManifest.xml'))
     files.add(ROOT/'tools/gecko/check_interaction_transfer_evidence.py')
+    files.add(ROOT/'tools/gecko/network_scope_artifacts.py')
     files.add(ROOT/'tools/publish-gecko-release.py')
     files.update(ROOT/'tools/gecko'/name for name in ('integration_event_contract.py','profile_invocation_contract.py','page_continuity_contract.py','network_sources_contract.py','caret_dispatch.py','installed_apk_read.py','caret_launcher_guard.py','run_caret_editing_phase.py','check_caret_compat_evidence.py'))
     files.add(ROOT/'tests/fixtures/android-launcher-package-86db516.txt')
@@ -346,10 +410,11 @@ def main():
     stability_contract.verify_report(draft_stability,source_id,
         {str(path.relative_to(ROOT)):before_hashes[path] for path in draft_stability_inputs},
         hashlib.sha256(json_jar.read_bytes()).hexdigest(),selected)
+    verify_stability_raw(draft_stability)
     if draft_stability.get('sourceDirty')!=bool(source_status.strip()):
         raise ValueError('F04 stability host source cleanliness differs')
     results.append(dict(test='local-draft-restoration-stability-host',report=str(draft_stability_receipt.relative_to(ROOT)),
-        passed=27,candidateControls=25,oldCounterexampleControls=2,actualAndroidExecution=False))
+        passed=27,candidateControls=25,oldCounterexampleControls=2,actualAndroidExecution=False,evidence=draft_stability))
     files.update(draft_stability_inputs)
     draft_admission_receipt=output/'local-draft-admission-host-results.json'
     draft_admission_run=subprocess.run([sys.executable,str(ROOT/'tests/local-draft-admission-host/run.py'),
@@ -397,8 +462,12 @@ def main():
                 or record['clientSha256']!=(before_hashes[source/'NetworkTransportClient.java'] if name=='current' else client_report['beforeClientSha256'])
                 or (record['exitCode']!=0 if name=='current' else record['exitCode']==0)):
             raise ValueError('Network-client lifecycle execution selection differs')
+    verify_client_json_run(client_report,source_id,source_tree,bool(source_status.strip()),expected_client_files,
+        hashlib.sha256(json_jar.read_bytes()).hexdigest(),client_contract)
+    android_client=run_optional_android_client(ROOT,output,java,client_host,source_id,source_tree,
+        bool(source_status.strip()),expected_client_files,client_contract)
     results.append(dict(test='network-transport-client-host',report=str(client_receipt.relative_to(ROOT)),
-                        passed=92,actualAndroidExecution=False,evidence=client_report))
+                        passed=92,actualAndroidExecution=False,evidence=client_report,androidJson=android_client))
     files.update(transport_client_inputs)
     files.update((source/'NetworkTransportClient.java',source/'J.java'))
     framework_controls=ROOT/'tests/gecko_network_client_binding_test.py'

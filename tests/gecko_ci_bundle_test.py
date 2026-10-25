@@ -59,6 +59,62 @@ class CiBundleTest(unittest.TestCase):
         archive=self.base/(name+'.tar.gz');BUNDLE.pack(target,archive,'phase',name)
         return archive
 
+    def test_network_scope_unsigned_bundle_signed_git_roundtrip_keeps_original_bytes(self):
+        import ast
+        import types
+        root_files={}
+        for directory in BUNDLE.NETWORK_IDENTITY_RAW_DIRS:
+            root_files[directory.removesuffix('-raw')+'.json']=b'{"hostOnly":true,"status":"passed"}\n'
+            for name in BUNDLE.NETWORK_IDENTITY_RAW_FILES:
+                root_files[directory+'/'+name]=b'' if 'stderr' in name else (directory+'/'+name).encode()+b'\r\n\x00\xff'
+        phase_files={'network-client-binding-results.json':b'{"status":"failed"}\r\n',
+            'network-client-binding-native-event.raw.json':b'{"owned":"original"}\n',
+            'network-client-binding-adb-0001-stdout.raw.log':b'original provider bytes\x00\xff',
+            'network-client-binding-adb-0001-stderr.raw.log':b''}
+        for name,data in root_files.items():
+            path=self.root/BUNDLE.OUT/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+        unsigned=self.base/'unsigned-public';unsigned.mkdir()
+        unsigned_tree=ast.parse((ROOT/'tools/gecko/publish_ci.py').read_text())
+        unsigned_call=next(node for node in unsigned_tree.body if isinstance(node,ast.Expr) and isinstance(node.value,ast.Call) and isinstance(node.value.func,ast.Name) and node.value.func.id=='copy_network_scope_evidence')
+        def unsigned_copy(out):
+            exec(compile(ast.Module(body=[unsigned_call],type_ignores=[]),'actual unsigned copy','exec'),dict(copy_network_scope_evidence=BUNDLE._scope.copy_network_scope_evidence,out=out,stage=unsigned))
+        unsigned_copy(self.root/BUNDLE.OUT)
+        build=self.base/'network-build.tar.gz';BUNDLE.pack(self.root,build,'build')
+        phase=self.clone('network-connections');BUNDLE.restore(phase,build,'build')
+        for name,data in phase_files.items():(phase/BUNDLE.OUT/name).write_bytes(data)
+        unsigned_copy(phase/BUNDLE.OUT)
+        archive=self.base/'network-phase.tar.gz';manifest=BUNDLE.pack(phase,archive,'phase','connections')
+        self.assertEqual(manifest['buildIndexSha256'],BUNDLE.digest(phase/BUNDLE.BUILD_INDEX))
+        consumer=self.clone('network-signed');BUNDLE.restore(consumer,build,'build');BUNDLE.restore(consumer,archive,'phase','connections')
+        signed=self.base/'signed-public';signed.mkdir()
+        tree=ast.parse((ROOT/'tools/publish-gecko-release.py').read_text())
+        signed_call=next(node for node in tree.body if isinstance(node,ast.Expr) and isinstance(node.value,ast.Call) and isinstance(node.value.func,ast.Attribute) and isinstance(node.value.func.value,ast.Name) and node.value.func.value.id=='performance_files' and any(isinstance(n,ast.Name) and n.id=='copy_network_scope_evidence' for n in ast.walk(node)))
+        names=[];exec(compile(ast.Module(body=[signed_call],type_ignores=[]),'actual signed copy','exec'),dict(copy_network_scope_evidence=BUNDLE._scope.copy_network_scope_evidence,args=types.SimpleNamespace(evidence=consumer/BUNDLE.OUT),stage=signed,performance_files=names))
+        expected={**root_files,**phase_files};self.assertEqual(set(names),set(expected))
+        for stage in (unsigned,signed):
+            self.git(stage,'init','-q');self.git(stage,'add','--',*sorted(expected));self.git(stage,'commit','-qm','Exact synthetic artifact evidence')
+            for name,data in expected.items():
+                actual=subprocess.check_output(['git','show','HEAD:'+name],cwd=stage)
+                self.assertEqual(actual,data);self.assertEqual((consumer/BUNDLE.OUT/name).read_bytes(),data)
+                self.assertEqual(self.git(stage,'rev-parse','HEAD:'+name).strip(),hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest())
+
+    def test_network_identity_raw_allowlist_rejects_foreign_directories_and_generated_files(self):
+        for directory in BUNDLE.NETWORK_IDENTITY_RAW_DIRS:
+            for name in BUNDLE.NETWORK_IDENTITY_RAW_FILES:
+                for kind in ('build','phase'):self.assertTrue(BUNDLE.allowed(str(BUNDLE.OUT/directory/name),kind))
+            for name in ('private.txt','private.json','execute.stdout.raw.jks','classes/Fixture.class','src/Fixture.java','../manifest.json'):
+                for kind in ('build','phase'):self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/directory/name),kind))
+        self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/'window-network-identity-foreign-host-results-raw/manifest.json'),'build'))
+
+    def test_network_identity_raw_pack_and_restore_refuse_parent_symlinks(self):
+        directory=next(iter(BUNDLE.NETWORK_IDENTITY_RAW_DIRS));raw=self.root/BUNDLE.OUT/directory;raw.mkdir();(raw/'manifest.json').write_bytes(b'{}')
+        archive=self.base/'network-safe.tar.gz';BUNDLE.pack(self.root,archive,'build')
+        victim=self.base/'outside';victim.mkdir();target=self.clone('redirected-consumer');(target/BUNDLE.OUT).mkdir(parents=True);(target/BUNDLE.OUT/directory).symlink_to(victim,target_is_directory=True)
+        with self.assertRaises(AssertionError):BUNDLE.restore(target,archive,'build')
+        self.assertEqual(list(victim.iterdir()),[])
+        (raw/'manifest.json').unlink();raw.rmdir();raw.symlink_to(victim,target_is_directory=True)
+        with self.assertRaises(AssertionError):BUNDLE.pack(self.root,self.base/'unsafe.tar.gz','build')
+
     def test_exact_build_roundtrip_excludes_keys_and_restores_same_ui_bytes(self):
         target=self.clone('consumer');manifest=BUNDLE.restore(target,self.build,'build')
         self.assertEqual((target/BUNDLE.INTEGRATION).read_bytes(),(self.root/BUNDLE.INTEGRATION).read_bytes())

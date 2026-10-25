@@ -78,6 +78,7 @@ SETUP = (
     'tools/gecko/prepare_native_adb.py',
     'tools/gecko/prepare_emulator.py',
     'tools/gecko/ci_bundle.py',
+    'tools/gecko/network_scope_artifacts.py',
     'tools/gecko/build_native_input_driver.py',
     'tools/gecko/VerifyNativeInputSignature.java',
     'tools/gecko/installed_apk_read.py',

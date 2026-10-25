@@ -119,6 +119,34 @@ class ComparisonTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.matching_protocol(self.protocol, changed)
 
+    def test_bundle_collector_is_required_and_equal_in_actual_role_protocol_files(self):
+        name = 'tools/gecko/network_scope_artifacts.py'
+        self.assertIn(name, MODULE.SETUP)
+        self.assertNotIn(name, MODULE.HARNESS)
+        actual_helper = (MODULE.ROOT/name).read_bytes()
+        with tempfile.TemporaryDirectory() as temporary:
+            baseline, candidate = Path(temporary)/'baseline', Path(temporary)/'candidate'
+            for role in (baseline, candidate):
+                for path in MODULE.HARNESS + MODULE.SETUP:
+                    target = role/path; target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(actual_helper if path == name else b'unchanged protocol fixture\n')
+            original = MODULE.source_hashes(baseline, MODULE.HARNESS + MODULE.SETUP)
+            MODULE.matching_protocol(original, MODULE.source_hashes(candidate, MODULE.HARNESS + MODULE.SETUP))
+            with self.subTest(change='different actual collector bytes'):
+                (candidate/name).write_bytes(actual_helper + b'\n# controlled changed collector\n')
+                changed = MODULE.source_hashes(candidate, MODULE.HARNESS + MODULE.SETUP)
+                self.assertEqual({path for path in original if original[path] != changed[path]}, {name})
+                with self.assertRaisesRegex(ValueError, 'Benchmark or environment setup changed between builds'):
+                    MODULE.matching_protocol(original, changed)
+            with self.subTest(change='missing actual collector file'):
+                (candidate/name).unlink()
+                with self.assertRaisesRegex(ValueError, 'Missing protocol file: ' + name):
+                    MODULE.source_hashes(candidate, MODULE.HARNESS + MODULE.SETUP)
+            with self.subTest(change='same omitted collector in both protocol maps'):
+                missing = dict(original); missing.pop(name)
+                with self.assertRaisesRegex(ValueError, 'Incomplete benchmark protocol'):
+                    MODULE.matching_protocol(missing, missing)
+
     def test_activity_process_and_lifecycle_manifest_is_frozen(self):
         name = 'tests/gecko/AndroidManifest.xml'
         self.assertIn(name, MODULE.HARNESS)

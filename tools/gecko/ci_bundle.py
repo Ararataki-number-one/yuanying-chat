@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import io
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -42,6 +43,13 @@ EVENT_SEQUENCE_FAILURE_FILES = frozenset((
     'device-event-sequence-current.stderr.log',
 ))
 
+# Script and importlib consumers use the exact sibling pure collector, without
+# importing either publisher's executable top level.
+_scope_spec = importlib.util.spec_from_file_location('ci_network_scope_artifacts', Path(__file__).with_name('network_scope_artifacts.py'))
+_scope = importlib.util.module_from_spec(_scope_spec); _scope_spec.loader.exec_module(_scope)
+NETWORK_IDENTITY_RAW_DIRS = _scope.NETWORK_IDENTITY_RAW_DIRS
+NETWORK_IDENTITY_RAW_FILES = _scope.NETWORK_IDENTITY_RAW_FILES
+
 
 def digest(path):
     value = hashlib.sha256()
@@ -67,6 +75,8 @@ def allowed(name, kind):
         return False
     if path.suffix.lower() in ('.jks', '.p12', '.keystore', '.pem'):
         return False
+    if path.parent.parent == PurePosixPath(str(OUT)) and path.parent.name in NETWORK_IDENTITY_RAW_DIRS:
+        return path.name in NETWORK_IDENTITY_RAW_FILES
     # Only these failed-invocation diagnostics are public; do not widen this
     # namespace through the existing generic JSON/log/text phase allowance.
     if path.name.lower().startswith('device-event-sequence'):
@@ -94,6 +104,12 @@ def pack(root, target, kind, phase=None):
         assert build['kind'] == 'build' and all(build[key] == value for key, value in current.items())
         baseline = {item['path']: item['sha256'] for item in build['files']}
     candidates = [p for p in (root / OUT).glob('*') if p.is_file()]
+    for name in sorted(NETWORK_IDENTITY_RAW_DIRS):
+        directory=root / OUT / name
+        if directory.exists() or directory.is_symlink():
+            assert all(not p.is_symlink() for p in (root, root/'work', root/OUT, directory)) and directory.is_dir(), 'CI bundle refuses redirected raw evidence directory'
+            candidates += [directory / name for name in NETWORK_IDENTITY_RAW_FILES if (directory / name).exists() or (directory / name).is_symlink()]
+
     if kind == 'build':
         candidates += [root / INTEGRATION, root / RELEASE]
         candidates += [p for p in (root / SDK).glob('*') if p.is_file()]
@@ -106,7 +122,7 @@ def pack(root, target, kind, phase=None):
         name = path.relative_to(root).as_posix()
         if not allowed(name, kind):
             continue
-        assert not path.is_symlink(), 'CI bundle refuses symbolic links'
+        assert path.is_file() and not path.is_symlink(), 'CI bundle refuses nonregular files or symbolic links'
         sha = digest(path)
         if baseline.get(name) == sha:
             continue
@@ -154,7 +170,12 @@ def restore(root, bundle, kind, phase=None):
                     value.update(block)
             assert value.hexdigest() == row['sha256'], 'CI archive byte hash differs'
         for row in files:
-            relative = Path(row['path']); targets = [root / relative]
+            relative = Path(row['path'])
+            if relative.parent.name in NETWORK_IDENTITY_RAW_DIRS:
+                for parent in (root, root / 'work', root / OUT, root / relative.parent):
+                    assert not parent.is_symlink(), 'CI restore refuses redirected raw evidence directory'
+            targets = [root / relative]
+
             if kind == 'phase' and relative.parent == OUT and relative.name in LOCAL_REPORTS:
                 targets = [root / OUT / 'ci-phases' / phase / relative.name]
                 if phase == 'files':
