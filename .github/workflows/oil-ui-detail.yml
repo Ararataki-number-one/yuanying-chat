@@ -149,4 +149,11 @@ jobs:
             work/native-caret-sdk/derived-sdk-compilation.json
             work/native-caret-sdk/resolved-artifacts.json
             work/native-caret-sdk/compile/*-javac.log
-            app/build/outputs/apk/integration/app-x86_64-integration.apk
+      - name: Retain the original integration APK separately
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: oil-ui-apk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: app/build/outputs/apk/integration/app-x86_64-integration.apk
+          if-no-files-found: warn
+          retention-days: 30

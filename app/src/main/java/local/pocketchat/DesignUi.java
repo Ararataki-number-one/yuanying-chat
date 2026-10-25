@@ -8,6 +8,18 @@ final class DesignUi {
   static final String[] NAV={"会话","环境","下载","网络","设置"},GLYPHS={"chat","window","download","globe","settings"};
   static int dp(Context c,int n){return Ui.dp(c,n);}
   static TextView text(Context c,String value,int size,int color){TextView v=new TextView(c);v.setText(value);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));v.setIncludeFontPadding(false);v.setLineSpacing(dp(c,3),1);return v;}
+  /** Keep short action words intact in read-only copy; never alter editable values. */
+  static void readable(TextView label,String value,String... words){
+    if(label instanceof EditText)throw new IllegalArgumentException("Read-only text required");
+    String plain=value==null?"":value,display=plain;
+    for(String word:words){
+      if(word==null||word.isEmpty())continue;
+      StringBuilder joined=new StringBuilder();
+      for(int offset=0;offset<word.length();){if(joined.length()>0)joined.append('\u2060');int point=word.codePointAt(offset);joined.appendCodePoint(point);offset+=Character.charCount(point);}
+      display=display.replace(word,joined.toString());
+    }
+    label.setText(display);label.setContentDescription(plain);
+  }
   static GradientDrawable surface(Context c,int color,int radius,int stroke){GradientDrawable d=Ui.shape(c,color,radius);d.setStroke(dp(c,1),stroke);return d;}
   static GradientDrawable gradient(Context c){return surface(c,0xff1268ff,14,Color.TRANSPARENT);}
   static Drawable glass(Context c,int radius){return new RippleDrawable(ColorStateList.valueOf(0x142468f2),new AppAppearance.Glass(c,radius),surface(c,Color.WHITE,radius,Color.TRANSPARENT));}
@@ -79,7 +91,7 @@ final class DesignUi {
     ImageView icon=icon(c,glyph,BLUE,30);r.addView(icon);LinearLayout labels=column(c);labels.setPadding(dp(c,14),0,dp(c,12),0);
     // Keep enlarged Chinese labels readable without shrinking the chosen font.
     TextView heading=text(c,title,16,TEXT);heading.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_BALANCED);labels.addView(heading);
-    if(!detail.isEmpty()){TextView sub=text(c,detail,13,MUTED);sub.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_BALANCED);sub.setPadding(0,dp(c,5),0,0);labels.addView(sub);}
+    if(!detail.isEmpty()){String display=c.getResources().getConfiguration().fontScale>=1.4f?detail.replace(" · ","\n"):detail;TextView sub=text(c,display,13,MUTED);sub.setContentDescription(detail);sub.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_BALANCED);sub.setPadding(0,dp(c,5),0,0);labels.addView(sub);}
     r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
     if(!tag.isEmpty())r.addView(badge(c,tag,MUTED));
     else if(action!=null){ImageView arrow=new ImageView(c);arrow.setImageDrawable(new Ui.Icon("chevron-right",MUTED));r.addView(arrow,new LinearLayout.LayoutParams(dp(c,14),dp(c,20)));}

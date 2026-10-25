@@ -347,7 +347,8 @@ final class NetworkWorkspaceUi {
   void subscriptionForm(Runnable next){subscriptionForm(NetworkCatalog.ENTRY,null,next);}
   void subscriptionForm(String role,JSONObject existing,Runnable next){
     boolean editing=existing!=null;ReferenceUi.Modal d=new ReferenceUi.Modal(a,(editing?"编辑":"添加")+roleName(role)+"订阅");
-    EditText name=DesignUi.input(d.body,"订阅名称",editing?existing.optString("name"):"","例如：工作"+roleName(role)),url=DesignUi.input(d.body,"订阅地址",editing?existing.optString("url"):"","HTTPS · Clash / Mihomo");url.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+    EditText name=DesignUi.input(d.body,"订阅名称",editing?existing.optString("name"):"","例如：工作"+roleName(role)),url=DesignUi.input(d.body,"订阅地址",editing?existing.optString("url"):"","https://…");url.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+    d.note("支持 Clash / Mihomo 格式。");
     if(NetworkCatalog.EXIT.equals(role))d.note("可指定其中的 SOCKS5 节点作为固定出口，出口不会参与随机选择。");
     TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);d.body.addView(error);final boolean[] saving={false};
     d.buttons("取消",d::dismiss,"保存订阅",()->{

@@ -83,6 +83,139 @@ def verify_badging(raw, version, code):
         raise ValueError('Actual APK manifest package/version/debuggability differs')
 
 
+def rotation_actions(xml, width, height):
+    """Require the two actual enabled buttons, including ancestor clipping bounds."""
+    root = ET.fromstring(xml)
+    parents = {child: parent for parent in root.iter() for child in parent}
+    def bounds(node):
+        value = re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.get('bounds', ''))
+        return tuple(map(int, value.groups())) if value else None
+    rows = []
+    for label in ('重新加载', '检查网络'):
+        nodes = [n for n in root.iter('node') if n.get('package') == PACKAGE
+                 and n.get('class') == 'android.widget.Button' and n.get('text') == label]
+        if len(nodes) != 1:
+            return None
+        node = nodes[0]; box = bounds(node)
+        if (not box or node.get('enabled') != 'true' or node.get('clickable') != 'true'
+                or node.get('visible-to-user') == 'false'):
+            return None
+        left, top, right, bottom = box
+        if not (0 <= left < right <= width * 3 and 0 <= top < bottom <= height * 3
+                and right - left >= 144 and bottom - top >= 144):
+            return None
+        parent = parents.get(node)
+        while parent is not None:
+            clip = bounds(parent)
+            if clip and not (clip[0] <= left and clip[1] <= top and right <= clip[2] and bottom <= clip[3]):
+                return None
+            parent = parents.get(parent)
+        rows.append(dict(label=label, boundsPixels=list(box), widthDp=(right-left)/3, heightDp=(bottom-top)/3))
+    first, second = (row['boundsPixels'] for row in rows)
+    aligned = (first[2] <= second[0] and abs(first[1]-second[1]) <= 3 and abs(first[3]-second[3]) <= 3
+               if width > height else first[3] <= second[1] and abs(first[0]-second[0]) <= 3 and abs(first[2]-second[2]) <= 3)
+    return rows if aligned else None
+
+
+def java_activity_identity(raw):
+    """Only Activity.dump's Java identity, never an ActivityRecord/window token."""
+    headers = list(re.finditer(r'^\s*ACTIVITY\s+(\S+)\s+[^\n]*$', raw, re.MULTILINE))
+    matches = []
+    component = PACKAGE + '/local.pocketchat.MainActivity'
+    for index, header in enumerate(headers):
+        if header.group(1) != component:
+            continue
+        end = headers[index + 1].start() if index + 1 < len(headers) else len(raw)
+        block = raw[header.end():end]
+        pid = re.search(r'\bpid=([1-9][0-9]*)\b', header.group())
+        identities = re.findall(r'^\s*Local Activity ([0-9a-fA-F]+) State:\s*$', block, re.MULTILINE)
+        matches.append((header.group().strip(), pid, identities))
+    if len(matches) != 1 or matches[0][1] is None or len(matches[0][2]) != 1:
+        return dict(available=False, reason='One explicit MainActivity block with PID and Local Activity Java identity was not available.',
+                    matchingActivityBlocks=len(matches), source='dumpsys activity top')
+    header, pid, identities = matches[0]
+    return dict(available=True, component=component, pid=int(pid.group(1)),
+                javaIdentityHash=identities[0].lower(), rawActivityHeader=header,
+                source='MainActivity Local Activity <System.identityHashCode> State, paired with PID')
+
+
+def capture_in_place_rotation(args, adb, capture, report):
+    # Separate from the unchanged forty screenshots; one launch, no action taps.
+    deadline = time.monotonic() + 180
+    def run(*parts, **kwargs):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('In-place rotation observation exceeded 180 seconds')
+        return adb(*parts, timeout=min(kwargs.pop('timeout', 15), remaining), **kwargs)
+    result = dict(status='in_progress', sourceCommit=report['buildIdentity']['sourceCommit'],
+                  apkSha256=report['installedApk']['sha256'], singleLaunch=True,
+                  relaunchBetweenFrames=False, forceStopBetweenFrames=False,
+                  scope='Synthetic unconfigured chat shell; no loaded website, input submission or callback execution claim.')
+    report['rotationResult'] = result
+    report['rotationChecks'] = []
+    run('shell', 'am', 'force-stop', PACKAGE)  # Before the single fixture launch only.
+    run('shell', 'wm', 'size', '1080x1920')
+    run('shell', 'wm', 'density', '480')
+    run('shell', 'settings', 'put', 'system', 'font_scale', '1')
+    run('shell', 'cmd', 'uimode', 'night', 'no')
+    run('shell', 'am', 'start', '-W', '-n', COMPONENT, '--es', 'visualAction', 'chat', timeout=45)
+    for index, (width, height) in enumerate(((360, 640), (640, 360), (360, 640)), 1):
+        stem = f'rotation-{index}-{width}x{height}'
+        report['currentScene'] = stem
+        frame = dict(index=index, sourceCommit=result['sourceCommit'], apkSha256=result['apkSha256'],
+                     widthDp=width, heightDp=height, fontScale=1, themeRequested='light', status='in_progress')
+        report['rotationChecks'].append(frame)
+        if index > 1:
+            run('shell', 'wm', 'size', f'{width * 3}x{height * 3}')
+        ready_deadline = min(time.monotonic() + 35, deadline)
+        error = None; buttons = None
+        try:
+            while time.monotonic() < ready_deadline:
+                xml = capture.read(deadline=ready_deadline)
+                (args.out / (stem + '.xml')).write_text(xml)
+                buttons = rotation_actions(xml, width, height)
+                if buttons:
+                    break
+                time.sleep(.2)
+            if not buttons:
+                raise TimeoutError('Both full 48dp error actions did not settle in the expected orientation')
+        except Exception as failure:
+            error = failure
+        # Capture this exact phase once even when layout readiness failed.
+        top = run('shell', 'dumpsys', 'activity', 'top').decode('utf-8', 'strict')
+        write(args.out / (stem + '-activity-top.json'), dict(sourceCommit=result['sourceCommit'],
+              command=['shell', 'dumpsys', 'activity', 'top'], rawStdout=top,
+              rawStdoutSha256=hashlib.sha256(top.encode('utf-8')).hexdigest()))
+        identity = java_activity_identity(top)
+        observed = dict(size=run('shell', 'wm', 'size').decode(), density=run('shell', 'wm', 'density').decode(),
+                        fontScale=run('shell', 'settings', 'get', 'system', 'font_scale').decode(),
+                        configuration=run('shell', 'am', 'get-config').decode())
+        raw = run('exec-out', 'screencap', '-p', binary=True)
+        (args.out / (stem + '.png')).write_bytes(raw)
+        frame.update(image=stem+'.png', imageSha256=sha(args.out / (stem+'.png')),
+                     activityTop=stem+'-activity-top.json', activityTopSha256=sha(args.out / (stem+'-activity-top.json')),
+                     observedDevice=observed, javaActivity=identity, actions=buttons, capturedAtUnixNs=time.time_ns())
+        if (args.out / (stem+'.xml')).exists():
+            frame.update(xml=stem+'.xml', xmlSha256=sha(args.out / (stem+'.xml')))
+        orientation = 'land' if width > height else 'port'
+        if (png_size(raw) != (width*3, height*3) or float(observed['fontScale']) != 1
+                or int(re.findall(r'density: (\d+)', observed['density'])[-1]) != 480
+                or not re.search(r'(?:^|[-\s])notnight(?:[-\s]|$)', observed['configuration'])
+                or not re.search(r'(?:^|[-\s])'+orientation+r'(?:[-\s]|$)', observed['configuration'])):
+            error = error or ValueError('Actual rotation frame display/font/theme configuration differs')
+        known = [row['javaActivity'] for row in report['rotationChecks'] if row.get('javaActivity', {}).get('available')]
+        if len({(row['pid'], row['javaIdentityHash']) for row in known}) > 1:
+            error = error or ValueError('MainActivity Java identity or PID changed during in-place rotation')
+        frame['status'] = 'failed' if error else 'captured'
+        if error:
+            result.update(status='failed', errorType=type(error).__name__, error=str(error))
+            raise error
+    verified = all(frame['javaActivity']['available'] for frame in report['rotationChecks'])
+    result.update(status='verified' if verified else 'layout-captured-java-identity-unavailable',
+                  sameJavaActivityVerified=verified, javaIdentityEvidenceAvailable=verified,
+                  layoutSequenceVerified=True, frameCount=3)
+
+
 def build_identity(args, command):
     # Reuse production source/SDK validators; do not invent a local CI receipt.
     sys.path.insert(0, str(args.root / 'tools/gecko'))
@@ -233,6 +366,7 @@ def main():
                 readinessScrolls=0, readinessTarget=LABELS[scene],
                 imageSha256=sha(args.out / (stem + '.png')), xmlSha256=sha(args.out / (stem + '.xml')),
                 fixtureNonce=nonce, capturedAtUnixNs=time.time_ns()))
+        capture_in_place_rotation(args, adb, capture, report)
         report['status'] = 'captured'
     except Exception as error:
         report.update(status='failed', errorType=type(error).__name__, error=str(error))
