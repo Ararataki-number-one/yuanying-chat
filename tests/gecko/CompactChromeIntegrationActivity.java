@@ -23,6 +23,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   JSONObject performance=new JSONObject();
   boolean reloadFixture;String reloadBefore="",reloadArchivedDraft="";int reloadDocuments;
   int reloadTraceSequence,reloadTraceDropped;boolean reloadTraceTerminalRecorded;
+  ReferenceUi.Modal reloadObservedModal;int reloadWindowSequence,reloadWindowDropped;
   ChromeCollapseIntegration collapse;
   // Test-only observation. Keep production guards/callbacks authoritative and never
   // log draft text, cookies, configuration, proxy identity, or database contents.
@@ -65,8 +66,37 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   }
   @Override boolean reloadMatches(ChatSession.ReloadTarget target){boolean result=super.reloadMatches(target);reloadTrace("matches",target,result);return result;}
   @Override void requestReload(){reloadTrace("request-before",null,null);super.requestReload();reloadTrace("request-return",null,null);}
-  @Override void confirmReload(ChatSession.ReloadTarget target,boolean interrupted,JSONObject page){reloadTrace("confirm-before",target,null);super.confirmReload(target,interrupted,page);reloadTrace("confirm-return",target,null);}
-  @Override void confirmIndependentReload(ChatSession.ReloadTarget target,String reason){reloadTrace("independent-before",target,null);super.confirmIndependentReload(target,reason);reloadTrace("independent-return",target,null);}
+  @Override void confirmReload(ChatSession.ReloadTarget target,boolean interrupted,JSONObject page){reloadTrace("confirm-before",target,null);super.confirmReload(target,interrupted,page);observeReloadWindow();reloadTrace("confirm-return",target,null);}
+  @Override void confirmIndependentReload(ChatSession.ReloadTarget target,String reason){reloadTrace("independent-before",target,null);super.confirmIndependentReload(target,reason);observeReloadWindow();reloadTrace("independent-return",target,null);}
+  void observeReloadWindow(){
+    if(!reloadFixture||reloadDialog==null||reloadObservedModal==reloadDialog)return;
+    final ReferenceUi.Modal modal=reloadDialog;final Window window=modal.getWindow();final Window.Callback original=window.getCallback();
+    reloadObservedModal=modal;
+    window.setCallback(ReloadWindowCallbackObservation.wrap(original,(before,method,arguments,result,failure)->{
+      String name=method.getName();
+      if(!name.equals("dispatchTouchEvent")&&!name.equals("onWindowFocusChanged")&&!name.equals("onAttachedToWindow")&&!name.equals("onDetachedFromWindow"))return;
+      MotionEvent event=name.equals("dispatchTouchEvent")&&arguments!=null&&arguments.length==1&&arguments[0] instanceof MotionEvent?(MotionEvent)arguments[0]:null;
+      reloadWindowTrace(modal,(before?"before-":"after-")+name,event,arguments,result,failure);
+      if(!before&&event!=null&&(event.getActionMasked()==MotionEvent.ACTION_UP||event.getActionMasked()==MotionEvent.ACTION_CANCEL))modal.root.post(()->reloadWindowTrace(modal,"posted-after-input",null,null,null,null));
+    }));
+    try{reloadWindowTrace(modal,"installed",null,null,null,null);}catch(Throwable ignored){}
+  }
+  void reloadWindowTrace(ReferenceUi.Modal modal,String phase,MotionEvent event,Object[] arguments,Object result,Throwable failure){
+    if(reloadWindowSequence>=128){reloadWindowDropped++;return;}
+    JSONObject value=J.obj("schema",1,"sequence",++reloadWindowSequence,"dropped",reloadWindowDropped,"elapsedMs",SystemClock.elapsedRealtime(),
+      "phase",phase,"command",command,"diagnosticOnly",true,"releaseAcceptance",false,"modalRef",System.identityHashCode(modal),
+      "currentModal",reloadDialog==modal,"showing",modal.isShowing(),"windowFocus",modal.getWindow().getDecorView().hasWindowFocus(),
+      "attached",modal.getWindow().getDecorView().isAttachedToWindow(),"returnBoolean",result instanceof Boolean?result:JSONObject.NULL,
+      "focusEvent",phase.endsWith("onWindowFocusChanged")&&arguments!=null&&arguments.length==1&&arguments[0] instanceof Boolean?arguments[0]:JSONObject.NULL,
+      "failureClass",failure==null?"":failure.getClass().getName());
+    if(event!=null)try{value.put("touch",J.obj("action",event.getActionMasked(),"eventTime",event.getEventTime(),"downTime",event.getDownTime(),
+      "rawX",event.getRawX(),"rawY",event.getRawY(),"x",event.getX(),"y",event.getY(),"source",event.getSource(),"deviceId",event.getDeviceId(),"flags",event.getFlags()));}catch(JSONException failureToObserve){throw new IllegalStateException(failureToObserve);}
+    JSONArray controls=new JSONArray();
+    for(int i=0;i<modal.footer.getChildCount();i++){View view=modal.footer.getChildAt(i);if(view instanceof Button){Rect bounds=screenBounds(view);controls.put(J.obj("label",((Button)view).getText().toString(),
+      "bounds",J.arr(bounds.left,bounds.top,bounds.right,bounds.bottom),"enabled",view.isEnabled(),"clickable",view.isClickable(),"shown",view.isShown(),"pressed",view.isPressed()));}}
+    try{value.put("controls",controls);}catch(JSONException failureToObserve){throw new IllegalStateException(failureToObserve);}
+    Log.i("PocketReloadWindow",value.toString());
+  }
   @Override protected void onResume(){reloadTrace("resume-before",null,null);super.onResume();reloadTrace("resume-return",null,null);}
   static class ReloadView extends GeckoWebView {
     static final String LOCAL="http://127.0.0.1:8765/";boolean tracking;int stops,loads;String requested="";
