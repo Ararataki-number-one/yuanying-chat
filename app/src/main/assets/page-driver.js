@@ -238,13 +238,19 @@
   function pageScroll(){const first=document.querySelector('[data-message-author-role],article[data-turn],[data-chatgpt-search-unit-key],[data-content-search-unit-key]');for(let n=first?.parentElement;n&&n!==document.body;n=n.parentElement)if(n.scrollHeight>n.clientHeight+16&&/(auto|scroll)/.test(getComputedStyle(n).overflowY))return n;return document.scrollingElement;}
   function documentKey(){return window.__pocketDocumentId||(window.__pocketDocumentId=crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(36).slice(2));}
   function contentKey(){const nodes=messages('user').concat(messages('assistant'));return nodes.map((n,i)=>key(n,i)).join('|');}
-  function pageSnapshot(){const input=composer(),scroll=pageScroll(),text=draft(input),complete=!!input&&text.length<=300000;return {ok:true,url:location.href,documentId:documentKey(),contentKey:contentKey(),draft:complete?text:null,draftComplete:complete,hasDraft:text.trim().length>0,draftLength:text.length,draftOmittedReason:!input?'composer-unavailable':complete?'':'too-long',scrollTop:Math.max(0,scroll?.scrollTop||0),selectionStart:input?.selectionStart||0,selectionEnd:input?.selectionEnd||0,gestureAt:window.__pocketWebReplyObserver?.lastGestureAt?.()||0};}
+  function pageSnapshot(){const input=composer(),scroll=pageScroll(),text=draft(input),complete=!!input&&text.length<=300000;return {ok:true,url:location.href,documentId:documentKey(),contentKey:contentKey(),draft:complete?text:null,draftComplete:complete,hasDraft:text.trim().length>0,draftLength:text.length,draftOmittedReason:!input?'composer-unavailable':complete?'':'too-long',scrollTop:Math.max(0,scroll?.scrollTop||0),selectionStart:input?.selectionStart||0,selectionEnd:input?.selectionEnd||0,gestureAt:window.__pocketWebReplyObserver?.lastGestureAt?.()||0,readingRevision:window.__pocketReadingInteraction?.revision()||0};}
   if(action==='page-state'){if(!samePage(arg.expectedUrl))return {ok:false};return pageSnapshot();}
   if(action==='page-recover')return (async()=>{if(!samePage(arg.expectedUrl)||!composer()||busy()||siteError(null,true)||(!hasMessages()&&/\/c\//.test(location.pathname)))return {ok:false};const identity=documentKey(),controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),2500),started=performance.now();try{const response=await fetch(location.href,{method:'HEAD',credentials:'same-origin',cache:'no-cache',redirect:'error',signal:controller.signal});return {ok:response.ok&&identity===documentKey()&&samePage(arg.expectedUrl)&&!!composer()&&!busy()&&!siteError(null,true),url:location.href,probeMs:performance.now()-started};}catch{return {ok:false,probeMs:performance.now()-started};}finally{clearTimeout(timeout);}})();
   if(action==='page-content'){return {ok:true,url:location.href,contentKey:contentKey(),documentId:documentKey()};}
   if(action==='page-restore')return (async()=>{
     if(!samePage(arg.expectedUrl))return {ok:false,reason:'route'};if(!composer())return {ok:false,reason:'composer'};if(busy())return {ok:false,reason:'busy'};if(siteError(null,true))return {ok:false,reason:'page-error'};const saved=arg.state||{};if(arg.allowDraft&&saved.draftComplete===false)return {ok:false,reason:'incomplete-draft'};const currentGesture=window.__pocketWebReplyObserver?.lastGestureAt?.()||0;
     if((saved.documentId===documentKey()&&currentGesture!==(saved.gestureAt||0))||(saved.documentId!==documentKey()&&currentGesture>0))return {ok:false,reason:'new-gesture'};
+    const reading=window.__pocketReadingInteraction,readingRevision=reading?.revision()||0;
+    const restoreDocument=document,restoreIdentity=documentKey(),restoreNavigation=window.__pocketNavigationToken,restoreLifecycle=reading?.lifecycle();
+    const readingChanged=()=>reading&&(!reading.available()||reading.interacting()||reading.revision()!==readingRevision||reading.lifecycle()!==restoreLifecycle);
+    if(reading&&(!reading.available()||reading.interacting()||(saved.documentId===restoreIdentity?readingRevision!==(saved.readingRevision||0):readingRevision>0))){
+      const text=draft(composer());return {ok:false,reason:'new-reading',conflict:!!(arg.allowDraft&&saved.draft&&text.trim()&&exactText(text)!==exactText(saved.draft))};
+    }
     const input=composer(),current=draft(input);let conflict=false,restoredDraft=false;
     if(arg.allowDraft&&saved.draft&&exactText(current)!==exactText(saved.draft)){
       if(current.trim())conflict=true;
@@ -252,21 +258,23 @@
         else {const range=document.createRange();range.selectNodeContents(input);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);if(!document.execCommand('insertText',false,exactText(saved.draft))){input.textContent=exactText(saved.draft);input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:exactText(saved.draft)}));}}
         // Restoring text can queue its own selection event. Compare with the
         // resulting selection, and protect newer user actions while it settles.
-        const doc=document,identity=documentKey(),events=['pointerdown','keydown','beforeinput','input','compositionstart','compositionupdate','compositionend','wheel','select','selectionchange','focusin','focusout'];
+        const doc=document,identity=documentKey(),events=['pointerdown','touchstart','touchmove','keydown','beforeinput','input','compositionstart','compositionupdate','compositionend','wheel','scroll','select','selectionchange','focusin','focusout'];
         const selection=()=>{if(input.tagName==='TEXTAREA')return [input.selectionStart,input.selectionEnd,input.selectionDirection];const s=doc.defaultView?.getSelection();return [s?.anchorNode,s?.anchorOffset,s?.focusNode,s?.focusOffset];};
         const initialSelection=selection();let interacted=false;
         const changed=event=>{if(!event.isTrusted)return;if(event.type==='select'||event.type==='selectionchange'){if(selection().some((value,index)=>value!==initialSelection[index]))interacted=true;}else interacted=true;};
         try{
           for(const type of events)doc.addEventListener(type,changed,true);
           await new Promise(r=>setTimeout(r,80));
-          if(document!==doc||documentKey()!==identity||!samePage(arg.expectedUrl))return {ok:false,reason:'route'};
+          if(document!==doc||documentKey()!==identity||window.__pocketNavigationToken!==restoreNavigation||!samePage(arg.expectedUrl))return {ok:false,reason:'route'};
           if(composer()!==input||input.ownerDocument!==doc||!input.isConnected)return {ok:false,reason:'composer'};
           if(busy()||siteError(null,true))return {ok:false,reason:'page-state'};
           restoredDraft=exactText(draft(input))===exactText(saved.draft);
-          if(!restoredDraft||interacted||doc.activeElement!==input||selection().some((value,index)=>value!==initialSelection[index]))return {ok:true,restoredDraft,interacted:true};
+          if(!restoredDraft||interacted||readingChanged()||doc.activeElement!==input||selection().some((value,index)=>value!==initialSelection[index]))return {ok:true,restoredDraft,interacted:true};
         }finally{for(const type of events)doc.removeEventListener(type,changed,true);}
       }
     }
+    if(document!==restoreDocument||documentKey()!==restoreIdentity||window.__pocketNavigationToken!==restoreNavigation||!samePage(arg.expectedUrl))return {ok:false,reason:'route'};
+    if(readingChanged())return {ok:true,restoredDraft,interacted:true};
     const scroll=pageScroll();if(arg.allowScroll!==false&&scroll&&Number.isFinite(saved.scrollTop))scroll.scrollTop=Math.max(0,Math.min(saved.scrollTop,scroll.scrollHeight-scroll.clientHeight));
     if(restoredDraft&&input.tagName==='TEXTAREA')try{input.setSelectionRange(saved.selectionStart||0,saved.selectionEnd||0);}catch{}
     return {ok:true,restoredDraft,conflict};
