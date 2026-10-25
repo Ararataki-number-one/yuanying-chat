@@ -90,8 +90,8 @@ final class DesignUi {
     LinearLayout r=row(c);r.setMinimumHeight(dp(c,64));r.setPadding(dp(c,16),dp(c,13),dp(c,16),dp(c,13));
     ImageView icon=icon(c,glyph,BLUE,30);r.addView(icon);LinearLayout labels=column(c);labels.setPadding(dp(c,14),0,dp(c,12),0);
     // Keep enlarged Chinese labels readable without shrinking the chosen font.
-    TextView heading=text(c,title,16,TEXT);heading.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_BALANCED);labels.addView(heading);
-    if(!detail.isEmpty()){String display=c.getResources().getConfiguration().fontScale>=1.4f?detail.replace(" · ","\n"):detail;TextView sub=text(c,display,13,MUTED);sub.setContentDescription(detail);sub.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_BALANCED);sub.setPadding(0,dp(c,5),0,0);labels.addView(sub);}
+    TextView heading=text(c,title,16,TEXT);heading.setBreakStrategy(android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED);labels.addView(heading);
+    if(!detail.isEmpty()){String display=c.getResources().getConfiguration().fontScale>=1.4f?detail.replace(" · ","\n"):detail;TextView sub=text(c,display,13,MUTED);sub.setContentDescription(detail);sub.setBreakStrategy(android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED);sub.setPadding(0,dp(c,5),0,0);labels.addView(sub);}
     r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
     if(!tag.isEmpty())r.addView(badge(c,tag,MUTED));
     else if(action!=null){ImageView arrow=new ImageView(c);arrow.setImageDrawable(new Ui.Icon("chevron-right",MUTED));r.addView(arrow,new LinearLayout.LayoutParams(dp(c,14),dp(c,20)));}
