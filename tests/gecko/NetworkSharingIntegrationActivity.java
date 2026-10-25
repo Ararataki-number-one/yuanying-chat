@@ -159,7 +159,11 @@ public final class NetworkSharingIntegrationActivity extends Activity {
   void action(LinearLayout controls,String title,Attempt action){Button button=new Button(this);button.setText(title);button.setOnClickListener(v->{try{action.run();}catch(Throwable e){fail(e);}});controls.addView(button);}
   void rememberSnapshot()throws Exception{shareSnapshot.clear();for(String key:NetworkSourceSelection.ActiveSnapshot.RECORDS)shareSnapshot.put(key,vault.get(key));}
   void unchanged(String name)throws Exception{for(Map.Entry<String,byte[]> saved:shareSnapshot.entrySet())check(name+" "+saved.getKey(),Arrays.equals(saved.getValue(),vault.get(saved.getKey())));}
-  void openRoute(){long now=System.currentTimeMillis();JSONObject runtime=J.obj("mode","internal","configured",true,"connected",true,"at",now,"subscriptionId",NativeNetwork.hash(uiConfig.optString("subscriptionUrl")),"entry","Entry|Portable VLESS");NetworkShareUi.route(this,new WindowNetworkState(this,J.obj("slot",6,"name","Sharing Window"),uiConfig,runtime,true,now));}
+  void openRoute(){
+    long now=System.currentTimeMillis();JSONObject row=ProfileCatalog.get(this).item(6);
+    JSONObject runtime=J.obj("environmentId",row.opt("environmentId"),"generation",row.opt("generation"),"mode","internal","configured",true,"connected",true,"at",now,"subscriptionId",NativeNetwork.hash(uiConfig.optString("subscriptionUrl")),"entry","Entry|Portable VLESS");
+    NetworkShareUi.route(this,new WindowNetworkState(this,row,uiConfig,runtime,true,now));
+  }
   void saveResult()throws Exception{result.put("checkCount",checks.length());J.write(new File(getFilesDir(),"network-source-sharing-results.json"),result.toString());}
   void fail(Throwable e){try{J.write(new File(getFilesDir(),"network-source-sharing-results.json"),J.obj("runToken",getIntent().getStringExtra("runToken"),"status","failed","error",e.getClass().getSimpleName(),"checks",checks).toString());}catch(Exception ignored){}android.util.Log.e("PocketSharing","Synthetic sharing check failed",e);}
 }
