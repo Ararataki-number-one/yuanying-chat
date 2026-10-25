@@ -70,16 +70,23 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   @Override void confirmIndependentReload(ChatSession.ReloadTarget target,String reason){reloadTrace("independent-before",target,null);super.confirmIndependentReload(target,reason);observeReloadWindow();reloadTrace("independent-return",target,null);}
   void observeReloadWindow(){
     if(!reloadFixture||reloadDialog==null||reloadObservedModal==reloadDialog)return;
+    try{
     final ReferenceUi.Modal modal=reloadDialog;final Window window=modal.getWindow();final Window.Callback original=window.getCallback();
-    reloadObservedModal=modal;
     window.setCallback(ReloadWindowCallbackObservation.wrap(original,(before,method,arguments,result,failure)->{
       String name=method.getName();
       if(!name.equals("dispatchTouchEvent")&&!name.equals("onWindowFocusChanged")&&!name.equals("onAttachedToWindow")&&!name.equals("onDetachedFromWindow"))return;
       MotionEvent event=name.equals("dispatchTouchEvent")&&arguments!=null&&arguments.length==1&&arguments[0] instanceof MotionEvent?(MotionEvent)arguments[0]:null;
       reloadWindowTrace(modal,(before?"before-":"after-")+name,event,arguments,result,failure);
-      if(!before&&event!=null&&(event.getActionMasked()==MotionEvent.ACTION_UP||event.getActionMasked()==MotionEvent.ACTION_CANCEL))modal.root.post(()->reloadWindowTrace(modal,"posted-after-input",null,null,null,null));
+      if(!before&&event!=null&&(event.getActionMasked()==MotionEvent.ACTION_UP||event.getActionMasked()==MotionEvent.ACTION_CANCEL))modal.root.post(()->{
+        try{reloadWindowTrace(modal,"posted-after-input",null,null,null,null);}catch(Throwable observationFailure){reloadWindowObservationFailure("posted-after-input",observationFailure);}
+      });
     }));
-    try{reloadWindowTrace(modal,"installed",null,null,null,null);}catch(Throwable ignored){}
+    reloadObservedModal=modal;
+    try{reloadWindowTrace(modal,"installed",null,null,null,null);}catch(Throwable observationFailure){reloadWindowObservationFailure("installed",observationFailure);}
+    }catch(Throwable observationFailure){reloadWindowObservationFailure("installation",observationFailure);}
+  }
+  void reloadWindowObservationFailure(String phase,Throwable failure){
+    try{Log.i("PocketReloadWindow",J.obj("schema",1,"phase","observation-failed","observationPhase",phase,"diagnosticOnly",true,"releaseAcceptance",false,"failureClass",failure.getClass().getName()).toString());}catch(Throwable ignored){}
   }
   void reloadWindowTrace(ReferenceUi.Modal modal,String phase,MotionEvent event,Object[] arguments,Object result,Throwable failure){
     if(reloadWindowSequence>=128){reloadWindowDropped++;return;}
