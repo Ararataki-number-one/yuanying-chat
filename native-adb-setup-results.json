@@ -1,0 +1,933 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "serial": "emulator-5556",
+  "normalAcceptanceTarget": "emulator-5554",
+  "exactSetupPackage": "com.google.android.googlesdksetup",
+  "commands": [
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "getprop",
+        "ro.kernel.qemu"
+      ],
+      "exitCode": 0,
+      "stdout": "1\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 174.188665696,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "settings",
+        "get",
+        "secure",
+        "show_ime_with_hard_keyboard"
+      ],
+      "exitCode": 0,
+      "stdout": "1\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 174.238297238,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "settings",
+        "get",
+        "secure",
+        "default_input_method"
+      ],
+      "exitCode": 0,
+      "stdout": "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 174.288672156,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "settings",
+        "get",
+        "secure",
+        "enabled_input_methods"
+      ],
+      "exitCode": 0,
+      "stdout": "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME;1594443099:com.google.android.tts/com.google.android.apps.speech.tts.googletts.settings.asr.voiceime.VoiceInputMethodService\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 174.337530619,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "getprop",
+        "vendor.qemu.keyboard_layout"
+      ],
+      "exitCode": 0,
+      "stdout": "\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 174.363609853,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "exec-out",
+        "content",
+        "read",
+        "--uri",
+        "content://local.pocketchat.test.network-preflight/default-network?runNonce=6adb6f4bde344e17b7d25e30c6dd3980"
+      ],
+      "exitCode": 0,
+      "stdout": "{\"schema\":1,\"runNonce\":\"6adb6f4bde344e17b7d25e30c6dd3980\",\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"dirtySource\":false,\"version\":\"2.0.18\",\"versionCode\":71,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"runId\":\"40176428858\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126374225,\"apkSha256\":\"651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb\",\"buildStampSha256\":\"87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"actualAndroidExecution\":true,\"actualConnectivityManagerExecution\":true,\"actualGeckoExecution\":false,\"applicationAcceptance\":false,\"physicalPhoneAcceptance\":false,\"androidSdk\":35,\"pid\":3327,\"observedAtElapsedRealtime\":61863,\"activeNetwork\":\"100\",\"activeNetworkAfter\":\"100\",\"capabilitiesPresent\":true,\"internetCapability\":true,\"stableDuringRead\":true,\"usable\":true,\"transports\":[\"wifi\"],\"capabilities\":\"[ Transports: WIFI Capabilities: NOT_METERED&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=12000Kbps LinkDnBandwidth>=30000Kbps TransportInfo: <SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, IP: \\/10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: -1, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: -1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none><none>MLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>> SignalStrength: -50 UnderlyingNetworks: Null]\",\"scope\":\"Actual CM environment prerequisite only; no browser, proxy, website or application acceptance\"}\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 177.868827018,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "pm",
+        "list",
+        "packages",
+        "com.google.android.googlesdksetup"
+      ],
+      "exitCode": 0,
+      "stdout": "package:com.google.android.googlesdksetup\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 177.929839579,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "am",
+        "force-stop",
+        "com.google.android.googlesdksetup"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 178.11972779,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "pm",
+        "disable-user",
+        "--user",
+        "0",
+        "com.google.android.googlesdksetup"
+      ],
+      "exitCode": 0,
+      "stdout": "Package com.google.android.googlesdksetup new state: disabled-user\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 178.186839435,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "pm",
+        "list",
+        "packages",
+        "-d",
+        "com.google.android.googlesdksetup"
+      ],
+      "exitCode": 0,
+      "stdout": "package:com.google.android.googlesdksetup\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 178.272854996,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "exec-out",
+        "content",
+        "read",
+        "--uri",
+        "content://local.pocketchat.test.network-preflight/default-network?runNonce=4c8213e9863542b0b6904582d799c072"
+      ],
+      "exitCode": 0,
+      "stdout": "{\"schema\":1,\"runNonce\":\"4c8213e9863542b0b6904582d799c072\",\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"dirtySource\":false,\"version\":\"2.0.18\",\"versionCode\":71,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"runId\":\"40176428858\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126374225,\"apkSha256\":\"651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb\",\"buildStampSha256\":\"87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"actualAndroidExecution\":true,\"actualConnectivityManagerExecution\":true,\"actualGeckoExecution\":false,\"applicationAcceptance\":false,\"physicalPhoneAcceptance\":false,\"androidSdk\":35,\"pid\":3327,\"observedAtElapsedRealtime\":65144,\"activeNetwork\":\"101\",\"activeNetworkAfter\":\"101\",\"capabilitiesPresent\":true,\"internetCapability\":true,\"stableDuringRead\":true,\"usable\":true,\"transports\":[\"cellular\"],\"capabilities\":\"[ Transports: CELLULAR Capabilities: MMS&SUPL&IA&XCAP&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=14Kbps LinkDnBandwidth>=14Kbps Specifier: <TelephonyNetworkSpecifier [mSubId = 1]> SubscriptionIds: {1} UnderlyingNetworks: Null]\",\"scope\":\"Actual CM environment prerequisite only; no browser, proxy, website or application acceptance\"}\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 181.119692674,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "cmd",
+        "wifi",
+        "set-wifi-enabled",
+        "disabled"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 181.229793674,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "ip",
+        "-4",
+        "-o",
+        "addr",
+        "show",
+        "wlan0"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 181.27653682,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "cmd",
+        "wifi",
+        "set-wifi-enabled",
+        "enabled"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 181.313322169,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "cmd",
+        "wifi",
+        "status"
+      ],
+      "exitCode": 0,
+      "stdout": "Wifi is disabled\nWifi scanning is only available when wifi is enabled\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 181.348784733,
+      "timeoutSeconds": 7.999992877000011,
+      "deadlineMonotonic": 189.313330715
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "cmd",
+        "wifi",
+        "status"
+      ],
+      "exitCode": 0,
+      "stdout": "Wifi is enabled\nWifi scanning is only available when wifi is enabled\n==== Primary ClientModeManager instance ====\nWifi is not connected\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 182.396218377,
+      "timeoutSeconds": 6.964096745000006,
+      "deadlineMonotonic": 189.313330715
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "cmd",
+        "wifi",
+        "start-scan"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 182.435086282,
+      "timeoutSeconds": 6.917081891000009,
+      "deadlineMonotonic": 189.313330715
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "cmd",
+        "wifi",
+        "list-scan-results"
+      ],
+      "exitCode": 0,
+      "stdout": "No scan results\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 182.46317732,
+      "timeoutSeconds": 6.878229524999995,
+      "deadlineMonotonic": 189.313330715
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "cmd",
+        "wifi",
+        "list-scan-results"
+      ],
+      "exitCode": 0,
+      "stdout": "No scan results\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 183.488494583,
+      "timeoutSeconds": 5.849265548999995,
+      "deadlineMonotonic": 189.313330715
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "cmd",
+        "wifi",
+        "list-scan-results"
+      ],
+      "exitCode": 0,
+      "stdout": "No scan results\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 184.520374229,
+      "timeoutSeconds": 4.824268344000018,
+      "deadlineMonotonic": 189.313330715
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "cmd",
+        "wifi",
+        "list-scan-results"
+      ],
+      "exitCode": 0,
+      "stdout": "    BSSID              Frequency      RSSI           Age(sec)     SSID                                 Flags\n  00:13:10:85:fe:01       2447        -50              3.527    AndroidWifi                       [ESS]\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 185.549536535,
+      "timeoutSeconds": 3.7928212870000095,
+      "deadlineMonotonic": 189.313330715
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "shell",
+        "cmd",
+        "wifi",
+        "connect-network",
+        "AndroidWifi",
+        "open"
+      ],
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 185.574584158,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "exec-out",
+        "content",
+        "read",
+        "--uri",
+        "content://local.pocketchat.test.network-preflight/default-network?runNonce=8fbbfc5fca8d405ea9efa0335d1e2748"
+      ],
+      "exitCode": 0,
+      "stdout": "{\"schema\":1,\"runNonce\":\"8fbbfc5fca8d405ea9efa0335d1e2748\",\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"dirtySource\":false,\"version\":\"2.0.18\",\"versionCode\":71,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"runId\":\"40176428858\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126374225,\"apkSha256\":\"651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb\",\"buildStampSha256\":\"87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"actualAndroidExecution\":true,\"actualConnectivityManagerExecution\":true,\"actualGeckoExecution\":false,\"applicationAcceptance\":false,\"physicalPhoneAcceptance\":false,\"androidSdk\":35,\"pid\":3327,\"observedAtElapsedRealtime\":72245,\"activeNetwork\":\"102\",\"activeNetworkAfter\":\"102\",\"capabilitiesPresent\":true,\"internetCapability\":true,\"stableDuringRead\":true,\"usable\":true,\"transports\":[\"wifi\"],\"capabilities\":\"[ Transports: WIFI Capabilities: NOT_METERED&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=12000Kbps LinkDnBandwidth>=30000Kbps TransportInfo: <SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, IP: \\/10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: -1Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: -1, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: -1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none><none>MLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>> SignalStrength: -50 UnderlyingNetworks: Null]\",\"scope\":\"Actual CM environment prerequisite only; no browser, proxy, website or application acceptance\"}\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 188.229032738,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    },
+    {
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5556",
+        "exec-out",
+        "content",
+        "read",
+        "--uri",
+        "content://local.pocketchat.test.network-preflight/default-network?runNonce=3899307243a34a068964ef22f2dd81e1"
+      ],
+      "exitCode": 0,
+      "stdout": "{\"schema\":1,\"runNonce\":\"3899307243a34a068964ef22f2dd81e1\",\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"dirtySource\":false,\"version\":\"2.0.18\",\"versionCode\":71,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"runId\":\"40176428858\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126374225,\"apkSha256\":\"651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb\",\"buildStampSha256\":\"87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"actualAndroidExecution\":true,\"actualConnectivityManagerExecution\":true,\"actualGeckoExecution\":false,\"applicationAcceptance\":false,\"physicalPhoneAcceptance\":false,\"androidSdk\":35,\"pid\":3327,\"observedAtElapsedRealtime\":74339,\"activeNetwork\":\"102\",\"activeNetworkAfter\":\"102\",\"capabilitiesPresent\":true,\"internetCapability\":true,\"stableDuringRead\":true,\"usable\":true,\"transports\":[\"wifi\"],\"capabilities\":\"[ Transports: WIFI Capabilities: NOT_METERED&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=12000Kbps LinkDnBandwidth>=30000Kbps TransportInfo: <SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, IP: \\/10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: -1, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: -1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none><none>MLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>> SignalStrength: -50 UnderlyingNetworks: Null]\",\"scope\":\"Actual CM environment prerequisite only; no browser, proxy, website or application acceptance\"}\n",
+      "stderr": "",
+      "timedOut": false,
+      "observedAt": 190.323743358,
+      "timeoutSeconds": 8,
+      "deadlineMonotonic": 219.170903901
+    }
+  ],
+  "networkObservations": [
+    {
+      "phase": "before-network-configuration",
+      "runNonce": "6adb6f4bde344e17b7d25e30c6dd3980",
+      "raw": "{\"schema\":1,\"runNonce\":\"6adb6f4bde344e17b7d25e30c6dd3980\",\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"dirtySource\":false,\"version\":\"2.0.18\",\"versionCode\":71,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"runId\":\"40176428858\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126374225,\"apkSha256\":\"651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb\",\"buildStampSha256\":\"87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"actualAndroidExecution\":true,\"actualConnectivityManagerExecution\":true,\"actualGeckoExecution\":false,\"applicationAcceptance\":false,\"physicalPhoneAcceptance\":false,\"androidSdk\":35,\"pid\":3327,\"observedAtElapsedRealtime\":61863,\"activeNetwork\":\"100\",\"activeNetworkAfter\":\"100\",\"capabilitiesPresent\":true,\"internetCapability\":true,\"stableDuringRead\":true,\"usable\":true,\"transports\":[\"wifi\"],\"capabilities\":\"[ Transports: WIFI Capabilities: NOT_METERED&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=12000Kbps LinkDnBandwidth>=30000Kbps TransportInfo: <SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, IP: \\/10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: -1, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: -1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none><none>MLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>> SignalStrength: -50 UnderlyingNetworks: Null]\",\"scope\":\"Actual CM environment prerequisite only; no browser, proxy, website or application acceptance\"}",
+      "receivedAt": 177.86883919,
+      "value": {
+        "schema": 1,
+        "runNonce": "6adb6f4bde344e17b7d25e30c6dd3980",
+        "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+        "buildIdentity": {
+          "schema": 1,
+          "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+          "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+          "dirtySource": false,
+          "version": "2.0.18",
+          "versionCode": 71,
+          "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkBuildKind": "source-derived-java",
+          "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+          "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+          "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+          "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+          "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+          "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+          "sdkBuildReceiptSha256": "95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea",
+          "sdkBuildSource": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+          "sdkBuildIdentity": {
+            "sdkBuildKind": "source-derived-java",
+            "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+            "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+            "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+            "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+            "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+            "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+            "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+            "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+            "sdkBuildReceiptSha256": "95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea",
+            "sdkBuildSource": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+            "schema": 1,
+            "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+            "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+            "runId": "40176428858",
+            "runAttempt": "1"
+          },
+          "package": "local.pocketchat.test",
+          "apkBytes": 126374225,
+          "apkSha256": "651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb",
+          "buildStampSha256": "87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6",
+          "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+        },
+        "actualAndroidExecution": true,
+        "actualConnectivityManagerExecution": true,
+        "actualGeckoExecution": false,
+        "applicationAcceptance": false,
+        "physicalPhoneAcceptance": false,
+        "androidSdk": 35,
+        "pid": 3327,
+        "observedAtElapsedRealtime": 61863,
+        "activeNetwork": "100",
+        "activeNetworkAfter": "100",
+        "capabilitiesPresent": true,
+        "internetCapability": true,
+        "stableDuringRead": true,
+        "usable": true,
+        "transports": [
+          "wifi"
+        ],
+        "capabilities": "[ Transports: WIFI Capabilities: NOT_METERED&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=12000Kbps LinkDnBandwidth>=30000Kbps TransportInfo: <SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, IP: /10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: -1, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: -1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none><none>MLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>> SignalStrength: -50 UnderlyingNetworks: Null]",
+        "scope": "Actual CM environment prerequisite only; no browser, proxy, website or application acceptance"
+      }
+    },
+    {
+      "phase": "after-setup-package-handling",
+      "runNonce": "4c8213e9863542b0b6904582d799c072",
+      "raw": "{\"schema\":1,\"runNonce\":\"4c8213e9863542b0b6904582d799c072\",\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"dirtySource\":false,\"version\":\"2.0.18\",\"versionCode\":71,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"runId\":\"40176428858\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126374225,\"apkSha256\":\"651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb\",\"buildStampSha256\":\"87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"actualAndroidExecution\":true,\"actualConnectivityManagerExecution\":true,\"actualGeckoExecution\":false,\"applicationAcceptance\":false,\"physicalPhoneAcceptance\":false,\"androidSdk\":35,\"pid\":3327,\"observedAtElapsedRealtime\":65144,\"activeNetwork\":\"101\",\"activeNetworkAfter\":\"101\",\"capabilitiesPresent\":true,\"internetCapability\":true,\"stableDuringRead\":true,\"usable\":true,\"transports\":[\"cellular\"],\"capabilities\":\"[ Transports: CELLULAR Capabilities: MMS&SUPL&IA&XCAP&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=14Kbps LinkDnBandwidth>=14Kbps Specifier: <TelephonyNetworkSpecifier [mSubId = 1]> SubscriptionIds: {1} UnderlyingNetworks: Null]\",\"scope\":\"Actual CM environment prerequisite only; no browser, proxy, website or application acceptance\"}",
+      "receivedAt": 181.119702673,
+      "value": {
+        "schema": 1,
+        "runNonce": "4c8213e9863542b0b6904582d799c072",
+        "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+        "buildIdentity": {
+          "schema": 1,
+          "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+          "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+          "dirtySource": false,
+          "version": "2.0.18",
+          "versionCode": 71,
+          "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkBuildKind": "source-derived-java",
+          "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+          "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+          "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+          "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+          "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+          "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+          "sdkBuildReceiptSha256": "95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea",
+          "sdkBuildSource": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+          "sdkBuildIdentity": {
+            "sdkBuildKind": "source-derived-java",
+            "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+            "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+            "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+            "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+            "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+            "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+            "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+            "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+            "sdkBuildReceiptSha256": "95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea",
+            "sdkBuildSource": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+            "schema": 1,
+            "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+            "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+            "runId": "40176428858",
+            "runAttempt": "1"
+          },
+          "package": "local.pocketchat.test",
+          "apkBytes": 126374225,
+          "apkSha256": "651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb",
+          "buildStampSha256": "87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6",
+          "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+        },
+        "actualAndroidExecution": true,
+        "actualConnectivityManagerExecution": true,
+        "actualGeckoExecution": false,
+        "applicationAcceptance": false,
+        "physicalPhoneAcceptance": false,
+        "androidSdk": 35,
+        "pid": 3327,
+        "observedAtElapsedRealtime": 65144,
+        "activeNetwork": "101",
+        "activeNetworkAfter": "101",
+        "capabilitiesPresent": true,
+        "internetCapability": true,
+        "stableDuringRead": true,
+        "usable": true,
+        "transports": [
+          "cellular"
+        ],
+        "capabilities": "[ Transports: CELLULAR Capabilities: MMS&SUPL&IA&XCAP&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=14Kbps LinkDnBandwidth>=14Kbps Specifier: <TelephonyNetworkSpecifier [mSubId = 1]> SubscriptionIds: {1} UnderlyingNetworks: Null]",
+        "scope": "Actual CM environment prerequisite only; no browser, proxy, website or application acceptance"
+      }
+    },
+    {
+      "phase": "after-persistent-sdk-wifi",
+      "runNonce": "8fbbfc5fca8d405ea9efa0335d1e2748",
+      "raw": "{\"schema\":1,\"runNonce\":\"8fbbfc5fca8d405ea9efa0335d1e2748\",\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"dirtySource\":false,\"version\":\"2.0.18\",\"versionCode\":71,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"runId\":\"40176428858\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126374225,\"apkSha256\":\"651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb\",\"buildStampSha256\":\"87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"actualAndroidExecution\":true,\"actualConnectivityManagerExecution\":true,\"actualGeckoExecution\":false,\"applicationAcceptance\":false,\"physicalPhoneAcceptance\":false,\"androidSdk\":35,\"pid\":3327,\"observedAtElapsedRealtime\":72245,\"activeNetwork\":\"102\",\"activeNetworkAfter\":\"102\",\"capabilitiesPresent\":true,\"internetCapability\":true,\"stableDuringRead\":true,\"usable\":true,\"transports\":[\"wifi\"],\"capabilities\":\"[ Transports: WIFI Capabilities: NOT_METERED&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=12000Kbps LinkDnBandwidth>=30000Kbps TransportInfo: <SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, IP: \\/10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: -1Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: -1, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: -1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none><none>MLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>> SignalStrength: -50 UnderlyingNetworks: Null]\",\"scope\":\"Actual CM environment prerequisite only; no browser, proxy, website or application acceptance\"}",
+      "receivedAt": 188.229044951,
+      "value": {
+        "schema": 1,
+        "runNonce": "8fbbfc5fca8d405ea9efa0335d1e2748",
+        "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+        "buildIdentity": {
+          "schema": 1,
+          "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+          "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+          "dirtySource": false,
+          "version": "2.0.18",
+          "versionCode": 71,
+          "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkBuildKind": "source-derived-java",
+          "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+          "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+          "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+          "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+          "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+          "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+          "sdkBuildReceiptSha256": "95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea",
+          "sdkBuildSource": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+          "sdkBuildIdentity": {
+            "sdkBuildKind": "source-derived-java",
+            "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+            "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+            "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+            "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+            "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+            "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+            "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+            "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+            "sdkBuildReceiptSha256": "95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea",
+            "sdkBuildSource": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+            "schema": 1,
+            "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+            "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+            "runId": "40176428858",
+            "runAttempt": "1"
+          },
+          "package": "local.pocketchat.test",
+          "apkBytes": 126374225,
+          "apkSha256": "651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb",
+          "buildStampSha256": "87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6",
+          "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+        },
+        "actualAndroidExecution": true,
+        "actualConnectivityManagerExecution": true,
+        "actualGeckoExecution": false,
+        "applicationAcceptance": false,
+        "physicalPhoneAcceptance": false,
+        "androidSdk": 35,
+        "pid": 3327,
+        "observedAtElapsedRealtime": 72245,
+        "activeNetwork": "102",
+        "activeNetworkAfter": "102",
+        "capabilitiesPresent": true,
+        "internetCapability": true,
+        "stableDuringRead": true,
+        "usable": true,
+        "transports": [
+          "wifi"
+        ],
+        "capabilities": "[ Transports: WIFI Capabilities: NOT_METERED&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=12000Kbps LinkDnBandwidth>=30000Kbps TransportInfo: <SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, IP: /10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: -1Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: -1, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: -1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none><none>MLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>> SignalStrength: -50 UnderlyingNetworks: Null]",
+        "scope": "Actual CM environment prerequisite only; no browser, proxy, website or application acceptance"
+      }
+    },
+    {
+      "phase": "persistent-sdk-wifi-confirmation",
+      "runNonce": "3899307243a34a068964ef22f2dd81e1",
+      "raw": "{\"schema\":1,\"runNonce\":\"3899307243a34a068964ef22f2dd81e1\",\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"dirtySource\":false,\"version\":\"2.0.18\",\"versionCode\":71,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea\",\"sdkBuildSource\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"schema\":1,\"sourceCommit\":\"04f6375c889b059afad57ff4fd8eb180cc2341b0\",\"sourceTree\":\"b6dd1844ec165ef21e86c9e846e4d04474e785e2\",\"runId\":\"40176428858\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126374225,\"apkSha256\":\"651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb\",\"buildStampSha256\":\"87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"actualAndroidExecution\":true,\"actualConnectivityManagerExecution\":true,\"actualGeckoExecution\":false,\"applicationAcceptance\":false,\"physicalPhoneAcceptance\":false,\"androidSdk\":35,\"pid\":3327,\"observedAtElapsedRealtime\":74339,\"activeNetwork\":\"102\",\"activeNetworkAfter\":\"102\",\"capabilitiesPresent\":true,\"internetCapability\":true,\"stableDuringRead\":true,\"usable\":true,\"transports\":[\"wifi\"],\"capabilities\":\"[ Transports: WIFI Capabilities: NOT_METERED&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=12000Kbps LinkDnBandwidth>=30000Kbps TransportInfo: <SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, IP: \\/10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: -1, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: -1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none><none>MLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>> SignalStrength: -50 UnderlyingNetworks: Null]\",\"scope\":\"Actual CM environment prerequisite only; no browser, proxy, website or application acceptance\"}",
+      "receivedAt": 190.323753868,
+      "value": {
+        "schema": 1,
+        "runNonce": "3899307243a34a068964ef22f2dd81e1",
+        "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+        "buildIdentity": {
+          "schema": 1,
+          "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+          "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+          "dirtySource": false,
+          "version": "2.0.18",
+          "versionCode": 71,
+          "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkBuildKind": "source-derived-java",
+          "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+          "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+          "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+          "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+          "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+          "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+          "sdkBuildReceiptSha256": "95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea",
+          "sdkBuildSource": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+          "sdkBuildIdentity": {
+            "sdkBuildKind": "source-derived-java",
+            "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+            "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+            "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+            "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+            "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+            "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+            "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+            "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+            "sdkBuildReceiptSha256": "95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea",
+            "sdkBuildSource": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+            "schema": 1,
+            "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+            "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+            "runId": "40176428858",
+            "runAttempt": "1"
+          },
+          "package": "local.pocketchat.test",
+          "apkBytes": 126374225,
+          "apkSha256": "651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb",
+          "buildStampSha256": "87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6",
+          "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+        },
+        "actualAndroidExecution": true,
+        "actualConnectivityManagerExecution": true,
+        "actualGeckoExecution": false,
+        "applicationAcceptance": false,
+        "physicalPhoneAcceptance": false,
+        "androidSdk": 35,
+        "pid": 3327,
+        "observedAtElapsedRealtime": 74339,
+        "activeNetwork": "102",
+        "activeNetworkAfter": "102",
+        "capabilitiesPresent": true,
+        "internetCapability": true,
+        "stableDuringRead": true,
+        "usable": true,
+        "transports": [
+          "wifi"
+        ],
+        "capabilities": "[ Transports: WIFI Capabilities: NOT_METERED&INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VPN&VALIDATED&NOT_ROAMING&FOREGROUND&NOT_CONGESTED&NOT_SUSPENDED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED LinkUpBandwidth>=12000Kbps LinkDnBandwidth>=30000Kbps TransportInfo: <SSID: <unknown ssid>, BSSID: 02:00:00:00:00:00, MAC: 02:00:00:00:00:00, IP: /10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: -1, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: -1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none><none>MLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>> SignalStrength: -50 UnderlyingNetworks: Null]",
+        "scope": "Actual CM environment prerequisite only; no browser, proxy, website or application acceptance"
+      }
+    }
+  ],
+  "diagnostics": {},
+  "initialInputSettings": {
+    "show_ime_with_hard_keyboard": "1",
+    "default_input_method": "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
+    "enabled_input_methods": "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME;1594443099:com.google.android.tts/com.google.android.apps.speech.tts.googletts.settings.asr.voiceime.VoiceInputMethodService"
+  },
+  "actualAndroidCommands": true,
+  "actualIntegrationProviderExecution": true,
+  "actualConnectivityManagerExecution": true,
+  "applicationAcceptance": false,
+  "actualGeckoExecution": false,
+  "physicalPhoneAcceptance": false,
+  "confirmedQemu": true,
+  "applicationOrInputPolicyModified": false,
+  "gestureReplayed": false,
+  "sdkWifiProvisioningRequested": true,
+  "disabledStateConfirmed": true,
+  "postSetupNetworkRecoveryRequired": false,
+  "sdkWifiProvisioningStages": [
+    {
+      "phase": "persistent-sdk-wifi-after-setup",
+      "startedAt": 181.276550465,
+      "firstCommand": 13,
+      "firstNetworkObservation": 2,
+      "wifiStatuses": [
+        {
+          "raw": "Wifi is disabled\nWifi scanning is only available when wifi is enabled",
+          "receivedAt": 181.348793991
+        },
+        {
+          "raw": "Wifi is enabled\nWifi scanning is only available when wifi is enabled\n==== Primary ClientModeManager instance ====\nWifi is not connected",
+          "receivedAt": 182.396226412
+        }
+      ],
+      "wifiScans": [
+        {
+          "raw": "No scan results",
+          "receivedAt": 182.463186206
+        },
+        {
+          "raw": "No scan results",
+          "receivedAt": 183.488503289
+        },
+        {
+          "raw": "No scan results",
+          "receivedAt": 184.520381703
+        },
+        {
+          "raw": "BSSID              Frequency      RSSI           Age(sec)     SSID                                 Flags\n  00:13:10:85:fe:01       2447        -50              3.527    AndroidWifi                       [ESS]",
+          "receivedAt": 185.549543418
+        }
+      ],
+      "status": "passed",
+      "scanDeadlineMonotonic": 189.313330715,
+      "networkDeadlineMonotonic": 219.170903901,
+      "apSelection": "current-scan",
+      "scanRequestResponse": "",
+      "scanRequestCompletedAt": 182.435096311,
+      "completedAt": 188.26181712,
+      "afterCommand": 23,
+      "afterNetworkObservation": 3
+    }
+  ],
+  "runId": "40176428858",
+  "runAttempt": "1",
+  "normalPreflightStillRequired": true,
+  "originalWorkloadInvoked": false,
+  "scope": "Synthetic bootstrap network and native transport only; no application/input acceptance",
+  "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+  "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+  "expectedBuildIdentity": {
+    "schema": 1,
+    "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+    "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+    "dirtySource": false,
+    "version": "2.0.18",
+    "versionCode": 71,
+    "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+    "sdkBuildIdentity": {
+      "sdkBuildKind": "source-derived-java",
+      "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+      "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+      "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+      "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+      "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+      "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+      "sdkBuildReceiptSha256": "95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea",
+      "sdkBuildSource": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+      "schema": 1,
+      "sourceCommit": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+      "sourceTree": "b6dd1844ec165ef21e86c9e846e4d04474e785e2",
+      "runId": "40176428858",
+      "runAttempt": "1"
+    },
+    "sdkBuildKind": "source-derived-java",
+    "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+    "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+    "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+    "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+    "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+    "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+    "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+    "sdkBuildReceiptSha256": "95f7f0b4b0bd25cc8018bb38902b25ef71526a6d594f3e322c2c5355b06e12ea",
+    "sdkBuildSource": "04f6375c889b059afad57ff4fd8eb180cc2341b0",
+    "package": "local.pocketchat.test",
+    "apkSha256": "651915fa5c48d362e3a06d1ff7bd024acc8788402e13913938e71fe9a3c0fcdb",
+    "apkBytes": 126374225,
+    "buildStampSha256": "87e64af19dc8b59ce9cbd710b04feaf632fcfbbb235cdf3c4abde7961e89b4b6"
+  },
+  "preparationBudgetSeconds": 45,
+  "preparationStartedAt": 174.170903901,
+  "preparationDeadlineMonotonic": 219.170903901,
+  "initialKeyboardLayoutProperty": "",
+  "initialNetworkUsable": true,
+  "packagePresent": true,
+  "wifiResetAddresses": [
+    ""
+  ],
+  "wifiScan": "BSSID              Frequency      RSSI           Age(sec)     SSID                                 Flags\n  00:13:10:85:fe:01       2447        -50              3.527    AndroidWifi                       [ESS]",
+  "routeObservations": [
+    {
+      "addressExit": 0,
+      "routeExit": 0,
+      "addresses": "16: wlan0    inet 10.0.2.16/24 brd 10.0.2.255 scope global wlan0\\       valid_lft forever preferred_lft forever\n",
+      "route": "10.0.2.2 dev wlan0 table 1016 src 10.0.2.16 uid 2000 \n    cache \n",
+      "errors": ""
+    }
+  ],
+  "networkDevices": "virtio-net-pci.0: index=0,type=nic,model=virtio-net-pci,macaddr=52:54:00:12:34:56\r\n \\ mynet: index=0,type=user,net=10.0.2.0,restrict=off\r\nvirtio-wifi-device: index=0,type=nic,\r\n \\ virtio-wifi: index=0,type=user,net=10.0.2.0,restrict=off\r\n(qemu) ",
+  "hostfwdHelp": "hostfwd_add [hub_id name]|[netdev_id] [tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport -- redirect TCP or UDP connections from host to guest (requires -net user)\r\n(qemu) ",
+  "beforeUsernet": "VLAN -1 (mynet):\r\n  Protocol[State]    FD  Source Address  Port   Dest. Address  Port RecvQ SendQ\r\n  TCP[ESTABLISHED]  223       10.0.2.15 53502   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  222       10.0.2.15 53500   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  220       10.0.2.15 36012   172.217.114.4   443     0     0\r\n  TCP[ESTABLISHED]  216       10.0.2.15 36000   172.217.114.4   443     0     0\r\n  TCP[ESTABLISHED]  215       10.0.2.15 35994   172.217.114.4   443     0     0\r\n  TCP[ESTABLISHED]  208       10.0.2.15 53494   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  212       10.0.2.15 40934   172.217.118.4   443     0     0\r\n  TCP[ESTABLISHED]  150       10.0.2.15 39328  172.253.62.101   443     0     0\r\n  TCP[ESTABLISHED]  196       10.0.2.15 53490   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  182       10.0.2.15 44960   172.217.113.4   443     0     0\r\n  TCP[CLOSE_WAIT]   179       10.0.2.15 53506  172.253.63.188  5228     0     0\r\n  UDP[235 sec]      233       10.0.2.15 47316 142.251.156.119   443     0     0\r\n  UDP[4 sec]        232       10.0.2.15  2713        10.0.2.3    53     0     0\r\n  UDP[4 sec]        231       10.0.2.15 23580        10.0.2.3    53     0     0\r\n  UDP[235 sec]      104       10.0.2.15 40175 142.251.153.120   443     0     0\r\n  UDP[232 sec]      227       10.0.2.15 57158 142.251.153.120   443     0     0\r\n  UDP[1 sec]        226       10.0.2.15 32009        10.0.2.3    53     0     0\r\n  UDP[1 sec]        225       10.0.2.15 11972        10.0.2.3    53     0     0\r\n  UDP[0 sec]        214       10.0.2.15  3160        10.0.2.3    53     0     0\r\n  UDP[0 sec]        213       10.0.2.15 40624        10.0.2.3    53     0     0\r\n  UDP[0 sec]        205       10.0.2.15 16425        10.0.2.3    53     0     0\r\n  UDP[0 sec]        141       10.0.2.15 21434        10.0.2.3    53     0     0\r\n  UDP[0 sec]        211       10.0.2.15 11810        10.0.2.3    53     0     0\r\n  UDP[0 sec]        209       10.0.2.15 64333        10.0.2.3    53     0     0\r\n  UDP[230 sec]      201       10.0.2.15 32837   172.217.113.4   443     0     0\r\n  UDP[239 sec]      207               *  5353         0.0.0.0  5353     0     0\r\n  UDP[239 sec]      206       10.0.2.15  5353     224.0.0.251  5353     0     0\r\n  ICMP[234 sec]     105       10.0.2.15  -      172.217.116.4  -        0     0\r\n  ICMP[233 sec]      95       10.0.2.15  -      172.217.116.4  -        0     0\r\n  ICMP[232 sec]      90       10.0.2.15  -      172.217.116.4  -        0     0\r\n  ICMP[231 sec]     152       10.0.2.15  -      172.217.116.4  -        0     0\r\n  ICMP[230 sec]     219       10.0.2.15  -      172.217.116.4  -        0     0\r\nVLAN -1 (virtio-wifi):\r\n  Protocol[State]    FD  Source Address  Port   Dest. Address  Port RecvQ SendQ\r\n  TCP[ESTABLISHED]  154       10.0.2.16 52148   172.217.113.4   443     0     0\r\n  TCP[ESTABLISHED]  243       10.0.2.16 53080   172.217.116.4   443     0     0\r\n  TCP[ESTABLISHED]  160       10.0.2.16 33606   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  165       10.0.2.16 58372  172.253.62.139   443     0     0\r\n  TCP[ESTABLISHED]  159       10.0.2.16 54028   142.251.150.8   443     0     0\r\n  TCP[TIME_WAIT]    239       10.0.2.16 59860 142.251.150.120    80     0     0\r\n  TCP[TIME_WAIT]    238       10.0.2.16 38228 142.251.155.119   443     0     0\r\n  TCP[ESTABLISHED]  111       10.0.2.16 33596   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  228       10.0.2.16 42978  172.253.63.188  5228     0     0\r\n  TCP[TIME_WAIT]    236       10.0.2.16 59986 142.251.157.119   443     0     0\r\n  TCP[TIME_WAIT]    106       10.0.2.16 59850 142.251.150.120    80     0     0\r\n  TCP[ESTABLISHED]  172       10.0.2.16 47312 172.253.115.156   443     0     0\r\n  TCP[ESTABLISHED]  166       10.0.2.16 47298 172.253.115.156   443     0     0\r\n  TCP[ESTABLISHED]  112       10.0.2.16 37342   172.217.119.4   443     0     0\r\n  TCP[ESTABLISHED]  156       10.0.2.16 52624   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  151       10.0.2.16 58650  172.253.62.102   443     0     0\r\n  TCP[ESTABLISHED]  147       10.0.2.16 51128   172.217.116.4   443     0     0\r\n  TCP[ESTABLISHED]  221       10.0.2.16 54526   172.217.119.4   443     0     0\r\n  TCP[ESTABLISHED]  218       10.0.2.16 34370  172.253.63.188  5228     0     0\r\n  TCP[ESTABLISHED]  217       10.0.2.16 50778   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  210       10.0.2.16 52612   172.217.115.4   443     0     0\r\n  TCP[FIN_WAIT_2]   204       10.0.2.16 43108 142.251.157.119   443     0     0\r\n  TCP[ESTABLISHED]  203       10.0.2.16 54044   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  197       10.0.2.16 33560 142.251.179.207   443     0     0\r\n  TCP[ESTABLISHED]  192       10.0.2.16 54030   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  189       10.0.2.16 54018   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  186       10.0.2.16 58478   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  178       10.0.2.16 54704 142.251.151.120   443     0     0\r\n  TCP[ESTABLISHED]  177       10.0.2.16 54698 142.251.151.120   443     0     0\r\n  TCP[ESTABLISHED]  176       10.0.2.16 45438   64.233.180.91   443     0     0\r\n  TCP[ESTABLISHED]  173       10.0.2.16 54690 142.251.151.120   443     0     0\r\n  TCP[ESTABLISHED]  143       10.0.2.16 41430   172.217.116.4   443     0     0\r\n  TCP[ESTABLISHED]  167       10.0.2.16 54676 142.251.151.120   443     0     0\r\n  TCP[ESTABLISHED]  163       10.0.2.16 40754   172.253.63.94   443     0     0\r\n  UDP[9 sec]        149       10.0.2.16 14896        10.0.2.3    53     0     0\r\n  UDP[9 sec]        148       10.0.2.16 64686        10.0.2.3    53     0     0\r\n  UDP[238 sec]      242       10.0.2.16 37785   172.217.116.4   443     0     0\r\n  UDP[8 sec]        175       10.0.2.16 27879        10.0.2.3    53     0     0\r\n  UDP[8 sec]        174       10.0.2.16 23688        10.0.2.3    53     0     0\r\n  UDP[7 sec]        240       10.0.2.16  3294        10.0.2.3    53     0     0\r\n  UDP[7 sec]        162       10.0.2.16 11585        10.0.2.3    53     0     0\r\n  UDP[7 sec]        161       10.0.2.16 42935        10.0.2.3    53     0     0\r\n  UDP[7 sec]        158       10.0.2.16 34837        10.0.2.3    53     0     0\r\n  UDP[7 sec]        157       10.0.2.16 37544        10.0.2.3    53     0     0\r\n  UDP[6 sec]        237       10.0.2.16 41461        10.0.2.3    53     0     0\r\n  UDP[6 sec]        234       10.0.2.16 12889        10.0.2.3    53     0     0\r\n  UDP[6 sec]        108       10.0.2.16 26587        10.0.2.3    53     0     0\r\n  UDP[5 sec]         94       10.0.2.16 59777        10.0.2.3    53     0     0\r\n  UDP[238 sec]      183       10.0.2.16 47581 142.251.156.119   443     0     0\r\n  UDP[5 sec]        235       10.0.2.16 63207        10.0.2.3    53     0     0\r\n  UDP[5 sec]        190       10.0.2.16 37099        10.0.2.3    53     0     0\r\n  UDP[223 sec]       97       10.0.2.16 40957    216.239.35.0   123     0     0\r\n  UDP[224 sec]       89       10.0.2.16 43017   172.253.63.94   443     0     0\r\n  UDP[220 sec]      144       10.0.2.16 52430   172.217.116.4   443     0     0\r\n  UDP[222 sec]      202       10.0.2.16 34623 142.251.157.119   443     0     0\r\n  UDP[227 sec]      164       10.0.2.16 36977   172.217.116.4   443     0     0\r\n  UDP[207 sec]      153       10.0.2.16 58294    216.239.35.8   123     0     0\r\n  UDP[239 sec]      140               *  5353         0.0.0.0  5353     0     0\r\n  UDP[239 sec]      107       10.0.2.16  5353     224.0.0.251  5353     0     0\r\n  ICMP[238 sec]     146       10.0.2.16  -      172.217.116.4  -        0     0\r\n  ICMP[237 sec]     241       10.0.2.16  -      172.217.116.4  -        0     0\r\n  ICMP[236 sec]     115       10.0.2.16  -      172.217.116.4  -        0     0\r\n  ICMP[235 sec]     230       10.0.2.16  -      172.217.116.4  -        0     0\r\n(qemu) ",
+  "forwardCommand": "hostfwd_add virtio-wifi tcp:127.0.0.1:5555-10.0.2.16:5555",
+  "forwardResult": "(qemu) ",
+  "afterUsernet": "VLAN -1 (mynet):\r\n  Protocol[State]    FD  Source Address  Port   Dest. Address  Port RecvQ SendQ\r\n  TCP[ESTABLISHED]  223       10.0.2.15 53502   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  222       10.0.2.15 53500   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  220       10.0.2.15 36012   172.217.114.4   443     0     0\r\n  TCP[ESTABLISHED]  216       10.0.2.15 36000   172.217.114.4   443     0     0\r\n  TCP[ESTABLISHED]  215       10.0.2.15 35994   172.217.114.4   443     0     0\r\n  TCP[ESTABLISHED]  208       10.0.2.15 53494   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  212       10.0.2.15 40934   172.217.118.4   443     0     0\r\n  TCP[ESTABLISHED]  150       10.0.2.15 39328  172.253.62.101   443     0     0\r\n  TCP[ESTABLISHED]  196       10.0.2.15 53490   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  182       10.0.2.15 44960   172.217.113.4   443     0     0\r\n  TCP[CLOSE_WAIT]   179       10.0.2.15 53506  172.253.63.188  5228     0     0\r\n  UDP[235 sec]      233       10.0.2.15 47316 142.251.156.119   443     0     0\r\n  UDP[4 sec]        232       10.0.2.15  2713        10.0.2.3    53     0     0\r\n  UDP[4 sec]        231       10.0.2.15 23580        10.0.2.3    53     0     0\r\n  UDP[235 sec]      104       10.0.2.15 40175 142.251.153.120   443     0     0\r\n  UDP[232 sec]      227       10.0.2.15 57158 142.251.153.120   443     0     0\r\n  UDP[1 sec]        226       10.0.2.15 32009        10.0.2.3    53     0     0\r\n  UDP[1 sec]        225       10.0.2.15 11972        10.0.2.3    53     0     0\r\n  UDP[0 sec]        214       10.0.2.15  3160        10.0.2.3    53     0     0\r\n  UDP[0 sec]        213       10.0.2.15 40624        10.0.2.3    53     0     0\r\n  UDP[0 sec]        205       10.0.2.15 16425        10.0.2.3    53     0     0\r\n  UDP[0 sec]        141       10.0.2.15 21434        10.0.2.3    53     0     0\r\n  UDP[0 sec]        211       10.0.2.15 11810        10.0.2.3    53     0     0\r\n  UDP[0 sec]        209       10.0.2.15 64333        10.0.2.3    53     0     0\r\n  UDP[230 sec]      201       10.0.2.15 32837   172.217.113.4   443     0     0\r\n  UDP[239 sec]      207               *  5353         0.0.0.0  5353     0     0\r\n  UDP[239 sec]      206       10.0.2.15  5353     224.0.0.251  5353     0     0\r\n  ICMP[234 sec]     105       10.0.2.15  -      172.217.116.4  -        0     0\r\n  ICMP[233 sec]      95       10.0.2.15  -      172.217.116.4  -        0     0\r\n  ICMP[232 sec]      90       10.0.2.15  -      172.217.116.4  -        0     0\r\n  ICMP[231 sec]     152       10.0.2.15  -      172.217.116.4  -        0     0\r\n  ICMP[230 sec]     219       10.0.2.15  -      172.217.116.4  -        0     0\r\nVLAN -1 (virtio-wifi):\r\n  Protocol[State]    FD  Source Address  Port   Dest. Address  Port RecvQ SendQ\r\n  TCP[HOST_FORWARD] 180       127.0.0.1  5555       10.0.2.16  5555     0     0\r\n  TCP[ESTABLISHED]  154       10.0.2.16 52148   172.217.113.4   443     0     0\r\n  TCP[ESTABLISHED]  243       10.0.2.16 53080   172.217.116.4   443     0     0\r\n  TCP[ESTABLISHED]  160       10.0.2.16 33606   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  165       10.0.2.16 58372  172.253.62.139   443     0     0\r\n  TCP[ESTABLISHED]  159       10.0.2.16 54028   142.251.150.8   443     0     0\r\n  TCP[TIME_WAIT]    239       10.0.2.16 59860 142.251.150.120    80     0     0\r\n  TCP[TIME_WAIT]    238       10.0.2.16 38228 142.251.155.119   443     0     0\r\n  TCP[ESTABLISHED]  111       10.0.2.16 33596   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  228       10.0.2.16 42978  172.253.63.188  5228     0     0\r\n  TCP[TIME_WAIT]    236       10.0.2.16 59986 142.251.157.119   443     0     0\r\n  TCP[TIME_WAIT]    106       10.0.2.16 59850 142.251.150.120    80     0     0\r\n  TCP[ESTABLISHED]  172       10.0.2.16 47312 172.253.115.156   443     0     0\r\n  TCP[ESTABLISHED]  166       10.0.2.16 47298 172.253.115.156   443     0     0\r\n  TCP[ESTABLISHED]  112       10.0.2.16 37342   172.217.119.4   443     0     0\r\n  TCP[ESTABLISHED]  156       10.0.2.16 52624   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  151       10.0.2.16 58650  172.253.62.102   443     0     0\r\n  TCP[ESTABLISHED]  147       10.0.2.16 51128   172.217.116.4   443     0     0\r\n  TCP[ESTABLISHED]  221       10.0.2.16 54526   172.217.119.4   443     0     0\r\n  TCP[ESTABLISHED]  218       10.0.2.16 34370  172.253.63.188  5228     0     0\r\n  TCP[ESTABLISHED]  217       10.0.2.16 50778   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  210       10.0.2.16 52612   172.217.115.4   443     0     0\r\n  TCP[FIN_WAIT_2]   204       10.0.2.16 43108 142.251.157.119   443     0     0\r\n  TCP[ESTABLISHED]  203       10.0.2.16 54044   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  197       10.0.2.16 33560 142.251.179.207   443     0     0\r\n  TCP[ESTABLISHED]  192       10.0.2.16 54030   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  189       10.0.2.16 54018   172.217.112.4   443     0     0\r\n  TCP[ESTABLISHED]  186       10.0.2.16 58478   172.217.115.4   443     0     0\r\n  TCP[ESTABLISHED]  178       10.0.2.16 54704 142.251.151.120   443     0     0\r\n  TCP[ESTABLISHED]  177       10.0.2.16 54698 142.251.151.120   443     0     0\r\n  TCP[ESTABLISHED]  176       10.0.2.16 45438   64.233.180.91   443     0     0\r\n  TCP[ESTABLISHED]  173       10.0.2.16 54690 142.251.151.120   443     0     0\r\n  TCP[ESTABLISHED]  143       10.0.2.16 41430   172.217.116.4   443     0     0\r\n  TCP[ESTABLISHED]  167       10.0.2.16 54676 142.251.151.120   443     0     0\r\n  TCP[ESTABLISHED]  163       10.0.2.16 40754   172.253.63.94   443     0     0\r\n  UDP[9 sec]        149       10.0.2.16 14896        10.0.2.3    53     0     0\r\n  UDP[9 sec]        148       10.0.2.16 64686        10.0.2.3    53     0     0\r\n  UDP[238 sec]      242       10.0.2.16 37785   172.217.116.4   443     0     0\r\n  UDP[8 sec]        175       10.0.2.16 27879        10.0.2.3    53     0     0\r\n  UDP[8 sec]        174       10.0.2.16 23688        10.0.2.3    53     0     0\r\n  UDP[7 sec]        240       10.0.2.16  3294        10.0.2.3    53     0     0\r\n  UDP[7 sec]        162       10.0.2.16 11585        10.0.2.3    53     0     0\r\n  UDP[7 sec]        161       10.0.2.16 42935        10.0.2.3    53     0     0\r\n  UDP[7 sec]        158       10.0.2.16 34837        10.0.2.3    53     0     0\r\n  UDP[7 sec]        157       10.0.2.16 37544        10.0.2.3    53     0     0\r\n  UDP[6 sec]        237       10.0.2.16 41461        10.0.2.3    53     0     0\r\n  UDP[6 sec]        234       10.0.2.16 12889        10.0.2.3    53     0     0\r\n  UDP[6 sec]        108       10.0.2.16 26587        10.0.2.3    53     0     0\r\n  UDP[5 sec]         94       10.0.2.16 59777        10.0.2.3    53     0     0\r\n  UDP[238 sec]      183       10.0.2.16 47581 142.251.156.119   443     0     0\r\n  UDP[5 sec]        235       10.0.2.16 63207        10.0.2.3    53     0     0\r\n  UDP[5 sec]        190       10.0.2.16 37099        10.0.2.3    53     0     0\r\n  UDP[223 sec]       97       10.0.2.16 40957    216.239.35.0   123     0     0\r\n  UDP[224 sec]       89       10.0.2.16 43017   172.253.63.94   443     0     0\r\n  UDP[220 sec]      144       10.0.2.16 52430   172.217.116.4   443     0     0\r\n  UDP[222 sec]      202       10.0.2.16 34623 142.251.157.119   443     0     0\r\n  UDP[227 sec]      164       10.0.2.16 36977   172.217.116.4   443     0     0\r\n  UDP[207 sec]      153       10.0.2.16 58294    216.239.35.8   123     0     0\r\n  UDP[239 sec]      140               *  5353         0.0.0.0  5353     0     0\r\n  UDP[239 sec]      107       10.0.2.16  5353     224.0.0.251  5353     0     0\r\n  ICMP[238 sec]     146       10.0.2.16  -      172.217.116.4  -        0     0\r\n  ICMP[237 sec]     241       10.0.2.16  -      172.217.116.4  -        0     0\r\n  ICMP[236 sec]     115       10.0.2.16  -      172.217.116.4  -        0     0\r\n  ICMP[235 sec]     230       10.0.2.16  -      172.217.116.4  -        0     0\r\n(qemu) ",
+  "tcpipCommand": {
+    "command": [
+      "/usr/local/lib/android/sdk/platform-tools/adb",
+      "-s",
+      "emulator-5556",
+      "tcpip",
+      "5555"
+    ],
+    "invocations": 1,
+    "startedMonotonicNs": 190390927610,
+    "elapsedMs": 5.576441,
+    "exitCode": 0,
+    "stdout": "restarting in TCP mode port: 5555\n",
+    "stderr": "",
+    "timedOut": false,
+    "commandSucceeded": true,
+    "completionUncertainClosed": false
+  },
+  "endpointDeadlineSeconds": 8,
+  "endpointProbeAttempts": [
+    {
+      "address": "127.0.0.1",
+      "port": 5555,
+      "tcpAccepted": true,
+      "payloadRead": false,
+      "authResponseSent": false,
+      "applicationCommandsSent": false,
+      "errorType": "ConnectionResetError",
+      "error": "[Errno 104] Connection reset by peer",
+      "elapsedMs": 5.12348399999496
+    },
+    {
+      "address": "127.0.0.1",
+      "port": 5555,
+      "tcpAccepted": true,
+      "payloadRead": false,
+      "authResponseSent": false,
+      "applicationCommandsSent": false,
+      "responseCommand": "CNXN",
+      "argument0": 16777217,
+      "argument1": 1048576,
+      "payloadBytesAdvertised": 390,
+      "elapsedMs": 2.0819140000014613
+    }
+  ],
+  "endpointProtocolReachable": true,
+  "announcementSent": true,
+  "announcementIsNotificationOnly": true,
+  "nativeReady": true
+}
