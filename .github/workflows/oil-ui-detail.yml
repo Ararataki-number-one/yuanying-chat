@@ -1,0 +1,152 @@
+# DRAFT ONLY. Install after the verified 2.0.19 release, on a separate UI branch.
+# Destination when approved: .github/workflows/oil-ui-detail.yml
+name: Native UI detail diagnostics
+on:
+  workflow_dispatch:
+    inputs:
+      round:
+        description: Fixed capture round; each run keeps its own artifacts
+        required: true
+        type: choice
+        options: ['1', '2']
+  push:
+    branches: [ui/oil-detail-round-1, ui/oil-detail-round-2]
+permissions:
+  contents: read
+concurrency:
+  group: oil-ui-detail-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Declare this diagnostic source and round
+        env:
+          REQUESTED_ROUND: ${{ inputs.round }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            case "$GITHUB_REF_NAME" in
+              ui/oil-detail-round-1) round=1 ;;
+              ui/oil-detail-round-2) round=2 ;;
+              *) exit 1 ;;
+            esac
+          else
+            case "$REQUESTED_ROUND" in 1|2) round="$REQUESTED_ROUND" ;; *) exit 1 ;; esac
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+          mkdir -p work/oil-ui work/gecko-integration
+          echo "UI_ROUND=$round" >> "$GITHUB_ENV"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          python3 - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          Path('work/oil-ui/invocation.json').write_text(json.dumps(dict(
+              sourceCommit=os.environ['GITHUB_SHA'],
+              sourceTree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),
+              runId=os.environ['GITHUB_RUN_ID'],runAttempt=os.environ['GITHUB_RUN_ATTEMPT'],
+              event=os.environ['GITHUB_EVENT_NAME'],ref=os.environ['GITHUB_REF'],
+              releaseAcceptance=False,performanceMeasurement=False),indent=2)+'\n')
+          PY
+      - name: Prepare the standard locked build toolchain
+        run: |
+          set -euo pipefail
+          exec > >(tee work/oil-ui/build-setup.log) 2>&1
+          "$JAVA_HOME/bin/keytool" -genkeypair -keystore work/gecko-integration/ui-test.jks -alias androiddebugkey -storepass android -keypass android -dname CN=SyntheticUiDiagnostic -keyalg RSA -validity 2
+          curl -fsSL --retry 3 https://services.gradle.org/distributions/gradle-9.8.0-bin.zip -o work/gecko-integration/gradle.zip
+          echo 'bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c  work/gecko-integration/gradle.zip' | sha256sum -c -
+          unzip -q work/gecko-integration/gradle.zip -d work/gecko-integration/gradle
+          curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.aar -o work/gecko-integration/geckoview.aar
+          curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250.pom -o work/gecko-integration/geckoview.pom
+          curl -fsSL --retry 3 https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/157.0.20261005135250/geckoview-157.0.20261005135250-sources.jar -o work/gecko-integration/geckoview-sources.jar
+          python3 tools/gecko/verify_official_sdk.py --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom --sources work/gecko-integration/geckoview-sources.jar --upstream-only
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;37.0.0'
+          python3 tools/gecko/caret_workflow.py prepare --work work/gecko-integration
+      - name: Compile only the normal integration variant and verify its SDK inputs
+        run: |
+          set -euo pipefail
+          exec > >(tee work/oil-ui/build.log) 2>&1
+          work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleIntegration :app:writeCaretResolvedArtifacts -PtestSigningKey="$PWD/work/gecko-integration/ui-test.jks" --console=plain
+          python3 tools/gecko/build_caret_sdk.py \
+            --aar work/gecko-integration/geckoview.aar --pom work/gecko-integration/geckoview.pom \
+            --sources work/gecko-integration/geckoview-sources.jar \
+            --android-jar "$ANDROID_HOME/platforms/android-37.1/android.jar" \
+            --annotations-jar work/gecko-integration/annotation-jvm-1.10.0.jar \
+            --kotlin-jar work/gecko-integration/gradle/gradle-9.8.0/lib/kotlin-stdlib-2.4.10.jar \
+            --javac "$JAVA_HOME/bin/javac" --out work/native-caret-sdk \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --resolved-artifacts work/native-caret-sdk/resolved-artifacts.json
+          python3 tools/gecko/run_oil_ui_capture.py verify-build --root "$PWD" \
+            --apk app/build/outputs/apk/integration/app-x86_64-integration.apk \
+            --aapt2 "$ANDROID_HOME/build-tools/37.0.0/aapt2" \
+            --apksigner "$ANDROID_HOME/build-tools/37.0.0/apksigner" \
+            --round "$UI_ROUND" --out work/oil-ui/build-identity
+      - name: Provision one disposable pinned emulator
+        run: |
+          set -euo pipefail
+          exec > >(tee work/oil-ui/device-setup.log) 2>&1
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          python3 tools/gecko/prepare_android_image.py --component emulator --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/oil-ui/emulator-package.json
+          python3 tools/gecko/prepare_android_image.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/oil-ui/system-image.json
+          python3 tools/gecko/prepare_platform_tools.py --sdk-root "$ANDROID_HOME" --cache work/android-image --report work/oil-ui/platform-tools.json
+          export ANDROID_AVD_HOME="$PWD/work/oil-ui/avd"
+          export ANDROID_USER_HOME="$PWD/work/oil-ui/android-user"
+          export ANDROID_EMULATOR_HOME="$PWD/work/oil-ui/emulator-home"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" "$ANDROID_EMULATOR_HOME"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force -n oilui -p "$ANDROID_AVD_HOME/oilui.avd" -k 'system-images;android-35;google_apis;x86_64'
+          "$ANDROID_HOME/emulator/emulator" -avd oilui -no-window -no-audio -no-snapshot -no-boot-anim -no-metrics -accel on -port 5554 -gpu swiftshader -memory 3072 -cores 2 > work/oil-ui/emulator.log 2>&1 &
+          touch work/oil-ui/emulator-started
+          timeout 120 adb -s emulator-5554 wait-for-device
+          booted=false
+          for i in $(seq 1 120); do
+            if [ "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then booted=true; break; fi
+            sleep 1
+          done
+          test "$booted" = true
+          adb -s emulator-5554 shell input keyevent 82
+          adb -s emulator-5554 install app/build/outputs/apk/integration/app-x86_64-integration.apk
+          python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+      - name: Capture the fixed 40 native scenes once
+        run: |
+          set -euo pipefail
+          python3 tools/gecko/run_oil_ui_capture.py capture --root "$PWD" \
+            --apk app/build/outputs/apk/integration/app-x86_64-integration.apk \
+            --aapt2 "$ANDROID_HOME/build-tools/37.0.0/aapt2" \
+            --apksigner "$ANDROID_HOME/build-tools/37.0.0/apksigner" \
+            --adb "$(command -v adb)" --serial emulator-5554 --round "$UI_ROUND" \
+            --out "work/oil-ui/round-$UI_ROUND" 2>&1 | tee work/oil-ui/capture.log
+      - name: Retain diagnostic logs and stop the disposable emulator
+        if: always()
+        run: |
+          if [ -f work/oil-ui/emulator-started ]; then
+            timeout 15 adb -s emulator-5554 logcat -d -s 'PocketUiVisual:I' 'AndroidRuntime:E' '*:S' > work/oil-ui/final-logcat.txt 2>&1 || true
+            timeout 10 adb -s emulator-5554 emu kill > work/oil-ui/emulator-stop.txt 2>&1 || true
+          fi
+      - name: Upload ordinary diagnostics, including incomplete runs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: oil-ui-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            work/oil-ui/*.json
+            work/oil-ui/*.log
+            work/oil-ui/*.txt
+            work/oil-ui/build-identity/*.json
+            work/oil-ui/round-*/*.json
+            work/oil-ui/round-*/*.png
+            work/oil-ui/round-*/*.xml
+            work/gecko-integration/emulator-bootstrap-results.json
+            work/native-caret-sdk/sdk-build-receipt.json
+            work/native-caret-sdk/derived-sdk-verification.json
+            work/native-caret-sdk/derived-sdk-compilation.json
+            work/native-caret-sdk/resolved-artifacts.json
+            work/native-caret-sdk/compile/*-javac.log
+            app/build/outputs/apk/integration/app-x86_64-integration.apk
