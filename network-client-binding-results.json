@@ -1,0 +1,1161 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+  "runNonce": "33175658eb1d40a08eff356a1c7239fe",
+  "actualAndroidFixtureAttempted": true,
+  "fixtureInvocationCount": 1,
+  "automaticRetryPerformed": false,
+  "adbObservations": [
+    {
+      "index": 1,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "am",
+        "force-stop",
+        "local.pocketchat.test"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0001-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0001-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 2,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "pm",
+        "clear",
+        "local.pocketchat.test"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0002-stdout.raw.log",
+          "bytes": 8,
+          "sha256": "7fc0023a6402c7bd7abd98bb3e580968de4833eed07d88d1cc8d70819d69c7a0"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0002-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 3,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-c"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0003-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0003-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 4,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "exec-out",
+        "content",
+        "read",
+        "--uri",
+        "content://local.pocketchat.test.evidence/build-identity"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0004-stdout.raw.log",
+          "bytes": 2407,
+          "sha256": "0670bac2eea2d1d326e1c6017342739a42764a4194696ab3115bbbbac470769d"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0004-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 5,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "cmd",
+        "package",
+        "list",
+        "packages",
+        "-U",
+        "local.pocketchat.test"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0005-stdout.raw.log",
+          "bytes": 40,
+          "sha256": "4a0f122b5a367453b2f308c897e8cb2b0ea218be44c22bbd0e2025aa4a7c470e"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0005-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 6,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "getprop",
+        "ro.build.version.sdk"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0006-stdout.raw.log",
+          "bytes": 3,
+          "sha256": "90d7ec0f0acef104d8b6252794295f661a0149634868d02a1ae0c358099638f5"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0006-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 7,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "am",
+        "start",
+        "-W",
+        "-n",
+        "local.pocketchat.test/local.pocketchat.NetworkClientBindingIntegrationActivity",
+        "--es",
+        "sourceCommit",
+        "99be9bd468f02316158657d2b6db812420ff821c",
+        "--es",
+        "eventNonce",
+        "33175658eb1d40a08eff356a1c7239fe"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0007-stdout.raw.log",
+          "bytes": 273,
+          "sha256": "9968b81054e9bc0a3cc4c63af108b9aa748a9b6cf25c9cb5180ba0ca14b33968"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0007-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 8,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0008-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0008-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 9,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0009-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0009-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 10,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0010-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0010-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 11,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0011-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0011-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 12,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0012-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0012-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 13,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0013-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0013-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 14,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0014-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0014-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 15,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0015-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0015-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 16,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0016-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0016-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 17,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0017-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0017-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 18,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0018-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0018-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 19,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0019-stdout.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0019-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 20,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "logcat",
+        "-d",
+        "-s",
+        "PocketGeckoIntegration:I",
+        "PocketClientBinding:E",
+        "AndroidRuntime:E",
+        "*:S"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0020-stdout.raw.log",
+          "bytes": 417,
+          "sha256": "47d9641b17b667d3a28877fedf181d82c365b0fc979a41d8329497bfb9aad96f"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0020-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 21,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "exec-out",
+        "content",
+        "read",
+        "--uri",
+        "content://local.pocketchat.test.evidence/gecko-events/0/33175658eb1d40a08eff356a1c7239fe/1"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0021-stdout.raw.log",
+          "bytes": 28427,
+          "sha256": "295c67f92cd35d6cc470c1c753a45850ebfce09ae71ac33ccd5d78674d57c13c"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0021-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 22,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "exec-out",
+        "content",
+        "read",
+        "--uri",
+        "content://local.pocketchat.test.evidence/build-identity"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0022-stdout.raw.log",
+          "bytes": 2407,
+          "sha256": "0670bac2eea2d1d326e1c6017342739a42764a4194696ab3115bbbbac470769d"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0022-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    },
+    {
+      "index": 23,
+      "command": [
+        "/usr/local/lib/android/sdk/platform-tools/adb",
+        "-s",
+        "emulator-5554",
+        "shell",
+        "cmd",
+        "package",
+        "list",
+        "packages",
+        "-U",
+        "local.pocketchat.test"
+      ],
+      "returnCode": 0,
+      "streams": {
+        "stdout": {
+          "path": "network-client-binding-adb-0023-stdout.raw.log",
+          "bytes": 40,
+          "sha256": "4a0f122b5a367453b2f308c897e8cb2b0ea218be44c22bbd0e2025aa4a7c470e"
+        },
+        "stderr": {
+          "path": "network-client-binding-adb-0023-stderr.raw.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    }
+  ],
+  "buildIdentity": {
+    "schema": 1,
+    "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+    "sourceTree": "e3343f98049e5e4336be39a803753560c5b3af4b",
+    "dirtySource": false,
+    "version": "2.0.19",
+    "versionCode": 72,
+    "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+    "sdkBuildIdentity": {
+      "sdkBuildKind": "source-derived-java",
+      "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+      "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+      "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+      "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+      "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+      "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+      "sdkBuildReceiptSha256": "09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc",
+      "sdkBuildSource": "99be9bd468f02316158657d2b6db812420ff821c",
+      "schema": 1,
+      "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+      "sourceTree": "e3343f98049e5e4336be39a803753560c5b3af4b",
+      "runId": "40210362849",
+      "runAttempt": "1"
+    },
+    "sdkBuildKind": "source-derived-java",
+    "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+    "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+    "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+    "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+    "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+    "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+    "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+    "sdkBuildReceiptSha256": "09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc",
+    "sdkBuildSource": "99be9bd468f02316158657d2b6db812420ff821c",
+    "package": "local.pocketchat.test",
+    "apkSha256": "694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc",
+    "apkBytes": 126380581,
+    "buildStampSha256": "8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825"
+  },
+  "installedBefore": {
+    "rawUtf8": "{\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"dirtySource\":false,\"version\":\"2.0.19\",\"versionCode\":72,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"runId\":\"40210362849\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126380581,\"apkSha256\":\"694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc\",\"buildStampSha256\":\"8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"}\n",
+    "utf8Bytes": 2407,
+    "sha256": "0670bac2eea2d1d326e1c6017342739a42764a4194696ab3115bbbbac470769d"
+  },
+  "packageUidBeforeRaw": "package:local.pocketchat.test uid:10209\n",
+  "packageUid": 10209,
+  "androidSdk": 35,
+  "eventTransport": [
+    {
+      "receipt": {
+        "kind": "eventReceipt",
+        "schema": 1,
+        "runNonce": "33175658eb1d40a08eff356a1c7239fe",
+        "fixtureAction": "networkClientBinding",
+        "command": 1,
+        "sequence": 1,
+        "nativeContext": "environment-1",
+        "processSlot": 0,
+        "eventKind": "networkClientBinding",
+        "payloadBytes": 28427,
+        "payloadSha256": "295c67f92cd35d6cc470c1c753a45850ebfce09ae71ac33ccd5d78674d57c13c"
+      },
+      "rawUtf8": "{\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"dirtySource\":false,\"version\":\"2.0.19\",\"versionCode\":72,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"runId\":\"40210362849\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126380581,\"apkSha256\":\"694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc\",\"buildStampSha256\":\"8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"runNonce\":\"33175658eb1d40a08eff356a1c7239fe\",\"fixtureAction\":\"networkClientBinding\",\"command\":1,\"sequence\":1,\"nativeContext\":\"environment-1\",\"processSlot\":0,\"observedAtElapsedRealtime\":330207,\"event\":{\"kind\":\"networkClientBinding\",\"result\":{\"schema\":1,\"status\":\"passed\",\"actualAndroidExecution\":true,\"actualFrameworkBinding\":true,\"actualMessengerIpc\":true,\"actualProductionClient\":true,\"actualProductionNetworkService\":false,\"actualMihomoExecution\":false,\"actualGeckoExecution\":false,\"manualServiceConnectionCallbacks\":0,\"automaticBindRetryAdded\":false,\"securityExceptionAndroidAcceptance\":false,\"bindingDiedAndroidAcceptance\":false,\"physicalPhoneAcceptance\":false,\"realUserProxyAcceptance\":false,\"scope\":\"Complete production Client; real Android bind\\/unbind and Messenger. Only this fixture's explicit destination is redirected to private test Services. The normal Mihomo service does not return null in this test; no physical-device or user-route cause\\/speed claim.\",\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"dirtySource\":false,\"version\":\"2.0.19\",\"versionCode\":72,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"runId\":\"40210362849\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126380581,\"apkSha256\":\"694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc\",\"buildStampSha256\":\"8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"runNonce\":\"33175658eb1d40a08eff356a1c7239fe\",\"clientPid\":7102,\"clientUid\":10209,\"clientProcess\":\"local.pocketchat.test:transport_binding_fixture\",\"androidSdk\":35,\"bindingTimeoutSeconds\":10,\"replyTimeoutSeconds\":15,\"detachTimeoutSeconds\":5,\"environmentIdentity\":{\"slot\":0,\"generation\":0,\"environmentId\":\"de13f0f2-056f-4aae-9e6d-6b34a5d31331\"},\"phase\":\"actual-missing-component\",\"nullWaiter\":{\"began\":329374,\"ended\":329869,\"elapsedMs\":495,\"failureClass\":\"java.io.IOException\",\"failed\":true},\"nullService\":{\"schema\":1,\"runNonce\":\"33175658eb1d40a08eff356a1c7239fe\",\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"dirtySource\":false,\"version\":\"2.0.19\",\"versionCode\":72,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"runId\":\"40210362849\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126380581,\"apkSha256\":\"694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc\",\"buildStampSha256\":\"8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"serviceClass\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$NullService\",\"servicePid\":7143,\"serviceUid\":10209,\"serviceProcess\":\"local.pocketchat.test:transport_binding_services\",\"onBindAt\":329860,\"onBindMainLooper\":true,\"role\":\"null\",\"returnedNull\":true},\"nullServiceRaw\":{\"rawUtf8\":\"{\\\"schema\\\":1,\\\"runNonce\\\":\\\"33175658eb1d40a08eff356a1c7239fe\\\",\\\"sourceCommit\\\":\\\"99be9bd468f02316158657d2b6db812420ff821c\\\",\\\"buildIdentity\\\":{\\\"schema\\\":1,\\\"sourceCommit\\\":\\\"99be9bd468f02316158657d2b6db812420ff821c\\\",\\\"sourceTree\\\":\\\"e3343f98049e5e4336be39a803753560c5b3af4b\\\",\\\"dirtySource\\\":false,\\\"version\\\":\\\"2.0.19\\\",\\\"versionCode\\\":72,\\\"sdkCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkBuildKind\\\":\\\"source-derived-java\\\",\\\"sdkInputCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkRuntimeCoordinate\\\":\\\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\\\",\\\"sdkInputAarSha256\\\":\\\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\\\",\\\"sdkAarSha256\\\":\\\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\\\",\\\"sdkClassesJarSha256\\\":\\\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\\\",\\\"sdkGeckoEditableClassSha256\\\":\\\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\\\",\\\"sdkManifestSha256\\\":\\\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\\\",\\\"sdkBuildReceiptSha256\\\":\\\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\\\",\\\"sdkBuildSource\\\":\\\"99be9bd468f02316158657d2b6db812420ff821c\\\",\\\"sdkBuildIdentity\\\":{\\\"sdkBuildKind\\\":\\\"source-derived-java\\\",\\\"sdkCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkRuntimeCoordinate\\\":\\\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\\\",\\\"sdkInputCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkInputAarSha256\\\":\\\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\\\",\\\"sdkAarSha256\\\":\\\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\\\",\\\"sdkClassesJarSha256\\\":\\\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\\\",\\\"sdkGeckoEditableClassSha256\\\":\\\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\\\",\\\"sdkManifestSha256\\\":\\\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\\\",\\\"sdkBuildReceiptSha256\\\":\\\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\\\",\\\"sdkBuildSource\\\":\\\"99be9bd468f02316158657d2b6db812420ff821c\\\",\\\"schema\\\":1,\\\"sourceCommit\\\":\\\"99be9bd468f02316158657d2b6db812420ff821c\\\",\\\"sourceTree\\\":\\\"e3343f98049e5e4336be39a803753560c5b3af4b\\\",\\\"runId\\\":\\\"40210362849\\\",\\\"runAttempt\\\":\\\"1\\\"},\\\"package\\\":\\\"local.pocketchat.test\\\",\\\"apkBytes\\\":126380581,\\\"apkSha256\\\":\\\"694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc\\\",\\\"buildStampSha256\\\":\\\"8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825\\\",\\\"scope\\\":\\\"Installed synthetic integration APK bytes and embedded source stamp only\\\"},\\\"serviceClass\\\":\\\"local.pocketchat.NetworkClientBindingIntegrationActivity$NullService\\\",\\\"servicePid\\\":7143,\\\"serviceUid\\\":10209,\\\"serviceProcess\\\":\\\"local.pocketchat.test:transport_binding_services\\\",\\\"onBindAt\\\":329860,\\\"onBindMainLooper\\\":true,\\\"role\\\":\\\"null\\\",\\\"returnedNull\\\":true}\\n\",\"utf8Bytes\":2807,\"sha256\":\"790381b80e21277af91103b05bb618d49e4511dfa5cbddf7c56917749f61578e\"},\"nullCallbackJournal\":{\"diagnosticWaitBegan\":329872,\"diagnosticWaitEnded\":329873,\"diagnosticWaitLimitMs\":3000,\"owner\":\"49ad7022-c08e-4c63-9261-e55f8a24f911\",\"environmentIdentity\":{\"slot\":0,\"generation\":0,\"environmentId\":\"de13f0f2-056f-4aae-9e6d-6b34a5d31331\"},\"rawSummary\":\"网络事件 · 环境编号：1\\n环境 ID：de13f0f2-056f-4aae-9e6d-6b34a5d31331 · 环境代次：0\\n仅固定事件与数值；不包含核心输出原文。\\n字段：时间毫秒 \\/ 单调时间 \\/ 内部槽位 \\/ 来源 \\/ 记录器代次 \\/ 环境 ID \\/ 环境代次 \\/ 核心代次 \\/ 事件 \\/ 原因 \\/ 阶段 \\/ 数值\\n1792945624111\\t329865\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_NULL_BINDING\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1792945624115\\t329869\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n\",\"ownedRows\":[\"1792945624111\\t329865\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_NULL_BINDING\\tCONTROL_UNAVAILABLE\\tBIND\\t0\",\"1792945624115\\t329869\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\"],\"journalMonotonicClock\":\"System.nanoTime()\\/1000000; distinct from elapsedRealtime call\\/wait clocks\",\"source\":\"actual NetworkDiagnostics records emitted only by this production Client callback\\/command paths; no ServiceConnection method is called by the fixture\"},\"recoveredState\":{\"slot\":0,\"alive\":false,\"state\":\"fixture\",\"generation\":\"fixture-33175658eb1d40a08eff356a1c7239fe\",\"servicePid\":7143,\"serviceUid\":10209,\"fixtureNonce\":\"33175658eb1d40a08eff356a1c7239fe\",\"fixtureRole\":\"messenger\"},\"messengerService\":{\"schema\":1,\"runNonce\":\"33175658eb1d40a08eff356a1c7239fe\",\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"dirtySource\":false,\"version\":\"2.0.19\",\"versionCode\":72,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"runId\":\"40210362849\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126380581,\"apkSha256\":\"694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc\",\"buildStampSha256\":\"8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"serviceClass\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService\",\"servicePid\":7143,\"serviceUid\":10209,\"serviceProcess\":\"local.pocketchat.test:transport_binding_services\",\"onBindAt\":330178,\"onBindMainLooper\":true,\"role\":\"messenger\",\"returnedNull\":false,\"messages\":[{\"id\":\"6c300b40-cdcf-4011-acf6-c75c421f3d12\",\"slot\":0,\"action\":\"snapshot\",\"configuration\":\"\",\"generation\":\"\",\"stopReason\":\"UNKNOWN\",\"expectedGeneration\":\"\",\"sendingUid\":10209,\"receivedAt\":330181,\"replySent\":true},{\"id\":\"83040335-46f0-40e0-bf1c-9b84d6714ce7\",\"slot\":0,\"action\":\"detach\",\"configuration\":\"\",\"generation\":\"fixture-33175658eb1d40a08eff356a1c7239fe\",\"stopReason\":\"UNKNOWN\",\"expectedGeneration\":\"\",\"sendingUid\":10209,\"receivedAt\":330182,\"replySent\":true}]},\"messengerServiceRaw\":{\"rawUtf8\":\"{\\\"schema\\\":1,\\\"runNonce\\\":\\\"33175658eb1d40a08eff356a1c7239fe\\\",\\\"sourceCommit\\\":\\\"99be9bd468f02316158657d2b6db812420ff821c\\\",\\\"buildIdentity\\\":{\\\"schema\\\":1,\\\"sourceCommit\\\":\\\"99be9bd468f02316158657d2b6db812420ff821c\\\",\\\"sourceTree\\\":\\\"e3343f98049e5e4336be39a803753560c5b3af4b\\\",\\\"dirtySource\\\":false,\\\"version\\\":\\\"2.0.19\\\",\\\"versionCode\\\":72,\\\"sdkCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkBuildKind\\\":\\\"source-derived-java\\\",\\\"sdkInputCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkRuntimeCoordinate\\\":\\\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\\\",\\\"sdkInputAarSha256\\\":\\\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\\\",\\\"sdkAarSha256\\\":\\\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\\\",\\\"sdkClassesJarSha256\\\":\\\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\\\",\\\"sdkGeckoEditableClassSha256\\\":\\\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\\\",\\\"sdkManifestSha256\\\":\\\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\\\",\\\"sdkBuildReceiptSha256\\\":\\\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\\\",\\\"sdkBuildSource\\\":\\\"99be9bd468f02316158657d2b6db812420ff821c\\\",\\\"sdkBuildIdentity\\\":{\\\"sdkBuildKind\\\":\\\"source-derived-java\\\",\\\"sdkCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkRuntimeCoordinate\\\":\\\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\\\",\\\"sdkInputCoordinate\\\":\\\"org.mozilla.geckoview:geckoview:157.0.20261005135250\\\",\\\"sdkInputAarSha256\\\":\\\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\\\",\\\"sdkAarSha256\\\":\\\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\\\",\\\"sdkClassesJarSha256\\\":\\\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\\\",\\\"sdkGeckoEditableClassSha256\\\":\\\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\\\",\\\"sdkManifestSha256\\\":\\\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\\\",\\\"sdkBuildReceiptSha256\\\":\\\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\\\",\\\"sdkBuildSource\\\":\\\"99be9bd468f02316158657d2b6db812420ff821c\\\",\\\"schema\\\":1,\\\"sourceCommit\\\":\\\"99be9bd468f02316158657d2b6db812420ff821c\\\",\\\"sourceTree\\\":\\\"e3343f98049e5e4336be39a803753560c5b3af4b\\\",\\\"runId\\\":\\\"40210362849\\\",\\\"runAttempt\\\":\\\"1\\\"},\\\"package\\\":\\\"local.pocketchat.test\\\",\\\"apkBytes\\\":126380581,\\\"apkSha256\\\":\\\"694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc\\\",\\\"buildStampSha256\\\":\\\"8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825\\\",\\\"scope\\\":\\\"Installed synthetic integration APK bytes and embedded source stamp only\\\"},\\\"serviceClass\\\":\\\"local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService\\\",\\\"servicePid\\\":7143,\\\"serviceUid\\\":10209,\\\"serviceProcess\\\":\\\"local.pocketchat.test:transport_binding_services\\\",\\\"onBindAt\\\":330178,\\\"onBindMainLooper\\\":true,\\\"role\\\":\\\"messenger\\\",\\\"returnedNull\\\":false,\\\"messages\\\":[{\\\"id\\\":\\\"6c300b40-cdcf-4011-acf6-c75c421f3d12\\\",\\\"slot\\\":0,\\\"action\\\":\\\"snapshot\\\",\\\"configuration\\\":\\\"\\\",\\\"generation\\\":\\\"\\\",\\\"stopReason\\\":\\\"UNKNOWN\\\",\\\"expectedGeneration\\\":\\\"\\\",\\\"sendingUid\\\":10209,\\\"receivedAt\\\":330181,\\\"replySent\\\":true},{\\\"id\\\":\\\"83040335-46f0-40e0-bf1c-9b84d6714ce7\\\",\\\"slot\\\":0,\\\"action\\\":\\\"detach\\\",\\\"configuration\\\":\\\"\\\",\\\"generation\\\":\\\"fixture-33175658eb1d40a08eff356a1c7239fe\\\",\\\"stopReason\\\":\\\"UNKNOWN\\\",\\\"expectedGeneration\\\":\\\"\\\",\\\"sendingUid\\\":10209,\\\"receivedAt\\\":330182,\\\"replySent\\\":true}]}\\n\",\"utf8Bytes\":3295,\"sha256\":\"f74e6f99d63939ef83b295c2b94a894d58165e4836710726fd9472df4d25697c\"},\"completedCallbackJournal\":{\"diagnosticWaitBegan\":330204,\"diagnosticWaitEnded\":330205,\"diagnosticWaitLimitMs\":3000,\"owner\":\"49ad7022-c08e-4c63-9261-e55f8a24f911\",\"environmentIdentity\":{\"slot\":0,\"generation\":0,\"environmentId\":\"de13f0f2-056f-4aae-9e6d-6b34a5d31331\"},\"rawSummary\":\"网络事件 · 环境编号：1\\n环境 ID：de13f0f2-056f-4aae-9e6d-6b34a5d31331 · 环境代次：0\\n仅固定事件与数值；不包含核心输出原文。\\n字段：时间毫秒 \\/ 单调时间 \\/ 内部槽位 \\/ 来源 \\/ 记录器代次 \\/ 环境 ID \\/ 环境代次 \\/ 核心代次 \\/ 事件 \\/ 原因 \\/ 阶段 \\/ 数值\\n1792945624111\\t329865\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_NULL_BINDING\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1792945624115\\t329869\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1792945624426\\t330180\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_CONNECTED\\tUNKNOWN\\tBIND\\t0\\n1792945624428\\t330182\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_DETACH\\tUNKNOWN\\tIPC\\t0\\n\",\"ownedRows\":[\"1792945624111\\t329865\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_NULL_BINDING\\tCONTROL_UNAVAILABLE\\tBIND\\t0\",\"1792945624115\\t329869\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\",\"1792945624426\\t330180\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_CONNECTED\\tUNKNOWN\\tBIND\\t0\",\"1792945624428\\t330182\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_DETACH\\tUNKNOWN\\tIPC\\t0\"],\"journalMonotonicClock\":\"System.nanoTime()\\/1000000; distinct from elapsedRealtime call\\/wait clocks\",\"source\":\"actual NetworkDiagnostics records emitted only by this production Client callback\\/command paths; no ServiceConnection method is called by the fixture\"},\"missingWaiter\":{\"began\":330205,\"ended\":330206,\"elapsedMs\":1,\"failureClass\":\"java.io.IOException\",\"failed\":true},\"missingCallbackJournal\":{\"diagnosticWaitBegan\":330207,\"diagnosticWaitEnded\":330207,\"diagnosticWaitLimitMs\":3000,\"owner\":\"f8acc6c1-419a-4c47-8abb-419447c4c802\",\"environmentIdentity\":{\"slot\":0,\"generation\":0,\"environmentId\":\"de13f0f2-056f-4aae-9e6d-6b34a5d31331\"},\"rawSummary\":\"网络事件 · 环境编号：1\\n环境 ID：de13f0f2-056f-4aae-9e6d-6b34a5d31331 · 环境代次：0\\n仅固定事件与数值；不包含核心输出原文。\\n字段：时间毫秒 \\/ 单调时间 \\/ 内部槽位 \\/ 来源 \\/ 记录器代次 \\/ 环境 ID \\/ 环境代次 \\/ 核心代次 \\/ 事件 \\/ 原因 \\/ 阶段 \\/ 数值\\n1792945624111\\t329865\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_NULL_BINDING\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1792945624115\\t329869\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1792945624426\\t330180\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_CONNECTED\\tUNKNOWN\\tBIND\\t0\\n1792945624428\\t330182\\t0\\tCONTROL\\t49ad7022-c08e-4c63-9261-e55f8a24f911\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_DETACH\\tUNKNOWN\\tIPC\\t0\\n1792945624452\\t330206\\t0\\tCONTROL\\tf8acc6c1-419a-4c47-8abb-419447c4c802\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_BIND_REJECTED\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n1792945624452\\t330206\\t0\\tCONTROL\\tf8acc6c1-419a-4c47-8abb-419447c4c802\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\\n\",\"ownedRows\":[\"1792945624452\\t330206\\t0\\tCONTROL\\tf8acc6c1-419a-4c47-8abb-419447c4c802\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_BIND_REJECTED\\tCONTROL_UNAVAILABLE\\tBIND\\t0\",\"1792945624452\\t330206\\t0\\tCONTROL\\tf8acc6c1-419a-4c47-8abb-419447c4c802\\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\\t0\\tunknown\\tIPC_BIND_TIMEOUT\\tCONTROL_UNAVAILABLE\\tBIND\\t0\"],\"journalMonotonicClock\":\"System.nanoTime()\\/1000000; distinct from elapsedRealtime call\\/wait clocks\",\"source\":\"actual NetworkDiagnostics records emitted only by this production Client callback\\/command paths; no ServiceConnection method is called by the fixture\"},\"checks\":[{\"name\":\"Fixture runs in its separate integration process\",\"pass\":true},{\"name\":\"Fixture process owns the installed package UID\",\"pass\":true},{\"name\":\"Actual null binding releases original caller before its ten second deadline\",\"pass\":true},{\"name\":\"First real bind was accepted for the private null Service\",\"pass\":true},{\"name\":\"Null callback releases the captured production gate\",\"pass\":true},{\"name\":\"Null owner is actually unbound once through Android\",\"pass\":true},{\"name\":\"Private Service records a real null onBind in another process\",\"pass\":true},{\"name\":\"Actual production callback journal contains exactly one owned null binding\",\"pass\":true},{\"name\":\"Next ordinary production call receives the real Messenger reply\",\"pass\":true},{\"name\":\"Next demand binds a distinct owner and gate without automatic retry\",\"pass\":true},{\"name\":\"Explicit detach unbinds only the Messenger owner once\",\"pass\":true},{\"name\":\"Service received original snapshot and detach command envelopes\",\"pass\":true},{\"name\":\"Real Messenger command sender UID matches the owned package\",\"pass\":true},{\"name\":\"Both actual bind attempts have one successful framework unbind\",\"pass\":true},{\"name\":\"Missing-component fault names an absent component in this test package\",\"pass\":true},{\"name\":\"Real missing-component bind returns false and wakes its caller\",\"pass\":true},{\"name\":\"False-return framework dispatcher is released exactly once\",\"pass\":true},{\"name\":\"Actual missing bind rejection is distinct from a null callback\",\"pass\":true}],\"checkCount\":18,\"bindings\":[{\"missingComponent\":false,\"attempts\":[{\"number\":1,\"connectionIdentity\":111443192,\"connectionClass\":\"local.pocketchat.NetworkTransportClient$Binding\",\"gateIdentity\":132104131,\"gateCount\":0,\"target\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$NullService\",\"began\":329378,\"ended\":329386,\"accepted\":true,\"error\":\"\",\"unbindError\":\"\",\"unbindAttempts\":1,\"unbindSuccesses\":1},{\"number\":2,\"connectionIdentity\":214483503,\"connectionClass\":\"local.pocketchat.NetworkTransportClient$Binding\",\"gateIdentity\":176439360,\"gateCount\":0,\"target\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService\",\"began\":329873,\"ended\":329876,\"accepted\":true,\"error\":\"\",\"unbindError\":\"\",\"unbindAttempts\":1,\"unbindSuccesses\":1}],\"outstanding\":0},{\"missingComponent\":true,\"attempts\":[{\"number\":1,\"connectionIdentity\":129550375,\"connectionClass\":\"local.pocketchat.NetworkTransportClient$Binding\",\"gateIdentity\":123931513,\"gateCount\":0,\"target\":\"local.pocketchat.AbsentNetworkClientBindingFixture\",\"began\":330206,\"ended\":330206,\"accepted\":false,\"error\":\"\",\"unbindError\":\"\",\"unbindAttempts\":1,\"unbindSuccesses\":1}],\"outstanding\":0}]},\"nativeContext\":\"environment-1\",\"processSlot\":0}}\n"
+    }
+  ],
+  "activityStartOutput": "Starting: Intent { cmp=local.pocketchat.test/local.pocketchat.NetworkClientBindingIntegrationActivity (has extras) }\nStatus: ok\nLaunchState: COLD\nActivity: local.pocketchat.test/local.pocketchat.NetworkClientBindingIntegrationActivity\nTotalTime: 429\nWaitTime: 458\nComplete\n",
+  "result": {
+    "schema": 1,
+    "status": "passed",
+    "actualAndroidExecution": true,
+    "actualFrameworkBinding": true,
+    "actualMessengerIpc": true,
+    "actualProductionClient": true,
+    "actualProductionNetworkService": false,
+    "actualMihomoExecution": false,
+    "actualGeckoExecution": false,
+    "manualServiceConnectionCallbacks": 0,
+    "automaticBindRetryAdded": false,
+    "securityExceptionAndroidAcceptance": false,
+    "bindingDiedAndroidAcceptance": false,
+    "physicalPhoneAcceptance": false,
+    "realUserProxyAcceptance": false,
+    "scope": "Complete production Client; real Android bind/unbind and Messenger. Only this fixture's explicit destination is redirected to private test Services. The normal Mihomo service does not return null in this test; no physical-device or user-route cause/speed claim.",
+    "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+    "buildIdentity": {
+      "schema": 1,
+      "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+      "sourceTree": "e3343f98049e5e4336be39a803753560c5b3af4b",
+      "dirtySource": false,
+      "version": "2.0.19",
+      "versionCode": 72,
+      "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkBuildKind": "source-derived-java",
+      "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+      "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+      "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+      "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+      "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+      "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+      "sdkBuildReceiptSha256": "09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc",
+      "sdkBuildSource": "99be9bd468f02316158657d2b6db812420ff821c",
+      "sdkBuildIdentity": {
+        "sdkBuildKind": "source-derived-java",
+        "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+        "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+        "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+        "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+        "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+        "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+        "sdkBuildReceiptSha256": "09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc",
+        "sdkBuildSource": "99be9bd468f02316158657d2b6db812420ff821c",
+        "schema": 1,
+        "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+        "sourceTree": "e3343f98049e5e4336be39a803753560c5b3af4b",
+        "runId": "40210362849",
+        "runAttempt": "1"
+      },
+      "package": "local.pocketchat.test",
+      "apkBytes": 126380581,
+      "apkSha256": "694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc",
+      "buildStampSha256": "8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825",
+      "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+    },
+    "runNonce": "33175658eb1d40a08eff356a1c7239fe",
+    "clientPid": 7102,
+    "clientUid": 10209,
+    "clientProcess": "local.pocketchat.test:transport_binding_fixture",
+    "androidSdk": 35,
+    "bindingTimeoutSeconds": 10,
+    "replyTimeoutSeconds": 15,
+    "detachTimeoutSeconds": 5,
+    "environmentIdentity": {
+      "slot": 0,
+      "generation": 0,
+      "environmentId": "de13f0f2-056f-4aae-9e6d-6b34a5d31331"
+    },
+    "phase": "actual-missing-component",
+    "nullWaiter": {
+      "began": 329374,
+      "ended": 329869,
+      "elapsedMs": 495,
+      "failureClass": "java.io.IOException",
+      "failed": true
+    },
+    "nullService": {
+      "schema": 1,
+      "runNonce": "33175658eb1d40a08eff356a1c7239fe",
+      "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+      "buildIdentity": {
+        "schema": 1,
+        "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+        "sourceTree": "e3343f98049e5e4336be39a803753560c5b3af4b",
+        "dirtySource": false,
+        "version": "2.0.19",
+        "versionCode": 72,
+        "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkBuildKind": "source-derived-java",
+        "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+        "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+        "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+        "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+        "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+        "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+        "sdkBuildReceiptSha256": "09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc",
+        "sdkBuildSource": "99be9bd468f02316158657d2b6db812420ff821c",
+        "sdkBuildIdentity": {
+          "sdkBuildKind": "source-derived-java",
+          "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+          "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+          "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+          "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+          "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+          "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+          "sdkBuildReceiptSha256": "09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc",
+          "sdkBuildSource": "99be9bd468f02316158657d2b6db812420ff821c",
+          "schema": 1,
+          "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+          "sourceTree": "e3343f98049e5e4336be39a803753560c5b3af4b",
+          "runId": "40210362849",
+          "runAttempt": "1"
+        },
+        "package": "local.pocketchat.test",
+        "apkBytes": 126380581,
+        "apkSha256": "694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc",
+        "buildStampSha256": "8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825",
+        "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+      },
+      "serviceClass": "local.pocketchat.NetworkClientBindingIntegrationActivity$NullService",
+      "servicePid": 7143,
+      "serviceUid": 10209,
+      "serviceProcess": "local.pocketchat.test:transport_binding_services",
+      "onBindAt": 329860,
+      "onBindMainLooper": true,
+      "role": "null",
+      "returnedNull": true
+    },
+    "nullServiceRaw": {
+      "rawUtf8": "{\"schema\":1,\"runNonce\":\"33175658eb1d40a08eff356a1c7239fe\",\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"dirtySource\":false,\"version\":\"2.0.19\",\"versionCode\":72,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"runId\":\"40210362849\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126380581,\"apkSha256\":\"694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc\",\"buildStampSha256\":\"8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"serviceClass\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$NullService\",\"servicePid\":7143,\"serviceUid\":10209,\"serviceProcess\":\"local.pocketchat.test:transport_binding_services\",\"onBindAt\":329860,\"onBindMainLooper\":true,\"role\":\"null\",\"returnedNull\":true}\n",
+      "utf8Bytes": 2807,
+      "sha256": "790381b80e21277af91103b05bb618d49e4511dfa5cbddf7c56917749f61578e"
+    },
+    "nullCallbackJournal": {
+      "diagnosticWaitBegan": 329872,
+      "diagnosticWaitEnded": 329873,
+      "diagnosticWaitLimitMs": 3000,
+      "owner": "49ad7022-c08e-4c63-9261-e55f8a24f911",
+      "environmentIdentity": {
+        "slot": 0,
+        "generation": 0,
+        "environmentId": "de13f0f2-056f-4aae-9e6d-6b34a5d31331"
+      },
+      "rawSummary": "网络事件 · 环境编号：1\n环境 ID：de13f0f2-056f-4aae-9e6d-6b34a5d31331 · 环境代次：0\n仅固定事件与数值；不包含核心输出原文。\n字段：时间毫秒 / 单调时间 / 内部槽位 / 来源 / 记录器代次 / 环境 ID / 环境代次 / 核心代次 / 事件 / 原因 / 阶段 / 数值\n1792945624111\t329865\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_NULL_BINDING\tCONTROL_UNAVAILABLE\tBIND\t0\n1792945624115\t329869\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0\n",
+      "ownedRows": [
+        "1792945624111\t329865\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_NULL_BINDING\tCONTROL_UNAVAILABLE\tBIND\t0",
+        "1792945624115\t329869\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0"
+      ],
+      "journalMonotonicClock": "System.nanoTime()/1000000; distinct from elapsedRealtime call/wait clocks",
+      "source": "actual NetworkDiagnostics records emitted only by this production Client callback/command paths; no ServiceConnection method is called by the fixture"
+    },
+    "recoveredState": {
+      "slot": 0,
+      "alive": false,
+      "state": "fixture",
+      "generation": "fixture-33175658eb1d40a08eff356a1c7239fe",
+      "servicePid": 7143,
+      "serviceUid": 10209,
+      "fixtureNonce": "33175658eb1d40a08eff356a1c7239fe",
+      "fixtureRole": "messenger"
+    },
+    "messengerService": {
+      "schema": 1,
+      "runNonce": "33175658eb1d40a08eff356a1c7239fe",
+      "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+      "buildIdentity": {
+        "schema": 1,
+        "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+        "sourceTree": "e3343f98049e5e4336be39a803753560c5b3af4b",
+        "dirtySource": false,
+        "version": "2.0.19",
+        "versionCode": 72,
+        "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkBuildKind": "source-derived-java",
+        "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+        "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+        "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+        "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+        "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+        "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+        "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+        "sdkBuildReceiptSha256": "09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc",
+        "sdkBuildSource": "99be9bd468f02316158657d2b6db812420ff821c",
+        "sdkBuildIdentity": {
+          "sdkBuildKind": "source-derived-java",
+          "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+          "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+          "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+          "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+          "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+          "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+          "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+          "sdkBuildReceiptSha256": "09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc",
+          "sdkBuildSource": "99be9bd468f02316158657d2b6db812420ff821c",
+          "schema": 1,
+          "sourceCommit": "99be9bd468f02316158657d2b6db812420ff821c",
+          "sourceTree": "e3343f98049e5e4336be39a803753560c5b3af4b",
+          "runId": "40210362849",
+          "runAttempt": "1"
+        },
+        "package": "local.pocketchat.test",
+        "apkBytes": 126380581,
+        "apkSha256": "694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc",
+        "buildStampSha256": "8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825",
+        "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+      },
+      "serviceClass": "local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService",
+      "servicePid": 7143,
+      "serviceUid": 10209,
+      "serviceProcess": "local.pocketchat.test:transport_binding_services",
+      "onBindAt": 330178,
+      "onBindMainLooper": true,
+      "role": "messenger",
+      "returnedNull": false,
+      "messages": [
+        {
+          "id": "6c300b40-cdcf-4011-acf6-c75c421f3d12",
+          "slot": 0,
+          "action": "snapshot",
+          "configuration": "",
+          "generation": "",
+          "stopReason": "UNKNOWN",
+          "expectedGeneration": "",
+          "sendingUid": 10209,
+          "receivedAt": 330181,
+          "replySent": true
+        },
+        {
+          "id": "83040335-46f0-40e0-bf1c-9b84d6714ce7",
+          "slot": 0,
+          "action": "detach",
+          "configuration": "",
+          "generation": "fixture-33175658eb1d40a08eff356a1c7239fe",
+          "stopReason": "UNKNOWN",
+          "expectedGeneration": "",
+          "sendingUid": 10209,
+          "receivedAt": 330182,
+          "replySent": true
+        }
+      ]
+    },
+    "messengerServiceRaw": {
+      "rawUtf8": "{\"schema\":1,\"runNonce\":\"33175658eb1d40a08eff356a1c7239fe\",\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"buildIdentity\":{\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"dirtySource\":false,\"version\":\"2.0.19\",\"versionCode\":72,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"runId\":\"40210362849\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126380581,\"apkSha256\":\"694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc\",\"buildStampSha256\":\"8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"},\"serviceClass\":\"local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService\",\"servicePid\":7143,\"serviceUid\":10209,\"serviceProcess\":\"local.pocketchat.test:transport_binding_services\",\"onBindAt\":330178,\"onBindMainLooper\":true,\"role\":\"messenger\",\"returnedNull\":false,\"messages\":[{\"id\":\"6c300b40-cdcf-4011-acf6-c75c421f3d12\",\"slot\":0,\"action\":\"snapshot\",\"configuration\":\"\",\"generation\":\"\",\"stopReason\":\"UNKNOWN\",\"expectedGeneration\":\"\",\"sendingUid\":10209,\"receivedAt\":330181,\"replySent\":true},{\"id\":\"83040335-46f0-40e0-bf1c-9b84d6714ce7\",\"slot\":0,\"action\":\"detach\",\"configuration\":\"\",\"generation\":\"fixture-33175658eb1d40a08eff356a1c7239fe\",\"stopReason\":\"UNKNOWN\",\"expectedGeneration\":\"\",\"sendingUid\":10209,\"receivedAt\":330182,\"replySent\":true}]}\n",
+      "utf8Bytes": 3295,
+      "sha256": "f74e6f99d63939ef83b295c2b94a894d58165e4836710726fd9472df4d25697c"
+    },
+    "completedCallbackJournal": {
+      "diagnosticWaitBegan": 330204,
+      "diagnosticWaitEnded": 330205,
+      "diagnosticWaitLimitMs": 3000,
+      "owner": "49ad7022-c08e-4c63-9261-e55f8a24f911",
+      "environmentIdentity": {
+        "slot": 0,
+        "generation": 0,
+        "environmentId": "de13f0f2-056f-4aae-9e6d-6b34a5d31331"
+      },
+      "rawSummary": "网络事件 · 环境编号：1\n环境 ID：de13f0f2-056f-4aae-9e6d-6b34a5d31331 · 环境代次：0\n仅固定事件与数值；不包含核心输出原文。\n字段：时间毫秒 / 单调时间 / 内部槽位 / 来源 / 记录器代次 / 环境 ID / 环境代次 / 核心代次 / 事件 / 原因 / 阶段 / 数值\n1792945624111\t329865\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_NULL_BINDING\tCONTROL_UNAVAILABLE\tBIND\t0\n1792945624115\t329869\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0\n1792945624426\t330180\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_CONNECTED\tUNKNOWN\tBIND\t0\n1792945624428\t330182\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_DETACH\tUNKNOWN\tIPC\t0\n",
+      "ownedRows": [
+        "1792945624111\t329865\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_NULL_BINDING\tCONTROL_UNAVAILABLE\tBIND\t0",
+        "1792945624115\t329869\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0",
+        "1792945624426\t330180\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_CONNECTED\tUNKNOWN\tBIND\t0",
+        "1792945624428\t330182\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_DETACH\tUNKNOWN\tIPC\t0"
+      ],
+      "journalMonotonicClock": "System.nanoTime()/1000000; distinct from elapsedRealtime call/wait clocks",
+      "source": "actual NetworkDiagnostics records emitted only by this production Client callback/command paths; no ServiceConnection method is called by the fixture"
+    },
+    "missingWaiter": {
+      "began": 330205,
+      "ended": 330206,
+      "elapsedMs": 1,
+      "failureClass": "java.io.IOException",
+      "failed": true
+    },
+    "missingCallbackJournal": {
+      "diagnosticWaitBegan": 330207,
+      "diagnosticWaitEnded": 330207,
+      "diagnosticWaitLimitMs": 3000,
+      "owner": "f8acc6c1-419a-4c47-8abb-419447c4c802",
+      "environmentIdentity": {
+        "slot": 0,
+        "generation": 0,
+        "environmentId": "de13f0f2-056f-4aae-9e6d-6b34a5d31331"
+      },
+      "rawSummary": "网络事件 · 环境编号：1\n环境 ID：de13f0f2-056f-4aae-9e6d-6b34a5d31331 · 环境代次：0\n仅固定事件与数值；不包含核心输出原文。\n字段：时间毫秒 / 单调时间 / 内部槽位 / 来源 / 记录器代次 / 环境 ID / 环境代次 / 核心代次 / 事件 / 原因 / 阶段 / 数值\n1792945624111\t329865\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_NULL_BINDING\tCONTROL_UNAVAILABLE\tBIND\t0\n1792945624115\t329869\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0\n1792945624426\t330180\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_CONNECTED\tUNKNOWN\tBIND\t0\n1792945624428\t330182\t0\tCONTROL\t49ad7022-c08e-4c63-9261-e55f8a24f911\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_DETACH\tUNKNOWN\tIPC\t0\n1792945624452\t330206\t0\tCONTROL\tf8acc6c1-419a-4c47-8abb-419447c4c802\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_BIND_REJECTED\tCONTROL_UNAVAILABLE\tBIND\t0\n1792945624452\t330206\t0\tCONTROL\tf8acc6c1-419a-4c47-8abb-419447c4c802\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0\n",
+      "ownedRows": [
+        "1792945624452\t330206\t0\tCONTROL\tf8acc6c1-419a-4c47-8abb-419447c4c802\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_BIND_REJECTED\tCONTROL_UNAVAILABLE\tBIND\t0",
+        "1792945624452\t330206\t0\tCONTROL\tf8acc6c1-419a-4c47-8abb-419447c4c802\tde13f0f2-056f-4aae-9e6d-6b34a5d31331\t0\tunknown\tIPC_BIND_TIMEOUT\tCONTROL_UNAVAILABLE\tBIND\t0"
+      ],
+      "journalMonotonicClock": "System.nanoTime()/1000000; distinct from elapsedRealtime call/wait clocks",
+      "source": "actual NetworkDiagnostics records emitted only by this production Client callback/command paths; no ServiceConnection method is called by the fixture"
+    },
+    "checks": [
+      {
+        "name": "Fixture runs in its separate integration process",
+        "pass": true
+      },
+      {
+        "name": "Fixture process owns the installed package UID",
+        "pass": true
+      },
+      {
+        "name": "Actual null binding releases original caller before its ten second deadline",
+        "pass": true
+      },
+      {
+        "name": "First real bind was accepted for the private null Service",
+        "pass": true
+      },
+      {
+        "name": "Null callback releases the captured production gate",
+        "pass": true
+      },
+      {
+        "name": "Null owner is actually unbound once through Android",
+        "pass": true
+      },
+      {
+        "name": "Private Service records a real null onBind in another process",
+        "pass": true
+      },
+      {
+        "name": "Actual production callback journal contains exactly one owned null binding",
+        "pass": true
+      },
+      {
+        "name": "Next ordinary production call receives the real Messenger reply",
+        "pass": true
+      },
+      {
+        "name": "Next demand binds a distinct owner and gate without automatic retry",
+        "pass": true
+      },
+      {
+        "name": "Explicit detach unbinds only the Messenger owner once",
+        "pass": true
+      },
+      {
+        "name": "Service received original snapshot and detach command envelopes",
+        "pass": true
+      },
+      {
+        "name": "Real Messenger command sender UID matches the owned package",
+        "pass": true
+      },
+      {
+        "name": "Both actual bind attempts have one successful framework unbind",
+        "pass": true
+      },
+      {
+        "name": "Missing-component fault names an absent component in this test package",
+        "pass": true
+      },
+      {
+        "name": "Real missing-component bind returns false and wakes its caller",
+        "pass": true
+      },
+      {
+        "name": "False-return framework dispatcher is released exactly once",
+        "pass": true
+      },
+      {
+        "name": "Actual missing bind rejection is distinct from a null callback",
+        "pass": true
+      }
+    ],
+    "checkCount": 18,
+    "bindings": [
+      {
+        "missingComponent": false,
+        "attempts": [
+          {
+            "number": 1,
+            "connectionIdentity": 111443192,
+            "connectionClass": "local.pocketchat.NetworkTransportClient$Binding",
+            "gateIdentity": 132104131,
+            "gateCount": 0,
+            "target": "local.pocketchat.NetworkClientBindingIntegrationActivity$NullService",
+            "began": 329378,
+            "ended": 329386,
+            "accepted": true,
+            "error": "",
+            "unbindError": "",
+            "unbindAttempts": 1,
+            "unbindSuccesses": 1
+          },
+          {
+            "number": 2,
+            "connectionIdentity": 214483503,
+            "connectionClass": "local.pocketchat.NetworkTransportClient$Binding",
+            "gateIdentity": 176439360,
+            "gateCount": 0,
+            "target": "local.pocketchat.NetworkClientBindingIntegrationActivity$MessengerService",
+            "began": 329873,
+            "ended": 329876,
+            "accepted": true,
+            "error": "",
+            "unbindError": "",
+            "unbindAttempts": 1,
+            "unbindSuccesses": 1
+          }
+        ],
+        "outstanding": 0
+      },
+      {
+        "missingComponent": true,
+        "attempts": [
+          {
+            "number": 1,
+            "connectionIdentity": 129550375,
+            "connectionClass": "local.pocketchat.NetworkTransportClient$Binding",
+            "gateIdentity": 123931513,
+            "gateCount": 0,
+            "target": "local.pocketchat.AbsentNetworkClientBindingFixture",
+            "began": 330206,
+            "ended": 330206,
+            "accepted": false,
+            "error": "",
+            "unbindError": "",
+            "unbindAttempts": 1,
+            "unbindSuccesses": 1
+          }
+        ],
+        "outstanding": 0
+      }
+    ]
+  },
+  "installedAfter": {
+    "rawUtf8": "{\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"dirtySource\":false,\"version\":\"2.0.19\",\"versionCode\":72,\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkBuildKind\":\"source-derived-java\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sdkBuildIdentity\":{\"sdkBuildKind\":\"source-derived-java\",\"sdkCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkRuntimeCoordinate\":\"local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3\",\"sdkInputCoordinate\":\"org.mozilla.geckoview:geckoview:157.0.20261005135250\",\"sdkInputAarSha256\":\"15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268\",\"sdkAarSha256\":\"f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72\",\"sdkClassesJarSha256\":\"237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f\",\"sdkGeckoEditableClassSha256\":\"02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00\",\"sdkManifestSha256\":\"e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902\",\"sdkBuildReceiptSha256\":\"09f6fac3695bfbce58bd0e672b32024bbf08a2eccb06770ed300c8f0676914fc\",\"sdkBuildSource\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"schema\":1,\"sourceCommit\":\"99be9bd468f02316158657d2b6db812420ff821c\",\"sourceTree\":\"e3343f98049e5e4336be39a803753560c5b3af4b\",\"runId\":\"40210362849\",\"runAttempt\":\"1\"},\"package\":\"local.pocketchat.test\",\"apkBytes\":126380581,\"apkSha256\":\"694ada86e125993d05d6c243b5081ca0b069295465277ce85202812165368bcc\",\"buildStampSha256\":\"8b88fa7cb66db342a94b24c764e4408ba17fd5b0a0b519d879aadf8801a10825\",\"scope\":\"Installed synthetic integration APK bytes and embedded source stamp only\"}\n",
+    "utf8Bytes": 2407,
+    "sha256": "0670bac2eea2d1d326e1c6017342739a42764a4194696ab3115bbbbac470769d"
+  },
+  "packageUidAfterRaw": "package:local.pocketchat.test uid:10209\n",
+  "verification": {
+    "actualAndroidExecution": true,
+    "actualFrameworkBinding": true,
+    "actualMessengerIpc": true,
+    "checks": 18,
+    "nullCallbacks": 1,
+    "frameworkBindCalls": 3,
+    "successfulFrameworkUnbindCalls": 3,
+    "productionNetworkServiceFaulted": false,
+    "securityExceptionAndroidAcceptance": false,
+    "bindingDiedAndroidAcceptance": false,
+    "physicalPhoneAcceptance": false
+  }
+}
