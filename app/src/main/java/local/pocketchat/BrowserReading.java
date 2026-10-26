@@ -32,10 +32,16 @@ final class BrowserReading {
     if(!restoreAllowed||touching||!desktop||!ready||pinching||!session.web.readingPage(session.web.getUrl())||width<=0||!session.web.readingScaleMeasured()||session.web.requiresViewportMeasurement()&&viewportWidth<=0)return;
     if(session.web.readingZoomActive()){scheduleRestore();return;}
     if(session.web.setReadingLayout(choice())){viewportWidth=0;return;}
-    float current=session.web.getScale(),target=BrowserReadingPolicy.target(width,density(),viewportWidth,choice());
+    boolean nativeFit=alignLeft&&session.web.requiresViewportMeasurement();
+    // setReadingLayout may retain a nearby value; fit that applied layout.
+    float current=session.web.getScale(),target=BrowserReadingPolicy.target(width,density(),viewportWidth,nativeFit?session.web.readingLayout:choice());
     if(current<=0||target<=0)return;float factor=target/current;
-    if(Math.abs(factor-1)>.015f&&restoreAttempts++<3){session.web.zoomBy(Math.max(.01f,Math.min(100f,factor)));session.handler.removeCallbacks(restore);session.handler.postDelayed(restore,500);}
-    else if(Math.abs(factor-1)<=.015f&&alignLeft){alignLeft=false;session.web.alignReadingLeft(fitY);fitY=Float.NaN;}
+    // Both measurements include readingLayout; undo it once to compare the
+    // rendered page width with the native view before consuming a fit anchor.
+    boolean atTarget=alignLeft&&(nativeFit?BrowserReadingPolicy.fitted(width,current,viewportWidth,session.web.readingLayout):Math.abs(factor-1)<=.015f);
+    boolean correction=nativeFit?!atTarget:Math.abs(factor-1)>.015f;
+    if(correction&&restoreAttempts++<3){session.web.zoomBy(Math.max(.01f,Math.min(100f,factor)));session.handler.removeCallbacks(restore);session.handler.postDelayed(restore,500);}
+    else if(atTarget){alignLeft=false;session.web.alignReadingLeft(fitY);fitY=Float.NaN;}
   }
   void choose(float value){cancelGesture();restoreAllowed=true;float selected=BrowserReadingPolicy.bounded(value);alignLeft=selected<=1;fitY=alignLeft?session.web.readingScrollY():Float.NaN;session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,selected).apply();prepare();scheduleRestore();if(keyboard)scheduleFocus();}
   void fit(){choose(1);}

@@ -546,6 +546,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     check("Requested stop is distinguished from an unexpected real core exit",diagnosedRequestedStop);
     NetworkCatalog.put(repairEvidence,"schema",1);NetworkCatalog.put(repairEvidence,"serviceGenerationStopGuard",diagnosedStaleStop);NetworkCatalog.put(repairEvidence,"exitDiagnostics",diagnosedUnexpectedExit&&diagnosedOldGeneration&&diagnosedRequestedStop);
     JSONObject savedRepairConfiguration=n.secrets.settings(),repairConfiguration=J.parse(savedRepairConfiguration.toString());NetworkCatalog.put(repairConfiguration,"entryMode","random");
+    NetworkCatalog.put(repairConfiguration,"entry",n.currentEntry);if(repairConfiguration.has("entryNodeKey")){JSONObject refs=repairConfiguration.optJSONObject("entryPoolNodeKeys");String key=refs==null?"":refs.optString(n.currentEntry);if(key.isEmpty())throw new IOException("Repair fixture requires the retained candidate node identity");NetworkCatalog.put(repairConfiguration,"entryNodeKey",key);}EntrySelection.validate(repairConfiguration,n.names);
     Throwable repairFailure=null;
     try{
     n.stopNow();n.secrets.save(repairConfiguration);n.startNow();

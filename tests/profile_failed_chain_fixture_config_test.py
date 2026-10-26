@@ -12,7 +12,9 @@ DISPLAY_NEW='String mode=n.settings.optString("entryMode");n.failures=1;'
 REPAIR_OLD='n.startNow();NetworkCatalog.put(n.settings,"entryMode","random");'
 LEGACY_REPAIR_NEW='JSONObject savedRepairConfiguration=n.secrets.settings(),repairConfiguration=J.parse(savedRepairConfiguration.toString());NetworkCatalog.put(repairConfiguration,"entryMode","random");\n    try{\n    n.stopNow();n.secrets.save(repairConfiguration);n.startNow();'
 LEGACY_REPAIR_RESTORE='\n    }finally{n.stopNow();n.secrets.save(savedRepairConfiguration);n.startNow();}'
-REPAIR_NEW=LEGACY_REPAIR_NEW.replace('\n    try{','\n    Throwable repairFailure=null;\n    try{',1)
+CAUSAL_REPAIR_NEW=LEGACY_REPAIR_NEW.replace('\n    try{','\n    Throwable repairFailure=null;\n    try{',1)
+REPAIR_ENTRY='NetworkCatalog.put(repairConfiguration,"entry",n.currentEntry);if(repairConfiguration.has("entryNodeKey")){JSONObject refs=repairConfiguration.optJSONObject("entryPoolNodeKeys");String key=refs==null?"":refs.optString(n.currentEntry);if(key.isEmpty())throw new IOException("Repair fixture requires the retained candidate node identity");NetworkCatalog.put(repairConfiguration,"entryNodeKey",key);}EntrySelection.validate(repairConfiguration,n.names);'
+REPAIR_NEW=CAUSAL_REPAIR_NEW.replace('\n    Throwable repairFailure=null;','\n    '+REPAIR_ENTRY+'\n    Throwable repairFailure=null;',1)
 REPAIR_RESTORE='\n    }catch(Exception|Error failure){repairFailure=failure;throw failure;}\n    finally{try{n.stopNow();n.secrets.save(savedRepairConfiguration);n.startNow();}catch(Exception|Error restoreFailure){if(repairFailure==null)throw restoreFailure;if(restoreFailure!=repairFailure)repairFailure.addSuppressed(restoreFailure);}}'
 ORACLE='Actual failed-chain recovery performs exactly one full exit verification for the new entry'
 
@@ -24,7 +26,7 @@ sha=lambda raw:hashlib.sha256(raw).hexdigest()
 
 def original_fixture(current):
  if sha(current.encode())==ORIGINAL_SHA:return current
- repair_setup,repair_restore=(REPAIR_NEW,REPAIR_RESTORE) if current.count(REPAIR_NEW)==1 else (LEGACY_REPAIR_NEW,LEGACY_REPAIR_RESTORE)
+ repair_setup,repair_restore=next(((setup,restore) for setup,restore in ((REPAIR_NEW,REPAIR_RESTORE),(CAUSAL_REPAIR_NEW,REPAIR_RESTORE),(LEGACY_REPAIR_NEW,LEGACY_REPAIR_RESTORE)) if current.count(setup)==1),(REPAIR_NEW,REPAIR_RESTORE))
  if current.count(DISPLAY_NEW)!=1 or current.count(repair_setup)!=1 or current.count(repair_restore)!=1:raise ValueError('Fixture mode adapters missing')
  # The repair location is identified by its following exact identity capture.
  repair_new=repair_setup+'\n    final String token=n.token,entry=n.currentEntry;'
@@ -47,7 +49,7 @@ EXTRA=r'''
   final java.util.concurrent.atomic.AtomicLong probeSequence=new java.util.concurrent.atomic.AtomicLong();
   final ThreadLocal<ProbeTicket> probeTicket=new ThreadLocal<>();
   String exitIp="203.0.113.8",healthProbeRoute="";long healthProbeMeasurement;int optimizationRounds;boolean starting;
-  JSONObject savedSettings,firstRecoveryControllerRead;final List<String> lifecycleEvents=new ArrayList<>();boolean streamOpen,restoreFailureArmed;Throwable injectedRestoreFailure;final Secrets secrets=new Secrets(this);HttpFixture siteForVerification;
+  JSONObject savedSettings,firstRecoveryControllerRead;final List<JSONObject> validationInputs=new ArrayList<>();final List<String> lifecycleEvents=new ArrayList<>();boolean streamOpen,restoreFailureArmed;Throwable injectedRestoreFailure;final Secrets secrets=new Secrets(this);HttpFixture siteForVerification;
   static final class Secrets {final NativeNetwork owner;byte[] bytes;Secrets(NativeNetwork owner){this.owner=owner;}byte[] get(String key){return bytes==null?null:bytes.clone();}void put(String key,byte[] value)throws Exception{String mode=J.parse(new String(value,StandardCharsets.UTF_8)).optString("entryMode");owner.lifecycleEvents.add("save:"+mode);if(owner.restoreFailureArmed&&owner.injectedRestoreFailure!=null&&mode.equals("latency")){if(owner.injectedRestoreFailure instanceof Exception)throw (Exception)owner.injectedRestoreFailure;throw (Error)owner.injectedRestoreFailure;}bytes=value.clone();}/* ACTUAL_SECRET_SERIALIZATION */}
   static final class HttpFixture {int ipDelay;String websiteTransportFailure="";final java.util.concurrent.atomic.AtomicInteger ipRequests=new java.util.concurrent.atomic.AtomicInteger(),forcedProbeFailures=new java.util.concurrent.atomic.AtomicInteger();}
   static final class Stream {final java.util.concurrent.atomic.AtomicInteger echoes=new java.util.concurrent.atomic.AtomicInteger();}
@@ -58,7 +60,7 @@ EXTRA=r'''
   String probeRouteKey(){return token+":"+routeSerial;}
   boolean stopNow(NetworkDiagnostics.Reason reason){clearReadyState();if(process!=null)process.destroy();return true;}
   boolean stopNow(){if(streamOpen)throw new AssertionError("Core restarted during the protected stream");lifecycleEvents.add("stop");clearReadyState();if(process!=null)process.destroy();return true;}
-  void startNow(){if(streamOpen)throw new AssertionError("Core restarted during the protected stream");settings=secrets.settings();process=new Alive();verifiedRoute=new ExitRouteReceipt(this,null);ready=true;lifecycleEvents.add("start:"+settings.optString("entryMode"));}
+  void startNow()throws Exception{if(streamOpen)throw new AssertionError("Core restarted during the protected stream");settings=secrets.settings();validationInputs.add(J.parse(settings.toString()));JSONArray provider=new JSONArray();for(String name:names)provider.put(J.obj("name",name,"configFingerprint",hash(name)));validateEntryIdentities(settings,provider);EntrySelection.validate(settings,names);process=new Alive();verifiedRoute=new ExitRouteReceipt(this,null);ready=true;lifecycleEvents.add("start:"+settings.optString("entryMode"));}
   void recordProbe(ProbeResult sample,long now){}
   JSONObject api(String method,String path,JSONObject body,int timeout)throws Exception{
     maintenanceCheck();
@@ -103,19 +105,33 @@ EXTRA=r'''
     String inputMode=n.settings.optString("entryMode");n.health();return J.obj("exitRequestDelta",site.ipRequests.get()-ipBefore,"verificationDelta",n.verifications-verificationsBefore,"inputReceiptMatchesRam",receiptMatchesRam,"inputDurableMatchesRam",durableMatchesRam,"inputMode",inputMode,"ready",n.ready,"verified",n.verifiedRouteCurrent(),"entryChanged",!n.currentEntry.equals("Entry|A"),"detectorRetryReset",n.exitCheckFailures==0&&n.nextExitCheckAt==0,"message",n.message,"trace",new JSONArray(n.trace),"stateAtFirstRecoveryControllerRead",n.firstRecoveryControllerRead);
   }
   static JSONObject lifecycleReplay(boolean fail)throws Exception{
-    NativeNetwork n=new NativeNetwork("lifecycle");n.secrets.save(J.obj("entryMode","latency","subscriptionUrl","https://synthetic.invalid/unused","exitHost","127.0.0.1","exitPort",1080,"entryPool",new JSONArray().put("Entry|A").put("Entry|B")));n.startNow();String original=n.secrets.settings().toString();n.lifecycleEvents.clear();boolean failed=false,cloneDistinct=false;JSONObject[] savedObject={null};
+    NativeNetwork n=new NativeNetwork("lifecycle");n.secrets.save(J.obj("entryMode","latency","subscriptionUrl","https://synthetic.invalid/unused","exitHost","127.0.0.1","exitPort",1080,"entryPool",new JSONArray().put("Entry|A").put("Entry|B")));n.names=Arrays.asList("Entry|A","Entry|B");n.currentEntry=n.controllerEntry="Entry|A";n.startNow();String original=n.secrets.settings().toString();n.lifecycleEvents.clear();boolean failed=false,cloneDistinct=false;JSONObject[] savedObject={null};
     try{/* CURRENT_REPAIR_SETUP */savedObject[0]=savedRepairConfiguration;cloneDistinct=savedRepairConfiguration!=repairConfiguration;n.lifecycleEvents.add("identity:"+n.settings.optString("entryMode"));try(LifecycleStream stream=new LifecycleStream(n)){if(fail)throw new IOException("controlled body failure");}/* CURRENT_REPAIR_RESTORE */}catch(IOException expected){failed=true;}
     JSONObject value=J.obj("failedBody",failed,"cloneDistinct",cloneDistinct,"savedObjectUnchanged",savedObject[0]!=null&&original.equals(savedObject[0].toString()),"runtimeMode",n.settings.optString("entryMode"),"durableMode",n.secrets.settings().optString("entryMode"),"configurationMatches",n.configurationMatches(),"calls",new JSONArray(n.lifecycleEvents));n.close();return value;
   }
   static JSONObject causeReplay(String scenario,boolean error)throws Exception{
-    NativeNetwork n=new NativeNetwork("cause");n.secrets.save(J.obj("entryMode","latency","subscriptionUrl","https://synthetic.invalid/unused","exitHost","127.0.0.1","exitPort",1080,"entryPool",new JSONArray().put("Entry|A").put("Entry|B")));n.startNow();n.lifecycleEvents.clear();
+    NativeNetwork n=new NativeNetwork("cause");n.secrets.save(J.obj("entryMode","latency","subscriptionUrl","https://synthetic.invalid/unused","exitHost","127.0.0.1","exitPort",1080,"entryPool",new JSONArray().put("Entry|A").put("Entry|B")));n.names=Arrays.asList("Entry|A","Entry|B");n.currentEntry=n.controllerEntry="Entry|A";n.startNow();n.lifecycleEvents.clear();
     Throwable body=(scenario.equals("body-only")||scenario.equals("both")||scenario.equals("same-reference"))?(error?new AssertionError("controlled body error"):new IOException("controlled body failure")):null;
     Throwable restore=(scenario.equals("restore-only")||scenario.equals("both"))?(error?new AssertionError("controlled restore error"):new IOException("controlled restore failure")):scenario.equals("same-reference")?body:null;
     Throwable observed=null;
     try{/* CURRENT_REPAIR_SETUP */n.injectedRestoreFailure=restore;n.restoreFailureArmed=true;n.lifecycleEvents.add("identity:"+n.settings.optString("entryMode"));try(LifecycleStream stream=new LifecycleStream(n)){if(body instanceof Exception)throw (Exception)body;if(body instanceof Error)throw (Error)body;}/* CURRENT_REPAIR_RESTORE */}catch(Exception|Error failure){observed=failure;}
     Throwable[] suppressed=observed==null?new Throwable[0]:observed.getSuppressed();JSONObject result=J.obj("scenario",scenario,"kind",error?"Error":"Exception","observed",observed==null?"":observed.toString(),"observedIsBody",body!=null&&observed==body,"observedIsRestore",restore!=null&&observed==restore,"suppressedCount",suppressed.length,"suppressedIsRestore",suppressed.length==1&&suppressed[0]==restore,"runtimeMode",n.settings.optString("entryMode"),"durableMode",n.secrets.settings().optString("entryMode"),"calls",new JSONArray(n.lifecycleEvents));n.close();return result;
   }
-  public static void main(String[] args)throws Exception{JSONArray causes=new JSONArray();for(boolean error:new boolean[]{false,true})for(String scenario:new String[]{"normal","body-only","restore-only","both","same-reference"})causes.put(causeReplay(scenario,error));System.out.println(J.obj("before",replay(true),"current",replay(false),"beforeRepair",repairReplay(true),"currentRepair",repairReplay(false),"lifecycleSuccess",lifecycleReplay(false),"lifecycleFailure",lifecycleReplay(true),"failureCauses",causes,"actualAndroidExecution",false,"actualNativeExecution",false,"actualSocketExecution",false));}
+
+  static final class Fixed {int port(){return 1080;}}
+  static JSONObject selectionValidationReplay(String identity)throws Exception{
+    NativeNetwork n=new NativeNetwork("real-selection-validation");Fixed fixed=new Fixed();
+    /* ACTUAL_INITIAL_CONFIGURATION */
+    JSONArray provider=J.arr(J.obj("name","Entry|slow"),J.obj("name","Entry|fast"));n.names=providerNames(provider);n.currentEntry=n.controllerEntry="Entry|fast";
+    if(!identity.equals("none")){NetworkCatalog.put(config,"entryNodeKey","");if(!identity.equals("missing"))NetworkCatalog.put(config,"entryPoolNodeKeys",J.obj("Entry|slow",hash("Entry|slow"),"Entry|fast",identity.equals("wrong")?hash("wrong-entry"):hash("Entry|fast")));}
+    EntrySelection.validate(config,n.names);n.secrets.save(config);String original=n.secrets.settings().toString();n.lifecycleEvents.clear();
+    boolean oldAccepted=false,newAccepted=false;String oldFailure="",newFailure="";JSONObject bound=new JSONObject();
+    try{/* PRE_ENTRY_REPAIR_SETUP */oldAccepted=true;/* CURRENT_REPAIR_RESTORE */}catch(Exception failure){oldFailure=failure.getMessage();}
+    JSONArray oldInputs=new JSONArray(n.validationInputs);n.validationInputs.clear();n.lifecycleEvents.clear();
+    try{/* CURRENT_REPAIR_SETUP */newAccepted=true;bound=J.parse(repairConfiguration.toString());/* CURRENT_REPAIR_RESTORE */}catch(Exception failure){newFailure=failure.getMessage();}
+    JSONObject result=J.obj("identity",identity,"initialMode",config.optString("entryMode"),"initialEntry",config.optString("entry"),"initialPermitted",true,"oldAccepted",oldAccepted,"oldFailure",oldFailure,"oldStartValidationInputs",oldInputs,"newAccepted",newAccepted,"newFailure",newFailure,"bound",bound,"newStartValidationInputs",new JSONArray(n.validationInputs),"restoredMode",n.secrets.settings().optString("entryMode"),"restoredEntry",n.secrets.settings().optString("entry"),"originalUnchanged",original.equals(config.toString()),"durableRestored",original.equals(n.secrets.settings().toString()),"runtimeRestored",original.equals(n.settings.toString()),"calls",new JSONArray(n.lifecycleEvents));n.close();return result;
+  }
+  public static void main(String[] args)throws Exception{JSONArray selection=new JSONArray();for(String identity:new String[]{"none","valid","missing","wrong"})selection.put(selectionValidationReplay(identity));JSONArray causes=new JSONArray();for(boolean error:new boolean[]{false,true})for(String scenario:new String[]{"normal","body-only","restore-only","both","same-reference"})causes.put(causeReplay(scenario,error));System.out.println(J.obj("before",replay(true),"current",replay(false),"beforeRepair",repairReplay(true),"currentRepair",repairReplay(false),"lifecycleSuccess",lifecycleReplay(false),"lifecycleFailure",lifecycleReplay(true),"failureCauses",causes,"selectionValidation",selection,"actualAndroidExecution",false,"actualNativeExecution",false,"actualSocketExecution",false));}
 '''
 
 def generated(fixture):
@@ -124,7 +140,7 @@ def generated(fixture):
  for signature in removed:harness=harness.replace(block(harness,signature),'')
  harness=harness.replace('  JSONObject api(','  JSONObject selectionApi(',1)
  selected=['  static final class ProbeTicket ','  static final class ProbeResult ','  ProbeResult probeMeasured(String proxy,String exactEntry)','  ProbeResult probeMeasured(String proxy,String exactEntry,RecoveryRoute recovery)','  boolean probeCurrent(','  boolean probeBindingCurrent(','  boolean probeCallCurrent(','  static LatencyProbePolicy.Trace probeTrace(','  int probe(','  String probeUrl(',
- '  void health()','  void health(boolean reuseRecent)','  boolean configurationMatches(','  static String transportFingerprint(','  static boolean subscribedExit(','  static String hash(','  boolean lowLatency(','  static boolean freshLatency(','  boolean maintenanceCancelled(','  boolean cancelledVerifiedRouteCurrent(','  boolean retainedFailure(','  boolean retainVerifiedRoute(','  void verifyExitWhenDue(']
+ '  void health()','  void health(boolean reuseRecent)','  static String literalRegex(','  static List<String> providerNames(','  static void validateEntryIdentities(JSONObject settings,JSONArray nodes)','  boolean configurationMatches(','  static String transportFingerprint(','  static boolean subscribedExit(','  static String hash(','  boolean lowLatency(','  static boolean freshLatency(','  boolean maintenanceCancelled(','  boolean cancelledVerifiedRouteCurrent(','  boolean retainedFailure(','  boolean retainVerifiedRoute(','  void verifyExitWhenDue(']
  bodies={signature:block(source,signature) for signature in selected}
  extra=EXTRA.replace('/* ACTUAL_ADDITIONAL_METHODS */','\n'.join(bodies.values()))
  old=original_fixture(fixture);before,_=display_fragment(old);current,oracle=display_fragment(fixture)
@@ -136,12 +152,13 @@ def generated(fixture):
  setup=current_repair[current_repair.index('JSONObject savedRepairConfiguration='):current_repair.index('\n    final String token=n.token,entry=n.currentEntry;')]
  restore=(REPAIR_RESTORE if REPAIR_RESTORE in current_repair else LEGACY_REPAIR_RESTORE).strip()
  secret=(PRODUCTION/'SecretStore.java').read_text();serialization=block(secret,'  JSONObject settings()')+'\n'+block(secret,'  void save(JSONObject o)')
- extra=extra.replace('/* BEFORE_FRAGMENT */',before).replace('/* CURRENT_FRAGMENT */',current).replace('/* BEFORE_REPAIR_SETUP */',old_setup).replace('/* CURRENT_REPAIR_SETUP */',setup).replace('/* CURRENT_REPAIR_RESTORE */',restore).replace('/* ACTUAL_SECRET_SERIALIZATION */',serialization)
+ initial_config=next(line.strip() for line in fixture.splitlines() if line.strip().startswith('JSONObject config=J.obj("subscriptionUrl","https://synthetic.invalid/unused-subscription"'))
+ extra=extra.replace('/* ACTUAL_INITIAL_CONFIGURATION */',initial_config).replace('/* PRE_ENTRY_REPAIR_SETUP */',CAUSAL_REPAIR_NEW).replace('/* BEFORE_FRAGMENT */',before).replace('/* CURRENT_FRAGMENT */',current).replace('/* BEFORE_REPAIR_SETUP */',old_setup).replace('/* CURRENT_REPAIR_SETUP */',setup).replace('/* CURRENT_REPAIR_RESTORE */',restore).replace('/* ACTUAL_SECRET_SERIALIZATION */',serialization)
  harness=harness.replace('  static class ExitMismatch ',extra+'\n  static class ExitMismatch ',1).replace('import java.io.*;','import java.io.*;\nimport java.net.*;\nimport java.time.Instant;\nimport java.nio.charset.StandardCharsets;')
- harness=harness.replace('class J {','class J {'+block((PRODUCTION/'J.java').read_text(),'  static JSONObject parse('),1)
- strings=block((PRODUCTION/'EntrySelection.java').read_text(),'  static List<String> strings(')
+ harness=harness.replace('class J {','class J {'+block((PRODUCTION/'J.java').read_text(),'  static JSONObject parse(')+block((PRODUCTION/'J.java').read_text(),'  static JSONArray arr('),1)
+ selection=(PRODUCTION/'EntrySelection.java').read_text();selection=selection[selection.index('final class EntrySelection'):]
  keys=block((PRODUCTION/'NetworkSourceSelection.java').read_text(),'  static List<String> keys(')
- harness+='\nclass EntrySelection {'+strings+'}\nclass NetworkSourceSelection {'+keys+'}\nclass NetworkCatalog {static void put(JSONObject value,String key,Object data){try{value.put(key,data);}catch(Exception error){throw new RuntimeException(error);}}}\n'
+ harness+='\n'+selection+'\nclass NetworkSourceSelection {'+keys+'}\nclass NetworkCatalog {static void put(JSONObject value,String key,Object data){try{value.put(key,data);}catch(Exception error){throw new RuntimeException(error);}}}\n'
  if any(harness.count(body)!=1 for body in bodies.values()):raise ValueError('Complete production health/probe/config/recovery block drifted')
  return harness,{name:sha(body.encode()) for name,body in bodies.items()},oracle
 
@@ -163,7 +180,8 @@ class FailedChainFixtureConfigTest(unittest.TestCase):
    controlledReceiptRead='Fixture verifiedRouteCurrent helper uses the actual extracted ExitRouteReceipt.matches/sameCore; no fresh service IPC.',
    syntheticExitCounterMeaning='Counts controlled verifyExit callback invocations, not actual HTTP IP requests; ipDelay/fault setup is replayed but does not drive transport timing.',
    unexecutedContinuingRepairPath='The forced scan/rollback flow is not executed by this host. Repair retains its original random branch through a durable save and genuine Android stop/start in the fixture; host lifecycle start/stop and stream are adapters. Original native rollback/WSS gates remain required.',
-   secretSerializationScope='Actual SecretStore.settings/save and J.parse bodies execute; encrypted backing storage and core start/stop remain controlled host adapters.')
+   secretSerializationScope='Actual SecretStore.settings/save and J.parse bodies execute; encrypted backing storage and core start/stop remain controlled host adapters.',
+   startupValidationScope='Synthetic core start now executes complete actual EntrySelection.validate and NativeNetwork.validateEntryIdentities against a controlled provider catalog. Exact initial Android config includes latency and empty entry. This validates selection/identity contracts; it does not execute core startup, native parsing or exit HTTPS.')
   self.assertTrue(all(sha((ROOT/path).read_bytes())==digest for path,digest in hashes.items()));value['executionInputsUnchanged']=True
   report=Path(os.environ.get('FAILED_CHAIN_FIXTURE_CONFIG_REPORT',str(ROOT/'work/profile-host/failed-chain-fixture-config-results.json')));report.parent.mkdir(parents=True,exist_ok=True);report.write_text(json.dumps(value,indent=2,ensure_ascii=False)+'\n')
   self.assertEqual(value['before']['exitRequests'],0);self.assertEqual(value['before']['verificationCalls'],0);self.assertFalse(value['before']['ready']);self.assertFalse(value['before']['oracle'])
@@ -173,6 +191,17 @@ class FailedChainFixtureConfigTest(unittest.TestCase):
   self.assertEqual(value['currentRepair']['inputMode'],'random');self.assertEqual(value['currentRepair']['restoredRuntimeMode'],'latency');self.assertEqual(value['currentRepair']['restoredDurableMode'],'latency');self.assertTrue(value['currentRepair']['cloneDistinct']);self.assertTrue(value['currentRepair']['savedSnapshotUnchanged'])
   for key,failed in [('lifecycleSuccess',False),('lifecycleFailure',True)]:
    lifecycle=value[key];self.assertEqual(lifecycle['failedBody'],failed);self.assertTrue(lifecycle['cloneDistinct']);self.assertTrue(lifecycle['savedObjectUnchanged']);self.assertEqual(lifecycle['runtimeMode'],'latency');self.assertEqual(lifecycle['durableMode'],'latency');self.assertTrue(lifecycle['configurationMatches']);self.assertEqual(lifecycle['calls'],['stop','save:random','start:random','identity:random','stream-open','stream-close','stop','save:latency','start:latency'])
+
+  self.assertEqual(len(value['selectionValidation']),4)
+  for row in value['selectionValidation']:
+   with self.subTest(selectionIdentity=row['identity']):
+    self.assertEqual(row['initialMode'],'latency');self.assertEqual(row['initialEntry'],'');self.assertTrue(row['initialPermitted']);self.assertFalse(row['oldAccepted']);self.assertEqual(row['oldFailure'],'当前入口不属于所选订阅，请重新选择')
+    self.assertEqual([(x['entryMode'],x.get('entry','')) for x in row['oldStartValidationInputs']],[('random',''),('latency','')]);self.assertTrue(row['originalUnchanged']);self.assertTrue(row['durableRestored']);self.assertEqual(row['restoredMode'],'latency');self.assertEqual(row['restoredEntry'],'')
+    if row['identity'] in ('none','valid'):
+     self.assertTrue(row['newAccepted']);self.assertEqual(row['newFailure'],'');self.assertEqual(row['bound']['entryMode'],'random');self.assertEqual(row['bound']['entry'],'Entry|fast');self.assertEqual([(x['entryMode'],x.get('entry','')) for x in row['newStartValidationInputs']],[('random','Entry|fast'),('latency','')]);self.assertTrue(row['runtimeRestored']);self.assertEqual(row['calls'],['stop','save:random','start:random','stop','save:latency','start:latency'])
+     if row['identity']=='valid':self.assertEqual(row['bound']['entryNodeKey'],hashlib.sha256(b'Entry|fast').hexdigest())
+    elif row['identity']=='missing':self.assertFalse(row['newAccepted']);self.assertEqual(row['newFailure'],'Repair fixture requires the retained candidate node identity');self.assertEqual(row['calls'],[]);self.assertEqual(row['newStartValidationInputs'],[])
+    else:self.assertFalse(row['newAccepted']);self.assertEqual(row['newFailure'],'当前入口与保存的节点不同，请重新选择');self.assertTrue(row['runtimeRestored']);self.assertEqual(row['calls'],['stop','save:random','stop','save:latency','start:latency'])
   self.assertEqual(len(value['failureCauses']),10)
   for row in value['failureCauses']:
    with self.subTest(kind=row['kind'],scenario=row['scenario']):
@@ -186,7 +215,7 @@ class FailedChainFixtureConfigTest(unittest.TestCase):
   current=FIXTURE.read_text();self.assertTrue(DISPLAY_OLD not in current,'Display fault setup still mutates only RAM mode');self.assertTrue(REPAIR_OLD not in current,'Repair startup still mutates only RAM mode');self.assertEqual(current.count(REPAIR_NEW),1,'Primary failure capture must be present');self.assertEqual(current.count(REPAIR_RESTORE),1,'Restoration must retain primary/suppressed causes');self.assertEqual(sha(original_fixture(current).encode()),ORIGINAL_SHA)
  def test_one_exit_oracle_and_wss_timeout_mutations_are_rejected(self):
   current=FIXTURE.read_text()
-  for old,new in [('site.ipRequests.get()==ipBefore+1','site.ipRequests.get()==ipBefore+2'),('stream.awaitEchoes(echoes)&&stream.failure==null','true'),('site.ipDelay=250','site.ipDelay=249'),('repairConfiguration=J.parse(savedRepairConfiguration.toString())','repairConfiguration=savedRepairConfiguration'),('n.stopNow();n.secrets.save(repairConfiguration);n.startNow();','n.stopNow();n.startNow();n.secrets.save(repairConfiguration);'),('if(restoreFailure!=repairFailure)','if(true)'),('repairFailure.addSuppressed(restoreFailure)','restoreFailure.addSuppressed(repairFailure)')]:
+  for old,new in [('site.ipRequests.get()==ipBefore+1','site.ipRequests.get()==ipBefore+2'),('stream.awaitEchoes(echoes)&&stream.failure==null','true'),('site.ipDelay=250','site.ipDelay=249'),('repairConfiguration=J.parse(savedRepairConfiguration.toString())','repairConfiguration=savedRepairConfiguration'),('n.stopNow();n.secrets.save(repairConfiguration);n.startNow();','n.stopNow();n.startNow();n.secrets.save(repairConfiguration);'),('if(restoreFailure!=repairFailure)','if(true)'),('repairFailure.addSuppressed(restoreFailure)','restoreFailure.addSuppressed(repairFailure)'),('NetworkCatalog.put(repairConfiguration,"entry",n.currentEntry);',''),('EntrySelection.validate(repairConfiguration,n.names);',''),('NetworkCatalog.put(repairConfiguration,"entryNodeKey",key);','')]:
    self.assertIn(old,current)
    with self.subTest(mutation=old),self.assertRaises(ValueError):original_fixture(current.replace(old,new,1))
 

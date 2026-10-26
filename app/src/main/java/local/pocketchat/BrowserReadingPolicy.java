@@ -9,6 +9,13 @@ final class BrowserReadingPolicy {
   static float bounded(float value){return Float.isNaN(value)||Float.isInfinite(value)?1f:Math.max(MIN,Math.min(MAX,value));}
   static float fit(int width,float density,float viewport){return width<=0?0:Float.isFinite(viewport)&&viewport>0?width/viewport:Float.isFinite(density)&&density>0?density:0;}
   static float target(int width,float density,float viewport,float choice){return fit(width,density,viewport)*bounded(choice);}
+  static boolean fitted(int width,float scale,float viewport,float layout){
+    if(width<=0||!Float.isFinite(scale)||scale<=0||!Float.isFinite(viewport)||viewport<=0||!Float.isFinite(layout)||layout<=0)return false;
+    double residual=Math.abs((double)scale*viewport/layout-width);
+    // clientWidth is integral. Allow its sub-CSS-pixel rounding, while keeping
+    // both the native width error below 6px and the page edge within 1 CSS px.
+    return residual<6&&residual<=scale;
+  }
   static float fromScale(int width,float density,float viewport,float scale){float base=fit(width,density,viewport);return base>0&&Float.isFinite(scale)&&scale>0?bounded(scale/base):MIN;}
   static float migrate(int width,float density,float choice){return width>0&&Float.isFinite(density)&&density>0?Math.max(1f,bounded(bounded(choice)*width/(BrowserDisplay.DESKTOP_WIDTH*density))):1f;}
   static boolean chat(String url){try{URI u=new URI(url);return "https".equals(u.getScheme())&&("chatgpt.com".equals(u.getHost())||"chat.openai.com".equals(u.getHost()))&&u.getRawUserInfo()==null&&(u.getPort()==-1||u.getPort()==443);}catch(Exception e){return false;}}
