@@ -25,6 +25,10 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
   final JSONArray checks=new JSONArray(),requests=new JSONArray(),negatives=new JSONArray(),routes=new JSONArray(),sessionRestorations=new JSONArray();
   final ExecutorService runner=Executors.newSingleThreadExecutor();
   final SourceRouteTerminalObserver terminalObserver=new SourceRouteTerminalObserver(this);
+  final JSONArray sourceCaseHandoffs=new JSONArray();
+  SourceRouteTerminalObserver.Scope previousNegativeScope;
+  volatile CaseRecovery caseRecovery;
+  CaseRecovery sourceCaseOwner;
   String expectedSource,runNonce;JSONObject installedBuildIdentity;
   final JSONArray recoveryEvents=new JSONArray();int recoveryEventsDropped;volatile int recoveryRequestSerial;boolean recoveryEventsClosed;long navigationPhase;String lastRecoveryState="";ChatSession.Observer recoveryObserver;
   NetworkOptimizationIntegrationActivity.HttpFixture site,plain;
@@ -49,10 +53,15 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
     @Override void runStartOperation(int mode){startObservation.workerBefore(this,mode);try{super.runStartOperation(mode);}finally{startObservation.workerAfter(this,mode);}}
     @Override void recoverOutcome(RecoveryCallback callback){
       int request=++test.recoveryRequestSerial;test.recoveryEvent("recover-request",J.obj("request",request,"state",test.recoveryState()));
+      CaseRecovery handoff=new CaseRecovery(test,request);test.caseRecovery=handoff;
       SourceRouteTerminalObserver.Recovery observed=test.terminalObserver.recoveryStarted(request);
       RecoveryCallback wrapped=outcome->{
+        boolean current=handoff.current(test,true);
         test.recoveryEvent("recover-callback-before",J.obj("request",request,"outcome",outcome.state.name(),"message",outcome.message,"hasReceipt",outcome.receipt!=null,"state",test.recoveryState()));
-        try{callback.done(outcome);}finally{test.recoveryEvent("recover-callback-after",J.obj("request",request,"state",test.recoveryState()));test.terminalObserver.recoveryFinished(observed,outcome);}
+        try{callback.done(outcome);}catch(RuntimeException|Error failure){handoff.done.completeExceptionally(failure);throw failure;}
+        finally{test.recoveryEvent("recover-callback-after",J.obj("request",request,"state",test.recoveryState()));test.terminalObserver.recoveryFinished(observed,outcome);
+          if(current&&handoff.current(test,false))handoff.done.complete(J.obj("request",request,"outcome",outcome.state.name(),"hasReceipt",outcome.receipt!=null,"completedAtNs",now()));
+          else handoff.done.completeExceptionally(new IOException("Source case handoff recovery owner changed"));}
       };
       SourceRouteTerminalObserver.Scope scope=test.terminalObserver.active;if(scope!=null&&scope.startupRoot!=null)startObservation.recovery(wrapped,request,scope.startupRoot);
       super.recoverOutcome(wrapped);
@@ -100,7 +109,53 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
     for(int i=0;i<details.length();i++)check("Native "+role+" node has versioned fingerprint "+i,details.getJSONObject(i).optString("configFingerprint").matches("[0-9a-f]{64}")&&details.getJSONObject(i).optInt("configFingerprintVersion")==1);
     catalog.parsed(token,names,details,bytes,System.currentTimeMillis());return catalog.subscription(role,row.getString("id"));
   }
-  void publishOriginal()throws Exception{JSONObject value=J.parse(candidate.toString());new NetworkSourceSelection.ActiveSnapshot(vault).write(NetworkSourceSelection.resolve(catalog,value),value);}
+  void publishOriginal()throws Exception{publishOriginal("restore-valid-source");}
+  void publishOriginal(String next)throws Exception{if(session!=null)handoffSourceCase(next);JSONObject value=J.parse(candidate.toString());new NetworkSourceSelection.ActiveSnapshot(vault).write(NetworkSourceSelection.resolve(catalog,value),value);}
+  /** An explicit fixture configuration boundary, separate from passive terminal observation. */
+  static final class CaseRecovery {
+    final int request;final ChatSession session;final FixtureView view;final GeckoSession sdk;final NativeNetwork network;final Object transport;final long connection,token;
+    final CompletableFuture<JSONObject> done=new CompletableFuture<>();
+    CaseRecovery(NetworkSourcesRouteIntegrationActivity test,int request){this.request=request;session=test.session;view=test.view;sdk=view.current;network=test.network;transport=network.transport;connection=session.connectionEpoch;token=session.recoveryToken;}
+    boolean sameObjects(NetworkSourcesRouteIntegrationActivity test){return test.session==session&&test.view==view&&test.network==network&&view.current==sdk&&network.transport==transport;}
+    boolean current(NetworkSourcesRouteIntegrationActivity test,boolean requireToken){return sameObjects(test)&&session.connectionEpoch==connection&&(!requireToken||session.recoveryToken==token);}
+  }
+  <T>T caseUi(SourceRouteTerminalObserver.Scope previous,Work<T> work)throws Exception{
+    if(previous==null)return ui(work);
+    CompletableFuture<T> result=new CompletableFuture<>();runOnUiThread(()->{try{SourceRouteTerminalObserver.remaining(previous);result.complete(work.run());}catch(Throwable failure){result.completeExceptionally(failure);}});
+    return result.get(SourceRouteTerminalObserver.remaining(previous),TimeUnit.NANOSECONDS);
+  }
+  JSONObject caseDocument(SourceRouteTerminalObserver.Scope previous)throws Exception{
+    String script="(()=>({url:location.href,controlled:!!document.getElementById('pool-ready'),timeOrigin:performance.timeOrigin,draft:document.getElementById('prompt-textarea')?.value,cookie:document.cookie,sends:Number(document.getElementById('send-count')?.textContent)}))()";
+    CompletableFuture<String> result=new CompletableFuture<>();caseUi(previous,()->{view.evaluateJavascript(script,result::complete);return null;});
+    String raw=previous==null?result.get(15,TimeUnit.SECONDS):result.get(SourceRouteTerminalObserver.remaining(previous),TimeUnit.NANOSECONDS);JSONObject value=new JSONObject(raw);
+    if(!ORIGIN.concat("/pool").equals(value.opt("url"))||!Boolean.TRUE.equals(value.opt("controlled"))||!(value.opt("draft") instanceof String)||!(value.opt("cookie") instanceof String)||!(value.opt("timeOrigin") instanceof Number)||!Double.isFinite(value.getDouble("timeOrigin"))||value.getDouble("timeOrigin")<=0||!(value.opt("sends") instanceof Number)||value.getDouble("sends")!=0)throw new IOException("Source case handoff has no exact controlled document");
+    return value;
+  }
+  JSONObject caseState(){return J.obj("session",System.identityHashCode(session),"browser",System.identityHashCode(view),"sdk",System.identityHashCode(view.current),"transport",System.identityHashCode(network.transport),"connectionEpoch",session.connectionEpoch,"navigationEpoch",session.navigationEpoch,"recoveryToken",session.recoveryToken,"recoveryScheduled",session.recoveryScheduled,"connecting",session.connecting,"starting",network.starting,"ready",network.ready,"hasReceipt",network.verifiedRoute!=null);}
+  void handoffSourceCase(String next)throws Exception{
+    SourceRouteTerminalObserver.Scope previous=previousNegativeScope;JSONObject row=J.obj("next",next,"sourceCommit",expectedSource,"runNonce",runNonce,"method","fixture source transition via production ChatSession.invalidateConnection","beganAtNs",now(),"status","started","waits",new JSONArray());sourceCaseHandoffs.put(row);
+    if(previous!=null){NetworkCatalog.put(row,"previousCaseId",previous.id);NetworkCatalog.put(row,"originalDeadlineAtNs",previous.deadlineNs);}
+    try{
+      JSONObject documentBefore=caseDocument(previous);NetworkCatalog.put(row,"documentBefore",documentBefore);
+      for(;;){
+        CaseRecovery wait=caseUi(previous,()->{
+          if(terminalObserver.active!=null||previous!=null&&!"passed".equals(previous.evidence.optString("status")))throw new IOException("Source case handoff has no previous terminal proof");
+          if(sourceCaseOwner==null)sourceCaseOwner=new CaseRecovery(this,0);else if(!sourceCaseOwner.sameObjects(this))throw new IOException("Source case handoff changed its session, browser or transport");
+          if(network.starting||session.connecting){CaseRecovery recovery=caseRecovery;if(previous==null||recovery==null||recovery.request!=recoveryRequestSerial||!recovery.current(this,true)||recovery.done.isDone())throw new IOException("Source case handoff cannot identify an active recovery");return recovery;}
+          if(previous!=null&&(network.ready||network.verifiedRoute!=null))throw new IOException("Source case handoff has no rejected route");
+          JSONObject before=caseState();NetworkCatalog.put(row,"before",before);session.invalidateConnection();JSONObject after=caseState();NetworkCatalog.put(row,"after",after);
+          if(before.getInt("session")!=after.getInt("session")||before.getInt("browser")!=after.getInt("browser")||before.getInt("sdk")!=after.getInt("sdk")||before.getInt("transport")!=after.getInt("transport")||after.getLong("connectionEpoch")!=before.getLong("connectionEpoch")+1||after.getLong("navigationEpoch")!=before.getLong("navigationEpoch")+1||after.getLong("recoveryToken")!=before.getLong("recoveryToken")+1||after.getBoolean("recoveryScheduled")||after.getBoolean("connecting")||before.getBoolean("starting")!=after.getBoolean("starting")||before.getBoolean("ready")!=after.getBoolean("ready")||before.getBoolean("hasReceipt")!=after.getBoolean("hasReceipt"))throw new IOException("Source case handoff changed an unrelated owner or route");
+          return null;
+        });
+        if(wait==null)break;
+        long began=now();JSONObject terminal=wait.done.get(SourceRouteTerminalObserver.remaining(previous),TimeUnit.NANOSECONDS);
+        if(!"FAILED".equals(terminal.optString("outcome"))||terminal.optBoolean("hasReceipt"))throw new IOException("Source case handoff recovery was not rejected");
+        row.getJSONArray("waits").put(J.obj("request",wait.request,"connectionEpoch",wait.connection,"recoveryToken",wait.token,"beganAtNs",began,"receivedAtNs",now(),"terminal",terminal));
+      }
+      JSONObject documentAfter=caseDocument(previous);NetworkCatalog.put(row,"documentAfter",documentAfter);if(!documentBefore.toString().equals(documentAfter.toString()))throw new IOException("Source case handoff changed the document, draft or cookie");
+      long ended=now();if(previous!=null&&ended>=previous.deadlineNs)throw new IOException("Source case handoff exceeded the original case phase deadline");NetworkCatalog.put(row,"endedAtNs",ended);NetworkCatalog.put(row,"status","passed");previousNegativeScope=null;event("sourceCaseHandoff",row);
+    }catch(Exception failure){NetworkCatalog.put(row,"status","failed");NetworkCatalog.put(row,"error",failure.toString());NetworkCatalog.put(row,"endedAtNs",now());throw failure;}
+  }
   boolean restart()throws Exception{CompletableFuture<Boolean> done=new CompletableFuture<>();network.restart((ok,message)->{event("startup",J.obj("ok",ok,"message",message));terminalObserver.restartDone(ok);done.complete(ok);});return done.get(75,TimeUnit.SECONDS);}
   boolean restart(SourceRouteTerminalObserver.Scope scope)throws Exception{CompletableFuture<Boolean> done=new CompletableFuture<>();NativeNetwork.Callback callback=(ok,message)->{event("startup",J.obj("ok",ok,"message",message));terminalObserver.restartDone(ok);done.complete(ok);};scope.startupRoot=network.startObservation.root(callback,scope.id,expectedSource,runNonce);network.restart(callback);return done.get(SourceRouteTerminalObserver.remaining(scope),TimeUnit.NANOSECONDS);}
   boolean pushedReceiptCurrent(){NativeNetwork.ExitRouteReceipt receipt=network==null?null:network.verifiedRoute;return network!=null&&network.ready&&!network.recoveryBlocked&&receipt!=null&&receipt.matches(network,network.transport==null?null:network.transport.state);}
@@ -205,9 +260,9 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
     return row;
   }
   void reject(String name,Work<Void> mutation)throws Exception{
-    publishOriginal();network.stopNow();check(name+" begins with the managed core stopped",!network.coreAlive());mutation.run();JSONObject settings=vault.settings();boolean entryHashValid=NativeNetwork.sourceCacheMatches(settings,NetworkCatalog.ENTRY,network.sourceMeta("subscription-meta"),vault.get("subscription")),exitHashValid=NativeNetwork.sourceCacheMatches(settings,NetworkCatalog.EXIT,network.sourceMeta("exit-subscription-meta"),vault.get("exit-subscription"));JSONObject before=contacts();SourceRouteTerminalObserver.Scope scope=terminalObserver.begin(name,before);boolean ok=restart(scope);JSONObject after=contacts();
+    publishOriginal(name);network.stopNow();check(name+" begins with the managed core stopped",!network.coreAlive());mutation.run();JSONObject settings=vault.settings();boolean entryHashValid=NativeNetwork.sourceCacheMatches(settings,NetworkCatalog.ENTRY,network.sourceMeta("subscription-meta"),vault.get("subscription")),exitHashValid=NativeNetwork.sourceCacheMatches(settings,NetworkCatalog.EXIT,network.sourceMeta("exit-subscription-meta"),vault.get("exit-subscription"));JSONObject before=contacts();SourceRouteTerminalObserver.Scope scope=terminalObserver.begin(name,before);boolean ok=restart(scope);JSONObject after=contacts();
     check(name+" rejects production startup and closes the core",!ok&&!network.ready&&!network.coreAlive());check(name+" contacts no verification, probe or website target",before.toString().equals(after.toString()));
-    JSONObject row=fetch(name,false,scope);long observedAt=now();JSONObject negative=J.obj("name",name,"started",ok,"coreAliveAfter",network.coreAlive(),"readyAfter",network.ready,"entrySnapshotHashValid",entryHashValid,"exitSnapshotHashValid",exitHashValid,"before",before,"after",after,"request",row,"message",network.message,"postFetchObservedAtNs",observedAt);negatives.put(negative);terminalObserver.finish(scope,negative);
+    JSONObject row=fetch(name,false,scope);long observedAt=now();JSONObject negative=J.obj("name",name,"started",ok,"coreAliveAfter",network.coreAlive(),"readyAfter",network.ready,"entrySnapshotHashValid",entryHashValid,"exitSnapshotHashValid",exitHashValid,"before",before,"after",after,"request",row,"message",network.message,"postFetchObservedAtNs",observedAt);negatives.put(negative);terminalObserver.finish(scope,negative);previousNegativeScope=scope;
   }
   String coreSha()throws Exception{MessageDigest digest=MessageDigest.getInstance("SHA-256");try(InputStream in=new FileInputStream(new File(getApplicationInfo().nativeLibraryDir,"libmihomo.so"))){byte[] b=new byte[65536];for(int n;(n=in.read(b))!=-1;)digest.update(b,0,n);}StringBuilder s=new StringBuilder();for(byte b:digest.digest())s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();}
   JSONObject runtimeConfig()throws Exception{JSONObject config=J.parse(new String(java.nio.file.Files.readAllBytes(new File(network.root,"config.json").toPath()),StandardCharsets.UTF_8));config.remove("secret");return config;}
@@ -250,6 +305,6 @@ public final class NetworkSourcesRouteIntegrationActivity extends Activity {
       check("No stale subscribed exit or replacement entry contacted any target",decoy.serial.get()==0&&replacementEntry.serial.get()==0);check("All real SOCKS targets remained inside the fixture allowlists",entryA.denied.get()==0&&entryB.denied.get()==0&&fixed.denied.get()==0&&decoy.denied.get()==0);JSONObject draft=eval("({draft:document.getElementById('prompt-textarea').value,sends:Number(document.getElementById('send-count').textContent)})");check("The controlled page draft survives source changes without sending",draft.optString("draft").equals("unsent pool draft")&&draft.optInt("sends")==0);NetworkCatalog.put(report,"status","passed");
     }catch(Throwable failure){NetworkCatalog.put(report,"error",failure.toString());Log.e(TAG,"Network sources route failed",failure);if(view!=null&&fixtureIdentity!=null)try{ui(()->{JSONObject state=GeckoConnectionPoolIntegrationActivity.startupState(session,view,fixtureIdentity);event("failedControlledLoadState",state);NetworkCatalog.put(report,"failedControlledLoadState",state);return null;});}catch(Exception diagnostic){NetworkCatalog.put(report,"startupDiagnosticError",diagnostic.toString());}}
     finally{terminalObserver.close();if(view!=null)try{ui(()->{session.handler.removeCallbacks(session.tick);if(recoveryObserver!=null)session.remove(recoveryObserver);view.destroy();return null;});}catch(Exception ignored){}if(network!=null){try{network.stopNow();}catch(Exception ignored){}network.worker.shutdownNow();network.probes.shutdownNow();network.closers.shutdownNow();network.traffic.reader.shutdownNow();}if(fixed!=null)NetworkCatalog.put(report,"fixedWire",fixed.evidence());if(decoy!=null)NetworkCatalog.put(report,"decoyWire",decoy.evidence());if(entryA!=null)NetworkCatalog.put(report,"entryAWire",entryA.evidence());if(entryB!=null)NetworkCatalog.put(report,"entryBWire",entryB.evidence());if(replacementEntry!=null)NetworkCatalog.put(report,"replacementEntryWire",replacementEntry.evidence());for(AutoCloseable fixture:new AutoCloseable[]{site,plain,fixed,decoy,entryA,entryB,replacementEntry})if(fixture!=null)try{fixture.close();}catch(Exception ignored){}}
-    NetworkCatalog.put(report,"recoveryDiagnostics",recoveryDiagnostics());NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"requests",requests);NetworkCatalog.put(report,"negativeCases",negatives);NetworkCatalog.put(report,"sessionRestorations",sessionRestorations);synchronized(routes){NetworkCatalog.put(report,"routes",routes);}try{File temporary=new File(getFilesDir(),"network-source-route-results.json.tmp");J.write(temporary,report.toString(2));if(!temporary.renameTo(new File(getFilesDir(),"network-source-route-results.json")))throw new IOException("Could not publish route report");}catch(Exception failure){Log.e(TAG,"Cannot persist route report",failure);}event("complete",J.obj("status",report.optString("status"),"checks",checks.length(),"error",report.optString("error")));runOnUiThread(this::finish);runner.shutdown();
+    NetworkCatalog.put(report,"sourceCaseHandoffs",sourceCaseHandoffs);NetworkCatalog.put(report,"recoveryDiagnostics",recoveryDiagnostics());NetworkCatalog.put(report,"checks",checks);NetworkCatalog.put(report,"requests",requests);NetworkCatalog.put(report,"negativeCases",negatives);NetworkCatalog.put(report,"sessionRestorations",sessionRestorations);synchronized(routes){NetworkCatalog.put(report,"routes",routes);}try{File temporary=new File(getFilesDir(),"network-source-route-results.json.tmp");J.write(temporary,report.toString(2));if(!temporary.renameTo(new File(getFilesDir(),"network-source-route-results.json")))throw new IOException("Could not publish route report");}catch(Exception failure){Log.e(TAG,"Cannot persist route report",failure);}event("complete",J.obj("status",report.optString("status"),"checks",checks.length(),"error",report.optString("error")));runOnUiThread(this::finish);runner.shutdown();
   }
 }
