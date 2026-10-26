@@ -47,9 +47,9 @@ public final class NativeProbeIntegrationActivity extends Activity {
   static final class StartupNetwork extends ProbeNetwork {
     final ProbeFixture target;final ThreadLocal<String> childTarget=new ThreadLocal<>();volatile String mode="";volatile long verifiedWinnerAt;
     StartupNetwork(Context c,NetworkOptimizationIntegrationActivity.HttpFixture site,NetworkOptimizationIntegrationActivity.HttpFixture plain,String cert,ProbeFixture target){super(c,site,plain,cert,new File(c.getNoBackupFilesDir(),"native-startup-test"));this.target=target;}
-    @Override RouteProbe startupProbe(String name,int index,String epoch){
+    @Override RouteProbe startupProbe(String name,int index,String epoch,RecoveryRoute recovery){
       String path="winner-cleanup".equals(mode)?("Entry|winner".equals(name)?"/startup-win":"/startup-loser"):("Entry|winner".equals(name)?"/startup-cancel-a":"/startup-cancel-b");
-      childTarget.set(target.url(path));try{return super.startupProbe(name,index,epoch);}finally{childTarget.remove();}
+      childTarget.set(target.url(path));try{return super.startupProbe(name,index,epoch,recovery);}finally{childTarget.remove();}
     }
     @Override String probeUrl(){String value=childTarget.get();return value==null?super.probeUrl():value;}
     @Override String verifyExit()throws Exception{String ip=super.verifyExit();if("winner-cleanup".equals(mode))verifiedWinnerAt=SystemClock.elapsedRealtime();return ip;}

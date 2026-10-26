@@ -30,10 +30,11 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   String originalDriver,manualDraft,inputDraft;JSONObject manualJob;long manualEpoch,manualConnection;
   String inputReadinessKey="";long inputReadySince;int inputTraceOffset,inputReadinessSequence;boolean inputImeSettled;
   GeckoInputTrace nativeInputTrace;GeckoInputTrace.Buffered bufferedInputTrace;boolean inputDiagnostics,inputNativeDiagnostics;
-  final JSONArray scrollDiagnosticPhases=new JSONArray();ScrollPhase scrollPhase;String scrollDiagnosticRun;
+  final JSONArray scrollDiagnosticPhases=new JSONArray();ScrollPhase scrollPhase,scrollDomTail;String scrollDiagnosticRun;
   static final class ScrollPhase {
     final String variant,url;final long navigationEpoch,started=SystemClock.elapsedRealtime();final GeckoSession sdk;final android.view.View surface;
-    final GeckoSession.CompositorScrollDelegate prior;final JSONArray samples=new JSONArray(),nativeUpdates=new JSONArray(),domEvents=new JSONArray();
+    final GeckoSession.CompositorScrollDelegate prior;final JSONArray samples=new JSONArray(),nativeUpdates=new JSONArray(),domEvents=new JSONArray(),domObservation=new JSONArray();
+    String run="";long expiresElapsedMs;
     int updates,sampleCount,touchPublished;float scrollX,scrollY,zoom;double beforeScrollTop;boolean hasBefore;
     ScrollPhase(String value,ChatSession owner){variant=value;url=owner.web.getUrl();navigationEpoch=owner.navigationEpoch;sdk=owner.web.current;surface=owner.web.surface;prior=sdk.getCompositorScrollDelegate();}
   }
@@ -99,7 +100,9 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   interface Result {void accept(JSONObject value)throws Exception;}
   void attempt(Step step){if(finished)return;try{step.run();}catch(Exception error){fail(error);}}
   void later(Step step,long delay){handler.postDelayed(()->attempt(step),delay);}
-  void event(String kind,JSONObject value){Log.i("PocketGeckoPerformance",J.obj("kind",kind,"value",value).toString());}
+  void event(String kind,JSONObject value){Log.i("PocketGeckoPerformance",J.obj("kind",kind,"value",value).toString());
+    if("gestureDeadline".equals(kind)&&scrollPhase!=null&&(scrollPhase.variant+"-scroll").equals(value.optString("id"))){scrollPhase.expiresElapsedMs=value.optLong("expiresElapsedMs",0);scrollPhase.run=scrollDiagnosticRun==null?"":scrollDiagnosticRun;}
+  }
   void check(String name,boolean pass){checkCount++;event("check",J.obj("name",name,"pass",pass));if(!pass)throw new IllegalStateException(name);}
   void fail(Exception error){if(finished)return;finishScrollDiagnostics("failed");finished=true;frames.stop();if(archiveRelease!=null)archiveRelease.countDown();stopInputTrace(()->event("report",J.obj("status","failed","actualAndroidExecution",true,"actualGeckoExecution",true,"inputDiagnosticsEnabled",inputDiagnostics,"inputNativeDiagnosticsEnabled",inputNativeDiagnostics,"checkCount",checkCount,"error",error.toString())));}
   String asset(String name)throws Exception{try(InputStream in=getAssets().open(name)){return J.text(in,512*1024);}}
@@ -204,8 +207,14 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     }});
   }
   String scrollSnapshotScript(boolean begin){return "(()=>{"+(begin?
-    "{const trace={active:true,events:[],count:0,initial:document.scrollingElement.scrollTop};const types=['touchstart','touchmove','touchend','touchcancel','wheel','scroll'];const listener=e=>{if(!trace.active)return;trace.count++;if(trace.count>64)return;const p=e.touches?.[0]||e.changedTouches?.[0],v=visualViewport;trace.events.push({sequence:trace.count,type:e.type,trusted:e.isTrusted,time:performance.now(),eventPhase:e.eventPhase,touches:e.touches?.length||0,x:p?.clientX??null,y:p?.clientY??null,deltaX:e.deltaX??null,deltaY:e.deltaY??null,scrollTop:document.scrollingElement.scrollTop,scrollY,pageTop:v?.pageTop??null,offsetTop:v?.offsetTop??null});};trace.stop=()=>{trace.active=false;for(const type of types)window.removeEventListener(type,listener,true);};for(const type of types)window.addEventListener(type,listener,{passive:true,capture:true});window.__fixtureScrollDiagnostics=trace;}":"")+
-    "const trace=window.__fixtureScrollDiagnostics,v=visualViewport,d=document.scrollingElement,events=trace?.events||[];if(trace)trace.events=[];const top=d.scrollTop;if(trace&&top>trace.initial)trace.stop();return {scrollTop:top,scrollLeft:d.scrollLeft,scrollY,scrollX,pageTop:v?.pageTop??null,pageLeft:v?.pageLeft??null,offsetTop:v?.offsetTop??null,offsetLeft:v?.offsetLeft??null,visualHeight:v?.height??null,visualWidth:v?.width??null,visualScale:v?.scale??null,innerHeight,innerWidth,clientHeight:d.clientHeight,clientWidth:d.clientWidth,scrollHeight:d.scrollHeight,scrollWidth:d.scrollWidth,url:location.href,document:performance.timeOrigin,visibility:document.visibilityState,documentFocused:document.hasFocus(),activeElement:document.activeElement?.id||document.activeElement?.tagName||'',eventCount:trace?.count||0,eventsDropped:Math.max(0,(trace?.count||0)-64),listenersActive:trace?.active||false,events};})()";}
+    "{const trace={active:true,cancelled:false,events:[],count:0,initial:document.scrollingElement.scrollTop,run:"+JSONObject.quote(scrollDiagnosticRun)+",phase:"+JSONObject.quote(variant)+",traceId:"+scrollPhase.started+",document:performance.timeOrigin,url:location.href};const types=['touchstart','touchmove','touchend','touchcancel','wheel','scroll'];const listener=e=>{if(!trace.active)return;if(trace.document!==performance.timeOrigin||trace.url!==location.href){trace.cancel();return;}trace.count++;if(trace.count>64)return;const p=e.touches?.[0]||e.changedTouches?.[0],v=visualViewport;trace.events.push({sequence:trace.count,type:e.type,trusted:e.isTrusted,time:performance.now(),eventPhase:e.eventPhase,touches:e.touches?.length||0,x:p?.clientX??null,y:p?.clientY??null,deltaX:e.deltaX??null,deltaY:e.deltaY??null,scrollTop:document.scrollingElement.scrollTop,scrollY,pageTop:v?.pageTop??null,offsetTop:v?.offsetTop??null});};trace.stop=()=>{trace.active=false;for(const type of types)window.removeEventListener(type,listener,true);window.removeEventListener('pagehide',trace.cancel,true);};trace.cancel=()=>{trace.cancelled=true;trace.stop();};for(const type of types)window.addEventListener(type,listener,{passive:true,capture:true});window.addEventListener('pagehide',trace.cancel,{once:true,capture:true});window.__fixtureScrollDiagnostics=trace;}":"")+
+    "const trace=window.__fixtureScrollDiagnostics,v=visualViewport,d=document.scrollingElement,events=trace?.events||[];if(trace)trace.events=[];const top=d.scrollTop;return {scrollTop:top,scrollLeft:d.scrollLeft,scrollY,scrollX,pageTop:v?.pageTop??null,pageLeft:v?.pageLeft??null,offsetTop:v?.offsetTop??null,offsetLeft:v?.offsetLeft??null,visualHeight:v?.height??null,visualWidth:v?.width??null,visualScale:v?.scale??null,innerHeight,innerWidth,clientHeight:d.clientHeight,clientWidth:d.clientWidth,scrollHeight:d.scrollHeight,scrollWidth:d.scrollWidth,url:location.href,document:performance.timeOrigin,visibility:document.visibilityState,documentFocused:document.hasFocus(),activeElement:document.activeElement?.id||document.activeElement?.tagName||'',eventCount:trace?.count||0,eventsDropped:Math.max(0,(trace?.count||0)-64),listenersActive:trace?.active||false,events};})()";}
+  String scrollTelemetryScript(ScrollPhase phase){
+    if(phase==null)return "window.__fixtureTelemetry()";
+    JSONObject first=phase.samples.optJSONObject(0),dom=first==null?null:first.optJSONObject("dom");double document=dom==null?Double.NaN:dom.optDouble("document",Double.NaN);
+    return "(()=>{const telemetry=window.__fixtureTelemetry();const trace=window.__fixtureScrollDiagnostics;const same=!!trace&&trace.run==="+JSONObject.quote(phase.run)+"&&trace.phase==="+JSONObject.quote(phase.variant)+"&&trace.traceId==="+phase.started+"&&trace.document==="+document+"&&trace.url==="+JSONObject.quote(phase.url)+"&&performance.timeOrigin==="+document+"&&location.href==="+JSONObject.quote(phase.url)+";"+
+      "telemetry.scrollDomTail={run:trace?.run||'',phase:trace?.phase||'',traceId:trace?.traceId??null,document:performance.timeOrigin,url:location.href,cancelled:!same||!!trace?.cancelled,eventCount:trace?.count||0,eventsDropped:Math.max(0,(trace?.count||0)-64),events:same&&!trace.cancelled?trace.events:[]};if(same){trace.events=[];trace.stop();}return telemetry;})()";
+  }
   JSONObject scrollNativeSnapshot(){
     try{GeckoWebView web=session.web;ScrollPhase phase=scrollPhase;android.graphics.Matrix matrix=new android.graphics.Matrix();web.current.getPageToSurfaceMatrix(matrix);float[] numbers=new float[9];matrix.getValues(numbers);JSONArray values=new JSONArray();for(float number:numbers)values.put(Float.valueOf(number));
       android.view.View root=web.getRootView(),surface=web.surface;int[] webOrigin=new int[2],surfaceOrigin=new int[2],rootOrigin=new int[2];web.getLocationOnScreen(webOrigin);surface.getLocationOnScreen(surfaceOrigin);root.getLocationOnScreen(rootOrigin);android.graphics.Rect visible=new android.graphics.Rect();boolean visibleRect=web.getGlobalVisibleRect(visible);visible.offset(rootOrigin[0],rootOrigin[1]);android.graphics.Rect frame=new android.graphics.Rect();root.getWindowVisibleDisplayFrame(frame);android.graphics.Rect window=Build.VERSION.SDK_INT>=30?getWindowManager().getCurrentWindowMetrics().getBounds():frame;
@@ -220,9 +229,43 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     JSONObject sample=J.obj("phase",phase.variant,"stage",stage,"sequence",phase.sampleCount,"beforeScrollTop",phase.hasBefore?phase.beforeScrollTop:JSONObject.NULL,"dom",dom,"native",scrollNativeSnapshot());if(phase.samples.length()<256)phase.samples.put(sample);event("scrollSample",sample);
   }
   void finishScrollDiagnostics(String outcome){
+    if(!"passed".equals(outcome))cancelScrollDomTail(outcome);
     ScrollPhase phase=scrollPhase;if(phase==null)return;FixtureView web=(FixtureView)session.web;web.scrollTracing=false;phase.sdk.setCompositorScrollDelegate(phase.prior);scrollPhase=null;
-    scrollDiagnosticPhases.put(J.obj("phase",phase.variant,"outcome",outcome,"url",phase.url,"navigationEpoch",phase.navigationEpoch,"sampleCount",phase.sampleCount,"samplesDropped",Math.max(0,phase.sampleCount-256),"samples",phase.samples,"nativeUpdates",phase.nativeUpdates,"nativeUpdatesCount",phase.updates,"nativeUpdatesDropped",Math.max(0,phase.updates-64),"nativeTouches",web.scrollTouches,"nativeTouchCount",web.scrollTouchCount,"nativeTouchesDropped",Math.max(0,web.scrollTouchCount-64),"domEvents",phase.domEvents));
-    try{J.write(new java.io.File(getFilesDir(),"gecko-scroll-diagnostics.json"),J.obj("schema",1,"run",scrollDiagnosticRun,"scope","Read-only scroll-phase diagnostics; passive DOM listeners, bounded native touch/delegate capture and existing before/after evaluations. The passive layer changes no polling, timeout, assertion or typing. Native injection uses the separately declared source-bound fixed UiAutomation protocol. Added work and passive touch listeners may affect APZ touch dispatch, scroll-phase scheduling and frame timing; first four busy samples are unchanged.","phases",scrollDiagnosticPhases).toString());}catch(Exception error){event("scrollDiagnosticError",J.obj("error",error.toString()));}
+    if("passed".equals(outcome)){cancelScrollDomTail("superseded");scrollDomTail=phase;}
+    scrollDiagnosticPhases.put(J.obj("phase",phase.variant,"outcome",outcome,"url",phase.url,"navigationEpoch",phase.navigationEpoch,"sampleCount",phase.sampleCount,"samplesDropped",Math.max(0,phase.sampleCount-256),"samples",phase.samples,"nativeUpdates",phase.nativeUpdates,"nativeUpdatesCount",phase.updates,"nativeUpdatesDropped",Math.max(0,phase.updates-64),"nativeTouches",web.scrollTouches,"nativeTouchCount",web.scrollTouchCount,"nativeTouchesDropped",Math.max(0,web.scrollTouchCount-64),"domEvents",phase.domEvents,"domObservation",phase.domObservation));
+    writeScrollDiagnostics();
+  }
+  void cancelScrollDomTail(String reason){
+    ScrollPhase phase=scrollDomTail;if(phase==null)return;scrollDomTail=null;
+    JSONObject observation=J.obj("status","cancelled","reason",reason,"added",0);phase.domObservation.put(observation);event("scrollDomObservation",J.obj("phase",phase.variant,"observation",observation));writeScrollDiagnostics();
+  }
+  void finishScrollDomTail(ScrollPhase phase,JSONObject tail){
+    if(phase==null||scrollDomTail!=phase)return;scrollDomTail=null;String reason="";JSONArray events=tail==null?null:tail.optJSONArray("events");
+    JSONObject first=phase.samples.optJSONObject(0),dom=first==null?null:first.optJSONObject("dom");double document=dom==null?Double.NaN:dom.optDouble("document",Double.NaN);
+    if(finished||scrollPhase!=null||!phase.run.equals(scrollDiagnosticRun)||!phase.variant.equals(variant))reason="phase-cancelled";
+    else if(session==null||session.web.current!=phase.sdk||session.web.surface!=phase.surface||session.navigationEpoch!=phase.navigationEpoch||!phase.url.equals(session.web.getUrl()))reason="navigation-changed";
+    else if(phase.expiresElapsedMs<=0||SystemClock.elapsedRealtime()>phase.expiresElapsedMs)reason="deadline-expired";
+    else if(tail==null||tail.optBoolean("cancelled",true))reason="trace-cancelled";
+    else if(!phase.run.equals(tail.optString("run"))||!phase.variant.equals(tail.optString("phase"))||tail.optDouble("traceId",Double.NaN)!=phase.started||!Double.isFinite(document)||tail.optDouble("document",Double.NaN)!=document||!phase.url.equals(tail.optString("url")))reason="document-changed";
+    else if(events==null||events.length()+phase.domEvents.length()>64)reason="invalid-tail";
+    else{
+      JSONObject last=phase.domEvents.optJSONObject(phase.domEvents.length()-1);int previous=phase.domEvents.length()==0?0:last==null?-1:last.optInt("sequence",-1);
+      if(previous<0)reason="invalid-tail";
+      for(int i=0;i<events.length();i++){
+        JSONObject item=events.optJSONObject(i);Object sequence=item==null?null:item.opt("sequence");
+        if(item==null||!(sequence instanceof Number)||((Number)sequence).doubleValue()!=previous+1||previous>=64||!(item.opt("trusted") instanceof Boolean)
+          ||!java.util.Arrays.asList("touchstart","touchmove","touchend","touchcancel","wheel","scroll").contains(item.optString("type"))){reason="invalid-tail";break;}previous++;
+      }
+      Object count=tail.opt("eventCount"),dropped=tail.opt("eventsDropped");
+      if(!(count instanceof Number)||((Number)count).doubleValue()!=tail.optLong("eventCount",-1)||previous!=Math.min(64,tail.optLong("eventCount",-1))
+        ||!(dropped instanceof Number)||((Number)dropped).doubleValue()!=Math.max(0,tail.optLong("eventCount",-1)-64))reason="invalid-tail";
+    }
+    int added=0;if(reason.isEmpty())for(int i=0;i<events.length();i++){JSONObject item=events.optJSONObject(i);phase.domEvents.put(item);event("scrollDomEvent",J.obj("phase",phase.variant,"event",item));added++;}
+    JSONObject observation=J.obj("status",reason.isEmpty()?"complete":"cancelled","reason",reason,"added",added,"eventCount",tail==null?JSONObject.NULL:tail.opt("eventCount"),"eventsDropped",tail==null?JSONObject.NULL:tail.opt("eventsDropped"));
+    phase.domObservation.put(observation);event("scrollDomObservation",J.obj("phase",phase.variant,"observation",observation));writeScrollDiagnostics();
+  }
+  void writeScrollDiagnostics(){
+    try{J.write(new java.io.File(getFilesDir(),"gecko-scroll-diagnostics.json"),J.obj("schema",1,"run",scrollDiagnosticRun,"scope","Read-only scroll-phase diagnostics; native sampling still ends at first scroll growth. The same passive DOM listener remains through the existing measured telemetry RPC, which drains once after the original telemetry calculation and stops it; DOM tails outside the original 20s deadline or document are discarded. No polling, timeout, assertion, gesture, frame boundary or typing changes. Added work and passive touch listeners may affect APZ touch dispatch, scroll-phase scheduling and frame timing; first four busy samples are unchanged.","phases",scrollDiagnosticPhases).toString());}catch(Exception error){event("scrollDiagnosticError",J.obj("error",error.toString()));}
   }
   void scrollGesture(){beginScrollDiagnostics();evaluate(scrollSnapshotScript(true),false,beforeScroll->{
     scrollPhase.beforeScrollTop=beforeScroll.optDouble("scrollTop");scrollPhase.hasBefore=true;recordScrollSample("before",beforeScroll);
@@ -240,7 +283,8 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   });}
   void nextSample(){if(samples<12)sample();else measured();}
   void measured(){attempt(()->{
-    JSONObject nativeFrames=frames.stop();evaluate("window.__fixtureTelemetry()",false,telemetry->{
+    JSONObject nativeFrames=frames.stop();ScrollPhase domPhase=scrollDomTail;evaluate(scrollTelemetryScript(domPhase),false,telemetry->{
+      finishScrollDomTail(domPhase,telemetry.optJSONObject("scrollDomTail"));
       JSONObject metrics=J.obj("variant",variant,"samples",samples,"bridgeResponseBytes",payloadBytes,"bridgeResponseChars",payloadChars,"bridgeScriptChars",scriptChars,"evaluateCallbackMs",callbackMs,"domReadChars",telemetry.optLong("readChars"),"domReadCalls",telemetry.optLong("readCalls"),"cloneCalls",telemetry.optLong("clones"),"elapsedJsMs",telemetry.optDouble("elapsedMs"),"raf",telemetry.optJSONObject("raf"),"androidChoreographer",nativeFrames,"observationBefore",before.optJSONObject("observation"),"observationAfter",telemetry.optJSONObject("observation"));
       event("measurement",metrics);
       check(variant+" preserves the draft, synthetic session cookie and send count",telemetry.optBoolean("draftPreserved")&&telemetry.optBoolean("cookiePreserved")&&telemetry.optInt("sendCount")==0);

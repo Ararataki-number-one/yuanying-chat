@@ -273,7 +273,7 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       NetworkCatalog.put(evidence,"newerSampleDuplicateRequests",plain.probeRequests.get()-before);
       check("Queued display sampling reuses a newer same-route health sample instead of probing twice",plain.probeRequests.get()==before&&n.quality.stats(entry,System.currentTimeMillis()).optInt("latest")==77&&n.latencyReading.length()==0&&stream.awaitEchoes(echoes));
       check("Automatic telemetry scheduling preserves one WebSocket and the exact core identity",site.webSocketConnections.get()==connections+1&&stream.failure==null&&entry.equals(n.currentEntry)&&token.equals(n.token)&&corePid(n)==pid&&n.verifiedRouteCurrent());
-      String mode=n.settings.optString("entryMode");NetworkCatalog.put(n.settings,"entryMode","random");n.failures=1;plain.forcedProbeFailures.set(2);site.websiteTransportFailure="reset";site.ipDelay=250;int ipBefore=site.ipRequests.get();echoes=stream.echoes.get();long began=android.os.SystemClock.elapsedRealtime();
+      String mode=n.settings.optString("entryMode");n.failures=1;plain.forcedProbeFailures.set(2);site.websiteTransportFailure="reset";site.ipDelay=250;int ipBefore=site.ipRequests.get();echoes=stream.echoes.get();long began=android.os.SystemClock.elapsedRealtime();
       try{n.health();}finally{site.ipDelay=0;site.websiteTransportFailure="";plain.forcedProbeFailures.set(0);NetworkCatalog.put(n.settings,"entryMode",mode);}
       NetworkCatalog.put(evidence,"recoveryExitRequests",site.ipRequests.get()-ipBefore);NetworkCatalog.put(evidence,"recoveryMs",android.os.SystemClock.elapsedRealtime()-began);
       check("Actual failed-chain recovery performs exactly one full exit verification for the new entry",site.ipRequests.get()==ipBefore+1&&!entry.equals(n.currentEntry)&&n.verifiedRouteCurrent()&&n.ready&&n.exitIp.equals("203.0.113.8"));
@@ -545,7 +545,10 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
     check("A replacement core preserves the old generation exit history",diagnosedOldGeneration);
     check("Requested stop is distinguished from an unexpected real core exit",diagnosedRequestedStop);
     NetworkCatalog.put(repairEvidence,"schema",1);NetworkCatalog.put(repairEvidence,"serviceGenerationStopGuard",diagnosedStaleStop);NetworkCatalog.put(repairEvidence,"exitDiagnostics",diagnosedUnexpectedExit&&diagnosedOldGeneration&&diagnosedRequestedStop);
-    n.startNow();NetworkCatalog.put(n.settings,"entryMode","random");
+    JSONObject savedRepairConfiguration=n.secrets.settings(),repairConfiguration=J.parse(savedRepairConfiguration.toString());NetworkCatalog.put(repairConfiguration,"entryMode","random");
+    Throwable repairFailure=null;
+    try{
+    n.stopNow();n.secrets.save(repairConfiguration);n.startNow();
     final String token=n.token,entry=n.currentEntry;final int pid=corePid(n),connections=site.webSocketConnections.get();
     try(WebSocketStream stream=new WebSocketStream(n,site)){
       if(!stream.awaitEchoes(0)||!n.verifiedRouteCurrent())throw new IOException("Repair fixture requires an actual verified WSS");
@@ -574,6 +577,8 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       try{n.selectVerifiedRoute(entry,false);}catch(IOException expected){failedClosed=true;}
       check("A failed rollback verification stops admission instead of reusing the old receipt",failedClosed&&!n.ready&&!n.coreAlive()&&!n.verifiedRouteCurrent()&&stream.awaitClosed());NetworkCatalog.put(repairEvidence,"failedRollback",J.obj("ready",n.ready,"coreAlive",n.coreAlive(),"receiptCurrent",n.verifiedRouteCurrent(),"webSocketClosed",stream.awaitClosed()));
     }finally{n.busy=false;n.failCandidateControl=false;n.failVerificationEntry="";site.ipStatus=200;site.websiteTransportFailure="";plain.forcedProbeFailures.set(0);}
+    }catch(Exception|Error failure){repairFailure=failure;throw failure;}
+    finally{try{n.stopNow();n.secrets.save(savedRepairConfiguration);n.startNow();}catch(Exception|Error restoreFailure){if(repairFailure==null)throw restoreFailure;if(restoreFailure!=repairFailure)repairFailure.addSuppressed(restoreFailure);}}
   }
   /** Busy is injected, but startup, fixed-exit TLS, service identity and route commits are real. */
   void bootstrapBusyChecks(HttpFixture site,HttpFixture plain,JSONObject report)throws Exception{
