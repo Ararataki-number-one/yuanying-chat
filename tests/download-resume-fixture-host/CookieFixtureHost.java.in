@@ -103,6 +103,9 @@ class FileDownloads {
  String sourceId="",sourceUrl="",retryUrl="",resumeValidator="",resumeAddress="",mime="application/octet-stream",name="fixture.bin",imageLabel="",reason="";HttpURLConnection connection;int connects,chosen;static final long MAX=512L*1024*1024;
  FileDownloads(DownloadResumeIntegrationActivity a){this.a=a;}Proxy route(){return Proxy.NO_PROXY;}HttpURLConnection connect(String url,Proxy proxy)throws Exception{throw new AssertionError();}
  static boolean https(String url){return url.startsWith("https://");}static String safeName(String name){return name;}static String imageExtension(String type){return "png";}
+ // This Cookie/HTTP fixture supplies successful journal I/O only; persistence
+ // fault handling is exercised by the separate production persistence suite.
+ boolean saveTask(){tasks.save();return true;}
  void transferProgress(){}void choose(long attempt){chosen++;}void fail(long attempt,String message){reason=message;}static class Tasks {boolean owned=true;void save(){}boolean owns(JSONObject row){return owned&&row!=null;}}
  /* VALID */
  /* DOWNLOAD */

@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "kind": "reviewed-exact-additive-workflow-inverse",
+  "workflow": ".github/workflows/gecko-integration.yml",
+  "baselineSource": "da5004111eaf3e20322ca1fca3f756db82f44c90",
+  "baselineWorkflowSha256": "5cc1d35e1d80ddfd150c81510f076c27ee0921eaa75fd77eb852ba6924ed833b",
+  "reviewedSource": "f2d10b209c0ec658bc04d63d18fa69352451e6c9",
+  "reviewedWorkflowSha256": "619f727fadf51276d71030eb849dfb331338c1c922a3c38b24be8bb8536185c7",
+  "insertions": [
+    {
+      "id": "appearance-fixture-before-compilation",
+      "purpose": "Stage the production appearance fixture before APK compilation.",
+      "before": "        set -euo pipefail\n",
+      "inserted": "        python3 tools/gecko/generate_appearance_fixture.py\n",
+      "after": "        work/gecko-integration/gradle/gradle-9.8.0/bin/gradle :app:assembleRelease :app:assembleIntegration :app:writeCaretResolvedArtifacts -PtestSigningKey=\"$PWD/work/gecko-integration/integration-test.jks\" --console=plain 2>&1 | tee work/gecko-integration/build.log\n",
+      "insertedLines": 1
+    },
+    {
+      "id": "settings-host-always-diagnostics",
+      "purpose": "Retain actual settings host text and JSON diagnostics even when the preceding check fails.",
+      "before": "        python3 tests/gecko_phase2_release_gates_test.py\n",
+      "inserted": "    - name: Preserve settings host diagnostics\n      if: always()\n      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n      with:\n        name: network-settings-host-${{ github.run_id }}-${{ github.run_attempt }}\n        path: |\n          work/gecko-integration/network-settings-*.txt\n          work/gecko-integration/network-settings-*.json\n        if-no-files-found: warn\n        retention-days: 7\n",
+      "after": "    - name: Verify recovery, diagnostics and download publication boundaries\n",
+      "insertedLines": 10
+    },
+    {
+      "id": "experience-host-regressions",
+      "purpose": "Add the frozen-baseline fetch, appearance, recovery, persistence, download-name and Cookie host checks without editing the original host commands.",
+      "before": "        python3 tools/gecko/run_network_core_host.py --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-core-host-results.json\n",
+      "inserted": "        git fetch --no-tags --depth=1 origin da5004111eaf3e20322ca1fca3f756db82f44c90\n        JSDOM_MODULE=\"$PWD/work/browser-perf-host/node_modules/jsdom\" node --test --test-reporter=tap tests/appearance_receipts_test.cjs | tee work/gecko-integration/appearance-receipts-host.log\n        python3 tests/web-appearance-host/run.py --java-home \"$JAVA_HOME_17_X64\" --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/appearance-state-desktop\n        cp work/gecko-integration/appearance-state-desktop/results.json work/gecko-integration/appearance-state-desktop-results.json\n        python3 tests/web-appearance-host/run.py --java-home \"$JAVA_HOME_17_X64\" --json-jar work/gecko-integration/sharing-android-json.jar --output work/gecko-integration/appearance-state-android\n        cp work/gecko-integration/appearance-state-android/results.json work/gecko-integration/appearance-state-android-results.json\n        python3 tests/network-recovery-host/run.py --java-home \"$JAVA_HOME_17_X64\" --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-recovery-host-results.json\n        python3 tests/network-recovery-host/run_real_probes.py --java-home \"$JAVA_HOME_17_X64\" --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-recovery-real-probes-host-results.json\n        python3 tests/download-persistence-host/run.py --java-home \"$JAVA_HOME_17_X64\" --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/download-persistence-host-results.json\n        python3 tests/download-persistence-host/pending_viewer.py --java-home \"$JAVA_HOME_17_X64\" --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/download-pending-viewer-host-results.json\n        python3 tests/download-persistence-host/sql_indexes.py --output work/gecko-integration/download-index-host-results.json\n        python3 tests/download-names-host/run.py --java-home \"$JAVA_HOME_17_X64\" --json-jar work/gecko-integration/catalog-json.jar --before-ref da5004111eaf3e20322ca1fca3f756db82f44c90 --output work/gecko-integration/download-names-before-host-results.json\n        python3 tests/download-names-host/run.py --java-home \"$JAVA_HOME_17_X64\" --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/download-names-host-results.json\n        node tests/browser-runtime/session-cookies-coalescing.test.cjs | tee work/gecko-integration/cookie-coalescing-host-results.json\n",
+      "after": "        python3 tests/network-core-host/test_evidence.py\n",
+      "insertedLines": 14
+    },
+    {
+      "id": "gecko-appearance-receipts",
+      "purpose": "Run the additional webpage appearance bridge fixture and publish its original diagnostics for the UI phase.",
+      "before": "      if: ${{ !cancelled() && matrix.phase == 'ui' && steps.android_boot.outcome == 'success' }}\n",
+      "inserted": "    - name: Verify webpage appearance receipts through the actual Gecko bridge\n      shell: bash\n      run: |\n        set -euo pipefail\n        exec > >(tee -a work/gecko-integration/native-test.log) 2>&1\n        result=0\n        python3 tools/gecko/generate_appearance_fixture.py\n        python3 tools/gecko/generate_appearance_fixture.py --verify\n        python3 tests/gecko/run_appearance_web.py --adb \"$(command -v adb)\" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk || result=$?\n        python3 tools/gecko/publish_ci.py\n        exit \"$result\"\n      if: ${{ !cancelled() && matrix.phase == 'ui' && steps.android_boot.outcome == 'success' }}\n",
+      "after": "    - name: Verify production environments and file transfers\n",
+      "insertedLines": 12
+    }
+  ]
+}

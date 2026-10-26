@@ -12,6 +12,23 @@ import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 from gecko.check_interaction_transfer_evidence import verify_display_sampling, verify_read_model_freshness, READ_MODEL_CASES, verify_read_model_identity, READ_MODEL_IDENTITY_CASES, identity_projection_fixture
 
+def reverse_reviewed_experience_workflow_additions(case,source):
+    # Four pure insertions reviewed against da500; this is not a general step
+    # filter. Pin every byte, require each anchored literal exactly once, then
+    # recover the entire original workflow before its older golden checks.
+    raw=(Path(__file__).resolve().parent/'fixtures/profile-display-workflow-additions.json').read_bytes()
+    case.assertEqual(hashlib.sha256(raw).hexdigest(),'92bb795ef55d771692c5874ad20bfd446056c85b229517e98969a99dcf0aacde')
+    manifest=json.loads(raw)
+    case.assertEqual([row['id']for row in manifest['insertions']],
+                     ['appearance-fixture-before-compilation','settings-host-always-diagnostics',
+                      'experience-host-regressions','gecko-appearance-receipts'])
+    for row in manifest['insertions']:
+        literal=row['before']+row['inserted']+row['after']
+        case.assertEqual(source.count(literal),1,row['id'])
+        source=source.replace(literal,row['before']+row['after'],1)
+    case.assertEqual(hashlib.sha256(source.encode()).hexdigest(),manifest['baselineWorkflowSha256'])
+    return source
+
 NAMES=[
     'Automatic display sampling measures the current route while a reply is busy',
     'A fresh busy-route sample is reused after the reply becomes idle',
@@ -264,6 +281,7 @@ class DisplayGateTest(unittest.TestCase):
 
     def test_host_wiring_only_adds_two_identity_commands_to_the_original_workflow(self):
         root=Path(__file__).resolve().parents[1];source=(root/'.github/workflows/gecko-integration.yml').read_text()
+        source=reverse_reviewed_experience_workflow_additions(self,source)
         # Invert only the reviewed four-core resource preparation, preserving
         # the original workflow golden and every original command below.
         marker='env:\n  ANDROID_CAPACITY_PREFLIGHT: |\n';self.assertEqual(source.count(marker),1)
@@ -290,6 +308,26 @@ class DisplayGateTest(unittest.TestCase):
         binding='        if ! python3 tests/gecko/run_network_client_binding.py --adb "$(command -v adb)" --serial emulator-5554; then\n          checks_failed=1\n        fi\n'
         self.assertEqual(source.count(binding),1);source=source.replace(binding,'',1)
         self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'50fdca828ab3f661aff423bf6755359d2f4e8b24c3e78e0100d8ce29da8120c1')
+
+    def test_reviewed_workflow_inverse_rejects_missing_duplicate_or_changed_literals_and_original_commands(self):
+        root=Path(__file__).resolve().parents[1];source=(root/'.github/workflows/gecko-integration.yml').read_text()
+        manifest=json.loads((root/'tests/fixtures/profile-display-workflow-additions.json').read_bytes())
+        for row in manifest['insertions']:
+            literal=row['before']+row['inserted']+row['after']
+            for change in ('missing','duplicate','changed'):
+                with self.subTest(insertion=row['id'],change=change):
+                    replacement=(row['before']+row['after']if change=='missing'else
+                                 literal+literal if change=='duplicate'else
+                                 row['before']+row['inserted'].replace('\n',' \n',1)+row['after'])
+                    altered=source.replace(literal,replacement,1)
+                    self.assertNotEqual(altered,source)
+                    with self.assertRaises(AssertionError):reverse_reviewed_experience_workflow_additions(self,altered)
+        # This original command is outside all four additions. Its alteration
+        # must still fail the complete da500 SHA, rather than being filtered out.
+        command='        python3 tools/gecko/caret_workflow.py record --work work/gecko-integration\n'
+        self.assertEqual(source.count(command),1)
+        altered=source.replace(command,command.replace(' record ',' record-changed '),1)
+        with self.assertRaises(AssertionError):reverse_reviewed_experience_workflow_additions(self,altered)
 
     def test_actual_identity_runner_rejects_partial_or_failed_93_and_14_reports(self):
         source=Path(__file__).resolve().parent/'window-network-identity-host/run.py';tree=ast.parse(source.read_text())
