@@ -11,7 +11,7 @@ public final class WebAppearanceSyncHost {
   static JSONObject o(Object... values){JSONObject result=new JSONObject();try{for(int i=0;i<values.length;i+=2)result.put((String)values[i],values[i+1]);return result;}catch(JSONException e){throw new AssertionError(e);}}
   static JSONObject clone(JSONObject value){try{return new JSONObject(value.toString());}catch(JSONException e){throw new AssertionError(e);}}
   static void put(JSONObject value,String key,Object item){try{value.put(key,item);}catch(JSONException e){throw new AssertionError(e);}}
-  static JSONObject sample(String region,boolean visible,double background){return o("region",region,"visible",visible,"background","rgb(20, 20, 20)","foreground","rgb(240, 240, 240)","backgroundLuminance",background,"foregroundLuminance",.8);}
+  static JSONObject sample(String region,boolean visible,double background){return o("region",region,"visible",visible,"background","rgb(20, 20, 20)","foreground",background>=.5?"rgb(20, 20, 20)":"rgb(240, 240, 240)","backgroundLuminance",background,"foregroundLuminance",background>=.5?.02:.8);}
   static final class Port {public boolean equals(Object other){return other instanceof Port;}public int hashCode(){return 1;}}
   static final class Clock implements BrowserBridgeRequests.Timer {
     long now;final Map<Runnable,Long> active=new IdentityHashMap<>();final List<Runnable> scheduled=new ArrayList<>();
