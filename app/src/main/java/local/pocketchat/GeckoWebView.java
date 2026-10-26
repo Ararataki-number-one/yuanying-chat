@@ -390,7 +390,7 @@ class GeckoWebView extends FrameLayout {
     String document=appearanceDocuments.get(port);if(document!=null)appearanceSync.connect(port,document,AppAppearance.dark());
   }
   private void retireAppearance(WebExtension.Port port){if(port==null)return;appearanceSync.disconnect(port);appearanceConnections.remove(port);appearanceDocuments.remove(port);staleAppearanceConnections.remove(port);}
-  JSONObject appearanceReport(){JSONObject value=appearanceSync.snapshot(current==null?null:ports.get(current));NetworkCatalog.put(value,"appVersion",BuildConfig.VERSION_NAME);NetworkCatalog.put(value,"versionCode",BuildConfig.VERSION_CODE);return value;}
+  JSONObject appearanceReport(){return appearanceSync.snapshot(current==null?null:ports.get(current));}
   protected boolean appearancePage(String target){return MainActivity.chatUrl(target);}
   protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicHttps(Uri.parse(target));}
   boolean readingPage(String target){return BrowserReadingPolicy.chat(target)&&!LoginPagePolicy.login(target);}
