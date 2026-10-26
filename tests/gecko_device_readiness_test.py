@@ -60,6 +60,16 @@ def verify_startup_member(source,needle):
         require(sum(actual[i:i+len(expected)]==expected for i in range(len(actual)))==1,'exact F04 dispatch tokens and position')
         require(body.count(added)==1 and body.count(prior+added+following)==1,'exact F04 dispatch and position')
         body=body.replace(prior+added+following,prior+following,1)
+        # The appearance fixture adds one exact dispatch after the same ready
+        # gates and page-continuity branch. Keep its full token/position check
+        # separate from F04, then recover the unchanged original startup body.
+        appearance_prior=following
+        appearance_added='if("appearanceSync".equals(action)){GeckoAppearanceIntegration.run(this,serial);return;}'
+        appearance_following='if("usability".equals(action)){usability(serial);return;}'
+        expected=tokens(appearance_prior+appearance_added+appearance_following)
+        require(sum(actual[i:i+len(expected)]==expected for i in range(len(actual)))==1,'exact appearance dispatch tokens and position')
+        require(body.count(appearance_added)==1 and body.count(appearance_prior+appearance_added+appearance_following)==1,'exact appearance dispatch and position')
+        body=body.replace(appearance_prior+appearance_added+appearance_following,appearance_prior+appearance_following,1)
     require(hashlib.sha256(body.encode()).hexdigest()==ORIGINAL_METHODS[needle],'original startup body changed: '+needle)
     return True
 
@@ -132,6 +142,23 @@ class ReadinessObservationControls(unittest.TestCase):
                  original.replace('waitReady(serial),50','waitReady(serial),5'),
                  original.replace('waitReady(serial),100','waitReady(serial),1000'),
                  original.replace('waitReady(serial),200','waitReady(serial),2000')]
+        for i,candidate in enumerate(mutants):
+            self.assertNotEqual(candidate,original)
+            with self.subTest(mutant=i),self.assertRaises(ValueError):verify_startup_member(candidate,needle)
+
+    def test_appearance_dispatch_cannot_bypass_change_duplicate_or_reorder_original_readiness(self):
+        original=SOURCE.read_text();needle='void waitReady(long serial)'
+        line='    if("appearanceSync".equals(action)){GeckoAppearanceIntegration.run(this,serial);return;}\n'
+        self.assertEqual(original.count(line),1)
+        formatted='    if ( "appearanceSync" . equals ( action ) ) {\n GeckoAppearanceIntegration . run ( this , serial ) ;\n return ; }\n'
+        self.assertTrue(verify_startup_member(original.replace(line,formatted,1),needle))
+        mutants=[original.replace(line,''),original.replace(line,line+line),
+                 original.replace('"appearanceSync"','"appearance Sync"'),
+                 original.replace('GeckoAppearanceIntegration.run','Gecko AppearanceIntegration.run'),
+                 original.replace('GeckoAppearanceIntegration.run','GeckoAppearanceIntegration.changed'),
+                 original.replace('GeckoAppearanceIntegration.run(this,serial);','GeckoAppearanceIntegration.run(this,run);'),
+                 original.replace(line,'').replace('    if(!web.ready)',line+'    if(!web.ready)'),
+                 original.replace('GeckoAppearanceIntegration.run(this,serial);','GeckoAppearanceIntegration.run(this,serial);session.networkReady=true;')]
         for i,candidate in enumerate(mutants):
             self.assertNotEqual(candidate,original)
             with self.subTest(mutant=i),self.assertRaises(ValueError):verify_startup_member(candidate,needle)
