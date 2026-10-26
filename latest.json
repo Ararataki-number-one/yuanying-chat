@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.21",
-  "versionCode": 74,
+  "version": "2.0.22",
+  "versionCode": 75,
   "abi": "arm64-v8a",
   "minSdk": 26,
   "bytes": 119217656,
-  "sha256": "dccd467fc65583a0fd5f570fa03766b88d65e3e288ca1ae9c4f35da0f27b98b6",
+  "sha256": "a7b53348ea2ea110c821011cf47d508723a45dddce4705fff5fd842514aa7713",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.21-gecko/PocketChat-2.0.21-gecko-arm64.apk",
-  "notes": "# 2.0.21：网页配色确认、线路恢复与文件保存保护\n\nversionCode 74，基于已发布的 2.0.20。保留单 GeckoView、ChatGPT 原网页、登录与草稿、环境隔离及固定出口。\n\n- 网页配色增加当前文档与指令版本的回执，分别记录收到、设置应用、存储回读和聊天区域颜色采样。旧回执不能确认新文档；每次同步最多尝试三次。重新选择当前配色或点按“重新同步网页配色”可主动重试，检查结果可复制且不含聊天、登录或线路凭据。\n- 故障恢复不再依赖已经坏掉的原入口。普通候选失败后，在原期限内继续核验其他入口；恢复期间自身选择造成的 serial 推进不会丢弃仍有效的并行探测。健康线路换优、固定出口、配置代次、控制器及期限保护继续生效。\n- 下载记录提交失败时安全暂停传输，保留仍存在的部分文件及待确认状态，避免异常逃出界面回调。外部文件提供者的保存结果无法确认时保留线索；缺少查看器也不会声称文件已保存。存储始终无法写入时，不能承诺这些新状态在进程退出后可靠恢复。\n- 冷 SOCKS 准备阶段的明确瞬时传输错误可在同一路由和原期限内重试一次；不扩展认证失败、协议错误、冷 CONNECT 命令失败或业务内容的重试。\n- 下载索引增加三个非唯一索引；每轮列表刷新批量读取环境名称。Cookie 快照合并为一个在途及一个最新待写请求，保留恢复失败、退出登录和清除屏障的顺序保护。\n- “适合宽度”达到实际视口几何要求后才完成对齐，并按已应用的阅读布局计算目标；受控 Gecko 阅读回归通过。\n- README 下载入口改为最新 Release，构建说明对齐实际派生 SDK 与当前版本来源。\n\n过程、可复现证据和后续测量见 [体验修复记录](https://github.com/Ararataki-number-one/yuanying-chat/blob/a3a83c8b4db1b481a29d66fe1bc21fde272f9f6c/docs/EXPERIENCE-RELIABILITY-20261026.md)。\n\n本次同源码的完整受控 Android 发布检查已通过。辅助重载诊断有一次确认框检查超时，原因待查。真实官网持续亮色的唯一原因仍未确定，需要实际设备的配色回执继续定位；合成网页及其 Gecko 桥接测试不能替代官网验收。本版没有同手机帧耗时、CPU／内存或真实代理线路提速结论。",
-  "sourceCommit": "a3a83c8b4db1b481a29d66fe1bc21fde272f9f6c"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.22-gecko/PocketChat-2.0.22-gecko-arm64.apk",
+  "notes": "# 2.0.22：聊天网页配色兼容与历史加载优化\n\nversionCode 75，基于已发布的 2.0.21。保持现有布局、单 GeckoView、ChatGPT 原网页、登录与草稿、独立环境及固定出口。\n\n- 网页配色同时适配站点现有的主题属性和偏好变更通知。根页面仍实际保持相反配色时，增加有限的颜色兼容样式；不重载网页，不替换输入框，不反色图片或代码。\n- 修正正常深层聊天节点被误判不可见的问题。配色确认同时检查背景方向与文字对比度；图片、渐变或祖先滤镜使颜色无法确定时，保留未确认状态。重复选择同一模式保持已启用的兼容配色。\n- 历史消息在同一批变更中加入时，对重叠的有效子树只遍历一次，减少重复工作。保留原缓存失效、消息身份、完成采集和延期任务的所有权检查。\n\n固定输入的七次 A-B-A 主机对照中，遍历从 37 次减少为 1 次；该结果不等同于手机帧率或真实官网提速。真实设备的配色和长聊天流畅度仍需验证。\n\n前版修复与后续测量范围见 [体验修复记录](https://github.com/Ararataki-number-one/yuanying-chat/blob/031f6fd4ecde76f730759061a4dcb41370c259cc/docs/EXPERIENCE-RELIABILITY-20261026.md)。\n\n本次同源码的必需受控 Android 发布检查已通过。",
+  "sourceCommit": "031f6fd4ecde76f730759061a4dcb41370c259cc"
 }
