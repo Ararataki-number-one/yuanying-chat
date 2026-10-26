@@ -93,6 +93,7 @@ def main():
     input_paths.update((ROOT / "tests").rglob("*.cjs"))
     input_paths.update((ROOT / "tests/gecko/assets").glob("*.js"))
     input_paths.add(ROOT/'tests/fixtures/android-launcher-package-86db516.txt')
+    input_paths.add(ROOT/'tests/fixtures/profile-display-workflow-additions.json')
     input_paths.add(ROOT/'tests/gecko/AndroidManifest.xml')
     input_paths.update((ROOT/'tests/gecko/res').rglob('*.xml'))
     input_paths.update(ROOT/'tools/gecko'/name for name in ('caret_ime_guard.py','caret_ime_contract.py','ui_visual_capture.py','caret_build_identity.py'))
@@ -480,6 +481,7 @@ def main():
     results.append(dict(test='network-client-framework-evidence-controls',passed=41,actualAndroidExecution=False,
         output=framework_run.stdout+framework_run.stderr))
     files.update((framework_controls,ROOT/'tools/gecko/network_client_binding_contract.py',ROOT/'tools/gecko/sdk_identity_contract.py',
+                  ROOT/'tests/profile_display_sampling_gate_test.py',ROOT/'tests/fixtures/profile-display-workflow-additions.json',
                   ROOT/'tests/gecko/NetworkClientBindingIntegrationActivity.java',ROOT/'tests/gecko/run_network_client_binding.py',ROOT/'tests/gecko/AndroidManifest.xml'))
     if (subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() != source_id
             or subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True) != source_status

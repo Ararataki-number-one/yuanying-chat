@@ -271,6 +271,8 @@ class PublicWiringControls(unittest.TestCase):
             with self.assertRaises(ValueError):C.verify_framework_binding_files(directory,'f'*40)
     def test_connections_step_keeps_every_original_command_and_condition(self):
         path='.github/workflows/gecko-integration.yml';raw=(ROOT/path).read_text()
+        from profile_display_sampling_gate_test import reverse_reviewed_experience_workflow_additions
+        raw=reverse_reviewed_experience_workflow_additions(self,raw)
         # Invert only the reviewed four-core resource preparation before the
         # original whole-workflow guard; retain its exact protected payload.
         marker='env:\n  ANDROID_CAPACITY_PREFLIGHT: |\n';self.assertEqual(raw.count(marker),1)
