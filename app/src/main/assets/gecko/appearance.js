@@ -166,12 +166,12 @@
     return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
   };
   const safeColor = value => /^(?:transparent|rgba?\([\d.,% /]+\)|color\(srgb [\d.% /]+\)|okl(?:ab|ch)\([\d.% /-]+\))$/.test(value) && value.length <= 96 ? value : '';
-  const styleReader = () => {
-    const cache = new Map(); let remaining = 512;
+  const styleReader = (budget = {remaining: 512}) => {
+    const cache = new Map();
     return element => {
       if (cache.has(element)) return cache.get(element);
-      if (remaining <= 0) return null;
-      remaining--;
+      if (budget.remaining <= 0) return null;
+      budget.remaining--;
       const style = getComputedStyle(element); cache.set(element, style); return style;
     };
   };
@@ -180,6 +180,7 @@
     // Unknown canvas color stays unavailable; never infer it from the requested theme.
     for (let depth = 0; node && depth < 256 && color[3] < .999; depth++, node = node.parentElement) {
       const style = read(node);
+      if (style?.filter && style.filter !== 'none') return null;
       // Images/gradients paint above backgroundColor; it cannot prove their
       // actual color, including through a transparent descendant.
       if (style?.backgroundImage && style.backgroundImage !== 'none') return null;
@@ -190,10 +191,12 @@
     }
     return color[3] >= .999 ? color : null;
   };
-  const opaqueAncestors = (element, read) => {
+  const opaqueAncestors = (element, read, filtersOnly = false) => {
     let node = element;
     for (let depth = 0; node && depth < 256; depth++, node = node.parentElement) {
       const style = read(node); if (!style) return false;
+      if (style.filter && style.filter !== 'none') return false;
+      if (filtersOnly) continue;
       const opacity = style.opacity === '' ? 1 : Number(style.opacity);
       if (style.display === 'none' || style.visibility === 'hidden' || !Number.isFinite(opacity) || opacity < .999) return false;
     }
@@ -220,24 +223,24 @@
     const samples = [];
     if (document.visibilityState === 'hidden') return {samples, colorStatus: 'unavailable', reason: 'page-hidden'};
     try {
-      let read = styleReader();
+      const budget = {remaining: 512}; let read = styleReader(budget);
+      const candidates = [['root', document.documentElement], ['body', document.body], ['main', document.querySelector('main,[role="main"]')],
+        ['composer', document.querySelector(composerSelector)]];
       if (!compatibilityApplied() && document.body) {
         const rootColor = background(document.documentElement, read), bodyColor = background(document.body, read);
         const opposite = color => color && (request.dark ? luminance(color) > .5 : luminance(color) < .35);
-        if (opposite(rootColor) && opposite(bodyColor) && ensureCompatibilitySheet()) {
+        if (opposite(rootColor) && opposite(bodyColor) && candidates.every(([, element]) => !element || opaqueAncestors(element, read, true)) && ensureCompatibilitySheet()) {
           compatibilityRoot = document.documentElement;
           compatibilityRoot.setAttribute(compatibilityAttribute, request.dark ? 'dark' : 'light');
-          markComposerSurface(); read = styleReader();
+          markComposerSurface(); read = styleReader(budget);
         }
-      } else if (compatibilityApplied()) { ensureCompatibilitySheet(); markComposerSurface(); read = styleReader(); }
-      const candidates = [['root', document.documentElement], ['body', document.body], ['main', document.querySelector('main,[role="main"]')],
-        ['composer', document.querySelector(composerSelector)]];
+      } else if (compatibilityApplied()) { ensureCompatibilitySheet(); markComposerSurface(); read = styleReader(budget); }
       for (const [region, element] of candidates) {
         if (!element) continue;
         const chatRegion = region === 'main' || region === 'composer';
         const paint = chatRegion ? painted(element, read) : {visible: true, element};
         const style = read(paint.element); if (!style) return {samples, colorStatus: 'unavailable', reason: 'color-unavailable'};
-        const bg = background(paint.element, read), fg = rgba(style.color);
+        const bg = opaqueAncestors(paint.element, read, true) ? background(paint.element, read) : null, fg = rgba(style.color);
         const composedForeground = bg && fg ? fg.slice(0, 3).map((channel, i) => channel * fg[3] + bg[i] * (1 - fg[3])) : null;
         const visible = paint.visible;
         samples.push({region, visible, background: safeColor(style.backgroundColor), foreground: safeColor(style.color),

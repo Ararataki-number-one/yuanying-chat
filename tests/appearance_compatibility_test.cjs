@@ -128,6 +128,12 @@ test('preserved background images and transparent ancestor image layers cannot b
   const {w}=page(t,{css:bright+'main{background-image:linear-gradient(white,white)}'});const reply=w.document.getElementById('reply');w.document.elementFromPoint=(x,y)=>y>=400?w.document.querySelector('textarea'):reply;const receipt=await observed(w);assert.equal(receipt.colorStatus,'unavailable');assert.equal(receipt.samples.find(r=>r.region==='main').backgroundLuminance,null);assert.ok(w.getComputedStyle(w.document.querySelector('main')).backgroundImage.includes('linear-gradient'));
 });
 
+test('root and composer ancestor filters block compatibility and remain unknown without removing the filter',async t=>{
+  for(const selector of ['html','form']){
+    const {w}=page(t,{css:bright+selector+'{filter:invert(1)}'});const receipt=await observed(w);assert.equal(receipt.colorStatus,'unavailable');assert.equal(receipt.compatibilityApplied,false);assert.equal(ownStyles(w).length,0);assert.equal(w.getComputedStyle(w.document.querySelector(selector)).filter,'invert(1)');assert.equal(receipt.samples.find(r=>r.region==='composer').backgroundLuminance,null);
+  }
+});
+
 test('nonzero visual offsets retain layout coordinates for the center hit',async t=>{
   const {w,hits}=page(t,{css:dark,viewport:{offsetLeft:70,offsetTop:110,width:250,height:400,scale:1.25}});const receipt=await observed(w);assert.equal(receipt.colorStatus,'verified');assert.deepEqual(hits[0],{x:195,y:305});assert.deepEqual(hits[1],{x:195,y:430});
 });

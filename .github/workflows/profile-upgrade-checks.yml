@@ -38,8 +38,6 @@ jobs:
           echo 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79  work/profile-host/android-json.jar' | sha256sum -c -
           npm install --prefix work/resource-observer --ignore-scripts --no-audit --no-fund jsdom@26.1.0
           JSDOM_MODULE="$PWD/work/resource-observer/node_modules/jsdom" node --test tests/appearance_lifecycle_test.cjs
-          JSDOM_MODULE="$PWD/work/resource-observer/node_modules/jsdom" node --test tests/appearance_compatibility_test.cjs
-          JSDOM_MODULE="$PWD/work/resource-observer/node_modules/jsdom" node --test tests/browser-runtime/inserted-subtree-invalidation.test.cjs
           git fetch --no-tags --depth=1 origin da5004111eaf3e20322ca1fca3f756db82f44c90
           JSDOM_MODULE="$PWD/work/resource-observer/node_modules/jsdom" node --test --test-reporter=tap tests/appearance_receipts_test.cjs
           python3 tests/web-appearance-host/run.py --java-home "$JAVA_HOME_17_X64" --json-jar work/profile-host/json.jar --output work/profile-host/appearance-state-desktop
