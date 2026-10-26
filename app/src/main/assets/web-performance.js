@@ -46,8 +46,28 @@
       let element=node;
       do {const saved=cache.get(element);if(saved&&!expired.has(element)){expired.add(element);saved.dirty=true;saved.version++;dirty=true;}}while((element=walker.nextNode()));
     }
+    function insertedRoots(records) {
+      const added=new Set(),eligible=new Map();
+      for(const record of records)if(record.type==='childList')for(const node of record.addedNodes)
+        if(node.nodeType===Node.ELEMENT_NODE)added.add(node);
+      const ownsMemo=node=>{
+        if(!eligible.has(node))eligible.set(node,cache.has(node)||node.matches(memoOwnerSelector)||!!node.querySelector(memoOwnerSelector));
+        return eligible.get(node);
+      };
+      const roots=[];
+      for(const node of added){
+        let parent=node.parentElement;
+        // Only an eligible added ancestor can cover this node. An uncached
+        // wrapper without a message/markdown selector may still contain a
+        // non-selector cached scope that must be expired on its own.
+        while(parent&&!(added.has(parent)&&ownsMemo(parent)))parent=parent.parentElement;
+        if(!parent&&ownsMemo(node))roots.push(node);
+      }
+      return roots;
+    }
     new MutationObserver(records => {
       const visited=new Set(),expired=new Set();stats.mutationBatches++;stats.mutationRecords+=records.length;
+      const inserted=insertedRoots(records);
       for (const record of records) {
         // One browser microtask can contain many changes under the same turn.
         // Invalidate each ancestor once, while keeping every memo dependency.
@@ -55,11 +75,13 @@
         // unrelated composer/sidebar ancestors which have never been captured.
         mark(record.target,visited,record.type==='attributes'&&record.attributeName==='class');
         if(record.type==='attributes'&&messageAttributes.has(record.attributeName)){messageGroups.clear();dirty=true;}
-        if(record.type==='childList')for(const node of record.addedNodes)expireInserted(node,expired);
         if (record.type === 'childList') for (const node of [...record.addedNodes,...record.removedNodes]) {
           if (node.nodeType === Node.ELEMENT_NODE && (node.matches(selector) || node.querySelector(selector))) { dirty = true; messageGroups.clear(); break; }
         }
       }
+      // Records in one delivery see the same final DOM. Expire its maximal
+      // eligible added subtrees once without delaying any cache invalidation.
+      for(const node of inserted)expireInserted(node,expired);
     }).observe(document, {subtree:true,childList:true,characterData:true,attributes:true,
       attributeFilter:['data-message-id','data-chatgpt-selection-message-id','data-chatgpt-search-message-ids',
         'href','download','src','srcset','sizes','alt','title','aria-label','hidden','aria-hidden','data-file-name','data-language','encoding',

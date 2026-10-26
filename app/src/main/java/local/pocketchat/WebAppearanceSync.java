@@ -14,12 +14,12 @@ final class WebAppearanceSync {
   private static final Set<String> REGIONS=new HashSet<>(Arrays.asList("root","body","main","composer"));
   private static final Set<String> REASONS=new HashSet<>(Arrays.asList("","root-unavailable","attribute-write-failed",
     "storage-unavailable","storage-write-failed","storage-preference-mismatch","chat-region-unavailable","color-unavailable","color-mismatch",
-    "page-hidden","script-unavailable","script-error"));
+    "page-hidden","script-unavailable","script-error","color-contrast"));
   private static final Pattern NUMBER=Pattern.compile("[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]{1,3})?%?");
   private static final class Entry {
     final Object port;
     final String document;
-    boolean dark,received,applied;
+    boolean dark,received,applied,compatibilityApplied;
     int version,attempt;
     String status="pending",storage="unavailable",colorStatus="unavailable",reason="waiting";
     JSONArray samples=new JSONArray();
@@ -28,7 +28,7 @@ final class WebAppearanceSync {
     Entry(Object port,String document){this.port=port;this.document=document;}
   }
   private static final class Observation {
-    boolean applied,colorsMatch;
+    boolean applied,colorsMatch,compatibilityApplied;
     String storage,colorStatus,reason;
     JSONArray samples;
   }
@@ -62,7 +62,7 @@ final class WebAppearanceSync {
     cancel(entry);
     if(sequence==Integer.MAX_VALUE){entry.status="failed";entry.reason="version-exhausted";return;}
     entry.version=++sequence;entry.attempt++;
-    entry.status="pending";entry.received=false;entry.applied=false;
+    entry.status="pending";entry.received=false;entry.applied=false;entry.compatibilityApplied=false;
     entry.storage="unavailable";entry.colorStatus="unavailable";entry.reason="waiting";entry.samples=new JSONArray();
     arm(entry);
     final int sentVersion=entry.version;
@@ -111,7 +111,7 @@ final class WebAppearanceSync {
     Observation observed=observation(receipt,entry.dark);if(observed==null)return false;
     boolean wasConfirmed="confirmed".equals(entry.status);
     entry.received=true;entry.applied=observed.applied;entry.storage=observed.storage;
-    entry.colorStatus=observed.colorStatus;entry.samples=observed.samples;entry.reason=observed.reason;
+    entry.colorStatus=observed.colorStatus;entry.samples=observed.samples;entry.reason=observed.reason;entry.compatibilityApplied=observed.compatibilityApplied;
     if(observed.applied&&observed.colorsMatch&&persisted(observed.storage)){
       cancel(entry);entry.status="confirmed";entry.reason="";
     }else{
@@ -127,9 +127,10 @@ final class WebAppearanceSync {
     Object colors=receipt.opt("colorStatus");JSONArray input=receipt.optJSONArray("samples");
     if(!(colors instanceof String)||!COLORS.contains(colors)||input==null||input.length()>4
       ||input.length()==0&&!"unavailable".equals(colors))return null;
-    Observation result=new Observation();result.applied=(Boolean)receipt.opt("attributesApplied");
+    Object compatibility=receipt.opt("compatibilityApplied");if(compatibility!=null&&!(compatibility instanceof Boolean))return null;
+    Observation result=new Observation();result.applied=(Boolean)receipt.opt("attributesApplied");result.compatibilityApplied=Boolean.TRUE.equals(compatibility);
     result.storage=(String)receipt.opt("storage");result.colorStatus=(String)colors;result.samples=new JSONArray();
-    Set<String> seen=new HashSet<>();boolean chat=false,matching=true,known=true;
+    Set<String> seen=new HashSet<>();boolean chat=false,matching=true,known=true,readable=true,backgroundMatches=true;
     for(int i=0;i<input.length();i++){
       JSONObject sample=input.optJSONObject(i);if(sample==null)return null;
       Object region=sample.opt("region"),background=sample.opt("background"),foreground=sample.opt("foreground"),visible=sample.opt("visible");
@@ -143,7 +144,12 @@ final class WebAppearanceSync {
       if(!(Boolean)visible&&("main".equals(region)||"composer".equals(region))){matching=false;known=false;}
       if((Boolean)visible&&("main".equals(region)||"composer".equals(region))){
         chat=true;if(!luminance(bg)||!luminance(fg)||cleanBackground.isEmpty()||cleanForeground.isEmpty()){matching=false;known=false;}
-        else{double value=((Number)bg).doubleValue();if(dark?value>=.35:value<=.5)matching=false;}
+        else{
+          double value=((Number)bg).doubleValue(),text=((Number)fg).doubleValue();
+          if(dark?value>=.35:value<=.5){matching=false;backgroundMatches=false;}
+          // A dark canvas with nearly black text is not a successful theme.
+          if((Math.max(value,text)+.05)/(Math.min(value,text)+.05)<3){matching=false;readable=false;}
+        }
       }
       result.samples.put(object("region",region,"background",cleanBackground,"foreground",cleanForeground,"backgroundLuminance",measurement(bg),"foregroundLuminance",measurement(fg),"visible",visible));
     }
@@ -152,7 +158,7 @@ final class WebAppearanceSync {
     if(!result.colorsMatch&&"verified".equals(result.colorStatus))result.colorStatus=chat&&known?"mismatch":"unavailable";
     String reported=receipt.optString("reason","");
     if(!result.applied)result.reason=Arrays.asList("root-unavailable","attribute-write-failed","page-hidden","script-unavailable","script-error").contains(reported)?reported:"attributes-not-applied";
-    else if(!result.colorsMatch)result.reason=!chat?(Arrays.asList("root-unavailable","page-hidden","script-unavailable","script-error").contains(reported)?reported:"chat-region-unavailable"):"unavailable".equals(result.colorStatus)?"color-unavailable":"color-mismatch";
+    else if(!result.colorsMatch)result.reason=!chat?(Arrays.asList("root-unavailable","page-hidden","script-unavailable","script-error").contains(reported)?reported:"chat-region-unavailable"):"unavailable".equals(result.colorStatus)?"color-unavailable":backgroundMatches&&!readable?"color-contrast":"color-mismatch";
     else if(!persisted(result.storage))result.reason="storage-preference-mismatch".equals(reported)&&"failed".equals(result.storage)?reported:"failed".equals(result.storage)?"storage-write-failed":"storage-unavailable";
     else result.reason="";
     return result;
@@ -204,7 +210,7 @@ final class WebAppearanceSync {
     // Clone the small allowlisted result so a UI consumer cannot mutate state.
     return object("status",entry.status,"desiredDark",entry.dark,"attempt",entry.attempt,"version",entry.version,
       "received",entry.received,"applied",entry.applied,"storage",entry.storage,"colorStatus",entry.colorStatus,
-      "reason",entry.reason,"samples",copy(entry.samples));
+      "reason",entry.reason,"compatibilityApplied",entry.compatibilityApplied,"samples",copy(entry.samples));
   }
   private static JSONArray copy(JSONArray source){try{return new JSONArray(source.toString());}catch(JSONException impossible){throw new IllegalStateException(impossible);}}
   private static JSONObject object(Object... values){JSONObject result=new JSONObject();try{for(int i=0;i<values.length;i+=2)result.put((String)values[i],values[i+1]);return result;}catch(JSONException impossible){throw new IllegalStateException(impossible);}}

@@ -181,6 +181,8 @@ jobs:
         java -cp work/gecko-integration/snapshot-host local.pocketchat.FileSnapshotCacheTest | tee work/gecko-integration/snapshot-host-results.json
         npm install --prefix work/browser-perf-host --ignore-scripts --no-audit --no-fund jsdom@26.1.0
         JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node --test tests/appearance_lifecycle_test.cjs
+        JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node --test tests/appearance_compatibility_test.cjs | tee work/gecko-integration/appearance-compatibility-host.log
+        JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node --test tests/browser-runtime/inserted-subtree-invalidation.test.cjs | tee work/gecko-integration/inserted-subtree-invalidation-host.log
         java -cp work/gecko-integration/reading-host local.pocketchat.BrowserReadingFocusScript > work/gecko-integration/reading-focus.js
         python3 tools/gecko/run_resource_observer_host.py --jsdom-module "$PWD/work/browser-perf-host/node_modules/jsdom" --output work/gecko-integration/resource-observer-host-results.json
         JSDOM_MODULE="$PWD/work/browser-perf-host/node_modules/jsdom" node tests/browser-reading-focus.cjs work/gecko-integration/reading-focus.js | tee work/gecko-integration/reading-focus-host-results.json
@@ -272,6 +274,8 @@ jobs:
         cp work/gecko-integration/appearance-state-desktop/results.json work/gecko-integration/appearance-state-desktop-results.json
         python3 tests/web-appearance-host/run.py --java-home "$JAVA_HOME_17_X64" --json-jar work/gecko-integration/sharing-android-json.jar --output work/gecko-integration/appearance-state-android
         cp work/gecko-integration/appearance-state-android/results.json work/gecko-integration/appearance-state-android-results.json
+        PROFILE_JAVA="$JAVA_HOME_17_X64/bin/java" PROFILE_JSON_JAR="$PWD/work/gecko-integration/catalog-json.jar" APPEARANCE_READABILITY_REPORT="$PWD/work/gecko-integration/appearance-readability-desktop-results.json" python3 tests/profile_appearance_readability_test.py
+        PROFILE_JAVA="$JAVA_HOME_17_X64/bin/java" PROFILE_JSON_JAR="$PWD/work/gecko-integration/sharing-android-json.jar" APPEARANCE_READABILITY_REPORT="$PWD/work/gecko-integration/appearance-readability-android-results.json" python3 tests/profile_appearance_readability_test.py
         python3 tests/network-recovery-host/run.py --java-home "$JAVA_HOME_17_X64" --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-recovery-host-results.json
         python3 tests/network-recovery-host/run_real_probes.py --java-home "$JAVA_HOME_17_X64" --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/network-recovery-real-probes-host-results.json
         python3 tests/download-persistence-host/run.py --java-home "$JAVA_HOME_17_X64" --json-jar work/gecko-integration/catalog-json.jar --output work/gecko-integration/download-persistence-host-results.json

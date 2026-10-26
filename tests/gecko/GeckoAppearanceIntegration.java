@@ -113,7 +113,20 @@ final class GeckoAppearanceIntegration {
   }
   void dispatch(){
     switch(phase){
-      case "dark":case "light":case "same":
+      case "dark":
+        // Exercise the reported contract: persisted dark + selected attributes
+        // with author-owned light tokens and no html.dark stylesheet rule.
+        // Deep ordinary wrappers must not be mistaken for an invisible page.
+        eval("(()=>{const style=document.getElementById('site-theme'),root=document.documentElement,main=document.querySelector('main');if(!style||!main)return {ready:false};globalThis.__appearanceOriginalCss=style.textContent;style.textContent='html{--bg-primary:#fcfcfc;--bg-secondary:#fff;--text-primary:#0d0d0d}html,body,main,textarea{background:var(--bg-primary);color:var(--text-primary)}';root.style.setProperty('--bg-primary','#fcfcfc');root.style.setProperty('--text-primary','#0d0d0d');let outer=main;for(let i=0;i<24;i++){const wrapper=document.createElement('div');outer.before(wrapper);wrapper.append(outer);outer=wrapper}return {ready:true,before:getComputedStyle(main).backgroundColor}})()",setup->{
+          check("Author light tokens reproduce the reported light canvas without synthetic dark CSS",setup.optBoolean("ready")&&setup.optString("before").equals("rgb(252, 252, 252)"));
+          choose("dark","confirmed",true,page->{preserved(page,true);check("Actual Gecko compatibility paint and deep visible regions are confirmed",web.appearanceReport().optBoolean("compatibilityApplied"));finish(null,page);});
+        });return;
+      case "light":
+        eval("(()=>{const style=document.getElementById('site-theme');if(typeof globalThis.__appearanceOriginalCss!=='string'||!style)return {ready:false};style.textContent=globalThis.__appearanceOriginalCss;delete globalThis.__appearanceOriginalCss;document.documentElement.style.removeProperty('--bg-primary');document.documentElement.style.removeProperty('--text-primary');return {ready:true}})()",restored->{
+          if(!restored.optBoolean("ready"))throw new IllegalStateException("Controlled author palette restoration failed");
+          choose("light","confirmed",false,page->{preserved(page,true);finish(null,page);});
+        });return;
+      case "same":
         choose(phase.equals("light")?"light":"dark","confirmed",!phase.equals("light"),page->{preserved(page,true);if(phase.equals("same"))replay(beforePort,beforeReceipt,"Prior same-document version");finish(null,page);});return;
       case "spa":
         eval("(()=>{history.pushState({},'',location.pathname+'?runNonce="+state.suite+"&spa=1');return {ready:true}})()",unused->choose("light","confirmed",false,page->{preserved(page,true);check("SPA keeps original document and native session",state.baselineDocument.equals(page.optString("fixtureDocument"))&&web.current==state.initial);finish(null,page);}));return;
