@@ -74,12 +74,14 @@ final class DownloadTasks {
  void clearPending(JSONObject row,android.net.Uri uri,String generation){
   JSONObject stored=DownloadTaskRevisions.find(read(),row.optString("id"));
   if(!owns(row)||!DownloadTaskRevisions.pending(row,uri.toString(),generation)||!DownloadTaskRevisions.pending(stored,uri.toString(),generation))return;
-  DownloadTaskRevisions.clearPending(row);save();
+  JSONObject previous=J.parse(row.toString());try{DownloadTaskRevisions.clearPending(row);save();}
+  catch(RuntimeException error){DownloadTaskRevisions.restore(row,previous);throw error instanceof PersistenceFailure?error:new PersistenceFailure(error);}
  }
  static void put(JSONObject r,Object... pairs){try{for(int i=0;i<pairs.length;i+=2)r.put((String)pairs[i],pairs[i+1]);}catch(Exception ignored){}}
- JSONObject add(String source,String key,String conversation){release();JSONObject r=J.obj("id",UUID.randomUUID().toString(),"source",source,"key",key,"conversation",conversation,"name","正在获取文件","state","preparing","reason","","received",0,"total",-1,"time",System.currentTimeMillis());JSONArray next=new JSONArray();next.put(r);for(int i=0;i<rows.length();i++)next.put(rows.optJSONObject(i));rows=next;if(!claim(r))throw new IllegalStateException("下载任务已变化，请重试");return r;}
+ JSONObject add(String source,String key,String conversation){release();JSONObject r=J.obj("id",UUID.randomUUID().toString(),"source",source,"key",key,"conversation",conversation,"name","正在获取文件","state","preparing","reason","","received",0,"total",-1,"time",System.currentTimeMillis());JSONArray next=new JSONArray();next.put(r);for(int i=0;i<rows.length();i++)next.put(rows.optJSONObject(i));rows=next;try{if(!claim(r))throw new IllegalStateException("下载任务已变化，请重试");}catch(PersistenceFailure failure){put(r,"state","paused","reason",failure.getMessage());throw failure;}return r;}
  void save(){save(false);}
  void save(boolean forceCommit){
+  try{
   DownloadLibrary library=DownloadLibrary.get(context);rows=library.prune(DownloadTaskRevisions.merge(rows,observed,read()));
   SharedPreferences chat=context.getSharedPreferences("chat",0);JSONObject history=J.parse(chat.getString("downloadHistory","{}"));JSONArray files=history.optJSONArray("files");
   if(files!=null){JSONArray kept=library.prune(files);if(!kept.toString().equals(files.toString())){DownloadTasks.put(history,"files",kept);chat.edit().putString("downloadHistory",history.toString()).commit();}}
@@ -95,6 +97,7 @@ final class DownloadTasks {
   observed=DownloadTaskRevisions.snapshot(rows);
   try{library.sync(context,rows);for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if("saved".equals(row.optString("state")))library.add(context,row);}indexFailure=null;}
   catch(RuntimeException error){indexFailure=error;/* Confirmed tasks remain authoritative; a later save or instance repairs the index. */}
+  }catch(PersistenceFailure failure){throw failure;}catch(RuntimeException failure){durability.unconfirmed=true;throw new PersistenceFailure(failure);}
  }
  JSONObject recoveredRow(JSONObject previous){return recoveryFailure==null?DownloadTaskRevisions.find(rows,previous.optString("id")):null;}
  void recoverPending(JSONObject row,Runnable done){

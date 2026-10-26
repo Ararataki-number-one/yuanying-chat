@@ -87,6 +87,8 @@ def allowed(name, kind):
     if kind == 'build' and path.parent == PurePosixPath(str(SDK)):
         return path.name in ('geckoview-caret.aar', 'sdk-build-receipt.json') or path.suffix == '.json'
     if path.parent == PurePosixPath(str(OUT)):
+        if kind == 'phase' and path.name.startswith('appearance-web-') and path.suffix == '.raw':
+            return True
         if kind == 'build' and path.name in UPLOAD_LOGS | SETTINGS_LOGS:
             return True
         suffixes = ('.json', '.jar', '.apk', '.aar', '.pom', '.log', '.xml') if kind == 'build' else ('.json', '.png', '.xml', '.txt', '.log')

@@ -51,10 +51,17 @@ final class DesignSettingsUi {
     for(int i=0;i<AppAppearance.MODES.length;i++){
       RadioButton choice=new RadioButton(a);choice.setId(android.view.View.generateViewId());choice.setText(AppAppearance.LABELS[i]);choice.setTag(AppAppearance.MODES[i]);choice.setTextSize(15);choice.setTextColor(DesignUi.TEXT);choice.setMinHeight(DesignUi.dp(a,48));choices.addView(choice);
       if(AppAppearance.mode().equals(AppAppearance.MODES[i]))choices.check(choice.getId());
+      choice.setOnClickListener(v->{AppAppearance.choose(a,String.valueOf(choice.getTag()));refresh.run();});
     }
     d.note("跟随手机的浅色或深色设置，系统定时切换时也会自动调整。网页使用 ChatGPT 自带的浅色／深色配色，保留输入，不重新加载。");
-    choices.setOnCheckedChangeListener((group,id)->{RadioButton choice=group.findViewById(id);if(choice!=null){AppAppearance.choose(a,String.valueOf(choice.getTag()));refresh.run();}});
+    TextView website=ReferenceUi.text(a,"",13,DesignUi.MUTED,false);website.setPadding(0,DesignUi.dp(a,8),0,DesignUi.dp(a,8));d.body.addView(website);
+    Runnable status=new Runnable(){public void run(){if(!d.isShowing())return;ChatSession session=ChatSession.peek();JSONObject value=session==null||session.web==null?new JSONObject():session.web.appearanceReport();String state=value.optString("status");
+      String message="page-hidden".equals(value.optString("reason"))?"返回会话后会继续确认网页配色。":"confirmed".equals(state)?"聊天区域配色采样与应用一致。":"partial".equals(state)?"聊天区域配色采样一致，但偏好暂未保存；可重新同步。":"failed".equals(state)?"网页配色尚未确认同步，可重新同步并复制检查结果。":"pending".equals(state)?"正在确认网页配色…":"打开 ChatGPT 会话后会自动同步网页配色。";
+      if(!message.contentEquals(website.getText()))website.setText(message);website.postDelayed(this,500);}};
+    DesignUi.action(d.body,"重新同步网页配色",false,()->AppAppearance.resynchronize(a));
+    DesignUi.action(d.body,"复制配色检查结果",false,()->{ChatSession session=ChatSession.peek();JSONObject value=session==null||session.web==null?J.obj("status","unavailable"):session.web.appearanceReport();
+      android.content.ClipboardManager clipboard=(android.content.ClipboardManager)a.getSystemService(android.content.Context.CLIPBOARD_SERVICE);if(clipboard!=null)clipboard.setPrimaryClip(android.content.ClipData.newPlainText("网页配色检查",value.toString()));});
     DesignUi.action(d.body,"查看品牌启动页",false,()->{d.dismiss();a.startActivity(new android.content.Intent(a,BrandLaunchActivity.class).putExtra("previewBrand",true));});
-    d.buttons("",()->{},"完成",d::dismiss);d.show();
+    d.buttons("",()->{},"完成",d::dismiss);d.show();website.post(status);
   }
 }

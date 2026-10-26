@@ -33,6 +33,13 @@ for abi in ['arm64-v8a']:
 for name in ['build.log', 'native-test.log', 'emulator.log', 'runner-health.txt', 'update-fixture-preparation.log', 'bridge-host-results.json', 'reading-host-results.json', 'reading-focus-host-results.json', 'cookie-host-results.json', 'update-host-results.json', 'update-transfer-host-results.json', 'update-transfer-results.json', 'region-host-results.json', 'update-ui.xml', 'update-installer-ui.xml', 'update-ui.png', 'device-results.json', 'device-route-trace.json', 'device-native-events.txt', 'device-screen.png', 'last-device-log.txt', 'production-ui.xml', 'failure-screen.png', 'failure-ui.xml']:
     if (out / name).exists():
         shutil.copy2(out / name, stage / name)
+for name in ['appearance-receipts-host.log', 'appearance-state-desktop-results.json', 'appearance-state-android-results.json',
+             'network-recovery-host-results.json', 'network-recovery-real-probes-host-results.json',
+             'download-persistence-host-results.json', 'download-pending-viewer-host-results.json', 'download-index-host-results.json',
+             'download-names-before-host-results.json', 'download-names-host-results.json', 'cookie-coalescing-host-results.json']:
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
+for pattern in ['appearance-web-*.jsonl', 'appearance-web-*.log', 'appearance-web-*.txt', 'appearance-web-*.raw']:
+    for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 for name in ['network-performance-results.json','network-performance-failure-log.txt','quiet-notification-results.json','quiet-notification-failure-log.txt','compact-chrome-results.json','ui-visual-results.json','ui-build-comparison.json','ui-visual-log.txt','ui-visual-failure.png','ui-visual-failure.xml','snapshot-host-results.json','reply-observation-host-results.json','reply-binding-host-results.json','interaction-host-results.json','gecko-performance-results.json','gecko-performance-failure-log.txt','gecko-performance-screen.png','network-pool-host-results.json','latency-probe-host-results.json','native-probe-results.json','native-probe-log.txt','native-probe-failure-log.txt','gecko-pool-results.json','gecko-pool-server.json','gecko-pool-server-failure.json','gecko-pool-log.txt','gecko-pool-failure-log.txt','browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','update-route-log.txt','update-route-failure-log.txt','update-route-host-wire.json']:
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 for name in ['device-readiness-observations.json','device-failure-runtime.json']:

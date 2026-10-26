@@ -36,10 +36,10 @@ final class DefaultDownloads {
     SavedFileDeletion.lease(c,Uri.parse(pending),()->{recoverOwned(c,task);return null;});
   }
   /** Caller retains the destination lease through metadata publication. */
-  static void recoverOwned(Context c,JSONObject task){String pending=task.optString("pendingDestination");if(pending.isEmpty())return;boolean saved=false;Uri uri=Uri.parse(pending);try{
-    if(Build.VERSION.SDK_INT>=29&&"media".equals(uri.getAuthority())){try(Cursor row=c.getContentResolver().query(uri,new String[]{MediaStore.MediaColumns.IS_PENDING,MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.OWNER_PACKAGE_NAME},null,null,null)){if(row!=null&&row.moveToFirst()&&directory(c).equals(row.getString(1))&&c.getPackageName().equals(row.getString(2))){saved=row.getInt(0)==0;if(!saved)c.getContentResolver().delete(uri,null,null);}}}
-    else if((c.getPackageName()+".saved-downloads").equals(uri.getAuthority())){File file=SavedDownloadProvider.resolve(c,uri);if(uri.getPathSegments().get(0).equals(String.valueOf(Profiles.slot(c)))){saved=file.isFile();if(!saved){new File(file.getParentFile(),"payload.part").delete();file.getParentFile().delete();}}}
+  static void recoverOwned(Context c,JSONObject task){String pending=task.optString("pendingDestination");if(pending.isEmpty())return;boolean saved=false,verified=false;Uri uri=Uri.parse(pending);try{
+    if(Build.VERSION.SDK_INT>=29&&"media".equals(uri.getAuthority())){try(Cursor row=c.getContentResolver().query(uri,new String[]{MediaStore.MediaColumns.IS_PENDING,MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.OWNER_PACKAGE_NAME},null,null,null)){if(row!=null){if(!row.moveToFirst())verified=true;else if(directory(c).equals(row.getString(1))&&c.getPackageName().equals(row.getString(2))){saved=row.getInt(0)==0;verified=saved||c.getContentResolver().delete(uri,null,null)==1;}}}}
+    else if((c.getPackageName()+".saved-downloads").equals(uri.getAuthority())){File file=SavedDownloadProvider.resolve(c,uri);if(uri.getPathSegments().get(0).equals(String.valueOf(Profiles.slot(c)))){saved=file.isFile();verified=true;if(!saved){new File(file.getParentFile(),"payload.part").delete();file.getParentFile().delete();}}}
     if(saved){JSONObject recovered=J.parse(task.toString());DownloadTasks.put(recovered,"uri",pending);saved=!DownloadLibrary.get(c).isRemoved(recovered);}
     if(saved)DownloadTasks.put(task,"state","saved","reason","","uri",pending,"location",task.optString("pendingLocation"),"name",task.optString("pendingName",task.optString("name","文件")));
-  }catch(Exception ignored){}DownloadTaskRevisions.clearPending(task);}
+  }catch(Exception ignored){verified=false;}if(verified)DownloadTaskRevisions.clearPending(task);else DownloadTasks.put(task,"state","paused","reason","保存结果待确认；请查看原保存位置或重试核验。");}
 }

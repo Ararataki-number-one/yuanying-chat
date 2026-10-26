@@ -28,7 +28,7 @@ for(const origin of ['https://accounts.google.com','https://auth.openai.com','ht
  const other=fixture(origin);check(()=>assert.equal(other.context.PocketAppearance.apply(true),false));check(()=>assert.equal(other.values.get('theme'),'light'));
 }
 check(()=>assert.equal(fixture('https://chatgpt.com',false).context.PocketAppearance.apply(true),false));
-check(()=>assert.equal(fixture('https://chatgpt.com',true,true).context.PocketAppearance.apply(true),true));
+check(()=>assert.equal(fixture('https://chatgpt.com',true,true).context.PocketAppearance.apply(true),false));
 apply(true);f.classes.delete('dark');f.events.DOMContentLoaded();check(()=>assert.ok(f.classes.has('dark')));
 f.classes.delete('dark');f.events.pageshow();check(()=>assert.ok(f.classes.has('dark')));
 check(()=>assert.equal(f.context.PocketAppearance.apply(null),false));

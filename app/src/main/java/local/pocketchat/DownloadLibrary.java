@@ -9,11 +9,12 @@ import org.json.*;
 final class DownloadLibrary extends SQLiteOpenHelper {
   static DownloadLibrary instance;final Context root;
   static synchronized DownloadLibrary get(Context c){if(instance==null)instance=new DownloadLibrary(Profiles.global(c));return instance;}
-  DownloadLibrary(Context c){super(c,"saved-download-library.db",null,3);root=c;}
-  public void onCreate(SQLiteDatabase db){db.execSQL("CREATE TABLE files (slot INTEGER NOT NULL,uri TEXT NOT NULL,row TEXT NOT NULL,time INTEGER NOT NULL,PRIMARY KEY(slot,uri))");createTasks(db);createDeleted(db);}
+  DownloadLibrary(Context c){super(c,"saved-download-library.db",null,4);root=c;}
+  public void onCreate(SQLiteDatabase db){db.execSQL("CREATE TABLE files (slot INTEGER NOT NULL,uri TEXT NOT NULL,row TEXT NOT NULL,time INTEGER NOT NULL,PRIMARY KEY(slot,uri))");createTasks(db);createDeleted(db);createIndexes(db);}
   static void createTasks(SQLiteDatabase db){db.execSQL("CREATE TABLE tasks(slot INTEGER NOT NULL,id TEXT NOT NULL,row TEXT NOT NULL,time INTEGER NOT NULL,PRIMARY KEY(slot,id))");}
   static void createDeleted(SQLiteDatabase db){db.execSQL("CREATE TABLE deleted_files(uri TEXT PRIMARY KEY NOT NULL,time INTEGER NOT NULL)");}
-  public void onUpgrade(SQLiteDatabase db,int old,int next){if(old<2)createTasks(db);if(old<3)createDeleted(db);}
+  static void createIndexes(SQLiteDatabase db){db.execSQL("CREATE INDEX files_uri_time ON files(uri,time DESC)");db.execSQL("CREATE INDEX files_time ON files(time DESC)");db.execSQL("CREATE INDEX tasks_time ON tasks(time DESC)");}
+  public void onUpgrade(SQLiteDatabase db,int old,int next){if(old<2)createTasks(db);if(old<3)createDeleted(db);if(old<4)createIndexes(db);}
   boolean isRemoved(JSONObject row){return removed(getReadableDatabase(),row);}
   long publicationTime(android.net.Uri uri){long time=System.currentTimeMillis();SQLiteDatabase db=getReadableDatabase();try(Cursor c=db.query("deleted_files",new String[]{"time"},"uri=?",new String[]{uri.toString()},null,null,null)){if(c.moveToFirst())time=Math.max(time,c.getLong(0)+1);}JSONObject current=newest(db,uri.toString());if(current!=null)time=Math.max(time,current.optLong("time")+1);return time;}
   boolean indexed(android.net.Uri uri){try(Cursor c=getReadableDatabase().query("files",new String[]{"uri"},"uri=?",new String[]{uri.toString()},null,null,null)){return c.moveToFirst();}}

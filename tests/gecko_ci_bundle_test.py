@@ -123,6 +123,18 @@ class CiBundleTest(unittest.TestCase):
         self.assertFalse((target/BUNDLE.OUT/'network-fixture.p12').exists())
         self.assertEqual(manifest['runId'],'123456')
 
+    def test_appearance_raw_bytes_survive_only_the_owned_phase_namespace(self):
+        name='appearance-web-adb-0001-stdout.raw'
+        data=b'original adb output\r\n\x00\xff'
+        archive=self.phase('ui',{name:data,'foreign.raw':b'not evidence'})
+        consumer=self.clone('appearance-consumer')
+        BUNDLE.restore(consumer,self.build,'build')
+        BUNDLE.restore(consumer,archive,'phase','ui')
+        self.assertEqual((consumer/BUNDLE.OUT/name).read_bytes(),data)
+        self.assertFalse((consumer/BUNDLE.OUT/'foreign.raw').exists())
+        self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/name),'build'))
+        self.assertFalse(BUNDLE.allowed(str(BUNDLE.OUT/'nested'/name),'phase'))
+
     def test_input_driver_and_failed_raw_events_keep_exact_bytes_without_keys(self):
         target=self.clone('input-consumer');BUNDLE.restore(target,self.build,'build')
         for name in BUNDLE.INPUT_DRIVER_EVIDENCE:

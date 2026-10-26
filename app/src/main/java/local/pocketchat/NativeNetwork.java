@@ -33,21 +33,39 @@ class NativeNetwork {
   java.lang.Process process;JSONObject settings;volatile int controllerPort,proxyPort;int failures;volatile String token="";String fingerprint="";List<String> names=new ArrayList<>();long lastScan=0;int totalEntries=0;volatile long startupDuration=0;volatile String startupPath="";volatile long startupBeganAt=0,coreDuration=0,providerDuration=0,exitCheckDuration=0;volatile boolean startupCached=false;
   static final String MEASUREMENT_PROFILE="unified-delay-trace-v2";volatile long lastProbeDuration=0,lastProbeDurationAt=0;volatile String lastProbeEntry="";
   final java.util.concurrent.atomic.AtomicLong probeSequence=new java.util.concurrent.atomic.AtomicLong();final ThreadLocal<ProbeTicket> probeTicket=new ThreadLocal<>();volatile ProbeResult currentProbe;
-  static final class ProbeTicket {final LatencyProbePolicy.Binding binding;LatencyProbePolicy.Trace trace;long duration;ProbeTicket(LatencyProbePolicy.Binding binding){this.binding=binding;}}
+  static final class ProbeTicket {final LatencyProbePolicy.Binding binding;final RecoveryRoute recovery;LatencyProbePolicy.Trace trace;long duration;ProbeTicket(LatencyProbePolicy.Binding binding,RecoveryRoute recovery){this.binding=binding;this.recovery=recovery;}}
   static final class ProbeResult {
-    final LatencyProbePolicy.Binding binding;final int delay;final long at,duration;final LatencyProbePolicy.Trace trace;
-    ProbeResult(LatencyProbePolicy.Binding binding,int delay,long at,long duration,LatencyProbePolicy.Trace trace){this.binding=binding;this.delay=delay;this.at=at;this.duration=duration;this.trace=trace;}
+    final LatencyProbePolicy.Binding binding;final int delay;final long at,duration;final LatencyProbePolicy.Trace trace;final RecoveryRoute recovery;
+    ProbeResult(LatencyProbePolicy.Binding binding,int delay,long at,long duration,LatencyProbePolicy.Trace trace,RecoveryRoute recovery){this.binding=binding;this.delay=delay;this.at=at;this.duration=duration;this.trace=trace;this.recovery=recovery;}
     String kind(){return trace==null?"unknown":trace.kind;}
     JSONObject publicSummary(){return J.obj("schema",1,"measurement",binding.measurement,"routeSerial",binding.route,"at",at,"delay",delay,"kind",kind(),"comparable",trace!=null&&trace.comparable(),"probe",trace==null?new JSONObject():new JSONObject(trace.values()));}
   }
   ProbeResult probeMeasured(String proxy,String exactEntry){
-    LatencyProbePolicy.Binding binding=new LatencyProbePolicy.Binding(proxy,exactEntry,token,routeSerial,probeSequence.incrementAndGet(),controllerPort);ProbeTicket ticket=new ProbeTicket(binding);probeTicket.set(ticket);
-    try{int delay=probe(proxy);if(!binding.matches(token,routeSerial,controllerPort,currentEntry)||Thread.currentThread().isInterrupted())delay=-1;return new ProbeResult(binding,delay,System.currentTimeMillis(),ticket.duration,delay>0?ticket.trace:null);}finally{probeTicket.remove();}
+    return probeMeasured(proxy,exactEntry,null);
+  }
+  ProbeResult probeMeasured(String proxy,String exactEntry,RecoveryRoute recovery){
+    LatencyProbePolicy.Binding binding=new LatencyProbePolicy.Binding(proxy,exactEntry,token,routeSerial,probeSequence.incrementAndGet(),controllerPort);ProbeTicket ticket=new ProbeTicket(binding,recovery);probeTicket.set(ticket);
+    try{int delay=probeBindingCurrent(binding,recovery)?probe(proxy):-1;if(!probeBindingCurrent(binding,recovery)||Thread.currentThread().isInterrupted())delay=-1;return new ProbeResult(binding,delay,System.currentTimeMillis(),ticket.duration,delay>0?ticket.trace:null,recovery);}finally{probeTicket.remove();}
+  }
+  boolean probeBindingCurrent(LatencyProbePolicy.Binding binding,RecoveryRoute recovery){
+    if(recovery==null)return binding.matches(token,routeSerial,controllerPort,currentEntry);
+    // Only an isolated candidate owned by this live recovery search can survive
+    // its own EntryChoice changes. FixedExit and ordinary optimization stay strict.
+    try{
+      maintenanceCheck();JSONObject state=transport==null?null:transport.state;
+      // Durable/controller state is freshly checked by the search owner before
+      // selection and commit; probe threads only inspect the frozen live identity.
+      return !binding.current&&binding.proxy.matches("ProbeExit[0-9]+")&&recovery.active&&recovery.maintenance==maintenanceGeneration&&ready&&!recoveryBlocked&&recovery.accepts(routeSerial)&&recovery.core!=null&&recovery.core.sameCore(this,state)&&binding.epoch.equals(token)&&binding.controller==controllerPort&&recovery.configuration.equals(recovery.core.configuration)&&recovery.configuration.equals(transportFingerprint(settings))&&android.os.SystemClock.elapsedRealtime()<recovery.deadline;
+    }catch(Exception unavailable){return false;}
+  }
+  boolean probeCallCurrent(String name,String epoch,long serial,int controller,ProbeTicket ticket){
+    if(!epoch.equals(token)||controller!=controllerPort||Thread.currentThread().isInterrupted())return false;
+    return ticket!=null&&ticket.recovery!=null&&ticket.binding.proxy.equals(name)?probeBindingCurrent(ticket.binding,ticket.recovery):serial==routeSerial;
   }
   static LatencyProbePolicy.Trace probeTrace(JSONObject value,int delay){
     if(value==null)return null;Map<String,Object> safe=new LinkedHashMap<>();for(String key:LatencyProbePolicy.FIELDS)if(value.has(key))safe.put(key,value.opt(key));return LatencyProbePolicy.parse(safe,delay);
   }
-  boolean probeCurrent(ProbeResult result){return result!=null&&result.binding.matches(token,routeSerial,controllerPort,currentEntry);}
+  boolean probeCurrent(ProbeResult result){return result!=null&&probeBindingCurrent(result.binding,result.recovery);}
   synchronized void publishCurrentProbe(ProbeResult result){
     if(!probeCurrent(result)||!result.binding.current||currentProbe!=null&&currentProbe.binding.measurement>result.binding.measurement)return;
     currentProbe=result;latencyReading=J.obj("entry",result.binding.entry,"generation",result.binding.epoch,"routeSerial",result.binding.route,"measurement",result.binding.measurement,"at",result.at,"delay",result.delay,"kind",result.kind(),"probe",result.trace==null?new JSONObject():new JSONObject(result.trace.values()));
@@ -67,7 +85,7 @@ class NativeNetwork {
   long nextOptimizationAt;int optimizationFailures;volatile long lastReadOnlyDiagnostic=-120000;volatile boolean readOnlyDiagnosticQueued;
   static final class ExitRouteReceipt {
     final String fingerprint,token,entry,configuration,generation;final long serial;final int controller,proxy,pid,servicePid;final java.lang.Process process;
-    ExitRouteReceipt(NativeNetwork n,JSONObject state){fingerprint=n.fingerprint;token=n.token;entry=n.currentEntry;serial=n.routeSerial;controller=n.controllerPort;proxy=n.proxyPort;process=n.process;configuration=state==null?"":state.optString("configuration");generation=state==null?"":state.optString("generation");pid=state==null?0:state.optInt("pid");servicePid=state==null?0:state.optInt("servicePid");}
+    ExitRouteReceipt(NativeNetwork n,JSONObject state){fingerprint=n.fingerprint;token=n.token;entry=n.currentEntry;serial=n.routeSerial;controller=n.controllerPort;proxy=n.proxyPort;process=n.process;configuration=state==null?n.settings==null?"":transportFingerprint(n.settings):state.optString("configuration");generation=state==null?"":state.optString("generation");pid=state==null?0:state.optInt("pid");servicePid=state==null?0:state.optInt("servicePid");}
     boolean matches(NativeNetwork n,JSONObject state){
       if(entry.isEmpty()||serial!=n.routeSerial||!entry.equals(n.currentEntry))return false;return sameCore(n,state);
     }
@@ -175,13 +193,16 @@ class NativeNetwork {
     if(sample.delay<0&&secondaryHealth(sample)==NetworkHealthPolicy.TargetEvidence.TRANSPORT_UNAVAILABLE){
       if(routeBusy())throw retained("当前操作继续使用原线路；尚未完成重连");
       if(settings!=null&&"manual".equals(settings.optString("entryMode")))throw new IOException("指定入口与目标网站连接失败，请重连或编辑网络");
-      firstVerifiedRoute(currentEntry);return;
+      recoverFirstVerifiedRoute(currentEntry);return;
     }
     if(exitCheckFailures>0&&android.os.SystemClock.elapsedRealtime()<nextExitCheckAt)
       throw retained("出口核验正在等待重试，原线路保持；尚未完成重连");
     verifyExit();
   }
-  static final class RouteTransactionFailure extends IOException {RouteTransactionFailure(){super("原入口重新核验未完成，当前窗口连接已暂停");}}
+  static final class RouteTransactionFailure extends IOException {
+    RouteTransactionFailure(){this("原入口重新核验未完成，当前窗口连接已暂停",null);}
+    RouteTransactionFailure(String message,Throwable cause){super(message,cause);}
+  }
   static final class RetainedRouteFailure extends IOException {final ExitRouteReceipt receipt;RetainedRouteFailure(String text,ExitRouteReceipt receipt){super(text);this.receipt=receipt;}}
   RetainedRouteFailure retained(String text){report(text);return new RetainedRouteFailure(text,verifiedRoute);}
   boolean retainedFailure(Exception failure){return failure instanceof RetainedRouteFailure&&((RetainedRouteFailure)failure).receipt!=null&&verifiedRoute==((RetainedRouteFailure)failure).receipt&&verifiedRouteCurrent();}
@@ -242,23 +263,29 @@ class NativeNetwork {
   }
   static final class RouteProbe{final String name;final int delay;final ProbeResult sample;RouteProbe(String n,int d){name=n;delay=d;sample=null;}RouteProbe(String n,ProbeResult result){name=n;delay=result.delay;sample=result;}}
   RouteProbe startupProbe(String name,int index,String epoch){
+    return startupProbe(name,index,epoch,null);
+  }
+  RouteProbe startupProbe(String name,int index,String epoch,RecoveryRoute recovery){
     if(!epoch.equals(token)||Thread.currentThread().isInterrupted())return new RouteProbe(name,-1);
-    try{api("PUT","/proxies/ProbeEntry"+index,J.obj("name",name),3000);if(!epoch.equals(token)||Thread.currentThread().isInterrupted())return new RouteProbe(name,-1);return new RouteProbe(name,probeMeasured("ProbeExit"+index,name));}catch(Exception unavailable){return new RouteProbe(name,-1);}
+    try{api("PUT","/proxies/ProbeEntry"+index,J.obj("name",name),3000);if(!epoch.equals(token)||Thread.currentThread().isInterrupted())return new RouteProbe(name,-1);return new RouteProbe(name,probeMeasured("ProbeExit"+index,name,recovery));}catch(Exception unavailable){return new RouteProbe(name,-1);}
   }
   void firstVerifiedRoute(String rejected)throws Exception{firstVerifiedRoute(rejected,null);}
   void firstVerifiedRoute(String rejected,StartupRoute bootstrap)throws Exception{
+    firstVerifiedRoute(rejected,bootstrap,null);
+  }
+  void firstVerifiedRoute(String rejected,StartupRoute bootstrap,RecoveryRoute recovery)throws Exception{
     report("正在寻找可用入口并核实固定出口…");
     final List<String> candidates=new ArrayList<>(names);final String epoch=token;
     // Startup normally has no parent maintenance scope. Own every candidate's
     // controller socket until the search ends, including successful searches.
     final NetworkWork parent=maintenance.get(),search=new NetworkWork(true);search.owner=null;
     CompletionService<RouteProbe> completed=new ExecutorCompletionService<>(probes);List<Future<RouteProbe>> active=new ArrayList<>();
-    JSONArray measured=new JSONArray();int next=0,running=0;long deadline=android.os.SystemClock.elapsedRealtime()+startupSearchBudgetMs();
+    JSONArray measured=new JSONArray();int next=0,running=0;long deadline=recovery==null?android.os.SystemClock.elapsedRealtime()+startupSearchBudgetMs():recovery.deadline;
     try{
       while(next<candidates.size()||running>0){maintenanceCheck();
         while(running<4&&next<candidates.size()){
           final int index=next++;final String name=candidates.get(index);if(name.equals(rejected))continue;
-          Future<RouteProbe> task=completed.submit(()->{maintenance.set(search);try{return startupProbe(name,index,epoch);}finally{maintenance.remove();}});
+          Future<RouteProbe> task=completed.submit(()->{maintenance.set(search);try{return startupProbe(name,index,epoch,recovery);}finally{maintenance.remove();}});
           active.add(task);search.add(task);if(parent!=null)parent.add(task);running++;
         }
         if(running==0)break;
@@ -266,15 +293,22 @@ class NativeNetwork {
         if(finished==null)throw new IOException("入口检查超时，请重试；不会改为直连");
         active.remove(finished);RouteProbe r=finished.get();running--;maintenanceCheck();
         if(!epoch.equals(token))throw new IOException("网络连接已改变，请重试");
+        if(recovery!=null&&r.sample!=null&&(r.sample.recovery!=recovery||!probeCurrent(r.sample)))throw new RouteTransactionFailure("候选探测的恢复实例已变化，当前窗口连接已暂停",null);
         long now=System.currentTimeMillis();if(r.sample!=null)recordProbe(r.sample,now);else quality.record(r.name,r.delay,now,"unknown",new JSONObject());measured.put(J.obj("name",display(r.name),"internalName",r.name,"delay",r.delay,"probe",r.sample==null?new JSONObject():r.sample.publicSummary()));results=measured;
         if(r.delay<=0)continue;
-        try{selectVerifiedRoute(r.name,false,bootstrap);startupPath="first-verified";lastScan=System.currentTimeMillis();return;}
+        try{selectVerifiedRoute(r.name,false,bootstrap,recovery);startupPath="first-verified";lastScan=System.currentTimeMillis();return;}
         catch(StartupRouteFailure stale){throw stale;}
         catch(RouteTransactionFailure failed){throw failed;}
         catch(RetainedRouteFailure restored){throw restored;}
         catch(ExitMismatch mismatch){throw mismatch;}
         catch(ExitCheckUnavailable unavailable){throw unavailable;}
-        catch(Exception unavailable){quality.record(r.name,-1,System.currentTimeMillis());}
+        catch(Exception unavailable){
+          if(recovery!=null){
+            recoveryState(recovery);
+            if(!ordinaryRecoveryFailure(unavailable)||!r.name.equals(currentEntry)||verifiedRoute!=null)throw new RouteTransactionFailure("候选入口状态未得到确认，当前窗口连接已暂停",unavailable);
+          }
+          quality.record(r.name,-1,System.currentTimeMillis());
+        }
       }
       throw new IOException("全部入口的完整代理链均不可用；不会改为直连");
     }finally{search.cancel(closers);search.finish();}
@@ -415,14 +449,14 @@ class NativeNetwork {
     long began=System.currentTimeMillis(),monotonic=android.os.SystemClock.elapsedRealtime();String entry=currentEntry,epoch=token,target=probeUrl();long serial=routeSerial;int controller=controllerPort;ProbeTicket ticket=probeTicket.get();
     try{
       JSONObject response=api("GET","/proxies/"+URLEncoder.encode(name,"UTF-8")+"/delay?timeout=8000&expected=204&url="+URLEncoder.encode(target,"UTF-8"),null,11000);int delay=response.optInt("delay",-1);
-      if(!epoch.equals(token)||serial!=routeSerial||controller!=controllerPort||Thread.currentThread().isInterrupted())return -1;
+      if(!probeCallCurrent(name,epoch,serial,controller,ticket))return -1;
       long duration=android.os.SystemClock.elapsedRealtime()-monotonic;
       JSONObject info=api("GET","/proxies/"+URLEncoder.encode(name,"UTF-8"),null,3000).optJSONObject("extra");JSONObject state=info==null?null:info.optJSONObject(target);JSONArray history=state==null?null:state.optJSONArray("history");
       if(delay<=0||state==null||!state.optBoolean("alive")||history==null||history.length()==0)return -1;
       JSONObject latest=history.getJSONObject(history.length()-1);if(Instant.parse(latest.getString("time")).toEpochMilli()<began-1500)return -1;
-      if(!epoch.equals(token)||serial!=routeSerial||controller!=controllerPort||Thread.currentThread().isInterrupted())return -1;
+      if(!probeCallCurrent(name,epoch,serial,controller,ticket))return -1;
       // The trace is from this exact controller response, not a matching history value.
-      if(ticket!=null&&ticket.binding.proxy.equals(name)&&ticket.binding.matches(token,routeSerial,controllerPort,currentEntry)){ticket.trace=probeTrace(response.optJSONObject("probe"),delay);ticket.duration=duration;}
+      if(ticket!=null&&ticket.binding.proxy.equals(name)&&probeBindingCurrent(ticket.binding,ticket.recovery)){ticket.trace=probeTrace(response.optJSONObject("probe"),delay);ticket.duration=duration;}
       if(name.equals("FixedExit")&&entry.equals(currentEntry)&&epoch.equals(token)){lastProbeEntry=entry;lastProbeDuration=duration;lastProbeDurationAt=System.currentTimeMillis();}
       return delay;
     }catch(Exception e){return -1;}
@@ -505,6 +539,55 @@ class NativeNetwork {
     private StartupRoute(ExitRouteReceipt core,String configuration){this.core=core;this.configuration=configuration;}
   }
   static final class StartupRouteFailure extends IOException {StartupRouteFailure(Exception cause){super(cause.getMessage()==null?"初始网络连接未完成":cause.getMessage(),cause);}}
+  /** A corroborated failed route is not a rollback destination. Freeze its core
+   * and durable configuration while the original bounded search tries successors. */
+  static final class RecoveryRoute {
+    final ExitRouteReceipt core;final String configuration;final long deadline,maintenance;volatile boolean active=true;volatile long serial;
+    private RecoveryRoute(ExitRouteReceipt core,String configuration,long deadline,long maintenance){this.core=core;this.configuration=configuration;this.deadline=deadline;this.maintenance=maintenance;serial=core==null?-1:core.serial;}
+    // routeSerial only increases. Advance this single upper bound before an
+    // owned invalidation, then require that invalidation to reach it exactly.
+    // A probe can read either side of that own transition without observing a
+    // torn pair of old/new authorization fields; any extra advance is rejected.
+    boolean accepts(long serial){return core!=null&&serial>=core.serial&&serial<=this.serial;}
+  }
+  private void recoverFirstVerifiedRoute(String rejected)throws Exception{
+    maintenanceCheck();if(routeBusy())throw retained("当前操作继续使用原线路；尚未完成重连");
+    ExitRouteReceipt owned=verifiedRoute;RecoveryRoute recovery=null;
+    try{
+      recovery=new RecoveryRoute(owned,transportFingerprint(settings),android.os.SystemClock.elapsedRealtime()+startupSearchBudgetMs(),maintenanceGeneration);
+      if(owned==null||owned!=verifiedRoute||!rejected.equals(owned.entry)||!verifiedRouteCurrent())throw new IOException("故障线路的网络实例已变化");
+      JSONObject observed=recoveryState(recovery);if(owned!=verifiedRoute||!owned.matches(this,observed))throw new IOException("故障线路的核验回执已变化");
+      // A was previously verified, but its transport has now failed. Revoke its
+      // old admission before trying B; B must not roll back to known-broken A.
+      recovery.serial++;invalidateVerifiedRoute();if(routeSerial!=recovery.serial)throw new IOException("故障线路的选择代次已变化");firstVerifiedRoute(rejected,null,recovery);
+      if(verifiedRoute==null||!verifiedRoute.matches(this,transport==null?null:transport.state))throw new IOException("恢复线路未得到确认");
+    }catch(Exception failure){
+      if(owned==null)clearReadyState();else stopOwnedCore(owned,failure instanceof ExitMismatch?NetworkDiagnostics.Reason.EXIT_MISMATCH:NetworkDiagnostics.Reason.HEALTH_FAILED);
+      if(failure instanceof ExitMismatch)recoveryBlocked=true;
+      String detail=failure.getMessage()==null?"故障线路恢复未完成，当前窗口连接已暂停":failure.getMessage();report(detail);
+      throw failure instanceof RouteTransactionFailure?(RouteTransactionFailure)failure:new RouteTransactionFailure(detail,failure);
+    }finally{if(recovery!=null)recovery.active=false;}
+  }
+  JSONObject recoveryState(RecoveryRoute recovery)throws Exception{
+    maintenanceCheck();try{
+      long remaining=recovery.deadline-android.os.SystemClock.elapsedRealtime();if(remaining<=0)throw new IOException("入口检查超时，请重试；不会改为直连");
+      String selected=api("GET","/proxies/EntryChoice",null,(int)Math.min(3000,remaining)).optString("now");
+      JSONObject state=transport==null?null:transport.call("snapshot","");
+      if(!recovery.active||recovery.maintenance!=maintenanceGeneration||!recovery.accepts(routeSerial)||recovery.core==null||!ready||recoveryBlocked||!recovery.core.sameCore(this,state)||!recovery.configuration.equals(recovery.core.configuration)||!recovery.configuration.equals(transportFingerprint(settings))||!configurationMatches())throw new IOException("故障恢复时网络实例或保存配置已变化");
+      if(currentEntry.isEmpty()||!currentEntry.equals(selected))throw new IOException("故障恢复时控制器入口状态未得到确认");
+      if(android.os.SystemClock.elapsedRealtime()>=recovery.deadline)throw new IOException("入口检查超时，请重试；不会改为直连");
+      maintenanceCheck();
+      return state;
+    }catch(Exception failure){throw new RouteTransactionFailure(failure.getMessage()==null?"故障恢复状态未得到确认，当前窗口连接已暂停":failure.getMessage(),failure);}
+  }
+  static boolean ordinaryRecoveryFailure(Exception failure){
+    Throwable cause=failure;
+    for(int depth=0;cause!=null&&depth<8;depth++,cause=cause.getCause()){
+      if(!(cause instanceof IOException)||cause instanceof InterruptedIOException||cause instanceof javax.net.ssl.SSLException||cause instanceof ExitMismatch||cause instanceof ExitCheckUnavailable||cause instanceof RouteTransactionFailure||cause instanceof RetainedRouteFailure||cause instanceof StartupRouteFailure)return false;
+    }
+    // A cyclic/deep or uninspected cause chain cannot authorize another switch.
+    return cause==null;
+  }
   private StartupRoute startupRoute(ExitRouteReceipt owned)throws Exception{
     maintenanceCheck();if(ready||verifiedRoute!=null)throw new IOException("已有线路不能使用初始建路流程");
     JSONObject state=transport==null?null:transport.call("snapshot","");
@@ -525,15 +608,22 @@ class NativeNetwork {
    * A failed tentative selection can only retain a newly verified rollback receipt. */
   void selectVerifiedRoute(String name,boolean measure)throws Exception{selectVerifiedRoute(name,measure,null);}
   void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap)throws Exception{
+    selectVerifiedRoute(name,measure,bootstrap,null);
+  }
+  void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap,RecoveryRoute recovery)throws Exception{
     maintenanceCheck();if(bootstrap==null&&routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");
     ExitRouteReceipt previous=bootstrap==null&&verifiedRouteCurrent()?verifiedRoute:null;String old=currentEntry;
-    maintenanceCheck();if(bootstrap!=null)startupState(bootstrap,true);else if(routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");
+    maintenanceCheck();if(bootstrap!=null)startupState(bootstrap,true);else if(routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");if(recovery!=null)recoveryState(recovery);
     try{
-      selectNow(name);ProbeResult sample=null;
+      if(recovery==null)selectNow(name);else{
+        recovery.serial++;selectNow(name);if(routeSerial!=recovery.serial)throw new RouteTransactionFailure("恢复入口的选择代次已变化，当前窗口连接已暂停",null);
+      }
+      ProbeResult sample=null;
       if(measure){sample=probeMeasured("FixedExit",name);if(sample.delay<=0||!probeCurrent(sample))throw new IOException("候选入口未通过探测");}
-      verifyExit();ExitRouteReceipt candidate=verifiedRoute;JSONObject observed=bootstrap!=null?startupState(bootstrap,false):transport==null?null:transport.call("snapshot","");
-      if(candidate==null||candidate!=verifiedRoute||!name.equals(candidate.entry)||!candidate.matches(this,observed))throw new IOException("提交入口前网络实例已变化");
+      verifyExit();ExitRouteReceipt candidate=verifiedRoute;JSONObject observed=bootstrap!=null?startupState(bootstrap,false):recovery!=null?recoveryState(recovery):transport==null?null:transport.call("snapshot","");
+      if(candidate==null||candidate!=verifiedRoute||!name.equals(candidate.entry)||!candidate.matches(this,observed)){if(recovery!=null)throw new RouteTransactionFailure("提交恢复入口前核验回执已变化，当前窗口连接已暂停",null);throw new IOException("提交入口前网络实例已变化");}
       maintenanceCheck();if(bootstrap==null&&routeBusy())throw new InterruptedIOException("当前操作需要保留原入口");
+      if(recovery!=null&&(android.os.SystemClock.elapsedRealtime()>=recovery.deadline||candidate!=verifiedRoute||!candidate.matches(this,transport==null?null:transport.state)))throw new RouteTransactionFailure("恢复入口的核验期限或实例已变化，当前窗口连接已暂停",null);
       commitSelection();if(sample!=null)publishCurrentProbe(sample);return;
     }catch(Exception failed){
       if(previous==null)throw failed;
@@ -649,7 +739,7 @@ class NativeNetwork {
         healthStatus=target==NetworkHealthPolicy.TargetEvidence.HTTP_RESPONSE?"primary-detector-unavailable":assessed.action==NetworkHealthPolicy.Action.SUSPECT?"suspect":"transport-unavailable";
         // Website restrictions/TLS ambiguity are not failed proxy quality samples.
         if(target==NetworkHealthPolicy.TargetEvidence.TRANSPORT_UNAVAILABLE)recordProbe(result,now);
-        if(assessed.action==NetworkHealthPolicy.Action.RECOVER){if(settings!=null&&"manual".equals(settings.optString("entryMode")))throw new IOException("指定入口与目标网站连续连接失败，请重连或编辑网络");firstVerifiedRoute(currentEntry);maintenanceCheck();if(routeBusy())return;failures=0;healthStatus="recovered";report("已自动恢复入口 · "+display(currentEntry));}
+        if(assessed.action==NetworkHealthPolicy.Action.RECOVER){if(settings!=null&&"manual".equals(settings.optString("entryMode")))throw new IOException("指定入口与目标网站连续连接失败，请重连或编辑网络");recoverFirstVerifiedRoute(currentEntry);maintenanceCheck();if(routeBusy())return;failures=0;healthStatus="recovered";report("已自动恢复入口 · "+display(currentEntry));}
         else if(assessed.action==NetworkHealthPolicy.Action.HEALTHY)verifyExitWhenDue(now);return;
       }
       if(!reused)recordProbe(result,now);healthStatus=exitCheckFailures>0?"reachable-verification-pending":"healthy";healthTargetCode=0;healthObservedAt=now;

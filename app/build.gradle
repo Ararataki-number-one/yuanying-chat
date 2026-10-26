@@ -24,11 +24,11 @@ tasks.register('prepareGeckoManifest') {
 android {
     namespace 'local.pocketchat'
     compileSdk { version = release(37) { minorApiLevel = 1 } }
-    defaultConfig { applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 73; versionName '2.0.20' }
+    defaultConfig { applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 74; versionName '2.0.21' }
     signingConfigs { debug { if (providers.gradleProperty('testSigningKey').isPresent()) storeFile file(providers.gradleProperty('testSigningKey').get()) } }
     sourceSets {
         main { manifest.srcFile(generatedManifest); assets.srcDir(providers.gradleProperty('caretSdkAssets').orElse('../work/native-caret-sdk/assets').get()) }
-        integration { java.srcDirs = ['../tests/gecko']; res.srcDirs = ['../tests/gecko/res']; assets.srcDirs = ['../tests/gecko/assets']; assets.srcDir(providers.gradleProperty('caretIdentityAssets').orElse('../work/native-caret-sdk/integration-assets').get()); manifest.srcFile('../tests/gecko/AndroidManifest.xml') }
+        integration { java.srcDirs = ['../tests/gecko']; res.srcDirs = ['../tests/gecko/res']; assets.srcDirs = ['../tests/gecko/assets']; assets.srcDir(providers.gradleProperty('caretIdentityAssets').orElse('../work/native-caret-sdk/integration-assets').get()); assets.srcDir('../work/appearance-fixture/assets'); manifest.srcFile('../tests/gecko/AndroidManifest.xml') }
     }
     buildTypes {
         release { minifyEnabled false; debuggable false }

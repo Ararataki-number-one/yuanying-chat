@@ -1,0 +1,80 @@
+  // Controller boundary only: all probe production bodies, tickets, bindings,
+  // result conversion, freshness/history interpretation and search remain real.
+  static final String PROBE="https://www.gstatic.com/generate_204";
+  final java.util.concurrent.atomic.AtomicLong probeSequence=new java.util.concurrent.atomic.AtomicLong();
+  final ThreadLocal<ProbeTicket> probeTicket=new ThreadLocal<>();
+  final CountDownLatch cProbeStarted=new CountDownLatch(1),bSelectionStarted=new CountDownLatch(1),strictEntered=new CountDownLatch(1),strictRelease=new CountDownLatch(1);
+  final JSONArray producerObservations=new JSONArray();ProbeResult lastCandidate;
+  JSONObject api(String method,String path,JSONObject body,int timeout)throws Exception{
+    maintenanceCheck();
+    if(path.contains("/delay?")){
+      ProbeTicket ticket=probeTicket.get();String entry=ticket.binding.entry;trace.add("probe:"+entry);
+      if(fault.startsWith("strict-")){strictEntered.countDown();if(!strictRelease.await(2,TimeUnit.SECONDS))throw new IOException("strict probe was not released");}
+      else {
+        if(entry.equals("B")&&!cProbeStarted.await(2,TimeUnit.SECONDS))throw new IOException("C did not start before B selection");
+        if(entry.equals("C")){
+          cProbeStarted.countDown();
+          if(fault.equals("producer-selection-window")){if(!bSelectionStarted.await(2,TimeUnit.SECONDS))throw new IOException("B selection did not begin");trace.add("C-response-during-B-selection");}
+          else if(!bVerifyStarted.await(2,TimeUnit.SECONDS))throw new IOException("B did not reach verification");
+          if(fault.equals("producer-token"))token="new-token";
+          if(fault.equals("producer-controller"))controllerPort++;
+          if(fault.equals("producer-serial"))routeSerial++;
+          if(fault.equals("producer-maintenance"))maintenanceGeneration++;
+          if(fault.equals("producer-fingerprint"))fingerprint="other-fixed-exit";
+          if(fault.equals("producer-configuration"))settings.put("entry","other-config");
+          if(fault.equals("producer-durable"))durableChanged=true;
+          if(fault.equals("producer-replacement"))process=new Alive();
+          if(fault.equals("service-producer-replacement"))transport.replace();
+          if(fault.equals("service-producer-configuration"))transport.state.put("configuration","other-config");
+          if(fault.equals("producer-deadline"))android.os.SystemClock.advance(45001);
+          if(fault.equals("producer-cancel")){NetworkWork work=maintenance.get();if(work!=null)work.cancel(closers);}
+          // This is the real controller delay response boundary, before the
+          // production probe's two guards and final result-binding check.
+          producerObservations.put(J.obj("entry",entry,"phase","controller-response","delay",20,"capturedRouteSerial",ticket.binding.route,"liveRouteSerial",routeSerial));
+          cProbeCompleted.countDown();
+        }
+      }
+      int delay=!fault.startsWith("strict-")&&entry.equals("A")?-1:20;
+      return J.obj("delay",delay,"probe",J.obj("schema",1,"kind","warm","firstMs",25,"warmMs",20,"totalMs",45,"warmAttempted",true,"warmSucceeded",true,"secondConnectionReused",true,"warmError","","firstStatus",204,"secondStatus",204));
+    }
+    if(path.startsWith("/proxies/ProbeExit")||path.equals("/proxies/FixedExit"))return J.obj("extra",J.obj(PROBE,J.obj("alive",true,"history",new JSONArray().put(J.obj("time",java.time.Instant.now().toString(),"delay",20)))));
+    if(fault.equals("producer-selection-window")&&method.equals("PUT")&&path.equals("/proxies/EntryChoice")&&body.optString("name").equals("B")){
+      bSelectionStarted.countDown();if(!cProbeCompleted.await(2,TimeUnit.SECONDS))throw new IOException("C did not return during B selection");
+    }
+    return selectionApi(method,path,body,timeout);
+  }
+  void recordProbe(ProbeResult sample,long now){
+    if(sample.binding.entry.equals("C"))lastCandidate=sample;
+    producerObservations.put(J.obj("entry",sample.binding.entry,"phase","consumed-result","delay",sample.delay,"capturedRouteSerial",sample.binding.route,"liveRouteSerial",routeSerial,"comparable",sample.trace!=null&&sample.trace.comparable()));
+  }
+  static JSONObject producerScenario(String name)throws Exception{
+    android.os.SystemClock.offset=0;NativeNetwork n=new NativeNetwork(name);Process owned=n.process;boolean completed=false;String failure="";boolean passed=false;
+    ProbeResult strict=null;
+    try {
+      if(name.startsWith("strict-")){
+        String proxy=name.equals("strict-current")||name.equals("strict-stable")?"FixedExit":"ProbeExit1";
+        String entry=proxy.equals("FixedExit")?"A":"B";Future<ProbeResult> future=n.probes.submit(()->n.probeMeasured(proxy,entry));
+        if(!n.strictEntered.await(2,TimeUnit.SECONDS))throw new IOException("strict probe did not start");
+        if(!name.equals("strict-stable"))n.invalidateVerifiedRoute();n.strictRelease.countDown();strict=future.get(2,TimeUnit.SECONDS);completed=true;
+        passed=name.equals("strict-stable")?strict.delay==20&&strict.trace!=null&&strict.trace.comparable()&&n.probeCurrent(strict):strict.delay<0&&!n.probeCurrent(strict)&&n.verifications==0;
+      }else{
+        n.recoverExistingRoute();completed=true;
+      }
+    }catch(Exception expected){failure=expected.getClass().getSimpleName();}
+    finally{Thread.interrupted();}
+    boolean ownedAlive=n.transport==null?owned.isAlive():n.transport.alive("service-A");
+    boolean recovered=completed&&n.currentEntry.equals("C")&&n.controllerEntry.equals("C")&&n.quality.selected.equals("C")&&n.verifiedRouteCurrent()&&ownedAlive&&n.verifications==2&&!n.trace.contains("verify:A")&&n.lastCandidate!=null&&n.lastCandidate.delay==20&&n.lastCandidate.trace!=null&&n.lastCandidate.trace.comparable()&&n.lastCandidate.binding.route<n.routeSerial;
+    if(name.equals("ordinary")||name.equals("service-ordinary")||name.equals("producer-selection-window"))passed=recovered&&!n.probeCurrent(n.lastCandidate);
+    else if(!name.startsWith("strict-")){
+      passed=!completed&&!ownedAlive&&!n.ready&&n.verifiedRoute==null&&!n.trace.contains("verify:C")&&n.quality.selected.equals("A");
+      if(name.equals("producer-replacement"))passed&=n.process!=owned&&n.process.isAlive();
+      if(name.equals("service-producer-replacement"))passed&=n.transport.state.optString("generation").equals("service-B")&&n.coreAlive()&&n.transport.stopExpected.equals("service-A");
+    }
+    JSONObject result=J.obj("name",name,"pass",passed,"completed",completed,"failure",failure,"trace",new JSONArray(n.trace),"producerObservations",n.producerObservations,"verificationCount",n.verifications,"selected",n.currentEntry,"committed",n.quality.selected,"ownedCoreAlive",ownedAlive,"ready",n.ready,"receiptPresent",n.verifiedRoute!=null,"finalProbeScopeRejected",n.lastCandidate==null||!n.probeCurrent(n.lastCandidate),"strictDelay",strict==null?0:strict.delay,"controlledClockAdvanceMs",android.os.SystemClock.offset);
+    n.close();return result;
+  }
+  public static void main(String[] args)throws Exception{
+    String[] scenarios=args[0].equals("ordinary")?new String[]{"ordinary"}:new String[]{"ordinary","service-ordinary","producer-selection-window","producer-token","producer-controller","producer-serial","producer-maintenance","producer-fingerprint","producer-configuration","producer-durable","producer-replacement","service-producer-replacement","service-producer-configuration","producer-deadline","producer-cancel","strict-current","strict-candidate","strict-stable"};
+    JSONArray checks=new JSONArray();int passed=0;for(String scenario:scenarios){JSONObject check=producerScenario(scenario);checks.put(check);if(check.getBoolean("pass"))passed++;}
+    System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualNativeExecution",false,"realNetworkMeasured",false));if(passed!=checks.length())System.exit(1);
+  }

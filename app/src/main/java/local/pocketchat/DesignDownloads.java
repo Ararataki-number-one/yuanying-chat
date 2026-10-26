@@ -46,10 +46,10 @@ final class DesignDownloads {
       boolean changedFilter=selected!=filter;if(changedFilter){filter=selected;box.removeView(tabs);tabs=DesignUi.tabs(a,new String[]{"全部","进行中","已完成","失败"},filter,choose);box.addView(tabs,0);}
       ScrollView scroll=box.getParent() instanceof ScrollView?(ScrollView)box.getParent():null;int oldY=scroll==null?0:scroll.getScrollY();
       View anchor=null;int anchorTop=0;if(oldY>0&&!changedFilter){for(int i=0;i<list.getChildCount();i++){View card=list.getChildAt(i);int top=list.getTop()+card.getTop();if(top+card.getHeight()>oldY){anchor=card;anchorTop=top-oldY;break;}}}
-      Set<String> visible=new HashSet<>();int index=0;boolean structure=changedFilter;
+      Set<String> visible=new HashSet<>();int index=0;boolean structure=changedFilter;Map<Integer,String> environmentNames=null;
       for(int i=0;i<data.length();i++){
         JSONObject value=data.optJSONObject(i);if(value==null||!matches(value,filter))continue;String key=key(value);if(!visible.add(key))continue;
-        Row row=views.get(key);if(row==null){row=new Row(a,actions);views.put(key,row);}row.bind(value,now);
+        Row row=views.get(key);if(row==null){row=new Row(a,actions);views.put(key,row);}if(environmentNames==null)environmentNames=ProfileCatalog.get(a).names();row.bind(value,now,ProfileCatalog.displayName(environmentNames,value.optInt("slot")));
         if(index>=list.getChildCount()||list.getChildAt(index)!=row.card){structure=true;if(row.card.getParent()==list)list.removeView(row.card);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=DesignUi.dp(a,10);list.addView(row.card,index,p);}index++;
       }
       for(Iterator<Map.Entry<String,Row>> it=views.entrySet().iterator();it.hasNext();){Map.Entry<String,Row> entry=it.next();if(!visible.contains(entry.getKey())){list.removeView(entry.getValue().card);it.remove();structure=true;}}
@@ -65,10 +65,10 @@ final class DesignDownloads {
       progress=new ProgressBar(a,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(DesignUi.BLUE));progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(DesignUi.LINE));LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-1,DesignUi.dp(a,6));pp.topMargin=DesignUi.dp(a,14);card.addView(progress,pp);progressText=DesignUi.text(a,"",13,DesignUi.MUTED);progressText.setPadding(0,DesignUi.dp(a,8),0,0);card.addView(progressText);reason=DesignUi.text(a,"",13,DesignUi.RED);reason.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);card.addView(reason);stale=DesignUi.text(a,"记录待刷新，点按核对任务",13,DesignUi.MUTED);card.addView(stale);location=DesignUi.text(a,"",12,DesignUi.MUTED);location.setMaxLines(3);location.setPadding(0,DesignUi.dp(a,8),0,0);card.addView(location);
       card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->open(a,value,actions));
     }
-    void bind(JSONObject row,long now){
+    void bind(JSONObject row,long now,String environmentName){
       value=row;String state=row.optString("state");boolean saved="saved".equals(state);int color="failed".equals(state)?DesignUi.RED:saved?DesignUi.CYAN:DesignUi.GREEN;
       String next=(saved?"file":"download")+":"+color;if(!next.equals(appearance)){appearance=next;icon.setImageDrawable(new Ui.Icon(saved?"file":"download",color));icon.setBackground(DesignUi.surface(a,(color&0xffffff)|0x11000000,10,android.graphics.Color.TRANSPARENT));arrow.setTextColor(color);}
-      text(name,row.optString("name","文件"));text(status,Profiles.display(a,row.optInt("slot"))+" · "+DownloadTasks.label(state));text(time,timeLabel(row));menu.setContentDescription("管理 "+row.optString("name","文件"));visible(menu,saved);visible(arrow,!saved);
+      text(name,row.optString("name","文件"));text(status,environmentName+" · "+DownloadTasks.label(state));text(time,timeLabel(row));menu.setContentDescription("管理 "+row.optString("name","文件"));visible(menu,saved);visible(arrow,!saved);
       visible(progress,!saved);visible(progressText,!saved);visible(reason,!saved&&!row.optString("reason").isEmpty());visible(stale,!saved&&busy(state)&&row.optLong("updated")>0&&now-row.optLong("updated")>15000);visible(location,saved);
       long total=row.optLong("total",-1),received=row.optLong("received");boolean indefinite=total<=0&&busy(state);if(progress.isIndeterminate()!=indefinite)progress.setIndeterminate(indefinite);int percent=total>0?(int)Math.min(100,received*100/total):0;if(progress.getProgress()!=percent)progress.setProgress(percent);text(progressText,DownloadTasks.progress(row));text(reason,row.optString("reason"));text(location,row.optString("location","原先选择的保存位置"));
     }

@@ -43,6 +43,7 @@ public class GeckoIntegrationTestActivity extends Activity {
       return target.startsWith("http://127.0.0.1:8765/")||target.startsWith("http://remote-probe.invalid:8765/")||super.allowedUrl(target);
     }
     @Override boolean readingPage(String target){return target.startsWith("http://127.0.0.1:8765/browser-reading")||super.readingPage(target);}
+    @Override protected boolean appearancePage(String target){return target!=null&&target.startsWith("http://127.0.0.1:8765/appearance-sync/")||super.appearancePage(target);}
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){
       NativeGeometry before=nativeGeometryActive?NativeGeometry.read(this):null;long syncs=nativeGeometryActive?nativeSyncs():0;
       boolean cached=nativeGeometryActive&&NativeGeometry.cacheMatches(this,before);
@@ -163,6 +164,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     if("uploadLifecycle".equals(action)){GeckoUploadLifecycleIntegration.run(this,serial);return;}
     if("localDraftPolicy".equals(action)){GeckoLocalDraftIntegration.run(this,serial);return;}
     if("pageContinuity".equals(action)){ChatPageContinuityIntegration.run(this,serial);return;}
+    if("appearanceSync".equals(action)){GeckoAppearanceIntegration.run(this,serial);return;}
     if("usability".equals(action)){usability(serial);return;}
     if("deleteDownloads".equals(action)){DownloadDeletionIntegration.run(this,result->{if(serial==run)event(serial,"downloadDeletion",result);});return;}
     if("reading".equals(action)){session.reading.configure(true);session.reading.choose(1);web.configure(true,session.privacy.level());web.loadUrl("http://127.0.0.1:8765/browser-reading?command="+serial);session.handler.postDelayed(()->readingResult(serial,SystemClock.elapsedRealtime()+15000),200);return;}

@@ -1,0 +1,52 @@
+ static final List<Throwable> escaped=Collections.synchronizedList(new ArrayList<>());
+ static final class CloseProbe extends ByteArrayInputStream {final CountDownLatch closed=new CountDownLatch(1);CloseProbe(){super(new byte[]{7,8,9});}public void close(){closed.countDown();}}
+ static void faultCallback(String kind,boolean throwing)throws Exception{
+  FileDownloads d=fresh();JSONObject r=row(d,"http-range");File f=partial(d,"download-fault-"+kind+".part");attach(d,r,f);CloseProbe body=new CloseProbe();
+  long attempt=ui(()->{d.active=true;d.a.session.transferActive=true;d.cancelled=false;d.receivedBytes=f.length();d.nativeInput=body;d.mark("downloading","");d.lastProgressSaved=0;if(kind.equals("progress")){try(OutputStream output=new FileOutputStream(f,true)){output.write(new byte[]{5,6});}d.receivedBytes=f.length();}d.completeFile=kind.equals("cancel");d.tasks.prefs.failEveryCommit=!throwing;d.tasks.prefs.throwEveryCommit=throwing;return d.ticket;});
+  String scenario=kind+(throwing?" throwing":" false commit");byte[] expected=Files.readAllBytes(f.toPath());int previous=escaped.size();
+  main.post(()->{switch(kind){case "progress":d.transferProgress();break;case "pause":d.pause();break;case "fail":d.fail(attempt,"Injected transport interruption");break;case "cancel":d.cancel();break;default:throw new AssertionError(kind);}});
+  ui(()->null);ui(()->null);
+  check(scenario+" persistence failure does not escape actual UI queue",escaped.size()==previous);
+  check(scenario+" storage failure stops the old transfer and keeps source bytes",!d.active&&!d.a.session.transferActive&&!d.valid(attempt)&&f.isFile()&&Arrays.equals(Files.readAllBytes(f.toPath()),expected));
+  check(scenario+" persistence failure retains retry metadata without claiming saved",r.optString("state").equals("paused")&&!r.optString("reason").isEmpty()&&r.optString("partial").equals(f.getName())&&!d.tasks.published(r,Uri.parse("content://unused/target")));
+  check(scenario+" failed durability remains unconfirmed",d.tasks.durability.unconfirmed);
+  check(scenario+" stopped native body is closed off the UI queue",body.closed.await(2,TimeUnit.SECONDS));
+  d.tasks.prefs.failEveryCommit=false;d.tasks.prefs.throwEveryCommit=false;
+  ui(()->{d.tasks.save();return null;});
+  check(scenario+" an explicit later storage retry confirms paused metadata",!d.tasks.durability.unconfirmed&&new JSONArray(d.tasks.prefs.diskString("rows","[]")).toString().equals(d.tasks.durability.confirmed)&&r.optString("state").equals("paused")&&f.isFile());
+ }
+ static void claimFault(boolean retry)throws Exception{
+  FileDownloads d=fresh();JSONObject r=row(d,"http-range");File f=partial(d,"download-claim.part");attach(d,r,f);int previous=escaped.size();
+  ui(()->{d.tasks.prefs.failEveryCommit=true;return null;});main.post(()->{if(retry)d.retry();else d.loadTask(r);});ui(()->null);ui(()->null);
+  check((retry?"retry":"loadTask")+" claim persistence failure remains within UI callback",escaped.size()==previous&&!d.active&&f.isFile());
+  d.tasks.prefs.failEveryCommit=false;
+ }
+ static void responseStartFault()throws Exception{
+  FileDownloads d=fresh();CloseProbe body=new CloseProbe();org.mozilla.geckoview.WebResponse response=new org.mozilla.geckoview.WebResponse(new byte[0]);response.body=body;int previous=escaped.size();
+  ui(()->{d.tasks.prefs.failEveryCommit=true;return null;});main.post(()->d.acceptResponse(response));ui(()->null);idle(d);
+  check("Task creation commit failure does not escape incoming response callback",escaped.size()==previous&&!d.active&&d.a.chosen==0);
+  check("Incoming response is closed when task creation cannot be persisted",body.closed.await(2,TimeUnit.SECONDS));d.tasks.prefs.failEveryCommit=false;
+ }
+ static void pendingClearFault()throws Exception{
+  FileDownloads d=fresh();JSONObject r=row(d,"http-range");Uri uri=Uri.parse("content://external.fixture/0/clear/document.bin");
+  ui(()->{d.tasks.beginSave(r,uri,"External provider","document.bin","generation-clear");d.tasks.prefs.failAfterMemoryBeforeDisk=true;try{d.tasks.clearPending(r,uri,"generation-clear");}catch(DownloadTasks.PersistenceFailure expected){}return null;});
+  check("Failed pending cleanup restores the exact unresolved target and generation",uri.toString().equals(r.optString("pendingDestination"))&&"generation-clear".equals(r.optString("pendingGeneration")));
+ }
+ static void externalPendingRecovery()throws Exception{
+  FileDownloads d=fresh();JSONObject r=row(d,"http-range");File source=partial(d,"download-external.part");attach(d,r,source);Uri uri=Uri.parse("content://external.fixture/0/external-target/document.bin");File target=new File(d.a.getFilesDir(),"saved-downloads/external-target/document.bin");target.getParentFile().mkdirs();String generation="external-generation";final boolean[] unconfirmed={false};
+  d.worker.submit(()->{try{SavedFilePublication.run(d.a,uri,d.a.handler,()->d.tasks.beginSave(r,uri,"External provider","document.bin",generation),()->{Files.write(target.toPath(),Files.readAllBytes(source.toPath()));return null;},()->{d.tasks.prefs.failAfterMemoryBeforeDisk=true;d.tasks.finishSave(r,uri,generation,()->DownloadTasks.put(r,"state","saved","uri",uri.toString()));},()->{try{Files.deleteIfExists(target.toPath());}catch(IOException error){throw new RuntimeException(error);}});}catch(Exception error){unconfirmed[0]=SavedFilePublication.unconfirmed(error);}}).get(5,TimeUnit.SECONDS);ui(()->null);
+  check("External fixture bytes published before record failure retain destination and source",unconfirmed[0]&&target.isFile()&&source.isFile()&&Arrays.equals(Files.readAllBytes(target.toPath()),Files.readAllBytes(source.toPath()))&&!d.tasks.published(r,uri));
+  ui(()->{d.tasks.release();return null;});DownloadTasks reopened=ui(()->new DownloadTasks(d.a));DownloadTasks.recovery.submit(()->{}).get(5,TimeUnit.SECONDS);ui(()->null);JSONObject recovered=ui(()->DownloadTaskRevisions.find(reopened.rows,r.optString("id")));
+  check("Unknown provider restart preserves pending target location name and generation",recovered!=null&&uri.toString().equals(recovered.optString("pendingDestination"))&&generation.equals(recovered.optString("pendingGeneration"))&&"External provider".equals(recovered.optString("pendingLocation"))&&"document.bin".equals(recovered.optString("pendingName")));
+  check("Unknown provider restart does not manufacture saved confirmation or delete either file",recovered!=null&&!"saved".equals(recovered.optString("state"))&&!reopened.published(recovered,uri)&&target.isFile()&&source.isFile()&&recovered.optString("reason").contains("待确认"));
+  Files.delete(source.toPath());JSONObject missing=J.parse(recovered.toString());reopened.recovery.submit(()->{try{DefaultDownloads.recover(d.a,missing);}catch(Exception error){throw new RuntimeException(error);}}).get(5,TimeUnit.SECONDS);
+  check("Unknown provider with evicted source retains pending without claiming a local copy",uri.toString().equals(missing.optString("pendingDestination"))&&missing.optString("reason").contains("待确认")&&!missing.optString("reason").contains("副本")&&target.isFile());
+ }
+ public static void main(String[] args)throws Exception{
+  Thread.setDefaultUncaughtExceptionHandler((thread,error)->escaped.add(error));
+  try{faultCallback("progress",false);faultCallback("pause",false);faultCallback("fail",false);faultCallback("cancel",false);faultCallback("progress",true);claimFault(false);claimFault(true);responseStartFault();pendingClearFault();externalPendingRecovery();}
+  finally{for(FileDownloads d:downloads){d.worker.shutdownNow();ui(()->{d.tasks.release();return null;});}}
+  int passed=0;for(int i=0;i<checks.length();i++)if(checks.optJSONObject(i).optBoolean("pass"))passed++;
+  JSONArray failures=new JSONArray();for(Throwable error:escaped)failures.put(J.obj("type",error.getClass().getName(),"message",error.getMessage(),"stack",Arrays.toString(error.getStackTrace())));
+  System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"checks",checks,"escapedUiExceptions",failures));if(passed!=checks.length())System.exit(1);
+ }

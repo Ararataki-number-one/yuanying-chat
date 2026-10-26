@@ -32,6 +32,8 @@
       available:()=>live&&document.visibilityState!=='hidden',interacting:moving});
   }
   const port = browser.runtime.connectNative('pocketpage');
+  const appearanceDocument = Array.from(crypto.getRandomValues(new Uint32Array(4)), value => value.toString(16).padStart(8, '0')).join('-');
+  const appearanceIdentity = {appearanceProtocol: 1, appearanceDocument};
   let auditCancel=()=>{};
   const text=value=>typeof value==='string'?value.slice(0,2048):'';
   const cleanSignal=value=>{
@@ -79,7 +81,17 @@
   port.onMessage.addListener(message => {
     if(message.kind==='auditCancel'){auditCancel();return;}
     if(message.kind==='audit'&&Number.isInteger(message.id)){audit(message).catch(()=>port.postMessage({kind:'auditResult',id:message.id,result:'null'}));return;}
-    if(message.kind === 'appearance'){globalThis.PocketAppearance?.apply(message.dark);return;}
+    if(message.kind === 'appearance'){
+      if(message.protocol!==1||message.documentId!==appearanceDocument||!Number.isInteger(message.version)||message.version<1||typeof message.dark!=='boolean')return;
+      const report=value=>port.postMessage(value);
+      if(typeof globalThis.PocketAppearance?.synchronize==='function'){
+        globalThis.PocketAppearance.synchronize(message,report);
+      }else{
+        report({kind:'appearanceReceipt',protocol:1,documentId:appearanceDocument,version:message.version,dark:message.dark,stage:'received'});
+        report({kind:'appearanceReceipt',protocol:1,documentId:appearanceDocument,version:message.version,dark:message.dark,stage:'observed',attributesApplied:false,storage:'unavailable',colorStatus:'unavailable',reason:'script-unavailable',samples:[]});
+      }
+      return;
+    }
     if(message.kind !== 'evaluate' || !Number.isInteger(message.id))return;
     try {
       const value = (0,eval)(message.code);
@@ -101,6 +113,7 @@
   window.addEventListener('pagehide',flushScale);
   window.addEventListener('pagehide',()=>auditCancel());
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushScale();});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')port.postMessage({kind:'appearanceVisible',...appearanceIdentity});});
   document.addEventListener('DOMContentLoaded',scale,{once:true});
   let observedReady=false;
   const observer=new MutationObserver(()=>documentReady());
@@ -109,7 +122,7 @@
     if(document.readyState==='loading'||!document.body)return;
     if(document.body.innerText.trim()||document.querySelector('input,button,textarea,canvas')){
       observedReady=true;observer.disconnect();
-      port.postMessage({kind:'documentReady',url:location.href});
+      port.postMessage({kind:'documentReady',url:location.href,...appearanceIdentity});
     }
   };
   const observe = () => {if(document.documentElement)observer.observe(document.documentElement,{childList:true,subtree:true});documentReady();};
@@ -118,6 +131,6 @@
   document.addEventListener('DOMContentLoaded',documentReady,{once:true});
   window.addEventListener('pageshow',()=>{observedReady=false;documentReady();});
   documentReady();
-  port.postMessage({kind:'ready'});
+  port.postMessage({kind:'ready',...appearanceIdentity});
   scale();
 })();

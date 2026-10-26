@@ -331,7 +331,7 @@
 +}
 --- a/adapter/outbound/socks5_preconnect.go
 +++ b/adapter/outbound/socks5_preconnect.go
-@@ -0,0 +1,416 @@
+@@ -0,0 +1,419 @@
 +package outbound
 +
 +import (
@@ -687,8 +687,10 @@
 +		return nil, err, true
 +	}
 +	for attempt := 0; attempt < 2; attempt++ {
++		coldPrepareFailed := false
 +		if !reused {
 +			err = ss.pocketPrepare(i)
++			coldPrepareFailed = err != nil
 +		}
 +		if err == nil && !ss.pocket.valid(i) {
 +			err = errPocketRouteChanged
@@ -716,9 +718,10 @@
 +			return NewConn(c, ss), nil, true
 +		}
 +		pool.discard(i)
-+		// Only a dead unused idle socket can be retried, before any browser bytes exist.
-+		// SOCKS authentication/protocol/REP rejection and returned connections never retry.
-+		if attempt != 0 || !reused || !pocketStaleIdle(err) || ctx.Err() != nil || !r.Valid() || pocketReadEpoch(ss.pocket.epochFile) != epoch {
++		// Before handoff, an unused idle socket or failed cold preparation may
++		// retry one transport EOF/reset on this same frozen route and deadline.
++		// Explicit auth/protocol/REP failures and cold CONNECT failures remain terminal.
++		if attempt != 0 || (!reused && !coldPrepareFailed) || !pocketStaleIdle(err) || ctx.Err() != nil || !r.Valid() || pocketReadEpoch(ss.pocket.epochFile) != epoch {
 +			return nil, err, true
 +		}
 +		i, _, err = pool.checkout(ctx, r, epoch, false)
@@ -750,7 +753,7 @@
 +}
 --- a/adapter/outbound/socks5_preconnect_test.go
 +++ b/adapter/outbound/socks5_preconnect_test.go
-@@ -0,0 +1,821 @@
+@@ -0,0 +1,1005 @@
 +package outbound
 +
 +import (
@@ -774,6 +777,9 @@
 +)
 +
 +type pocketWire struct {
++	resetBeforeAuth, resetBeforeReply atomic.Int32
++	resetsApplied atomic.Int32
++	resetHook atomic.Pointer[pocketWireResetHook]
 +	listener                            net.Listener
 +	mu                                  sync.Mutex
 +	conns                               map[net.Conn]struct{}
@@ -824,6 +830,7 @@
 +func (w *pocketWire) serve(c net.Conn) {
 +	defer c.Close()
 +	defer w.active.Add(-1)
++	if w.resetForTest(c, &w.resetBeforeAuth) { return }
 +	buf := make([]byte, 512)
 +	if _, e := io.ReadFull(c, buf[:2]); e != nil {
 +		return
@@ -866,6 +873,7 @@
 +		return
 +	}
 +	number := w.commands.Add(1)
++	if w.resetForTest(c, &w.resetBeforeReply) { return }
 +	if number == 2 && w.abortSecond.Load() {
 +		close(w.secondReceived)
 +		select {
@@ -897,6 +905,21 @@
 +		}
 +	}
 +}
++type pocketWireResetHook struct { run func() }
++
++// Fault injection closes a real accepted TCP socket with SO_LINGER=0. It never
++// synthesizes a successful SOCKS exchange or a retry result.
++func (w *pocketWire) resetForTest(c net.Conn, remaining *atomic.Int32) bool {
++	for {
++		n := remaining.Load()
++		if n <= 0 { return false }
++		if !remaining.CompareAndSwap(n, n-1) { continue }
++		if tcp, ok := c.(*net.TCPConn); ok && tcp.SetLinger(0) == nil { w.resetsApplied.Add(1) }
++		if hook := w.resetHook.Load(); hook != nil { hook.run() }
++		return true
++	}
++}
++
 +func (w *pocketWire) closeAll() {
 +	w.mu.Lock()
 +	for c := range w.conns {
@@ -1571,6 +1594,170 @@
 +		t.Fatalf("no measured handshake saving: cold=%s warm=%s", cold, warm)
 +	}
 +	t.Logf("same-route reading pause: old=%s candidate=%s saved=%s", cold, warm, cold-warm)
++}
++
++// These tests use real loopback TCP resets and the existing SOCKS wire fixture.
++// Foreground context identity distinguishes application dialing from refill work.
++type pocketColdForegroundKey struct{}
++
++type pocketColdCountingDialer struct {
++	*pocketTestDialer
++	freezes atomic.Int32
++	mu sync.Mutex
++	deadlines []time.Time
++	deadlinePresent []bool
++}
++
++func (d *pocketColdCountingDialer) PocketFreeze(address string) (*proxydialer.PocketRoute, error) {
++	d.freezes.Add(1)
++	return d.pocketTestDialer.PocketFreeze(address)
++}
++
++func pocketColdCountForeground(ss *Socks5, base *pocketTestDialer) *pocketColdCountingDialer {
++	d := &pocketColdCountingDialer{pocketTestDialer: base}
++	dial := base.route.Dial
++	base.route.Dial = func(ctx context.Context, address string) (net.Conn, error) {
++		if ctx.Value(pocketColdForegroundKey{}) == d {
++			deadline, present := ctx.Deadline()
++			d.mu.Lock()
++			d.deadlines = append(d.deadlines, deadline)
++			d.deadlinePresent = append(d.deadlinePresent, present)
++			d.mu.Unlock()
++		}
++		return dial(ctx, address)
++	}
++	ss.dialer = d
++	return d
++}
++
++func (d *pocketColdCountingDialer) check(t *testing.T, ctx context.Context, attempts int) {
++	t.Helper()
++	deadline, present := ctx.Deadline()
++	d.mu.Lock()
++	defer d.mu.Unlock()
++	if !present || len(d.deadlines) != attempts || d.freezes.Load() != 1 {
++		t.Fatalf("foreground attempts=%d freeze=%d deadlinePresent=%v; want attempts=%d freeze=1", len(d.deadlines), d.freezes.Load(), present, attempts)
++	}
++	for i, observed := range d.deadlines {
++		if !d.deadlinePresent[i] || !observed.Equal(deadline) {
++			t.Fatalf("attempt%d changed the original deadline: observed=%s original=%s", i+1, observed, deadline)
++		}
++	}
++}
++
++func TestPocketColdPrepareResetRetriesOnceBeforePayload(t *testing.T) {
++	ss, w, base, _, _ := pocketFixture(t, 0)
++	w.resetBeforeAuth.Store(1)
++	d := pocketColdCountForeground(ss, base)
++	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), pocketColdForegroundKey{}, d), time.Second)
++	defer cancel()
++	c, err := ss.DialContext(ctx, pocketMetadata())
++	if err != nil {
++		t.Fatalf("first cold transport reset ended the request instead of one same-route retry: %v", err)
++	}
++	defer c.Close()
++	d.check(t, ctx, 2)
++	if w.resetsApplied.Load() != 1 || w.commands.Load() != 1 || w.payload.Load() != 0 {
++		t.Fatalf("unexpected preparation/handoff wire: reset=%d commands=%d payload=%d", w.resetsApplied.Load(), w.commands.Load(), w.payload.Load())
++	}
++	payload := []byte("browser-payload")
++	if _, err = c.Write(payload); err != nil {
++		t.Fatal(err)
++	}
++	echo := make([]byte, len(payload))
++	if _, err = io.ReadFull(c, echo); err != nil || string(echo) != string(payload) {
++		t.Fatalf("single handed-off payload failed: echo=%q err=%v", echo, err)
++	}
++	if w.payload.Load() != int32(len(payload)) || w.commands.Load() != 1 {
++		t.Fatal("browser bytes or target CONNECT were replayed")
++	}
++	t.Logf("foreground=2 freeze=1 realResets=1 targetCONNECT=1 payload=%d originalDeadlinePreserved=true", len(payload))
++}
++
++func TestPocketColdPreparePersistentResetStopsAfterOneRetry(t *testing.T) {
++	ss, w, base, _, _ := pocketFixture(t, 0)
++	w.resetBeforeAuth.Store(3)
++	d := pocketColdCountForeground(ss, base)
++	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), pocketColdForegroundKey{}, d), time.Second)
++	defer cancel()
++	c, err := ss.DialContext(ctx, pocketMetadata())
++	if c != nil || err == nil {
++		if c != nil { c.Close() }
++		t.Fatal("persistent cold reset returned a browser socket")
++	}
++	d.check(t, ctx, 2)
++	var marker *proxydialer.PocketDialError
++	if !errors.As(err, &marker) || !marker.PocketNoRetry() || !pocketStaleIdle(err) {
++		t.Fatalf("terminal scoped transport cause lost: %v", err)
++	}
++	if ctx.Err() != nil || w.resetsApplied.Load() != 2 || w.resetBeforeAuth.Load() != 1 || w.commands.Load() != 0 || w.payload.Load() != 0 || !pocketEmpty(ss.pocket) {
++		t.Fatalf("cold reset budget changed: ctx=%v reset=%d remaining=%d commands=%d payload=%d", ctx.Err(), w.resetsApplied.Load(), w.resetBeforeAuth.Load(), w.commands.Load(), w.payload.Load())
++	}
++	t.Log("foreground=2 freeze=1 realResets=2 pendingThirdReset=1 outerNoRetry=true")
++}
++
++func TestPocketColdPrepareResetPreservesContextAndRouteGuards(t *testing.T) {
++	for _, change := range []string{"cancel", "deadline", "route", "config", "epoch", "close"} {
++		t.Run(change, func(t *testing.T) {
++			ss, w, base, alive, path := pocketFixture(t, 0)
++			w.resetBeforeAuth.Store(1)
++			configChanged := make(chan struct{})
++			base.route.ConfigChanged = configChanged
++			d := pocketColdCountForeground(ss, base)
++			ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), pocketColdForegroundKey{}, d), time.Second)
++			defer cancel()
++			hookDone := make(chan struct{})
++			var hookErr error
++			w.resetHook.Store(&pocketWireResetHook{run: func() {
++				defer close(hookDone)
++				switch change {
++				case "cancel": cancel()
++				case "deadline": <-ctx.Done()
++				case "route": alive.Store(false)
++				case "config":
++					alive.Store(false)
++					close(configChanged)
++				case "epoch": hookErr = os.WriteFile(path, []byte("ready:network-B-2\n"), 0600)
++				case "close": ss.Close()
++				}
++			}})
++			c, err := ss.DialContext(ctx, pocketMetadata())
++			if c != nil || err == nil {
++				if c != nil { c.Close() }
++				t.Fatalf("%s returned a browser socket", change)
++			}
++			select {
++			case <-hookDone:
++			case <-time.After(2 * time.Second): t.Fatal("fault hook did not retire")
++			}
++			if hookErr != nil { t.Fatal(hookErr) }
++			d.check(t, ctx, 1)
++			if w.resetsApplied.Load() != 1 || w.commands.Load() != 0 || w.payload.Load() != 0 || !pocketEmpty(ss.pocket) {
++				t.Fatal("guard permitted a fresh dial/target handoff or leaked its lease")
++			}
++			if (change == "cancel" || change == "deadline") && ctx.Err() == nil {
++				t.Fatal("original request context was replaced or extended")
++			}
++		})
++	}
++}
++
++func TestPocketColdCommandResetDoesNotGainNewRetry(t *testing.T) {
++	ss, w, base, _, _ := pocketFixture(t, 0)
++	w.resetBeforeReply.Store(1)
++	d := pocketColdCountForeground(ss, base)
++	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), pocketColdForegroundKey{}, d), time.Second)
++	defer cancel()
++	c, err := ss.DialContext(ctx, pocketMetadata())
++	if c != nil || err == nil {
++		if c != nil { c.Close() }
++		t.Fatal("cold CONNECT reply reset unexpectedly succeeded")
++	}
++	d.check(t, ctx, 1)
++	var marker *proxydialer.PocketDialError
++	if !errors.As(err, &marker) || !marker.PocketNoRetry() || w.resetsApplied.Load() != 1 || w.commands.Load() != 1 || w.payload.Load() != 0 {
++		t.Fatalf("cold target-command behavior was widened: commands=%d payload=%d err=%v", w.commands.Load(), w.payload.Load(), err)
++	}
 +}
 --- a/adapter/outboundgroup/selector.go
 +++ b/adapter/outboundgroup/selector.go
@@ -4439,7 +4626,7 @@
 +func PocketShouldStopRetryForTest(err error) bool { return shouldStopRetry(err) }
 --- a/tunnel/pocket_preconnect_test.go
 +++ b/tunnel/pocket_preconnect_test.go
-@@ -0,0 +1,233 @@
+@@ -0,0 +1,287 @@
 +package tunnel_test
 +
 +import (
@@ -4672,6 +4859,60 @@
 +	if !errors.Is(wrapped, context.Canceled) || !tunnel.PocketShouldStopRetryForTest(wrapped) {
 +		t.Fatal("original cancellation cause lost")
 +	}
++}
++
++type pocketColdTunnelDialer struct {
++	*pocketRetryDialer
++	freezes atomic.Int32
++}
++
++func (d *pocketColdTunnelDialer) PocketFreeze(address string) (*proxydialer.PocketRoute, error) {
++	d.freezes.Add(1)
++	return d.pocketRetryDialer.PocketFreeze(address)
++}
++
++func TestPocketColdPrepareRetryStaysInsideActualTunnelAttempt(t *testing.T) {
++	l, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil { t.Fatal(err) }
++	defer l.Close()
++	var accepts, resets atomic.Int32
++	done := make(chan struct{})
++	go func() {
++		defer close(done)
++		for {
++			c, err := l.Accept()
++			if err != nil { return }
++			accepts.Add(1)
++			if tcp, ok := c.(*net.TCPConn); ok && tcp.SetLinger(0) == nil { resets.Add(1) }
++			c.Close()
++		}
++	}()
++	t.Cleanup(func() { l.Close(); <-done })
++	path := filepath.Join(t.TempDir(), "epoch")
++	if err = os.WriteFile(path, []byte("ready:cold-tunnel-1\n"), 0600); err != nil { t.Fatal(err) }
++	host, port, _ := net.SplitHostPort(l.Addr().String())
++	p, _ := strconv.Atoi(port)
++	d := &pocketColdTunnelDialer{pocketRetryDialer: &pocketRetryDialer{changed: make(chan struct{}), endpoints: make(chan string, 16)}}
++	d.valid.Store(true)
++	ss, err := outbound.NewSocks5(outbound.Socks5Option{BasicOption: outbound.BasicOption{DialerForAPI: d}, Name: "FixedExit", Server: host, Port: p, UserName: "user", Password: "password", PocketPreconnect: true, PocketPreconnectEpochFile: path})
++	if err != nil { t.Fatal(err) }
++	defer ss.Close()
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++	outerCalls := 0
++	c, err := tunnel.PocketRetryForTest(ctx, func(attemptCtx context.Context) (C.Conn, error) {
++		outerCalls++
++		return ss.DialContext(attemptCtx, &C.Metadata{Host: "browser.test", DstPort: 443})
++	})
++	if c != nil || err == nil {
++		if c != nil { c.Close() }
++		t.Fatal("persistent reset returned a connection")
++	}
++	var marker *proxydialer.PocketDialError
++	if outerCalls != 1 || d.freezes.Load() != 1 || d.dials.Load() != 2 || accepts.Load() != 2 || resets.Load() != 2 || ctx.Err() != nil || !errors.As(err, &marker) || !tunnel.PocketShouldStopRetryForTest(err) {
++		t.Fatalf("cold retry escaped its original frozen attempt: outer=%d freeze=%d dial=%d accept=%d reset=%d ctx=%v err=%v", outerCalls, d.freezes.Load(), d.dials.Load(), accepts.Load(), resets.Load(), ctx.Err(), err)
++	}
++	t.Log("outerCalls=1 frozenSnapshots=1 realTCPResets=2; no outer listener replay")
 +}
 --- a/tunnel/tunnel.go
 +++ b/tunnel/tunnel.go

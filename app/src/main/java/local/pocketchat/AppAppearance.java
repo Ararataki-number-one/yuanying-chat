@@ -33,14 +33,19 @@ final class AppAppearance {
     installed=true;
     refresh(app);
     IntentFilter filter=new IntentFilter(app.getPackageName()+".APPEARANCE_CHANGED");
-    BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){refresh(c);}};
+    BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){refresh(c);if(i.getBooleanExtra("resynchronize",false))synchronizeCurrent();}};
     if(Build.VERSION.SDK_INT>=33)app.registerReceiver(receiver,filter,Context.RECEIVER_NOT_EXPORTED);else app.registerReceiver(receiver,filter);
   }
   static void choose(Activity a,String value){
-    String selected=AppearanceColors.mode(value);if(selected.equals(mode))return;
+    String selected=AppearanceColors.mode(value);if(selected.equals(mode)){resynchronize(a);return;}
     AppSettings.put(a,KEY,selected);refresh(a);
     a.sendBroadcast(new Intent(a.getPackageName()+".APPEARANCE_CHANGED").setPackage(a.getPackageName()));
   }
+  static void resynchronize(Activity a){
+    // The same selection is an explicit retry, including other open environment processes.
+    a.sendBroadcast(new Intent(a.getPackageName()+".APPEARANCE_CHANGED").setPackage(a.getPackageName()).putExtra("resynchronize",true));
+  }
+  private static void synchronizeCurrent(){ChatSession session=ChatSession.peek();if(session!=null&&!session.deleted&&session.web!=null)session.web.applyAppearance();}
   static void refresh(Context context){
     if(!installed)return;
     String selected=AppearanceColors.mode(AppSettings.get(context,KEY,"system"));

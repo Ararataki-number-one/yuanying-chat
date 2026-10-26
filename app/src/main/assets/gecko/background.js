@@ -15,14 +15,43 @@ browser.proxy.onRequest.addListener(async request => {
 // session across Android process eviction without changing server expiry/deletion.
 // This journal stays in this environment's private extension storage.
 const journalKey='sessionCookiesV1';
-let restoring=true, cookieCommit=Promise.resolve();
+let restoring=true, cookieCommit=Promise.resolve(), cookieRunning=false, cookiePending=false;
 const identity=c=>JSON.stringify([c.name,c.domain,c.path,c.firstPartyDomain??'',c.partitionKey??null]);
-const checkpoint=()=>cookieCommit=cookieCommit.catch(()=>{}).then(async()=>{
-  if(restoring)return;
-  const cookies=await browser.cookies.getAll({storeId:'firefox-default'});
-  await browser.storage.local.set({[journalKey]:cookies.filter(c=>c.session)});
+const checkpoint=()=>{
+  if(restoring)return cookieCommit;
+  // Even a native read joining an active checkpoint needs a subsequent getAll:
+  // its bulk clear may not have emitted any cookie change events.
+  cookiePending=true;
+  if(!cookieRunning){
+    cookieRunning=true;
+    cookieCommit=Promise.resolve().then(async()=>{
+      try {
+        do {
+          cookiePending=false;
+          try {
+            const cookies=await browser.cookies.getAll({storeId:'firefox-default'});
+            if(cookiePending)continue; // Replace an obsolete read with the latest request.
+            await browser.storage.local.set({[journalKey]:cookies.filter(c=>c.session)});
+          } catch(error) {
+            if(!cookiePending)throw error; // A newer request may still obtain a fresh, complete snapshot.
+          }
+        } while(cookiePending);
+      } finally {
+        // Clear inside this worker, before its promise settles. A request in a
+        // later microtask must start a worker rather than join a completed one.
+        cookieRunning=false;
+      }
+    });
+  }
+  return cookieCommit;
+};
+browser.cookies.onChanged.addListener(change=>{
+  if(change.cookie.storeId==='firefox-default')checkpoint().catch(()=>{
+    // The event API cannot await this failure. Keep the original rejected
+    // cookieCommit for barriers; a later checkpoint starts a fresh attempt.
+    console.warn('Session cookie checkpoint failed; a fresh checkpoint is required.');
+  });
 });
-browser.cookies.onChanged.addListener(change=>{if(change.cookie.storeId==='firefox-default')checkpoint();});
 const cookieReady=(async()=>{
   try {
     const saved=(await browser.storage.local.get(journalKey))[journalKey];

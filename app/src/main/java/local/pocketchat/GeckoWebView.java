@@ -38,7 +38,8 @@ class GeckoWebView extends FrameLayout {
   void destroy(){
     if(destroyed)return;destroyed=true;
     cancelZoom();owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
-    callbacks.clear();cookieCallbacks.clear();
+    callbacks.clear();cookieCallbacks.clear();appearanceSync.clear();
+    appearanceLoads.clear();appearanceConnections.clear();appearanceDocuments.clear();staleAppearanceConnections.clear();
     if(surface!=null&&surface.getSession()!=null)surface.releaseSession();
     for(GeckoSession session:new ArrayList<>(locations.keySet()))if(session.isOpen())session.close();
     if(primary!=null&&primary.isOpen())primary.close();
@@ -80,6 +81,12 @@ class GeckoWebView extends FrameLayout {
   private boolean originKnown;private int originX,originY,insetTop,insetRight,insetBottom,insetLeft;
   boolean nativePerfEnabled;long surfaceOriginChecks,surfaceOriginSyncs;
   final BrowserBridgeRequests callbacks,cookieCallbacks;WebExtension.Port routePort;String cookieStamp="";
+  final WebAppearanceSync appearanceSync;
+  final Map<GeckoSession,Long> appearanceLoads=new IdentityHashMap<>();
+  final Map<WebExtension.Port,Long> appearanceConnections=new IdentityHashMap<>();
+  final Map<WebExtension.Port,String> appearanceDocuments=new IdentityHashMap<>();
+  final Set<WebExtension.Port> staleAppearanceConnections=Collections.newSetFromMap(new IdentityHashMap<>());
+  long appearanceLoadSerial;
   interface ResponseDownload {void receive(WebResponse response);}
   ResponseDownload responseDownload;
   WebViewClient client;WebChromeClient chrome;DownloadListener download;
@@ -94,6 +101,7 @@ class GeckoWebView extends FrameLayout {
       public void cancel(Runnable task){owner.handler.removeCallbacks(task);}
     };
     callbacks=new BrowserBridgeRequests(timer,"null");cookieCallbacks=new BrowserBridgeRequests(timer,null);
+    appearanceSync=new WebAppearanceSync(timer,(port,message)->((WebExtension.Port)port).postMessage(message));
     owner.handler.post(this::initialize);
   }
   static boolean active(Object web){return web instanceof GeckoWebView&&((GeckoWebView)web).enabled;}
@@ -222,7 +230,8 @@ class GeckoWebView extends FrameLayout {
       }
       @Override public void onLocationChange(GeckoSession s,String target,List<GeckoSession.PermissionDelegate.ContentPermission> permissions,Boolean gesture){
         if(destroyed||!locations.containsKey(s))return;boolean committed=pendingLoads.remove(s);locations.put(s,target);
-        if(committed){painted.remove(s);usable.remove(s);pageScales.remove(s);viewportWidths.remove(s);loadingTargets.put(s,target);}
+        if(committed){painted.remove(s);usable.remove(s);pageScales.remove(s);viewportWidths.remove(s);loadingTargets.put(s,target);appearanceCommitted(s);}
+        else{WebExtension.Port page=ports.get(s);if(page!=null)appearance(page);}
         if(s!=current)return;url=target;
         if(committed&&!"about:blank".equals(target)){cancelZoom();if(client!=null)client.onPageStarted(null,target,null);}if(MainActivity.chatUrl(target)&&!LoginPagePolicy.login(target))owner.prefs.edit().putString("url",target).apply();
       }
@@ -242,7 +251,7 @@ class GeckoWebView extends FrameLayout {
     session.setProgressDelegate(new GeckoSession.ProgressDelegate(){
       // A download starts a network load without replacing the current document.
       // Only an authoritative location commit may invalidate its state or bridge.
-      @Override public void onPageStart(GeckoSession s,String target){if(destroyed||!locations.containsKey(s))return;loadingTargets.put(s,target);pendingLoads.add(s);}
+      @Override public void onPageStart(GeckoSession s,String target){if(destroyed||!locations.containsKey(s))return;appearanceLoads.put(s,++appearanceLoadSerial);loadingTargets.put(s,target);pendingLoads.add(s);}
 
       @Override public void onPageStop(GeckoSession s,boolean success){String target=loadingTargets.get(s);boolean uncommitted=pendingLoads.remove(s);if(uncommitted&&usable.contains(s)){loadingTargets.put(s,locations.get(s));return;}if(destroyed||s!=current||target==null||"about:blank".equals(target)||crashed.contains(s))return;if(success&&client!=null){if(MainActivity.chatUrl(url))readCookies(MainActivity.ORIGIN,value->{if(value!=null)cookieStamp=NativeNetwork.hash(value);});pageVisible(s);client.onPageFinished(null,url);}else if(!success&&owner.pageError.isEmpty()){owner.pageError="网页暂时未能加载，请重新加载或检查网络";owner.finishNavigation(owner.pageError,false);}}
       @Override public void onSessionStateChange(GeckoSession s,GeckoSession.SessionState state){if(destroyed||!locations.containsKey(s)||state.size()==0)return;states.put(s,new GeckoSession.SessionState(state));stateDraftRevisions.put(s,LocalDraftPolicy.revision(owner.context));if(s==primary){owner.handler.removeCallbacks(checkpoint);owner.handler.postDelayed(checkpoint,300);}}
@@ -321,11 +330,13 @@ class GeckoWebView extends FrameLayout {
     @Override public void onConnect(WebExtension.Port port){
       GeckoSession source=port.sender.session;
       if(destroyed||source==null||!locations.containsKey(source)||!port.sender.isTopLevel()||!"pocketpage".equals(port.name))return;
-      WebExtension.Port previous=ports.put(source,port);port.setDelegate(new WebExtension.PortDelegate(){
+      WebExtension.Port previous=ports.put(source,port);appearanceConnections.put(port,appearanceLoads.getOrDefault(source,0L));port.setDelegate(new WebExtension.PortDelegate(){
         @Override public void onPortMessage(Object message,WebExtension.Port incoming){
           if(!(message instanceof JSONObject)||incoming!=ports.get(source))return;
           JSONObject data=(JSONObject)message;String kind=data.optString("kind");
-          if("ready".equals(kind)||"documentReady".equals(kind))appearance(port);
+          if("ready".equals(kind)||"documentReady".equals(kind))appearanceReady(port,data,"documentReady".equals(kind));
+          if("appearanceVisible".equals(kind)){appearanceReady(port,data,true);return;}
+          if("appearanceReceipt".equals(kind)){if(!staleAppearanceConnections.contains(incoming))appearanceSync.receive(incoming,data);return;}
           if("scale".equals(kind)){
             // Page DPR can be masked by Firefox privacy protection. Only the
             // compositor's CSS-to-surface ratio may drive native zoom.
@@ -343,9 +354,9 @@ class GeckoWebView extends FrameLayout {
           else if("reply".equals(kind)&&MainActivity.chatUrl(port.sender.url)&&MainActivity.chatUrl(getUrl())&&owner.webObserver!=null){String text=data.optString("text");if(text.length()<=2*1024*1024)owner.webObserver.receive(J.parse(text),incoming);}
           else if("ready".equals(kind)&&owner.webObserver!=null)owner.webObserver.pageReady();
         }
-        @Override public void onDisconnect(WebExtension.Port incoming){if(ports.get(source)==incoming)ports.remove(source);if(source==current)owner.resourceObserverDisconnected(incoming);callbacks.cancel(incoming);}
+        @Override public void onDisconnect(WebExtension.Port incoming){if(ports.get(source)==incoming)ports.remove(source);retireAppearance(incoming);if(source==current)owner.resourceObserverDisconnected(incoming);callbacks.cancel(incoming);}
       });
-      if(previous!=null&&previous!=port)callbacks.cancel(previous);
+      if(previous!=null&&previous!=port){callbacks.cancel(previous);retireAppearance(previous);}
       if(source==current)owner.resourceObserverConnected(port);
     }
   };
@@ -358,9 +369,29 @@ class GeckoWebView extends FrameLayout {
     for(WebExtension.Port port:new ArrayList<>(ports.values()))appearance(port);
   }
   private void appearance(WebExtension.Port port){
-    if(!MainActivity.chatUrl(port.sender.url))return;
-    try{port.postMessage(J.obj("kind","appearance","dark",AppAppearance.dark()));}catch(RuntimeException ignored){/* A replaced document receives its preference on ready. */}
+    if(!appearancePage(port.sender.url)||staleAppearanceConnections.contains(port))return;
+    appearanceSync.request(port,AppAppearance.dark());
   }
+  private void appearanceReady(WebExtension.Port port,JSONObject data,boolean documentReady){
+    if(!appearancePage(port.sender.url)||staleAppearanceConnections.contains(port)||!(data.opt("appearanceProtocol") instanceof Number)||data.optDouble("appearanceProtocol")!=1)return;
+    Object value=data.opt("appearanceDocument");if(!(value instanceof String)||!((String)value).matches("[a-zA-Z0-9-]{16,80}"))return;
+    String document=(String)value,previous=appearanceDocuments.get(port);if(previous!=null&&!previous.equals(document))return;
+    appearanceDocuments.put(port,document);
+    if(appearanceSync.connect(port,document,AppAppearance.dark())&&documentReady&&previous!=null)appearance(port);
+  }
+  private void appearanceCommitted(GeckoSession source){
+    WebExtension.Port port=ports.get(source);if(port==null)return;
+    appearanceSync.disconnect(port);
+    // A document port may connect before the location callback. Its load ticket
+    // distinguishes it from the old document, including a reload at the same URL.
+    if(!Objects.equals(appearanceConnections.get(port),appearanceLoads.getOrDefault(source,0L))){
+      appearanceDocuments.remove(port);staleAppearanceConnections.add(port);return;
+    }
+    String document=appearanceDocuments.get(port);if(document!=null)appearanceSync.connect(port,document,AppAppearance.dark());
+  }
+  private void retireAppearance(WebExtension.Port port){if(port==null)return;appearanceSync.disconnect(port);appearanceConnections.remove(port);appearanceDocuments.remove(port);staleAppearanceConnections.remove(port);}
+  JSONObject appearanceReport(){return appearanceSync.snapshot(current==null?null:ports.get(current));}
+  protected boolean appearancePage(String target){return MainActivity.chatUrl(target);}
   protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicHttps(Uri.parse(target));}
   boolean readingPage(String target){return BrowserReadingPolicy.chat(target)&&!LoginPagePolicy.login(target);}
   static String header(WebResponse response,String name){for(Map.Entry<String,String> entry:response.headers.entrySet())if(name.equalsIgnoreCase(entry.getKey()))return entry.getValue();return "";}
@@ -387,7 +418,7 @@ class GeckoWebView extends FrameLayout {
   }
   private void contentStopped(GeckoSession session,String message){
     if(destroyed||!locations.containsKey(session))return;
-    crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null)callbacks.cancel(port);
+    crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
     if(session==current){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
       if(owner.uiVisible&&owner.guard.allowed()&&canRecoverAutomatically()){owner.manualAttention=false;owner.beginNavigation(url,"正在恢复当前网页…");owner.handler.removeCallbacks(recovery);owner.handler.postDelayed(recovery,250);}
       else if(owner.uiVisible)failure(message);
@@ -466,7 +497,7 @@ class GeckoWebView extends FrameLayout {
   private boolean closePopup(GeckoSession old){
     if(destroyed||!popups.remove(old))return false;
     if(old==current){activate(popups.isEmpty()?primary:popups.get(popups.size()-1));owner.pageError="";if(crashed.contains(current))contentStopped(current,"上一页被系统关闭，点按重新加载可恢复");else{owner.beginNavigation(url,"正在返回上一页…");owner.resourceObserverConnected(ports.get(current));if(client!=null&&painted.contains(current)){client.onPageCommitVisible(null,url);client.onPageFinished(null,url);}}}
-    WebExtension.Port port=ports.remove(old);if(port!=null)callbacks.cancel(port);
+    WebExtension.Port port=ports.remove(old);if(port!=null){callbacks.cancel(port);retireAppearance(port);}appearanceLoads.remove(old);
     locations.remove(old);backStates.remove(old);pageScales.remove(old);measuredCompositors.remove(old);viewportWidths.remove(old);loadingTargets.remove(old);pendingLoads.remove(old);painted.remove(old);usable.remove(old);crashed.remove(old);states.remove(old);stateDraftRevisions.remove(old);
     if(old.isOpen())old.close();return true;
   }

@@ -1,24 +1,13 @@
 # 元婴期院士 · Yuanying Chat
 
-使用 Mozilla 官方 GeckoView 的 Android ChatGPT 网页客户端。聊天、模型选择、历史记录和消息操作由 ChatGPT 官方网页提供；应用负责独立环境、网络、文件下载、阅读缩放和可选后台提醒。
+以 Mozilla 官方 GeckoView 为基础、使用可核验来源的输入同步修正 SDK 的 Android ChatGPT 网页客户端。聊天、模型选择、历史记录和消息操作由 ChatGPT 官方网页提供；应用负责独立环境、网络、文件下载、阅读缩放和可选后台提醒。
 
-**当前正式版本：2.0.9（versionCode 62），仅 GeckoView 与官方网页。**
+**正式安装包以[最新 Release](https://github.com/Ararataki-number-one/yuanying-chat/releases/latest)为准。开发分支的版本号不代表已经发布；应用保留单 GeckoView 与 ChatGPT 原网页。**
 
 ## 下载与安装
 
-- [下载当前正式应用 2.0.9 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.9-gecko/PocketChat-2.0.9-gecko-arm64.apk)
-- [上一版 2.0.8 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.8-gecko/PocketChat-2.0.8-gecko-arm64.apk)
-- [历史 1.5.19 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.19-gecko/PocketChat-1.5.19-gecko-arm64.apk)
-- [历史 1.5.13 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.13-gecko/PocketChat-1.5.13-gecko-arm64.apk)
-- [历史 1.5.12 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.12-gecko/PocketChat-1.5.12-gecko-arm64.apk)
-- [历史 1.5.11 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.11-gecko/PocketChat-1.5.11-gecko-arm64.apk)
-- [历史 1.5.10 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.10-gecko/PocketChat-1.5.10-gecko-arm64.apk)
-- [历史 1.5.9 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.9-gecko/PocketChat-1.5.9-gecko-arm64.apk)
-- [历史 1.5.8 正式应用 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.8-gecko/PocketChat-1.5.8-gecko-arm64.apk)
-- [历史 1.5.7 Firefox 内核更新 APK（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.7-gecko/PocketChat-1.5.7-gecko-arm64.apk)
-- [历史 1.5.6 电脑版阅读优化 APK](https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/477353188f4af649055bae7a1235b03e7c221fd9/public-downloads/PocketChat-1.5.6-desktop-reading.apk)
-- [历史 1.5.0 APK](https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v1.5.0/YuanyingChat-v1.5.0.apk)
-- [查看 Releases](https://github.com/Ararataki-number-one/yuanying-chat/releases)
+- [下载最新正式版（ARM64）](https://github.com/Ararataki-number-one/yuanying-chat/releases/latest)
+- [全部历史版本](https://github.com/Ararataki-number-one/yuanying-chat/releases)
 
 已有原签名正式版可直接覆盖安装，无需卸载；环境与登录数据继续保留。此前临时签名预览包使用不同证书，不能直接覆盖。
 
