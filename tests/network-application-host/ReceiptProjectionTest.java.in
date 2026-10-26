@@ -50,6 +50,8 @@ public final class ReceiptProjectionTest {
 class NativeNetwork {
   String fingerprint="fixed-exit",token="secret-owner",currentEntry="Entry|a",exitIp="203.0.113.8";
   int controllerPort=21001,proxyPort=22001;long routeSerial=1;java.lang.Process process;
+  JSONObject settings;
+  static String transportFingerprint(JSONObject unused){throw new AssertionError("Local-core fingerprint is outside this service receipt projection fixture");}
   final Transport transport=new Transport();ExitRouteReceipt verifiedRoute;
   boolean verifiedRouteCurrent(){return verifiedRoute!=null&&verifiedRoute.matches(this,transport.state);}
   JSONObject api(String method,String path,JSONObject input,int timeout){return path.equals("/version")?J.obj("version","controlled-version"):J.obj("proxies",J.arr(J.obj("configFingerprint","fixed-node-fingerprint")));}

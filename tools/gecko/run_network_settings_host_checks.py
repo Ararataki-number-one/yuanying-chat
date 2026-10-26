@@ -63,6 +63,9 @@ def main():
             (out / (prefix + '-stdout.txt')).write_text(result.stdout)
             (out / (prefix + '-stderr.txt')).write_text(result.stderr)
             if result.returncode:
+                print(prefix + ': failed', flush=True)
+                print(result.stdout, end='', flush=True)
+                print(result.stderr, end='', file=sys.stderr, flush=True)
                 value = {'status': 'failed', 'exitCode': result.returncode, 'sourceCommit': source,
                          'actualAndroidExecution': False, 'ciSourceDirty': dirty,
                          'ciHost': {'jsonImplementation': implementation, 'jsonJarSha256': digest}}
@@ -81,6 +84,8 @@ def main():
         (out / ('network-settings-' + path.stem + '-stdout.txt')).write_text(stream.getvalue())
         passed = result.wasSuccessful() and result.testsRun >= minimum and not result.skipped
         success &= passed
+        if not passed:
+            print(stream.getvalue(), end='', flush=True)
         suites[name] = dict(testsRun=result.testsRun, successful=passed, failures=len(result.failures),
                             errors=len(result.errors), skipped=len(result.skipped),
                             sourceSha256=hashlib.sha256(path.read_bytes()).hexdigest())

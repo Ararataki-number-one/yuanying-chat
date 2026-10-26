@@ -284,6 +284,8 @@ def main():
         command = ["node", "--test", "--test-reporter=tap", str(caret_test)]
         run = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
         if run.returncode:
+            print(run.stdout, end="", flush=True)
+            print(run.stderr, end="", file=sys.stderr, flush=True)
             raise subprocess.CalledProcessError(run.returncode, command, run.stdout, run.stderr)
         total = re.search(r"^# tests (\d+)$",run.stdout,re.M)
         passed = re.search(r"^# pass (\d+)$",run.stdout,re.M)

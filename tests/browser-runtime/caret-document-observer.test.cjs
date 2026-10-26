@@ -92,6 +92,7 @@ function harness(caseNumber = 0) {
     getComputedStyle:computedStyle,URL,URLSearchParams,console};
   const page = vm.createContext({...common, window:pageWindow});
   const extension = vm.createContext({...common, window,
+    crypto:require('node:crypto').webcrypto,
     browser:{runtime:{connectNative(name) {
       assert.equal(name, 'pocketpage');
       return {postMessage:value => messages.push(value),onMessage:{addListener:callback => { nativeReceive = callback; }}};

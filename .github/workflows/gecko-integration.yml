@@ -241,6 +241,16 @@ jobs:
       run: |
         set -euo pipefail
         python3 tools/gecko/run_network_settings_host_checks.py --java-home "$JAVA_HOME" --json-desktop work/gecko-integration/catalog-json.jar --json-android work/gecko-integration/sharing-android-json.jar
+    - name: Preserve settings host diagnostics
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: network-settings-host-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          work/gecko-integration/network-settings-*.txt
+          work/gecko-integration/network-settings-*.json
+        if-no-files-found: warn
+        retention-days: 7
         python3 tests/gecko_phase2_release_gates_test.py
     - name: Verify recovery, diagnostics and download publication boundaries
       shell: bash
