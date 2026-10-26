@@ -1,0 +1,139 @@
+name: Diagnostic native cold retry candidate
+on:
+  push:
+    branches: ['debug/native-cold-retry-*']
+    paths: ['tests/native-cold-retry-candidate/**', '.github/workflows/native-cold-retry-candidate.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-cold-retry-candidate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Reproduce old cold reset then build and test the minimal native candidate
+        id: candidate
+        run: python3 tests/native-cold-retry-candidate/run_candidate.py
+      - name: Preserve full diagnostic logs and authentic candidate receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-diagnostics
+          path: work/native-cold-retry/diagnostics/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Export arm64-v8a 00 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-arm64-v8a-00
+          path: work/native-cold-retry/binaries/arm64-v8a/part-00
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export arm64-v8a 01 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-arm64-v8a-01
+          path: work/native-cold-retry/binaries/arm64-v8a/part-01
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export arm64-v8a 02 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-arm64-v8a-02
+          path: work/native-cold-retry/binaries/arm64-v8a/part-02
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export arm64-v8a 03 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-arm64-v8a-03
+          path: work/native-cold-retry/binaries/arm64-v8a/part-03
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export arm64-v8a 04 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-arm64-v8a-04
+          path: work/native-cold-retry/binaries/arm64-v8a/part-04
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export arm64-v8a 05 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-arm64-v8a-05
+          path: work/native-cold-retry/binaries/arm64-v8a/part-05
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export x86_64 00 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-x86_64-00
+          path: work/native-cold-retry/binaries/x86_64/part-00
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export x86_64 01 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-x86_64-01
+          path: work/native-cold-retry/binaries/x86_64/part-01
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export x86_64 02 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-x86_64-02
+          path: work/native-cold-retry/binaries/x86_64/part-02
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export x86_64 03 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-x86_64-03
+          path: work/native-cold-retry/binaries/x86_64/part-03
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export x86_64 04 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-x86_64-04
+          path: work/native-cold-retry/binaries/x86_64/part-04
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
+      - name: Export x86_64 05 native chunk
+        if: ${{ always() && steps.candidate.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: n12-${{ github.run_id }}-${{ github.run_attempt }}-x86_64-05
+          path: work/native-cold-retry/binaries/x86_64/part-05
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 14
