@@ -42,6 +42,8 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
     boolean semanticRoute,inspectPending,inputTracing,quietTracking;JSONObject productionPoll,productionInspect;int pageStateReads,stableBeforeInspectedPoll=-1,completionBeforeInspectedPoll=-1,inputEvaluateSequence,quietStops,quietLoads;String pageStateDraft="",navigationError="",semanticUrl=MainActivity.ORIGIN+"c/performance-fixture";
+    // Scalar observations exist only while the two manual-recovery races run.
+    boolean manualSnapshotDiagnostics;JSONObject manualSnapshotLast=new JSONObject();
     FixtureView(Context c,ChatSession owner){super(c,owner);}
     boolean scrollTracing;int scrollTouchCount;JSONArray scrollTouches=new JSONArray();
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent motion){
@@ -53,6 +55,9 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     @Override public void loadUrl(String url){if(quietTracking)quietLoads++;super.loadUrl(url);}
     @Override public String getUrl(){return semanticRoute?semanticUrl:super.getUrl();}
     @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){
+      JSONObject observedManualIssue=null;
+      if(manualSnapshotDiagnostics&&semanticRoute&&code.contains("window.__pocketReadDriver(\"page-state\","))try{observedManualIssue=manualSnapshotState(owner);}catch(RuntimeException ignored){}
+      final JSONObject manualIssue=observedManualIssue;
       int inputSequence=inputTracing?inputEvaluateSequence++:-1;
       if(inputSequence>=0)inputEvaluation("begin",inputSequence,code);
       if(semanticRoute&&inspectPending&&code.contains("window.__pocketReadDriver(\"poll\",")){inspectPending=false;stableBeforeInspectedPoll=owner.stableTicks;completionBeforeInspectedPoll=owner.webObserver.completionSamples;}
@@ -61,8 +66,27 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
       if(semanticRoute&&code.contains("window.__pocketReadDriver(\"poll\","))productionPoll=J.parse(raw);
       if(semanticRoute&&code.contains("window.__pocketReadDriver(\"web-inspect\","))productionInspect=J.parse(raw);
       if(semanticRoute&&code.contains("window.__pocketReadDriver(\"page-state\",")){pageStateReads++;pageStateDraft=J.parse(raw).optString("draft");}
+      if(manualSnapshotDiagnostics&&semanticRoute&&code.contains("window.__pocketReadDriver(\"page-state\",")){
+        try{manualSnapshotLast=J.obj("issueObserved",manualIssue!=null,"issue",manualIssue==null?JSONObject.NULL:manualIssue,"callback",manualSnapshotState(owner),"callbackStage","before-production-consumer","shape",manualSnapshotShape(J.parse(raw)));}catch(RuntimeException ignored){}
+      }
       if(callback!=null)callback.onReceiveValue(raw);
     });}
+    static JSONObject manualSnapshotState(ChatSession owner){
+      JSONObject job=owner.pending;
+      return J.obj("at",SystemClock.elapsedRealtime(),"networkReady",owner.networkReady,"guardPresent",owner.guard!=null,"guardBlocked",owner.guard!=null&&owner.guard.blocked,"guardScope","cached-blocked-field-only","websiteRecovering",owner.websiteRecovering,"navigating",owner.navigating,"epoch",owner.navigationEpoch,"connection",owner.connectionEpoch,"pendingPresent",job!=null,"pendingObject",job==null?0:System.identityHashCode(job),"pendingIdHash",Sha256.hash(job==null?"":job.optString("id")),"documentHash",Sha256.hash(owner.lastDocumentId));
+    }
+    static JSONObject manualSnapshotShape(JSONObject value){
+      Object draft=value.opt("draft");String text=draft instanceof String?(String)draft:"";
+      return J.obj("readable",value.optBoolean("ok"),"complete",PageMemory.completeDraft(value),"draftComplete",value.optBoolean("draftComplete",true),"draftString",draft instanceof String,"draftLength",text.length(),"draftHash",Sha256.hash(text),"reportedDraftLength",value.optLong("draftLength",-1),"reportedLengthNumeric",value.opt("draftLength") instanceof Number,"documentPresent",!value.optString("documentId").isEmpty(),"documentHash",Sha256.hash(value.optString("documentId")),"urlHash",Sha256.hash(value.optString("url")),"reasonHash",Sha256.hash(value.optString("reason")));
+    }
+    void manualSnapshotFailure(int index,String expected,long epoch,long connection){
+      try{
+        JSONObject value=J.obj("schema",1,"race",index,"current",manualSnapshotState(owner),"expectedEpoch",epoch,"expectedConnection",connection,"pageStateReads",pageStateReads,"expectedDraftLength",expected.length(),"expectedDraftHash",Sha256.hash(expected),"observedDraftLength",pageStateDraft.length(),"observedDraftHash",Sha256.hash(pageStateDraft),"draftMatches",expected.equals(pageStateDraft),"lastPageState",manualSnapshotLast,"scope","failure-only-existing-callback-observation; no new bridge or route probe");
+        String raw=J.obj("kind","manualSnapshotFailureDiagnostic","value",value).toString();
+        if(raw.getBytes(StandardCharsets.UTF_8).length<=3500)Log.i("PocketGeckoPerformance",raw);
+        else Log.i("PocketGeckoPerformance",J.obj("kind","manualSnapshotFailureDiagnostic","value",J.obj("schema",1,"race",index,"payloadOmitted",true)).toString());
+      }catch(RuntimeException ignored){}
+    }
     void inputEvaluation(String phase,int sequence,String code){
       String action=code.contains("__fixtureInputTrace={")?"input-trace-install":code.contains("trace?.events||[]")?"input-snapshot":
         code.contains("__pocketReadDriver(\"page-state\"")?"page-state":code.contains("__pocketReadDriver(\"restore-draft\"")?"restore-draft":
@@ -639,6 +663,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   }
   void manualRecoveryRaces()throws Exception{
     originalDriver=session.driver;
+    ((FixtureView)session.web).manualSnapshotDiagnostics=true;
     // page-state is still the exact real asset through the test-only host adapter.
     // No fake snapshot or retry implementation substitutes for the production code.
     session.driver="window.__pocketReadDriver(__ACTION__, __ARG__)";
@@ -652,6 +677,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
     evaluate("document.getElementById('prompt-textarea').value="+JSONObject.quote(manualDraft)+";({draftSet:true})",false,unused->{
       session.handler.removeCallbacks(session.tick);manualEpoch=session.navigationEpoch;manualConnection=session.connectionEpoch;
       FixtureView view=(FixtureView)session.web;view.pageStateReads=0;view.pageStateDraft="";
+      view.manualSnapshotLast=new JSONObject();
       archiveEntered=new CountDownLatch(1);archiveRelease=new CountDownLatch(1);CountDownLatch entered=archiveEntered,release=archiveRelease;
       session.webStore.worker.execute(()->{entered.countDown();try{release.await(30,TimeUnit.SECONDS);}catch(InterruptedException error){Thread.currentThread().interrupt();}});
       waitArchiveWorker(index,SystemClock.elapsedRealtime()+10000);
@@ -664,7 +690,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
   void waitRecoverySnapshot(int index,long expires){attempt(()->{
     FixtureView view=(FixtureView)session.web;
     if(view.pageStateReads<1){if(SystemClock.elapsedRealtime()>expires)throw new IllegalStateException("Manual recovery did not capture the real Gecko page state");later(()->waitRecoverySnapshot(index,expires),50);return;}
-    if(!session.websiteRecovering||!manualDraft.equals(view.pageStateDraft))throw new IllegalStateException("Manual recovery snapshot failed before the controlled race");
+    if(!session.websiteRecovering||!manualDraft.equals(view.pageStateDraft)){view.manualSnapshotFailure(index,manualDraft,manualEpoch,manualConnection);throw new IllegalStateException("Manual recovery snapshot failed before the controlled race");}
     if(index==1){
       evaluate("document.getElementById('prompt-textarea').value='new typing while archive waits';({draftChanged:true})",false,unused->{archiveRelease.countDown();waitRecoveryRace(index,SystemClock.elapsedRealtime()+10000);});
     }else{
@@ -684,6 +710,7 @@ public final class GeckoPerformanceIntegrationActivity extends Activity {
           boolean noReload=session.navigationEpoch==manualEpoch&&session.connectionEpoch==manualConnection&&!session.navigating&&session.networkReady&&session.guard.allowed()&&session.pending==manualJob&&J.parse(session.prefs.getString("pending","{}")).optString("id").equals(manualJob.optString("id"));
           check(index==1?"Typing while manual recovery saves aborts reload and preserves the newer draft and original pending task":"Changing the pending task while manual recovery saves aborts stale reload and preserves the new task",noReload&&end.optString("draft").equals(index==1?"new typing while archive waits":captured)&&end.optInt("sendCount")==0&&end.optString("cookie").contains("session=synthetic-performance")&&((FixtureView)session.web).pageStateReads==(index==1?2:1));
           if(index==1)manualRace(2);else{
+            ((FixtureView)session.web).manualSnapshotDiagnostics=false;
             session.driver=originalDriver;session.pending=null;session.prefs.edit().remove("pending").commit();
             session.stableTicks=2;session.stableReply="pre-disconnect terminal";session.webObserver.completionSamples=2;session.invalidateConnection();
             evaluate("({draft:document.getElementById('prompt-textarea').value,sendCount:Number(document.getElementById('send-count').textContent),cookie:document.cookie})",false,after->{

@@ -122,8 +122,9 @@ class HeaderStream:
 
 
 class WifiNativeTest(unittest.TestCase):
-    def invoke(self, tcpip=None, endpoint_error=None, native_error=None):
-        record = {'confirmedQemu': True}
+    def invoke(self, tcpip=None, endpoint_error=None, native_error=None, *,
+               scoped_route=None, addresses=None, unbound_route=None, record_extra=None):
+        record = dict(record_extra or {}, confirmedQemu=True)
         original = Mock(BOOTSTRAP='emulator-5556')
         original.wait_native.side_effect = native_error
         events = []
@@ -133,7 +134,13 @@ class WifiNativeTest(unittest.TestCase):
                 if isinstance(tcpip, BaseException):
                     raise tcpip
                 return tcpip or completed('restarting in TCP mode port: 5555\n')
-            return completed('16: wlan0 inet 10.0.2.16/24' if 'addr' in parts else '10.0.2.2 dev wlan0 src 10.0.2.16')
+            if 'addr' in parts:
+                return completed('16: wlan0 inet 10.0.2.16/24' if addresses is None else addresses)
+            if 'from' in parts:
+                return scoped_route() if callable(scoped_route) else scoped_route or completed('10.0.2.2 dev wlan0 src 10.0.2.16')
+            if parts[-3:] == ['route', 'get', '10.0.2.2']:
+                return unbound_route or completed('10.0.2.2 dev eth0 table 1015 src 10.0.2.15 uid 2000')
+            return completed('0: from all lookup local' if 'rule' in parts else '10.0.2.0/24 dev wlan0 table 1016')
         def observed_monitor(path, operation):
             events.append(operation)
             return {'info network': NETWORK, 'help hostfwd_add': 'hostfwd_add [netdev_id] rule',
@@ -237,6 +244,114 @@ class WifiNativeTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 setup.monitor(Path('/fixed/qemu.sock'), 'hostfwd_add mynet tcp:0.0.0.0:22-10.0.2.15:22')
         socket_call.assert_not_called()
+
+    def test_wifi_source_return_route_does_not_relabel_cellular_default(self):
+        cm = [{'value': {'activeNetwork': '101', 'transports': ['cellular'], 'usable': True}}]
+        before = json.dumps(cm, sort_keys=True)
+        for route in ('10.0.2.2 from 10.0.2.16 dev wlan0 table 1016 uid 2000\n    cache\n',
+                      '10.0.2.2 dev wlan0 src 10.0.2.16 uid 2000\n    cache\n'):
+            with self.subTest(route=route):
+                record, original, events, error = self.invoke(
+                    scoped_route=completed(route), record_extra={'networkObservations': cm})
+                self.assertIsNone(error)
+                self.assertEqual(json.dumps(record['networkObservations'], sort_keys=True), before)
+                self.assertEqual(json.dumps(cm, sort_keys=True), before)
+                scoped = ['adb', '-s', setup.BOOTSTRAP, 'shell', 'ip', '-4', 'route', 'get',
+                          '10.0.2.2', 'from', '10.0.2.16']
+                self.assertEqual(events.count(scoped), 1)
+                self.assertEqual(record['returnRouteSource'], '10.0.2.16')
+                self.assertEqual(record['routeObservations'][0]['routeSource'], '10.0.2.16')
+                self.assertIn('dev eth0', record['routeDiagnostics'][0]['stdout'])
+                self.assertTrue(all(row['diagnosticOnly'] for row in record['routeDiagnostics']))
+                self.assertTrue(all(not row['diagnosticOnly'] for row in record['routeReadinessCommands']))
+                original.announce_native.assert_called_once_with(record)
+                original.wait_native.assert_called_once_with('adb', record)
+
+    def test_unbound_success_cannot_replace_source_device_or_address_evidence(self):
+        routes = [('10.0.2.2 from 10.0.2.16 dev eth0 src 10.0.2.15', None),
+                  ('10.0.2.2 dev wlan0 src 10.0.2.15', None),
+                  ('10.0.2.2 from 10.0.2.16 dev wlan0 src 10.0.2.15', None),
+                  ('10.0.2.2 from 10.0.2.16 dev wlan0-extra', None),
+                  ('10.0.2.2 dev wlan0', None),
+                  ('10.0.2.2 from 10.0.2.16 dev wlan0', '16: wlan0 inet 10.0.2.15/24')]
+        for route, addresses in routes:
+            with self.subTest(route=route, addresses=addresses):
+                clock = [0.0]
+                with patch.object(setup.time, 'monotonic', side_effect=lambda: clock[0]), \
+                        patch.object(setup.time, 'sleep', side_effect=lambda n: clock.__setitem__(0, clock[0] + n)):
+                    record, original, events, error = self.invoke(
+                        scoped_route=completed(route), addresses=addresses,
+                        unbound_route=completed('10.0.2.2 dev wlan0 src 10.0.2.16'))
+                self.assertIsInstance(error, TimeoutError)
+                self.assertNotIn(setup.RULE, events)
+                original.announce_native.assert_not_called()
+                original.wait_native.assert_not_called()
+                self.assertNotIn('nativeReady', record)
+                self.assertEqual(clock[0], 30)
+
+    def test_failed_source_query_never_creates_forward_or_runs_tcpip(self):
+        clock = [0.0]
+        with patch.object(setup.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(setup.time, 'sleep', side_effect=lambda n: clock.__setitem__(0, clock[0] + n)):
+            record, original, events, error = self.invoke(
+                scoped_route=completed('10.0.2.2 from 10.0.2.16 dev wlan0', 2, 'unsupported query'))
+        self.assertIsInstance(error, TimeoutError)
+        self.assertTrue(all(row['routeExit'] == 2 for row in record['routeObservations']))
+        self.assertNotIn(setup.RULE, events)
+        self.assertNotIn(['adb', '-s', setup.BOOTSTRAP, 'tcpip', '5555'], events)
+        original.announce_native.assert_not_called()
+        original.wait_native.assert_not_called()
+
+    def test_diagnostic_reads_are_once_and_do_not_replace_transport_gates(self):
+        replies = iter([completed('10.0.2.2 from 10.0.2.16 dev eth0'),
+                        completed('10.0.2.2 from 10.0.2.16 dev wlan0')])
+        with patch.object(setup.time, 'sleep'):
+            record, original, events, error = self.invoke(
+                scoped_route=lambda: next(replies), endpoint_error=TimeoutError('actual endpoint absent'))
+        self.assertIsInstance(error, TimeoutError)
+        self.assertEqual(len(record['routeObservations']), 2)
+        self.assertEqual(len(record['routeDiagnostics']), 3)
+        diagnostics = [row['command'] for row in record['routeDiagnostics']]
+        self.assertEqual(diagnostics, [
+            ['adb', '-s', setup.BOOTSTRAP, 'shell', 'ip', '-4', 'route', 'get', '10.0.2.2'],
+            ['adb', '-s', setup.BOOTSTRAP, 'shell', 'ip', '-4', 'rule', 'show'],
+            ['adb', '-s', setup.BOOTSTRAP, 'shell', 'ip', '-4', 'route', 'show', 'table', 'all']])
+        self.assertTrue(all(events.count(command) == 1 for command in diagnostics))
+        self.assertEqual(events.count(['adb', '-s', setup.BOOTSTRAP, 'tcpip', '5555']), 1)
+        original.announce_native.assert_not_called()
+        original.wait_native.assert_not_called()
+
+    def test_all_route_reads_share_original_deadline_and_eight_second_cap(self):
+        for late_success, diagnostic_timeouts in ((False, False), (True, False), (False, True)):
+            with self.subTest(late_success=late_success, diagnostic_timeouts=diagnostic_timeouts):
+                clock, calls, record = [0.0], [], {'confirmedQemu': True}
+                def command(parts, **options):
+                    timeout = options['timeout'];calls.append((parts, timeout, clock[0]))
+                    duration = 2 if 'from' in parts else 5 if 'addr' in parts else 9 if diagnostic_timeouts else 8
+                    clock[0] += duration if late_success else min(duration, timeout)
+                    if duration > timeout and not late_success:
+                        raise subprocess.TimeoutExpired(parts, timeout, output=b'partial', stderr=b'bounded')
+                    return completed('16: wlan0 inet 10.0.2.16/24' if 'addr' in parts
+                                     else '10.0.2.2 from 10.0.2.16 dev wlan0')
+                with patch.object(setup.subprocess, 'run', side_effect=command), \
+                        patch.object(setup.time, 'monotonic', side_effect=lambda: clock[0]), \
+                        patch.object(setup, 'monitor') as monitor:
+                    with self.assertRaises(TimeoutError if late_success else subprocess.TimeoutExpired):
+                        setup.native_transport('adb', Path('/fixed/qemu.sock'), record)
+                self.assertEqual([call[1] for call in calls], [8, 8, 8, 6, 1])
+                self.assertTrue(all(call[1] <= 8 for call in calls))
+                self.assertEqual(len(record['routeDiagnostics']), 3)
+                if diagnostic_timeouts:
+                    self.assertTrue(all(row['timedOut'] and row['stdout'] == 'partial'
+                                        for row in record['routeDiagnostics']))
+                self.assertTrue(all(row['deadlineMonotonic'] == 30
+                                    for row in record['routeDiagnostics'] + record['routeReadinessCommands']))
+                if not late_success:
+                    self.assertEqual(clock[0], 30)
+                    self.assertTrue(record['routeReadinessCommands'][-1]['timedOut'])
+                    self.assertEqual(record['routeReadinessCommands'][-1]['stdout'], 'partial')
+                monitor.assert_not_called()
+                self.assertNotIn('tcpipCommand', record)
 
 
 

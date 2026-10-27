@@ -191,19 +191,57 @@ def native_transport(adb, monitor_path, record):
     require(record.get('confirmedQemu') is True, 'Confirmed synthetic QEMU required')
     base = [adb, '-s', BOOTSTRAP]
     deadline = time.monotonic() + 30
+    record['returnRouteSource'] = '10.0.2.16'
+    record['routeReadinessCommands'] = []
+    record['routeDiagnostics'] = []
+
+    def route_command(parts, *, diagnostic=False):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Actual SDK Wi-Fi address/return route not ready')
+        command = base + parts
+        row = dict(command=command, timeoutSeconds=min(8, remaining),
+                   deadlineMonotonic=deadline, diagnosticOnly=diagnostic)
+        target = record['routeDiagnostics'] if diagnostic else record['routeReadinessCommands']
+        target.append(row)
+        try:
+            result = subprocess.run(command, capture_output=True, text=True,
+                                    timeout=row['timeoutSeconds'])
+        except subprocess.TimeoutExpired as error:
+            def decoded(value):
+                return value.decode('utf-8', errors='replace') if isinstance(value, bytes) else value or ''
+            row.update(exitCode=None, timedOut=True, stdout=decoded(error.stdout),
+                       stderr=decoded(error.stderr), observedAt=time.monotonic())
+            if diagnostic:
+                return None
+            raise
+        row.update(exitCode=result.returncode, timedOut=False, stdout=result.stdout,
+                   stderr=result.stderr, observedAt=time.monotonic())
+        return result
+
+    # The shell's default network can legitimately be cellular. Preserve that
+    # context without using it as the Wi-Fi-targeted endpoint's return path.
+    # These one-shot reads share, and never extend, the original route deadline.
+    for parts in (['shell', 'ip', '-4', 'route', 'get', '10.0.2.2'],
+                  ['shell', 'ip', '-4', 'rule', 'show'],
+                  ['shell', 'ip', '-4', 'route', 'show', 'table', 'all']):
+        route_command(parts, diagnostic=True)
     while True:
-        address = subprocess.run(base + ['shell', 'ip', '-4', '-o', 'addr', 'show', 'wlan0'],
-                                 capture_output=True, text=True, timeout=8)
-        route = subprocess.run(base + ['shell', 'ip', '-4', 'route', 'get', '10.0.2.2'],
-                               capture_output=True, text=True, timeout=8)
+        address = route_command(['shell', 'ip', '-4', '-o', 'addr', 'show', 'wlan0'])
+        route = route_command(['shell', 'ip', '-4', 'route', 'get', '10.0.2.2',
+                               'from', '10.0.2.16'])
         record.setdefault('routeObservations', []).append(dict(addressExit=address.returncode,
             routeExit=route.returncode, addresses=address.stdout, route=route.stdout,
-            errors=address.stderr + route.stderr))
-        if address.returncode == route.returncode == 0 and 'inet 10.0.2.16/' in address.stdout and 'dev wlan0' in route.stdout:
-            break
+            routeSource='10.0.2.16', errors=address.stderr + route.stderr))
         if time.monotonic() > deadline:
             raise TimeoutError('Actual SDK Wi-Fi address/return route not ready')
-        time.sleep(.25)
+        devices = re.findall(r'(?:^|\s)dev\s+(\S+)', route.stdout)
+        sources = re.findall(r'(?:^|\s)(?:from|src)\s+(\S+)', route.stdout)
+        if (address.returncode == route.returncode == 0
+                and 'inet 10.0.2.16/' in address.stdout and devices == ['wlan0']
+                and sources and all(value == '10.0.2.16' for value in sources)):
+            break
+        time.sleep(min(.25, max(0, deadline - time.monotonic())))
     record['networkDevices'] = monitor(monitor_path, 'info network')
     verify_backend(record['networkDevices'])
     record['hostfwdHelp'] = monitor(monitor_path, 'help hostfwd_add')
