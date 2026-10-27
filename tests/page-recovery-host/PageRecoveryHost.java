@@ -116,7 +116,7 @@ class Mirror{String documentId="document-one";JSONObject arguments(){return new 
 class Store{final java.util.concurrent.Executor worker=Runnable::run;void offer(String u,JSONArray e){}void nativeSnapshot(String s){}}
 class Cache{JSONArray withEarlier(String u,JSONArray a){return a;}void saveMessages(String u,JSONArray e){}}
 
-class Audit{void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{static boolean active(Web w){return true;}}class LoginPagePolicy{static boolean login(String u){return false;}}
+class Audit{boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{static boolean active(Web w){return true;}}class LoginPagePolicy{static boolean login(String u){return false;}}
 
 class CapturedMemory {final ChatSession session;final LinkedHashMap<String,JSONObject> pages=new LinkedHashMap<>();long serial;CapturedMemory(ChatSession s){session=s;}String scope(){return "scope";}static String address(String url){return url;}/* CAPTURE */}
 
