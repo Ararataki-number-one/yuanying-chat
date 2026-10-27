@@ -61,7 +61,7 @@ class FingerprintObservationHistoryTest(unittest.TestCase):
                 self.assertEqual(result['status'], 'passed')
                 self.assertEqual(result['passed'], result['total'])
                 self.assertEqual(result['total'], len(result['checks']))
-                self.assertEqual(result['total'], 60)
+                self.assertEqual(result['total'], 82)
                 self.assertTrue(all(row['pass'] is True for row in result['checks']))
                 self.assertFalse(result['actualAndroidExecution'])
                 reports.append(dict(jsonRuntime=runtime, jsonJarSha256=hashlib.sha256(jar.read_bytes()).hexdigest(),
@@ -69,9 +69,9 @@ class FingerprintObservationHistoryTest(unittest.TestCase):
                                     runtimeStdout=run.stdout, runtimeStderr=run.stderr, report=result))
         self.assertEqual(before, {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs})
         receipt = dict(status='passed', actualAndroidExecution=False, actualGeckoExecution=False, executionInputsUnchanged=True,
-                       sourceSha256=before,
+                       sourceSha256=before, originalControlCount=60, retainedGapControlCount=18, addedEvictionControlCount=4,
                        runs=reports, scope='Local pure-Java history and report processing on pinned JSON jars; no phone, Gecko or privacy-effectiveness verdict')
-        target = ROOT / 'work/fingerprint-followups/history-host-results.json'
+        target = ROOT / 'work/fingerprint-history-eviction-fix-20261027/history-host-results.json'
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
             original = target.read_bytes()

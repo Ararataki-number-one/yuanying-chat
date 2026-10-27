@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -43,12 +44,14 @@ import org.mozilla.geckoview.WebRequestError;
 /** Actual test-APK Gecko/HTTPS observations; never a real ChatGPT or phone verdict. */
 public final class FingerprintFollowupIntegrationActivity extends Activity {
   static final String FILE="fingerprint-followup-results.json",TAG="PocketFingerprintFollowup";
+  static final String SOURCE_DRIVER_GUARD="if (location.protocol !== 'https:' || location.hostname !== 'chatgpt.com') return false;";
   final Handler handler=new Handler(Looper.getMainLooper());
   final ExecutorService worker=Executors.newSingleThreadExecutor();
   final AtomicBoolean concluded=new AtomicBoolean();
-  final JSONArray checks=new JSONArray(),cases=new JSONArray(),events=new JSONArray(),routes=new JSONArray(),normalizations=new JSONArray(),loads=new JSONArray();
-  String source,nonce,origin,redirectOrigin,chat,semanticChat;int routeDrops,eventDrops,normalizationDrops;
-  JSONObject build=new JSONObject(),sdk=new JSONObject();
+  final JSONArray checks=new JSONArray(),cases=new JSONArray(),events=new JSONArray(),routes=new JSONArray(),normalizations=new JSONArray(),loads=new JSONArray(),preflightDriverResults=new JSONArray();
+  String source,nonce,origin,redirectOrigin,chat,semanticChat;int routeDrops,eventDrops,normalizationDrops,preflightDriverDrops;
+  JSONObject build=new JSONObject(),sdk=new JSONObject(),sourceDriverAdapter=new JSONObject();
+  String stage="created";boolean sourceDriverGuardRecorded;
   ChatSession owner;FixtureView view;
   WebExtension.Port heldRoutePort;WebExtension.PortDelegate originalRouteDelegate;JSONObject heldProtectionReply;
   int droppedProtectionReplies;boolean dropProtectionReplies;
@@ -77,6 +80,16 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
   JSONArray copyArray(JSONArray value){synchronized(value){try{return new JSONArray(value.toString());}catch(Exception error){throw new IllegalStateException("Fixture array snapshot failed",error);}}}
   String mapped(String value){return chat!=null&&chat.equals(value)?semanticChat:value;}
   String actual(String value){return semanticChat!=null&&semanticChat.equals(value)?chat:value;}
+  static String sourceDriverGuard(String sourceUrl){return "if (location.protocol !== 'https:' || location.href !== "+JSONObject.quote(sourceUrl)+") return false;";}
+  static String adaptSourceDriver(String code,String sourceUrl){
+    int first=code.indexOf(SOURCE_DRIVER_GUARD);if(first<0)return code;
+    if(code.indexOf(SOURCE_DRIVER_GUARD,first+SOURCE_DRIVER_GUARD.length())>=0)throw new IllegalStateException("Ambiguous production page driver guard");
+    return code.substring(0,first)+sourceDriverGuard(sourceUrl)+code.substring(first+SOURCE_DRIVER_GUARD.length());
+  }
+  static String sha256(String value){
+    try{byte[] digest=MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));StringBuilder text=new StringBuilder();for(byte b:digest)text.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return text.toString();}
+    catch(Exception failure){throw new IllegalStateException("Fixture source hash unavailable",failure);}
+  }
   static final class PrivateContext extends ContextWrapper{
     final File directory;
     PrivateContext(Context base,String nonce){super(base);directory=new File(base.getNoBackupFilesDir(),"fingerprint-followups-"+nonce);}
@@ -92,11 +105,21 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
     @Override public void loadUrl(String value){synchronized(loads){loads.put(J.obj("requested",value,"actualTarget",actual(value),"at",SystemClock.elapsedRealtime(),"connectionEpoch",owner.connectionEpoch,"navigationEpoch",owner.navigationEpoch));}super.loadUrl(actual(value));}
     @Override public void evaluateJavascript(String code,ValueCallback<String> callback){
       String adapted=code.replace(semanticChat,chat).replace(semanticChat.replace("/","\\/"),chat.replace("/","\\/"));
+      if(adapted.contains(SOURCE_DRIVER_GUARD)){
+        if(!sourceDriverGuardRecorded){
+          if(owner.driver.indexOf(SOURCE_DRIVER_GUARD)<0)throw new IllegalStateException("Production page driver guard missing");
+          sourceDriverAdapter=J.obj("kind","controlled-source-page-driver-host-guard-only","sourceUrl",chat,"semanticUrl",semanticChat,"originalGuard",SOURCE_DRIVER_GUARD,"adaptedGuard",sourceDriverGuard(chat),"productionPageDriverSha256",sha256(owner.driver),"adaptedPageDriverTemplateSha256",sha256(adaptSourceDriver(owner.driver,chat)),"scope","Test-APK source fixture only. Exact HTTPS source URL replaces the official-host guard; real DOM, busy state, draft bytes/completeness and expectedUrl origin/path checks remain unchanged. Detector URLs and results are never rewritten.");
+          synchronized(normalizations){if(normalizations.length()<32)normalizations.put(copy(sourceDriverAdapter));else normalizationDrops++;}
+          sourceDriverGuardRecorded=true;
+        }
+        adapted=adaptSourceDriver(adapted,chat);
+      }
       super.evaluateJavascript(adapted,raw->{
         String result=raw;
         try{JSONObject value=new JSONObject(raw);if(chat.equals(value.optString("url"))){
           JSONObject before=copy(value);value.put("url",semanticChat);result=value.toString();
           synchronized(normalizations){if(normalizations.length()<32)normalizations.put(J.obj("kind","source-page-result-url-only","raw",before,"normalized",copy(value)));else normalizationDrops++;}
+          if(owner.audit.requestIdentity.active&&(value.has("draftComplete")||value.has("busy")||Boolean.FALSE.equals(value.opt("ok"))))synchronized(preflightDriverResults){if(preflightDriverResults.length()<16)preflightDriverResults.put(J.obj("stage",stage,"at",SystemClock.elapsedRealtime(),"raw",before,"normalized",copy(value)));else preflightDriverDrops++;}
         }}catch(Exception ignored){}
         if(callback!=null)callback.onReceiveValue(result);
       });
@@ -226,10 +249,11 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
     cases.put(J.obj("case","credential-and-redirect-controls","baselineNonce",baseline,"baseline",positive,"redirectBaselineNonce",redirectBaseline,"redirectBaseline",redirectPositive,"filteredNonce",filtered,"registration",register,"nativePrecondition",nativePrecondition,"filtered",controlled,"cancelled",cancelled,"redirectNonce",redirected,"redirectRegistration",redirectRegister,"redirectNativePrecondition",redirectNativePrecondition,"redirectBlocked",blocked,"scope","Main-world fetch controls only with explicit fixture native state preconditions; no route/header rewriting and not top-level/Worker/UI-preflight identity evidence. Independent Node arrivals required."));
   }
   void identityCheck()throws Exception{
+    stage="identity-configure";
     ui(()->{BrowserIdentitySpec policy=BrowserIdentitySpec.preset(BrowserIdentitySpec.DESKTOP).withLocales(Arrays.asList("ja-JP"));view.configureIdentity(policy);view.configure(true,1);return null;});
     await("Desktop session UA request",()->ui(()->!view.getSettings().userAgent.isEmpty()&&!view.getSettings().userAgent.contains("Android")),8000);
     CompletableFuture<Boolean> done=new CompletableFuture<>();String issue=ui(()->owner.audit.setRequestIdentityEndpoint(origin+RequestIdentityAudit.PATH));check("Explicit controlled HTTPS detector configured",issue.isEmpty());
-    JSONObject before=document();boolean started=ui(()->owner.audit.startRequestIdentity(()->done.complete(true)));check("User-requested top-level identity check begins from empty source",started);done.get(25,TimeUnit.SECONDS);
+    JSONObject before=document();stage="identity-preflight-and-detection";boolean started=ui(()->owner.audit.startRequestIdentity(()->done.complete(true)));check("User-requested top-level identity check begins from empty source",started);done.get(25,TimeUnit.SECONDS);event("identity-preflight-terminal",ui(this::auditSnapshot));stage="identity-result-validation";
     JSONObject report=ui(()->copy(owner.audit.report)),request=report.optJSONObject("requestIdentity");check("Request audit retains a separately sourced identity result",request!=null&&"controlled-top-level-document".equals(request.optString("source"))&&Arrays.asList("observed","issue","uncovered").contains(request.optString("status")));
     String actual=ui(()->view.rawUrl());check("Identity sampling actually navigated the existing Gecko session",actual.startsWith(origin+RequestIdentityAudit.PATH+"document?nonce=")&&!actual.equals(chat));
     check("No full desktop identity or fingerprint verdict is manufactured",!request.optBoolean("fullDesktopUaConsistency",true)&&!request.optBoolean("fingerprintTemplateAcceptance",true));
@@ -313,11 +337,17 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
     ui(()->{owner.prefs.edit().putInt("privacyLevel",1).commit();view.configure(view.desktop,1);return null;});
     await("Explicit standard selection restores native route admission",()->ui(()->view.protectionAllowsNetwork()),10000);JSONObject after=document();check("Protection retry and explicit standard selection do not reload, clear login or send the page",before.optDouble("timeOrigin")==after.optDouble("timeOrigin")&&after.optInt("sends")==0&&after.optString("draft").isEmpty()&&after.optString("cookie").contains("fingerprint-preserve="+nonce));pendingCase.put("after",after);
   }
-  void run(){try{validate();open();apiChecks();credentialAndRedirectControls();identityCheck();lateRegistrationControl();preflightInvalidationControls();protectionFailureControl();finish(null);}catch(Throwable error){finish(error);}}
+  JSONObject auditSnapshot(){
+    if(owner==null)return J.obj("stage",stage,"ownerCreated",false);
+    RequestIdentityAuditSession state=owner.audit.requestIdentity;
+    return J.obj("stage",stage,"lastError",owner.audit.lastError,"running",owner.audit.running,"networkRun",owner.audit.networkRun,"serial",owner.audit.serial,"auditUrl",owner.audit.auditUrl,"auditNavigation",owner.audit.auditNavigation,"report",copy(owner.audit.report),"requestIdentityReport",copy(owner.audit.requestIdentityReport),"controller",J.obj("id",state.id,"active",state.active,"opening",state.opening,"navigated",state.navigated,"collecting",state.collecting,"scopeRequested",state.scopeRequested,"scopeRegistered",state.scopeRegistered,"webDone",state.webDone,"controlDone",state.controlDone,"connectionEpoch",state.connectionEpoch,"originalEpoch",state.originalEpoch,"pageEpoch",state.pageEpoch,"deadline",state.deadline,"fileGeneration",state.fileGeneration,"originalUrl",state.originalUrl,"documentUrl",state.documentUrl,"endpoint",state.endpoint,"nonce",state.nonce,"routeFresh",state.routeFresh(),"pageOwned",state.pageOwned(),"pageSelected",state.pageSelected(),"fresh",state.fresh()));
+  }
+  void run(){try{stage="validate";validate();stage="open-controlled-source";open();stage="manual-api-checks";apiChecks();stage="credential-and-redirect-controls";credentialAndRedirectControls();identityCheck();stage="late-registration-control";lateRegistrationControl();stage="preflight-invalidation-controls";preflightInvalidationControls();stage="protection-failure-control";protectionFailureControl();stage="completed";finish(null);}catch(Throwable error){finish(error);}}
   void finish(Throwable error){
     if(!concluded.compareAndSet(false,true))return;
-    JSONObject finalState=new JSONObject();try{finalState=ui(()->J.obj("url",view==null?"":view.getUrl(),"actualUrl",view==null?"":view.rawUrl(),"protection",view==null?new JSONObject():view.protectionStatus(),"connectionEpoch",owner==null?-1:owner.connectionEpoch,"navigationEpoch",owner==null?-1:owner.navigationEpoch));}catch(Exception failure){finalState=J.obj("error",failure.getClass().getSimpleName());}
+    JSONObject finalState=new JSONObject();try{finalState=ui(()->J.obj("url",view==null?"":view.getUrl(),"actualUrl",view==null?"":view.rawUrl(),"protection",view==null?new JSONObject():view.protectionStatus(),"connectionEpoch",owner==null?-1:owner.connectionEpoch,"navigationEpoch",owner==null?-1:owner.navigationEpoch,"audit",auditSnapshot()));}catch(Exception failure){finalState=J.obj("stage",stage,"error",failure.getClass().getSimpleName());}
     JSONObject report=J.obj("schema",1,"status",error==null?"completed":"failed","sourceCommit",source,"sourceTree",build.optString("sourceTree"),"runNonce",nonce,"buildIdentity",build,"sdkIdentity",sdk,"actualAndroidExecution",true,"actualGeckoExecution",view!=null&&view.ready,"officialChatGptSiteTested",false,"physicalPhoneAcceptance",false,"fullFingerprintProtectionAcceptance",false,"fullDesktopUaConsistency",false,"releaseAcceptance",false,"publicNetworkTraffic",false,"origin",origin,"redirectOrigin",redirectOrigin,"actualSourceChat",chat,"semanticSourceAlias",semanticChat,"measurementEndedAtElapsedMs",SystemClock.elapsedRealtime(),"checks",copyArray(checks),"cases",copyArray(cases),"events",copyArray(events),"routes",copyArray(routes),"loads",copyArray(loads),"normalizations",copyArray(normalizations),"eventDrops",eventDrops,"routeDrops",routeDrops,"normalizationDrops",normalizationDrops,"finalState",finalState,"fixtureOnlyCertificateOrigins",view==null?new JSONArray():new JSONArray(new ArrayList<>(view.certificates)),"scope","Source-chat alias is a controlled fixture adapter only; actual detector document/Worker URLs and headers are never rewritten. Actual Gecko and independent HTTPS records must be reconciled; no real ChatGPT/login, phone, complete DNS/IPv6/Shared Worker/Service Worker or full protection verdict.","unverified",J.arr("Real ChatGPT and real accounts","Physical phone keyboard and scrolling","Shared Worker and Service Worker","Full network fingerprint/DNS/IPv6 paths","Restart/upgrade phone behavior","True current-template application during real user work"));
+    try{report.put("stage",stage).put("sourceDriverAdapter",sourceDriverAdapter).put("preflightDriverResults",copyArray(preflightDriverResults)).put("preflightDriverDrops",preflightDriverDrops);}catch(Exception ignored){}
     if(error!=null)try{report.put("errorType",error.getClass().getName());report.put("error",String.valueOf(error.getMessage()));}catch(Exception ignored){}
     try{AtomicFile file=new AtomicFile(new File(getFilesDir(),FILE));FileOutputStream out=null;try{out=file.startWrite();out.write((report.toString()+"\n").getBytes(StandardCharsets.UTF_8));file.finishWrite(out);}catch(Throwable failure){if(out!=null)file.failWrite(out);throw failure;}Log.i(TAG,report.toString());}catch(Throwable failure){Log.e(TAG,"Evidence persistence failed",failure);}
     handler.post(()->{if(owner!=null){owner.handler.removeCallbacks(owner.tick);owner.audit.cancel();}if(view!=null)view.destroy();});worker.shutdown();
