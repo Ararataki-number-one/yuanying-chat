@@ -20,6 +20,8 @@ final class DesignChrome {
   final LinearLayout top,networkRow;
   final LinearLayout modes=null; // Historical tests may inspect the retired control.
   final Button more;
+  final LinearLayout diagnosticRow;
+  final Button diagnosticBack,diagnosticResults;
   private final View[] actions;
   private ChromeTouchDelegate touchTargets;
   private static final ExecutorService metadataReader=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"ChromeMetadata");t.setPriority(Thread.MIN_PRIORITY);return t;});
@@ -124,6 +126,9 @@ final class DesignChrome {
       networkRow.addView(stateWord,new LinearLayout.LayoutParams(-2,lineHeight));
     }
     a.toolbar.addView(networkRow,new LinearLayout.LayoutParams(-1,-2));
+    diagnosticRow=DesignUi.row(a);diagnosticBack=new Button(a);diagnosticBack.setText("返回原聊天");diagnosticResults=new Button(a);diagnosticResults.setText("查看自检结果");
+    diagnosticBack.setOnClickListener(v->{if(!a.session.audit.returnRequestIdentity())EnvironmentAuditUi.show(a);});diagnosticResults.setOnClickListener(v->EnvironmentAuditUi.show(a));
+    diagnosticRow.addView(diagnosticBack,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.addView(diagnosticResults,new LinearLayout.LayoutParams(0,-2,1));diagnosticRow.setVisibility(View.GONE);a.toolbar.addView(diagnosticRow,new LinearLayout.LayoutParams(-1,-2));
     top.setVisibility(View.GONE);networkRow.setVisibility(View.VISIBLE);
     root.addView(a.toolbar,new LinearLayout.LayoutParams(-1,-2));
     actions=new View[]{a.navigation,title,more};
@@ -219,6 +224,7 @@ final class DesignChrome {
     text(compactTitle,profileName);
     description(compact,"当前环境："+profileName+"，点击展开环境工具栏");
     description(title,"当前环境："+profileName+"，点击切换环境");
+    boolean diagnostic=a.session.audit.canReturnRequestIdentity();int diagnosticVisibility=diagnostic?View.VISIBLE:View.GONE;if(diagnosticRow.getVisibility()!=diagnosticVisibility)diagnosticRow.setVisibility(diagnosticVisibility);diagnosticResults.setEnabled(!a.session.audit.running);
     NativeNetwork network=NativeNetwork.get(a);
     JSONObject config=network.settings==null?new JSONObject():network.settings;
     // Reuse the actual catalog identity from the existing metadata read. A

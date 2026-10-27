@@ -76,7 +76,8 @@ cookieReady.catch(()=>{}); // The connected native host explicitly awaits prepar
 // A timed-out API operation keeps the serial lock until the actual operation
 // settles. Releasing it with Promise.race would let a late old set overwrite a
 // newer confirmed setting. Only one replaceable pending request is retained.
-let protectionRunning=false,protectionPending=null,latestProtection=null,currentProtectionRequest=null,confirmedProtection=null,watchingProtection=false;
+let protectionRunning=false,protectionPending=null,latestProtection=null,currentProtectionRequest=null,confirmedProtection=null,watchingProtection=false,protectionChangeVersion=0;
+const PROTECTION_MAX_READBACKS=3;
 let host=null,reconnectAttempts=0,reconnectTask=null;
 const postHost=(port,message)=>{if(port!==host)return false;try{port.postMessage(message);return true;}catch(_){return false;}};
 const finishProtection=(job,acknowledged,fingerprinting,reason)=>{
@@ -90,8 +91,12 @@ const watchProtection=control=>{
   if(watchingProtection||!control.onChange?.addListener)return;
   watchingProtection=true;
   control.onChange.addListener(observed=>{
+    if(typeof observed?.value!=='boolean')return;
+    // A pending get() can resolve an older snapshot after this event. Track
+    // changes before confirmation as well as invalidating confirmed settings.
+    protectionChangeVersion++;
     const job=confirmedProtection;
-    if(!job||job!==latestProtection||job.reference!==currentProtectionRequest||job.port!==host||typeof observed?.value!=='boolean'||observed.value===(job.level>=2))return;
+    if(!job||job!==latestProtection||job.reference!==currentProtectionRequest||job.port!==host||observed.value===(job.level>=2))return;
     confirmedProtection=null;
     postHost(job.port,{kind:'protectionChanged',level:job.level,token:job.token,generation:job.generation,reason:'setting-changed'});
   });
@@ -109,9 +114,16 @@ const drainProtection=async()=>{
         if(control){
           watchProtection(control);
           await control.set({value:job.level>=2});
-          const observed=await control.get({});
-          fingerprinting=observed.value===true;acknowledged=observed.value===(job.level>=2);
-          reason=acknowledged?'':'setting-mismatch';
+          for(let read=0;read<PROTECTION_MAX_READBACKS;read++){
+            const version=protectionChangeVersion,observed=await control.get({}),value=observed.value;
+            if(version!==protectionChangeVersion){
+              reason='setting-changed-during-confirmation';
+              if(job.port!==host||job!==latestProtection||job.reference!==currentProtectionRequest||Date.now()>job.deadline)break;
+              continue;
+            }
+            fingerprinting=value===true;acknowledged=value===(job.level>=2);
+            reason=acknowledged?'':'setting-mismatch';break;
+          }
         }
       }catch(_){reason='setting-error';}
       const fresh=job.port===host&&job===latestProtection&&job.reference===currentProtectionRequest&&Date.now()<=job.deadline;

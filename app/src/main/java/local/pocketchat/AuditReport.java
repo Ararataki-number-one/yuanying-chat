@@ -70,7 +70,26 @@ final class AuditReport {
       if("audio".equals(name))detail+="；使用离线音频，不向扬声器播放";if("fonts".equals(name))detail+="；只检查有限候选字体，不代表完整安装字体列表";
       row(rows,"api-"+name,labels[i],state,detail);try{coverage.put(name,J.obj("state",state,"operationOnly",true));}catch(JSONException ignored){}
     }
-    return J.obj("requested",requested,"source",valid?"page-main-world":"unavailable","probes",coverage,"protectionVerified",false,"scope","Current main-page operations only; frame/Worker graphic and audio operations remain uncovered");
+    return J.obj("requested",requested,"source",valid?"page-main-world":"unavailable","probes",coverage,"protectionVerified",false,"scope","Current main-page operations; additional frame and Worker operations are reported separately");
+  }
+  static JSONObject apiContextCoverage(JSONArray rows,JSONObject sample,boolean mainObserved,boolean fresh){
+    JSONObject contexts=sample.optJSONObject("apiContexts"),result=new JSONObject();if(contexts==null||!Boolean.TRUE.equals(contexts.opt("requested")))return J.obj("requested",false,"protectionVerified",false);
+    boolean envelope=mainObserved&&fresh&&exactNumber(contexts.opt("schema"),1);String[] names={"canvas","audio","fonts","webgl"},labels={"Canvas 绘制与读回","离线音频","有限字体测量","WebGL 能力与读回"};
+    for(String context:new String[]{"frame","worker"}){
+      boolean worker="worker".equals(context);String source=worker?"dedicated-worker":"same-origin-srcdoc",title=worker?"Dedicated Worker":"同源 iframe";JSONObject checks=contexts.optJSONObject(context),limits=checks==null?null:checks.optJSONObject("limits"),probes=checks==null?null:checks.optJSONObject("probes");
+      boolean valid=envelope&&checks!=null&&Boolean.TRUE.equals(checks.opt("requested"))&&Boolean.FALSE.equals(checks.opt("protectionVerified"))&&exactNumber(checks.opt("schema"),1)&&exactNumber(checks.opt("probeVersion"),1)&&source.equals(checks.optString("source"))&&limits!=null&&exactNumber(limits.opt("canvasPixels"),4096)&&exactNumber(limits.opt("audioFrames"),worker?0:2048)&&exactNumber(limits.opt("fontCandidates"),worker?0:5)&&exactNumber(limits.opt("totalBudgetMs"),1200);JSONObject operations=new JSONObject();
+      for(int i=0;i<names.length;i++){
+        String name=names[i];JSONObject probe=probes==null?null:probes.optJSONObject(name);String state=valid&&probe!=null?probe.optString("state"):UNCOVERED;
+        if(!Arrays.asList(AVAILABLE,RESTRICTED,FAILED,UNCOVERED).contains(state)||AVAILABLE.equals(state)&&!apiOperationComplete(name,probe))state=UNCOVERED;
+        if(worker&&("audio".equals(name)||"fonts".equals(name)))state=UNCOVERED;
+        if(worker&&"webgl".equals(name)&&AVAILABLE.equals(state)&&(!exactNumber(probe.opt("readbackPixels"),256)||!exactNumber(probe.opt("readbackBytes"),1024)||!(Boolean.TRUE.equals(probe.opt("readbackHashUnavailable"))||"sha256".equals(probe.optString("readbackHashAlgorithm"))&&probe.opt("readbackHash") instanceof String&&probe.optString("readbackHash").matches("[0-9a-f]{64}"))))state=UNCOVERED;
+        String detail=!fresh?"当前文档或配置已变化，本次结果作废":!valid?"未取得该执行环境的完整结果；不使用主页面值代替":worker&&("audio".equals(name)||"fonts".equals(name))?"本次 Dedicated Worker 未运行此接口，标为不适用／未覆盖":AVAILABLE.equals(state)?"该执行环境的有限操作已完成；不同环境的哈希不要求相同":RESTRICTED.equals(state)?"该执行环境的操作受到限制；不能据此判断泄漏":FAILED.equals(state)?"该执行环境操作失败，未作为保护效果通过":"接口缺失、CSP 限制、取消、超时或结果不完整，尚未覆盖";
+        if(valid&&probe!=null&&!probe.optString("reason").isEmpty())detail+="（"+probe.optString("reason").substring(0,Math.min(96,probe.optString("reason").length()))+"）";
+        row(rows,"api-"+context+"-"+name,title+" · "+("webgl".equals(name)&&!worker?"WebGL 可观察能力":labels[i]),state,detail);try{operations.put(name,J.obj("state",state,"operationOnly",true));}catch(JSONException ignored){}
+      }
+      try{result.put(context,J.obj("source",source,"probeVersion",valid?1:0,"probes",operations,"protectionVerified",false));}catch(JSONException ignored){}
+    }
+    try{result.put("requested",true).put("protectionVerified",false).put("scope","Each context is observed independently; no cross-context hash equality or full protection assertion");}catch(JSONException ignored){}return result;
   }
   static JSONObject build(JSONObject sample,JSONObject nativeResult,JSONObject expected,boolean network,boolean fresh){
     JSONArray rows=new JSONArray();JSONObject parent=sample.optJSONObject("parent"),frame=sample.optJSONObject("frame"),worker=sample.optJSONObject("worker"),net=sample.optJSONObject("network");if(parent==null)parent=new JSONObject();if(frame==null)frame=new JSONObject();if(worker==null)worker=new JSONObject();if(net==null)net=new JSONObject();
@@ -87,7 +106,7 @@ final class AuditReport {
     JSONObject frameDisplay=displayCoverage(parent,frame),workerDisplay=displayCoverage(parent,worker);
     if(!mainObserved||!fresh)for(JSONObject display:new JSONObject[]{frameDisplay,workerDisplay})try{display.put("state",UNCOVERED);display.put("invalidated",true);}catch(JSONException ignored){}
     for(String context:new String[]{"frame","worker"}){JSONObject display="frame".equals(context)?frameDisplay:workerDisplay;String state=mainObserved?display.optString("state"):UNCOVERED;row(rows,"display-"+context,"frame".equals(context)?"同源页面的屏幕、DPR 与触摸信息":"Dedicated Worker 显示接口覆盖",state,!mainObserved?"未取得页面主执行环境结果":VERIFIED.equals(state)?"本次可比显示字段一致；旋转按屏幕长短边归一化，未比较视口宽高":ISSUE.equals(state)?"本次显示字段存在观测差异："+display.optJSONArray("different")+"；缩放或窗口状态也可能影响，不作泄漏判断":"接口未提供或采集不完整："+display.optJSONArray("missingOrInvalid")+"；Worker 通常不提供 screen / window 接口，不作错误判断");}
-    JSONObject apiCoverage=apiCoverage(rows,sample,mainObserved,fresh);
+    JSONObject apiCoverage=apiCoverage(rows,sample,mainObserved,fresh);JSONObject apiContexts=apiContextCoverage(rows,sample,mainObserved,fresh);
     if(gecko)row(rows,"worker-header","Worker HTTP 请求 UA",UNCOVERED,"本次自检未采集 Worker 的服务端请求头。当前 Firefox SDK 的电脑版页面与 Worker 联网 UA 不保证一致；页面和 Worker 的 JS 字段相同不能验证这一项");
     boolean early=parent.optBoolean("early")&&frame.optBoolean("early");row(rows,"early","加载前保护覆盖",gecko||expected.optInt("level")==0?UNCOVERED:early?VERIFIED:ISSUE,gecko?"Firefox 使用内核保护；此项脚本保护检测不适用":expected.optInt("level")==0?"兼容模式未启用此保护":early?"检查页面与子页面的首个脚本前已有保护":"未在检查页面和子页面全部观察到加载前保护");
     String rtc=parent.optString("rtc");row(rows,"rtc","WebRTC 本机接口限制",rtc.equals("restricted")||rtc.equals("absent")?VERIFIED:expected.optInt("level")>0&&rtc.equals("available")?ISSUE:UNCOVERED,rtc.equals("restricted")||rtc.equals("absent")?"本地检查未能创建 RTC 连接；没有进行 STUN 公网候选或全部协议抓包测试":"RTC 接口可用或结果不明确，不能证明公网地址不会泄漏");
@@ -104,13 +123,13 @@ final class AuditReport {
       String first=acceptLanguage.split(",",2)[0].split(";",2)[0].trim();
       row(rows,"header-language","实际请求语言与页面核对",!fresh||first.isEmpty()||language.isEmpty()?UNCOVERED:first.equalsIgnoreCase(language)?VERIFIED:ISSUE,"仅核对本次 Gecko 内容脚本请求的服务回显与页面值；不是 ChatGPT 主文档请求的服务端日志，也不是 Java 客户端的模拟请求头");
     }else row(rows,"network","实际网络出口",UNCOVERED,"本次只检查浏览器信息，没有访问网络检测服务");
-    row(rows,"cross-origin","跨源 iframe",UNCOVERED,"本次仅创建同源 srcdoc 子页面，没有已验证的跨源页面探针");
+    row(rows,"cross-origin","跨源 iframe",UNCOVERED,"普通本机检查不访问跨源页面；主动受控检测页的跨源探针另行列出");
     row(rows,"shared-worker","Shared Worker",UNCOVERED,"本次仅创建 Dedicated Worker，没有 Shared Worker 观测");
     row(rows,"service-worker","Service Worker",UNCOVERED,"没有注册或改变网站 Service Worker；该执行环境未覆盖");
     row(rows,"native-setting","原生抗指纹设置回读",expected.optBoolean("rfpAcknowledged")?VERIFIED:UNCOVERED,expected.optBoolean("rfpAcknowledged")?(expected.optInt("level")>=2?"当前强化请求要求开启抗指纹，设置回读一致":"当前请求未开启抗指纹，设置回读一致")+"；这不证明具体指纹 API 保护或网页兼容性":"尚未取得与请求值一致的原生设置回读");
     row(rows,"dns","DNS 网络泄漏",UNCOVERED,"可查看内置加密 DNS 配置，但未进行权威 DNS 探针或网络抓包，不能证明解析没有绕行");row(rows,"udp","UDP / QUIC / TLS 等路径",UNCOVERED,"本次 HTTPS 查询不能覆盖所有协议或识别全部浏览器网络指纹");
     if(gecko&&!mainObserved)for(int i=0;i<rows.length();i++){JSONObject r=rows.optJSONObject(i);if(Arrays.asList("ua","hints","frame","worker","rtc","zone","language","header","header-language").contains(r.optString("key")))try{r.put("state",UNCOVERED);r.put("detail","页面主执行环境采集未完成；隔离扩展世界的值不能用于验证网页实际表现");}catch(Exception ignored){}}
     if(!fresh)for(int i=0;i<rows.length();i++){JSONObject r=rows.optJSONObject(i);if(!UNCOVERED.equals(r.optString("state")))try{r.put("state",UNCOVERED);r.put("detail","检查期间环境变化，结果已作废，请在连接稳定后重测");}catch(Exception ignored){}}
-    return J.obj("at",System.currentTimeMillis(),"network",network,"fresh",fresh,"rows",rows,"signals",sample,"native",nativeResult,"contextCoverage",J.obj("requiredFields",new JSONArray(CONTEXT_FIELDS),"frame",frameCoverage,"worker",workerCoverage,"display",J.obj("fresh",fresh,"pageMainWorldObserved",mainObserved,"frame",frameDisplay,"worker",workerDisplay)),"apiOperationCoverage",apiCoverage,"apiProtectionVerified",false,"fullDesktopUaConsistency",false,"fingerprintTemplateAcceptance",false,"expected",expected,"scope",gecko?"页面主执行环境（若 CSP 允许）、同源 srcdoc、Dedicated Worker 公开 JS 字段及明确标注的 Gecko 内容脚本请求；没有 Worker HTTP 请求头观测或完整桌面指纹承诺，公开字段可被页面伪造":"本机检查页面及指定公开检测服务");
+    return J.obj("at",System.currentTimeMillis(),"network",network,"fresh",fresh,"rows",rows,"signals",sample,"native",nativeResult,"contextCoverage",J.obj("requiredFields",new JSONArray(CONTEXT_FIELDS),"frame",frameCoverage,"worker",workerCoverage,"display",J.obj("fresh",fresh,"pageMainWorldObserved",mainObserved,"frame",frameDisplay,"worker",workerDisplay)),"apiOperationCoverage",apiCoverage,"apiContextOperationCoverage",apiContexts,"apiProtectionVerified",false,"fullDesktopUaConsistency",false,"fingerprintTemplateAcceptance",false,"expected",expected,"scope",gecko?"页面主执行环境（若 CSP 允许）、同源 srcdoc、Dedicated Worker 公开 JS 字段及明确标注的 Gecko 内容脚本请求；没有 Worker HTTP 请求头观测或完整桌面指纹承诺，公开字段可被页面伪造":"本机检查页面及指定公开检测服务");
   }
 }

@@ -21,11 +21,14 @@ from profile_invocation_contract import expected_build,verify_installed
 PACKAGE='local.pocketchat.test'
 ORIGIN='https://10.0.2.2:9889'
 REDIRECT_ORIGIN='https://10.0.2.2:9890'
+FRAME_ORIGIN='https://10.0.2.2:9891'
+FAULT_ORIGIN='https://10.0.2.2:9892'
 BASE='/pocketchat-identity/v1/'
 CASES=['standard-source-control','manual-api-checks','credential-and-redirect-controls',
        'top-level-request-identity','controlled-diagnostic-page-recovery','nonempty-draft-refusal','late-registration-cancellation',
        'synthetic-epoch-preflight-invalidation','browser-policy-preflight-invalidation',
-       'strict-native-receipt-loss-control']
+       'strict-native-receipt-loss-control','bounded-context-api-checks','pinned-deep-reference-lifecycle',
+       'manual-service-capability-controls','controlled-cross-origin-frame']
 
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -127,6 +130,88 @@ def reconcile(native,trace,service):
         physicalPhoneAcceptance=False,officialChatGptSiteTested=False,releaseAcceptance=False,
         scope='One actual controlled AVD/Gecko/HTTPS invocation with independent receiver records; aliases and callback-loss fault injection are fixture-only.')
 
+def reconcile_coverage(native,trace,service,frame_service):
+    """New context observations remain separate from independent network evidence."""
+    if frame_service.get('dropped')!=0:
+        raise ValueError('Controlled frame receiver events were dropped')
+    cases={row['case']:row for row in native['cases']};arrivals=trace['events']
+    contexts_case=cases['bounded-context-api-checks'];light=contexts_case['light']['signals'];deep=contexts_case['deep']['signals']
+    if 'apiContexts' in light or 'apiChecks' in light:
+        raise ValueError('Ordinary observations performed unrequested deep operations')
+    contexts=deep.get('apiContexts',{})
+    if contexts.get('schema')!=1 or contexts.get('requested') is not True:
+        raise ValueError('Explicit context API observation envelope missing')
+    for name,source in [('frame','same-origin-srcdoc'),('worker','dedicated-worker')]:
+        context=contexts.get(name,{})
+        if context.get('source')!=source and (context.get('source')!='unavailable' or context.get('expectedSource')!=source):
+            raise ValueError('Context operation source missing: '+name)
+        if context.get('protectionVerified') is not False or context.get('probeVersion')!=1:
+            raise ValueError('Context observation changed into a protection verdict')
+        for operation in ['canvas','audio','fonts','webgl']:
+            probe=context.get('probes',{}).get(operation,{})
+            if probe.get('state') not in ['available','restricted','failed','uncovered'] or not probe.get('reason'):
+                raise ValueError('Context API state or reason missing: '+name+'/'+operation)
+            if context.get('source')=='unavailable' and probe['state']!='uncovered':
+                raise ValueError('Unavailable execution context has fabricated API success')
+    pinned=cases['pinned-deep-reference-lifecycle'];history=pinned['ordinaryHistoryAfterEight']
+    if len(history)!=8 or pinned['comparison'].get('state')!='comparable' or not pinned['pinned']:
+        raise ValueError('Fixed deep reference did not survive ordinary history eviction')
+    if any(row.get('apis',{}).get('probeVersion',0)>0 for row in history):
+        raise ValueError('History eviction control was not eight ordinary checks')
+    control=cases['manual-service-capability-controls']
+    def capability_arrival(result,server):
+        nonce=result.get('nonce','')
+        if not re.fullmatch('[a-f0-9]{32}',nonce):raise ValueError('Native service result nonce missing')
+        found=[row for row in arrivals if row['nonce']==nonce and row['path']==BASE+'capabilities' and row['server']==server]
+        if len(found)!=1 or any(found[0]['sensitive'].values()):
+            raise ValueError('Service check lacks one credential-free independent receiver arrival')
+        if any(row['nonce']==nonce for row in service['events']):
+            raise ValueError('Capabilities request polluted document/Worker identity records')
+        return found[0]
+    capability_arrival(control['positive'],'detector');capability_arrival(control['faultPositive'],'fault')
+    if control['positive'].get('status')!='ready' or control['faultPositive'].get('status')!='ready':
+        raise ValueError('Actual protocol/TLS positive service controls absent')
+    reasons={'protocol':'protocol-mismatch','capacity':'service-capacity','redirect':'service-connection-or-certificate-unavailable','oversize':'service-response-too-large','timeout':'service-timeout'}
+    if [row['mode'] for row in control['faults']]!=list(reasons):raise ValueError('Expected actual service fault controls incomplete')
+    for row in control['faults']:
+        mode=row['mode'];result=row['result'];received=capability_arrival(result,'fault')
+        if received.get('controlledResponseMode')!=mode or result.get('status')!='failed' or result.get('reason')!=reasons[mode]:
+            raise ValueError('Actual service failure was hidden or misclassified: '+mode)
+        if mode=='redirect' and any(item['server']=='detector' and item['nonce']==result['nonce'] for item in arrivals):
+            raise ValueError('Capability redirect reached a second endpoint')
+    cancelled=control['cancelledNonce']
+    if any(row['nonce']==cancelled for row in arrivals):raise ValueError('Cancelled service preflight or replay reached a detector')
+    if control['before']['timeOrigin']!=control['after']['timeOrigin'] or control['before']['draft']!=control['after']['draft']:
+        raise ValueError('Service checks navigated or changed the source draft')
+    frame_case=cases['controlled-cross-origin-frame'];nonce=frame_case['nonce'];denied=frame_case['unconsentedNonce']
+    primary=[row for row in arrivals if row['server']=='detector' and row['nonce']==nonce and row['path']==BASE+'document']
+    frame=[row for row in arrivals if row['server']=='frame' and row['nonce']==nonce and row['path']==BASE+'frame']
+    if len(primary)!=1 or primary[0].get('diagnosticFrameOptIn') is not True or len(frame)!=1:
+        raise ValueError('Explicit detector/frame receiver pair missing or frame replay admitted')
+    if frame[0]['headers'].get('secFetchDest')!='iframe' or any(frame[0]['sensitive'].values()):
+        raise ValueError('Independent receiver did not observe a credential-free iframe request')
+    if any(row['nonce']==denied for row in arrivals):raise ValueError('Unconsented cross-origin frame reached a receiver')
+    default_identity=cases['top-level-request-identity'];default_nonce=parse_qs(urlsplit(default_identity['actualDetectorUrl']).query)['nonce'][0]
+    if any(row['server']=='frame' and row['nonce']==default_nonce for row in arrivals):
+        raise ValueError('Ordinary identity check unexpectedly requested a cross-origin frame')
+    records=frame_service['events'];matching=[row for row in records if row['nonce']==nonce and row.get('source')=='cross-origin-frame']
+    if len(matching)!=1 or any(matching[0]['sensitiveHeaders'].values()):
+        raise ValueError('Frame service did not retain independent source-labelled receiver evidence')
+    if matching[0]['headers']['secFetchDest']!='iframe' or {key:matching[0]['headers'][key] for key in ['userAgent','acceptLanguage','secFetchDest']}!=frame[0]['headers']:
+        raise ValueError('Frame server record differs from its independent wire observation')
+    observed=frame_case['report']['requestIdentity']['browser']['crossOriginFrame']
+    if observed.get('status')!='complete' or observed.get('nonce')!=nonce or observed.get('origin')!=FRAME_ORIGIN or observed.get('source')!='controlled-cross-origin-iframe':
+        raise ValueError('Native cross-origin API report lost its distinct source binding')
+    return dict(status='passed-controlled-coverage-reconciliation',contextOperationsObserved=True,
+        missingContextCannotClaimSuccess=True,pinnedDeepReferenceSurvivedEightOrdinaryChecks=True,
+        historyAndPinClearingAreIndependent=True,manualServiceKeptDocumentAndDraft=True,
+        serviceCredentialsAbsent=True,actualServiceFailureCategoriesPreserved=True,
+        serviceRedirectClosed=True,cancelledServiceScopeClosed=True,
+        actualCrossOriginIframeReceived=True,ordinaryIdentityDidNotRequestIframe=True,
+        unconsentedAndRetiredFrameRequestsClosed=True,fullFingerprintProtectionAcceptance=False,
+        physicalPhoneAcceptance=False,officialChatGptSiteTested=False,releaseAcceptance=False,
+        scope='Actual controlled AVD observations plus separately retained HTTPS receiver records. No equal-hash rule across contexts, CSP override, physical-phone acceptance or full protection attestation.')
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--adb',required=True);parser.add_argument('--serial',choices=['emulator-5554'],default='emulator-5554');parser.add_argument('--apk',type=Path,default=ROOT/'app/build/outputs/apk/integration/app-x86_64-integration.apk');args=parser.parse_args()
     out=ROOT/'work/fingerprint-followup-audit/device';out.mkdir(parents=True,exist_ok=True)
@@ -156,13 +241,13 @@ def main():
             der=subprocess.check_output(['openssl','x509','-in',str(temp/'cert.pem'),'-outform','DER']);wrapper['temporaryCertificateSha256']=hashlib.sha256(der).hexdigest();wrapper['temporaryCertificateScope']='Test-only exact10.0.2.2 origins; no production TLS change, key/cert files never uploaded'
             process=subprocess.Popen(['node',str(ROOT/'tests/gecko/assets/fingerprint-followups.cjs'),str(temp/'key.pem'),str(temp/'cert.pem'),str(out),nonce],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
             ready,_,_=select.select([process.stdout],[],[],10)
-            if not ready or json.loads(process.stdout.readline())!=dict(ready=True,ports=[9889,9890],runNonce=nonce):raise ValueError('Actual independent HTTPS servers did not start')
+            if not ready or json.loads(process.stdout.readline())!=dict(ready=True,ports=[9889,9890,9891,9892],runNonce=nonce):raise ValueError('Actual independent HTTPS servers did not start')
             adb('shell','am','force-stop',PACKAGE);adb('shell','pm','clear',PACKAGE)
             before=adb('exec-out','content','read','--uri','content://'+PACKAGE+'.evidence/build-identity');verify_installed(json.loads(before),expected);wrapper['installedBeforeSha256']=hashlib.sha256(before.encode()).hexdigest()
             uid=adb('shell','cmd','package','list','packages','-U',PACKAGE);matches=re.findall(r'^package:'+re.escape(PACKAGE)+r' uid:(\d+)\s*$',uid,re.M)
             if len(matches)!=1:raise ValueError('Exact owned integration UID missing')
             wrapper['packageUid']=int(matches[0]);adb('logcat','-c');wrapper['actualAndroidFixtureAttempted']=True;wrapper['fixtureInvocationCount']=1
-            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.FingerprintFollowupIntegrationActivity','--es','sourceCommit',source,'--es','runNonce',nonce,'--es','origin',ORIGIN,'--es','redirectOrigin',REDIRECT_ORIGIN)
+            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.FingerprintFollowupIntegrationActivity','--es','sourceCommit',source,'--es','runNonce',nonce,'--es','origin',ORIGIN,'--es','redirectOrigin',REDIRECT_ORIGIN,'--es','frameOrigin',FRAME_ORIGIN,'--es','faultOrigin',FAULT_ORIGIN)
             while time.monotonic()<deadline:
                 raw=adb('exec-out','content','read','--uri','content://'+PACKAGE+'.evidence/fingerprint-followups',check=False)
                 if raw.lstrip().startswith('{'):
@@ -177,6 +262,7 @@ def main():
             if native['status']!='completed':raise ValueError('Native checks did not complete: '+str(native.get('error','unknown')))
             if [row['case'] for row in native['cases']]!=CASES or not native['checks'] or not all(row['pass'] is True for row in native['checks']):raise ValueError('Expected actual native case/check set incomplete')
             if any(native.get(key)!=0 for key in ['eventDrops','routeDrops','normalizationDrops']):raise ValueError('Native original evidence truncated')
+            if native.get('preflightDriverDrops')!=0:raise ValueError('Native preflight driver evidence truncated')
             after=adb('exec-out','content','read','--uri','content://'+PACKAGE+'.evidence/build-identity');verify_installed(json.loads(after),expected);wrapper['installedAfterSha256']=hashlib.sha256(after.encode()).hexdigest()
             wrapper.update(status='completed',actualAndroidExecution=True,actualGeckoExecution=True,nativeReportSha256=sha(out/'native-report.json'),actualNativeChecks=len(native['checks']))
     except BaseException as failure:
@@ -197,12 +283,14 @@ def main():
             (out/'server.stdout.log').write_text(stdout);(out/'server.stderr.log').write_text(stderr);wrapper['serverExitCode']=process.returncode
             if process.returncode!=0:wrapper.update(status='failed',serverError='Independent server shutdown was abnormal')
         try:
-            trace=json.loads((out/'server-trace.json').read_text());service=json.loads((out/'identity-server.json').read_text())
-            for stem,document in [('server-trace',trace),('identity-server',service)]:
+            trace=json.loads((out/'server-trace.json').read_text());service=json.loads((out/'identity-server.json').read_text());frame_service=json.loads((out/'frame-server.json').read_text())
+            for stem,document in [('server-trace',trace),('identity-server',service),('frame-server',frame_service)]:
                 lines=[json.loads(line) for line in (out/(stem+'.jsonl')).read_text().splitlines()]
                 if lines!=document['events']:raise ValueError('Original JSON/JSONL observer records differ: '+stem)
                 wrapper[stem+'Sha256']=sha(out/(stem+'.json'));wrapper[stem+'JsonlSha256']=sha(out/(stem+'.jsonl'))
-            if wrapper['status']=='completed':wrapper['controlReconciliation']=reconcile(native,trace,service)
+            if wrapper['status']=='completed':
+                wrapper['controlReconciliation']=reconcile(native,trace,service)
+                wrapper['coverageReconciliation']=reconcile_coverage(native,trace,service,frame_service)
         except Exception as failure:wrapper.update(status='failed',reconciliationError=type(failure).__name__+': '+str(failure))
         (out/'runner.json').write_text(json.dumps(wrapper,indent=2)+'\n')
     if wrapper['status']!='completed':raise RuntimeError('Fingerprint followup diagnostic incomplete; retain current original runner.json') from error

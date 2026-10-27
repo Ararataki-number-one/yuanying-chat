@@ -268,3 +268,50 @@ test('immediate cancellation prevents even starting a deferred request helper',a
   bridge.send({kind:'audit',id:52,configuration:{id:'cancel-before-helper',network:false,requestIdentity:{nonce:'d'.repeat(32)}}});
   bridge.send({kind:'auditCancel'});await flush();assert.equal(calls,0);assert.equal(bridge.result().length,0);
 });
+
+function contextObservation(source, hash) {
+  const value=apiObservation({source});
+  value.probes.canvas.hash=hash.repeat(64);
+  value.probes.audio={state:'uncovered',reason:'not-applicable-in-worker'};
+  value.probes.fonts={state:'uncovered',reason:'not-applicable-in-worker'};
+  return value;
+}
+
+test('light audit rejects supplied frame and Worker graphics observations',async()=>{
+  const bridge=harness();bridge.send({kind:'audit',id:60,configuration:{id:'light-contexts',apiChecks:false}});
+  bridge.event(observed(bridge.nonce(),{apiContexts:{schema:1,requested:true,frame:contextObservation('same-origin-srcdoc','b'),worker:contextObservation('dedicated-worker','c')}}));await flush();
+  const result=JSON.parse(bridge.result()[0].result);assert.equal(result.apiContexts,undefined);assert.equal(result.apiChecks,undefined);
+});
+
+test('explicit deep checks keep page frame and Worker probe sources and hashes separate',async()=>{
+  const bridge=harness();bridge.send({kind:'audit',id:61,configuration:{id:'context-sources',apiChecks:true}});
+  bridge.event(observed(bridge.nonce(),{apiChecks:apiObservation(),apiContexts:{schema:1,requested:true,frame:contextObservation('same-origin-srcdoc','b'),worker:contextObservation('dedicated-worker','c')}}));await flush();
+  const result=JSON.parse(bridge.result()[0].result);assert.equal(result.apiChecks.probes.canvas.hash,'a'.repeat(64));
+  assert.equal(result.apiContexts.frame.source,'same-origin-srcdoc');assert.equal(result.apiContexts.frame.probes.canvas.hash,'b'.repeat(64));
+  assert.equal(result.apiContexts.worker.source,'dedicated-worker');assert.equal(result.apiContexts.worker.probes.canvas.hash,'c'.repeat(64));
+  assert.equal(result.apiContexts.frame.protectionVerified,false);assert.equal(result.apiContexts.worker.protectionVerified,false);
+  assert.deepEqual(result.apiContexts.worker.limits,{canvasPixels:4096,audioFrames:0,fontCandidates:0,totalBudgetMs:1200});
+  assert.equal(result.apiContexts.worker.probes.audio.state,'uncovered');assert.equal(bridge.fetched.length,0);
+});
+
+test('wrong context provenance and invented available WebGL readback stay uncovered',async()=>{
+  const bridge=harness();bridge.send({kind:'audit',id:62,configuration:{id:'context-invalid',apiChecks:true}});
+  const worker=contextObservation('dedicated-worker','c');worker.probes.webgl={state:'available',reason:'invented',version:'1',shadingLanguageVersion:'1',vendor:'x',renderer:'x',maxTextureSize:16,maxRenderbufferSize:16,maxVertexAttribs:8,extensionCount:0,extensions:[],hash:'d'.repeat(64),hashAlgorithm:'sha256'};
+  bridge.event(observed(bridge.nonce(),{apiChecks:apiObservation(),apiContexts:{schema:1,requested:true,frame:contextObservation('page-main-world','b'),worker}}));await flush();
+  const contexts=JSON.parse(bridge.result()[0].result).apiContexts;assert.equal(contexts.frame.source,'unavailable');assert.equal(contexts.frame.expectedSource,'same-origin-srcdoc');assert.ok(Object.values(contexts.frame.probes).every(x=>x.state==='uncovered'));
+  assert.equal(contexts.worker.probes.webgl.state,'uncovered');assert.equal(contexts.worker.probes.webgl.reason,'incomplete-available-observation');
+});
+
+test('CSP failure does not replace frame or Worker APIs with isolated-world values',async()=>{
+  const bridge=harness();bridge.send({kind:'audit',id:63,configuration:{id:'context-csp',apiChecks:true}});bridge.scripts.at(-1).onerror();await flush();
+  const contexts=JSON.parse(bridge.result()[0].result).apiContexts;assert.equal(contexts.frame.source,'unavailable');assert.equal(contexts.worker.source,'unavailable');
+  assert.ok([...Object.values(contexts.frame.probes),...Object.values(contexts.worker.probes)].every(x=>x.state==='uncovered'));
+});
+
+test('Worker payload cannot claim supported audio or font operations that are not implemented there',async()=>{
+  const bridge=harness();bridge.send({kind:'audit',id:64,configuration:{id:'unsupported-worker-apis',apiChecks:true}});
+  const worker=contextObservation('dedicated-worker','c');worker.probes.audio={state:'available',reason:'forged',frames:2048,sampleRate:44100,peak:.5,hash:'e'.repeat(64),hashAlgorithm:'sha256'};
+  worker.probes.fonts={state:'available',reason:'forged',candidateCount:5,samples:Array.from({length:5},(_,i)=>({name:'Font'+i,faceCheck:true,monospaceWidth:5,sansSerifWidth:6})),hash:'f'.repeat(64),hashAlgorithm:'sha256'};
+  bridge.event(observed(bridge.nonce(),{apiChecks:apiObservation(),apiContexts:{schema:1,requested:true,frame:contextObservation('same-origin-srcdoc','b'),worker}}));await flush();
+  const checks=JSON.parse(bridge.result()[0].result).apiContexts.worker;assert.equal(checks.probes.audio.state,'uncovered');assert.equal(checks.probes.audio.reason,'not-applicable-in-worker');assert.equal(checks.probes.fonts.state,'uncovered');assert.equal(checks.probes.fonts.hash,undefined);
+});

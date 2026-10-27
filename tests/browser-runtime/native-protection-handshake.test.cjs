@@ -127,8 +127,60 @@ async function main(){
   const scopeGate=deferred(),asyncScope=runtime({scope:{handle:()=>scopeGate.promise,clear(){}}});await asyncScope.ready();
   const scoped=asyncScope.send({kind:'requestIdentityScope',id:11,configuration:{action:'evidence'}});await flush();check('Asynchronous evidence IPC is not serialized as an empty Promise object',asyncScope.current().sent.length===0);
   scopeGate.resolve({ok:true,nonce:'async-controlled-nonce'});await scoped;check('Asynchronous evidence returns the actual resolved result',JSON.parse(asyncScope.current().sent.at(-1).result).nonce==='async-controlled-nonce');
+
+  // Synthetic event ordering only: these controls do not establish that Gecko
+  // emits this order or that another setting writer is reachable on a phone.
+  const snapshotGate=deferred(),snapshotReceived=deferred();let firstSnapshot=true;
+  const changedDuringRead=runtime({get:async state=>{
+    if(!firstSnapshot)return {value:state.value};
+    firstSnapshot=false;const snapshot={value:state.value};snapshotReceived.resolve(snapshot);await snapshotGate.promise;return snapshot;
+  }});await changedDuringRead.ready();const changedTask=changedDuringRead.protect(2,19,20);await snapshotReceived.promise;
+  changedDuringRead.state.value=false;changedDuringRead.change({value:false});snapshotGate.resolve();await changedTask;
+  check('A setting event while a true snapshot awaits confirmation forces a new read',changedDuringRead.reads.join(',')==='true,false');
+  check('A stable disabled reread rejects the old successful strong snapshot',changedDuringRead.replies()[0].acknowledged===false&&changedDuringRead.replies()[0].fingerprinting===false&&changedDuringRead.replies()[0].reason==='setting-mismatch');
+  check('Conflicting readback never rewrites the setting and retains the exact request identity',changedDuringRead.sets.join(',')==='true'&&changedDuringRead.state.value===false&&changedDuringRead.state.maxActive===1&&changedDuringRead.replies()[0].token===19&&changedDuringRead.replies()[0].generation===20);
+
+  const standardGate=deferred(),standardReceived=deferred();let firstStandard=true;
+  const changedStandard=runtime({get:async state=>{
+    if(!firstStandard)return {value:state.value};
+    firstStandard=false;const snapshot={value:state.value};standardReceived.resolve(snapshot);await standardGate.promise;return snapshot;
+  }});await changedStandard.ready();const standardTask=changedStandard.protect(1,21,22);await standardReceived.promise;
+  changedStandard.state.value=true;changedStandard.change({value:true});standardGate.resolve();await standardTask;
+  check('A pending standard request also rejects a stale disabled snapshot after an enable event',changedStandard.reads.join(',')==='false,true'&&changedStandard.replies()[0].acknowledged===false&&changedStandard.replies()[0].fingerprinting===true&&changedStandard.replies()[0].reason==='setting-mismatch');
+
+  let firstMatching=true;const matchingDuringRead=runtime({get:async state=>{if(firstMatching){firstMatching=false;matchingDuringRead.change({value:state.value});}return {value:state.value};}});
+  await matchingDuringRead.ready();await matchingDuringRead.protect(2,1,1);
+  check('An own matching event during get can confirm after one stable reread',matchingDuringRead.reads.join(',')==='true,true'&&matchingDuringRead.replies()[0].acknowledged===true&&matchingDuringRead.sets.length===1&&matchingDuringRead.state.maxActive===1);
+  const ownSetEvent=runtime({set:async value=>ownSetEvent.change({value})});await ownSetEvent.ready();await ownSetEvent.protect(2,1,1);
+  check('An own set event before get does not trigger unnecessary repeated reads',ownSetEvent.reads.join(',')==='true'&&ownSetEvent.replies()[0].acknowledged===true);
+
+  let keepChanging=true;const unstable=runtime({get:async state=>{const snapshot={value:state.value};if(keepChanging){state.value=!state.value;unstable.change({value:state.value});}return snapshot;}});
+  await unstable.ready();await unstable.protect(2,1,1);
+  check('Repeated changes have exactly three bounded readbacks and no successful acknowledgment',unstable.reads.length===3&&unstable.replies().length===1&&unstable.replies()[0].acknowledged===false&&unstable.replies()[0].fingerprinting===false&&unstable.replies()[0].reason==='setting-changed-during-confirmation');
+  check('Change conflicts keep one actual write and never create event-driven retry work',unstable.sets.length===1&&unstable.state.maxActive===1&&unstable.timers.length===0);
+  keepChanging=false;await unstable.protect(2,2,1);
+  check('A later explicit request can confirm after changes stop',unstable.sets.join(',')==='true,true'&&unstable.reads.length===4&&unstable.replies().at(-1).acknowledged===true&&unstable.replies().at(-1).token===2&&unstable.replies().at(-1).generation===1);
+
+  const malformedDuringRead=runtime({get:async state=>{malformedDuringRead.change({value:'false'});return {value:state.value};}});
+  await malformedDuringRead.ready();await malformedDuringRead.protect(2,1,1);
+  check('Malformed change payloads cannot create false conflicts or new acknowledgments',malformedDuringRead.reads.length===1&&malformedDuringRead.replies().length===1&&malformedDuringRead.replies()[0].acknowledged===true);
+
+  const deadlineDuringRead=runtime({get:async state=>{const snapshot={value:state.value};state.now=8100;state.value=false;deadlineDuringRead.change({value:false});return snapshot;}});
+  await deadlineDuringRead.ready();await deadlineDuringRead.protect(2,1,1);
+  check('A conflicting snapshot after the original deadline never starts another get',deadlineDuringRead.reads.length===1&&deadlineDuringRead.sets.length===1);
+  check('Readback conflict cannot extend the original setting deadline',deadlineDuringRead.replies()[0].acknowledged===false&&deadlineDuringRead.replies()[0].reason==='setting-timeout');
+
+  const supersedingGate=deferred(),supersedingReceived=deferred();let firstSuperseding=true;
+  const supersedingRead=runtime({get:async state=>{if(!firstSuperseding)return {value:state.value};firstSuperseding=false;const snapshot={value:state.value};supersedingReceived.resolve(snapshot);await supersedingGate.promise;return snapshot;}});
+  await supersedingRead.ready();const oldSnapshotTask=supersedingRead.protect(2,1,1);await supersedingReceived.promise;
+  supersedingRead.state.value=false;supersedingRead.change({value:false});const newerSnapshotTask=supersedingRead.protect(1,2,2);await flush();supersedingGate.resolve();await Promise.all([oldSnapshotTask,newerSnapshotTask]);
+  check('A superseded read conflict cannot consume another old readback or confirm',supersedingRead.reads.length===2&&supersedingRead.replies().find(x=>x.token===1).acknowledged===false&&supersedingRead.replies().find(x=>x.token===1).reason==='setting-timeout');
+  check('The latest mode retains serial API ownership after an older read conflict',supersedingRead.sets.join(',')==='true,false'&&supersedingRead.state.maxActive===1&&supersedingRead.state.value===false&&supersedingRead.replies().find(x=>x.token===2).acknowledged===true);
+
   assert.equal(crypto.createHash('sha256').update(fs.readFileSync(asset)).digest('hex'),crypto.createHash('sha256').update(code).digest('hex'),'Production source changed during controls');
-  const report={schema:1,status:'passed',passed:checks.length,checks,scope:'Complete production extension with synthetic native port, setting API, Cookie API and monotonic test scheduling boundaries; no Android, real privacy API, or network attestation',actualAndroidExecution:false,actualGeckoExecution:false,realSettingApiExecution:false,fullFingerprintProtectionAccepted:false,sourceSha256:crypto.createHash('sha256').update(code).digest('hex')};
+  const snapshot=run=>({sets:run.sets,readStarts:run.reads,replies:run.replies(),currentValue:run.state.value,maxConcurrentApiCalls:run.state.maxActive,trace:run.trace});
+  const changeOrderControls={scope:'Synthetic Promise/onChange order only; real Gecko order and other reachable setting writers remain unverified',oldTrueSnapshot:snapshot(changedDuringRead),oldFalseSnapshot:snapshot(changedStandard),ownMatchingEvent:snapshot(matchingDuringRead),boundedConflictsThenExplicitRetry:snapshot(unstable),originalDeadline:snapshot(deadlineDuringRead),supersededSnapshot:snapshot(supersedingRead)};
+  const report={schema:1,status:'passed',passed:checks.length,checks,changeOrderControls,scope:'Complete production extension with synthetic native port, setting API, Cookie API and monotonic test scheduling boundaries; no Android, real privacy API, or network attestation',actualAndroidExecution:false,actualGeckoExecution:false,realSettingApiExecution:false,fullFingerprintProtectionAccepted:false,sourceSha256:crypto.createHash('sha256').update(code).digest('hex')};
   if(process.argv[2]==='--receipt'){assert.equal(process.argv.length,4);fs.mkdirSync(path.dirname(process.argv[3]),{recursive:true});fs.writeFileSync(process.argv[3],JSON.stringify(report,null,2)+'\n');}
   console.log(JSON.stringify({status:report.status,passed:report.passed,actualAndroidExecution:false}));completed=true;
 }

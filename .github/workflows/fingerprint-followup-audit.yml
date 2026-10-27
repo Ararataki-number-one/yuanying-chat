@@ -100,6 +100,7 @@ jobs:
         python3 -c "import ast,pathlib;ast.parse(pathlib.Path('tests/gecko/run_fingerprint_followups.py').read_text())"
         node --check tests/gecko/assets/fingerprint-followups.cjs
         node --check tools/fingerprint/request_identity_server.cjs
+        node --check tools/fingerprint/context_graphics_probe.cjs
         node --check app/src/main/assets/gecko/request-identity-background.js
         node --check app/src/main/assets/gecko/request-identity-audit.js
         node --check app/src/main/assets/gecko/main-world-audit.js
@@ -201,6 +202,7 @@ jobs:
         source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip();tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
         inputs=['app/build.gradle','tests/gecko/AndroidManifest.xml','tests/gecko/IntegrationBuildIdentity.java','tests/gecko/IntegrationEvidenceProvider.java','tests/gecko/FingerprintFollowupIntegrationActivity.java','tests/gecko/run_fingerprint_followups.py','tests/gecko/assets/fingerprint-followups.cjs','tools/fingerprint/request_identity_server.cjs','.github/workflows/fingerprint-followup-audit.yml']
         inputs+=subprocess.check_output(['git','ls-tree','-r','--name-only','HEAD','app/src/main/java/local/pocketchat','app/src/main/assets/gecko'],text=True).splitlines()
+        inputs+=subprocess.check_output(['git','ls-tree','-r','--name-only','HEAD','tools/fingerprint'],text=True).splitlines()
         inputs=sorted(set(inputs))
         identity=dict(schema=1,sourceCommit=source,sourceTree=tree,runId=os.environ['GITHUB_RUN_ID'],runAttempt=os.environ['GITHUB_RUN_ATTEMPT'],sourceStatus=subprocess.check_output(['git','status','--porcelain'],text=True),inputs={name:hashlib.sha256(Path(name).read_bytes()).hexdigest()for name in inputs},scope='Actual controlled fingerprint/HTTPS diagnostic source and raw evidence only; no phone, full fingerprint or release qualification',keysOrApksUploaded=False,files=files)
         assert source==os.environ['GITHUB_SHA']and not identity['sourceStatus']

@@ -44,13 +44,13 @@ import org.mozilla.geckoview.WebRequestError;
 /** Actual test-APK Gecko/HTTPS observations; never a real ChatGPT or phone verdict. */
 public final class FingerprintFollowupIntegrationActivity extends Activity {
   static final String FILE="fingerprint-followup-results.json",TAG="PocketFingerprintFollowup";
-  static final int NORMALIZATION_LIMIT=128;
+  static final int NORMALIZATION_LIMIT=512,PREFLIGHT_LIMIT=128;
   static final String SOURCE_DRIVER_GUARD="if (location.protocol !== 'https:' || location.hostname !== 'chatgpt.com') return false;";
   final Handler handler=new Handler(Looper.getMainLooper());
   final ExecutorService worker=Executors.newSingleThreadExecutor();
   final AtomicBoolean concluded=new AtomicBoolean();
   final JSONArray checks=new JSONArray(),cases=new JSONArray(),events=new JSONArray(),routes=new JSONArray(),normalizations=new JSONArray(),loads=new JSONArray(),preflightDriverResults=new JSONArray();
-  String source,nonce,origin,redirectOrigin,chat,semanticChat;int routeDrops,eventDrops,normalizationDrops,preflightDriverDrops;
+  String source,nonce,origin,redirectOrigin,frameOrigin,faultOrigin,chat,semanticChat;int routeDrops,eventDrops,normalizationDrops,preflightDriverDrops;
   JSONObject build=new JSONObject(),sdk=new JSONObject(),sourceDriverAdapter=new JSONObject();
   String stage="created";boolean sourceDriverGuardRecorded;
   ChatSession owner;FixtureView view;
@@ -76,11 +76,12 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
     synchronized(checks){checks.put(J.obj("name",name,"pass",pass));}
     if(!pass)throw new IOException(name);
   }
-  void event(String kind,JSONObject value){synchronized(events){if(events.length()<160)events.put(J.obj("kind",kind,"at",SystemClock.elapsedRealtime(),"value",value));else eventDrops++;}}
+  void event(String kind,JSONObject value){synchronized(events){if(events.length()<512)events.put(J.obj("kind",kind,"at",SystemClock.elapsedRealtime(),"value",value));else eventDrops++;}}
   JSONObject copy(JSONObject value){return J.parse(value.toString());}
   JSONArray copyArray(JSONArray value){synchronized(value){try{return new JSONArray(value.toString());}catch(Exception error){throw new IllegalStateException("Fixture array snapshot failed",error);}}}
   String mapped(String value){return chat!=null&&chat.equals(value)?semanticChat:value;}
   String actual(String value){return semanticChat!=null&&semanticChat.equals(value)?chat:value;}
+  String controlledOrigin(String value){if(value!=null)for(String candidate:Arrays.asList(origin,redirectOrigin,frameOrigin,faultOrigin))if(candidate!=null&&value.startsWith(candidate+"/"))return candidate;return "";}
   static String sourceDriverGuard(String sourceUrl){return "if (location.protocol !== 'https:' || location.href !== "+JSONObject.quote(sourceUrl)+") return false;";}
   static String adaptSourceDriver(String code,String sourceUrl){
     int first=code.indexOf(SOURCE_DRIVER_GUARD);if(first<0)return code;
@@ -100,7 +101,7 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
   final class FixtureView extends GeckoWebView{
     final Set<String> certificates=new HashSet<>();
     FixtureView(Context context,ChatSession owner){super(context,owner);}
-    @Override protected boolean allowedUrl(String value){return value!=null&&(value.startsWith(origin+"/")||value.startsWith(redirectOrigin+"/"));}
+    @Override protected boolean allowedUrl(String value){return !controlledOrigin(value).isEmpty();}
     @Override public String getUrl(){return mapped(super.getUrl());}
     String rawUrl(){return super.getUrl();}
     @Override public void loadUrl(String value){synchronized(loads){loads.put(J.obj("requested",value,"actualTarget",actual(value),"at",SystemClock.elapsedRealtime(),"connectionEpoch",owner.connectionEpoch,"navigationEpoch",owner.navigationEpoch));}super.loadUrl(actual(value));}
@@ -120,7 +121,7 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
         try{JSONObject value=new JSONObject(raw);if(chat.equals(value.optString("url"))){
           JSONObject before=copy(value);value.put("url",semanticChat);result=value.toString();
           synchronized(normalizations){if(normalizations.length()<NORMALIZATION_LIMIT)normalizations.put(J.obj("kind","source-page-result-url-only","raw",before,"normalized",copy(value)));else normalizationDrops++;}
-          if(owner.audit.requestIdentity.active&&(value.has("draftComplete")||value.has("busy")||Boolean.FALSE.equals(value.opt("ok"))))synchronized(preflightDriverResults){if(preflightDriverResults.length()<16)preflightDriverResults.put(J.obj("stage",stage,"at",SystemClock.elapsedRealtime(),"raw",before,"normalized",copy(value)));else preflightDriverDrops++;}
+          if(owner.audit.requestIdentity.active&&(value.has("draftComplete")||value.has("busy")||Boolean.FALSE.equals(value.opt("ok"))))synchronized(preflightDriverResults){if(preflightDriverResults.length()<PREFLIGHT_LIMIT)preflightDriverResults.put(J.obj("stage",stage,"at",SystemClock.elapsedRealtime(),"raw",before,"normalized",copy(value)));else preflightDriverDrops++;}
         }}catch(Exception ignored){}
         if(callback!=null)callback.onReceiveValue(result);
       });
@@ -140,7 +141,7 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
         @Override public void onCanGoForward(GeckoSession s,boolean value){original.onCanGoForward(s,value);}
         @Override public GeckoResult<GeckoSession> onNewSession(GeckoSession s,String value){return original.onNewSession(s,value);}
         @Override public GeckoResult<String> onLoadError(GeckoSession s,String target,WebRequestError error){
-          String controlled=target!=null&&target.startsWith(origin+"/")?origin:target!=null&&target.startsWith(redirectOrigin+"/")?redirectOrigin:"";
+          String controlled=controlledOrigin(target);
           if(!controlled.isEmpty()&&!certificates.contains(controlled)&&error.category==WebRequestError.ERROR_CATEGORY_SECURITY&&error.code==WebRequestError.ERROR_SECURITY_BAD_CERT){
             certificates.add(controlled);event("temporary-fixture-certificate-exception",J.obj("origin",controlled,"target",target,"category",error.category,"code",error.code,"temporary",true));
             String html="<!doctype html><script>document.addCertException(true).then(()=>location.replace("+JSONObject.quote(target)+"))</script>";
@@ -176,13 +177,14 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
   }
   @Override public void onCreate(Bundle state){
     super.onCreate(state);if(!"local.pocketchat.test".equals(getPackageName()))throw new SecurityException("Integration APK only");
-    source=getIntent().getStringExtra("sourceCommit");nonce=getIntent().getStringExtra("runNonce");origin=getIntent().getStringExtra("origin");redirectOrigin=getIntent().getStringExtra("redirectOrigin");
+    source=getIntent().getStringExtra("sourceCommit");nonce=getIntent().getStringExtra("runNonce");origin=getIntent().getStringExtra("origin");redirectOrigin=getIntent().getStringExtra("redirectOrigin");frameOrigin=getIntent().getStringExtra("frameOrigin");faultOrigin=getIntent().getStringExtra("faultOrigin");
     handler.postDelayed(()->finish(new IOException("Single240s native invocation deadline expired")),240000);worker.execute(this::run);
   }
   void validate()throws Exception{
     if(source==null||!source.matches("[0-9a-f]{40}")||nonce==null||!nonce.matches("[0-9a-f]{32}"))throw new IOException("Exact source/nonce required");
-    for(String value:Arrays.asList(origin,redirectOrigin)){URI uri=new URI(value==null?"":value);if(!"https".equals(uri.getScheme())||!"10.0.2.2".equals(uri.getHost())||uri.getRawUserInfo()!=null||uri.getRawQuery()!=null||uri.getRawFragment()!=null||!uri.getRawPath().isEmpty()||uri.getPort()<1024||uri.getPort()>65535)throw new IOException("Controlled AVD HTTPS origins required");}
+    for(String value:Arrays.asList(origin,redirectOrigin,frameOrigin,faultOrigin)){URI uri=new URI(value==null?"":value);if(!"https".equals(uri.getScheme())||!"10.0.2.2".equals(uri.getHost())||uri.getRawUserInfo()!=null||uri.getRawQuery()!=null||uri.getRawFragment()!=null||!uri.getRawPath().isEmpty()||uri.getPort()<1024||uri.getPort()>65535)throw new IOException("Controlled AVD HTTPS origins required");}
     if(origin.equals(redirectOrigin))throw new IOException("Distinct redirect origin required");
+    if(!origin.equals("https://10.0.2.2:9889")||!redirectOrigin.equals("https://10.0.2.2:9890")||!frameOrigin.equals("https://10.0.2.2:9891")||!faultOrigin.equals("https://10.0.2.2:9892"))throw new IOException("Exactly four declared fixture origins required");
     chat=origin+"/chat?runNonce="+nonce;semanticChat=MainActivity.ORIGIN+"c/fingerprint-fixture-"+nonce;
     build=IntegrationBuildIdentity.read(this);sdk=NormalCaretSdkReceipt.read(this);NormalCaretSdkReceipt.requireInstalled(sdk,build);
     if(!source.equals(build.optString("sourceCommit"))||build.optBoolean("dirtySource",true))throw new IOException("Clean installed source mismatch");
@@ -202,6 +204,9 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
     });
     await("Actual Gecko/extension initialization",()->ui(()->view.ready&&view.current!=null&&view.current.isOpen()&&view.privacyReady&&view.routePrepared),60000);
     ui(()->{view.loadUrl(chat);return null;});waitChat();
+    for(String name:Arrays.asList("frame","fault")){
+      String selected=name.equals("frame")?frameOrigin:faultOrigin;ui(()->{view.loadUrl(selected+"/seed");return null;});await("Owned "+name+" origin temporary TLS setup",()->eval("({ready:document.getElementById("+JSONObject.quote(name+"-seed")+")?.textContent==="+JSONObject.quote(nonce)+"})").optBoolean("ready"),20000);ui(()->{view.loadUrl(chat);return null;});waitChat();
+    }
     JSONObject result=document();check("Standard mode loads an actual controlled Gecko document",chat.equals(result.optString("actualUrl"))&&nonce.equals(result.optString("nonce"))&&result.optDouble("timeOrigin",0)>0);
     cases.put(J.obj("case","standard-source-control","document",result,"protection",ui(()->view.protectionStatus())));
     ui(()->{view.loadUrl(redirectOrigin+"/seed");return null;});await("Second controlled TLS origin",()->eval("({ready:document.getElementById('redirect-seed')?.textContent==="+JSONObject.quote(nonce)+"})").optBoolean("ready"),20000);
@@ -235,6 +240,7 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
   String token(){return UUID.randomUUID().toString().replace("-","");}
   JSONObject isolatedNativePrecondition(String endpoint,String token)throws Exception{return ui(()->{
     if(owner.audit.running||owner.audit.requestIdentity.active)throw new IOException("Another audit owns the native scope");
+    String configured=owner.audit.setRequestIdentityEndpoint(endpoint);if(!configured.isEmpty())throw new IOException("Isolated scope configuration refused: "+configured);
     RequestIdentityAuditSession state=owner.audit.requestIdentity;state.endpoint=endpoint;state.nonce=token;state.connectionEpoch=owner.connectionEpoch;state.originalEpoch=owner.navigationEpoch;state.originalUrl=view.getUrl();state.fileGeneration=owner.fileWorkGeneration;state.route=owner.audit.routeStamp();state.policy=owner.audit.policyStamp();state.expected=owner.audit.expected();state.expected.put("environmentId",owner.environmentId).put("environmentGeneration",owner.environmentGeneration).put("configurationRevision",owner.identityAuditAppliedRevision());state.deadline=SystemClock.elapsedRealtime()+20000;state.active=true;state.opening=true;state.navigated=false;state.collecting=false;state.scopeRequested=state.scopeRegistered=true;owner.audit.running=true;owner.audit.completed=null;state.id=++owner.audit.serial;
     JSONObject actual=view.route(endpoint+"document?nonce="+token);check("Isolated component control uses the actual production native route",actual.optString("type").equals("direct"));
     return J.obj("scope","Fixture-only complete current native-state precondition to isolate credential/redirect hooks; not UI/preflight acceptance. No route/header rewriting.","endpoint",endpoint,"nonce",token,"connectionEpoch",state.connectionEpoch,"originalEpoch",state.originalEpoch,"fileGeneration",state.fileGeneration,"deadline",state.deadline,"nativeRoute",actual);
@@ -338,17 +344,96 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
     ui(()->{owner.prefs.edit().putInt("privacyLevel",1).commit();view.configure(view.desktop,1);return null;});
     await("Explicit standard selection restores native route admission",()->ui(()->view.protectionAllowsNetwork()),10000);JSONObject after=document();check("Protection retry and explicit standard selection do not reload, clear login or send the page",before.optDouble("timeOrigin")==after.optDouble("timeOrigin")&&after.optInt("sends")==0&&after.optString("draft").isEmpty()&&after.optString("cookie").contains("fingerprint-preserve="+nonce));pendingCase.put("after",after);
   }
+  void contextApiChecks()throws Exception{
+    await("Standard settings reach a terminal observation before fixed comparisons",()->ui(()->!"pending".equals(view.protectionStatus().optString("state"))),10000);
+    JSONObject before=document(),light=audit(false),deep=audit(true),signals=deep.getJSONObject("signals"),contexts=signals.optJSONObject("apiContexts");
+    check("Light observations never request additional context graphics",!light.getJSONObject("signals").has("apiContexts"));
+    check("Explicit deep check declares independent context observations",contexts!=null&&contexts.optInt("schema")==1&&Boolean.TRUE.equals(contexts.opt("requested")));
+    for(String name:Arrays.asList("frame","worker")){
+      JSONObject value=contexts.optJSONObject(name);String expected=name.equals("frame")?"same-origin-srcdoc":"dedicated-worker";
+      check("Controlled "+name+" returns its actual independently scoped API record",value!=null&&(expected.equals(value.optString("source"))||"unavailable".equals(value.optString("source"))&&expected.equals(value.optString("expectedSource")))&&value.optInt("probeVersion")==1&&!value.optBoolean("protectionVerified",true));
+      JSONObject limits=value.getJSONObject("limits"),probes=value.getJSONObject("probes");
+      check("Controlled "+name+" keeps a finite canvas and time budget",limits.optInt("canvasPixels")==4096&&limits.optInt("totalBudgetMs")==1200);
+      for(String api:Arrays.asList("canvas","audio","fonts","webgl")){
+        JSONObject observed=probes.getJSONObject(api);check("Actual "+name+" "+api+" observation has an explicit state and reason",Arrays.asList("available","restricted","failed","uncovered").contains(observed.optString("state"))&&!observed.optString("reason").isEmpty()&&(!"unavailable".equals(value.optString("source"))||"uncovered".equals(observed.optString("state"))));
+      }
+      if(name.equals("worker"))check("Worker omits unsupported audio and document font work",limits.optInt("audioFrames")==0&&limits.optInt("fontCandidates")==0&&"uncovered".equals(probes.getJSONObject("audio").optString("state"))&&"uncovered".equals(probes.getJSONObject("fonts").optString("state")));
+    }
+    JSONObject after=document();check("Additional context checks preserve the selected document and synthetic login",before.optDouble("timeOrigin")==after.optDouble("timeOrigin")&&after.optString("draft").isEmpty()&&after.optInt("sends")==0&&after.optString("cookie").contains("fingerprint-preserve="+nonce));
+    cases.put(J.obj("case","bounded-context-api-checks","before",before,"light",light,"deep",deep,"after",after,"scope","Actual controlled Gecko context operations only. Missing APIs report uncovered; hashes across execution environments are not required to match."));
+  }
+  JSONObject savedAudit()throws Exception{return ui(()->{byte[] bytes=owner.audit.store.get("environment-audit");return bytes==null?new JSONObject():J.parse(new String(bytes,StandardCharsets.UTF_8));});}
+  void pinnedBaselineChecks()throws Exception{
+    JSONObject deep=ui(()->copy(owner.audit.report));String issue=ui(()->owner.audit.pinDeepObservation());check("User can explicitly pin the current complete deep observation",issue.isEmpty());
+    JSONObject pinned=ui(()->copy(owner.audit.pinnedDeepBaseline));check("Explicit deep reference is encrypted and owner-bound",pinned.length()>0&&savedAudit().getJSONObject("pinnedDeepBaseline").toString().equals(pinned.toString())&&!ui(()->FingerprintDeepBaseline.restore(owner.audit.pinnedDeepBaseline,owner.environmentId,owner.environmentGeneration)).toString().equals("{}"));
+    for(int i=0;i<8;i++)audit(false);
+    JSONArray ordinaryHistory=ui(()->copyArray(owner.audit.observationHistory));
+    check("Eight ordinary observations do not replace the pinned deep reference",ui(()->owner.audit.observationHistory.length()==8&&owner.audit.pinnedDeepBaseline.toString().equals(pinned.toString())));
+    String ordinaryPin=ui(()->owner.audit.pinDeepObservation());check("An ordinary observation cannot replace a pinned deep reference",!ordinaryPin.isEmpty()&&ui(()->owner.audit.pinnedDeepBaseline.toString().equals(pinned.toString())));
+    JSONObject newer=audit(true),comparison=ui(()->FingerprintDeepBaseline.comparison(owner.audit.pinnedDeepBaseline,owner.audit.report,owner.audit.report.optJSONObject("observationMetadata")));
+    check("Pinned reference remains comparable after ordinary history eviction","comparable".equals(comparison.optString("state"))&&!comparison.optBoolean("protectionVerified",true)&&!comparison.optBoolean("crossExecutionContextComparison",true));
+    String clearedHistory=ui(()->owner.audit.clearObservationHistory());check("Clearing recent history keeps the separately pinned reference",clearedHistory.isEmpty()&&ui(()->owner.audit.observationHistory.length()==0&&owner.audit.pinnedDeepBaseline.toString().equals(pinned.toString())));
+    audit(false);JSONArray history=ui(()->copyArray(owner.audit.observationHistory));String clearedPin=ui(()->owner.audit.clearPinnedDeepBaseline());
+    check("Clearing the pinned reference keeps recent history",clearedPin.isEmpty()&&ui(()->owner.audit.pinnedDeepBaseline.length()==0&&owner.audit.observationHistory.toString().equals(history.toString())));
+    JSONObject saved=savedAudit();check("Independent history and reference clearing survive encrypted persistence",saved.getJSONObject("pinnedDeepBaseline").length()==0&&saved.getJSONArray("fingerprintHistory").toString().equals(history.toString()));
+    cases.put(J.obj("case","pinned-deep-reference-lifecycle","originalDeep",deep,"pinned",pinned,"ordinaryHistoryAfterEight",ordinaryHistory,"currentDeep",newer,"comparison",comparison,"historyAfterPinClear",history,"scope","Direct calls to the same production actions used by explicit UI controls, with actual encrypted storage; no physical-phone or tap-level UI verdict."));
+  }
+  void faultMode(String mode)throws Exception{
+    eval("(()=>{document.getElementById('fixture-mode-result').textContent='{}';dispatchEvent(new CustomEvent('pocket-fixture-mode',{detail:"+JSONObject.quote(J.obj("mode",mode).toString())+"}));return {armed:true}})()");
+    await("Owned fault-server mode "+mode,()->{JSONObject value=eval("JSON.parse(document.getElementById('fixture-mode-result').textContent)");return value.optBoolean("done")&&value.optBoolean("ok")&&mode.equals(value.optString("mode"));},5000);
+  }
+  JSONObject serviceProbe(String endpoint)throws Exception{
+    String issue=ui(()->owner.audit.setRequestIdentityEndpoint(endpoint));if(!issue.isEmpty())throw new IOException("Service endpoint configuration refused: "+issue);
+    CompletableFuture<Boolean> done=new CompletableFuture<>();boolean started=ui(()->owner.audit.startServiceProbe(()->done.complete(true)));if(!started)throw new IOException("Manual service check refused: "+ui(()->owner.audit.lastError));done.get(12,TimeUnit.SECONDS);JSONObject result=ui(()->copy(owner.audit.serviceProbe.result));event("manual-service-probe-terminal",result);return result;
+  }
+  void serviceCapabilityChecks()throws Exception{
+    eval("(()=>{document.getElementById('prompt-textarea').value='service-kept-draft\\n';return {ready:true}})()");JSONObject before=document();
+    JSONObject positive=serviceProbe(origin+RequestIdentityAudit.PATH);check("Manual service protocol check succeeds without leaving a nonempty draft","ready".equals(positive.optString("status"))&&"extension-background-control".equals(positive.optString("source"))&&ui(()->owner.audit.serviceProbe.resultCurrent()));
+    faultMode("valid");JSONObject faultPositive=serviceProbe(faultOrigin+RequestIdentityAudit.PATH);check("Fault-server TLS and protocol have an actual valid positive control","ready".equals(faultPositive.optString("status")));
+    JSONArray faults=new JSONArray();String[] modes={"protocol","capacity","redirect","oversize","timeout"},reasons={"protocol-mismatch","service-capacity","service-connection-or-certificate-unavailable","service-response-too-large","service-timeout"};
+    for(int i=0;i<modes.length;i++){
+      faultMode(modes[i]);JSONObject result=serviceProbe(faultOrigin+RequestIdentityAudit.PATH);check("Actual service "+modes[i]+" failure stays distinct and does not pass","failed".equals(result.optString("status"))&&reasons[i].equals(result.optString("reason")));faults.put(J.obj("mode",modes[i],"result",result));
+    }
+    faultMode("valid");String configured=ui(()->owner.audit.setRequestIdentityEndpoint(origin+RequestIdentityAudit.PATH));if(!configured.isEmpty())throw new IOException(configured);
+    CompletableFuture<Boolean> cancelled=new CompletableFuture<>();String cancelledNonce=ui(()->{if(!owner.audit.startServiceProbe(()->cancelled.complete(true)))throw new IOException(owner.audit.lastError);String value=owner.audit.serviceProbe.nonce;owner.audit.cancel();return value;});cancelled.get(5,TimeUnit.SECONDS);
+    JSONObject cancelledResult=ui(()->copy(owner.audit.serviceProbe.result));check("Cancelling before the service scope acknowledgement keeps the result unconfirmed","cancelled".equals(cancelledResult.optString("reason"))&&!cancelledResult.optBoolean("fresh",true)&&!ui(()->owner.audit.running));
+    JSONObject rejected=pageFetch("cancelled-capabilities",origin,"capabilities",cancelledNonce);check("A cancelled capability nonce cannot be reused by the actual page",!rejected.optBoolean("ok",true));
+    JSONObject after=document();check("Service success and failures preserve document, draft, login and no-send state",before.optDouble("timeOrigin")==after.optDouble("timeOrigin")&&before.optString("draft").equals(after.optString("draft"))&&after.optInt("sends")==0&&after.optString("cookie").contains("fingerprint-preserve="+nonce));
+    cases.put(J.obj("case","manual-service-capability-controls","before",before,"positive",positive,"faultPositive",faultPositive,"faults",faults,"cancelledNonce",cancelledNonce,"cancelled",cancelledResult,"cancelledReplay",rejected,"after",after,"injection","Test-only independent TLS server response modes, selected by an owned nonce control endpoint; production client and service checks are unchanged. Certificate/connection/redirect TypeError is not falsely split into a specific TLS diagnosis."));
+    eval("(()=>{document.getElementById('prompt-textarea').value='';return {ready:true}})()");
+  }
+  void insertUnconsentedFrame(String token,String id)throws Exception{
+    eval("(()=>{const frame=document.createElement('iframe');frame.id="+JSONObject.quote(id)+";frame.hidden=true;frame.src="+JSONObject.quote(frameOrigin+RequestIdentityAudit.PATH+"frame?nonce="+token)+";document.body.appendChild(frame);return {requested:true}})()");
+    // A proxy or subframe admission may reject before an HTTP request exists.
+    // The independent receiver is reconciled after this bounded observation.
+    long until=SystemClock.elapsedRealtime()+800;while(SystemClock.elapsedRealtime()<until)Thread.sleep(80);
+    eval("(()=>{document.getElementById("+JSONObject.quote(id)+")?.remove();return {retired:true}})()");
+  }
+  void crossOriginIdentityChecks()throws Exception{
+    JSONObject ready=serviceProbe(origin+RequestIdentityAudit.PATH);check("Cross-origin probe requires a current matching service capability","ready".equals(ready.optString("status"))&&ui(()->owner.audit.serviceProbe.supportsCrossOriginFrame(frameOrigin+RequestIdentityAudit.PATH)));
+    String issue=ui(()->owner.audit.requestIdentity.configureFrame(frameOrigin+RequestIdentityAudit.PATH));check("A separate trusted frame service can be explicitly selected",issue.isEmpty());
+    JSONObject before=document();String denied=token();insertUnconsentedFrame(denied,"unconsented-cross-frame");
+    CompletableFuture<Boolean> done=new CompletableFuture<>();boolean started=ui(()->owner.audit.requestIdentity.startFrame(()->done.complete(true)));check("Explicit cross-origin inspection starts only through the production guarded flow",started);done.get(25,TimeUnit.SECONDS);
+    JSONObject report=ui(()->copy(owner.audit.report)),request=report.getJSONObject("requestIdentity"),browser=request.getJSONObject("browser"),frame=browser.optJSONObject("crossOriginFrame");String actual=ui(()->view.rawUrl()),token=new URI(actual).getRawQuery().replaceAll("(?:^|.*&)nonce=([0-9a-f]{32})(?:&.*|$)","$1");
+    check("Controlled cross-origin inspection uses its declared top-level opt-in URL",actual.startsWith(origin+RequestIdentityAudit.PATH+"document?nonce=")&&actual.contains("&frame=1")&&token.matches("[0-9a-f]{32}"));
+    check("Cross-origin API observation is separately sourced and nonce-bound",frame!=null&&"complete".equals(frame.optString("status"))&&"controlled-cross-origin-iframe".equals(frame.optString("source"))&&token.equals(frame.optString("nonce"))&&frameOrigin.equals(frame.optString("origin")));
+    JSONObject apis=frame.getJSONObject("apiChecks");check("Cross-origin graphics result declares finite work and no protection attestation",apis.optInt("schema")==1&&apis.optInt("probeVersion")==1&&apis.getJSONObject("limits").optInt("canvasPixels")==4096&&apis.getJSONObject("limits").optInt("totalBudgetMs")==1200&&!apis.optBoolean("protectionVerified",true));
+    for(String name:Arrays.asList("canvas","audio","fonts","webgl")){JSONObject value=apis.getJSONObject("probes").getJSONObject(name);check("Cross-origin "+name+" result is an explicit observation",Arrays.asList("available","restricted","failed","uncovered").contains(value.optString("state"))&&!value.optString("reason").isEmpty());}
+    check("Cross-origin completion keeps manual return available",ui(()->owner.audit.canReturnRequestIdentity()));check("User-requested cross-origin return is accepted",ui(()->owner.audit.returnRequestIdentity()));waitChat();insertUnconsentedFrame(token,"retired-cross-frame-replay");
+    JSONObject after=document();check("Cross-origin return and closed-scope replay preserve synthetic login and no-send state",after.optString("draft").isEmpty()&&after.optInt("sends")==0&&after.optString("cookie").contains("fingerprint-preserve="+nonce));
+    cases.put(J.obj("case","controlled-cross-origin-frame","capabilities",ready,"sourceBefore",before,"unconsentedNonce",denied,"actualDetectorUrl",actual,"nonce",token,"report",report,"sourceAfter",after,"scope","Only explicit top-level detector navigation uses the second trusted frame origin. Native admission, credential filtering, source/origin/nonce validation and server CSP remain active; no CSP override or equal-hash assertion."));
+  }
   JSONObject auditSnapshot(){
     if(owner==null)return J.obj("stage",stage,"ownerCreated",false);
     RequestIdentityAuditSession state=owner.audit.requestIdentity;
-    return J.obj("stage",stage,"lastError",owner.audit.lastError,"running",owner.audit.running,"networkRun",owner.audit.networkRun,"serial",owner.audit.serial,"auditUrl",owner.audit.auditUrl,"auditNavigation",owner.audit.auditNavigation,"report",copy(owner.audit.report),"requestIdentityReport",copy(owner.audit.requestIdentityReport),"controller",J.obj("id",state.id,"active",state.active,"opening",state.opening,"navigated",state.navigated,"collecting",state.collecting,"scopeRequested",state.scopeRequested,"scopeRegistered",state.scopeRegistered,"webDone",state.webDone,"controlDone",state.controlDone,"connectionEpoch",state.connectionEpoch,"originalEpoch",state.originalEpoch,"pageEpoch",state.pageEpoch,"deadline",state.deadline,"fileGeneration",state.fileGeneration,"originalUrl",state.originalUrl,"documentUrl",state.documentUrl,"endpoint",state.endpoint,"nonce",state.nonce,"routeFresh",state.routeFresh(),"pageOwned",state.pageOwned(),"pageSelected",state.pageSelected(),"fresh",state.fresh()));
+    return J.obj("stage",stage,"lastError",owner.audit.lastError,"running",owner.audit.running,"networkRun",owner.audit.networkRun,"serial",owner.audit.serial,"auditUrl",owner.audit.auditUrl,"auditNavigation",owner.audit.auditNavigation,"report",copy(owner.audit.report),"requestIdentityReport",copy(owner.audit.requestIdentityReport),"serviceProbe",copy(owner.audit.serviceProbe.result),"serviceState",J.obj("active",owner.audit.serviceProbe.active,"phase",owner.audit.serviceProbe.phase,"endpoint",owner.audit.serviceProbe.endpoint,"nonce",owner.audit.serviceProbe.nonce,"deadline",owner.audit.serviceProbe.deadline),"pinnedDeepBaseline",copy(owner.audit.pinnedDeepBaseline),"historyCount",owner.audit.observationHistory.length(),"controller",J.obj("id",state.id,"active",state.active,"opening",state.opening,"navigated",state.navigated,"collecting",state.collecting,"scopeRequested",state.scopeRequested,"scopeRegistered",state.scopeRegistered,"frameEnabled",state.frameEnabled,"frameEndpoint",state.frameEndpoint,"frameScopeRequested",state.frameScopeRequested,"frameScopeRegistered",state.frameScopeRegistered,"webDone",state.webDone,"controlDone",state.controlDone,"connectionEpoch",state.connectionEpoch,"originalEpoch",state.originalEpoch,"pageEpoch",state.pageEpoch,"deadline",state.deadline,"fileGeneration",state.fileGeneration,"originalUrl",state.originalUrl,"documentUrl",state.documentUrl,"endpoint",state.endpoint,"nonce",state.nonce,"routeFresh",state.routeFresh(),"pageOwned",state.pageOwned(),"pageSelected",state.pageSelected(),"fresh",state.fresh()));
   }
-  void run(){try{stage="validate";validate();stage="open-controlled-source";open();stage="manual-api-checks";apiChecks();stage="credential-and-redirect-controls";credentialAndRedirectControls();identityCheck();stage="late-registration-control";lateRegistrationControl();stage="preflight-invalidation-controls";preflightInvalidationControls();stage="protection-failure-control";protectionFailureControl();stage="completed";finish(null);}catch(Throwable error){finish(error);}}
+  void run(){try{stage="validate";validate();stage="open-controlled-source";open();stage="manual-api-checks";apiChecks();stage="credential-and-redirect-controls";credentialAndRedirectControls();identityCheck();stage="late-registration-control";lateRegistrationControl();stage="preflight-invalidation-controls";preflightInvalidationControls();stage="protection-failure-control";protectionFailureControl();stage="bounded-context-api-checks";contextApiChecks();stage="pinned-deep-reference-lifecycle";pinnedBaselineChecks();stage="manual-service-capability-controls";serviceCapabilityChecks();stage="controlled-cross-origin-frame";crossOriginIdentityChecks();stage="completed";finish(null);}catch(Throwable error){finish(error);}}
   void finish(Throwable error){
     if(!concluded.compareAndSet(false,true))return;
     JSONObject finalState=new JSONObject();try{finalState=ui(()->J.obj("url",view==null?"":view.getUrl(),"actualUrl",view==null?"":view.rawUrl(),"protection",view==null?new JSONObject():view.protectionStatus(),"connectionEpoch",owner==null?-1:owner.connectionEpoch,"navigationEpoch",owner==null?-1:owner.navigationEpoch,"audit",auditSnapshot()));}catch(Exception failure){finalState=J.obj("stage",stage,"error",failure.getClass().getSimpleName());}
     JSONObject report=J.obj("schema",1,"status",error==null?"completed":"failed","sourceCommit",source,"sourceTree",build.optString("sourceTree"),"runNonce",nonce,"buildIdentity",build,"sdkIdentity",sdk,"actualAndroidExecution",true,"actualGeckoExecution",view!=null&&view.ready,"officialChatGptSiteTested",false,"physicalPhoneAcceptance",false,"fullFingerprintProtectionAcceptance",false,"fullDesktopUaConsistency",false,"releaseAcceptance",false,"publicNetworkTraffic",false,"origin",origin,"redirectOrigin",redirectOrigin,"actualSourceChat",chat,"semanticSourceAlias",semanticChat,"measurementEndedAtElapsedMs",SystemClock.elapsedRealtime(),"checks",copyArray(checks),"cases",copyArray(cases),"events",copyArray(events),"routes",copyArray(routes),"loads",copyArray(loads),"normalizations",copyArray(normalizations),"eventDrops",eventDrops,"routeDrops",routeDrops,"normalizationDrops",normalizationDrops,"finalState",finalState,"fixtureOnlyCertificateOrigins",view==null?new JSONArray():new JSONArray(new ArrayList<>(view.certificates)),"scope","Source-chat alias is a controlled fixture adapter only; actual detector document/Worker URLs and headers are never rewritten. Actual Gecko and independent HTTPS records must be reconciled; no real ChatGPT/login, phone, complete DNS/IPv6/Shared Worker/Service Worker or full protection verdict.","unverified",J.arr("Real ChatGPT and real accounts","Physical phone keyboard and scrolling","Shared Worker and Service Worker","Full network fingerprint/DNS/IPv6 paths","Restart/upgrade phone behavior","True current-template application during real user work"));
-    try{report.put("stage",stage).put("sourceDriverAdapter",sourceDriverAdapter).put("preflightDriverResults",copyArray(preflightDriverResults)).put("preflightDriverDrops",preflightDriverDrops);}catch(Exception ignored){}
+    try{report.put("stage",stage).put("sourceDriverAdapter",sourceDriverAdapter).put("preflightDriverResults",copyArray(preflightDriverResults)).put("preflightDriverDrops",preflightDriverDrops).put("frameOrigin",frameOrigin).put("faultOrigin",faultOrigin);}catch(Exception ignored){}
     if(error!=null)try{report.put("errorType",error.getClass().getName());report.put("error",String.valueOf(error.getMessage()));}catch(Exception ignored){}
     try{AtomicFile file=new AtomicFile(new File(getFilesDir(),FILE));FileOutputStream out=null;try{out=file.startWrite();out.write((report.toString()+"\n").getBytes(StandardCharsets.UTF_8));file.finishWrite(out);}catch(Throwable failure){if(out!=null)file.failWrite(out);throw failure;}Log.i(TAG,report.toString());}catch(Throwable failure){Log.e(TAG,"Evidence persistence failed",failure);}
     handler.post(()->{if(owner!=null){owner.handler.removeCallbacks(owner.tick);owner.audit.cancel();}if(view!=null)view.destroy();});worker.shutdown();

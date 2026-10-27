@@ -12,6 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = [ROOT / 'app/src/main/java/local/pocketchat/J.java',
            ROOT / 'app/src/main/java/local/pocketchat/RequestIdentityAudit.java',
+           ROOT / 'app/src/main/java/local/pocketchat/RequestIdentityLanguages.java',
            ROOT / 'tests/request-identity/RequestIdentityAuditHost.java']
 PINS = {'3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796': 'desktop',
         '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed': 'desktop',

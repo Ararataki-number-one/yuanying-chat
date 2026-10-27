@@ -18,7 +18,7 @@ test('controlled HTTPS identity server retains independent, bounded request evid
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'pocketchat-request-identity-tls-'));
   const key = path.join(temporary, 'key.pem'), cert = path.join(temporary, 'cert.pem');
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-sha256', '-days', '1',
-    '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1', '-keyout', key, '-out', cert], {stdio: 'ignore'});
+    '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,DNS:primary.example,IP:127.0.0.1', '-keyout', key, '-out', cert], {stdio: 'ignore'});
   const output = path.join(temporary, 'server.json'), rawLog = path.join(temporary, 'server.jsonl');
   const service = createIdentityService({key: fs.readFileSync(key), cert: fs.readFileSync(cert),
     ttlMs: 1000, maxChecks: 64, maxLogEvents: 24, output, rawLog});
@@ -36,6 +36,24 @@ test('controlled HTTPS identity server retains independent, bounded request evid
     });
   }
   try {
+    await t.test('explicit capabilities request is bounded and creates no identity evidence', async () => {
+      const id = nonce(), value = await request('capabilities', id);
+      assert.equal(value.status, 200);assert.equal(value.body.schema, 1);assert.equal(value.body.protocol, PROTOCOL);
+      assert.equal(value.body.nonce, id);assert.equal(value.body.source, 'controlled-service-capabilities');assert.equal(value.body.status, 'ready');
+      assert.deepEqual(value.body.capabilities, {topLevelDocument: true, dedicatedWorker: true, boundedWorkerReply: true, crossOriginFrame: false, crossOriginFrameReceiver: false});
+      assert.equal(value.body.limits.workerResponseBytes, 8192);assert.equal(value.body.limits.maxCheckEvents, 12);
+      assert.equal(service.log.events.length, 0);assert.equal(service.snapshot(id).createdAt, 0);
+      assert.equal((await request('capabilities', id, {}, '&frame=1')).status, 400);
+      assert.equal((await request('capabilities', id, {}, '&nonce=' + nonce())).status, 400);
+    });
+    await t.test('capability probes reject sensitive or oversized headers without saving their values', async () => {
+      for (const name of ['Cookie', 'Authorization', 'Proxy-Authorization', 'Referer', 'Origin']) {
+        const value = await request('capabilities', nonce(), {[name]: 'capability-secret-must-not-save'});
+        assert.equal(value.status, 403);assert.equal(value.body.reason, 'credential-header-observed');assert.equal(value.body.credentialObserved, true);
+      }
+      const value = await request('capabilities', nonce(), {'Accept-Language': 'x'.repeat(1025)});
+      assert.equal(value.status, 409);assert.equal(value.body.reason, 'header-value-too-long');assert.equal(service.log.events.length, 0);
+    });
     await t.test('unknown nonce is pending and cannot manufacture document evidence', async () => {
       const id = nonce(), value = await request('result', id);
       assert.equal(value.status, 202); assert.equal(value.body.status, 'pending');
@@ -101,9 +119,46 @@ test('controlled HTTPS identity server retains independent, bounded request evid
         assert.equal((await request('document', id, {}, '', activePort)).status, 200);
         const value = await request('document', nonce(), {}, '', activePort);
         assert.equal(value.status, 429); assert.equal(value.body.error, 'detector-capacity');
+        const capabilities = await request('capabilities', nonce(), {}, '', activePort);
+        assert.equal(capabilities.status, 429);assert.equal(capabilities.body.reason, 'detector-capacity');
         const kept = await request('result', id, {}, '', activePort);
         assert.equal(kept.body.events[0].source, 'document');
       } finally {await limited.close();}
+    });
+    await t.test('cross-origin frame support requires explicit two-sided configuration and per-document opt-in', async () => {
+      const material = {key: fs.readFileSync(key), cert: fs.readFileSync(cert)};
+      assert.throws(() => createIdentityService({...material, frameEndpoint: 'http://frame.example/pocketchat-identity/v1/'}), /Invalid explicit frame/);
+      assert.throws(() => createIdentityService({...material, frameParentOrigin: 'https://primary.example/path'}), /Invalid explicit frame/);
+      const secondary = createIdentityService({...material, frameParentOrigin: 'https://primary.example'});
+      await new Promise(resolve => secondary.server.listen(0, '127.0.0.1', resolve));const secondaryPort = secondary.server.address().port;
+      const secondaryEndpoint = 'https://127.0.0.1:' + secondaryPort + DEFAULT_BASE;
+      const primary = createIdentityService({...material, frameEndpoint: secondaryEndpoint});
+      await new Promise(resolve => primary.server.listen(0, '127.0.0.1', resolve));const primaryPort = primary.server.address().port;
+      try {
+        const cap = await request('capabilities', nonce(), {Host: 'primary.example'}, '', primaryPort);
+        assert.equal(cap.body.capabilities.crossOriginFrame, true);assert.equal(cap.body.capabilities.frameEndpoint, secondaryEndpoint);
+        assert.equal(cap.body.capabilities.frameParentOrigin, 'https://primary.example');
+        const normal = await request('document', nonce(), {}, '', primaryPort);
+        assert.equal(normal.status, 200);assert.equal(normal.text.includes('data-frame-endpoint='), false);assert.match(normal.headers['content-security-policy'], /frame-src 'none'/);
+        const opted = await request('document', nonce(), {}, '&frame=1', primaryPort);
+        assert.equal(opted.status, 200);assert.equal(opted.text.includes('data-frame-endpoint="' + secondaryEndpoint + '"'), true);
+        assert.ok(opted.headers['content-security-policy'].includes('frame-src https://127.0.0.1:' + secondaryPort));
+        assert.equal((await request('document', nonce(), {}, '&frame=0', primaryPort)).status, 400);
+        assert.equal((await request('document', nonce(), {}, '&frame=1&frame=1', primaryPort)).status, 400);
+        assert.equal((await request('document', nonce(), {}, '&frame=1')).status, 409);
+        const receiver = await request('capabilities', nonce(), {}, '', secondaryPort);
+        assert.equal(receiver.body.capabilities.crossOriginFrameReceiver, true);
+        assert.equal(receiver.body.capabilities.frameReceiverParentOrigin, 'https://primary.example');
+        const id = nonce(), frame = await request('frame', id, {'Sec-Fetch-Dest': 'iframe'}, '', secondaryPort);
+        assert.equal(frame.status, 200);assert.match(frame.headers['content-security-policy'], /frame-ancestors https:\/\/primary.example/);
+        assert.match(frame.headers['content-security-policy'], /connect-src 'none'/);assert.ok(frame.text.includes('controlledFrameGraphics'));
+        assert.ok(frame.text.includes('"https://primary.example"'));assert.equal(secondary.log.events.length, 1);
+        assert.equal(secondary.log.events[0].source, 'cross-origin-frame');assert.equal(secondary.snapshot(id).createdAt, 0);
+        assert.equal((await request('frame', id, {}, '', secondaryPort)).status, 409);
+        assert.equal((await request('frame', nonce(), {Referer: 'must-not-save'}, '', secondaryPort)).status, 403);
+        assert.equal((await request('frame', nonce(), {}, '&parent=https://other.example', secondaryPort)).status, 400);
+        assert.equal((await request('frame', nonce())).status, 404);
+      } finally {await primary.close();await secondary.close();}
     });
     await t.test('host wrapper only owns unhandled routes and cannot bypass detector validation', async () => {
       const handled = [];

@@ -9,9 +9,14 @@ Each `sample.apiChecks.probes` entry reports an operation state (`available`,
 `restricted`, `failed`, `uncovered`) and a reason. SHA-256 digests are local
 observation values, not an anonymity or privacy-protection verdict. A changed
 hash may be expected randomization/standardization. Font checks and widths are
-not proof that a named font is installed. Probe coverage is only the current
-page's main execution world; frame/Worker API operations remain uncovered.
-If CSP blocks that world, the isolated extension fallback cannot fill its data.
+not proof that a named font is installed. `sample.apiChecks` keeps the original
+page-main-world probe version and inputs. `sample.apiContexts` separately records
+a same-origin srcdoc frame and a Dedicated Worker. The frame runs its own finite
+operations. The Worker uses OffscreenCanvas draw/readback and WebGL capabilities
+plus a 16x16 pixel readback; audio and fonts are explicitly not covered there.
+Missing OffscreenCanvas or WebGL is uncovered. Hashes have an execution-context
+source and are not required to match across different contexts.
+If CSP blocks a context, the isolated extension or main page cannot fill its data.
 
 Limits are finite: a 128x32 canvas, 2048 offline audio frames at 44100 Hz (no
 speaker output), five font candidates, and one 16x16 WebGL context with seven
@@ -38,3 +43,27 @@ it is not Gecko, Android, RFP effectiveness, ChatGPT or physical-phone acceptanc
 The Node test uses a DOM/port harness, so its CSP/error tests are protocol failure
 injection rather than a real Gecko CSP test. The existing original bridge
 controls remain in that file unchanged; the new controls are additive.
+
+Context coverage controls can be run separately:
+
+```sh
+python3 tests/fingerprint-api-probes/browser_context_probe.py \
+  --output /tmp/fingerprint-context-browser-results.json
+node tests/request-identity/request_identity_context_adapter_test.cjs
+python3 tests/fingerprint-api-probes/cross_origin_probe.py \
+  --output /tmp/fingerprint-cross-origin-browser-results.json
+```
+
+The context browser fixture instruments real Worker readback calls, absent and
+restricted APIs, source-specific script/Worker CSP restrictions, and cancellation.
+Its CSP fixture permits evaluation only for the test runner while the tested
+frame script and Worker directives remain restrictive; production CSP is never
+changed. The cross-origin helper check runs the fixed serialized server graphics
+function in a distinct loopback HTTP iframe, proves real same-origin-policy
+restriction and counts actual API readbacks. It does not test the deployed HTTPS
+protocol or native route admission. Production cross-origin checks only run in
+the explicitly selected controlled top-level detector, after native per-run
+consent and a trusted second HTTPS endpoint; no third-party iframe is inserted
+into the chat page by the local check. Audio/fonts remain uncovered for the
+controlled cross-origin graphics function. Server, JavaScript, native settings
+and context-specific API evidence remain distinct.
