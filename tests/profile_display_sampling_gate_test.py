@@ -13,6 +13,16 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 from gecko.check_interaction_transfer_evidence import verify_display_sampling, verify_read_model_freshness, READ_MODEL_CASES, verify_read_model_identity, READ_MODEL_IDENTITY_CASES, identity_projection_fixture
 
 def reverse_reviewed_experience_workflow_additions(case,source):
+    # Undo only this separately reviewed five-line dependency preparation before
+    # the unchanged older insertions and whole-workflow golden are checked.
+    dependency_before='    - name: Verify versioned environment models and authoritative intents\n      run: |\n        set -euo pipefail\n'
+    dependency_inserted="        mkdir -p work/profile-host\n        curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar -o work/profile-host/json.jar\n        echo '3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  work/profile-host/json.jar' | sha256sum -c -\n        cp work/gecko-integration/sharing-android-json.jar work/profile-host/android-json.jar\n        echo 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79  work/profile-host/android-json.jar' | sha256sum -c -\n"
+    dependency_after='        python3 tools/gecko/run_profile_host_checks.py --json-jar work/gecko-integration/catalog-json.jar --network-reports work/gecko-integration\n'
+    case.assertEqual(hashlib.sha256(dependency_inserted.encode()).hexdigest(),'8162a1bd4c10f585bda375afdfd5835b8b6d1d4366d6e79dd5ebab46f41fd694')
+    dependency_literal=dependency_before+dependency_inserted+dependency_after
+    case.assertEqual(source.count(dependency_literal),1,'fingerprint-host-json-dependencies')
+    source=source.replace(dependency_literal,dependency_before+dependency_after,1)
+    case.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'619f727fadf51276d71030eb849dfb331338c1c922a3c38b24be8bb8536185c7')
     # Four pure insertions reviewed against da500; this is not a general step
     # filter. Pin every byte, require each anchored literal exactly once, then
     # recover the entire original workflow before its older golden checks.
@@ -312,7 +322,11 @@ class DisplayGateTest(unittest.TestCase):
     def test_reviewed_workflow_inverse_rejects_missing_duplicate_or_changed_literals_and_original_commands(self):
         root=Path(__file__).resolve().parents[1];source=(root/'.github/workflows/gecko-integration.yml').read_text()
         manifest=json.loads((root/'tests/fixtures/profile-display-workflow-additions.json').read_bytes())
-        for row in manifest['insertions']:
+        dependency_before='    - name: Verify versioned environment models and authoritative intents\n      run: |\n        set -euo pipefail\n'
+        dependency_inserted="        mkdir -p work/profile-host\n        curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar -o work/profile-host/json.jar\n        echo '3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  work/profile-host/json.jar' | sha256sum -c -\n        cp work/gecko-integration/sharing-android-json.jar work/profile-host/android-json.jar\n        echo 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79  work/profile-host/android-json.jar' | sha256sum -c -\n"
+        dependency_after='        python3 tools/gecko/run_profile_host_checks.py --json-jar work/gecko-integration/catalog-json.jar --network-reports work/gecko-integration\n'
+        dependencies=[dict(id='fingerprint-host-json-dependencies',before=dependency_before,inserted=dependency_inserted,after=dependency_after)]
+        for row in manifest['insertions']+dependencies:
             literal=row['before']+row['inserted']+row['after']
             for change in ('missing','duplicate','changed'):
                 with self.subTest(insertion=row['id'],change=change):
@@ -328,6 +342,21 @@ class DisplayGateTest(unittest.TestCase):
         self.assertEqual(source.count(command),1)
         altered=source.replace(command,command.replace(' record ',' record-changed '),1)
         with self.assertRaises(AssertionError):reverse_reviewed_experience_workflow_additions(self,altered)
+        for original,replacement in (
+            ('https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar',
+             'https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar'),
+            ('3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796','0'*64),
+            ('cp work/gecko-integration/sharing-android-json.jar work/profile-host/android-json.jar',
+             'cp work/gecko-integration/catalog-json.jar work/profile-host/android-json.jar'),
+            ('dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79  work/profile-host/android-json.jar',
+             '0'*64+'  work/profile-host/android-json.jar'),
+            ('python3 tools/gecko/run_profile_host_checks.py --json-jar work/gecko-integration/catalog-json.jar --network-reports work/gecko-integration',
+             'python3 tools/gecko/run_profile_host_checks.py --json-jar work/profile-host/json.jar --network-reports work/gecko-integration'),
+        ):
+            with self.subTest(dependencyMutation=original):
+                self.assertEqual(source.count(original),1)
+                altered=source.replace(original,replacement,1)
+                with self.assertRaises(AssertionError):reverse_reviewed_experience_workflow_additions(self,altered)
 
     def test_actual_identity_runner_rejects_partial_or_failed_93_and_14_reports(self):
         source=Path(__file__).resolve().parent/'window-network-identity-host/run.py';tree=ast.parse(source.read_text())
