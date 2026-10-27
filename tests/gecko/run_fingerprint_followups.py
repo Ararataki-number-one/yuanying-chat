@@ -172,11 +172,14 @@ def reconcile_coverage(native,trace,service,frame_service):
     if control['positive'].get('status')!='ready' or control['faultPositive'].get('status')!='ready':
         raise ValueError('Actual protocol/TLS positive service controls absent')
     reasons={'protocol':'protocol-mismatch','capacity':'service-capacity','redirect':'service-connection-or-certificate-unavailable','oversize':'service-response-too-large','timeout':'service-timeout'}
+    statuses={'protocol':'failed','capacity':'unavailable','redirect':'failed','oversize':'failed','timeout':'failed'}
     if [row['mode'] for row in control['faults']]!=list(reasons):raise ValueError('Expected actual service fault controls incomplete')
     for row in control['faults']:
         mode=row['mode'];result=row['result'];received=capability_arrival(result,'fault')
-        if received.get('controlledResponseMode')!=mode or result.get('status')!='failed' or result.get('reason')!=reasons[mode]:
+        if received.get('controlledResponseMode')!=mode or result.get('status')!=statuses[mode] or result.get('reason')!=reasons[mode]:
             raise ValueError('Actual service failure was hidden or misclassified: '+mode)
+        if mode=='capacity' and (result.get('httpStatus')!=429 or row.get('resultCurrent') is not False):
+            raise ValueError('Capacity refusal was incorrectly made usable or lost its actual HTTP status')
         if mode=='redirect' and any(item['server']=='detector' and item['nonce']==result['nonce'] for item in arrivals):
             raise ValueError('Capability redirect reached a second endpoint')
     cancelled=control['cancelledNonce']

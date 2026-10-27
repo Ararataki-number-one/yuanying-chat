@@ -392,7 +392,10 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
     faultMode("valid");JSONObject faultPositive=serviceProbe(faultOrigin+RequestIdentityAudit.PATH);check("Fault-server TLS and protocol have an actual valid positive control","ready".equals(faultPositive.optString("status")));
     JSONArray faults=new JSONArray();String[] modes={"protocol","capacity","redirect","oversize","timeout"},reasons={"protocol-mismatch","service-capacity","service-connection-or-certificate-unavailable","service-response-too-large","service-timeout"};
     for(int i=0;i<modes.length;i++){
-      faultMode(modes[i]);JSONObject result=serviceProbe(faultOrigin+RequestIdentityAudit.PATH);check("Actual service "+modes[i]+" failure stays distinct and does not pass","failed".equals(result.optString("status"))&&reasons[i].equals(result.optString("reason")));faults.put(J.obj("mode",modes[i],"result",result));
+      faultMode(modes[i]);JSONObject result=serviceProbe(faultOrigin+RequestIdentityAudit.PATH);boolean resultCurrent=ui(()->owner.audit.serviceProbe.resultCurrent());
+      if("capacity".equals(modes[i]))check("Actual service capacity failure stays distinct and does not pass","unavailable".equals(result.optString("status"))&&"service-capacity".equals(result.optString("reason"))&&result.optInt("httpStatus")==429&&!resultCurrent);
+      else check("Actual service "+modes[i]+" failure stays distinct and does not pass","failed".equals(result.optString("status"))&&reasons[i].equals(result.optString("reason")));
+      faults.put(J.obj("mode",modes[i],"result",result,"resultCurrent",resultCurrent));
     }
     faultMode("valid");String configured=ui(()->owner.audit.setRequestIdentityEndpoint(origin+RequestIdentityAudit.PATH));if(!configured.isEmpty())throw new IOException(configured);
     CompletableFuture<Boolean> cancelled=new CompletableFuture<>();String cancelledNonce=ui(()->{if(!owner.audit.startServiceProbe(()->cancelled.complete(true)))throw new IOException(owner.audit.lastError);String value=owner.audit.serviceProbe.nonce;owner.audit.cancel();return value;});cancelled.get(5,TimeUnit.SECONDS);
