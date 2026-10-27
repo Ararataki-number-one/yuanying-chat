@@ -17,7 +17,42 @@ final class BrowserNetworkGuard {
   static boolean needsVpn(boolean internal,String proxy,boolean required){return !internal&&proxy.trim().isEmpty()&&required;}
   boolean requiresVpn(){return needsVpn(session.internalNetwork(),session.prefs.getString("proxy",""),session.prefs.getBoolean("requireExternalVpn",true));}
   boolean vpnActive(){try{ConnectivityManager cm=(ConnectivityManager)session.context.getSystemService(Context.CONNECTIVITY_SERVICE);Network n=cm.getActiveNetwork();NetworkCapabilities caps=n==null?null:cm.getNetworkCapabilities(n);return caps!=null&&caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)&&caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);}catch(Exception e){return false;}}
-  boolean routeProtected(){if(requiresVpn())return vpnActive();if(session.internalNetwork()){NativeNetwork n=NativeNetwork.get(session.context);return n.ready&&n.coreAlive();}return true;}
+  String vpnDefaultRouteIssue(){
+    // getType() is public only from API 33. Older public snapshots cannot
+    // distinguish excluded routes; never infer protection or silently downgrade.
+    if(android.os.Build.VERSION.SDK_INT<33)return "vpn-route-inspection-unsupported";
+    try{
+      ConnectivityManager cm=(ConnectivityManager)session.context.getSystemService(Context.CONNECTIVITY_SERVICE);
+      if(cm==null)return "vpn-network-unavailable";
+      Network network=cm.getActiveNetwork();
+      NetworkCapabilities caps=network==null?null:cm.getNetworkCapabilities(network);
+      if(caps==null||!caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)||!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))return "vpn-not-active";
+      LinkProperties links=cm.getLinkProperties(network);
+      if(links==null)return "vpn-routes-unavailable";
+      List<RouteInfo> observed=links.getRoutes();
+      if(observed==null)return "vpn-routes-unavailable";
+      List<VpnDefaultRouteCoverage.Route> routes=new ArrayList<>();
+      for(RouteInfo route:observed){
+        if(route==null)return "vpn-route-unavailable";
+        IpPrefix destination=route.getDestination();
+        InetAddress address=destination==null?null:destination.getAddress();
+        if(address==null)return "vpn-route-unavailable";
+        routes.add(new VpnDefaultRouteCoverage.Route(address.getAddress().length,
+          destination.getPrefixLength(),route.getType(),route.getInterface()));
+      }
+      String issue=VpnDefaultRouteCoverage.issue(links.getInterfaceName(),routes);
+      if(!issue.isEmpty())return issue;
+      NetworkCapabilities after=cm.getNetworkCapabilities(network);
+      if(after==null||!after.hasTransport(NetworkCapabilities.TRANSPORT_VPN)||!after.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))return "vpn-network-changed";
+      if(!network.equals(cm.getActiveNetwork()))return "vpn-network-changed";
+      return "";
+    }catch(Exception error){return "vpn-route-inspection-failed";}
+  }
+  String vpnProtectionFailureMessage(){
+    if(android.os.Build.VERSION.SDK_INT<33)return "当前系统无法确认 VPN 路由覆盖，已阻止新请求。请使用应用内线路或显式代理。";
+    return "VPN 路由覆盖尚未确认，已阻止新请求。请检查 VPN 完整覆盖，或使用应用内线路／显式代理。";
+  }
+  boolean routeProtected(){if(requiresVpn())return vpnDefaultRouteIssue().isEmpty();if(session.internalNetwork()){NativeNetwork n=NativeNetwork.get(session.context);return n.ready&&n.coreAlive();}return true;}
   boolean allowed(){return !blocked&&routeProtected();}
   WebResourceResponse intercept(Uri uri){return !allowed()||!publicHttps(uri)?denied():null;}
   static WebResourceResponse denied(){return new WebResourceResponse("text/plain","UTF-8",403,"Network protection",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(new byte[0]));}

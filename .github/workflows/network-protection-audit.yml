@@ -100,6 +100,7 @@ jobs:
         python3 -c "import ast,pathlib;ast.parse(pathlib.Path('tests/gecko/run_network_protection.py').read_text())"
         node --check tests/gecko/assets/network-protection.cjs
         python3 tools/build-mihomo.py --verify
+        PROFILE_JAVA="$JAVA_HOME_17_X64/bin/java" python3 tests/profile_vpn_default_route_coverage_test.py
     - name: Prepare locked toolchain
       shell: bash
       run: |
@@ -185,6 +186,8 @@ jobs:
             p=root/'work/gecko-integration'/name
             if p.is_file():paths.append(p)
         paths.extend(p for p in (root/'work/gecko-integration').glob('native-adb-*.json')if p.is_file())
+        policy_report=root/'work/profile-host/vpn-default-route-coverage-results.json'
+        if policy_report.is_file():paths.append(policy_report)
         paths=list(dict.fromkeys(paths));total=sum(p.stat().st_size for p in paths)
         if total>24*1024*1024:
             (out/'artifact-size-rejection.json').write_text(json.dumps(dict(status='failed',reason='Full selected raw evidence exceeds24MiB; no truncated evidence promoted',bytes=total,files=[dict(path=str(p.relative_to(root)),bytes=p.stat().st_size)for p in paths]),indent=2)+'\n')
@@ -196,6 +199,7 @@ jobs:
             files.append(dict(path=name.as_posix(),bytes=p.stat().st_size,sha256=hashlib.sha256(p.read_bytes()).hexdigest()))
         source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip();tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
         inputs=['app/build.gradle','app/src/main/java/local/pocketchat/BrowserNetworkGuard.java','app/src/main/java/local/pocketchat/ChatSession.java','app/src/main/java/local/pocketchat/GeckoSettings.java','app/src/main/java/local/pocketchat/GeckoWebView.java','app/src/main/assets/gecko/background.js','tests/gecko/AndroidManifest.xml','tests/gecko/run_network_protection.py','tests/gecko/assets/network-protection.cjs','.github/workflows/network-protection-audit.yml']+[str(p)for p in Path('tests/gecko').glob('NetworkProtection*.java')]
+        inputs+=['app/src/main/java/local/pocketchat/VpnDefaultRouteCoverage.java','tests/profile_vpn_default_route_coverage_test.py','tests/vpn-default-route-host/VpnDefaultRouteCoverageHost.java']
         identity=dict(schema=1,sourceCommit=source,sourceTree=tree,runId=os.environ['GITHUB_RUN_ID'],runAttempt=os.environ['GITHUB_RUN_ATTEMPT'],sourceStatus=subprocess.check_output(['git','status','--porcelain'],text=True),inputs={name:hashlib.sha256(Path(name).read_bytes()).hexdigest()for name in inputs},scope='Diagnostic source and selected original evidence only; no release qualification or leak-free claim',keysOrApksUploaded=False,files=files)
         assert source==os.environ['GITHUB_SHA']and not identity['sourceStatus']
         (out/'source-identity.json').write_text(json.dumps(identity,indent=2)+'\n')
