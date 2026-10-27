@@ -6,6 +6,7 @@ Only a separately supplied native measurement may let the controller align.
 import hashlib,json,os
 from pathlib import Path
 import shutil,subprocess,tempfile,unittest
+from fingerprint_source_compatibility import reading_preservation_bytes
 
 ROOT=Path(__file__).resolve().parents[1]
 PRODUCTION=ROOT/'app/src/main/java/local/pocketchat'
@@ -153,8 +154,16 @@ class ReadingFitCompletionTests(unittest.TestCase):
   self.assertEqual(sha(reading.replace(NEW_RESTORE,OLD_RESTORE,1).encode()),ORIGINAL_READING_SHA)
   policy=(PRODUCTION/'BrowserReadingPolicy.java').read_text();self.assertEqual(policy.count(FITTED),1)
   self.assertEqual(sha(policy.replace(FITTED,'',1).encode()),ORIGINAL_POLICY_SHA)
-  for name,digest in ORIGINAL_PROTECTED.items():self.assertEqual(sha((ROOT/name).read_bytes()),digest)
+  for name,digest in ORIGINAL_PROTECTED.items():
+   raw=(ROOT/name).read_bytes()
+   if name=='app/src/main/java/local/pocketchat/GeckoWebView.java':raw=reading_preservation_bytes(raw)
+   self.assertEqual(sha(raw),digest)
   self.assertEqual((PRODUCTION/'GeckoWebView.java').read_text().count('boolean requiresViewportMeasurement(){return true;}'),1)
+
+ def test_fingerprint_inverse_cannot_hide_a_reading_geometry_change(self):
+  raw=(PRODUCTION/'GeckoWebView.java').read_bytes();needle=b'Math.abs(next-readingLayout)<.001f'
+  self.assertEqual(raw.count(needle),1)
+  with self.assertRaises(ValueError):reading_preservation_bytes(raw.replace(needle,b'Math.abs(next-readingLayout)<.002f',1))
 
  def test_measured_completion_and_failure_controls(self):
   result=execute();self.assertEqual(result.returncode,0,result.stdout+result.stderr);report=json.loads(result.stdout)

@@ -43,6 +43,7 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
     else if("/gecko-template".equals(uri.getPath()))name="gecko-template-results.json";
     else if("/gecko-identity-prototype".equals(uri.getPath()))name="gecko-identity-prototype-results.json";
     else if("/network-protection".equals(uri.getPath()))name="network-protection-results.json";
+    else if("/fingerprint-followups".equals(uri.getPath()))name="fingerprint-followup-results.json";
     else if("/extension-upgrade".equals(uri.getPath()))name="extension-upgrade-results.json";
     else if("/periodic-latency".equals(uri.getPath()))name="periodic-latency-results.json";
     else if("/native-probe".equals(uri.getPath()))name="native-probe-results.json";

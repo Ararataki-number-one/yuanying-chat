@@ -37,12 +37,14 @@ final class FakePrefs {
   String getString(String name,String fallback){return "networkMode".equals(name)?mode:"proxy".equals(name)?proxy:fallback;}
 }
 final class FakeGuard {boolean allowed=true;boolean allowed(){return allowed;}}
-final class FakeAudit {boolean running;JSONObject report=new JSONObject();String policy="policy",route="route";String policyStamp(){return policy;}String routeStamp(){return route;}}
+final class FakeAudit {boolean running,reportCurrent=true;JSONObject report=new JSONObject();String policy="policy",route="route";String policyStamp(){return policy;}String routeStamp(){return route;}boolean observationCurrent(JSONObject ignored){return reportCurrent;}}
 class GeckoSettings {boolean policyAcknowledged=true;String policyError="";JSONObject acceptedBrowserIdentity=new JSONObject();String[] requestedLocales=new String[0],expectedSdkLocales=new String[0];}
 final class FakeSettings extends GeckoSettings {}
 final class FakeWeb {
   long identityPolicyRevision=1;final FakeSettings settings=new FakeSettings();BrowserIdentitySpec configured;
-  boolean identityPrepared;
+  boolean identityPrepared,bootstrapBlocked;
+  boolean protectionBootstrapBlocked(){return bootstrapBlocked;}
+  String protectionSummary(){return bootstrapBlocked?"强化保护失败（未打开页面）":"原生保护设置已确认";}
   FakeSettings getSettings(){return settings;}
   void configureIdentity(BrowserIdentitySpec specification){configured=specification;}
   void identityConfigurationReady(){if(configured==null)throw new AssertionError("Identity gate opened before configuration");identityPrepared=true;}
@@ -56,7 +58,8 @@ final class ChatSession {
   final WorkQueue environmentIo=new WorkQueue("environmentIo"),handler=new WorkQueue("main");
   final FakeGuard guard=new FakeGuard();final FakeAudit audit=new FakeAudit();final FakeWeb web=new FakeWeb();
   final BrowserPrivacy privacy=new BrowserPrivacy();
-  boolean deleted,offline,networkReady=true,identityApplicationPending,deferred,failQueue;
+  boolean deleted,offline,networkReady=true,identityApplicationPending,deferred,failQueue,configurationCapture,busy;
+  int bootstrapApplies;
   int environmentGeneration,queuedLevel,queuedSaves;boolean queuedDesktop;
   long connectionEpoch=1;String environmentSpecIssue="";IdentityTemplateController identity;
   int activityUpdates;boolean paused,tickQueued;
@@ -73,6 +76,7 @@ final class MainActivity {
   android.widget.TextView label(String text,int size,int color){android.widget.TextView view=new android.widget.TextView(this);view.setText(text);return view;}
 }
 final class GeckoWebView {static final String VERSION="GeckoView host-controller-fixture";}
+final class ProfileUi {static boolean working(ChatSession session){return session.busy;}}
 final class NativeNetwork {
   static final class ExitRouteReceipt {}
   ExitRouteReceipt verifiedRoute=new ExitRouteReceipt();
@@ -87,6 +91,7 @@ final class DeferredBrowserSettings {
   static boolean pending(ChatSession session){return session.deferred;}
   static JSONObject desired(ChatSession session){return J.obj("privacyLevel",session.deferred?session.queuedLevel:session.privacy.level(),"desktopSite",session.deferred?session.queuedDesktop:session.privacy.wantsDesktop());}
   static boolean save(ChatSession session,int level,boolean desktop){if(session.failQueue)return false;session.deferred=true;session.queuedLevel=level;session.queuedDesktop=desktop;session.queuedSaves++;return true;}
+  static void apply(ChatSession session){if(!session.deferred)throw new AssertionError("No durable desired queue");session.bootstrapApplies++;session.privacy.protection=session.queuedLevel;session.privacy.desktop=session.queuedDesktop;session.deferred=false;session.identityApplicationPending=false;}
 }
 final class EnvironmentSpecRepository {
   static EnvironmentSpec value;static int appliedWrites,observedWrites;
@@ -128,7 +133,7 @@ final class Ui {static final int INK=0,MUTED=1;}
 final class DesignUi {static Object spinnerAdapter(MainActivity activity,String[] labels){return labels;}static void action(android.widget.LinearLayout box,String label,boolean primary,Runnable run){android.widget.Button button=new android.widget.Button(null);button.setText(label);button.setOnClickListener(view->run.run());box.addView(button);}}
 /** Constants for the UI's evidence-state comparison only. Production AuditReport
  * validation has its own real-model suite; this double never builds a report. */
-final class AuditReport {static final String VERIFIED="verified",ISSUE="issue",UNCOVERED="uncovered";}
+final class AuditReport {static final String VERIFIED="verified",ISSUE="issue",UNCOVERED="uncovered",AVAILABLE="available",RESTRICTED="restricted",FAILED="failed";}
 final class EnvironmentAuditUi {static void show(MainActivity activity){}}
 final class GeckoPolicyAdapter {static String summary(){return "host policy summary";}}
 final class NativeCapabilityManifest {static NativeCapabilityManifest officialGecko(){return new NativeCapabilityManifest();}String unsupportedSummary(){return "host capability summary";}}

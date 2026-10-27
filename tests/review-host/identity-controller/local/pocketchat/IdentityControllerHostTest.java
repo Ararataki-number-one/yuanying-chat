@@ -216,7 +216,44 @@ public final class IdentityControllerHostTest {
     check(!session.paused&&session.tickQueued&&session.activityUpdates==1,"override mirror wakes the retained background environment");
     check(EnvironmentSpecRepository.value.appliedRevision==applied.appliedRevision,"override mirror cannot invent a newer applied policy");
   }
+  static ChatSession failedStrictBootstrap(){
+    ChatSession session=fixture();session.privacy.protection=2;session.web.bootstrapBlocked=true;session.web.settings.policyAcknowledged=false;
+    EnvironmentSpec prior=EnvironmentSpecRepository.value;
+    EnvironmentSpecRepository.value=EnvironmentSpec.initial(prior.identity,new EnvironmentSpec.Configuration(BrowserIdentitySpec.preset(BrowserIdentitySpec.RFP).json(),prior.desired().network));
+    session.identity.cached=EnvironmentSpecRepository.value;return session;
+  }
+  static void explicitBootstrapRecovery(){
+    ChatSession session=failedStrictBootstrap();MainActivity activity=new MainActivity(session);
+    session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.MOBILE),issue->{});settle(session);
+    check(session.bootstrapApplies==1&&session.queuedSaves==1&&!session.deferred&&session.privacy.level()==1,"explicit standard selection recovers an unopened failed strict bootstrap only after queue persistence");
+    check(EnvironmentSpecRepository.value.desired().browser().optString("templateId").equals(BrowserIdentitySpec.MOBILE)&&EnvironmentSpecRepository.appliedWrites==0,"bootstrap recovery preserves desired/applied separation until actual native acknowledgement");
+    session=failedStrictBootstrap();session.web.bootstrapBlocked=false;activity=new MainActivity(session);
+    session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.MOBILE),issue->{});settle(session);
+    check(session.bootstrapApplies==0&&session.deferred,"existing or unknown browser does not bypass ordinary safe idle after explicit standard save");
+    session=failedStrictBootstrap();session.busy=true;activity=new MainActivity(session);
+    session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.MOBILE),issue->{});settle(session);
+    check(session.bootstrapApplies==0&&session.deferred&&session.privacy.level()==2,"real work keeps a saved weaker bootstrap selection queued");
+    session=failedStrictBootstrap();session.configurationCapture=true;activity=new MainActivity(session);
+    session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.MOBILE),issue->{});settle(session);
+    check(session.bootstrapApplies==0&&session.deferred,"active configuration capture cannot be interrupted by bootstrap recovery");
+    session=failedStrictBootstrap();activity=new MainActivity(session);
+    session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.RFP_DESKTOP),issue->{});settle(session);
+    check(session.bootstrapApplies==0&&session.deferred&&session.queuedLevel==2,"another strict template never causes an implicit downgrade or bootstrap bypass");
+    session=failedStrictBootstrap();session.failQueue=true;activity=new MainActivity(session);
+    session.identity.apply(activity,BrowserIdentitySpec.preset(BrowserIdentitySpec.MOBILE),issue->{});settle(session);
+    check(session.bootstrapApplies==0&&session.privacy.level()==2&&session.identity.queueUnavailable,"failed durable queue write cannot execute the weaker bootstrap selection");
+  }
+  static void auditSummaryUsesCurrentObservationContext()throws Exception{
+    ChatSession session=acknowledgedFixture();EnvironmentSpec spec=EnvironmentSpecRepository.value;
+    session.audit.report=J.obj("at",1,"fresh",true,"policy",session.audit.policyStamp(),"identityAppliedRevision",spec.appliedRevision,"network",false,"rows",new org.json.JSONArray().put(J.obj("key","ua","state","verified")));
+    java.lang.reflect.Method summary=FingerprintTemplateUi.class.getDeclaredMethod("auditSummary",ChatSession.class,EnvironmentSpec.class);summary.setAccessible(true);
+    check(((String)summary.invoke(null,session,spec)).startsWith("已采集"),"current observation context can summarize separately verified collected fields");
+    session.audit.reportCurrent=false;
+    check(((String)summary.invoke(null,session,spec)).contains("历史结果")&&session.audit.report.optBoolean("fresh"),"same-policy report from an older connection or execution is historical without rewriting its original fresh fact");
+  }
   public static void main(String[] arguments)throws Exception{
+    explicitBootstrapRecovery();
+    auditSummaryUsesCurrentObservationContext();
     controlledFixtureDesiredConfiguration();explicitFailedOverrideMirrorsAndWakes();failedQueueDoesNotApplyOlderIntent();reusedIdentityAndReceiptFences();finishedActivityPublishesAndWakes(false);finishedActivityPublishesAndWakes(true);unchangedTemplateRequiresActualAcknowledgement();templateDialogKeepsLatestLanguage();staleEditorCompletion();newerEditBeforeMainCallback();legacyAndSessionSupersession();pendingStartupPolicy();interruptedDesiredPersistence();startupConfigurationGate();failedQueueRestoration();acknowledgements();observations();
     staleFixtureNetworkRequiresReconciliation();
     System.out.println(J.obj("schema",1,"status","passed","passed",checks,"total",checks,"checks",assertions,"actualAndroidExecution",false,"scope","Production IdentityTemplateController and FingerprintTemplateUi/model with queued UI/widgets/binder/persistence doubles; no Android, Gecko, Keystore or real draft capture").toString());

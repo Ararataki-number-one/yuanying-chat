@@ -73,6 +73,13 @@ final class IdentityTemplateController {
           // desired snapshot before Activity teardown can stop the editor path.
           cached=spec;queueUnavailable=false;session.environmentSpecIssue="";session.identityApplicationPending=true;
           session.updateBrowserActivity();
+          // A failed strict bootstrap has never opened a document or restored
+          // its checkpoint. Only an explicit, durably saved weaker selection
+          // may drain here; existing/unknown pages keep the ordinary idle gate.
+          if(specification.protectionLevel()<2&&session.web.protectionBootstrapBlocked()
+              &&!ProfileUi.working(session)&&!session.configurationCapture){
+            DeferredBrowserSettings.apply(session);
+          }
           // The existing deferred flow owns draft capture and safe application.
           // A template never rewrites the profile name, preferences or editor
           // draft, nor reads the SQLite catalogue on its UI completion path.

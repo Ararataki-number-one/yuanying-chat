@@ -46,11 +46,11 @@ final class ChatSession {
     @Override public void onScaleChanged(WebView v,float oldScale,float newScale){reading.scaled(newScale);}
     @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r){return guard.intercept(r.getUrl());}
     @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){if(!guard.allowed()||!BrowserNetworkGuard.publicHttps(r.getUrl())){setStatus("连接尚未受保护，或地址属于不安全的网络");return true;}return false;}
-    @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){reading.started(url);webObserver.suspendUnconfirmed("网页发生重新加载，原发送结果需要核对");pageError="";googleLoginBlocked=false;if(navigating&&targetMatches(url)){documentNavigationSeen=true;spaTransition=false;awaitNewDocument=!priorDocumentId.isEmpty();trace.mode="网页加载";}if(!navigating)beginNavigation(url,"正在加载对话…");}
-    @Override public void onPageCommitVisible(WebView v,String url){reading.visible(url);if(navigating&&targetMatches(url)){if(firstPageVisible==0)firstPageVisible=SystemClock.elapsedRealtime();trace.visible=SystemClock.elapsedRealtime();webObserver.pageReady();wakePolling();}}
-    @Override public void onPageFinished(WebView v,String url){if(!url.equals(web.getUrl()))return;reading.visible(url);webObserver.pageReady();if(LoginPagePolicy.login(url)){if(pageError.isEmpty()){awaitLogin("请在网页中完成登录");if(LoginPagePolicy.google(url))checkGoogleLogin(url);}return;}if(!MainActivity.chatUrl(url))finishNavigation("请在原网页中完成登录",false);if(MainActivity.chatUrl(url)){prefs.edit().putString("url",url).apply();if(targetMatches(url))wakePolling();}}
-    @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){if(r.isForMainFrame()){pageError="连接失败，请检查应用专用网络";finishNavigation(pageError);}}
-    @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse r2){if(r.isForMainFrame()&&r2.getStatusCode()>=400){if(LoginPagePolicy.login(r.getUrl().toString())&&r2.getStatusCode()<500){awaitLogin("登录未完成，请查看网页登录提示");return;}pageError="网站返回 HTTP "+r2.getStatusCode()+"，请检查网络或登录状态";finishNavigation(pageError,r2.getStatusCode()>=500);}}
+    @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){reading.started(url);if(audit!=null&&audit.identityPageStarted(url))return;webObserver.suspendUnconfirmed("网页发生重新加载，原发送结果需要核对");pageError="";googleLoginBlocked=false;if(navigating&&targetMatches(url)){documentNavigationSeen=true;spaTransition=false;awaitNewDocument=!priorDocumentId.isEmpty();trace.mode="网页加载";}if(!navigating)beginNavigation(url,"正在加载对话…");}
+    @Override public void onPageCommitVisible(WebView v,String url){reading.visible(url);if(audit!=null&&audit.requestIdentityPageSelected())return;if(navigating&&targetMatches(url)){if(firstPageVisible==0)firstPageVisible=SystemClock.elapsedRealtime();trace.visible=SystemClock.elapsedRealtime();webObserver.pageReady();wakePolling();}}
+    @Override public void onPageFinished(WebView v,String url){if(!url.equals(web.getUrl()))return;reading.visible(url);if(audit!=null&&(audit.identityPageFinished(url)||audit.requestIdentityPageSelected()))return;webObserver.pageReady();if(LoginPagePolicy.login(url)){if(pageError.isEmpty()){awaitLogin("请在网页中完成登录");if(LoginPagePolicy.google(url))checkGoogleLogin(url);}return;}if(!MainActivity.chatUrl(url))finishNavigation("请在原网页中完成登录",false);if(MainActivity.chatUrl(url)){prefs.edit().putString("url",url).apply();if(targetMatches(url))wakePolling();}}
+    @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){if(r.isForMainFrame()){if(audit!=null&&audit.identityPageFailed(r.getUrl().toString(),"检测服务连接未完成；没有取得可核对的身份结果"))return;pageError="连接失败，请检查应用专用网络";finishNavigation(pageError);}}
+    @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse r2){if(r.isForMainFrame()&&r2.getStatusCode()>=400){if(audit!=null&&audit.identityPageFailed(r.getUrl().toString(),"检测服务返回 HTTP "+r2.getStatusCode()+"；未作为线路故障或身份一致"))return;if(LoginPagePolicy.login(r.getUrl().toString())&&r2.getStatusCode()<500){awaitLogin("登录未完成，请查看网页登录提示");return;}pageError="网站返回 HTTP "+r2.getStatusCode()+"，请检查网络或登录状态";finishNavigation(pageError,r2.getStatusCode()>=500);}}
   };}
   void awaitLogin(String message){navigating=false;navigationFailed=false;pageError="";if(pageMayReportConnected()){connectionStage="等待登录";setStatus(message);}else changed();}
   void checkGoogleLogin(String url){final long epoch=navigationEpoch;web.evaluateJavascript(LoginPagePolicy.blockedScript(),raw->{
@@ -104,7 +104,7 @@ final class ChatSession {
       public void onCapabilitiesChanged(android.net.Network n,android.net.NetworkCapabilities c){browserDefaultNetwork.capabilities(n.toString(),c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET),c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN));queue();}
     });
   }catch(Exception ignored){browserDefaultNetwork.unknown();}}
-  void invalidateConnection(){resetReplyStability();if(pageUsableAt>0)pageMemory.capture(()->{});connectionEpoch++;navigationEpoch++;recoveryToken++;recoveryScheduled=false;connecting=false;networkReady=false;web.stopLoading();guard.setBlocked(true);finishResourceInspection();}
+  void invalidateConnection(){if(audit!=null&&audit.requestIdentityPageSelected())audit.cancel();resetReplyStability();if(pageUsableAt>0)pageMemory.capture(()->{});connectionEpoch++;navigationEpoch++;recoveryToken++;recoveryScheduled=false;connecting=false;networkReady=false;web.stopLoading();guard.setBlocked(true);finishResourceInspection();}
   void connectivity(boolean available){boolean was=offline;offline=!available;if(offline){if(networkReady)ChatService.networkLost(context);invalidateConnection();navigating=false;navigationFailed=true;showingCache=entries.length()>0;connectionStage="手机网络不可用";networkIssue="当前离线 · 联网后继续核对网页状态";setStatus(networkIssue);}else if(was){manualAttention=false;recoveryAttempt=0;networkIssue="手机网络已恢复";scheduleRecovery();}}
   void networkChanged(){invalidateConnection();manualAttention=false;recoveryAttempt=0;networkIssue="手机网络已切换，正在重新核对连接";scheduleRecovery();}
   static long retryDelay(int attempt){long[] delays={1000,2000,5000,10000,20000};return delays[Math.min(Math.max(attempt,0),delays.length-1)];}
@@ -296,6 +296,12 @@ final class ChatSession {
   String networkIdentity(){try{if(internalNetwork()){NativeNetwork n=NativeNetwork.get(context);return "internal:"+n.fingerprint+":"+NativeNetwork.hash(n.settings==null?"":n.settings.optString("subscriptionUrl"));}return "external:"+prefs.getString("proxy","");}catch(Exception e){return "";}}
   void applyProxy(String proxy,long epoch){if(guard.requiresVpn()&&!guard.vpnActive()){connectionFailed(epoch,"手机 VPN 未连接，已暂停网页联网；连接 VPN 后，点击“重新加载”。",false);connectionStage="等待手机 VPN";return;}String identity=networkIdentity();boolean keep=keepPageCandidate&&!appliedIdentity.isEmpty()&&appliedIdentity.equals(identity);Runnable done=()->{
     if(epoch!=connectionEpoch||offline)return;if(!guard.routeProtected()){connectionFailed(epoch,guard.requiresVpn()?guard.vpnProtectionFailureMessage():"受保护连接已中断，网页联网已暂停",false);return;}connecting=false;networkReady=true;manualAttention=false;recoveryAttempt=0;recoveryScheduled=false;recoveryToken++;networkIssue="";proxyReadyAt=SystemClock.elapsedRealtime();trace.network(internalNetwork()?NativeNetwork.get(context):null);appliedIdentity=identity;connectionStage="正在核对网页";guard.setBlocked(false);identityPolicyAcknowledged();audit.refresh(true);
+      // Network recovery must not replace a diagnostic page the user still
+      // selected, nor replay its expired nonce. Returning is a new user action.
+      if(audit.requestIdentityPageSelected()){
+        audit.cancel();navigating=false;navigationFailed=false;pageError="";
+        connectionStage="线路已恢复";setStatus("线路已恢复；本次身份检测已停止，可手动返回原聊天");wakePolling();return;
+      }
       if(keep&&web.hasVisibleDocument()&&resumable(web.getUrl())){
         String retained=web.getUrl();long documentEpoch=navigationEpoch;
         navigating=false;connectionStage="线路已恢复";trace.page("保留现有网页");trace.visible=SystemClock.elapsedRealtime();trace.usable=pageUsableAt>0?trace.visible:0;setStatus(websiteConnectionIssue||!pageError.isEmpty()?"线路已恢复 · 网页仍需恢复，点按查看":"已连接 · 网页已保留");wakePolling();
@@ -354,6 +360,8 @@ final class ChatSession {
     else status="请打开登录页面完成登录";
   }
   void sync(){
+    // A user-selected diagnostic document has its own readiness and result lifecycle.
+    if(audit!=null&&audit.requestIdentityPageSelected())return;
     if(GeckoWebView.active(web)&&web.failed)return;
     if(LoginPagePolicy.login(web.getUrl()))return;
     if(inFlight||navigating&&!navigationDispatched)return;inFlight=true;long lease=++resourceInspectionGeneration;handler.postDelayed(()->{if(inFlight&&resourceInspectionGeneration==lease){syncRun++;finishResourceInspection();}},20000);updateBrowserActivity(false);long epoch=navigationEpoch,run=++syncRun;boolean optimized=webPerformance();

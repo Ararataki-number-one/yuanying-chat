@@ -45,6 +45,29 @@
     for(const group of ['screen','viewport'])if(value[group]&&typeof value[group]==='object'){clean[group]={};for(const key of ['width','height','availWidth','availHeight','depth','pixelRatio','touch'])if(typeof value[group][key]==='number'&&Number.isFinite(value[group][key]))clean[group][key]=value[group][key];}
     return clean;
   };
+  const apiNames=['canvas','audio','fonts','webgl'];
+  const apiLimits={canvasPixels:4096,audioFrames:2048,fontCandidates:5,totalBudgetMs:1200};
+  const missingApiChecks=reason=>({schema:1,requested:true,source:'unavailable',probeVersion:1,status:'partial',durationMs:0,limits:{...apiLimits},probes:Object.fromEntries(apiNames.map(name=>[name,{state:'uncovered',reason}])),protectionVerified:false,coverage:'current-page-main-world-only; frame and Worker API operations not sampled'});
+  const cleanApiChecks=value=>{
+    if(!value||typeof value!=='object'||value.schema!==1||value.probeVersion!==1||value.requested!==true||value.source!=='page-main-world'||!value.probes||typeof value.probes!=='object')return missingApiChecks('page-api-observation-unavailable');
+    const probes={};
+    for(const name of apiNames){
+      const raw=value.probes[name];if(!raw||typeof raw!=='object'||!['available','restricted','failed','uncovered'].includes(raw.state)){probes[name]={state:'uncovered',reason:'invalid-or-missing-probe'};continue;}
+      const clean=probes[name]={state:raw.state,reason:typeof raw.reason==='string'?raw.reason.slice(0,256):'reason-unavailable'};
+      if(raw.hashAlgorithm==='sha256'&&typeof raw.hash==='string'&&/^[0-9a-f]{64}$/.test(raw.hash)){clean.hash=raw.hash;clean.hashAlgorithm='sha256';}
+      if(raw.hashUnavailable===true)clean.hashUnavailable=true;
+      for(const key of ['pixels','frames','sampleRate','peak','candidateCount','maxTextureSize','maxRenderbufferSize','maxVertexAttribs','extensionCount'])if(typeof raw[key]==='number'&&Number.isFinite(raw[key])&&raw[key]>=0&&raw[key]<=1000000)clean[key]=raw[key];
+      for(const key of ['version','shadingLanguageVersion','vendor','renderer','unmaskedRenderer'])if(typeof raw[key]==='string')clean[key]=raw[key].slice(0,256);
+      if(Array.isArray(raw.extensions)&&raw.extensions.length<=7&&raw.extensions.every(item=>typeof item==='string'&&item.length<=128))clean.extensions=raw.extensions.slice();
+      if(name==='fonts'&&Array.isArray(raw.samples)&&raw.samples.length<=5){clean.samples=[];for(const row of raw.samples){if(!row||typeof row.name!=='string'||row.name.length>128||!['monospaceWidth','sansSerifWidth'].every(key=>typeof row[key]==='number'&&Number.isFinite(row[key])&&row[key]>=0&&row[key]<=1000000)||row.faceCheck!==null&&typeof row.faceCheck!=='boolean')continue;clean.samples.push({name:row.name,faceCheck:row.faceCheck,monospaceWidth:row.monospaceWidth,sansSerifWidth:row.sansSerifWidth});}}
+      if(clean.state==='available'){
+        const digest=typeof clean.hash==='string'||clean.hashUnavailable===true;
+        const complete=name==='canvas'?clean.pixels===4096&&digest:name==='audio'?clean.frames===2048&&clean.sampleRate===44100&&typeof clean.peak==='number'&&digest:name==='fonts'?clean.candidateCount===5&&clean.samples?.length===5&&digest:['version','shadingLanguageVersion','vendor','renderer'].every(key=>typeof clean[key]==='string'&&clean[key].length>0)&&['maxTextureSize','maxRenderbufferSize','maxVertexAttribs','extensionCount'].every(key=>typeof clean[key]==='number')&&Array.isArray(clean.extensions)&&digest;
+        if(!complete){clean.state='uncovered';clean.reason='incomplete-available-observation';}
+      }
+    }
+    return {schema:1,requested:true,source:'page-main-world',probeVersion:1,status:apiNames.every(name=>probes[name].state!=='uncovered')?'completed':'partial',durationMs:typeof value.durationMs==='number'&&Number.isFinite(value.durationMs)&&value.durationMs>=0?Math.min(value.durationMs,60000):0,limits:{...apiLimits},probes,protectionVerified:false,coverage:'current-page-main-world-only; frame and Worker API operations not sampled'};
+  };
   const cleanIp=value=>value&&typeof value.ip==='string'?{ip:value.ip.slice(0,128)}:{error:'No verifiable response'};
   const cleanHeaders=value=>{const result={headers:{}};if(value&&value.headers&&typeof value.headers==='object')for(const key of Object.keys(value.headers))if(/^(user-agent|accept-language)$/i.test(key)&&typeof value.headers[key]==='string')result.headers[key]=text(value.headers[key]);return result;};
   const publicSignal=()=>({ua:navigator.userAgent,appVersion:navigator.appVersion,platform:navigator.platform,language:navigator.language,languages:Array.from(navigator.languages||[]),cpu:navigator.hardwareConcurrency??null,memory:navigator.deviceMemory??null,offset:new Date().getTimezoneOffset(),zone:Intl.DateTimeFormat().resolvedOptions().timeZone||''});
@@ -56,11 +79,11 @@
     auditCancel=()=>{cancelled=true;stops.forEach(stop=>stop());window.dispatchEvent(new CustomEvent('pocket-audit-cancel',{detail:nonce}));};
     const mainJob=new Promise(resolve=>{
       let done=false;const script=document.createElement('script');
-      const finish=value=>{if(done)return;done=true;clearTimeout(timer);window.removeEventListener('pocket-audit-observation',receive);script.remove();resolve(value);};
-      const receive=event=>{if(typeof event.detail!=='string'||event.detail.length>60000)return;try{const value=JSON.parse(event.detail);if(value.nonce===nonce)finish({parent:cleanSignal(value.parent),frame:cleanSignal(value.frame),worker:cleanSignal(value.worker),provenance:value.provenance==='page-main-world'?'page-main-world':'',coverage:{frame:'same-origin-srcdoc',worker:'dedicated-blob',crossOriginFrame:false,sharedWorker:false,serviceWorker:false}});}catch{}};
+      const finish=value=>{if(done)return;done=true;clearTimeout(timer);window.removeEventListener('pocket-audit-observation',receive);script.setAttribute('data-pocket-audit','{}');if(value.error)window.dispatchEvent(new CustomEvent('pocket-audit-cancel',{detail:nonce}));script.remove();resolve(value);};
+      const receive=event=>{if(typeof event.detail!=='string'||event.detail.length>60000)return;try{const value=JSON.parse(event.detail);if(value.nonce===nonce)finish({parent:cleanSignal(value.parent),frame:cleanSignal(value.frame),worker:cleanSignal(value.worker),...(cfg.apiChecks===true?{apiChecks:cleanApiChecks(value.apiChecks)}:{}),provenance:value.provenance==='page-main-world'?'page-main-world':'',coverage:{frame:'same-origin-srcdoc',worker:'dedicated-blob',crossOriginFrame:false,sharedWorker:false,serviceWorker:false}});}catch{}};
       const timer=setTimeout(()=>finish({error:'Main-world script unavailable or blocked by CSP'}),4500);
       stops.push(()=>finish({error:'Cancelled'}));window.addEventListener('pocket-audit-observation',receive);
-      script.src=browser.runtime.getURL('main-world-audit.js');script.setAttribute('data-pocket-audit',JSON.stringify({nonce}));
+      script.src=browser.runtime.getURL('main-world-audit.js');script.setAttribute('data-pocket-audit',JSON.stringify({nonce,apiChecks:cfg.apiChecks===true}));
       script.onerror=()=>finish({error:'Main-world script blocked or unavailable'});
       (document.documentElement||document).appendChild(script);
     });
@@ -70,9 +93,11 @@
     };
     // Endpoint allowlist is static. Page events cannot request native evaluation or a URL.
     const networkJob=cfg.network===true?Promise.all([get('https://api.ipify.org/?format=json'),get('https://api6.ipify.org/?format=json'),get('https://httpbin.org/headers')]):Promise.resolve([]);
-    const [main,network]=await Promise.all([mainJob,networkJob]);if(cancelled)return;
+    const identityFailure=reason=>({schema:1,nonce:typeof cfg.requestIdentity?.nonce==='string'?cfg.requestIdentity.nonce.slice(0,128):'',status:'failed',source:'controlled-top-level-document',error:reason});
+    const identityJob=cfg.requestIdentity?Promise.resolve().then(()=>cancelled?identityFailure('cancelled'):typeof globalThis.PocketRequestIdentityAudit?.run==='function'?globalThis.PocketRequestIdentityAudit.run(cfg.requestIdentity,stops):identityFailure('request-identity-helper-unavailable')).catch(()=>identityFailure('request-identity-helper-failed')):Promise.resolve(null);
+    const [main,network,identity]=await Promise.all([mainJob,networkJob,identityJob]);if(cancelled)return;
     const isolated=publicSignal(),available=main.provenance==='page-main-world'&&main.parent&&typeof main.parent.ua==='string';
-    const result={id:cfg.id,parent:available?main.parent:isolated,frame:available?main.frame:{error:'No page-main-world observation'},worker:available?main.worker:{error:'No page-main-world observation'},isolated,provenance:available?'page-main-world':'extension-isolated-world-fallback',mainWorld:{observed:available,error:text(main.error),authenticity:'Page-provided public signals may be forged by the page; not independent attestation'},coverage:available?main.coverage:{crossOriginFrame:false,sharedWorker:false,serviceWorker:false},network:cfg.network===true?{ipv4:cleanIp(network[0]),ipv6:cleanIp(network[1]),headers:cleanHeaders(network[2]),provenance:'gecko-content-fetch'}:{}};
+    const result={id:cfg.id,parent:available?main.parent:isolated,frame:available?main.frame:{error:'No page-main-world observation'},worker:available?main.worker:{error:'No page-main-world observation'},...(cfg.apiChecks===true?{apiChecks:available?main.apiChecks:missingApiChecks('page-main-world-unavailable')}:{}),...(cfg.requestIdentity?{requestIdentity:identity}:{}),isolated,provenance:available?'page-main-world':'extension-isolated-world-fallback',mainWorld:{observed:available,error:text(main.error),authenticity:'Page-provided public signals may be forged by the page; not independent attestation'},coverage:available?main.coverage:{crossOriginFrame:false,sharedWorker:false,serviceWorker:false},network:cfg.network===true?{ipv4:cleanIp(network[0]),ipv6:cleanIp(network[1]),headers:cleanHeaders(network[2]),provenance:'gecko-content-fetch'}:{}};
     const encoded=JSON.stringify(result);if(encoded.length<=64000)port.postMessage({kind:'auditResult',id:message.id,result:encoded});stops.length=0;auditCancel=()=>{};
   };
   window.PocketWebReply = {postMessage: text => {
