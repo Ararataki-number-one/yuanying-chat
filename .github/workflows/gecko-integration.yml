@@ -291,6 +291,11 @@ jobs:
     - name: Verify versioned environment models and authoritative intents
       run: |
         set -euo pipefail
+        mkdir -p work/profile-host
+        curl -fsSL --retry 3 https://repo.maven.apache.org/maven2/org/json/json/20250517/json-20250517.jar -o work/profile-host/json.jar
+        echo '3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796  work/profile-host/json.jar' | sha256sum -c -
+        cp work/gecko-integration/sharing-android-json.jar work/profile-host/android-json.jar
+        echo 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79  work/profile-host/android-json.jar' | sha256sum -c -
         python3 tools/gecko/run_profile_host_checks.py --json-jar work/gecko-integration/catalog-json.jar --network-reports work/gecko-integration
         cp work/profile-host/resource-pressure-host-results.json work/gecko-integration/resource-pressure-host-results.json
         cp work/profile-host/results.json work/gecko-integration/profile-host-results.json
