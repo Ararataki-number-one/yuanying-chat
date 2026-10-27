@@ -1,6 +1,6 @@
 # 2.0.24：保护确认与按需指纹观测
 
-versionCode 77，扩展版本 2.0.24.77。开发候选，尚未正式发布。
+versionCode 77，扩展版本 2.0.24.77。原签名正式安装包见 [v2.0.24-gecko](https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/v2.0.24-gecko)。
 
 - 强化模式区分确认中、已确认与失败。原生设置回读未匹配前阻止新的网页、Worker 与恢复请求；有限重试，拒绝旧回执和旧准备任务。用户可主动保存标准模板，未打开浏览器的失败启动可安全恢复；不自动降级或重发消息。
 - 本机自检新增按需 Canvas、离线音频、有限字体测量与 WebGL 能力检查，分别显示可用、受限、失败或未覆盖。普通自检不执行这些深测；采样有固定操作量与软期限，取消或离页后退役资源。
@@ -21,3 +21,26 @@ versionCode 77，扩展版本 2.0.24.77。开发候选，尚未正式发布。
 验证范围由当前源码的原始测试记录确定。主机模型或 Chromium 检查不能代替 Android／Gecko；受控 Android 检测也不代表 ChatGPT 官网、真实手机、完整 DNS、IPv6、Shared Worker 或 Service Worker 验收。正式发布仍需完整同源码发布检查、原签名与公开 APK／更新入口验证。
 
 同手机的标准／强化效果对照仍需真实设备完成。操作步骤见[检测服务说明中的手机验收](../tools/fingerprint/README.md#同手机标准与强化模式对照)。确认设置成功、接口可用、输出不同分别记录，不能合并成全部保护有效的结论。
+
+
+## 本次发布验证
+
+正式安装包源码为 `092ffbbaf79badb00b418fa7987c8b2d4ad44ade`。完整构建 [40520798493](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40520798493) 的五个 Android 阶段、三份独立输入样本与全部十项原发布检查通过；同源码指纹专项 [40514997310](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40514997310) 的99项检查、14个场景通过。
+
+发布流程 [40528218502](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40528218502) 全部成功。已独立匿名下载完整APK，核对原F0签名、包名、版本77、ARM64、测试组件排除、标签与更新入口；APK的SHA256为 `01d00c1071b7760f05de60a4407047954869e3eb51f7b284646454cf88ff2e37`。真实手机、官网与实际提速仍未验收。
+
+<details>
+<summary>构建验收中发现的问题与范围</summary>
+
+本轮保留了三次不合格的完整构建记录，没有将其用于发布资格：
+
+- [40499363673](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40499363673)：受控冷连接对照为159／187 ms，未通过原验收；原因尚未定位。
+- [40505423347](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40505423347)：相同源码与原测量条件下，该对照为114／72 ms，但整轮仍因原生ADB返回路由准备失败，以及另一独立样本中真实Wi-Fi断开使手工恢复前置条件不成立而失败。
+
+前两轮之后仅修正测试助手的源地址作用域路由查询，并增加失败时的快照诊断；生产应用、冷连接计时、请求条件、延迟输入和原验收判断没有因此改动。新查询没有在旧虚拟机上执行，不能倒推旧虚拟机会通过。这些受控数字不是手机实际提速结果，也不说明此前波动的根因已经修复。
+
+- [40514963737](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40514963737)：五个Android功能阶段及已执行的输入工作负载通过，受控网络对照161／68 ms；另一份独立样本在启动器第一条只读检查中出现ADB `error: closed`，尚未进入原输入工作负载，整轮仍未通过。此前既定的清除测试应用等准备操作已经执行；故障关闭发生在哪一层尚未确定。没有据此修改应用、增加等待或放宽门禁。
+
+仅在确认上述设备通道故障是唯一原始失败后，预先声明了一次全新、同源码、同条件的完整验收。当前发布必须以[本次完整构建40520798493](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40520798493)及[同源码指纹专项40514997310](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40514997310)的最终实际结论为准；不拼接此前运行的通过项。本轮完整流程的11个任务均成功，三份独立输入样本与全部十项原发布检查通过；受控网络对照为149／53 ms，仍不代表手机公网速度或此前波动的根因已经解决。
+
+</details>
