@@ -1,0 +1,320 @@
+{
+  "schema": 1,
+  "actualPlatformMemoryObservation": false,
+  "synthetic": true,
+  "total": 58,
+  "checks": [
+    {
+      "pass": true,
+      "name": "Read requests the actual typed ActivityManager service"
+    },
+    {
+      "pass": true,
+      "name": "Read calls getMemoryInfo with a destination exactly once"
+    },
+    {
+      "pass": true,
+      "name": "Read preserves the platform lowMemory flag"
+    },
+    {
+      "pass": true,
+      "name": "Read preserves availMem in bytes"
+    },
+    {
+      "pass": true,
+      "name": "Read preserves totalMem in bytes"
+    },
+    {
+      "pass": true,
+      "name": "Read preserves the platform threshold in bytes"
+    },
+    {
+      "pass": true,
+      "name": "Read records the platform source and monotonic observation time"
+    },
+    {
+      "pass": true,
+      "name": "The freshly read valid sample is usable"
+    },
+    {
+      "pass": true,
+      "name": "Admission does not invent low memory from available bytes below threshold"
+    },
+    {
+      "pass": true,
+      "name": "Admission honors platform lowMemory even above the threshold"
+    },
+    {
+      "pass": true,
+      "name": "Each API read uses a newly allocated MemoryInfo destination"
+    },
+    {
+      "pass": true,
+      "name": "Missing ActivityManager returns explicit unknown fields"
+    },
+    {
+      "pass": true,
+      "name": "getMemoryInfo failure returns unknown rather than fake zero capacity"
+    },
+    {
+      "pass": true,
+      "name": "Service lookup failure returns unknown without querying memory"
+    },
+    {
+      "pass": true,
+      "name": "Unavailable context returns unknown without throwing"
+    },
+    {
+      "pass": true,
+      "name": "Negative available bytes from the platform are unknown"
+    },
+    {
+      "pass": true,
+      "name": "Zero total bytes from the platform are unknown"
+    },
+    {
+      "pass": true,
+      "name": "Negative total bytes from the platform are unknown"
+    },
+    {
+      "pass": true,
+      "name": "Available bytes greater than total bytes are unknown"
+    },
+    {
+      "pass": true,
+      "name": "Negative platform threshold is unknown"
+    },
+    {
+      "pass": true,
+      "name": "Negative observation clock cannot become a known measurement"
+    },
+    {
+      "pass": true,
+      "name": "Zero available bytes remain valid platform evidence"
+    },
+    {
+      "pass": true,
+      "name": "Cold runtime creation defers for fresh known platform low memory"
+    },
+    {
+      "pass": true,
+      "name": "An existing runtime remains admitted during low memory"
+    },
+    {
+      "pass": true,
+      "name": "Restoring a genuine task remains admitted during low memory"
+    },
+    {
+      "pass": true,
+      "name": "Existing runtime takes priority over the recovery classification"
+    },
+    {
+      "pass": true,
+      "name": "Known clear memory permits cold runtime creation"
+    },
+    {
+      "pass": true,
+      "name": "Unknown memory preserves explicit runtime admission"
+    },
+    {
+      "pass": true,
+      "name": "Missing sample preserves explicit runtime admission"
+    },
+    {
+      "pass": true,
+      "name": "A sample is fresh through the exact freshness deadline"
+    },
+    {
+      "pass": true,
+      "name": "Freshness expires one millisecond after the deadline"
+    },
+    {
+      "pass": true,
+      "name": "Stale low memory does not indefinitely defer explicit creation"
+    },
+    {
+      "pass": true,
+      "name": "Clock rollback invalidates an otherwise valid sample"
+    },
+    {
+      "pass": true,
+      "name": "Clock rollback cannot manufacture a low memory deferral"
+    },
+    {
+      "pass": true,
+      "name": "Unknown fields cannot become fresh merely by age"
+    },
+    {
+      "pass": true,
+      "name": "An invalid direct sample cannot block explicit admission"
+    },
+    {
+      "pass": true,
+      "name": "Existing runtime remains admitted with unknown or missing memory"
+    },
+    {
+      "pass": true,
+      "name": "Genuine recovery remains admitted with stale or invalid memory"
+    },
+    {
+      "pass": true,
+      "name": "Automatic warmup requires fresh clear platform evidence"
+    },
+    {
+      "pass": true,
+      "name": "Automatic warmup is disabled during known low memory"
+    },
+    {
+      "pass": true,
+      "name": "Automatic warmup is disabled when memory is unknown"
+    },
+    {
+      "pass": true,
+      "name": "Automatic warmup is disabled when the sample is missing"
+    },
+    {
+      "pass": true,
+      "name": "Automatic warmup is disabled after a clear sample expires"
+    },
+    {
+      "pass": true,
+      "name": "Automatic warmup is disabled after clock rollback"
+    },
+    {
+      "pass": true,
+      "name": "Automatic warmup remains allowed at the exact freshness deadline"
+    },
+    {
+      "pass": true,
+      "name": "Automatic warmup rejects malformed clear memory"
+    },
+    {
+      "pass": true,
+      "name": "A new controller does not claim samples attempts or runtime creation"
+    },
+    {
+      "pass": true,
+      "name": "Sampling records one API observation and the exact returned sample"
+    },
+    {
+      "pass": true,
+      "name": "Unavailable sampling is counted without inventing a known observation"
+    },
+    {
+      "pass": true,
+      "name": "Request uses the supplied sample without an extra API read"
+    },
+    {
+      "pass": true,
+      "name": "Deferred requests count attempts and deferrals without creation"
+    },
+    {
+      "pass": true,
+      "name": "Repeated deferred requests remain requests rather than live runtimes"
+    },
+    {
+      "pass": true,
+      "name": "Existing runtime requests do not count as new deferrals"
+    },
+    {
+      "pass": true,
+      "name": "Recovery requests do not count as new deferrals"
+    },
+    {
+      "pass": true,
+      "name": "Unknown explicit admission is distinct from a completed runtime creation"
+    },
+    {
+      "pass": true,
+      "name": "Only the explicit creation acknowledgement increments created"
+    },
+    {
+      "pass": true,
+      "name": "Counter requests use the current monotonic time for freshness"
+    },
+    {
+      "pass": true,
+      "name": "Warmup advice cannot inflate runtime or sample counters"
+    }
+  ],
+  "actualAndroidExecution": false,
+  "scope": "Production ResourcePressureController on JVM with explicit Android API and fault doubles; no device capacity, Gecko runtime or Android execution",
+  "executed": 58,
+  "capacityAcceptance": false,
+  "passed": 58,
+  "error": "",
+  "status": "passed",
+  "sourceCommit": "092ffbbaf79badb00b418fa7987c8b2d4ad44ade",
+  "sourceTree": "52acdcb648a81ba2fa1d45f9af9f486439565b48",
+  "sourceDirty": false,
+  "files": {
+    "app/src/main/java/local/pocketchat/ResourcePressureController.java": "5b6b14d91cd8f10a3267ff7e85dd1f90a78779edf6f65bc0443dab5396e879e5",
+    "tests/resource-pressure-host/android/app/ActivityManager.java": "6d4bed3cece5aeae981685ed559997cd97a300f3dea12b0ea35d53769032193a",
+    "tests/resource-pressure-host/android/content/Context.java": "057ebc17b683c6c34bb062e08ac1712d90bcfcc549c4f5c2e540f5dc9738d571",
+    "tests/resource-pressure-host/android/os/SystemClock.java": "20e5a59c7748804b758470d389600090be453e72ebe2ae621a044d10fba97414",
+    "tests/resource-pressure-host/local/pocketchat/ResourcePressureHostTest.java": "cfb89b7fba5fb305282114ac4df373aaeed97d454231af9ec5619b86df10dfaf",
+    "tools/gecko/run_resource_host_checks.py": "0a9a820f6fce50624b5bda0d09608aecec0a54d4665a2798e556b86a47c3e4fb"
+  },
+  "jsonJarSha256": "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed",
+  "expectedCheckNames": [
+    "Read requests the actual typed ActivityManager service",
+    "Read calls getMemoryInfo with a destination exactly once",
+    "Read preserves the platform lowMemory flag",
+    "Read preserves availMem in bytes",
+    "Read preserves totalMem in bytes",
+    "Read preserves the platform threshold in bytes",
+    "Read records the platform source and monotonic observation time",
+    "The freshly read valid sample is usable",
+    "Admission does not invent low memory from available bytes below threshold",
+    "Admission honors platform lowMemory even above the threshold",
+    "Each API read uses a newly allocated MemoryInfo destination",
+    "Missing ActivityManager returns explicit unknown fields",
+    "getMemoryInfo failure returns unknown rather than fake zero capacity",
+    "Service lookup failure returns unknown without querying memory",
+    "Unavailable context returns unknown without throwing",
+    "Negative available bytes from the platform are unknown",
+    "Zero total bytes from the platform are unknown",
+    "Negative total bytes from the platform are unknown",
+    "Available bytes greater than total bytes are unknown",
+    "Negative platform threshold is unknown",
+    "Negative observation clock cannot become a known measurement",
+    "Zero available bytes remain valid platform evidence",
+    "Cold runtime creation defers for fresh known platform low memory",
+    "An existing runtime remains admitted during low memory",
+    "Restoring a genuine task remains admitted during low memory",
+    "Existing runtime takes priority over the recovery classification",
+    "Known clear memory permits cold runtime creation",
+    "Unknown memory preserves explicit runtime admission",
+    "Missing sample preserves explicit runtime admission",
+    "A sample is fresh through the exact freshness deadline",
+    "Freshness expires one millisecond after the deadline",
+    "Stale low memory does not indefinitely defer explicit creation",
+    "Clock rollback invalidates an otherwise valid sample",
+    "Clock rollback cannot manufacture a low memory deferral",
+    "Unknown fields cannot become fresh merely by age",
+    "An invalid direct sample cannot block explicit admission",
+    "Existing runtime remains admitted with unknown or missing memory",
+    "Genuine recovery remains admitted with stale or invalid memory",
+    "Automatic warmup requires fresh clear platform evidence",
+    "Automatic warmup is disabled during known low memory",
+    "Automatic warmup is disabled when memory is unknown",
+    "Automatic warmup is disabled when the sample is missing",
+    "Automatic warmup is disabled after a clear sample expires",
+    "Automatic warmup is disabled after clock rollback",
+    "Automatic warmup remains allowed at the exact freshness deadline",
+    "Automatic warmup rejects malformed clear memory",
+    "A new controller does not claim samples attempts or runtime creation",
+    "Sampling records one API observation and the exact returned sample",
+    "Unavailable sampling is counted without inventing a known observation",
+    "Request uses the supplied sample without an extra API read",
+    "Deferred requests count attempts and deferrals without creation",
+    "Repeated deferred requests remain requests rather than live runtimes",
+    "Existing runtime requests do not count as new deferrals",
+    "Recovery requests do not count as new deferrals",
+    "Unknown explicit admission is distinct from a completed runtime creation",
+    "Only the explicit creation acknowledgement increments created",
+    "Counter requests use the current monotonic time for freshness",
+    "Warmup advice cannot inflate runtime or sample counters"
+  ],
+  "sourceUnchangedDuringChecks": true
+}
