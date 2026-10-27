@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.22",
-  "versionCode": 75,
+  "version": "2.0.23",
+  "versionCode": 76,
   "abi": "arm64-v8a",
   "minSdk": 26,
-  "bytes": 119217656,
-  "sha256": "a7b53348ea2ea110c821011cf47d508723a45dddce4705fff5fd842514aa7713",
+  "bytes": 119221752,
+  "sha256": "9430e226a845c66c7e47245b8b94845e37884922d1006a3bc1463fd73adcdd15",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.22-gecko/PocketChat-2.0.22-gecko-arm64.apk",
-  "notes": "# 2.0.22：聊天网页配色兼容与历史加载优化\n\nversionCode 75，基于已发布的 2.0.21。保持现有布局、单 GeckoView、ChatGPT 原网页、登录与草稿、独立环境及固定出口。\n\n- 网页配色同时适配站点现有的主题属性和偏好变更通知。根页面仍实际保持相反配色时，增加有限的颜色兼容样式；不重载网页，不替换输入框，不反色图片或代码。\n- 修正正常深层聊天节点被误判不可见的问题。配色确认同时检查背景方向与文字对比度；图片、渐变或祖先滤镜使颜色无法确定时，保留未确认状态。重复选择同一模式保持已启用的兼容配色。\n- 历史消息在同一批变更中加入时，对重叠的有效子树只遍历一次，减少重复工作。保留原缓存失效、消息身份、完成采集和延期任务的所有权检查。\n\n固定输入的七次 A-B-A 主机对照中，遍历从 37 次减少为 1 次；该结果不等同于手机帧率或真实官网提速。真实设备的配色和长聊天流畅度仍需验证。\n\n前版修复与后续测量范围见 [体验修复记录](https://github.com/Ararataki-number-one/yuanying-chat/blob/031f6fd4ecde76f730759061a4dcb41370c259cc/docs/EXPERIENCE-RELIABILITY-20261026.md)。\n\n本次同源码的必需受控 Android 发布检查已通过。",
-  "sourceCommit": "031f6fd4ecde76f730759061a4dcb41370c259cc"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.23-gecko/PocketChat-2.0.23-gecko-arm64.apk",
+  "notes": "# 2.0.23：外部 VPN 路由覆盖准入\n\nversionCode 76，基于已发布的 2.0.22，包含上一轮已完成的网络保护最小补丁。\n\n- 外部网络未设置显式代理且要求 VPN 时，新的网页与 Worker 请求需确认当前 VPN 的 IPv4、IPv6 默认单播路由。缺少路由、存在排除路由、接口不一致或当前网络变化时，保守阻止新请求。\n- 无法确认覆盖时说明原因，提供检查 VPN、使用应用内线路或显式代理的方向。不会自动降级保护或重发聊天。内置固定出口与显式代理沿用原逻辑。\n\n兼容收紧：Android 8–12L 无法通过当前公开 API 确认完整路由，受保护外部 VPN 模式将拒绝新请求；仅 IPv4 且阻断 IPv6、以及使用 /1 分割默认路由的配置也可能被保守拒绝。这不表示这些配置已经泄漏。\n\n同组受控 Android／Gecko 对照已确认分流遗漏目标的新请求准入缺口被关闭。该结论不代表整体防泄漏或手机验收；已获准的在途请求、真实切网、完整 DNS、公网 IPv6、Shared Worker 与 Service Worker 仍有未验证边界。新增路由检查的手机耗时和功耗未测。\n\n详见[网络保护专项记录](https://github.com/Ararataki-number-one/yuanying-chat/blob/v2.0.23-gecko/docs/NETWORK-PROTECTION-20261027.md)；前版修复见[体验修复记录](https://github.com/Ararataki-number-one/yuanying-chat/blob/2915e250bc24a94aab409430d059efdb190e2493/docs/EXPERIENCE-RELIABILITY-20261026.md)。\n\n本次同源码的必需受控 Android 发布检查已通过。",
+  "sourceCommit": "2915e250bc24a94aab409430d059efdb190e2493"
 }
