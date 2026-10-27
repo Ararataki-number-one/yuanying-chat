@@ -84,7 +84,7 @@ public final class ChromeNetworkStateHost {
 }
 
 class DesignChrome {
-  final MainActivity a;TextView title,compactTitle;final View compact=new View();String profileName;JSONObject profileRow=new JSONObject();boolean queued,metadataPending;long metadataAt;int renders;WindowNetworkState last;
+  final MainActivity a;TextView title,compactTitle;final View compact=new View(),diagnosticRow=new View(),diagnosticResults=new View();String profileName;JSONObject profileRow=new JSONObject();boolean queued,metadataPending;long metadataAt;int renders;WindowNetworkState last;
   static final TaskQueue metadataReader=new TaskQueue();final Runnable render=this::renderLatest;
   DesignChrome(MainActivity a){this.a=a;/* INITIAL_METADATA */}
   void showNetwork(WindowNetworkState state){last=state;renders++;}
@@ -97,9 +97,11 @@ class WindowNetworkState {
   /* STATE_MAINLINE */
   static JSONObject live(Object session,NativeNetwork n){return n.owner.runtime;}
 }
-class MainActivity extends Context{boolean destroyed;Object session=new Object();JSONObject runtime;TaskQueue handler=new TaskQueue();}
+class MainActivity extends Context{boolean destroyed;final Session session=new Session();JSONObject runtime;TaskQueue handler=new TaskQueue();}
+class Session{final AuditState audit=new AuditState();}
+class AuditState{boolean running,returnIdentity;boolean canReturnRequestIdentity(){return returnIdentity;}}
 class TaskQueue{final ArrayDeque<Runnable> tasks=new ArrayDeque<>();void post(Runnable r){tasks.add(r);}void execute(Runnable r){tasks.add(r);}int size(){return tasks.size();}void clear(){tasks.clear();}void drain(){int count=0;while(!tasks.isEmpty()){if(++count>1000)throw new AssertionError("Nonterminating callback queue");tasks.remove().run();}}}
-class View{CharSequence description="";CharSequence getContentDescription(){return description;}void setContentDescription(CharSequence value){description=value;}}
+class View{static final int VISIBLE=0,GONE=8;int visibility=VISIBLE,visibilityChanges;boolean enabled=true;CharSequence description="";int getVisibility(){return visibility;}void setVisibility(int value){visibility=value;visibilityChanges++;}void setEnabled(boolean value){enabled=value;}CharSequence getContentDescription(){return description;}void setContentDescription(CharSequence value){description=value;}}
 class TextView extends View{CharSequence text="";CharSequence getText(){return text;}void setText(CharSequence value){text=value;}}
 class TextUtils{static boolean equals(CharSequence a,CharSequence b){return Objects.equals(a==null?null:a.toString(),b==null?null:b.toString());}}
 class ReferenceUi{static final int TEXT=1;static TextView text(Context a,String value,int size,int color,boolean bold){TextView view=new TextView();view.setText(value);return view;}}
