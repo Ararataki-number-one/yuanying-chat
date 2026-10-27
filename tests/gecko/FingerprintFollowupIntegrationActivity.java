@@ -44,6 +44,7 @@ import org.mozilla.geckoview.WebRequestError;
 /** Actual test-APK Gecko/HTTPS observations; never a real ChatGPT or phone verdict. */
 public final class FingerprintFollowupIntegrationActivity extends Activity {
   static final String FILE="fingerprint-followup-results.json",TAG="PocketFingerprintFollowup";
+  static final int NORMALIZATION_LIMIT=128;
   static final String SOURCE_DRIVER_GUARD="if (location.protocol !== 'https:' || location.hostname !== 'chatgpt.com') return false;";
   final Handler handler=new Handler(Looper.getMainLooper());
   final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -109,7 +110,7 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
         if(!sourceDriverGuardRecorded){
           if(owner.driver.indexOf(SOURCE_DRIVER_GUARD)<0)throw new IllegalStateException("Production page driver guard missing");
           sourceDriverAdapter=J.obj("kind","controlled-source-page-driver-host-guard-only","sourceUrl",chat,"semanticUrl",semanticChat,"originalGuard",SOURCE_DRIVER_GUARD,"adaptedGuard",sourceDriverGuard(chat),"productionPageDriverSha256",sha256(owner.driver),"adaptedPageDriverTemplateSha256",sha256(adaptSourceDriver(owner.driver,chat)),"scope","Test-APK source fixture only. Exact HTTPS source URL replaces the official-host guard; real DOM, busy state, draft bytes/completeness and expectedUrl origin/path checks remain unchanged. Detector URLs and results are never rewritten.");
-          synchronized(normalizations){if(normalizations.length()<32)normalizations.put(copy(sourceDriverAdapter));else normalizationDrops++;}
+          synchronized(normalizations){if(normalizations.length()<NORMALIZATION_LIMIT)normalizations.put(copy(sourceDriverAdapter));else normalizationDrops++;}
           sourceDriverGuardRecorded=true;
         }
         adapted=adaptSourceDriver(adapted,chat);
@@ -118,7 +119,7 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
         String result=raw;
         try{JSONObject value=new JSONObject(raw);if(chat.equals(value.optString("url"))){
           JSONObject before=copy(value);value.put("url",semanticChat);result=value.toString();
-          synchronized(normalizations){if(normalizations.length()<32)normalizations.put(J.obj("kind","source-page-result-url-only","raw",before,"normalized",copy(value)));else normalizationDrops++;}
+          synchronized(normalizations){if(normalizations.length()<NORMALIZATION_LIMIT)normalizations.put(J.obj("kind","source-page-result-url-only","raw",before,"normalized",copy(value)));else normalizationDrops++;}
           if(owner.audit.requestIdentity.active&&(value.has("draftComplete")||value.has("busy")||Boolean.FALSE.equals(value.opt("ok"))))synchronized(preflightDriverResults){if(preflightDriverResults.length()<16)preflightDriverResults.put(J.obj("stage",stage,"at",SystemClock.elapsedRealtime(),"raw",before,"normalized",copy(value)));else preflightDriverDrops++;}
         }}catch(Exception ignored){}
         if(callback!=null)callback.onReceiveValue(result);
@@ -157,7 +158,7 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
               if(message instanceof JSONObject){JSONObject value=(JSONObject)message;
                 if("documentReady".equals(value.optString("kind"))&&chat.equals(value.optString("url"))&&chat.equals(port.sender.url)&&port.sender.session==current&&port.sender.isTopLevel()&&port.sender.environmentType==WebExtension.MessageSender.ENV_TYPE_CONTENT_SCRIPT){
                   JSONObject normalized=copy(value);try{normalized.put("url",semanticChat);}catch(Exception error){throw new IllegalStateException(error);}forwarded=normalized;
-                  synchronized(normalizations){if(normalizations.length()<32)normalizations.put(J.obj("kind","controlled-source-documentReady","actualUrl",rawUrl(),"senderUrl",port.sender.url,"raw",copy(value),"normalized",normalized));else normalizationDrops++;}
+                  synchronized(normalizations){if(normalizations.length()<NORMALIZATION_LIMIT)normalizations.put(J.obj("kind","controlled-source-documentReady","actualUrl",rawUrl(),"senderUrl",port.sender.url,"raw",copy(value),"normalized",normalized));else normalizationDrops++;}
                 }
               }
               delegate.onPortMessage(forwarded,incoming);
