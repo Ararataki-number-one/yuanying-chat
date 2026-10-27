@@ -150,7 +150,9 @@ final class RequestIdentityAuditSession {
     JSONObject report=AuditReport.build(browser,new JSONObject(),expected,false,fresh);
     try{
       report.put("identityAppliedRevision",audit.identityAppliedRevision).put("policy",policy).put("route",route).put("connectionEpoch",connectionEpoch).put("executionId",EnvironmentAudit.OBSERVATION_EXECUTION_ID).put("requestIdentityNetwork",true).put("requestIdentityControlSource","extension-background-control").put("requestIdentity",checked);
+      report.put("scope","受控顶层检测页的网页公开字段，与单独列出的文档／Dedicated Worker 服务端 HTTP 记录；结果由扩展后台独立读取，不代表 ChatGPT 官网、其他执行环境或全部指纹保护");
       JSONArray rows=report.optJSONArray("rows"),extra=checked.optJSONArray("rows");if(rows!=null&&extra!=null)for(int i=0;i<extra.length();i++)rows.put(extra.get(i));
+      if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&"worker-header".equals(row.optString("key")))row.put("name","普通信息自检的 Worker 请求头覆盖").put("detail","普通公开字段采样不核对 Worker HTTP 头；本次受控检测页的独立服务端对照已另列，两种来源不合并为全站结论");}
     }catch(JSONException ignored){}
     try{checked.put("at",System.currentTimeMillis()).put("environmentId",session.environmentId).put("environmentGeneration",session.environmentGeneration).put("configurationRevision",audit.identityAppliedRevision).put("policy",policy).put("route",route).put("connectionEpoch",connectionEpoch).put("executionId",EnvironmentAudit.OBSERVATION_EXECUTION_ID).put("fresh",fresh);}catch(JSONException ignored){}
     audit.requestIdentityReport=checked;
