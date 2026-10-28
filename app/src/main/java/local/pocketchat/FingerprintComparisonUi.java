@@ -3,6 +3,8 @@ package local.pocketchat;
 import android.app.*;
 import android.content.*;
 import android.widget.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /** Explicit local reports and self-reported checks; never runs probes or changes templates. */
 final class FingerprintComparisonUi {
@@ -51,9 +53,19 @@ final class FingerprintComparisonUi {
   }
 
   private static void manual(MainActivity a,EnvironmentAudit audit,ChatSession edited,String slot,String label,TextView result,Runnable changed){
-    AppAppearance.dialog(a).setTitle(label+"：选择人工检查项目").setItems(MANUAL_LABELS,(d,index)->{
+    JSONArray checklist=FingerprintReportComparison.manualChecklist(audit.fingerprintComparison,slot,edited.environmentId,edited.environmentGeneration).optJSONArray("items");
+    String[] items=new String[MANUAL_KEYS.length];
+    for(int i=0;i<items.length;i++){
+      String state="not-tested";
+      if(checklist!=null)for(int j=0;j<Math.min(checklist.length(),MANUAL_KEYS.length);j++){
+        JSONObject item=checklist.optJSONObject(j);if(item!=null&&MANUAL_KEYS[i].equals(item.optString("key"))){state=item.optString("state","not-tested");break;}
+      }
+      items[i]=MANUAL_LABELS[i]+" · "+FingerprintReportComparison.manualStateLabel(state);
+    }
+    AppAppearance.dialog(a).setTitle(label+"：选择人工检查项目").setItems(items,(d,index)->{
       if(!EnvironmentAuditUi.current(a,edited,audit))return;
-      AppAppearance.dialog(a).setTitle(MANUAL_LABELS[index]).setSingleChoiceItems(STATE_LABELS,-1,(choice,state)->{
+      String current=FingerprintReportComparison.manualState(audit.fingerprintComparison,slot,MANUAL_KEYS[index],edited.environmentId,edited.environmentGeneration);int selected=0;for(int i=0;i<STATES.length;i++)if(STATES[i].equals(current))selected=i;
+      AppAppearance.dialog(a).setTitle(MANUAL_LABELS[index]).setSingleChoiceItems(STATE_LABELS,selected,(choice,state)->{
         if(!EnvironmentAuditUi.current(a,edited,audit))return;String issue=audit.setComparisonManual(slot,MANUAL_KEYS[index],STATES[state]);
         result.setText(issue.isEmpty()?label+" · "+MANUAL_LABELS[index]+"："+STATE_LABELS[state]+"（自行记录）":issue);choice.dismiss();changed.run();
       }).setNegativeButton("取消",null).show();

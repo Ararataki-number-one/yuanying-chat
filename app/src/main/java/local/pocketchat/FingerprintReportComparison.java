@@ -160,8 +160,37 @@ final class FingerprintReportComparison {
     if(slot!=null&&!slot.isEmpty()&&!member(slot,SLOTS))return null;
     JSONObject out=restore(saved,environmentId,generation);if(slot==null||slot.isEmpty())return empty(environmentId,generation);object(out,"slots").remove(slot);return out;
   }
+  /** Manual progress is a display of user entries, never an acceptance result. */
+  static JSONObject manualChecklist(JSONObject saved,String slot,String environmentId,int generation){
+    JSONObject value=member(slot,SLOTS)?object(restore(saved,environmentId,generation),"slots").optJSONObject(slot):null;
+    JSONObject states=object(value,"compatibility"),times=object(value,"compatibilityUpdatedAt");
+    JSONArray items=new JSONArray();int recorded=0,failed=0,notApplicable=0;
+    for(String key:MANUAL_KEYS){
+      String state=value==null?"not-tested":states.optString(key,"not-tested");
+      if(!member(state,MANUAL_STATES))state="not-tested";
+      long at="not-tested".equals(state)?0:times.optLong(key,0);
+      if(!"not-tested".equals(state)){recorded++;if("fail".equals(state))failed++;if("not-applicable".equals(state))notApplicable++;}
+      items.put(J.obj("key",key,"label",manualLabel(key),"state",state,"labelState",manualStateLabel(state),"recordedAt",at));
+    }
+    return J.obj("saved",value!=null,"items",items,"total",MANUAL_KEYS.length,"recorded",recorded,
+        "notTested",MANUAL_KEYS.length-recorded,"reportedFailures",failed,"notApplicable",notApplicable,
+        "allItemsRecorded",value!=null&&recorded==MANUAL_KEYS.length,"source","user-entered-not-independent-verification",
+        "physicalPhoneAcceptance",false,"protectionVerified",false,"leakVerdict",false);
+  }
+  static String manualState(JSONObject saved,String slot,String key,String environmentId,int generation){
+    if(!member(key,MANUAL_KEYS))return "not-tested";
+    JSONArray items=manualChecklist(saved,slot,environmentId,generation).optJSONArray("items");
+    for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(key.equals(item.optString("key")))return item.optString("state","not-tested");}
+    return "not-tested";
+  }
+  static String manualProgress(JSONObject saved,String slot,String environmentId,int generation){
+    JSONObject value=manualChecklist(saved,slot,environmentId,generation);
+    if(!value.optBoolean("saved"))return "尚无报告；人工兼容项目未测试";
+    return "人工记录 "+value.optInt("recorded")+"/"+value.optInt("total")+" · 未测试 "+value.optInt("notTested")
+        +" · 异常 "+value.optInt("reportedFailures")+" · 不适用 "+value.optInt("notApplicable")+"（仅自行记录）";
+  }
   private static JSONObject slotView(JSONObject value){
-    if(value==null)return J.obj("saved",false);JSONObject out=J.obj("saved",true,"savedAt",value.optLong("savedAt"),"group",copy(object(value,"group")),"template",copy(object(value,"template")),"nativeSettings",copy(object(value,"nativeSettings")),"compatibility",copy(object(value,"compatibility")),"compatibilitySource","user-entered-not-independent-verification");
+    if(value==null)return J.obj("saved",false);JSONObject out=J.obj("saved",true,"savedAt",value.optLong("savedAt"),"group",copy(object(value,"group")),"template",copy(object(value,"template")),"nativeSettings",copy(object(value,"nativeSettings")),"compatibility",copy(object(value,"compatibility")),"compatibilityUpdatedAt",copy(object(value,"compatibilityUpdatedAt")),"compatibilitySource","user-entered-not-independent-verification");
     return out;
   }
   static JSONObject comparison(JSONObject saved,String environmentId,int generation){
@@ -206,7 +235,7 @@ final class FingerprintReportComparison {
   }
   static String slotSummary(JSONObject saved,String slot,String environmentId,int generation){
     JSONObject value=object(restore(saved,environmentId,generation),"slots").optJSONObject(slot);if(value==null)return "尚未保存";
-    JSONObject identity=object(value,"group");return new SimpleDateFormat("MM-dd HH:mm:ss",Locale.getDefault()).format(new Date(value.optLong("savedAt")))+" · "+confirmationLabel(object(value,"nativeSettings"))+"\n"+identity.optString("sourceOrigin")+"\n"+BrowserIdentitySpec.preset(object(value,"template").optString("templateId")).label()+" · 配置 "+identity.optLong("configurationRevision")+"\n"+identity.optString("engineVersion")+" · 应用 "+identity.optString("appVersion");
+    JSONObject identity=object(value,"group");return new SimpleDateFormat("MM-dd HH:mm:ss",Locale.getDefault()).format(new Date(value.optLong("savedAt")))+" · "+confirmationLabel(object(value,"nativeSettings"))+"\n"+identity.optString("sourceOrigin")+"\n"+BrowserIdentitySpec.preset(object(value,"template").optString("templateId")).label()+" · 配置 "+identity.optLong("configurationRevision")+"\n"+identity.optString("engineVersion")+" · 应用 "+identity.optString("appVersion")+"\n"+manualProgress(saved,slot,environmentId,generation);
   }
   private static String conditionLabel(String value){switch(value){case "display":return "手机版／电脑版";case "requestedLocales":return "请求语言";case "expectedLocales":return "SDK语言预测";case "routeHash":return "线路记录";case "templateId":return "模板";case "executionId":return "运行记录";default:return FingerprintDeepBaseline.label(value);}}
   private static String conditionNames(JSONArray value){StringJoiner out=new StringJoiner("、");if(value!=null)for(int i=0;i<value.length();i++)out.add(conditionLabel(value.optString(i)));return out.toString();}
