@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.25",
-  "versionCode": 78,
+  "version": "2.0.26",
+  "versionCode": 79,
   "abi": "arm64-v8a",
   "minSdk": 26,
-  "bytes": 119316133,
-  "sha256": "b9d943519ec01645c371806dfa946b8c3b5874b648a7730efd48c1c5aa5af48e",
+  "bytes": 119320229,
+  "sha256": "1f9787ef6f91e8c97c03f7aca339ec7fb05f498627feb785b8a73214006552a7",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.25-gecko/PocketChat-2.0.25-gecko-arm64.apk",
-  "notes": "# 2.0.25 · 元婴期院士\n\nversionCode 78，使用原签名，可覆盖安装。\n\n- 新增每环境本地标准／强化双报告，人工兼容结果默认“未测试”。\n- 主页面、Dedicated Worker、同源与受控跨源 iframe 可分别固定深检参照。\n- 简化自检首页，高级配置和原始字段按需展开，展开不会自动检测或刷新聊天。\n- 分开显示 Worker 脚本下载与后续请求的真实身份差异。\n\n报告和参照保存在当前环境的加密存储，只有主动复制才导出。本版继续使用 Firefox 原生保护；输出差异不会被直接判为泄漏，也不会生成笼统的保护分数。\n\n真实手机、ChatGPT 官网及完整保护效果尚未验收。本版没有统一底层 Worker HTTP UA，也没有新增 Shared Worker／Service Worker 覆盖。受控检查不能替代同手机标准／强化模式与百度输入法、附件、恢复的实际兼容验证。\n\n受控验收：开发阶段529项主机回归、原99项指纹检查及新增32项参照／存储边界检查通过。完整正式构建与Android验收使用源码 `0445d5f`，见 [正式检查记录](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40629792293)。\n\n首轮 `40626366592` 的原输入驱动在首个触摸调用耗时55ms后错过固定输入时槽，原失败记录保留；随后只做一次相同源码、参数和门槛的完整复核，不混用两轮结果。复核结果及最终公开安装包身份以随包清单为准。受控输入验收不等于百度输入法的真机界面验收。",
-  "sourceCommit": "0445d5fba512a17186434e953950864bae1663e6"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.26-gecko/PocketChat-2.0.26-gecko-arm64.apk",
+  "notes": "# 2.0.26：环境身份与配置状态\n\nversionCode 79，扩展版本 2.0.26.79。本次只更新 2.0.26，后续版本按顺序单独推进。\n\n- 在环境模板与自检中增加当前环境身份总览，集中显示模板、语言、保护等级、线路归属和配置版本。\n- 区分“已保存、等待应用、已确认、观测存在差异”；旧环境、旧配置或过期页面的结果不能确认当前网页。\n- 修正线路核验撤销后短暂显示“已获准”的边界：总览复用原有权威准入判断，并继续检查原生保护状态。\n\n保持单 GeckoView 与 ChatGPT 原网页，沿用已有配置、保护、登录与文件流程。本版没有加入 2.0.27—2.0.30 的后续功能。\n\n## 本版验证\n\n源码 `766a4b1ee206cc2ddca059f5c2682693f45de7bf`。正式受控运行 [40647812827/1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40647812827) 的 11 个任务全部通过，十项原发布门禁各执行一次，没有重跑或混用其他版本结果。完整 Release/Integration 编译、SDK 来源核验及 531 项主机回归通过。\n\n主输入与两个独立输入样本的性能检查分别为 163／163／164 项，光标检查各 129 项、14 个场景，使用同一编译 APK 与 SDK。身份状态模型在桌面与 Android JSON 两种实现上检查；界面适配器的 3 项准入对照在两种 JSON 上通过。适配器主机检查使用真实 Android framework JAR 与声明过的应用／Gecko doubles，不能等同于 Android UI 执行。\n\n真实手机、ChatGPT 官网、百度输入法界面与实际保护效果仍未验收；没有据此宣称手机提速或真实线路延迟改善。",
+  "sourceCommit": "766a4b1ee206cc2ddca059f5c2682693f45de7bf"
 }
