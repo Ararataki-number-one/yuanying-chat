@@ -38,7 +38,8 @@ class SchedulerDiagnosticWorkflowTest(unittest.TestCase):
             '.github/workflows/gecko-input-scheduler-diagnostic.yml',
             'tools/gecko/trace_input_scheduler.py',
             'tools/gecko/generate_input_scheduler_diagnostic_workflow.py',
-            'tests/gecko_scheduler_diagnostic_workflow_test.py'])
+            'tests/gecko_scheduler_diagnostic_workflow_test.py',
+            'tests/gecko_scheduler_trace_input_test.py'])
         self.assertIsNone(trigger['workflow_dispatch'])
 
     def test_graph_is_one_build_and_three_fixed_once_only_original_workloads(self):
@@ -60,7 +61,7 @@ class SchedulerDiagnosticWorkflowTest(unittest.TestCase):
                     self.assertTrue(step['with']['name'].startswith('scheduler-diagnostic-'))
                 if step.get('uses', '').startswith('actions/checkout@'):
                     self.assertIs(step['with']['persist-credentials'], False)
-                    self.assertEqual(step['with']['fetch-depth'], 2)
+                    self.assertEqual(step['with']['fetch-depth'], 3)
                 run = step.get('run', '')
                 for forbidden in ('tools/gecko/publish_ci.py', 'tools/publish-gecko-release.py',
                                   'tools/publish-update-feed.py', 'git push ', 'gh release '):

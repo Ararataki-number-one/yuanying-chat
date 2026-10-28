@@ -22,6 +22,7 @@ ADDED = {
     'tools/gecko/trace_input_scheduler.py',
     'tools/gecko/analyze_input_scheduler_trace.py',
     'tests/gecko_scheduler_diagnostic_workflow_test.py',
+    'tests/gecko_scheduler_trace_input_test.py',
 }
 
 
@@ -131,15 +132,15 @@ def run(args):
                   sample=args.sample, status='incomplete', workloadInvocationCount=0, durationMs=DURATION_MS,
                   maxTraceBytes=MAX_TRACE_BYTES, scope='First bounded phase window; trace overhead can affect scheduling. Not qualification.')
     key = 'pc-input-' + uuid.uuid4().hex
-    remote_config = '/data/local/tmp/' + key + '.pbtxt'
     remote_trace = '/data/misc/perfetto-traces/' + key + '.perfetto-trace'
-    record.update(sessionKey=key, remoteConfig=remote_config, remoteTrace=remote_trace)
+    record.update(sessionKey=key, remoteTrace=remote_trace)
     calls = []
 
-    def adb(label, *parts, timeout=20):
+    def adb(label, *parts, timeout=20, input_bytes=None):
         started = time.monotonic_ns()
         try:
-            p = subprocess.run([args.adb, '-s', args.serial, *parts], capture_output=True, timeout=timeout)
+            p = subprocess.run([args.adb, '-s', args.serial, *parts], input=input_bytes,
+                               capture_output=True, timeout=timeout)
             stdout, stderr, code = p.stdout, p.stderr, p.returncode
         except subprocess.TimeoutExpired as error:
             stdout, stderr, code = error.stdout or b'', error.stderr or b'', None
@@ -178,20 +179,22 @@ def run(args):
         record['hostTimelineAvailable'] = False
         record['hostTimelineScope'] = 'Before/after aggregates only; cannot align a 46ms host contention interval. Guest precise timeline is separate.'
         config = out / 'perfetto-config.pbtxt'
-        config.write_text(config_text(key))
+        config_bytes = config_text(key).encode('utf-8')
+        config.write_bytes(config_bytes)
+        record.update(configSource='stdin', configFile=config.name, configBytes=len(config_bytes),
+                      configSha256=hashlib.sha256(config_bytes).hexdigest())
         host_snapshot(out, 'before')
         adb('device-before', 'shell', 'cat /proc/uptime /proc/stat /proc/pressure/cpu /proc/pressure/memory /proc/pressure/io')
         adb('perfetto-version', 'shell', 'perfetto', '--version')
         adb('trace-capabilities', 'shell', 'atrace', '--list_categories')
-        code, _ = adb('push-config', 'push', str(config), remote_config)
-        if code == 0:
-            record['traceStartHostBeforeNs'] = time.monotonic_ns()
-            start_attempted = True
-            code, _ = adb('start-own-session', 'shell', 'perfetto', '--txt', '--config', remote_config,
-                          '--out', remote_trace, '--detach=' + key)
-            record['traceStartHostAfterNs'] = time.monotonic_ns()
-            started = code == 0
+        record['traceStartHostBeforeNs'] = time.monotonic_ns()
+        start_attempted = True
+        code, _ = adb('start-own-session', 'shell', 'perfetto', '--txt', '--config', '-',
+                      '--out', remote_trace, '--detach=' + key, input_bytes=config_bytes)
+        record['traceStartHostAfterNs'] = time.monotonic_ns()
+        started = code == 0
         record['traceStartSucceeded'] = started
+        require(started, 'Own Perfetto session failed to start; original workload was not invoked')
         # Exactly one original shell block. No probe, poll, retry, extra input or
         # priority change occurs here while the original driver is running.
         record['workloadInvocationCount'] = 1

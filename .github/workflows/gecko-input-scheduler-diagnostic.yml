@@ -11,6 +11,7 @@ name: 'Diagnostic only: Android input scheduler and services'
     - tools/gecko/trace_input_scheduler.py
     - tools/gecko/generate_input_scheduler_diagnostic_workflow.py
     - tests/gecko_scheduler_diagnostic_workflow_test.py
+    - tests/gecko_scheduler_trace_input_test.py
   workflow_dispatch: null
 permissions:
   contents: read
@@ -99,7 +100,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         persist-credentials: false
-        fetch-depth: 2
+        fetch-depth: 3
     - name: Verify pinned network core and source patch
       run: |
         python3 tests/gecko_prepare_image_test.py
@@ -423,7 +424,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         persist-credentials: false
-        fetch-depth: 2
+        fetch-depth: 3
     - name: Download the immutable compiled build
       uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
       with:

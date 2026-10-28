@@ -20,7 +20,8 @@ BRANCH = 'diagnostic/gecko-input-scheduler-20261028'
 PUSH_PATHS = ['.github/workflows/gecko-input-scheduler-diagnostic.yml',
               'tools/gecko/trace_input_scheduler.py',
               'tools/gecko/generate_input_scheduler_diagnostic_workflow.py',
-              'tests/gecko_scheduler_diagnostic_workflow_test.py']
+              'tests/gecko_scheduler_diagnostic_workflow_test.py',
+              'tests/gecko_scheduler_trace_input_test.py']
 PERFETTO_URL = 'https://github.com/google/perfetto/releases/download/v54.0/linux-amd64.zip'
 PERFETTO_SHA256 = '2066ad35f7f56baf622f88506ded9cc07e2bc569417e7cd22e057126c06da382'
 UPLOAD = 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02'
@@ -72,7 +73,8 @@ def namespace_artifacts(step):
     # original source and commands; no checkout credentials remain available.
     if step.get('uses', '').startswith('actions/checkout@'):
         step.setdefault('with', {})['persist-credentials'] = False
-        step['with']['fetch-depth'] = 2
+        # Corrected capture commit -> first diagnostic commit -> frozen source.
+        step['with']['fetch-depth'] = 3
     return step
 
 
