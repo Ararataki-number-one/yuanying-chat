@@ -14,6 +14,8 @@ final class EnvironmentAuditUi {
     ChatSession edited=a.session;EnvironmentAudit audit=edited.audit;
     LinearLayout box=new LinearLayout(a);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(a.dp(20),a.dp(8),a.dp(20),a.dp(12));
     TextView protection=a.label("",14,Ui.INK);protection.setLineSpacing(a.dp(4),1);box.addView(protection);
+    Button identityState=button(a,box,"查看当前环境身份与配置版本");
+    identityState.setOnClickListener(v->{if(current(a,edited,audit))EnvironmentIdentityUi.show(a,edited);});
     Button retry=button(a,box,"重试强化保护确认"),standard=button(a,box,"主动改用标准模式");
     TextView policyResult=a.label("",13,Ui.MUTED);box.addView(policyResult);
     TextView explanation=a.label("\n本机检查只在点按后采集。图形与音频检查采用有限操作，不播放声音；结果可用或发生变化，不代表原生保护已通过或出现泄漏。",13,Ui.MUTED);box.addView(explanation);

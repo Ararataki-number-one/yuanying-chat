@@ -135,5 +135,7 @@ final class DesignUi {static Object spinnerAdapter(MainActivity activity,String[
  * validation has its own real-model suite; this double never builds a report. */
 final class AuditReport {static final String VERIFIED="verified",ISSUE="issue",UNCOVERED="uncovered",AVAILABLE="available",RESTRICTED="restricted",FAILED="failed";}
 final class EnvironmentAuditUi {static void show(MainActivity activity){}}
+/** Entry-point boundary only; the new adapter has a separate Android-API compile check. */
+final class EnvironmentIdentityUi {static void show(MainActivity activity,ChatSession session){}}
 final class GeckoPolicyAdapter {static String summary(){return "host policy summary";}}
 final class NativeCapabilityManifest {static NativeCapabilityManifest officialGecko(){return new NativeCapabilityManifest();}String unsupportedSummary(){return "host capability summary";}}

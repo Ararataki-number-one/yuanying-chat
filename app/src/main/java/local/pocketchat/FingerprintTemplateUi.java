@@ -29,6 +29,7 @@ final class FingerprintTemplateUi {
     Spinner language=new Spinner(a);language.setAdapter(DesignUi.spinnerAdapter(a,new String[]{"保持当前语言配置","跟随系统语言","中文 zh-CN","English en-US","日本語 ja-JP"}));box.addView(language);
     TextView note=a.label("电脑版中，Worker 脚本下载与其发起的 HTTP 请求不保证采用相同 UA，请分别查看服务端观测。强化模板为实验模式，网页兼容性尚待真机验证。",13,Ui.MUTED);note.setPadding(0,a.dp(6),0,0);box.addView(note);
     DesignUi.action(box,"模板说明与状态详情",false,()->showDetails(a,edited));
+    DesignUi.action(box,"当前环境身份与配置版本",false,()->{if(!a.isDestroyed()&&!a.isFinishing()&&!edited.deleted&&a.session==edited)EnvironmentIdentityUi.show(a,edited);});
     TextView result=a.label("",13,Ui.MUTED);box.addView(result);
     DesignUi.action(box,"查看环境自检",false,()->{dialog.dismiss();EnvironmentAuditUi.show(a);});
     dialog.buttons("关闭",dialog::dismiss,"保存模板",()->{
