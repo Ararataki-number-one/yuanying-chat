@@ -1,0 +1,763 @@
+{
+  "total": 18,
+  "actualNativeExecution": false,
+  "checks": [
+    {
+      "committed": "C",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": true,
+      "ownedCoreAlive": true,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B",
+        "select:C",
+        "verify:C"
+      ],
+      "verificationCount": 2,
+      "failure": "",
+      "ready": true,
+      "controlledClockAdvanceMs": 0,
+      "name": "ordinary",
+      "receiptPresent": true,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        },
+        {
+          "phase": "consumed-result",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3,
+          "comparable": true
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "C"
+    },
+    {
+      "committed": "C",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": true,
+      "ownedCoreAlive": true,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B",
+        "select:C",
+        "verify:C"
+      ],
+      "verificationCount": 2,
+      "failure": "",
+      "ready": true,
+      "controlledClockAdvanceMs": 0,
+      "name": "service-ordinary",
+      "receiptPresent": true,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        },
+        {
+          "phase": "consumed-result",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3,
+          "comparable": true
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "C"
+    },
+    {
+      "committed": "C",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": true,
+      "ownedCoreAlive": true,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "C-response-during-B-selection",
+        "select:B",
+        "verify:B",
+        "select:C",
+        "verify:C"
+      ],
+      "verificationCount": 2,
+      "failure": "",
+      "ready": true,
+      "controlledClockAdvanceMs": 0,
+      "name": "producer-selection-window",
+      "receiptPresent": true,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        },
+        {
+          "phase": "consumed-result",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3,
+          "comparable": true
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "C"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "producer-token",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "producer-controller",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "producer-serial",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 4
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "producer-maintenance",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "producer-fingerprint",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "producer-configuration",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "producer-durable",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "producer-replacement",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "service-producer-replacement",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "service-producer-configuration",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 45001,
+      "name": "producer-deadline",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": false,
+      "ownedCoreAlive": false,
+      "trace": [
+        "probe:A",
+        "probe:B",
+        "probe:C",
+        "select:B",
+        "verify:B"
+      ],
+      "verificationCount": 1,
+      "failure": "RouteTransactionFailure",
+      "ready": false,
+      "controlledClockAdvanceMs": 0,
+      "name": "producer-cancel",
+      "receiptPresent": false,
+      "producerObservations": [
+        {
+          "phase": "consumed-result",
+          "entry": "B",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 2,
+          "comparable": true
+        },
+        {
+          "phase": "controller-response",
+          "entry": "C",
+          "delay": 20,
+          "capturedRouteSerial": 2,
+          "liveRouteSerial": 3
+        }
+      ],
+      "strictDelay": 0,
+      "selected": "B"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": true,
+      "ownedCoreAlive": true,
+      "trace": [
+        "probe:A"
+      ],
+      "verificationCount": 0,
+      "failure": "",
+      "ready": true,
+      "controlledClockAdvanceMs": 0,
+      "name": "strict-current",
+      "receiptPresent": false,
+      "producerObservations": [],
+      "strictDelay": -1,
+      "selected": "A"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": true,
+      "ownedCoreAlive": true,
+      "trace": [
+        "probe:B"
+      ],
+      "verificationCount": 0,
+      "failure": "",
+      "ready": true,
+      "controlledClockAdvanceMs": 0,
+      "name": "strict-candidate",
+      "receiptPresent": false,
+      "producerObservations": [],
+      "strictDelay": -1,
+      "selected": "A"
+    },
+    {
+      "committed": "A",
+      "pass": true,
+      "finalProbeScopeRejected": true,
+      "completed": true,
+      "ownedCoreAlive": true,
+      "trace": [
+        "probe:A"
+      ],
+      "verificationCount": 0,
+      "failure": "",
+      "ready": true,
+      "controlledClockAdvanceMs": 0,
+      "name": "strict-stable",
+      "receiptPresent": true,
+      "producerObservations": [],
+      "strictDelay": 20,
+      "selected": "A"
+    }
+  ],
+  "actualAndroidExecution": false,
+  "passed": 18,
+  "realNetworkMeasured": false,
+  "status": "passed",
+  "sourceFile": "/home/runner/work/yuanying-chat/yuanying-chat/app/src/main/java/local/pocketchat/NativeNetwork.java",
+  "sourceSha256": "6a806d62fd4004894cbb0e1bafd45fcdb4f65b878812e3356b54de677d367d54",
+  "sourceCommit": "766a4b1ee206cc2ddca059f5c2682693f45de7bf",
+  "sourceDirty": false,
+  "files": {
+    "app/src/main/java/local/pocketchat/NetworkHealthPolicy.java": "08279fe9e9a05be1634d3883bf0a52a4c791c79a49b9bf28913523986a29018b",
+    "app/src/main/java/local/pocketchat/NetworkWork.java": "de34134adc227c8dcc48e52db9a23937537e95ae05abf5192b426224295446bf",
+    "app/src/main/java/local/pocketchat/NetworkDiagnostics.java": "eb7cd6127b79ddf24e1f909af7d06c3ade6c84d04453f1bf9e8e0467143d9be9",
+    "app/src/main/java/local/pocketchat/LatencyProbePolicy.java": "0fc03b49af6ef3f187a6a1291a2722d43e33fa017a15794ee84c3c88c0e31099",
+    "tools/gecko/run_network_core_host.py": "c3c7f443502506ff4d84dc72620776f35178df38dba035757b596c4045c3e7bb",
+    "tests/network-recovery-host/run.py": "b1d1d4aadb81a1d3e4bdec6913bd860f69d757bbb3a0ec09f9562b788d2f5cef",
+    "tests/network-recovery-host/RecoverySearchHarness.java.txt": "7bf438401a607a8f38b6ab49d7269265374b02bfa1cf2c7e2e814b09139d8152",
+    "tests/network-recovery-host/ProbeProducerBoundary.java.txt": "da4f3734f5a2649a633dbf5a6ef5834252375f2334c41806df495d9a325589c2",
+    "tests/network-recovery-host/run_real_probes.py": "fa6e0a88ad02e4b364e74cefd7282fe421eb6fd85db1043f486e4222c4087297"
+  },
+  "sourceInputsUnchanged": true,
+  "jsonJarSha256": "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed",
+  "extractedClasses": [
+    "  static final class ExitRouteReceipt ",
+    "  static final class RouteProbe",
+    "  static final class RouteTransactionFailure ",
+    "  static final class RetainedRouteFailure ",
+    "  static final class StartupRoute ",
+    "  static final class StartupRouteFailure ",
+    "  static final class RecoveryRoute ",
+    "  static final class ProbeTicket ",
+    "  static final class ProbeResult "
+  ],
+  "extractedMethods": [
+    "  void recoverExistingRoute(",
+    "  RetainedRouteFailure retained(",
+    "  void firstVerifiedRoute(String rejected)",
+    "  void firstVerifiedRoute(String rejected,StartupRoute bootstrap)",
+    "  RouteProbe startupProbe(",
+    "  long startupSearchBudgetMs(",
+    "  void selectNow(",
+    "  void commitSelection(",
+    "  static long exitRetryDelayMs(",
+    "  void selectVerifiedRoute(String name,boolean measure)",
+    "  void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap)",
+    "  JSONObject startupState(",
+    "  void stopFailedTransaction(",
+    "  void stopOwnedCore(",
+    "  void clearReadyState(",
+    "  private void recoverFirstVerifiedRoute(",
+    "  JSONObject recoveryState(",
+    "  static boolean ordinaryRecoveryFailure(",
+    "  RouteProbe startupProbe(String name,int index,String epoch,RecoveryRoute recovery)",
+    "  void firstVerifiedRoute(String rejected,StartupRoute bootstrap,RecoveryRoute recovery)",
+    "  void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap,RecoveryRoute recovery)",
+    "  ProbeResult probeMeasured(String proxy,String exactEntry)",
+    "  boolean probeCurrent(",
+    "  static LatencyProbePolicy.Trace probeTrace(",
+    "  int probe(",
+    "  String probeUrl(",
+    "  ProbeResult probeMeasured(String proxy,String exactEntry,RecoveryRoute recovery)",
+    "  boolean probeBindingCurrent(",
+    "  boolean probeCallCurrent("
+  ],
+  "harnessSha256": "50c4f8ec5b67e197e28af7e822a60a075f74402ab0faddf2981095ff3b17b4b8",
+  "completeVerbatimProbeBlocks": {
+    "  static final class ProbeTicket ": "b7586ca4e2459daa4022ad48b9a4bdb3bcbfdcc66e08be9a6dfa35886f104d9c",
+    "  static final class ProbeResult ": "bdbb3dacdaa04f6f05b2c61c1eaa5ee815b754ef801b100baf9a256677ddc949",
+    "  ProbeResult probeMeasured(String proxy,String exactEntry)": "29d8c30124d0603342b48ab79c4cc11cbb7321204080568776bdef275556fc04",
+    "  boolean probeCurrent(": "efe73d193d8d7a9e4072401cd3c85ddbfc06ff0f6ca26da496a8cec46033dbbb",
+    "  static LatencyProbePolicy.Trace probeTrace(": "8abdca6ee433a21c122d7d1dd7892515af831215fb6ac3d13fc63ccdeed80039",
+    "  int probe(": "8c4dc6ca3665513b45e38ef7d2b9e8051ebd1efb842ffd301b25d6e801eb7119",
+    "  String probeUrl(": "9a192905e13bf4d5c5c7adfe8a3d6a25fc3f068ebf74d0ba59341886571908bc",
+    "  ProbeResult probeMeasured(String proxy,String exactEntry,RecoveryRoute recovery)": "7d8b40a688c974bbfc4562a5debb19b47e97628d2dc2a5f41b0a1e015c07cbb9",
+    "  boolean probeBindingCurrent(": "36d3a8e2b7847f2d25982a49d7475d3b7389db0976dc2c34c619335e71492955",
+    "  boolean probeCallCurrent(": "c693b2ae44618c8dbccac795e4db8d08779d4ff651bc654101f71e0016e1d673"
+  },
+  "producerBindingCapturedAt": "Production probeMeasured before probe() begins",
+  "controlledProbeBoundary": "Controller delay GET and exact-proxy history GET only. Ordinary case captures C ticket before B selection and returns controller delay positive20 during B verification; a separate case returns during unconfirmed B selection. No production binding/guard/result conversion substituted.",
+  "otherControlledBoundaries": "Exit-verification success/failure and receipt boundary, service snapshot/process lifetime, Android clock. Actual exit HTTPS is not executed.",
+  "actualProbeProducerExecution": true,
+  "actualLowLevelProbeExecution": true,
+  "actualExitHttpsExecution": false,
+  "scope": "JVM fault injection with actual complete LatencyProbePolicy, probe producer/low-level interpretation, recovery/search/selection and NetworkWork. No Android, native routing, browser, phone or real-network acceptance.",
+  "stderr": ""
+}
