@@ -4,6 +4,7 @@ import argparse
 import csv
 import gzip
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -16,17 +17,20 @@ import tarfile
 import zipfile
 
 SOURCE = {
-    'sourceCommit': '596bfb1f7ad6f03548cdac5ce1932cd999cdd637',
-    'sourceTree': '7cf5f75e541f57a3f336f8ab332a463cfe131e61',
-    'runId': '40720430995', 'runAttempt': '1',
+    'sourceCommit': 'e9793a5c1c0af61c1f6fa3d74c0220d4110fe73c',
+    'sourceTree': '6de444c4e5b3ad0422478ee2386c650db1efe521',
+    'runId': '40730313492', 'runAttempt': '1',
 }
 BRANCH = 'diagnostic/gecko-input-scheduler-20261028'
-HELPER_SHA = '785b72beae8f1bd5a24c36e2bc7d5769c078fc83fb54d36d3d3faa812000b7b3'
+HELPER_SHA = '63ecae013dcc2f8e0232aa588ffcb7c57839cb99b0c4adb742ab7e2ca6d028f0'
+SUPPLEMENT_SHA = 'e3410a7b3551f075f2b66e358a8ccb2ea2add08d7bcf115f03219f85eb4e3fcf'
 PROCESSOR_URL = 'https://github.com/google/perfetto/releases/download/v54.0/linux-amd64.zip'
 PROCESSOR_SHA = '2066ad35f7f56baf622f88506ded9cc07e2bc569417e7cd22e057126c06da382'
 FLAGS = dict(diagnosticOnly=True, applicationAcceptance=False, releaseAcceptance=False,
              physicalPhoneAcceptance=False, protectionEffectivenessAcceptance=False,
              uniqueCauseEstablished=False)
+# Allow one 256 MiB raw trace plus original phase data in a bounded artifact.
+MAX_TRACE_BYTES = 256 * 1024 * 1024
 MAX_ARCHIVE = 512 * 1024 * 1024
 MAX_TOTAL = 1024 * 1024 * 1024
 MAX_FILES = 5000
@@ -186,7 +190,7 @@ def bindings_for(path, sample):
          'Exactly the three fixed original artifact bindings required')
     ids = set()
     for row in rows:
-        need(row.get('name') == 'scheduler-diagnostic-40720430995-1-editing-' + row['sample'],
+        need(row.get('name') == 'scheduler-diagnostic-40730313492-1-editing-' + row['sample'],
              'Unexpected original artifact name')
         need(type(row.get('artifactId')) is int and row['artifactId'] > 0 and row['artifactId'] not in ids,
              'Actual distinct original artifact IDs required')
@@ -208,7 +212,7 @@ def download_original(repository, binding, out):
     need(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository), 'Actual GitHub repository required')
     prefix = 'repos/' + repository + '/actions/'
     run_path = out / 'original-run-attempt.json'
-    gh_api(prefix + 'runs/40720430995/attempts/1', run_path, MAX_JSON)
+    gh_api(prefix + 'runs/40730313492/attempts/1', run_path, MAX_JSON)
     run = read_json(run_path)
     need(str(run.get('id')) == SOURCE['runId'] and str(run.get('run_attempt')) == SOURCE['runAttempt'] and
          run.get('head_sha') == SOURCE['sourceCommit'] and run.get('head_branch') == BRANCH and
@@ -257,11 +261,20 @@ def validate_config(original, run):
          'Original stdin config bytes or SHA differs')
 
 
+def reviewed_correlator():
+    path=Path(__file__).with_name('correlate_input_trace.py').resolve()
+    need(sha(path)==HELPER_SHA,'Exact reviewed correlation helper required')
+    spec=importlib.util.spec_from_file_location('reviewed_input_trace_correlation',path)
+    module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    return module
+
+
 def trace_closure(processor, trace, out):
     """Keep optional posthoc closure observations; missing closure never blocks analysis."""
     out.mkdir()
+    correlator=reviewed_correlator()
     queries = {
-        'closure-metadata': "SELECT * FROM metadata WHERE name IN ('tracing_started_ns','tracing_disabled_ns','all_data_source_flushed_ns','unique_session_name','trace_time_clock_id') ORDER BY name LIMIT 501",
+        'closure-metadata': correlator.METADATA_SELECT + " WHERE name IN ('tracing_started_ns','tracing_disabled_ns','all_data_source_flushed_ns','unique_session_name','trace_time_clock_id') ORDER BY name LIMIT 501",
         'closure-stats': "SELECT * FROM stats WHERE lower(name) LIKE '%flush%' ORDER BY name,idx LIMIT 501",
     }
     records = []
@@ -281,8 +294,9 @@ def trace_closure(processor, trace, out):
                 rows = list(reader)
             need(len(rows) <= 501 and all(None not in row and all(v is not None for v in row.values()) for row in rows),
                  'Closure CSV shape or count differs')
+            if name=='closure-metadata': rows=correlator.decode_metadata_rows(rows)
             record.update(status='queried', totalRows=len(rows), rowLimitReached=len(rows) == 501,
-                          rows=[{k: v[:1024] for k, v in row.items()} for row in rows[:64]])
+                          rows=[{k: v[:1024] if isinstance(v,str) else v for k, v in row.items()} for row in rows[:64]])
         except Exception as error:
             record.update(errorType=type(error).__name__, error=str(error)[:1024])
         for key, path in (('sql', sql_path), ('csv', csv_path), ('stderr', err_path)):
@@ -293,6 +307,53 @@ def trace_closure(processor, trace, out):
                    scope='Raw metadata and flush counters only; missing closure is allowed and no successful final flush is inferred.', **FLAGS)
     dump(out / 'closure.json', closure)
     return closure
+
+
+def supplemental_context(processor, trace, analysis, out):
+    """Optional bounded posthoc context; original outcomes and helper output stay intact."""
+    script = Path(__file__).with_name('supplement_input_service_trace.py').resolve()
+    need(script.is_file() and not script.is_symlink() and
+         sha(script) == SUPPLEMENT_SHA, 'Exact reviewed supplemental context tool required')
+    original = {name: file_identity(path) for name, path in
+                (('trace', trace), ('analysis', analysis), ('script', script))}
+    record = dict(status='unavailable', partial=True, **FLAGS)
+    stdout, stderr = out / 'supplemental-context.stdout.log', out / 'supplemental-context.stderr.log'
+    report_path = out / 'supplemental-input-service/supplemental-analysis.json'
+    try:
+        command = [sys.executable, str(script), '--processor', str(processor),
+                   '--trace', str(trace), '--analysis', str(analysis),
+                   '--out', str(out / 'supplemental-input-service')]
+        with stdout.open('xb') as output, stderr.open('xb') as errors:
+            result = subprocess.run(command, stdout=output, stderr=errors, timeout=300, check=False)
+        record['returnCode'] = result.returncode
+        need(result.returncode == 0, 'Supplemental context unavailable; raw outputs retained')
+        value = read_json(report_path, MAX_JSON)
+        need(all(value.get(key) is expected for key, expected in FLAGS.items()) and
+             value.get('originalInputsUnchanged') is True and value.get('partial') is True and
+             value.get('trace') == original['trace'] and value.get('originalAnalysis') == original['analysis'] and
+             value.get('script') == original['script'], 'Supplemental scope or original input identity differs')
+        selected, skipped, queries = (value.get(key) for key in ('selectedWindows', 'skippedWindows', 'queries'))
+        need(isinstance(selected, list) and isinstance(skipped, list) and
+             len(selected) + len(skipped) <= 44 and isinstance(queries, list) and len(queries) <= 3,
+             'Supplemental summary exceeds fixed bounds')
+        record.update(status=value['status'], coveredWindows=len(selected), skippedWindows=len(skipped),
+                      queryExecutionComplete=value.get('queryExecutionComplete') is True,
+                      queries=[{key: row.get(key) for key in
+                                ('name', 'status', 'rows', 'rowLimitReached', 'returnCode', 'elapsedMs', 'errorType')}
+                               for row in queries], report=dict(file=str(report_path.relative_to(out)), **file_identity(report_path)))
+    except Exception as error:
+        record.update(errorType=type(error).__name__, error=str(error)[:1024])
+        if report_path.is_file() and not report_path.is_symlink():
+            record['report'] = dict(file=str(report_path.relative_to(out)), **file_identity(report_path))
+    finally:
+        need(original == {name: file_identity(path) for name, path in
+                          (('trace', trace), ('analysis', analysis), ('script', script))},
+             'Original inputs or frozen supplemental tool changed during posthoc context')
+        for key, path in (('stdout', stdout), ('stderr', stderr)):
+            if path.is_file():
+                record[key] = dict(file=path.name, **file_identity(path))
+        dump(out / 'supplemental-context-summary.json', record)
+    return record
 
 
 def validate_originals(original, phase, sample):
@@ -307,6 +368,8 @@ def validate_originals(original, phase, sample):
          run.get('workloadInvocationCount') == 1, 'Original capture scope or sample differs')
     validate_config(original, run)
     trace = original / 'android.perfetto-trace'
+    need(type(run.get('traceBytes')) is int and 0 < run['traceBytes'] <= MAX_TRACE_BYTES,
+         'Original trace exceeds the 256 MiB data-analysis bound')
     need(file_identity(trace) == dict(bytes=run.get('traceBytes'), sha256=run.get('traceSha256')),
          'Original trace and diagnostic record do not match')
     performance = phase / 'work/gecko-integration/gecko-performance-results.json'
@@ -336,7 +399,7 @@ def log_projection(report, out, sample):
         if depth > 9:
             return '[nested rows omitted from bounded log; full analysis retained]'
         if isinstance(value, dict):
-            return {key: bound(item, depth + 1) for key, item in list(value.items())[:96] if key != 'rows'}
+            return {key: bound(item, depth + 1) for key, item in list(value.items())[:96] if key != 'rows' or depth <= 3}
         if isinstance(value, list):
             return [bound(item, depth + 1) for item in value[:24]]
         if isinstance(value, str):
@@ -372,6 +435,7 @@ def analyze(args):
         provenance.mkdir()
         for path in (args.bindings.resolve(), Path(__file__).resolve(),
                      Path(__file__).with_name('correlate_input_trace.py').resolve(),
+                     Path(__file__).with_name('supplement_input_service_trace.py').resolve(),
                      Path(__file__).resolve().parents[2] / '.github/workflows/gecko-input-analysis.yml'):
             shutil.copyfile(path, provenance / path.name)
         helper = Path(__file__).with_name('correlate_input_trace.py').resolve()
@@ -401,6 +465,9 @@ def analyze(args):
         report = read_json(out / 'correlation/analysis.json', MAX_TOTAL)
         need(all(report.get(key) == expected for key, expected in FLAGS.items()) and
              report.get('originalInputsUnchanged') is True, 'Derived diagnostic scope or input preservation differs')
+        context = supplemental_context(processor, trace, out / 'correlation/analysis.json', out)
+        report['supplementaryInputServiceContext'] = context
+        scope['supplementaryInputServiceContext'] = context
         need(file_identity(archive) == dict(bytes=binding['zipBytes'], sha256=binding['zipSha256']),
              'Original artifact ZIP changed during analysis')
         report['posthocTraceClosure'] = closure

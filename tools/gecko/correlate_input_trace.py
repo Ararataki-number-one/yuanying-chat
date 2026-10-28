@@ -13,6 +13,7 @@ import time
 NS_PER_MS = 1_000_000
 MAX_ROWS = 100_000
 MAX_CSV = 32 * 1024 * 1024
+MAX_TRACE_BYTES = 256 * 1024 * 1024
 TP_DEFAULT = '/tmp/pocketchat-perfetto54/trace_processor_shell'
 NULLS = {'[NULL]', 'NULL', ''}
 
@@ -73,6 +74,42 @@ def parse_csv(raw):
     rows = list(reader)
     need(all(None not in row and all(value is not None for value in row.values()) for row in rows), 'CSV column count differs')
     return rows
+
+
+# Perfetto v54 CSV does not reliably quote arbitrary metadata string contents.
+# Hex keeps the raw query lossless; the separate null bit distinguishes NULL/empty.
+METADATA_SELECT = """SELECT id,hex(name) AS name_utf8_hex,hex(key_type) AS key_type_utf8_hex,int_value,
+    CASE WHEN str_value IS NULL THEN 1 ELSE 0 END AS str_value_is_null,
+    hex(str_value) AS str_value_utf8_hex,machine_id,trace_id FROM metadata"""
+
+
+def decode_metadata_rows(rows):
+    fields = {'id','name_utf8_hex','key_type_utf8_hex','int_value','str_value_is_null',
+              'str_value_utf8_hex','machine_id','trace_id'}
+    def text(value):
+        need(isinstance(value,str) and re.fullmatch(r'(?:[0-9A-F]{2})*',value) is not None,
+             'Invalid uppercase byte-pair metadata hex')
+        return bytes.fromhex(value).decode('utf-8',errors='strict')
+    def integer_or_null(value):
+        if value == '[NULL]': return None
+        need(isinstance(value,str) and re.fullmatch(r'-?[0-9]+',value) is not None,
+             'Invalid metadata integer or SQL NULL')
+        return int(value)
+    decoded=[]
+    for row in rows:
+        need(set(row)==fields and all(isinstance(v,str) for v in row.values()), 'Metadata CSV columns differ')
+        bit=row['str_value_is_null']
+        need(bit in ('0','1') and (bit=='0' or row['str_value_utf8_hex']==''), 'Invalid metadata string null binding')
+        decoded.append(dict(id=integer_or_null(row['id']),name=text(row['name_utf8_hex']),
+            key_type=text(row['key_type_utf8_hex']),int_value=integer_or_null(row['int_value']),
+            str_value=None if bit=='1' else text(row['str_value_utf8_hex']),
+            machine_id=integer_or_null(row['machine_id']),trace_id=integer_or_null(row['trace_id'])))
+    return decoded
+
+
+def validate_trace_file(path):
+    need(path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_TRACE_BYTES,
+         'Trace must be a bounded ordinary file at most 256 MiB')
 
 
 def union_ns(spans):
@@ -189,7 +226,7 @@ class Queries:
         self.processor, self.trace, self.output = processor, trace, output
         self.records = []
 
-    def run(self, name, sql):
+    def run(self, name, sql, decoder=None):
         sql_file, out, err = (self.output / (name + suffix) for suffix in ('.sql', '.csv', '.stderr.log'))
         sql_file.write_text(sql + '\n', encoding='utf-8')
         command = [str(self.processor), '--full-sort', '-q', str(sql_file), str(self.trace)]
@@ -204,8 +241,15 @@ class Queries:
             need(result.returncode == 0, 'Trace processor query failed')
             need(out.stat().st_size <= MAX_CSV, 'Query CSV exceeds analysis bound; original output retained')
             rows = parse_csv(out.read_bytes())
+            if decoder is not None:
+                rows = decoder(rows)
+                decoded_file = self.output / (name + '.decoded.json')
+                with decoded_file.open('x',encoding='utf-8') as stream:
+                    json.dump(rows,stream,ensure_ascii=False,indent=2); stream.write('\n')
+                record['decodedIdentity'] = identity(decoded_file)
             record.update(status='queried', rows=len(rows), rowLimitReached=len(rows) > MAX_ROWS)
         except Exception as error:
+            rows = []
             record.update(status='unavailable', errorType=type(error).__name__, error=str(error))
         record.update(startedMonotonicNs=started, completedMonotonicNs=time.monotonic_ns())
         for key, file in (('sqlIdentity', sql_file), ('csvIdentity', out), ('stderrIdentity', err)):
@@ -222,8 +266,7 @@ def ids(values):
 
 
 def run(args):
-    need(args.trace.is_file() and not args.trace.is_symlink() and args.trace.stat().st_size <= 512*1024*1024,
-         'Trace must be a bounded ordinary file')
+    validate_trace_file(args.trace)
     need(args.processor.is_file() and not args.processor.is_symlink(), 'Ordinary trace processor required')
     need(not args.out.exists(), 'Output already exists; preserve earlier analysis')
     receipts, windows = read_receipts(args.receipt, args.slow_call_ms)
@@ -242,7 +285,7 @@ def run(args):
     clock = q.run('clock-snapshots', 'SELECT * FROM clock_snapshot ORDER BY snapshot_id,clock_id' + limit)
     bounds = q.run('trace-bounds', 'SELECT start_ts,end_ts,to_monotonic(start_ts) AS mono_start_ns,to_monotonic(end_ts) AS mono_end_ns FROM trace_bounds;')
     stats = q.run('trace-stats', 'SELECT name,idx,severity,source,value,description FROM stats WHERE value != 0 ORDER BY severity,name,idx' + limit)
-    metadata = q.run('trace-metadata', 'SELECT * FROM metadata ORDER BY id' + limit)
+    metadata = q.run('trace-metadata', METADATA_SELECT + ' ORDER BY id' + limit, decode_metadata_rows)
     thread_rows = q.run('threads', '''SELECT t.utid,t.tid,t.name AS thread_name,t.start_ts,t.end_ts,t.is_main_thread,t.machine_id,
         p.upid,p.pid,p.name AS process_name,p.uid,p.cmdline,to_monotonic(t.start_ts) AS thread_start_mono_ns,
         to_monotonic(t.end_ts) AS thread_end_mono_ns
@@ -322,7 +365,7 @@ def run(args):
         applicationAcceptance=False,releaseAcceptance=False,physicalPhoneAcceptance=False,
         protectionEffectivenessAcceptance=False,uniqueCauseEstablished=False,
         trace=originals[0],receipts=receipts,processor=processor_identity,helper=helper_identity,
-        processorVersion=version_text.strip(),
+        processorVersion=version_text.strip(),traceMetadata=metadata,
         traceReceiptSourceBindingIndependentlyEstablished=False,
         clockDomain=dict(receipt='Android SystemClock.uptimeMillis = CLOCK_MONOTONIC, milliseconds',
             trace='Perfetto unified trace clock; not assumed to be monotonic or boottime',
