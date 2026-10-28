@@ -17,19 +17,25 @@ final class EnvironmentAuditUi {
     Button retry=button(a,box,"重试强化保护确认"),standard=button(a,box,"主动改用标准模式");
     TextView policyResult=a.label("",13,Ui.MUTED);box.addView(policyResult);
     TextView explanation=a.label("\n本机检查只在点按后采集。图形与音频检查采用有限操作，不播放声音；结果可用或发生变化，不代表原生保护已通过或出现泄漏。",13,Ui.MUTED);box.addView(explanation);
-    Button local=button(a,box,"检查浏览器信息（本机）"),deep=button(a,box,"检查图形与音频（本机）"),history=button(a,box,"查看最近观测与变化"),fixed=button(a,box,"固定深检参照与比较"),copyDeep=button(a,box,"复制深检原始记录");
-    TextView networkExplanation=a.label("\n网络出口检查会访问 ipify 和 httpbin，服务能看到出口 IP 与必要请求信息。请求不主动携带 Cookie、密码或聊天内容。",13,Ui.MUTED);box.addView(networkExplanation);
-    CheckBox consent=new CheckBox(a);consent.setText("仅本次允许向 ipify / httpbin 发送检测信息");consent.setChecked(false);box.addView(consent);
-    Button network=button(a,box,"检查实际网络出口");
-    TextView identityExplanation=a.label("\n真实请求身份检查会暂时打开你选择的 HTTPS 检测页，对照主文档与 Dedicated Worker 的服务端请求信息；仅在没有草稿、附件和进行中任务时打开。该结果不代表 ChatGPT 官网请求。",13,Ui.MUTED);box.addView(identityExplanation);
-    Button endpoint=button(a,box,"设置请求身份检测服务"),serviceCheck=button(a,box,"检查检测服务（不离开聊天）"),frameEndpoint=button(a,box,"设置跨源 iframe 检测来源");
-    CheckBox identityConsent=new CheckBox(a);identityConsent.setText("仅本次允许向所选服务发送 UA、语言与出口 IP");identityConsent.setChecked(audit.requestIdentityRunning());box.addView(identityConsent);
-    CheckBox frameConsent=new CheckBox(a);frameConsent.setText("仅本次允许访问第二 HTTPS 来源，检查跨源 iframe 图形");box.addView(frameConsent);
-    Button identity=button(a,box,"打开真实请求检测页"),crossFrame=button(a,box,"打开跨源 iframe 图形检测"),back=button(a,box,"返回原聊天");
-    TextView identityResult=a.label("",13,Ui.MUTED);box.addView(identityResult);
-    Button baseline=button(a,box,"确认当前环境，更新基线");
-    TextView baselineNote=a.label("确认基线只更新变化参照，不会修复检查发现的问题。最近八次网页观测仅在当前环境本地加密保存。固定深检参照单独保留，需主动保存或清除。",13,Ui.MUTED);box.addView(baselineNote);
-    TextView info=a.label("",14,Ui.INK);info.setLineSpacing(a.dp(4),1);box.addView(info);ScrollView scroll=new ScrollView(a);scroll.addView(box);
+    Button local=button(a,box,"检查浏览器信息（本机）"),deep=button(a,box,"检查图形与音频（本机）");
+    TextView info=a.label("",14,Ui.INK);info.setLineSpacing(a.dp(4),1);info.setPadding(0,a.dp(12),0,a.dp(8));box.addView(info);
+    // Returning remains accessible even while advanced settings are collapsed.
+    Button back=button(a,box,"返回原聊天"),history=button(a,box,"查看最近观测与变化"),fixed=button(a,box,"固定深检参照与比较"),comparison=button(a,box,"标准／强化本地双报告对照");
+    Button detailsToggle=button(a,box,"展开结果详情");LinearLayout details=section(a,box);
+    TextView rawInfo=a.label("",14,Ui.INK);rawInfo.setLineSpacing(a.dp(4),1);details.addView(rawInfo);
+    Button copyDeep=button(a,details,"复制深检原始记录"),baseline=button(a,details,"确认当前环境，更新基线");
+    TextView baselineNote=a.label("确认基线只更新变化参照，不会修复检查发现的问题。最近八次网页观测仅在当前环境本地加密保存。固定深检参照单独保留，需主动保存或清除。",13,Ui.MUTED);details.addView(baselineNote);
+    Button advancedToggle=button(a,box,"展开高级网络检测");LinearLayout advanced=section(a,box);
+    TextView networkExplanation=a.label("\n网络出口检查会访问 ipify 和 httpbin，服务能看到出口 IP 与必要请求信息。请求不主动携带 Cookie、密码或聊天内容。",13,Ui.MUTED);advanced.addView(networkExplanation);
+    CheckBox consent=new CheckBox(a);consent.setText("仅本次允许向 ipify / httpbin 发送检测信息");consent.setChecked(false);advanced.addView(consent);
+    Button network=button(a,advanced,"检查实际网络出口");
+    TextView identityExplanation=a.label("\n真实请求身份检查会暂时打开你选择的 HTTPS 检测页，对照主文档与 Dedicated Worker 的服务端请求信息；仅在没有草稿、附件和进行中任务时打开。该结果不代表 ChatGPT 官网请求。",13,Ui.MUTED);advanced.addView(identityExplanation);
+    Button endpoint=button(a,advanced,"设置请求身份检测服务"),serviceCheck=button(a,advanced,"检查检测服务（不离开聊天）"),frameEndpoint=button(a,advanced,"设置跨源 iframe 检测来源");
+    CheckBox identityConsent=new CheckBox(a);identityConsent.setText("仅本次允许向所选服务发送 UA、语言与出口 IP");identityConsent.setChecked(audit.requestIdentityRunning());advanced.addView(identityConsent);
+    CheckBox frameConsent=new CheckBox(a);frameConsent.setText("仅本次允许访问第二 HTTPS 来源，检查跨源 iframe 图形");advanced.addView(frameConsent);
+    Button identity=button(a,advanced,"打开真实请求检测页"),crossFrame=button(a,advanced,"打开跨源 iframe 图形检测");
+    TextView identityResult=a.label("",13,Ui.MUTED);advanced.addView(identityResult);
+    ScrollView scroll=new ScrollView(a);scroll.addView(box);
     AlertDialog dialog=AppAppearance.dialog(a).setTitle("环境自检与变更").setView(scroll).setPositiveButton("关闭",null).setNeutralButton("复制简要结果",(d,w)->{if(current(a,edited,audit))((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("环境自检",audit.safeCopy()));}).create();
     boolean[] handoff={false},policySaving={false},consentWrite={false},crossStarting={false};Runnable[] protectionTick={null},identityTick={null};
     Runnable clearIdentityConsent=()->{consentWrite[0]=true;identityConsent.setChecked(false);frameConsent.setChecked(false);crossStarting[0]=false;consentWrite[0]=false;};
@@ -43,8 +49,10 @@ final class EnvironmentAuditUi {
       String selected=audit.requestIdentityEndpoint();endpoint.setText(selected.isEmpty()?"设置请求身份检测服务":"检测服务："+selected);
       identity.setEnabled(!audit.running&&!selected.isEmpty()&&identityConsent.isChecked()&&!audit.canReturnRequestIdentity());back.setVisibility(audit.canReturnRequestIdentity()?android.view.View.VISIBLE:android.view.View.GONE);back.setEnabled(audit.canReturnRequestIdentity());
       serviceCheck.setEnabled(!audit.running&&!selected.isEmpty()&&identityConsent.isChecked()&&!audit.canReturnRequestIdentity());frameEndpoint.setEnabled(!audit.running);frameEndpoint.setText(audit.requestIdentityFrameEndpoint().isEmpty()?"设置跨源 iframe 检测来源":"第二检测来源："+audit.requestIdentityFrameEndpoint());
-      crossFrame.setEnabled(!audit.running&&!selected.isEmpty()&&!audit.requestIdentityFrameEndpoint().isEmpty()&&identityConsent.isChecked()&&frameConsent.isChecked()&&!audit.canReturnRequestIdentity());fixed.setEnabled(!audit.running);copyDeep.setEnabled(!audit.running&&audit.hasDeepRecord());
-      identityResult.setText(audit.serviceProbeSummary(false)+"\n\n"+audit.requestIdentitySummary(false));info.setText(audit.summary());
+      crossFrame.setEnabled(!audit.running&&!selected.isEmpty()&&!audit.requestIdentityFrameEndpoint().isEmpty()&&identityConsent.isChecked()&&frameConsent.isChecked()&&!audit.canReturnRequestIdentity());fixed.setEnabled(!audit.running);copyDeep.setEnabled(!audit.running&&audit.hasDeepRecord());comparison.setEnabled(!audit.running);
+      info.setText(briefSummary(audit));
+      if(details.getVisibility()==android.view.View.VISIBLE)rawInfo.setText(audit.summary());
+      if(advanced.getVisibility()==android.view.View.VISIBLE)identityResult.setText(audit.serviceProbeSummary(false)+"\n\n"+audit.requestIdentitySummary(false));
     };
     Runnable watchProtection=()->{
       if(protectionTick[0]!=null)edited.handler.removeCallbacks(protectionTick[0]);long started=SystemClock.elapsedRealtime();
@@ -83,9 +91,15 @@ final class EnvironmentAuditUi {
       if(!started)clearIdentityConsent.run();update.run();if(started)watchIdentity.run();
     });
     back.setOnClickListener(v->{if(!current(a,edited,audit))return;if(audit.returnRequestIdentity()){handoff[0]=true;dialog.dismiss();}else update.run();});
+    detailsToggle.setOnClickListener(v->{if(!current(a,edited,audit))return;toggle(details,detailsToggle,"展开结果详情","收起结果详情");update.run();});
+    advancedToggle.setOnClickListener(v->{if(!current(a,edited,audit))return;toggle(advanced,advancedToggle,"展开高级网络检测","收起高级网络检测");update.run();});
+    comparison.setOnClickListener(v->{if(current(a,edited,audit))FingerprintComparisonUi.show(a,audit);});
     history.setOnClickListener(v->{if(current(a,edited,audit))history(a,audit);});fixed.setOnClickListener(v->{if(current(a,edited,audit))fixed(a,audit);});copyDeep.setOnClickListener(v->{if(!current(a,edited,audit))return;((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("本机深检记录",audit.deepRecordCopy()));policyResult.setText("已复制本机观测；请在同一手机分别运行标准与确认后的强化模式，并记录登录、输入、绘图、附件和恢复结果。");});baseline.setOnClickListener(v->{if(!current(a,edited,audit))return;audit.acceptBaseline();update.run();NetworkMetricsUi.update(a);});
     dialog.setOnDismissListener(d->{if(protectionTick[0]!=null)edited.handler.removeCallbacks(protectionTick[0]);if(identityTick[0]!=null)edited.handler.removeCallbacks(identityTick[0]);if(!handoff[0])audit.cancel();});dialog.show();update.run();watchProtection.run();
   }
+  static LinearLayout section(MainActivity a,LinearLayout parent){LinearLayout value=new LinearLayout(a);value.setOrientation(LinearLayout.VERTICAL);value.setVisibility(android.view.View.GONE);value.setPadding(a.dp(4),0,a.dp(4),a.dp(12));parent.addView(value);return value;}
+  static void toggle(LinearLayout section,Button control,String collapsed,String expanded){boolean show=section.getVisibility()!=android.view.View.VISIBLE;section.setVisibility(show?android.view.View.VISIBLE:android.view.View.GONE);control.setText(show?expanded:collapsed);}
+  static String briefSummary(EnvironmentAudit audit){JSONObject report=audit.report;boolean valid=report.length()>0&&report.optBoolean("fresh")&&audit.observationCurrent(report)&&report.optString("policy").equals(audit.policyStamp())&&(!report.optBoolean("network")||report.optString("route").equals(audit.routeStamp()));String value=FingerprintAuditSummary.summary(report,valid,audit.running,audit.lastError,audit.storageIssue);return audit.hasChanges()?value+"\n\n环境基线有 "+audit.changes.length()+" 项变化，可展开结果详情查看。":value;}
   static Button button(MainActivity a,LinearLayout box,String text){Button value=new Button(a);value.setText(text);box.addView(value);return value;}
   static void endpoint(MainActivity a,EnvironmentAudit audit,Runnable changed){
     if(a.destroyed||a.session!=audit.session||audit.session.deleted)return;
@@ -101,11 +115,16 @@ final class EnvironmentAuditUi {
   }
   static void fixed(MainActivity a,EnvironmentAudit audit){
     if(a.destroyed||a.session!=audit.session||audit.session.deleted)return;
-    ChatSession edited=a.session;LinearLayout box=new LinearLayout(a);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(a.dp(20),a.dp(8),a.dp(20),a.dp(16));TextView text=a.label(audit.pinnedDeepSummary(),14,Ui.INK);box.addView(text);Button pin=button(a,box,"固定当前主页面深检为参照"),clear=button(a,box,"清除固定深检参照");TextView result=a.label("固定参照只对应主页面的同组观测；Worker 与 iframe 的结果分别显示，不比较跨环境哈希。",13,Ui.MUTED);box.addView(result);ScrollView scroll=new ScrollView(a);scroll.addView(box);AlertDialog dialog=AppAppearance.dialog(a).setTitle("固定深检参照").setView(scroll).setPositiveButton("关闭",null).create();
-    Runnable update=()->{text.setText(audit.pinnedDeepSummary());pin.setEnabled(!audit.running&&audit.deepObservationCurrent());clear.setEnabled(!audit.running&&audit.pinnedDeepBaseline.length()>0);};
-    Runnable capture=()->{if(a.destroyed||a.session!=edited||edited.deleted)return;String issue=audit.pinDeepObservation();result.setText(issue.isEmpty()?"固定深检参照已加密保存。":issue);update.run();};
-    pin.setOnClickListener(v->{if(audit.pinnedDeepBaseline.length()==0)capture.run();else AppAppearance.dialog(a).setTitle("替换固定深检参照？").setMessage("会用当前有效主页面深检替换已固定的参照。").setNegativeButton("取消",null).setPositiveButton("替换",(d,w)->capture.run()).show();});
-    clear.setOnClickListener(v->AppAppearance.dialog(a).setTitle("清除固定深检参照？").setMessage("最近八条观测记录会保留。").setNegativeButton("取消",null).setPositiveButton("清除",(d,w)->{if(a.destroyed||a.session!=edited||edited.deleted)return;String issue=audit.clearPinnedDeepBaseline();result.setText(issue.isEmpty()?"固定深检参照已清除。":issue);update.run();}).show());dialog.show();update.run();
+    ChatSession edited=a.session;LinearLayout box=new LinearLayout(a);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(a.dp(20),a.dp(8),a.dp(20),a.dp(16));
+    String[] contexts={"main","worker","frame","crossOriginFrame"},labels=new String[contexts.length];for(int i=0;i<contexts.length;i++)labels[i]=FingerprintContextBaselines.label(contexts[i]);
+    box.addView(a.label("选择执行环境，每类各保留一份参照",13,Ui.MUTED));Spinner selected=new Spinner(a);selected.setAdapter(DesignUi.spinnerAdapter(a,labels));box.addView(selected);
+    TextView text=a.label("",14,Ui.INK);text.setLineSpacing(a.dp(4),1);box.addView(text);Button pin=button(a,box,"固定当前执行环境的深检参照"),clear=button(a,box,"清除所选执行环境参照");
+    TextView result=a.label("不同页面、Worker 或 iframe 的输出分别保留，不比较跨执行环境哈希。跨源 iframe 需先在高级网络检测中主动授权并完成检查。",13,Ui.MUTED);box.addView(result);
+    TextView eligibility=a.label("",13,Ui.MUTED);box.addView(eligibility);ScrollView scroll=new ScrollView(a);scroll.addView(box);AlertDialog dialog=AppAppearance.dialog(a).setTitle("固定深检参照").setView(scroll).setPositiveButton("关闭",null).create();
+    Runnable update=()->{if(!current(a,edited,audit))return;String context=contexts[selected.getSelectedItemPosition()];boolean ready=!audit.running&&audit.deepObservationCurrent(context);text.setText(audit.pinnedDeepSummary(context));pin.setEnabled(ready);clear.setEnabled(!audit.running&&audit.hasPinnedDeepBaseline(context));selected.setEnabled(!audit.running);eligibility.setText(ready?"本次有效深检可固定；其他执行环境的参照会保留。":"尚无所选执行环境的当前有效深检，或检查正在进行。请先完成对应的主动检查。");};
+    selected.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> parent,android.view.View view,int position,long id){update.run();}public void onNothingSelected(AdapterView<?> parent){}});
+    pin.setOnClickListener(v->{if(!current(a,edited,audit))return;String context=contexts[selected.getSelectedItemPosition()];Runnable capture=()->{if(!current(a,edited,audit))return;String issue=audit.pinDeepObservation(context);result.setText(issue.isEmpty()?"所选执行环境的深检参照已加密保存。":issue);update.run();};if(!audit.hasPinnedDeepBaseline(context))capture.run();else AppAppearance.dialog(a).setTitle("替换所选深检参照？").setMessage("仅替换“"+FingerprintContextBaselines.label(context)+"”的固定参照，其他参照会保留。").setNegativeButton("取消",null).setPositiveButton("替换",(d,w)->capture.run()).show();});
+    clear.setOnClickListener(v->{if(!current(a,edited,audit))return;String context=contexts[selected.getSelectedItemPosition()];AppAppearance.dialog(a).setTitle("清除所选深检参照？").setMessage("仅清除“"+FingerprintContextBaselines.label(context)+"”的参照，其他参照和最近八条观测会保留。").setNegativeButton("取消",null).setPositiveButton("清除",(d,w)->{if(!current(a,edited,audit))return;String issue=audit.clearPinnedDeepBaseline(context);result.setText(issue.isEmpty()?"所选参照已清除。":issue);update.run();}).show();});dialog.show();update.run();
   }
   static void history(MainActivity a,EnvironmentAudit audit){
     if(a.destroyed||a.session!=audit.session||audit.session.deleted)return;

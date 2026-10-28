@@ -77,11 +77,25 @@ public final class RequestIdentityAuditHost {
     check("Full fingerprint template remains explicitly unaccepted",good.opt("fingerprintTemplateAcceptance") instanceof Boolean&&!good.optBoolean("fingerprintTemplateAcceptance"));
     check("Template/environment revision is local comparison context",good.getJSONObject("expected").optLong("configurationRevision")==9&&"controlled-environment".equals(good.getJSONObject("expected").optString("environmentId")));
     check("Scope does not substitute the ChatGPT site",good.optString("scope").contains("不能代表 ChatGPT"));
+    check("Worker script download UA is compared separately against document HTTP",state(good,"request-worker-script-ua","verified"));
+    check("Worker script download language has its own HTTP comparison",state(good,"request-worker-script-language","verified"));
+    check("Worker execution request label explicitly identifies fetch",row(good,"request-worker-ua").optString("name").contains("fetch"));
 
     JSONObject changed=server();headers(changed,3).put("userAgent","IndependentWorker/157");JSONObject result=evaluate(browser(),changed,expected(),true);
     check("Actual Worker HTTP UA mismatch remains visible",state(result,"request-worker-ua","issue"));
     check("Document versus Worker HTTP difference remains separate",state(result,"request-context-headers","issue"));
     check("Native UA request is compared against both real HTTP sources",state(result,"request-native-ua","issue"));
+    check("Matching script download UA cannot conceal a different Worker fetch UA",state(result,"request-worker-script-ua","verified")&&"issue".equals(result.optString("status"))&&!result.optBoolean("fullDesktopUaConsistency"));
+    check("Script and fetch raw HTTP values remain independently preserved",UA.equals(headers(result.getJSONObject("server"),2).optString("userAgent"))&&"IndependentWorker/157".equals(headers(result.getJSONObject("server"),3).optString("userAgent")));
+    JSONObject scriptChanged=server();headers(scriptChanged,2).put("userAgent","IndependentScript/157");JSONObject scriptResult=evaluate(browser(),scriptChanged,expected(),true);
+    check("A different script download UA remains an independent issue",state(scriptResult,"request-worker-script-ua","issue")&&"issue".equals(scriptResult.optString("status")));
+    check("A script issue does not rewrite the document or Worker fetch comparison",state(scriptResult,"request-document-ua","verified")&&state(scriptResult,"request-worker-ua","verified")&&state(scriptResult,"request-context-headers","verified"));
+    scriptChanged=server();headers(scriptChanged,2).put("acceptLanguage","");scriptResult=evaluate(browser(),scriptChanged,expected(),true);
+    check("Missing script language stays uncovered instead of borrowing another request",state(scriptResult,"request-worker-script-language","uncovered")&&state(scriptResult,"request-document-language","verified")&&state(scriptResult,"request-worker-language","verified"));
+    scriptChanged=server();headers(scriptChanged,2).put("acceptLanguage","en-US,ja-JP;q=0.5");
+    check("Script HTTP language differences remain separately visible",state(evaluate(browser(),scriptChanged,expected(),true),"request-worker-script-language","issue"));
+    JSONObject workerJsChanged=browser();workerJsChanged.getJSONObject("worker").put("ua","WorkerJS/157");
+    check("Script download has no invented Worker JavaScript context",state(evaluate(workerJsChanged,server(),expected(),true),"request-worker-script-ua","verified"));
     changed=browser();changed.getJSONObject("worker").put("ua","WorkerJS/157");check("JS Worker equality cannot replace real request headers",state(evaluate(changed,server(),expected(),true),"request-worker-ua","issue"));
     changed=server();headers(changed,3).put("acceptLanguage","en-US,ja;q=0.5");check("Worker request language mismatch is preserved",state(evaluate(browser(),changed,expected(),true),"request-worker-language","issue"));
     changed=server();headers(changed,0).put("acceptLanguage","");check("Absent effective request language stays uncovered",state(evaluate(browser(),changed,expected(),true),"request-document-language","uncovered"));

@@ -18,9 +18,22 @@ class EnvironmentAudit {
   static final String IPV4="https://api.ipify.org/?format=json",IPV6="https://api6.ipify.org/?format=json",HEADERS="https://httpbin.org/headers";
   static final String OBSERVATION_EXECUTION_ID=UUID.randomUUID().toString();
   final ChatSession session;final SecretStore store;final RequestIdentityAuditSession requestIdentity;final RequestIdentityServiceProbe serviceProbe;JSONArray observationHistory=new JSONArray();final ExecutorService worker=Executors.newSingleThreadExecutor(),closer=Executors.newSingleThreadExecutor();
-  JSONObject baseline=new JSONObject(),report=new JSONObject(),observed=new JSONObject(),initial=new JSONObject(),requestIdentityReport=new JSONObject(),pinnedDeepBaseline=new JSONObject();JSONArray changes=new JSONArray();String storageIssue="",lastError="";
+  JSONObject baseline=new JSONObject(),report=new JSONObject(),observed=new JSONObject(),initial=new JSONObject(),requestIdentityReport=new JSONObject(),pinnedDeepBaseline=new JSONObject(),fingerprintContextBaselines=new JSONObject(),fingerprintComparison=new JSONObject();JSONArray changes=new JSONArray();String storageIssue="",lastError="";
   volatile boolean running;boolean networkRun,webDone,nativeDone,geckoRun;String auditUrl="";long auditNavigation;volatile long serial;long epoch,deadline,lastRefresh,identityAppliedRevision;String stamp="",policy="";JSONObject sample=new JSONObject(),nativeResult=new JSONObject();Runnable completed;Future<?> nativeWork;volatile HttpURLConnection connection;
-  EnvironmentAudit(ChatSession s){session=s;store=new SecretStore(s.context);requestIdentity=new RequestIdentityAuditSession(this);serviceProbe=new RequestIdentityServiceProbe(this);try{byte[] bytes=store.get("environment-audit");if(bytes!=null){JSONObject saved=J.parse(new String(bytes,StandardCharsets.UTF_8));baseline=saved.optJSONObject("baseline");report=saved.optJSONObject("report");observed=saved.optJSONObject("observed");JSONObject requestSaved=saved.optJSONObject("requestIdentityReport");if(requestSaved!=null&&session.environmentId.equals(requestSaved.optString("environmentId"))&&session.environmentGeneration==requestSaved.optInt("environmentGeneration",-1))requestIdentityReport=J.parse(requestSaved.toString());observationHistory=FingerprintObservationHistory.restore(saved.optJSONArray("fingerprintHistory"),session.environmentId,session.environmentGeneration);pinnedDeepBaseline=FingerprintDeepBaseline.restore(saved.optJSONObject("pinnedDeepBaseline"),session.environmentId,session.environmentGeneration);serviceProbe.restore(saved.optJSONObject("identityServiceProbe"));if(baseline==null)baseline=new JSONObject();if(report==null)report=new JSONObject();if(observed==null)observed=new JSONObject();}}catch(Exception e){storageIssue="本地加密基线读取失败，尚未覆盖旧记录";}refresh(true);}
+  EnvironmentAudit(ChatSession s){
+    session=s;store=new SecretStore(s.context);requestIdentity=new RequestIdentityAuditSession(this);serviceProbe=new RequestIdentityServiceProbe(this);
+    try{byte[] bytes=store.get("environment-audit");if(bytes!=null){
+      JSONObject saved=J.parse(new String(bytes,StandardCharsets.UTF_8));baseline=saved.optJSONObject("baseline");report=saved.optJSONObject("report");observed=saved.optJSONObject("observed");
+      JSONObject requestSaved=saved.optJSONObject("requestIdentityReport");if(requestSaved!=null&&session.environmentId.equals(requestSaved.optString("environmentId"))&&session.environmentGeneration==requestSaved.optInt("environmentGeneration",-1))requestIdentityReport=J.parse(requestSaved.toString());
+      observationHistory=FingerprintObservationHistory.restore(saved.optJSONArray("fingerprintHistory"),session.environmentId,session.environmentGeneration);
+      // A present new-format field is authoritative, including an explicitly cleared one.
+      // Only an older installation without that field migrates the legacy main-page pin.
+      JSONObject pins=saved.optJSONObject(saved.has("fingerprintContextBaselines")?"fingerprintContextBaselines":"pinnedDeepBaseline");
+      fingerprintContextBaselines=FingerprintContextBaselines.restore(pins,session.environmentId,session.environmentGeneration);syncLegacyDeepBaseline();
+      fingerprintComparison=FingerprintReportComparison.restore(saved.optJSONObject("fingerprintComparison"),session.environmentId,session.environmentGeneration);
+      serviceProbe.restore(saved.optJSONObject("identityServiceProbe"));if(baseline==null)baseline=new JSONObject();if(report==null)report=new JSONObject();if(observed==null)observed=new JSONObject();
+    }}catch(Exception e){storageIssue="本地加密基线读取失败，尚未覆盖旧记录";}refresh(true);
+  }
   static String hash(String value){try{return NativeNetwork.hash(value);}catch(Exception e){throw new IllegalStateException("Local SHA-256 unavailable",e);}}
   static String packageVersion(){return GeckoWebView.VERSION.replace("GeckoView ","");}
   JSONObject snapshotFields(){JSONObject o=J.obj("level",session.privacy.level(),"webview",GeckoWebView.VERSION,"android",Build.VERSION.RELEASE,"uaHash",hash(session.web.getSettings().getUserAgentString()),"timezone",TimeZone.getDefault().getID(),"locale",Locale.getDefault().toLanguageTag(),"networkMode",session.prefs.getString("networkMode","external"),"requireVpn",session.prefs.getBoolean("requireExternalVpn",true),"early",session.privacy.earlyInstalled,"workerGate",session.guard.workerProtection);
@@ -54,7 +67,7 @@ class EnvironmentAudit {
   }
   boolean hasChanges(){return changes.length()>0;}
   void acceptBaseline(){if(running)return;refreshTicket++;refreshQueued=false;JSONObject old=baseline;JSONArray oldChanges=changes;baseline=snapshot();changes=new JSONArray();if(!save()){baseline=old;changes=oldChanges;}}
-  byte[] savedBytes(){return J.obj("baseline",baseline,"report",report,"observed",observed,"fingerprintHistory",observationHistory,"requestIdentityReport",requestIdentityReport,"pinnedDeepBaseline",pinnedDeepBaseline,"identityServiceProbe",serviceProbe.result).toString().getBytes(StandardCharsets.UTF_8);}
+  byte[] savedBytes(){return J.obj("baseline",baseline,"report",report,"observed",observed,"fingerprintHistory",observationHistory,"requestIdentityReport",requestIdentityReport,"pinnedDeepBaseline",pinnedDeepBaseline,"fingerprintContextBaselines",fingerprintContextBaselines,"fingerprintComparison",fingerprintComparison,"identityServiceProbe",serviceProbe.result).toString().getBytes(StandardCharsets.UTF_8);}
   boolean save(){long ticket=++saveTicket;byte[] bytes=savedBytes();synchronized(saveGate){if(ticket!=saveTicket)return false;try{store.put("environment-audit",bytes);storageIssue="";return true;}catch(Exception e){storageIssue="本地加密保存失败；旧基线未确认更新";return false;}}}
   void saveLater(){
     long ticket=++saveTicket;byte[] bytes=savedBytes();
@@ -89,7 +102,12 @@ class EnvironmentAudit {
   JSONObject observationMetadata(String sourceUrl,long revision){
     String appVersion="";long appVersionCode=0;
     try{android.content.pm.PackageInfo installed=session.context.getPackageManager().getPackageInfo(session.context.getPackageName(),0);appVersion=installed.versionName;appVersionCode=Build.VERSION.SDK_INT>=28?installed.getLongVersionCode():installed.versionCode;}catch(Exception ignored){}
-    return J.obj("environmentId",session.environmentId,"environmentGeneration",session.environmentGeneration,"configurationRevision",revision,"engineVersion",GeckoWebView.VERSION,"appVersion",appVersion,"appVersionCode",appVersionCode,"sourceOrigin",FingerprintObservationHistory.origin(sourceUrl),"executionId",OBSERVATION_EXECUTION_ID);
+    JSONObject metadata=J.obj("environmentId",session.environmentId,"environmentGeneration",session.environmentGeneration,"configurationRevision",revision,"engineVersion",GeckoWebView.VERSION,"appVersion",appVersion,"appVersionCode",appVersionCode,"sourceOrigin",FingerprintObservationHistory.origin(sourceUrl),"executionId",OBSERVATION_EXECUTION_ID);
+    GeckoSettings settings=session.web.getSettings();
+    try{BrowserIdentitySpec identity=BrowserIdentitySpec.from(settings.acceptedBrowserIdentity);
+      if(settings.policyAcknowledged&&identity.validate().isEmpty())metadata.put("templateId",identity.templateId).put("display",identity.display)
+          .put("requestedLocales",new JSONArray(Arrays.asList(settings.requestedLocales))).put("expectedLocales",new JSONArray(Arrays.asList(settings.expectedSdkLocales)));
+    }catch(Exception unavailable){}return metadata;
   }
   void decorateObservation(JSONObject value,String sourceUrl,long navigation){
     try{value.put("observationMetadata",observationMetadata(sourceUrl,value.optLong("identityAppliedRevision"))).put("nativeProtection",session.web.protectionStatus()).put("navigationEpoch",navigation).put("sourcePageHash",hash(sourceUrl));}catch(JSONException ignored){}
@@ -99,20 +117,75 @@ class EnvironmentAudit {
     observationHistory=FingerprintObservationHistory.record(observationHistory,value,metadata);
   }
   boolean deepObservationCurrent(){
-    return !session.deleted&&GeckoWebView.active(session.web)&&session.web.hasVisibleDocument()&&!running&&Boolean.TRUE.equals(report.opt("fresh"))&&observationCurrent(report)&&report.optLong("identityAppliedRevision",-1)==session.identityAuditAppliedRevision()&&report.optString("policy").equals(policyStamp())&&report.optString("route").equals(routeStamp())&&report.optLong("navigationEpoch",-1)==session.navigationEpoch&&report.optString("sourcePageHash").equals(hash(session.web.getUrl()));
+    JSONObject metadata=report.optJSONObject("observationMetadata");
+    return !session.deleted&&GeckoWebView.active(session.web)&&session.web.hasVisibleDocument()&&!running&&Boolean.TRUE.equals(report.opt("fresh"))&&observationCurrent(report)
+        &&metadata!=null&&session.environmentId.equals(metadata.opt("environmentId"))&&FingerprintObservationHistory.integer(metadata.opt("environmentGeneration"),session.environmentGeneration,session.environmentGeneration)
+        &&OBSERVATION_EXECUTION_ID.equals(metadata.opt("executionId"))&&FingerprintObservationHistory.integer(metadata.opt("configurationRevision"),1,Long.MAX_VALUE)
+        &&metadata.optLong("configurationRevision") == session.identityAuditAppliedRevision()
+        &&report.optLong("identityAppliedRevision",-1)==session.identityAuditAppliedRevision()&&report.optString("policy").equals(policyStamp())&&report.optString("route").equals(routeStamp())&&report.optLong("navigationEpoch",-1)==session.navigationEpoch&&report.optString("sourcePageHash").equals(hash(session.web.getUrl()));
   }
-  String pinDeepObservation(){
+  void syncLegacyDeepBaseline(){pinnedDeepBaseline=FingerprintContextBaselines.reference(fingerprintContextBaselines,session.environmentId,session.environmentGeneration,"main");}
+  String deepContextIssue(String context){
+    if(!Arrays.asList(FingerprintContextBaselines.CONTEXTS).contains(context))return "请选择已有检查覆盖的执行环境";
     if(!deepObservationCurrent())return "请先在当前网页与配置中重新运行图形与音频检查";
-    JSONObject metadata=report.optJSONObject("observationMetadata");String issue=FingerprintDeepBaseline.captureIssue(report,metadata);if(!issue.isEmpty())return issue;
-    JSONObject previous=pinnedDeepBaseline;pinnedDeepBaseline=FingerprintDeepBaseline.capture(report,metadata,System.currentTimeMillis());
-    if(pinnedDeepBaseline.length()==0){pinnedDeepBaseline=previous;return "本次深检记录不完整，没有替换固定参照";}
-    if(!save()){pinnedDeepBaseline=previous;return storageIssue;}return "";
+    if("crossOriginFrame".equals(context)){
+      JSONObject browser=FingerprintObservationHistory.object(FingerprintObservationHistory.object(report,"requestIdentity"),"browser"),frame=FingerprintObservationHistory.object(browser,"crossOriginFrame");
+      String configured=FingerprintObservationHistory.origin(requestIdentityFrameEndpoint()),actual=FingerprintObservationHistory.origin(frame.opt("origin"));
+      String primary=FingerprintObservationHistory.origin(requestIdentityEndpoint());
+      if(configured.isEmpty()||!configured.equals(actual)||!primary.equals(FingerprintObservationHistory.object(report,"observationMetadata").optString("sourceOrigin")))return "跨源检测来源已变化，请重新检查后固定参照";
+    }
+    return FingerprintContextBaselines.captureIssue(report,report.optJSONObject("observationMetadata"),context);
+  }
+  boolean deepObservationCurrent(String context){return deepContextIssue(context).isEmpty();}
+  boolean hasPinnedDeepBaseline(String context){return FingerprintContextBaselines.hasReference(fingerprintContextBaselines,session.environmentId,session.environmentGeneration,context);}
+  String pinDeepObservation(){return pinDeepObservation("main");}
+  String pinDeepObservation(String context){
+    String issue=deepContextIssue(context);if(!issue.isEmpty())return issue;
+    JSONObject selected=FingerprintContextBaselines.replace(fingerprintContextBaselines,report,report.optJSONObject("observationMetadata"),context,System.currentTimeMillis());
+    if(selected==null||!FingerprintContextBaselines.hasReference(selected,session.environmentId,session.environmentGeneration,context))return "本次深检记录不完整，没有替换固定参照";
+    JSONObject previous=fingerprintContextBaselines,legacy=pinnedDeepBaseline;fingerprintContextBaselines=selected;syncLegacyDeepBaseline();
+    if(!save()){fingerprintContextBaselines=previous;pinnedDeepBaseline=legacy;return storageIssue;}return "";
   }
   String clearObservationHistory(){if(session.deleted)return "当前环境已退役";if(running)return "请等待当前检查结束";JSONArray previous=observationHistory;observationHistory=new JSONArray();if(!save()){observationHistory=previous;return storageIssue;}return "";}
-  String clearPinnedDeepBaseline(){if(session.deleted)return "当前环境已退役";if(running)return "请等待当前检查结束";JSONObject previous=pinnedDeepBaseline;pinnedDeepBaseline=new JSONObject();if(!save()){pinnedDeepBaseline=previous;return storageIssue;}return "";}
-  String pinnedDeepSummary(){return FingerprintDeepBaseline.summary(pinnedDeepBaseline,deepObservationCurrent()?report:new JSONObject(),report.optJSONObject("observationMetadata"));}
+  String clearPinnedDeepBaseline(){return clearPinnedDeepBaseline("main");}
+  String clearPinnedDeepBaseline(String context){
+    if(session.deleted)return "当前环境已退役";if(running)return "请等待当前检查结束";
+    if(!Arrays.asList(FingerprintContextBaselines.CONTEXTS).contains(context))return "请选择已有检查覆盖的执行环境";
+    JSONObject previous=fingerprintContextBaselines,legacy=pinnedDeepBaseline;fingerprintContextBaselines=FingerprintContextBaselines.clear(previous,session.environmentId,session.environmentGeneration,context);syncLegacyDeepBaseline();
+    if(!save()){fingerprintContextBaselines=previous;pinnedDeepBaseline=legacy;return storageIssue;}return "";
+  }
+  JSONObject storedObservationMetadata(){return J.obj("environmentId",session.environmentId,"environmentGeneration",session.environmentGeneration);}
+  String pinnedDeepSummary(){return pinnedDeepSummary("main");}
+  String pinnedDeepSummary(String context){
+    JSONObject metadata=report.optJSONObject("observationMetadata");if(metadata==null||!session.environmentId.equals(metadata.opt("environmentId"))||!FingerprintObservationHistory.integer(metadata.opt("environmentGeneration"),session.environmentGeneration,session.environmentGeneration))metadata=storedObservationMetadata();
+    return FingerprintContextBaselines.summary(fingerprintContextBaselines,deepObservationCurrent(context)?report:new JSONObject(),metadata,context);
+  }
+  String comparisonCaptureIssue(String slot){
+    if(!deepObservationCurrent())return "请先在当前网页与配置中重新运行图形与音频检查";
+    return FingerprintReportComparison.captureIssue(report,report.optJSONObject("observationMetadata"),slot);
+  }
+  boolean comparisonHas(String slot){JSONObject saved=FingerprintReportComparison.restore(fingerprintComparison,session.environmentId,session.environmentGeneration);return FingerprintObservationHistory.object(saved,"slots").optJSONObject(slot)!=null;}
+  String captureComparison(String slot){
+    String issue=comparisonCaptureIssue(slot);if(!issue.isEmpty())return issue;
+    JSONObject selected=FingerprintReportComparison.record(fingerprintComparison,slot,report,report.optJSONObject("observationMetadata"),System.currentTimeMillis());if(selected==null)return "本次报告不完整，没有替换本地对照";
+    JSONObject previous=fingerprintComparison;fingerprintComparison=selected;if(!save()){fingerprintComparison=previous;return storageIssue;}return "";
+  }
+  String setComparisonManual(String slot,String key,String state){
+    if(session.deleted)return "当前环境已退役";if(running)return "请等待当前检查结束";
+    JSONObject selected=FingerprintReportComparison.manual(fingerprintComparison,slot,key,state,session.environmentId,session.environmentGeneration);if(selected==null)return "请先保存对应报告，再记录这一项人工兼容结果";
+    JSONObject previous=fingerprintComparison;fingerprintComparison=selected;if(!save()){fingerprintComparison=previous;return storageIssue;}return "";
+  }
+  String clearComparison(String slot){
+    if(session.deleted)return "当前环境已退役";if(running)return "请等待当前检查结束";
+    if(!Arrays.asList(FingerprintReportComparison.SLOTS).contains(slot))return "请选择标准或强化报告";
+    JSONObject selected=FingerprintReportComparison.clear(fingerprintComparison,slot,session.environmentId,session.environmentGeneration);if(selected==null)return "请选择标准或强化报告";
+    JSONObject previous=fingerprintComparison;fingerprintComparison=selected;if(!save()){fingerprintComparison=previous;return storageIssue;}return "";
+  }
+  String comparisonSlotSummary(String slot){return FingerprintReportComparison.slotSummary(fingerprintComparison,slot,session.environmentId,session.environmentGeneration);}
+  String comparisonSummary(){return FingerprintReportComparison.summary(fingerprintComparison,session.environmentId,session.environmentGeneration);}
+  String comparisonCopy(){return FingerprintReportComparison.export(fingerprintComparison,session.environmentId,session.environmentGeneration);}
   boolean hasDeepRecord(){JSONObject signals=report.optJSONObject("signals");JSONObject identity=report.optJSONObject("requestIdentity");return signals!=null&&signals.optJSONObject("apiChecks")!=null&&Boolean.TRUE.equals(signals.optJSONObject("apiChecks").opt("requested"))||identity!=null&&Boolean.TRUE.equals(identity.opt("crossOriginFrameRequested"));}
-  String deepRecordCopy(){return J.obj("schema",1,"scope","Manual local observation; not phone-wide or full fingerprint protection acceptance","copiedAt",System.currentTimeMillis(),"currentAtCopy",deepObservationCurrent(),"environmentId",session.environmentId,"environmentGeneration",session.environmentGeneration,"report",report,"fixedDeepBaseline",pinnedDeepBaseline,"serviceCheck",serviceProbe.result,"serviceCheckCurrentAtCopy",serviceProbe.resultCurrent(),"manualAcceptanceRequired",J.arr("Same physical phone, kernel, origin and test input","User selects standard and confirmed strict modes separately","Login, Baidu IME input, drawing, attachment and recovery checks")).toString();}
+  String deepRecordCopy(){return J.obj("schema",1,"scope","Manual local observation; not phone-wide or full fingerprint protection acceptance","copiedAt",System.currentTimeMillis(),"currentAtCopy",deepObservationCurrent(),"environmentId",session.environmentId,"environmentGeneration",session.environmentGeneration,"report",report,"fixedDeepBaseline",pinnedDeepBaseline,"fixedDeepContextBaselines",fingerprintContextBaselines,"localModeComparison",FingerprintReportComparison.restore(fingerprintComparison,session.environmentId,session.environmentGeneration),"serviceCheck",serviceProbe.result,"serviceCheckCurrentAtCopy",serviceProbe.resultCurrent(),"manualAcceptanceRequired",J.arr("Same physical phone, kernel, origin and test input","User selects standard and confirmed strict modes separately","Login, Baidu IME input, drawing, attachment and recovery checks")).toString();}
   boolean startServiceProbe(Runnable completed){return serviceProbe.start(completed);}
   boolean serviceProbeRunning(){return running&&serviceProbe.active;}
   String serviceProbeSummary(boolean redact){return serviceProbe.summary(redact);}

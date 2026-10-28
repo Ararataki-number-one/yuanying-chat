@@ -32,6 +32,85 @@ CASES=['standard-source-control','manual-api-checks','credential-and-redirect-co
 
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
+def local_comparison_check_ids(source=None):
+    """The report cannot choose its own required supplement roster."""
+    source=source if source is not None else (ROOT/'tests/gecko/FingerprintFollowupIntegrationActivity.java').read_text()
+    found=re.findall(r'\bLOCAL_COMPARISON_CHECK_IDS\s*=\s*\{([^{}]*)\}\s*;',source)
+    if len(found)!=1:
+        raise ValueError('Exactly one source-declared local comparison check roster required')
+    ids=re.findall(r'"([a-z][a-z0-9.-]{1,79})"',found[0])
+    remainder=re.sub(r'"[a-z][a-z0-9.-]{1,79}"|[\s,]','',found[0])
+    if remainder or len(ids)!=32 or len(set(ids))!=len(ids):
+        raise ValueError('Complete32 unique source-declared local comparison checks required')
+    return ids
+
+def reconcile_local_comparison(native):
+    """Additional local persistence observations do not replace original99/14."""
+    ids=local_comparison_check_ids();checks=native.get('localComparisonChecks')
+    if type(native.get('localComparisonExpectedCount'))is not int or native['localComparisonExpectedCount']!=len(ids):
+        raise ValueError('Local comparison expected count differs from selected source')
+    if type(native.get('localComparisonCheckCount'))is not int or native['localComparisonCheckCount']!=len(ids):
+        raise ValueError('Local comparison completed count differs from selected source')
+    if not isinstance(checks,list)or len(checks)!=len(ids)or [x.get('id')for x in checks]!=ids or not all(x.get('pass')is True for x in checks):
+        raise ValueError('Local comparison supplemental check set incomplete or failed')
+    if len(native.get('checks',[]))!=99 or not all(x.get('pass')is True for x in native['checks']):
+        raise ValueError('Supplement cannot replace any original99 checks')
+    evidence=native.get('localComparisonEvidence',{});local=evidence.get('local',{});cross=evidence.get('cross',{})
+    if local.get('actualSourceUrl')!=native.get('actualSourceChat') or local.get('semanticSourceAlias')!=native.get('semanticSourceAlias'):
+        raise ValueError('Controlled source alias or actual TLS source was relabelled')
+    metadata=local.get('observationMetadata',{});origin=metadata.get('sourceOrigin');owner=metadata.get('environmentId');generation=metadata.get('environmentGeneration')
+    if not isinstance(origin,str)or not origin.startswith('https://')or not isinstance(owner,str)or not re.fullmatch('[a-f0-9-]{36}',owner)or type(generation)is not int or generation<0:
+        raise ValueError('Local reference owner/origin metadata missing')
+    main=local.get('mainReference',{});main_observation=main.get('observation',{})
+    if main_observation.get('sourceOrigin')!=origin or main_observation.get('environmentId')!=owner or main_observation.get('environmentGeneration')!=generation or main.get('protectionVerified')is not False or main.get('leakVerdict')is not False:
+        raise ValueError('Actual encrypted main reference lacks its caller-source owner binding')
+    def meaningful(apis):return any(x.get('state')in ['available','restricted']for x in apis.get('probes',{}).values()if isinstance(x,dict))
+    contexts=local.get('contexts',{});raw_contexts=local.get('apiContexts',{})
+    if raw_contexts.get('schema')!=1 or raw_contexts.get('requested')is not True or not meaningful(local.get('mainApiChecks',{})):
+        raise ValueError('Actual local deep context operation evidence missing')
+    context_results={}
+    for name,source in [('worker','dedicated-worker'),('frame','same-origin-srcdoc')]:
+        raw=raw_contexts.get(name,{});row=contexts.get(name,{});eligible=meaningful(raw)
+        if type(row.get('eligible'))is not bool or row['eligible']!=eligible or row.get('source')!=raw.get('source'):
+            raise ValueError('Context availability differs from its actual operations: '+name)
+        if eligible:
+            pin=row.get('reference',{});value=pin.get('observation',{})
+            if raw.get('source')!=source or row.get('admissionIssue')!='' or row.get('captureIssue')!='' or value.get('source')!=source or value.get('sourceOrigin')!=origin or value.get('topLevelOrigin')!=origin or value.get('environmentId')!=owner or value.get('environmentGeneration')!=generation or pin.get('protectionVerified')is not False or pin.get('leakVerdict')is not False:
+                raise ValueError('Meaningful context reference missing or wrongly grouped: '+name)
+        elif not row.get('admissionIssue')or not row.get('captureIssue')or row.get('reference')!={}:
+            raise ValueError('Unavailable context was silently fixed or counted as covered: '+name)
+        context_results[name]=dict(operationObserved=eligible,referenceCaptured=eligible,notAProtectionVerdict=True)
+    migration=local.get('migration',{});refusal=local.get('persistenceRefusal',{})
+    if any(migration.get(k)is not True for k in ['legacyMigrated','canonicalEmptyAuthoritative','storePayloadRestored']):
+        raise ValueError('Actual owned encrypted migration/clear restoration evidence missing')
+    if any(refusal.get(k)is not True for k in ['pinRollback','clearRollback','payloadUnchanged','ciphertextUnchanged'])or type(refusal.get('saveCalls'))is not int or refusal['saveCalls']!=2:
+        raise ValueError('Simulated save refusal did not preserve both runtime and encrypted data')
+    for before,after in [('payloadBeforeSha256','payloadAfterSha256'),('ciphertextBeforeSha256','ciphertextAfterSha256')]:
+        if not re.fullmatch('[0-9a-f]{64}',str(refusal.get(before,'')))or refusal.get(before)!=refusal.get(after):
+            raise ValueError('Save-refusal original byte hashes absent or changed')
+    if any(local.get(k)is not False for k in ['pairModeCoordinatorAcceptance','physicalPhoneAcceptance','fullFingerprintProtectionAcceptance']):
+        raise ValueError('Local actions cannot attest a real mode switch, phone or protection effect')
+    cases={row['case']:row for row in native.get('cases',[])}
+    original=cases.get('controlled-cross-origin-frame',{});actual_frame=original.get('report',{}).get('requestIdentity',{}).get('browser',{}).get('crossOriginFrame',{})
+    eligible=meaningful(actual_frame.get('apiChecks',{}))
+    if cross.get('actualDetectorUrl')!=original.get('actualDetectorUrl')or cross.get('actualFrameOrigin')!=actual_frame.get('origin')or cross.get('actualFrameOrigin')!=native.get('frameOrigin')or type(cross.get('eligible'))is not bool or cross['eligible']!=eligible:
+        raise ValueError('Cross-origin reference did not retain the original actual detector/frame sources')
+    if eligible:
+        pin=cross.get('reference',{});value=pin.get('observation',{})
+        if cross.get('admissionIssue')!='' or cross.get('captureIssue')!='' or cross.get('restoredCaptureIssue')!='' or value.get('sourceOrigin')!=native['frameOrigin'] or value.get('topLevelOrigin')!=native['origin'] or value.get('sourceOrigin')==value.get('topLevelOrigin')or value.get('environmentId')!=owner or pin.get('protectionVerified')is not False:
+            raise ValueError('Controlled cross-origin fixed reference lost its distinct actual origin')
+    elif not cross.get('admissionIssue')or not cross.get('captureIssue')or not cross.get('restoredCaptureIssue')or cross.get('reference')!={}:
+        raise ValueError('Unavailable cross-origin operations were reported as a fixed reference')
+    changed=cross.get('changedEndpoint',{})
+    if any(changed.get(k)is not True for k in ['configurationSaved','pinRefused','liveDocumentStillCurrent','selectedOriginDiffers','referencesUnchanged'])or any(cross.get(k)is not False for k in ['physicalPhoneAcceptance','fullFingerprintProtectionAcceptance']):
+        raise ValueError('Changed frame configuration was not closed or was converted to a protection claim')
+    return dict(status='passed-controlled-local-comparison-reconciliation',checks=len(ids),sourceBoundRoster=True,
+        mainReferenceCaptured=True,contexts=context_results,crossOriginReferenceCaptured=eligible,
+        encryptedMigrationAndClearObserved=True,saveRefusalIsFixtureOnly=True,exactEncryptedBytesRetainedDuringRefusal=True,
+        pairNativeNegativeActionsObserved=True,pairActualModeCoordinatorAcceptance=False,physicalPhoneAcceptance=False,
+        officialChatGptSiteTested=False,fullFingerprintProtectionAcceptance=False,releaseAcceptance=False,
+        scope='Additional actual AVD production actions and owned encrypted storage only. Save refusal and version-format envelopes are explicit fixture injections; original99 checks/cases and independent HTTPS reconciliation remain mandatory. No physical phone, protection effect or real template-switch pair acceptance.')
+
 def reconcile(native,trace,service):
     """Independent receiver records are kept distinct from browser self-report."""
     if trace.get('runNonce')!=native['runNonce'] or trace.get('dropped')!=0 or service.get('dropped')!=0:
@@ -267,7 +346,7 @@ def main():
             if any(native.get(key)!=0 for key in ['eventDrops','routeDrops','normalizationDrops']):raise ValueError('Native original evidence truncated')
             if native.get('preflightDriverDrops')!=0:raise ValueError('Native preflight driver evidence truncated')
             after=adb('exec-out','content','read','--uri','content://'+PACKAGE+'.evidence/build-identity');verify_installed(json.loads(after),expected);wrapper['installedAfterSha256']=hashlib.sha256(after.encode()).hexdigest()
-            wrapper.update(status='completed',actualAndroidExecution=True,actualGeckoExecution=True,nativeReportSha256=sha(out/'native-report.json'),actualNativeChecks=len(native['checks']))
+            wrapper.update(status='completed',actualAndroidExecution=True,actualGeckoExecution=True,nativeReportSha256=sha(out/'native-report.json'),actualNativeChecks=len(native['checks']),actualLocalComparisonChecks=len(native.get('localComparisonChecks',[])))
     except BaseException as failure:
         error=failure;wrapper.update(status='failed',errorType=type(failure).__name__,error=str(failure))
     finally:
@@ -294,9 +373,10 @@ def main():
             if wrapper['status']=='completed':
                 wrapper['controlReconciliation']=reconcile(native,trace,service)
                 wrapper['coverageReconciliation']=reconcile_coverage(native,trace,service,frame_service)
+                wrapper['localComparisonReconciliation']=reconcile_local_comparison(native)
         except Exception as failure:wrapper.update(status='failed',reconciliationError=type(failure).__name__+': '+str(failure))
         (out/'runner.json').write_text(json.dumps(wrapper,indent=2)+'\n')
     if wrapper['status']!='completed':raise RuntimeError('Fingerprint followup diagnostic incomplete; retain current original runner.json') from error
-    print(json.dumps(dict(status='completed',sourceCommit=source,nativeChecks=wrapper['actualNativeChecks'],nativeReportSha256=wrapper['nativeReportSha256'],fullFingerprintProtectionAcceptance=False,releaseAcceptance=False)))
+    print(json.dumps(dict(status='completed',sourceCommit=source,nativeChecks=wrapper['actualNativeChecks'],localComparisonChecks=wrapper['actualLocalComparisonChecks'],nativeReportSha256=wrapper['nativeReportSha256'],fullFingerprintProtectionAcceptance=False,releaseAcceptance=False)))
 
 if __name__=='__main__':main()

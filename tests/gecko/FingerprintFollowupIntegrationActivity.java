@@ -45,11 +45,24 @@ import org.mozilla.geckoview.WebRequestError;
 public final class FingerprintFollowupIntegrationActivity extends Activity {
   static final String FILE="fingerprint-followup-results.json",TAG="PocketFingerprintFollowup";
   static final int NORMALIZATION_LIMIT=512,PREFLIGHT_LIMIT=128;
+  static final String[] LOCAL_COMPARISON_CHECK_IDS={
+    "local.main.current-deep","local.main.pin","local.main.saved-owner",
+    "local.worker.admission","local.worker.pin-outcome","local.worker.main-unchanged","local.worker.saved-outcome",
+    "local.frame.admission","local.frame.pin-outcome","local.frame.main-unchanged","local.frame.saved-outcome",
+    "local.owner.reject-foreign","local.main.clear-keeps-contexts","local.main.cleared-reload",
+    "local.worker.clear-keeps-frame","local.frame.clear-keeps-main-state","local.clear.persisted-empty",
+    "local.legacy.migrates-main","local.legacy.explicit-empty-wins",
+    "local.failure.pin-rollback","local.failure.clear-rollback","local.failure.store-bytes-unchanged",
+    "local.pair.invalid-slot-refused","local.pair.no-snapshot-manual-refused","local.pair.no-verdict","local.document-preserved",
+    "cross.admission","cross.pin-origin","cross.changed-endpoint-refused","cross.restored-endpoint","cross.clear-only-own-context","cross.document-preserved"
+  };
   static final String SOURCE_DRIVER_GUARD="if (location.protocol !== 'https:' || location.hostname !== 'chatgpt.com') return false;";
   final Handler handler=new Handler(Looper.getMainLooper());
   final ExecutorService worker=Executors.newSingleThreadExecutor();
   final AtomicBoolean concluded=new AtomicBoolean();
   final JSONArray checks=new JSONArray(),cases=new JSONArray(),events=new JSONArray(),routes=new JSONArray(),normalizations=new JSONArray(),loads=new JSONArray(),preflightDriverResults=new JSONArray();
+  final JSONArray localComparisonChecks=new JSONArray();
+  final JSONObject localComparisonEvidence=new JSONObject();
   String source,nonce,origin,redirectOrigin,frameOrigin,faultOrigin,chat,semanticChat;int routeDrops,eventDrops,normalizationDrops,preflightDriverDrops;
   JSONObject build=new JSONObject(),sdk=new JSONObject(),sourceDriverAdapter=new JSONObject();
   String stage="created";boolean sourceDriverGuardRecorded;
@@ -75,6 +88,23 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
   void check(String name,boolean pass)throws IOException{
     synchronized(checks){checks.put(J.obj("name",name,"pass",pass));}
     if(!pass)throw new IOException(name);
+  }
+  void localCheck(String id,boolean pass)throws IOException{
+    synchronized(localComparisonChecks){
+      int index=localComparisonChecks.length();
+      if(index>=LOCAL_COMPARISON_CHECK_IDS.length||!LOCAL_COMPARISON_CHECK_IDS[index].equals(id))throw new IOException("Supplement check order differs: "+id);
+      localComparisonChecks.put(J.obj("id",id,"pass",pass));
+    }
+    if(!pass)throw new IOException("Local comparison supplement: "+id);
+  }
+  static String byteHash(byte[] bytes){
+    try{StringBuilder value=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))value.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return value.toString();}
+    catch(Exception error){throw new IllegalStateException("Fixture byte hash unavailable",error);}
+  }
+  static final class RefuseAuditSave extends EnvironmentAudit {
+    int attempts;
+    RefuseAuditSave(ChatSession owner){super(owner);}
+    @Override boolean save(){attempts++;storageIssue="fixture-only-persistence-refusal";return false;}
   }
   void event(String kind,JSONObject value){synchronized(events){if(events.length()<512)events.put(J.obj("kind",kind,"at",SystemClock.elapsedRealtime(),"value",value));else eventDrops++;}}
   JSONObject copy(JSONObject value){return J.parse(value.toString());}
@@ -377,6 +407,87 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
     check("Clearing the pinned reference keeps recent history",clearedPin.isEmpty()&&ui(()->owner.audit.pinnedDeepBaseline.length()==0&&owner.audit.observationHistory.toString().equals(history.toString())));
     JSONObject saved=savedAudit();check("Independent history and reference clearing survive encrypted persistence",saved.getJSONObject("pinnedDeepBaseline").length()==0&&saved.getJSONArray("fingerprintHistory").toString().equals(history.toString()));
     cases.put(J.obj("case","pinned-deep-reference-lifecycle","originalDeep",deep,"pinned",pinned,"ordinaryHistoryAfterEight",ordinaryHistory,"currentDeep",newer,"comparison",comparison,"historyAfterPinClear",history,"scope","Direct calls to the same production actions used by explicit UI controls, with actual encrypted storage; no physical-phone or tap-level UI verdict."));
+    localContextBaselineChecks();
+  }
+  JSONObject reference(JSONObject pins,String context){return FingerprintContextBaselines.reference(pins,owner.environmentId,owner.environmentGeneration,context);}
+  JSONObject otherReferences(JSONObject pins,String context){JSONObject refs=copy(FingerprintObservationHistory.object(pins,"refs"));refs.remove(context);return refs;}
+  boolean meaningful(JSONObject apis){JSONObject probes=FingerprintObservationHistory.object(apis,"probes");for(String name:Arrays.asList("canvas","audio","fonts","webgl"))if(Arrays.asList("available","restricted").contains(FingerprintObservationHistory.object(probes,name).optString("state")))return true;return false;}
+  JSONObject reloadPinSnapshot()throws Exception{
+    return ui(()->{
+      byte[] bytes=owner.audit.store.get("environment-audit");EnvironmentAudit loaded=null;
+      try{loaded=new EnvironmentAudit(owner);return J.obj("canonical",copy(loaded.fingerprintContextBaselines),"legacy",copy(loaded.pinnedDeepBaseline));}
+      finally{if(loaded!=null){loaded.worker.shutdownNow();loaded.closer.shutdownNow();}if(bytes!=null)owner.audit.store.put("environment-audit",bytes);}
+    });
+  }
+  void localContextBaselineChecks()throws Exception{
+    JSONObject before=document(),deep=audit(true),metadata=deep.getJSONObject("observationMetadata");
+    localCheck("local.main.current-deep",ui(()->owner.audit.deepObservationCurrent("main")));
+    String mainIssue=ui(()->owner.audit.pinDeepObservation("main"));
+    localCheck("local.main.pin",mainIssue.isEmpty()&&ui(()->owner.audit.hasPinnedDeepBaseline("main")));
+    JSONObject main=ui(()->copy(owner.audit.pinnedDeepBaseline)),pins=ui(()->copy(owner.audit.fingerprintContextBaselines));
+    localCheck("local.main.saved-owner",savedAudit().getJSONObject("pinnedDeepBaseline").toString().equals(main.toString())&&reference(pins,"main").toString().equals(main.toString()));
+    JSONObject contexts=new JSONObject();
+    for(String context:Arrays.asList("worker","frame")){
+      JSONObject raw=FingerprintObservationHistory.object(FingerprintObservationHistory.object(deep.getJSONObject("signals"),"apiContexts"),context);boolean eligible=meaningful(raw);
+      String admission=ui(()->owner.audit.deepContextIssue(context));
+      localCheck("local."+context+".admission",eligible?admission.isEmpty():!admission.isEmpty());
+      String issue=ui(()->owner.audit.pinDeepObservation(context));boolean pinned=ui(()->owner.audit.hasPinnedDeepBaseline(context));
+      localCheck("local."+context+".pin-outcome",eligible?issue.isEmpty()&&pinned:!issue.isEmpty()&&!pinned);
+      localCheck("local."+context+".main-unchanged",ui(()->owner.audit.pinnedDeepBaseline.toString().equals(main.toString())));
+      JSONObject saved=savedAudit().getJSONObject("fingerprintContextBaselines"),current=ui(()->copy(owner.audit.fingerprintContextBaselines));
+      localCheck("local."+context+".saved-outcome",reference(saved,context).toString().equals(reference(current,context).toString())&&FingerprintContextBaselines.hasReference(saved,owner.environmentId,owner.environmentGeneration,context)==eligible);
+      contexts.put(context,J.obj("source",raw.optString("source"),"eligible",eligible,"admissionIssue",admission,"captureIssue",issue,"reference",reference(current,context),"scope",eligible?"actual controlled operation reference":"Actual operation unavailable or failed; not fixed and not counted as protection success"));
+    }
+    JSONObject all=ui(()->copy(owner.audit.fingerprintContextBaselines));
+    localCheck("local.owner.reject-foreign",FingerprintContextBaselines.restore(all,UUID.randomUUID().toString(),owner.environmentGeneration).length()==0&&FingerprintContextBaselines.restore(all,owner.environmentId,owner.environmentGeneration+1).length()==0);
+    String clearMain=ui(()->owner.audit.clearPinnedDeepBaseline("main"));JSONObject withoutMain=ui(()->copy(owner.audit.fingerprintContextBaselines));
+    localCheck("local.main.clear-keeps-contexts",clearMain.isEmpty()&&!ui(()->owner.audit.hasPinnedDeepBaseline("main"))&&otherReferences(all,"main").toString().equals(FingerprintObservationHistory.object(withoutMain,"refs").toString()));
+    JSONObject reloaded=reloadPinSnapshot();
+    localCheck("local.main.cleared-reload",reloaded.getJSONObject("legacy").length()==0&&!FingerprintContextBaselines.hasReference(reloaded.getJSONObject("canonical"),owner.environmentId,owner.environmentGeneration,"main")&&FingerprintObservationHistory.object(reloaded.getJSONObject("canonical"),"refs").toString().equals(FingerprintObservationHistory.object(withoutMain,"refs").toString()));
+    JSONObject beforeWorker=ui(()->copy(owner.audit.fingerprintContextBaselines));String clearWorker=ui(()->owner.audit.clearPinnedDeepBaseline("worker"));JSONObject afterWorker=ui(()->copy(owner.audit.fingerprintContextBaselines));
+    localCheck("local.worker.clear-keeps-frame",clearWorker.isEmpty()&&!ui(()->owner.audit.hasPinnedDeepBaseline("worker"))&&otherReferences(beforeWorker,"worker").toString().equals(FingerprintObservationHistory.object(afterWorker,"refs").toString()));
+    String clearFrame=ui(()->owner.audit.clearPinnedDeepBaseline("frame"));JSONObject afterFrame=ui(()->copy(owner.audit.fingerprintContextBaselines));
+    localCheck("local.frame.clear-keeps-main-state",clearFrame.isEmpty()&&!ui(()->owner.audit.hasPinnedDeepBaseline("frame"))&&otherReferences(afterWorker,"frame").toString().equals(FingerprintObservationHistory.object(afterFrame,"refs").toString()));
+    JSONObject emptySaved=savedAudit(),emptyReloaded=reloadPinSnapshot();
+    localCheck("local.clear.persisted-empty",emptySaved.getJSONObject("pinnedDeepBaseline").length()==0&&emptySaved.getJSONObject("fingerprintContextBaselines").length()==0&&emptyReloaded.getJSONObject("canonical").length()==0&&emptyReloaded.getJSONObject("legacy").length()==0);
+    JSONObject migration=ui(()->{
+      byte[] previous=owner.audit.store.get("environment-audit");JSONObject legacy=J.parse(new String(previous,StandardCharsets.UTF_8)),result=new JSONObject();
+      try{
+        legacy.remove("fingerprintContextBaselines");legacy.put("pinnedDeepBaseline",copy(main));owner.audit.store.put("environment-audit",legacy.toString().getBytes(StandardCharsets.UTF_8));JSONObject migrated=reloadPinSnapshot();
+        result.put("legacyMigrated",reference(migrated.getJSONObject("canonical"),"main").toString().equals(main.toString())&&migrated.getJSONObject("legacy").toString().equals(main.toString()));
+        legacy.put("fingerprintContextBaselines",new JSONObject());owner.audit.store.put("environment-audit",legacy.toString().getBytes(StandardCharsets.UTF_8));JSONObject authoritative=reloadPinSnapshot();
+        result.put("canonicalEmptyAuthoritative",authoritative.getJSONObject("canonical").length()==0&&authoritative.getJSONObject("legacy").length()==0);
+      }finally{owner.audit.store.put("environment-audit",previous);}
+      result.put("storePayloadRestored",Arrays.equals(previous,owner.audit.store.get("environment-audit")));
+      result.put("injection","Owned test environment encrypted envelopes: current actual main pin is placed in the previous format or beside an explicit empty new-format field; original decrypted envelope bytes are restored in finally.");return result;
+    });
+    localCheck("local.legacy.migrates-main",migration.optBoolean("legacyMigrated")&&migration.optBoolean("storePayloadRestored"));
+    localCheck("local.legacy.explicit-empty-wins",migration.optBoolean("canonicalEmptyAuthoritative")&&migration.optBoolean("storePayloadRestored"));
+    String repin=ui(()->owner.audit.pinDeepObservation("main"));if(!repin.isEmpty())throw new IOException("Supplement rollback precondition: "+repin);
+    JSONObject refusal=ui(()->{
+      byte[] payload=owner.audit.store.get("environment-audit"),cipher=java.nio.file.Files.readAllBytes(owner.audit.store.file("environment-audit").toPath());RefuseAuditSave failing=new RefuseAuditSave(owner);
+      try{
+        failing.report=copy(owner.audit.report);failing.fingerprintContextBaselines=copy(owner.audit.fingerprintContextBaselines);failing.syncLegacyDeepBaseline();failing.attempts=0;
+        String original=failing.fingerprintContextBaselines.toString(),oldMain=failing.pinnedDeepBaseline.toString(),pinIssue=failing.pinDeepObservation("main");
+        boolean pinRollback=failing.attempts==1&&!pinIssue.isEmpty()&&original.equals(failing.fingerprintContextBaselines.toString())&&oldMain.equals(failing.pinnedDeepBaseline.toString());
+        String clearIssue=failing.clearPinnedDeepBaseline("main");boolean clearRollback=failing.attempts==2&&!clearIssue.isEmpty()&&original.equals(failing.fingerprintContextBaselines.toString())&&oldMain.equals(failing.pinnedDeepBaseline.toString());
+        byte[] after=owner.audit.store.get("environment-audit"),afterCipher=java.nio.file.Files.readAllBytes(owner.audit.store.file("environment-audit").toPath());
+        return J.obj("pinRollback",pinRollback,"clearRollback",clearRollback,"saveCalls",failing.attempts,"payloadUnchanged",Arrays.equals(payload,after),"ciphertextUnchanged",Arrays.equals(cipher,afterCipher),"payloadBeforeSha256",byteHash(payload),"payloadAfterSha256",byteHash(after),"ciphertextBeforeSha256",byteHash(cipher),"ciphertextAfterSha256",byteHash(afterCipher),"injection","Test-only EnvironmentAudit subclass returns false from save(); this proves caller rollback behavior, not a real disk failure. The actual encrypted file and decrypted content must both remain byte-exact during the refusal window.");
+      }finally{failing.worker.shutdownNow();failing.closer.shutdownNow();}
+    });
+    localCheck("local.failure.pin-rollback",refusal.optBoolean("pinRollback"));
+    localCheck("local.failure.clear-rollback",refusal.optBoolean("clearRollback"));
+    localCheck("local.failure.store-bytes-unchanged",refusal.optBoolean("payloadUnchanged")&&refusal.optBoolean("ciphertextUnchanged"));
+    byte[] pairBefore=ui(()->owner.audit.store.get("environment-audit"));String pairState=ui(()->owner.audit.fingerprintComparison.toString()),invalid=ui(()->owner.audit.clearComparison("invalid-slot"));
+    localCheck("local.pair.invalid-slot-refused",!invalid.isEmpty()&&pairState.equals(ui(()->owner.audit.fingerprintComparison.toString()))&&Arrays.equals(pairBefore,ui(()->owner.audit.store.get("environment-audit"))));
+    String manual=ui(()->owner.audit.setComparisonManual("standard","input","pass"));
+    localCheck("local.pair.no-snapshot-manual-refused",!manual.isEmpty()&&!ui(()->owner.audit.comparisonHas("standard"))&&!ui(()->owner.audit.comparisonHas("enhanced"))&&Arrays.equals(pairBefore,ui(()->owner.audit.store.get("environment-audit"))));
+    JSONObject pair=J.parse(ui(()->owner.audit.comparisonCopy()));
+    localCheck("local.pair.no-verdict",Boolean.FALSE.equals(pair.opt("physicalPhoneAcceptance"))&&Boolean.FALSE.equals(pair.opt("protectionVerified"))&&Boolean.FALSE.equals(pair.opt("leakVerdict"))&&Boolean.FALSE.equals(pair.opt("samePhysicalPhoneVerified")));
+    String finalClear=ui(()->owner.audit.clearPinnedDeepBaseline("main"));if(!finalClear.isEmpty())throw new IOException("Supplement reference cleanup: "+finalClear);
+    JSONObject after=document();
+    localCheck("local.document-preserved",before.opt("actualUrl")instanceof String&&chat.equals(before.optString("actualUrl"))&&before.optString("actualUrl").equals(after.optString("actualUrl"))&&before.opt("timeOrigin")instanceof Number&&before.optDouble("timeOrigin")>0&&after.opt("timeOrigin")instanceof Number&&before.optDouble("timeOrigin")==after.optDouble("timeOrigin")&&after.optString("draft").isEmpty()&&after.optInt("sends")==0&&after.optString("cookie").contains("fingerprint-preserve="+nonce));
+    localComparisonEvidence.put("local",J.obj("actualSourceUrl",chat,"semanticSourceAlias",semanticChat,"observationMetadata",metadata,"apiContexts",deep.getJSONObject("signals").getJSONObject("apiContexts"),"mainApiChecks",deep.getJSONObject("signals").getJSONObject("apiChecks"),"contexts",contexts,"mainReference",main,"migration",migration,"persistenceRefusal",refusal,"pairScope","Native negative action guards and host-model pair processing only; no real template-switch pair or tap-level comparison UI acceptance.","pairModeCoordinatorAcceptance",false,"physicalPhoneAcceptance",false,"fullFingerprintProtectionAcceptance",false,"scope","The existing single controlled-source URL alias remains fixture-only. Context grouping uses the production caller metadata; actual detector/Worker requests and results are never relabelled. No ChatGPT origin, phone, cross-context hash equality or protection-effectiveness verdict is claimed."));
   }
   void faultMode(String mode)throws Exception{
     eval("(()=>{document.getElementById('fixture-mode-result').textContent='{}';dispatchEvent(new CustomEvent('pocket-fixture-mode',{detail:"+JSONObject.quote(J.obj("mode",mode).toString())+"}));return {armed:true}})()");
@@ -422,9 +533,33 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
     check("Cross-origin API observation is separately sourced and nonce-bound",frame!=null&&"complete".equals(frame.optString("status"))&&"controlled-cross-origin-iframe".equals(frame.optString("source"))&&token.equals(frame.optString("nonce"))&&frameOrigin.equals(frame.optString("origin")));
     JSONObject apis=frame.getJSONObject("apiChecks");check("Cross-origin graphics result declares finite work and no protection attestation",apis.optInt("schema")==1&&apis.optInt("probeVersion")==1&&apis.getJSONObject("limits").optInt("canvasPixels")==4096&&apis.getJSONObject("limits").optInt("totalBudgetMs")==1200&&!apis.optBoolean("protectionVerified",true));
     for(String name:Arrays.asList("canvas","audio","fonts","webgl")){JSONObject value=apis.getJSONObject("probes").getJSONObject(name);check("Cross-origin "+name+" result is an explicit observation",Arrays.asList("available","restricted","failed","uncovered").contains(value.optString("state"))&&!value.optString("reason").isEmpty());}
+    localCrossOriginBaselineChecks(report);
     check("Cross-origin completion keeps manual return available",ui(()->owner.audit.canReturnRequestIdentity()));check("User-requested cross-origin return is accepted",ui(()->owner.audit.returnRequestIdentity()));waitChat();insertUnconsentedFrame(token,"retired-cross-frame-replay");
     JSONObject after=document();check("Cross-origin return and closed-scope replay preserve synthetic login and no-send state",after.optString("draft").isEmpty()&&after.optInt("sends")==0&&after.optString("cookie").contains("fingerprint-preserve="+nonce));
     cases.put(J.obj("case","controlled-cross-origin-frame","capabilities",ready,"sourceBefore",before,"unconsentedNonce",denied,"actualDetectorUrl",actual,"nonce",token,"report",report,"sourceAfter",after,"scope","Only explicit top-level detector navigation uses the second trusted frame origin. Native admission, credential filtering, source/origin/nonce validation and server CSP remain active; no CSP override or equal-hash assertion."));
+  }
+  void localCrossOriginBaselineChecks(JSONObject actualReport)throws Exception{
+    JSONObject before=eval("({actualUrl:location.href,timeOrigin:performance.timeOrigin})"),frame=actualReport.getJSONObject("requestIdentity").getJSONObject("browser").getJSONObject("crossOriginFrame");boolean eligible=meaningful(frame.getJSONObject("apiChecks"));
+    String admission=ui(()->owner.audit.deepContextIssue("crossOriginFrame"));
+    localCheck("cross.admission",eligible?admission.isEmpty():!admission.isEmpty());
+    JSONObject prior=ui(()->copy(owner.audit.fingerprintContextBaselines));String pinIssue=ui(()->owner.audit.pinDeepObservation("crossOriginFrame"));JSONObject pinned=ui(()->reference(owner.audit.fingerprintContextBaselines,"crossOriginFrame"));
+    JSONObject observation=FingerprintObservationHistory.object(pinned,"observation");
+    localCheck("cross.pin-origin",eligible?pinIssue.isEmpty()&&frameOrigin.equals(observation.optString("sourceOrigin"))&&origin.equals(observation.optString("topLevelOrigin"))&&!observation.optString("sourceOrigin").equals(observation.optString("topLevelOrigin")):!pinIssue.isEmpty()&&pinned.length()==0);
+    JSONObject changed=ui(()->{
+      String original=owner.audit.requestIdentityFrameEndpoint(),oldPins=owner.audit.fingerprintContextBaselines.toString();
+      try{
+        String selected=owner.audit.setRequestIdentityFrameEndpoint(faultOrigin+RequestIdentityAudit.PATH),issue=owner.audit.pinDeepObservation("crossOriginFrame");
+        return J.obj("configurationSaved",selected.isEmpty(),"pinRefused",!issue.isEmpty(),"liveDocumentStillCurrent",owner.audit.deepObservationCurrent(),"selectedOriginDiffers",!FingerprintObservationHistory.origin(owner.audit.requestIdentityFrameEndpoint()).equals(frameOrigin),"issue",issue,"referencesUnchanged",oldPins.equals(owner.audit.fingerprintContextBaselines.toString()));
+      }finally{String restored=owner.audit.setRequestIdentityFrameEndpoint(original);if(!restored.isEmpty())throw new IOException("Supplement frame configuration restoration failed: "+restored);}
+    });
+    localCheck("cross.changed-endpoint-refused",changed.optBoolean("configurationSaved")&&changed.optBoolean("pinRefused")&&changed.optBoolean("liveDocumentStillCurrent")&&changed.optBoolean("selectedOriginDiffers")&&changed.optBoolean("referencesUnchanged"));
+    String restoredIssue=ui(()->owner.audit.pinDeepObservation("crossOriginFrame"));boolean present=ui(()->owner.audit.hasPinnedDeepBaseline("crossOriginFrame"));
+    localCheck("cross.restored-endpoint",eligible?restoredIssue.isEmpty()&&present:!restoredIssue.isEmpty()&&!present);
+    JSONObject afterPin=ui(()->copy(owner.audit.fingerprintContextBaselines));String clear=ui(()->owner.audit.clearPinnedDeepBaseline("crossOriginFrame"));JSONObject cleared=ui(()->copy(owner.audit.fingerprintContextBaselines));
+    localCheck("cross.clear-only-own-context",clear.isEmpty()&&!ui(()->owner.audit.hasPinnedDeepBaseline("crossOriginFrame"))&&otherReferences(afterPin,"crossOriginFrame").toString().equals(FingerprintObservationHistory.object(cleared,"refs").toString())&&otherReferences(prior,"crossOriginFrame").toString().equals(FingerprintObservationHistory.object(cleared,"refs").toString()));
+    JSONObject after=eval("({actualUrl:location.href,timeOrigin:performance.timeOrigin})");
+    localCheck("cross.document-preserved",before.opt("actualUrl")instanceof String&&before.optString("actualUrl").startsWith(origin+RequestIdentityAudit.PATH+"document?nonce=")&&before.optString("actualUrl").equals(after.optString("actualUrl"))&&before.optString("actualUrl").equals(ui(()->view.rawUrl()))&&before.opt("timeOrigin")instanceof Number&&before.optDouble("timeOrigin")>0&&after.opt("timeOrigin")instanceof Number&&before.optDouble("timeOrigin")==after.optDouble("timeOrigin")&&ui(()->owner.audit.canReturnRequestIdentity()));
+    localComparisonEvidence.put("cross",J.obj("actualDetectorUrl",before.optString("actualUrl"),"actualFrameOrigin",frame.optString("origin"),"eligible",eligible,"admissionIssue",admission,"captureIssue",pinIssue,"reference",pinned,"changedEndpoint",changed,"restoredCaptureIssue",restoredIssue,"physicalPhoneAcceptance",false,"fullFingerprintProtectionAcceptance",false,"scope","Actual opted-in detector report only. The frame setting is temporarily changed and restored without opening another URL; no additional remote origin or request is used. Missing API work remains unavailable, not a passing protection verdict."));
   }
   JSONObject auditSnapshot(){
     if(owner==null)return J.obj("stage",stage,"ownerCreated",false);
@@ -434,9 +569,10 @@ public final class FingerprintFollowupIntegrationActivity extends Activity {
   void run(){try{stage="validate";validate();stage="open-controlled-source";open();stage="manual-api-checks";apiChecks();stage="credential-and-redirect-controls";credentialAndRedirectControls();identityCheck();stage="late-registration-control";lateRegistrationControl();stage="preflight-invalidation-controls";preflightInvalidationControls();stage="protection-failure-control";protectionFailureControl();stage="bounded-context-api-checks";contextApiChecks();stage="pinned-deep-reference-lifecycle";pinnedBaselineChecks();stage="manual-service-capability-controls";serviceCapabilityChecks();stage="controlled-cross-origin-frame";crossOriginIdentityChecks();stage="completed";finish(null);}catch(Throwable error){finish(error);}}
   void finish(Throwable error){
     if(!concluded.compareAndSet(false,true))return;
+    if(error==null&&localComparisonChecks.length()!=LOCAL_COMPARISON_CHECK_IDS.length)error=new IOException("Local comparison supplement incomplete");
     JSONObject finalState=new JSONObject();try{finalState=ui(()->J.obj("url",view==null?"":view.getUrl(),"actualUrl",view==null?"":view.rawUrl(),"protection",view==null?new JSONObject():view.protectionStatus(),"connectionEpoch",owner==null?-1:owner.connectionEpoch,"navigationEpoch",owner==null?-1:owner.navigationEpoch,"audit",auditSnapshot()));}catch(Exception failure){finalState=J.obj("stage",stage,"error",failure.getClass().getSimpleName());}
     JSONObject report=J.obj("schema",1,"status",error==null?"completed":"failed","sourceCommit",source,"sourceTree",build.optString("sourceTree"),"runNonce",nonce,"buildIdentity",build,"sdkIdentity",sdk,"actualAndroidExecution",true,"actualGeckoExecution",view!=null&&view.ready,"officialChatGptSiteTested",false,"physicalPhoneAcceptance",false,"fullFingerprintProtectionAcceptance",false,"fullDesktopUaConsistency",false,"releaseAcceptance",false,"publicNetworkTraffic",false,"origin",origin,"redirectOrigin",redirectOrigin,"actualSourceChat",chat,"semanticSourceAlias",semanticChat,"measurementEndedAtElapsedMs",SystemClock.elapsedRealtime(),"checks",copyArray(checks),"cases",copyArray(cases),"events",copyArray(events),"routes",copyArray(routes),"loads",copyArray(loads),"normalizations",copyArray(normalizations),"eventDrops",eventDrops,"routeDrops",routeDrops,"normalizationDrops",normalizationDrops,"finalState",finalState,"fixtureOnlyCertificateOrigins",view==null?new JSONArray():new JSONArray(new ArrayList<>(view.certificates)),"scope","Source-chat alias is a controlled fixture adapter only; actual detector document/Worker URLs and headers are never rewritten. Actual Gecko and independent HTTPS records must be reconciled; no real ChatGPT/login, phone, complete DNS/IPv6/Shared Worker/Service Worker or full protection verdict.","unverified",J.arr("Real ChatGPT and real accounts","Physical phone keyboard and scrolling","Shared Worker and Service Worker","Full network fingerprint/DNS/IPv6 paths","Restart/upgrade phone behavior","True current-template application during real user work"));
-    try{report.put("stage",stage).put("sourceDriverAdapter",sourceDriverAdapter).put("preflightDriverResults",copyArray(preflightDriverResults)).put("preflightDriverDrops",preflightDriverDrops).put("frameOrigin",frameOrigin).put("faultOrigin",faultOrigin);}catch(Exception ignored){}
+    try{report.put("stage",stage).put("sourceDriverAdapter",sourceDriverAdapter).put("preflightDriverResults",copyArray(preflightDriverResults)).put("preflightDriverDrops",preflightDriverDrops).put("frameOrigin",frameOrigin).put("faultOrigin",faultOrigin).put("localComparisonChecks",copyArray(localComparisonChecks)).put("localComparisonCheckCount",localComparisonChecks.length()).put("localComparisonExpectedCount",LOCAL_COMPARISON_CHECK_IDS.length).put("localComparisonEvidence",localComparisonEvidence);}catch(Exception ignored){}
     if(error!=null)try{report.put("errorType",error.getClass().getName());report.put("error",String.valueOf(error.getMessage()));}catch(Exception ignored){}
     try{AtomicFile file=new AtomicFile(new File(getFilesDir(),FILE));FileOutputStream out=null;try{out=file.startWrite();out.write((report.toString()+"\n").getBytes(StandardCharsets.UTF_8));file.finishWrite(out);}catch(Throwable failure){if(out!=null)file.failWrite(out);throw failure;}Log.i(TAG,report.toString());}catch(Throwable failure){Log.e(TAG,"Evidence persistence failed",failure);}
     handler.post(()->{if(owner!=null){owner.handler.removeCallbacks(owner.tick);owner.audit.cancel();}if(view!=null)view.destroy();});worker.shutdown();

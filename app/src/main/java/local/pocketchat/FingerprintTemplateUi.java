@@ -27,7 +27,7 @@ final class FingerprintTemplateUi {
     choices.setAdapter(DesignUi.spinnerAdapter(a,labels));for(int i=0;i<ids.length;i++)if(ids[i].equals(current.templateId))choices.setSelection(i);box.addView(choices);
     box.addView(a.label("网页语言",13,Ui.MUTED));
     Spinner language=new Spinner(a);language.setAdapter(DesignUi.spinnerAdapter(a,new String[]{"保持当前语言配置","跟随系统语言","中文 zh-CN","English en-US","日本語 ja-JP"}));box.addView(language);
-    TextView note=a.label("电脑版的后台请求（Worker）可能仍使用手机版浏览器信息。强化模板为实验模式，网页兼容性尚待真机验证。",13,Ui.MUTED);note.setPadding(0,a.dp(6),0,0);box.addView(note);
+    TextView note=a.label("电脑版中，Worker 脚本下载与其发起的 HTTP 请求不保证采用相同 UA，请分别查看服务端观测。强化模板为实验模式，网页兼容性尚待真机验证。",13,Ui.MUTED);note.setPadding(0,a.dp(6),0,0);box.addView(note);
     DesignUi.action(box,"模板说明与状态详情",false,()->showDetails(a,edited));
     TextView result=a.label("",13,Ui.MUTED);box.addView(result);
     DesignUi.action(box,"查看环境自检",false,()->{dialog.dismiss();EnvironmentAuditUi.show(a);});
@@ -100,6 +100,6 @@ final class FingerprintTemplateUi {
     if(!metadata.policyError.isEmpty())out.append("（").append(metadata.policyError).append("）");
     out.append("\n语言请求：").append(Arrays.toString(metadata.requestedLocales)).append("\n语言规范化预测：").append(Arrays.toString(metadata.expectedSdkLocales));
     out.append("\n\n浏览器设置已接受，只表示 SDK 请求接受或公开设置回读，不代表网页已采用或全部指纹通过。常规自检的页面与 Worker JS 信息一致，不能验证联网 UA 一致；真实请求对照需主动打开你配置的 HTTPS 检测页，其来源与 ChatGPT 官网分开记录。图形、音频和字体操作按需采集，不把输出变化当作泄漏或保护失败。");
-    out.append("\n\n未覆盖：跨源页面、Shared Worker、Service Worker、完整网络协议与 DNS 路径。独立时区和 Canvas / WebGL / 音频 / 字体 / 硬件自定义伪装未开放。强化模板为实验模式，具体 API 保护、真实账号登录和网页兼容性仍需验证。");return out.toString();
+    out.append("\n\n未覆盖：任意跨源网站、Shared Worker、Service Worker、完整网络协议与 DNS 路径；已配置且逐次授权的受控跨源 iframe 另按报告记录。独立时区和 Canvas / WebGL / 音频 / 字体 / 硬件自定义伪装未开放。强化模板为实验模式，具体 API 保护、真实账号登录和网页兼容性仍需验证。");return out.toString();
   }
 }
