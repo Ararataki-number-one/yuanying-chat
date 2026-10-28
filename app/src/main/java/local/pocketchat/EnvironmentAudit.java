@@ -80,7 +80,20 @@ class EnvironmentAudit {
   boolean current(long id){return running&&id==serial;}
   String policyStamp(){GeckoSettings settings=session.web.getSettings();return hash(GeckoWebView.VERSION+"|"+session.privacy.level()+"|"+settings.desktop+"|"+settings.getUserAgentString()+"|"+Arrays.toString(settings.requestedLocales)+"|"+settings.policyAcknowledged+"|"+session.web.identityPolicyRevision+"|"+TimeZone.getDefault().getID()+"|"+Locale.getDefault().toLanguageTag());}
   boolean fresh(){return running&&(!geckoRun||(auditNavigation==session.navigationEpoch&&auditUrl.equals(session.web.getUrl())))&&epoch==session.connectionEpoch&&stamp.equals(routeStamp())&&policy.equals(policyStamp())&&(!networkRun||session.networkReady&&session.guard.allowed()&&session.web.protectionAllowsNetwork());}
-  JSONObject expected(){NativeNetwork n=NativeNetwork.get(session.context);int major;try{major=Integer.parseInt((packageVersion()).split("\\.")[0]);}catch(Exception e){major=-1;}return J.obj("engine","gecko","ua",session.web.getSettings().getUserAgentString(),"major",major,"level",session.privacy.level(),"offset",-TimeZone.getDefault().getOffset(System.currentTimeMillis())/60000,"timezoneStrategy",session.privacy.level()>=2?"native-standardized":"system","language",session.web.identityLanguage(),"requestedLocales",new JSONArray(Arrays.asList(session.web.getSettings().requestedLocales)),"expectedSdkLocales",new JSONArray(Arrays.asList(session.web.getSettings().expectedSdkLocales)),"languages",new JSONArray(Arrays.asList(session.web.getSettings().expectedSdkLocales)),"languageSource","sdk157-language-region-prediction-not-content-ack","rfpAcknowledged",session.web.getSettings().rfpAcknowledged,"exitIp",session.internalNetwork()&&n.lastVerified>0?n.exitIp:"");}
+  JSONObject expected(){
+    NativeNetwork n=NativeNetwork.get(session.context);GeckoSettings settings=session.web.getSettings();
+    int major;try{major=Integer.parseInt(packageVersion().split("\\.")[0]);}catch(Exception e){major=-1;}
+    return J.obj("engine","gecko","display",settings.desktop?"desktop":"mobile",
+        "ua",settings.getUserAgentString(),"major",major,"level",session.privacy.level(),
+        "offset",-TimeZone.getDefault().getOffset(System.currentTimeMillis())/60000,
+        "timezoneStrategy",session.privacy.level()>=2?"native-standardized":"system",
+        "language",session.web.identityLanguage(),
+        "requestedLocales",new JSONArray(Arrays.asList(settings.requestedLocales)),
+        "expectedSdkLocales",new JSONArray(Arrays.asList(settings.expectedSdkLocales)),
+        "languages",new JSONArray(Arrays.asList(settings.expectedSdkLocales)),
+        "languageSource","sdk157-language-region-prediction-not-content-ack",
+        "rfpAcknowledged",settings.rfpAcknowledged,"exitIp",session.internalNetwork()&&n.lastVerified>0?n.exitIp:"");
+  }
   boolean start(boolean network,Runnable done){return start(network,false,done);}
   boolean start(boolean network,boolean apiChecks,Runnable done){if(running)return false;lastError="";if(apiChecks&&(ProfileUi.working(session)||session.currentReplyActive()||session.resourceFilesUncertain())){lastError="当前有回复、上传或下载，请完成后再进行图形与音频检查";return false;}if(network&&ProfileUi.working(session)){lastError="有未完成回复、上传或下载，请结束后再检查网络出口";return false;}if(network&&(!session.networkReady||!session.guard.allowed()||!session.web.protectionAllowsNetwork())){lastError="当前连接尚未受保护，请先恢复连接；没有发出检测请求";return false;}
     geckoRun=GeckoWebView.active(session.web);if(geckoRun&&!session.web.hasVisibleDocument()){lastError="请等当前网页显示后再检查";return false;}auditUrl=session.web.getUrl();auditNavigation=session.navigationEpoch;running=true;networkRun=network;completed=done;sample=new JSONObject();nativeResult=new JSONObject();webDone=false;nativeDone=!network;initial=expected();identityAppliedRevision=session.identityAuditAppliedRevision();epoch=session.connectionEpoch;stamp=routeStamp();policy=policyStamp();deadline=SystemClock.elapsedRealtime()+14000;long id=++serial;session.updateBrowserActivity();

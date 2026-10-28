@@ -15,6 +15,35 @@ final class AuditReport {
   static String ip(JSONObject result){return result==null?"":result.optString("ip");}
   static boolean hintsMatch(JSONObject hints,int wanted){if(hints==null)return true;JSONArray brands=hints.optJSONArray("brands");if(brands==null)return true;for(int i=0;i<brands.length();i++){JSONObject b=brands.optJSONObject(i);if(b!=null&&b.optString("brand").matches("(?i).*(?:Chromium|Chrome|WebView).*"))try{if(Integer.parseInt(b.optString("version").split("\\.")[0])!=wanted)return false;}catch(Exception e){return false;}}return true;}
   static final List<String> CONTEXT_FIELDS=Collections.unmodifiableList(Arrays.asList("ua","cpu","memory","language","languages","offset","zone"));
+  static final List<String> NAVIGATOR_IDENTITY_FIELDS=Collections.unmodifiableList(Arrays.asList("platform","appVersion"));
+  static boolean identityTextObserved(JSONObject signal,String field){
+    if(signal==null)return false;Object raw=signal.opt(field);int limit="platform".equals(field)?128:1024;
+    if(!(raw instanceof String))return false;String value=(String)raw;
+    if(value.trim().isEmpty()||value.length()>limit)return false;
+    for(int i=0;i<value.length();i++)if(Character.isISOControl(value.charAt(i)))return false;
+    return true;
+  }
+  /** Compare only the exact public values captured in the same observation.
+   * WorkerNavigator does not expose every window API. Missing values remain
+   * uncovered; no mobile/desktop value is invented or matched to a device model. */
+  static JSONObject navigatorIdentityCoverage(JSONObject parent,JSONObject child,boolean mainObserved,boolean fresh){
+    JSONArray compared=new JSONArray(),missing=new JSONArray(),different=new JSONArray();
+    boolean current=mainObserved&&fresh;
+    if(current)for(String field:NAVIGATOR_IDENTITY_FIELDS){
+      if(!identityTextObserved(parent,field)||!identityTextObserved(child,field)){missing.put(field);continue;}
+      compared.put(field);if(!parent.optString(field).equals(child.optString(field)))different.put(field);
+    }
+    return J.obj("state",!current?UNCOVERED:different.length()>0?ISSUE:missing.length()>0?UNCOVERED:VERIFIED,
+        "compared",compared,"missingOrInvalid",missing,"different",different,"current",current,
+        "reason",!mainObserved?"page-main-world-unavailable":!fresh?"stale-observation":missing.length()>0?"missing-or-invalid-fields":"observed-public-fields",
+        "operationOnly",true,"deviceModelVerified",false,"httpHeadersVerified",false,"protectionVerified",false);
+  }
+  static String navigatorIdentityDetail(JSONObject value){
+    if(!value.optBoolean("current"))return "stale-observation".equals(value.optString("reason"))?"页面或配置已变化，本次平台与版本字段未比较":"未取得页面主执行环境；隔离世界的值不能代替网页观测";
+    if(ISSUE.equals(value.optString("state")))return "本次平台或版本公开字段存在差异："+value.optJSONArray("different")+"；只保留观察，不直接判断泄漏或设备身份";
+    if(UNCOVERED.equals(value.optString("state")))return "平台或版本字段缺失、类型无效或超出边界："+value.optJSONArray("missingOrInvalid")+"；不从主页面补齐 Worker 值";
+    return "本次 platform 与 appVersion 的可比公开值一致；不验证手机型号、HTTP 请求头或全部指纹保护";
+  }
   static boolean observedField(JSONObject signal,String field){
     if(!signal.has(field))return false;Object value=signal.opt(field);
     if("cpu".equals(field)||"memory".equals(field))return value==JSONObject.NULL||value instanceof Number&&Double.isFinite(((Number)value).doubleValue())&&((Number)value).doubleValue()>0;
@@ -99,6 +128,9 @@ final class AuditReport {
     row(rows,"ua","浏览器版本与网页信息",ua.isEmpty()||engine<=0||actual<=0?UNCOVERED:basic?VERIFIED:ISSUE,ua.isEmpty()||engine<=0?"未取得可核验的网页或内核版本":basic?"检查页面的 UA 与应用设置及已安装内核主版本一致":"观察到 UA 与应用设置或内核主版本不一致");
     JSONObject hints=parent.optJSONObject("hints");boolean hintsKnown=false;if(hints!=null){JSONArray brands=hints.optJSONArray("brands");if(brands!=null)for(int i=0;i<brands.length();i++)if(brands.optJSONObject(i)!=null&&brands.optJSONObject(i).optString("brand").matches("(?i).*(?:Chromium|Chrome|WebView).*"))hintsKnown=true;}row(rows,"hints","Client Hints 浏览器信息",!hintsKnown||engine<=0?UNCOVERED:hintsMatch(hints,engine)?VERIFIED:ISSUE,!hintsKnown?"当前页面未提供可核验的 Client Hints 品牌，不能据此认定所有来源一致":"仅核对返回的浏览器主版本；不是完整设备身份校验");
     JSONObject frameCoverage=contextCoverage(parent,frame),workerCoverage=contextCoverage(parent,worker);
+    JSONObject navigatorFrame=navigatorIdentityCoverage(parent,frame,mainObserved,fresh),navigatorWorker=navigatorIdentityCoverage(parent,worker,mainObserved,fresh);
+    row(rows,"navigator-frame","同源页面的平台与版本字段",navigatorFrame.optString("state"),navigatorIdentityDetail(navigatorFrame));
+    row(rows,"navigator-worker","Dedicated Worker 的平台与版本字段",navigatorWorker.optString("state"),navigatorIdentityDetail(navigatorWorker));
     row(rows,"frame","同源嵌入页面一致性",frameCoverage.optString("state"),frameCoverage.optString("state").equals(VERIFIED)?"同源 srcdoc 的 UA、线程数、内存接口、语言列表及时区观测与主页面一致；不代表其他 API 已覆盖":frameCoverage.optString("state").equals(ISSUE)?"同源子页面存在已观测差异："+frameCoverage.optJSONArray("different"):"同源子页面采集不完整，未覆盖或类型无效："+frameCoverage.optJSONArray("missingOrInvalid"));
     boolean rendererComparable=observedField(parent,"renderer")&&observedField(worker,"renderer")&&!"unavailable".equals(parent.optString("renderer"))&&!"unavailable".equals(worker.optString("renderer"));
     boolean rendererSame=!rendererComparable||parent.optString("renderer").equals(worker.optString("renderer"));
@@ -130,6 +162,10 @@ final class AuditReport {
     row(rows,"dns","DNS 网络泄漏",UNCOVERED,"可查看内置加密 DNS 配置，但未进行权威 DNS 探针或网络抓包，不能证明解析没有绕行");row(rows,"udp","UDP / QUIC / TLS 等路径",UNCOVERED,"本次 HTTPS 查询不能覆盖所有协议或识别全部浏览器网络指纹");
     if(gecko&&!mainObserved)for(int i=0;i<rows.length();i++){JSONObject r=rows.optJSONObject(i);if(Arrays.asList("ua","hints","frame","worker","rtc","zone","language","header","header-language").contains(r.optString("key")))try{r.put("state",UNCOVERED);r.put("detail","页面主执行环境采集未完成；隔离扩展世界的值不能用于验证网页实际表现");}catch(Exception ignored){}}
     if(!fresh)for(int i=0;i<rows.length();i++){JSONObject r=rows.optJSONObject(i);if(!UNCOVERED.equals(r.optString("state")))try{r.put("state",UNCOVERED);r.put("detail","检查期间环境变化，结果已作废，请在连接稳定后重测");}catch(Exception ignored){}}
-    return J.obj("at",System.currentTimeMillis(),"network",network,"fresh",fresh,"rows",rows,"signals",sample,"native",nativeResult,"contextCoverage",J.obj("requiredFields",new JSONArray(CONTEXT_FIELDS),"frame",frameCoverage,"worker",workerCoverage,"display",J.obj("fresh",fresh,"pageMainWorldObserved",mainObserved,"frame",frameDisplay,"worker",workerDisplay)),"apiOperationCoverage",apiCoverage,"apiContextOperationCoverage",apiContexts,"apiProtectionVerified",false,"fullDesktopUaConsistency",false,"fingerprintTemplateAcceptance",false,"expected",expected,"scope",gecko?"页面主执行环境（若 CSP 允许）、同源 srcdoc、Dedicated Worker 公开 JS 字段及明确标注的 Gecko 内容脚本请求；没有 Worker HTTP 请求头观测或完整桌面指纹承诺，公开字段可被页面伪造":"本机检查页面及指定公开检测服务");
+    String display=expected.optString("display");if(!"mobile".equals(display)&&!"desktop".equals(display))display="unspecified";
+    JSONObject mobileIdentity=J.obj("schema",1,"display",display,"fields",new JSONArray(NAVIGATOR_IDENTITY_FIELDS),"frame",navigatorFrame,"worker",navigatorWorker,
+        "scope","Current page-main-world platform/appVersion and the existing independent display observations; not a claimed phone model or HTTP identity proof",
+        "deviceModelVerified",false,"httpHeadersVerified",false,"protectionVerified",false);
+    return J.obj("at",System.currentTimeMillis(),"network",network,"fresh",fresh,"rows",rows,"signals",sample,"native",nativeResult,"contextCoverage",J.obj("requiredFields",new JSONArray(CONTEXT_FIELDS),"frame",frameCoverage,"worker",workerCoverage,"display",J.obj("fresh",fresh,"pageMainWorldObserved",mainObserved,"frame",frameDisplay,"worker",workerDisplay)),"mobileIdentityCoverage",mobileIdentity,"apiOperationCoverage",apiCoverage,"apiContextOperationCoverage",apiContexts,"apiProtectionVerified",false,"fullDesktopUaConsistency",false,"fingerprintTemplateAcceptance",false,"expected",expected,"scope",gecko?"页面主执行环境（若 CSP 允许）、同源 srcdoc、Dedicated Worker 公开 JS 字段及明确标注的 Gecko 内容脚本请求；没有 Worker HTTP 请求头观测或完整桌面指纹承诺，公开字段可被页面伪造":"本机检查页面及指定公开检测服务");
   }
 }
