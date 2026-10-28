@@ -1,0 +1,31 @@
+name: 'Diagnostic only: read fixed numeric input context'
+'on':
+  push:
+    branches: [diagnostic/gecko-input-context-20261028]
+    paths:
+      - .github/workflows/gecko-input-context-extract.yml
+      - tools/gecko/extract_frozen_input_context.py
+      - tools/gecko/input_context_bindings.json
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: frozen-input-context-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  extract-existing-context:
+    if: github.ref == 'refs/heads/diagnostic/gecko-input-context-20261028'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Aggregate existing fixed numeric context without replay or trace processing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/gecko/extract_frozen_input_context.py
