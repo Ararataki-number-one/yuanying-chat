@@ -14,7 +14,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 BASE = 'fb67b081895bd37639d0a909155f607100d5cecb'
 DURATION_MS = 240000
-MAX_TRACE_BYTES = 24 * 1024 * 1024
+MAX_TRACE_BYTES = 256 * 1024 * 1024
 SAMPLES = ('1', '2', '3')
 ADDED = {
     '.github/workflows/gecko-input-scheduler-diagnostic.yml',
@@ -64,7 +64,7 @@ def original_command():
 def config_text(key):
     require(re.fullmatch(r'pc-input-[0-9a-f]{32}', key), 'Invalid own session key')
     return '''duration_ms: 240000
-max_file_size_bytes: 25165824
+max_file_size_bytes: 268435456
 write_into_file: true
 file_write_period_ms: 1000
 flush_period_ms: 1000

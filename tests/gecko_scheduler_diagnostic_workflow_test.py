@@ -61,7 +61,7 @@ class SchedulerDiagnosticWorkflowTest(unittest.TestCase):
                     self.assertTrue(step['with']['name'].startswith('scheduler-diagnostic-'))
                 if step.get('uses', '').startswith('actions/checkout@'):
                     self.assertIs(step['with']['persist-credentials'], False)
-                    self.assertEqual(step['with']['fetch-depth'], 3)
+                    self.assertEqual(step['with']['fetch-depth'], 4)
                 run = step.get('run', '')
                 for forbidden in ('tools/gecko/publish_ci.py', 'tools/publish-gecko-release.py',
                                   'tools/publish-update-feed.py', 'git push ', 'gh release '):
@@ -118,6 +118,13 @@ class SchedulerDiagnosticWorkflowTest(unittest.TestCase):
         upload = next(s for s in self.samples['steps'] if s.get('name') == 'Preserve diagnostic trace and unchanged phase evidence')
         self.assertEqual(upload['if'], 'always()')
         self.assertEqual(upload['with']['path'], 'work/input-scheduler-diagnostic/')
+        self.assertEqual(upload['with']['compression-level'], 6)
+        steps = self.samples['steps']
+        phase = next(s for s in steps if s.get('id') == 'trace_workload')
+        analysis = next(s for s in steps if s.get('id') == 'trace_analysis')
+        self.assertGreater(steps.index(upload), steps.index(phase))
+        self.assertGreater(steps.index(upload), steps.index(analysis))
+        self.assertGreater(steps.index(upload), steps.index(pack))
 
     def test_generated_run_shells_parse_without_executing_any_workload(self):
         for job in self.flow['jobs'].values():

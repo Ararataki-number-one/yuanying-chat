@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 from types import SimpleNamespace
@@ -18,6 +19,10 @@ SPEC = importlib.util.spec_from_file_location(
     'scheduler_trace_input_under_test', ROOT / 'tools/gecko/trace_input_scheduler.py')
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+ANALYSIS_SPEC = importlib.util.spec_from_file_location(
+    'scheduler_trace_budget_analyzer_under_test', ROOT / 'tools/gecko/analyze_input_scheduler_trace.py')
+ANALYZER = importlib.util.module_from_spec(ANALYSIS_SPEC)
+ANALYSIS_SPEC.loader.exec_module(ANALYZER)
 
 
 class SchedulerTraceInputTest(unittest.TestCase):
@@ -175,6 +180,59 @@ class SchedulerTraceInputTest(unittest.TestCase):
         self.assertEqual(result.record['workloadInvocationCount'], 1)
         self.assertEqual(result.record['workloadExitCode'], 1)
         self.assertEqual(sum(argv[0] == 'bash' for argv, _ in result.calls), 1)
+
+    def test_trace_budget_matches_collector_proto_and_analyzer_without_changing_duration(self):
+        budget = 256 * 1024 * 1024
+        self.assertEqual(MODULE.MAX_TRACE_BYTES, budget)
+        self.assertEqual(ANALYZER.MAX_TRACE, budget)
+        self.assertEqual(MODULE.DURATION_MS, 240000)
+        config = MODULE.config_text(self.KEY)
+        self.assertEqual(re.findall(r'(?m)^max_file_size_bytes:\s*(\d+)\s*$', config),
+                         [str(budget)])
+        self.assertEqual(re.findall(r'(?m)^duration_ms:\s*(\d+)\s*$', config), ['240000'])
+        result = self.exercise()
+        self.assert_stdin_and_own_cleanup(result)
+        self.assertEqual(result.record['maxTraceBytes'], budget)
+        self.assertEqual(result.record['durationMs'], 240000)
+        # Only the tiny fixture trace is created; a budget check must never
+        # allocate or write a 256 MiB artifact during this local unit test.
+        self.assertEqual((result.out / 'android.perfetto-trace').stat().st_size,
+                         len(b'bounded-fake-trace'))
+
+    def test_oversized_trace_is_rejected_before_trace_read_or_processor(self):
+        with tempfile.TemporaryDirectory(prefix='scheduler-trace-bound-') as directory:
+            out = Path(directory)
+            trace = out / 'android.perfetto-trace'
+            trace.write_bytes(b'tiny-trace')
+            (out / 'diagnostic-run.json').write_text(json.dumps(dict(
+                diagnosticOnly=True, applicationAcceptance=False,
+                traceStartSucceeded=True, ownStopConfirmed=True)))
+            real_stat, real_read = Path.stat, Path.read_bytes
+            trace_reads = []
+
+            def oversized_stat(path, *args, **kwargs):
+                actual = real_stat(path, *args, **kwargs)
+                if path == trace:
+                    fields = list(actual)
+                    fields[6] = ANALYZER.MAX_TRACE + 1
+                    return os.stat_result(fields)  # Preserve the actual regular-file mode.
+                return actual
+
+            def no_trace_read(path):
+                if path == trace:
+                    trace_reads.append(path)
+                    raise AssertionError('Oversized trace must not be read or hashed')
+                return real_read(path)
+
+            with mock.patch.object(Path, 'stat', oversized_stat), \
+                    mock.patch.object(Path, 'read_bytes', no_trace_read), \
+                    mock.patch.object(ANALYZER.subprocess, 'run') as processor:
+                result = ANALYZER.analyze(out, out / 'unused-trace-processor')
+            self.assertEqual(result['status'], 'incomplete')
+            self.assertEqual(result['reasons'], ['ValueError: Trace exceeds fixed 256 MiB bound'])
+            self.assertEqual(trace_reads, [])
+            processor.assert_not_called()
+            self.assertEqual(trace.stat().st_size, len(b'tiny-trace'))
 
 
 if __name__ == '__main__':

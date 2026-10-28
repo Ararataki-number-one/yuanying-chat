@@ -73,8 +73,8 @@ def namespace_artifacts(step):
     # original source and commands; no checkout credentials remain available.
     if step.get('uses', '').startswith('actions/checkout@'):
         step.setdefault('with', {})['persist-credentials'] = False
-        # Corrected capture commit -> first diagnostic commit -> frozen source.
-        step['with']['fetch-depth'] = 3
+        # Retention fix -> corrected capture -> first diagnostic -> frozen source.
+        step['with']['fetch-depth'] = 4
     return step
 
 
@@ -155,7 +155,7 @@ python3 tools/gecko/trace_input_scheduler.py analyze --sample '${{ matrix.sample
         {'name': 'Preserve diagnostic trace and unchanged phase evidence', 'if': 'always()', 'uses': UPLOAD,
          'with': {'name': PREFIX + '${{ github.run_id }}-${{ github.run_attempt }}-editing-${{ matrix.sample }}',
                   'path': 'work/input-scheduler-diagnostic/', 'if-no-files-found': 'error',
-                  'retention-days': 5, 'compression-level': 0}},
+                  'retention-days': 5, 'compression-level': 6}},
     ])
     workflow = {
         'name': 'Diagnostic only: Android input scheduler and services',

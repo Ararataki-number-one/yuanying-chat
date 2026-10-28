@@ -10,7 +10,7 @@ import resource
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
-MAX_TRACE = 24 * 1024 * 1024
+MAX_TRACE = 256 * 1024 * 1024
 MAX_SQL = 256 * 1024
 QUERIES = {
     'bounds': 'SELECT start_ts,end_ts FROM trace_bounds;',
@@ -46,9 +46,9 @@ def analyze(out, trace_processor):
         if trace.is_symlink() or not trace.is_file() or trace.stat().st_size <= 0:
             raise ValueError('Trace missing or empty')
         size = trace.stat().st_size
-        result.update(traceBytes=size, traceSha256=hashlib.sha256(trace.read_bytes()).hexdigest())
         if size > MAX_TRACE:
-            raise ValueError('Trace exceeds fixed 24 MiB bound')
+            raise ValueError('Trace exceeds fixed 256 MiB bound')
+        result.update(traceBytes=size, traceSha256=hashlib.sha256(trace.read_bytes()).hexdigest())
         if size >= MAX_TRACE - 65536:
             reasons.append('trace-near-file-cap-retention-not-proven')
         rows = {}

@@ -100,7 +100,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         persist-credentials: false
-        fetch-depth: 3
+        fetch-depth: 4
     - name: Verify pinned network core and source patch
       run: |
         python3 tests/gecko_prepare_image_test.py
@@ -424,7 +424,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         persist-credentials: false
-        fetch-depth: 3
+        fetch-depth: 4
     - name: Download the immutable compiled build
       uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
       with:
@@ -553,5 +553,5 @@ jobs:
         path: work/input-scheduler-diagnostic/
         if-no-files-found: error
         retention-days: 5
-        compression-level: 0
+        compression-level: 6
     name: Diagnostic editing (${{ matrix.sample }})
