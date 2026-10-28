@@ -1,0 +1,54 @@
+# Pure posthoc data analysis of one frozen diagnostic capture. Never qualification.
+name: 'Diagnostic only: frozen Android input trace analysis'
+'on':
+  push:
+    branches:
+      - diagnostic/gecko-input-analysis-20261028
+    paths:
+      - .github/workflows/gecko-input-analysis.yml
+      - tools/gecko/analyze_frozen_input_artifacts.py
+      - tools/gecko/correlate_input_trace.py
+      - tools/gecko/input_analysis_bindings.json
+      - tests/gecko_input_analysis_test.py
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: frozen-input-analysis-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  analyze-original-data:
+    name: Frozen diagnostic data (${{ matrix.sample }})
+    if: github.ref == 'refs/heads/diagnostic/gecko-input-analysis-20261028'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: ['1', '2', '3']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Analyze exact original artifact bytes without replay
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FROZEN_SAMPLE: ${{ matrix.sample }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/gecko/analyze_frozen_input_artifacts.py \
+            --bindings tools/gecko/input_analysis_bindings.json \
+            --sample "$FROZEN_SAMPLE" \
+            --out "work/frozen-input-analysis-$FROZEN_SAMPLE"
+      - name: Preserve complete original inputs and derived outputs for 90 days
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: frozen-input-analysis-${{ github.run_id }}-${{ github.run_attempt }}-sample-${{ matrix.sample }}
+          path: work/frozen-input-analysis-${{ matrix.sample }}/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
