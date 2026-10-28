@@ -74,6 +74,7 @@ p.add_argument('--notes',type=pathlib.Path,default=root/f'docs/RELEASE-v{version
 p.add_argument('--evidence',type=pathlib.Path,default=root/'work/gecko-integration')
 p.add_argument('--channel',choices=['stable','candidate'],default='stable')
 p.add_argument('--candidate-number',type=int)
+p.add_argument('--stage-only',action='store_true',help='Run every original release check and prepare local files; do not inspect or update remote release refs.')
 qualification=p.add_mutually_exclusive_group()
 qualification.add_argument('--manual-acceptance',type=pathlib.Path)
 qualification.add_argument('--direct-release-authorization',type=pathlib.Path)
@@ -86,6 +87,7 @@ if version_code>=46:
     # SDK/client checks read exact source blobs; establish the commit before them.
     available=subprocess.run(['git','cat-file','-e',args.source+'^{commit}'],cwd=root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     if available.returncode:
+        assert not args.stage_only,'Stage-only requires the selected source commit to be available locally.'
         subprocess.run(['git','fetch','--no-tags','--depth=1','--filter=blob:none','origin',args.source],cwd=root,check=True)
 # Release automation may advance independently while promoting the exact tested
 # APK. Keep that revision separate and reject any application/source changes.
@@ -211,7 +213,7 @@ if resource_release:
 for number,offset in enumerate(range(0,len(raw),60_000_000)):
     part=raw[offset:offset+60_000_000];name=f'{args.apk.name}.part{number:02d}'
     manifest['parts'].append({'file':name,'bytes':len(part),'sha256':hashlib.sha256(part).hexdigest()})
-existing_release_preflight(manifest,root)
+if not args.stage_only:existing_release_preflight(manifest,root)
 stage=root/'work/gecko-integration/signed-public'
 if stage.exists():shutil.rmtree(stage)
 stage.mkdir(parents=True)
@@ -276,6 +278,15 @@ if version_code>=70:
         name='run_network_settings_'+mode+'.py'
         shutil.copy2(root/'tests/gecko'/name,stage/'tools/gecko'/name)
     shutil.copy2(root/'tests/gecko/assets/sharing-schema-matrix.json',stage/'tools/gecko/sharing-schema-matrix.json')
+# Local preparation has run the same checks and copied the same public inputs.
+# A separate authenticated transport can publish the exact reviewed tree later.
+if args.stage_only:
+    if resource_release:
+        for name in ['check_resource_evidence.py','resource_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    print(json.dumps({'status':'staged-local-only','stage':str(stage),'channel':args.channel,
+                      'sourceCommit':args.source,'releaseToolsCommit':release_tools_commit,
+                      'sha256':manifest['sha256'],'remoteReleaseInspected':False,'published':False}))
+    raise SystemExit(0)
 env=dict(os.environ,GIT_INDEX_FILE=str(root/'work/gecko-integration/signed-index'),GIT_WORK_TREE=str(stage),
     GIT_AUTHOR_NAME='PocketChat release',GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',
     GIT_COMMITTER_NAME='PocketChat release',GIT_COMMITTER_EMAIL='pocketchat@users.noreply.github.com')
