@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.26",
-  "versionCode": 79,
+  "version": "2.0.27",
+  "versionCode": 80,
   "abi": "arm64-v8a",
   "minSdk": 26,
-  "bytes": 119320229,
-  "sha256": "1f9787ef6f91e8c97c03f7aca339ec7fb05f498627feb785b8a73214006552a7",
+  "bytes": 119324325,
+  "sha256": "8e7b8fd0e60a5af8c61da3d0d44a84708fb2fa32515e1624eef217ae317825ac",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.26-gecko/PocketChat-2.0.26-gecko-arm64.apk",
-  "notes": "# 2.0.26：环境身份与配置状态\n\nversionCode 79，扩展版本 2.0.26.79。本次只更新 2.0.26，后续版本按顺序单独推进。\n\n- 在环境模板与自检中增加当前环境身份总览，集中显示模板、语言、保护等级、线路归属和配置版本。\n- 区分“已保存、等待应用、已确认、观测存在差异”；旧环境、旧配置或过期页面的结果不能确认当前网页。\n- 修正线路核验撤销后短暂显示“已获准”的边界：总览复用原有权威准入判断，并继续检查原生保护状态。\n\n保持单 GeckoView 与 ChatGPT 原网页，沿用已有配置、保护、登录与文件流程。本版没有加入 2.0.27—2.0.30 的后续功能。\n\n## 本版验证\n\n源码 `766a4b1ee206cc2ddca059f5c2682693f45de7bf`。正式受控运行 [40647812827/1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40647812827) 的 11 个任务全部通过，十项原发布门禁各执行一次，没有重跑或混用其他版本结果。完整 Release/Integration 编译、SDK 来源核验及 531 项主机回归通过。\n\n主输入与两个独立输入样本的性能检查分别为 163／163／164 项，光标检查各 129 项、14 个场景，使用同一编译 APK 与 SDK。身份状态模型在桌面与 Android JSON 两种实现上检查；界面适配器的 3 项准入对照在两种 JSON 上通过。适配器主机检查使用真实 Android framework JAR 与声明过的应用／Gecko doubles，不能等同于 Android UI 执行。\n\n真实手机、ChatGPT 官网、百度输入法界面与实际保护效果仍未验收；没有据此宣称手机提速或真实线路延迟改善。",
-  "sourceCommit": "766a4b1ee206cc2ddca059f5c2682693f45de7bf"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.27-gecko/PocketChat-2.0.27-gecko-arm64.apk",
+  "notes": "# 2.0.27（80）\n\n本版完善自检中的公开身份字段对照：分别展示主页面与同源 iframe、Dedicated Worker 的 platform 和 appVersion 是否一致，并标明手机版／电脑版的显示请求。\n\n- 缺失、无效、超长、含控制字符、主执行环境未取得或过期的观测保持“未覆盖”。\n- 保留屏幕旋转、DPR、触摸等现有独立检查，不把键盘造成的视口变化判断为身份变化。\n- 沿用主动自检，不新增后台扫描、检测请求或网页属性覆盖。\n- 保留 2.0.26 的环境身份总览及权威路由准入状态修复；本版不包含 2.0.28—2.0.30。\n\n本机边界和模板回归已通过；本版完整 CI 11/11 通过，原十项门禁各通过一次。原始验收：[40669216626/1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40669216626)。公开字段一致不代表手机型号、全部 HTTP 请求身份或全部抗指纹保护已验证。真实手机、ChatGPT 官网、百度输入法与实际线路效果仍待设备验收。\n\n正式包使用原签名，可覆盖升级。环境、登录与网页存储沿用原目录；不会自动重发聊天。",
+  "sourceCommit": "ec0cfbe43af2a9fc2bd748229e7cdca1081e7806"
 }
