@@ -30,11 +30,12 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--json-jar',type=pathlib.Path,required=True);parser.add_argument('--java-home',type=pathlib.Path);parser.add_argument('--output',type=pathlib.Path);parser.add_argument('--before-ref',help='Execute immutable old PageMemory and DraftArchive classes in the narrow disabled-policy reproducer');args=parser.parse_args()
     source=ROOT/'app/src/main/java/local/pocketchat'
     whole=['LocalDraftPolicy.java','PageMemory.java','DraftArchive.java','BrowserSessionStore.java']
+    before=subprocess.check_output(['git','rev-parse',args.before_ref+'^{commit}'],cwd=ROOT,text=True).strip() if args.before_ref else None
     partial={'AppPrefs.java':['static boolean enabled(','static void apply('], 'GeckoWebView.java':['void restoreCheckpoint(']}
+    if not before:partial['WebReplyObserver.java']=['static boolean webJob(','boolean archiveNavigation(']
     inputs=[source/name for name in whole+list(partial)]+sorted(HERE.rglob('*.java'))+[pathlib.Path(__file__).resolve()]
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-    before=subprocess.check_output(['git','rev-parse',args.before_ref+'^{commit}'],cwd=ROOT,text=True).strip() if args.before_ref else None
     selected={name:((subprocess.check_output(['git','show',before+':app/src/main/java/local/pocketchat/'+name],cwd=ROOT)) if before and name in ('PageMemory.java','DraftArchive.java') else (source/name).read_bytes()) for name in whole}
     with tempfile.TemporaryDirectory(prefix='draft-policy-host-') as temporary:
         temp=pathlib.Path(temporary);package=temp/'local/pocketchat';package.mkdir(parents=True)
@@ -43,6 +44,13 @@ def main():
         prefs=(source/'AppPrefs.java').read_text();keys=prefs[prefs.index('static final String[] KEYS='):prefs.index(';',prefs.index('static final String[] KEYS='))+1]
         template=template.replace('/* APPPREFS */',keys+'\n'+'\n'.join(member(prefs,n) for n in partial['AppPrefs.java']))
         template=template.replace('/* RESTORE */',member((source/'GeckoWebView.java').read_text(),'void restoreCheckpoint('))
+        if before:
+            # Keep the original four-assertion historical workload independent
+            # of APIs added to newer archival classes. It never runs this case.
+            template=template.replace(member(template,'static void navigationArchive('),'',1)
+            assert template.count('restore();navigationArchive();')==1
+            template=template.replace('restore();navigationArchive();','restore();',1).replace('/* ARCHIVE_OBSERVER */','')
+        else:template=template.replace('/* ARCHIVE_OBSERVER */','\n'.join(member((source/'WebReplyObserver.java').read_text(),n) for n in partial['WebReplyObserver.java']))
         (package/'LocalDraftPolicyHost.java').write_text(template)
         java=[*package.glob('*.java'),*sorted((HERE/'stubs').rglob('*.java'))]
         binary=lambda name:str(args.java_home/'bin'/name) if args.java_home else name

@@ -31,6 +31,30 @@
     window.__pocketReadingInteraction=Object.freeze({revision:()=>revision,lifecycle:()=>lifecycle,
       available:()=>live&&document.visibilityState!=='hidden',interacting:moving});
   }
+  // Only observe trusted editing. This state never fills, focuses or submits an
+  // editor, and is independent of the website's send-message observation.
+  if (window === window.top && location.origin === 'https://chatgpt.com' && !window.__pocketComposerInteraction) {
+    let revision=0,lifecycle=0,live=true,composing=null;
+    const editor=target=>{
+      const element=target instanceof Element?target:target?.parentElement;
+      return element?.closest('textarea,input,[contenteditable]:not([contenteditable="false"]),[role="textbox"]')||null;
+    };
+    for(const type of ['keydown','beforeinput','input','compositionstart','compositionupdate','compositionend'])
+      document.addEventListener(type,event=>{
+        if(!event.isTrusted)return;const input=editor(event.target);if(!input)return;
+        if(type==='keydown'&&['Shift','Control','Alt','Meta','CapsLock','NumLock','ScrollLock'].includes(event.key))return;
+        revision++;
+        if(type==='compositionstart'||type==='compositionupdate')composing=input;
+        // A final input may still report isComposing. A trusted end, or a
+        // subsequent explicitly noncomposing input, releases the active span.
+        else if(composing===input&&(type==='compositionend'||type==='input'&&event.isComposing===false))composing=null;
+      },{capture:true,passive:true});
+    window.addEventListener('pagehide',event=>{live=false;lifecycle++;if(event.isTrusted)composing=null;});
+    window.addEventListener('pageshow',()=>{if(!live){live=true;lifecycle++;}});
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')lifecycle++;});
+    window.__pocketComposerInteraction=Object.freeze({snapshot:()=>({revision,lifecycle,
+      composing:!!composing&&composing.isConnected,available:live&&document.visibilityState!=='hidden'})});
+  }
   const port = browser.runtime.connectNative('pocketpage');
   const appearanceDocument = Array.from(crypto.getRandomValues(new Uint32Array(4)), value => value.toString(16).padStart(8, '0')).join('-');
   const appearanceIdentity = {appearanceProtocol: 1, appearanceDocument};

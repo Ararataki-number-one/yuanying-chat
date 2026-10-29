@@ -170,7 +170,8 @@ final class WebReplyObserver {
     session.pending=null;session.activeDeliveryId="";session.resetReplyStability();
     session.observedReplyJob=session.observedReplyUrl=session.observedReplyKey=session.observedReplyRevision=session.observedReplyMarkdown="";
     session.observedReplyHasFiles=false;
-    final String archivedUrl=url;if(!prompt.isEmpty())session.webStore.worker.execute(()->DraftArchive.get(session.context).save(archivedUrl,prompt,"切换对话前待核对提问"));
+    final String archivedUrl=url;final long draftRevision=LocalDraftPolicy.revision(session.context);
+    if(!prompt.isEmpty())session.webStore.worker.execute(()->DraftArchive.get(session.context).save(archivedUrl,prompt,"切换对话前待核对提问",draftRevision));
     lastNavigationArchivedJob=job;navigationArchiveSequence++;
     ChatService.end(session.context);session.status="已切换对话";return true;
   }

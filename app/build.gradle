@@ -25,7 +25,7 @@ android {
     namespace 'local.pocketchat'
     compileSdk { version = release(37) { minorApiLevel = 1 } }
     // Core flows keep API 26 support; protected external VPN route inspection needs API 33+.
-    defaultConfig { applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 87; versionName '2.0.34' }
+    defaultConfig { applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 88; versionName '2.0.35' }
     signingConfigs { debug { if (providers.gradleProperty('testSigningKey').isPresent()) storeFile file(providers.gradleProperty('testSigningKey').get()) } }
     sourceSets {
         main { manifest.srcFile(generatedManifest); assets.srcDir(providers.gradleProperty('caretSdkAssets').orElse('../work/native-caret-sdk/assets').get()) }
