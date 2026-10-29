@@ -5,6 +5,58 @@ const source=fs.readFileSync('app/src/main/assets/page-driver.js','utf8'),perf=f
 const checks=[],check=(name,ok)=>{assert.ok(ok,name);checks.push({name,pass:true});};
 const settle=async()=>{await Promise.resolve();await Promise.resolve();};
 function fixture(html){const w=new JSDOM('<!doctype html><body>'+html+'</body>',{url:'https://chatgpt.com/c/interaction-fixture',runScripts:'outside-only',pretendToBeVisual:true}).window;const observers=[],NativeObserver=w.MutationObserver;w.MutationObserver=class extends NativeObserver{constructor(callback){super(callback);observers.push(this);}};w.__dispose=()=>{for(const item of observers)item.disconnect();w.close();};Object.defineProperty(w.HTMLElement.prototype,'innerText',{get(){return this.textContent;}});w.Element.prototype.getClientRects=()=>[{}];w.getComputedStyle=()=>({display:'block',visibility:'visible'});return w;}
+/* STALE_CAPTURE_CONTROLS_BEGIN: reuse the existing DOM/idle fixture above. */
+async function queuedCaptureCase(kind,driver){
+ const paragraph=Array.from({length:200},(_,i)=>'<p>line '+i+' '+('measured response '.repeat(36))+'</p>').join('');
+ const w=fixture('<main><article id="user" data-message-author-role="user" data-message-id="u1"><div data-user-message-bubble>bound question</div></article><section id="turn" data-turn="assistant"><div data-message-author-role="assistant" data-message-id="a1"><div id="answer" class="markdown">'+paragraph+'<pre><code class="language-js">const original = 1;</code></pre></div></div><button data-testid="copy-turn-action-button" aria-label="Copy response">Copy</button><a download="original.csv" href="https://chatgpt.com/backend-api/files/original">original.csv</a></section></main><textarea id="prompt-textarea">preserved unsent draft</textarea><button data-testid="send-button" aria-label="Send">Send</button><aside id="sidebar"></aside>');
+ const digest=value=>require('node:crypto').createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
+ const idle=new Map();let sequence=0,sends=0,fetches=0,measuring=false,textReads=0,textChars=0,elementMatches=0;const measuredNodes=new WeakSet();
+ w.Date.now=()=>10000;w.requestIdleCallback=(callback,options)=>{const id=++sequence;idle.set(id,{callback,options});return id;};w.cancelIdleCallback=id=>idle.delete(id);
+ const value=Object.getOwnPropertyDescriptor(w.Node.prototype,'nodeValue');Object.defineProperty(w.Node.prototype,'nodeValue',{...value,get(){const result=value.get.call(this);if(measuring&&measuredNodes.has(this)&&this.nodeType===w.Node.TEXT_NODE){textReads++;textChars+=result.length;}return result;}});
+ const matches=w.Element.prototype.matches;w.Element.prototype.matches=function(...args){if(measuring&&measuredNodes.has(this))elementMatches++;return matches.apply(this,args);};
+ w.document.cookie='session=preserved;path=/';w.document.querySelector('[data-testid="send-button"]').addEventListener('click',()=>sends++);w.fetch=()=>{fetches++;throw new Error('Unexpected network request');};w.eval(perf);
+ const call=(action,arg={})=>w.eval(driver.replace('__ACTION__',JSON.stringify(action)).replace('__ARG__',JSON.stringify(arg))),stats=()=>w.__pocketWebPerformance.stats();
+ const body=w.document.getElementById('answer'),user=w.document.getElementById('user');
+ const flush=()=>{const jobs=[...idle.values()];idle.clear();for(const job of jobs){assert.equal(job.options.timeout,750);job.callback({didTimeout:false,timeRemaining:()=>10});}};
+ try{
+  call('web-transcript');const args={kind:'web',confirmed:true,userKey:'id:u1',prompt:'bound question',expectedUrl:w.location.href,confirmedUrl:w.location.href,export:true,lightObservation:true,incrementalObservation:true},complete=call('poll',args);assert.equal(complete.contentObserved,true);
+  const known={...args,knownReplyKey:complete.replyKey,knownReplyContentRevision:complete.replyContentRevision};
+  w.document.dispatchEvent(new w.Event('scroll'));body.querySelector('p').append(' final suffix');await settle();
+  const queued=call('poll',known);assert.equal(queued.captureDeferred,true);assert.equal(idle.size,1);
+  const newUser='<article data-message-author-role="user" data-message-id="u2"><div data-user-message-bubble>new question</div></article>';
+  if(kind==='later-user')w.document.querySelector('main').insertAdjacentHTML('beforeend',newUser);
+  if(kind==='earlier-history-user')w.document.querySelector('main').insertAdjacentHTML('afterbegin',newUser);
+  if(kind==='bound-user-removed')user.remove();
+  if(kind==='other-route')w.history.replaceState({},'','/c/other');
+  if(kind==='detached-body')body.remove();
+  if(kind==='body-changed')body.querySelector('p').append(' newest suffix');
+  if(kind==='sidebar-class')w.document.getElementById('sidebar').className='unrelated';
+  await settle();const inputSha256=digest({html:w.document.body.innerHTML,url:w.location.href});
+  const other=kind==='later-user'?call('poll',known):null;
+  for(const node of [body,...body.querySelectorAll('*')])measuredNodes.add(node);
+  const walker=w.document.createTreeWalker(body,w.NodeFilter.SHOW_TEXT);for(let node=walker.nextNode();node;node=walker.nextNode())measuredNodes.add(node);
+  const before=stats();measuring=true;flush();measuring=false;const after=stats();
+  const counts={derivedBuilt:after.derivedBuilt-before.derivedBuilt,capturesPrepared:after.capturesPrepared-before.capturesPrepared,textReads,textChars,elementMatches};
+  let final=null;if(['unchanged','earlier-history-user','sidebar-class'].includes(kind)){const result=call('poll',known);assert.ok(result.contentObserved&&result.hasFiles&&result.markdown.includes(' final suffix')&&result.markdown.includes('const original = 1;'));final={markdownSha256:digest(result.markdown),markdownLength:result.markdown.length,hasFiles:result.hasFiles,replyKey:result.replyKey};}
+  let recovery=null;if(kind==='bound-user-removed'){w.document.querySelector('main').prepend(user);await settle();const pending=call('poll',known);if(pending.captureDeferred)flush();const result=call('poll',known);assert.ok(result.contentObserved&&result.hasFiles&&result.markdown.includes(' final suffix'));recovery={markdownSha256:digest(result.markdown),hasFiles:result.hasFiles};}
+  assert.ok(sends===0&&fetches===0&&w.document.cookie==='session=preserved'&&w.document.querySelector('textarea').value==='preserved unsent draft');
+  return {kind,inputSha256,counts,final,recovery,otherQuestion:other?.otherQuestion||false,zeroSend:true,zeroFetch:true,cookieAndDraftPreserved:true};
+ }finally{w.__dispose();}
+}
+async function staleCaptureControls(){
+ const baseline=process.env.STALE_CAPTURE_BASELINE?fs.readFileSync(process.env.STALE_CAPTURE_BASELINE,'utf8'):null,rows=[];
+ for(const kind of ['unchanged','later-user','bound-user-removed','earlier-history-user','other-route','detached-body','body-changed','sidebar-class']){
+  const current=await queuedCaptureCase(kind,source),before=baseline?await queuedCaptureCase(kind,baseline):null;
+  if(['unchanged','earlier-history-user','sidebar-class'].includes(kind)){check('Queued reply prewarm remains complete after '+kind,current.counts.capturesPrepared===1&&current.counts.textReads===201&&current.counts.textChars===131303&&current.counts.derivedBuilt===2);if(before){assert.deepEqual(current.counts,before.counts);assert.deepEqual(current.final,before.final);}}
+  else check('Queued reply prewarm skips obsolete work after '+kind,current.counts.capturesPrepared===0&&current.counts.textReads===0&&current.counts.textChars===0&&current.counts.derivedBuilt===0);
+  if(kind==='later-user')assert.equal(current.otherQuestion,true);
+  if(before){assert.equal(current.inputSha256,before.inputSha256);if(['later-user','bound-user-removed'].includes(kind))assert.ok(before.counts.textChars===131303&&before.counts.derivedBuilt===2);if(kind==='bound-user-removed')assert.deepEqual(current.recovery,before.recovery);}
+  rows.push({kind,current,baseline:before});
+ }
+ return {scope:'Actual production driver/cache with controlled DOM and idle. Body conversion counters exclude topology guard cost; no Android, Gecko, CPU, frame-rate or overall speedup claim.',actualAndroidExecution:false,actualPhoneExecution:false,pairedBaseline:!!baseline,rows};
+}
+/* STALE_CAPTURE_CONTROLS_END */
+
 async function main(){
  const w=fixture('<main><article data-message-author-role="user" data-message-id="u1"><div data-user-message-bubble>bound question</div></article><section data-turn="assistant"><div data-message-author-role="assistant" data-message-id="a1"><div class="markdown"><p>'+('long answer '.repeat(10000))+'</p><pre><code class="language-js">const keep = 1;</code></pre></div></div><button data-testid="copy-turn-action-button" aria-label="Copy response">Copy</button></section></main><textarea id="prompt-textarea">preserve unsent draft</textarea><button data-testid="send-button" aria-label="Send">Send</button><aside id="sidebar"></aside>');
  let now=10000;w.Date.now=()=>now;const idle=new Map();let sequence=0;
@@ -94,6 +146,7 @@ async function main(){
  check('Leaving the page flushes a pending final scale even when animation frames stop',frames.size===0&&messages.length===2&&messages.at(-1).value===scaleWindow.devicePixelRatio*1.5&&messages.at(-1).width===740);
  scaleValue=1.6;width=760;resize.forEach(fn=>fn());Object.defineProperty(scaleWindow.document,'visibilityState',{value:'hidden',configurable:true});scaleWindow.document.dispatchEvent(new scaleWindow.Event('visibilitychange'));
  check('Backgrounding flushes and cancels the pending viewport frame once',frames.size===0&&messages.length===3&&messages.at(-1).value===scaleWindow.devicePixelRatio*1.6&&messages.at(-1).width===760);scaleWindow.__dispose();
- console.log(JSON.stringify({passed:checks.length,total:checks.length,scope:'Actual production JS in controlled DOM; idle and geometry are test-controlled, not Android performance',checks},null,2));
+ const staleCapture=await staleCaptureControls();
+ console.log(JSON.stringify({passed:checks.length,total:checks.length,scope:'Actual production JS in controlled DOM; idle and geometry are test-controlled, not Android performance',checks,staleCapture},null,2));
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

@@ -557,6 +557,7 @@
       const captureNodes=[...replies,...bodies,...replies.map(assistantScope)],captureUrl=location.href;
       if(window.__pocketWebPerformance.deferCapture(captureUrl+'|'+replyKey+'|'+contentRevision,()=>{
         if(location.href!==captureUrl||captureNodes.some(node=>!node.isConnected)||window.__pocketWebPerformance.contentRevision(captureNodes)!==contentRevision)return false;
+        if(!user?.isConnected||messages('user').some(node=>node!==user&&!!(user.compareDocumentPosition(node)&Node.DOCUMENT_POSITION_FOLLOWING)))return false;
         if(reply)observedFiles(reply);bodies.forEach(observedMarkdown);return true;
       })){result.contentObserved=false;result.captureDeferred=true;return result;}
       result.hasFiles=!!reply&&observedFiles(reply).length>0;
