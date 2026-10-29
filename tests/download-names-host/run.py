@@ -35,6 +35,21 @@ def member(text,needle):
 
 def digest(raw):return hashlib.sha256(raw).hexdigest()
 
+def remove_reviewed_delete_identity(text):
+    """Invert only the separately reviewed 2.0.31 additive deletion APIs.
+
+    The download-name methods and every historical catalogue byte still undergo
+    the original whole-file comparison below; this is not a deletion-behaviour
+    oracle. The production identity/maintenance suites cover those new APIs.
+    """
+    start='  /** A confirmation belongs to the exact environment shown in its dialog. */\n'
+    end='  void beginDelete(int slot)'
+    assert text.count(start)==1 and text.count(end)==1,'Reviewed deletion addition must occur exactly once'
+    begin=text.index(start);finish=text.index(end,begin+len(start));raw=text[begin:finish].encode()
+    assert len(raw)==1579 and len(raw.splitlines())==22,'Reviewed deletion addition size changed'
+    assert digest(raw)=='5e961abfcccae702bc026b4664063afa1a783be04514cdd499b906c8fd7d8811','Reviewed deletion addition bytes changed'
+    return text[:begin]+text[finish:]
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--java-home',type=Path,required=True);parser.add_argument('--json-jar',type=Path,required=True);parser.add_argument('--before-ref');parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
     names=['ProfileCatalog.java','Profiles.java','DesignDownloads.java','DownloadListPolicy.java']
@@ -62,6 +77,7 @@ def main():
         unchanged['allOtherDownloadUiBytes']=removed==baseline
         baseline_catalog=selected('ProfileCatalog.java',BASELINE).decode()
         stripped=text['ProfileCatalog.java'].replace('  /** Refresh-local labels only; do not load private drafts/notes or cache across renames. */\n','').replace('  '+extracts['names']+'\n','').replace('  '+extracts['displayName']+'\n','')
+        stripped=remove_reviewed_delete_identity(stripped)
         unchanged['allExistingCatalogBytes']=stripped==baseline_catalog
         assert all(unchanged.values()),unchanged
     inputs=[Path(__file__).resolve(),HERE/'DownloadNamesHost.java.in',*HERE.glob('stubs/**/*.java')];input_hashes={str(p.relative_to(ROOT)):digest(p.read_bytes()) for p in inputs}
