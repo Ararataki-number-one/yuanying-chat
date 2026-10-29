@@ -92,3 +92,15 @@ class AppAppearance{static Builder last;static Builder dialog(Object a){return l
 class Builder{String positive;java.util.function.BiConsumer<Object,Integer> selected;Builder setTitle(String s){return this;}Builder setMessage(String s){return this;}Builder setView(Object o){return this;}Builder setItems(String[] names,java.util.function.BiConsumer<Object,Integer> action){return this;}Builder setPositiveButton(String s,java.util.function.BiConsumer<Object,Integer> action){positive=s;selected=action;return this;}Builder setNegativeButton(String s,java.util.function.BiConsumer<Object,Integer> action){return this;}Builder setNeutralButton(String s,java.util.function.BiConsumer<Object,Integer> action){return this;}void show(){}void dismiss(){}void clickPositive(){selected.accept(this,0);}}
 
 class FakeHttp extends HttpURLConnection{final int code;final byte[] body;final String range;boolean blockSecond;Runnable beforeSecond;int replies;final CountDownLatch blocked=new CountDownLatch(1),release=new CountDownLatch(1);FakeHttp(int code,byte[] body,String range)throws Exception{super(new URL("https://example.test/file"));this.code=code;this.body=body;this.range=range;}public void connect(){}public void disconnect(){}public boolean usingProxy(){return false;}public int getResponseCode()throws IOException{replies++;if(replies==2&&beforeSecond!=null)beforeSecond.run();if(replies==2&&blockSecond){blocked.countDown();try{if(!release.await(5,TimeUnit.SECONDS))throw new IOException("range barrier timeout");}catch(InterruptedException e){throw new IOException(e);}}return code;}public long getContentLengthLong(){return body.length;}public String getHeaderField(String name){return name.equals("ETag")?"\"v1\"":name.equals("Content-Range")?range:null;}public String getContentEncoding(){return "identity";}public String getContentType(){return "application/octet-stream";}public InputStream getInputStream(){return new ByteArrayInputStream(body);}}
+
+// Controlled continuation adapter only. Production route admission and revocation
+// are exercised separately; these existing cases retain their supplied connections.
+class NativeDownloadRoute implements AutoCloseable {
+ final Proxy proxy;
+ interface Opener {HttpURLConnection open(String url,Proxy proxy)throws Exception;}
+ NativeDownloadRoute(Object session,Proxy proxy){this.proxy=proxy;}
+ HttpURLConnection open(String url,Opener opener)throws Exception{return opener.open(url,proxy);}
+ void check(){}
+ void released(HttpURLConnection connection){}
+ public void close(){}
+}

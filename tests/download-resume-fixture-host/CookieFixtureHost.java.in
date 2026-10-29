@@ -122,3 +122,15 @@ class DownloadTasks {static void put(JSONObject row,Object...values){try{for(int
 class AppPrefs {static void requireDownloadNetwork(Context context){}}
 class BrowserNetworkGuard {static boolean publicHttps(android.net.Uri uri){return true;}}
 class URLUtil {static String guessFileName(String a,String b,String c){return "fixture.bin";}}
+
+// Controlled Cookie/HTTP adapter only. Production route admission and revocation
+// are exercised separately; this fixture retains its explicit loopback connection.
+class NativeDownloadRoute implements AutoCloseable {
+ final Proxy proxy;
+ interface Opener {HttpURLConnection open(String url,Proxy proxy)throws Exception;}
+ NativeDownloadRoute(Object session,Proxy proxy){this.proxy=proxy;}
+ HttpURLConnection open(String url,Opener opener)throws Exception{return opener.open(url,proxy);}
+ void check(){}
+ void released(HttpURLConnection connection){}
+ public void close(){}
+}

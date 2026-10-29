@@ -1,0 +1,200 @@
+package local.pocketchat;
+
+import android.content.Context;
+import android.net.*;
+import org.json.*;
+import java.io.*;
+import java.net.*;
+import java.util.*;
+import java.util.concurrent.*;
+
+/** Controlled services and HttpURLConnection only. No Android or real VPN/socket claims. */
+public final class NativeDownloadRouteHost {
+  static final JSONArray checks=new JSONArray();static int count;
+  static void check(String name,boolean pass)throws Exception{checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);count++;}
+  interface Work {void run()throws Exception;}
+  static boolean rejects(Work action)throws Exception{try{action.run();return false;}catch(IOException expected){return true;}}
+  static boolean disconnected(Fake connection)throws Exception{return connection.closed.await(4,TimeUnit.SECONDS);}
+  static final class Fixture {
+    final ChatSession session=new ChatSession();final ConnectivityManager cm=new ConnectivityManager();final Network net;final NativeNetwork nativeNetwork;
+    Fixture(boolean internal,boolean vpn,String proxy)throws Exception{
+      session.context.slot=2;session.context.service=cm;session.prefs.mode=internal?"internal":"external";session.prefs.proxy=proxy;session.prefs.require=vpn;
+      cm.active=net=new Network(vpn?"vpn-A":"wifi-A");cm.caps.vpn=vpn;session.browserDefaultNetwork.initial(net.toString(),true,vpn);
+      ChatSession.current=session;ProfileCatalog.current=new EnvironmentSpec.Identity(2,7,session.environmentId);nativeNetwork=new NativeNetwork(session.context);NativeNetwork.current=nativeNetwork;
+    }
+    Proxy proxy()throws Exception{return new FileDownloads(new MainActivity(session)).route();}
+    NativeDownloadRoute lease()throws Exception{return new NativeDownloadRoute(session,proxy());}
+  }
+  public static void main(String[] args)throws Exception{
+    Fixture f=new Fixture(true,false,"");
+    check("Verified internal route opens admission",f.session.guard.allowed());
+    check("Verified internal download uses frozen local proxy",f.proxy().type()==Proxy.Type.HTTP);
+    NativeNetwork n=f.nativeNetwork;n.invalidateVerifiedRoute();
+    check("Actual receipt invalidation leaves ready true and blocks admission",n.ready&&n.verifiedRoute==null&&!n.connectionAdmission().usable());
+    check("Native guard closes the reproduced receipt gap",!f.session.guard.allowed());
+    check("Native download refuses the reproduced receipt gap",rejects(f::proxy));
+    f=new Fixture(true,false,"");f.nativeNetwork.admission=NetworkHealthPolicy.Admission.DEGRADED_VERIFICATION;
+    try(NativeDownloadRoute lease=f.lease()){check("Exact degraded verification retains admitted route",lease.receipt==f.nativeNetwork.verifiedRoute);}
+    f=new Fixture(true,false,"");f.nativeNetwork.recoveryBlocked=true;check("Recovery-blocked route rejects capture",rejects(f::lease));
+    f=new Fixture(true,false,"");f.nativeNetwork.routeSerial++;check("Mismatched receipt serial rejects capture",rejects(f::lease));
+    f=new Fixture(true,false,"");f.nativeNetwork.starting=true;check("Starting core rejects capture",rejects(f::lease));
+    f=new Fixture(true,false,"");f.nativeNetwork.context.slot=3;check("Cross-profile native core rejects capture",rejects(f::lease));
+    f=new Fixture(true,false,"");f.nativeNetwork.transport.freshAlive=false;check("Stale cached liveness cannot open a new route",rejects(f::lease));
+    f=new Fixture(true,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      Fake c=new Fake();int[] opens={0};lease.open("https://fixture.invalid/file",(url,proxy)->{opens[0]++;return c;});
+      check("Exactly one HTTP connection is opened per call",opens[0]==1&&lease.active.contains(c));
+      int calls=f.nativeNetwork.transport.calls,reads=ProfileCatalog.reads;for(int i=0;i<100;i++)lease.check();
+      check("Stream checks do not issue catalog or service IPC",f.nativeNetwork.transport.calls==calls&&ProfileCatalog.reads==reads);
+      f.nativeNetwork.invalidateVerifiedRoute();
+      check("New requests stop before opener after receipt invalidation",rejects(()->lease.open("https://fixture.invalid/next",(url,proxy)->{opens[0]++;return new Fake();}))&&opens[0]==1);
+      check("Already opened connection is asynchronously disconnected",disconnected(c));
+      check("Failed lease does not adopt a replacement verified receipt",rejects(()->{lease.internal.ready=true;lease.internal.verifiedRoute=new NativeNetwork.ExitRouteReceipt(lease.internal,lease.internal.transport.state);lease.internal.admission=NetworkHealthPolicy.Admission.VERIFIED;lease.check();}));
+    }
+    f=new Fixture(true,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      Fake c=new Fake();lease.open("https://fixture.invalid/file",(url,proxy)->c);
+      CompletableFuture<Boolean> read=CompletableFuture.supplyAsync(()->{try{c.getInputStream().read();return false;}catch(IOException closed){return true;}});
+      check("Controlled read is actually blocked before route loss",c.reading.await(2,TimeUnit.SECONDS));lease.internal.routeSerial++;
+      check("Watcher disconnects a blocked read without another stream callback",disconnected(c)&&read.get(2,TimeUnit.SECONDS));
+      check("Watcher records permanent route failure",lease.failure!=null);
+    }
+    f=new Fixture(true,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      Fake c=new Fake();check("Revocation between opener and active registration rejects",rejects(()->lease.open("https://fixture.invalid/file",(url,proxy)->{lease.internal.invalidateVerifiedRoute();return c;})));
+      check("Open-registration race disconnects its connection",disconnected(c));
+    }
+    f=new Fixture(false,true,"");Fake vpn=new Fake();f.net.connection=vpn;
+    try(NativeDownloadRoute lease=f.lease()){
+      int[] ordinary={0};HttpURLConnection selected=lease.open("https://fixture.invalid/file",(url,proxy)->{ordinary[0]++;return new Fake();});
+      check("Required VPN opens through exact verified Network",selected==vpn&&f.net.opens==1&&lease.bound==f.net);
+      check("Required VPN never calls changing-default opener",ordinary[0]==0);
+      f.cm.active=new Network("vpn-B");f.session.browserDefaultNetwork.initial("vpn-B",true,true);
+      check("VPN to VPN change invalidates frozen network",rejects(lease::check));lease.watch();
+      check("VPN replacement disconnects established connection",disconnected(vpn));
+    }
+    f=new Fixture(false,true,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      f.net.unavailable=true;int[] ordinary={0};
+      check("Bound Network failure stops without default fallback",rejects(()->lease.open("https://fixture.invalid/file",(url,proxy)->{ordinary[0]++;return new Fake();}))&&ordinary[0]==0);
+      check("Bound Network failure retires attempt",lease.failure!=null);
+    }
+    f=new Fixture(false,true,"");f.session.guard.vpnIssue="route-excluded";check("Unverified VPN route coverage blocks capture",rejects(f::lease));
+    f=new Fixture(false,true,"");f.cm.caps.vpn=false;check("VPN capability loss blocks capture",rejects(f::lease));
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      f.session.browserDefaultNetwork.lost(f.net.toString());f.session.browserDefaultNetwork.initial(f.net.toString(),true,false);
+      check("Same network name with newer event revision stays invalid",rejects(lease::check));
+    }
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      ProfileCatalog.current=new EnvironmentSpec.Identity(2,8,lease.environment.environmentId);
+      check("Environment generation replacement blocks new connection",rejects(()->lease.open("https://fixture.invalid/file",(url,proxy)->new Fake())));
+    }
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      ProfileCatalog.current=new EnvironmentSpec.Identity(2,7,"00000000-0000-4000-8000-000000000999");
+      check("Environment UUID replacement blocks new connection",rejects(()->lease.open("https://fixture.invalid/file",(url,proxy)->new Fake())));
+    }
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      f.session.connectionEpoch++;check("Connection epoch change blocks stream",rejects(lease::check));
+    }
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      ChatSession.current=new ChatSession();check("Retired session cannot keep download admission",rejects(lease::check));
+    }
+    f=new Fixture(false,false,"http://127.0.0.1:18080");
+    try(NativeDownloadRoute lease=f.lease()){
+      Fake c=new Fake();Proxy[] observed={null};lease.open("https://fixture.invalid/file",(url,proxy)->{observed[0]=proxy;return c;});
+      check("Explicit proxy uses exact admitted proxy",observed[0].equals(lease.proxy)&&observed[0].type()==Proxy.Type.HTTP&&lease.bound==null);
+      f.session.prefs.proxy="";check("Clearing proxy never falls back within existing attempt",rejects(lease::check));
+    }
+    f=new Fixture(false,false,"http://[2001:db8::1]:18080");
+    try(NativeDownloadRoute lease=f.lease()){check("Equivalent expanded IPv6 proxy literal keeps existing support",lease.proxy.type()==Proxy.Type.HTTP);}
+    f=new Fixture(false,false,"http://127.0.0.1:18080");final Fixture changedProxy=f;
+    check("Old direct proxy cannot be captured under new explicit settings",rejects(()->new NativeDownloadRoute(changedProxy.session,Proxy.NO_PROXY)));
+    check("Old proxy port cannot be captured under replacement settings",rejects(()->new NativeDownloadRoute(changedProxy.session,new Proxy(Proxy.Type.HTTP,new InetSocketAddress("127.0.0.1",18081)))));
+    check("Old proxy host cannot be captured under replacement settings",rejects(()->new NativeDownloadRoute(changedProxy.session,new Proxy(Proxy.Type.HTTP,new InetSocketAddress("127.0.0.2",18080)))));
+    check("Old proxy type cannot be captured under replacement settings",rejects(()->new NativeDownloadRoute(changedProxy.session,new Proxy(Proxy.Type.SOCKS,new InetSocketAddress("127.0.0.1",18080)))));
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      Fake c=new Fake();lease.open("https://fixture.invalid/file",(url,proxy)->c);f.session.prefs.require=true;
+      check("VPN requirement changes block the previous direct route",rejects(lease::check));
+    }
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      f.session.prefs.mode="internal";check("Changing configured network mode blocks attempt",rejects(lease::check));
+    }
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      f.session.context.slot=4;check("Changing profile context blocks attempt",rejects(lease::check));
+    }
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      f.session.deleted=true;check("Deleted session blocks attempt",rejects(lease::check));
+    }
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      Fake c=new Fake();lease.open("https://fixture.invalid/file",(url,proxy)->c);lease.released(c);lease.close();
+      check("Released connection is no longer tracked",lease.active.isEmpty());
+      check("Closed lease rejects further requests",rejects(lease::check));
+      check("Closed lease open throws controlled IOException",rejects(()->lease.open("https://fixture.invalid/file",(url,proxy)->new Fake())));
+      check("Closing lease shuts down watcher",lease.watcher.isShutdown());
+    }
+    f=new Fixture(false,false,"");
+    try(NativeDownloadRoute lease=f.lease()){
+      Fake c=new Fake();lease.open("https://fixture.invalid/file",(url,proxy)->c);lease.close();
+      check("Closing active attempt asynchronously disconnects it",disconnected(c));
+    }
+    f=new Fixture(false,false,"");f.session.prefs.mode="corrupted";check("Unknown network mode has no direct fallback",rejects(f::lease));
+    System.out.println(J.obj("status","passed","passed",count,"total",count,"checks",checks));
+  }
+}
+class Fake extends HttpURLConnection {
+  final CountDownLatch closed=new CountDownLatch(1),reading=new CountDownLatch(1);Fake()throws Exception{super(new URL("https://fixture.invalid/file"));}
+  public InputStream getInputStream(){return new InputStream(){public int read()throws IOException{reading.countDown();try{if(!closed.await(4,TimeUnit.SECONDS))throw new IOException("controlled read timeout");}catch(InterruptedException error){throw new IOException(error);}throw new IOException("controlled read disconnected");}};}
+  public void connect(){}public boolean usingProxy(){return false;}public void disconnect(){closed.countDown();}
+}
+class Prefs {String mode="external",proxy="";boolean require;String getString(String key,String fallback){return key.equals("networkMode")?mode:key.equals("proxy")?proxy:fallback;}boolean getBoolean(String key,boolean fallback){return key.equals("requireExternalVpn")?require:fallback;}}
+class ChatSession {
+  static ChatSession current;static ChatSession peek(){return current;}
+  final Context context=new Context();final Prefs prefs=new Prefs();final BrowserNetworkGuard guard=new BrowserNetworkGuard(this);final NetworkPoolIdentity.DefaultNetwork browserDefaultNetwork=new NetworkPoolIdentity.DefaultNetwork();
+  int environmentGeneration=7;String environmentId="00000000-0000-4000-8000-000000000002";long connectionEpoch=3;boolean deleted,offline,connecting;boolean networkReady=true;
+  boolean internalNetwork(){return prefs.mode.equals("internal");}
+}
+class BrowserNetworkGuard {
+  final ChatSession session;boolean blocked;String vpnIssue="";BrowserNetworkGuard(ChatSession session){this.session=session;}
+  boolean requiresVpn(){return !session.internalNetwork()&&session.prefs.proxy.trim().isEmpty()&&session.prefs.require;}
+  String vpnDefaultRouteIssue(){return vpnIssue;}
+  /* GUARD_ROUTE */
+  /* GUARD_ALLOWED */
+}
+class MainActivity extends Context {
+  final ChatSession session;final Prefs prefs;MainActivity(ChatSession session){this.session=session;prefs=session.prefs;slot=session.context.slot;service=session.context.service;}
+  static boolean validProxy(String proxy){return proxy.startsWith("http://")||proxy.startsWith("socks://");}
+}
+class FileDownloads {final MainActivity a;FileDownloads(MainActivity a){this.a=a;}
+  /* DOWNLOAD_ROUTE */
+}
+class Profiles {static int slot(Context c){return c.slot;}}
+class ProfileCatalog {static int reads;static EnvironmentSpec.Identity current;static final ProfileCatalog one=new ProfileCatalog();static ProfileCatalog get(Context c){return one;}EnvironmentSpec.Identity identity(int slot)throws IOException{reads++;if(current==null||current.slot!=slot)throw new IOException("controlled catalog unavailable");return current;}}
+class AppPrefs {static void requireDownloadNetwork(Context c)throws IOException{}}
+class Transport {JSONObject state=J.obj("alive",true,"generation","core-A","pid",123,"servicePid",456,"configuration","configuration","controllerPort",12123,"proxyPort",32123);boolean freshAlive=true;int calls;JSONObject call(String command,String ignored){calls++;return freshAlive?state:J.obj("alive",false);}}
+class NativeNetwork {
+  static NativeNetwork current;static NativeNetwork get(Context c){return current;}
+  final Context context;Transport transport=new Transport();java.lang.Process process;JSONObject settings;
+  String fingerprint="fixed-exit",token="controlled-private-token",currentEntry="entry-A";int controllerPort=12123,proxyPort=32123;long routeSerial=1,nextExitCheckAt,healthObservedAt;int exitCheckFailures,failures,healthTargetCode;String healthStatus="unknown";
+  boolean ready=true,recoveryBlocked,starting;ExitRouteReceipt verifiedRoute;NetworkHealthPolicy.Admission admission=NetworkHealthPolicy.Admission.VERIFIED;
+  NativeNetwork(Context c){context=new Context();context.slot=c.slot;verifiedRoute=new ExitRouteReceipt(this,transport.state);}
+  String proxy(){return "http://127.0.0.1:"+proxyPort;}static String transportFingerprint(JSONObject ignored){return "configuration";}
+  /* RECEIPT */
+  /* INVALIDATE */
+  /* ADMISSION */
+  /* CURRENT */
+}
+class AppUpdateTransfer {
+  static final ExecutorService closers=Executors.newCachedThreadPool(task->{Thread thread=new Thread(task,"controlled-disconnect");thread.setDaemon(true);return thread;});
+  /* CLOSER */
+}
+class J {static JSONObject obj(Object... pairs){JSONObject result=new JSONObject();try{for(int i=0;i<pairs.length;i+=2)result.put((String)pairs[i],pairs[i+1]);}catch(JSONException failure){throw new RuntimeException(failure);}return result;}}

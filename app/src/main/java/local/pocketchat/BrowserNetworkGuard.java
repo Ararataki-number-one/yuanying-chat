@@ -52,7 +52,7 @@ final class BrowserNetworkGuard {
     if(android.os.Build.VERSION.SDK_INT<33)return "当前系统无法确认 VPN 路由覆盖，已阻止新请求。请使用应用内线路或显式代理。";
     return "VPN 路由覆盖尚未确认，已阻止新请求。请检查 VPN 完整覆盖，或使用应用内线路／显式代理。";
   }
-  boolean routeProtected(){if(requiresVpn())return vpnDefaultRouteIssue().isEmpty();if(session.internalNetwork()){NativeNetwork n=NativeNetwork.get(session.context);return n.ready&&n.coreAlive();}return true;}
+  boolean routeProtected(){if(requiresVpn())return vpnDefaultRouteIssue().isEmpty();if(session.internalNetwork()){NativeNetwork n=NativeNetwork.get(session.context);return n.connectionAdmission().usable();}return true;}
   boolean allowed(){return !blocked&&routeProtected();}
   WebResourceResponse intercept(Uri uri){return !allowed()||!publicHttps(uri)?denied():null;}
   static WebResourceResponse denied(){return new WebResourceResponse("text/plain","UTF-8",403,"Network protection",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(new byte[0]));}

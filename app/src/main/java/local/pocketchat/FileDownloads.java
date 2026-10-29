@@ -54,22 +54,22 @@ class FileDownloads {
   boolean valid(long attempt){return active&&!cancelled&&!destroyed&&attempt==ticket&&tasks.owns(task);}
   void accept(String url,String ua,String disposition,String proposed,long length){if(awaitingPicker||retiringPartial)return;if(System.currentTimeMillis()<ignoreUntil)return;if(active&&!retryUrl.isEmpty())return;if(!https(url)&&!url.startsWith("blob:https://")){a.status("这个下载地址暂不支持，请查看原网页");return;}if(!active){if(!resumeRequested){newTask("","",a.conversation);if(persistenceBlocked)return;}resumeRequested=false;imageLabel="";sourceId="";sourceKey="";sourceUrl=a.conversation;active=true;a.session.transferActive=true;a.session.updateBrowserActivity();cancelled=false;++ticket;name=safeName(URLUtil.guessFileName(url,disposition,proposed));}if(length>MAX||length>a.getCacheDir().getUsableSpace()-64L*1024*1024){fail(ticket,"文件超过本机下载限额或可用空间，请使用浏览器另行下载");return;}if(name.equals("文件")||sourceId.isEmpty()||name.matches("图片 [0-9]+"))name=safeName(URLUtil.guessFileName(url,disposition,proposed));mime=type(name,proposed);if(!imageLabel.isEmpty()&&mime.startsWith("image/"))name=imageLabel+"."+imageExtension(mime);DownloadTasks.put(task,"transferKind",url.startsWith("blob:")?"blob":"http-range");retryUrl=url;agent=ua;mark("downloading","");if(persistenceBlocked)return;long attempt=ticket;showProgress("正在下载 "+name+"…");if(url.startsWith("blob:"))startBlob(attempt,url);else worker.execute(()->download(attempt,url,ua));}
   static String imageExtension(String type){String ext=MimeTypeMap.getSingleton().getExtensionFromMimeType(type);return ext==null?"png":ext;}
-  Proxy route()throws Exception{AppPrefs.requireDownloadNetwork(a);if(!a.session.guard.allowed())throw new IOException("受保护连接已中断，下载已暂停");if(a.session.internalNetwork()){NativeNetwork n=NativeNetwork.get(a);if(!n.ready||!n.coreAlive())throw new IOException("应用代理未连接，请恢复连接后重试");Uri u=Uri.parse(n.proxy());return new Proxy(Proxy.Type.HTTP,new InetSocketAddress(u.getHost(),u.getPort()));}String proxy=a.prefs.getString("proxy","");if(proxy.isEmpty())return Proxy.NO_PROXY;if(!MainActivity.validProxy(proxy))throw new IOException("代理配置无效");Uri u=Uri.parse(proxy);if("https".equals(u.getScheme()))throw new IOException("当前代理类型请使用原网页下载");return new Proxy("socks".equals(u.getScheme())?Proxy.Type.SOCKS:Proxy.Type.HTTP,new InetSocketAddress(u.getHost(),u.getPort()));}
+  Proxy route()throws Exception{AppPrefs.requireDownloadNetwork(a);if(!a.session.guard.allowed())throw new IOException("受保护连接已中断，下载已暂停");if(a.session.internalNetwork()){NativeNetwork n=NativeNetwork.get(a);if(!n.connectionAdmission().usable())throw new IOException("应用代理未连接，请恢复连接后重试");Uri u=Uri.parse(n.proxy());return new Proxy(Proxy.Type.HTTP,new InetSocketAddress(u.getHost(),u.getPort()));}String proxy=a.prefs.getString("proxy","");if(proxy.isEmpty())return Proxy.NO_PROXY;if(!MainActivity.validProxy(proxy))throw new IOException("代理配置无效");Uri u=Uri.parse(proxy);if("https".equals(u.getScheme()))throw new IOException("当前代理类型请使用原网页下载");return new Proxy("socks".equals(u.getScheme())?Proxy.Type.SOCKS:Proxy.Type.HTTP,new InetSocketAddress(u.getHost(),u.getPort()));}
   HttpURLConnection connect(String url,Proxy proxy)throws Exception{return (HttpURLConnection)new URL(url).openConnection(proxy);}
   void download(long attempt,String initial,String ua){
     File local=temp;
     try{
       if(local==null||!local.isFile()){if(!valid(attempt))throw new IOException("下载已暂停");local=File.createTempFile("download-",".part",a.getCacheDir());if(!valid(attempt)){local.delete();throw new IOException("下载已暂停");}temp=local;}
       File partial=local;a.handler.post(()->{if(valid(attempt)){DownloadTasks.put(task,"partial",partial.getName());saveTask();}});
-      Proxy proxy=route();String url=initial;
+      try(NativeDownloadRoute frozen=new NativeDownloadRoute(a.session,route())){String url=initial;
       for(int redirects=0;redirects<=5;redirects++){
         if(!valid(attempt))throw new IOException("下载已取消");AppPrefs.requireDownloadNetwork(a);if(!https(url)||!BrowserNetworkGuard.publicHttps(Uri.parse(url)))throw new IOException("下载地址或重定向不受支持");if(!a.session.guard.allowed())throw new IOException("受保护连接已中断，下载已暂停");
-        HttpURLConnection c=connect(url,proxy);connection=c;c.setInstanceFollowRedirects(false);c.setConnectTimeout(10000);c.setReadTimeout(25000);c.setRequestProperty("Accept-Encoding","identity");
+        HttpURLConnection c=frozen.open(url,this::connect);connection=c;c.setInstanceFollowRedirects(false);c.setConnectTimeout(10000);c.setReadTimeout(25000);c.setRequestProperty("Accept-Encoding","identity");
         if(ua!=null)c.setRequestProperty("User-Agent",ua);String cookie=a.remote.downloadCookies(url);if(cookie!=null)c.setRequestProperty("Cookie",cookie);
         long base=local.length();String expected=resumeValidator;
         if(base>0&&!expected.isEmpty()&&resumeAddress.equals(DownloadRange.resource(url))){c.setRequestProperty("Range","bytes="+base+"-");c.setRequestProperty("If-Range",expected);}else base=0;
         try{
-          int code=c.getResponseCode();if(!valid(attempt)||!a.session.guard.allowed())throw new IOException("下载已暂停，受保护连接不可用");if(code>=300&&code<400){String next=c.getHeaderField("Location");if(next==null)throw new IOException("下载重定向缺少地址");url=new URL(new URL(url),next).toString();continue;}
+          frozen.check();int code=c.getResponseCode();frozen.check();if(!valid(attempt))throw new IOException("下载已暂停，受保护连接不可用");if(code>=300&&code<400){String next=c.getHeaderField("Location");if(next==null)throw new IOException("下载重定向缺少地址");url=new URL(new URL(url),next).toString();continue;}
           if(code!=200&&code!=206){if(code==416){resumeValidator="";resumeAddress="";}throw new IOException(code==401||code==403?"链接已过期，点继续重新获取文件":"下载失败（HTTP "+code+"）");}
           long total;try{total=DownloadRange.total(c,base,expected);}catch(IOException invalid){resumeValidator="";resumeAddress="";File resetFile=local;SealedFileIo.lease(resetFile,()->{if(!valid(attempt))throw new IOException("下载已暂停");try(RandomAccessFile reset=new RandomAccessFile(resetFile,"rw")){reset.setLength(0);}return null;});receivedBytes=0;throw invalid;}
           if(code==200)base=0;
@@ -82,16 +82,16 @@ class FileDownloads {
             try(InputStream in=c.getInputStream();OutputStream out=new FileOutputStream(target,code==206)){
               resumeValidator=nextValidator;resumeAddress=nextAddress;
               byte[] bytes=new byte[65536];int size;
-              while((size=in.read(bytes))!=-1){AppPrefs.requireDownloadNetwork(a);if(!valid(attempt)||!a.session.guard.allowed())throw new IOException("下载已暂停，受保护连接不可用");if(a.getCacheDir().getUsableSpace()<64L*1024*1024)throw new IOException("本机剩余空间不足，请清理后继续");copied+=size;if(copied>MAX)throw new IOException("文件超过 512 MB");out.write(bytes,0,size);receivedBytes=copied;
+              while((size=in.read(bytes))!=-1){frozen.check();if(!valid(attempt))throw new IOException("下载已暂停，受保护连接不可用");if(a.getCacheDir().getUsableSpace()<64L*1024*1024)throw new IOException("本机剩余空间不足，请清理后继续");copied+=size;if(copied>MAX)throw new IOException("文件超过 512 MB");out.write(bytes,0,size);receivedBytes=copied;
                 if(System.currentTimeMillis()-reported>400){reported=System.currentTimeMillis();a.handler.post(()->{if(valid(attempt))transferProgress();});}
               }
             }return copied;
           });
-          if(total>=0&&received!=total)throw new IOException("文件未下载完整，可继续下载");
+          frozen.check();if(total>=0&&received!=total)throw new IOException("文件未下载完整，可继续下载");
           a.handler.post(()->{if(valid(attempt)){transferProgress();choose(attempt);}});return;
-        }finally{c.disconnect();if(connection==c)connection=null;}
+        }finally{frozen.released(c);c.disconnect();if(connection==c)connection=null;}
       }
-      throw new IOException("文件重定向次数过多");
+      throw new IOException("文件重定向次数过多");}
     }catch(Exception e){fail(attempt,e.getMessage());}
   }
   void startBlob(long attempt,String url){try{Uri origin=Uri.parse(a.remote.getUrl()),blobOrigin=Uri.parse(url.substring(5));if(!Objects.equals(origin.getScheme(),blobOrigin.getScheme())||!Objects.equals(origin.getHost(),blobOrigin.getHost())||origin.getPort()!=blobOrigin.getPort())throw new IOException("文件页面已改变，请重试");if(temp!=null)temp.delete();temp=File.createTempFile("download-",".part",a.getCacheDir());DownloadTasks.put(task,"partial",temp.getName());if(!saveTask())return;resumeValidator="";blobPage=a.remote.getUrl();blobKey="__pocketFile"+UUID.randomUUID().toString().replace("-","");String key=JSONObject.quote(blobKey);a.remote.evaluateJavascript("void(fetch("+JSONObject.quote(url)+").then(r=>r.blob()).then(b=>window["+key+"]={blob:b,size:b.size,mime:b.type,ready:true}).catch(()=>window["+key+"]={error:true}))",r->pollBlob(attempt,System.currentTimeMillis()+15000));}catch(Exception e){fail(attempt,e.getMessage());}}
