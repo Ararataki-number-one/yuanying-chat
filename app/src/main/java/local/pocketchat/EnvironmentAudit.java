@@ -169,6 +169,17 @@ class EnvironmentAudit {
   }
   JSONObject storedObservationMetadata(){return J.obj("environmentId",session.environmentId,"environmentGeneration",session.environmentGeneration);}
   String pinnedDeepSummary(){return pinnedDeepSummary("main");}
+  String pinnedContextOverview(){
+    JSONObject overview=FingerprintContextBaselines.overview(fingerprintContextBaselines,new JSONObject(),storedObservationMetadata());
+    StringBuilder text=new StringBuilder("已固定 ").append(overview.optInt("retainedContexts")).append(" / 4 类执行环境参照");
+    JSONArray contexts=overview.optJSONArray("contexts");
+    for(int i=0;contexts!=null&&i<contexts.length();i++){
+      JSONObject item=contexts.optJSONObject(i);if(item==null)continue;
+      text.append("\n").append(FingerprintContextBaselines.label(item.optString("context")))
+          .append(item.optBoolean("referenceSaved")?"：已保留":"：尚未固定");
+    }
+    return text.append("\n当前页面是否可比较，以下方所选执行环境的实时检查为准。").toString();
+  }
   String pinnedDeepSummary(String context){
     JSONObject metadata=report.optJSONObject("observationMetadata");if(metadata==null||!session.environmentId.equals(metadata.opt("environmentId"))||!FingerprintObservationHistory.integer(metadata.opt("environmentGeneration"),session.environmentGeneration,session.environmentGeneration))metadata=storedObservationMetadata();
     return FingerprintContextBaselines.summary(fingerprintContextBaselines,deepObservationCurrent(context)?report:new JSONObject(),metadata,context);

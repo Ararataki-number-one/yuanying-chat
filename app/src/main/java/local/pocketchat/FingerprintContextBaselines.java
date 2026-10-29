@@ -190,13 +190,50 @@ final class FingerprintContextBaselines {
     put(out,"state","comparable");put(out,"apiComparisons",operations);put(out,"hashComparedCount",compared);put(out,"hashChangedCount",changed);put(out,"readbackComparedCount",readbacks);put(out,"readbackChangedCount",readbackChanged);return out;
   }
   private static JSONObject group(JSONObject value){JSONObject out=new JSONObject();for(String key:GROUP)put(out,key,value.opt(key));return out;}
+  /** Evidence overview only. The caller must still establish live-document ownership. */
+  static JSONObject overview(JSONObject saved,JSONObject report,JSONObject metadata){
+    String environment=metadata==null?"":metadata.optString("environmentId");int generation=metadata==null?-1:metadata.optInt("environmentGeneration",-1);
+    JSONObject retained=restore(saved,environment,generation);JSONArray rows=new JSONArray();int references=0,comparable=0;
+    for(String context:CONTEXTS){
+      JSONObject pin=reference(retained,environment,generation,context),compared=comparison(retained,report,metadata,context);
+      String issue=captureIssue(report,metadata,context),state=compared.optString("state","current-unavailable");
+      if(pin.length()>0)references++;if("comparable".equals(state))comparable++;
+      rows.put(J.obj("context",context,"label",label(context),"referenceSaved",pin.length()>0,"state",state,
+          "referenceAt",compared.optLong("referenceAt"),"pinnedAt",pin.optLong("pinnedAt"),
+          "captureEvidenceComplete",issue.isEmpty(),"captureIssue",issue,
+          "separationReasons",compared.optJSONArray("separationReasons")==null?new JSONArray():compared.optJSONArray("separationReasons"),
+          "hashComparedCount",compared.optInt("hashComparedCount"),"hashChangedCount",compared.optInt("hashChangedCount"),
+          "readbackComparedCount",compared.optInt("readbackComparedCount"),"readbackChangedCount",compared.optInt("readbackChangedCount")));
+    }
+    return J.obj("contexts",rows,"retainedContexts",references,"comparableContexts",comparable,
+        "callerMustCheckLiveDocument",true,"protectionVerified",false,"leakVerdict",false,"crossExecutionContextComparison",false);
+  }
+  private static String separationLabel(String field){
+    switch(field){case "environmentId":return "环境";case "environmentGeneration":return "环境代次";case "source":return "执行环境";
+      case "sourceOrigin":return "实际来源";case "topLevelOrigin":return "顶层来源";case "probeVersion":return "探针版本";
+      default:return FingerprintObservationHistory.name(field);}
+  }
+  static String separationSummary(JSONArray reasons){
+    StringJoiner out=new StringJoiner("、");if(reasons!=null)for(int i=0;i<reasons.length();i++)out.add(separationLabel(reasons.optString(i)));return out.toString();
+  }
+  static String overviewSummary(JSONObject saved,JSONObject report,JSONObject metadata){
+    JSONObject value=overview(saved,report,metadata);StringBuilder text=new StringBuilder("独立参照 ").append(value.optInt("retainedContexts")).append("/4；本次同组可比较 ").append(value.optInt("comparableContexts")).append(" 类");
+    JSONArray rows=value.optJSONArray("contexts");for(int i=0;i<rows.length();i++){
+      JSONObject row=rows.optJSONObject(i);String state=row.optString("state");text.append("\n").append(row.optString("label")).append("：");
+      if(!row.optBoolean("referenceSaved"))text.append("尚未固定");
+      else if("comparable".equals(state))text.append("同组可比较；有效哈希 ").append(row.optInt("hashComparedCount")).append(" 项");
+      else if("separate-context".equals(state))text.append("条件不同（").append(separationSummary(row.optJSONArray("separationReasons"))).append("），原参照保留");
+      else text.append("本次结果不足，原参照保留");
+    }
+    return text.append("\n仅表示参照与采样条件，不认证保护效果。").toString();
+  }
   static String summary(JSONObject saved,JSONObject report,JSONObject metadata,String context){
     String env=metadata==null?"":metadata.optString("environmentId");int generation=metadata==null?-1:metadata.optInt("environmentGeneration",-1);JSONObject pin=reference(saved,env,generation,context);
     if("main".equals(context))return FingerprintDeepBaseline.summary(pin,report,metadata);
     if(pin.length()==0)return label(context)+"尚未固定参照。请主动完成该执行环境的有效深检，再固定一份；普通检查不会替换参照。";
     JSONObject observation=object(pin,"observation"),comparison=comparison(saved,report,metadata,context);SimpleDateFormat time=new SimpleDateFormat("MM-dd HH:mm:ss",Locale.getDefault());
     StringBuilder text=new StringBuilder(label(context)).append("固定深检参照（本地加密保存）\n观测 ").append(time.format(new Date(observation.optLong("at")))).append(" · 固定 ").append(time.format(new Date(pin.optLong("pinnedAt")))).append("\n来源 ").append(observation.optString("sourceOrigin")).append("\n顶层来源 ").append(observation.optString("topLevelOrigin")).append("\n配置 ").append(observation.optLong("configurationRevision")).append(" · 探针 ").append(observation.optInt("probeVersion"));
-    if("separate-context".equals(comparison.optString("state")))text.append("\n\n本次来源、配置、版本或执行环境不同，分别保留，未直接比较输出。");
+    if("separate-context".equals(comparison.optString("state")))text.append("\n\n本次条件不同：").append(separationSummary(comparison.optJSONArray("separationReasons"))).append("。分别保留，未直接比较输出。");
     else if("current-unavailable".equals(comparison.optString("state")))text.append("\n\n本次结果不可比较，固定参照仍保留。\n").append(comparison.optString("reason"));
     JSONObject results=object(comparison,"apiComparisons");
     for(String api:APIS){JSONObject first=object(object(pin,"checks"),"probes").optJSONObject(api),value=results.optJSONObject(api);text.append("\n\n").append(FingerprintDeepBaseline.label(api)).append(" 参照：").append(FingerprintDeepBaseline.stateLabel(first.optString("state")));if(value==null)continue;text.append("\n本次：").append(FingerprintDeepBaseline.stateLabel(value.optString("currentState")));if(value.optBoolean("operationStateChanged"))text.append("；操作状态有变化");if(value.optBoolean("compared"))text.append(value.optBoolean("changed")?"；哈希有变化":"；本项已比较哈希未变");else text.append("；缺少有效哈希，输出未比较");if(value.optBoolean("readbackCompared"))text.append(value.optBoolean("readbackChanged")?"；读回像素哈希有变化":"；已比较的读回像素哈希未变");}
