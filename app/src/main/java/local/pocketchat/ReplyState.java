@@ -18,10 +18,12 @@ final class ReplyState {
   static long elapsedSeconds(JSONObject job){return Math.max(0,(System.currentTimeMillis()-job.optLong("startedAt",System.currentTimeMillis()))/1000);}
   static void show(MainActivity a){
     ChatSession s=a.session;
+    if(!NetworkStatusUi.current(a,s))return;
     if(s.websiteConnectionIssue||!s.pageError.isEmpty()){websiteConnection(a);return;}
     if(s.pending==null){NetworkStatusUi.show(a);return;}
-    long elapsed=elapsedSeconds(s.pending);String detail=s.status+"\n已等待 "+(elapsed>=60?elapsed/60+" 分 "+elapsed%60+" 秒":elapsed+" 秒")+(s.replyHealthStatus.isEmpty()?"":"\n线路诊断："+s.replyHealthStatus)+"\n\n长时间思考仍可能正常。检查连接只做只读诊断；重新加载需要另行确认，不会重新发送。";
-    AppAppearance.dialog(a).setTitle("回复状态").setMessage(detail).setPositiveButton("继续检查",(d,w)->{checkWithoutRecovery(s);}).setNeutralButton("恢复网页连接",(d,w)->a.requestReload()).setNegativeButton("查看原网页",(d,w)->a.showPage(true)).show();
+    long elapsed=elapsedSeconds(s.pending);String detail="发送状态："+NetworkStatusUi.sendStatus(s)+"\n"+s.status+"\n已等待 "+(elapsed>=60?elapsed/60+" 分 "+elapsed%60+" 秒":elapsed+" 秒")+(s.replyHealthStatus.isEmpty()?"":"\n线路诊断："+s.replyHealthStatus)+"\n\n长时间思考仍可能正常。检查连接只做只读诊断；重新加载需要另行确认，不会重新发送。";
+    boolean connected=NetworkStatusUi.connectionReady(s);
+    AppAppearance.dialog(a).setTitle("回复状态").setMessage(detail).setPositiveButton(connected?"继续检查":"连接状态",(d,w)->{if(!NetworkStatusUi.current(a,s))return;if(!connected||!NetworkStatusUi.connectionReady(s))NetworkStatusUi.show(a);else checkWithoutRecovery(s);}).setNeutralButton("恢复网页连接",(d,w)->{if(NetworkStatusUi.current(a,s))a.requestReload();}).setNegativeButton("查看原网页",(d,w)->{if(NetworkStatusUi.current(a,s))a.showPage(true);}).show();
   }
   static void checkWithoutRecovery(ChatSession session){
     if(session.offline||!session.networkReady){session.replyHealthStatus="当前线路尚未就绪；请从连接状态恢复线路，原回复继续保留";session.changed();return;}
