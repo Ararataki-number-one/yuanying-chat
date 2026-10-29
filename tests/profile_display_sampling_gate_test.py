@@ -12,7 +12,32 @@ import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
 from gecko.check_interaction_transfer_evidence import verify_display_sampling, verify_read_model_freshness, READ_MODEL_CASES, verify_read_model_identity, READ_MODEL_IDENTITY_CASES, identity_projection_fixture
 
+def reverse_reviewed_background_workflow_additions(case,source):
+    # Exactly the reviewed three boot calls and one host control. This is a
+    # byte-for-byte inverse, never a filter for arbitrary steps or conditions.
+    boot_before='        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk\n'
+    boot_inserted='        python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk\n'
+    host_before="        python3 -m unittest discover -s tests -p 'gecko_emulator_bootstrap_test.py'\n"
+    host_inserted="        python3 -m unittest discover -s tests -p 'gecko_emulator_background_isolation_test.py'\n"
+    host_after="        python3 -m unittest discover -s tests -p 'gecko_event_transfer_test.py'\n"
+    case.assertEqual(hashlib.sha256(boot_inserted.encode()).hexdigest(),'90246d34b4b67d5bbfeba9350c130e479daedd052996131aaafede54a18f76fe')
+    case.assertEqual(hashlib.sha256(host_inserted.encode()).hexdigest(),'ec653ceab54ee3ee65cdd9bd634712c7eb3ef07205b6e8fe671ec7601325ee6e')
+    case.assertEqual(source.count('tools/gecko/isolate_emulator_background.py'),3,'background-isolation-global-command-count')
+    case.assertEqual(source.count(boot_inserted),3,'background-isolation-exact-command-count')
+    case.assertEqual(source.count('gecko_emulator_background_isolation_test.py'),1,'background-isolation-global-host-count')
+    case.assertEqual(source.count(host_inserted),1,'background-isolation-exact-host-count')
+    for key in ('scenario','phase','sample'):
+        boot_after='        python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest '+"'${{ matrix."+key+" }}'\n"
+        literal=boot_before+boot_inserted+boot_after
+        case.assertEqual(source.count(literal),1,'background-isolation-anchored-'+key)
+        source=source.replace(literal,boot_before+boot_after,1)
+    literal=host_before+host_inserted+host_after
+    case.assertEqual(source.count(literal),1,'background-isolation-anchored-host-control')
+    source=source.replace(literal,host_before+host_after,1)
+    return source
+
 def reverse_reviewed_experience_workflow_additions(case,source):
+    source=reverse_reviewed_background_workflow_additions(case,source)
     # Undo only this separately reviewed five-line dependency preparation before
     # the unchanged older insertions and whole-workflow golden are checked.
     dependency_before='    - name: Verify versioned environment models and authoritative intents\n      run: |\n        set -euo pipefail\n'
@@ -357,6 +382,50 @@ class DisplayGateTest(unittest.TestCase):
                 self.assertEqual(source.count(original),1)
                 altered=source.replace(original,replacement,1)
                 with self.assertRaises(AssertionError):reverse_reviewed_experience_workflow_additions(self,altered)
+
+    def test_background_inverse_rejects_missing_duplicate_changed_moved_or_conditional_calls(self):
+        root=Path(__file__).resolve().parents[1];source=(root/'.github/workflows/gecko-integration.yml').read_text()
+        before='        python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk\n'
+        inserted='        python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk\n'
+        for key in ('scenario','phase','sample'):
+            after='        python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest '+"'${{ matrix."+key+" }}'\n"
+            literal=before+inserted+after
+            self.assertEqual(source.count(literal),1)
+            changes=dict(missing=before+after,duplicate=before+inserted+inserted+after,
+                command=before+inserted.replace('--serial emulator-5554','--serial emulator-5556')+after,
+                whitespace=before+inserted.replace('\n',' \n')+after,
+                moved=inserted+before+after,
+                conditional=before+'        if true; then\n'+inserted+'        fi\n'+after,
+                original_command=before.replace('--serial emulator-5554','--serial emulator-5556')+inserted+after,
+                original_capacity=before+inserted+after.replace(' guest ',' host '))
+            for change,replacement in changes.items():
+                with self.subTest(boot=key,change=change):
+                    altered=source.replace(literal,replacement,1)
+                    self.assertNotEqual(altered,source)
+                    with self.assertRaises(AssertionError):reverse_reviewed_experience_workflow_additions(self,altered)
+        host_before="        python3 -m unittest discover -s tests -p 'gecko_emulator_bootstrap_test.py'\n"
+        host_inserted="        python3 -m unittest discover -s tests -p 'gecko_emulator_background_isolation_test.py'\n"
+        host_after="        python3 -m unittest discover -s tests -p 'gecko_event_transfer_test.py'\n"
+        literal=host_before+host_inserted+host_after
+        self.assertEqual(source.count(literal),1)
+        for change,replacement in dict(missing=host_before+host_after,
+            duplicate=host_before+host_inserted+host_inserted+host_after,
+            changed=host_before+host_inserted.replace('discover','discover-changed')+host_after,
+            moved=host_inserted+host_before+host_after,
+            conditional=host_before+'        if true; then\n'+host_inserted+'        fi\n'+host_after,
+            original_command=host_before.replace('discover','discover-changed')+host_inserted+host_after).items():
+            with self.subTest(host=change):
+                altered=source.replace(literal,replacement,1)
+                with self.assertRaises(AssertionError):reverse_reviewed_experience_workflow_additions(self,altered)
+        # Wrapping a complete approved context preserves the local anchors;
+        # it must still fail the unchanged complete-workflow golden below.
+        for original,replacement in (
+            ("        if [ -f tools/gecko/release_channel_contract_test.py ]; then\n",'        if true; then\n'),
+            (before+inserted+"        python3 -c \"$ANDROID_CAPACITY_PREFLIGHT\" guest '${{ matrix.sample }}'\n",
+             '        if true; then\n'+before+inserted+"        python3 -c \"$ANDROID_CAPACITY_PREFLIGHT\" guest '${{ matrix.sample }}'\n"+'        fi\n'),
+        ):
+            self.assertEqual(source.count(original),1)
+            with self.assertRaises(AssertionError):reverse_reviewed_experience_workflow_additions(self,source.replace(original,replacement,1))
 
     def test_actual_identity_runner_rejects_partial_or_failed_93_and_14_reports(self):
         source=Path(__file__).resolve().parent/'window-network-identity-host/run.py';tree=ast.parse(source.read_text())
