@@ -12,7 +12,7 @@ sha = lambda raw: hashlib.sha256(raw).hexdigest()
 
 class Upload37SourceCompatibilityTest(unittest.TestCase):
     def test_exact_whole_source_chain_preserves_both_older_oracles(self):
-        raw = SOURCE.read_bytes()
+        raw = compat.lifecycle39_preservation_bytes(SOURCE.read_bytes())
         self.assertEqual(sha(raw), compat.UPLOAD37_REVIEWED_BROWSER_SHA256)
         parent = compat.upload37_preservation_bytes(raw)
         self.assertEqual(sha(parent), compat.UPLOAD37_PRIOR_BROWSER_SHA256)
@@ -24,7 +24,7 @@ class Upload37SourceCompatibilityTest(unittest.TestCase):
             self.assertEqual(parent.count(addition), 1)
 
     def test_exact_predecessor_and_historical_ancestor_still_pass(self):
-        parent = compat.upload37_preservation_bytes(SOURCE.read_bytes())
+        parent = compat.upload37_preservation_bytes(compat.lifecycle39_preservation_bytes(SOURCE.read_bytes()))
         ancestor = compat.permission_denial_preservation_bytes(parent)
         self.assertEqual(compat.upload37_preservation_bytes(parent), parent)
         self.assertEqual(compat.upload37_preservation_bytes(ancestor), ancestor)
@@ -32,7 +32,7 @@ class Upload37SourceCompatibilityTest(unittest.TestCase):
         self.assertEqual(sha(compat.reading_preservation_bytes(ancestor)), compat.BASELINE)
 
     def test_each_upload_change_rejects_missing_duplicate_modified_and_relocated(self):
-        raw = SOURCE.read_bytes()
+        raw = compat.lifecycle39_preservation_bytes(SOURCE.read_bytes())
         for current, prior in compat.UPLOAD37_EXACT_REPLACEMENTS:
             self.assertEqual(raw.count(current), 1)
             changes = [raw.replace(current, prior, 1), raw.replace(current, current + current, 1),
@@ -45,7 +45,7 @@ class Upload37SourceCompatibilityTest(unittest.TestCase):
                         compat.reading_preservation_bytes(mutation)
 
     def test_unlisted_geometry_and_permission_edits_remain_rejected(self):
-        raw = SOURCE.read_bytes()
+        raw = compat.lifecycle39_preservation_bytes(SOURCE.read_bytes())
         geometry = b'Math.abs(next-readingLayout)<.001f'
         self.assertEqual(raw.count(geometry), 1)
         edits = [raw.replace(geometry, b'Math.abs(next-readingLayout)<.002f', 1)]

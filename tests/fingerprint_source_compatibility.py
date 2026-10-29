@@ -97,6 +97,7 @@ UPLOAD37_EXACT_REPLACEMENTS = (
 )
 
 def upload37_preservation_bytes(raw):
+    raw = lifecycle39_preservation_bytes(raw)
     digest = hashlib.sha256(raw).hexdigest()
     if digest in (UPLOAD37_PRIOR_BROWSER_SHA256, PERMISSION_PRIOR_BROWSER_SHA256):
         return raw
@@ -109,4 +110,25 @@ def upload37_preservation_bytes(raw):
         restored = restored.replace(addition, previous, 1)
     if hashlib.sha256(restored).hexdigest() != UPLOAD37_PRIOR_BROWSER_SHA256:
         raise ValueError("Upload37 inverse did not restore the exact conditional36 browser source")
+    return restored
+
+
+# Exact 2.0.39 foreground-notice delta on intended38; no official38 commit exists.
+LIFECYCLE39_PRIOR_INTENDED_TREE = '9bc7ebc4428d7df01700634ffa1731bacce349cf'
+LIFECYCLE39_PRIOR_BROWSER_SHA256 = '586076cab2cddc3cc013801a8dc8461df688f2615da93bef1c0491b8511abd1a'
+LIFECYCLE39_REVIEWED_BROWSER_SHA256 = '892af2842f87e20f6cf339f6654ca0651cdef11c9bda9ce0477daeff69ecc9bd'
+LIFECYCLE39_PRIOR_ON_RESUME = b'  public void onResume(){if(current!=null&&crashed.contains(current)&&canRecoverAutomatically())owner.handler.post(recovery);else if(current!=null&&current.isOpen())current.setActive(true);}'
+LIFECYCLE39_REVIEWED_ON_RESUME = b'  public void onResume(){\n    if(current!=null&&crashed.contains(current)&&canRecoverAutomatically())owner.handler.post(recovery);\n    else{\n      if(current!=null&&current.isOpen())current.setActive(true);\n      if(!destroyed&&failed&&owner.uiVisible&&current!=null&&crashed.contains(current)&&owner.pageError.isEmpty()){\n        // This foreground notice must not start or replace a network retry.\n        owner.navigating=false;owner.navigationFailed=true;\n        owner.pageError="\xe7\xbd\x91\xe9\xa1\xb5\xe5\xa4\x9a\xe6\xac\xa1\xe9\x80\x80\xe5\x87\xba\xef\xbc\x8c\xe8\x87\xaa\xe5\x8a\xa8\xe6\x81\xa2\xe5\xa4\x8d\xe5\xb7\xb2\xe6\x9a\x82\xe5\x81\x9c\xef\xbc\x9b\xe8\xaf\xb7\xe6\xa3\x80\xe6\x9f\xa5\xe8\xbf\x9e\xe6\x8e\xa5\xe5\x90\x8e\xe7\x82\xb9\xe6\x8c\x89\xe9\x87\x8d\xe6\x96\xb0\xe5\x8a\xa0\xe8\xbd\xbd";\n        owner.status=owner.pageError;owner.changed();\n      }\n    }\n  }'
+
+def lifecycle39_preservation_bytes(raw):
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest in (LIFECYCLE39_PRIOR_BROWSER_SHA256, UPLOAD37_PRIOR_BROWSER_SHA256, PERMISSION_PRIOR_BROWSER_SHA256):
+        return raw
+    if digest != LIFECYCLE39_REVIEWED_BROWSER_SHA256:
+        raise ValueError("Lifecycle39 delta is not the exact reviewed whole browser source")
+    if raw.count(LIFECYCLE39_REVIEWED_ON_RESUME) != 1:
+        raise ValueError("Lifecycle39 onResume addition is missing or duplicated")
+    restored = raw.replace(LIFECYCLE39_REVIEWED_ON_RESUME, LIFECYCLE39_PRIOR_ON_RESUME, 1)
+    if hashlib.sha256(restored).hexdigest() != LIFECYCLE39_PRIOR_BROWSER_SHA256:
+        raise ValueError("Lifecycle39 inverse did not restore the exact intended38 browser source")
     return restored

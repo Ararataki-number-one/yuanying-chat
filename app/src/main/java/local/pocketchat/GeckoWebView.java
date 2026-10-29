@@ -635,7 +635,18 @@ class GeckoWebView extends FrameLayout {
   public void setWebChromeClient(WebChromeClient value){chrome=value;}
   public void setDownloadListener(DownloadListener value){download=value;}
   public void onPause(){checkpointState();if(current!=null&&current.isOpen())current.setActive(false);}
-  public void onResume(){if(current!=null&&crashed.contains(current)&&canRecoverAutomatically())owner.handler.post(recovery);else if(current!=null&&current.isOpen())current.setActive(true);}
+  public void onResume(){
+    if(current!=null&&crashed.contains(current)&&canRecoverAutomatically())owner.handler.post(recovery);
+    else{
+      if(current!=null&&current.isOpen())current.setActive(true);
+      if(!destroyed&&failed&&owner.uiVisible&&current!=null&&crashed.contains(current)&&owner.pageError.isEmpty()){
+        // This foreground notice must not start or replace a network retry.
+        owner.navigating=false;owner.navigationFailed=true;
+        owner.pageError="网页多次退出，自动恢复已暂停；请检查连接后点按重新加载";
+        owner.status=owner.pageError;owner.changed();
+      }
+    }
+  }
   public void pauseTimers(){}
   public void resumeTimers(){}
   public boolean canGoBack(){return canBack||!popups.isEmpty();}
