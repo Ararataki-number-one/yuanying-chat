@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Isolate one observed background competitor in a fresh synthetic CI emulator.
+"""Isolate the observed background competitors in a fresh synthetic CI emulator.
 
 This is an emulator prerequisite, not application or phone acceptance. No input
-workload, timing, IME, viewport, hardware allocation or app setting is changed.
+workload, timing, IME, viewport, hardware allocation or PocketChat app setting is changed.
 """
 import argparse
 import hashlib
@@ -25,10 +25,22 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = 'com.google.android.gms'
+NOTIFICATION_PACKAGE = 'com.google.android.apps.messaging'
+SEARCH_PACKAGE = 'com.google.android.googlequicksearchbox'
+NOTIFICATION_PERMISSION = 'android.permission.POST_NOTIFICATIONS'
 SERIAL = 'emulator-5554'
 REPOSITORY = 'Ararataki-number-one/yuanying-chat'
 MAX_OUTPUT = 1024 * 1024
 MAX_BOOTSTRAP = 4 * MAX_OUTPUT
+POLICY = dict(schema=1, packagesInOrder=[NOTIFICATION_PACKAGE, PACKAGE], optionalPackages=[NOTIFICATION_PACKAGE, SEARCH_PACKAGE],
+              notificationPermissionPackages=[SEARCH_PACKAGE], notificationPermission=NOTIFICATION_PERMISSION,
+              notificationPermissionUser=0, permissionReadback='dumpsys-package-check-permission',
+              permissionTargetRemainsEnabled=True,
+              defaultTimeoutSeconds=20, maximumTimeoutSeconds=20,
+              processExitObservationIntervalMs=200, maximumProcessExitObservations=101,
+              repeatedMutations=False, workloadReplay=False,
+              globalNotificationPolicyModified=False)
+POLICY_SHA256 = hashlib.sha256(json.dumps(POLICY, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 FLAGS = dict(applicationAcceptance=False, actualGeckoExecution=False,
              physicalPhoneAcceptance=False, gestureReplayed=False,
              applicationOrInputPolicyModified=False)
@@ -41,6 +53,9 @@ REASONS = frozenset(('invalid-json', 'synthetic-ci-required', 'invalid-ci-identi
     'after-network-unusable', 'process-observation-invalid', 'bootstrap-changed',
     'synthetic-image-required', 'background-package-not-present',
     'background-disable-unconfirmed', 'background-processes-still-running',
+    'synthetic-package-required', 'package-observation-invalid',
+    'notification-app-not-enabled', 'notification-permission-observation-invalid',
+    'notification-permission-not-denied', 'notification-permission-fixed',
     'bootstrap-output-not-fresh', 'invalid-arguments', 'invalid-timeout', 'invalid-source',
     'dirty-source', 'synthetic-apk-required', 'isolation-unavailable',
     'bootstrap-save-unconfirmed'))
@@ -130,9 +145,13 @@ class Commands:
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     timeout=min(8, remaining), check=False)
             row['exitCode'] = result.returncode
-            need(result.returncode == 0, 'command-failed')
             need(len(result.stdout) <= MAX_OUTPUT and len(result.stderr) <= MAX_OUTPUT,
                  'command-output-too-large')
+            if operation == 'search-revoke-notifications' and result.returncode != 0 and (
+                    b'system fixed permission' in result.stdout + result.stderr
+                    or b'policy fixed permission' in result.stdout + result.stderr):
+                raise IsolationFailure('notification-permission-fixed')
+            need(result.returncode == 0, 'command-failed')
             text = result.stdout.decode('utf-8', errors='strict').replace('\r', '').strip()
             need(time.monotonic() < self.deadline, 'deadline-expired')
             row['succeeded'] = True
@@ -159,20 +178,121 @@ def network(commands, identity, stage):
     return True
 
 
-def process_count(raw):
+def process_count(raw, package=PACKAGE):
+    need(package in (PACKAGE, NOTIFICATION_PACKAGE), 'synthetic-package-required')
     rows = raw.splitlines()
     need(rows and rows[0].strip() == 'NAME' and 1 < len(rows) <= 4097, 'process-observation-invalid')
     names = [row.strip() for row in rows[1:]]
     need(all(name and len(name) <= 512 and not re.search(r'\s|\x00', name) for name in names)
          and any(name in ('init', 'system_server') for name in names), 'process-observation-invalid')
-    return sum(name == PACKAGE or name.startswith(PACKAGE + '.') or name.startswith(PACKAGE + ':')
+    return sum(name == package or name.startswith(package + '.') or name.startswith(package + ':')
                for name in names)
+
+
+def package_names(raw, package):
+    need(package in (PACKAGE, NOTIFICATION_PACKAGE, SEARCH_PACKAGE), 'synthetic-package-required')
+    rows = raw.splitlines()
+    need(len(rows) <= 256, 'package-observation-invalid')
+    names = []
+    for row in rows:
+        match = re.fullmatch(r'package:([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+)', row)
+        need(match is not None and package in match[1], 'package-observation-invalid')
+        names.append(match[1])
+    need(len(names) == len(set(names)), 'package-observation-invalid')
+    return set(names)
 
 
 def unchanged(path, original):
     need(not path.is_symlink() and path.is_file() and path.stat().st_size == len(original)
          and path.read_bytes() == original,
          'bootstrap-changed')
+
+
+def observe_process_exit(commands, record, package, operation):
+    """Observe asynchronous termination; never repeat stop/disable or a workload."""
+    need((package, operation) in ((PACKAGE, 'processes-after'),
+         (NOTIFICATION_PACKAGE, 'notification-processes-after')), 'synthetic-package-required')
+    started = time.monotonic()
+    record.update(processExitObservations=0, processExitElapsedMs=0)
+    while True:
+        need(time.monotonic() < commands.deadline and
+             record['processExitObservations'] < POLICY['maximumProcessExitObservations'],
+             'background-processes-still-running')
+        record['processExitObservations'] += 1
+        count = process_count(commands.run(operation, 'shell', 'ps', '-A', '-o', 'NAME'), package)
+        now = time.monotonic()
+        record.update(processesAfter=count, processExitElapsedMs=max(0, round((now - started) * 1000)))
+        # An observation finishing after the shared deadline cannot prove ready,
+        # including an apparently successful final zero-process snapshot.
+        need(now < commands.deadline, 'background-processes-still-running')
+        if count == 0:
+            record['processStopConfirmed'] = True
+            return
+        remaining = commands.deadline - time.monotonic()
+        need(remaining > 0, 'background-processes-still-running')
+        # Positive-count observations alone justify this bounded wait. It is
+        # neither an arbitrary boot-settling delay nor an input timing change.
+        time.sleep(min(POLICY['processExitObservationIntervalMs'] / 1000, remaining))
+
+
+def stop_package(commands, record, package, prefix, before_mutation):
+    need((package, prefix) in ((PACKAGE, ''), (NOTIFICATION_PACKAGE, 'notification-')),
+         'synthetic-package-required')
+    before_mutation()
+    commands.run(prefix + 'force-stop', 'shell', 'am', 'force-stop', '--user', '0', package)
+    commands.run(prefix + 'disable-package', 'shell', 'pm', 'disable-user', '--user', '0', package)
+    disabled = commands.run(prefix + 'read-disabled', 'shell', 'pm', 'list', 'packages', '-d', '--user', '0', package)
+    need(package in package_names(disabled, package), 'background-disable-unconfirmed')
+    record['disabledStateConfirmed'] = True
+    observe_process_exit(commands, record, package, prefix + 'processes-after')
+
+
+def search_permission(commands, operation):
+    # Android 15 DumpHelper.check-permission prints the actual permission-manager
+    # integer: PERMISSION_GRANTED=0 / PERMISSION_DENIED=-1. It is not a pm
+    # subcommand, and exit zero or arbitrary text cannot confirm denial.
+    raw = commands.run(operation, 'shell', 'dumpsys', 'package', 'check-permission',
+                       NOTIFICATION_PERMISSION, SEARCH_PACKAGE, '0')
+    need(raw in ('0', '-1'), 'notification-permission-observation-invalid')
+    return int(raw)
+
+
+def observe_search_notification_policy(commands):
+    record = dict(exactPackage=SEARCH_PACKAGE, permission=NOTIFICATION_PERMISSION,
+                  status='failed', packagePresent=False, alreadyAbsent=False,
+                  enabledBeforeConfirmed=False, enabledAfterConfirmed=False,
+                  permissionDeniedConfirmed=False, permissionRevokePerformed=False)
+    present = commands.run('search-package-present', 'shell', 'pm', 'list', 'packages', '--user', '0', SEARCH_PACKAGE)
+    if SEARCH_PACKAGE not in package_names(present, SEARCH_PACKAGE):
+        record.update(status='already-absent', alreadyAbsent=True)
+        return record
+    record['packagePresent'] = True
+    enabled = commands.run('search-enabled-before', 'shell', 'pm', 'list', 'packages', '-e', '--user', '0', SEARCH_PACKAGE)
+    need(SEARCH_PACKAGE in package_names(enabled, SEARCH_PACKAGE), 'notification-app-not-enabled')
+    record['enabledBeforeConfirmed'] = True
+    record['permissionBefore'] = search_permission(commands, 'search-permission-before')
+    return record
+
+
+def restrict_search_notifications(commands, record, before_mutation):
+    need(record.get('exactPackage') == SEARCH_PACKAGE and record.get('permission') == NOTIFICATION_PERMISSION
+         and record.get('packagePresent') is True and record.get('enabledBeforeConfirmed') is True
+         and type(record.get('permissionBefore')) is int and record['permissionBefore'] in (0, -1),
+         'notification-permission-observation-invalid')
+    if record['permissionBefore'] == 0:
+        before_mutation()
+        # A standard revoke may restart this UID; the package remains enabled.
+        # Do not force-stop/disable Search, alter fixed flags, or set AppOps/DND.
+        commands.run('search-revoke-notifications', 'shell', 'pm', 'revoke', '--user', '0',
+                     SEARCH_PACKAGE, NOTIFICATION_PERMISSION)
+        record['permissionRevokePerformed'] = True
+    record['permissionAfter'] = search_permission(commands, 'search-permission-after')
+    need(record['permissionAfter'] == -1, 'notification-permission-not-denied')
+    record['permissionDeniedConfirmed'] = True
+    enabled = commands.run('search-enabled-after', 'shell', 'pm', 'list', 'packages', '-e', '--user', '0', SEARCH_PACKAGE)
+    need(SEARCH_PACKAGE in package_names(enabled, SEARCH_PACKAGE), 'notification-app-not-enabled')
+    record['enabledAfterConfirmed'] = True
+    record['status'] = 'passed'
 
 
 def isolate(commands, record, identity, before_mutation):
@@ -189,18 +309,32 @@ def isolate(commands, record, identity, before_mutation):
     record['syntheticImageConfirmed'] = True
     record['networkBeforeUsable'] = network(commands, identity, 'before')
     present = commands.run('package-present', 'shell', 'pm', 'list', 'packages', '--user', '0', PACKAGE)
-    need('package:' + PACKAGE in present.splitlines(), 'background-package-not-present')
+    need(PACKAGE in package_names(present, PACKAGE), 'background-package-not-present')
     record['packagePresent'] = True
     record['processesBefore'] = process_count(commands.run('processes-before', 'shell', 'ps', '-A', '-o', 'NAME'))
-    before_mutation()
-    commands.run('force-stop', 'shell', 'am', 'force-stop', '--user', '0', PACKAGE)
-    commands.run('disable-package', 'shell', 'pm', 'disable-user', '--user', '0', PACKAGE)
-    disabled = commands.run('read-disabled', 'shell', 'pm', 'list', 'packages', '-d', '--user', '0', PACKAGE)
-    need('package:' + PACKAGE in disabled.splitlines(), 'background-disable-unconfirmed')
-    record['disabledStateConfirmed'] = True
-    record['processesAfter'] = process_count(commands.run('processes-after', 'shell', 'ps', '-A', '-o', 'NAME'))
-    need(record['processesAfter'] == 0, 'background-processes-still-running')
-    record['processStopConfirmed'] = True
+    notification = dict(exactPackage=NOTIFICATION_PACKAGE, status='failed', packagePresent=False,
+                        alreadyAbsent=False, disabledStateConfirmed=False, processStopConfirmed=False)
+    record['notificationCompetitor'] = notification
+    present = commands.run('notification-package-present', 'shell', 'pm', 'list', 'packages',
+                           '--user', '0', NOTIFICATION_PACKAGE)
+    if NOTIFICATION_PACKAGE in package_names(present, NOTIFICATION_PACKAGE):
+        notification['packagePresent'] = True
+        notification['processesBefore'] = process_count(commands.run('notification-processes-before',
+            'shell', 'ps', '-A', '-o', 'NAME'), NOTIFICATION_PACKAGE)
+    else:
+        # The optional package was queried by exact name. No mutation or false
+        # disabled/process-stop acknowledgement is manufactured when absent.
+        notification.update(status='already-absent', alreadyAbsent=True)
+    # All package/permission preconditions are observed before the first
+    # mutation. Only the observed Search package loses its own posting right.
+    search = observe_search_notification_policy(commands)
+    record['searchNotificationPolicy'] = search
+    if notification['packagePresent']:
+        stop_package(commands, notification, NOTIFICATION_PACKAGE, 'notification-', before_mutation)
+        notification['status'] = 'passed'
+    if search['packagePresent']:
+        restrict_search_notifications(commands, search, before_mutation)
+    stop_package(commands, record, PACKAGE, '', before_mutation)
     record['networkAfterUsable'] = network(commands, identity, 'after')
     record['status'] = 'passed'
 
@@ -237,9 +371,9 @@ def main(argv=None):
         parser.add_argument('--adb', required=True)
         parser.add_argument('--serial', required=True, choices=[SERIAL])
         parser.add_argument('--apk', required=True, type=Path)
-        parser.add_argument('--timeout', type=int, default=20)
+        parser.add_argument('--timeout', type=int, default=POLICY['defaultTimeoutSeconds'])
         args = parser.parse_args(argv)
-        need(10 <= args.timeout <= 30, 'invalid-timeout')
+        need(10 <= args.timeout <= POLICY['maximumTimeoutSeconds'], 'invalid-timeout')
         need(signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0), 'deadline-unavailable')
         old_handler = signal.signal(signal.SIGALRM, expired)
         signal.setitimer(signal.ITIMER_REAL, max(0.001, started + args.timeout - time.monotonic()))
@@ -269,7 +403,7 @@ def main(argv=None):
         validate_bootstrap(bootstrap, identity, run, attempt)
         record.update(sourceCommit=source, sourceTree=tree, runId=run, runAttempt=attempt,
                       originalBootstrapSha256=digest(original), originalBootstrapBytes=len(original),
-                      timeoutSeconds=args.timeout)
+                      timeoutSeconds=args.timeout, policySha256=POLICY_SHA256)
         commands = Commands(args.adb, args.serial, record, started + args.timeout)
         isolate(commands, record, identity, lambda: unchanged(path, original))
         code = 0
@@ -298,6 +432,10 @@ def main(argv=None):
     if 'reason' in record:
         summary['reason'] = record['reason']
     for key in ('sourceCommit', 'sourceTree', 'runId', 'runAttempt'):
+        if key in record:
+            summary[key] = record[key]
+    for key in ('policySha256', 'notificationCompetitor', 'searchNotificationPolicy',
+                'processExitObservations', 'processExitElapsedMs'):
         if key in record:
             summary[key] = record[key]
     print('EMULATOR_BACKGROUND_ISOLATION ' + json.dumps(summary, separators=(',', ':')))

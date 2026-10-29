@@ -261,6 +261,7 @@ class Fixture(fixture.Fixture):
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',default='emulator-5554');parser.add_argument('--apk',type=pathlib.Path,default=ROOT/'app/build/outputs/apk/integration/app-x86_64-integration.apk')
+    parser.add_argument('--reading-zoom-trace',action='store_true',help='Opt-in numeric reading zoom diagnostics only; does not change acceptance')
     modes=parser.add_mutually_exclusive_group();modes.add_argument('--reading-only',action='store_true',help='Diagnostic reading/zoom/input subset; cannot replace full device acceptance');modes.add_argument('--update-transfers-only',action='store_true',help='Diagnostic real 28-case transfer subset; cannot replace full device acceptance');args=parser.parse_args()
     diagnostic='reading' if args.reading_only else 'update-transfers' if args.update_transfers_only else ''
     device_report_name='diagnostic-reading-results.json' if args.reading_only else 'diagnostic-update-device-results.json' if args.update_transfers_only else 'device-results.json'
@@ -314,7 +315,7 @@ def main():
         # makes Android recreate its taskbar/navigation mode and resize the
         # already visible browser. Keep the first-boot workaround elsewhere.
         if has_pixel_launcher and action not in {'reading','readingZoom','readingInput','readingBounds','readingBoundsProtected','readingBoundsGeometry','readingBoundsInput','readingBoundsEnd','nativeSurface','nativeCheckpoint'}:adb('shell','am','force-stop',launcher)
-        adb('shell','am','start','-W','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action,'--es','eventNonce',nonce,*extra)
+        adb('shell','am','start','-W','-n',package+'/local.pocketchat.'+activity,'--es','fixtureAction',action,'--es','eventNonce',nonce,*((('--ez','readingZoomTrace','true') if getattr(args,'reading_zoom_trace',False) is True and action in {'readingBounds','readingBoundsProtected'} else ())),*extra)
         deadline=time.monotonic()+120
         while time.monotonic()<deadline:
             output=adb('logcat','-d','-s','PocketGeckoIntegration:I','*:S')

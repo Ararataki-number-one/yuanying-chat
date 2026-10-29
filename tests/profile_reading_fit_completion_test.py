@@ -7,6 +7,7 @@ import hashlib,json,os
 from pathlib import Path
 import shutil,subprocess,tempfile,unittest
 from fingerprint_source_compatibility import reading_preservation_bytes
+from reading_zoom_trace_contract import original_reading_fixture_bytes
 
 ROOT=Path(__file__).resolve().parents[1]
 PRODUCTION=ROOT/'app/src/main/java/local/pocketchat'
@@ -157,6 +158,7 @@ class ReadingFitCompletionTests(unittest.TestCase):
   for name,digest in ORIGINAL_PROTECTED.items():
    raw=(ROOT/name).read_bytes()
    if name=='app/src/main/java/local/pocketchat/GeckoWebView.java':raw=reading_preservation_bytes(raw)
+   if name in ('tests/gecko/GeckoIntegrationTestActivity.java','tests/gecko/run_device.py'):raw=original_reading_fixture_bytes(raw,name)
    self.assertEqual(sha(raw),digest)
   self.assertEqual((PRODUCTION/'GeckoWebView.java').read_text().count('boolean requiresViewportMeasurement(){return true;}'),1)
 

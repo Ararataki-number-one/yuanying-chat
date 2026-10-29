@@ -4,7 +4,7 @@ import java.util.*;import org.json.*;
 public class ReloadRequestHost {
  static final JSONArray checks=new JSONArray();
  static void check(String name,boolean passed){checks.put(J.obj("name",name,"passed",passed));}
- static ChatSession route(){LocalDraftPolicy.allowed=true;ProfileCatalog.generation=4;ProfileCatalog.environmentId="environment-one";ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;Profiles.slot=2;ChatService.ends=0;return new ChatSession();}
+ static ChatSession route(){ReferenceUi.Modal.shows=0;LocalDraftPolicy.allowed=true;ProfileCatalog.generation=4;ProfileCatalog.environmentId="environment-one";ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;Profiles.slot=2;ChatService.ends=0;return new ChatSession();}
  static JSONObject job(String id,String path){return J.obj("id",id,"kind","web","confirmed",true,"confirmedUrl","https://chatgpt.com/c/"+path,"expectedUrl","https://chatgpt.com/c/"+path,"prompt","already sent fixture question","userKey","id:user");}
  static JSONObject inspect(ChatSession s){return J.obj("url",s.web.url,"documentId",s.lastDocumentId,"composer",true,"hasMessages",true,"busy",true);}
  static JSONObject gesture(String token){return J.obj("url","https://chatgpt.com/c/B","documentId","gesture-document-0001","token",token,"type","intent","capturedAt",System.currentTimeMillis(),"prompt","controlled new user gesture","beforeKeys",new JSONArray());}
@@ -80,7 +80,37 @@ public class ReloadRequestHost {
   s=route();LocalDraftPolicy.allowed=false;a=new MainActivity(s);a.requestReload();inspect(a);s.driverResult.accept(snapshot(s).put("draft",JSONObject.NULL).put("draftComplete",false).put("draftOmittedReason","too-long").put("draftLength",600000));
   check("Disabled saving never turns an oversized unknown draft into empty reload permission",a.reloadDialog!=null&&a.reloadDialog.positiveLabel.equals("已保存，重新加载")&&a.reloadCalls==0&&s.draft.equals("unsent controlled browser draft"));
   LocalDraftPolicy.allowed=true;
-  boolean pass=true;for(int i=0;i<checks.length();i++)pass&=checks.getJSONObject(i).getBoolean("passed");System.out.println(J.obj("status",pass?"passed":"failed","checks",checks.length(),"results",checks,"reproduction",reproduction,"actualTraceReproduction",actualTraceReproduction,"idleNavigationReproduction",idleNavigationReproduction));if(!pass)System.exit(1);
+  // Exact native trace: the same already-known document changes from stale SPA A
+  // state to the first current-route busy observation, without a new user action.
+  JSONArray knownDocumentConvergence=new JSONArray();
+  for(int order=0;order<2;order++){
+    ChatSession flow=route();flow.lastDocumentId="known-current-document-0001";flow.state=J.obj("url","https://chatgpt.com/c/A","documentId",flow.lastDocumentId,"busy",false);flow.stateEpoch=flow.navigationEpoch;flow.pending=job("captured-old-A","A");JSONObject capturedJob=flow.pending;
+    ChatSession.ReloadTarget captured=flow.reloadTarget();MainActivity activity=new MainActivity(flow);activity.requestReload();JSONObject firstCurrent=inspect(flow);
+    if(order==0){flow.state=firstCurrent;flow.stateEpoch=flow.navigationEpoch;flow.archiveWebsiteNavigation(firstCurrent);}
+    flow.driverResult.accept(firstCurrent);
+    if(order==1){flow.state=firstCurrent;flow.stateEpoch=flow.navigationEpoch;flow.archiveWebsiteNavigation(firstCurrent);}
+    page(activity);
+    boolean archivedOnce=flow.pending==null&&flow.webObserver.lastNavigationArchivedJob==capturedJob&&flow.webObserver.navigationArchiveSequence==1;
+    boolean nativeStable=captured.sameNativePage(flow)&&captured.samePort(flow)&&captured.unchangedWork(flow)&&captured.document.equals(flow.lastDocumentId);
+    boolean strictOldTargetRejected=!captured.matches(flow);
+    check("Known document first SPA busy observation converges to one confirmation without reload order "+order,!captured.document.isEmpty()&&!captured.replyObserved&&!captured.replyActive&&archivedOnce&&nativeStable&&strictOldTargetRejected&&flow.currentReplyActive()&&activity.reloadDialog!=null&&activity.reloadDialog.shown&&ReferenceUi.Modal.shows==1&&activity.reloadCalls==0&&flow.asyncCalls==2&&!activity.reloadChecking);
+    knownDocumentConvergence.put(J.obj("order",order,"capturedDocumentKnown",!captured.document.isEmpty(),"capturedReplyObserved",captured.replyObserved,"capturedReplyActive",captured.replyActive,"nativeOwnerPortDocumentWorkStable",nativeStable,"exactOldJobArchivedOnce",archivedOnce,"currentReplyActive",flow.currentReplyActive(),"strictOldTargetRejected",strictOldTargetRejected,"modalCount",ReferenceUi.Modal.shows,"reloadCalls",activity.reloadCalls,"asyncCalls",flow.asyncCalls));
+  }
+  {
+    ChatSession flow=route();flow.lastDocumentId="known-current-document-0001";flow.state=inspect(flow);flow.stateEpoch=flow.navigationEpoch;flow.pending=job("old-A","A");MainActivity activity=new MainActivity(flow);activity.requestReload();inspect(activity);page(activity);
+    check("Already current busy state on a known document retains one confirmation",activity.reloadDialog!=null&&activity.reloadDialog.shown&&ReferenceUi.Modal.shows==1&&activity.reloadCalls==0);
+    flow=route();flow.lastDocumentId="";flow.state=J.obj("url","https://chatgpt.com/c/A","busy",false);flow.stateEpoch=flow.navigationEpoch;flow.pending=job("old-A","A");activity=new MainActivity(flow);activity.requestReload();JSONObject firstCurrent=inspect(flow).put("documentId","known-current-document-0001");flow.lastDocumentId=firstCurrent.optString("documentId");flow.state=firstCurrent;flow.stateEpoch=flow.navigationEpoch;flow.archiveWebsiteNavigation(firstCurrent);flow.driverResult.accept(firstCurrent);page(activity);
+    check("Empty document first busy observation retains one confirmation",activity.reloadDialog!=null&&activity.reloadDialog.shown&&ReferenceUi.Modal.shows==1&&activity.reloadCalls==0);
+    flow=route();flow.lastDocumentId="known-current-document-0001";flow.state=inspect(flow).put("busy",false);flow.stateEpoch=flow.navigationEpoch;activity=new MainActivity(flow);activity.requestReload();firstCurrent=inspect(flow);flow.state=firstCurrent;flow.driverResult.accept(firstCurrent);page(activity);
+    check("Known current idle cannot be promoted to newly busy on the same document",activity.reloadDialog==null&&ReferenceUi.Modal.shows==0&&activity.reloadCalls==0);
+  }
+  for(int mutation=0;mutation<8;mutation++){
+    ChatSession flow=route();flow.lastDocumentId="known-current-document-0001";flow.state=J.obj("url","https://chatgpt.com/c/A","documentId",flow.lastDocumentId,"busy",false);flow.stateEpoch=flow.navigationEpoch;flow.pending=job("old-A","A");MainActivity activity=new MainActivity(flow);activity.requestReload();JSONObject firstCurrent=inspect(flow);flow.state=firstCurrent;flow.stateEpoch=flow.navigationEpoch;flow.archiveWebsiteNavigation(firstCurrent);
+    switch(mutation){case 0:activity.session=route();break;case 1:flow.lastDocumentId="different-current-document-0002";firstCurrent.put("documentId",flow.lastDocumentId);break;case 2:flow.webWorkGeneration++;flow.pending=job("new-user-intent","B");break;case 3:flow.web.ports.put(flow.web.current,new Object());break;case 4:flow.navigationEpoch++;break;case 5:ProfileCatalog.generation++;break;case 6:ProfileCatalog.available=false;break;case 7:flow.web.url="https://chatgpt.com/c/C";firstCurrent.put("url",flow.web.url);break;}
+    flow.driverResult.accept(firstCurrent);page(activity);
+    check("Known-document confirmation retains owner doc interaction port epoch catalogue availability route fence "+mutation,activity.reloadDialog==null&&ReferenceUi.Modal.shows==0&&activity.reloadCalls==0);
+  }
+  boolean pass=true;for(int i=0;i<checks.length();i++)pass&=checks.getJSONObject(i).getBoolean("passed");System.out.println(J.obj("status",pass?"passed":"failed","checks",checks.length(),"results",checks,"reproduction",reproduction,"actualTraceReproduction",actualTraceReproduction,"idleNavigationReproduction",idleNavigationReproduction,"knownDocumentConvergence",knownDocumentConvergence));if(!pass)System.exit(1);
  }
 }
 class ChatSession {
@@ -100,7 +130,7 @@ class WebReplyObserver {JSONObject lastNavigationArchivedJob;long navigationArch
 class BrowserRuntimePolicy {/* POLICY */}
 class BrowserSettingsPolicy {/* REPLY_POLICY */}
 class PageMemory {/* MEMORY */}
-class ReferenceUi {static class Modal{Runnable positive,negative;String positiveLabel,negativeLabel;boolean shown;java.util.function.Consumer<Object> dismiss;Modal(Object c,String title){}void note(String s){}void setOnDismissListener(java.util.function.Consumer<Object> c){dismiss=c;}void dismiss(){shown=false;if(dismiss!=null)dismiss.accept(this);}void buttons(String a,Runnable x,String b,Runnable y){negativeLabel=a;negative=x;positiveLabel=b;positive=y;}void show(){shown=true;}}}
+class ReferenceUi {static class Modal{static int shows;Runnable positive,negative;String positiveLabel,negativeLabel;boolean shown;java.util.function.Consumer<Object> dismiss;Modal(Object c,String title){}void note(String s){}void setOnDismissListener(java.util.function.Consumer<Object> c){dismiss=c;}void dismiss(){shown=false;if(dismiss!=null)dismiss.accept(this);}void buttons(String a,Runnable x,String b,Runnable y){negativeLabel=a;negative=x;positiveLabel=b;positive=y;}void show(){shown=true;shows++;}}}
 class Web{boolean visible=true;String url="https://chatgpt.com/c/B";Object current=new Object();final Map<Object,Object> ports=new IdentityHashMap<>();Web(){ports.put(current,new Object());}String getUrl(){return url;}boolean resourcePage(String url){return MainActivity.chatUrl(url);}boolean hasVisibleDocument(){return visible;}}
 class Profiles{static int slot=2;static int slot(Object c){return slot;}}
 class ProfileCatalog{static int generation=4;static String environmentId="environment-one";static boolean available=true,deleting,resetting;static ProfileCatalog get(Object c){return new ProfileCatalog();}JSONObject item(int slot){return J.obj("created",available,"generation",generation,"environmentId",environmentId,"deleting",deleting,"resetting",resetting);}}

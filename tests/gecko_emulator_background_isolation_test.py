@@ -62,7 +62,7 @@ def public(output):
 
 
 @contextlib.contextmanager
-def main_fixture(edit=None, dirty=False, identity_error=None):
+def main_fixture(edit=None, dirty=False, identity_error=None, messaging_present=False, search_present=False):
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         (root / 'app').mkdir()
@@ -72,7 +72,7 @@ def main_fixture(edit=None, dirty=False, identity_error=None):
         path = root / 'work/gecko-integration/emulator-bootstrap-results.json'
         path.parent.mkdir(parents=True)
         original = (json.dumps(bootstrap(), indent=2) + '\n').encode();path.write_bytes(original)
-        commands = FakeCommands(edit)
+        commands = FakeCommands(edit, messaging_present=messaging_present, search_present=search_present)
         def git(command, **kwargs):
             if command[1:3] == ['rev-parse', 'HEAD']:
                 return SOURCE + '\n'
@@ -95,10 +95,13 @@ def main_fixture(edit=None, dirty=False, identity_error=None):
 
 class FakeCommands:
     """Counterfeit responses, never an actual Android receipt."""
-    def __init__(self, edit=None, before_mutation=None):
+    def __init__(self, edit=None, before_mutation=None, messaging_present=False, search_present=False):
         self.calls = []
         self.edit, self.before_mutation = edit, before_mutation
         self.nonces = []
+        self.deadline = time.monotonic() + 20
+        self.messaging_present = messaging_present
+        self.search_present = search_present
 
     def run(self, operation, *parts):
         self.calls.append((operation, parts))
@@ -115,6 +118,22 @@ class FakeCommands:
             return json.dumps(value)
         elif operation in ('package-present', 'read-disabled'):
             output = 'package:' + module.PACKAGE
+        elif operation == 'notification-package-present':
+            output = 'package:' + module.NOTIFICATION_PACKAGE if self.messaging_present else ''
+        elif operation == 'notification-read-disabled':
+            output = 'package:' + module.NOTIFICATION_PACKAGE
+        elif operation == 'notification-processes-before':
+            output = 'NAME\ninit\nsystem_server\n' + module.NOTIFICATION_PACKAGE + '\n'
+        elif operation == 'notification-processes-after':
+            output = 'NAME\ninit\nsystem_server\n'
+        elif operation == 'search-package-present':
+            output = 'package:' + module.SEARCH_PACKAGE if self.search_present else ''
+        elif operation in ('search-enabled-before', 'search-enabled-after'):
+            output = 'package:' + module.SEARCH_PACKAGE
+        elif operation == 'search-permission-before':
+            output = '0'
+        elif operation == 'search-permission-after':
+            output = '-1'
         elif operation == 'processes-before':
             output = 'NAME\ninit\nsystem_server\n' + module.PACKAGE + '.persistent\n'
         elif operation == 'processes-after':
@@ -128,7 +147,20 @@ class FakeCommands:
         return output
 
     def mutations(self):
-        return [row for row in self.calls if row[0] in ('force-stop', 'disable-package')]
+        return [row for row in self.calls if row[0].endswith('force-stop') or row[0].endswith('disable-package')
+                or row[0] == 'search-revoke-notifications']
+
+
+class Clock:
+    def __init__(self):
+        self.value = 0
+        self.sleeps = []
+    def now(self):
+        return self.value
+    def sleep(self, duration):
+        assert 0 < duration <= 0.2
+        self.sleeps.append(duration)
+        self.value += duration
 
 
 class IsolationControls(unittest.TestCase):
@@ -195,9 +227,10 @@ class IsolationControls(unittest.TestCase):
                  lambda op, value: value.update(androidSdk=34) if op == 'after-network' else None]
         for edit in edits:
             with self.subTest(edit=edit):
-                receipt = record()
-                with self.assertRaises(module.IsolationFailure):
-                    module.isolate(FakeCommands(edit), receipt, identity(), lambda: None)
+                receipt = record();clock = Clock();commands = FakeCommands(edit);commands.deadline = 0.45
+                with patch.object(module.time, 'monotonic', side_effect=clock.now), patch.object(module.time, 'sleep', side_effect=clock.sleep):
+                    with self.assertRaises(module.IsolationFailure):
+                        module.isolate(commands, receipt, identity(), lambda: None)
                 self.assertEqual(receipt['status'], 'failed')
 
     def test_process_snapshot_rejects_empty_header_only_wrong_header_and_truncation(self):
@@ -352,6 +385,273 @@ class IsolationControls(unittest.TestCase):
             self.assertNotEqual(code, 0)
             saved = json.loads(path.read_text())
             self.assertEqual((saved['status'], saved['backgroundIsolation']['status']), ('failed', 'failed'))
+
+    def test_zero_process_observation_returns_immediately_without_settle_sleep(self):
+        commands, receipt = FakeCommands(), record()
+        with patch.object(module.time, 'sleep') as sleep:
+            module.observe_process_exit(commands, receipt, module.PACKAGE, 'processes-after')
+        sleep.assert_not_called()
+        self.assertEqual(receipt['processExitObservations'], 1)
+        self.assertEqual(receipt['processesAfter'], 0)
+        self.assertTrue(receipt['processStopConfirmed']);self.assertEqual(commands.mutations(), [])
+
+    def test_transient_exit_is_only_read_observed_without_repeated_mutation(self):
+        clock = Clock();counts = iter((2, 1, 0))
+        def edit(op, value):
+            if op == 'processes-after':
+                return 'NAME\ninit\nsystem_server\n' + (module.PACKAGE + '\n') * next(counts)
+        commands, receipt = FakeCommands(edit), record();commands.deadline = 5
+        with patch.object(module.time, 'monotonic', side_effect=clock.now), patch.object(module.time, 'sleep', side_effect=clock.sleep):
+            module.observe_process_exit(commands, receipt, module.PACKAGE, 'processes-after')
+        self.assertEqual(receipt['processExitObservations'], 3)
+        self.assertEqual(receipt['processExitElapsedMs'], 400)
+        self.assertEqual(clock.sleeps, [0.2, 0.2]);self.assertEqual(commands.deadline, 5)
+        self.assertEqual(commands.mutations(), [])
+        self.assertTrue(all(parts == ('shell', 'ps', '-A', '-o', 'NAME') for _, parts in commands.calls))
+
+    def test_persistent_process_cannot_pass_or_extend_original_deadline(self):
+        clock = Clock()
+        commands = FakeCommands(lambda op, value: 'NAME\ninit\n' + module.PACKAGE if op == 'processes-after' else None)
+        commands.deadline = 0.45;receipt = record()
+        with patch.object(module.time, 'monotonic', side_effect=clock.now), patch.object(module.time, 'sleep', side_effect=clock.sleep):
+            with self.assertRaisesRegex(module.IsolationFailure, 'background-processes-still-running'):
+                module.observe_process_exit(commands, receipt, module.PACKAGE, 'processes-after')
+        self.assertEqual(receipt['processExitObservations'], 3)
+        self.assertEqual(commands.deadline, 0.45);self.assertAlmostEqual(clock.value, 0.45)
+        self.assertNotIn('processStopConfirmed', receipt);self.assertEqual(commands.mutations(), [])
+
+    def test_unknown_or_late_zero_observation_cannot_be_accepted(self):
+        for late in (False, True):
+            with self.subTest(late=late):
+                clock = Clock();receipt = record()
+                def edit(op, value):
+                    if op == 'processes-after':
+                        if late:
+                            clock.value = 2
+                            return 'NAME\ninit\nsystem_server'
+                        return 'NAME'
+                commands = FakeCommands(edit);commands.deadline = 1
+                with patch.object(module.time, 'monotonic', side_effect=clock.now), patch.object(module.time, 'sleep') as sleep:
+                    with self.assertRaises(module.IsolationFailure):
+                        module.observe_process_exit(commands, receipt, module.PACKAGE, 'processes-after')
+                    sleep.assert_not_called()
+                self.assertNotIn('processStopConfirmed', receipt)
+
+    def test_observed_notification_package_is_disabled_before_gms_and_confirmed(self):
+        commands, receipt = FakeCommands(messaging_present=True), record();checks = []
+        module.isolate(commands, receipt, identity(), lambda: checks.append('guard'))
+        self.assertEqual(checks, ['guard', 'guard'])
+        self.assertEqual([parts[-1] for _, parts in commands.mutations()],
+                         [module.NOTIFICATION_PACKAGE] * 2 + [module.PACKAGE] * 2)
+        notification = receipt['notificationCompetitor']
+        self.assertEqual(notification['status'], 'passed')
+        self.assertTrue(notification['packagePresent'] and notification['disabledStateConfirmed'] and notification['processStopConfirmed'])
+        self.assertFalse(notification['alreadyAbsent']);self.assertEqual(notification['processesAfter'], 0)
+        self.assertEqual(notification['processExitObservations'], 1)
+        self.assertEqual(len(set(commands.nonces)), 2)
+
+    def test_absent_notification_package_is_explicit_noop_without_false_confirmations(self):
+        commands, receipt = FakeCommands(), record()
+        module.isolate(commands, receipt, identity(), lambda: None)
+        notification = receipt['notificationCompetitor']
+        self.assertEqual(notification['status'], 'already-absent');self.assertTrue(notification['alreadyAbsent'])
+        self.assertFalse(notification['packagePresent'] or notification['disabledStateConfirmed'] or notification['processStopConfirmed'])
+        self.assertFalse(any(op.startswith('notification-') for op, _ in commands.mutations()))
+        self.assertNotIn('processesAfter', notification)
+
+    def test_notification_readback_failure_blocks_gms_and_never_changes_notification_policy(self):
+        commands = FakeCommands(lambda op, value: 'package:' + module.NOTIFICATION_PACKAGE + '.other' if op == 'notification-read-disabled' else None,
+                                messaging_present=True)
+        receipt = record()
+        with self.assertRaises(module.IsolationFailure):module.isolate(commands, receipt, identity(), lambda: None)
+        self.assertEqual([parts[-1] for _, parts in commands.mutations()], [module.NOTIFICATION_PACKAGE] * 2)
+        self.assertEqual(receipt['status'], 'failed');self.assertEqual(receipt['notificationCompetitor']['status'], 'failed')
+        self.assertFalse(any('notification' in part or 'zen_mode' in part or 'local.pocketchat' in part
+                             for _, parts in commands.mutations() for part in parts))
+
+    def test_receipt_owner_change_between_packages_prevents_gms_mutation(self):
+        commands, receipt = FakeCommands(messaging_present=True), record();checks = []
+        def guard():
+            checks.append(True)
+            if len(checks) == 2:
+                raise module.IsolationFailure('bootstrap-changed')
+        with self.assertRaisesRegex(module.IsolationFailure, 'bootstrap-changed'):
+            module.isolate(commands, receipt, identity(), guard)
+        self.assertEqual([parts[-1] for _, parts in commands.mutations()], [module.NOTIFICATION_PACKAGE] * 2)
+
+    def test_both_packages_share_one_exit_deadline(self):
+        clock = Clock();notification = iter((1, 1, 0))
+        def edit(op, value):
+            if op == 'notification-processes-after':
+                return 'NAME\ninit\n' + (module.NOTIFICATION_PACKAGE + '\n') * next(notification)
+            if op == 'processes-after':
+                return 'NAME\ninit\n' + module.PACKAGE
+        commands, receipt = FakeCommands(edit, messaging_present=True), record();commands.deadline = 0.5
+        with patch.object(module.time, 'monotonic', side_effect=clock.now), patch.object(module.time, 'sleep', side_effect=clock.sleep):
+            with self.assertRaises(module.IsolationFailure):module.isolate(commands, receipt, identity(), lambda: None)
+        self.assertEqual(receipt['notificationCompetitor']['status'], 'passed')
+        self.assertEqual(commands.deadline, 0.5);self.assertAlmostEqual(clock.value, 0.5)
+        self.assertEqual(receipt['status'], 'failed');self.assertEqual(len(commands.mutations()), 4)
+
+    def test_policy_pin_and_main_summary_cover_both_exact_packages(self):
+        self.assertEqual(module.POLICY['packagesInOrder'], [module.NOTIFICATION_PACKAGE, module.PACKAGE])
+        self.assertEqual(module.POLICY['defaultTimeoutSeconds'], 20)
+        self.assertEqual(module.POLICY['maximumTimeoutSeconds'], 20)
+        self.assertEqual(module.POLICY['processExitObservationIntervalMs'], 200)
+        self.assertFalse(module.POLICY['repeatedMutations'] or module.POLICY['globalNotificationPolicyModified'])
+        with main_fixture(messaging_present=True) as (_, apk, path, original, commands, factory):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = module.main(['--adb', 'adb', '--serial', module.SERIAL, '--apk', str(apk)])
+            self.assertEqual(code, 0);summary = public(output.getvalue())
+            self.assertEqual(summary['policySha256'], module.POLICY_SHA256)
+            self.assertEqual(summary['notificationCompetitor']['status'], 'passed')
+            self.assertNotIn(SENTINEL, output.getvalue())
+
+    def test_unknown_package_output_cannot_be_promoted_to_optional_absence(self):
+        for raw in ('not-a-package-result', 'package:' + module.NOTIFICATION_PACKAGE + '\n' + SENTINEL,
+                    'package:' + module.NOTIFICATION_PACKAGE + '\npackage:' + module.NOTIFICATION_PACKAGE,
+                    'package:com.unrelated.package'):
+            with self.subTest(raw=raw):
+                commands = FakeCommands(lambda op, value: raw if op == 'notification-package-present' else None)
+                with self.assertRaisesRegex(module.IsolationFailure, 'package-observation-invalid'):
+                    module.isolate(commands, record(), identity(), lambda: None)
+                self.assertEqual(commands.mutations(), [])
+        self.assertEqual(module.package_names('', module.NOTIFICATION_PACKAGE), set())
+        self.assertEqual(module.package_names('package:' + module.NOTIFICATION_PACKAGE + '.other', module.NOTIFICATION_PACKAGE),
+                         {module.NOTIFICATION_PACKAGE + '.other'})
+
+    def test_wrong_direct_package_or_prefix_is_rejected_before_mutation(self):
+        for package, prefix in (('local.pocketchat.test', ''), (module.PACKAGE, 'notification-'),
+                                (module.NOTIFICATION_PACKAGE, '')):
+            with self.subTest(package=package, prefix=prefix):
+                commands = FakeCommands();checks = []
+                with self.assertRaisesRegex(module.IsolationFailure, 'synthetic-package-required'):
+                    module.stop_package(commands, record(), package, prefix, lambda: checks.append('guard'))
+                self.assertEqual(checks, []);self.assertEqual(commands.calls, [])
+
+    def test_persistent_or_unknown_notification_processes_block_gms(self):
+        for raw in ('NAME\ninit\n' + module.NOTIFICATION_PACKAGE, 'NAME'):
+            with self.subTest(raw=raw):
+                clock = Clock()
+                commands = FakeCommands(lambda op, value: raw if op == 'notification-processes-after' else None,
+                                        messaging_present=True)
+                commands.deadline = 0.45;receipt = record()
+                with patch.object(module.time, 'monotonic', side_effect=clock.now), patch.object(module.time, 'sleep', side_effect=clock.sleep):
+                    with self.assertRaises(module.IsolationFailure):
+                        module.isolate(commands, receipt, identity(), lambda: None)
+                self.assertEqual([parts[-1] for _, parts in commands.mutations()], [module.NOTIFICATION_PACKAGE] * 2)
+                self.assertEqual(receipt['notificationCompetitor']['status'], 'failed')
+                self.assertFalse(receipt['notificationCompetitor']['processStopConfirmed'])
+
+    def test_search_only_loses_its_post_notification_permission_and_remains_enabled(self):
+        commands, receipt = FakeCommands(messaging_present=True, search_present=True), record();guards = []
+        module.isolate(commands, receipt, identity(), lambda: guards.append(True))
+        self.assertEqual(len(guards), 3)
+        operations = [op for op, _ in commands.mutations()]
+        self.assertEqual(operations, ['notification-force-stop', 'notification-disable-package',
+                                     'search-revoke-notifications', 'force-stop', 'disable-package'])
+        revoke = next(parts for op, parts in commands.calls if op == 'search-revoke-notifications')
+        self.assertEqual(revoke, ('shell', 'pm', 'revoke', '--user', '0', module.SEARCH_PACKAGE,
+                                  'android.permission.POST_NOTIFICATIONS'))
+        self.assertFalse(any(parts[-1] == module.SEARCH_PACKAGE for op, parts in commands.mutations()
+                             if op != 'search-revoke-notifications'))
+        for phase in ('before', 'after'):
+            check = next(parts for op, parts in commands.calls if op == 'search-permission-' + phase)
+            self.assertEqual(check, ('shell', 'dumpsys', 'package', 'check-permission',
+                                    module.NOTIFICATION_PERMISSION, module.SEARCH_PACKAGE, '0'))
+        search = receipt['searchNotificationPolicy']
+        self.assertEqual(search['status'], 'passed');self.assertEqual(search['permissionAfter'], -1)
+        self.assertTrue(search['enabledBeforeConfirmed'] and search['enabledAfterConfirmed']
+                        and search['permissionDeniedConfirmed'] and search['permissionRevokePerformed'])
+
+    def test_search_already_denied_is_rechecked_without_unnecessary_revoke(self):
+        commands = FakeCommands(lambda op, value: '-1' if op == 'search-permission-before' else None,
+                                search_present=True)
+        receipt = record();module.isolate(commands, receipt, identity(), lambda: None)
+        self.assertEqual(receipt['searchNotificationPolicy']['status'], 'passed')
+        self.assertFalse(receipt['searchNotificationPolicy']['permissionRevokePerformed'])
+        self.assertFalse(any(op == 'search-revoke-notifications' for op, _ in commands.calls))
+        self.assertTrue(any(op == 'search-permission-after' for op, _ in commands.calls))
+
+    def test_absent_search_is_explicit_noop_without_permission_denial_claim(self):
+        commands, receipt = FakeCommands(), record();module.isolate(commands, receipt, identity(), lambda: None)
+        search = receipt['searchNotificationPolicy']
+        self.assertEqual(search['status'], 'already-absent');self.assertTrue(search['alreadyAbsent'])
+        self.assertFalse(search['packagePresent'] or search['permissionDeniedConfirmed']
+                         or search['permissionRevokePerformed'] or search['enabledAfterConfirmed'])
+        self.assertFalse(any(op == 'search-revoke-notifications' for op, _ in commands.calls))
+
+    def test_search_enabled_and_real_permission_preconditions_precede_every_mutation(self):
+        changes = [('search-package-present', SENTINEL), ('search-enabled-before', ''),
+                   ('search-permission-before', 'granted'), ('search-permission-before', SENTINEL),
+                   ('search-permission-before', '-1\n' + SENTINEL)]
+        for operation, output in changes:
+            with self.subTest(operation=operation, output=output):
+                commands = FakeCommands(lambda op, value: output if op == operation else None,
+                                        messaging_present=True, search_present=True)
+                with self.assertRaises(module.IsolationFailure):module.isolate(commands, record(), identity(), lambda: None)
+                self.assertEqual(commands.mutations(), [])
+
+    def test_successful_revoke_command_without_denied_readback_is_not_success(self):
+        for output in ('0', 'denied', '', SENTINEL):
+            with self.subTest(output=output):
+                commands = FakeCommands(lambda op, value: output if op == 'search-permission-after' else None,
+                                        search_present=True)
+                receipt = record()
+                with self.assertRaises(module.IsolationFailure):module.isolate(commands, receipt, identity(), lambda: None)
+                self.assertEqual([op for op, _ in commands.mutations()], ['search-revoke-notifications'])
+                self.assertEqual(receipt['status'], 'failed')
+                self.assertFalse(receipt['searchNotificationPolicy']['permissionDeniedConfirmed'])
+
+    def test_search_becoming_disabled_is_failure_without_hidden_enable_or_gms_mutation(self):
+        commands = FakeCommands(lambda op, value: '' if op == 'search-enabled-after' else None,
+                                search_present=True)
+        receipt = record()
+        with self.assertRaisesRegex(module.IsolationFailure, 'notification-app-not-enabled'):
+            module.isolate(commands, receipt, identity(), lambda: None)
+        self.assertEqual([op for op, _ in commands.mutations()], ['search-revoke-notifications'])
+        self.assertFalse(any('enable' in parts for _, parts in commands.calls))
+        self.assertEqual(receipt['status'], 'failed')
+
+    def test_search_revoke_revalidates_receipt_owner_after_messaging_exit(self):
+        commands, receipt = FakeCommands(messaging_present=True, search_present=True), record();guards = []
+        def guard():
+            guards.append(True)
+            if len(guards) == 2:
+                raise module.IsolationFailure('bootstrap-changed')
+        with self.assertRaisesRegex(module.IsolationFailure, 'bootstrap-changed'):
+            module.isolate(commands, receipt, identity(), guard)
+        self.assertEqual([op for op, _ in commands.mutations()], ['notification-force-stop', 'notification-disable-package'])
+
+    def test_search_cannot_be_sent_to_process_stop_or_disable_path(self):
+        commands = FakeCommands()
+        with self.assertRaisesRegex(module.IsolationFailure, 'synthetic-package-required'):
+            module.stop_package(commands, record(), module.SEARCH_PACKAGE, '', lambda: None)
+        self.assertEqual(commands.calls, [])
+
+    def test_main_search_failure_is_private_and_marks_credible_bootstrap_failed(self):
+        for output in ('0', SENTINEL):
+            with self.subTest(output=output), main_fixture(
+                    edit=lambda op, value: output if op == 'search-permission-after' else None,
+                    search_present=True) as (_, apk, path, original, commands, factory):
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout):
+                    code = module.main(['--adb', 'adb', '--serial', module.SERIAL, '--apk', str(apk)])
+                self.assertNotEqual(code, 0);self.assertNotIn(SENTINEL, stdout.getvalue())
+                saved = json.loads(path.read_text());self.assertEqual(saved['status'], 'failed')
+                self.assertEqual(saved['backgroundIsolation']['searchNotificationPolicy']['status'], 'failed')
+
+    def test_system_fixed_permission_failure_is_redacted_and_has_no_fallback(self):
+        receipt = record();commands = module.Commands('adb', module.SERIAL, receipt, time.monotonic() + 20)
+        result = subprocess.CompletedProcess([], 1, b'',
+            ('Non-System UID cannot revoke system fixed permission ' + module.NOTIFICATION_PERMISSION + ' ' + SENTINEL).encode())
+        with patch.object(module.subprocess, 'run', return_value=result):
+            with self.assertRaisesRegex(module.IsolationFailure, 'notification-permission-fixed'):
+                commands.run('search-revoke-notifications', 'shell', 'pm', 'revoke', '--user', '0',
+                             module.SEARCH_PACKAGE, module.NOTIFICATION_PERMISSION)
+        self.assertEqual(len(receipt['operations']), 1)
+        self.assertNotIn(SENTINEL, json.dumps(receipt))
 
 
 if __name__ == '__main__':

@@ -18,12 +18,60 @@ public class GeckoIntegrationTestActivity extends Activity {
   JSONObject readinessNetwork;long readinessForegroundAt;
   final int[] readingZoomSamples=new int[4];String readingZoomLast="";long readingZoomLastSample;JSONObject readingZoomReadiness;
   ReadingBoundsCase readingBoundsCase;JSONObject readingBoundsFitResult;
+  // BEGIN optional numeric reading-zoom trace (integration fixture only).
+  static final class ReadingZoomTrace {
+    static final int CAPACITY=64;
+    final java.util.function.LongSupplier clock;final double[][] ring=new double[CAPACITY][];
+    int size,dropped,droppedRequest,droppedObservation,invalid;boolean sampled;double[] lastSample;
+    int focus=-1,attached=-1;
+    ReadingZoomTrace(java.util.function.LongSupplier value){clock=value;}
+    void add(int kind,double factor,double cached,double nativeScale,double layout,double viewport,int width,int attempts,boolean active,int focusValue,int attachedValue){
+      double[] values={kind,0,factor,cached,nativeScale,layout,viewport,width,attempts,active?1:0,focusValue,attachedValue};
+      for(double value:values)if(!Double.isFinite(value)){invalid++;return;}
+      if(kind<0||kind>2||width<0||attempts<0||focusValue< -1||focusValue>1||attachedValue< -1||attachedValue>1){invalid++;return;}
+      if(size==CAPACITY){int remove=-1;for(int i=0;i<size;i++)if(ring[i][0]!=0){remove=i;break;}
+        if(remove<0&&kind!=0){dropped++;droppedObservation++;return;}
+        if(remove<0){remove=0;droppedRequest++;}else droppedObservation++;
+        dropped++;System.arraycopy(ring,remove+1,ring,remove,size-remove-1);size--;
+      }
+      values[1]=clock.getAsLong();ring[size++]=values;
+    }
+    void sample(double cached,double nativeScale,double layout,double viewport,int width,int attempts,boolean active,int focusValue,int attachedValue){
+      double[] current={cached,nativeScale,layout,viewport,width,attempts,active?1:0,focusValue,attachedValue};
+      boolean changed=!sampled||!java.util.Arrays.equals(lastSample,current);focus=focusValue;attached=attachedValue;
+      if(!changed)return;sampled=true;lastSample=current;add(2,0,cached,nativeScale,layout,viewport,width,attempts,active,focusValue,attachedValue);
+    }
+    double[][] snapshot(){double[][] result=new double[size][];for(int i=0;i<size;i++)result[i]=ring[i].clone();return result;}
+    JSONObject json(){try{JSONObject value=new JSONObject();JSONArray entries=new JSONArray();for(double[] row:snapshot()){JSONArray entry=new JSONArray();for(double item:row)entry.put(item);entries.put(entry);}return value.put("schema",1).put("capacity",CAPACITY).put("dropped",dropped).put("droppedRequest",droppedRequest).put("droppedObservation",droppedObservation).put("invalid",invalid).put("partial",true).put("diagnosticOnly",true).put("applicationAcceptance",false).put("releaseAcceptance",false).put("physicalPhoneAcceptance",false).put("entries",entries);}catch(JSONException error){throw new IllegalStateException(error);}}
+  }
+  void enableReadingZoomTrace(long serial,ReadingBoundsCase test,FixtureView web){
+    test.trace=new ReadingZoomTrace(SystemClock::uptimeMillis);
+    web.readingZoomTraceCurrent=()->serial==run&&readingBoundsCase==test&&web.current==test.nativeSession;
+    web.readingZoomRequest=factor->{if(web.readingZoomTraceCurrent!=null&&web.readingZoomTraceCurrent.getAsBoolean())test.trace.add(0,factor,web.scale,0,web.readingLayout,session.reading.viewportWidth,session.reading.width,session.reading.restoreAttempts,web.zoomTarget!=null,test.trace.focus,test.trace.attached);};
+  }
+  void recordReadingZoomNative(long serial,ReadingBoundsCase test,float zoom){
+    if(serial!=run||readingBoundsCase!=test||test.nativeSession!=session.web.current)return;
+    GeckoWebView web=session.web;test.trace.add(1,0,0,zoom,web.readingLayout,session.reading.viewportWidth,session.reading.width,session.reading.restoreAttempts,web.zoomTarget!=null,test.trace.focus,test.trace.attached);
+  }
+  void sampleReadingZoomTrace(long serial,JSONObject value){
+    ReadingBoundsCase test=readingBoundsCase;if(test==null||test.trace==null||serial!=run||test.command!=serial||test.nativeSession!=session.web.current)return;
+    GeckoWebView web=session.web;double nativeScale=value.optDouble("matrixScale",0),layout=value.optDouble("layout",0);
+    test.trace.sample(nativeScale*layout,nativeScale,layout,value.optDouble("viewport",0),value.optInt("nativeWidth"),session.reading.restoreAttempts,web.zoomTarget!=null,web.hasWindowFocus()?1:0,web.isAttachedToWindow()?1:0);
+  }
+  void appendReadingZoomTrace(long serial,String kind,JSONObject value){
+    ReadingBoundsCase test=readingBoundsCase;if(test==null||test.trace==null||test.command!=serial||serial!=run||test.nativeSession!=session.web.current)return;
+    if("readingBoundsBefore".equals(kind)||"readingBoundsPan".equals(kind)||"readingBounds".equals(kind)||"error".equals(kind))NetworkCatalog.put(value,"readingZoomTrace",test.trace.json());
+  }
+  // END optional numeric reading-zoom trace.
   static final class ReadingBoundsCase {
+    ReadingZoomTrace trace;
     int privacy;long command;boolean fingerprintingProtected;JSONObject before,pan;org.mozilla.geckoview.GeckoSession nativeSession;android.view.View surface;
     org.mozilla.geckoview.GeckoSession.CompositorScrollDelegate priorDelegate;float scrollX,scrollY,zoom;int updates;long stableSince;int stableSamples;
   }
   @Override protected void attachBaseContext(Context context){super.attachBaseContext(new ProfileContext(context,Profiles.processSlot()));}
   static final class FixtureView extends GeckoWebView {
+    java.util.function.DoubleConsumer readingZoomRequest;java.util.function.BooleanSupplier readingZoomTraceCurrent;
+    @Override public void zoomBy(float factor){if(readingZoomRequest!=null){if(readingZoomTraceCurrent!=null&&readingZoomTraceCurrent.getAsBoolean())readingZoomRequest.accept(factor);else{readingZoomRequest=null;readingZoomTraceCurrent=null;}}super.zoomBy(factor);}
     boolean continuityTracing;String continuityUrl="";int continuityLoads,continuityStops,resourcePauseCalls;JSONArray continuityResults=new JSONArray();
     @Override public void onPause(){resourcePauseCalls++;super.onPause();}
     @Override public void stopLoading(){if(continuityTracing)continuityStops++;super.stopLoading();}
@@ -628,8 +676,10 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   void beginReadingBounds(long serial,int level){
     GeckoWebView web=session.web;ReadingBoundsCase test=new ReadingBoundsCase();test.privacy=session.privacy.level();test.command=serial;test.nativeSession=web.current;test.surface=web.surface;test.priorDelegate=web.current.getCompositorScrollDelegate();readingBoundsCase=test;
+    ((FixtureView)web).readingZoomRequest=null;((FixtureView)web).readingZoomTraceCurrent=null;
+    if(getIntent().getBooleanExtra("readingZoomTrace",false))enableReadingZoomTrace(serial,test,(FixtureView)web);
     // Forward every real SDK update to the unmodified production delegate.
-    web.current.setCompositorScrollDelegate(new org.mozilla.geckoview.GeckoSession.CompositorScrollDelegate(){@Override public void onScrollChanged(org.mozilla.geckoview.GeckoSession own,org.mozilla.geckoview.GeckoSession.ScrollPositionUpdate update){test.scrollX=update.scrollX;test.scrollY=update.scrollY;test.zoom=update.zoom;test.updates++;if(test.priorDelegate!=null)test.priorDelegate.onScrollChanged(own,update);}});
+    web.current.setCompositorScrollDelegate(new org.mozilla.geckoview.GeckoSession.CompositorScrollDelegate(){@Override public void onScrollChanged(org.mozilla.geckoview.GeckoSession own,org.mozilla.geckoview.GeckoSession.ScrollPositionUpdate update){test.scrollX=update.scrollX;test.scrollY=update.scrollY;test.zoom=update.zoom;test.updates++;if(test.trace!=null&&serial==run)recordReadingZoomNative(serial,test,update.zoom);if(test.priorDelegate!=null)test.priorDelegate.onScrollChanged(own,update);}});
     session.prefs.edit().putInt("privacyLevel",level).putFloat(BrowserReadingPolicy.ZOOM_KEY,4.2f).commit();session.reading.configure(true);web.configure(true,level);
     readingBoundsConfigured(serial,level,SystemClock.elapsedRealtime()+20000);
   }
@@ -641,6 +691,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   void readingBoundsMagnified(long serial,int level,long deadline){
     if(serial!=run)return;session.web.evaluateJavascript(readingBoundsScript(),raw->{
       if(serial!=run)return;JSONObject value=readingBoundsNative(J.parse(raw));double relative=value.optDouble("matrixScale")*value.optDouble("layout")*value.optDouble("viewport")/value.optInt("nativeWidth");
+      if(readingBoundsCase!=null&&readingBoundsCase.trace!=null)sampleReadingZoomTrace(serial,value);
       if(String.valueOf(serial).equals(value.optString("command"))&&session.reading.ready&&session.web.painted.contains(session.web.current)&&Math.abs(relative-4.2)<.05&&session.web.zoomTarget==null){
         readingBoundsCase.before=value;event(serial,"readingBoundsBefore",value);session.web.current.getPanZoomController().scrollTo(org.mozilla.geckoview.ScreenLength.fromPixels(48),org.mozilla.geckoview.ScreenLength.fromPixels(320),org.mozilla.geckoview.PanZoomController.SCROLL_BEHAVIOR_AUTO);readingBoundsPanned(serial,level,SystemClock.elapsedRealtime()+20000);return;
       }
@@ -867,7 +918,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   void onMain(Runnable task){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<RuntimeException> error=new java.util.concurrent.atomic.AtomicReference<>();runOnUiThread(()->{try{task.run();}catch(RuntimeException failure){error.set(failure);}finally{done.countDown();}});await(done);if(error.get()!=null)throw error.get();}
   static String readCheckpoint(BrowserSessionStore store){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<String> value=new java.util.concurrent.atomic.AtomicReference<>();store.read(result->{value.set(result);done.countDown();});await(done);return value.get();}
   JSONObject eventBuildIdentity;IntegrationEventStore eventStore;
-  synchronized void event(long serial,String kind,JSONObject result){if(serial!=run)return;try{if(eventStore==null||eventStore.command!=serial)throw new IllegalStateException("Missing invocation");eventStore.emit(kind,result);}catch(Exception failure){Log.e("PocketGeckoIntegration",J.obj("kind","eventTransportError","error",failure.toString(),"nativeContext","environment-"+(slot+1),"processSlot",slot,"fixtureAction",action,"runNonce",getIntent().getStringExtra("eventNonce"),"command",run).toString());}}
+  synchronized void event(long serial,String kind,JSONObject result){if(serial!=run)return;try{if(eventStore==null||eventStore.command!=serial)throw new IllegalStateException("Missing invocation");if(readingBoundsCase!=null&&readingBoundsCase.command==serial&&readingBoundsCase.trace!=null)appendReadingZoomTrace(serial,kind,result);eventStore.emit(kind,result);}catch(Exception failure){Log.e("PocketGeckoIntegration",J.obj("kind","eventTransportError","error",failure.toString(),"nativeContext","environment-"+(slot+1),"processSlot",slot,"fixtureAction",action,"runNonce",getIntent().getStringExtra("eventNonce"),"command",run).toString());}}
   void readingLifecycle(String phase){if("readingZoom".equals(action)&&session!=null)event(run,"readingZoomLifecycle",J.obj("phase",phase,"uptimeMs",SystemClock.uptimeMillis(),"wallMs",System.currentTimeMillis(),"activityResumed",activityResumed,"browserPaused",session.browserPaused,"nativeScale",session.web.getScale(),"zoomActive",session.web.zoomTarget!=null,"webShown",session.web.isShown(),"windowFocused",hasWindowFocus()));}
   @Override protected void onResume(){super.onResume();activityResumed=true;if(session!=null)session.foreground(true);readingLifecycle("onResume");observeReadiness(run,"onResume",true);}
   @Override protected void onPause(){activityResumed=false;if(session!=null){session.reading.keyboard(false);session.foreground(false);}readingLifecycle("onPause");observeReadiness(run,"onPause",true);super.onPause();}

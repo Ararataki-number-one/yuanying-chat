@@ -74,6 +74,8 @@ def verify_startup_member(source,needle):
     return True
 
 def verify_runner_consumer(source):
+    from reading_zoom_trace_contract import strip_reviewed_reading_trace_additions
+    source=strip_reviewed_reading_trace_additions(source.encode('utf-8'),'tests/gecko/run_device.py').decode('utf-8')
     run=copy.deepcopy(run_node(source))
     dump=lambda node:ast.dump(node,include_attributes=False)
     statement=lambda text:ast.parse(text.encode('utf-8')).body[0]

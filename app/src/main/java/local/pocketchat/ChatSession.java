@@ -189,7 +189,9 @@ final class ChatSession {
     /** Only the first proven observation may discover reply work that native state did not yet know. */
     boolean initialReplyObservation(ChatSession session,JSONObject inspected){
       String observed=inspected.optString("documentId");
-      if(replyObserved||!document.isEmpty()||port==null||!visible||!BrowserRuntimePolicy.sameDocument(url,inspected.optString("url"))||!observed.matches("[a-zA-Z0-9-]{16,80}")||!(inspected.opt("busy") instanceof Boolean)||!inspected.optBoolean("busy")||session.resourceWebsiteEpoch==epoch)return false;
+      // A known document may still have no reply observation for its current SPA route.
+      if(!document.isEmpty()&&(!document.equals(observed)||!document.equals(session.lastDocumentId)))return false;
+      if(replyObserved||port==null||!visible||!BrowserRuntimePolicy.sameDocument(url,inspected.optString("url"))||!observed.matches("[a-zA-Z0-9-]{16,80}")||!(inspected.opt("busy") instanceof Boolean)||!inspected.optBoolean("busy")||session.resourceWebsiteEpoch==epoch)return false;
       boolean currentState=session.stateEpoch==epoch&&BrowserRuntimePolicy.sameDocument(url,session.state.optString("url"));
       if(currentState)return session.state.opt("busy") instanceof Boolean&&session.state.optBoolean("busy")&&observed.equals(session.state.optString("documentId"))&&observed.equals(session.lastDocumentId);
       return !session.currentReplyActive();
