@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.27",
-  "versionCode": 80,
+  "version": "2.0.28",
+  "versionCode": 81,
   "abi": "arm64-v8a",
   "minSdk": 26,
   "bytes": 119324325,
-  "sha256": "8e7b8fd0e60a5af8c61da3d0d44a84708fb2fa32515e1624eef217ae317825ac",
+  "sha256": "9e92cf76fe2c56a62aa3cb8197fbd56823ad124a7c31a05895cae3d86682d888",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.27-gecko/PocketChat-2.0.27-gecko-arm64.apk",
-  "notes": "# 2.0.27（80）\n\n本版完善自检中的公开身份字段对照：分别展示主页面与同源 iframe、Dedicated Worker 的 platform 和 appVersion 是否一致，并标明手机版／电脑版的显示请求。\n\n- 缺失、无效、超长、含控制字符、主执行环境未取得或过期的观测保持“未覆盖”。\n- 保留屏幕旋转、DPR、触摸等现有独立检查，不把键盘造成的视口变化判断为身份变化。\n- 沿用主动自检，不新增后台扫描、检测请求或网页属性覆盖。\n- 保留 2.0.26 的环境身份总览及权威路由准入状态修复；本版不包含 2.0.28—2.0.30。\n\n本机边界和模板回归已通过；本版完整 CI 11/11 通过，原十项门禁各通过一次。原始验收：[40669216626/1](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40669216626)。公开字段一致不代表手机型号、全部 HTTP 请求身份或全部抗指纹保护已验证。真实手机、ChatGPT 官网、百度输入法与实际线路效果仍待设备验收。\n\n正式包使用原签名，可覆盖升级。环境、登录与网页存储沿用原目录；不会自动重发聊天。",
-  "sourceCommit": "ec0cfbe43af2a9fc2bd748229e7cdca1081e7806"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.28-gecko/PocketChat-2.0.28-gecko-arm64.apk",
+  "notes": "# 2.0.28（81）\n\n本版完善本地双报告的人工检查进度，并修正手动重载的回复确认边界。\n\n- 显示已记录、未测试、异常与不适用项目；进度表示记录情况，不是保护得分。\n- 人工结果菜单显示当前值，编辑时预选已有记录，未操作项目保持“未测试”。\n- 保留记录时间；替换报告后重置对应人工结果。打开菜单时合并同一报告的重复读取，点击项目仍读取最新状态。\n- 修复当前聊天首次被观察为正在生成回复时，手动重载确认可能遗漏的问题，避免未经确认中断回复。\n\n保持单 GeckoView、ChatGPT 原网页、独立环境和固定出口。本地报告操作不会自动切换模板、刷新聊天或发送消息。\n\n本版已通过[完整受控 Android／Gecko 验收](https://github.com/Ararataki-number-one/yuanying-chat/actions/runs/40824390290)：11 个任务、原始 10 项发布验证，以及 9 个全新模拟器的启动隔离与网络回读；三组独立输入流程、文件、线路分享和主题检查均通过。\n\n原签名 ARM64 安装包可覆盖升级。真实手机上的输入法、附件、官网使用与保护效果仍需同一设备验收，受控结果不代表手机提速或全部指纹保护效果已验证。",
+  "sourceCommit": "96c0667cbe65e32f6f3b46769ad8f161816a6760"
 }
