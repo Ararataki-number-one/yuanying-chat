@@ -1,0 +1,2719 @@
+{
+  "passed": 125,
+  "total": 125,
+  "bindingChecks": 41,
+  "socketSurfaceChecks": 84,
+  "scope": "Production JS DOM fixtures; no live account/network or Android UI claim",
+  "checks": [
+    {
+      "name": "A complete reply starts bound to its exact stable question",
+      "pass": true
+    },
+    {
+      "name": "A completed document temporarily lacking all turns waits for the original binding",
+      "pass": true
+    },
+    {
+      "name": "A loading shell cannot reuse old full content or accumulate completion evidence",
+      "pass": true
+    },
+    {
+      "name": "Same-route hydration restores the original binding and complete answer",
+      "pass": true
+    },
+    {
+      "name": "Virtualizing only the bound user turn never claims the conversation changed",
+      "pass": true
+    },
+    {
+      "name": "Restoring a virtualized user resumes exact observation",
+      "pass": true
+    },
+    {
+      "name": "An empty question placeholder is incomplete hydration rather than a confirmed edit",
+      "pass": true
+    },
+    {
+      "name": "Hydrated text restores the exact question binding",
+      "pass": true
+    },
+    {
+      "name": "A nonempty changed question still invalidates the old binding",
+      "pass": true
+    },
+    {
+      "name": "A real later question remains distinct from loading and blocks the old completion",
+      "pass": true
+    },
+    {
+      "name": "An empty neutral home route during recovery stays pending without rebinding",
+      "pass": true
+    },
+    {
+      "name": "An interactive new-chat home route is still a different conversation",
+      "pass": true
+    },
+    {
+      "name": "A different conversation ID is rejected even while its page is blank",
+      "pass": true
+    },
+    {
+      "name": "A native task with a known conversation route rejects another conversation too",
+      "pass": true
+    },
+    {
+      "name": "A native known conversation also waits through a neutral root loading shell",
+      "pass": true
+    },
+    {
+      "name": "The native known conversation resumes its original exact reply",
+      "pass": true
+    },
+    {
+      "name": "Home-to-conversation assignment accepts only the original stable ID and exact prompt",
+      "pass": true
+    },
+    {
+      "name": "After assignment another conversation ID cannot inherit the completed binding",
+      "pass": true
+    },
+    {
+      "name": "A newly assigned route without its original question cannot finish from cached text",
+      "pass": true
+    },
+    {
+      "name": "The same stable key with different text cannot authorize route assignment",
+      "pass": true
+    },
+    {
+      "name": "A position-derived key cannot authorize home-to-conversation assignment",
+      "pass": true
+    },
+    {
+      "name": "Route assignment requires full normalized prompt equality, not similar long-text edges",
+      "pass": true
+    },
+    {
+      "name": "A socket phrase inside ordinary answer text is not a website error",
+      "pass": true
+    },
+    {
+      "name": "An unrelated global retry cannot use ordinary answer text as its error context",
+      "pass": true
+    },
+    {
+      "name": "A shared retry wrapper excludes its ordinary conversation children from error text",
+      "pass": true
+    },
+    {
+      "name": "A reply retry control does not treat the neighboring normal markdown as an error",
+      "pass": true
+    },
+    {
+      "name": "A visible historical assistant alert cannot interrupt the current healthy reply",
+      "pass": true
+    },
+    {
+      "name": "A historical retry card beside its old message body remains inactive",
+      "pass": true
+    },
+    {
+      "name": "An unlabelled historical section still owns its old retry card",
+      "pass": true
+    },
+    {
+      "name": "A user-quoted alert cannot become an active website failure during inspection",
+      "pass": true
+    },
+    {
+      "name": "A real current-turn alert beside its reply body remains recoverable",
+      "pass": true
+    },
+    {
+      "name": "A current retry beside the response reads its error without reading the response body",
+      "pass": true
+    },
+    {
+      "name": "A visible official alert reports a recoverable website socket failure",
+      "pass": true
+    },
+    {
+      "name": "Website inspection exposes the same socket state without a pending task",
+      "pass": true
+    },
+    {
+      "name": "A connection alert is retained while the bound turn is unavailable",
+      "pass": true
+    },
+    {
+      "name": "Hidden old socket alerts never become the active website error",
+      "pass": true
+    },
+    {
+      "name": "A quoted alert inside a code block cannot become a website failure",
+      "pass": true
+    },
+    {
+      "name": "The official retry error surface is recognized without scanning normal answer content",
+      "pass": true
+    },
+    {
+      "name": "Removing the website error leaves the original task eligible for exact reinspection",
+      "pass": true
+    },
+    {
+      "name": "Read-only waiting, recovery and assignment never resend the question",
+      "pass": true
+    },
+    {
+      "name": "Login cookies and the unsent draft survive every read-only observation",
+      "pass": true
+    },
+    {
+      "name": "Socket surface current-alert / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface current-alert / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface global-alert / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface global-alert / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface current-retry / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface current-retry / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface global-retry / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface global-retry / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface loading-global-alert / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface loading-global-alert / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-reply-retry / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-reply-retry / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-global-retry / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-global-retry / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-shared-wrapper-retry / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-shared-wrapper-retry / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface historical-alert / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface historical-alert / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface historical-retry / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface historical-retry / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface unlabelled-historical-retry / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface unlabelled-historical-retry / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface user-quoted-alert / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface user-quoted-alert / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface code-block-alert / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface code-block-alert / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface inline-code-alert / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface inline-code-alert / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface code-block-retry / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface code-block-retry / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface hidden-alert / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface hidden-alert / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface aria-hidden-alert / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface aria-hidden-alert / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface menu-alert / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface menu-alert / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface body-text-without-error-surface / Browser app server websocket closed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface body-text-without-error-surface / Browser app server websocket closed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface current-alert / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface current-alert / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface global-alert / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface global-alert / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface current-retry / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface current-retry / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface global-retry / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface global-retry / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface loading-global-alert / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface loading-global-alert / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-reply-retry / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-reply-retry / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-global-retry / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-global-retry / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-shared-wrapper-retry / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface ordinary-answer-with-shared-wrapper-retry / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface historical-alert / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface historical-alert / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface historical-retry / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface historical-retry / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface unlabelled-historical-retry / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface unlabelled-historical-retry / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface user-quoted-alert / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface user-quoted-alert / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface code-block-alert / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface code-block-alert / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface inline-code-alert / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface inline-code-alert / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface code-block-retry / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface code-block-retry / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface hidden-alert / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface hidden-alert / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface aria-hidden-alert / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface aria-hidden-alert / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface menu-alert / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface menu-alert / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface body-text-without-error-surface / Browser app server websocket failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface body-text-without-error-surface / Browser app server websocket failed / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface unrelated-failure-role-alert / Browser app server websocket failure / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface unrelated-failure-role-alert / Browser app server websocket failure / poll",
+      "pass": true
+    },
+    {
+      "name": "Socket surface unrelated-failure-role-alert / database authentication failed / web-inspect",
+      "pass": true
+    },
+    {
+      "name": "Socket surface unrelated-failure-role-alert / database authentication failed / poll",
+      "pass": true
+    }
+  ],
+  "socketSurfaces": [
+    {
+      "fixture": "current-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "fa3aa00f-0423-4e8a-988d-49dc41e46e44",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "current-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "c6db2842-348d-4da0-9633-cade45a917ff:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "global-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "2f7e03f3-2226-4a94-9936-b33d840c7135",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "global-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "1bae650b-4730-40db-82e4-409a148f0fca:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "current-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "377d41b9-00df-4bb4-874b-ce86e4b25d86",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "current-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "51bb1009-216b-43e0-b806-caefce6fd75f:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "global-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "a79b7907-fe2f-4d9c-856a-d044f19e32bd",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "global-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "8f0b8d7d-8ba1-4ca8-a3a8-600d4e8e16b1:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "loading-global-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "3bae8ccc-d5b0-4e74-b39c-157e7f98783f",
+        "title": "",
+        "composer": true,
+        "hasMessages": false,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "loading-global-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "submitted": false,
+        "bindingPending": true,
+        "bindingReason": "message-not-rendered",
+        "pageLoading": true,
+        "contentObserved": false,
+        "busy": false,
+        "terminal": false
+      }
+    },
+    {
+      "fixture": "ordinary-answer",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "0802b463-a6b5-4185-a66f-60b373290b14",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "ordinary-answer",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "b990ab3f-b608-4afb-9c2a-be56ffbdfca8:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "The phrase Browser app server websocket closed is discussed as ordinary answer text."
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-reply-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "148faf23-53cf-43c7-9e7c-fdb91d7d830f",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-reply-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "f65ee5b2-9ae3-4640-baac-be3edb4539b7:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "Browser app server websocket closed"
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-global-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "0488f985-4736-4488-9a1d-0193f4b3dee0",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-global-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "a6c974f7-d402-4ac0-bf90-0f32dbce5f2f:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "Browser app server websocket closed"
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-shared-wrapper-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "28db45e5-c6c1-46e2-85ad-bb58df0a338d",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-shared-wrapper-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "0bc00a79-7f35-4fe5-a939-2d86b68a6092:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "Browser app server websocket closed"
+      }
+    },
+    {
+      "fixture": "historical-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "3e92731d-db6d-41ea-accd-76c281906cc4",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "historical-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "a3fa755b-b709-4d1d-bafe-5616ba9ed18f:4.0,6.0,5.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "historical-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "9a20bf2d-f86c-4067-b43f-6d9c75a8a0cf",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "historical-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "e74b0768-a859-4859-b548-ef1d3ec69f0c:4.0,6.0,5.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "unlabelled-historical-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "ee60838c-984c-48d7-9f04-b9f746c70f3d",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "unlabelled-historical-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "589664fd-afd7-4339-b41c-1573385eb7a5:4.0,6.0,5.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "user-quoted-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "19f349b4-3847-495e-a054-467679dca3eb",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "user-quoted-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "2cce4076-1539-4314-9417-84d86258b3ed:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "code-block-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "a9c63608-7416-4336-a67b-b1a7d3dbf196",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "code-block-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "2278fb35-7744-469d-a37a-0d1fd1d9fdee:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer\n\n```\nBrowser app server websocket closed\n```"
+      }
+    },
+    {
+      "fixture": "inline-code-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "b30314c1-60c5-4795-88e6-f59a3a4421e0",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "inline-code-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "cb633cd6-45c5-4655-a8c6-06a6b4dff5a3:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer\n\n`Browser app server websocket closed`"
+      }
+    },
+    {
+      "fixture": "code-block-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "e2452473-ac17-4c2a-9313-b0264bd5ac04",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "code-block-retry",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "21a6e112-0a89-495a-87e4-8c0759d3ca4a:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer\n\n```\nBrowser app server websocket closedRetry\n```"
+      }
+    },
+    {
+      "fixture": "hidden-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "a77d3b21-bc32-453b-a761-2122b6ac1911",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "hidden-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "688ef355-dd69-4aad-a84d-0ee8722ac93c:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "aria-hidden-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "110b0833-512a-4e06-9c5e-4ab91bd9f0ef",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "aria-hidden-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "268666b1-e170-4e65-a3e6-b30e3947bec9:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "menu-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "05d6c434-7516-40d2-b69d-295c98a1c2bd",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "menu-alert",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "7e516cb2-0a93-4f3e-b88a-353e99fa165d:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "body-text-without-error-surface",
+      "phrase": "Browser app server websocket closed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "38a63581-fc6d-43df-870a-7b336e802826",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "body-text-without-error-surface",
+      "phrase": "Browser app server websocket closed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "a00b4d3a-6236-41da-a956-0840f67179b9:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "current-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "f8771f4e-52b9-443d-b724-d5b587972e71",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "current-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "81b9afd8-7077-4fff-a944-7bbf9a00bcce:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "global-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "1d34753b-ccf7-4707-bc51-55f6921b370c",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "global-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "da0096b4-b6a7-4d85-a500-3844e8ecde88:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "current-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "978a623c-36d9-4894-8908-acff9e78f083",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "current-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "97c683a6-f20d-4675-8b9f-d9a99dffc8ec:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "global-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "080c1c42-e5cf-4d3e-9608-369b08f482b5",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "global-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "e4be67ca-e945-4622-a7e8-9728206c7d55:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "loading-global-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "9cdad7fa-24b2-4cc1-9057-d8069ca35cf8",
+        "title": "",
+        "composer": true,
+        "hasMessages": false,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "loading-global-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": true,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "网页实时连接已断开，请在原网页检查或恢复连接；软件不会自动重发。",
+        "recoverable": true,
+        "websiteSocketClosed": true,
+        "errorCode": "website_socket_closed",
+        "submitted": false,
+        "bindingPending": true,
+        "bindingReason": "message-not-rendered",
+        "pageLoading": true,
+        "contentObserved": false,
+        "busy": false,
+        "terminal": false
+      }
+    },
+    {
+      "fixture": "ordinary-answer",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "2911dd1c-7d30-47b5-8d53-5bb0a225c15a",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "ordinary-answer",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "b58eaf51-fbf8-4317-a7e5-6d7f9465a71b:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "The phrase Browser app server websocket failed is discussed as ordinary answer text."
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-reply-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "dc3f1bdc-ef99-450b-ae66-f318fd40a264",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-reply-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "f9f029da-7979-455d-88bd-d477bde14c21:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "Browser app server websocket failed"
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-global-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "de195b64-6915-47fa-80eb-c43f37ed26c5",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-global-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "7e4de4ec-c5e1-43d1-bb53-d3f8878be84a:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "Browser app server websocket failed"
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-shared-wrapper-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "3ce36c1a-3bde-4745-b9b5-a1e3e53d9417",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "ordinary-answer-with-shared-wrapper-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "d88ebf80-e851-41cb-b7ec-f848f9c46f14:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "Browser app server websocket failed"
+      }
+    },
+    {
+      "fixture": "historical-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "ce952fb3-cdf4-4412-bcde-fa8faabd1890",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "historical-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "90bb8dfa-62a1-4c29-9d63-d8ccdcec4f4f:4.0,6.0,5.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "historical-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "03d9ad6c-6e54-4623-a864-a261a4d338bb",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "historical-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "c13465f3-e00d-4dc9-916a-b0b54a334196:4.0,6.0,5.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "unlabelled-historical-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "2b89550f-a152-4d1d-91ad-ab4a2066102c",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "unlabelled-historical-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "c6ecd778-81e5-4cfc-a91c-20026fa06292:4.0,6.0,5.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "user-quoted-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "8c1c520e-e0a3-4298-b217-2b9be0b691cc",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "user-quoted-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "923de0d1-2a8c-4ebf-959b-e4cf1e87d3ac:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "code-block-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "1c465b51-8f1c-4243-9b7d-c15cc8abbe6e",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "code-block-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "82398921-2aec-4564-8af6-1729123cf64b:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer\n\n```\nBrowser app server websocket failed\n```"
+      }
+    },
+    {
+      "fixture": "inline-code-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "8f00d11f-a692-4cc4-a124-56dbb46d1ad4",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "inline-code-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "0ba11583-15f4-4d5a-9ee2-05387fba264a:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer\n\n`Browser app server websocket failed`"
+      }
+    },
+    {
+      "fixture": "code-block-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "876b89c8-2cb8-4f47-940e-2ad675f9b772",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "code-block-retry",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "2b11e2a6-0ce1-4176-8f1a-d8c830e871f5:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer\n\n```\nBrowser app server websocket failedRetry\n```"
+      }
+    },
+    {
+      "fixture": "hidden-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "57884f56-a359-428c-bcc4-3233f09a0c7d",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "hidden-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "b0c14305-7ad5-4064-a691-0b7767fba087:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "aria-hidden-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "a2ce2f23-76d4-494f-a207-a2577d8c7692",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "aria-hidden-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "5eb42ac5-17b4-4ee0-9a5e-e043b839eabf:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "menu-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "484f2a02-e8b0-44da-ae1d-708c6f58f17b",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "menu-alert",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "fecf693a-e2b8-491a-860f-6ff30fbab8cd:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "body-text-without-error-surface",
+      "phrase": "Browser app server websocket failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "6413c0ab-9976-4226-8c67-09154ce0b4ed",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "body-text-without-error-surface",
+      "phrase": "Browser app server websocket failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "969a25a1-b138-4f40-93b4-92354c007ccc:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "unrelated-failure-role-alert",
+      "phrase": "Browser app server websocket failure",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "4c68455d-5d5e-4b27-a235-4ca5a1b85484",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "unrelated-failure-role-alert",
+      "phrase": "Browser app server websocket failure",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "a0235c0f-1113-4383-b278-2d2dc1a6c94c:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    },
+    {
+      "fixture": "unrelated-failure-role-alert",
+      "phrase": "database authentication failed",
+      "action": "web-inspect",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "documentId": "2fce148c-2ca7-4f91-bd17-1261515bc395",
+        "title": "",
+        "composer": true,
+        "hasMessages": true,
+        "contentKey": "",
+        "model": "",
+        "effort": "",
+        "modelKnown": false,
+        "busy": false,
+        "error": "",
+        "recoverable": false,
+        "transcriptDirty": false,
+        "interacting": false
+      }
+    },
+    {
+      "fixture": "unrelated-failure-role-alert",
+      "phrase": "database authentication failed",
+      "action": "poll",
+      "expectedWebsiteSocketFailure": false,
+      "pass": true,
+      "noEffects": true,
+      "output": {
+        "url": "https://chatgpt.com/c/original",
+        "error": "",
+        "recoverable": false,
+        "thinking": false,
+        "searching": false,
+        "busy": false,
+        "submitted": true,
+        "userKey": "id:bound-user",
+        "userOrdinal": 0,
+        "boundByNewIdentity": false,
+        "otherQuestion": false,
+        "replyKey": "id:bound-reply",
+        "terminal": true,
+        "hasReply": true,
+        "replyContentRevision": "0e6cf0e5-4cba-41c4-b20a-85464c578d33:2.0,4.0,3.0",
+        "contentObserved": true,
+        "hasFiles": false,
+        "markdown": "complete original answer"
+      }
+    }
+  ]
+}
