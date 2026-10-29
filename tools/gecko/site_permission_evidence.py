@@ -1,4 +1,5 @@
 """Additional controlled SDK permission evidence; never a production UI acceptance claim."""
+import hashlib
 import math
 import re
 
@@ -33,7 +34,7 @@ def permission_tap_command(value, earlier):
 
 
 def verify_site_permission_evidence(report, gestures):
-    require(isinstance(report, dict) and type(report.get('schema')) is int and report['schema'] == 1, 'Permission schema')
+    require(isinstance(report, dict) and type(report.get('schema')) is int and report['schema'] == 2, 'Permission schema')
     require(report.get('scope') == 'controlled-gecko-sdk-only' and report.get('origin') == ORIGIN, 'Permission scope/origin')
     for key in ('actualAndroidExecution', 'actualGeckoExecution', 'testOnlyCertificateException'):
         require(report.get(key) is True, 'Permission actual fixture flag: ' + key)
@@ -66,8 +67,13 @@ def verify_site_permission_evidence(report, gestures):
     require(isinstance(callbacks, list) and len(callbacks) <= 8, 'Permission native callback bound')
     for index, callback in enumerate(callbacks):
         require(isinstance(callback, dict) and type(callback.get('sequence')) is int and callback['sequence'] == index + 1 and type(callback.get('type')) is int and callback['type'] == 1, 'Permission native callback identity')
-        require(type(callback.get('value')) is int and callback['value'] in (1, 2, 3) and callback.get('origin') == ORIGIN, 'Permission native callback value/origin')
-        require(callback.get('privateMode') is False and all(callback.get(key) is True for key in ('contextMatches', 'thirdPartyAbsent', 'sameSession')), 'Permission native callback namespace')
+        require(type(callback.get('value')) is int and callback['value'] in (0, 1, 2, 3) and callback.get('origin') == ORIGIN, 'Permission native callback value/origin')
+        require(callback.get('role') == 'content-permission-request' and callback.get('valueSemantics') == ('native-request-unmapped' if callback['value'] == 0 else 'native-request-capability'), 'Permission native request capability semantics')
+        require(callback.get('privateMode') is False and all(callback.get(key) is True for key in ('contextMatches', 'sameSession')), 'Permission native callback namespace')
+        require(callback.get('thirdPartyAbsent') is False and callback.get('thirdPartyOriginKind') == 'controlled-origin'
+                and type(callback.get('thirdPartyOriginLength')) is int and callback['thirdPartyOriginLength'] == len(ORIGIN)
+                and callback.get('thirdPartyOriginSha256') == hashlib.sha256(ORIGIN.encode()).hexdigest()
+                and callback.get('thirdPartyOrigin') == ORIGIN, 'Permission native request principal origin')
     snapshots = report.get('snapshots')
     require(isinstance(snapshots, list) and len(snapshots) <= 9, 'Permission native readback bound')
     grouped = {stage: [] for stage in ('baseline-default', 'deny', 'default')}
@@ -78,6 +84,7 @@ def verify_site_permission_evidence(report, gestures):
         require(type(snapshot.get('attempt')) is int and snapshot['attempt'] == len(group) + 1 <= 3, 'Permission readback attempt')
         require(type(snapshot.get('present')) is bool and type(snapshot.get('value')) is int, 'Permission readback value types')
         require(snapshot['value'] in ((1, 2, 3) if snapshot['present'] else (0,)), 'Permission missing record value')
+        require(snapshot.get('role') == 'stored-permission-record' and snapshot.get('valueSemantics') == ('stored-permission-value' if snapshot['present'] else 'absent-record-sentinel'), 'Permission stored record value semantics')
         require(type(snapshot.get('type')) is int and snapshot['type'] == 1 and snapshot.get('origin') == ORIGIN and snapshot.get('privateMode') is False, 'Permission readback origin/type')
         require(snapshot.get('contextMatches') is True and snapshot.get('thirdPartyAbsent') is True, 'Permission readback namespace')
         group.append(snapshot);order.append(snapshot['stage'])
@@ -105,8 +112,10 @@ def verify_site_permission_evidence(report, gestures):
     require(requests[2]['before'] == 'default' and requests[2]['callbacksBefore'] == requests[1]['callbacksAfter'] and requests[2]['callbacksAfter'] == len(callbacks) > requests[2]['callbacksBefore'], 'Default behavior did not reach a fresh native callback')
     require(len(mutations) == 2, 'Exactly one deny and one default mutation')
     for mutation, stage, value, source in zip(mutations, ('deny', 'default'), (2, 3), ('content-permission-callback', 'getPermissions-readback')):
-        require(isinstance(mutation, dict) and type(mutation.get('value')) is int and mutation.get('originalNativeObject') is True, 'Native mutation types')
-        require(mutation == dict(stage=stage, value=value, originalNativeObject=True, source=source), 'Native mutation source/value or duplicate write')
+        require(isinstance(mutation, dict) and type(mutation.get('value')) is int and type(mutation.get('sourceValue')) is int and mutation.get('originalNativeObject') is True, 'Native mutation types')
+        source_value = callbacks[0]['value'] if stage == 'deny' else 2
+        semantics = callbacks[0]['valueSemantics'] if stage == 'deny' else 'stored-permission-value'
+        require(mutation == dict(stage=stage, value=value, originalNativeObject=True, source=source, sourceValue=source_value, sourceValueSemantics=semantics), 'Native mutation source/value or duplicate write')
     for stage, expected in (('baseline-default', 3), ('deny', 2), ('default', 3)):
         require(grouped[stage], 'Missing native readback: ' + stage)
         final = grouped[stage][-1]

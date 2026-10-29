@@ -1,6 +1,8 @@
 package local.pocketchat;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.*;
 import org.json.*;
@@ -14,7 +16,7 @@ final class GeckoSitePermissionFixture {
   final String nonce=UUID.randomUUID().toString().replace("-","");
   final JSONArray checks=new JSONArray(),callbacks=new JSONArray(),snapshots=new JSONArray(),requests=new JSONArray(),mutations=new JSONArray();
   final ArrayList<GeckoSession.PermissionDelegate.ContentPermission> nativeCallbacks=new ArrayList<>();
-  final JSONObject evidence=J.obj("schema",1,"status","not-started","scope","controlled-gecko-sdk-only",
+  final JSONObject evidence=J.obj("schema",2,"status","not-started","scope","controlled-gecko-sdk-only",
       "productionUiAdapter",false,"actualAndroidExecution",true,"actualGeckoExecution",true,"physicalPhoneAcceptance",false,
       "publicNetworkTraffic",false,"testOnlyCertificateException",true,"origin",GeckoConnectionPoolIntegrationActivity.ORIGIN,
       "checks",checks,"callbacks",callbacks,"snapshots",snapshots,"requests",requests,"mutations",mutations);
@@ -30,8 +32,12 @@ final class GeckoSitePermissionFixture {
         if(active&&s==bound&&s==test.view.current&&permission.permission==PERMISSION_DESKTOP_NOTIFICATION) {
           if(nativeCallbacks.size()>=8)throw new IllegalStateException("Permission callback bound exceeded");
           nativeCallbacks.add(permission);callbacks.put(J.obj("sequence",nativeCallbacks.size(),"type",permission.permission,
-              "value",permission.value,"origin",SitePermissions.origin(permission.uri),"privateMode",permission.privateMode,
-              "contextMatches",Objects.equals(context,permission.contextId),"thirdPartyAbsent",permission.thirdPartyOrigin==null,"sameSession",true));
+              "role","content-permission-request","value",permission.value,"valueSemantics",requestValueSemantics(permission.value),
+              "origin",SitePermissions.origin(permission.uri),"privateMode",permission.privateMode,
+              "contextMatches",Objects.equals(context,permission.contextId),"thirdPartyAbsent",permission.thirdPartyOrigin==null,"sameSession",true,
+              "thirdPartyOriginKind",thirdPartyKind(permission.thirdPartyOrigin),"thirdPartyOriginLength",permission.thirdPartyOrigin==null?0:permission.thirdPartyOrigin.length(),
+              "thirdPartyOriginSha256",thirdPartyDigest(permission.thirdPartyOrigin),
+              "thirdPartyOrigin",GeckoConnectionPoolIntegrationActivity.ORIGIN.equals(permission.thirdPartyOrigin)?permission.thirdPartyOrigin:JSONObject.NULL));
         }
         // Observe the original response. No synthetic grant, prompt response or Android permission.
         return original.onContentPermissionRequest(s,permission);
@@ -70,9 +76,24 @@ final class GeckoSitePermissionFixture {
         &&value.optBoolean("secureContext")&&value.optBoolean("isTrusted")&&value.optBoolean("userActivation")&&value.optBoolean("requestCalled")&&!value.has("error"));
     NetworkCatalog.put(value,"callbacksBefore",before);NetworkCatalog.put(value,"callbacksAfter",count());requests.put(value);return value;
   }
-  boolean key(GeckoSession.PermissionDelegate.ContentPermission p){return p.permission==GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION
+  static String requestValueSemantics(int value){return value==0?"native-request-unmapped":"native-request-capability";}
+  static String thirdPartyKind(String value){return value==null?"null":value.isEmpty()?"empty":
+      GeckoConnectionPoolIntegrationActivity.ORIGIN.equals(value)?"controlled-origin":value.length()>2048?"oversize":"other";}
+  static Object thirdPartyDigest(String value){
+    if(value==null||value.length()>2048)return JSONObject.NULL;
+    try{byte[] digest=MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+      StringBuilder hex=new StringBuilder(64);for(byte item:digest)hex.append(String.format(Locale.ROOT,"%02x",item&255));return hex.toString();
+    }catch(java.security.NoSuchAlgorithmException error){throw new IllegalStateException(error);}
+  }
+  boolean commonKey(GeckoSession.PermissionDelegate.ContentPermission p){return p!=null&&p.permission==GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION
       &&GeckoConnectionPoolIntegrationActivity.ORIGIN.equals(SitePermissions.origin(p.uri))&&Objects.equals(context,p.contextId)
-      &&p.privateMode==privateMode&&p.thirdPartyOrigin==null;}
+      &&p.privateMode==privateMode;}
+  // Live actor requests carry the requesting principal origin and a capability that may be 0.
+  // Stored getPermissions records omit ordinary-notification thirdPartyOrigin and retain values 1..3.
+  boolean requestKey(GeckoSession.PermissionDelegate.ContentPermission p){return commonKey(p)
+      &&GeckoConnectionPoolIntegrationActivity.ORIGIN.equals(p.thirdPartyOrigin)&&p.value>=0&&p.value<=3;}
+  boolean storedKey(GeckoSession.PermissionDelegate.ContentPermission p){return commonKey(p)
+      &&p.thirdPartyOrigin==null&&p.value>=1&&p.value<=3;}
   GeckoSession.PermissionDelegate.ContentPermission query()throws Exception{
     CompletableFuture<List<GeckoSession.PermissionDelegate.ContentPermission>> result=new CompletableFuture<>();
     test.ui(()->{test.view.runtime.getStorageController().getPermissions(GeckoConnectionPoolIntegrationActivity.ORIGIN,context,privateMode)
@@ -80,13 +101,13 @@ final class GeckoSitePermissionFixture {
     List<GeckoSession.PermissionDelegate.ContentPermission> rows=result.get(3,TimeUnit.SECONDS);
     if(rows==null||rows.size()>128)throw new IOException("Native permission list unavailable or exceeds bound");
     GeckoSession.PermissionDelegate.ContentPermission found=null;
-    for(GeckoSession.PermissionDelegate.ContentPermission row:rows)if(key(row)){if(found!=null)throw new IOException("Duplicate native permission key");found=row;}
+    for(GeckoSession.PermissionDelegate.ContentPermission row:rows)if(storedKey(row)){if(found!=null)throw new IOException("Duplicate native permission key");found=row;}
     return found;
   }
   GeckoSession.PermissionDelegate.ContentPermission readback(String stage,int expected)throws Exception{
     for(int attempt=1;attempt<=3;attempt++){
       samePage();GeckoSession.PermissionDelegate.ContentPermission row=query();
-      snapshots.put(J.obj("stage",stage,"attempt",attempt,"present",row!=null,"value",row==null?0:row.value,
+      snapshots.put(J.obj("role","stored-permission-record","valueSemantics",row==null?"absent-record-sentinel":"stored-permission-value","stage",stage,"attempt",attempt,"present",row!=null,"value",row==null?0:row.value,
           "type",GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION,"origin",GeckoConnectionPoolIntegrationActivity.ORIGIN,
           "contextMatches",row==null||Objects.equals(context,row.contextId),"privateMode",privateMode,"thirdPartyAbsent",row==null||row.thirdPartyOrigin==null));
       if(row!=null&&row.value==expected||row==null&&expected==GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT)return row;
@@ -95,10 +116,14 @@ final class GeckoSitePermissionFixture {
     throw new IOException("Native permission readback did not reach "+stage);
   }
   void write(String stage,GeckoSession.PermissionDelegate.ContentPermission permission,int value)throws Exception{
-    samePage();check("Only a genuine notification permission object is dispatched for "+stage,permission!=null&&key(permission)
-        &&(value==GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY||value==GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT));
+    samePage();boolean fromRequest="deny".equals(stage)&&value==GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY
+        &&requestKey(permission)&&test.ui(()->!nativeCallbacks.isEmpty()&&nativeCallbacks.get(0)==permission);
+    boolean fromStored="default".equals(stage)&&value==GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT
+        &&storedKey(permission)&&permission.value==GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY;
+    check("Only a genuine notification permission object is dispatched for "+stage,fromRequest||fromStored);
     test.ui(()->{test.view.runtime.getStorageController().setPermission(permission,value);return null;});
-    mutations.put(J.obj("stage",stage,"value",value,"originalNativeObject",true,"source",stage.equals("deny")?"content-permission-callback":"getPermissions-readback"));
+    mutations.put(J.obj("stage",stage,"value",value,"originalNativeObject",true,"source",fromRequest?"content-permission-callback":"getPermissions-readback",
+        "sourceValue",permission.value,"sourceValueSemantics",fromRequest?requestValueSemantics(permission.value):"stored-permission-value"));
   }
   void run()throws Exception{
     NetworkCatalog.put(evidence,"status","running");

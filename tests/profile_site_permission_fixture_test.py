@@ -89,6 +89,74 @@ public class GeckoSession {
 '''
 
 
+PROBE = r'''
+package local.pocketchat;
+import org.json.*;import org.mozilla.geckoview.*;
+final class NativeRequestScopeProbe {
+  static int checks,writes;static Object dispatched;static int newValue;
+  static void check(boolean value){if(!value)throw new AssertionError("scope check "+checks);checks++;}
+  static class Test extends GeckoConnectionPoolIntegrationActivity {
+    @Override <T>T ui(Work<T> work)throws Exception{return work.run();}
+  }
+  static GeckoSession.PermissionDelegate.ContentPermission permission(int value,String third){
+    GeckoSession.PermissionDelegate.ContentPermission p=new GeckoSession.PermissionDelegate.ContentPermission();
+    p.permission=1;p.value=value;p.uri=GeckoConnectionPoolIntegrationActivity.ORIGIN;p.thirdPartyOrigin=third;return p;
+  }
+  public static void main(String[] args)throws Exception {
+    Test t=new Test();t.view=new View(){@Override String getUrl(){return GeckoConnectionPoolIntegrationActivity.ORIGIN+"/pool";}};
+    GeckoSession session=new GeckoSession(){@Override public boolean isOpen(){return true;}};
+    t.view.current=session;t.view.runtime=new GeckoRuntime(){@Override public StorageController getStorageController(){
+      return new StorageController(){@Override public void setPermission(GeckoSession.PermissionDelegate.ContentPermission p,int value){writes++;dispatched=p;newValue=value;}};}};
+    GeckoSitePermissionFixture f=new GeckoSitePermissionFixture(t);f.bound=session;f.context=null;f.privateMode=false;f.active=true;
+    String origin=GeckoConnectionPoolIntegrationActivity.ORIGIN;
+    GeckoSession.PermissionDelegate.ContentPermission live=permission(0,origin),stored=permission(2,null);
+    check(f.requestKey(live));check(!f.storedKey(live));check(f.storedKey(stored));check(!f.requestKey(stored));
+    check("native-request-unmapped".equals(GeckoSitePermissionFixture.requestValueSemantics(0)));
+    check(!f.storedKey(permission(0,null)));check(!f.requestKey(permission(4,origin)));
+    for(int value=1;value<=3;value++){check(f.storedKey(permission(value,null)));check(f.requestKey(permission(value,origin)));}
+    for(String wrong:new String[]{null,"",origin+"/pool","https://other.test",new String(new char[2049]).replace('\0','x')}){
+      check(!f.requestKey(permission(0,wrong)));
+    }
+    for(int axis=0;axis<4;axis++){
+      GeckoSession.PermissionDelegate.ContentPermission p=permission(0,origin);
+      if(axis==0)p.uri="https://other.test";if(axis==1)p.contextId="";if(axis==2)p.privateMode=true;if(axis==3)p.permission=3;
+      check(!f.requestKey(p));
+      p=permission(2,null);if(axis==0)p.uri="https://other.test";if(axis==1)p.contextId="";if(axis==2)p.privateMode=true;if(axis==3)p.permission=3;
+      check(!f.storedKey(p));
+    }
+    check("null".equals(GeckoSitePermissionFixture.thirdPartyKind(null)));
+    check("empty".equals(GeckoSitePermissionFixture.thirdPartyKind("")));
+    check("other".equals(GeckoSitePermissionFixture.thirdPartyKind("https://other.test")));
+    check("oversize".equals(GeckoSitePermissionFixture.thirdPartyKind(new String(new char[2049]))));
+    check(GeckoSitePermissionFixture.thirdPartyDigest(new String(new char[2049]))==JSONObject.NULL);
+    final int[] forwarded={0};
+    GeckoSession.PermissionDelegate observed=f.observe(session,new GeckoSession.PermissionDelegate(){
+      @Override public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s,ContentPermission p){forwarded[0]++;return null;}});
+    observed.onContentPermissionRequest(new GeckoSession(),live);check(f.nativeCallbacks.isEmpty());
+    observed.onContentPermissionRequest(session,live);check(f.nativeCallbacks.size()==1&&f.nativeCallbacks.get(0)==live&&forwarded[0]==2);
+    JSONObject callback=f.callbacks.getJSONObject(0);check(callback.getInt("value")==0&&"native-request-unmapped".equals(callback.getString("valueSemantics")));
+    check(origin.equals(callback.getString("thirdPartyOrigin"))&&callback.getInt("thirdPartyOriginLength")==origin.length());
+    check("5d247053c598a4ab5ea02c4a6a4c367539a2e7861baf2240f003fe4d626c1ab4".equals(callback.getString("thirdPartyOriginSha256")));
+    f.write("deny",live,2);check(writes==1&&dispatched==live&&newValue==2&&live.value==0&&origin.equals(live.thirdPartyOrigin));
+    f.write("default",stored,3);check(writes==2&&dispatched==stored&&newValue==3&&stored.value==2&&stored.thirdPartyOrigin==null);
+    for(int item=0;item<5;item++){
+      try{if(item==0)f.write("deny",permission(0,"https://other.test"),2);
+        if(item==1)f.write("deny",permission(0,origin),2);
+        if(item==2)f.write("default",live,3);
+        if(item==3)f.write("deny",live,1);
+        if(item==4)f.write("default",stored,2);
+        throw new IllegalStateException("unexpected dispatch");
+      }catch(AssertionError expected){check(writes==2);}
+    }
+    observed.onContentPermissionRequest(session,permission(0,"https://other.test"));
+    JSONObject foreign=f.callbacks.getJSONObject(1);check(foreign.isNull("thirdPartyOrigin")&&"other".equals(foreign.getString("thirdPartyOriginKind"))&&foreign.getString("thirdPartyOriginSha256").length()==64);
+    check(f.mutations.getJSONObject(0).getInt("sourceValue")==0&&"native-request-unmapped".equals(f.mutations.getJSONObject(0).getString("sourceValueSemantics")));
+    System.out.println(checks);
+  }
+}
+'''
+
+
 class SitePermissionFixtureTest(unittest.TestCase):
     def test_whole_original_activity_runner_and_all_old_budgets_inverse_exactly(self):
         for path, inverse in [(ACTIVITY, original_activity), (RUNNER, original_runner)]:
@@ -119,14 +187,19 @@ class SitePermissionFixtureTest(unittest.TestCase):
             with tempfile.TemporaryDirectory(prefix='site-permission-fixture-') as temporary:
                 temp = Path(temporary);app = temp / 'BoundaryDoubles.java';app.write_text(APP)
                 sdk = temp / 'GeckoSession.java';sdk.write_text(SDK)
+                probe = temp / 'NativeRequestScopeProbe.java';probe.write_text(PROBE)
                 production = ROOT / 'app/src/main/java/local/pocketchat'
                 edges = ROOT / 'tests/site-permissions-ui-host/org/mozilla/geckoview'
-                sources = [production / 'SitePermissions.java', production / 'J.java', ROOT / 'tests/gecko/GeckoSitePermissionFixture.java', app, sdk]
+                sources = [production / 'SitePermissions.java', production / 'J.java', ROOT / 'tests/gecko/GeckoSitePermissionFixture.java', app, sdk, probe]
                 sources += [edges / (name + '.java') for name in ['StorageController', 'GeckoRuntime', 'GeckoResult']]
                 run = subprocess.run([java, '-m', 'jdk.compiler/com.sun.tools.javac.Main', '--release', '8', '-encoding', 'UTF-8',
                                       '-cp', os.pathsep.join((str(framework), str(jar))), '-d', str(temp / 'classes'), *map(str, sources)],
                                      capture_output=True, text=True, timeout=35)
                 self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+                executed = subprocess.run([java, '-cp', os.pathsep.join((str(temp / 'classes'), str(jar), str(framework))),
+                                           'local.pocketchat.NativeRequestScopeProbe'], capture_output=True, text=True, timeout=15)
+                self.assertEqual(executed.returncode, 0, executed.stdout + executed.stderr)
+                self.assertGreaterEqual(int(executed.stdout.strip()), 40)
 
 
 if __name__ == '__main__':
