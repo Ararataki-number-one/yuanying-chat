@@ -5,6 +5,7 @@ import importlib.util
 import io
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -15,6 +16,18 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('ci_git_publish', ROOT/'tools/gecko/ci_git_publish.py')
 P = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(P)
+
+
+# Actual 33/1 public Git stderr, with only runner timestamps removed.
+ACTUAL_REMOTE_CAS_STDERR = (
+    'remote: warning: See https://gh.io/lfs for more information.        \n'
+    "remote: warning: File PocketChat-2.0.33-arm64-v8a.apk.part01 is 56.58 MB; this is larger than GitHub's recommended maximum file size of 50.00 MB        \n"
+    "remote: warning: File PocketChat-2.0.33-arm64-v8a.apk.part00 is 57.22 MB; this is larger than GitHub's recommended maximum file size of 50.00 MB        \n"
+    'remote: warning: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.        \n'
+    'To https://github.com/Ararataki-number-one/yuanying-chat\n'
+    " ! [remote rejected] 0de4d5cecfdb4a8d64919368b1925a2404616ffa -> apk/gecko-integration-build-20261003 (cannot lock ref 'refs/heads/apk/gecko-integration-build-20261003': is at 8cfcdab8ee95ad623f58a5d477daced01f9e0f22 but expected b0c4c0ae7f8de409273e8af1c7a8cf49ca2e78b9)\n"
+    "error: failed to push some refs to 'https://github.com/Ararataki-number-one/yuanying-chat'\n"
+)
 
 
 class PublicationArtifactCopyTests(unittest.TestCase):
@@ -459,6 +472,125 @@ class PublicationTests(unittest.TestCase):
                 return original(command, **kwargs)
             with self.subTest(observed=observed), patch.object(P.subprocess, 'check_output', side_effect=output), self.assertRaisesRegex(ValueError, 'observed artifact ref'):
                 self.publish()
+
+    def remote_cas_stderr(self, candidate, current, expected, standard=False):
+        if standard:
+            return (f"remote: error: cannot lock ref '{self.ref}': is at {current} but expected {expected}\n"
+                    f' ! [remote rejected] {candidate} -> {self.branch} (failed to update ref)\n'
+                    f"error: failed to push some refs to '{self.remote}'\n")
+        return (ACTUAL_REMOTE_CAS_STDERR
+                .replace('0de4d5cecfdb4a8d64919368b1925a2404616ffa', candidate)
+                .replace('8cfcdab8ee95ad623f58a5d477daced01f9e0f22', current)
+                .replace('b0c4c0ae7f8de409273e8af1c7a8cf49ca2e78b9', expected)
+                .replace('apk/gecko-integration-build-20261003', self.branch))
+
+    def remote_cas_collisions(self, number, standard=False):
+        original = subprocess.run
+        self.pushes = [];self.fetches = [];self.competitors = [];self.handshakes = []
+        def run(command, **kwargs):
+            if command[:2] == ['git', 'fetch']:
+                self.fetches.append(list(command))
+            if 'push' in command and 'http.postBuffer=524288000' in command:
+                self.pushes.append(list(command))
+                if len(self.pushes) <= number:
+                    tip = self.git('ls-remote', 'origin', self.ref).split()[0]
+                    # Real local remote advances twice: Git's handshake expectation
+                    # need not equal this publisher's earlier ls-remote snapshot.
+                    previous = tip
+                    for label in ('handshake', 'competing writer'):
+                        changed = self.git('commit-tree', self.source + '^{tree}', '-p', previous,
+                                           '-m', label + ' ' + str(len(self.pushes)))
+                        original(['git', 'push', 'origin', changed + ':' + self.ref], cwd=self.root,
+                                 capture_output=True, text=True, check=True)
+                        if label == 'handshake':self.handshakes.append(changed)
+                        previous = changed
+                    self.competitors.append(changed)
+                    candidate = command[-1].split(':', 1)[0]
+                    return subprocess.CompletedProcess(command, 1, stdout='', stderr=self.remote_cas_stderr(
+                        candidate, changed, self.handshakes[-1], standard))
+            return original(command, **kwargs)
+        return patch.object(P.subprocess, 'run', side_effect=run)
+
+    def assert_frozen_pushes(self):
+        for command in self.pushes:
+            self.assertFalse(any(value.startswith('--force') or value.startswith('+') for value in command))
+            self.assertEqual(command[-1].split(':', 1)[1], self.ref)
+            candidate = command[-1].split(':', 1)[0]
+            self.assertEqual(self.git('rev-parse', candidate + '^{tree}'), self.tree)
+            self.assertEqual(self.git('show', '-s', '--format=%P', candidate).split()[0], self.source)
+
+    def test_literal_actual_remote_cas_stderr_is_recognized(self):
+        self.assertTrue(P._remote_ref_conflict(ACTUAL_REMOTE_CAS_STDERR,
+            'refs/heads/apk/gecko-integration-build-20261003',
+            '0de4d5cecfdb4a8d64919368b1925a2404616ffa'))
+
+    def test_remote_cas_race_retries_same_tree_and_preserves_actual_competing_writer(self):
+        for standard in (False, True):
+            with self.subTest(standard=standard):
+                first = self.publish()
+                with self.remote_cas_collisions(1, standard), contextlib.redirect_stderr(io.StringIO()):
+                    commit = self.publish()
+                self.assert_tree(commit)
+                self.assertEqual(len(self.pushes), 2)
+                self.assertEqual([command[-1] for command in self.fetches], [first, self.competitors[0]])
+                self.assertNotEqual(self.handshakes[0], first)
+                self.assertEqual(self.git('show', '-s', '--format=%P', commit).split(),
+                                 [self.source, self.competitors[0]])
+                self.assertIn('parent ' + self.handshakes[0],
+                              self.git('cat-file', '-p', self.competitors[0]).splitlines())
+                self.assert_frozen_pushes()
+
+    def test_three_remote_cas_races_exhaust_original_budget_without_overwrite(self):
+        first = self.publish()
+        with self.remote_cas_collisions(3), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(subprocess.CalledProcessError):
+            self.publish()
+        self.assertEqual(len(self.pushes), 3)
+        self.assertEqual([command[-1] for command in self.fetches], [first, *self.competitors[:2]])
+        self.assertEqual(self.git('ls-remote', 'origin', self.ref).split()[0], self.competitors[-1])
+        self.assert_frozen_pushes()
+
+    def test_remote_cas_lookalikes_are_never_retried(self):
+        first = self.publish();original = subprocess.run
+        mutations = {
+            'authentication': lambda text: "remote: Permission denied\nfatal: Authentication failed\n",
+            'network': lambda text: "fatal: unable to access remote: Could not resolve host\n",
+            'permission': lambda text: text.replace("cannot lock ref '" + self.ref + "': is at " + 'a' * 40 + ' but expected ' + 'b' * 40, 'permission denied'),
+            'disk': lambda text: text.replace("cannot lock ref '" + self.ref + "': is at " + 'a' * 40 + ' but expected ' + 'b' * 40, 'No space left on device'),
+            'hook': lambda text: text.replace("cannot lock ref '" + self.ref + "': is at " + 'a' * 40 + ' but expected ' + 'b' * 40, 'pre-receive hook declined'),
+            'wrong-cas-ref': lambda text: text.replace("cannot lock ref '" + self.ref, "cannot lock ref 'refs/heads/apk/other"),
+            'wrong-destination': lambda text: text.replace(' -> ' + self.branch + ' ', ' -> apk/other '),
+            'wrong-candidate': lambda text: re.sub(r'(\[remote rejected\] )[0-9a-f]{40}(?= ->)', r'\g<1>' + 'c' * 40, text),
+            'bad-current-hex': lambda text: text.replace('is at ' + 'a' * 40, 'is at ' + 'g' * 40),
+            'short-expected': lambda text: text.replace('expected ' + 'b' * 40, 'expected ' + 'b' * 39),
+            'same-hashes': lambda text: text.replace('expected ' + 'b' * 40, 'expected ' + 'a' * 40),
+            'no-remote-prefix': lambda text: text.replace('[remote rejected]', '[rejected]'),
+            'not-a-status-line': lambda text: text.replace(' ! [remote rejected]', 'lookalike ! [remote rejected]'),
+            'missing-failed-push': lambda text: '\n'.join(line for line in text.splitlines() if not line.startswith('error:')) + '\n',
+            'no-cas-detail': lambda text: text.replace("cannot lock ref '" + self.ref + "': is at " + 'a' * 40 + ' but expected ' + 'b' * 40, 'failed to update ref'),
+            'filesystem-lock': lambda text: text.replace("is at " + 'a' * 40 + ' but expected ' + 'b' * 40, 'Unable to create ref.lock: File exists'),
+        }
+        for name, mutate in mutations.items():
+            pushes = []
+            def deny(command, **kwargs):
+                if 'push' in command and 'http.postBuffer=524288000' in command:
+                    pushes.append(list(command))
+                    candidate = command[-1].split(':', 1)[0]
+                    return subprocess.CompletedProcess(command, 1, stdout='', stderr=mutate(
+                        self.remote_cas_stderr(candidate, 'a' * 40, 'b' * 40)))
+                return original(command, **kwargs)
+            with self.subTest(name=name), patch.object(P.subprocess, 'run', side_effect=deny), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(subprocess.CalledProcessError):
+                self.publish()
+            self.assertEqual(len(pushes), 1, name)
+            self.assertEqual(self.git('ls-remote', 'origin', self.ref).split()[0], first)
+
+    def test_standard_remote_cas_requires_exact_remote_error_detail(self):
+        for detail in ("error: cannot lock ref '" + self.ref + "': is at ",
+                       "remote: error: cannot lock ref 'refs/heads/apk/other': is at "):
+            text = (detail + 'a' * 40 + ' but expected ' + 'b' * 40 + '\n'
+                    + ' ! [remote rejected] ' + self.source + ' -> ' + self.branch + ' (failed to update ref)\n'
+                    + "error: failed to push some refs to 'local-test-origin'\n")
+            with self.subTest(detail=detail):
+                self.assertFalse(P._remote_ref_conflict(text, self.ref, self.source))
 
 
 if __name__ == '__main__':
