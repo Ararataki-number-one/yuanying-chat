@@ -14,6 +14,7 @@ import sys
 sys.path.insert(0, str(ROOT / 'tools'))
 from gecko.chain_runtime_contract import verify_gecko_pool
 from gecko.site_permission_evidence import permission_tap_command, verify_site_permission_evidence
+from gecko.caret_ime_guard import redact_service_api_keys, verify_capture_privacy, diagnostic_privacy_summary
 
 OUT = ROOT / 'work/gecko-integration'
 PORT = 9877
@@ -95,6 +96,14 @@ def verify(report, server):
     return verify_gecko_pool(report, server)
 
 
+def capture_diagnostic_text(value):
+    """Return a verified derivative capture before parsing, raising or storing it."""
+    sanitized, metadata = redact_service_api_keys(value)
+    if not verify_capture_privacy(metadata, sanitized):
+        raise ValueError('Diagnostic capture privacy: invalid derivative metadata')
+    return sanitized, metadata
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--adb', required=True)
@@ -102,11 +111,19 @@ def main():
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
 
+    privacy_captures = []
+    def capture_text(value):
+        sanitized, metadata = capture_diagnostic_text(value)
+        if len(privacy_captures) >= 4096:
+            raise ValueError('Diagnostic capture privacy: capture-count bound')
+        privacy_captures.append(metadata)
+        return sanitized
+
     def adb(*parts, binary=False):
         return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=not binary, timeout=30)
 
     def log():
-        return adb('logcat', '-d', '-s', 'PocketGeckoPool:I', 'AndroidRuntime:E', '*:S')
+        return capture_text(adb('logcat', '-d', '-s', 'PocketGeckoPool:I', 'AndroidRuntime:E', '*:S'))
 
     with tempfile.TemporaryDirectory(prefix='gecko-pool-') as temporary:
         directory = pathlib.Path(temporary)
@@ -164,6 +181,7 @@ def main():
             server = json.loads((directory / 'server.json').read_text())
             report['server'] = server
             report['sitePermissionsGestures'] = permission_gestures
+            report['capturePrivacy'] = diagnostic_privacy_summary(privacy_captures)
             (OUT / 'gecko-pool-results.json').write_text(json.dumps(report, indent=2) + '\n')
             (OUT / 'gecko-pool-log.txt').write_text(raw)
             verify(report, server)
@@ -175,7 +193,7 @@ def main():
                               'actualHttp2Requests': len([r for r in server['requests'] if r['path'] == '/bytes']),
                               'webSocketFrames': server['webSockets'][0]['frames'], 'sourceCommit': report['sourceCommit']}), flush=True)
         except BaseException:
-            (OUT / 'gecko-pool-failure-log.txt').write_text(adb('logcat', '-d'))
+            (OUT / 'gecko-pool-failure-log.txt').write_text(capture_text(adb('logcat', '-d')))
             if (directory / 'server.json').exists():
                 (OUT / 'gecko-pool-server-failure.json').write_bytes((directory / 'server.json').read_bytes())
             raise

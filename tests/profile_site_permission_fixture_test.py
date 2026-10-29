@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from profile_gecko_pool_capture_privacy_test import original_pool_runner
 
 ROOT = Path(__file__).resolve().parents[1]
 PINS = {'tests/gecko/GeckoConnectionPoolIntegrationActivity.java': '53e80066191b479247b5db8e2031c5a884f8ccd31e91542796af1216fb95e331',
@@ -31,6 +32,7 @@ def original_activity(text):
 
 
 def original_runner(text):
+    text = original_pool_runner(text)
     text = once(text, 'from gecko.site_permission_evidence import permission_tap_command, verify_site_permission_evidence\n')
     text = once(text, '        permission_gestures = []\n        permission_taps = {}\n')
     text = once(text, '''                        if value.get('kind') == 'permissionTapNeeded':
