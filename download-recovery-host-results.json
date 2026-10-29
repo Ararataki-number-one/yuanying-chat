@@ -1,0 +1,215 @@
+{
+  "total": 42,
+  "checks": [
+    {
+      "pass": true,
+      "name": "Successful writer permits a new main-thread constructor while retaining its URI lease"
+    },
+    {
+      "pass": true,
+      "name": "Successful writer permits another main-thread message before lease release"
+    },
+    {
+      "pass": true,
+      "name": "Successful publication retains its exact bytes after new-instance recovery"
+    },
+    {
+      "pass": true,
+      "name": "Recovery follows the old publisher's committed task and saved index"
+    },
+    {
+      "pass": true,
+      "name": "Late old-instance updates cannot restore a deleted task or saved file"
+    },
+    {
+      "pass": true,
+      "name": "Cancelled writer permits a new main-thread constructor while retaining its URI lease"
+    },
+    {
+      "pass": true,
+      "name": "Cancelled writer permits another main-thread message before lease release"
+    },
+    {
+      "pass": true,
+      "name": "Cancelled publication removes its bytes before the waiting recovery inspects them"
+    },
+    {
+      "pass": true,
+      "name": "Waiting recovery never records an aborted destination as saved"
+    },
+    {
+      "pass": true,
+      "name": "An abandoned incomplete destination is cleaned without inventing a saved record"
+    },
+    {
+      "pass": true,
+      "name": "A published orphan is recovered only after its real destination exists"
+    },
+    {
+      "pass": true,
+      "name": "A late failed-save callback cannot clear a newer destination and generation"
+    },
+    {
+      "pass": true,
+      "name": "An older save generation cannot commit after task replacement"
+    },
+    {
+      "pass": true,
+      "name": "Conflicting stale task edits preserve the newer durable row"
+    },
+    {
+      "pass": true,
+      "name": "Saving one instance preserves tasks added by another instance"
+    },
+    {
+      "pass": true,
+      "name": "The direct recovery API rejects main-thread file-lock acquisition"
+    },
+    {
+      "pass": true,
+      "name": "Publication rejects main-thread lease acquisition instead of waiting for itself"
+    },
+    {
+      "pass": true,
+      "name": "A live older download without a pending destination is not marked interrupted"
+    },
+    {
+      "pass": true,
+      "name": "A second instance cannot take over a still-live owner by selecting its task"
+    },
+    {
+      "pass": true,
+      "name": "An unchanged local merge retains the running task object and later real progress"
+    },
+    {
+      "pass": true,
+      "name": "After its owner ends an interrupted task is recovered without retaining a live writer"
+    },
+    {
+      "pass": true,
+      "name": "A rejected task commit preserves published bytes and restores the previous pending row"
+    },
+    {
+      "pass": true,
+      "name": "Recovery retries rejected metadata before confirming the retained published bytes"
+    },
+    {
+      "pass": true,
+      "name": "Index failure after durable saved metadata cannot abort or downgrade publication"
+    },
+    {
+      "pass": true,
+      "name": "A new instance repairs the saved index even when every task has no pending destination"
+    },
+    {
+      "pass": true,
+      "name": "After-memory commit failure keeps cached saved separate from disk pending slot 8"
+    },
+    {
+      "pass": true,
+      "name": "Failed memory receipt cannot delete source or notify completion slot 8"
+    },
+    {
+      "pass": true,
+      "name": "After-memory failure preserves destination and pending generation slot 8"
+    },
+    {
+      "pass": true,
+      "name": "A new instance ignores failed cached saved and explicitly commits recovery"
+    },
+    {
+      "pass": true,
+      "name": "Only a confirmed recovery receipt permits source cleanup and completion"
+    },
+    {
+      "pass": true,
+      "name": "Equal cached rows never bypass a new instance's unconfirmed write retry"
+    },
+    {
+      "pass": true,
+      "name": "A new empty instance also retries equal rows after failed persistence"
+    },
+    {
+      "pass": true,
+      "name": "Pending recovery returns the replacement row when destination is missing"
+    },
+    {
+      "pass": true,
+      "name": "Recovered failed row can be claimed and saved in a new generation"
+    },
+    {
+      "pass": true,
+      "name": "Equivalent reordered JSON retains the running task object"
+    },
+    {
+      "pass": true,
+      "name": "restart-writer: After-memory commit failure keeps cached saved separate from disk pending slot 9"
+    },
+    {
+      "pass": true,
+      "name": "restart-writer: Failed memory receipt cannot delete source or notify completion slot 9"
+    },
+    {
+      "pass": true,
+      "name": "restart-writer: After-memory failure preserves destination and pending generation slot 9"
+    },
+    {
+      "pass": true,
+      "name": "restart-writer: Writer exits with disk pending plus preserved source and published destination"
+    },
+    {
+      "pass": true,
+      "name": "restart-reader: Fresh JVM loads disk pending without the dead process cached saved"
+    },
+    {
+      "pass": true,
+      "name": "restart-reader: Fresh JVM recovers the real published destination with a successful disk commit"
+    },
+    {
+      "pass": true,
+      "name": "restart-reader: Fresh JVM cleanup occurs only after confirmed saved persistence"
+    }
+  ],
+  "actualHostJvmRestart": true,
+  "actualAndroidExecution": false,
+  "actualSQLiteExecution": false,
+  "scope": "Production Java download task/recovery/publication/deletion methods and real host files/locks. Android main queue, preferences with independent memory/disk, local URI provider and index are explicit doubles. Includes failures before memory, after memory before disk, post-commit index failure, completion/source-cleanup gate and two separate JVM processes loading persisted fixture disk. No Android durability, physical-device or latency evidence.",
+  "actualMediaStoreExecution": false,
+  "executed": 42,
+  "actualProductionFileLease": true,
+  "actualProductionPublicationCoordinator": true,
+  "status": "passed",
+  "actualProductionTaskRecovery": true,
+  "sourceCommit": "b196ff58a5b929e1446f62d5a459afb17355143a",
+  "sourceDirty": false,
+  "sourceFiles": {
+    "app/src/main/java/local/pocketchat/J.java": "772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493",
+    "app/src/main/java/local/pocketchat/DownloadTaskRevisions.java": "3ee3d4035650831d9dbf85444f29533ba8ebb11f52221cb72ec2b172b76d9dfd",
+    "app/src/main/java/local/pocketchat/DownloadTasks.java": "4acf35f480de20680c9ed4e419c7e5c2a6b0cf166de491ebe60ab0434de64914",
+    "app/src/main/java/local/pocketchat/DownloadResumePolicy.java": "35277aa5f64fe6172b40dd557e091b079292d8b95768e04e6c2256d10d6c3a35",
+    "app/src/main/java/local/pocketchat/DefaultDownloads.java": "6f98ae7dea8c919050e365e18f1aa112c25467d74752166b1bf010a13e8234b6",
+    "app/src/main/java/local/pocketchat/SavedFilePublication.java": "14fabe1b59ebbc05dcc0f63492199aef3e6f7e89e305cd032731dcc630ce0be2",
+    "app/src/main/java/local/pocketchat/SavedFileDeletion.java": "46123f17c6d97499473b4bf77f616e2325a8e62d7ed1f34f5a4251cc8bc9efc2",
+    "app/src/main/java/local/pocketchat/SealedFileIo.java": "02c4c325a071a37cd9e2dc01e612a7590a4d045117aad089d37b57dbb77f4473",
+    "tests/download-recovery-host/android/annotation/TargetApi.java": "6e650f0a9beaf8c7a4d2f6bdf2d3a005ff6b5556749fc12a336e8d4e7b9a8881",
+    "tests/download-recovery-host/android/content/ContentResolver.java": "8cf87c3f153cfab8f9cd91533ce910a22df5a6a2a987dafda33f42d7cd989403",
+    "tests/download-recovery-host/android/content/ContentValues.java": "b0edd2b99312c142baa8e83b5106edbfc365a77d4845ccf7a2c8c598fbd3a612",
+    "tests/download-recovery-host/android/content/Context.java": "66583fd224c12f58c33748980537edcbb0008239eb610a3c5ab13af7d694f85d",
+    "tests/download-recovery-host/android/content/SharedPreferences.java": "1e65bad639f2eebd26d90b8a6e12a680bf8f65103363429e1973816edecc5317",
+    "tests/download-recovery-host/android/database/Cursor.java": "ad3f5f17531b31a09a209b0fd7475a1e05aa2e0b168a336876541d29dbf55eae",
+    "tests/download-recovery-host/android/net/Uri.java": "2d38951579a876d31918b94c4391702316a687d6c44f711439bd5ed95908c4f5",
+    "tests/download-recovery-host/android/os/Build.java": "65ff3a55568a0664b8b7f5d86ccaf68eeeea71a345a768517f0f20bcd80b07d8",
+    "tests/download-recovery-host/android/os/Environment.java": "829efbf9ab0d293a5fa7a2a770b804c24257d72e8d79a5252d844be1a46077c6",
+    "tests/download-recovery-host/android/os/Handler.java": "eee27ad00d9e3d7af25cf369da228a4280a37b4f4fcc60387e4b64eec247d485",
+    "tests/download-recovery-host/android/os/Looper.java": "4109d98dc3c02046108943bd590c605392d2f6439e01f7bfea2705c51e0c892e",
+    "tests/download-recovery-host/android/provider/DocumentsContract.java": "a38f8d361f037353a5c3c27e84e0575ed835b286be941809076fc5c26650a9d3",
+    "tests/download-recovery-host/android/provider/MediaStore.java": "12a0b2215ac5138a0b7f7c51b3709c3ded9614ec2d412c706b3cdf199f9ab7c7",
+    "tests/download-recovery-host/android/provider/OpenableColumns.java": "82b842f9d8fb614daf4a600e8bfc65f870e5c9305fbb858ee625cd361389a1bc",
+    "tests/download-recovery-host/local/pocketchat/DownloadRecoveryHostTest.java": "e29b58705e7caf284ca9c3337bf9f5d3ebfab1672dd39ecd1dc4670a66318b06",
+    "tests/download-recovery-host/local/pocketchat/Support.java": "20907ea7e3b8f7508b48f34bebbb928deb2ee7116e76ce4deb98fc85d5891e89",
+    "tests/sealed-file-host/android/util/AtomicFile.java": "f626a8654d39d5d54aab447fa4c75e17216cad7ec24be89d38946336e7d63faa"
+  },
+  "jsonJarSha256": "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed",
+  "exitCode": 0,
+  "stderr": ""
+}
