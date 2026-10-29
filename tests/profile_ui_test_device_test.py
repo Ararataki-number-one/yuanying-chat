@@ -35,6 +35,25 @@ class FakeAdb:
 
 
 class UiTestDeviceTests(unittest.TestCase):
+    def test_checkpoint_publisher_override_does_not_change_device_preparation(self):
+        recorded = []
+        for publisher in ('true', 'false'):
+            adb = FakeAdb()
+            value = device.prepare_workflow(adb, serial='emulator-5554',
+                environment={'CI': 'true', 'GITHUB_RUN_ID': '123456', 'GITHUB_ACTIONS': publisher})
+            self.assertEqual(value['status'], 'foreign-package-disabled')
+            recorded.append(adb.calls)
+        self.assertEqual(recorded[0], recorded[1])
+
+    def test_workflow_identity_is_required_before_device_inspection(self):
+        for env in ({}, {'CI': 'true'}, {'GITHUB_RUN_ID': '123'},
+                    {'CI': 'false', 'GITHUB_RUN_ID': '123'},
+                    *({'CI': 'true', 'GITHUB_RUN_ID': run} for run in ('0', '-1', '1;anything', '1\n', '1' * 21, 123, True))):
+            with self.subTest(environment=env):
+                adb = FakeAdb()
+                self.assertEqual(device.prepare_workflow(adb, serial='physical-device', environment=env)['status'], 'not-ci-unchanged')
+                self.assertEqual(adb.calls, [])
+
     def test_non_ci_does_not_even_inspect_or_mutate_any_device(self):
         for ci in (False, None, 'true', 1):
             with self.subTest(ci=ci):
@@ -97,8 +116,8 @@ class UiTestDeviceTests(unittest.TestCase):
 
     def test_runner_preserves_every_original_byte_except_one_preparation_block(self):
         raw = (ROOT / 'tests/gecko/run_ui_visuals.py').read_bytes()
-        added = (b'from ui_test_device import prepare as prepare_ui_test_device\n'
-                 b"(out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,ci=os.environ.get('GITHUB_ACTIONS')=='true',serial=args.serial),sort_keys=True,indent=2)+'\\n')\n")
+        added = (b'from ui_test_device import prepare_workflow as prepare_ui_test_device\n'
+                 b"(out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,serial=args.serial,environment=os.environ),sort_keys=True,indent=2)+'\\n')\n")
         self.assertEqual(raw.count(added), 1)
         # Pin the complete original bytes without requiring history in CI's shallow checkout.
         self.assertEqual(hashlib.sha256(raw.replace(added, b'', 1)).hexdigest(),

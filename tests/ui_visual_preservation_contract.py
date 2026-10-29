@@ -1,8 +1,9 @@
 """Pure source contract: retain the original UI workload plus owned label evidence.
 
 The constants come from 64be4b4's runner (raw SHA eb44194a...7612b), not a new
-whole-file receipt. The only permitted additions are the four reviewed 08f1c19
-download-label changes. Each added AST block is checked before normalization;
+whole-file receipt. Permitted additions are the four reviewed 08f1c19 download
+label changes and the exact CI device-preparation block below. Each added AST
+block is checked before normalization;
 we never discard arbitrary scene branches or statements. No git history, adb,
 runner imports, or device execution is needed in a shallow CI checkout.
 """
@@ -33,6 +34,7 @@ ORIGINAL_FUNCTIONS = {
 }
 DOWNLOAD_LAUNCH_AST = 'a954b0ab4d47f62d510691507c2d8bd1dd82c0736b570a91d31c73ca6523a214'
 DOWNLOAD_EVIDENCE_AST = '48e3a45f0c60cce356412c6f77f1aaf234b22f4b9c375299599d43f6a8bb43e7'
+UI_DEVICE_PREPARATION_AST = 'a15fbf39a69774bfdbe021b92ed1906657601ca3f3f58fcde8e6837f81a75c25'
 ORIGINAL_LAUNCH = "adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene)"
 
 
@@ -51,9 +53,34 @@ def assignment(node, name):
             and isinstance(node.targets[0], ast.Name) and node.targets[0].id == name)
 
 
+def remove_reviewed_ui_device_preparation(tree):
+    """Invert exactly two top-level nodes between the original adb and dump.
+
+    The full block digest includes the imported function/alias, report path,
+    helper arguments, CI environment mapping, serialization and write call.
+    Never normalize unrelated statements or accept a partial/relocated block.
+    """
+    candidates = [node for node in ast.walk(tree)
+                  if isinstance(node, ast.ImportFrom) and node.module == 'ui_test_device']
+    if not candidates:
+        return
+    imported = exactly_one(candidates, 'CI UI device preparation import')
+    start = exactly_one((index for index, node in enumerate(tree.body)
+                         if node is imported), 'top-level CI UI device preparation')
+    block = ast.Module(body=tree.body[start:start + 2], type_ignores=[])
+    assert digest(block) == UI_DEVICE_PREPARATION_AST, 'CI UI device preparation changed'
+    assert (start > 0 and start + 2 < len(tree.body)
+            and isinstance(tree.body[start - 1], ast.FunctionDef)
+            and tree.body[start - 1].name == 'adb'
+            and isinstance(tree.body[start + 2], ast.FunctionDef)
+            and tree.body[start + 2].name == 'dump'), 'CI UI device preparation moved'
+    del tree.body[start:start + 2]
+
+
 def verify_shared_ui_source(source):
     # Match Python's parsing of the real UTF-8 file, including coding cookies.
     tree = ast.parse(source.encode('utf-8'))
+    remove_reviewed_ui_device_preparation(tree)
     for name, expected in ORIGINAL_FUNCTIONS.items():
         function = exactly_one((node for node in ast.walk(tree)
             if isinstance(node, ast.FunctionDef) and node.name == name), name)

@@ -8,6 +8,14 @@ import re
 SYSTEM_PACKAGE = 'com.google.android.apps.wellbeing'
 
 
+def prepare_workflow(adb, *, serial, environment):
+    # The diagnostic workflow overrides GITHUB_ACTIONS solely to suppress the
+    # existing checkpoint publisher. Device preparation must remain identical.
+    run = environment.get('GITHUB_RUN_ID', '')
+    workflow = environment.get('CI') == 'true' and isinstance(run, str) and re.fullmatch(r'[1-9][0-9]{0,19}', run) is not None
+    return prepare(adb, ci=workflow, serial=serial)
+
+
 def prepare(adb, *, ci, serial):
     result = dict(schema=1, scope='ci-emulator-foreign-notification-isolation',
                   package=SYSTEM_PACKAGE, applicationNotificationsChanged=False,
