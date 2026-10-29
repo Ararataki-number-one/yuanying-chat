@@ -13,7 +13,7 @@ final class LocalDraftPolicy {
     JSONObject copy=J.parse(value.toString());
     try{
       copy.put("localDraftPolicyRevision",revision(context));
-      if(!enabled(context)||capturedRevision!=revision(context)){copy.put("draft",JSONObject.NULL).put("draftComplete",false).put("draftOmittedReason","local-saving-disabled");copy.remove("selectionStart");copy.remove("selectionEnd");}
+      if(!enabled(context)||capturedRevision!=revision(context)){copy.put("draft",JSONObject.NULL).put("draftComplete",false).put("draftOmittedReason","local-saving-disabled");copy.remove("selectionStart");copy.remove("selectionEnd");copy.remove("selectionDirection");copy.remove("draftSelection");}
     }catch(JSONException ignored){}
     return copy;
   }

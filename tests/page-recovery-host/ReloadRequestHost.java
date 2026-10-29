@@ -136,7 +136,7 @@ class Profiles{static int slot=2;static int slot(Object c){return slot;}}
 class ProfileCatalog{static int generation=4;static String environmentId="environment-one";static boolean available=true,deleting,resetting;static ProfileCatalog get(Object c){return new ProfileCatalog();}JSONObject item(int slot){return J.obj("created",available,"generation",generation,"environmentId",environmentId,"deleting",deleting,"resetting",resetting);}}
 class Prefs{final Map<String,String>values=new HashMap<>();Runnable listener;boolean commitOk=true;int commits;String getString(String key,String fallback){return values.getOrDefault(key,fallback);}Prefs edit(){return this;}Prefs putString(String k,String v){values.put(k,v);return this;}Prefs remove(String k){values.remove(k);return this;}boolean commit(){commits++;if(listener!=null){Runnable once=listener;listener=null;once.run();}return commitOk;}}
 class Store{final java.util.concurrent.Executor worker=r->{};}
-class DraftArchive{static DraftArchive get(Object c){return new DraftArchive();}boolean save(String u,String t,String k){return true;}}
+class DraftArchive{static DraftArchive get(Object c){return new DraftArchive();}boolean save(String u,String t,String k){return true;}boolean save(String u,String t,String k,long revision){return save(u,t,k);}}
 class ChatService{static int ends;static void begin(Object c){}static void completed(Object c,String id,String url){}static void end(Object c){ends++;}}
 class ProfileUi{static boolean working(ChatSession s){return s.pending!=null||s.fileWorkActive()||s.currentReplyActive();}}
 class LoginPagePolicy{static boolean login(String u){return false;}}
@@ -144,4 +144,4 @@ class SystemClock{static long elapsedRealtime(){return 1000;}}class Trace{void p
 class Deliveries{int next;String begin(String u,String p,JSONArray a,String k,Object unused){return "new-production-job-"+(++next);}}
 class J{static JSONObject parse(String value){try{return new JSONObject(value);}catch(Exception e){return new JSONObject();}}static JSONObject obj(Object...v){JSONObject o=new JSONObject();try{for(int i=0;i<v.length;i+=2)o.put((String)v[i],v[i+1]);}catch(Exception e){throw new RuntimeException(e);}return o;}}
 
-class LocalDraftPolicy{static boolean allowed=true;static boolean enabled(Object c){return allowed;}}
+class LocalDraftPolicy{static boolean allowed=true;static boolean enabled(Object c){return allowed;}static long revision(Object c){return 0;}}

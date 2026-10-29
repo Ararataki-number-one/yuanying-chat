@@ -35,5 +35,39 @@ function check(name,pass){assert.ok(pass,name);checks.push({name,pass:true});}
  const stop=w.document.createElement('button');stop.dataset.testid='stop-button';stop.textContent='Stop';w.document.body.append(stop);
  result=await call('page-recover',{expectedUrl:before});check('Busy page is not refreshed or probed by the page recovery check',result.ok===false&&head===1&&sends===0&&input.value==='keep exact input');stop.remove();
  result=call('page-state',{expectedUrl:'https://chatgpt.com/c/other'});check('Wrong route cannot capture a current document',!result.ok);
+ for(const direction of ['forward','backward','none']){
+  input.value='0123456789';input.focus();input.setSelectionRange(direction==='none'?4:2,direction==='none'?4:5,direction);
+  const saved=call('page-state',{expectedUrl:before});input.value='';
+  const recovered=await call('page-restore',{expectedUrl:before,state:saved,allowDraft:true,allowScroll:false});
+  check('Saved textarea range retains its original '+direction+' direction',recovered.restoredDraft&&recovered.selectionReason==='restored'&&input.selectionStart===(direction==='none'?4:2)&&input.selectionEnd===(direction==='none'?4:5)&&input.selectionDirection===direction);
+ }
+ input.remove();const editor=w.document.createElement('div');editor.className='ProseMirror';editor.contentEditable='true';editor.setAttribute('contenteditable','true');editor.setAttribute('data-composer-markdown','');editor.tabIndex=0;w.document.body.append(editor);w.document.execCommand=()=>false;
+ const rich='<p>前缀🙂<strong>第一行</strong><br>code</p><p>  第二行<br class="ProseMirror-trailingBreak"></p>';
+ for(const backward of [false,true]){
+  editor.innerHTML=rich;editor.focus();const first=editor.firstChild.firstChild,last=editor.lastChild.firstChild,selection=w.getSelection();
+  selection.setBaseAndExtent(backward?last:first,backward?4:2,backward?first:last,backward?2:4);
+  const saved=call('page-state',{expectedUrl:before});
+  check('Contenteditable paragraph snapshot preserves exact multiline UTF-16 range '+backward,saved.draft==='前缀🙂第一行\ncode\n  第二行'&&saved.draftSelection?.anchor===(backward?17:2)&&saved.draftSelection?.focus===(backward?2:17));
+  editor.innerHTML='';const recovered=await call('page-restore',{expectedUrl:before,state:saved,allowDraft:true,allowScroll:false});
+  check('Contenteditable recovery resolves the saved '+(backward?'backward':'forward')+' range in its new DOM',recovered.restoredDraft&&recovered.selectionReason==='restored'&&editor.textContent===saved.draft&&selection.anchorNode===editor.firstChild&&selection.focusNode===editor.firstChild&&selection.anchorOffset===(backward?17:2)&&selection.focusOffset===(backward?2:17));
+ }
+ for(const backward of [false,true]){
+  editor.innerHTML='<p>a<br>b</p>';editor.focus();const br=editor.querySelector('br'),last=editor.firstChild.lastChild,selection=w.getSelection();
+  selection.setBaseAndExtent(backward?last:br,0,backward?br:last,0);const fragment=selection.getRangeAt(0).cloneContents();
+  const saved=call('page-state',{expectedUrl:before});
+  check('Direct BR endpoint captures the nonempty newline '+backward,[...fragment.childNodes].map(node=>node.outerHTML||node.textContent).join('')==='<br>'&&saved.draft==='a\nb'&&saved.draftSelection?.anchor===(backward?2:1)&&saved.draftSelection?.focus===(backward?1:2));
+  editor.innerHTML='';const recovered=await call('page-restore',{expectedUrl:before,state:saved,allowDraft:true,allowScroll:false});
+  check('Direct BR range restores newline and '+(backward?'backward':'forward')+' direction',recovered.selectionReason==='restored'&&!selection.isCollapsed&&selection.toString()==='\n'&&selection.anchorOffset===(backward?2:1)&&selection.focusOffset===(backward?1:2));
+ }
+ editor.innerHTML='<p>one</p><p><br class="ProseMirror-trailingBreak"></p>';editor.focus();w.getSelection().setBaseAndExtent(editor.lastChild,0,editor.lastChild,0);
+ const emptyLine=call('page-state',{expectedUrl:before});editor.innerHTML='';result=await call('page-restore',{expectedUrl:before,state:emptyLine,allowDraft:true,allowScroll:false});
+ check('A caret on the final empty source line is preserved',emptyLine.draft==='one\n'&&emptyLine.draftSelection?.anchor===4&&result.selectionReason==='restored'&&w.getSelection().anchorOffset===4);
+ editor.innerHTML='<ul><li>unsupported rich list</li></ul>';editor.focus();w.getSelection().setBaseAndExtent(editor.querySelector('li').firstChild,2,editor.querySelector('li').firstChild,5);
+ const unsupported=call('page-state',{expectedUrl:before});check('An unknown rich editor shape does not fabricate saved offsets',unsupported.draftComplete&&unsupported.draftSelection===null);
+ editor.innerHTML='';result=await call('page-restore',{expectedUrl:before,state:unsupported,allowDraft:true,allowScroll:false});check('Unknown saved range keeps the browser range while preserving the text',result.restoredDraft&&result.selectionReason==='unavailable'&&editor.textContent===unsupported.draft);
+ for(const anchor of [-1,300001,null]){
+  editor.textContent='';result=await call('page-restore',{expectedUrl:before,state:{...emptyLine,draftSelection:{...emptyLine.draftSelection,anchor}},allowDraft:true,allowScroll:false});
+  check('Malformed saved contenteditable offset is ignored '+anchor,result.restoredDraft&&result.selectionReason==='unavailable'&&editor.textContent===emptyLine.draft);
+ }
  w.close();const executionInputsUnchanged=Object.entries(sourceFiles).every(([file,hash])=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')===hash);assert.ok(executionInputsUnchanged,'source stayed fixed during checks');console.log(JSON.stringify({status:'passed',checks:checks.length,details:checks,sourceCommit,sourceFiles,executionInputsUnchanged,actualProductionDriver:true,actualAndroidExecution:false,scope:'Exact production script in controlled DOM with mocked HEAD; no live website or phone acceptance'}));
 })().catch(e=>{console.error(e);process.exitCode=1;});
