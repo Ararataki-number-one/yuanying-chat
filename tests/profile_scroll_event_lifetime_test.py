@@ -41,6 +41,19 @@ ORIGINAL_EVENT_SHA = '1f725edf779cb40e7e2b1c011cb18af38c2bf294d66d08c428dfcffb3a
 ORIGINAL_ORACLE_SHA = '4d2cce88a7642aed899f3b2e024dce9e4fb1a1dd865558643671332e8790b42d'
 
 
+def original_oracle(current):
+    added = b"          'tests/native-input-driver/NativePreEmitReadiness.java',\n"
+    before = b"INPUTS = {'tests/native-input-driver/NativeGestureProtocol.java',\n"
+    after = b"          'tests/native-input-driver/NativeInputShell.java',\n"
+    reviewed = before + added + after
+    if not isinstance(current, bytes) or current.count(added) != 1 or current.count(reviewed) != 1:
+        raise ValueError('Unreviewed native input oracle change')
+    original = current.replace(reviewed, before + after, 1)
+    if hashlib.sha256(original).hexdigest() != ORIGINAL_ORACLE_SHA:
+        raise ValueError('Unreviewed native input oracle change')
+    return original
+
+
 def original_snapshot(current):
     replacements = [
         ('active:true,cancelled:false,events:[],count:0,initial:document.scrollingElement.scrollTop,run:"+JSONObject.quote(scrollDiagnosticRun)+",phase:"+JSONObject.quote(variant)+",traceId:"+scrollPhase.started+",document:performance.timeOrigin,url:location.href',
@@ -202,8 +215,25 @@ class ScrollEventLifetimeTest(unittest.TestCase):
         native_fields = next(line for line in finish if line.startswith('    scrollDiagnosticPhases.put(J.obj('))
         self.assertEqual(native_fields.count(',"domObservation",phase.domObservation'), 1)
         self.assertEqual(sha(native_fields.replace(',"domObservation",phase.domObservation', '', 1)), '9b25f1e9656e3c19885bf64f9888c0f3ecddc82865c6ea15aaecc9c9792afccf')
-        self.assertEqual(hashlib.sha256(ORACLE.read_bytes()).hexdigest(), ORIGINAL_ORACLE_SHA)
+        self.assertEqual(hashlib.sha256(original_oracle(ORACLE.read_bytes())).hexdigest(), ORIGINAL_ORACLE_SHA)
         self.assertEqual(sha(original_snapshot(block(source, '  String scrollSnapshotScript('))), ORIGINAL_SNAPSHOT_SHA)
+
+    def test_oracle_inventory_inverse_rejects_other_changes(self):
+        current = ORACLE.read_bytes()
+        added = b"          'tests/native-input-driver/NativePreEmitReadiness.java',\n"
+        mutations = {
+            'missing helper': current.replace(added, b'', 1),
+            'duplicate helper': current.replace(added, added + added, 1),
+            'misplaced helper': current.replace(added, b'', 1) + added,
+            'different indentation': current.replace(added, added[1:], 1),
+            'oracle body changed': current.replace(b"raise ValueError('Native input: ' + message)", b'return', 1),
+            'protocol changed': current.replace(b"('qualification', 15)", b"('qualification', 16)", 1),
+        }
+        for name, modified in mutations.items():
+            with self.subTest(change=name):
+                self.assertNotEqual(modified, current)
+                with self.assertRaisesRegex(ValueError, 'Unreviewed native input oracle change'):
+                    original_oracle(modified)
 
     def test_exact_java_and_javascript_observe_real_tail_only(self):
         java = os.environ.get('PROFILE_JAVA') or shutil.which('java'); node = shutil.which('node')
