@@ -367,7 +367,8 @@ class PreparationBudgetControls(unittest.TestCase):
     persistence are real. Timing is a deterministic control, not an Android replay.
     """
     def invoke(self, *, budget=None, edit_final=None, final_seconds=7,
-               timeout_with_complete_stdout=False, final_code=0, never_ready=False):
+               timeout_with_complete_stdout=False, final_code=0, never_ready=False,
+               real_native_path=False, native_path_route=None):
         spec=importlib.util.spec_from_file_location('budget_observation_controls',
             Path(__file__).with_name('gecko_emulator_bootstrap_test.py'))
         controls=importlib.util.module_from_spec(spec);spec.loader.exec_module(controls)
@@ -386,6 +387,10 @@ class PreparationBudgetControls(unittest.TestCase):
             elif parts==('shell','cmd','wifi','status'):stdout='Wifi is enabled'
             elif parts==('shell','cmd','wifi','list-scan-results'):
                 stdout='00:13:10:85:fe:01 2447 -50 0 AndroidWifi [ESS]'
+            elif parts==('shell','ip','-4','-o','addr','show','wlan0') and cm_count>=10:
+                stdout='16: wlan0 inet 10.0.2.16/24'
+            elif parts==('shell','ip','-4','route','get','10.0.2.2','from','10.0.2.16'):
+                stdout=native_path_route() if callable(native_path_route) else native_path_route or '10.0.2.2 from 10.0.2.16 dev wlan0'
             elif parts[:4]==('exec-out','content','read','--uri'):
                 parsed=urlsplit(parts[4]);self.assertEqual(parsed.netloc,setup.normal.AUTHORITY)
                 self.assertEqual(parsed.path,'/default-network')
@@ -435,6 +440,10 @@ class PreparationBudgetControls(unittest.TestCase):
                 stack.enter_context(patch.object(setup.subprocess,'run',side_effect=reply))
                 stack.enter_context(patch.object(setup.time,'monotonic',clock.now))
                 stack.enter_context(patch.object(setup.time,'sleep',clock.sleep))
+                # Isolate the original CM-budget controls; the new path phase
+                # runs unmocked in profile_native_wifi_path_test.py controls.
+                if not real_native_path:
+                    stack.enter_context(patch.object(setup,'prepare_native_wifi_path'))
                 transport=stack.enter_context(patch.object(setup,'native_transport',side_effect=PreparationTransportBoundary))
                 if budget is not None:
                     stack.enter_context(patch.object(setup,'PREPARATION_TIMEOUT_SECONDS',budget))

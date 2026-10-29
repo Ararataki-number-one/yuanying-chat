@@ -167,7 +167,8 @@ def run(adb,adb_bytes,source,trace,out,focus):
         check('Explicit Chat tap reveals controls after resume',resume_chat['expanded'] and resume_chat['webHeight']==initial['webHeight'] and unchanged(initial,resume_chat))
         send('clear');start=resume_chat['headerSwipeFrom'];end=resume_chat['headerSwipeTo'];left,top,right,bottom=resume_chat['headerButtonTouch']
         check('Native header swipe starts inside an actual expanded button touch region',left<=start[0]<right and top<=start[1]<bottom)
-        adb('shell','input','swipe',str(start[0]),str(start[1]),str(end[0]),str(end[1]),'320')
+        from chrome_header_readiness import header_up_once
+        header_up_once(argv=sys.argv[1:],source=source,identity=identity,start=start,end=end,nonce=nonce,out=out)
         inputs.append({'kind':'swipe','label':'headerUp','actualAndroidInput':True,'from':start,'to':end,'durationMs':320})
         header=snapshot('headerUp');native_touches=header['nativeTouches']
         focus('local.pocketchat.CompactChromeIntegrationActivity')

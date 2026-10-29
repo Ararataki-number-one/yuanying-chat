@@ -26,6 +26,18 @@ focus('local.pocketchat.CompactChromeIntegrationActivity')
 """
 
 
+def original_header_runner(source):
+    reviewed = ("        from chrome_header_readiness import header_up_once\n"
+                "        header_up_once(argv=sys.argv[1:],source=source,identity=identity,start=start,end=end,nonce=nonce,out=out)\n")
+    original = "        adb('shell','input','swipe',str(start[0]),str(start[1]),str(end[0]),str(end[1]),'320')\n"
+    if source.count(reviewed) != 1 or source.count(original) != 0:
+        raise ValueError('Unreviewed header readiness change')
+    restored = source.replace(reviewed, original, 1)
+    if hashlib.sha256(restored.encode()).hexdigest() != '47889966ca35c31ab8556a2c987f84378619471103c9720221cc2c3bf2ade1e3':
+        raise ValueError('Unreviewed header readiness change')
+    return restored
+
+
 def activity(component,user=0):
     return 'topResumedActivity=ActivityRecord{abc u'+str(user)+' '+component+' t8}\n'
 
@@ -189,13 +201,28 @@ class HomeResumeTests(unittest.TestCase):
 
     def test_original_shared_runner_and_remaining_workload_preserved(self):
         self.assertTrue(verify_shared_ui_source(SHARED.read_text())['originalWorkloadSemanticsPreserved'])
-        tree=ast.parse(RUNNER.read_text());run=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run')
+        tree=ast.parse(original_header_runner(RUNNER.read_text()));run=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run')
         loop=next(n for n in run.body if isinstance(n,ast.For))
         replacements=[i for i,n in enumerate(loop.body) if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name) and n.value.func.id=='resume_after_home']
         self.assertEqual(len(replacements),1);at=replacements[0]
         self.assertEqual(ast.unparse(loop.body[at]),'resume_after_home(component)')
         loop.body[at:at+1]=ast.parse(ORIGINAL_SEQUENCE).body
         self.assertEqual(hashlib.sha256(ast.dump(run,include_attributes=False).encode()).hexdigest(),'b663b22628d1868c5348434823505d2ce23956cbe228a08d3c6e4043f39e83d8')
+
+    def test_header_inverse_rejects_changed_action_or_workload(self):
+        source = RUNNER.read_text()
+        changes = [
+            ('from chrome_header_readiness import header_up_once', 'from other_module import header_up_once'),
+            ('start=start,end=end', 'start=end,end=start'),
+            ("str(y2),'320')", "str(y2),'321')"),
+            ('left<=start[0]<right and top<=start[1]<bottom', 'True'),
+            ("header['windowFocus']", 'True'),
+        ]
+        for before, after in changes:
+            with self.subTest(change=before):
+                self.assertIn(before, source)
+                with self.assertRaisesRegex(ValueError, 'Unreviewed header readiness change'):
+                    original_header_runner(source.replace(before, after, 1))
 
     def test_owned_download_addition_and_nonsemantic_formatting_are_allowed(self):
         source=SHARED.read_text()

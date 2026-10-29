@@ -82,6 +82,163 @@ def verify_forward(text):
             'Unique actual Wi-Fi native forwarding rule differs')
 
 
+def prepare_native_wifi_path(commands, record, identity):
+    """One synthetic SDK-AP repair, within the existing preparation budget.
+
+    A usable cellular default network is not proof of the Wi-Fi endpoint's
+    source route. This is preparation only, before native TCP or app workload.
+    """
+    deadline, session = commands.deadline, commands._sdk_wifi_session
+    identity_snapshot = json.dumps(identity, sort_keys=True, separators=(',', ':'))
+    owner = (commands.executable, commands.serial)
+    stage = None
+    guarded_run, original_run = None, BootstrapCommands.run
+
+    def owned():
+        require(type(commands) is BootstrapCommands and commands.record is record
+                and (commands.executable, commands.serial) == owner
+                and commands.serial == BOOTSTRAP and commands.deadline == deadline
+                and BootstrapCommands.run is original_run
+                and ((guarded_run is None and 'run' not in vars(commands))
+                     or (guarded_run is not None and vars(commands).get('run') is guarded_run))
+                and commands._sdk_wifi_session is session
+                and record.get('confirmedQemu') is True
+                and record.get('disabledStateConfirmed') is True
+                and re.fullmatch('[0-9a-f]{40}', identity.get('sourceCommit', ''))
+                and re.fullmatch('[0-9a-f]{40}', identity.get('sourceTree', ''))
+                and record.get('sourceCommit') == identity['sourceCommit']
+                and record.get('sourceTree') == identity['sourceTree']
+                and (stage is None or record.get('nativeWifiPathPreparation') is stage)
+                and json.dumps(identity, sort_keys=True, separators=(',', ':')) == identity_snapshot,
+                'Native Wi-Fi preparation owner/source changed')
+
+    owned()
+    require('nativeWifiPathPreparation' not in record, 'Native Wi-Fi preparation already attempted')
+    stage = dict(status='failed', serial=BOOTSTRAP, startedAt=time.monotonic(),
+                 deadlineMonotonic=deadline, repairAttempted=False, repairAttempts=0,
+                 observations=[], applicationAcceptance=False, originalWorkloadInvoked=False)
+    record['nativeWifiPathPreparation'] = stage
+
+    def observe():
+        owned()
+        address = commands.run('shell', 'ip', '-4', '-o', 'addr', 'show', 'wlan0')
+        owned()
+        row = dict(addresses=address, route=None, ready=None, observedAt=time.monotonic())
+        stage['observations'].append(row)
+        require(time.monotonic() < deadline, 'Native Wi-Fi path arrived after preparation deadline')
+        if address == '':
+            # A completed empty -4 address read is a known DHCP transition,
+            # not authorization to mutate configuration or query a missing source.
+            return None
+        # Only the observed synthetic address and understood route forms can
+        # authorize repair. Unknown output never becomes a retry instruction.
+        address_match = re.fullmatch(
+            r'\d+:\s+wlan0\s+inet 10\.0\.2\.16/(?:[0-9]|[12][0-9]|3[0-2])(?P<tail>(?:\s+[^\n]*)?)', address)
+        require(len(address) <= 65536 and len(address.splitlines()) == 1
+                and address.count('inet ') == 1 and address_match,
+                'Unrecognized native Wi-Fi address observation')
+        tail = address_match.group('tail').replace('\\', ' \\ ').split()
+        if tail[:1] == ['brd']:
+            require(len(tail) >= 2 and re.fullmatch(r'(?:[0-9]{1,3}\.){3}[0-9]{1,3}', tail[1])
+                    and all(int(part) <= 255 for part in tail[1].split('.')),
+                    'Unrecognized native Wi-Fi broadcast address')
+            tail = tail[2:]
+        if tail[:1] == ['scope']:
+            require(tail[:2] == ['scope', 'global'], 'Unrecognized native Wi-Fi address scope')
+            tail = tail[2:]
+        if tail[:1] == ['wlan0']:
+            tail = tail[1:]
+        if tail[:1] == ['\\']:
+            tail = tail[1:]
+            require(tail, 'Incomplete native Wi-Fi address lifetime')
+        require(not tail or (len(tail) == 4 and tail[0] == 'valid_lft' and tail[2] == 'preferred_lft'
+                and all(re.fullmatch(r'forever|[0-9]+sec', value) for value in (tail[1], tail[3]))),
+                'Unrecognized native Wi-Fi address metadata')
+        route_parts = ('shell', 'ip', '-4', 'route', 'get', '10.0.2.2', 'from', '10.0.2.16')
+        command_index = len(record['commands'])
+        route = commands.run(*route_parts, check=False)
+        owned()
+        require(len(record['commands']) == command_index + 1,
+                'Native Wi-Fi route command record changed')
+        result = record['commands'][command_index]
+        require(result.get('command') == [owner[0], '-s', owner[1], *route_parts]
+                and type(result.get('exitCode')) is int and result.get('timedOut') is False
+                and result.get('stdout', '').replace('\r', '').strip() == route,
+                'Native Wi-Fi route result is not bound to its command')
+        row.update(route=route, routeExit=result['exitCode'], routeErrors=result['stderr'],
+                   routeCommandIndex=command_index, observedAt=time.monotonic())
+        require(time.monotonic() < deadline, 'Native Wi-Fi path arrived after preparation deadline')
+        if (result['exitCode'] == 2 and not route and result['stderr'].strip() in
+                ('RTNETLINK answers: Network is unreachable',
+                 'RTNETLINK answers: Cannot assign requested address')):
+            return None
+        require(result['exitCode'] == 0 and not result['stderr'] and len(route) <= 65536,
+                'Unrecognized native Wi-Fi route failure')
+        lines = [line.strip() for line in route.splitlines() if line.strip()]
+        require(1 <= len(lines) <= 2 and (len(lines) == 1 or lines[1] == 'cache'),
+                'Unrecognized native Wi-Fi route observation')
+        tokens, fields = lines[0].split(), {}
+        require(tokens and tokens[0] == '10.0.2.2' and len(tokens) % 2 == 1,
+                'Unrecognized native Wi-Fi route fields')
+        for key, value in zip(tokens[1::2], tokens[2::2]):
+            require(key in ('from', 'dev', 'table', 'src', 'uid') and key not in fields,
+                    'Unrecognized native Wi-Fi route field')
+            fields[key] = value
+        sources = [fields[key] for key in ('from', 'src') if key in fields]
+        require(fields.get('dev') in ('wlan0', 'eth0') and sources
+                and all(value == '10.0.2.16' for value in sources)
+                and ('table' not in fields or fields['table'].isdigit())
+                and ('uid' not in fields or fields['uid'].isdigit()),
+                'Unrecognized native Wi-Fi source/device')
+        row['ready'] = fields['dev'] == 'wlan0'
+        return row['ready']
+
+    def wait():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Native Wi-Fi source path not ready within preparation deadline')
+        time.sleep(min(.25, remaining))
+
+    try:
+        state = observe()
+        while state is None:
+            wait()
+            state = observe()
+        if state is False:
+            owned()
+            # provision_sdk_wifi itself reserves ten seconds after its scan.
+            # Do not start repair when that original reservation is unavailable.
+            if deadline - time.monotonic() <= 10:
+                raise TimeoutError('Native Wi-Fi repair preparation budget unavailable')
+            stage.update(repairAttempted=True, repairAttempts=1)
+            # The original provisioner issues several synchronous commands.
+            # Check ownership at every boundary, then restore normal dispatch.
+            def checked_run(*parts, **options):
+                owned()
+                result = original_run(commands, *parts, **options)
+                owned()
+                return result
+            guarded_run = checked_run
+            commands.run = checked_run
+            try:
+                normal.provision_sdk_wifi(commands, record, identity,
+                    'native-wifi-source-path-repair', 'after-native-wifi-source-path-repair',
+                    reuse_observed_ap=False)
+                owned()
+            finally:
+                vars(commands).pop('run', None)
+                guarded_run = None
+            owned()
+            while observe() is not True:
+                wait()
+        stage['status'] = 'passed'
+    except BaseException as failure:
+        stage.update(failureType=type(failure).__name__, reason=str(failure))
+        raise
+    finally:
+        stage['completedAt'] = time.monotonic()
+
+
 def persistent_network(commands, record, identity):
     normal.preflight(commands, record, identity)
     if not record.get('confirmedQemu') or not record.get('disabledStateConfirmed'):
@@ -103,6 +260,7 @@ def persistent_network(commands, record, identity):
                               reuse_observed_ap=True)
     if not normal.network_observation(commands, record, identity, 'persistent-sdk-wifi-confirmation'):
         raise ValueError('Actual persistent SDK connection not usable')
+    prepare_native_wifi_path(commands, record, identity)
 
 
 def announce_native(record):
