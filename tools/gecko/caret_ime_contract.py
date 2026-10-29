@@ -136,7 +136,11 @@ def verify_ime_environment(value, phase, *, identity, nonce, raw_sha256):
                 and stamp(row.get('startedAtMonotonicNanos'))
                 and stamp(row.get('completedAtMonotonicNanos'))
                 and previous <= row['startedAtMonotonicNanos'] <= row['completedAtMonotonicNanos'] <= times[-1], 'actual command timing/result differs')
+        if 'capturePrivacy' in row:
+            require(G.verify_capture_privacy(row['capturePrivacy'],row['stdout']), 'explicit sanitized-capture metadata differs from complete stored stdout')
         if tuple(parts)==G.METHOD_DUMP_COMMAND:
+            if 'capturePrivacy' in row:
+                require(row['capturePrivacy']['originalBytes'] <= G.METHOD_DUMP_BYTES, 'original method capture exceeded unchanged bound before filtering')
             raw=row['stdout'].encode('utf-8')
             require(len(raw)<=G.METHOD_DUMP_BYTES and row.get('stdoutType')=='str'
                     and type(row.get('stdoutChars')) is int and row['stdoutChars']==len(row['stdout'])

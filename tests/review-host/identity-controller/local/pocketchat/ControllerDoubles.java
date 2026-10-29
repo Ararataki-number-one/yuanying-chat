@@ -137,5 +137,6 @@ final class AuditReport {static final String VERIFIED="verified",ISSUE="issue",U
 final class EnvironmentAuditUi {static void show(MainActivity activity){}}
 /** Entry-point boundary only; the new adapter has a separate Android-API compile check. */
 final class EnvironmentIdentityUi {static void show(MainActivity activity,ChatSession session){}}
+final class ProtectionTemplateUi {static void show(MainActivity activity,ChatSession session){}}
 final class GeckoPolicyAdapter {static String summary(){return "host policy summary";}}
 final class NativeCapabilityManifest {static NativeCapabilityManifest officialGecko(){return new NativeCapabilityManifest();}String unsupportedSummary(){return "host capability summary";}}

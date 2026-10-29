@@ -27,6 +27,169 @@ def require(condition, message):
         raise ValueError('Controlled IME guard: ' + message)
 
 
+# General diagnostic capture privacy lives here because this already source-bound
+# test-only module is copied with the unchanged IME evidence verifier. It never
+# changes browser settings or the values sent to Android/the network.
+PRIVACY_POLICY = 'known-service-keys-v1'
+PRIVACY_REPLACEMENT = '[REDACTED_SERVICE_API_KEY]'
+PRIVACY_MAX_BYTES = 16 * 1024 * 1024
+PRIVACY_MAX_REPLACEMENTS = 4096
+PRIVACY_KINDS = ('gboard', 'mozilla-location', 'google-safebrowsing', 'google-api-key-shape')
+_API_KEY_SHAPE = re.compile(r'(?<![A-Za-z0-9_-])AIza[A-Za-z0-9_-]{35}(?![A-Za-z0-9_-])')
+_API_KEY_CANDIDATE = re.compile(r'(?<![A-Za-z0-9_%\\-])(?:A|%41|\\u0041)(?:I|%49|\\u0049)(?:z|%7[aA]|\\u007[aA])(?:a|%61|\\u0061)(?:[A-Za-z0-9_-]|%[0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}){35}(?![A-Za-z0-9_%-])')
+_URL_START = re.compile(r'(?:h|%68)(?:t|%74)(?:t|%74)(?:p|%70)(?:s|%73)(?::|%3a)', re.I)
+
+
+def _privacy_require(value):
+    if not value:
+        raise ValueError('Diagnostic capture privacy: rejected bounded capture')
+
+
+def _privacy_projection(value, positions, percent):
+    out, mapping, index = [], [], 0
+    while index < len(value):
+        width, char = 1, value[index]
+        if char == '\\' and index + 1 < len(value) and value[index + 1] == '/':
+            width, char = 2, '/'
+        elif char == '\\' and index + 5 < len(value) and value[index + 1] == 'u' and re.fullmatch('[0-9a-fA-F]{4}', value[index + 2:index + 6]):
+            decoded = chr(int(value[index + 2:index + 6], 16))
+            if ord(decoded) < 128:
+                width, char = 6, decoded
+        elif percent and char == '%' and index + 2 < len(value) and re.fullmatch('[0-9a-fA-F]{2}', value[index + 1:index + 3]):
+            width, char = 3, chr(int(value[index + 1:index + 3], 16))
+        out.append(char); mapping.append((positions[index][0], positions[index + width - 1][1])); index += width
+    return ''.join(out), mapping
+
+
+def _privacy_spans(text):
+    from urllib.parse import urlsplit, unquote
+    spans = []
+    # Decode only a bounded candidate projection, retaining offsets into the
+    # original capture. Replacement never rewrites non-key URL bytes.
+    for match in _URL_START.finditer(text):
+        start = match.start()
+        preview = text[start:start + 320]
+        preview, unused = _privacy_projection(preview, [(i,i+1) for i in range(len(preview))], '%' in match.group(0))
+        if re.match(r'https://(?:location\.services\.mozilla\.com|safebrowsing\.googleapis\.com)(?=[:/?#]|$)', preview, re.I) is None:
+            continue
+        end = start
+        while end < len(text) and text[end] not in '\r\n\t \"\'<>':
+            end += 1
+            _privacy_require(end - start <= 4096)
+        while end > start and text[end - 1] == '\\':
+            end -= 1
+        raw = text[start:end]
+        positions = [(start + i, start + i + 1) for i in range(len(raw))]
+        projected, positions = _privacy_projection(raw, positions, '%' in match.group(0))
+        try:
+            url = urlsplit(projected)
+        except ValueError:
+            _privacy_require(False)
+        kind = ('mozilla-location' if url.hostname == 'location.services.mozilla.com' and url.path == '/v1/country'
+                else 'google-safebrowsing' if url.hostname == 'safebrowsing.googleapis.com' else None)
+        if kind is None or url.scheme.lower() != 'https' or not url.query:
+            continue
+        query_start = projected.find('?') + 1
+        for parameter in re.finditer(r'(?:^|&)([^=&]*?)=([^&#]*)', url.query):
+            if unquote(parameter.group(1)).lower() != 'key':
+                continue
+            first = query_start + parameter.start(2); last = query_start + parameter.end(2)
+            if first == last or unquote(projected[first:last]) == PRIVACY_REPLACEMENT:
+                continue
+            spans.append((positions[first][0], positions[last - 1][1], kind))
+            _privacy_require(len(spans) <= PRIVACY_MAX_REPLACEMENTS)
+    for match in _API_KEY_CANDIDATE.finditer(text):
+        candidate = match.group(0)
+        projected, unused = _privacy_projection(candidate, [(i,i+1) for i in range(len(candidate))], True)
+        if _API_KEY_SHAPE.fullmatch(projected) is None:
+            continue
+        if any(first <= match.start() and match.end() <= last for first, last, _ in spans):
+            continue
+        prefix = text[max(0, match.start() - 160):match.start()]
+        kind = 'gboard' if re.search(r'expressive_stickers_api_key[^\r\n]{0,100}$', prefix) else 'google-api-key-shape'
+        spans.append((match.start(), match.end(), kind)); _privacy_require(len(spans) <= PRIVACY_MAX_REPLACEMENTS)
+    spans.sort()
+    _privacy_require(all(spans[i - 1][1] <= spans[i][0] for i in range(1, len(spans))))
+    return spans
+
+
+def service_api_key_findings(text):
+    """Return only fixed classifications and hashes; never a credential value."""
+    _privacy_require(isinstance(text, str) and len(text.encode('utf-8')) <= PRIVACY_MAX_BYTES)
+    return [dict(kind=kind, sha256=hashlib.sha256(text[first:last].encode('utf-8')).hexdigest())
+            for first, last, kind in _privacy_spans(text)]
+
+
+def redact_service_api_keys(text, *, max_bytes=PRIVACY_MAX_BYTES):
+    _privacy_require(isinstance(text, str) and type(max_bytes) is int and 0 <= max_bytes <= PRIVACY_MAX_BYTES)
+    original = text.encode('utf-8'); _privacy_require(len(original) <= max_bytes)
+    spans = _privacy_spans(text); pieces, previous = [], 0
+    counts = dict.fromkeys(PRIVACY_KINDS, 0)
+    for first, last, kind in spans:
+        pieces.extend((text[previous:first], PRIVACY_REPLACEMENT)); previous = last; counts[kind] += 1
+    pieces.append(text[previous:]); sanitized = ''.join(pieces); final = sanitized.encode('utf-8')
+    _privacy_require(len(final) <= PRIVACY_MAX_BYTES)
+    metadata = dict(schema=1, kind='service-api-key-value-redaction', policy=PRIVACY_POLICY,
+                    originalBytes=len(original), originalSha256=hashlib.sha256(original).hexdigest(),
+                    finalBytes=len(final), finalSha256=hashlib.sha256(final).hexdigest(),
+                    changed=bool(spans), replacements=counts)
+    return sanitized, metadata
+
+
+def verify_capture_privacy(metadata, sanitized):
+    """Validate explicitly derivative stored bytes; source hashes are provenance,
+    not independent proof that a discarded original capture was authentic."""
+    if not isinstance(metadata, dict) or set(metadata) != {'schema','kind','policy','originalBytes','originalSha256','finalBytes','finalSha256','changed','replacements'} or not isinstance(sanitized, str):
+        return False
+    if type(metadata['schema']) is not int or metadata['schema'] != 1 or metadata['kind'] != 'service-api-key-value-redaction' or metadata['policy'] != PRIVACY_POLICY or type(metadata['changed']) is not bool:
+        return False
+    counts = metadata['replacements']
+    if not isinstance(counts, dict) or set(counts) != set(PRIVACY_KINDS) or not all(type(v) is int and 0 <= v <= PRIVACY_MAX_REPLACEMENTS for v in counts.values()):
+        return False
+    total = sum(counts.values())
+    if total > PRIVACY_MAX_REPLACEMENTS or metadata['changed'] != (total > 0):
+        return False
+    if not all(type(metadata[k]) is int and 0 <= metadata[k] <= PRIVACY_MAX_BYTES for k in ('originalBytes','finalBytes')) or not all(isinstance(metadata[k], str) and re.fullmatch('[0-9a-f]{64}', metadata[k]) for k in ('originalSha256','finalSha256')):
+        return False
+    final = sanitized.encode('utf-8')
+    if metadata['finalBytes'] != len(final) or metadata['finalSha256'] != hashlib.sha256(final).hexdigest():
+        return False
+    if not total and (metadata['originalBytes'] != len(final) or metadata['originalSha256'] != metadata['finalSha256']):
+        return False
+    if total and (metadata['originalBytes'] == 0 or metadata['originalSha256'] == metadata['finalSha256'] or sanitized.count(PRIVACY_REPLACEMENT) < total):
+        return False
+    try:
+        return not service_api_key_findings(sanitized)
+    except ValueError:
+        return False
+
+
+def diagnostic_privacy_summary(captures):
+    return dict(schema=1, kind='sanitized-diagnostic-captures', policy=PRIVACY_POLICY,
+                captureCount=len(captures), changedCaptureCount=sum(1 for item in captures if item['changed']),
+                scope='Complete stored captures with only declared service API-key values removed; not untouched Android raw output.',
+                captures=list(captures))
+
+
+def assert_public_diagnostic_text(path, raw):
+    """A public text gate fails closed. Binary APK/PNG callers stay explicit."""
+    _privacy_require(isinstance(raw, bytes) and len(raw) <= PRIVACY_MAX_BYTES)
+    try:
+        # Legacy raw/log/text evidence may contain arbitrary bytes. Its scan
+        # projection never replaces stored/archive/hash bytes. Invalid bytes
+        # become non-ASCII separators, leaving ASCII API-key shapes visible.
+        legacy = getattr(path, 'suffix', '').lower() in ('.raw','.log','.txt')
+        legacy = legacy or (getattr(path,'name','') == 'manifest.json' and getattr(getattr(path,'parent',None),'name','') in ('window-network-identity-android-host-results-raw','window-network-identity-desktop-host-results-raw'))
+        text = raw.decode('utf-8', errors='replace' if legacy else 'strict')
+    except UnicodeDecodeError:
+        raise ValueError('Diagnostic publication privacy: text encoding rejected') from None
+    if service_api_key_findings(text):
+        name = getattr(path, 'name', '')
+        if not isinstance(name, str) or not re.fullmatch('[A-Za-z0-9_.-]{1,160}', name):
+            name = 'diagnostic-text'
+        raise ValueError('Diagnostic publication privacy: rejected file=' + name + ' sha256=' + hashlib.sha256(raw).hexdigest())
+
+
 def canonical_component(value):
     require(isinstance(value, str) and re.fullmatch(COMPONENT_RE, value), 'safe component required')
     package, activity = value.split('/')
@@ -150,6 +313,31 @@ class Snapshot:
                 self.registered, self.actual_current)
 
 
+def _private_diagnostic_excerpt(value, limit, *, tail=False):
+    if isinstance(value, bytes):
+        value = value.decode('utf-8', errors='replace')
+    value = str(value)
+    # Filter the bounded complete value before taking either excerpt. Larger
+    # captures retain only the existing size/hash evidence and a fixed label.
+    try:
+        filtered, metadata = redact_service_api_keys(value)
+        return filtered[-limit:] if tail else filtered[:limit]
+    except ValueError:
+        return '[diagnostic excerpt unavailable]'
+
+
+def _private_diagnostic_exception(error):
+    # Preserve the original failure class/object/status while removing only
+    # captured service-key values from messages propagated to outer collectors.
+    error.args = tuple(_private_diagnostic_excerpt(value,8192) if isinstance(value,(str,bytes)) else value for value in error.args)
+    return error
+
+
+def _privacy_ime_identity_lines(value):
+    return tuple(line for line in value.splitlines() if re.match(
+        r'^\s*(?:mCurMethodId|mCurId|mCurToken|mCurClient|mBoundToMethod|mBindSequence|mCurrentUserId|mCurFocusedWindow|mHaveConnection|mCurMethod)\s*=', line))
+
+
 class ControlledImeGuard:
     def __init__(self, *, adb, identity, record, nonce, serial=SERIAL, clock=time.monotonic_ns):
         require(serial == SERIAL, 'only fixed synthetic target permitted')
@@ -168,7 +356,7 @@ class ControlledImeGuard:
                       serial=SERIAL, user=0, exactFixtureComponent=COMPONENT, commands=[],
                       mutationAttempted=False, restorationVerified=False, physicalPhoneAcceptance=False,
                       vendorKeyboardUiAcceptance=False, applicationAcceptance=False,
-                      scope='Exact emulator/User 0 state around unchanged original-SDK compatibility protocol; not vendor keyboard or phone acceptance.')
+                      scope='Exact emulator/User 0 state around unchanged original-SDK compatibility protocol; complete stored capture with only declared service API-key values redacted, not untouched Android raw output; not vendor keyboard or phone acceptance.')
 
     def command(self, *parts):
         row = dict(parts=list(parts), startedAtMonotonicNanos=self.clock())
@@ -178,25 +366,40 @@ class ControlledImeGuard:
             row['stdoutType'] = type(value).__name__
             if isinstance(value, str):
                 raw = value.encode('utf-8')
-                row.update(stdoutChars=len(value), stdoutBytes=len(raw), stdoutSha256=hashlib.sha256(raw).hexdigest())
                 allowed = len(raw) <= METHOD_DUMP_BYTES if parts == METHOD_DUMP_COMMAND else len(value) <= 131072
                 if not allowed:
-                    row.update(stdoutFirst=value[:4096], stdoutLast=value[-4096:], stdoutTruncated=True)
+                    row.update(stdoutChars=len(value), stdoutBytes=len(raw), stdoutSha256=hashlib.sha256(raw).hexdigest(),
+                               stdoutFirst=_private_diagnostic_excerpt(value,4096),
+                               stdoutLast=_private_diagnostic_excerpt(value,4096,tail=True), stdoutTruncated=True)
                 require(allowed, 'bounded actual stdout required')
+                original = value
+                value, privacy = redact_service_api_keys(value)
+                if parts == METHOD_DUMP_COMMAND:
+                    require(_privacy_ime_identity_lines(original) == _privacy_ime_identity_lines(value), 'native method identity lines changed by capture privacy')
+                    require(len(value.encode('utf-8')) <= METHOD_DUMP_BYTES, 'bounded final method stdout required')
+                row['capturePrivacy'] = privacy
+                raw = value.encode('utf-8')
+                row.update(stdoutChars=len(value), stdoutBytes=len(raw), stdoutSha256=hashlib.sha256(raw).hexdigest())
             else:
                 row.update(stdoutChars=None, stdoutBytes=None, stdoutSha256=None)
                 require(False, 'actual string stdout required')
             row.update(stdout=value, status='passed')
             return value
         except BaseException as error:
-            row.update(status='failed', errorType=type(error).__name__, error=str(error))
+            _private_diagnostic_exception(error)
+            row.update(status='failed', errorType=type(error).__name__, error=_private_diagnostic_excerpt(error,8192))
             for field in ('stdout', 'output', 'stderr'):
                 value = getattr(error, field, None)
                 if value is not None:
                     limit = 131072 if field != 'stderr' else 8192
                     if isinstance(value, bytes):
                         value = value[:limit].decode('utf-8', errors='replace')
-                    row[field] = str(value)[:limit]
+                    filtered = _private_diagnostic_excerpt(value,limit)
+                    row[field] = filtered
+                    try:
+                        setattr(error,field,filtered)
+                    except (AttributeError,TypeError):
+                        pass
             raise
         finally:
             row['completedAtMonotonicNanos'] = self.clock()
@@ -289,7 +492,8 @@ class ControlledImeGuard:
                     'the selected controlled IME was not actually connected/bound at protocol completion')
             value['status'] = 'passed'
         except BaseException as error:
-            value.update(errorType=type(error).__name__, error=str(error))
+            _private_diagnostic_exception(error)
+            value.update(errorType=type(error).__name__, error=_private_diagnostic_excerpt(error,8192))
             raise
         finally:
             value['completedAtMonotonicNanos'] = self.clock()
@@ -314,13 +518,15 @@ class ControlledImeGuard:
             finally:
                 self.record['workloadCompletedAtMonotonicNanos'] = self.clock()
         except BaseException as error:
+            _private_diagnostic_exception(error)
             failure = error
-            self.record.update(errorType=type(error).__name__, error=str(error), failureStage=failure_stage,
+            self.record.update(errorType=type(error).__name__, error=_private_diagnostic_excerpt(error,8192), failureStage=failure_stage,
                                workloadStatus='failed' if failure_stage == 'workload' else 'unaccepted')
         try:
             self.restore()
         except BaseException as error:
-            self.record.update(restoreErrorType=type(error).__name__, restoreError=str(error), fatal=True,
+            _private_diagnostic_exception(error)
+            self.record.update(restoreErrorType=type(error).__name__, restoreError=_private_diagnostic_excerpt(error,8192), fatal=True,
                                failureStage='restore')
             raise RuntimeError('Exact IME restoration failed; later suites must not run') from error
         if failure is not None:

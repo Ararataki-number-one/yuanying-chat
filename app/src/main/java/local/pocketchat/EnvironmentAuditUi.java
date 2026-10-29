@@ -25,6 +25,8 @@ final class EnvironmentAuditUi {
     Button back=button(a,box,"返回原聊天"),history=button(a,box,"查看最近观测与变化"),fixed=button(a,box,"固定深检参照与比较"),comparison=button(a,box,"标准／强化本地双报告对照");
     Button detailsToggle=button(a,box,"展开结果详情");LinearLayout details=section(a,box);
     TextView rawInfo=a.label("",14,Ui.INK);rawInfo.setLineSpacing(a.dp(4),1);details.addView(rawInfo);
+    Button templateCapabilities=button(a,details,"原生保护能力与兼容记录");
+    templateCapabilities.setOnClickListener(v->{if(current(a,edited,audit))ProtectionTemplateUi.show(a,edited);});
     Button copyDeep=button(a,details,"复制深检原始记录"),baseline=button(a,details,"确认当前环境，更新基线");
     TextView baselineNote=a.label("确认基线只更新变化参照，不会修复检查发现的问题。最近八次网页观测仅在当前环境本地加密保存。固定深检参照单独保留，需主动保存或清除。",13,Ui.MUTED);details.addView(baselineNote);
     Button advancedToggle=button(a,box,"展开高级网络检测");LinearLayout advanced=section(a,box);

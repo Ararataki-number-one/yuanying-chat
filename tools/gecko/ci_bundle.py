@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import subprocess
+import sys
 import tarfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,6 +50,22 @@ _scope_spec = importlib.util.spec_from_file_location('ci_network_scope_artifacts
 _scope = importlib.util.module_from_spec(_scope_spec); _scope_spec.loader.exec_module(_scope)
 NETWORK_IDENTITY_RAW_DIRS = _scope.NETWORK_IDENTITY_RAW_DIRS
 NETWORK_IDENTITY_RAW_FILES = _scope.NETWORK_IDENTITY_RAW_FILES
+
+_privacy_spec = importlib.util.spec_from_file_location('ci_diagnostic_capture_privacy', Path(__file__).with_name('caret_ime_guard.py'))
+_privacy = importlib.util.module_from_spec(_privacy_spec)
+sys.modules[_privacy_spec.name] = _privacy
+_privacy_spec.loader.exec_module(_privacy)
+DIAGNOSTIC_TEXT_SUFFIXES = frozenset(('.json', '.txt', '.log', '.xml', '.raw', '.jsonl', '.yml', '.yaml',
+                                    '.md', '.py', '.js', '.html', '.css', '.csv', '.pom', '.properties',
+                                    '.gradle', '.java', '.kt', '.conf', '.cfg', '.ini', '.sh'))
+
+
+def scan_diagnostic_capture(path):
+    """Scan generated text before hashing/packing; preserve binary APK and SDK bytes."""
+    if path.suffix.lower() in DIAGNOSTIC_TEXT_SUFFIXES:
+        with path.open('rb') as stream:
+            raw = stream.read(16 * 1024 * 1024 + 1)
+        _privacy.assert_public_diagnostic_text(path, raw)
 
 
 def digest(path):
@@ -125,6 +142,7 @@ def pack(root, target, kind, phase=None):
         if not allowed(name, kind):
             continue
         assert path.is_file() and not path.is_symlink(), 'CI bundle refuses nonregular files or symbolic links'
+        scan_diagnostic_capture(path)
         sha = digest(path)
         if baseline.get(name) == sha:
             continue
@@ -133,6 +151,7 @@ def pack(root, target, kind, phase=None):
     if kind == 'phase':
         manifest.update(phase=phase, buildIndexSha256=hashlib.sha256(build_raw).hexdigest())
     raw = (json.dumps(manifest, sort_keys=True, indent=2) + '\n').encode()
+    _privacy.assert_public_diagnostic_text(Path('_ci_bundle.json'), raw)
     target.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(target, 'w:gz', compresslevel=1) as archive:
         info = tarfile.TarInfo('_ci_bundle.json'); info.size = len(raw)

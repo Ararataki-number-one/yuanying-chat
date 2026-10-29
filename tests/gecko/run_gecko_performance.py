@@ -8,6 +8,7 @@ BASELINE = '835d59991218eda70c7a4fdd73ea9d7ae6052688'
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 from native_input_driver import NativeInputDriver
 from native_input_contract import verify_qualification
+from caret_ime_guard import redact_service_api_keys, diagnostic_privacy_summary
 
 
 def document():
@@ -154,8 +155,30 @@ def main():
         assert len(packaged) == receipt['files'][name]['bytes'], name
         assert hashlib.sha256(packaged).hexdigest() == receipt['files'][name]['sha256'], name
 
+    privacy_captures = []
+    def capture_text(value):
+        if isinstance(value, bytes):
+            value = value.decode('utf-8', errors='replace')
+        filtered, metadata = redact_service_api_keys(value or '')
+        if len(privacy_captures) >= 4096:
+            raise ValueError('Diagnostic capture privacy: capture-count bound')
+        privacy_captures.append(metadata)
+        return filtered
+
     def adb(*parts):
-        return subprocess.check_output([args.adb, '-s', args.serial, *parts], text=True, timeout=30)
+        command = [args.adb, '-s', args.serial, *parts]
+        try:
+            result = subprocess.run(command, text=True, capture_output=True, timeout=30)
+        except subprocess.TimeoutExpired as error:
+            error.output = capture_text(error.output)
+            error.stderr = capture_text(error.stderr)
+            raise
+        value, errors = capture_text(result.stdout), capture_text(result.stderr)
+        if errors:
+            print(errors, file=sys.stderr, end='' if errors.endswith('\n') else '\n')
+        if result.returncode:
+            raise subprocess.CalledProcessError(result.returncode, command, output=value, stderr=errors)
+        return value
 
     package = 'local.pocketchat.test'
     scroll_samples, scroll_touches, scroll_dom_events, scroll_errors = {}, {}, {}, {}
@@ -301,6 +324,7 @@ def main():
                               actualTrustedInputEvents=[event for key in sorted(input_events) for event in input_events[key]['events']],
                               actualInputEvaluationTrace=[input_evaluations[key] for key in sorted(input_evaluations)],
                               actualNativeInputTrace=[native_input_events[key] for key in sorted(native_input_events)])
+                report['capturePrivacy'] = diagnostic_privacy_summary(privacy_captures)
                 (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
                 print(json.dumps(report, indent=2), flush=True)
                 assert report['inputDiagnosticsEnabled'] == args.input_diagnostics, report
@@ -367,13 +391,15 @@ def main():
         report['failureCaptures'] = captures
         if report is not None:
             report['status'] = 'failed'
-            report['runnerError'] = str(error)
+            report['runnerError'] = capture_text(str(error))
+            report['capturePrivacy'] = diagnostic_privacy_summary(privacy_captures)
             (OUT / 'gecko-performance-results.json').write_text(json.dumps(report, indent=2) + '\n')
         raise
     finally:
         for server in servers:
             server.shutdown()
             server.server_close()
+        (OUT / 'gecko-performance-capture-privacy.json').write_text(json.dumps(diagnostic_privacy_summary(privacy_captures), indent=2) + '\n')
 
 
 if __name__ == '__main__':

@@ -12,6 +12,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools'))
 from gecko.preconnect_contract import verify_preconnect
+from gecko.caret_ime_guard import redact_service_api_keys, diagnostic_privacy_summary
 from run_gecko_pool import NODE as BASE_NODE
 
 OUT = ROOT / 'work/gecko-integration'
@@ -32,10 +33,28 @@ def main():
                  'preconnect-server.json', 'preconnect-server-failure.json']:
         (OUT / name).unlink(missing_ok=True)
 
+    privacy_captures = []
+    def capture_text(value):
+        if isinstance(value, bytes):
+            value = value.decode('utf-8', errors='replace')
+        filtered, metadata = redact_service_api_keys(value or '')
+        if len(privacy_captures) >= 4096:
+            raise ValueError('Diagnostic capture privacy: capture-count bound')
+        privacy_captures.append(metadata)
+        return filtered
+
     def adb(*parts, check=True):
-        result = subprocess.run([args.adb, '-s', args.serial, *parts], text=True,
-                                capture_output=True, timeout=30, check=check)
-        return result.stdout
+        command = [args.adb, '-s', args.serial, *parts]
+        try:
+            result = subprocess.run(command, text=True, capture_output=True, timeout=30, check=False)
+        except subprocess.TimeoutExpired as error:
+            error.output = capture_text(error.output)
+            error.stderr = capture_text(error.stderr)
+            raise
+        value, errors = capture_text(result.stdout), capture_text(result.stderr)
+        if check and result.returncode:
+            raise subprocess.CalledProcessError(result.returncode, command, output=value, stderr=errors)
+        return value
 
     def log():
         return adb('logcat', '-d', '-s', 'PocketPreconnect:I', 'AndroidRuntime:E', '*:S')
@@ -76,6 +95,7 @@ def main():
             report['androidSdk'] = int(adb('shell', 'getprop', 'ro.build.version.sdk').strip())
             server = json.loads((directory / 'server.json').read_text())
             report['server'] = server
+            report['capturePrivacy'] = diagnostic_privacy_summary(privacy_captures)
             (OUT / 'preconnect-results.json').write_text(json.dumps(report, indent=2) + '\n')
             (OUT / 'preconnect-log.txt').write_text(raw)
             (OUT / 'preconnect-server.json').write_text(json.dumps(server, indent=2) + '\n')
@@ -99,6 +119,7 @@ def main():
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.communicate()
+            (OUT / 'preconnect-capture-privacy.json').write_text(json.dumps(diagnostic_privacy_summary(privacy_captures), indent=2) + '\n')
 
 
 if __name__ == '__main__':

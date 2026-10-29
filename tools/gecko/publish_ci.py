@@ -4,6 +4,20 @@ import hashlib, json, os, pathlib, re, shutil, subprocess, sys
 sys.dont_write_bytecode = True
 from ci_git_publish import push_tree
 from network_scope_artifacts import copy_network_scope_evidence
+from caret_ime_guard import assert_public_diagnostic_text
+
+DIAGNOSTIC_TEXT_SUFFIXES = frozenset(('.json', '.txt', '.log', '.xml', '.raw', '.jsonl', '.yml', '.yaml',
+                                    '.md', '.py', '.js', '.html', '.css', '.csv', '.pom', '.properties',
+                                    '.gradle', '.java', '.kt', '.conf', '.cfg', '.ini', '.sh'))
+
+
+def scan_public_diagnostics(directory):
+    """Refuse unfiltered text before forming the public Git index; binaries stay exact."""
+    for path in sorted(directory.rglob('*')):
+        if path.is_file() and path.suffix.lower() in DIAGNOSTIC_TEXT_SUFFIXES:
+            with path.open('rb') as stream:
+                raw = stream.read(16 * 1024 * 1024 + 1)
+            assert_public_diagnostic_text(path, raw)
 
 root = pathlib.Path(__file__).resolve().parents[2]
 out = root / 'work/gecko-integration'
@@ -98,7 +112,10 @@ for pattern in ['native-input-*.json', 'native-input-*.txt', 'native-input-*.log
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
 for pattern in ['network-latency-*.png','network-latency-*.xml']:
     for item in out.glob(pattern):shutil.copy2(item,stage/item.name)
+for name in ('gecko-performance-capture-privacy.json', 'preconnect-capture-privacy.json'):
+    if (out/name).exists():shutil.copy2(out/name,stage/name)
 (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
+scan_public_diagnostics(stage)
 branch = 'apk/gecko-integration-build-20261003'
 env = dict(os.environ, GIT_INDEX_FILE=str(out/'public-index'), GIT_WORK_TREE=str(stage),
     GIT_AUTHOR_NAME='PocketChat build', GIT_AUTHOR_EMAIL='pocketchat@users.noreply.github.com',
