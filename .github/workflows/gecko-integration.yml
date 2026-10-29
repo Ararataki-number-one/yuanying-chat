@@ -316,6 +316,7 @@ jobs:
         python3 tests/gecko_scroll_stage_test.py
         python3 -m unittest discover -s tests -p 'gecko_network_ui_route_test.py'
         python3 -m unittest discover -s tests -p 'gecko_emulator_bootstrap_test.py'
+        python3 -m unittest discover -s tests -p 'gecko_emulator_background_isolation_test.py'
         python3 -m unittest discover -s tests -p 'gecko_event_transfer_test.py'
         python3 tests/gecko_device_readiness_test.py
         if [ -f tools/gecko/release_channel_contract_test.py ]; then
@@ -448,6 +449,7 @@ jobs:
         python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
         echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest '${{ matrix.scenario }}'
     - name: Diagnose original chrome collapse flow only
       id: focused
@@ -555,6 +557,7 @@ jobs:
         python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
         echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest '${{ matrix.phase }}'
     - name: Verify network performance and compact chrome
       shell: bash
@@ -812,6 +815,7 @@ jobs:
         python3 tools/gecko/prepare_native_adb.py --adb "$(command -v adb)" --apk app/build/outputs/apk/integration/app-x86_64-integration.apk --monitor "$PWD/work/gecko-integration/qemu-monitor.sock"
         echo "ANDROID_SERIAL=emulator-5554" >> "$GITHUB_ENV"
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
+        python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest '${{ matrix.sample }}'
     - name: Run one original workload on this independent Android device
       shell: bash
