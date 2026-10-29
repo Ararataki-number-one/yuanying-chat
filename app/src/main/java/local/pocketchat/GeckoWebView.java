@@ -36,7 +36,7 @@ class GeckoWebView extends FrameLayout {
     if(chrome!=null)chrome.webTouch(event);return handled;
   }
   void destroy(){
-    if(destroyed)return;destroyed=true;
+    if(destroyed)return;destroyed=true;if(contentPermissions!=null)contentPermissions.close();
     cancelZoom();cancelProtectionTasks();nativeProtection.closed();protectionRestore=null;owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
     callbacks.clear();cookieCallbacks.clear();appearanceSync.clear();
     appearanceLoads.clear();appearanceConnections.clear();appearanceDocuments.clear();staleAppearanceConnections.clear();
@@ -51,6 +51,7 @@ class GeckoWebView extends FrameLayout {
   static final String VERSION="GeckoView 157.0.1 · 输入同步修正";
   final ChatSession owner;
   GeckoView surface;GeckoRuntime runtime;WebExtension extension;GeckoSession primary,current;
+  GeckoContentPermissions contentPermissions;
   final ArrayList<GeckoSession> popups=new ArrayList<>();
   final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();
   final Map<GeckoSession,String> locations=new IdentityHashMap<>();
@@ -336,6 +337,7 @@ class GeckoWebView extends FrameLayout {
       }
     });
     session.setPermissionDelegate(new GeckoSession.PermissionDelegate(){
+      @Override public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s,ContentPermission permission){if(contentPermissions==null)contentPermissions=new GeckoContentPermissions(GeckoWebView.this);return contentPermissions.request(s,permission);}
       @Override public void onAndroidPermissionsRequest(GeckoSession s,String[] permissions,Callback callback){callback.reject();}
       @Override public void onMediaPermissionRequest(GeckoSession s,String origin,MediaSource[] video,MediaSource[] audio,MediaCallback callback){callback.reject();}
     });

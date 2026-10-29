@@ -16,6 +16,7 @@ PATCH_SHA256 = 'f831967e6d6a4265ffadc8ffa008402a091da1204812ec71e6593b37256c22b9
 def reading_preservation_bytes(raw):
     if hashlib.sha256(raw).hexdigest() == BASELINE:
         return raw
+    raw = permission_denial_preservation_bytes(raw)
     patch = ROOT / 'tests/fixtures/fingerprint-gecko-reading-preservation.patch'
     data = patch.read_bytes()
     if hashlib.sha256(data).hexdigest() != PATCH_SHA256:
@@ -58,4 +59,25 @@ def reading_preservation_bytes(raw):
     restored = ''.join(source).encode('utf-8')
     if hashlib.sha256(restored).hexdigest() != BASELINE:
         raise ValueError('Original whole-source reading guard no longer matches')
+    return restored
+
+
+# Exact additive 2.0.32 native stored-denial adapter; the older oracle remains mandatory.
+PERMISSION_PRIOR_BROWSER_SHA256 = '80b24f3e89b8ebd8e798d1841b92d006387c9131b00d467228a737b110db5001'
+PERMISSION_REVIEWED_BROWSER_SHA256 = '231cccc9b77c9b66e16dfeb8b0e45e465aeffc2753ffe6a693058b0b357be4b3'
+PERMISSION_EXACT_ADDITIONS = (b'if(contentPermissions!=null)contentPermissions.close();', b'\n  GeckoContentPermissions contentPermissions;', b'      @Override public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s,ContentPermission permission){if(contentPermissions==null)contentPermissions=new GeckoContentPermissions(GeckoWebView.this);return contentPermissions.request(s,permission);}\n')
+
+def permission_denial_preservation_bytes(raw):
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest == PERMISSION_PRIOR_BROWSER_SHA256:
+        return raw
+    if digest != PERMISSION_REVIEWED_BROWSER_SHA256:
+        raise ValueError('Permission delta is not the exact reviewed whole browser source')
+    restored = raw
+    for addition in PERMISSION_EXACT_ADDITIONS:
+        if restored.count(addition) != 1:
+            raise ValueError('Permission inverse addition is missing or duplicated')
+        restored = restored.replace(addition, b'', 1)
+    if hashlib.sha256(restored).hexdigest() != PERMISSION_PRIOR_BROWSER_SHA256:
+        raise ValueError('Permission inverse did not restore the prior whole browser source')
     return restored

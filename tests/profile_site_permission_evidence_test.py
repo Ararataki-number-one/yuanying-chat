@@ -15,16 +15,16 @@ ORIGIN = CONTRACT.ORIGIN
 
 def data():
     requests, gestures = [], []
-    for stage, before, result, start, end in [('initial', 'default', 'default', 0, 1), ('after-deny', 'denied', 'denied', 1, 1), ('after-default', 'default', 'default', 1, 2)]:
+    for stage, before, result, start, end in [('initial', 'default', 'default', 0, 1), ('after-deny', 'denied', 'denied', 1, 2), ('after-default', 'default', 'default', 2, 3)]:
         requests.append(dict(realm='page-main-world', nonce=NONCE, stage=stage, url=ORIGIN + '/pool', secureContext=True,
                              isTrusted=True, userActivation=True, requestCalled=True, done=True, before=before, result=result,
                              after=result, callbacksBefore=start, callbacksAfter=end))
         bounds = dict(nonce=NONCE, stage=stage, css=dict(x=100, y=300, width=400, height=800), native=dict(x=0, y=30, width=800, height=1600))
         gestures.append(dict(nonce=NONCE, stage=stage, command=CONTRACT.permission_tap_command(bounds, CONTRACT.STAGES[:len(gestures)]), bounds=bounds, oneAttempt=True))
-    callbacks = [dict(sequence=i + 1, type=1, role='content-permission-request', value=0, valueSemantics='native-request-unmapped', origin=ORIGIN, privateMode=False, contextMatches=True, thirdPartyAbsent=False, sameSession=True, thirdPartyOriginKind='controlled-origin', thirdPartyOriginLength=len(ORIGIN), thirdPartyOriginSha256=hashlib.sha256(ORIGIN.encode()).hexdigest(), thirdPartyOrigin=ORIGIN) for i in range(2)]
+    callbacks = [dict(sequence=i + 1, type=1, role='content-permission-request', value=0, valueSemantics='native-request-unmapped', origin=ORIGIN, privateMode=False, contextMatches=True, thirdPartyAbsent=False, sameSession=True, thirdPartyOriginKind='controlled-origin', thirdPartyOriginLength=len(ORIGIN), thirdPartyOriginSha256=hashlib.sha256(ORIGIN.encode()).hexdigest(), thirdPartyOrigin=ORIGIN) for i in range(3)]
     snapshots = [dict(role='stored-permission-record', valueSemantics='stored-permission-value' if present else 'absent-record-sentinel', stage=stage, attempt=1, present=present, value=value, type=1, origin=ORIGIN, contextMatches=True, privateMode=False, thirdPartyAbsent=True)
-                 for stage, present, value in [('baseline-default', False, 0), ('deny', True, 2), ('default', False, 0)]]
-    return dict(schema=2, status='passed', scope='controlled-gecko-sdk-only', origin=ORIGIN, productionUiAdapter=False,
+                 for stage, present, value in [('baseline-default', False, 0), ('deny', True, 2), ('deny-after-request', True, 2), ('default', False, 0), ('default-after-request', False, 0)]]
+    return dict(schema=3, status='passed', scope='controlled-gecko-sdk-only', origin=ORIGIN, productionUiAdapter=False,
                 actualAndroidExecution=True, actualGeckoExecution=True, physicalPhoneAcceptance=False, publicNetworkTraffic=False,
                 testOnlyCertificateException=True, checks=[dict(name='synthetic contract check ' + str(i), **{'pass': True}) for i in range(12)],
                 preflight=dict(realm='page-main-world', nonce=NONCE, url=ORIGIN + '/pool', secureContext=True, notificationApi=True),
@@ -50,6 +50,25 @@ class SitePermissionEvidenceTest(unittest.TestCase):
         self.assertFalse(result['physicalPhoneAcceptance'])
         report['snapshots'][-1].update(present=True, value=3, valueSemantics='stored-permission-value')
         self.assertEqual(CONTRACT.verify_site_permission_evidence(report, gestures)['status'], 'passed')
+
+    def test_native_callback_after_deny_is_allowed_only_with_preserved_denial_and_default(self):
+        report, gestures = data()
+        self.assertEqual(CONTRACT.verify_site_permission_evidence(report, gestures)['status'], 'passed')
+        # A native version that short-circuits a saved denial is also a valid observation.
+        report['callbacks'].pop(1)
+        report['callbacks'][1]['sequence'] = 2
+        report['requests'][1]['callbacksAfter'] = 1
+        report['requests'][2].update(callbacksBefore=1, callbacksAfter=2)
+        self.assertEqual(CONTRACT.verify_site_permission_evidence(report, gestures)['status'], 'passed')
+        for mutate in [lambda r, g: r.update(schema=2),
+                       lambda r, g: r['requests'][0].update(result='denied', after='denied'),
+                       lambda r, g: r['requests'][1].update(result='default', after='default'),
+                       lambda r, g: r['requests'][2].update(result='denied', after='denied'),
+                       lambda r, g: r['snapshots'][2].update(value=3),
+                       lambda r, g: r['snapshots'].__delitem__(2),
+                       lambda r, g: r['snapshots'].__delitem__(-1),
+                       lambda r, g: r['snapshots'][-1].update(present=True, value=2, valueSemantics='stored-permission-value')]:
+            self.reject(mutate)
 
     def test_all_acceptance_flags_and_origin_are_strict(self):
         mutations = [lambda r, g: r.update(schema=True), lambda r, g: r.update(scope='production-ui'),
@@ -84,7 +103,7 @@ class SitePermissionEvidenceTest(unittest.TestCase):
         for key, bad in [('sequence', True), ('type', True), ('value', -1), ('origin', 'https://other.test'), ('privateMode', True),
                          ('contextMatches', False), ('thirdPartyAbsent', True), ('sameSession', False)]:
             self.reject(lambda r, g, key=key, bad=bad: r['callbacks'][0].update({key: bad}))
-        for mutation in [lambda r, g: r.update(callbacks=[]), lambda r, g: r['requests'][1].update(callbacksAfter=2),
+        for mutation in [lambda r, g: r.update(callbacks=[]), lambda r, g: r['requests'][1].update(callbacksAfter=0),
                          lambda r, g: r['requests'][2].update(callbacksAfter=1), lambda r, g: r['requests'][0].update(callbacksBefore=True)]:
             self.reject(mutation)
 

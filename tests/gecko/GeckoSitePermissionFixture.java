@@ -16,7 +16,7 @@ final class GeckoSitePermissionFixture {
   final String nonce=UUID.randomUUID().toString().replace("-","");
   final JSONArray checks=new JSONArray(),callbacks=new JSONArray(),snapshots=new JSONArray(),requests=new JSONArray(),mutations=new JSONArray();
   final ArrayList<GeckoSession.PermissionDelegate.ContentPermission> nativeCallbacks=new ArrayList<>();
-  final JSONObject evidence=J.obj("schema",2,"status","not-started","scope","controlled-gecko-sdk-only",
+  final JSONObject evidence=J.obj("schema",3,"status","not-started","scope","controlled-gecko-sdk-only",
       "productionUiAdapter",false,"actualAndroidExecution",true,"actualGeckoExecution",true,"physicalPhoneAcceptance",false,
       "publicNetworkTraffic",false,"testOnlyCertificateException",true,"origin",GeckoConnectionPoolIntegrationActivity.ORIGIN,
       "checks",checks,"callbacks",callbacks,"snapshots",snapshots,"requests",requests,"mutations",mutations);
@@ -139,18 +139,20 @@ final class GeckoSitePermissionFixture {
       readback("baseline-default",GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT);
       JSONObject initial=request("initial");
       if(count()==0){NetworkCatalog.put(evidence,"status","uncovered");NetworkCatalog.put(evidence,"reason","content-callback-not-observed");return;}
-      check("Initial notification request did not silently grant permission",Arrays.asList("default","denied").contains(initial.optString("result")));
+      check("Initial actual request preserves native default rather than fallback denial","default".equals(initial.optString("before"))&&"default".equals(initial.optString("result"))&&"default".equals(initial.optString("after")));
       GeckoSession.PermissionDelegate.ContentPermission original=test.ui(()->nativeCallbacks.get(0));
       write("deny",original,GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY);
       GeckoSession.PermissionDelegate.ContentPermission denied=readback("deny",GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY);
       JSONObject deniedPage=request("after-deny");
-      check("Stored denial is observed by the next actual page request without another prompt callback","denied".equals(deniedPage.optString("before"))
-          &&"denied".equals(deniedPage.optString("result"))&&"denied".equals(deniedPage.optString("after"))&&deniedPage.optInt("callbacksBefore")==deniedPage.optInt("callbacksAfter"));
+      check("Stored denial survives the next actual page request even if the SDK calls its delegate again","denied".equals(deniedPage.optString("before"))
+          &&"denied".equals(deniedPage.optString("result"))&&"denied".equals(deniedPage.optString("after")));
+      denied=readback("deny-after-request",GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY);
       write("default",denied,GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT);
       readback("default",GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT);
       JSONObject resetPage=request("after-default");
-      check("Default record allows a new native content-permission callback without granting","default".equals(resetPage.optString("before"))
-          &&Arrays.asList("default","denied").contains(resetPage.optString("result"))&&resetPage.optInt("callbacksAfter")>resetPage.optInt("callbacksBefore"));
+      check("Default record and actual callback preserve native default without fallback denial","default".equals(resetPage.optString("before"))
+          &&"default".equals(resetPage.optString("result"))&&"default".equals(resetPage.optString("after"))&&resetPage.optInt("callbacksAfter")>resetPage.optInt("callbacksBefore"));
+      readback("default-after-request",GeckoSession.PermissionDelegate.ContentPermission.VALUE_PROMPT);
       JSONObject retained=test.eval("({draft:document.getElementById('prompt-textarea').value,sends:Number(document.getElementById('send-count').textContent)})");
       check("Permission checks retain the original unsent draft and send nothing","unsent pool draft".equals(retained.optString("draft"))&&retained.optInt("sends")==0);
       NetworkCatalog.put(evidence,"sameDocument",true);NetworkCatalog.put(evidence,"draftPreserved",true);NetworkCatalog.put(evidence,"sendCount",0);

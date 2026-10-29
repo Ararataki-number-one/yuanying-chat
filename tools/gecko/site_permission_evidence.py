@@ -34,7 +34,7 @@ def permission_tap_command(value, earlier):
 
 
 def verify_site_permission_evidence(report, gestures):
-    require(isinstance(report, dict) and type(report.get('schema')) is int and report['schema'] == 2, 'Permission schema')
+    require(isinstance(report, dict) and type(report.get('schema')) is int and report['schema'] == 3, 'Permission schema')
     require(report.get('scope') == 'controlled-gecko-sdk-only' and report.get('origin') == ORIGIN, 'Permission scope/origin')
     for key in ('actualAndroidExecution', 'actualGeckoExecution', 'testOnlyCertificateException'):
         require(report.get(key) is True, 'Permission actual fixture flag: ' + key)
@@ -75,8 +75,8 @@ def verify_site_permission_evidence(report, gestures):
                 and callback.get('thirdPartyOriginSha256') == hashlib.sha256(ORIGIN.encode()).hexdigest()
                 and callback.get('thirdPartyOrigin') == ORIGIN, 'Permission native request principal origin')
     snapshots = report.get('snapshots')
-    require(isinstance(snapshots, list) and len(snapshots) <= 9, 'Permission native readback bound')
-    grouped = {stage: [] for stage in ('baseline-default', 'deny', 'default')}
+    require(isinstance(snapshots, list) and len(snapshots) <= 15, 'Permission native readback bound')
+    grouped = {stage: [] for stage in ('baseline-default', 'deny', 'deny-after-request', 'default', 'default-after-request')}
     order = []
     for snapshot in snapshots:
         require(isinstance(snapshot, dict) and snapshot.get('stage') in grouped, 'Permission readback stage')
@@ -88,7 +88,7 @@ def verify_site_permission_evidence(report, gestures):
         require(type(snapshot.get('type')) is int and snapshot['type'] == 1 and snapshot.get('origin') == ORIGIN and snapshot.get('privateMode') is False, 'Permission readback origin/type')
         require(snapshot.get('contextMatches') is True and snapshot.get('thirdPartyAbsent') is True, 'Permission readback namespace')
         group.append(snapshot);order.append(snapshot['stage'])
-    require(order == sorted(order, key=lambda stage: ['baseline-default', 'deny', 'default'].index(stage)), 'Permission readback order')
+    require(order == sorted(order, key=lambda stage: ['baseline-default', 'deny', 'deny-after-request', 'default', 'default-after-request'].index(stage)), 'Permission readback order')
     mutations = report.get('mutations')
     require(isinstance(mutations, list), 'Permission mutation list')
     if report.get('status') == 'uncovered':
@@ -100,7 +100,7 @@ def verify_site_permission_evidence(report, gestures):
             require(preflight['secureContext'] is True and preflight['notificationApi'] is False and not requests and not callbacks and not snapshots, 'Notification API uncovered evidence')
         else:
             require(preflight['secureContext'] is True and preflight['notificationApi'] is True and len(requests) == 1 and not callbacks, 'Missing native callback must follow an actual completed request')
-            require(grouped['baseline-default'] and not grouped['deny'] and not grouped['default'], 'Missing callback readback scope')
+            require(grouped['baseline-default'] and all(not grouped[key] for key in ('deny', 'deny-after-request', 'default', 'default-after-request')), 'Missing callback readback scope')
             baseline = grouped['baseline-default'][-1]
             require(not baseline['present'] or baseline['value'] == 3, 'Uncovered request did not start from native default')
             require(requests[0]['callbacksBefore'] == requests[0]['callbacksAfter'] == 0, 'Unobserved callback counter')
@@ -108,15 +108,16 @@ def verify_site_permission_evidence(report, gestures):
     require(report.get('status') == 'passed' and preflight['secureContext'] is True and preflight['notificationApi'] is True, 'Permission evidence not passed')
     require(len(checks) >= 12 and len(requests) == len(gestures) == 3 and len(callbacks) >= 2, 'Permission completed coverage')
     require(requests[0]['callbacksBefore'] == 0 and requests[0]['callbacksAfter'] >= 1, 'Initial genuine native callback')
-    require(requests[1]['before'] == requests[1]['result'] == requests[1]['after'] == 'denied' and requests[1]['callbacksAfter'] == requests[1]['callbacksBefore'] == requests[0]['callbacksAfter'], 'Stored denial did not control next request')
-    require(requests[2]['before'] == 'default' and requests[2]['callbacksBefore'] == requests[1]['callbacksAfter'] and requests[2]['callbacksAfter'] == len(callbacks) > requests[2]['callbacksBefore'], 'Default behavior did not reach a fresh native callback')
+    require(requests[0]['before'] == requests[0]['result'] == requests[0]['after'] == 'default', 'Initial request used fallback denial instead of native default')
+    require(requests[1]['before'] == requests[1]['result'] == requests[1]['after'] == 'denied' and requests[1]['callbacksBefore'] == requests[0]['callbacksAfter'], 'Stored denial did not control next request')
+    require(requests[2]['before'] == requests[2]['result'] == requests[2]['after'] == 'default' and requests[2]['callbacksBefore'] == requests[1]['callbacksAfter'] and requests[2]['callbacksAfter'] == len(callbacks) > requests[2]['callbacksBefore'], 'Default behavior did not reach a fresh native callback and preserve default')
     require(len(mutations) == 2, 'Exactly one deny and one default mutation')
     for mutation, stage, value, source in zip(mutations, ('deny', 'default'), (2, 3), ('content-permission-callback', 'getPermissions-readback')):
         require(isinstance(mutation, dict) and type(mutation.get('value')) is int and type(mutation.get('sourceValue')) is int and mutation.get('originalNativeObject') is True, 'Native mutation types')
         source_value = callbacks[0]['value'] if stage == 'deny' else 2
         semantics = callbacks[0]['valueSemantics'] if stage == 'deny' else 'stored-permission-value'
         require(mutation == dict(stage=stage, value=value, originalNativeObject=True, source=source, sourceValue=source_value, sourceValueSemantics=semantics), 'Native mutation source/value or duplicate write')
-    for stage, expected in (('baseline-default', 3), ('deny', 2), ('default', 3)):
+    for stage, expected in (('baseline-default', 3), ('deny', 2), ('deny-after-request', 2), ('default', 3), ('default-after-request', 3)):
         require(grouped[stage], 'Missing native readback: ' + stage)
         final = grouped[stage][-1]
         require(final['present'] and final['value'] == expected or not final['present'] and expected == 3, 'Native readback not confirmed: ' + stage)
