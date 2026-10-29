@@ -69,6 +69,8 @@ class GeckoWebView extends FrameLayout {
   final BrowserSessionStore sessionStore;final NetworkPoolIdentity connectionPool=new NetworkPoolIdentity();
   final ExecutorService uploadWorker=Executors.newSingleThreadExecutor();
   final List<GeckoUploadFiles.Selection> uploadFiles=new ArrayList<>();
+  volatile GeckoUploadFiles.Cleanup lastUploadCleanup;
+  void retireUnhandedUpload(GeckoUploadFiles.Selection files){new Thread(()->lastUploadCleanup=files.delete(),"upload-cleanup").start();}
   GeckoSession.SessionState startupState;long startupDraftRevision;final Map<GeckoSession,Long> stateDraftRevisions=new IdentityHashMap<>();
   boolean checkpointReady,checkpointRequested,routePrepared,identityPrepared,resourceDeferred;float readingLayout=1;long zoomEpoch,recoveryWindow;int contentRecoveries;
   ResourcePressureController.Admission resourceAdmission=ResourcePressureController.Admission.START;
@@ -309,15 +311,15 @@ class GeckoWebView extends FrameLayout {
           owner.resourceFileWork(true,false);
           final String beforePreparation=owner.status;owner.setStatus("准备附件…");
           try{uploadWorker.execute(()->{try{
-            GeckoUploadFiles.Selection files=GeckoUploadFiles.prepare(owner.context,uris);
+            GeckoUploadFiles.Selection files=GeckoUploadFiles.prepare(owner.context,uris,cancelled::get);
             owner.handler.post(()->{try{
-              if(destroyed||cancelled.get()||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){new Thread(files::delete,"upload-cleanup").start();if(!prompt.isComplete())result.complete(prompt.dismiss());return;}
+              if(destroyed||cancelled.get()||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){retireUnhandedUpload(files);if(!prompt.isComplete())result.complete(prompt.dismiss());return;}
               PromptResponse response;
               try{response=prompt.confirm(owner.context,files.files);}
-              catch(RuntimeException error){new Thread(files::delete,"upload-cleanup").start();if(!prompt.isComplete())result.complete(prompt.dismiss());owner.setStatus("附件未能交给网页，请重新选择");return;}
+              catch(RuntimeException error){retireUnhandedUpload(files);if(!prompt.isComplete())result.complete(prompt.dismiss());owner.setStatus("附件未能交给网页，请重新选择");return;}
               uploadFiles.add(files);owner.resourceFilesPrepared(files.files,uploadEpoch);result.complete(response);
             }finally{uploadPreparationFinished(beforePreparation);}});
-          }catch(IOException error){owner.handler.post(()->{uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed&&!cancelled.get())owner.setStatus(error.getMessage());});}});}
+          }catch(IOException error){if(error instanceof GeckoUploadFiles.Cancelled)lastUploadCleanup=((GeckoUploadFiles.Cancelled)error).cleanup;owner.handler.post(()->{uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed&&!cancelled.get())owner.setStatus(error.getMessage());});}});}
           catch(RejectedExecutionException error){uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed)owner.setStatus("附件读取已结束，请重新打开文件选择器");}
         };
         prompt.setDelegate(new PromptInstanceDelegate(){
