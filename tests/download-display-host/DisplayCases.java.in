@@ -1,0 +1,54 @@
+  static String rendered(DesignDownloads.Controller controller){
+    JSONArray values=new JSONArray();for(DesignDownloads.Row row:controller.views.values())values.put(new JSONArray().put(row.name.getText()).put(row.status.getText()).put(row.time.getText()).put(row.progressText.getText()).put(row.reason.getText()).put(row.location.getText()).put(row.stale.getVisibility()).put(row.menu.getContentDescription()).put(row.menu.getVisibility()).put(row.arrow.getVisibility()).put(row.progress.getProgress()).put(row.progress.isIndeterminate()));
+    try{byte[] bytes=java.security.MessageDigest.getInstance("SHA-256").digest(values.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte b:bytes)out.append(String.format(Locale.ROOT,"%02x",b));return out.toString();}catch(Exception impossible){throw new AssertionError(impossible);}
+  }
+  static void incremental(){
+    for(int n:new int[]{100,1000}){
+      ProfileCatalog p=setup();DesignDownloads.Controller c=new DesignDownloads.Controller();JSONArray history=rows(n);
+      for(int i=0;i<n;i++)history.getJSONObject(i).put("time",100000L+i);
+      JSONObject live=row("active",0,"downloading").put("uri","").put("time",200000L).put("updated",1000);
+      JSONArray data=DownloadListPolicy.ordered(history,new JSONArray().put(live));Map<String,DesignDownloads.Row> original=null;
+      for(String phase:new String[]{"initial","unchanged","one-progress-change"}){
+        if(phase.equals("one-progress-change"))live.put("received",11);
+        Meter.reset();resetQueries(p);int created=c.createdRows();c.apply(data,0,1000);
+        boolean same=original==null||original.entrySet().stream().allMatch(e->c.views.get(e.getKey())==e.getValue());if(original==null)original=new LinkedHashMap<>(c.views);
+        int expected=phase.equals("initial")||baseline?n+1:phase.equals("one-progress-change")?1:0;
+        check(n+" "+phase+" exact bind count",Meter.binds==expected);
+        check(n+" "+phase+" formatter count",Meter.timeLabels==(phase.equals("initial")||baseline?n+1:0));
+        check(n+" "+phase+" description setter count",Meter.descriptions==(phase.equals("initial")||baseline?n+1:0));
+        check(n+" "+phase+" names read remains one",p.db.queries.size()==1);
+        check(n+" "+phase+" rows/cards remain identical",same&&c.list.getChildCount()==n+1&&(phase.equals("initial")||c.createdRows()==created));
+        check(n+" "+phase+" text updates stay exact",phase.equals("initial")||Meter.textWrites==(phase.equals("unchanged")?0:1));
+        measurements.put(J.obj("savedHistory",n,"phase",phase,"bindCalls",Meter.binds,"timeLabelCalls",Meter.timeLabels,"descriptionSetters",Meter.descriptions,"textSetters",Meter.textWrites,"nameQueries",p.db.queries.size(),"newRows",c.createdRows()-created,"attachedCards",c.list.getChildCount(),"renderedSha256",rendered(c)));
+      }
+    }
+  }
+  static void invalidations(){
+    ProfileCatalog p=setup();DesignDownloads.Controller c=new DesignDownloads.Controller();JSONObject task=row("live",0,"downloading").put("updated",1000).put("time",100000);JSONObject saved=row("saved",1,"saved").put("time",120000);JSONArray data=new JSONArray().put(task).put(saved);c.apply(data,0,1000);
+    DesignDownloads.Row keep=c.views.get(DownloadListPolicy.key(task));Meter.reset();c.apply(data,0,16001);check("Stale threshold still appears without progress change",keep.stale.getVisibility()==View.VISIBLE&&(baseline||Meter.binds==1));
+    task.put("updated",16001);Meter.reset();c.apply(data,0,16001);check("Fresh heartbeat hides stale label",keep.stale.getVisibility()==View.GONE&&(baseline||Meter.binds==1));
+    for(String field:new String[]{"name","reason","location","state","total","received","time"}){
+      if(field.equals("total")||field.equals("received")||field.equals("time"))task.put(field,task.optLong(field)+1);else task.put(field,field.equals("state")?"failed":"changed-"+field);
+      Meter.reset();c.apply(data,0,16001);check("Rendered field "+field+" invalidates one row",baseline||Meter.binds==1);
+      check("Row action payload remains the current object for "+field,keep.value==task);
+    }
+    p.db.rows.get(1).put("name","已改名");Meter.reset();c.apply(data,0,17000);check("Environment rename updates without stale cache",label(c,saved).equals("已改名 · saved")&&(baseline||Meter.binds==1));
+    Locale old=Locale.getDefault();Locale.setDefault(Locale.US);Meter.reset();c.apply(data,0,18000);check("Locale change invalidates all rendered rows and times",Meter.binds==2&&Meter.timeLabels==2);Locale.setDefault(old);
+    TimeZone oldZone=TimeZone.getDefault();TimeZone.setDefault(TimeZone.getTimeZone("GMT+09:00"));Meter.reset();c.apply(data,0,19000);check("Timezone change invalidates all rendered rows and times",Meter.binds==2&&Meter.timeLabels==2);TimeZone.setDefault(oldZone);
+    JSONObject replacement=new JSONObject(saved.toString()).put("uri","content://new-target").put("mime","new/type");JSONArray copy=new JSONArray().put(task).put(replacement);c.apply(copy,0,20000);check("Unrendered action fields refresh even when rendering is unchanged",c.views.get(DownloadListPolicy.key(saved)).value==replacement&&c.views.get(DownloadListPolicy.key(saved)).value.optString("uri").equals("content://new-target"));
+  }
+  static void refreshFailures(){
+    if(baseline)return;
+    ProfileCatalog p=setup();DesignDownloads.Controller c=new DesignDownloads.Controller();JSONArray first=rows(3);RefreshIO.data=first;RefreshIO.failure=0;c.refresh(0);c.scroll.scrollTo(0,150);Map<String,DesignDownloads.Row> before=new LinkedHashMap<>(c.views);int appliedQueries=p.db.queries.size();String key=c.packageKey;
+    for(int stage=1;stage<=4;stage++){
+      RefreshIO.data=rows(2);RefreshIO.key="changed";RefreshIO.failure=stage;int previousPosts=c.scroll.posts;boolean escaped=false;try{c.refresh(1);}catch(RuntimeException unexpected){escaped=true;}
+      check("Read fault stage "+stage+" stays in callback",!escaped&&c.refreshUi.failed);
+      check("Read fault stage "+stage+" retains rows/filter/actions",c.filter==0&&c.views.size()==3&&before.entrySet().stream().allMatch(e->c.views.get(e.getKey())==e.getValue()));
+      check("Read fault stage "+stage+" retains scroll and package",c.scroll.getScrollY()==150&&c.scroll.posts==previousPosts&&c.packageKey.equals(key));
+      check("Read fault stage "+stage+" clears prepared transient labels",c.preparedNames==null);
+    }
+    RefreshIO.failure=0;RefreshIO.data=first;c.refresh(0);check("Successful retry clears failure without rebuilding rows",!c.refreshUi.failed&&c.views.size()==3&&before.entrySet().stream().allMatch(e->c.views.get(e.getKey())==e.getValue()));
+    check("Successful retry updates package key only after render",c.packageKey.equals("changed"));
+  }
+  static boolean baseline=Boolean.getBoolean("baseline");
+  public static void main(String[] ignored){Locale.setDefault(Locale.ROOT);TimeZone.setDefault(TimeZone.getTimeZone("UTC"));incremental();invalidations();refreshFailures();int passed=0;for(int i=0;i<checks.length();i++)if(checks.getJSONObject(i).getBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"variant",baseline?"base31":"38-current","measurements",measurements,"checks",checks));if(passed!=checks.length())System.exit(1);}

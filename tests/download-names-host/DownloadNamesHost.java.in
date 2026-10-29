@@ -83,13 +83,13 @@ class UiPerfStats{static int reads;static void catalogRead(){reads++;}}
 class DesignDownloads {
   /* DOWNLOAD_HELPERS */
   static final class Controller {
-    final Activity a=new Activity();final LinearLayout box=new LinearLayout(),packages=new LinearLayout(),list=new LinearLayout(),empty=new LinearLayout();final ScrollView scroll=new ScrollView();final java.util.function.IntConsumer choose=n->{};final SavedFileActions actions=new SavedFileActions();final Map<String,Row> views=new LinkedHashMap<>();int filter=0;String packageKey="";LinearLayout tabs=new LinearLayout();final int firstRowCounter=Row.created;
+    final Activity a=new Activity();final LinearLayout box=new LinearLayout(),packages=new LinearLayout(),list=new LinearLayout(),empty=new LinearLayout();final ScrollView scroll=new ScrollView();final java.util.function.IntConsumer choose=n->{};final SavedFileActions actions=new SavedFileActions();final Map<String,Row> views=new LinkedHashMap<>();int filter=0;String packageKey="";LinearLayout tabs=new LinearLayout();final int firstRowCounter=Row.created;Map<Integer,String> preparedNames;
     Controller(){scroll.addView(box);box.addView(tabs);box.addView(list);box.addView(empty);}
     int createdRows(){return Row.created-firstRowCounter;}
     /* CONTROLLER_APPLY */
   }
   static final class Row {
-    static int created;final Activity a;final LinearLayout card=new LinearLayout();final ImageView icon=new ImageView();final TextView name=new TextView(),status=new TextView(),time=new TextView(),progressText=new TextView(),reason=new TextView(),stale=new TextView(),location=new TextView(),arrow=new TextView();final Button menu=new Button();final ProgressBar progress=new ProgressBar();JSONObject value;String appearance="";
+    static int created;final Activity a;final LinearLayout card=new LinearLayout();final ImageView icon=new ImageView();final TextView name=new TextView(),status=new TextView(),time=new TextView(),progressText=new TextView(),reason=new TextView(),stale=new TextView(),location=new TextView(),arrow=new TextView();final Button menu=new Button();final ProgressBar progress=new ProgressBar();JSONObject value;String appearance="";final DownloadRowBinding binding=new DownloadRowBinding();
     Row(Activity a,SavedFileActions ignored){this.a=a;created++;}
     /* ROW_BIND */
     /* ROW_TEXT */
@@ -99,7 +99,7 @@ class DesignDownloads {
 class Context{}class Activity extends Context{}class SavedFileActions{}
 class View {
   static final int VISIBLE=0,GONE=8;LinearLayout parent;int top,height=100,visibility=VISIBLE;String description="";
-  Object getParent(){return parent;}int getTop(){return top;}int getHeight(){return height;}int getVisibility(){return visibility;}void setVisibility(int value){visibility=value;}void setBackground(Object ignored){}void setContentDescription(String value){description=value;}
+  Object getParent(){return parent;}int getTop(){return top;}int getHeight(){return height;}int getVisibility(){return visibility;}void setVisibility(int value){visibility=value;}void setBackground(Object ignored){}void setContentDescription(String value){description=value;}CharSequence getContentDescription(){return description;}
 }
 class LinearLayout extends View {
   final ArrayList<View> children=new ArrayList<>();static class LayoutParams{int topMargin;LayoutParams(int w,int h){}}

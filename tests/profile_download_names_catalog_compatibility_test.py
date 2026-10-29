@@ -40,7 +40,7 @@ class DownloadNamesCatalogCompatibilityTest(unittest.TestCase):
         display=runner.member(old,'static String displayName(')
         cls.baseline_catalog=old.replace('  /** Refresh-local labels only; do not load private drafts/notes or cache across renames. */\n','').replace('  '+names+'\n','').replace('  '+display+'\n','')
         assert hashlib.sha256(cls.baseline_catalog.encode()).hexdigest()==HISTORICAL_CATALOG_SHA
-        downloads=(PROD/'DesignDownloads.java').read_text()
+        downloads=runner.remove_reviewed38((PROD/'DesignDownloads.java').read_text())
         apply=runner.member(downloads,'void apply(JSONArray data,')
         bind=runner.member(downloads,'void bind(JSONObject row,')
         old_apply=apply.replace('Map<Integer,String> environmentNames=null;','').replace('if(environmentNames==null)environmentNames=ProfileCatalog.get(a).names();','').replace('row.bind(value,now,ProfileCatalog.displayName(environmentNames,value.optInt("slot")));','row.bind(value,now);')
