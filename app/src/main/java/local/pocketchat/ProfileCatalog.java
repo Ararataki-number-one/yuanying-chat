@@ -96,6 +96,28 @@ final class ProfileCatalog extends SQLiteOpenHelper {
     }finally{db.endTransaction();}
     return changed;
   }
+  /** A confirmation belongs to the exact environment shown in its dialog. */
+  EnvironmentSpec.Identity beginDelete(EnvironmentSpec.Identity expected)throws java.io.IOException{
+    if(expected==null)throw new java.io.IOException("删除环境身份无效");
+    SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
+      if(!identity(expected.slot).equals(expected))throw new java.io.IOException("环境已改变，请重新确认删除");
+      beginDelete(expected.slot);EnvironmentSpec.Identity deleting=deletionIdentity(expected.slot);
+      db.setTransactionSuccessful();return deleting;
+    }finally{db.endTransaction();}
+  }
+  EnvironmentSpec.Identity deletionIdentity(int slot)throws java.io.IOException{
+    JSONObject row=item(slot);
+    if(row.optBoolean("created")||!row.optBoolean("deleting")||row.optBoolean("resetting"))throw new java.io.IOException("删除状态已变化");
+    try{return new EnvironmentSpec.Identity(slot,row.optInt("generation"),row.getString("environmentId"));}
+    catch(Exception invalid){throw new java.io.IOException("删除环境身份无效",invalid);}
+  }
+  void completeDelete(EnvironmentSpec.Identity expected)throws java.io.IOException{
+    if(expected==null)throw new java.io.IOException("删除环境身份无效");
+    SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
+      if(!deletionIdentity(expected.slot).equals(expected))throw new java.io.IOException("删除环境身份已变化");
+      completeDelete(expected.slot);db.setTransactionSuccessful();
+    }finally{db.endTransaction();}
+  }
   void beginDelete(int slot)throws java.io.IOException{
     SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
       JSONObject row=item(slot);if(row.optBoolean("deleting")){db.setTransactionSuccessful();return;}

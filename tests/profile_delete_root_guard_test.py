@@ -18,7 +18,7 @@ SOURCE = ROOT / "app/src/main/java/local/pocketchat"
 
 def remove_body():
     text = (SOURCE / "EnvironmentDeleteActivity.java").read_text()
-    start = text.index("static void remove(Context c,int slot)throws Exception{")
+    start = text.index("private static void performRemove(Context c,int slot,EnvironmentSpec.Identity expected)throws Exception{")
     end = text.index("  static void erase(File f)", start)
     return text[start:end]
 
@@ -64,7 +64,7 @@ class EnvironmentDeleteRootGuardTest(unittest.TestCase):
         for destructive_step in ["NotificationManager notices=", "files.listFiles()",
                 'erase(new File(data,"cache/profiles/env"+slot))',
                 'erase(new File(profile.getNoBackupFilesDir(),name))',
-                'profile.deleteDatabase(name)', "catalog.completeDelete(slot)"]:
+                'profile.deleteDatabase(name)', "catalog.completeDelete(expected)"]:
             self.assertLess(second, body.index(destructive_step), destructive_step)
 
 

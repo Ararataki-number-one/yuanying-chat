@@ -203,7 +203,7 @@ public class WindowHomeActivity extends ThemedActivity {
     }
     if(sort==1)ordered.sort((l,r)->Long.compare(r.optLong("opened"),l.optLong("opened")));
     if(sort==2)ordered.sort((l,r)->l.optString("name").compareToIgnoreCase(r.optString("name")));
-    cards.removeAllViews();visibleIds.clear();for(int i=0;i<rows.length();i++){JSONObject deleted=rows.optJSONObject(i);if(deleted.optBoolean("deleting")){int id=deleted.optInt("slot");DesignUi.action(cards,"继续清理 · "+deleted.optString("name"),false,()->startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));}}
+    cards.removeAllViews();visibleIds.clear();for(int i=0;i<rows.length();i++){JSONObject deleted=rows.optJSONObject(i);if(deleted.optBoolean("deleting")){int id=deleted.optInt("slot");DesignUi.action(cards,"继续清理 · "+deleted.optString("name"),false,()->{try{startDelete(new EnvironmentSpec.Identity(id,deleted.optInt("generation"),deleted.getString("environmentId")));}catch(Exception invalid){showProblem("删除环境已变化，请刷新列表");}});}}
     for(int i=0;i<rows.length();i++){JSONObject paused=rows.optJSONObject(i);if(paused.optBoolean("resetting")){int id=paused.optInt("slot");DesignUi.action(cards,"继续重置登录 · "+paused.optString("name"),false,()->startReset(id,paused.optInt("generation")-1,paused.optString("environmentId")));}}
     LinearLayout environmentList=DesignUi.group(this);DesignUi.addCard(cards,environmentList);
     for(JSONObject row:ordered){
@@ -344,10 +344,13 @@ public class WindowHomeActivity extends ThemedActivity {
     LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),0,dp(18),dp(16));String label=source.optString("name");if(label.length()>20)label=label.substring(0,20);EditText name=DesignUi.input(box,"新环境名称",label+" 副本","");name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});DesignUi.note(box,"复制已保存的浏览器模板、网络和使用偏好。账号、聊天和草稿在新环境独立，不会复制。");
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("复制环境配置").setView(box).setPositiveButton("创建副本",null).setNegativeButton("取消",null).create();dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("请输入环境名称");return;}if(preparing)return;preparing=true;dialog.dismiss();createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);new Thread(()->{String error="";try{Context origin=Profiles.context(this,sourceId);EnvironmentSpec.Identity copied=Profiles.copyConfiguration(origin,destination,expected);ProfileCatalog.get(this).withIdentity(copied,()->{Profiles.rename(this,destination,title);ProfileCatalog.get(this).details(destination,source.optString("group"),source.optString("notes"));return null;});}catch(Exception failure){error=failure.getMessage()==null?"复制未完成，请重试":failure.getMessage();}String issue=error;handler.post(()->{preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);lastSignature="";refresh();if(!issue.isEmpty())showProblem(issue);});},"environment-copy").start();});
   }
+  void startDelete(EnvironmentSpec.Identity expected){startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",expected.slot).putExtra("confirmedGeneration",expected.generation).putExtra("confirmedEnvironmentId",expected.environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
   void deleteEnvironment(int id){
-    JSONObject row=ProfileCatalog.get(this).item(id);AlertDialog dialog=AppAppearance.dialog(this).setTitle("删除 "+row.optString("name")+"？")
+    JSONObject row=ProfileCatalog.get(this).item(id);final EnvironmentSpec.Identity shown;
+    try{if(!row.optBoolean("created")||row.optBoolean("deleting")||row.optBoolean("resetting"))return;shown=new EnvironmentSpec.Identity(id,row.optInt("generation"),row.getString("environmentId"));}catch(Exception invalid){showProblem("环境已变化，请刷新列表");return;}
+    AlertDialog dialog=AppAppearance.dialog(this).setTitle("删除 "+row.optString("name")+"？")
       .setMessage("将关闭此环境，清理它的登录、草稿、聊天缓存和网络配置。正在进行的回复和文件操作会中断。其他环境、订阅与固定出口，以及已保存到下载目录的文件会保留。")
-      .setNegativeButton("取消",null).setPositiveButton("删除环境",(d,w)->{try{ProfileCatalog.get(this).beginDelete(id);startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}catch(Exception e){showProblem(e.getMessage());}}).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
+      .setNegativeButton("取消",null).setPositiveButton("删除环境",(d,w)->{try{startDelete(ProfileCatalog.get(this).beginDelete(shown));}catch(Exception e){showProblem(e.getMessage());}}).show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(DesignUi.RED);
   }
   void metadata(int id){
     JSONObject row=ProfileCatalog.get(this).item(id);LinearLayout box=DesignUi.column(this);

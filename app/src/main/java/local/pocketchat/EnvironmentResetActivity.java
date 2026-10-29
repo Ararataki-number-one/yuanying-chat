@@ -11,7 +11,6 @@ import org.json.*;
 /** Separate maintenance process. Only an explicitly confirmed reset or a
  * persisted reset retry enters this activity. The logical environment is kept. */
 public final class EnvironmentResetActivity extends ThemedActivity {
-  static final Object[] MAINTENANCE_GATES=new Object[8];static{for(int i=0;i<8;i++)MAINTENANCE_GATES[i]=new Object();}
   boolean working;int slot;TextView label;EnvironmentSpec.Identity confirmed;
   @Override public void onCreate(Bundle state){super.onCreate(state);try{slot=getIntent().getIntExtra("slot",-1);confirmed=new EnvironmentSpec.Identity(slot,getIntent().getIntExtra("confirmedGeneration",-1),getIntent().getStringExtra("confirmedEnvironmentId"));}catch(Exception invalid){finish();return;}LinearLayout root=DesignUi.screen(this);LinearLayout body=DesignUi.body(this,root,"重置登录数据",null);label=DesignUi.text(this,"正在清理此环境的登录与网页数据…",16,DesignUi.TEXT);body.addView(label);setContentView(root);run();}
   void run(){if(working)return;working=true;new Thread(()->{String failure="";boolean expired=false;try{reset(this,confirmed);}catch(Expired e){expired=true;}catch(Exception e){failure="重置尚未完成，请重试。环境配置和其他环境会保留。";}String error=failure;boolean done=expired;runOnUiThread(()->{working=false;if(done||error.isEmpty()){backToList();}else{label.setText(error);AppAppearance.dialog(this).setTitle("登录重置未完成").setMessage(error).setPositiveButton("重试",(d,w)->run()).setNegativeButton("返回列表",(d,w)->backToList()).show();}});},"environment-login-reset").start();}
@@ -31,10 +30,7 @@ public final class EnvironmentResetActivity extends ThemedActivity {
     verifyRoots(c,confirmed.slot);Context profile=Profiles.context(c,confirmed.slot);
     // A dedicated lease spans the whole destructive operation, but never blocks
     // the network-intent lease while asking the old provider to stop its IO.
-    synchronized(MAINTENANCE_GATES[confirmed.slot]){
-      File lease=new File(profile.getNoBackupFilesDir(),"browser-maintenance.lock");if(java.nio.file.Files.isSymbolicLink(lease.toPath()))throw new IOException("维护锁包含链接，未清理数据");
-      try(java.io.RandomAccessFile handle=new java.io.RandomAccessFile(lease,"rw");java.nio.channels.FileLock lock=handle.getChannel().lock()){performReset(c,confirmed);}
-    }
+    EnvironmentMaintenanceLease.with(Profiles.global(c).getNoBackupFilesDir(),confirmed.slot,()->{performReset(c,confirmed);return null;});
   }
   private static void performReset(Context c,EnvironmentSpec.Identity confirmed)throws Exception{
     int slot=confirmed.slot;EnvironmentResetPlan plan=begin(c,confirmed);Context profile=Profiles.context(c,slot);ProfileCatalog catalog=ProfileCatalog.get(c);
@@ -56,6 +52,7 @@ public final class EnvironmentResetActivity extends ThemedActivity {
     }
     verifyRoots(c,slot);catalog.withReset(plan.next,()->null);
     EnvironmentBrowserData.clear(profile.getNoBackupFilesDir(),profile.getCacheDir());
+    new SecretStore(profile).remove("environment-audit");
     // These are login-scoped local recovery copies. Saved downloaded files and
     // every network/template/preference record are deliberately outside this set.
     for(String name:new String[]{"conversations.db","deliveries.db","draft-archive.db",ReplyNoticeLedger.DATABASE}){
