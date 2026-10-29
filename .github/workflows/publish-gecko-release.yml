@@ -13,6 +13,160 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Restore immutable qualification inputs locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,re,shlex,stat,subprocess,sys,tempfile
+          
+          EXPECTED_INDEX_SHA='033fa2e2bca4078d9e260c84bbc3d640a19c172bc630c954f5d514963db21c99'
+          SOURCE='09488ea9a436bcd3787c7f7f45667f3344f128f7'
+          SOURCE_TREE='a7f06708465b96cea8e4e072fbac6985c0456813'
+          QUALIFICATION='4439299657845b073db819e03e4142ef26de14a8'
+          QUALIFICATION_TREE='178f32a5614f5bd8596bced7c666d391b2fd9826'
+          MAX_INDEX=131072
+          MAX_BLOB=8388608
+          MAX_TOTAL=40000000
+          PUBLIC_FILES=frozenset({'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/publish-update-feed.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py','RELEASE.md','release-manifest.json','release-authorization.json','signed-transport.json','unsigned-build-manifest.json','signed-apk-tail.bin','PocketChat-2.0.29-arm64-v8a.apk.part00','PocketChat-2.0.29-arm64-v8a.apk.part01','runtime-inputs.json'})
+          
+          class Rejected(Exception):pass
+          
+          def require(condition):
+              if not condition:raise Rejected()
+          
+          def strict_json(raw):
+              def pairs(items):
+                  result={}
+                  for key,value in items:
+                      require(key not in result);result[key]=value
+                  return result
+              return json.loads(raw,object_pairs_hook=pairs,parse_constant=lambda _:(_ for _ in ()).throw(Rejected()))
+          
+          def safe_path(value):
+              require(isinstance(value,str) and 0<len(value)<=240 and re.fullmatch(r'[A-Za-z0-9_.][A-Za-z0-9_./-]*',value) is not None)
+              parts=value.split('/')
+              require(all(part not in ('','.','..','.git') and not part.startswith('.') for part in parts))
+              require(not re.search(r'(?i)(?:\.(?:jks|p12|pfx|pem|key|keystore)$|(?:^|/)(?:private|credentials?|passwords?|secrets?)(?:[./-]|$))',value))
+              return value
+          
+          def validate_index(raw,expected_sha=EXPECTED_INDEX_SHA):
+              require(0<len(raw)<=MAX_INDEX and hashlib.sha256(raw).hexdigest()==expected_sha)
+              index=strict_json(raw)
+              fixed={'schema':1,'kind':'immutable-runner-local-qualification-inputs','sourceCommit':SOURCE,'sourceTree':SOURCE_TREE,'version':'2.0.29','versionCode':82,'buildRunId':40858303245,'buildRunAttempt':1,'qualificationCommit':QUALIFICATION,'qualificationTree':QUALIFICATION_TREE,'qualificationManifestSha256':'f831dbe264ffb091ae5e6fe7fc33a805011e375fc74f616096d206ec2ca3b1f0','originalSignedTree':'93c6f3ee978c5f3a483a7b4e69b7427e569f7b43','originalReleaseManifestSha256':'6466308b5b82437cebe940a82a352487691a86cf37ad57eb50a203d917d5c795'}
+              require(isinstance(index,dict) and set(index)==set(fixed)|{'records'})
+              require(all(type(index[k]) is type(v) and index[k]==v for k,v in fixed.items()))
+              records=index['records'];require(isinstance(records,list) and len(records)==206)
+              seen=set();total=0
+              for row in records:
+                  require(isinstance(row,dict) and set(row)=={'path','originCommit','originPath','blobSha','bytes','sha256','mode'})
+                  path=safe_path(row['path']);safe_path(row['originPath'])
+                  require(path not in PUBLIC_FILES and path not in seen);seen.add(path)
+                  require(row['originCommit'] in (SOURCE,QUALIFICATION))
+                  require(isinstance(row['blobSha'],str) and re.fullmatch('[a-f0-9]{40}',row['blobSha']) is not None)
+                  require(isinstance(row['sha256'],str) and re.fullmatch('[a-f0-9]{64}',row['sha256']) is not None)
+                  require(type(row['bytes']) is int and 0<=row['bytes']<=MAX_BLOB)
+                  require(row['mode'] in ('100644','100755'));total+=row['bytes']
+              require(total<=MAX_TOTAL)
+              return index
+          
+          def git(root,*args):
+              result=subprocess.run(['git',*args],cwd=root,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
+              require(result.returncode==0)
+              return result.stdout
+          
+          def no_symlink_path(root,path):
+              target=root/path
+              for parent in (target,*target.parents):
+                  if parent==root.parent:break
+                  require(not parent.is_symlink())
+              require(not target.exists())
+              return target
+          
+          def hydrate(root,index):
+              root=root.resolve();require(root.is_dir() and not root.is_symlink())
+              listed=git(root,'ls-tree','-rz','--full-tree','HEAD').split(b'\0');checked=set()
+              for entry in listed:
+                  if not entry:continue
+                  header,path=entry.split(b'\t',1);mode,kind,blob=header.split()
+                  require(mode in (b'100644',b'100755') and kind==b'blob')
+                  checked.add(path.decode('utf-8'))
+              require(checked==PUBLIC_FILES)
+              for commit,tree in ((SOURCE,SOURCE_TREE),(QUALIFICATION,QUALIFICATION_TREE)):
+                  git(root,'fetch','--no-tags','--depth=1','--filter=blob:none','origin',commit)
+                  require(git(root,'rev-parse',commit+'^{commit}').strip().decode()==commit)
+                  require(git(root,'rev-parse',commit+'^{tree}').strip().decode()==tree)
+              manifest=git(root,'show',QUALIFICATION+':manifest.json')
+              require(len(manifest)<=MAX_INDEX and hashlib.sha256(manifest).hexdigest()==index['qualificationManifestSha256'])
+              meta=strict_json(manifest)
+              require(meta.get('sourceCommit')==SOURCE and meta.get('version')=='2.0.29' and meta.get('versionCode')==82 and meta.get('runId')=='40858303245' and meta.get('runAttempt')=='1')
+              # Check every destination before writing any file. No tracked/public leaf is overwritten.
+              for row in index['records']:no_symlink_path(root,row['path'])
+              staged=[]
+              # This temporary directory is runner-local; never upload or cache it.
+              with tempfile.TemporaryDirectory(prefix='pocketchat-qualification-') as scratch:
+                  scratch=pathlib.Path(scratch)
+                  for number,row in enumerate(index['records']):
+                      obj=row['originCommit']+':'+row['originPath']
+                      require(git(root,'rev-parse',obj).strip().decode()==row['blobSha'])
+                      require(git(root,'cat-file','-t',row['blobSha']).strip()==b'blob')
+                      require(git(root,'cat-file','-s',row['blobSha']).strip()==str(row['bytes']).encode())
+                      data=git(root,'cat-file','blob',row['blobSha'])
+                      require(len(data)==row['bytes'] and hashlib.sha256(data).hexdigest()==row['sha256'])
+                      require(hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==row['blobSha'])
+                      temporary=scratch/str(number);temporary.write_bytes(data);os.chmod(temporary,0o600);staged.append((row,temporary))
+                  for row,temporary in staged:
+                      target=no_symlink_path(root,row['path']);target.parent.mkdir(parents=True,exist_ok=True)
+                      no_symlink_path(root,row['path'])
+                      descriptor=os.open(target,os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,'O_NOFOLLOW',0),0o600)
+                      with os.fdopen(descriptor,'wb') as stream:stream.write(temporary.read_bytes())
+                      os.chmod(target,0o700 if row['mode']=='100755' else 0o600)
+              return len(index['records'])
+          
+          def install_private_python_output_guard():
+              require(not os.environ.get('BASH_ENV'))
+              runner=pathlib.Path(os.environ['RUNNER_TEMP'])
+              environment=pathlib.Path(os.environ['GITHUB_ENV'])
+              require(runner.is_dir() and not runner.is_symlink() and environment.is_file() and not environment.is_symlink())
+              interpreter=pathlib.Path(sys.executable)
+              require(interpreter.is_absolute() and interpreter.is_file() and os.access(interpreter,os.X_OK))
+              directory=pathlib.Path(tempfile.mkdtemp(prefix='pocketchat-private-python-',dir=runner));os.chmod(directory,0o700)
+              guard=directory/'guard.bash'
+              # An unchanged Python command retains its interpreter, argv, stdin and exit.
+              # Only stdout/stderr are runner-private, including nested child processes.
+              script=("python3() {\n"
+                      "  local output status\n"
+                      "  output=\"$(mktemp "+shlex.quote(str(directory/'python.XXXXXXXX'))+" 2>/dev/null)\" || { printf 'PYTHON_STEP status=failed exit=70\\n' >&2; return 70; }\n"
+                      "  if "+shlex.quote(str(interpreter))+" \"$@\" >\"$output\" 2>&1; then\n"
+                      "    printf 'PYTHON_STEP status=passed exit=0\\n'\n"
+                      "    return 0\n"
+                      "  else\n"
+                      "    status=$?\n"
+                      "    printf 'PYTHON_STEP status=failed exit=%s\\n' \"$status\" >&2\n"
+                      "    return \"$status\"\n"
+                      "  fi\n"
+                      "}\n")
+              descriptor=os.open(guard,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
+              with os.fdopen(descriptor,'w') as stream:stream.write(script)
+              require('\n' not in str(guard) and '\r' not in str(guard))
+              with environment.open('a') as stream:stream.write('BASH_ENV='+str(guard)+'\n')
+              return guard
+          
+          def main():
+              root=pathlib.Path.cwd();path=root/'runtime-inputs.json'
+              require(not path.is_symlink() and path.is_file() and path.stat().st_size<=MAX_INDEX)
+              index=validate_index(path.read_bytes())
+              restored=hydrate(root,index)
+              install_private_python_output_guard()
+              print('QUALIFICATION_RUNTIME status=restored count='+str(restored)+' source='+SOURCE+' run=40858303245 attempt=1 indexSha256='+EXPECTED_INDEX_SHA)
+          
+          if __name__=='__main__':
+              try:main()
+              except BaseException:
+                  # Dumps, URLs, subprocess stderr and exception representations stay private.
+                  print('QUALIFICATION_RUNTIME status=failed',file=sys.stderr)
+                  raise SystemExit(1)
+          PY
       - name: Verify original regressions, derived SDK provenance and signed public APK
         shell: bash
         run: |
