@@ -128,6 +128,7 @@ public class MainActivity extends ThemedActivity {
     option(d,"重新加载网页",this::requestReload);
     if(session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())option(d,"恢复网页连接",()->ReplyState.websiteConnection(this));
     option(d,"编辑当前环境",()->EnvironmentEditorUi.show(this));
+    option(d,"站点权限",()->SitePermissionsUi.show(this));
     option(d,"当前环境网络",()->hub.networkFor(Profiles.slot(this)));
     option(d,"管理全部环境",()->ProfileUi.manage(this));
     option(d,"下载管理",()->hub.select(AppHub.DOWNLOADS));

@@ -13,6 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 import sys
 sys.path.insert(0, str(ROOT / 'tools'))
 from gecko.chain_runtime_contract import verify_gecko_pool
+from gecko.site_permission_evidence import permission_tap_command, verify_site_permission_evidence
 
 OUT = ROOT / 'work/gecko-integration'
 PORT = 9877
@@ -118,6 +119,8 @@ def main():
                                     str(directory / 'cert.pem'), str(directory / 'server.json')],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         report = None
+        permission_gestures = []
+        permission_taps = {}
         try:
             ready, _, _ = select.select([process.stdout], [], [], 10)
             assert ready and json.loads(process.stdout.readline()) == {'ready': True, 'port': PORT, 'protocol': 'h2'}
@@ -135,6 +138,17 @@ def main():
                 for line in raw.splitlines():
                     if TAG_IN_LINE(line):
                         value = json.loads(line[line.index('{'):])
+                        if value.get('kind') == 'permissionTapNeeded':
+                            bounds = value['value']
+                            key = (bounds.get('nonce'), bounds.get('stage'))
+                            if key in permission_taps:
+                                assert permission_taps[key] == bounds, 'Permission gesture changed after its one attempt'
+                            else:
+                                command = permission_tap_command(bounds, [row['stage'] for row in permission_gestures])
+                                adb(*command)
+                                permission_taps[key] = bounds
+                                permission_gestures.append(dict(nonce=bounds['nonce'], stage=bounds['stage'], command=command,
+                                                                bounds=bounds, oneAttempt=True))
                         if value.get('kind') == 'report':
                             done.append(value['value'])
                 if done:
@@ -149,9 +163,14 @@ def main():
             report['androidSdk'] = int(adb('shell', 'getprop', 'ro.build.version.sdk').strip())
             server = json.loads((directory / 'server.json').read_text())
             report['server'] = server
+            report['sitePermissionsGestures'] = permission_gestures
             (OUT / 'gecko-pool-results.json').write_text(json.dumps(report, indent=2) + '\n')
             (OUT / 'gecko-pool-log.txt').write_text(raw)
             verify(report, server)
+            permission_result = verify_site_permission_evidence(report['sitePermissions'], permission_gestures)
+            (OUT / 'site-permission-sdk-results.json').write_text(json.dumps(dict(evidence=report['sitePermissions'], gestures=permission_gestures,
+                                                                             verification=permission_result,
+                                                                             sourceCommit=report['sourceCommit']), indent=2) + '\n')
             print(json.dumps({'status': report['status'], 'checks': len(report['checks']),
                               'actualHttp2Requests': len([r for r in server['requests'] if r['path'] == '/bytes']),
                               'webSocketFrames': server['webSockets'][0]['frames'], 'sourceCommit': report['sourceCommit']}), flush=True)

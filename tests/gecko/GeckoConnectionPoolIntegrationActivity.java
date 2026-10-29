@@ -29,6 +29,7 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
   NetworkOptimizationIntegrationActivity.Socks fixed,entryA,entryB;
   FixtureIdentity fixtureIdentity;
   final ExecutorService runner=Executors.newSingleThreadExecutor();
+  final GeckoSitePermissionFixture sitePermissions=new GeckoSitePermissionFixture(this);
   interface Work<T>{T run()throws Exception;}
   /** The provider may migrate the environment before this Activity writes its
    * legacy preferences. Configure the same durable desired model as production
@@ -117,7 +118,7 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
           }
           test.event("loadError",J.obj("target",target,"category",error.category,"code",error.code));return original.onLoadError(s,target,error);
         }
-      });return sdk;
+      });sdk.setPermissionDelegate(test.sitePermissions.observe(sdk,sdk.getPermissionDelegate()));return sdk;
     }
   }
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test"))throw new SecurityException("Only the isolated regression APK may run this fixture");runner.execute(this::run);}
@@ -228,6 +229,7 @@ public final class GeckoConnectionPoolIntegrationActivity extends Activity {
       ui(()->{session.browserDefaultNetwork.unknown();return null;});fetch("unknown-network-blocked",false);ui(()->{session.browserDefaultNetwork.initial(actual.identity,true,actual.vpn);return null;});
       JSONObject restored=fetch("guard-restored",true);checkNewConnection("Restoring admission after an unknown network uses a fresh actual TLS connection",returnNetwork,restored);
       check("The app's actual fixture keeps the same unsent draft and performs no send",eval("({draft:document.getElementById('prompt-textarea').value,sends:Number(document.getElementById('send-count').textContent)})").optString("draft").equals("unsent pool draft")&&eval("({sends:Number(document.getElementById('send-count').textContent)})").optInt("sends")==0);
+      NetworkCatalog.put(report,"sitePermissions",sitePermissions.evidence);sitePermissions.run();
       NetworkCatalog.put(report,"fixedExitConnections",fixed.connections);NetworkCatalog.put(report,"entryAConnections",entryA.connections);NetworkCatalog.put(report,"entryBConnections",entryB.connections);NetworkCatalog.put(report,"status","passed");
     }catch(Throwable error){NetworkCatalog.put(report,"error",error.toString());if(view!=null&&fixtureIdentity!=null)try{ui(()->{JSONObject state=startupState(session,view,fixtureIdentity);event("failedControlledLoadState",state);NetworkCatalog.put(report,"failedControlledLoadState",state);return null;});}catch(Exception diagnostic){NetworkCatalog.put(report,"startupDiagnosticError",diagnostic.toString());}}
     finally{
