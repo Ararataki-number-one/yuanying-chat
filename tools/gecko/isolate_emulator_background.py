@@ -36,6 +36,7 @@ POLICY = dict(schema=1, packagesInOrder=[NOTIFICATION_PACKAGE, PACKAGE], optiona
               notificationPermissionPackages=[SEARCH_PACKAGE], notificationPermission=NOTIFICATION_PERMISSION,
               notificationPermissionUser=0, permissionReadback='dumpsys-package-check-permission',
               permissionTargetRemainsEnabled=True,
+              operationOrder=['disable-package', 'read-disabled', 'force-stop', 'processes-after'],
               defaultTimeoutSeconds=20, maximumTimeoutSeconds=20,
               processExitObservationIntervalMs=200, maximumProcessExitObservations=101,
               repeatedMutations=False, workloadReplay=False,
@@ -239,11 +240,13 @@ def stop_package(commands, record, package, prefix, before_mutation):
     need((package, prefix) in ((PACKAGE, ''), (NOTIFICATION_PACKAGE, 'notification-')),
          'synthetic-package-required')
     before_mutation()
-    commands.run(prefix + 'force-stop', 'shell', 'am', 'force-stop', '--user', '0', package)
+    # Disable future ordinary launches before the single stop; persistent exit
+    # is not assumed and still requires the unchanged zero-process observation.
     commands.run(prefix + 'disable-package', 'shell', 'pm', 'disable-user', '--user', '0', package)
     disabled = commands.run(prefix + 'read-disabled', 'shell', 'pm', 'list', 'packages', '-d', '--user', '0', package)
     need(package in package_names(disabled, package), 'background-disable-unconfirmed')
     record['disabledStateConfirmed'] = True
+    commands.run(prefix + 'force-stop', 'shell', 'am', 'force-stop', '--user', '0', package)
     observe_process_exit(commands, record, package, prefix + 'processes-after')
 
 

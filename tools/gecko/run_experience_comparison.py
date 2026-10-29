@@ -37,6 +37,7 @@ DRIVER_APK = 'work/gecko-integration/native-input-driver.apk'
 DRIVER_BUILD = 'work/gecko-integration/native-input-driver-build.json'
 DRIVER_OBSERVERS = (
     'tests/native-input-driver/NativeGestureProtocol.java',
+    'tests/native-input-driver/NativePreEmitReadiness.java',
     'tests/native-input-driver/NativeInputInstrumentation.java',
     'tests/native-input-driver/NativeInputShell.java',
     'tests/native-input-driver/AndroidManifest.xml',
@@ -61,6 +62,7 @@ HARNESS = (
     'tools/gecko/profile_invocation_contract.py',
     'tools/gecko/sdk_identity_contract.py',
     'tests/native-input-driver/NativeGestureProtocol.java',
+    'tests/native-input-driver/NativePreEmitReadiness.java',
     'tests/native-input-driver/NativeInputInstrumentation.java',
     'tests/native-input-driver/NativeInputShell.java',
     'tests/native-input-driver/AndroidManifest.xml',

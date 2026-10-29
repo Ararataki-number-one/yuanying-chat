@@ -36,6 +36,7 @@ from native_input_driver import NativeInputDriver
 
 DRIVER_OBSERVERS = (
     'tests/native-input-driver/NativeGestureProtocol.java',
+    'tests/native-input-driver/NativePreEmitReadiness.java',
     'tests/native-input-driver/NativeInputInstrumentation.java',
     'tests/native-input-driver/NativeInputShell.java',
     'tests/native-input-driver/AndroidManifest.xml',

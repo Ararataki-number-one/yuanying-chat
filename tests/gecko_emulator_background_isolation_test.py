@@ -1,5 +1,6 @@
 """Counterfeit host controls only; these do not execute Android or qualify an APK."""
 import contextlib
+import hashlib
 import copy
 import importlib.util
 import io
@@ -170,8 +171,8 @@ class IsolationControls(unittest.TestCase):
         module.isolate(commands, receipt, identity(), lambda: checks.append('before-mutation'))
         self.assertEqual(checks, ['before-mutation'])
         self.assertEqual(commands.mutations(), [
-            ('force-stop', ('shell', 'am', 'force-stop', '--user', '0', module.PACKAGE)),
-            ('disable-package', ('shell', 'pm', 'disable-user', '--user', '0', module.PACKAGE))])
+            ('disable-package', ('shell', 'pm', 'disable-user', '--user', '0', module.PACKAGE)),
+            ('force-stop', ('shell', 'am', 'force-stop', '--user', '0', module.PACKAGE))])
         self.assertEqual(receipt['status'], 'passed')
         self.assertTrue(receipt['networkBeforeUsable'] and receipt['networkAfterUsable'])
         self.assertEqual(len(set(commands.nonces)), 2)
@@ -464,7 +465,7 @@ class IsolationControls(unittest.TestCase):
                                 messaging_present=True)
         receipt = record()
         with self.assertRaises(module.IsolationFailure):module.isolate(commands, receipt, identity(), lambda: None)
-        self.assertEqual([parts[-1] for _, parts in commands.mutations()], [module.NOTIFICATION_PACKAGE] * 2)
+        self.assertEqual([parts[-1] for _, parts in commands.mutations()], [module.NOTIFICATION_PACKAGE])
         self.assertEqual(receipt['status'], 'failed');self.assertEqual(receipt['notificationCompetitor']['status'], 'failed')
         self.assertFalse(any('notification' in part or 'zen_mode' in part or 'local.pocketchat' in part
                              for _, parts in commands.mutations() for part in parts))
@@ -549,8 +550,8 @@ class IsolationControls(unittest.TestCase):
         module.isolate(commands, receipt, identity(), lambda: guards.append(True))
         self.assertEqual(len(guards), 3)
         operations = [op for op, _ in commands.mutations()]
-        self.assertEqual(operations, ['notification-force-stop', 'notification-disable-package',
-                                     'search-revoke-notifications', 'force-stop', 'disable-package'])
+        self.assertEqual(operations, ['notification-disable-package', 'notification-force-stop',
+                                     'search-revoke-notifications', 'disable-package', 'force-stop'])
         revoke = next(parts for op, parts in commands.calls if op == 'search-revoke-notifications')
         self.assertEqual(revoke, ('shell', 'pm', 'revoke', '--user', '0', module.SEARCH_PACKAGE,
                                   'android.permission.POST_NOTIFICATIONS'))
@@ -622,7 +623,7 @@ class IsolationControls(unittest.TestCase):
                 raise module.IsolationFailure('bootstrap-changed')
         with self.assertRaisesRegex(module.IsolationFailure, 'bootstrap-changed'):
             module.isolate(commands, receipt, identity(), guard)
-        self.assertEqual([op for op, _ in commands.mutations()], ['notification-force-stop', 'notification-disable-package'])
+        self.assertEqual([op for op, _ in commands.mutations()], ['notification-disable-package', 'notification-force-stop'])
 
     def test_search_cannot_be_sent_to_process_stop_or_disable_path(self):
         commands = FakeCommands()
@@ -652,6 +653,146 @@ class IsolationControls(unittest.TestCase):
                              module.SEARCH_PACKAGE, module.NOTIFICATION_PERMISSION)
         self.assertEqual(len(receipt['operations']), 1)
         self.assertNotIn(SENTINEL, json.dumps(receipt))
+
+
+# The prior production function is frozen verbatim for a controlled order comparison.
+# Its model below is not evidence that the Android survivor was restarted or persistent.
+LEGACY_STOP_PACKAGE = """def stop_package(commands, record, package, prefix, before_mutation):
+    need((package, prefix) in ((PACKAGE, ''), (NOTIFICATION_PACKAGE, 'notification-')),
+         'synthetic-package-required')
+    before_mutation()
+    commands.run(prefix + 'force-stop', 'shell', 'am', 'force-stop', '--user', '0', package)
+    commands.run(prefix + 'disable-package', 'shell', 'pm', 'disable-user', '--user', '0', package)
+    disabled = commands.run(prefix + 'read-disabled', 'shell', 'pm', 'list', 'packages', '-d', '--user', '0', package)
+    need(package in package_names(disabled, package), 'background-disable-unconfirmed')
+    record['disabledStateConfirmed'] = True
+    observe_process_exit(commands, record, package, prefix + 'processes-after')
+"""
+LEGACY_STOP_SHA256 = '83cf5c7c6926d72f3ef178b4840757c92122d0fc899db65fdb05a1fc7091c038'
+
+
+class OrdinaryRestartModel(FakeCommands):
+    """An allowed ordinary start races the old enabled interval; no Android runs.
+
+    Package-changed delivery is asynchronous in this model. Persistent processes
+    deliberately ignore both stop orders, preserving the real fail-closed limit.
+    """
+    def __init__(self, package, persistent=False):
+        super().__init__()
+        self.package, self.persistent = package, persistent
+        self.enabled, self.running, self.pending_start = True, True, False
+        self.restarts, self.blocked_starts = 0, 0
+
+    def run(self, operation, *parts):
+        result = super().run(operation, *parts)
+        if operation.endswith('disable-package'):
+            if self.pending_start and self.enabled:
+                self.running = True;self.restarts += 1;self.pending_start = False
+            self.enabled = False
+        elif operation.endswith('force-stop'):
+            if not self.persistent:self.running = False
+            if not self.persistent and self.enabled:self.pending_start = True
+            elif not self.persistent:self.blocked_starts += 1
+        elif operation.endswith('read-disabled'):
+            return 'package:' + self.package if not self.enabled else ''
+        elif operation.endswith('processes-after'):
+            return 'NAME\ninit\nsystem_server\n' + (self.package + ':controlled-model\n' if self.running else '')
+        return result
+
+
+def order_model(stop, package, prefix, persistent=False):
+    clock=Clock();commands=OrdinaryRestartModel(package,persistent);commands.deadline=.45
+    receipt=record();guards=[];failure=''
+    with patch.object(module.time,'monotonic',side_effect=clock.now),patch.object(module.time,'sleep',side_effect=clock.sleep):
+        try:stop(commands,receipt,package,prefix,lambda:guards.append(True))
+        except module.IsolationFailure as error:failure=str(error)
+    return dict(failed=bool(failure),reason=failure,processStopConfirmed=receipt.get('processStopConfirmed',False),
+        processesAfter=receipt.get('processesAfter'),processExitObservations=receipt.get('processExitObservations'),
+        deadline=commands.deadline,elapsed=clock.value,restarts=commands.restarts,blockedStarts=commands.blocked_starts,
+        guards=len(guards),operations=[op for op,_ in commands.calls],mutations=[op for op,_ in commands.mutations()],
+        actualAndroidExecution=False,persistentSurvivorCauseProven=False)
+
+
+class DisableFirstControls(unittest.TestCase):
+    def test_exact_helper_inverse_retains_every_prior_byte(self):
+        source=(ROOT/'tools/gecko/isolate_emulator_background.py').read_text()
+        policy="              operationOrder=['disable-package', 'read-disabled', 'force-stop', 'processes-after'],\n"
+        comment='    # Disable future ordinary launches before the single stop; persistent exit\n    # is not assumed and still requires the unchanged zero-process observation.\n'
+        force="    commands.run(prefix + 'force-stop', 'shell', 'am', 'force-stop', '--user', '0', package)\n"
+        disable="    commands.run(prefix + 'disable-package', 'shell', 'pm', 'disable-user', '--user', '0', package)\n"
+        after="    record['disabledStateConfirmed'] = True\n"+force
+        before='    before_mutation()\n'+disable
+        for literal in (policy,comment,after):self.assertEqual(source.count(literal),1)
+        source=source.replace(policy,'',1).replace(comment,'',1).replace(after,"    record['disabledStateConfirmed'] = True\n",1)
+        self.assertEqual(source.count(before),1);source=source.replace(before,'    before_mutation()\n'+force+disable,1)
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),'11bdfbe48f99fd9e4c06076a25803447d61d1e4beeaf972c9f118947f43b3925')
+        self.assertEqual(hashlib.sha256(LEGACY_STOP_PACKAGE.encode()).hexdigest(),LEGACY_STOP_SHA256)
+
+    def test_explicit_policy_order_addition_preserves_every_old_policy_field(self):
+        expected=['disable-package','read-disabled','force-stop','processes-after']
+        self.assertEqual(module.POLICY['operationOrder'],expected)
+        old=copy.deepcopy(module.POLICY);del old['operationOrder']
+        self.assertEqual(hashlib.sha256(json.dumps(old,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+                         'c7e03ecdc6c948000d1f9beee7429ee78b277998cd14634312cb0bd2f8d7f600')
+        self.assertNotEqual(module.POLICY_SHA256,'c7e03ecdc6c948000d1f9beee7429ee78b277998cd14634312cb0bd2f8d7f600')
+        self.assertEqual(module.POLICY['maximumProcessExitObservations'],101)
+        for package,prefix in ((module.PACKAGE,''),(module.NOTIFICATION_PACKAGE,'notification-')):
+            commands=FakeCommands();receipt=record();module.stop_package(commands,receipt,package,prefix,lambda:None)
+            self.assertEqual([op.removeprefix(prefix) for op,_ in commands.calls],expected)
+            self.assertTrue(receipt['processStopConfirmed']);self.assertEqual(len(commands.mutations()),2)
+
+    def test_controlled_ordinary_restart_race_old_source_fails_new_order_passes(self):
+        scope=dict(module.__dict__);exec(compile(LEGACY_STOP_PACKAGE,'<frozen prior stop_package>','exec'),scope)
+        results=[]
+        for package,prefix in ((module.PACKAGE,''),(module.NOTIFICATION_PACKAGE,'notification-')):
+            old=order_model(scope['stop_package'],package,prefix);new=order_model(module.stop_package,package,prefix)
+            self.assertTrue(old['failed']);self.assertEqual(old['restarts'],1);self.assertFalse(old['processStopConfirmed'])
+            self.assertFalse(new['failed']);self.assertTrue(new['processStopConfirmed']);self.assertEqual(new['restarts'],0)
+            self.assertEqual(new['blockedStarts'],1);self.assertEqual(new['processesAfter'],0);self.assertEqual(new['processExitObservations'],1)
+            self.assertEqual(old['deadline'],new['deadline']);self.assertEqual(old['guards'],new['guards']);self.assertEqual(new['guards'],1)
+            self.assertEqual(len(old['mutations']),2);self.assertEqual(len(new['mutations']),2)
+            results.append(dict(package=package,old=old,new=new))
+        target=ROOT/'work/disable-first-implementation/controlled-order-model.json';target.parent.mkdir(parents=True,exist_ok=True)
+        target.write_text(json.dumps(dict(schema=1,kind='controlled-ordinary-restart-order-model',results=results,
+            actualAndroidExecution=False,persistentSurvivorCauseProven=False,physicalPhoneAcceptance=False,releaseAcceptance=False),indent=2)+'\n')
+
+    def test_persistent_model_remains_failure_under_both_orders(self):
+        scope=dict(module.__dict__);exec(compile(LEGACY_STOP_PACKAGE,'<frozen prior stop_package>','exec'),scope)
+        for stop in (scope['stop_package'],module.stop_package):
+            for package,prefix in ((module.PACKAGE,''),(module.NOTIFICATION_PACKAGE,'notification-')):
+                value=order_model(stop,package,prefix,persistent=True)
+                self.assertTrue(value['failed']);self.assertFalse(value['processStopConfirmed']);self.assertEqual(value['processesAfter'],1)
+                self.assertAlmostEqual(value['elapsed'],.45);self.assertEqual(value['deadline'],.45);self.assertEqual(len(value['mutations']),2)
+
+    def test_unconfirmed_disable_blocks_original_force_stop_and_process_poll(self):
+        for package,prefix in ((module.PACKAGE,''),(module.NOTIFICATION_PACKAGE,'notification-')):
+            for raw in ('','package:'+package+'.other','not-package'):
+                commands=FakeCommands(lambda op,value:raw if op==prefix+'read-disabled' else None);receipt=record()
+                with self.subTest(package=package,raw=raw),self.assertRaises(module.IsolationFailure):
+                    module.stop_package(commands,receipt,package,prefix,lambda:None)
+                self.assertEqual([op for op,_ in commands.calls],[prefix+'disable-package',prefix+'read-disabled'])
+                self.assertEqual([op for op,_ in commands.mutations()],[prefix+'disable-package'])
+                self.assertFalse(receipt.get('disabledStateConfirmed',False));self.assertFalse(receipt.get('processStopConfirmed',False))
+
+    def test_disable_command_failure_cannot_reach_force_stop_or_poll(self):
+        for package,prefix in ((module.PACKAGE,''),(module.NOTIFICATION_PACKAGE,'notification-')):
+            def edit(op,value):
+                if op==prefix+'disable-package':raise module.IsolationFailure('command-failed')
+            commands=FakeCommands(edit);receipt=record()
+            with self.assertRaisesRegex(module.IsolationFailure,'command-failed'):
+                module.stop_package(commands,receipt,package,prefix,lambda:None)
+            self.assertEqual([op for op,_ in commands.calls],[prefix+'disable-package'])
+            self.assertFalse(receipt.get('processStopConfirmed',False))
+
+    def test_single_stop_failure_is_fail_closed_without_fallback_or_poll(self):
+        for package,prefix in ((module.PACKAGE,''),(module.NOTIFICATION_PACKAGE,'notification-')):
+            def edit(op,value):
+                if op==prefix+'force-stop':raise module.IsolationFailure('command-failed')
+            commands=FakeCommands(edit);receipt=record()
+            with self.assertRaisesRegex(module.IsolationFailure,'command-failed'):
+                module.stop_package(commands,receipt,package,prefix,lambda:None)
+            self.assertEqual([op for op,_ in commands.calls],[prefix+'disable-package',prefix+'read-disabled',prefix+'force-stop'])
+            self.assertTrue(receipt['disabledStateConfirmed']);self.assertFalse(receipt.get('processStopConfirmed',False))
 
 
 if __name__ == '__main__':

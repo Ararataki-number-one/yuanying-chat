@@ -14,6 +14,7 @@ SIGNATURE_API = 'native-input-driver-signature-api.json'
 PROTOCOLS = {name: dict(durationMs=20 * interval, moveCount=19, intervalMs=interval, maxLateMs=2 * interval, upSynchronous=True)
              for name, interval in [('qualification', 15), ('formal-collapse', 16)]}
 INPUTS = {'tests/native-input-driver/NativeGestureProtocol.java',
+          'tests/native-input-driver/NativePreEmitReadiness.java',
           'tests/native-input-driver/NativeInputShell.java',
           'tests/native-input-driver/NativeInputInstrumentation.java', 'tests/native-input-driver/AndroidManifest.xml'}
 

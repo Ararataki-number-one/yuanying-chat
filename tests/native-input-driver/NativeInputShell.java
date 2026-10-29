@@ -89,6 +89,24 @@ public final class NativeInputShell {
       report.put("connectEndUptimeMs",SystemClock.uptimeMillis());
       float x=Float.parseFloat(required("x","[0-9]+")),from=Float.parseFloat(required("startY","[0-9]+")),to=Float.parseFloat(required("endY","[0-9]+"));
       if(SystemClock.uptimeMillis()+profile.duration>expires)throw new IllegalStateException("Original deadline expired during setup");
+      final int systemUiUid=info("com.android.systemui",0).applicationInfo.uid;
+      NativePreEmitReadiness.Clock readinessClock=new NativePreEmitReadiness.Clock(){public long now(){return SystemClock.uptimeMillis();}public void sleep(long millis){SystemClock.sleep(millis);}};
+      NativePreEmitReadiness.Result readiness=NativePreEmitReadiness.await(readinessClock,new NativePreEmitReadiness.Probe(){
+        public void verifyIdentity()throws Exception{
+          JSONObject currentProcess=process(expectedPid,targetUid,TARGET);PackageInfo current=info(TARGET,0);
+          if(!targetProcess.getString("startTicks").equals(currentProcess.getString("startTicks"))||current.applicationInfo.uid!=targetUid
+              ||!targetPath.equals(current.applicationInfo.sourceDir)||targetBytes!=new File(targetPath).length()
+              ||targetModified!=new File(targetPath).lastModified()||before.lastUpdateTime!=current.lastUpdateTime
+              ||!target.toString().equals(asset(targetPath,"assets/pocketchat-integration-build.json").toString())
+              ||info("com.android.systemui",0).applicationInfo.uid!=systemUiUid)throw new IllegalStateException("Pre-emit identity changed");
+        }
+        public String window(long latest)throws Exception{return NativePreEmitReadiness.capture(new ProcessBuilder("/system/bin/dumpsys","window").start(),readinessClock,latest);}
+      },expires,profile.duration,targetUid,systemUiUid);
+      report.put("preEmitReadiness",new JSONObject().put("schema",1).put("status",readiness.passed?"passed":"failed").put("reason",readiness.reason)
+        .put("preEmitOnly",readiness.preEmitOnly).put("observations",readiness.observations).put("elapsedMs",readiness.elapsedMs).put("shadeObserved",readiness.shadeObserved)
+        .put("originalExpiresUptimeMs",expires).put("reservedGestureDurationMs",profile.duration).put("scope","known-notification-shade-before-t0"));
+      if(!readiness.passed)throw new IllegalStateException("Pre-emit readiness: "+readiness.reason);
+      if(SystemClock.uptimeMillis()+profile.duration>expires)throw new IllegalStateException("Original deadline expired during readiness");
       long ready=SystemClock.uptimeMillis();report.put("readyUptimeMs",ready).put("startupMs",ready-started);
       // Preparation is outside T0; the original AUT/action deadline never moves.
       write(output,report);
