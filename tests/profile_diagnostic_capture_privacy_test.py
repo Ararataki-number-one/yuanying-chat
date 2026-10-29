@@ -26,6 +26,26 @@ SAFE = 'AIza' + 's'*35
 UNKNOWN = 'AIza' + 'u'*35
 MOZILLA = 'm'*36
 BASE = '09488ea9a436bcd3787c7f7f45667f3344f128f7'
+# Immutable accepted094 source-byte pins. BASE is provenance metadata only;
+# these controls never require a historical Git object or network access.
+ACCEPTED_GUARD_FUNCTION_SHA256 = {
+    'canonical_component': '585f864ecc1d67bc08733057cd8706b903956930d97e8ea8a26508098d2327bc',
+    'subtype': '9e1f5e86deaa9683f29cb08f29db565b822cbd757e67378c2daccd9cec9c773a',
+    'enabled_entries': 'c600b1b071b35ef4c1ecd9f26e9c2af596c3b057f42c4a838577c8f90316c227',
+    'valid_history': '462ba58fd2b9e420c775ce7f5642f90f259096333c539464436551b43c143650',
+    'component_list': '726a6fa3ca1b141994fcd40023c70e22c05bf2ce11b742c9be828013d422c272',
+    '_method_block': '133d9a807b9f4817e4965536d4554b60f3fd702de72e540e4fc8e4c7dea8e992',
+    'current_method': '03c847a69f767d3140d2e4d39739fb70a3653d7e70ca2cbc4f16749e6324b6be',
+    'active_method': '6494b2f0856f63d5ccf85133777ce7f51db6a461a30de6fcf82107e407a39d1d',
+    'Snapshot.state': 'f5b661ef2cd4d0a2c90a30f58a7bc6a8d6ff38c248979d53c8eada464e5b0eaa',
+}
+ACCEPTED_BUNDLE_FUNCTION_SHA256 = {
+    'allowed': '51cf4aca23b87d9cb6c66e36b8b5a676b62883c42f40b1292f0b135d71327c44',
+    'restore': 'c66e1b1a7878a900ee51efeb340f710e9c08cc58ce61dc988b98fa8cbe043eab',
+    'pack': 'f11ecf9ad4e3c72c0f464472f151065c797caacc74e955b66671b382e55bf0fa',
+}
+ACCEPTED_PUBLISHER_TEXT_SHA256 = '978d0b3a419d94ae4d55be7c973b8cdbd6f5adac21170c059e05e28fa0f58081'
+PUBLISHER_CAPTURE_ADDITIONS = ('from caret_ime_guard import assert_public_diagnostic_text\n\nDIAGNOSTIC_TEXT_SUFFIXES = frozenset((\'.json\', \'.txt\', \'.log\', \'.xml\', \'.raw\', \'.jsonl\', \'.yml\', \'.yaml\',\n                                    \'.md\', \'.py\', \'.js\', \'.html\', \'.css\', \'.csv\', \'.pom\', \'.properties\',\n                                    \'.gradle\', \'.java\', \'.kt\', \'.conf\', \'.cfg\', \'.ini\', \'.sh\'))\n\n\ndef scan_public_diagnostics(directory):\n    """Refuse unfiltered text before forming the public Git index; binaries stay exact."""\n    for path in sorted(directory.rglob(\'*\')):\n        if path.is_file() and path.suffix.lower() in DIAGNOSTIC_TEXT_SUFFIXES:\n            with path.open(\'rb\') as stream:\n                raw = stream.read(16 * 1024 * 1024 + 1)\n            assert_public_diagnostic_text(path, raw)\n', "for name in ('gecko-performance-capture-privacy.json', 'preconnect-capture-privacy.json'):\n    if (out/name).exists():shutil.copy2(out/name,stage/name)\n", 'scan_public_diagnostics(stage)\n')
 META_KEYS = {'schema','kind','policy','originalBytes','originalSha256',
              'finalBytes','finalSha256','changed','replacements'}
 COUNT_KEYS = {'gboard','mozilla-location','google-safebrowsing','google-api-key-shape'}
@@ -90,6 +110,38 @@ def functions(source):
                 if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     result[node.name+'.'+member.name] = ast.get_source_segment(source, member)
     return result
+
+
+def verify_accepted_guard_source(source):
+    current=functions(source)
+    for name,expected in ACCEPTED_GUARD_FUNCTION_SHA256.items():
+        if name not in current or digest(current[name]) != expected:
+            raise AssertionError('Accepted094 guard source bytes differ: '+name)
+
+
+def verify_accepted_bundle_source(source):
+    current=functions(source)
+    for name in ('allowed','restore'):
+        if digest(current[name]) != ACCEPTED_BUNDLE_FUNCTION_SHA256[name]:
+            raise AssertionError('Accepted094 bundle source bytes differ: '+name)
+    pack=current['pack']
+    for addition in ('        scan_diagnostic_capture(path)\n',
+                     "    _privacy.assert_public_diagnostic_text(Path('_ci_bundle.json'), raw)\n"):
+        if pack.count(addition) != 1:
+            raise AssertionError('Exact additive pack capture hook missing or repeated')
+        pack=pack.replace(addition,'',1)
+    if digest(pack) != ACCEPTED_BUNDLE_FUNCTION_SHA256['pack']:
+        raise AssertionError('Accepted094 pack source bytes differ after exact inverse')
+
+
+def accepted_publisher_inverse(source):
+    for addition in PUBLISHER_CAPTURE_ADDITIONS:
+        if source.count(addition) != 1:
+            raise AssertionError('Exact additive publisher capture hook missing or repeated')
+        source=source.replace(addition,'',1)
+    if digest(source) != ACCEPTED_PUBLISHER_TEXT_SHA256:
+        raise AssertionError('Accepted094 whole publisher bytes differ after exact inverse')
+    return source
 
 
 def load_bundle():
@@ -290,14 +342,16 @@ class DiagnosticCapturePrivacyTest(unittest.TestCase):
         self.assertEqual(G.service_api_key_findings(json.dumps(record,ensure_ascii=False)),[])
 
     def test_native_identity_parser_and_state_bodies_are_exact_accepted_source(self):
-        path='tools/gecko/caret_ime_guard.py'
-        original=subprocess.run(['git','show',BASE+':'+path],cwd=ROOT,capture_output=True,timeout=10)
-        self.assertEqual(original.returncode,0)
-        baseline=functions(original.stdout.decode('utf-8'))
-        current=functions((ROOT/path).read_text())
-        for name in ('canonical_component','subtype','enabled_entries','valid_history','component_list',
-                     '_method_block','current_method','active_method','Snapshot.state'):
-            with self.subTest(member=name):self.assertEqual(current[name],baseline[name])
+        source=(ROOT/'tools/gecko/caret_ime_guard.py').read_text()
+        verify_accepted_guard_source(source)
+        current=functions(source)
+        for name in ACCEPTED_GUARD_FUNCTION_SHA256:
+            with self.subTest(member=name,mutation_rejected=True):
+                body=current[name]
+                changed=body.replace(':\n',':  # counterfeit accepted-source mutation\n',1)
+                self.assertNotEqual(body,changed)
+                with self.assertRaises(AssertionError):
+                    verify_accepted_guard_source(source.replace(body,changed,1))
 
     def test_sidecar_write_failure_occurs_after_actual_runner_cleanup_bodies(self):
         for runner,sidecar in (('run_gecko_performance.py','gecko-performance-capture-privacy.json'),
@@ -466,33 +520,29 @@ class DiagnosticPublicationPrivacyTest(unittest.TestCase):
             with self.assertRaises(ValueError):bundle.scan_diagnostic_capture(ordinary)
 
     def test_publication_additions_inverse_to_exact_original_functional_code(self):
-        def original(path):
-            result=subprocess.run(['git','show',BASE+':'+path],cwd=ROOT,capture_output=True,timeout=10)
-            self.assertEqual(result.returncode,0)
-            return result.stdout.decode()
-        bundle_path='tools/gecko/ci_bundle.py'
-        old=functions(original(bundle_path));new=functions((ROOT/bundle_path).read_text())
-        self.assertEqual(new['allowed'],old['allowed'])
-        self.assertEqual(new['restore'],old['restore'])
-        pack=new['pack']
-        first='        scan_diagnostic_capture(path)\n'
-        second="    _privacy.assert_public_diagnostic_text(Path('_ci_bundle.json'), raw)\n"
-        self.assertEqual(pack.count(first),1);self.assertEqual(pack.count(second),1)
-        self.assertEqual(pack.replace(first,'',1).replace(second,'',1),old['pack'])
-        path='tools/gecko/publish_ci.py'
-        tree=ast.parse((ROOT/path).read_text());kept=[];removed=0
-        for node in tree.body:
-            remove=(isinstance(node,ast.ImportFrom) and node.module=='caret_ime_guard')
-            remove|=isinstance(node,ast.FunctionDef) and node.name=='scan_public_diagnostics'
-            remove|=isinstance(node,ast.Assign) and any(isinstance(x,ast.Name) and x.id=='DIAGNOSTIC_TEXT_SUFFIXES' for x in node.targets)
-            remove|=isinstance(node,ast.Expr) and isinstance(node.value,ast.Call) and isinstance(node.value.func,ast.Name) and node.value.func.id=='scan_public_diagnostics'
-            remove|=(isinstance(node,ast.For) and isinstance(node.iter,ast.Tuple)
-                     and all(isinstance(x,ast.Constant) for x in node.iter.elts)
-                     and tuple(x.value for x in node.iter.elts)==('gecko-performance-capture-privacy.json','preconnect-capture-privacy.json'))
-            if remove:removed+=1
-            else:kept.append(node)
-        self.assertEqual(removed,5)
-        self.assertEqual(ast.dump(ast.Module(body=kept,type_ignores=[])),ast.dump(ast.parse(original(path))))
+        bundle=(ROOT/'tools/gecko/ci_bundle.py').read_text()
+        verify_accepted_bundle_source(bundle)
+        for name in ('allowed','restore','pack'):
+            with self.subTest(bundle_member=name,mutation_rejected=True):
+                body=functions(bundle)[name]
+                changed=body.replace(':\n',':  # counterfeit functional mutation\n',1)
+                self.assertNotEqual(body,changed)
+                with self.assertRaises(AssertionError):
+                    verify_accepted_bundle_source(bundle.replace(body,changed,1))
+        publisher=(ROOT/'tools/gecko/publish_ci.py').read_text()
+        original=accepted_publisher_inverse(publisher)
+        self.assertEqual(digest(original),ACCEPTED_PUBLISHER_TEXT_SHA256)
+        mutations=[publisher.replace('manifest[\'artifacts\'].append(artifact)',
+                                     'manifest[\'artifacts\'].append(dict(artifact))',1),
+                   '# unreviewed whole-file change\n'+publisher]
+        for addition in PUBLISHER_CAPTURE_ADDITIONS:
+            mutations.extend((publisher.replace(addition,'',1),
+                              publisher.replace(addition,addition+addition,1),
+                              publisher.replace(addition,addition.replace('\n',' # changed additive code\n',1),1)))
+        for index,mutated in enumerate(mutations):
+            with self.subTest(publisher_mutation=index):
+                self.assertNotEqual(mutated,publisher)
+                with self.assertRaises(AssertionError):accepted_publisher_inverse(mutated)
 
 
 if __name__ == '__main__':
