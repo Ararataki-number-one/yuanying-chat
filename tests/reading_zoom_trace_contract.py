@@ -20,6 +20,9 @@ def trace_manifest():
 def strip_reviewed_reading_trace_additions(raw,path):
  if path not in PATHS:raise ValueError('Unexpected protected trace path')
  if hashlib.sha256(raw).hexdigest()==PATHS[path][0]:return raw
+ if path=='tests/gecko/GeckoIntegrationTestActivity.java':
+  from window_tap_readiness_contract import strip_reviewed_window_additions
+  raw=strip_reviewed_window_additions(raw)
  source=raw.decode('utf-8');row=trace_manifest()['paths'][path]
  for item in reversed(row['insertions']):
   before,added,after=(item[k] for k in ('before','inserted','after'));literal=before+added+after

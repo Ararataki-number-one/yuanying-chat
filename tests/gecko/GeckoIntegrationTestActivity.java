@@ -73,6 +73,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     java.util.function.DoubleConsumer readingZoomRequest;java.util.function.BooleanSupplier readingZoomTraceCurrent;
     @Override public void zoomBy(float factor){if(readingZoomRequest!=null){if(readingZoomTraceCurrent!=null&&readingZoomTraceCurrent.getAsBoolean())readingZoomRequest.accept(factor);else{readingZoomRequest=null;readingZoomTraceCurrent=null;}}super.zoomBy(factor);}
     boolean continuityTracing;String continuityUrl="";int continuityLoads,continuityStops,resourcePauseCalls;JSONArray continuityResults=new JSONArray();
+    GeckoWindowTapReadiness windowTapReadiness;
     @Override public void onPause(){resourcePauseCalls++;super.onPause();}
     @Override public void stopLoading(){if(continuityTracing)continuityStops++;super.stopLoading();}
     boolean chooserOrigin;Runnable nativeGestureComplete;int nativeGestureCount,nativeFocusRequests,nativeFocusMeasurements;long lastFocusDocument;String lastFocusUrl="";
@@ -95,7 +96,9 @@ public class GeckoIntegrationTestActivity extends Activity {
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){
       NativeGeometry before=nativeGeometryActive?NativeGeometry.read(this):null;long syncs=nativeGeometryActive?nativeSyncs():0;
       boolean cached=nativeGeometryActive&&NativeGeometry.cacheMatches(this,before);
+      GeckoWindowTapReadiness windowTouch=windowTapReadiness;boolean windowObserved=windowTouch!=null&&windowTouch.observeTouch(event);
       boolean handled=super.dispatchTouchEvent(event);
+      if(windowObserved)windowTouch.forwarded(event.getActionMasked(),handled);
       if(nativeGeometryActive){
         NativeGeometry after=NativeGeometry.read(this);long added=nativeSyncs()-syncs;
         if(cached){nativeUnchangedTouchEvents++;nativeRedundantTouchSyncs+=added;}
@@ -444,8 +447,9 @@ public class GeckoIntegrationTestActivity extends Activity {
       org.mozilla.geckoview.GeckoSession parent=web.current;web.loadUrl(windowUrl("two",serial));
       waitWindow(serial,"two",SystemClock.elapsedRealtime()+15000,()->{
         if(!web.canBack){event(serial,"error",J.obj("error","parent history missing before popup"));return;}
-        tapElement(serial,"popup");
-        waitWindow(serial,"three",SystemClock.elapsedRealtime()+15000,()->{
+        final long windowDeadline=SystemClock.elapsedRealtime()+15000;
+        GeckoWindowTapReadiness.begin(this,serial,parent,windowDeadline);
+        waitWindow(serial,"three",windowDeadline,()->{
           if(web.current==parent||web.popups.size()!=1){event(serial,"error",J.obj("error","real popup did not become active"));return;}
           if("lostParent".equals(action)){parent.close();parent.getContentDelegate().onKill(parent);web.closePopup();
             if(!web.failed||web.current!=parent){event(serial,"error",J.obj("error","closed parent state was not restored"));return;}
@@ -469,8 +473,9 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   String windowUrl(String step,long serial){return "http://127.0.0.1:8765/browser-window?step="+step+"&command="+serial;}
   void tapElement(long serial,String id){
+    GeckoWindowTapReadiness windowTap="popup".equals(id)?((FixtureView)session.web).windowTapReadiness:null;
     session.web.evaluateJavascript("(()=>{const r=document.getElementById("+JSONObject.quote(id)+").getBoundingClientRect(),v=visualViewport;return {x:r.left+r.width/2,y:r.top+r.height/2,pixels:devicePixelRatio*(v?.scale||1),left:v?.offsetLeft||0,top:v?.offsetTop||0}})()",raw->{
-      if(serial!=run)return;JSONObject rect=J.parse(raw);if(!rect.has("x")){event(serial,"error",J.obj("error","tap element not available"));return;}
+      if(serial!=run)return;if(windowTap!=null&&!windowTap.acceptBounds(serial,id))return;JSONObject rect=J.parse(raw);if(!rect.has("x")){event(serial,"error",J.obj("error","tap element not available"));return;}
       // The SDK compositor matrix can still describe the previous document at
       // first paint. Use this document's viewport and the actual Android origin.
       int[] origin=new int[2];session.web.surface.getLocationOnScreen(origin);double pixels=rect.optDouble("pixels")*session.web.readingLayout;
@@ -918,7 +923,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   void onMain(Runnable task){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<RuntimeException> error=new java.util.concurrent.atomic.AtomicReference<>();runOnUiThread(()->{try{task.run();}catch(RuntimeException failure){error.set(failure);}finally{done.countDown();}});await(done);if(error.get()!=null)throw error.get();}
   static String readCheckpoint(BrowserSessionStore store){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<String> value=new java.util.concurrent.atomic.AtomicReference<>();store.read(result->{value.set(result);done.countDown();});await(done);return value.get();}
   JSONObject eventBuildIdentity;IntegrationEventStore eventStore;
-  synchronized void event(long serial,String kind,JSONObject result){if(serial!=run)return;try{if(eventStore==null||eventStore.command!=serial)throw new IllegalStateException("Missing invocation");if(readingBoundsCase!=null&&readingBoundsCase.command==serial&&readingBoundsCase.trace!=null)appendReadingZoomTrace(serial,kind,result);eventStore.emit(kind,result);}catch(Exception failure){Log.e("PocketGeckoIntegration",J.obj("kind","eventTransportError","error",failure.toString(),"nativeContext","environment-"+(slot+1),"processSlot",slot,"fixtureAction",action,"runNonce",getIntent().getStringExtra("eventNonce"),"command",run).toString());}}
+  synchronized void event(long serial,String kind,JSONObject result){if(serial!=run)return;try{if(!GeckoWindowTapReadiness.beforeEvent(this,serial,kind,result))return;if(eventStore==null||eventStore.command!=serial)throw new IllegalStateException("Missing invocation");if(readingBoundsCase!=null&&readingBoundsCase.command==serial&&readingBoundsCase.trace!=null)appendReadingZoomTrace(serial,kind,result);eventStore.emit(kind,result);}catch(Exception failure){Log.e("PocketGeckoIntegration",J.obj("kind","eventTransportError","error",failure.toString(),"nativeContext","environment-"+(slot+1),"processSlot",slot,"fixtureAction",action,"runNonce",getIntent().getStringExtra("eventNonce"),"command",run).toString());}}
   void readingLifecycle(String phase){if("readingZoom".equals(action)&&session!=null)event(run,"readingZoomLifecycle",J.obj("phase",phase,"uptimeMs",SystemClock.uptimeMillis(),"wallMs",System.currentTimeMillis(),"activityResumed",activityResumed,"browserPaused",session.browserPaused,"nativeScale",session.web.getScale(),"zoomActive",session.web.zoomTarget!=null,"webShown",session.web.isShown(),"windowFocused",hasWindowFocus()));}
   @Override protected void onResume(){super.onResume();activityResumed=true;if(session!=null)session.foreground(true);readingLifecycle("onResume");observeReadiness(run,"onResume",true);}
   @Override protected void onPause(){activityResumed=false;if(session!=null){session.reading.keyboard(false);session.foreground(false);}readingLifecycle("onPause");observeReadiness(run,"onPause",true);super.onPause();}

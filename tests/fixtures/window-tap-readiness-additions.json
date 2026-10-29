@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "scope": "Exact integration-only window pre-emit readiness and bounded touch evidence; inverse recovers complete37 fixture",
+  "path": "tests/gecko/GeckoIntegrationTestActivity.java",
+  "baselineSha256": "6581b1d35024ce6edcf829575104e5dd3464ebfe20280e1a49d1c4b468325b39",
+  "changes": [
+    {
+      "id": "view-field",
+      "before": "    boolean continuityTracing;String continuityUrl=\"\";int continuityLoads,continuityStops,resourcePauseCalls;JSONArray continuityResults=new JSONArray();\n",
+      "inserted": "    GeckoWindowTapReadiness windowTapReadiness;\n",
+      "after": "    @Override public void onPause()"
+    },
+    {
+      "id": "touch-observe",
+      "before": "      boolean cached=nativeGeometryActive&&NativeGeometry.cacheMatches(this,before);\n",
+      "inserted": "      GeckoWindowTapReadiness windowTouch=windowTapReadiness;boolean windowObserved=windowTouch!=null&&windowTouch.observeTouch(event);\n",
+      "after": "      boolean handled=super.dispatchTouchEvent(event);"
+    },
+    {
+      "id": "touch-forwarded",
+      "before": "      boolean handled=super.dispatchTouchEvent(event);\n",
+      "inserted": "      if(windowObserved)windowTouch.forwarded(event.getActionMasked(),handled);\n",
+      "after": "      if(nativeGeometryActive){"
+    },
+    {
+      "id": "shared-window-deadline",
+      "before": "        if(!web.canBack){event(serial,\"error\",J.obj(\"error\",\"parent history missing before popup\"));return;}\n",
+      "original": "        tapElement(serial,\"popup\");\n        waitWindow(serial,\"three\",SystemClock.elapsedRealtime()+15000,()->{",
+      "replacement": "        final long windowDeadline=SystemClock.elapsedRealtime()+15000;\n        GeckoWindowTapReadiness.begin(this,serial,parent,windowDeadline);\n        waitWindow(serial,\"three\",windowDeadline,()->{",
+      "after": "\n          if(web.current==parent||web.popups.size()!=1)"
+    },
+    {
+      "id": "capture-window-bounds-owner",
+      "before": "  void tapElement(long serial,String id){\n",
+      "inserted": "    GeckoWindowTapReadiness windowTap=\"popup\".equals(id)?((FixtureView)session.web).windowTapReadiness:null;\n",
+      "after": "    session.web.evaluateJavascript("
+    },
+    {
+      "id": "window-bounds-recheck",
+      "before": "      if(serial!=run)return;",
+      "inserted": "if(windowTap!=null&&!windowTap.acceptBounds(serial,id))return;",
+      "after": "JSONObject rect=J.parse(raw);if(!rect.has(\"x\"))"
+    },
+    {
+      "id": "window-event-metadata",
+      "before": "synchronized void event(long serial,String kind,JSONObject result){if(serial!=run)return;try{",
+      "inserted": "if(!GeckoWindowTapReadiness.beforeEvent(this,serial,kind,result))return;",
+      "after": "if(eventStore==null||eventStore.command!=serial)"
+    }
+  ],
+  "helperPath": "tests/gecko/GeckoWindowTapReadiness.java",
+  "helperSha256": "9c4a039f90c36c9c69dcff1002e34e18345fd5c63a12d438e597f6481670c99a"
+}
