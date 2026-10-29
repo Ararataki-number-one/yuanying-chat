@@ -33,8 +33,10 @@ def main():
       'EDITOR':('EnvironmentEditorUi.java',['static void applySafely(MainActivity a,JSONObject value,EditText name,java.util.function.BooleanSupplier current,java.util.function.Consumer<Boolean> done)']),
       'CAPTURE':('PageMemory.java',['void remember(','void capture(']),
       'MEMORY':('PageMemory.java',['static boolean completeDraft(','static boolean hasDraft(']),
-      'MAIN':('MainActivity.java',['void status(','boolean reloadMatches(','void confirmIndependentReload(']),
-      'REPLY':('ReplyState.java',['static String describe(','static void checkWithoutRecovery(','static void websiteConnection('])}
+      'MAIN':('MainActivity.java',['void status(','void showStatusDetails(','boolean reloadMatches(','void confirmIndependentReload(']),
+      'REPLY':('ReplyState.java',['static String describe(','static long elapsedSeconds(','static void show(','static void checkWithoutRecovery(','static void websiteConnection(']),
+      'NETWORK':('NetworkStatusUi.java',['static boolean current(','static boolean connectionReady(','static String pageStatus(','static String sendStatus(']),
+      'LOGIN':('LoginPagePolicy.java',['static String host(','static boolean login('])}
     fixture=pathlib.Path(__file__).parent/'PageRecoveryHost.java'
     inputs={source/name for name,_ in selections.values()}|{source/name for name in ('WebReplyObserver.java','BrowserRuntimePolicy.java','BrowserSettingsPolicy.java')}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py')}
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(inputs)}
@@ -44,6 +46,11 @@ def main():
     for marker,(name,needles) in selections.items():
         original=(source/name).read_text();parts=[member(original,needle) for needle in needles]
         text=text.replace('/* '+marker+' */','\n'.join(parts));methods.extend(name+':'+needle for needle in needles)
+    original=(source/'MainActivity.java').read_text();anchor='status.setOnClickListener(v->'
+    assert original.count(anchor)==1,'Production status must have one actual click listener'
+    start=original.index(anchor)+len(anchor);click=original[start:original.index(');root.addView(status',start)]
+    text=text.replace('/* STATUS_CLICK */',click if click.startswith('{') else '{'+click+';}')
+    methods.append('MainActivity.java:actual status OnClickListener body')
     with tempfile.TemporaryDirectory(prefix='page-recovery-host-') as tmp:
         tmp=pathlib.Path(tmp);java=tmp/'local/pocketchat/PageRecoveryHost.java';java.parent.mkdir(parents=True);java.write_text(text)
         uri=tmp/'android/net/Uri.java';uri.parent.mkdir(parents=True);uri.write_text('package android.net; public class Uri { java.net.URI u; public static Uri parse(String x){Uri v=new Uri();v.u=java.net.URI.create(x);return v;}public String getPath(){return u.getPath();}}')

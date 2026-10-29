@@ -1,5 +1,5 @@
 package local.pocketchat;
-import java.util.*;import org.json.*;
+import java.util.*;import java.net.URI;import org.json.*;
 /** The runner substitutes exact source members, not rewritten policy copies. */
 public class PageRecoveryHost {
  static int checks;
@@ -73,6 +73,27 @@ public class PageRecoveryHost {
    s=route();LocalDraftPolicy.allowed=false;provider=new NetworkUiProvider(s);transition=new NetworkUiProvider.Transition(s);DraftArchive.saves=0;provider.captureTransition(transition);s.driverResult.accept(j("url",s.web.url,"draft","keep","documentId",s.lastDocumentId));s.driverResult.accept(snapshot(s,"keep"));
    check("Disabled draft saving keeps a real nonempty network transition pending",provider.deferred==1&&provider.committed==0&&DraftArchive.saves==0&&transition.waitReason.contains("草稿"));
    LocalDraftPolicy.allowed=true;
+   s=route();s.stateEpoch=s.navigationEpoch;s.state=j("url",s.web.url,"documentId",s.lastDocumentId,"composer",true);check("Status details use the current document's observed composer",NetworkStatusUi.pageStatus(s).contains("已显示网页输入区"));
+   for(int mutation=0;mutation<5;mutation++){
+     s=route();s.stateEpoch=s.navigationEpoch;s.state=j("url",s.web.url,"documentId",s.lastDocumentId,"composer",true);
+     switch(mutation){case 0:s.state.put("documentId","another-document");break;case 1:s.stateEpoch--;break;case 2:s.state.put("url","https://chatgpt.com/c/other");break;case 3:s.web.ports.clear();break;case 4:s.web.current=null;break;}
+     check("Status details refuse stale or unbound document observation "+mutation,NetworkStatusUi.pageStatus(s).contains("尚未确认"));
+   }
+   s=route();s.web.url="https://auth.openai.com/login";check("Login page is not described using previous chat state",NetworkStatusUi.pageStatus(s).contains("完成登录"));
+   s=route();s.networkReady=true;s.connectionStage="线路已恢复";s.websiteConnectionIssue=true;check("A recovered route never hides a failed website socket",NetworkStatusUi.connectionReady(s)&&NetworkStatusUi.pageStatus(s).contains("网页连接已中断"));
+   s=route();check("No native waiting task does not claim website completion",NetworkStatusUi.sendStatus(s).contains("没有本机等待任务")&&NetworkStatusUi.sendStatus(s).contains("不代表网页任务已完成"));
+   s.pending=j("id","unconfirmed-send");check("Observed gesture does not claim website acceptance",NetworkStatusUi.sendStatus(s).contains("网页是否接收尚未确认"));
+   s.pending.put("confirmed",true);check("Bound question does not claim completed reply",NetworkStatusUi.sendStatus(s).contains("网页已确认提问")&&NetworkStatusUi.sendStatus(s).contains("回复完成尚未确认"));
+   s.pending.put("webSuspended",true);check("Suspended send keeps an explicit uncertain result",NetworkStatusUi.sendStatus(s).contains("发送结果待核对"));
+   s=route();s.pending=j("id","current-unconfirmed");s.status="发送结果待确认 · 不会自动重发";a=new MainActivity(s);a.status(s.status);NetworkStatusUi.shows=0;a.clickStatus();check("Clickable unconfirmed send opens actual reply details",a.status.visibility==View.VISIBLE&&a.status.clickable&&AppAppearance.last.title.equals("回复状态")&&AppAppearance.last.message.contains("网页是否接收尚未确认")&&NetworkStatusUi.shows==0);
+   s=route();s.pending=j("id","offline-send");JSONObject kept=s.pending;s.networkReady=false;s.offline=true;a=new MainActivity(s);a.clickStatus();RecoveryDialog offlineDialog=AppAppearance.last;check("Disconnected send exposes a connection-status action",offlineDialog.positiveLabel.equals("连接状态"));NetworkStatusUi.shows=0;offlineDialog.positive.onClick(null,1);check("Connection action opens existing details without reconnecting or resending",NetworkStatusUi.shows==1&&s.opened==0&&s.loads==0&&s.pending==kept);
+   s=route();s.pending=j("id","old-dialog-send");s.networkReady=false;a=new MainActivity(s);ReplyState.show(a);RecoveryDialog replaced=AppAppearance.last;NetworkStatusUi.shows=0;a.session=route();replaced.positive.onClick(null,1);check("A replaced session cannot act through old reply details",NetworkStatusUi.shows==0&&s.opened==0);
+   s=route();s.status="连接中断";a=new MainActivity(s);NetworkStatusUi.shows=0;a.clickStatus();check("Network-only errors keep the original network-details entry",NetworkStatusUi.shows==1);
+   for(int mutation=0;mutation<5;mutation++){
+     s=route();s.pending=j("id","guarded-send");a=new MainActivity(s);switch(mutation){case 0:a.destroyed=true;break;case 1:a.finishing=true;break;case 2:a.session=route();break;case 3:a.remote=route().web;break;case 4:s.deleted=true;break;}
+     check("Status details reject an inactive host or session "+mutation,!NetworkStatusUi.current(a,s));
+   }
+   s=route();s.status="对话已改变，请检查上次发送；不会自动重发";a=new MainActivity(s);a.status(s.status);check("Conversation-change diagnostic still has no persistent banner",a.status.visibility==View.GONE);
    System.out.println(j("status","passed","checks",checks));
  }
 }
@@ -89,13 +110,14 @@ class ChatSession {
 }
 class PageMemory {/* MEMORY */}
 class MainActivity {
- ChatSession session;Web remote;boolean destroyed,reloadChecking;ReferenceUi.Modal reloadDialog;Text status=new Text();AppHub hub=new AppHub();String lastUiStatus="";
- int reloadRequests;void requestReload(){reloadRequests++;}MainActivity(ChatSession s){session=s;remote=s.web;}boolean isDestroyed(){return destroyed;}boolean isFinishing(){return false;}static boolean chatUrl(String x){return x!=null&&x.startsWith("https://chatgpt.com/");}
+ ChatSession session;Web remote;boolean destroyed,finishing,reloadChecking;ReferenceUi.Modal reloadDialog;Text status=new Text();AppHub hub=new AppHub();String lastUiStatus="";
+ int reloadRequests,shownPages;void requestReload(){reloadRequests++;}void showPage(boolean show){shownPages++;}void clickStatus() /* STATUS_CLICK */ MainActivity(ChatSession s){session=s;remote=s.web;}boolean isDestroyed(){return destroyed;}boolean isFinishing(){return finishing;}static boolean chatUrl(String x){return x!=null&&x.startsWith("https://chatgpt.com/");}
  /* MAIN */
 }
 class ReplyState {/* REPLY */}
+class NetworkStatusUi{static int shows;static void show(MainActivity a){shows++;}/* NETWORK */}
 class AppAppearance{static RecoveryDialog last;static RecoveryDialog dialog(MainActivity a){return last=new RecoveryDialog();}}
-class RecoveryDialog{interface Click{void onClick(Object dialog,int which);}boolean shown;String message,positiveLabel;Click positive;RecoveryDialog setTitle(String s){return this;}RecoveryDialog setMessage(String s){message=s;return this;}RecoveryDialog setPositiveButton(String s,Click c){positiveLabel=s;positive=c;return this;}RecoveryDialog setNeutralButton(String s,Click c){return this;}RecoveryDialog setNegativeButton(String s,Click c){return this;}void show(){shown=true;}}
+class RecoveryDialog{interface Click{void onClick(Object dialog,int which);}boolean shown;String title,message,positiveLabel;Click positive;RecoveryDialog setTitle(String s){title=s;return this;}RecoveryDialog setMessage(String s){message=s;return this;}RecoveryDialog setPositiveButton(String s,Click c){positiveLabel=s;positive=c;return this;}RecoveryDialog setNeutralButton(String s,Click c){return this;}RecoveryDialog setNegativeButton(String s,Click c){return this;}void show(){shown=true;}}
 class ReferenceUi {static class Modal{Runnable positive;String positiveLabel;java.util.function.Consumer<Object> dismiss;Modal(Object x,String s){}void note(String s){}void setOnDismissListener(java.util.function.Consumer<Object>x){dismiss=x;}void dismiss(){if(dismiss!=null)dismiss.accept(this);}void buttons(String l,Runnable a,String r,Runnable b){positive=b;positiveLabel=r;}void show(){}}}
 class J {static JSONObject obj(Object...p){JSONObject o=new JSONObject();try{for(int i=0;i<p.length;i+=2)o.put((String)p[i],p[i+1]);}catch(Exception e){throw new RuntimeException(e);}return o;}}
 class Text {int visibility;boolean clickable;String text="";String getText(){return text;}void setText(String s){text=s;}void setTextColor(int c){}void setClickable(boolean b){clickable=b;}void setContentDescription(String s){}void setVisibility(int v){visibility=v;}}
@@ -116,7 +138,7 @@ class Mirror{String documentId="document-one";JSONObject arguments(){return new 
 class Store{final java.util.concurrent.Executor worker=Runnable::run;void offer(String u,JSONArray e){}void nativeSnapshot(String s){}}
 class Cache{JSONArray withEarlier(String u,JSONArray a){return a;}void saveMessages(String u,JSONArray e){}}
 
-class Audit{boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{static boolean active(Web w){return true;}}class LoginPagePolicy{static boolean login(String u){return false;}}
+class Audit{boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{static boolean active(Web w){return true;}}class LoginPagePolicy{/* LOGIN */}
 
 class CapturedMemory {final ChatSession session;final LinkedHashMap<String,JSONObject> pages=new LinkedHashMap<>();long serial;CapturedMemory(ChatSession s){session=s;}String scope(){return "scope";}static String address(String url){return url;}/* CAPTURE */}
 

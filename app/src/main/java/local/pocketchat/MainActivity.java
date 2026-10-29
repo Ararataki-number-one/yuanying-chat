@@ -38,6 +38,11 @@ public class MainActivity extends ThemedActivity {
   ReferenceUi.Modal reloadDialog;boolean reloadChecking;
   interface Result {void accept(JSONObject value);}
   void chooseEnvironment(){ProfileUi.show(this);}
+  void showStatusDetails(){
+    if(session==null||!NetworkStatusUi.current(this,session))return;
+    if(session.pending!=null||session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())ReplyState.show(this);
+    else NetworkStatusUi.show(this);
+  }
   int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+.5f);}
 
   void status(String value){
@@ -72,7 +77,7 @@ public class MainActivity extends ThemedActivity {
     ReferenceUi.insets(this,root,visible->{keyboardVisible=visible;updateReadingLayout();});
     designChrome=new DesignChrome(this,root);
     status=label("",12,DesignUi.RED);status.setPadding(dp(14),dp(4),dp(14),dp(4));status.setMaxLines(2);status.setEllipsize(TextUtils.TruncateAt.END);status.setVisibility(View.GONE);status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-    status.setContentDescription("网页或网络错误，点按查看详情");status.setOnClickListener(v->{if(session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())ReplyState.show(this);else NetworkStatusUi.show(this);});root.addView(status,new LinearLayout.LayoutParams(-1,-2));
+    status.setContentDescription("网页或网络错误，点按查看详情");status.setOnClickListener(v->showStatusDetails());root.addView(status,new LinearLayout.LayoutParams(-1,-2));
     loading=new LoadingUi(this);FrameLayout stack=new FrameLayout(this);root.addView(stack,new LinearLayout.LayoutParams(-1,0,1));
     remote=session.web;if(remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);remote.setHost(this);remote.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
     attachments=new Attachments(this);downloads=new FileDownloads(this);remote.setWebViewClient(remoteClient());remote.setWebChromeClient(attachments.chrome());
