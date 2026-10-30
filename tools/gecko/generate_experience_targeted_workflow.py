@@ -48,8 +48,20 @@ def literal(dumper, value):
 
 LiteralDumper.add_representer(str, literal)
 
+def reviewed_base_bytes(raw):
+    """Invert only the reviewed build checkout ancestry preparation."""
+    before=b'  build:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 40\n    steps:\n    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n'
+    inserted=b'      with:\n        fetch-depth: 16\n'
+    after=b'    - name: Verify pinned network core and source patch\n'
+    assert raw.count(b'fetch-depth: 16') == 1
+    literal=before+inserted+after
+    assert raw.count(literal) == 1
+    restored=raw.replace(literal,before+after,1)
+    assert hashlib.sha256(restored).hexdigest() == BASE_SHA256
+    return restored
+
 def base():
-    raw = BASE.read_bytes()
+    raw = reviewed_base_bytes(BASE.read_bytes())
     assert hashlib.sha256(raw).hexdigest() == BASE_SHA256, 'Review a changed main workflow before deriving diagnostics'
     return yaml.safe_load(raw)
 

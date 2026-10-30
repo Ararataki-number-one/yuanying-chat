@@ -63,7 +63,7 @@ def restore_job(case,key,job):
 class Targeted(unittest.TestCase):
     def setUp(self):self.base=g.base();self.doc=g.derive()
     def test01_reference_and_generation_are_byte_reproducible(self):
-        self.assertEqual(hashlib.sha256(g.BASE.read_bytes()).hexdigest(),g.BASE_SHA256)
+        self.assertEqual(hashlib.sha256(g.reviewed_base_bytes(g.BASE.read_bytes())).hexdigest(),g.BASE_SHA256)
         self.assertEqual(g.TARGET.read_text(),g.render())
         self.assertEqual(yaml.safe_load(g.TARGET.read_text()),self.doc)
     def test02_exact_one_build_and_four_vm_graph(self):
@@ -167,6 +167,21 @@ class Targeted(unittest.TestCase):
                     self.assertIs(record[field],False)
                 self.assertTrue(record['diagnosticOnly']);self.assertEqual(record['maximumOriginalWorkloadInvocations'],1)
                 self.assertEqual(record['readingZoomTraceRequested'],key=='android' and phase=='files')
+
+    def test15_history_checkout_inverse_rejects_unreviewed_preparation(self):
+        raw=g.BASE.read_bytes();inserted=b'      with:\n        fetch-depth: 16\n'
+        self.assertEqual(raw.count(inserted),1)
+        restored=g.reviewed_base_bytes(raw)
+        self.assertEqual(hashlib.sha256(restored).hexdigest(),g.BASE_SHA256)
+        mutants=[raw.replace(inserted,b'',1),raw.replace(inserted,inserted*2,1)]
+        mutants.extend(raw.replace(b'fetch-depth: 16',b'fetch-depth: '+value,1) for value in (b'0',b'1',b'17',b'128'))
+        checkout=b'    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n'
+        second=raw.index(checkout,raw.index(checkout)+len(checkout))+len(checkout)
+        moved=raw[:second]+inserted+raw[second:]
+        mutants.extend((moved,moved.replace(inserted,b'',1),raw.replace(b'    timeout-minutes: 40\n',b'    timeout-minutes: 41\n',1)))
+        for value in mutants:
+            with self.subTest(mutationSha256=hashlib.sha256(value).hexdigest()):
+                with self.assertRaises(AssertionError):g.reviewed_base_bytes(value)
 
 if __name__=='__main__':
     result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(Targeted))

@@ -105,6 +105,8 @@ jobs:
     timeout-minutes: 40
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        fetch-depth: 16
     - name: Verify pinned network core and source patch
       run: |
         python3 tests/gecko_prepare_image_test.py

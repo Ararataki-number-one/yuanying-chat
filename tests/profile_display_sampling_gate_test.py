@@ -36,7 +36,21 @@ def reverse_reviewed_background_workflow_additions(case,source):
     source=source.replace(literal,host_before+host_after,1)
     return source
 
+def reverse_reviewed_history_checkout_addition(case,source):
+    # Only the build checkout's bounded ancestry input; all older workflow
+    # commands, pins, noise isolation and complete-workflow goldens stay exact.
+    before='  build:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 40\n    steps:\n    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n'
+    inserted='      with:\n        fetch-depth: 16\n'
+    after='    - name: Verify pinned network core and source patch\n'
+    case.assertEqual(source.count('fetch-depth: 16'),1,'bounded-history-only-build-checkout')
+    literal=before+inserted+after
+    case.assertEqual(source.count(literal),1,'bounded-history-exact-build-context')
+    restored=source.replace(literal,before+after,1)
+    case.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'10e35f9884e6eac2ea2fc2e0e6d6f6d5d14c55dc7e776cd0128019c75ab3f2f5')
+    return restored
+
 def reverse_reviewed_experience_workflow_additions(case,source):
+    source=reverse_reviewed_history_checkout_addition(case,source)
     source=reverse_reviewed_background_workflow_additions(case,source)
     # Undo only this separately reviewed five-line dependency preparation before
     # the unchanged older insertions and whole-workflow golden are checked.
@@ -105,6 +119,38 @@ def metadata():
     return value
 
 class DisplayGateTest(unittest.TestCase):
+    def test_bounded_history_checkout_inverse_rejects_any_other_preparation_change(self):
+        root=Path(__file__).resolve().parents[1]
+        source=(root/'.github/workflows/gecko-integration.yml').read_text()
+        inserted='      with:\n        fetch-depth: 16\n'
+        self.assertEqual(source.count(inserted),1)
+        restored=reverse_reviewed_history_checkout_addition(self,source)
+        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'10e35f9884e6eac2ea2fc2e0e6d6f6d5d14c55dc7e776cd0128019c75ab3f2f5')
+        mutations=[source.replace(inserted,'',1),source.replace(inserted,inserted+inserted,1)]
+        mutations.extend(source.replace('fetch-depth: 16','fetch-depth: '+depth,1) for depth in ('1','0','17','128'))
+        checkout='    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n'
+        second=source.index(checkout,source.index(checkout)+len(checkout))+len(checkout)
+        moved=source[:second]+inserted+source[second:]
+        mutations.extend((moved,moved.replace(inserted,'',1),
+            source.replace('    timeout-minutes: 40\n','    timeout-minutes: 41\n',1),
+            source.replace('python3 tests/gecko_prepare_image_test.py','python3 tests/gecko_prepare_image_test_changed.py',1)))
+        for changed in mutations:
+            with self.subTest(mutationSha256=hashlib.sha256(changed.encode()).hexdigest()):
+                self.assertNotEqual(changed,source)
+                with self.assertRaises(AssertionError):reverse_reviewed_history_checkout_addition(self,changed)
+
+    def test_profile_history_depth_only_changes_the_host_contract_checkout(self):
+        root=Path(__file__).resolve().parents[1]
+        source=(root/'.github/workflows/profile-upgrade-checks.yml').read_text()
+        before='  host-contracts:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 15\n    steps:\n      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n          persist-credentials: false\n'
+        inserted='          fetch-depth: 16\n'
+        after='      - name: Run source model, parser and protocol checks\n'
+        self.assertEqual(source.count('fetch-depth: 16'),1)
+        literal=before+inserted+after
+        self.assertEqual(source.count(literal),1)
+        restored=source.replace(literal,before+after,1)
+        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'2eb8bece4135ceb65b2c84aa847d34d34961ea655fe9718bb32aa87321993f6a')
+
     def fixture(self):
         value=metadata()
         for check in value['checks']:check['pass']=check.pop('pass_')
