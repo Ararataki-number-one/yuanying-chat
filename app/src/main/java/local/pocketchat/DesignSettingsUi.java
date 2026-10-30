@@ -19,6 +19,9 @@ final class DesignSettingsUi {
     LinearLayout background=DesignUi.group(a);box.addView(background);
     group(a,background,"后台完成提醒",AppSettings.backgroundCompletionNotice(a)?"离开应用后提醒回复和下载完成":"已关闭 · 使用时保持安静","chat",()->completionReminders(a,refresh));
     group(a,background,"通知与电池设置","通知提醒与后台运行权限","chat",()->FeatureDialogs.backgroundSettings(a));
+    DesignUi.section(box,"配置备份","");
+    LinearLayout backup=DesignUi.group(a);box.addView(backup);
+    group(a,backup,"环境配置备份","密码加密模板与偏好 · 恢复为新环境","window",()->a.startActivity(new android.content.Intent(a,EnvironmentConfigBackupActivity.class)));
     DesignUi.section(box,"帮助与能力","");
     LinearLayout help=DesignUi.group(a);box.addView(help);
     group(a,help,"问题与建议","提交反馈 · 查看处理进度","chat",()->FeedbackUi.open(a));
