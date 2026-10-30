@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.38",
-  "versionCode": 91,
+  "version": "2.0.39",
+  "versionCode": 92,
   "abi": "arm64-v8a",
   "minSdk": 26,
   "bytes": 119357093,
-  "sha256": "2e810189f1fc4565fdeadd851ac9f8be3a8c1ea4337e75e5577c9c1a7e25a374",
+  "sha256": "16e7a2e756e3d4647075b9a449655ef70760753ca3fb27a4d670582b34950699",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.38-gecko/PocketChat-2.0.38-gecko-arm64.apk",
-  "notes": "# 2.0.38（91）\n\n减少下载列表刷新时的重复读取和行更新。\n\n- 每次刷新通过一次只读复合查询取得展示所需记录，复用结果映射与未变化的行显示内容。\n- 行操作始终使用最新任务对象；读取失败时保留最近确认的列表、筛选和滚动位置，并提供行内重试提示。\n- 环境名称、语言、时区、状态颜色等变化仍会更新相应显示内容，保存、恢复、删除和线路保护继续沿用原有规则。\n\n历史记录仍全量读取，所有卡片仍附着，尚未分页或虚拟化。查询与绑定次数减少不等于手机耗时已经改善；Android 数据库、长列表布局与真实手机流畅度仍待实测。",
-  "sourceCommit": "4df73b636b96eedebe5247478fabb5f736e5b3c0"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.39-gecko/PocketChat-2.0.39-gecko-arm64.apk",
+  "notes": "# 2.0.39（92）\n\n补齐网页反复退出后的前台提示。\n\n- 网页进程在后台退出、自动恢复额度已耗尽，且没有已有错误说明时，返回前台显示“网页多次退出，自动恢复已暂停；请检查连接后点按重新加载”。\n- 保留既有恢复额度、时间窗口和手动重载入口；已有独立网络重试继续按原计划处理。\n\n新增分支仅更新界面提示与状态，不额外触发失败处理、导航结束、网络重试或聊天重发。真实 Gecko 进程退出、锁屏及长时间后台返回仍待手机验证。",
+  "sourceCommit": "6c8252ff997071df5bf845fb429f2acf4443665d"
 }
