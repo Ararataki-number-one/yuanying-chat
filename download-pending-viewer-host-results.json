@@ -1,0 +1,141 @@
+{
+  "total": 28,
+  "checks": [
+    {
+      "pass": true,
+      "name": "Pending application/octet-stream / success has truthful UI callback result"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/octet-stream / success preserves metadata, source and confirmation state"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/octet-stream / no-viewer has truthful UI callback result"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/octet-stream / no-viewer preserves metadata, source and confirmation state"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/octet-stream / permission-denied has truthful UI callback result"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/octet-stream / permission-denied preserves metadata, source and confirmation state"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/pdf / success has truthful UI callback result"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/pdf / success preserves metadata, source and confirmation state"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/pdf / no-viewer has truthful UI callback result"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/pdf / no-viewer preserves metadata, source and confirmation state"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/pdf / permission-denied has truthful UI callback result"
+    },
+    {
+      "pass": true,
+      "name": "Pending application/pdf / permission-denied preserves metadata, source and confirmation state"
+    },
+    {
+      "pass": true,
+      "name": "Pending image/png / success has truthful UI callback result"
+    },
+    {
+      "pass": true,
+      "name": "Pending image/png / success preserves metadata, source and confirmation state"
+    },
+    {
+      "pass": true,
+      "name": "Pending image/png / no-viewer has truthful UI callback result"
+    },
+    {
+      "pass": true,
+      "name": "Pending image/png / no-viewer preserves metadata, source and confirmation state"
+    },
+    {
+      "pass": true,
+      "name": "Pending image/png / permission-denied has truthful UI callback result"
+    },
+    {
+      "pass": true,
+      "name": "Pending image/png / permission-denied preserves metadata, source and confirmation state"
+    },
+    {
+      "pass": true,
+      "name": "Confirmed application/octet-stream / success retains saved viewer behavior"
+    },
+    {
+      "pass": true,
+      "name": "Confirmed application/octet-stream / no-viewer retains saved viewer behavior"
+    },
+    {
+      "pass": true,
+      "name": "Confirmed application/octet-stream / permission-denied retains saved viewer behavior"
+    },
+    {
+      "pass": true,
+      "name": "Confirmed application/pdf / success retains saved viewer behavior"
+    },
+    {
+      "pass": true,
+      "name": "Confirmed application/pdf / no-viewer retains saved viewer behavior"
+    },
+    {
+      "pass": true,
+      "name": "Confirmed application/pdf / permission-denied retains saved viewer behavior"
+    },
+    {
+      "pass": true,
+      "name": "Confirmed image/png / success retains saved viewer behavior"
+    },
+    {
+      "pass": true,
+      "name": "Confirmed image/png / no-viewer retains saved viewer behavior"
+    },
+    {
+      "pass": true,
+      "name": "Confirmed image/png / permission-denied retains saved viewer behavior"
+    },
+    {
+      "pass": true,
+      "name": "Confirmed default-title overload retains existing saved message"
+    }
+  ],
+  "passed": 28,
+  "status": "passed",
+  "sourceFiles": {
+    "app/src/main/java/local/pocketchat/FileDownloads.java": "ed9601c36671c89e66bf9e2146e53e9fa2cf18ec191e4465d04aa647a7ce060e",
+    "tests/download-persistence-host/pending_viewer.py": "57c83c9e2fd2cf9cb1025d21ffbcd1f2dacc58655b4c25a59e28d8713f9e8083",
+    "tests/download-resume-host/run.py": "73da7cf39d58ebff1f424d26d6949a3448163b2586b87107cc9f88ee56682650"
+  },
+  "selectedProductionMethods": [
+    "void taskActions(",
+    "void openSaved(Uri uri,String type)",
+    "void openSaved(Uri uri,String type,String title)",
+    "void openSaved(Uri uri,String type,String title,boolean confirmed)"
+  ],
+  "selectedMethodSha256": [
+    "ffb8efb7b31cf7a0caf645e913ed58c163e671d3c1c46d5895d42f234964ecf4",
+    "59daba382ac8a7dcfd117b819fe6f57bd97472e0da93d8e5ca4089bf3c565d90",
+    "abaa957d6761d97b8702d451b192da2d8e907c024d713fd80f734811e0bc39e3",
+    "e0628b3d92a9c8e46a598bf0a6714d767c5a68d3ddc475c3fcdc6a6444d4a364"
+  ],
+  "executionInputsUnchanged": true,
+  "jsonJarSha256": "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed",
+  "actualAndroidExecution": false,
+  "actualExternalProviderExecution": false,
+  "scope": "Exact production taskActions creates the pending-view button; its actual callback and all production openSaved overloads execute on a host UI queue. Viewer success, missing handler and permission denial are explicit host injections. Pending JSON and real host source bytes remain unchanged; no Android/provider behavior claimed."
+}
