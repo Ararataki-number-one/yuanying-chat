@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.37",
-  "versionCode": 90,
+  "version": "2.0.38",
+  "versionCode": 91,
   "abi": "arm64-v8a",
   "minSdk": 26,
-  "bytes": 119352997,
-  "sha256": "a3b518ac344d5a64de6dd712fed2c3063156feb881a39f2770fe9da74590e903",
+  "bytes": 119357093,
+  "sha256": "2e810189f1fc4565fdeadd851ac9f8be3a8c1ea4337e75e5577c9c1a7e25a374",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.37-gecko/PocketChat-2.0.37-gecko-arm64.apk",
-  "notes": "# 2.0.37（90）\n\n改善附件取消与存储详情的处理。\n\n- 文件提供者调用返回后及时检查取消状态，停止后续数据块或文件的准备工作。\n- 提前清理尚未交给网页的附件副本，并保留清理失败记录；已交付或归属未知的副本继续保留。\n- 存储详情按需在已有工作线程中进行有界只读采样，显示前复核当前环境与界面归属。\n\n采样容量不代表可安全删除容量；阻塞中的提供者或文件系统调用仍须先返回，取消才能继续生效。保留原生权限拒绝和上传保护，未增加自动回收已交付附件。手机文件选择器、取消响应与存储界面仍待实测。",
-  "sourceCommit": "c6f8b5456407a30461fb96c55b6657410d9aad07"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.38-gecko/PocketChat-2.0.38-gecko-arm64.apk",
+  "notes": "# 2.0.38（91）\n\n减少下载列表刷新时的重复读取和行更新。\n\n- 每次刷新通过一次只读复合查询取得展示所需记录，复用结果映射与未变化的行显示内容。\n- 行操作始终使用最新任务对象；读取失败时保留最近确认的列表、筛选和滚动位置，并提供行内重试提示。\n- 环境名称、语言、时区、状态颜色等变化仍会更新相应显示内容，保存、恢复、删除和线路保护继续沿用原有规则。\n\n历史记录仍全量读取，所有卡片仍附着，尚未分页或虚拟化。查询与绑定次数减少不等于手机耗时已经改善；Android 数据库、长列表布局与真实手机流畅度仍待实测。",
+  "sourceCommit": "4df73b636b96eedebe5247478fabb5f736e5b3c0"
 }
