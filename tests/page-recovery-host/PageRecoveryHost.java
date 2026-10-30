@@ -158,7 +158,7 @@ class Mirror{String documentId="document-one";JSONObject arguments(){return new 
 class Store{final java.util.concurrent.Executor worker=Runnable::run;void offer(String u,JSONArray e){}void nativeSnapshot(String s){}}
 class Cache{JSONArray withEarlier(String u,JSONArray a){return a;}void saveMessages(String u,JSONArray e){}}
 
-class Audit{boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{
+class Audit{void retirePageCheck(){}boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{
  static boolean active(Web w){return true;}final ChatSession owner;GeckoSession current=new GeckoSession();boolean destroyed,enabled=true,failed;long recoveryWindow;int contentRecoveries,recoveryDispatches;String url="https://chatgpt.com/c/lifecycle-current";
  final Map<GeckoSession,String> locations=new IdentityHashMap<>();final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();final Set<GeckoSession> crashed=new HashSet<>(),pendingLoads=new HashSet<>(),painted=new HashSet<>(),usable=new HashSet<>();final Runnable recovery=()->recoveryDispatches++;
  final BrowserBridgeRequests callbacks=new BrowserBridgeRequests(new BrowserBridgeRequests.Timer(){public void schedule(Runnable r,long delay){}public void cancel(Runnable r){}},"null");

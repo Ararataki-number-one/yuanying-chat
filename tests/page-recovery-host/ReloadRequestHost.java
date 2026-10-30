@@ -114,6 +114,8 @@ public class ReloadRequestHost {
  }
 }
 class ChatSession {
+ // No audit is running in this reload-only host workload.
+ static final class Audit {void retirePageCheck(){}}Audit audit;
  final Trace trace=new Trace();final Handler handler=new Handler();boolean navigationFailed,websiteConnectionIssue,spaTransition,documentNavigationSeen,navigationDispatched,awaitNewDocument;String navigationTarget="",navigationLabel="",priorDocumentId="",spaSignature="";int spaStable;long navigationStarted,navigationMono,firstPageVisible,pageUsableAt;void navigationTimeout(long epoch){}
  final Deliveries deliveries=new Deliveries();final JSONArray attachments=new JSONArray();boolean submitting,operation,configurationCapture,networkReady=true,offline,navigating,replyStalled;String replyHealthStatus="";int stableTicks;long webConfirmationVersion;String stableReply="";
  final Object context=new Object();final int environmentGeneration=4;final String environmentId="environment-one";final Web web=new Web();final Prefs prefs=new Prefs();final WebReplyObserver webObserver=new WebReplyObserver(this);final Store webStore=new Store();

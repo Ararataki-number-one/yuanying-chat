@@ -36,7 +36,7 @@ public class NetworkSourcesRouteIntegrationActivity {
  static class Handler {long now;static class Task {Runnable run;long at;Task(Runnable r,long t){run=r;at=t;}}List<Task> tasks=new ArrayList<>();void postDelayed(Runnable r,long delay){tasks.add(new Task(r,now+delay));}void advance(long target){for(;;){Task next=null;for(Task t:tasks)if(t.at<=target&&(next==null||t.at<next.at))next=t;if(next==null)break;tasks.remove(next);now=next.at;next.run.run();}now=target;}}
  static class Guard {boolean blocked;void setBlocked(boolean v){blocked=v;}}static class PageMemory {void capture(Runnable r){r.run();}}static class Prefs {boolean getBoolean(String k,boolean d){return k.equals("networkConfigured");}}
  static class ChatSession {
-  static class DiagnosticAudit {boolean requestIdentityPageSelected(){return false;}void cancel(){}}
+  static class DiagnosticAudit {boolean requestIdentityPageSelected(){return false;}void cancel(){}void retirePageCheck(){}}
   DiagnosticAudit audit;
   boolean offline,recoveryScheduled,connecting,manualAttention,submitting,operation,networkReady;int recoveryAttempt,requests;long recoveryToken,connectionEpoch,navigationEpoch,pageUsableAt;String connectionStage,networkIssue,status;Object context;Handler handler=new Handler();Prefs prefs=new Prefs();FixtureView web;Guard guard=new Guard();PageMemory pageMemory=new PageMemory();
   boolean internalNetwork(){return true;}void setStatus(String value){status=value;}void resetReplyStability(){}void finishResourceInspection(){}void openConnection(boolean recover,boolean force){requests++;connecting=true;connectionEpoch++;}
