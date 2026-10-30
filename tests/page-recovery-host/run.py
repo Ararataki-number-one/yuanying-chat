@@ -36,9 +36,10 @@ def main():
       'MAIN':('MainActivity.java',['void status(','void showStatusDetails(','boolean reloadMatches(','void confirmIndependentReload(']),
       'REPLY':('ReplyState.java',['static String describe(','static long elapsedSeconds(','static void show(','static void checkWithoutRecovery(','static void websiteConnection(']),
       'NETWORK':('NetworkStatusUi.java',['static boolean current(','static boolean connectionReady(','static String pageStatus(','static String sendStatus(']),
-      'LOGIN':('LoginPagePolicy.java',['static String host(','static boolean login('])}
+      'LOGIN':('LoginPagePolicy.java',['static String host(','static boolean login(']),
+      'LIFECYCLE':('GeckoWebView.java',['private void contentStopped(','private boolean canRecoverAutomatically(','public void onResume(','boolean hasVisibleDocument(','private void failure('])}
     fixture=pathlib.Path(__file__).parent/'PageRecoveryHost.java'
-    inputs={source/name for name,_ in selections.values()}|{source/name for name in ('WebReplyObserver.java','BrowserRuntimePolicy.java','BrowserSettingsPolicy.java')}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py')}
+    inputs={source/name for name,_ in selections.values()}|{source/name for name in ('WebReplyObserver.java','BrowserRuntimePolicy.java','BrowserSettingsPolicy.java','BrowserBridgeRequests.java')}|{fixture,pathlib.Path(__file__).resolve(),fixture.with_name('ReloadRequestHost.java'),fixture.with_name('reload_request.py')}
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(inputs)}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     text=fixture.read_text()
@@ -55,7 +56,7 @@ def main():
         tmp=pathlib.Path(tmp);java=tmp/'local/pocketchat/PageRecoveryHost.java';java.parent.mkdir(parents=True);java.write_text(text)
         uri=tmp/'android/net/Uri.java';uri.parent.mkdir(parents=True);uri.write_text('package android.net; public class Uri { java.net.URI u; public static Uri parse(String x){Uri v=new Uri();v.u=java.net.URI.create(x);return v;}public String getPath(){return u.getPath();}}')
         clock=tmp/'android/os/SystemClock.java';clock.parent.mkdir(parents=True);clock.write_text('package android.os;public class SystemClock {public static long elapsedRealtime(){return 100000;}}')
-        subprocess.run(['javac','-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(tmp),str(java),str(uri),str(clock)],check=True)
+        subprocess.run(['javac','-encoding','UTF-8','-cp',str(a.json_jar.resolve()),'-d',str(tmp),str(java),str(uri),str(clock),str(source/'BrowserBridgeRequests.java')],check=True)
         result=subprocess.run(['java','-cp',str(tmp)+os.pathsep+str(a.json_jar.resolve()),'local.pocketchat.PageRecoveryHost'],text=True,capture_output=True)
         if result.returncode:
             print(result.stderr,file=sys.stderr);result.check_returncode()

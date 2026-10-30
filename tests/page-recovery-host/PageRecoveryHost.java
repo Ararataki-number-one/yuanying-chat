@@ -7,6 +7,7 @@ public class PageRecoveryHost {
  static JSONObject j(Object... parts){return J.obj(parts);}
  static ChatSession route(){LocalDraftPolicy.allowed=true;NativeNetwork.network=new NativeNetwork();ProfileCatalog.generation=4;ProfileCatalog.available=true;ProfileCatalog.deleting=false;ProfileCatalog.resetting=false;SystemClock.now=1000;return new ChatSession();}
  static JSONObject snapshot(ChatSession s,String text){return j("ok",true,"url",s.web.url,"documentId",s.lastDocumentId,"draft",text,"draftComplete",true,"draftLength",text.length());}
+ static GeckoWebView lifecycle(int attempts,boolean visible){ChatSession s=route();s.pending=j("id","retained-lifecycle-task","kind","web","confirmed",true);s.uiVisible=visible;s.status="已连接";GeckoWebView view=new GeckoWebView(s);view.contentRecoveries=attempts;view.recoveryWindow=1000;SystemClock.now=10000;return view;}
  public static void main(String[] args)throws Exception{
    ChatSession s=route();s.networkReady=false;s.recoveryScheduled=true;s.recoveryToken=41;s.recoveryAttempt=3;s.manualAttention=true;s.networkIssue="service disconnected";s.connectionStage="waiting";s.status="service disconnected";s.navigationFailed=true;
    s.acceptTranscript(j("ok",true,"url",s.web.url,"entries",new JSONArray().put(j("id","answer"))),j("composer",true,"model","test"),true);
@@ -94,7 +95,26 @@ public class PageRecoveryHost {
      check("Status details reject an inactive host or session "+mutation,!NetworkStatusUi.current(a,s));
    }
    s=route();s.status="对话已改变，请检查上次发送；不会自动重发";a=new MainActivity(s);a.status(s.status);check("Conversation-change diagnostic still has no persistent banner",a.status.visibility==View.GONE);
-   System.out.println(j("status","passed","checks",checks));
+   int lifecycleStart=checks;GeckoWebView stopped=lifecycle(2,false);s=stopped.owner;JSONObject retainedTask=s.pending;long oldRetry=s.recoveryToken,oldConnection=s.connectionEpoch;WebExtension.Port oldPort=stopped.ports.get(stopped.current);String[] oldResult={"pending"};int oldRequest=stopped.callbacks.add(oldPort,value->oldResult[0]=value,1000);stopped.current.open=false;stopped.stop();
+   check("Background content exit retires its exact port and bridge request",stopped.failed&&!stopped.hasVisibleDocument()&&stopped.ports.get(stopped.current)==null&&stopped.callbacks.size()==0&&oldResult[0].equals("null")&&!stopped.callbacks.complete(oldPort,oldRequest,"late"));
+   check("Background content exit waits to show foreground recovery instructions",s.pageError.isEmpty()&&s.status.equals("已连接")&&stopped.recoveryDispatches==0);
+   s.uiVisible=true;stopped.onResume();check("Exhausted background recovery exposes existing manual failure without changing route or task",s.pageError.contains("自动恢复已暂停")&&s.pending==retainedTask&&s.recoveryToken==oldRetry&&s.connectionEpoch==oldConnection&&s.loads==0&&s.opened==0&&stopped.recoveryDispatches==0&&stopped.contentRecoveries==2);
+   a=new MainActivity(s);a.status(s.status);check("Resumed exhausted page has a visible actionable native failure",a.status.visibility==View.VISIBLE&&a.status.clickable);
+   stopped=lifecycle(2,true);stopped.current.open=false;stopped.stop();String foregroundFailure=stopped.owner.pageError;stopped.onResume();check("Existing foreground exhaustion keeps its original page error",!foregroundFailure.isEmpty()&&stopped.owner.pageError.equals(foregroundFailure)&&stopped.recoveryDispatches==0);
+   stopped=lifecycle(0,false);stopped.current.open=false;stopped.stop();stopped.owner.uiVisible=true;stopped.onResume();check("Available-budget background resume keeps existing recovery dispatch",stopped.recoveryDispatches==1&&stopped.owner.pageError.isEmpty());
+   stopped=lifecycle(2,false);stopped.current.open=false;stopped.stop();stopped.owner.uiVisible=true;SystemClock.now=62000;stopped.onResume();check("Expired recovery window still resets the existing budget",stopped.recoveryDispatches==1&&stopped.contentRecoveries==0&&stopped.owner.pageError.isEmpty());
+   stopped=lifecycle(2,false);stopped.stopOther(new GeckoSession());check("Unrelated session cannot fail the current document",!stopped.failed&&stopped.crashed.isEmpty()&&stopped.owner.pageError.isEmpty());
+   stopped=lifecycle(2,true);stopped.onResume();check("Healthy foreground session keeps its original activation",stopped.current.activeCalls==1&&stopped.owner.pageError.isEmpty()&&stopped.recoveryDispatches==0);
+   stopped=lifecycle(2,true);stopped.crashed.add(stopped.current);stopped.onResume();check("A crashed marker alone does not create a new failure or change activation",!stopped.failed&&stopped.current.activeCalls==1&&stopped.owner.pageError.isEmpty());
+   stopped=lifecycle(2,false);stopped.current.open=false;stopped.stop();stopped.owner.uiVisible=true;stopped.destroyed=true;stopped.onResume();check("A destroyed browser cannot publish the new foreground notice",stopped.owner.pageError.isEmpty()&&stopped.recoveryDispatches==0);
+   stopped=lifecycle(2,false);stopped.current.open=false;stopped.stop();stopped.onResume();check("The new manual notice does not run while still backgrounded",stopped.owner.pageError.isEmpty()&&stopped.recoveryDispatches==0);
+   stopped=lifecycle(2,false);s=stopped.owner;s.networkReady=false;s.navigating=true;s.recoveryToken=51;s.recoveryAttempt=3;s.networkIssue="unavailable route";s.connectionStage="needs network";retainedTask=s.pending;oldConnection=s.connectionEpoch;stopped.current.open=false;stopped.stop();s.uiVisible=true;stopped.onResume();
+   check("Exhausted foreground notice on an unavailable route cannot create a network retry",s.pageError.contains("自动恢复已暂停")&&s.status.equals(s.pageError)&&!s.navigating&&s.navigationFailed&&!s.recoveryScheduled&&s.scheduled==0&&s.recoveryToken==51&&s.recoveryAttempt==3&&!s.manualAttention&&s.networkIssue.equals("unavailable route")&&s.connectionStage.equals("needs network")&&s.pending==retainedTask&&s.connectionEpoch==oldConnection&&s.loads==0&&s.opened==0&&stopped.recoveryDispatches==0&&stopped.contentRecoveries==2);
+   stopped=lifecycle(2,false);s=stopped.owner;s.networkReady=false;s.scheduleRecovery();oldRetry=s.recoveryToken;int existingScheduled=s.scheduled;String existingStage=s.connectionStage;retainedTask=s.pending;stopped.current.open=false;stopped.stop();s.uiVisible=true;stopped.onResume();
+   check("Exhausted foreground notice preserves an independently scheduled network retry",s.pageError.contains("自动恢复已暂停")&&s.status.equals(s.pageError)&&s.recoveryScheduled&&s.scheduled==existingScheduled&&s.recoveryToken==oldRetry&&s.recoveryAttempt==0&&s.connectionStage.equals(existingStage)&&s.pending==retainedTask&&s.loads==0&&s.opened==0&&stopped.recoveryDispatches==0&&stopped.contentRecoveries==2);
+   s.runRecovery(oldRetry);check("Independent network retry remains runnable after the pure foreground notice",s.opened==1&&s.recoveryAttempt==1&&s.recoveryToken==oldRetry&&!s.recoveryScheduled&&s.pending==retainedTask&&stopped.recoveryDispatches==0);
+   int lifecycleChecks=checks-lifecycleStart;
+   System.out.println(j("status","passed","checks",checks,"contentLifecycleChecks",lifecycleChecks));
  }
 }
 class ChatSession {
@@ -126,10 +146,10 @@ class Browser {boolean isOpen(){return true;}void reload(){}}class Web{boolean f
 class Guard{boolean blocked,protectedRoute=true;void setBlocked(boolean b){blocked=b;}boolean allowed(){return !blocked;}boolean routeProtected(){return protectedRoute;}}
 class Profiles{static int slot(Object c){return 2;}}
 class ProfileCatalog{static int generation=4;static boolean available=true,deleting,resetting;static ProfileCatalog get(Object c){return new ProfileCatalog();}boolean available(int n){return available;}JSONObject item(int n){return J.obj("generation",generation,"environmentId","environment-one","created",available,"deleting",deleting,"resetting",resetting);}}
-class BrowserRuntimePolicy{static boolean sameDocument(String a,String b){return Objects.equals(a,b);}}class WebReplyObserver{JSONObject lastNavigationArchivedJob;long navigationArchiveSequence;static boolean same(String a,String b){return Objects.equals(a,b);}}
+class BrowserRuntimePolicy{static boolean sameDocument(String a,String b){return Objects.equals(a,b);}}class WebReplyObserver{JSONObject lastNavigationArchivedJob;long navigationArchiveSequence;static boolean same(String a,String b){return Objects.equals(a,b);}void suspendUnconfirmed(String reason){/* Lifecycle scenarios use confirmed tasks, whose production path returns unchanged. */}}
 class Memory{int restores,forgot;JSONObject remembered;boolean restorePending;void restore(String u,long e){restores++;}void forget(String u){forgot++;restorePending=false;}void remember(String n,String u,JSONObject p){remembered=p;}String scope(){return "scope";}}
 class SystemClock{static long now;static long elapsedRealtime(){return now;}}
-class Handler{ChatSession s;Handler(ChatSession s){this.s=s;}void postDelayed(Runnable r,long n){s.scheduled++;}void post(Runnable r){r.run();}}
+class Handler{ChatSession s;Handler(ChatSession s){this.s=s;}void postDelayed(Runnable r,long n){s.scheduled++;}void post(Runnable r){r.run();}void removeCallbacks(Runnable r){}}
 class NativeNetwork{interface Callback{void done(boolean ok,String msg);}static NativeNetwork network=new NativeNetwork();static class RecoveryOutcome{final String message;RecoveryOutcome(String m){message=m;}}boolean retainedCurrent=true;boolean retainedOutcomeCurrent(RecoveryOutcome o){return retainedCurrent;}boolean recoveryBlocked,starting;String message="fixed exit blocked";int diagnostics;Callback callback;static NativeNetwork get(Object c){return network;}void diagnoseReadOnly(Callback c){diagnostics++;callback=c;}}
 class Prefs{boolean getBoolean(String x,boolean b){return true;}Prefs edit(){return this;}Prefs putString(String k,String v){return this;}void apply(){}}
 class ConnectionTrace{static double bounded(double v){return v;}}
@@ -138,7 +158,16 @@ class Mirror{String documentId="document-one";JSONObject arguments(){return new 
 class Store{final java.util.concurrent.Executor worker=Runnable::run;void offer(String u,JSONArray e){}void nativeSnapshot(String s){}}
 class Cache{JSONArray withEarlier(String u,JSONArray a){return a;}void saveMessages(String u,JSONArray e){}}
 
-class Audit{boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{static boolean active(Web w){return true;}}class LoginPagePolicy{/* LOGIN */}
+class Audit{boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{
+ static boolean active(Web w){return true;}final ChatSession owner;GeckoSession current=new GeckoSession();boolean destroyed,enabled=true,failed;long recoveryWindow;int contentRecoveries,recoveryDispatches;String url="https://chatgpt.com/c/lifecycle-current";
+ final Map<GeckoSession,String> locations=new IdentityHashMap<>();final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();final Set<GeckoSession> crashed=new HashSet<>(),pendingLoads=new HashSet<>(),painted=new HashSet<>(),usable=new HashSet<>();final Runnable recovery=()->recoveryDispatches++;
+ final BrowserBridgeRequests callbacks=new BrowserBridgeRequests(new BrowserBridgeRequests.Timer(){public void schedule(Runnable r,long delay){}public void cancel(Runnable r){}},"null");
+ GeckoWebView(ChatSession s){owner=s;locations.put(current,url);ports.put(current,new WebExtension.Port());usable.add(current);}void cancelZoom(){}void retireAppearance(WebExtension.Port port){}void stop(){contentStopped(current,"网页进程已退出，点按重新加载可恢复当前环境");}void stopOther(GeckoSession session){contentStopped(session,"other session");}
+ /* LIFECYCLE */
+}
+class GeckoSession{boolean open=true;int activeCalls;boolean isOpen(){return open;}void setActive(boolean active){activeCalls++;}}
+class WebExtension{static class Port{}}
+class LoginPagePolicy{/* LOGIN */}
 
 class CapturedMemory {final ChatSession session;final LinkedHashMap<String,JSONObject> pages=new LinkedHashMap<>();long serial;CapturedMemory(ChatSession s){session=s;}String scope(){return "scope";}static String address(String url){return url;}/* CAPTURE */}
 
