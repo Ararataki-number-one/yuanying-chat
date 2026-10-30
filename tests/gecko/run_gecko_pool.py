@@ -15,6 +15,8 @@ sys.path.insert(0, str(ROOT / 'tools'))
 from gecko.chain_runtime_contract import verify_gecko_pool
 from gecko.site_permission_evidence import permission_tap_command, verify_site_permission_evidence
 from gecko.caret_ime_guard import redact_service_api_keys, verify_capture_privacy, diagnostic_privacy_summary
+from gecko.caret_ime_guard import assert_public_diagnostic_text
+from gecko.diagnostic_capture_privacy import safe_error_text
 
 OUT = ROOT / 'work/gecko-integration'
 PORT = 9877
@@ -94,6 +96,21 @@ process.on('SIGTERM',()=>{for(const socket of sockets)socket.destroy();server.cl
 
 def verify(report, server):
     return verify_gecko_pool(report, server)
+
+
+def write_diagnostic_report(path, value):
+    """Export a verified JSON derivative without replacing the workload oracle."""
+    if not isinstance(value, dict) or 'reportCapturePrivacy' in value:
+        raise ValueError('Diagnostic report privacy: primary metadata collision')
+    normalized = json.dumps(value, indent=2) + '\n'
+    sanitized, metadata = capture_diagnostic_text(normalized)
+    public = json.loads(sanitized)
+    public['reportCapturePrivacy'] = dict(schema=1,
+        scope='Normalized complete report JSON excluding reportCapturePrivacy itself; known service API-key value derivative. Workload verification uses the original structured object.',
+        capture=metadata)
+    final = json.dumps(public, indent=2) + '\n'
+    assert_public_diagnostic_text(path, final.encode('utf-8'))
+    path.write_text(final, encoding='utf-8')
 
 
 def capture_diagnostic_text(value):
@@ -182,20 +199,26 @@ def main():
             report['server'] = server
             report['sitePermissionsGestures'] = permission_gestures
             report['capturePrivacy'] = diagnostic_privacy_summary(privacy_captures)
-            (OUT / 'gecko-pool-results.json').write_text(json.dumps(report, indent=2) + '\n')
+            write_diagnostic_report(OUT / 'gecko-pool-results.json', report)
             (OUT / 'gecko-pool-log.txt').write_text(raw)
             verify(report, server)
             permission_result = verify_site_permission_evidence(report['sitePermissions'], permission_gestures)
-            (OUT / 'site-permission-sdk-results.json').write_text(json.dumps(dict(evidence=report['sitePermissions'], gestures=permission_gestures,
+            write_diagnostic_report(OUT / 'site-permission-sdk-results.json', dict(evidence=report['sitePermissions'], gestures=permission_gestures,
                                                                              verification=permission_result,
-                                                                             sourceCommit=report['sourceCommit']), indent=2) + '\n')
+                                                                             sourceCommit=report['sourceCommit']))
             print(json.dumps({'status': report['status'], 'checks': len(report['checks']),
                               'actualHttp2Requests': len([r for r in server['requests'] if r['path'] == '/bytes']),
                               'webSocketFrames': server['webSockets'][0]['frames'], 'sourceCommit': report['sourceCommit']}), flush=True)
-        except BaseException:
-            (OUT / 'gecko-pool-failure-log.txt').write_text(capture_text(adb('logcat', '-d')))
-            if (directory / 'server.json').exists():
-                (OUT / 'gecko-pool-server-failure.json').write_bytes((directory / 'server.json').read_bytes())
+        except BaseException as error:
+            try:
+                (OUT / 'gecko-pool-failure-log.txt').write_text(capture_text(adb('logcat', '-d')))
+                if (directory / 'server.json').exists():
+                    (OUT / 'gecko-pool-server-failure.json').write_bytes((directory / 'server.json').read_bytes())
+            except Exception:
+                pass  # Secondary capture cannot replace or disclose the primary failure.
+            message = safe_error_text(error, use_repr=False)
+            if message != str(error):
+                raise RuntimeError(type(error).__name__ + ': ' + message) from None
             raise
         finally:
             adb('shell', 'am', 'force-stop', PACKAGE)

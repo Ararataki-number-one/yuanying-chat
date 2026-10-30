@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import traceback
 import unittest
 from unittest.mock import patch
 
@@ -50,15 +51,25 @@ ADB = '    def adb(*parts, binary=False):\n'
 LOG_DEF = '    def log():\n'
 PERMISSION_REPORT = "            report['sitePermissionsGestures'] = permission_gestures\n"
 EXCEPT = '        except BaseException:\n'
-ADDITIONS = ((PERMISSION_IMPORT + IMPORT, PERMISSION_IMPORT),
-             (FUNCTION + MAIN, MAIN), (CAPTURES + ADB, ADB),
+REPORT_EXPORT_IMPORTS = 'from gecko.caret_ime_guard import assert_public_diagnostic_text\nfrom gecko.diagnostic_capture_privacy import safe_error_text\n'
+REPORT_EXPORT_FUNCTION = 'def write_diagnostic_report(path, value):\n    """Export a verified JSON derivative without replacing the workload oracle."""\n    if not isinstance(value, dict) or \'reportCapturePrivacy\' in value:\n        raise ValueError(\'Diagnostic report privacy: primary metadata collision\')\n    normalized = json.dumps(value, indent=2) + \'\\n\'\n    sanitized, metadata = capture_diagnostic_text(normalized)\n    public = json.loads(sanitized)\n    public[\'reportCapturePrivacy\'] = dict(schema=1,\n        scope=\'Normalized complete report JSON excluding reportCapturePrivacy itself; known service API-key value derivative. Workload verification uses the original structured object.\',\n        capture=metadata)\n    final = json.dumps(public, indent=2) + \'\\n\'\n    assert_public_diagnostic_text(path, final.encode(\'utf-8\'))\n    path.write_text(final, encoding=\'utf-8\')\n\n\n'
+CURRENT_FAILURE_BLOCK = "        except BaseException as error:\n            try:\n                (OUT / 'gecko-pool-failure-log.txt').write_text(capture_text(adb('logcat', '-d')))\n                if (directory / 'server.json').exists():\n                    (OUT / 'gecko-pool-server-failure.json').write_bytes((directory / 'server.json').read_bytes())\n            except Exception:\n                pass  # Secondary capture cannot replace or disclose the primary failure.\n            message = safe_error_text(error, use_repr=False)\n            if message != str(error):\n                raise RuntimeError(type(error).__name__ + ': ' + message) from None\n            raise\n"
+LEGACY_FAILURE_BLOCK = "        except BaseException:\n            (OUT / 'gecko-pool-failure-log.txt').write_text(adb('logcat', '-d'))\n            if (directory / 'server.json').exists():\n                (OUT / 'gecko-pool-server-failure.json').write_bytes((directory / 'server.json').read_bytes())\n            raise\n"
+CURRENT_REPORT_WRITE = "            write_diagnostic_report(OUT / 'gecko-pool-results.json', report)\n"
+PREVIOUS_REPORT_WRITE = "            (OUT / 'gecko-pool-results.json').write_text(json.dumps(report, indent=2) + '\\n')\n"
+CURRENT_PERMISSION_WRITE = "            write_diagnostic_report(OUT / 'site-permission-sdk-results.json', dict(evidence=report['sitePermissions'], gestures=permission_gestures,\n                                                                             verification=permission_result,\n                                                                             sourceCommit=report['sourceCommit']))\n"
+PREVIOUS_PERMISSION_WRITE = "            (OUT / 'site-permission-sdk-results.json').write_text(json.dumps(dict(evidence=report['sitePermissions'], gestures=permission_gestures,\n                                                                             verification=permission_result,\n                                                                             sourceCommit=report['sourceCommit']), indent=2) + '\\n')\n"
+ADDITIONS = ((PERMISSION_IMPORT + IMPORT + REPORT_EXPORT_IMPORTS, PERMISSION_IMPORT),
+             (REPORT_EXPORT_FUNCTION + FUNCTION + MAIN, MAIN), (CAPTURES + ADB, ADB),
              (LOG_DEF + LOG, LOG_DEF + OLD_LOG),
              (PERMISSION_REPORT + REPORT, PERMISSION_REPORT),
-             (EXCEPT + FAILURE, EXCEPT + OLD_FAILURE))
+             (CURRENT_FAILURE_BLOCK, LEGACY_FAILURE_BLOCK),
+             (CURRENT_REPORT_WRITE, PREVIOUS_REPORT_WRITE),
+             (CURRENT_PERMISSION_WRITE, PREVIOUS_PERMISSION_WRITE))
 
 
 def original_pool_runner(text):
-    """Undo six exact producer changes; callers retain whole-runner hash checks."""
+    """Undo exact producer-only privacy changes; retain the complete original runner hash."""
     for added, previous in ADDITIONS:
         if text.count(added) != 1:
             raise ValueError('Missing or repeated exact pool capture-privacy addition')
@@ -218,6 +229,183 @@ class PoolCapturePrivacyTest(unittest.TestCase):
 
     def test_failure_capture_and_raised_diagnostic_are_filtered(self):
         self.run_host_producer(failure=True)
+
+
+SOURCE = '79b9f31534aed26446e1e8f7368b1ec825bbcd50'
+RUNNER = ROOT / 'tests/gecko/run_gecko_pool.py'
+NODE_BYTES = b'{"requests":[{"path":"/bytes"}],"webSockets":[{"frames":1}]}\n'
+
+
+def generated_values():
+    return (
+        'https://location.services.mozilla.com/v1/country?key=' + 'm' * 36 + '&kept=1',
+        'https://safebrowsing.googleapis.com/v5/hashLists:batchGet?key=AIza' + 's' * 35 + '&alt=json',
+        'other-provider-setting=AIza' + 'u' * 35,
+        'expressive_stickers_api_key=AIza' + 'g' * 35,
+    )
+
+
+def provider_report(diagnostic='controlled benign 前🙂'):
+    return dict(status='passed', checks=[dict(name='controlled', **{'pass': True})] * 55,
+                routes=[dict(url=diagnostic, route=dict(type='socks', host='127.0.0.1', port=9090))],
+                sitePermissions=dict(nestedDiagnostic=diagnostic, nonce='b' * 32, sendCount=0,
+                                     sameDocument=True, durationMs=4.25),
+                sourceTree='a' * 40, runId='41005249174', runAttempt=1,
+                sdkReceiptSha256='e' * 64, integrationApkSha256='f' * 64,
+                nonce='c' * 32, pid=3121, port=9090, ready=True, durationMs=2.5,
+                unrelated='proxyPassword=controlled;cookie=fixture')
+
+
+class PoolReportCapturePrivacyTest(unittest.TestCase):
+    def drive(self, provider, raw_provider=None, fail_verifier=False,
+              failure_capture_refuses=False, counterfeit_final_serialization=False):
+        module = load_runner()
+        serialized = json.dumps(provider) if raw_provider is None else raw_provider
+        event = 'PocketGeckoPool ' + json.dumps(dict(kind='report', value=dict(
+            status=provider['status'], checkCount=len(provider['checks'])))) + '\n'
+        filtered = event
+        commands, verified, permission_verified = [], [], []
+        class Process:
+            stdout = io.StringIO(json.dumps(dict(ready=True, port=9877, protocol='h2')) + '\n')
+            stopped = False
+            def terminate(self): self.stopped = True
+            def communicate(self, timeout=None): return ('', '')
+            def kill(self): self.stopped = True
+        process = Process()
+        def popen(parts, **kwargs):
+            Path(parts[4]).write_bytes(NODE_BYTES)
+            return process
+        def output(parts, **kwargs):
+            if parts[:2] == ['git', 'rev-parse']:
+                return SOURCE + '\n'
+            command = tuple(parts[3:]); commands.append(command)
+            if command[:2] == ('logcat', '-d'):
+                return filtered if len(command) > 2 else 'controlled-failure-capture\n'
+            if command[:3] == ('exec-out', 'content', 'read'):
+                return serialized
+            if command == ('shell', 'getprop', 'ro.build.version.sdk'):
+                return '35\n'
+            return ''
+        actual_verify = module.verify
+        def verify(report, server):
+            verified.append(copy.deepcopy(report))
+            if fail_verifier:
+                # The production verifier's first failed-status assertion uses
+                # the original provider's error value as its exception message.
+                return actual_verify(report, server)
+        def permission_verify(report, gestures):
+            permission_verified.append(copy.deepcopy(report))
+            return dict(hostBoundaryStub=True)
+        real_capture = module.capture_diagnostic_text
+        def capture(value):
+            if failure_capture_refuses and value == 'controlled-failure-capture\n':
+                raise ValueError('controlled diagnostic capture refusal')
+            return real_capture(value)
+        original_dumps = json.dumps
+        def dumps(value, *args, **kwargs):
+            if counterfeit_final_serialization and isinstance(value, dict) and 'reportCapturePrivacy' in value:
+                value = dict(value, diagnosticFault=generated_values()[2])
+            return original_dumps(value, *args, **kwargs)
+        with tempfile.TemporaryDirectory(prefix='pool-report-boundary-') as temporary:
+            out = Path(temporary) / 'out'; caught = None
+            with patch.object(module, 'OUT', out), patch.object(sys, 'argv', ['pool', '--adb', 'fake-adb']), \
+                 patch.object(module.subprocess, 'run'), patch.object(module.subprocess, 'Popen', side_effect=popen), \
+                 patch.object(module.subprocess, 'check_output', side_effect=output), \
+                 patch.object(module.select, 'select', side_effect=lambda readers, *args: (readers, [], [])), \
+                 patch.object(module, 'verify', side_effect=verify), \
+                 patch.object(module, 'verify_site_permission_evidence', side_effect=permission_verify), \
+                 patch.object(module, 'capture_diagnostic_text', side_effect=capture), \
+                 patch.object(module.json, 'dumps', side_effect=dumps), patch.object(sys, 'stdout', io.StringIO()):
+                try:
+                    module.main()
+                except BaseException as error:
+                    caught = error
+            files = {p.name: p.read_bytes() for p in out.iterdir()}
+        self.assertTrue(process.stopped)
+        self.assertIn(('reverse', '--remove', 'tcp:9877'), commands)
+        return dict(files=files, error=caught, verified=verified,
+                    permissionVerified=permission_verified, rawProvider=serialized)
+
+    def assert_export(self, raw):
+        G.assert_public_diagnostic_text(Path('export.json'), raw)
+        value = json.loads(raw)
+        metadata = value.pop('reportCapturePrivacy')
+        self.assertEqual(metadata['schema'], 1)
+        self.assertIn('excluding reportCapturePrivacy', metadata['scope'])
+        normalized = json.dumps(value, indent=2) + '\n'
+        self.assertTrue(G.verify_capture_privacy(metadata['capture'], normalized))
+        return value, metadata
+
+    def test_generated_provider_values_are_filtered_in_both_real_exports(self):
+        for diagnostic in generated_values():
+            with self.subTest(kind=G.service_api_key_findings(diagnostic)[0]['kind']):
+                provider = provider_report(diagnostic)
+                result = self.drive(provider)
+                self.assertIsNone(result['error'])
+                for name in ('gecko-pool-results.json', 'site-permission-sdk-results.json'):
+                    value, metadata = self.assert_export(result['files'][name])
+                    self.assertTrue(metadata['capture']['changed'])
+                # Publication projection never becomes the workload oracle.
+                self.assertEqual(result['verified'][0]['routes'], provider['routes'])
+                self.assertEqual(result['permissionVerified'][0], provider['sitePermissions'])
+
+    def test_provider_json_unicode_and_slash_escaping_cannot_bypass_exports(self):
+        provider = provider_report(generated_values()[1])
+        plain = json.dumps(provider)
+        forms = [plain.replace('/', r'\/'), plain.replace('AIza', r'\u0041\u0049\u007a\u0061')]
+        for raw in forms:
+            with self.subTest(form=forms.index(raw)):
+                self.assertEqual(json.loads(raw), provider)
+                result = self.drive(provider, raw_provider=raw)
+                self.assertIsNone(result['error'])
+                self.assert_export(result['files']['gecko-pool-results.json'])
+                self.assert_export(result['files']['site-permission-sdk-results.json'])
+
+    def test_benign_structured_values_and_original_verifier_arguments_are_exact(self):
+        provider = provider_report()
+        result = self.drive(provider)
+        self.assertIsNone(result['error'])
+        value, metadata = self.assert_export(result['files']['gecko-pool-results.json'])
+        self.assertFalse(metadata['capture']['changed'])
+        self.assertEqual(metadata['capture']['originalSha256'], metadata['capture']['finalSha256'])
+        for key, original in provider.items():
+            self.assertEqual(value[key], original, key)
+            self.assertEqual(result['verified'][0][key], original, key)
+        self.assertEqual(value['sourceCommit'], SOURCE)
+        permission, marker = self.assert_export(result['files']['site-permission-sdk-results.json'])
+        self.assertEqual(permission['evidence'], provider['sitePermissions'])
+        self.assertFalse(marker['capture']['changed'])
+
+    def test_final_serialized_bytes_are_gated_before_public_file_write(self):
+        result = self.drive(provider_report(), counterfeit_final_serialization=True)
+        self.assertIsInstance(result['error'], ValueError)
+        self.assertNotIn('gecko-pool-results.json', result['files'])
+        self.assertEqual(result['verified'], [])
+
+    def test_existing_projection_field_cannot_be_overwritten_as_metadata(self):
+        provider = provider_report(); provider['reportCapturePrivacy'] = dict(primaryEvidence='must not be lost')
+        result = self.drive(provider)
+        self.assertIsInstance(result['error'], ValueError)
+        self.assertNotIn('gecko-pool-results.json', result['files'])
+
+    def test_raw_provider_failure_remains_failure_without_public_key_text(self):
+        provider = provider_report(); provider.update(status='failed', error=generated_values()[0])
+        result = self.drive(provider, fail_verifier=True)
+        self.assertIsNotNone(result['error'])
+        displayed = ''.join(traceback.format_exception(result['error']))
+        self.assertEqual(G.service_api_key_findings(displayed), [])
+        self.assertIn('AssertionError', displayed)
+        self.assertEqual(result['verified'][0]['error'], provider['error'])
+        self.assertEqual(result['files']['gecko-pool-server-failure.json'], NODE_BYTES)
+        self.assert_export(result['files']['gecko-pool-results.json'])
+
+    def test_secondary_capture_failure_cannot_reveal_primary_provider_error(self):
+        provider = provider_report(); provider.update(status='failed', error=generated_values()[1])
+        result = self.drive(provider, fail_verifier=True, failure_capture_refuses=True)
+        self.assertIsNotNone(result['error'])
+        displayed = ''.join(traceback.format_exception(result['error']))
+        self.assertEqual(G.service_api_key_findings(displayed), [])
+        self.assertIn('AssertionError', displayed)
 
 
 if __name__ == '__main__':
