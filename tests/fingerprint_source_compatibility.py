@@ -7,6 +7,7 @@ Unlisted layout, timing or fixture edits cannot pass by updating a baseline hash
 import hashlib
 from pathlib import Path
 import re
+from page_bridge42_source_compatibility import bridge42_preservation_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = '0dba767dde6a574d5d534723a9283613bdf39fc4843252e1ddb6946a3dfceb10'
@@ -14,6 +15,7 @@ PATCH_SHA256 = 'f831967e6d6a4265ffadc8ffa008402a091da1204812ec71e6593b37256c22b9
 
 
 def reading_preservation_bytes(raw):
+    raw = bridge42_preservation_bytes(raw)
     if hashlib.sha256(raw).hexdigest() == BASELINE:
         return raw
     raw = permission_denial_preservation_bytes(raw)
@@ -121,6 +123,7 @@ LIFECYCLE39_PRIOR_ON_RESUME = b'  public void onResume(){if(current!=null&&crash
 LIFECYCLE39_REVIEWED_ON_RESUME = b'  public void onResume(){\n    if(current!=null&&crashed.contains(current)&&canRecoverAutomatically())owner.handler.post(recovery);\n    else{\n      if(current!=null&&current.isOpen())current.setActive(true);\n      if(!destroyed&&failed&&owner.uiVisible&&current!=null&&crashed.contains(current)&&owner.pageError.isEmpty()){\n        // This foreground notice must not start or replace a network retry.\n        owner.navigating=false;owner.navigationFailed=true;\n        owner.pageError="\xe7\xbd\x91\xe9\xa1\xb5\xe5\xa4\x9a\xe6\xac\xa1\xe9\x80\x80\xe5\x87\xba\xef\xbc\x8c\xe8\x87\xaa\xe5\x8a\xa8\xe6\x81\xa2\xe5\xa4\x8d\xe5\xb7\xb2\xe6\x9a\x82\xe5\x81\x9c\xef\xbc\x9b\xe8\xaf\xb7\xe6\xa3\x80\xe6\x9f\xa5\xe8\xbf\x9e\xe6\x8e\xa5\xe5\x90\x8e\xe7\x82\xb9\xe6\x8c\x89\xe9\x87\x8d\xe6\x96\xb0\xe5\x8a\xa0\xe8\xbd\xbd";\n        owner.status=owner.pageError;owner.changed();\n      }\n    }\n  }'
 
 def lifecycle39_preservation_bytes(raw):
+    raw = bridge42_preservation_bytes(raw)
     digest = hashlib.sha256(raw).hexdigest()
     if digest in (LIFECYCLE39_PRIOR_BROWSER_SHA256, UPLOAD37_PRIOR_BROWSER_SHA256, PERMISSION_PRIOR_BROWSER_SHA256):
         return raw

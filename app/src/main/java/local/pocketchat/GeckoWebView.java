@@ -351,7 +351,7 @@ class GeckoWebView extends FrameLayout {
       if(destroyed||source==null||!locations.containsKey(source)||!port.sender.isTopLevel()||!"pocketpage".equals(port.name))return;
       WebExtension.Port previous=ports.put(source,port);appearanceConnections.put(port,appearanceLoads.getOrDefault(source,0L));port.setDelegate(new WebExtension.PortDelegate(){
         @Override public void onPortMessage(Object message,WebExtension.Port incoming){
-          if(!(message instanceof JSONObject)||incoming!=ports.get(source))return;
+          if(!(message instanceof JSONObject)||incoming!=ports.get(source)||staleAppearanceConnections.contains(incoming))return;
           JSONObject data=(JSONObject)message;String kind=data.optString("kind");
           if("ready".equals(kind)||"documentReady".equals(kind))appearanceReady(port,data,"documentReady".equals(kind));
           if("appearanceVisible".equals(kind)){appearanceReady(port,data,true);return;}
@@ -404,7 +404,7 @@ class GeckoWebView extends FrameLayout {
     // A document port may connect before the location callback. Its load ticket
     // distinguishes it from the old document, including a reload at the same URL.
     if(!Objects.equals(appearanceConnections.get(port),appearanceLoads.getOrDefault(source,0L))){
-      appearanceDocuments.remove(port);staleAppearanceConnections.add(port);return;
+      appearanceDocuments.remove(port);staleAppearanceConnections.add(port);callbacks.cancel(port);return;
     }
     String document=appearanceDocuments.get(port);if(document!=null)appearanceSync.connect(port,document,AppAppearance.dark());
   }
@@ -611,13 +611,13 @@ class GeckoWebView extends FrameLayout {
   public String getUrl(){return url;}
   public void evaluateJavascript(String code,ValueCallback<String> callback){
     if(destroyed){if(callback!=null)callback.onReceiveValue("null");return;}
-    WebExtension.Port port=ports.get(current);if(port==null){if(callback!=null)callback.onReceiveValue("null");return;}
+    WebExtension.Port port=ports.get(current);if(port==null||staleAppearanceConnections.contains(port)){if(callback!=null)callback.onReceiveValue("null");return;}
     int id=callbacks.add(port,callback==null?null:callback::onReceiveValue,10000);
     try{port.postMessage(J.obj("kind","evaluate","id",id,"code",code));}catch(Exception error){callbacks.complete(port,id,"null");}
   }
   void runEnvironmentAudit(JSONObject configuration,ValueCallback<String> callback){
     WebExtension.Port port=ports.get(current);
-    if(destroyed||port==null){callback.onReceiveValue("null");return;}
+    if(destroyed||port==null||staleAppearanceConnections.contains(port)){callback.onReceiveValue("null");return;}
     int request=callbacks.add(port,callback::onReceiveValue,14000);
     try{port.postMessage(J.obj("kind","audit","id",request,"configuration",configuration));}
     catch(Exception error){callbacks.complete(port,request,"null");}
