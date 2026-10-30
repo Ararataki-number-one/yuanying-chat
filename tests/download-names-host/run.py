@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import importlib.util
 from pathlib import Path
 import subprocess
 import tempfile
@@ -10,6 +11,10 @@ import tempfile
 ROOT=Path(__file__).resolve().parents[2]
 HERE=Path(__file__).resolve().parent
 BASELINE='da5004111eaf3e20322ca1fca3f756db82f44c90'
+
+_review_spec=importlib.util.spec_from_file_location('reviewed_download38_inverse',HERE/'reviewed38.py')
+_review=importlib.util.module_from_spec(_review_spec);_review_spec.loader.exec_module(_review)
+remove_reviewed38=_review.invert
 
 def member(text,needle):
     start=text.index(needle);opened=text.index('{',start);depth=0;quote=None;escape=False;line=False;block=False;i=opened
@@ -69,21 +74,24 @@ def main():
     unchanged={}
     if not before:
         baseline=selected('DesignDownloads.java',BASELINE).decode()
-        restored_apply=extracts['apply'].replace('Map<Integer,String> environmentNames=null;','').replace('if(environmentNames==null)environmentNames=ProfileCatalog.get(a).names();','').replace('row.bind(value,now,ProfileCatalog.displayName(environmentNames,value.optInt("slot")));','row.bind(value,now);')
+        guard_text=remove_reviewed38(text['DesignDownloads.java'])
+        guard_apply=member(guard_text,'void apply(JSONArray data,')
+        guard_bind=member(guard_text,'void bind(JSONObject row,')
+        restored_apply=guard_apply.replace('Map<Integer,String> environmentNames=null;','').replace('if(environmentNames==null)environmentNames=ProfileCatalog.get(a).names();','').replace('row.bind(value,now,ProfileCatalog.displayName(environmentNames,value.optInt("slot")));','row.bind(value,now);')
         unchanged['controllerApplyExceptProjectedNameLookup']=restored_apply==member(baseline,'void apply(JSONArray data,')
-        restored_bind=extracts['bind'].replace('void bind(JSONObject row,long now,String environmentName)','void bind(JSONObject row,long now)').replace('text(status,environmentName+','text(status,Profiles.display(a,row.optInt("slot"))+')
+        restored_bind=guard_bind.replace('void bind(JSONObject row,long now,String environmentName)','void bind(JSONObject row,long now)').replace('text(status,environmentName+','text(status,Profiles.display(a,row.optInt("slot"))+')
         unchanged['rowBindExceptSuppliedEnvironmentName']=restored_bind==member(baseline,'void bind(JSONObject row,')
-        removed=text['DesignDownloads.java'].replace(extracts['apply'],member(baseline,'void apply(JSONArray data,')).replace(extracts['bind'],member(baseline,'void bind(JSONObject row,'))
+        removed=guard_text.replace(guard_apply,member(baseline,'void apply(JSONArray data,')).replace(guard_bind,member(baseline,'void bind(JSONObject row,'))
         unchanged['allOtherDownloadUiBytes']=removed==baseline
         baseline_catalog=selected('ProfileCatalog.java',BASELINE).decode()
         stripped=text['ProfileCatalog.java'].replace('  /** Refresh-local labels only; do not load private drafts/notes or cache across renames. */\n','').replace('  '+extracts['names']+'\n','').replace('  '+extracts['displayName']+'\n','')
         stripped=remove_reviewed_delete_identity(stripped)
         unchanged['allExistingCatalogBytes']=stripped==baseline_catalog
         assert all(unchanged.values()),unchanged
-    inputs=[Path(__file__).resolve(),HERE/'DownloadNamesHost.java.in',*HERE.glob('stubs/**/*.java')];input_hashes={str(p.relative_to(ROOT)):digest(p.read_bytes()) for p in inputs}
+    inputs=[Path(__file__).resolve(),HERE/'DownloadNamesHost.java.in',HERE/'reviewed38.py',HERE/'reviewed38-inverse.json',ROOT/'app/src/main/java/local/pocketchat/DownloadRowBinding.java',*HERE.glob('stubs/**/*.java')];input_hashes={str(p.relative_to(ROOT)):digest(p.read_bytes()) for p in inputs}
     with tempfile.TemporaryDirectory(prefix='download-names-host-') as raw:
-        temp=Path(raw);package=temp/'local/pocketchat';package.mkdir(parents=True);java=package/'DownloadNamesHost.java';java.write_text(host);policy=package/'DownloadListPolicy.java';policy.write_bytes(sources['DownloadListPolicy.java']);classes=temp/'classes'
-        subprocess.run([str(args.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(args.json_jar),'-d',str(classes),str(java),str(policy),*map(str,HERE.glob('stubs/**/*.java'))],check=True)
+        temp=Path(raw);package=temp/'local/pocketchat';package.mkdir(parents=True);java=package/'DownloadNamesHost.java';java.write_text(host);policy=package/'DownloadListPolicy.java';policy.write_bytes(sources['DownloadListPolicy.java']);binding=package/'DownloadRowBinding.java';binding.write_bytes(selected('DownloadRowBinding.java'));classes=temp/'classes'
+        subprocess.run([str(args.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(args.json_jar),'-d',str(classes),str(java),str(policy),str(binding),*map(str,HERE.glob('stubs/**/*.java'))],check=True)
         run=subprocess.run([str(args.java_home/'bin/java'),'-Dbefore='+str(before).lower(),'-cp',str(classes)+':'+str(args.json_jar),'local.pocketchat.DownloadNamesHost'],text=True,capture_output=True)
         if not run.stdout:raise RuntimeError(run.stderr)
         result=json.loads(run.stdout);result.update(sourceHead=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),selectedProductionRef=args.before_ref or 'working-tree',selectedProductionSha256={n:digest(raw)for n,raw in sources.items()},extractedMethodSha256={k:digest(v.encode())for k,v in extracts.items()},testSourceSha256=input_hashes,unchangedSourceSections=unchanged,actualAndroidExecution=False,actualSqliteExecution=False,actualPhoneFrameMeasurement=False,applicationSpeedupClaim=False,scope='Exact production ProfileCatalog.item/row/name, new projected names/displayName, Profiles.display, DesignDownloads.Controller.apply and Row.bind/text/visible plus complete DownloadListPolicy. Explicit SQL cursor/count and deterministic widget adapters; no Android database/layout/frame performance claim.')

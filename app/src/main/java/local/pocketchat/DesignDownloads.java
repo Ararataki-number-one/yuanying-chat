@@ -11,7 +11,7 @@ import java.util.*;
 
 /** Shared download presentation keeps live rows in place while progress changes. */
 final class DesignDownloads {
-  static JSONArray rows(Context c){DownloadLibrary library=DownloadLibrary.get(c);return ordered(library.list(),library.tasks());}
+  static JSONArray rows(Context c){return DownloadDisplaySnapshot.read(c);}
   static JSONArray ordered(JSONArray files,JSONArray tasks){
     return DownloadListPolicy.ordered(files,tasks);
   }
@@ -34,22 +34,34 @@ final class DesignDownloads {
   static final class Controller {
     final Activity a;final LinearLayout box,packages,list,empty;final java.util.function.IntConsumer choose;final SavedFileActions actions;
     final Map<String,Row> views=new LinkedHashMap<>();int filter=-1;String packageKey="";LinearLayout tabs;
+    final DownloadRefreshUi refreshUi;Map<Integer,String> preparedNames;int requestedFilter;
     Controller(Activity a,LinearLayout box,int filter,java.util.function.IntConsumer choose,SavedFileActions actions){
       this.a=a;this.box=box;this.choose=choose;this.actions=actions;
       tabs=DesignUi.tabs(a,new String[]{"全部","进行中","已完成","失败"},filter,choose);box.addView(tabs);
       LinearLayout link=DesignUi.row(a);TextView scope=DesignUi.text(a,"全部环境",12,DesignUi.MUTED);link.addView(scope,new LinearLayout.LayoutParams(0,-2,1));Button folder=DesignUi.button(a,"保存位置",false,()->folder(a));folder.setTextSize(12);link.addView(folder,new LinearLayout.LayoutParams(DesignUi.actionWidth(folder,88),android.view.ViewGroup.LayoutParams.WRAP_CONTENT));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=DesignUi.dp(a,10);box.addView(link,lp);
       packages=DesignUi.column(a);box.addView(packages);list=DesignUi.column(a);box.addView(list);empty=DesignUi.column(a);box.addView(empty);
+      refreshUi=new DownloadRefreshUi(a,box,()->refresh(requestedFilter));
       this.filter=filter;refresh(filter);
     }
-    void refresh(int selected){apply(rows(a),selected,System.currentTimeMillis());String next=updateKey(a);if(!next.equals(packageKey)){packageKey=next;packages.removeAllViews();updatePackage(a,packages);}}
+    void refresh(int selected){
+      requestedFilter=selected;final JSONArray data;final Map<Integer,String> names;final String next;final LinearLayout update;
+      try{
+        data=rows(a);names=DownloadDisplaySnapshot.names(a,data,selected);next=updateKey(a);
+        update=next.equals(packageKey)?null:DesignUi.column(a);if(update!=null)updatePackage(a,update);
+      }catch(RuntimeException unavailable){refreshUi.failed();return;}
+      preparedNames=names;try{apply(data,selected,System.currentTimeMillis());}finally{preparedNames=null;}
+      if(update!=null){packages.removeAllViews();while(update.getChildCount()>0){View child=update.getChildAt(0);update.removeView(child);packages.addView(child);}packageKey=next;}
+      refreshUi.clear();
+    }
     void apply(JSONArray data,int selected,long now){
       boolean changedFilter=selected!=filter;if(changedFilter){filter=selected;box.removeView(tabs);tabs=DesignUi.tabs(a,new String[]{"全部","进行中","已完成","失败"},filter,choose);box.addView(tabs,0);}
       ScrollView scroll=box.getParent() instanceof ScrollView?(ScrollView)box.getParent():null;int oldY=scroll==null?0:scroll.getScrollY();
       View anchor=null;int anchorTop=0;if(oldY>0&&!changedFilter){for(int i=0;i<list.getChildCount();i++){View card=list.getChildAt(i);int top=list.getTop()+card.getTop();if(top+card.getHeight()>oldY){anchor=card;anchorTop=top-oldY;break;}}}
-      Set<String> visible=new HashSet<>();int index=0;boolean structure=changedFilter;Map<Integer,String> environmentNames=null;
+      Set<String> visible=new HashSet<>();int index=0;boolean structure=changedFilter;Map<Integer,String> environmentNames=preparedNames;DownloadRowBinding.Frame frame=new DownloadRowBinding.Frame(DesignUi.RED,DesignUi.CYAN,DesignUi.GREEN);
       for(int i=0;i<data.length();i++){
         JSONObject value=data.optJSONObject(i);if(value==null||!matches(value,filter))continue;String key=key(value);if(!visible.add(key))continue;
-        Row row=views.get(key);if(row==null){row=new Row(a,actions);views.put(key,row);}if(environmentNames==null)environmentNames=ProfileCatalog.get(a).names();row.bind(value,now,ProfileCatalog.displayName(environmentNames,value.optInt("slot")));
+        Row row=views.get(key);if(row==null){row=new Row(a,actions);views.put(key,row);}if(environmentNames==null)environmentNames=ProfileCatalog.get(a).names();String environment=ProfileCatalog.displayName(environmentNames,value.optInt("slot"));
+        row.value=value;DownloadRowBinding.Stamp next=row.binding.next(value,now,environment,frame);if(next!=null){row.bind(value,now,environment);row.binding.applied(next);}
         if(index>=list.getChildCount()||list.getChildAt(index)!=row.card){structure=true;if(row.card.getParent()==list)list.removeView(row.card);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=DesignUi.dp(a,10);list.addView(row.card,index,p);}index++;
       }
       for(Iterator<Map.Entry<String,Row>> it=views.entrySet().iterator();it.hasNext();){Map.Entry<String,Row> entry=it.next();if(!visible.contains(entry.getKey())){list.removeView(entry.getValue().card);it.remove();structure=true;}}
@@ -59,6 +71,7 @@ final class DesignDownloads {
   }
   static final class Row {
     final Activity a;final LinearLayout card;final ImageView icon;final TextView name,status,time,progressText,reason,stale,location,arrow;final Button menu;final ProgressBar progress;JSONObject value;String appearance="";
+    final DownloadRowBinding binding=new DownloadRowBinding();
     Row(Activity a,SavedFileActions actions){
       this.a=a;card=DesignUi.card(a);LinearLayout top=DesignUi.row(a);icon=DesignUi.icon(a,"download",DesignUi.GREEN,36);top.addView(icon);LinearLayout labels=DesignUi.column(a);labels.setPadding(DesignUi.dp(a,12),0,DesignUi.dp(a,8),0);name=ReferenceUi.text(a,"",16,DesignUi.TEXT,true);name.setMaxLines(3);name.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(name);status=DesignUi.text(a,"",13,DesignUi.MUTED);status.setPadding(0,DesignUi.dp(a,5),0,0);labels.addView(status);time=DesignUi.text(a,"",12,DesignUi.MUTED);time.setPadding(0,DesignUi.dp(a,5),0,0);labels.addView(time);top.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
       menu=ReferenceUi.more(a,()->actions.show(value));top.addView(menu,new LinearLayout.LayoutParams(DesignUi.dp(a,48),DesignUi.dp(a,48)));arrow=DesignUi.text(a,"",22,DesignUi.GREEN);Ui.Icon disclosure=new Ui.Icon("chevron-right",DesignUi.MUTED);disclosure.setBounds(0,0,DesignUi.dp(a,18),DesignUi.dp(a,18));arrow.setCompoundDrawables(disclosure,null,null,null);arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);top.addView(arrow);card.addView(top);
@@ -68,7 +81,7 @@ final class DesignDownloads {
     void bind(JSONObject row,long now,String environmentName){
       value=row;String state=row.optString("state");boolean saved="saved".equals(state);int color="failed".equals(state)?DesignUi.RED:saved?DesignUi.CYAN:DesignUi.GREEN;
       String next=(saved?"file":"download")+":"+color;if(!next.equals(appearance)){appearance=next;icon.setImageDrawable(new Ui.Icon(saved?"file":"download",color));icon.setBackground(DesignUi.surface(a,(color&0xffffff)|0x11000000,10,android.graphics.Color.TRANSPARENT));arrow.setTextColor(color);}
-      text(name,row.optString("name","文件"));text(status,environmentName+" · "+DownloadTasks.label(state));text(time,timeLabel(row));menu.setContentDescription("管理 "+row.optString("name","文件"));visible(menu,saved);visible(arrow,!saved);
+      text(name,row.optString("name","文件"));text(status,environmentName+" · "+DownloadTasks.label(state));text(time,binding.time(row,()->timeLabel(row)));String description="管理 "+row.optString("name","文件");if(!android.text.TextUtils.equals(menu.getContentDescription(),description))menu.setContentDescription(description);visible(menu,saved);visible(arrow,!saved);
       visible(progress,!saved);visible(progressText,!saved);visible(reason,!saved&&!row.optString("reason").isEmpty());visible(stale,!saved&&busy(state)&&row.optLong("updated")>0&&now-row.optLong("updated")>15000);visible(location,saved);
       long total=row.optLong("total",-1),received=row.optLong("received");boolean indefinite=total<=0&&busy(state);if(progress.isIndeterminate()!=indefinite)progress.setIndeterminate(indefinite);int percent=total>0?(int)Math.min(100,received*100/total):0;if(progress.getProgress()!=percent)progress.setProgress(percent);text(progressText,DownloadTasks.progress(row));text(reason,row.optString("reason"));text(location,row.optString("location","原先选择的保存位置"));
     }
