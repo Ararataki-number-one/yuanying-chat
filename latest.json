@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.41",
-  "versionCode": 94,
+  "version": "2.0.42",
+  "versionCode": 95,
   "abi": "arm64-v8a",
   "minSdk": 26,
   "bytes": 119365285,
-  "sha256": "916009f8704f6e33c3886a759a152a2da4fe288ec3855c03e64ec892652d1f8e",
+  "sha256": "c78699b0f5fbffa0b9446c2df7fef4e041a4a8b7d829314bdbbc3c3df3098e32",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.41-gecko/PocketChat-2.0.41-gecko-arm64.apk",
-  "notes": "# 2.0.41（94）\n\n增加环境配置的密码加密导出与导入。\n\n- 备份范围限于环境名称、浏览器模板、语言顺序和七项布尔偏好；采用带完整性校验的 AES-GCM 加密格式，密钥派生与文件处理在工作线程执行。\n- 登录、Cookie、聊天、草稿、附件、订阅、网络凭据、固定出口和来源环境身份均不包含在备份中。\n- 确认导入后创建新的未使用环境，网络保持未配置并要求外部 VPN，不覆盖现有环境或自动打开网页。\n\n提交结果不明时显示待确认，请先检查环境列表，避免重复导入。仅清理归属明确且尚未使用的暂存记录。真实 Android Keystore、系统文档提供者和手机覆盖升级仍待验证。",
-  "sourceCommit": "e99acdb873d4c44f303c0d97abf9c2c1fa281c30"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.42-gecko/PocketChat-2.0.42-gecko-arm64.apk",
+  "notes": "# 2.0.42（95）\n\n加强页面切换时的旧通信任务清理。\n\n- 确认文档切换后，拒绝过期页面端口的传入消息，停止向其派发新的网页求值与环境检查。\n- 先标记旧端口失效，再取消所属回调，减少取消过程中的旧回调重新进入；其他会话和新文档的任务继续保留。\n\n沿用顶层页面限制、线路保护、未知动作拒绝及既有字符数量限制，不增加刷新或自动重发。普通网页求值结果仍没有统一的传输大小上限；本版不代表所有桥接与权限边界已经验证，真实 Gecko 事件顺序和手机效果仍待实测。",
+  "sourceCommit": "b25974a69d6c8d6a7652f3c55455d2f6cccd5da7"
 }
