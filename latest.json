@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.36",
-  "versionCode": 89,
+  "version": "2.0.37",
+  "versionCode": 90,
   "abi": "arm64-v8a",
   "minSdk": 26,
-  "bytes": 119348901,
-  "sha256": "623af278233cc59c830e0616bf25f695e0e997eb7265438376a0aee9d56d96fa",
+  "bytes": 119352997,
+  "sha256": "a3b518ac344d5a64de6dd712fed2c3063156feb881a39f2770fe9da74590e903",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.36-gecko/PocketChat-2.0.36-gecko-arm64.apk",
-  "notes": "# 2.0.36（89）\n\n减少过期回复的无效全文处理。\n\n- 回复正文预热执行前，确认原提问仍属于当前文档，且其后没有新提问；已经过期的任务跳过旧正文读取和转换。\n- 正常回复、向前加载历史和无关侧栏变化继续使用原有处理逻辑，保留消息锚点与阅读位置保护。\n\n本版不移动视口或重发聊天。有效长回复仍按现有同步路径转换，尚未按 CPU 时间预算切片；受控主机中的工作量减少不能代替手机帧率、长聊天流畅度或公网提速实测。",
-  "sourceCommit": "26d94c764b6dee40c1dea5ed2ea182101ea61e95"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.37-gecko/PocketChat-2.0.37-gecko-arm64.apk",
+  "notes": "# 2.0.37（90）\n\n改善附件取消与存储详情的处理。\n\n- 文件提供者调用返回后及时检查取消状态，停止后续数据块或文件的准备工作。\n- 提前清理尚未交给网页的附件副本，并保留清理失败记录；已交付或归属未知的副本继续保留。\n- 存储详情按需在已有工作线程中进行有界只读采样，显示前复核当前环境与界面归属。\n\n采样容量不代表可安全删除容量；阻塞中的提供者或文件系统调用仍须先返回，取消才能继续生效。保留原生权限拒绝和上传保护，未增加自动回收已交付附件。手机文件选择器、取消响应与存储界面仍待实测。",
+  "sourceCommit": "c6f8b5456407a30461fb96c55b6657410d9aad07"
 }
