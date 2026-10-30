@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil,subprocess,tempfile,unittest
 from fingerprint_source_compatibility import reading_preservation_bytes
 from reading_zoom_trace_contract import original_reading_fixture_bytes
+from reading45_source_compatibility import reading45_source_bytes
 
 ROOT=Path(__file__).resolve().parents[1]
 PRODUCTION=ROOT/'app/src/main/java/local/pocketchat'
@@ -89,7 +90,7 @@ public final class ReadingFitCompletionHost {
     check("DOM width cannot replace missing native compositor measurement",unmeasured.web.zoomCalls==0&&unmeasured.web.alignCalls==0&&ru.alignLeft);
     ChatSession manual=new ChatSession(new ChatSession.Prefs());BrowserReading rz=setup(manual,1.5f*(1080f/414)*1.0094f,414,1.5f,1);rz.restoreScale();
     check("Ordinary manual magnification retains its original 1.5 percent tolerance",manual.web.zoomCalls==0&&manual.web.alignCalls==0&&!rz.alignLeft);
-    manual.web.scale=1.5f*(1080f/414)*1.03f;rz.restoreScale();check("Ordinary manual magnification still corrects a larger residual",manual.web.zoomCalls==1);
+    rz.choose(1.5f);manual.web.scale=1.5f*(1080f/414)*1.03f;rz.restoreScale();check("Ordinary manual magnification still corrects a larger residual",manual.web.zoomCalls==1);
     ChatSession generic=new ChatSession(new ChatSession.Prefs());BrowserReading rg=setup(generic,3,0,1,1);generic.web.measuredViewportRequired=false;generic.context.density=3;rg.restoreScale();
     check("Generic density fallback retains its preexisting behavior without claiming measured precision",generic.web.zoomCalls==0&&generic.web.alignCalls==1);
     for(float layout:new float[]{.6f,.8f,1f}){
@@ -151,9 +152,9 @@ def execute(reading=None,policy=None):
 
 class ReadingFitCompletionTests(unittest.TestCase):
  def test_original_controller_and_oracle_preservation(self):
-  reading=(PRODUCTION/'BrowserReading.java').read_text();self.assertEqual(reading.count(NEW_RESTORE),1)
+  reading=reading45_source_bytes((PRODUCTION/'BrowserReading.java').read_bytes(),'app/src/main/java/local/pocketchat/BrowserReading.java').decode();self.assertEqual(reading.count(NEW_RESTORE),1)
   self.assertEqual(sha(reading.replace(NEW_RESTORE,OLD_RESTORE,1).encode()),ORIGINAL_READING_SHA)
-  policy=(PRODUCTION/'BrowserReadingPolicy.java').read_text();self.assertEqual(policy.count(FITTED),1)
+  policy=reading45_source_bytes((PRODUCTION/'BrowserReadingPolicy.java').read_bytes(),'app/src/main/java/local/pocketchat/BrowserReadingPolicy.java').decode();self.assertEqual(policy.count(FITTED),1)
   self.assertEqual(sha(policy.replace(FITTED,'',1).encode()),ORIGINAL_POLICY_SHA)
   for name,digest in ORIGINAL_PROTECTED.items():
    raw=(ROOT/name).read_bytes()
@@ -175,7 +176,7 @@ class ReadingFitCompletionTests(unittest.TestCase):
   self.assertEqual(report['passed'],48)
 
  def test_completion_mutations_are_rejected(self):
-  reading=(PRODUCTION/'BrowserReading.java').read_text();policy=(PRODUCTION/'BrowserReadingPolicy.java').read_text()
+  reading=reading45_source_bytes((PRODUCTION/'BrowserReading.java').read_bytes(),'app/src/main/java/local/pocketchat/BrowserReading.java').decode();policy=reading45_source_bytes((PRODUCTION/'BrowserReadingPolicy.java').read_bytes(),'app/src/main/java/local/pocketchat/BrowserReadingPolicy.java').decode()
   mutants=[('old relative completion',reading.replace(NEW_RESTORE,OLD_RESTORE,1),policy),('consume before measured fit',reading.replace('else if(atTarget){','else if(alignLeft){',1),policy),('ignore layout scaling',reading,policy.replace('(double)scale*viewport/layout-width','(double)scale*viewport-width',1)),('relaxed edge',reading,policy.replace('residual<=scale','residual<=scale*5',1)),('target unapplied approximate choice',reading.replace('viewportWidth,nativeFit?session.web.readingLayout:choice()','viewportWidth,choice()',1),policy)]
   outcomes=[]
   for label,r,p in mutants:

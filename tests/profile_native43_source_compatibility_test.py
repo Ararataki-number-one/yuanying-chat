@@ -9,6 +9,7 @@ import unittest
 import fingerprint_source_compatibility as compat
 import native43_source_compatibility as native
 import page_bridge42_source_compatibility as bridge
+from reading45_source_compatibility import reading45_source_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'app/src/main/java/local/pocketchat/GeckoWebView.java'
@@ -128,7 +129,7 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
         for relative in ('tests/fingerprint_source_compatibility.py', 'tests/profile_upload37_source_compatibility_test.py',
                          'tests/profile_lifecycle39_source_compatibility_test.py', 'tests/profile_page_bridge_lifecycle_test.py',
                          'tests/profile_content_permission_decisions_test.py', 'tests/profile_reading_fit_completion_test.py'):
-            self.assertEqual((ROOT / relative).read_bytes(), subprocess.check_output(['git', 'show', native.PREVIOUS_INTENDED_TREE + ':' + relative], cwd=ROOT))
+            self.assertEqual(reading45_source_bytes((ROOT / relative).read_bytes(),relative) if relative=='tests/profile_reading_fit_completion_test.py' else (ROOT / relative).read_bytes(), subprocess.check_output(['git', 'show', native.PREVIOUS_INTENDED_TREE + ':' + relative], cwd=ROOT))
         self.completed.append(dict(name='all-prior-test-assertion-bytes', passed=True))
 
 

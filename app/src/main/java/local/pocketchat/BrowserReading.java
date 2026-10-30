@@ -6,10 +6,17 @@ import android.view.MotionEvent;
 /** Presentation only: retains the existing WebView and profile-scoped preferences. */
 final class BrowserReading {
   final ChatSession session;boolean desktop,ready,pinching,pinchChanged,keyboard,alignLeft,touching,dragged,restoreAllowed,focusAllowed,focusAfterTouch;long document,gestureUntil,gesture,focusRequest,touchDocument,touchEpoch;int width,restoreAttempts;float gestureScale,viewportWidth,fitY=Float.NaN,downX,downY,touchSlop;
-  final Runnable restore=this::restoreScale,focus=this::revealFocus;Runnable zoomFocus;
+  final Runnable restore=this::restoreScale,focus=this::revealFocus;Runnable zoomFocus;boolean precisionAllowed;
+  ScaleRestore scaleRestore;
+  static final class ScaleRestore {
+    final long document,gesture,epoch,started;final int width;final float viewport,choice;final String url;final boolean precision;
+    long requestedAt;float requestedScale;double requestedError;boolean fineUsed,invalid,closed;
+    ScaleRestore(BrowserReading r,long now){document=r.document;gesture=r.gesture;epoch=r.session.navigationEpoch;started=now;width=r.width;viewport=r.viewportWidth;choice=r.choice();url=r.session.web.getUrl();precision=!r.alignLeft&&choice>1&&r.session.web.requiresViewportMeasurement()&&viewport>0;}
+    boolean current(BrowserReading r){return !invalid&&document==r.document&&gesture==r.gesture&&epoch==r.session.navigationEpoch&&width==r.width&&width==r.session.web.getWidth()&&viewport==r.viewportWidth&&choice==r.choice()&&url.equals(r.session.web.getUrl());}
+  }
   BrowserReading(ChatSession s){session=s;s.web.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{
     int next=r-l;if(next<=0)return;boolean changed=next!=width;width=next;
-    if(changed){viewportWidth=0;cancelGesture();if(touching)cancelPosition();else restoreAllowed=true;prepare();scheduleRestore();}if(keyboard&&(l!=ol||t!=ot||r!=or||b!=ob))queueFocus();
+    if(changed){viewportWidth=0;cancelGesture();if(touching)cancelPosition();else{restoreAllowed=true;precisionAllowed=true;}prepare();scheduleRestore();}if(keyboard&&(l!=ol||t!=ot||r!=or||b!=ob))queueFocus();
   });s.web.setOnTouchListener((v,event)->{touch(event);return false;});}
   float density(){return session.context.getResources().getDisplayMetrics().density;}
   float choice(){
@@ -19,19 +26,54 @@ final class BrowserReading {
       session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,value).apply();return value;
     }catch(ClassCastException ignored){return 1;}
   }
-  void cancelGesture(){gesture++;pinching=false;pinchChanged=false;gestureUntil=0;restoreAttempts=0;}
-  void cancelPosition(){restoreAllowed=false;alignLeft=false;fitY=Float.NaN;focusAllowed=false;focusAfterTouch=false;zoomFocus=null;focusRequest++;session.handler.removeCallbacks(restore);session.handler.removeCallbacks(focus);}
-  void configure(boolean value){desktop=value;ready=false;cancelGesture();cancelPosition();restoreAllowed=true;prepare();}
+  void cancelGesture(){gesture++;pinching=false;pinchChanged=false;gestureUntil=0;restoreAttempts=0;scaleRestore=null;}
+  void cancelPosition(){if(scaleRestore!=null)scaleRestore.invalid=true;precisionAllowed=false;restoreAllowed=false;alignLeft=false;fitY=Float.NaN;focusAllowed=false;focusAfterTouch=false;zoomFocus=null;focusRequest++;session.handler.removeCallbacks(restore);session.handler.removeCallbacks(focus);}
+  void configure(boolean value){desktop=value;ready=false;cancelGesture();cancelPosition();restoreAllowed=true;precisionAllowed=true;prepare();}
   void prepare(){int available=session.web.getWidth();if(available>0)width=available;session.web.setInitialScale(0);}
-  void started(String url){document++;ready=false;viewportWidth=0;cancelGesture();cancelPosition();restoreAllowed=true;alignLeft=desktop&&session.web.readingPage(url)&&choice()<=1;session.web.setInitialScale(0);if(!desktop||!session.web.readingPage(url))session.web.setReadingLayout(1);}
-  void viewportMeasured(float value){if(!Float.isFinite(value)||value<=0)return;boolean changed=Math.abs(value-viewportWidth)>.5f;viewportWidth=value;if(changed)scheduleRestore();}
+  void started(String url){document++;ready=false;viewportWidth=0;cancelGesture();cancelPosition();restoreAllowed=true;precisionAllowed=true;alignLeft=desktop&&session.web.readingPage(url)&&choice()<=1;session.web.setInitialScale(0);if(!desktop||!session.web.readingPage(url))session.web.setReadingLayout(1);}
+  void viewportMeasured(float value){if(!Float.isFinite(value)||value<=0)return;boolean changed=Math.abs(value-viewportWidth)>.5f;if(scaleRestore!=null&&value!=scaleRestore.viewport)scaleRestore.invalid=true;viewportWidth=value;if(changed)scheduleRestore();}
   void nativeScaleMeasured(){scheduleRestore();}
   void visible(String url){if(!url.equals(session.web.getUrl()))return;ready=desktop&&session.web.readingPage(url);if(ready)scheduleRestore();}
-  void scheduleRestore(){session.handler.removeCallbacks(restore);if(restoreAllowed&&!touching&&desktop&&ready)session.handler.postDelayed(restore,120);}
+  void scheduleRestore(){
+    session.handler.removeCallbacks(restore);
+    if(!restoreAllowed||touching||!desktop||!ready)return;
+    long now=SystemClock.uptimeMillis(),delay=120;
+    if(scaleRestore!=null){
+      if(!scaleRestore.current(this))scaleRestore.invalid=true;
+      if(scaleRestore.precision&&(!precisionAllowed||scaleRestore.closed||scaleRestore.invalid||now-scaleRestore.started>3000))return;
+      if(scaleRestore.precision&&now>=scaleRestore.requestedAt+500&&!session.web.readingZoomActive()){
+        float measured=session.web.getScale(),target=BrowserReadingPolicy.target(width,density(),viewportWidth,choice());
+        if(BrowserReadingPolicy.restored(width,measured,viewportWidth,choice())&&Math.abs(target/measured-1)<=.015f){precisionAllowed=false;scaleRestore.closed=true;return;}
+      }
+      if(restoreAttempts>=3){
+        if(restoreAttempts!=3||scaleRestore.fineUsed||!scaleRestore.current(this)||now-scaleRestore.started>3000)return;
+        // Retain the primary request's existing 500 ms observation. An early
+        // native callback neither spends another request nor advances it.
+        if(now>=scaleRestore.requestedAt+500&&(session.web.readingZoomActive()||!fineCorrection(now,session.web.getScale())))return;
+      }
+      delay=Math.max(delay,500-(now-scaleRestore.requestedAt));
+    }
+    session.handler.postDelayed(restore,delay);
+  }
+  boolean fineCorrection(long now,float current){
+    ScaleRestore own=scaleRestore;
+    if(own==null||!precisionAllowed||own.closed||own.fineUsed||!own.current(this)||alignLeft||own.choice<=1||!session.web.requiresViewportMeasurement()||now<own.requestedAt+500||now-own.started>3000)return false;
+    float target=BrowserReadingPolicy.target(width,density(),viewportWidth,choice()),factor=target/current;
+    double error=BrowserReadingPolicy.zoomError(width,current,viewportWidth,choice());
+    return Float.isFinite(current)&&current>0&&Float.isFinite(factor)&&Math.abs(factor-1)<=.03f&&error>.035&&own.requestedError-error>.0001&&Math.abs(current-own.requestedScale)>.00001f;
+  }
   @SuppressWarnings("deprecation") void restoreScale(){
     if(!restoreAllowed||touching||!desktop||!ready||pinching||!session.web.readingPage(session.web.getUrl())||width<=0||!session.web.readingScaleMeasured()||session.web.requiresViewportMeasurement()&&viewportWidth<=0)return;
+    if(session.web.requiresViewportMeasurement()&&choice()>1&&!precisionAllowed)return;
+    if(scaleRestore!=null&&scaleRestore.precision){
+      if(scaleRestore.closed)return;
+      long now=SystemClock.uptimeMillis();
+      if(!scaleRestore.current(this)||now-scaleRestore.started>3000){scaleRestore.invalid=true;return;}
+      long remaining=500-(now-scaleRestore.requestedAt);
+      if(remaining>0){session.handler.removeCallbacks(restore);session.handler.postDelayed(restore,remaining);return;}
+    }
     if(session.web.readingZoomActive()){scheduleRestore();return;}
-    if(session.web.setReadingLayout(choice())){viewportWidth=0;return;}
+    if(session.web.setReadingLayout(choice())){if(scaleRestore!=null)scaleRestore.invalid=true;viewportWidth=0;return;}
     boolean nativeFit=alignLeft&&session.web.requiresViewportMeasurement();
     // setReadingLayout may retain a nearby value; fit that applied layout.
     float current=session.web.getScale(),target=BrowserReadingPolicy.target(width,density(),viewportWidth,nativeFit?session.web.readingLayout:choice());
@@ -39,13 +81,26 @@ final class BrowserReading {
     // Both measurements include readingLayout; undo it once to compare the
     // rendered page width with the native view before consuming a fit anchor.
     boolean atTarget=alignLeft&&(nativeFit?BrowserReadingPolicy.fitted(width,current,viewportWidth,session.web.readingLayout):Math.abs(factor-1)<=.015f);
-    boolean correction=nativeFit?!atTarget:Math.abs(factor-1)>.015f;
-    if(correction&&restoreAttempts++<3){session.web.zoomBy(Math.max(.01f,Math.min(100f,factor)));session.handler.removeCallbacks(restore);session.handler.postDelayed(restore,500);}
+    boolean measuredChoice=!alignLeft&&choice()>1&&session.web.requiresViewportMeasurement();
+    boolean correction=nativeFit?!atTarget:Math.abs(factor-1)>.015f||measuredChoice&&!BrowserReadingPolicy.restored(width,current,viewportWidth,choice());
+    if(correction){
+      long now=SystemClock.uptimeMillis();boolean primary=restoreAttempts<3;
+      if(!primary&&(restoreAttempts!=3||!fineCorrection(now,current)))return;
+      if(measuredChoice){
+        if(scaleRestore==null)scaleRestore=new ScaleRestore(this,now);
+        if(!primary){scaleRestore.fineUsed=true;scaleRestore.closed=true;precisionAllowed=false;}
+        scaleRestore.requestedAt=now;scaleRestore.requestedScale=current;scaleRestore.requestedError=BrowserReadingPolicy.zoomError(width,current,viewportWidth,choice());
+      }
+      restoreAttempts++;
+      session.web.zoomBy(Math.max(.01f,Math.min(100f,factor)));
+      session.handler.removeCallbacks(restore);if(primary)session.handler.postDelayed(restore,500);
+    }
     else if(atTarget){alignLeft=false;session.web.alignReadingLeft(fitY);fitY=Float.NaN;}
+    else if(measuredChoice){precisionAllowed=false;if(scaleRestore!=null)scaleRestore.closed=true;}
   }
-  void choose(float value){cancelGesture();restoreAllowed=true;float selected=BrowserReadingPolicy.bounded(value);alignLeft=selected<=1;fitY=alignLeft?session.web.readingScrollY():Float.NaN;session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,selected).apply();prepare();scheduleRestore();if(keyboard)scheduleFocus();}
+  void choose(float value){cancelGesture();restoreAllowed=true;precisionAllowed=true;float selected=BrowserReadingPolicy.bounded(value);alignLeft=selected<=1;fitY=alignLeft?session.web.readingScrollY():Float.NaN;session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,selected).apply();prepare();scheduleRestore();if(keyboard)scheduleFocus();}
   void fit(){choose(1);}
-  void scaled(float value){if(value>0&&!Float.isNaN(value)&&!Float.isInfinite(value)&&BrowserReadingPolicy.remember(desktop,ready,pinching||SystemClock.uptimeMillis()<gestureUntil,session.web.getUrl())&&(pinchChanged||Math.abs(value-gestureScale)>.01f)){pinchChanged=true;session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,BrowserReadingPolicy.fromScale(width,density(),viewportWidth,value)).apply();}}
+  void scaled(float value){if(Float.isFinite(value)&&value>0&&scaleRestore!=null&&scaleRestore.precision)scheduleRestore();if(value>0&&!Float.isNaN(value)&&!Float.isInfinite(value)&&BrowserReadingPolicy.remember(desktop,ready,pinching||SystemClock.uptimeMillis()<gestureUntil,session.web.getUrl())&&(pinchChanged||Math.abs(value-gestureScale)>.01f)){pinchChanged=true;session.prefs.edit().putFloat(BrowserReadingPolicy.ZOOM_KEY,BrowserReadingPolicy.fromScale(width,density(),viewportWidth,value)).apply();}}
   @SuppressWarnings("deprecation") void touch(MotionEvent event){
     int action=event.getActionMasked();
     if(action==MotionEvent.ACTION_DOWN){touching=true;dragged=false;touchDocument=document;touchEpoch=session.navigationEpoch;downX=event.getRawX();downY=event.getRawY();touchSlop=session.web.readingTouchSlop();cancelGesture();cancelPosition();}

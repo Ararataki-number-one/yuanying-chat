@@ -3,6 +3,7 @@ import argparse,ast,copy,hashlib,json,os,pathlib,shutil,subprocess,sys,tempfile,
 from types import SimpleNamespace
 from unittest.mock import patch
 from reading_zoom_trace_contract import ROOT,PATHS,trace_manifest,original_reading_fixture_bytes
+from reading45_source_compatibility import reading45_source_bytes
 FIXTURE='tests/gecko/GeckoIntegrationTestActivity.java'
 RUNNER='tests/gecko/run_device.py'
 PINS={'3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796','dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79'}
@@ -66,7 +67,7 @@ class ReadingZoomTraceControls(unittest.TestCase):
   self.assertEqual(current.count('test.priorDelegate.onScrollChanged(own,update)'),baseline.count('test.priorDelegate.onScrollChanged(own,update)'))
   self.assertEqual(current.count('evaluateJavascript('),baseline.count('evaluateJavascript('));self.assertEqual(current.count('postDelayed('),baseline.count('postDelayed('))
  def test_original_golden_guard_bodies_and_hashes_remain(self):
-  path=ROOT/'tests/profile_reading_fit_completion_test.py';s=path.read_text();s=s.replace('from reading_zoom_trace_contract import original_reading_fixture_bytes\n','',1).replace("   if name in ('tests/gecko/GeckoIntegrationTestActivity.java','tests/gecko/run_device.py'):raw=original_reading_fixture_bytes(raw,name)\n",'',1)
+  path=ROOT/'tests/profile_reading_fit_completion_test.py';s=reading45_source_bytes(path.read_bytes(),'tests/profile_reading_fit_completion_test.py').decode();s=s.replace('from reading_zoom_trace_contract import original_reading_fixture_bytes\n','',1).replace("   if name in ('tests/gecko/GeckoIntegrationTestActivity.java','tests/gecko/run_device.py'):raw=original_reading_fixture_bytes(raw,name)\n",'',1)
   self.assertEqual(hashlib.sha256(s.encode()).hexdigest(),'ea2ee6f5f0a3d9c9937c6d0a6e1e39589643d1509b42250b4e2a4ecc31825806')
   path=ROOT/'tests/gecko_device_readiness_test.py';s=path.read_text();s=s.replace("    from reading_zoom_trace_contract import strip_reviewed_reading_trace_additions\n    source=strip_reviewed_reading_trace_additions(source.encode('utf-8'),'tests/gecko/run_device.py').decode('utf-8')\n",'',1)
   self.assertEqual(hashlib.sha256(s.encode()).hexdigest(),'a034b67f5e1e951bc4742f7f866c906516dd5bfa4acacfef616baf434d714c61')

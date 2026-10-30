@@ -16,6 +16,11 @@ final class BrowserReadingPolicy {
     // both the native width error below 6px and the page edge within 1 CSS px.
     return residual<6&&residual<=scale;
   }
+  static double zoomError(int width,float scale,float viewport,float choice){
+    if(width<=0||!Float.isFinite(scale)||scale<=0||!Float.isFinite(viewport)||viewport<=0||!Float.isFinite(choice)||choice<=0)return Double.POSITIVE_INFINITY;
+    return Math.abs((double)scale*viewport/width-choice);
+  }
+  static boolean restored(int width,float scale,float viewport,float choice){return zoomError(width,scale,viewport,choice)<=.035;}
   static float fromScale(int width,float density,float viewport,float scale){float base=fit(width,density,viewport);return base>0&&Float.isFinite(scale)&&scale>0?bounded(scale/base):MIN;}
   static float migrate(int width,float density,float choice){return width>0&&Float.isFinite(density)&&density>0?Math.max(1f,bounded(bounded(choice)*width/(BrowserDisplay.DESKTOP_WIDTH*density))):1f;}
   static boolean chat(String url){try{URI u=new URI(url);return "https".equals(u.getScheme())&&("chatgpt.com".equals(u.getHost())||"chat.openai.com".equals(u.getHost()))&&u.getRawUserInfo()==null&&(u.getPort()==-1||u.getPort()==443);}catch(Exception e){return false;}}
