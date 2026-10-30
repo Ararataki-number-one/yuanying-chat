@@ -180,9 +180,30 @@ final class EnvironmentEditorUi {
       });
     });
   }
+  static boolean storageCurrent(MainActivity a,ChatSession session){
+    if(session==null||a.isDestroyed()||a.isFinishing()||a.session!=session||a.remote!=session.web||session.deleted)return false;
+    try{JSONObject environment=ProfileCatalog.get(a).item(Profiles.slot(a));
+      return environment.optBoolean("created")&&!environment.optBoolean("deleting")&&!environment.optBoolean("resetting")&&environment.optInt("generation")==session.environmentGeneration&&session.environmentId.equals(environment.optString("environmentId"));
+    }catch(RuntimeException unavailable){return false;}
+  }
   static void storage(MainActivity a){
+    ChatSession session=a.session;if(!storageCurrent(a,session))return;
     JSONObject scan=AppPrefs.temporaryCache(a,System.currentTimeMillis(),false);
-    AppAppearance.dialog(a).setTitle("数据与存储 · "+Profiles.display(a,Profiles.slot(a))).setMessage("下载位置："+DefaultDownloads.description(a)+"\n\n可清理旧临时文件："+scan.optInt("count")+" 个 / "+NetworkMetricsUi.amount(scan.optLong("bytes"))+"\n任务引用的中间文件："+scan.optInt("protected")+" 个\n\n清理仅处理超过 30 天且未被任务引用的中间文件。聊天、草稿、登录与已保存文件保留。").setPositiveButton("清理旧临时文件",(d,w)->{JSONObject result=AppPrefs.temporaryCache(a,System.currentTimeMillis(),true);a.status("已清理 "+result.optInt("removed")+" 个旧临时文件");}).setNegativeButton("关闭",null).show();
+    String details="下载位置："+DefaultDownloads.description(a)+"\n\n可清理旧临时文件："+scan.optInt("count")+" 个 / "+NetworkMetricsUi.amount(scan.optLong("bytes"))+"\n任务引用的中间文件："+scan.optInt("protected")+" 个\n\n清理按钮仅处理超过 30 天且未被任务引用的下载中间文件。聊天、草稿、登录与已保存文件保留。";
+    java.util.concurrent.atomic.AtomicBoolean visible=new java.util.concurrent.atomic.AtomicBoolean(true);
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("数据与存储 · "+Profiles.display(a,Profiles.slot(a))).setMessage(details+"\n\n附件缓存：等待当前文件准备结束后统计。仅统计，不删除已交付或引用未确认的副本。").setPositiveButton("清理旧临时文件",(d,w)->{if(!storageCurrent(a,session))return;JSONObject result=AppPrefs.temporaryCache(a,System.currentTimeMillis(),true);a.status("已清理 "+result.optInt("removed")+" 个旧临时文件");}).setNegativeButton("关闭",null).create();
+    dialog.setOnDismissListener(d->visible.set(false));dialog.show();
+    java.lang.ref.WeakReference<MainActivity> host=new java.lang.ref.WeakReference<>(a);java.lang.ref.WeakReference<AlertDialog> window=new java.lang.ref.WeakReference<>(dialog);android.os.Handler main=a.handler;
+    try{session.web.uploadWorker.execute(()->{
+      if(!visible.get())return;GeckoUploadFiles.Usage usage=GeckoUploadFiles.usage(session.context);GeckoUploadFiles.Cleanup cleanup=session.web.lastUploadCleanup;
+      main.post(()->{
+        MainActivity owner=host.get();AlertDialog shown=window.get();if(owner==null||shown==null||!visible.get()||!shown.isShowing())return;
+        if(!storageCurrent(owner,session)){shown.dismiss();return;}
+        String message=details+"\n\n附件缓存："+(usage.complete?"":"至少 ")+usage.files+" 个文件 / "+NetworkMetricsUi.amount(usage.bytes)+(usage.complete?"":"（统计不完整）")+"\n已交付或引用未确认的副本继续保留；文件准备期间占用可能变化。";
+        if(cleanup!=null)message+="\n最近未交付副本清理："+cleanup.removedFiles+" 个文件 / "+NetworkMetricsUi.amount(cleanup.removedBytes)+(cleanup.complete()?"；已清理或未生成副本":"；仍有 "+cleanup.failedEntries+" 项未能清理");
+        shown.setMessage(message);
+      });
+    });}catch(java.util.concurrent.RejectedExecutionException closed){if(visible.get()&&dialog.isShowing())dialog.setMessage(details+"\n\n附件缓存统计暂不可用，现有副本已保留。");}
   }
   static final class FrameLayoutHost extends android.widget.FrameLayout {
     final LinearLayout[] pages;FrameLayoutHost(MainActivity a,LinearLayout... views){super(a);pages=views;for(LinearLayout v:views)addView(v);}

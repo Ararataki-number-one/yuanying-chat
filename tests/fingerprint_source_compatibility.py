@@ -68,6 +68,7 @@ PERMISSION_REVIEWED_BROWSER_SHA256 = '231cccc9b77c9b66e16dfeb8b0e45e465aeffc2753
 PERMISSION_EXACT_ADDITIONS = (b'if(contentPermissions!=null)contentPermissions.close();', b'\n  GeckoContentPermissions contentPermissions;', b'      @Override public GeckoResult<Integer> onContentPermissionRequest(GeckoSession s,ContentPermission permission){if(contentPermissions==null)contentPermissions=new GeckoContentPermissions(GeckoWebView.this);return contentPermissions.request(s,permission);}\n')
 
 def permission_denial_preservation_bytes(raw):
+    raw = upload37_preservation_bytes(raw)
     digest = hashlib.sha256(raw).hexdigest()
     if digest == PERMISSION_PRIOR_BROWSER_SHA256:
         return raw
@@ -80,4 +81,32 @@ def permission_denial_preservation_bytes(raw):
         restored = restored.replace(addition, b'', 1)
     if hashlib.sha256(restored).hexdigest() != PERMISSION_PRIOR_BROWSER_SHA256:
         raise ValueError('Permission inverse did not restore the prior whole browser source')
+    return restored
+
+
+# Exact 2.0.37 upload delta on the conditional36 source tree; no official36 commit exists.
+UPLOAD37_PRIOR_INTENDED_TREE = '8641b4bbfc1b2021c9cfe404d0e78475b9cf0987'
+UPLOAD37_PRIOR_BROWSER_SHA256 = '231cccc9b77c9b66e16dfeb8b0e45e465aeffc2753ffe6a693058b0b357be4b3'
+UPLOAD37_REVIEWED_BROWSER_SHA256 = '586076cab2cddc3cc013801a8dc8461df688f2615da93bef1c0491b8511abd1a'
+UPLOAD37_EXACT_REPLACEMENTS = (
+    (b'  volatile GeckoUploadFiles.Cleanup lastUploadCleanup;\n  void retireUnhandedUpload(GeckoUploadFiles.Selection files){new Thread(()->lastUploadCleanup=files.delete(),"upload-cleanup").start();}\n', b''),
+    (b'            GeckoUploadFiles.Selection files=GeckoUploadFiles.prepare(owner.context,uris,cancelled::get);', b'            GeckoUploadFiles.Selection files=GeckoUploadFiles.prepare(owner.context,uris);'),
+    (b'              if(destroyed||cancelled.get()||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){retireUnhandedUpload(files);if(!prompt.isComplete())result.complete(prompt.dismiss());return;}', b'              if(destroyed||cancelled.get()||s!=current||!s.isOpen()||uploadEpoch!=owner.navigationEpoch||prompt.isComplete()){new Thread(files::delete,"upload-cleanup").start();if(!prompt.isComplete())result.complete(prompt.dismiss());return;}'),
+    (b'              catch(RuntimeException error){retireUnhandedUpload(files);if(!prompt.isComplete())result.complete(prompt.dismiss());owner.setStatus("\xe9\x99\x84\xe4\xbb\xb6\xe6\x9c\xaa\xe8\x83\xbd\xe4\xba\xa4\xe7\xbb\x99\xe7\xbd\x91\xe9\xa1\xb5\xef\xbc\x8c\xe8\xaf\xb7\xe9\x87\x8d\xe6\x96\xb0\xe9\x80\x89\xe6\x8b\xa9");return;}', b'              catch(RuntimeException error){new Thread(files::delete,"upload-cleanup").start();if(!prompt.isComplete())result.complete(prompt.dismiss());owner.setStatus("\xe9\x99\x84\xe4\xbb\xb6\xe6\x9c\xaa\xe8\x83\xbd\xe4\xba\xa4\xe7\xbb\x99\xe7\xbd\x91\xe9\xa1\xb5\xef\xbc\x8c\xe8\xaf\xb7\xe9\x87\x8d\xe6\x96\xb0\xe9\x80\x89\xe6\x8b\xa9");return;}'),
+    (b'          }catch(IOException error){if(error instanceof GeckoUploadFiles.Cancelled)lastUploadCleanup=((GeckoUploadFiles.Cancelled)error).cleanup;owner.handler.post(()->{uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed&&!cancelled.get())owner.setStatus(error.getMessage());});}});}', b'          }catch(IOException error){owner.handler.post(()->{uploadPreparationFinished(beforePreparation);if(!prompt.isComplete())result.complete(prompt.dismiss());if(!destroyed&&!cancelled.get())owner.setStatus(error.getMessage());});}});}'),
+)
+
+def upload37_preservation_bytes(raw):
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest in (UPLOAD37_PRIOR_BROWSER_SHA256, PERMISSION_PRIOR_BROWSER_SHA256):
+        return raw
+    if digest != UPLOAD37_REVIEWED_BROWSER_SHA256:
+        raise ValueError("Upload37 delta is not the exact reviewed whole browser source")
+    restored = raw
+    for addition, previous in UPLOAD37_EXACT_REPLACEMENTS:
+        if restored.count(addition) != 1:
+            raise ValueError("Upload37 inverse addition is missing or duplicated")
+        restored = restored.replace(addition, previous, 1)
+    if hashlib.sha256(restored).hexdigest() != UPLOAD37_PRIOR_BROWSER_SHA256:
+        raise ValueError("Upload37 inverse did not restore the exact conditional36 browser source")
     return restored
