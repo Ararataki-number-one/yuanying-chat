@@ -67,6 +67,7 @@ def main():
     package='local.pocketchat.test';integration=ROOT/'work/gecko-integration'
     def adb(*parts):return subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90).decode(errors='replace')
     sys.path[:0]=[str(ROOT/'tests/gecko'),str(ROOT/'tools/gecko')]
+    from diagnostic_capture_privacy import checked_text
     # Original collapse runner expects its APK under out/ui-current.apk. Keep the
     # immutable build there and use a separate diagnostic directory for evidence.
     apk=integration/'ui-current.apk'
@@ -74,7 +75,7 @@ def main():
     original=ROOT/'tests/gecko/run_ui_visuals.py';program=selected_program(original.read_text(),args.scenario)
     inputs=['tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py','tests/gecko/run_chrome_collapse_diagnostic.py','tests/gecko/ChromeCollapseIntegration.java','tools/gecko/chrome_collapse_contract.py']
     hashes={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in inputs}
-    namespace=dict(globals(),root=ROOT,out=integration,source=source,package=package,args=args,adb=adb,component=package+'/local.pocketchat.CompactChromeIntegrationActivity')
+    namespace=dict(globals(),checked_text=checked_text,root=ROOT,out=integration,source=source,package=package,args=args,adb=adb,component=package+'/local.pocketchat.CompactChromeIntegrationActivity')
     report=dict(status='running',diagnosticOnly=True,releaseAcceptance=False,fullUiAcceptance=False,
         actualAndroidExecution=False,sourceCommit=source,sourceTree=tree,sourceFiles=hashes,scenario=args.scenario,
         earlierUiPreludeReplayed=False,originalReloadSequenceRequested=args.scenario=='after-reload',
@@ -110,7 +111,7 @@ def main():
             produced=('reload_confirmation' in namespace if name.startswith('ui-reload-') else 'reload_loopback' in namespace)
             if produced and path.is_file():
                 (args.out/name).write_bytes(path.read_bytes())
-        try:(args.out/'native-log.txt').write_text(adb('logcat','-d'))
+        try:(args.out/'native-log.txt').write_text(checked_text(adb('logcat','-d'))[0])
         except Exception as error:report['nativeLogError']=type(error).__name__
         try:(args.out/'screen.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         except Exception as error:report['screenError']=type(error).__name__
