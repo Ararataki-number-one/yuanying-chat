@@ -32,6 +32,7 @@ final class ChatService {static boolean running;}
 final class LoginPagePolicy {static boolean login(String s){return false;}}
 final class EnvironmentAudit {
   final ChatSession session;final Probe serviceProbe=new Probe(),requestIdentity=new Probe();
+  Object nativeRuntimeIdentity;
   boolean running=true,geckoRun=true;long serial=5,auditNavigation=7;String auditUrl="https://chatgpt.com/c/original",lastError="",report="previous report bytes";
   Runnable completed;FutureTask<Void> nativeWork;final InlineExecutor closer=new InlineExecutor();HttpURLConnection connection;
   EnvironmentAudit(ChatSession s){session=s;nativeWork=new FutureTask<>(()->null);}
