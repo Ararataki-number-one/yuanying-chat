@@ -28,7 +28,7 @@ final class FingerprintComparisonUi {
     }
     TextView summary=a.label("",14,Ui.INK);summary.setLineSpacing(a.dp(4),1);summary.setPadding(0,a.dp(8),0,a.dp(8));box.addView(summary);
     TextView result=a.label("人工兼容记录默认“尚未测试”，仅代表你主动填写的操作结果，不等于软件已完成真机验收。可以保留未知，或只更新其中一项。",13,Ui.MUTED);box.addView(result);
-    Button rawToggle=EnvironmentAuditUi.button(a,box,"展开原始对照记录");LinearLayout rawSection=EnvironmentAuditUi.section(a,box);TextView raw=a.label("",13,Ui.MUTED);rawSection.addView(raw);Button copy=EnvironmentAuditUi.button(a,rawSection,"复制本地双报告");
+    Button rawToggle=EnvironmentAuditUi.button(a,box,"展开原始对照记录");LinearLayout rawSection=EnvironmentAuditUi.section(a,box);TextView raw=a.label("",13,Ui.MUTED);rawSection.addView(raw);Button copy=EnvironmentAuditUi.button(a,rawSection,"复制脱敏双报告诊断");
     ScrollView scroll=new ScrollView(a);scroll.addView(box);AlertDialog dialog=AppAppearance.dialog(a).setTitle("标准／强化本地对照").setView(scroll).setPositiveButton("关闭",null).create();
     Runnable update=()->{
       if(!EnvironmentAuditUi.current(a,edited,audit))return;
@@ -48,7 +48,7 @@ final class FingerprintComparisonUi {
       manual[i].setOnClickListener(v->{if(EnvironmentAuditUi.current(a,edited,audit))manual(a,audit,edited,slot,label,result,update);});
     }
     rawToggle.setOnClickListener(v->{if(!EnvironmentAuditUi.current(a,edited,audit))return;EnvironmentAuditUi.toggle(rawSection,rawToggle,"展开原始对照记录","收起原始对照记录");update.run();});
-    copy.setOnClickListener(v->{if(!EnvironmentAuditUi.current(a,edited,audit))return;((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("本地标准／强化对照",audit.comparisonCopy()));result.setText("本地双报告已复制；其中的人工兼容标记仅为自行记录。");});
+    copy.setOnClickListener(v->{if(!EnvironmentAuditUi.current(a,edited,audit))return;((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("脱敏标准／强化对照",audit.comparisonDiagnosticCopy()));result.setText("已复制脱敏对照诊断；原始 UA、来源地址与文字未复制，人工兼容标记仍只代表自行记录。");});
     dialog.show();update.run();
   }
 

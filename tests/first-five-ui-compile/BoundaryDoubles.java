@@ -57,6 +57,7 @@ final class EnvironmentAudit {
   String comparisonSlotSummary(String slot) { return ""; }
   String comparisonSummary() { return ""; }
   String comparisonCopy() { return ""; }
+  String comparisonDiagnosticCopy() { return ""; }
   String captureComparison(String slot) { return ""; }
   String clearComparison(String slot) { return ""; }
   String setComparisonManual(String slot, String key, String state) { return ""; }

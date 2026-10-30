@@ -27,8 +27,8 @@ final class EnvironmentAuditUi {
     TextView rawInfo=a.label("",14,Ui.INK);rawInfo.setLineSpacing(a.dp(4),1);details.addView(rawInfo);
     Button templateCapabilities=button(a,details,"原生保护能力与兼容记录");
     templateCapabilities.setOnClickListener(v->{if(current(a,edited,audit))ProtectionTemplateUi.show(a,edited);});
-    Button copyDeep=button(a,details,"复制深检原始记录"),baseline=button(a,details,"确认当前环境，更新基线");
-    TextView baselineNote=a.label("确认基线只更新变化参照，不会修复检查发现的问题。最近八次网页观测仅在当前环境本地加密保存。固定深检参照单独保留，需主动保存或清除。",13,Ui.MUTED);details.addView(baselineNote);
+    Button copyDeep=button(a,details,"复制脱敏深检诊断"),baseline=button(a,details,"确认当前环境，更新基线");
+    TextView baselineNote=a.label("确认基线只更新变化参照，不会修复检查发现的问题。最近八次网页观测仅在当前环境本地加密保存。固定深检参照单独保留，需主动保存或清除。 诊断复制仅包含状态、数值与有效哈希，原始文字和地址留在本机查看。",13,Ui.MUTED);details.addView(baselineNote);
     Button advancedToggle=button(a,box,"展开高级网络检测");LinearLayout advanced=section(a,box);
     TextView networkExplanation=a.label("\n网络出口检查会访问 ipify 和 httpbin，服务能看到出口 IP 与必要请求信息。请求不主动携带 Cookie、密码或聊天内容。",13,Ui.MUTED);advanced.addView(networkExplanation);
     CheckBox consent=new CheckBox(a);consent.setText("仅本次允许向 ipify / httpbin 发送检测信息");consent.setChecked(false);advanced.addView(consent);
@@ -40,7 +40,7 @@ final class EnvironmentAuditUi {
     Button identity=button(a,advanced,"打开真实请求检测页"),crossFrame=button(a,advanced,"打开跨源 iframe 图形检测");
     TextView identityResult=a.label("",13,Ui.MUTED);advanced.addView(identityResult);
     ScrollView scroll=new ScrollView(a);scroll.addView(box);
-    AlertDialog dialog=AppAppearance.dialog(a).setTitle("环境自检与变更").setView(scroll).setPositiveButton("关闭",null).setNeutralButton("复制简要结果",(d,w)->{if(current(a,edited,audit))((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("环境自检",audit.safeCopy()));}).create();
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("环境自检与变更").setView(scroll).setPositiveButton("关闭",null).setNeutralButton("复制脱敏简要结果",(d,w)->{if(current(a,edited,audit))((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("环境自检",audit.safeCopy()));}).create();
     boolean[] handoff={false},policySaving={false},consentWrite={false},crossStarting={false};Runnable[] protectionTick={null},identityTick={null};
     Runnable clearIdentityConsent=()->{consentWrite[0]=true;identityConsent.setChecked(false);frameConsent.setChecked(false);crossStarting[0]=false;consentWrite[0]=false;};
     Runnable update=()->{
@@ -98,7 +98,7 @@ final class EnvironmentAuditUi {
     detailsToggle.setOnClickListener(v->{if(!current(a,edited,audit))return;toggle(details,detailsToggle,"展开结果详情","收起结果详情");update.run();});
     advancedToggle.setOnClickListener(v->{if(!current(a,edited,audit))return;toggle(advanced,advancedToggle,"展开高级网络检测","收起高级网络检测");update.run();});
     comparison.setOnClickListener(v->{if(current(a,edited,audit))FingerprintComparisonUi.show(a,audit);});
-    history.setOnClickListener(v->{if(current(a,edited,audit))history(a,audit);});fixed.setOnClickListener(v->{if(current(a,edited,audit))fixed(a,audit);});copyDeep.setOnClickListener(v->{if(!current(a,edited,audit))return;((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("本机深检记录",audit.deepRecordCopy()));policyResult.setText("已复制本机观测；请在同一手机分别运行标准与确认后的强化模式，并记录登录、输入、绘图、附件和恢复结果。");});baseline.setOnClickListener(v->{if(!current(a,edited,audit))return;audit.acceptBaseline();update.run();NetworkMetricsUi.update(a);});
+    history.setOnClickListener(v->{if(current(a,edited,audit))history(a,audit);});fixed.setOnClickListener(v->{if(current(a,edited,audit))fixed(a,audit);});copyDeep.setOnClickListener(v->{if(!current(a,edited,audit))return;((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("脱敏深检诊断",audit.deepRecordCopy()));policyResult.setText("已复制状态、数值与有效哈希；没有复制 UA、地址、网页原文或原始错误。真机兼容仍需分别操作记录。");});baseline.setOnClickListener(v->{if(!current(a,edited,audit))return;audit.acceptBaseline();update.run();NetworkMetricsUi.update(a);});
     dialog.setOnDismissListener(d->{if(protectionTick[0]!=null)edited.handler.removeCallbacks(protectionTick[0]);if(identityTick[0]!=null)edited.handler.removeCallbacks(identityTick[0]);if(!handoff[0])audit.cancel();});dialog.show();update.run();watchProtection.run();
   }
   static LinearLayout section(MainActivity a,LinearLayout parent){LinearLayout value=new LinearLayout(a);value.setOrientation(LinearLayout.VERTICAL);value.setVisibility(android.view.View.GONE);value.setPadding(a.dp(4),0,a.dp(4),a.dp(12));parent.addView(value);return value;}
