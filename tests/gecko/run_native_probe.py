@@ -11,6 +11,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 import sys
 sys.path.insert(0, str(ROOT / 'tools'))
 from gecko.chain_runtime_contract import verify_native_probe
+from gecko.diagnostic_capture_privacy import checked_text
+# Stored diagnostic text is a verified service-key derivative.
 
 OUT = ROOT / 'work/gecko-integration'
 
@@ -36,7 +38,7 @@ def main():
         return result.stdout
 
     def failure_log():
-        (OUT / 'native-probe-failure-log.txt').write_text(adb('logcat', '-d', check=False))
+        (OUT / 'native-probe-failure-log.txt').write_text(checked_text(adb('logcat', '-d', check=False))[0])
 
     adb('shell', 'am', 'force-stop', 'local.pocketchat.test')
     adb('shell', 'pm', 'clear', 'local.pocketchat.test')
@@ -52,8 +54,8 @@ def main():
             report['sourceCommit'] = subprocess.check_output(
                 ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
             (OUT / 'native-probe-results.json').write_text(json.dumps(report, indent=2) + '\n')
-            (OUT / 'native-probe-log.txt').write_text(adb('logcat', '-d', '-s',
-                'PocketNativeProbe:I', 'AndroidRuntime:E', '*:S'))
+            (OUT / 'native-probe-log.txt').write_text(checked_text(adb('logcat', '-d', '-s',
+                'PocketNativeProbe:I', 'AndroidRuntime:E', '*:S'))[0])
             try:
                 verify(report)
             except Exception:
@@ -65,7 +67,7 @@ def main():
                               'cancellations': report['cancellations'],
                               'startupSearches': report['startupSearches']}, indent=2), flush=True)
             return
-        log = adb('logcat', '-d', '-s', 'PocketNativeProbe:I', 'AndroidRuntime:E', '*:S')
+        log = checked_text(adb('logcat', '-d', '-s', 'PocketNativeProbe:I', 'AndroidRuntime:E', '*:S'))[0]
         if 'FATAL EXCEPTION' in log:
             failure_log()
             raise AssertionError(log)

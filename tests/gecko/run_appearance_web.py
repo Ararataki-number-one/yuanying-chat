@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
@@ -21,6 +22,8 @@ import run_device as device
 
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tools/gecko'))
+from diagnostic_capture_privacy import checked_bytes, safe_error_text
 OUT = ROOT / 'work/gecko-integration'
 PACKAGE = 'local.pocketchat.test'
 ACTION = 'appearanceSync'
@@ -252,14 +255,21 @@ def main():
             stdout, stderr, code = error.stdout or b'', error.stderr or b'', None
         index = len(commands) + 1
         observation = dict(index=index, command=command, returnCode=code, streams={})
+        public_stdout = stdout
         for stream, raw in (('stdout', stdout), ('stderr', stderr)):
+            # Only logcat diagnostics are byte derivatives; primary commands remain exact.
+            stored, privacy = checked_bytes(raw) if parts and parts[0] == 'logcat' else (raw, None)
             path = OUT / ('appearance-web-adb-%04d-%s.raw' % (index, stream))
-            path.write_bytes(raw)
-            observation['streams'][stream] = dict(path=path.name, bytes=len(raw), sha256=digest(raw))
+            path.write_bytes(stored)
+            observation['streams'][stream] = dict(path=path.name, bytes=len(stored), sha256=digest(stored))
+            if privacy is not None:
+                observation['streams'][stream]['capturePrivacy'] = privacy
+                if stream == 'stdout':
+                    public_stdout = stored
         commands.append(observation)
         if check and code != 0:
             raise RuntimeError('Appearance fixture ADB command failed: ' + repr(observation))
-        return stdout if binary else stdout.decode('utf-8', errors='strict')
+        return public_stdout if binary else public_stdout.decode('utf-8', errors='strict')
 
     def capture(phase):
         png = adb('exec-out', 'screencap', '-p', binary=True)
@@ -399,12 +409,12 @@ def main():
         report.update(status='passed', actualAndroidExecution=True,
                       phaseCount=len(invocations), checkCount=sum(len(row['result']['checks']) for row in invocations))
     except BaseException as error:
-        report.update(status='failed', error=type(error).__name__ + ': ' + str(error))
+        report.update(status='failed', error=type(error).__name__ + ': ' + safe_error_text(error, use_repr=False))
         if report.get('actualAndroidFixtureAttempted'):
             try:
                 capture('failure')
             except BaseException as secondary:
-                report['failureCaptureError'] = type(secondary).__name__ + ': ' + str(secondary)
+                report['failureCaptureError'] = type(secondary).__name__ + ': ' + safe_error_text(secondary, use_repr=False)
         raise
     finally:
         if commands:
@@ -412,12 +422,12 @@ def main():
                 raw = adb('logcat', '-d', binary=True, check=False)
                 (OUT / 'appearance-web-logcat.raw.log').write_bytes(raw)
             except BaseException as error:
-                report['finalLogError'] = str(error)
+                report['finalLogError'] = safe_error_text(error, use_repr=False)
         for port in reversed_ports:
             try:
                 adb('reverse', '--remove', 'tcp:' + str(port), check=False)
             except BaseException as error:
-                report.setdefault('cleanupErrors', []).append(str(error))
+                report.setdefault('cleanupErrors', []).append(safe_error_text(error, use_repr=False))
         with device.fixture.CONNECTION_LOCK:
             for connection in tuple(device.fixture.CONNECTIONS):
                 try:

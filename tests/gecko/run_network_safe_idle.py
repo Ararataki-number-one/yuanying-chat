@@ -16,6 +16,8 @@ A = P.parse_args()
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 from gecko.network_sources_contract import verify_safe_idle as verify
+from gecko.diagnostic_capture_privacy import checked_text, safe_error_text
+# Stored diagnostic text is a verified service-key derivative.
 OUT = ROOT / "work/gecko-integration"
 OUT.mkdir(parents=True, exist_ok=True)
 PKG = "local.pocketchat.test"
@@ -30,7 +32,7 @@ def adb(*args, binary=False, timeout=35):
 
 
 def events():
-    raw = adb("logcat", "-d", "-s", "PocketNetworkSafeIdle:I", "AndroidRuntime:E", "*:S")
+    raw = checked_text(adb("logcat", "-d", "-s", "PocketNetworkSafeIdle:I", "AndroidRuntime:E", "*:S"))[0]
     if "FATAL EXCEPTION" in raw:
         raise AssertionError(raw)
     found = []
@@ -114,19 +116,19 @@ try:
     assert report["coreSha256"] == receipt["binaries"]["x86_64"]["sha256"]
     verify(report)
     (OUT / "network-safe-idle-final.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-    (OUT / "network-safe-idle-log.txt").write_text(adb("logcat", "-d"))
+    (OUT / "network-safe-idle-log.txt").write_text(checked_text(adb("logcat", "-d"))[0])
     print(json.dumps({"status": "passed", "checkCount": report["checkCount"], "cases": len(report["cases"]), "realTrustedGestures": len(GESTURES), "report": str(OUT / "network-safe-idle-results.json")}))
 except BaseException as error:
-    failure = {"status": "failed", "sourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(), "error": str(error), "events": EVENTS, "gestures": GESTURES}
+    failure = {"status": "failed", "sourceCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(), "error": safe_error_text(error, use_repr=False), "events": EVENTS, "gestures": GESTURES}
     terminal = next((e["value"] for e in reversed(EVENTS) if e.get("kind") == "result" and e.get("value", {}).get("status") == "failed"), None)
     if terminal is not None:
         try:
             save_report(terminal)
         except Exception as report_error:
-            failure["reportCaptureError"] = str(report_error)
+            failure["reportCaptureError"] = safe_error_text(report_error, use_repr=False)
     (OUT / "network-safe-idle-runner-failure.json").write_text(json.dumps(failure, ensure_ascii=False, indent=2) + "\n")
     try:
-        (OUT / "network-safe-idle-failure-log.txt").write_text(adb("logcat", "-d"))
+        (OUT / "network-safe-idle-failure-log.txt").write_text(checked_text(adb("logcat", "-d"))[0])
         (OUT / "network-safe-idle-failure.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
     except Exception:
         pass

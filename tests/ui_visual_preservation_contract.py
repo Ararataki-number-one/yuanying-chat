@@ -77,9 +77,82 @@ def remove_reviewed_ui_device_preparation(tree):
     del tree.body[start:start + 2]
 
 
+
+DIAGNOSTIC_PRIVACY_IMPORT = 'from diagnostic_capture_privacy import checked_text\n'
+DIAGNOSTIC_PRIVACY_WRITES = tuple(
+    ("(out/'" + name + "').write_text(adb('logcat','-d'))",
+     "(out/'" + name + "').write_text(checked_text(adb('logcat','-d'))[0])")
+    for name in ('ui-reload-log.txt', 'ui-visual-log.txt'))
+
+
+def original_ui_diagnostic_privacy_bytes(raw):
+    """Undo only the three exact producer additions before old whole-byte pins."""
+    assert isinstance(raw, bytes), 'UI source bytes required'
+    text = raw.decode('utf-8')
+    if 'diagnostic_capture_privacy' not in text and 'checked_text' not in text:
+        return raw
+    anchor = 'from ui_visual_capture import UiVisualCapture\n' + DIAGNOSTIC_PRIVACY_IMPORT
+    assert text.count(anchor) == 1 and text.count(DIAGNOSTIC_PRIVACY_IMPORT) == 1, 'Diagnostic privacy import changed or moved'
+    text = text.replace(anchor, 'from ui_visual_capture import UiVisualCapture\n', 1)
+    for previous, added in DIAGNOSTIC_PRIVACY_WRITES:
+        assert text.count(added) == 1, 'Diagnostic privacy write changed, missing or duplicated'
+        text = text.replace(added, previous, 1)
+    return text.encode('utf-8')
+
+
+def remove_reviewed_diagnostic_privacy(tree):
+    """Restore only an exact import and two diagnostic writes, preserving old AST gates.
+
+    Functional adb/capture/readiness/input nodes are never removed or rewritten.
+    The original full-module digest below still verifies every remaining node.
+    """
+    imports = [node for node in ast.walk(tree)
+               if isinstance(node, ast.ImportFrom) and node.module == 'diagnostic_capture_privacy']
+    uses = [node for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and node.id == 'checked_text']
+    if not imports and not uses:
+        return
+    imported = exactly_one(imports, 'diagnostic privacy import')
+    expected_import = ast.parse(DIAGNOSTIC_PRIVACY_IMPORT).body[0]
+    assert ast.dump(imported, include_attributes=False) == ast.dump(expected_import, include_attributes=False), 'Diagnostic privacy import changed'
+    position = exactly_one((index for index, node in enumerate(tree.body)
+                            if node is imported), 'top-level diagnostic privacy import')
+    assert (position > 0 and position + 1 < len(tree.body)
+            and isinstance(tree.body[position - 1], ast.ImportFrom)
+            and tree.body[position - 1].module == 'ui_visual_capture'
+            and isinstance(tree.body[position + 1], ast.ImportFrom)
+            and tree.body[position + 1].module == 'ui_visual_contract'), 'Diagnostic privacy import moved'
+    assert len(uses) == 2, 'Diagnostic privacy helper has unreviewed uses'
+    for previous, added in DIAGNOSTIC_PRIVACY_WRITES:
+        expected = ast.parse(added).body[0]
+        match = exactly_one((node for node in ast.walk(tree)
+                             if isinstance(node, ast.Expr)
+                             and ast.dump(node, include_attributes=False) == ast.dump(expected, include_attributes=False)),
+                            'exact diagnostic write')
+        # Only the argument of the exact diagnostic write is restored. The
+        # containing statement and all action/control-flow positions stay put.
+        match.value.args[0] = ast.parse(previous).body[0].value.args[0]
+    del tree.body[position]
+
+
+def original_ui_privacy_verifier_function(function):
+    """Remove one exact normalization call before the old verifier-function pin."""
+    expected = ast.parse('remove_reviewed_diagnostic_privacy(tree)').body[0]
+    positions = [index for index, node in enumerate(function.body)
+                 if ast.dump(node, include_attributes=False) == ast.dump(expected, include_attributes=False)]
+    assert positions == [1], 'Diagnostic privacy verifier call missing, duplicated or moved'
+    assert ast.dump(function.body[0], include_attributes=False) == ast.dump(
+        ast.parse("tree = ast.parse(source.encode('utf-8'))").body[0], include_attributes=False), 'Original UTF8 parser changed'
+    assert ast.dump(function.body[2], include_attributes=False) == ast.dump(
+        ast.parse('remove_reviewed_ui_device_preparation(tree)').body[0], include_attributes=False), 'Original preparation normalizer changed'
+    del function.body[1]
+    return function
+
+
 def verify_shared_ui_source(source):
     # Match Python's parsing of the real UTF-8 file, including coding cookies.
     tree = ast.parse(source.encode('utf-8'))
+    remove_reviewed_diagnostic_privacy(tree)
     remove_reviewed_ui_device_preparation(tree)
     for name, expected in ORIGINAL_FUNCTIONS.items():
         function = exactly_one((node for node in ast.walk(tree)

@@ -10,6 +10,7 @@ source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).st
 package='local.pocketchat.test';records=[]
 sys.path.insert(0,str(root/'tools/gecko'))
 from ui_visual_capture import UiVisualCapture
+from diagnostic_capture_privacy import checked_text
 from ui_visual_contract import LIGHT_SCENES, LARGE_SCENES, DARK_SCENES, LANDSCAPE_SCENES, required_captures, verify_captures, verify_download_location
 scenes=LIGHT_SCENES
 last_geometry=None
@@ -393,7 +394,7 @@ try:
         # Preserve this exact completed object before the next scenario clears logcat.
         # This partial file cannot replace compact-chrome-results or full UI acceptance.
         (out/'ui-reload-confirmation.json').write_text(json.dumps(reload_confirmation,ensure_ascii=False,indent=2)+'\n')
-        (out/'ui-reload-log.txt').write_text(adb('logcat','-d'))
+        (out/'ui-reload-log.txt').write_text(checked_text(adb('logcat','-d'))[0])
         from run_chrome_collapse import run as run_chrome_collapse
         auto_collapse=run_chrome_collapse(adb,lambda *parts:subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90),source,reload_loopback.TRACE,out,focus)
     finally:
@@ -406,7 +407,7 @@ try:
     report={'status':'passed','actualAndroidExecution':True,'sourceCommit':source,'comparisonMode':'current-only','historicalUIRebuilt':False,'screenshots':records,'networkOptimizationScreens':optimization,'compactChromeScreens':compact,'reloadConfirmation':reload_confirmation,'autoCollapse':auto_collapse,'exitPassword':exit_password,'scope':'Current GeckoView-only production UI with local synthetic records, 111 current-source captures including workspaces, secondary forms, light, dark and double-font layouts, plus exit password checks; historical UI is not rebuilt. Website content, login and network core are not replaced.'}
 except Exception as error:
     report={'status':'failed','actualAndroidExecution':True,'sourceCommit':source,'diagnosticOnly':False,'error':repr(error),'screenshots':records}
-    (out/'ui-visual-log.txt').write_text(adb('logcat','-d'))
+    (out/'ui-visual-log.txt').write_text(checked_text(adb('logcat','-d'))[0])
     (out/'ui-visual-failure.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
     (out/'ui-visual-failure.xml').write_text(dump())
     raise

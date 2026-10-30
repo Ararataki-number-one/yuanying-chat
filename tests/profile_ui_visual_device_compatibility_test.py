@@ -122,6 +122,7 @@ class UiVisualDeviceCompatibilityTests(unittest.TestCase):
         tree = ast.parse(CONTRACT.read_text())
         function = next(node for node in tree.body
                         if isinstance(node, ast.FunctionDef) and node.name == 'verify_shared_ui_source')
+        function = contract.original_ui_privacy_verifier_function(function)
         added = ast.parse('remove_reviewed_ui_device_preparation(tree)').body[0]
         positions = [i for i, node in enumerate(function.body)
                      if ast.dump(node, include_attributes=False) == ast.dump(added, include_attributes=False)]
@@ -133,6 +134,49 @@ class UiVisualDeviceCompatibilityTests(unittest.TestCase):
                          '5c528802063ccba23d6cc0c36726c8ad3fee41efa44aef29c9f498f8b8e331f1')
         self.assertEqual(contract.ORIGINAL_CAPTURE_AST,
                          '7bfb8cf6cabcce321ba9841a216dbb035f97ceee76384191d55543c80ebaf4d5')
+
+
+
+    def test_diagnostic_additions_restore_the_entire_previous_runner(self):
+        raw = contract.original_ui_diagnostic_privacy_bytes(self.source.encode())
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),
+                         '1f50898788396c90500f2f70737fb5a5bd6eed6aeb2d2d989c97a24bf0f05913')
+        self.assertTrue(contract.verify_shared_ui_source(raw.decode())['originalWorkloadSemanticsPreserved'])
+
+    def test_only_complete_exact_diagnostic_import_and_writes_are_normalized(self):
+        source = self.source
+        imported = contract.DIAGNOSTIC_PRIVACY_IMPORT
+        changed = [source.replace(imported, '', 1), source.replace(imported, imported + imported, 1),
+                   source.replace('from diagnostic_capture_privacy import checked_text',
+                                  'from other_capture import checked_text', 1),
+                   source.replace('from diagnostic_capture_privacy import checked_text',
+                                  'from diagnostic_capture_privacy import checked_text as other', 1),
+                   source.replace("checked_text(adb('logcat','-d'))[0]",
+                                  "checked_text(adb('logcat','-d'))[1]", 1)]
+        for previous, added in contract.DIAGNOSTIC_PRIVACY_WRITES:
+            changed.extend((source.replace(added, previous, 1), source.replace(added, added + ';' + added, 1)))
+        moved = source.replace(imported, '', 1)
+        changed.append(moved.replace('def adb(', imported + 'def adb(', 1))
+        previous, added = contract.DIAGNOSTIC_PRIVACY_WRITES[0]
+        changed.append(source.replace(added, previous, 1) + '\n' + added + '\n')
+        for index, value in enumerate(changed):
+            with self.subTest(mutation=index), self.assertRaises(AssertionError):
+                contract.verify_shared_ui_source(value)
+
+    def test_diagnostic_verifier_call_normalizer_rejects_missing_duplicate_and_moved(self):
+        original = CONTRACT.read_text()
+        statement = '    remove_reviewed_diagnostic_privacy(tree)\n'
+        self.assertEqual(original.count(statement), 1)
+        values = [original.replace(statement, '', 1), original.replace(statement, statement + statement, 1)]
+        moved = original.replace(statement, '', 1)
+        values.append(moved.replace('    remove_reviewed_ui_device_preparation(tree)\n',
+                                    '    remove_reviewed_ui_device_preparation(tree)\n' + statement, 1))
+        for value in values:
+            tree = ast.parse(value)
+            function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                            and node.name == 'verify_shared_ui_source')
+            with self.assertRaises(AssertionError):
+                contract.original_ui_privacy_verifier_function(function)
 
 
 if __name__ == '__main__':

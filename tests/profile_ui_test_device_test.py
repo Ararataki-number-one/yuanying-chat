@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 import subprocess
 import unittest
+from ui_visual_preservation_contract import original_ui_diagnostic_privacy_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('ui_test_device', ROOT / 'tools/gecko/ui_test_device.py')
@@ -116,6 +117,7 @@ class UiTestDeviceTests(unittest.TestCase):
 
     def test_runner_preserves_every_original_byte_except_one_preparation_block(self):
         raw = (ROOT / 'tests/gecko/run_ui_visuals.py').read_bytes()
+        raw = original_ui_diagnostic_privacy_bytes(raw)
         added = (b'from ui_test_device import prepare_workflow as prepare_ui_test_device\n'
                  b"(out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,serial=args.serial,environment=os.environ),sort_keys=True,indent=2)+'\\n')\n")
         self.assertEqual(raw.count(added), 1)

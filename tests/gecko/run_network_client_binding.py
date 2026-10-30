@@ -15,6 +15,7 @@ sys.path.insert(0,str(ROOT/'tools/gecko'))
 from integration_event_contract import EventTransfer,parse_receipt_line
 from profile_invocation_contract import expected_build,verify_installed
 from network_client_binding_contract import ACTION,PACKAGE,verify_runner_report
+from diagnostic_capture_privacy import checked_bytes, safe_error_text
 
 
 def main():
@@ -35,13 +36,18 @@ def main():
         except subprocess.TimeoutExpired as error:
             stdout,stderr=error.stdout or b'',error.stderr or b'';code=None
         else:stdout,stderr,code=run.stdout,run.stderr,run.returncode
-        observation=dict(index=index,command=command,returnCode=code,streams={})
+        observation=dict(index=index,command=command,returnCode=code,streams={});public_stdout=stdout
         for label,raw in (('stdout',stdout),('stderr',stderr)):
-            path=out/('network-client-binding-adb-%04d-%s.raw.log'%(index,label));path.write_bytes(raw)
-            observation['streams'][label]=dict(path=path.name,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+            # Only logcat diagnostics are byte derivatives; primary commands remain exact.
+            stored,privacy=checked_bytes(raw) if parts and parts[0]=='logcat' else (raw,None)
+            path=out/('network-client-binding-adb-%04d-%s.raw.log'%(index,label));path.write_bytes(stored)
+            observation['streams'][label]=dict(path=path.name,bytes=len(stored),sha256=hashlib.sha256(stored).hexdigest())
+            if privacy is not None:
+                observation['streams'][label]['capturePrivacy']=privacy
+                if label=='stdout':public_stdout=stored
         records.append(observation)
         if check and code!=0:raise RuntimeError('Binding fixture ADB command failed: '+repr(observation))
-        return stdout if binary else stdout.decode('utf-8',errors='strict')
+        return public_stdout if binary else public_stdout.decode('utf-8',errors='strict')
     def raw_proof(raw):return dict(rawUtf8=raw.decode('utf-8',errors='strict'),utf8Bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
     try:
         gradle=(ROOT/'app/build.gradle').read_text()
@@ -83,9 +89,9 @@ def main():
         wrapper['packageUidAfterRaw']=adb('shell','cmd','package','list','packages','-U',PACKAGE)
         wrapper['status']='passed';wrapper['verification']=verify_runner_report(wrapper,source)
     except BaseException as error:
-        wrapper['status']='failed';wrapper['error']=type(error).__name__+': '+str(error)
+        wrapper['status']='failed';wrapper['error']=type(error).__name__+': '+safe_error_text(error, use_repr=False)
         try:adb('logcat','-d',binary=True,check=False)
-        except BaseException as secondary:wrapper['failureLogCollectionError']=str(secondary)
+        except BaseException as secondary:wrapper['failureLogCollectionError']=safe_error_text(secondary, use_repr=False)
         raise
     finally:
         # Includes original failed event/identity/CLI bytes; no synthetic completion.

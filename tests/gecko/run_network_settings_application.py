@@ -5,10 +5,14 @@ import hashlib
 import json
 import pathlib
 import subprocess
+import sys
 import time
 import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tools/gecko'))
+from diagnostic_capture_privacy import checked_text, safe_error_text
+# Stored diagnostic text is a verified service-key derivative.
 PKG = 'local.pocketchat.test'
 ACTIVITY = PKG + '/local.pocketchat.NetworkSafeIdleIntegrationActivity'
 
@@ -208,12 +212,12 @@ def main():
         print(json.dumps({'status': 'passed', 'checks': report['checkCount'], 'source': source, 'nonce': nonce}))
     except BaseException as error:
         (out / 'network-settings-application-runner-failure.json').write_text(json.dumps({
-            'status': 'failed', 'sourceCommit': source, 'runNonce': nonce, 'error': str(error),
+            'status': 'failed', 'sourceCommit': source, 'runNonce': nonce, 'error': safe_error_text(error, use_repr=False),
             'runnerOneAttempt': True}, ensure_ascii=False, indent=2) + '\n')
         raise
     finally:
         try:
-            (out / 'network-settings-application-log.txt').write_text(adb('logcat', '-d'))
+            (out / 'network-settings-application-log.txt').write_text(checked_text(adb('logcat', '-d'))[0])
             (out / 'network-settings-application-final.png').write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
         finally:
             adb('shell', 'am', 'force-stop', PKG)

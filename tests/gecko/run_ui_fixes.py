@@ -5,9 +5,13 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tools/gecko'))
+from diagnostic_capture_privacy import checked_text, safe_error_text
+# Stored diagnostic text is a verified service-key derivative.
 OUT = ROOT / 'work/gecko-integration'
 
 def main():
@@ -60,9 +64,9 @@ def main():
             else:
                 raise TimeoutError('No complete report for '+key)
         except Exception as failure:
-            failures.append((key,str(failure)))
+            failures.append((key,safe_error_text(failure, use_repr=False)))
         finally:
-            (OUT/(key+'-log.txt')).write_text(adb('logcat', '-d'))
+            (OUT/(key+'-log.txt')).write_text(checked_text(adb('logcat', '-d'))[0])
     if failures:raise AssertionError(failures)
 
 if __name__=='__main__':

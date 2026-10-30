@@ -6,10 +6,14 @@ import json
 import pathlib
 import re
 import subprocess
+import sys
 import time
 import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tools/gecko'))
+from diagnostic_capture_privacy import checked_text, safe_error_text
+# Stored diagnostic text is a verified service-key derivative.
 PKG = 'local.pocketchat.test'
 ACTIVITY = PKG + '/local.pocketchat.NetworkSafeIdleIntegrationActivity'
 PREFIX = 'network-settings-internal'
@@ -349,7 +353,7 @@ def main():
         print(json.dumps({'status': 'passed', 'checks': report['checkCount'], 'source': source, 'nonce': nonce}))
     except BaseException as error:
         (out / (PREFIX + '-runner-failure.json')).write_text(json.dumps({
-            'status': 'failed', 'sourceCommit': source, 'runNonce': nonce, 'error': str(error),
+            'status': 'failed', 'sourceCommit': source, 'runNonce': nonce, 'error': safe_error_text(error, use_repr=False),
             'runnerOneAttempt': True}, ensure_ascii=False, indent=2) + '\n')
         raise
     finally:
@@ -359,13 +363,13 @@ def main():
             try:
                 value = adb(*command, binary=binary)
                 destination = out / (PREFIX + suffix)
-                destination.write_bytes(value) if binary else destination.write_text(value)
+                destination.write_bytes(value) if binary else destination.write_text(checked_text(value)[0])
             except Exception as error:
-                errors.append({'stage': suffix, 'error': str(error)})
+                errors.append({'stage': suffix, 'error': safe_error_text(error, use_repr=False)})
         try:
             adb('shell', 'am', 'force-stop', PKG)
         except Exception as error:
-            errors.append({'stage': 'force-stop', 'error': str(error)})
+            errors.append({'stage': 'force-stop', 'error': safe_error_text(error, use_repr=False)})
         if errors:
             (out / (PREFIX + '-diagnostic-errors.json')).write_text(json.dumps(errors, ensure_ascii=False, indent=2) + '\n')
 

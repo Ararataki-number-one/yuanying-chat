@@ -24,25 +24,30 @@ FAILURE={'invalid-entry-snapshot-sha','invalid-exit-snapshot-sha','same-name-cha
 
 sys.path.insert(0,str(ROOT))
 from tools.gecko.network_sources_contract import verify_source_route as verify
+from tools.gecko.diagnostic_capture_privacy import checked_text, checked_bytes, safe_error_text
 
 def capture_logcat(adb_path, serial, filters=(), stem='network-source-route-logcat', check=True):
-    """Preserve original log bytes; decoded text is diagnostic display only."""
+    """Preserve non-key log bytes in explicitly verified diagnostic derivatives."""
     command=[adb_path,'-s',serial,'logcat','-d',*filters]
     def save(stdout, stderr, returncode, timed_out=False):
-        streams={}
+        streams={};privacy_streams={}
         for label, raw in (('stdout',stdout or b''),('stderr',stderr or b'')):
-            (OUT/(stem+'-'+label+'.raw.log')).write_bytes(raw)
+            stored,privacy_streams[label]=checked_bytes(raw)
+            (OUT/(stem+'-'+label+'.raw.log')).write_bytes(stored)
             invalid=None
             try:raw.decode('utf-8',errors='strict')
             except UnicodeDecodeError as error:invalid=dict(start=error.start,end=error.end,reason=error.reason)
             streams[label]=dict(bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),invalidUtf8=invalid)
-        display=(stdout or b'').decode('utf-8',errors='backslashreplace')
+        display,display_privacy=checked_text((stdout or b'').decode('utf-8',errors='backslashreplace'))
         (OUT/(stem+'-display.txt')).write_text(display,encoding='utf-8')
-        (OUT/(stem+'-decode.json')).write_text(json.dumps(dict(schema=1,scope='Diagnostic display only; never structured acceptance evidence',encoding='utf-8',errors='backslashreplace',returncode=returncode,timedOut=timed_out,streams=streams),indent=2)+'\n',encoding='utf-8')
+        capture_privacy=dict(schema=1,scope='streams describe original captured bytes; public *.raw.log files are byte derivatives. Projection helper hashes use UTF-8 of the Latin-1 byte map; stored hashes describe actual public bytes.',
+                             byteStreams=privacy_streams,displayPrivacy=display_privacy)
+        (OUT/(stem+'-decode.json')).write_text(json.dumps(dict(schema=1,scope='Diagnostic display only; never structured acceptance evidence',encoding='utf-8',errors='backslashreplace',returncode=returncode,timedOut=timed_out,streams=streams,capturePrivacy=capture_privacy),indent=2)+'\n',encoding='utf-8')
         return display
     try:result=subprocess.run(command,capture_output=True,timeout=30,check=False)
     except subprocess.TimeoutExpired as error:
-        save(error.stdout,error.stderr,None,True)
+        try:save(error.stdout,error.stderr,None,True)
+        except Exception:pass  # Diagnostic capture failure cannot replace the original timeout.
         raise
     display=save(result.stdout,result.stderr,result.returncode)
     if check and result.returncode:raise subprocess.CalledProcessError(result.returncode,command,output=result.stdout,stderr=result.stderr)
@@ -54,11 +59,11 @@ def save_failure_diagnostics(adb_path, serial, server_path):
     failures=[]
     try:
         if server_path.exists():(OUT/'network-source-route-server-failure.json').write_bytes(server_path.read_bytes())
-    except Exception as error:failures.append(dict(stage='server-copy',error=repr(error)))
+    except Exception as error:failures.append(dict(stage='server-copy',error=safe_error_text(error)))
     try:
         display=capture_logcat(adb_path,serial,stem='network-source-route-failure-logcat',check=False)
         (OUT/'network-source-route-failure-log.txt').write_text(display,encoding='utf-8')
-    except Exception as error:failures.append(dict(stage='logcat',error=repr(error)))
+    except Exception as error:failures.append(dict(stage='logcat',error=safe_error_text(error)))
     if failures:
         try:(OUT/'network-source-route-diagnostic-errors.json').write_text(json.dumps(dict(scope='Secondary diagnostic collection errors; original failure retained',errors=failures),indent=2)+'\n',encoding='utf-8')
         except Exception:pass
