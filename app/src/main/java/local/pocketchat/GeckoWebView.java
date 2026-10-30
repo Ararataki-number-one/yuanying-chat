@@ -24,6 +24,12 @@ class GeckoWebView extends FrameLayout {
   final MutableContextWrapper displayContext;
   static boolean wantsGecko(ChatSession session){return BrowserRuntimePolicy.usesGecko();}
   GeckoSettings getSettings(){return metadata;}
+  Object nativeRuntimeIdentity(){return destroyed||!enabled||owner.deleted?null:runtime;}
+  JSONObject nativeRuntimeCapabilities(){
+    JSONObject value=GeckoPolicyAdapter.runtimeCapabilityStatus((GeckoRuntime)nativeRuntimeIdentity(),Build.VERSION.SDK_INT);
+    try{value.put("environmentId",owner.environmentId);value.put("environmentGeneration",owner.environmentGeneration);value.put("configurationRevision",owner.identityAuditAppliedRevision());value.put("identityPolicyRevision",identityPolicyRevision);}catch(JSONException ignored){}
+    return value;
+  }
   void setHost(android.app.Activity activity){displayContext.setBaseContext(activity==null?owner.context:activity);}
   OnTouchListener touches;
   @Override public void setOnTouchListener(OnTouchListener listener){touches=listener;}

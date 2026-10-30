@@ -46,6 +46,7 @@ final class FakeWeb {
   boolean protectionBootstrapBlocked(){return bootstrapBlocked;}
   String protectionSummary(){return bootstrapBlocked?"强化保护失败（未打开页面）":"原生保护设置已确认";}
   FakeSettings getSettings(){return settings;}
+  JSONObject nativeRuntimeCapabilities(){return J.obj("source","host-unobserved");}
   void configureIdentity(BrowserIdentitySpec specification){configured=specification;}
   void identityConfigurationReady(){if(configured==null)throw new AssertionError("Identity gate opened before configuration");identityPrepared=true;}
 }
@@ -138,5 +139,5 @@ final class EnvironmentAuditUi {static void show(MainActivity activity){}}
 /** Entry-point boundary only; the new adapter has a separate Android-API compile check. */
 final class EnvironmentIdentityUi {static void show(MainActivity activity,ChatSession session){}}
 final class ProtectionTemplateUi {static void show(MainActivity activity,ChatSession session){}}
-final class GeckoPolicyAdapter {static String summary(){return "host policy summary";}}
+final class GeckoPolicyAdapter {static String summary(){return "host policy summary";}static String runtimeCapabilitySummary(JSONObject status){return "host SDK settings unobserved";}}
 final class NativeCapabilityManifest {static NativeCapabilityManifest officialGecko(){return new NativeCapabilityManifest();}String unsupportedSummary(){return "host capability summary";}}

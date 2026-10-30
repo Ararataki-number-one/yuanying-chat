@@ -23,6 +23,45 @@ final class GeckoPolicyAdapter {
     runtime.getSettings().setLocales(locales.clone());
     return Arrays.equals(locales,runtime.getSettings().getLocales());
   }
+  /** Public SDK setting objects are not renderer, UID or partition observations. */
+  static JSONObject runtimeCapabilityStatus(GeckoRuntime runtime,int androidApi){
+    JSONObject values=new JSONObject();
+    JSONObject result=J.obj("schema",1,"source","sdk-runtime-settings-object",
+      "isolatedRenderingRequested",androidApi>=29,"appZygoteRequested",false,
+      "runtimeAvailable",runtime!=null,"settings",values,
+      "processEvidence","not-collected","siteIsolationEvidence","not-collected",
+      "statePartitionEvidence","not-collected","sandboxEvidence","not-collected",
+      "processUidVerified",false,"siteIsolationVerified",false,"statePartitionVerified",false,"fullSandboxVerified",false);
+    String[] names={"isolatedProcessEnabled","fissionEnabled","webContentIsolationStrategy","cookieBehavior","cookieBehaviorPrivateMode","cookieOptInPartitioning","cookieOptInPartitioningPrivateMode"};
+    for(String name:names)try{values.put(name,J.obj("status","unavailable","value",JSONObject.NULL));}catch(JSONException ignored){}
+    if(runtime==null)return result;
+    final GeckoRuntimeSettings settings;
+    try{settings=runtime.getSettings();if(settings==null)return result;}catch(Exception|LinkageError ignored){return result;}
+    runtimeSetting(values,names[0],()->settings.getIsolatedProcessEnabled(),false);
+    runtimeSetting(values,names[1],()->settings.getFissionEnabled(),true);
+    runtimeSetting(values,names[2],()->settings.getWebContentIsolationStrategy(),true);
+    runtimeSetting(values,names[3],()->settings.getContentBlocking().getCookieBehavior(),false);
+    runtimeSetting(values,names[4],()->settings.getContentBlocking().getCookieBehaviorPrivateMode(),false);
+    runtimeSetting(values,names[5],()->settings.getCookieBehaviorOptInPartitioning(),false);
+    runtimeSetting(values,names[6],()->settings.getCookieBehaviorOptInPartitioningPBM(),false);
+    return result;
+  }
+  private static void runtimeSetting(JSONObject values,String name,java.util.function.Supplier<Object> read,boolean nullable){
+    try{Object value=read.get();values.put(name,J.obj("status",value==null&&nullable?"sdk-default-unobserved":value==null?"unavailable":"sdk-value","value",value==null?JSONObject.NULL:value));}
+    catch(Exception|LinkageError ignored){/* Fixed unavailable state; do not export exception text. */}
+  }
+  static String runtimeCapabilitySummary(JSONObject status){
+    JSONObject values=status.optJSONObject("settings");
+    StringBuilder out=new StringBuilder("原生运行配置（SDK 设置对象）\n隔离渲染请求：").append(status.optBoolean("isolatedRenderingRequested")?"Android 10 及以上请求启用":"当前 Android 版本未请求启用");
+    String[] keys={"isolatedProcessEnabled","fissionEnabled","webContentIsolationStrategy","cookieBehavior","cookieBehaviorPrivateMode","cookieOptInPartitioning","cookieOptInPartitioningPrivateMode"};
+    String[] labels={"隔离进程 SDK 值","站点隔离 Fission SDK 值","网页隔离策略 SDK 值","Cookie 策略 SDK 值","隐私窗口 Cookie 策略 SDK 值","Cookie 自选分区 SDK 值","隐私窗口 Cookie 自选分区 SDK 值"};
+    for(int i=0;i<keys.length;i++){JSONObject item=values==null?null:values.optJSONObject(keys[i]);String state=item==null?"unavailable":item.optString("status");out.append("\n").append(labels[i]).append("：");
+      if("sdk-default-unobserved".equals(state))out.append("沿用 SDK 默认；实际值未观测");
+      else if("sdk-value".equals(state))out.append(String.valueOf(item.opt("value")));
+      else out.append("未取得");
+    }
+    return out.append("\n这些值仅来自当前 SDK 设置对象；没有采集当前渲染进程 UID、跨站进程或存储分区证据，不代表完整沙箱已验证。").toString();
+  }
   static JSONObject capabilityStatus(){return J.obj(
     "engine",GeckoWebView.VERSION,"ua","official-session-mobile-or-desktop","viewport","native-mobile-preserving-v1523-fit",
     "desktopWorkerHttpUa","sdk-default-not-independent-session-desktop-ua","fullDesktopUaConsistency",false,

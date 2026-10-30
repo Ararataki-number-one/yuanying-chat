@@ -96,6 +96,7 @@ final class FingerprintTemplateUi {
   private static String details(ChatSession session,EnvironmentSpec spec){
     StringBuilder out=new StringBuilder("当前内核：").append(GeckoWebView.VERSION).append("\n").append(GeckoPolicyAdapter.summary());
     out.append("\n").append(NativeCapabilityManifest.officialGecko().unsupportedSummary());
+    out.append("\n\n").append(GeckoPolicyAdapter.runtimeCapabilitySummary(session.web.nativeRuntimeCapabilities()));
     if(spec!=null)out.append("\n\n期望环境配置版本：").append(spec.desiredRevision).append("\n线路与 SDK 请求确认版本：").append(spec.appliedRevision).append("\n实际观测对应版本：").append(spec.observedRevision);
     else out.append("\n环境配置暂未读取");
     GeckoSettings metadata=session.web.getSettings();out.append("\n原生保护：").append(session.web.protectionSummary());out.append("\n当前 SDK 请求：").append(metadata.policyAcknowledged?"请求接受与回读一致":"尚待接受或回读");

@@ -31,7 +31,7 @@ class SequentialBridge42CompatibilityTests(unittest.TestCase):
                 scope='Whole-file exact inverses and deliberately corrupted source controls; no runtime or phone acceptance.'), indent=2) + '\n')
 
     def test_exact_four_line_inverse_matches_whole_actual_prior41_tree(self):
-        raw = SOURCE.read_bytes()
+        raw = bridge.native43_preservation_bytes(SOURCE.read_bytes())
         self.assertEqual(sha(raw), bridge.REVIEWED_SHA256)
         restored = bridge.bridge42_preservation_bytes(raw)
         prior = subprocess.check_output(['git', 'show', bridge.PREVIOUS_INTENDED_TREE + ':app/src/main/java/local/pocketchat/GeckoWebView.java'], cwd=ROOT)
@@ -42,7 +42,7 @@ class SequentialBridge42CompatibilityTests(unittest.TestCase):
         self.completed.append(dict(name='whole-production-inverse', passed=True))
 
     def test_complete_chain_keeps_all_original_historical_constants(self):
-        raw = SOURCE.read_bytes()
+        raw = bridge.native43_preservation_bytes(SOURCE.read_bytes())
         expected = [
             (bridge.bridge42_preservation_bytes, '892af2842f87e20f6cf339f6654ca0651cdef11c9bda9ce0477daeff69ecc9bd'),
             (compat.lifecycle39_preservation_bytes, '586076cab2cddc3cc013801a8dc8461df688f2615da93bef1c0491b8511abd1a'),
@@ -59,7 +59,7 @@ class SequentialBridge42CompatibilityTests(unittest.TestCase):
         self.completed.append(dict(name='42-39-37-32-historical-chain', passed=True))
 
     def test_only_exact_known_predecessors_pass_unchanged(self):
-        raw = SOURCE.read_bytes()
+        raw = bridge.native43_preservation_bytes(SOURCE.read_bytes())
         ancestors = [normalize(raw) for normalize in (
             bridge.bridge42_preservation_bytes, compat.lifecycle39_preservation_bytes,
             compat.upload37_preservation_bytes, compat.permission_denial_preservation_bytes,
@@ -75,7 +75,7 @@ class SequentialBridge42CompatibilityTests(unittest.TestCase):
         self.completed.append(dict(name='known-predecessors-only', passed=True, rejectedUnknownSources=7))
 
     def test_each_reviewed_delta_rejects_missing_duplicate_changed_and_relocated(self):
-        raw = SOURCE.read_bytes()
+        raw = bridge.native43_preservation_bytes(SOURCE.read_bytes())
         rejected = 0
         for before, after in bridge.DELTAS:
             mutations = [raw.replace(after, before, 1), raw.replace(after, after + after, 1),
@@ -89,7 +89,7 @@ class SequentialBridge42CompatibilityTests(unittest.TestCase):
         self.completed.append(dict(name='reviewed-delta-mutations', passed=True, rejectedMutations=rejected))
 
     def test_unlisted_geometry_and_all_prior_reviewed_deltas_remain_protected(self):
-        raw = SOURCE.read_bytes()
+        raw = bridge.native43_preservation_bytes(SOURCE.read_bytes())
         geometry = b'Math.abs(next-readingLayout)<.001f'
         self.assertEqual(raw.count(geometry), 1)
         mutations = [raw.replace(geometry, b'Math.abs(next-readingLayout)<.002f', 1)]

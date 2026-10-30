@@ -4,6 +4,7 @@ This is a host-test compatibility adapter, not a runtime policy. The protected
 GeckoWebView bytes must equal the complete original pre-42 source afterward.
 """
 import hashlib
+from native43_source_compatibility import native43_preservation_bytes
 
 FROZEN31_PREVIOUS_SHA256 = '80b24f3e89b8ebd8e798d1841b92d006387c9131b00d467228a737b110db5001'
 PREVIOUS_INTENDED_TREE = '12f91afcb24b842a371ad8cdb663ff7af04c7b48'
@@ -29,6 +30,7 @@ DELTAS = (
 
 
 def bridge42_preservation_bytes(raw):
+    raw = native43_preservation_bytes(raw)
     digest = hashlib.sha256(raw).hexdigest()
     if digest in EXACT_PRE42_SHA256:
         return raw

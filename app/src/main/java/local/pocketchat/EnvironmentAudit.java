@@ -19,6 +19,7 @@ class EnvironmentAudit {
   static final String OBSERVATION_EXECUTION_ID=UUID.randomUUID().toString();
   final ChatSession session;final SecretStore store;final RequestIdentityAuditSession requestIdentity;final RequestIdentityServiceProbe serviceProbe;JSONArray observationHistory=new JSONArray();final ExecutorService worker=Executors.newSingleThreadExecutor(),closer=Executors.newSingleThreadExecutor();
   JSONObject baseline=new JSONObject(),report=new JSONObject(),observed=new JSONObject(),initial=new JSONObject(),requestIdentityReport=new JSONObject(),pinnedDeepBaseline=new JSONObject(),fingerprintContextBaselines=new JSONObject(),fingerprintComparison=new JSONObject();JSONArray changes=new JSONArray();String storageIssue="",lastError="";
+  Object nativeRuntimeIdentity;
   volatile boolean running;boolean networkRun,webDone,nativeDone,geckoRun;String auditUrl="";long auditNavigation;volatile long serial;long epoch,deadline,lastRefresh,identityAppliedRevision;String stamp="",policy="";JSONObject sample=new JSONObject(),nativeResult=new JSONObject();Runnable completed;Future<?> nativeWork;volatile HttpURLConnection connection;
   EnvironmentAudit(ChatSession s){
     session=s;store=new SecretStore(s.context);requestIdentity=new RequestIdentityAuditSession(this);serviceProbe=new RequestIdentityServiceProbe(this);
@@ -79,7 +80,7 @@ class EnvironmentAudit {
   String routeStamp(){String route=session.internalNetwork()?NativeNetwork.get(session.context).token:session.prefs.getString("proxy","");return hash(session.prefs.getString("networkMode","external")+"|"+route+"|"+session.prefs.getBoolean("requireExternalVpn",true));}
   boolean current(long id){return running&&id==serial;}
   String policyStamp(){GeckoSettings settings=session.web.getSettings();return hash(GeckoWebView.VERSION+"|"+session.privacy.level()+"|"+settings.desktop+"|"+settings.getUserAgentString()+"|"+Arrays.toString(settings.requestedLocales)+"|"+settings.policyAcknowledged+"|"+session.web.identityPolicyRevision+"|"+TimeZone.getDefault().getID()+"|"+Locale.getDefault().toLanguageTag());}
-  boolean fresh(){return running&&(!geckoRun||(auditNavigation==session.navigationEpoch&&auditUrl.equals(session.web.getUrl())))&&epoch==session.connectionEpoch&&stamp.equals(routeStamp())&&policy.equals(policyStamp())&&(!networkRun||session.networkReady&&session.guard.allowed()&&session.web.protectionAllowsNetwork());}
+  boolean fresh(){return running&&(!geckoRun||(nativeRuntimeIdentity==session.web.nativeRuntimeIdentity()&&identityAppliedRevision==session.identityAuditAppliedRevision()&&auditNavigation==session.navigationEpoch&&auditUrl.equals(session.web.getUrl())))&&epoch==session.connectionEpoch&&stamp.equals(routeStamp())&&policy.equals(policyStamp())&&(!networkRun||session.networkReady&&session.guard.allowed()&&session.web.protectionAllowsNetwork());}
   JSONObject expected(){
     NativeNetwork n=NativeNetwork.get(session.context);GeckoSettings settings=session.web.getSettings();
     int major;try{major=Integer.parseInt(packageVersion().split("\\.")[0]);}catch(Exception e){major=-1;}
@@ -94,9 +95,12 @@ class EnvironmentAudit {
         "languageSource","sdk157-language-region-prediction-not-content-ack",
         "rfpAcknowledged",settings.rfpAcknowledged,"exitIp",session.internalNetwork()&&n.lastVerified>0?n.exitIp:"");
   }
+  JSONObject localExpected(){
+    JSONObject value=expected();try{value.put("nativeRuntimeCapabilities",session.web.nativeRuntimeCapabilities());}catch(JSONException ignored){}return value;
+  }
   boolean start(boolean network,Runnable done){return start(network,false,done);}
   boolean start(boolean network,boolean apiChecks,Runnable done){if(running)return false;lastError="";if(apiChecks&&(ProfileUi.working(session)||session.currentReplyActive()||session.resourceFilesUncertain())){lastError="当前有回复、上传或下载，请完成后再进行图形与音频检查";return false;}if(network&&ProfileUi.working(session)){lastError="有未完成回复、上传或下载，请结束后再检查网络出口";return false;}if(network&&(!session.networkReady||!session.guard.allowed()||!session.web.protectionAllowsNetwork())){lastError="当前连接尚未受保护，请先恢复连接；没有发出检测请求";return false;}
-    geckoRun=GeckoWebView.active(session.web);if(geckoRun&&!session.web.hasVisibleDocument()){lastError="请等当前网页显示后再检查";return false;}auditUrl=session.web.getUrl();auditNavigation=session.navigationEpoch;running=true;networkRun=network;completed=done;sample=new JSONObject();nativeResult=new JSONObject();webDone=false;nativeDone=!network;initial=expected();identityAppliedRevision=session.identityAuditAppliedRevision();epoch=session.connectionEpoch;stamp=routeStamp();policy=policyStamp();deadline=SystemClock.elapsedRealtime()+14000;long id=++serial;session.updateBrowserActivity();
+    geckoRun=GeckoWebView.active(session.web);if(geckoRun&&!session.web.hasVisibleDocument()){lastError="请等当前网页显示后再检查";return false;}auditUrl=session.web.getUrl();auditNavigation=session.navigationEpoch;running=true;networkRun=network;completed=done;sample=new JSONObject();nativeResult=new JSONObject();webDone=false;nativeDone=!network;nativeRuntimeIdentity=session.web.nativeRuntimeIdentity();initial=localExpected();identityAppliedRevision=session.identityAuditAppliedRevision();epoch=session.connectionEpoch;stamp=routeStamp();policy=policyStamp();deadline=SystemClock.elapsedRealtime()+14000;long id=++serial;session.updateBrowserActivity();
     try{if(geckoRun){
       session.web.runEnvironmentAudit(J.obj("id",String.valueOf(id),"network",network,"apiChecks",apiChecks),raw->{if(!current(id))return;JSONObject result=raw!=null&&raw.length()<=64000?J.parse(raw):new JSONObject();if(result.optString("id").equals(String.valueOf(id)))sample=result;webDone=true;finishIfReady(id);});
     }
@@ -113,7 +117,7 @@ class EnvironmentAudit {
   void cancel(){if(serviceProbe.active){serviceProbe.cancel();return;}if(requestIdentity.active){requestIdentity.cancel();return;}if(!running)return;serial++;lastError="检查已取消，没有更新报告或环境基线";cleanup();Runnable callback=completed;completed=null;if(callback!=null)callback.run();}
   /** Navigation and route changes retire page work; dedicated checks own their lifecycle. */
   void retirePageCheck(){if(running&&geckoRun&&!serviceProbe.active&&!requestIdentity.active)cancel();}
-  void cleanup(){if(geckoRun&&auditNavigation==session.navigationEpoch&&auditUrl.equals(session.web.getUrl()))session.web.cancelEnvironmentAudit();running=false;if(nativeWork!=null){nativeWork.cancel(true);nativeWork=null;}HttpURLConnection c=connection;connection=null;if(c!=null)closer.submit(()->c.disconnect());session.updateBrowserActivity();}
+  void cleanup(){if(geckoRun&&auditNavigation==session.navigationEpoch&&auditUrl.equals(session.web.getUrl()))session.web.cancelEnvironmentAudit();running=false;nativeRuntimeIdentity=null;if(nativeWork!=null){nativeWork.cancel(true);nativeWork=null;}HttpURLConnection c=connection;connection=null;if(c!=null)closer.submit(()->c.disconnect());session.updateBrowserActivity();}
   JSONObject observationMetadata(String sourceUrl,long revision){
     String appVersion="";long appVersionCode=0;
     try{android.content.pm.PackageInfo installed=session.context.getPackageManager().getPackageInfo(session.context.getPackageName(),0);appVersion=installed.versionName;appVersionCode=Build.VERSION.SDK_INT>=28?installed.getLongVersionCode():installed.versionCode;}catch(Exception ignored){}
