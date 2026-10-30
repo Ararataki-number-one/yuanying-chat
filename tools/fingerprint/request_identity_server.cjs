@@ -241,6 +241,7 @@ function createIdentityService(options) {
       if (operation === 'capabilities') {
         if (checks.size + frameChecks.size >= maxChecks) {reject(429, 'detector-capacity');return;}
         reply(200, {schema: 1, protocol: PROTOCOL, nonce, source, status: 'ready',
+          backgroundCoverage: {sharedWorker: false, serviceWorker: false},
           capabilities: {topLevelDocument: true, dedicatedWorker: true, boundedWorkerReply: true,
             crossOriginFrame, crossOriginFrameReceiver: !!frameParentOrigin,
             ...(crossOriginFrame ? {frameEndpoint, frameParentOrigin: requestOrigin} : {}),

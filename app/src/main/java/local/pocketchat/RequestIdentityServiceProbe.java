@@ -110,7 +110,7 @@ final class RequestIdentityServiceProbe {
     if(caps==null||limits==null||!integer(limits.opt("checkTtlMs"),1,120000)||!integer(limits.opt("maxConcurrentChecks"),1,1024)||!integer(limits.opt("maxCheckEvents"),3,64)||!integer(limits.opt("workerResponseBytes"),1,65536))return error("capabilities-incomplete","服务能力或资源上限字段缺失、类型不符或超出客户端范围，未采信",status);
     JSONObject safeLimits=J.obj("checkTtlMs",limits.optLong("checkTtlMs"),"maxConcurrentChecks",limits.optInt("maxConcurrentChecks"),"maxCheckEvents",limits.optInt("maxCheckEvents"),"workerResponseBytes",limits.optInt("workerResponseBytes"));
     boolean ready=requiredCapabilities(caps);
-    return J.obj("status",ready?"ready":"unavailable","reason",ready?"capabilities-confirmed":"required-capability-unavailable","detail",ready?"所选 HTTPS 服务的固定协议与必要能力已确认；仅对应此次后台请求，不代表文档或 Worker 身份已一致":"服务缺少文档、Dedicated Worker 或有界回复支持，尚不适合完整身份检查","httpStatus",status,"responseBytes",control.optInt("responseBytes"),"capabilities",caps,"limits",safeLimits,"scope","所选服务的连通性与固定协议能力；不代表网页身份一致或指纹保护效果");
+    return J.obj("status",ready?"ready":"unavailable","reason",ready?"capabilities-confirmed":"required-capability-unavailable","detail",ready?"所选 HTTPS 服务的固定协议与必要能力已确认；仅对应此次后台请求，不代表文档或 Worker 身份已一致":"服务缺少文档、Dedicated Worker 或有界回复支持，尚不适合完整身份检查","httpStatus",status,"responseBytes",control.optInt("responseBytes"),"capabilities",caps,"limits",safeLimits,"backgroundCoverage",RequestIdentityAudit.backgroundCoverage(service.optJSONObject("backgroundCoverage")),"scope","所选服务的连通性与固定协议能力；不代表网页身份一致或指纹保护效果");
   }
   String summary(boolean redact){
     if(active)return "正在检查所选服务的连通性与协议能力；当前聊天不会离开…";
@@ -120,6 +120,7 @@ final class RequestIdentityServiceProbe {
     if(!resultCurrent())text.append("\n这是失败或历史结果；配置、页面、线路或一分钟有效期变化后需要重新检查。");
     if(!redact)text.append("\n服务：").append(result.optString("endpoint"));
     JSONObject caps=result.optJSONObject("capabilities");if(caps!=null)text.append("\n跨源 iframe：").append(caps.optBoolean("crossOriginFrame")?"服务声明支持；仍需单独信任并确认第二来源":"未声明支持");
+    text.append("\n").append(RequestIdentityAudit.backgroundCoverageSummary(result.optJSONObject("backgroundCoverage")));
     return text.append("\n服务错误不等于指纹保护失败；证书或连接原因未分清时不会作确定归因。").toString();
   }
 }

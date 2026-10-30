@@ -101,6 +101,22 @@ final class RequestIdentityAudit {
     return J.obj("status","complete","source","controlled-cross-origin-iframe","nonce",nonce,"origin",wanted,"apiChecks",clean,"protectionVerified",false,"scope","Only the explicitly selected secondary-origin Canvas/WebGL operations; independent context, not cross-context hash equality or protection attestation");
   }
   static void row(JSONArray rows,String key,String name,String state,String detail){rows.put(J.obj("key",key,"name",name,"state",state,"detail",detail));}
+  static JSONObject backgroundCoverage(JSONObject serviceDeclaration){
+    JSONObject coverage=J.obj("schema",1,"source","client-coverage-policy","registeredOrClearedSiteWorkers",false);
+    for(String key:Arrays.asList("sharedWorker","serviceWorker")){
+      Object value=serviceDeclaration==null?null:serviceDeclaration.opt(key);
+      String statement=Boolean.TRUE.equals(value)?"declared-supported":Boolean.FALSE.equals(value)?"declared-unsupported":"unknown";
+      try{coverage.put(key,J.obj("state","not-covered","serviceStatement",statement,"requestHeadersObserved",false,"cacheLifecycleObserved",false));}catch(JSONException ignored){}
+    }return coverage;
+  }
+  static String backgroundCoverageSummary(JSONObject coverage){
+    StringBuilder text=new StringBuilder();
+    for(String key:Arrays.asList("sharedWorker","serviceWorker")){
+      JSONObject value=coverage==null?null:coverage.optJSONObject(key);String statement=value==null?"unknown":value.optString("serviceStatement");
+      String service="declared-supported".equals(statement)?"服务自述支持，客户端未验证":"declared-unsupported".equals(statement)?"服务自述未支持":"服务支持情况未知";
+      if(text.length()>0)text.append('\n');text.append(key.equals("sharedWorker")?"Shared Worker":"Service Worker").append("：客户端尚未覆盖；").append(service);
+    }return text.append("\n未检查这两类请求、缓存或生命周期，也未注册或清理站点 Worker。").toString();
+  }
   static JSONObject uncovered(String nonce,String endpoint,String reason){return J.obj("schema",1,"nonce",nonce,"endpoint",endpoint,"status","uncovered","source","controlled-top-level-document","rows",J.arr(J.obj("key","request-identity","name","真实请求身份对照","state","uncovered","detail",reason)),"fullDesktopUaConsistency",false,"fingerprintTemplateAcceptance",false,"scope","仅对应用户选择的受控 HTTPS 检测页；不代表 ChatGPT 官网或全部请求路径");}
   static Set<String> pendingSources(JSONObject server){
     JSONArray records=server.optJSONArray("events");if(records==null||records.length()>12)return null;Set<String> found=new HashSet<>();
@@ -183,7 +199,8 @@ final class RequestIdentityAudit {
     row(rows,"request-peer","服务端连接对端对照",docPeer.equals(workerPeer)?"verified":"issue",docPeer.equals(workerPeer)?"检测服务观察到两个请求的 socket 对端相同；使用反向代理时该地址不等于真实出口":"检测服务观察到两个请求的 socket 对端不同；需结合检测服务部署方式核对，不能直接认定泄漏");
     JSONObject cleanBrowser=J.obj("source","controlled-top-level-document","document",J.obj("ua",documentJs.optString("ua"),"language",documentJs.optString("language"),"languages",documentJs.optJSONArray("languages")),"worker",J.obj("ua",workerJs.optString("ua"),"language",workerJs.optString("language"),"languages",workerJs.optJSONArray("languages")));
     JSONObject frame=frameObservation(browser,expected,nonce,endpoint);if(frame!=null){try{cleanBrowser.put("crossOriginFrame",frame);}catch(JSONException ignored){}JSONObject apis=frame.optJSONObject("apiChecks"),operations=apis==null?null:apis.optJSONObject("probes");if(!"complete".equals(frame.optString("status")))row(rows,"request-cross-origin-frame","受控跨源 iframe 图形检查","uncovered","受控第二来源未取得完整结果："+frame.optString("reason")+"；未把超时、CSP 或缺失当作保护通过");else for(String operation:Arrays.asList("canvas","webgl")){JSONObject value=operations.optJSONObject(operation);row(rows,"request-cross-origin-frame-"+operation,"受控跨源 iframe "+operation,value.optString("state"),"独立来源 "+frame.optString("origin")+"："+value.optString("reason")+"；不要求不同执行环境哈希相同，不表示保护已通过");}}
+    for(String key:Arrays.asList("shared-worker","service-worker"))row(rows,"request-"+key,key.equals("shared-worker")?"Shared Worker 覆盖":"Service Worker 覆盖","uncovered","本客户端未运行这类请求、缓存或生命周期检查；没有注册或清理站点 Worker，不能依据检测服务就绪或接口存在认定保护已验证");
     boolean issue=false;for(int i=0;i<rows.length();i++)issue|="issue".equals(rows.optJSONObject(i).optString("state"));
-    return J.obj("schema",1,"nonce",nonce,"endpoint",endpoint,"status",issue?"issue":"observed","source","controlled-top-level-document","rows",rows,"browser",cleanBrowser,"server",J.obj("schema",1,"protocol",PROTOCOL,"nonce",nonce,"events",safeEvents,"credentialObserved",false),"expected",J.obj("templateId",expected.optString("templateId"),"ua",expected.optString("ua"),"language",expected.optString("language"),"languages",expected.optJSONArray("languages"),"environmentId",expected.optString("environmentId"),"environmentGeneration",expected.optInt("environmentGeneration"),"configurationRevision",expected.optLong("configurationRevision")),"languageSemantics",languageSemantics,"crossOriginFrameRequested",frame!=null,"fullDesktopUaConsistency",false,"fingerprintTemplateAcceptance",false,"controlSource","extension-background-control","scope","用户选定 HTTPS 检测页的真正主文档与 Dedicated Worker；可信扩展后台独立读取服务端记录，和 JavaScript 自报分开。明确请求的第二来源 iframe 图形结果单独列出，不作跨环境哈希等同判断。信任所配置检测服务，不能代表 ChatGPT 官网、其他跨源页面或其他网络协议");
+    return J.obj("schema",1,"nonce",nonce,"endpoint",endpoint,"status",issue?"issue":"observed","source","controlled-top-level-document","rows",rows,"browser",cleanBrowser,"server",J.obj("schema",1,"protocol",PROTOCOL,"nonce",nonce,"events",safeEvents,"credentialObserved",false),"expected",J.obj("templateId",expected.optString("templateId"),"ua",expected.optString("ua"),"language",expected.optString("language"),"languages",expected.optJSONArray("languages"),"environmentId",expected.optString("environmentId"),"environmentGeneration",expected.optInt("environmentGeneration"),"configurationRevision",expected.optLong("configurationRevision")),"languageSemantics",languageSemantics,"crossOriginFrameRequested",frame!=null,"backgroundCoverage",backgroundCoverage(null),"fullDesktopUaConsistency",false,"fingerprintTemplateAcceptance",false,"controlSource","extension-background-control","scope","用户选定 HTTPS 检测页的真正主文档与 Dedicated Worker；可信扩展后台独立读取服务端记录，和 JavaScript 自报分开。明确请求的第二来源 iframe 图形结果单独列出，不作跨环境哈希等同判断。信任所配置检测服务，不能代表 ChatGPT 官网、其他跨源页面或其他网络协议");
   }
 }

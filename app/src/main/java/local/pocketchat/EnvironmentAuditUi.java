@@ -33,7 +33,7 @@ final class EnvironmentAuditUi {
     TextView networkExplanation=a.label("\n网络出口检查会访问 ipify 和 httpbin，服务能看到出口 IP 与必要请求信息。请求不主动携带 Cookie、密码或聊天内容。",13,Ui.MUTED);advanced.addView(networkExplanation);
     CheckBox consent=new CheckBox(a);consent.setText("仅本次允许向 ipify / httpbin 发送检测信息");consent.setChecked(false);advanced.addView(consent);
     Button network=button(a,advanced,"检查实际网络出口");
-    TextView identityExplanation=a.label("\n真实请求身份检查会暂时打开你选择的 HTTPS 检测页，对照主文档与 Dedicated Worker 的服务端请求信息；仅在没有草稿、附件和进行中任务时打开。该结果不代表 ChatGPT 官网请求。",13,Ui.MUTED);advanced.addView(identityExplanation);
+    TextView identityExplanation=a.label("\n真实请求身份检查会暂时打开你选择的 HTTPS 检测页，对照主文档与 Dedicated Worker 的服务端请求信息；仅在没有草稿、附件和进行中任务时打开。该结果不代表 ChatGPT 官网请求。Shared Worker 与 Service Worker 的请求、缓存和生命周期尚未覆盖；本检查不会注册或清理它们。",13,Ui.MUTED);advanced.addView(identityExplanation);
     Button endpoint=button(a,advanced,"设置请求身份检测服务"),serviceCheck=button(a,advanced,"检查检测服务（不离开聊天）"),frameEndpoint=button(a,advanced,"设置跨源 iframe 检测来源");
     CheckBox identityConsent=new CheckBox(a);identityConsent.setText("仅本次允许向所选服务发送 UA、语言与出口 IP");identityConsent.setChecked(audit.requestIdentityRunning());advanced.addView(identityConsent);
     CheckBox frameConsent=new CheckBox(a);frameConsent.setText("仅本次允许访问第二 HTTPS 来源，检查跨源 iframe 图形");advanced.addView(frameConsent);
