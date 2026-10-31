@@ -1,14 +1,14 @@
 {
   "schema": 1,
   "package": "local.pocketchat",
-  "version": "2.0.44",
-  "versionCode": 97,
+  "version": "2.0.45",
+  "versionCode": 98,
   "abi": "arm64-v8a",
   "minSdk": 26,
-  "bytes": 119369381,
-  "sha256": "8cf48a8684c940bf61fc4ddd2140a755b634e20bb1b35fd524553be52c0849d2",
+  "bytes": 119373477,
+  "sha256": "a4133430e3c5d0d568bbcd9934569601781e0733b56b866bc3e2a17ae5cba296",
   "signerSha256": "f0afa2ef2b9ac68020b374276318b12d2bb4de65d2a3b788194de551356b9434",
-  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.44-gecko/PocketChat-2.0.44-gecko-arm64.apk",
-  "notes": "# 2.0.44（97）\n\n更清楚地显示后台执行环境的检测边界。\n\n- 请求结果、高级说明和服务摘要增加 Shared Worker、Service Worker 的覆盖说明；Dedicated Worker 的既有对照继续保留。\n- 检测服务可声明是否支持相关检测；旧服务缺少声明时显示未知。声明仅是服务自述，客户端始终标明尚未覆盖。\n\n本版没有新增 Shared Worker 或 Service Worker 探针、脚本端点、注册或清理操作，也不把服务声明视为保护通过。尚未检查它们的真实请求、缓存和生命周期，不能据此判断官网使用了哪些 Worker 或手机上的保护效果。",
-  "sourceCommit": "a03238be99c9a2dee5802c03b1e5bb7d59f11ddc"
+  "downloadUrl": "https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v2.0.45-gecko/PocketChat-2.0.45-gecko-arm64.apk",
+  "notes": "# 2.0.45（98）\n\n收紧自检和标准／强化对照的诊断复制内容。\n\n- 复制结果使用固定字段白名单，限制输出大小、条目数和合法值，保留必要状态、有界数字与合法哈希。\n- 不复制任意网页文本、URL、IP、完整 UA 或嵌套原始对象；外来报告被省略，同环境历史对照按既有规则保留，人工兼容结果继续标为用户记录。\n- 本机原始结果查看和环境配置备份保持原有用途，不增加自动采集或发送。\n- 保存的电脑版缩放增加真实原生比例精度检查；沿用原有三次恢复预算，仅在同一当前意图、短期限且收到有进展的新测量时允许一次小幅校正。恢复等待保持原间隔，触摸、换页、配置变化或精确收敛后关闭旧意图，旧回执不能重新启动已关闭的恢复。\n\nShared Worker／Service Worker 的新增“尚未覆盖”说明行暂不进入精简副本，页面仍可查看。真实手机剪贴板、官网兼容、保护效果与性能仍待验证。",
+  "sourceCommit": "e15147246ceff2e1ed2ffd9a18df1fd17b03ddee"
 }
