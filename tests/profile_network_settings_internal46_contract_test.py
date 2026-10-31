@@ -163,6 +163,58 @@ class Internal46ContractTests(unittest.TestCase):
         report['cases'] = report['cases'][:1]
         self.rejected(report)
 
+    def test_actual_injection_capture_and_original_assertion_counts_are_preserved(self):
+        path = 'tests/gecko/NetworkSettingsInternalApplication.java'
+        current = (ROOT / path).read_bytes()
+        prior = current
+        for before, after in reversed(contract.REVIEWED[path][2][-3:]):
+            self.assertEqual(prior.count(after), 1)
+            prior = prior.replace(after, before, 1)
+        self.assertEqual(hashlib.sha256(prior).hexdigest(),
+                         'c0bf0a5fe3375435f79d99fed11e5f87a7dfa58bdadb7d5ca783c5815194f629')
+        self.assertEqual(current.count(b'a.check('), prior.count(b'a.check('))
+        capture = b'JSONObject injection=a.ui(()->J.obj("connection",a.session.connectionEpoch,"attemptCurrent",a.provider.applicationCurrent(attempt)));'
+        self.assertEqual(current.count(capture), 1)
+        self.assertEqual(current.count(b'"connectionAtInjection",connectionAtInjection'), 1)
+        self.assertLess(current.index(capture), current.index(b'a.provider.pollApplication(attempt)'))
+        self.assertIn(b'originalAttemptCurrent&&pendingUnchangedAtPoll&&connectionAtInjection==attempt.connection', current)
+        path = 'tests/gecko/run_network_settings_internal.py'
+        current = (ROOT / path).read_bytes()
+        before, after = contract.REVIEWED[path][2][-1]
+        prior = current.replace(after, before, 1)
+        self.assertEqual(hashlib.sha256(prior).hexdigest(),
+                         '4eb7010fad67836ee0673af7c6481a35c4dc539c3eb9c23dd17b05b2843116cf')
+        self.assertEqual(sum(isinstance(n, ast.Assert) for n in ast.walk(ast.parse(current))),
+                         sum(isinstance(n, ast.Assert) for n in ast.walk(ast.parse(prior))))
+        # The original runner requires 31 distinct names; the actual native
+        # cohort emits 44 checks including repeated bootstrap/receipt phases.
+        self.assertEqual(len(runner.required_checks()), 31)
+
+    def test_injection_and_post_result_leases_are_exact_typed_and_required(self):
+        baseline = fixture.receipt()
+        self.assertEqual([(row['connectionAtInjection'], row['frozenConnection'], row['observedConnection'])
+                          for row in baseline['cases'][1:]], [(5, 5, 6), (6, 6, 6)])
+        for index in (1, 2):
+            for field in ('connectionAtInjection', 'observedConnection', 'frozenConnection'):
+                expected = baseline['cases'][index][field]
+                for value in (expected - 1, expected + 1, expected + 2, True,
+                              float(expected), str(expected), None):
+                    with self.subTest(case=index, field=field, value=value):
+                        report = fixture.receipt()
+                        report['cases'][index][field] = value
+                        self.rejected(report)
+                report = fixture.receipt()
+                report['cases'][index].pop(field)
+                self.rejected(report)
+        # Old reports have no separate injection observation. Missing fields
+        # stay rejected; they are never filled from a later connection value.
+        report = fixture.receipt()
+        for row in report['cases'][1:]:
+            row.pop('connectionAtInjection')
+        original = copy.deepcopy(report)
+        self.rejected(report)
+        self.assertEqual(report, original)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

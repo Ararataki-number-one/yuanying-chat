@@ -81,12 +81,12 @@ def receipt():
     stopped.update(before=route(3, 'Entry|b'), after={'alive': False, 'pid': 0, 'generation': generation(4)},
                    attemptCapturedBeforeInjection=True, originalAttemptCurrentAtPoll=True, realCoreStopped=True, capturedReceiptMatchesAfter=False,
                    stopConfirmed=True, pendingUnchangedAtPoll=True, modelDesiredRevisionBefore=4, modelAppliedRevisionBefore=4,
-                   modelDesiredRevisionAtPoll=4, frozenConnection=4, observedConnection=4)
+                   modelDesiredRevisionAtPoll=4, connectionAtInjection=5, frozenConnection=5, observedConnection=6)
     stale = operation(m.CASE_NAMES[2], 5, False)
     stale.update(before=route(6, 'Entry|a'), after=route(6, 'Entry|a'),
                  attemptCapturedBeforeInjection=True, originalAttemptCurrentAtPoll=True, realCoreStopped=False, capturedReceiptMatchesAfter=True,
                  stopConfirmed=False, pendingUnchangedAtPoll=True, modelDesiredRevisionBefore=5, modelAppliedRevisionBefore=5,
-                 modelDesiredRevisionAtPoll=6, frozenConnection=6, observedConnection=6)
+                 modelDesiredRevisionAtPoll=6, connectionAtInjection=6, frozenConnection=6, observedConnection=6)
     operations = [bootstrap, changed, stopped, stale]
     report = {'schema': 1, 'status': 'passed', 'sourceCommit': SOURCE, 'runNonce': NONCE,
               'buildIdentity': {'sourceCommit': SOURCE}, 'installedPackage': m.PKG,

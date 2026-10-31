@@ -807,7 +807,11 @@ def main():
         check(run(2,'seed'),2,True)
         reset_zero=management('resetZero')
         check(run(1,'read'),1,False);check(run(2,'read'),2,True)
+        queued_vpn_permission=adb('shell','appops','set',package,'ACTIVATE_VPN','allow')
+        report['queuedChangesVpnPermission']=dict(package=package,setRaw=queued_vpn_permission,getRaw=adb('shell','appops','get',package,'ACTIVATE_VPN'))
         queued=run(2,'queuedChanges','queuedChanges');assert all(queued[key] for key in ['savedWhileReplying','oldRouteKept','browserSavedWithoutApplying','replyCleared','appliedWhenIdle','vpnGuardBlocksWithoutVpn']),queued
+        from queued_changes46 import verify_queued_changes46
+        verify_queued_changes46(queued,identity['sourceCommit'],event_transfers[-1]['runNonce'])
         foreign_before=run(1,'foreignPreferences','foreignPreferences');assert foreign_before['marker']=='prime-target',foreign_before
         deletion=management('deleteOne')
         foreign_after=run(1,'foreignPreferences','foreignPreferences');assert not foreign_after['marker'],foreign_after

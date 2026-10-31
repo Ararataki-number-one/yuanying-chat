@@ -182,7 +182,7 @@ final class ChatSession {
     boolean released=resourceUploads.observe(result,resourceObserverDocument,epoch);resourceUploadStable=resourceUploads.stable();if(released)resourceUploadNames=resourceUploads.names();updateBrowserActivity();
   }
   void updateBrowserActivity(){updateBrowserActivity(true);}
-  void updateBrowserActivity(boolean poll){boolean nativeBusy=transferActive||resourceChoosers>0||resourceFilePreparations>0;if(nativeBusy!=nativeFileWorkBusy){nativeFileWorkBusy=nativeBusy;fileWorkGeneration++;NetworkUiProvider.nativeWorkChanged(this);}if(web.resourceDeferred&&resourceRestoreWork())web.retryResourceStart();boolean active=browserWorkActive(),resumed=false;if(active&&browserPaused){web.resumeTimers();web.onResume();browserPaused=false;resumed=true;}else if(!active&&!browserPaused){web.onPause();web.pauseTimers();browserPaused=true;}if(active&&(poll||resumed))wakePolling();else if(!active)handler.removeCallbacks(tick);}
+  void updateBrowserActivity(boolean poll){boolean nativeBusy=transferActive||resourceChoosers>0||resourceFilePreparations>0;if(nativeBusy!=nativeFileWorkBusy){nativeFileWorkBusy=nativeBusy;fileWorkGeneration++;NetworkUiProvider.nativeWorkChanged(this);}if(web.resourceDeferred&&resourceRestoreWork())web.retryResourceStart();boolean active=browserWorkActive(),resumed=false;if(active&&browserPaused){web.resumeTimers();web.onResume();browserPaused=false;resumed=true;}else if(!active&&!browserPaused){web.onPause();web.pauseTimers();browserPaused=true;}if(active&&(poll||resumed))wakePolling();else if(!active)handler.removeCallbacks(tick);wakeDeferredBrowserSettings();}
   void foreground(boolean value){uiVisible=value;replyObservationPolicyChanged();if(!value){pageMemory.capture(()->{});web.checkpointState();webStore.flush();}else{if(web.resourceDeferred)web.retryResourceStart();if(web.enabled&&web.failed)web.onResume();if(pending!=null&&!pending.optBoolean("webSuspended"))ChatService.begin(context);}updateBrowserActivity();}
   void checkBackgroundAttachments(){if(backgroundAttachmentCheck||uiVisible||!uploading()||offline||!networkReady)return;backgroundAttachmentCheck=true;long epoch=navigationEpoch;String owner=attachmentOwner;JSONArray names=new JSONArray();for(int i=0;i<attachments.length();i++)names.put(attachments.optJSONObject(i).optString("name"));
     asyncDriver("attachment-state",J.obj("names",names,"url",owner),2500,result->{backgroundAttachmentCheck=false;if(epoch!=navigationEpoch||!owner.equals(attachmentOwner))return;JSONArray observed=result.optJSONArray("files");if(observed==null)return;boolean allReady=observed.length()==attachments.length();for(int i=0;i<observed.length();i++)allReady&="ready".equals(observed.optJSONObject(i).optString("state"));backgroundAttachmentStable=allReady?backgroundAttachmentStable+1:0;
@@ -359,6 +359,18 @@ final class ChatSession {
 
   String entryTiming(){if(navigationMono==0)return "";long network=connectionStarted>0&&proxyReadyAt>=connectionStarted?proxyReadyAt-connectionStarted:-1;String detail=network>=0?"网络准备 "+String.format(Locale.ROOT,"%.1f",network/1000.0)+" 秒":"";if(pageUsableAt>0)detail+=(detail.isEmpty()?"":" · ")+"网页可操作 "+String.format(Locale.ROOT,"%.1f",(pageUsableAt-navigationMono)/1000.0)+" 秒";else if(firstPageVisible>0)detail+=(detail.isEmpty()?"":" · ")+"网页已显示";return detail.isEmpty()?"":"本次进入："+detail;}
   boolean webPerformance(){return BrowserRuntimePolicy.originalWebsite();}
+  boolean deferredBrowserWakeQueued;
+  final Runnable deferredBrowserWake=()->{
+    deferredBrowserWakeQueued=false;
+    if(peek()!=this||deleted||!DeferredBrowserSettings.candidateAvailable(this)||!DeferredBrowserSettings.idle(this))return;
+    if(web.resourcePage(web.getUrl())&&!NetworkUiProvider.taskIdle(this,taskGuardSnapshot()))return;
+    DeferredBrowserSettings.drain(this);
+  };
+  void wakeDeferredBrowserSettings(){
+    if(deleted||deferredBrowserWakeQueued||!DeferredBrowserSettings.candidateAvailable(this))return;
+    deferredBrowserWakeQueued=true;
+    handler.postDelayed(deferredBrowserWake,Math.max(0,10000-(SystemClock.elapsedRealtime()-lastDeferredBrowserAttempt)));
+  }
   void wakePolling(){handler.removeCallbacks(tick);if(replyObservationAllowed()||fileWorkActive())handler.post(tick);}
   void runDriver(String action,JSONObject args,Result cb){
     if(!BrowserRuntimePolicy.allows(action)){cb.accept(J.obj("ok",false,"reason",BrowserRuntimePolicy.websiteActionMessage()));return;}
@@ -507,7 +519,7 @@ final class ChatSession {
       replyHealthStatus=message;changed();
     });
   }
-  void completeReply(JSONObject job,JSONObject poll){replyStalled=false;replyHealthStatus="";String id=job.optString("id","recovered"),url=poll.optString("url",conversation);delivery(id,"completed","回复已完成",true,poll.optString("userKey"),url);pending=null;activeDeliveryId="";prefs.edit().remove("pending").putString("lastCompletedId",id).putString("url",url).commit();status="回复完成";ChatService.completed(context,id,url);ChatService.end(context);}
+  void completeReply(JSONObject job,JSONObject poll){replyStalled=false;replyHealthStatus="";String id=job.optString("id","recovered"),url=poll.optString("url",conversation);delivery(id,"completed","回复已完成",true,poll.optString("userKey"),url);pending=null;activeDeliveryId="";prefs.edit().remove("pending").putString("lastCompletedId",id).putString("url",url).commit();status="回复完成";ChatService.completed(context,id,url);ChatService.end(context);wakeDeferredBrowserSettings();}
   void resetReplyStability(){stableReply="";stableTicks=0;webObserver.resetCompletion();}
   void abandonWait(){replyStalled=false;replyHealthStatus="";if(pending!=null)delivery(pending.optString("id"),"uncertain","已解除等待，发送结果仍需在网页核对",true,"","");pending=null;activeDeliveryId="";prefs.edit().remove("pending").commit();ChatService.end(context);setStatus("已解除等待，请自行核对是否需要发送");}
   void timeout(){setStatus("安卓后台等待时间已到，请打开应用继续检测；不会自动重发");ChatService.needsAttention(context,status);}

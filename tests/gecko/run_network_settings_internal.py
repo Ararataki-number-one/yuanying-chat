@@ -288,7 +288,9 @@ def verify(report, source, nonce, apk_sha):
         assert case['modelDesiredRevisionBefore'] == case['modelAppliedRevisionBefore'] == case['expected']['savedRevision']
         assert case['before']['coreVersion'] == report['coreVersion']
         integer(case['frozenConnection'], 1)
-        assert case['observedConnection'] == case['frozenConnection']
+        assert (type(case['connectionAtInjection']) is int and type(case['observedConnection']) is int
+                and case['connectionAtInjection'] == case['frozenConnection']
+                and case['observedConnection'] == case['frozenConnection'] + (1 if case is cases[1] else 0))
     stopped, stale = cases[1:]
     assert stopped['realCoreStopped'] is True and stopped['capturedReceiptMatchesAfter'] is False
     assert stopped['stopConfirmed'] is True

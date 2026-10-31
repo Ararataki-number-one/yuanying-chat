@@ -83,6 +83,7 @@ public class GeckoIntegrationTestActivity extends Activity {
     long nativeUnchangedTouchEvents,nativeRedundantTouchSyncs,nativeFirstTouchSyncs=-1;boolean nativeFirstTouchOriginCorrect;
     @Override public String getUrl(){return chooserOrigin?MainActivity.ORIGIN:super.getUrl();}
     @Override public void evaluateJavascript(String code,android.webkit.ValueCallback<String> callback){
+      if(queuedObservation!=null&&queuedObservation.intercept(code,callback))return;
       if(continuityTracing&&code.startsWith("window['__pocket_")){String request=code;super.evaluateJavascript(code,raw->{JSONObject value=J.parse(raw);if(value.length()>0)continuityResults.put(J.obj("at",SystemClock.elapsedRealtime(),"request",request,"result",value));if(callback!=null)callback.onReceiveValue(raw);});}
       else super.evaluateJavascript(code,callback);
     }
@@ -91,6 +92,8 @@ public class GeckoIntegrationTestActivity extends Activity {
     @Override protected boolean allowedUrl(String target){
       return target.startsWith("http://127.0.0.1:8765/")||target.startsWith("http://remote-probe.invalid:8765/")||super.allowedUrl(target);
     }
+    @Override boolean resourcePage(String target){return queuedObservation!=null&&queuedObservation.ownsUrl(target)||super.resourcePage(target);}
+    @Override boolean resourceSamePage(String a,String b){return queuedObservation!=null&&queuedObservation.ownsUrl(a)&&queuedObservation.ownsUrl(b)||super.resourceSamePage(a,b);}
     @Override boolean readingPage(String target){return target.startsWith("http://127.0.0.1:8765/browser-reading")||super.readingPage(target);}
     @Override protected boolean appearancePage(String target){return target!=null&&target.startsWith("http://127.0.0.1:8765/appearance-sync/")||super.appearancePage(target);}
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){
@@ -119,6 +122,7 @@ public class GeckoIntegrationTestActivity extends Activity {
       if(nativeGeometryTrace.length()<32&&(changed||sincePrevious||added!=0))nativeGeometryTrace.put(J.obj("source",source,"elapsed",SystemClock.elapsedRealtime(),"before",before==null?JSONObject.NULL:before.json(),"after",after==null?JSONObject.NULL:after.json(),"syncs",added,"cacheMatchedBefore",cached,"changedDuringCall",changed,"changedSincePrevious",sincePrevious));
       nativeGeometryPrevious=after;
     }
+    GeckoQueuedChangesObservation queuedObservation;
   }
   /** Controlled-test geometry only. No production hooks or per-touch logging. */
   static final class NativeGeometry {
@@ -170,7 +174,7 @@ public class GeckoIntegrationTestActivity extends Activity {
   }
   @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);command(intent);}
   synchronized void command(Intent intent){
-    action=intent.getStringExtra("fixtureAction");if(action==null)return;long serial=++run;
+    action=intent.getStringExtra("fixtureAction");if(action==null)return;QueuedChangesVpn46 retiredVpn=queuedVpn;queuedVpn=null;if(retiredVpn!=null)retiredVpn.abort();long serial=++run;
     try{if(eventBuildIdentity==null)eventBuildIdentity=IntegrationBuildIdentity.read(Profiles.global(this));eventStore=new IntegrationEventStore(this,slot,intent.getStringExtra("eventNonce"),action,serial,eventBuildIdentity);}
     catch(Exception failure){throw new IllegalStateException("Full synthetic result transport unavailable",failure);}
     readinessObservation="read".equals(action)?new DeviceReadinessObservation(SystemClock.elapsedRealtime()):null;
@@ -307,14 +311,23 @@ public class GeckoIntegrationTestActivity extends Activity {
     session.handler.postDelayed(()->event(serial,"backgroundSettings",J.obj("saved",saved,"actualBackground",!session.uiVisible&&!processForeground(),"replyFinished",session.pending==null,"automaticallyApplied",!DeferredBrowserSettings.pending(session)&&session.privacy.wantsDesktop()!=desktop&&session.privacy.desktop!=desktop)),8500);
   }
   void queuedChanges(long serial){
+    try{QueuedChangesVpn46 vpn=new QueuedChangesVpn46(this,serial);queuedVpn=vpn;vpn.begin(()->{
+      try{GeckoQueuedChangesObservation observation=new GeckoQueuedChangesObservation(this,serial);observation.onFailure=vpn::abort;vpn.beforeStop=observation::retireAfterApplied;observation.begin(()->queuedChangesReady(serial,observation,vpn));}
+      catch(Exception failure){vpn.abort();event(serial,"error",J.obj("error",failure.toString(),"stage","queued-document-observation"));}
+    });}catch(Exception failure){event(serial,"error",J.obj("error",failure.toString(),"stage","queued-vpn-prepare"));}
+  }
+  void queuedChangesReady(long serial,GeckoQueuedChangesObservation observation,QueuedChangesVpn46 vpn){
+    if(!vpn.owns()||!observation.ownsUrl(session.web.getUrl())){vpn.abort();return;}
     session.prefs.edit().putString("managementMarker","prime-target").commit();String original=session.prefs.getString("proxy","");int level=session.privacy.level();boolean desktop=session.privacy.wantsDesktop();
     session.pending=J.obj("id","synthetic-queued-question","kind","web","confirmed",true);session.navigating=false;session.connecting=false;session.state=J.obj("busy",false);
     session.changed();boolean browserSaved=DeferredBrowserSettings.save(session,2,!desktop),livePolicyKept=session.privacy.level()==level&&session.privacy.wantsDesktop()==desktop;
     // This synthetic busy-save fixture explicitly chooses deferred application.
     NetworkBridge.run(this,slot,"external",J.obj("proxy","","requireExternalVpn",true),NetworkChanges.hash(this),null,(choice,select)->select.accept(NetworkApplyCoordinator.DEFER),(ok,message,snapshot)->{
+      if(!vpn.owns()||!observation.ownsUrl(session.web.getUrl())){vpn.abort();return;}
       boolean kept=original.equals(session.prefs.getString("proxy",""))&&NetworkChanges.pending(this).length()>0&&session.pending!=null;
       DeferredBrowserSettings.cancel(session);JSONObject job=session.pending;session.completeReply(job,J.obj("url",session.web.getUrl()));session.changed();session.state=J.obj("busy",false);session.navigating=false;
-      session.handler.postDelayed(()->event(serial,"queuedChanges",J.obj("savedWhileReplying",ok,"oldRouteKept",kept,"browserSavedWithoutApplying",browserSaved&&livePolicyKept,"replyCleared",session.pending==null&&!session.prefs.contains("pending")&&!ProfileCatalog.get(this).item(slot).optBoolean("waiting"),"appliedWhenIdle",session.prefs.getString("proxy","x").isEmpty()&&NetworkChanges.pending(this).length()==0,"vpnGuardBlocksWithoutVpn",session.guard.requiresVpn()&&!session.guard.allowed(),"message",message)),3500);
+      observation.idle();vpn.stopWhenApplied(snapshot);
+      session.handler.postDelayed(()->{if(!vpn.owns()){vpn.abort();return;}event(serial,"queuedChanges",vpn.attach(observation.attach(J.obj("savedWhileReplying",ok,"oldRouteKept",kept,"browserSavedWithoutApplying",browserSaved&&livePolicyKept,"replyCleared",session.pending==null&&!session.prefs.contains("pending")&&!ProfileCatalog.get(this).item(slot).optBoolean("waiting"),"appliedWhenIdle",session.prefs.getString("proxy","x").isEmpty()&&NetworkChanges.pending(this).length()==0,"vpnGuardBlocksWithoutVpn",session.guard.requiresVpn()&&!session.guard.allowed(),"message",message))));},3500);
     });
   }
   int priorPrivacy;
@@ -923,10 +936,11 @@ public class GeckoIntegrationTestActivity extends Activity {
   static void await(java.util.concurrent.CountDownLatch latch){try{if(!latch.await(15,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("checkpoint fixture timed out");}catch(InterruptedException error){Thread.currentThread().interrupt();throw new IllegalStateException(error);}}
   void onMain(Runnable task){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<RuntimeException> error=new java.util.concurrent.atomic.AtomicReference<>();runOnUiThread(()->{try{task.run();}catch(RuntimeException failure){error.set(failure);}finally{done.countDown();}});await(done);if(error.get()!=null)throw error.get();}
   static String readCheckpoint(BrowserSessionStore store){java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);java.util.concurrent.atomic.AtomicReference<String> value=new java.util.concurrent.atomic.AtomicReference<>();store.read(result->{value.set(result);done.countDown();});await(done);return value.get();}
+  QueuedChangesVpn46 queuedVpn;
   JSONObject eventBuildIdentity;IntegrationEventStore eventStore;
   synchronized void event(long serial,String kind,JSONObject result){if(serial!=run)return;try{if(!GeckoWindowTapReadiness.beforeEvent(this,serial,kind,result))return;if(eventStore==null||eventStore.command!=serial)throw new IllegalStateException("Missing invocation");if(readingBoundsCase!=null&&readingBoundsCase.command==serial&&readingBoundsCase.trace!=null)appendReadingZoomTrace(serial,kind,result);eventStore.emit(kind,result);}catch(Exception failure){Log.e("PocketGeckoIntegration",J.obj("kind","eventTransportError","error",failure.toString(),"nativeContext","environment-"+(slot+1),"processSlot",slot,"fixtureAction",action,"runNonce",getIntent().getStringExtra("eventNonce"),"command",run).toString());}}
   void readingLifecycle(String phase){if("readingZoom".equals(action)&&session!=null)event(run,"readingZoomLifecycle",J.obj("phase",phase,"uptimeMs",SystemClock.uptimeMillis(),"wallMs",System.currentTimeMillis(),"activityResumed",activityResumed,"browserPaused",session.browserPaused,"nativeScale",session.web.getScale(),"zoomActive",session.web.zoomTarget!=null,"webShown",session.web.isShown(),"windowFocused",hasWindowFocus()));}
   @Override protected void onResume(){super.onResume();activityResumed=true;if(session!=null)session.foreground(true);readingLifecycle("onResume");observeReadiness(run,"onResume",true);}
   @Override protected void onPause(){activityResumed=false;if(session!=null){session.reading.keyboard(false);session.foreground(false);}readingLifecycle("onPause");observeReadiness(run,"onPause",true);super.onPause();}
-  @Override protected void onDestroy(){observeReadiness(run,"onDestroy",true);run++;super.onDestroy();}
+  @Override protected void onDestroy(){observeReadiness(run,"onDestroy",true);QueuedChangesVpn46 retiredVpn=queuedVpn;queuedVpn=null;if(retiredVpn!=null)retiredVpn.abort();run++;super.onDestroy();}
 }

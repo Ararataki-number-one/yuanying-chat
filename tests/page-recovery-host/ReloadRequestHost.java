@@ -119,6 +119,9 @@ class ChatSession {
  boolean uiVisible=true;long resourceObservedAt;
  boolean replyObservationAllowed(){return uiVisible;}
  boolean resourceObservationCurrent(){if(resourceObservedAt!=0)throw new AssertionError("Fresh resource observation is outside this reload host");return false;}
+ // This reload-only workload stores no deferred browser candidate. Its real
+ // event scheduler and draft checks execute in deferred-browser-wake-host.
+ void wakeDeferredBrowserSettings(){if(prefs.values.containsKey("nextPrivacyLevel"))throw new AssertionError("Deferred browser candidate outside reload host scope");}
  // No audit is running in this reload-only host workload.
  static final class Audit {void retirePageCheck(){}}Audit audit;
  final Trace trace=new Trace();final Handler handler=new Handler();boolean navigationFailed,websiteConnectionIssue,spaTransition,documentNavigationSeen,navigationDispatched,awaitNewDocument;String navigationTarget="",navigationLabel="",priorDocumentId="",spaSignature="";int spaStable;long navigationStarted,navigationMono,firstPageVisible,pageUsableAt;void navigationTimeout(long epoch){}

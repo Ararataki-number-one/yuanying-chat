@@ -14,6 +14,7 @@
     <service android:name="local.pocketchat.NetworkProtectionFixtureVpnService" android:exported="true" android:permission="android.permission.BIND_VPN_SERVICE" android:process=":network_protection">
       <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
     </service>
+    <provider android:name="local.pocketchat.QueuedChangesVpnProvider" android:authorities="local.pocketchat.test.queued-vpn-fixture" android:exported="false" android:process=":network_protection" />
     <provider android:name="local.pocketchat.IntegrationEvidenceProvider" android:authorities="local.pocketchat.test.evidence" android:exported="true" />
     <provider android:name="local.pocketchat.NetworkPreflightProvider" android:authorities="local.pocketchat.test.network-preflight" android:exported="true" android:process=":network_preflight" />
     <activity android:name="local.pocketchat.AppUpdateRouteIntegrationActivity" android:exported="true" />
