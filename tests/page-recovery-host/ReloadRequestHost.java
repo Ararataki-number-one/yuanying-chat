@@ -114,6 +114,11 @@ public class ReloadRequestHost {
  }
 }
 class ChatSession {
+ // These reload cases observe the foreground page and have no fresh resource
+ // receipt. Global reply policy and resource-freshness admission run elsewhere.
+ boolean uiVisible=true;long resourceObservedAt;
+ boolean replyObservationAllowed(){return uiVisible;}
+ boolean resourceObservationCurrent(){if(resourceObservedAt!=0)throw new AssertionError("Fresh resource observation is outside this reload host");return false;}
  // No audit is running in this reload-only host workload.
  static final class Audit {void retirePageCheck(){}}Audit audit;
  final Trace trace=new Trace();final Handler handler=new Handler();boolean navigationFailed,websiteConnectionIssue,spaTransition,documentNavigationSeen,navigationDispatched,awaitNewDocument;String navigationTarget="",navigationLabel="",priorDocumentId="",spaSignature="";int spaStable;long navigationStarted,navigationMono,firstPageVisible,pageUsableAt;void navigationTimeout(long epoch){}

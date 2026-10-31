@@ -71,8 +71,10 @@ public class PageRecoveryHost {
    s=route();s.sync();ChatSession.Result oldEpoch=s.driverResult;s.beginNavigation(s.web.url,"superseding callback");oldEpoch.accept(j("url",s.web.url,"documentId","late-previous-epoch-document","composer",true,"busy",false));check("A late production sync callback from the previous epoch cannot populate the cleared document",s.lastDocumentId.isEmpty()&&s.awaitNewDocument&&s.stateEpoch!=s.navigationEpoch);
    s=route();LocalDraftPolicy.allowed=false;DeferredBrowserSettings.applied=0;DraftArchive.saves=0;DeferredBrowserSettings.drain(s);s.driverResult.accept(j("url",s.web.url,"draft","keep","draftRaw","keep"));s.driverResult.accept(snapshot(s,"keep"));
    check("Disabled draft saving defers browser changes without archiving or discarding the input",DeferredBrowserSettings.applied==0&&DraftArchive.saves==0&&!s.operation&&!s.configurationCapture);
-   s=route();LocalDraftPolicy.allowed=false;provider=new NetworkUiProvider(s);transition=new NetworkUiProvider.Transition(s);DraftArchive.saves=0;provider.captureTransition(transition);s.driverResult.accept(j("url",s.web.url,"draft","keep","documentId",s.lastDocumentId));s.driverResult.accept(snapshot(s,"keep"));
-   check("Disabled draft saving keeps a real nonempty network transition pending",provider.deferred==1&&provider.committed==0&&DraftArchive.saves==0&&transition.waitReason.contains("草稿"));
+   s=route();LocalDraftPolicy.allowed=false;provider=new NetworkUiProvider(s);transition=new NetworkUiProvider.Transition(s);DraftArchive.saves=0;Object retainedCaptureDocument=s.web.current;long retainedCaptureEpoch=s.navigationEpoch;String retainedCaptureUrl=s.web.url;int retainedCaptureLoads=s.loads;provider.captureTransition(transition);s.driverResult.accept(j("url",s.web.url,"draft","keep","documentId",s.lastDocumentId));s.driverResult.accept(snapshot(s,"keep"));
+   check("Disabled draft saving keeps a real nonempty network transition pending",provider.deferred==0&&provider.committed==0&&DraftArchive.saves==0&&s.operation&&s.configurationCapture&&transition.capture&&transition.page!=null&&transition.page.optString("draft").equals("keep")&&transition.page.optString("documentId").equals(s.lastDocumentId));
+   s.driverResult.accept(j("url",s.web.url,"draft","keep","documentId",s.lastDocumentId));
+   check("Disabled draft saving finishes same-document capture only after fresh inspection without archiving input",provider.deferred==0&&provider.committed==1&&DraftArchive.saves==0&&s.web.current==retainedCaptureDocument&&s.navigationEpoch==retainedCaptureEpoch&&s.web.url.equals(retainedCaptureUrl)&&s.loads==retainedCaptureLoads);
    LocalDraftPolicy.allowed=true;
    s=route();s.stateEpoch=s.navigationEpoch;s.state=j("url",s.web.url,"documentId",s.lastDocumentId,"composer",true);check("Status details use the current document's observed composer",NetworkStatusUi.pageStatus(s).contains("已显示网页输入区"));
    for(int mutation=0;mutation<5;mutation++){
@@ -118,6 +120,9 @@ public class PageRecoveryHost {
  }
 }
 class ChatSession {
+ // Declared host boundary: legacy capture scenarios are foreground-only;
+ // the global background-reply policy is exercised by its separate hosts.
+ boolean replyObservationAllowed(){return uiVisible;}
  final WebReplyObserver webObserver=new WebReplyObserver();final Object context=new Object();final int environmentGeneration=4;final String environmentId="environment-one";final Web web=new Web();final Guard guard=new Guard();final Memory pageMemory=new Memory();final Prefs prefs=new Prefs();final Trace trace=new Trace();final Mirror webMirror=new Mirror();final Store webStore=new Store();final Cache cache=new Cache();final Handler handler=new Handler(this);final Audit audit=new Audit();final Privacy privacy=new Privacy();final Identity identity=new Identity();Result driverResult;
  String navigationLabel="";long navigationStarted,navigationMono,firstPageVisible;boolean documentNavigationSeen;
  boolean deleted,navigating,navigationFailed,showingCache,offline,connecting,recoveryScheduled,manualAttention,submitting,operation,websiteRecovering,replyStalled,websiteConnectionIssue,uiVisible=true,networkReady=true;int recoveryAttempt,scheduled,opened,loads,captures,bridgeCalls,stableTicks,resourceFilePreparations,spaStable;boolean keepPageCandidate,configurationCapture,identityApplicationPending;boolean lastCapture=true,inFlight,navigationDispatched=true,awaitNewDocument,spaTransition,fileBusy,replyBusy;
@@ -159,6 +164,9 @@ class Store{final java.util.concurrent.Executor worker=Runnable::run;void offer(
 class Cache{JSONArray withEarlier(String u,JSONArray a){return a;}void saveMessages(String u,JSONArray e){}}
 
 class Audit{void retirePageCheck(){}boolean requestIdentitySelected;boolean requestIdentityPageSelected(){return requestIdentitySelected;}void refresh(boolean force){}}class ChatService{static boolean running;static void networkLost(Object c){}}class GeckoWebView{
+ // This recovery workload has no auxiliary page. Never simulate its lifecycle.
+ boolean auxiliaryPageSelected;
+ boolean closeExitIpPage(){if(auxiliaryPageSelected)throw new AssertionError("Auxiliary page lifecycle is outside this host");return false;}
  static boolean active(Web w){return true;}final ChatSession owner;GeckoSession current=new GeckoSession();boolean destroyed,enabled=true,failed;long recoveryWindow;int contentRecoveries,recoveryDispatches;String url="https://chatgpt.com/c/lifecycle-current";
  final Map<GeckoSession,String> locations=new IdentityHashMap<>();final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();final Set<GeckoSession> crashed=new HashSet<>(),pendingLoads=new HashSet<>(),painted=new HashSet<>(),usable=new HashSet<>();final Runnable recovery=()->recoveryDispatches++;
  final BrowserBridgeRequests callbacks=new BrowserBridgeRequests(new BrowserBridgeRequests.Timer(){public void schedule(Runnable r,long delay){}public void cancel(Runnable r){}},"null");

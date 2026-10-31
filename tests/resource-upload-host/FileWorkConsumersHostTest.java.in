@@ -9,11 +9,24 @@ final class ChatSession {
   int resourceChoosers,resourceFilePreparations;long navigationEpoch=7,resourceWebsiteEpoch=-1;
   boolean resourceWebsiteUploading;JSONObject pending,state=J.obj("busy",false);JSONArray attachments=new JSONArray();
   final ResourceUploadState resourceUploads=new ResourceUploadState();final Browser web=new Browser();final Memory pageMemory=new Memory();
+  // This legacy workload fixes the current actor/document and observes file
+  // work only. Full task freshness/ownership admission is covered separately.
+  final Identity identity=new Identity();long fileWorkGeneration;
+  TaskGuardSnapshot taskGuardSnapshot(){return new TaskGuardSnapshot(this);}
   __UPLOADING__
   __FILE_WORK_ACTIVE__
   __RESOURCE_FILES_ACTIVE__
 }
-final class Browser {String getUrl(){return "https://chatgpt.com/c/test";}}
+final class Browser {long identityPolicyRevision=2;String getUrl(){return "https://chatgpt.com/c/test";}}
+final class Identity {long editSerial=3;}
+/** Declared snapshot boundary; fileBusy comes from the actual extracted gate. */
+final class TaskGuardSnapshot {
+  final boolean known=true,fileBusy;
+  final int slot=0,generation=1;final String environmentId="file-consumer-fixture";
+  final String resourceBinding="file-consumer-binding",documentId="doc";
+  final long navigationEpoch,workGeneration;
+  TaskGuardSnapshot(ChatSession session){fileBusy=session.fileWorkActive();navigationEpoch=session.navigationEpoch;workGeneration=session.fileWorkGeneration;}
+}
 final class Memory {String scope(){return "scope";}}
 final class MainActivity {static boolean chatUrl(String url){return true;}}
 final class WebReplyObserver {static boolean same(String a,String b){return a.equals(b);}}
@@ -25,9 +38,16 @@ final class NetworkRegion {__BACKGROUND_BUSY__}
 final class ProfileUi {__WORKING__}
 final class NetworkUiProvider {
   boolean saving;final Profile profile=new Profile();
-  static final class Transition {ChatSession session;boolean capture=true;long epoch=7;String url="https://chatgpt.com/c/test",scope="scope";}
+  static final class Transition {ChatSession session;boolean capture=true,immediate;long epoch=7,browserPolicy,identityEdit;String url="https://chatgpt.com/c/test",scope="scope";TaskGuardSnapshot work;
+    Transition(){ChatSession selected=ChatSession.peek();if(selected==null)throw new AssertionError("Cold transition is outside the file-consumer host");browserPolicy=selected.web.identityPolicyRevision;identityEdit=selected.identity.editSerial;work=selected.taskGuardSnapshot();}
+  }
   boolean owns(Transition transition){return true;}
   boolean currentEnvironment(Transition transition){return true;}
+  boolean coldPending(){throw new AssertionError("Cold admission is outside the file-consumer host");}
+  static boolean taskIdle(ChatSession session,TaskGuardSnapshot guard){
+    if(session.pending!=null||session.submitting||session.operation||session.transferActive||session.state.optBoolean("busy"))throw new AssertionError("Non-file task admission is outside the file-consumer host");
+    return guard!=null&&guard.known&&!guard.fileBusy;
+  }
   __FENCE_IDLE__
 }
 public final class FileWorkConsumersHostTest {
