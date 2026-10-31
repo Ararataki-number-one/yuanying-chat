@@ -1,0 +1,149 @@
+{
+  "status": "failed",
+  "actualAndroidExecution": true,
+  "actualMihomoExecution": true,
+  "initialDisplaySampling": {
+    "busyRequests": 2,
+    "idleRequests": 2
+  },
+  "error": "java.lang.AssertionError: A fresh busy-route sample is reused after the reply becomes idle",
+  "networkRepairEvidence": {
+    "uiMetadataIdentity": {
+      "actualAndroidExecution": true,
+      "catalogIdentity": {
+        "slot": 6,
+        "generation": 0,
+        "environmentId": "f30ef3a9-89ed-4369-ac41-183923060159"
+      },
+      "availableWithExactIdentity": true,
+      "legacyExternalPending": true,
+      "missingAndStaleIdentitiesRejected": true,
+      "pendingUnchangedByRejectedReads": true
+    }
+  },
+  "checkCount": 30,
+  "checks": [
+    {
+      "name": "Eight encrypted environment regions stay isolated across alternating reads",
+      "pass": true
+    },
+    {
+      "name": "Repeated multi-window reads reuse decrypted region snapshots",
+      "pass": true
+    },
+    {
+      "name": "Replacing one sealed region updates only that environment",
+      "pass": true
+    },
+    {
+      "name": "Deleting a sealed region clears its cached identity",
+      "pass": true
+    },
+    {
+      "name": "Network list reads pending draft metadata on its background reader",
+      "pass": true
+    },
+    {
+      "name": "Network list refresh sees draft removal without a global pending cache",
+      "pass": true
+    },
+    {
+      "name": "Actual Android main-thread region and cold latency reads complete",
+      "pass": true
+    },
+    {
+      "name": "Region and latency UI snapshots cause no main-thread disk reads or writes",
+      "pass": true
+    },
+    {
+      "name": "Cold profile metadata paths resolve without Android main-thread directory access",
+      "pass": true
+    },
+    {
+      "name": "Background cold-path resolution restores the correct eight environment snapshots",
+      "pass": true
+    },
+    {
+      "name": "Deferred callback race reuses the original encrypted receipt before the new save",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback does not clear the newer sealed candidate",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback keeps the newer request saving state",
+      "pass": true
+    },
+    {
+      "name": "An older deferred callback does not apply the replaced candidate",
+      "pass": true
+    },
+    {
+      "name": "Intervening non-saving network operations preserve the newest save ownership",
+      "pass": true
+    },
+    {
+      "name": "The latest network candidate is applied once after the stale callback is ignored",
+      "pass": true
+    },
+    {
+      "name": "Low latency permits a pool without a preselected entry",
+      "pass": true
+    },
+    {
+      "name": "Foreign subscription nodes are rejected",
+      "pass": true
+    },
+    {
+      "name": "An empty optimization pool is rejected",
+      "pass": true
+    },
+    {
+      "name": "Actual native parser supplies identities for the original permitted entry pool",
+      "pass": true
+    },
+    {
+      "name": "Draft restores the low latency mode",
+      "pass": true
+    },
+    {
+      "name": "Draft saves only the permitted pool",
+      "pass": true
+    },
+    {
+      "name": "Changing subscription clears candidates and pool",
+      "pass": true
+    },
+    {
+      "name": "Maintenance rounds stay bounded",
+      "pass": true
+    },
+    {
+      "name": "Round robin explores the whole allowed pool",
+      "pass": true
+    },
+    {
+      "name": "Production Mihomo starts with ARC DNS and TCP concurrency",
+      "pass": true
+    },
+    {
+      "name": "Startup verifies the same controlled fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Remembered route starts without an invented delay",
+      "pass": true
+    },
+    {
+      "name": "Automatic display sampling measures the current route while a reply is busy",
+      "pass": true
+    },
+    {
+      "name": "A fresh busy-route sample is reused after the reply becomes idle",
+      "pass": false
+    }
+  ],
+  "exitTransportContinuity": [],
+  "sourceCommit": "5398ed49c63fddcdbafad40457ce6f27d8ee4670"
+}
