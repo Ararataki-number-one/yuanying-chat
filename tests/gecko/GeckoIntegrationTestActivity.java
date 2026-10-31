@@ -310,7 +310,8 @@ public class GeckoIntegrationTestActivity extends Activity {
     session.prefs.edit().putString("managementMarker","prime-target").commit();String original=session.prefs.getString("proxy","");int level=session.privacy.level();boolean desktop=session.privacy.wantsDesktop();
     session.pending=J.obj("id","synthetic-queued-question","kind","web","confirmed",true);session.navigating=false;session.connecting=false;session.state=J.obj("busy",false);
     session.changed();boolean browserSaved=DeferredBrowserSettings.save(session,2,!desktop),livePolicyKept=session.privacy.level()==level&&session.privacy.wantsDesktop()==desktop;
-    NetworkBridge.run(this,slot,"external",J.obj("proxy","","requireExternalVpn",true),NetworkChanges.hash(this),(ok,message,snapshot)->{
+    // This synthetic busy-save fixture explicitly chooses deferred application.
+    NetworkBridge.run(this,slot,"external",J.obj("proxy","","requireExternalVpn",true),NetworkChanges.hash(this),null,(choice,select)->select.accept(NetworkApplyCoordinator.DEFER),(ok,message,snapshot)->{
       boolean kept=original.equals(session.prefs.getString("proxy",""))&&NetworkChanges.pending(this).length()>0&&session.pending!=null;
       DeferredBrowserSettings.cancel(session);JSONObject job=session.pending;session.completeReply(job,J.obj("url",session.web.getUrl()));session.changed();session.state=J.obj("busy",false);session.navigating=false;
       session.handler.postDelayed(()->event(serial,"queuedChanges",J.obj("savedWhileReplying",ok,"oldRouteKept",kept,"browserSavedWithoutApplying",browserSaved&&livePolicyKept,"replyCleared",session.pending==null&&!session.prefs.contains("pending")&&!ProfileCatalog.get(this).item(slot).optBoolean("waiting"),"appliedWhenIdle",session.prefs.getString("proxy","x").isEmpty()&&NetworkChanges.pending(this).length()==0,"vpnGuardBlocksWithoutVpn",session.guard.requiresVpn()&&!session.guard.allowed(),"message",message)),3500);

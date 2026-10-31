@@ -16,6 +16,8 @@ def window_manifest():
 
 def strip_reviewed_window_additions(raw):
  if hashlib.sha256(raw).hexdigest()==BASELINE_SHA256:return raw
+ from experience46_source_compatibility import experience46_source_bytes
+ raw=experience46_source_bytes(raw,FIXTURE)
  source=raw.decode('utf-8')
  for item in reversed(window_manifest()['changes']):
   before,after=item['before'],item['after']

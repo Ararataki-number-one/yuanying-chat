@@ -20,6 +20,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / 'tests'), str(ROOT / 'tests/gecko')]
 from tools.gecko import diagnostic_capture_privacy as P
 from tools.gecko import caret_ime_guard as G
 import gecko_source_route_logcat_test as HOST
+import network_settings_internal46_contract as INTERNAL46
 
 RUNNER = HOST.RUNNER
 ROUTE = ROOT / 'tests/gecko/run_network_sources_route.py'
@@ -217,6 +218,8 @@ class ProducerCapturePrivacyTest(HOST.TestBase):
     def test_all_eight_producers_inverse_to_full_original_source(self):
         for path, expected in PRODUCER_PINS.items():
             current = (ROOT / path).read_text()
+            if path == 'tests/gecko/run_network_settings_internal.py':
+                current = INTERNAL46.require_runner_source(current.encode()).decode()
             with self.subTest(path=path):
                 self.assertEqual(hashlib.sha256(original_additional_producer(path, current).encode()).hexdigest(), expected)
                 for previous, added in PRODUCER_HUNKS[path]:

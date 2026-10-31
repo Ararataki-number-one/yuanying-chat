@@ -213,9 +213,14 @@
     },
     "tests/gecko/GeckoIntegrationTestActivity.java": {
       "previousSha256": "d79a5f95b521a909a5ef5bfb0ce68a9156cea5f3bdea5657bdd571a705dc4f8f",
-      "reviewedSha256": "d79a5f95b521a909a5ef5bfb0ce68a9156cea5f3bdea5657bdd571a705dc4f8f",
+      "reviewedSha256": "316457a63326e9c9634490446493b84d3aa618e8e9f677aac6bb1f18bfdf0d72",
       "exactHistoricalSha256": [],
-      "deltas": []
+      "deltas": [
+        {
+          "previous": "    NetworkBridge.run(this,slot,\"external\",J.obj(\"proxy\",\"\",\"requireExternalVpn\",true),NetworkChanges.hash(this),(ok,message,snapshot)->{\n      boolean kept=original.equals(session.prefs.getString(\"proxy\",\"\"))&&NetworkChanges.pending(this).length()>0&&session.pending!=null;",
+          "current": "    // This synthetic busy-save fixture explicitly chooses deferred application.\n    NetworkBridge.run(this,slot,\"external\",J.obj(\"proxy\",\"\",\"requireExternalVpn\",true),NetworkChanges.hash(this),null,(choice,select)->select.accept(NetworkApplyCoordinator.DEFER),(ok,message,snapshot)->{\n      boolean kept=original.equals(session.prefs.getString(\"proxy\",\"\"))&&NetworkChanges.pending(this).length()>0&&session.pending!=null;"
+        }
+      ]
     },
     "tests/gecko/run_device.py": {
       "previousSha256": "54fa412be9f89e46d61597caf61b0246e451e6c9b5eebca592e36b05686ab8a6",

@@ -11,6 +11,9 @@ import time
 import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tests'))
+from network_settings_internal46_contract import require_runner_source
+require_runner_source(pathlib.Path(__file__).read_bytes())
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 from diagnostic_capture_privacy import checked_text, safe_error_text
 # Stored diagnostic text is a verified service-key derivative.
@@ -91,6 +94,7 @@ def required_checks():
         names.add(name + ': negative precondition has the exact acknowledged saved model')
         names.add(name + ': original attempt and saved candidate remain current at injection')
     names.add(CASE_NAMES[1] + ': actual stopped service invalidates the captured core receipt')
+    names.add(CASE_NAMES[1] + ': stopped core keeps rollback unconfirmed and retry available')
     names.add(CASE_NAMES[2] + ': newer desired revision coexists with the genuinely verified old route')
     return names
 
@@ -133,9 +137,13 @@ def verify_receipt(case, state):
     for field in ['environmentId', 'generation', 'candidateId', 'savedRevision']:
         assert actual[field] == wanted[field], field
     assert output['done'] is True and output['ok'] is (state == 'applied')
-    assert actual['saveState'] == 'saved' and actual['scope'] == 'session'
+    assert actual['saveState'] == 'saved' and actual['scope'] == ('core' if state == 'failed' else 'session')
     assert actual['applicationState'] == state
     assert actual['appliedRevision'] == (wanted['savedRevision'] if state == 'applied' else 0)
+    if state == 'failed':
+        assert case['name'] == CASE_NAMES[1]
+        assert all(type(actual[field]) is int for field in ['generation', 'savedRevision', 'appliedRevision'])
+        assert actual['rollbackState'] == 'unconfirmed' and actual['retryAvailable'] is True
 
 
 def verify(report, source, nonce, apk_sha):
@@ -189,7 +197,7 @@ def verify(report, source, nonce, apk_sha):
     identity = (bootstrap['expected']['environmentId'], bootstrap['expected']['generation'])
     for row in operations:
         assert (row['expected']['environmentId'], row['expected']['generation']) == identity
-        verify_receipt(row, 'applied' if row in [bootstrap, cases[0]] else 'saved-unconfirmed')
+        verify_receipt(row, 'applied' if row in [bootstrap, cases[0]] else 'failed' if row is cases[1] else 'saved-unconfirmed')
 
     mapping = report['mapping']
     assert mapping['fromHost'] == 'chatgpt.com' and mapping['fromPort'] == 443

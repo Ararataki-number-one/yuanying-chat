@@ -35,6 +35,8 @@ def operation(name, revision, applied):
     actual = dict(wanted, saveState='saved', scope='session',
                   applicationState='applied' if applied else 'saved-unconfirmed',
                   appliedRevision=revision if applied else 0)
+    if name == m.CASE_NAMES[1] and not applied:
+        actual.update(applicationState='failed', scope='core', rollbackState='unconfirmed', retryAvailable=True)
     return {'name': name, 'expected': wanted, 'result': {'done': True, 'ok': applied, 'operationResult': actual}}
 
 
