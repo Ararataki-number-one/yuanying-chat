@@ -203,7 +203,7 @@ try:
         adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction','entries','--es','entryMode','latency')
         deadline=time.monotonic()+30
         while True:
-            xml=dump()
+            xml=dump(deadline=deadline)
             if '勾选允许使用的入口' in xml:break
             if time.monotonic()>deadline:raise AssertionError(('low latency modal missing',xml))
             time.sleep(.5)

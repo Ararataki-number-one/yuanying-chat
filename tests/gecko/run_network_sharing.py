@@ -5,6 +5,7 @@ p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';out.mkdir(parents=True,exist_ok=True)
 sys.path.insert(0,str(root/'tools'))
 from gecko.network_sources_contract import verify_network_sharing
+from network_sharing_lease14 import prepare as prepare_sharing_lease14, finish as finish_sharing_lease14
 pkg='local.pocketchat.test';token=uuid.uuid4().hex;checks=[];experience_checks=[];tap_journal=[]
 def adb(*args,binary=False):return subprocess.check_output([a.adb,'-s',a.serial,*args],text=not binary,timeout=40)
 def wait(fn,pred,seconds=90):
@@ -45,6 +46,7 @@ def report():
  raw=adb('exec-out','content','read','--uri','content://'+pkg+'.evidence/network-source-sharing')
  (out/'network-source-sharing-native-raw.json').write_text(raw)
  return json.loads(raw)
+sharing_lease14=prepare_sharing_lease14(root,out,a)
 try:
  adb('shell','am','force-stop',pkg)
  adb('shell','am','start','-W','-n',pkg+'/local.pocketchat.NetworkSharingIntegrationActivity','--es','runToken',token)
@@ -84,3 +86,5 @@ try:
 except Exception:
  (out/'network-source-sharing-failure-log.txt').write_text(adb('logcat','-d'))
  raise
+finally:
+ finish_sharing_lease14(sharing_lease14)

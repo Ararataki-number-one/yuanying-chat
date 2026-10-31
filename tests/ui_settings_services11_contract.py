@@ -72,3 +72,15 @@ def remove_reviewed_lease(tree):
     assert len(references) == 5, 'UI device lease references moved or duplicated'
     outer[0].finalbody = ast.parse('try:\n    pass\nfinally:\n' + ORIGINAL_FINALLY).body[0].finalbody
     del tree.body[position:position + 2]
+
+
+# Source14 binds the pre-existing30-second readiness budget to its acquisition.
+# Keep every original11 function and digest above intact, then run those same
+# gates after the finite raw/contextual AST inverse.
+import importlib.util as _import14
+from pathlib import Path as _Path14
+_spec14 = _import14.spec_from_file_location('selected_ui_runner14_source_contract', _Path14(__file__).with_name('ui_runner14_source_contract.py'))
+_input14 = _import14.module_from_spec(_spec14)
+_spec14.loader.exec_module(_input14)
+require_runner_source = _input14.wrap_ui_source_inverse(require_runner_source)
+remove_reviewed_lease = _input14.wrap_ui_ast_inverse(remove_reviewed_lease)
