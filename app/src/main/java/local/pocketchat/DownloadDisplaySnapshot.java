@@ -37,4 +37,11 @@ final class DownloadDisplaySnapshot {
     for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&DownloadListPolicy.matches(row,filter))return ProfileCatalog.get(context).names();}
     return Collections.emptyMap();
   }
+  /** Read ownership and names together once on the display worker, without private drafts/notes. */
+  static Map<Integer,DownloadOwnerLabels.Owner> owners(Context context){
+    UiPerfStats.catalogRead();Map<Integer,DownloadOwnerLabels.Owner> owners=new HashMap<>();
+    try(Cursor cursor=ProfileCatalog.get(context).getReadableDatabase().query("environments",new String[]{"slot","name","environment_id","generation","created","deleting","resetting"},null,null,null,null,null)){
+      while(cursor.moveToNext()){int slot=cursor.getInt(0);owners.put(slot,new DownloadOwnerLabels.Owner(slot,cursor.getString(1),cursor.getString(2),cursor.getInt(3),cursor.getInt(4)!=0,cursor.getInt(5)!=0,cursor.getInt(6)!=0));}
+    }return owners;
+  }
 }

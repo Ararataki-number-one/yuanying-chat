@@ -21,7 +21,7 @@ final class ProfileCatalog extends SQLiteOpenHelper {
   Map<Integer,String> names(){UiPerfStats.catalogRead();Map<Integer,String> names=new HashMap<>();try(Cursor c=getReadableDatabase().query("environments",new String[]{"slot","name"},null,null,null,null,null)){while(c.moveToNext())names.put(c.getInt(0),c.getString(1));}return names;}
   static String displayName(Map<Integer,String> names,int slot){String value=names.get(slot);return value==null?(slot==0?"默认环境":"环境 "+(slot+1)):value;}
   String name(int slot){return item(slot).optString("name",slot==0?"默认环境":"环境 "+(slot+1));}
-  void rename(int slot,String name){String text=name.trim();if(text.isEmpty()||text.length()>24)return;ContentValues v=new ContentValues();v.put("name",text);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
+  void rename(int slot,String name){String text=name.trim();if(text.isEmpty()||text.length()>24)return;ContentValues v=new ContentValues();v.put("name",text);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});DownloadLibrary.changed(root);}
   void details(int slot,String group,String notes){ContentValues v=new ContentValues();v.put("group_name",group.trim());v.put("notes",notes.trim());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
   void browserDisplay(int slot,boolean desktop){ContentValues v=new ContentValues();v.put("desktop",desktop?1:0);getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
   void created(int slot){
@@ -33,6 +33,7 @@ final class ProfileCatalog extends SQLiteOpenHelper {
       db.update("environments",values,"slot=? AND deleting=0 AND resetting=0",new String[]{String.valueOf(slot)});
       db.setTransactionSuccessful();
     }finally{db.endTransaction();}
+    DownloadLibrary.changed(root);
   }
   EnvironmentSpec.Identity identity(int slot)throws java.io.IOException{
     JSONObject current=item(slot);
@@ -55,7 +56,7 @@ final class ProfileCatalog extends SQLiteOpenHelper {
       JSONObject current=item(slot);if(current.length()==0||current.optBoolean("created")||current.optBoolean("deleting")||current.optBoolean("resetting"))throw new java.io.IOException("目标槽位已变化，请重新复制");
       ContentValues values=new ContentValues();values.put("created",1);values.put("environment_id",UUID.randomUUID().toString());db.update("environments",values,"slot=?",new String[]{String.valueOf(slot)});
       T result=action.run();db.setTransactionSuccessful();return result;
-    }finally{db.endTransaction();}
+    }finally{db.endTransaction();DownloadLibrary.changed(root);}
   }
   void beginReset(EnvironmentSpec.Identity expected)throws Exception{
     withIdentity(expected,()->{if(expected.generation==Integer.MAX_VALUE)throw new java.io.IOException("环境代际已达到上限");ContentValues values=new ContentValues();values.put("resetting",1);values.put("generation",expected.generation+1);values.put("connected",0);values.put("waiting",0);getWritableDatabase().update("environments",values,"slot=?",new String[]{String.valueOf(expected.slot)});return null;});
@@ -68,6 +69,7 @@ final class ProfileCatalog extends SQLiteOpenHelper {
   }
   void completeReset(EnvironmentSpec.Identity expected,boolean desktop)throws Exception{
     withReset(expected,()->{ContentValues values=new ContentValues();values.put("resetting",0);values.put("draft","");values.put("pid",0);values.put("seen",0);values.put("connected",0);values.put("waiting",0);values.put("problem","");values.put("desktop",desktop?1:0);getWritableDatabase().update("environments",values,"slot=?",new String[]{String.valueOf(expected.slot)});return null;});
+    DownloadLibrary.changed(root);
   }
   boolean available(int slot){JSONObject row=item(slot);return row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting");}
   void draft(int slot,JSONObject value){ContentValues v=new ContentValues();v.put("draft",value==null?"":value.toString());getWritableDatabase().update("environments",v,"slot=?",new String[]{String.valueOf(slot)});}
@@ -131,7 +133,7 @@ final class ProfileCatalog extends SQLiteOpenHelper {
       db.setTransactionSuccessful();
     }finally{db.endTransaction();}
   }
-  void completeDelete(int slot){ContentValues v=new ContentValues();v.put("environment_id","");v.put("name",slot==0?"默认环境":"环境 "+(slot+1));v.put("created",0);v.put("deleting",0);v.put("resetting",0);v.put("draft","");v.put("pid",0);v.put("seen",0);v.put("connected",0);v.put("waiting",0);v.put("mode","");v.put("privacy",1);v.put("opened",0);v.put("favorite",0);v.put("problem","");v.put("page","原网页");v.put("group_name","");v.put("notes","");v.put("desktop",0);getWritableDatabase().update("environments",v,"slot=? AND deleting=1",new String[]{String.valueOf(slot)});}
+  void completeDelete(int slot){ContentValues v=new ContentValues();v.put("environment_id","");v.put("name",slot==0?"默认环境":"环境 "+(slot+1));v.put("created",0);v.put("deleting",0);v.put("resetting",0);v.put("draft","");v.put("pid",0);v.put("seen",0);v.put("connected",0);v.put("waiting",0);v.put("mode","");v.put("privacy",1);v.put("opened",0);v.put("favorite",0);v.put("problem","");v.put("page","原网页");v.put("group_name","");v.put("notes","");v.put("desktop",0);getWritableDatabase().update("environments",v,"slot=? AND deleting=1",new String[]{String.valueOf(slot)});DownloadLibrary.changed(root);}
   final java.util.concurrent.ExecutorService heartbeatWriter=java.util.concurrent.Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"environment-heartbeat");t.setPriority(Thread.MIN_PRIORITY);return t;});
   final Object heartbeatGate=new Object(),heartbeatIo=new Object();
   final Map<Integer,Long> heartbeatSeen=new HashMap<>(),heartbeatRevisions=new HashMap<>();

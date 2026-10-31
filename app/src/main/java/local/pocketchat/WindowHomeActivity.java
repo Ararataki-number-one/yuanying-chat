@@ -370,8 +370,10 @@ public class WindowHomeActivity extends ThemedActivity {
     if(!ProfileCatalog.get(this).available(id))return;
     if(id>0&&Build.VERSION.SDK_INT<28){showProblem("独立环境需要 Android 9 或更新版本");return;}
     ProfileCatalog.get(this).opened(id);
-    startActivity(new Intent(this,Profiles.activity(id)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action))
-      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+    Intent opening=new Intent(this,Profiles.activity(id)).putExtra("openWindowAction",action).putExtra("returnToEnvironmentList","edit".equals(action))
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+    if("chat".equals(action))EnvironmentOverviewUi.mark(opening,this,id);
+    startActivity(opening);
   }
   void createWindow(){
     if(preparing)return;

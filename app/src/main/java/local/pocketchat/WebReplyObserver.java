@@ -29,7 +29,7 @@ final class WebReplyObserver {
   }
 
   void pageReady() {
-    if (!script.isEmpty() && session.web.resourcePage(session.web.getUrl())) session.web.evaluateJavascript(script+"\nwindow.__pocketReadDriver('observe-install',"+J.obj("resourceBinding",session.resourceObserverBinding)+");", null);
+    if (!script.isEmpty() && session.web.resourcePage(session.web.getUrl())) session.web.evaluateJavascript("window.__pocketReplyObservationAllowed="+session.replyObservationAllowed()+";\n"+script+"\nwindow.__pocketReadDriver('observe-install',"+J.obj("resourceBinding",session.resourceObserverBinding)+");window.__pocketWebReplyObserver?.setObservationAllowed?.("+session.replyObservationAllowed()+");", null);
   }
 
   void restorePending() {
@@ -81,6 +81,7 @@ final class WebReplyObserver {
           session.navigating && session.targetMatches(url)) session.wakePolling();
       return;
     }
+    if(!session.replyObservationAllowed())return;
     try {
       if ("intent".equals(type)) {
         if (!session.webPerformance() || session.submitting || session.operation && !session.configurationCapture ||
@@ -91,7 +92,7 @@ final class WebReplyObserver {
         String identity = document + ":" + token;
         if (identity.equals(session.prefs.getString("lastWebGesture", ""))) return;
         if (session.pending != null && !webJob(session.pending)) return;
-        session.webWorkGeneration++;
+        session.webWorkGeneration++;session.resourceObservedAt=0;
         if (session.pending != null) session.delivery(session.pending.optString("id"), "uncertain",
           "网页已开始另一条提问，原等待记录已保留，请在原对话核对", true, "", "");
         JSONArray names = new JSONArray();

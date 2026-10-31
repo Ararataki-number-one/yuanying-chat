@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exact production download continuation/retirement paths with host-only services."""
-import argparse,hashlib,json,os,pathlib,subprocess,tempfile
+import argparse,hashlib,json,os,pathlib,subprocess,tempfile,importlib.util
 ROOT=pathlib.Path(__file__).resolve().parents[2];HERE=pathlib.Path(__file__).resolve().parent
 
 def member(text,needle):
@@ -29,7 +29,7 @@ def main():
  p=argparse.ArgumentParser();p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--java-home',type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);p.add_argument('--before-ref');p.add_argument('--before-writer-ref');p.add_argument('--before-range-ref');p.add_argument('--before-load-ref');a=p.parse_args()
  if sum(bool(x) for x in (a.before_ref,a.before_writer_ref,a.before_range_ref,a.before_load_ref))>1:p.error('Select one before reproduction')
  source=ROOT/'app/src/main/java/local/pocketchat';old=ROOT/'tests/download-recovery-host'
- names=['J.java','DownloadTasks.java','DownloadTaskRevisions.java','DownloadResumePolicy.java','DownloadRange.java','SavedFileDeletion.java','SavedFilePublication.java','DefaultDownloads.java','SealedFileIo.java']
+ names=['J.java','DownloadTasks.java','DownloadTaskRevisions.java','DownloadResumePolicy.java','DownloadRange.java','SavedFileDeletion.java','SavedFilePublication.java','DefaultDownloads.java','SealedFileIo.java','DownloadMetadataValues.java']
  needles=['void taskActions(','boolean requestAvailable(','String continuationAction(','void requestRedownload(','void discardForRedownload(','boolean loadTask(','void newTask(','void updateTask(','void mark(','boolean valid(','void acceptResponse(','void retry(','void fail(','void pause(','void destroy(','void download(','void readChunk(','boolean saveTask(','void persistenceFailed(','boolean claimTask(']
  files=[source/n for n in names]+[source/'FileDownloads.java',HERE/'DownloadResumeHost.java',pathlib.Path(__file__).resolve(),old/'local/pocketchat/Support.java',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java']+list((old/'android').rglob('*.java'))+list((HERE/'stubs').rglob('*.java'))
  hashes={str(f.relative_to(ROOT)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(files)}
@@ -47,8 +47,11 @@ def main():
   previous=subprocess.check_output(['git','show',range_before+':app/src/main/java/local/pocketchat/FileDownloads.java'],cwd=ROOT,text=True);parts[needles.index('void download(')]=member(previous,'void download(')
  if load_before:
   previous=subprocess.check_output(['git','show',load_before+':app/src/main/java/local/pocketchat/FileDownloads.java'],cwd=ROOT,text=True);parts[needles.index('boolean loadTask(')]=member(previous,'boolean loadTask(')
+ boundary_path=ROOT/'tests/download46-host/legacy_support.py'
+ hashes[str(boundary_path.relative_to(ROOT))]=hashlib.sha256(boundary_path.read_bytes()).hexdigest()
+ boundary_spec=importlib.util.spec_from_file_location('download46_boundary',boundary_path);boundary=importlib.util.module_from_spec(boundary_spec);boundary_spec.loader.exec_module(boundary)
  with tempfile.TemporaryDirectory(prefix='download-resume-host-') as temporary:
-  temp=pathlib.Path(temporary);package=temp/'local/pocketchat';package.mkdir(parents=True)
+  temp=pathlib.Path(temporary);package=temp/'local/pocketchat';package.mkdir(parents=True);_,boundary_hashes=boundary.emit(package)
   for n in names:(package/n).write_bytes((source/n).read_bytes())
   (package/'DownloadResumeHost.java').write_text((HERE/'DownloadResumeHost.java').read_text().replace('/* FILEDOWNLOADS */','\n'.join(parts)))
   support=(old/'local/pocketchat/Support.java').read_text();support=support.replace('final class FileDownloads {static String safeName(String name){return name;}}','');(package/'Support.java').write_text(support)
@@ -64,7 +67,7 @@ def main():
   result=subprocess.run([binary('java'),'-Dbefore='+str(bool(before)).lower(),'-DbeforeWriter='+str(bool(writer_before)).lower(),'-DbeforeRange='+str(bool(range_before)).lower(),'-DbeforeLoad='+str(bool(load_before)).lower(),'-cp',str(temp)+os.pathsep+str(a.json_jar.resolve()),'local.pocketchat.DownloadResumeHost'],capture_output=True,text=True,timeout=45)
   if not result.stdout.strip():raise RuntimeError(result.stderr)
   report=json.loads(result.stdout);unchanged=all(hashlib.sha256((ROOT/f).read_bytes()).hexdigest()==h for f,h in hashes.items())
-  report.update(sourceCommit=commit,beforeRef=before,beforeWriterRef=writer_before,beforeRangeRef=range_before,beforeLoadRef=load_before,sourceFiles=hashes,executionInputsUnchanged=unchanged,selectedTaskActionsSha256=hashlib.sha256(parts[0].encode()).hexdigest(),selectedAcceptResponseSha256=hashlib.sha256(parts[needles.index('void acceptResponse(')].encode()).hexdigest(),selectedDownloadSha256=hashlib.sha256(parts[needles.index('void download(')].encode()).hexdigest(),selectedLoadTaskSha256=hashlib.sha256(parts[needles.index('boolean loadTask(')].encode()).hexdigest(),jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,productionClasses=names,productionMethods=needles,scope='Complete production DownloadTasks/revision/continuation/publication classes plus exact FileDownloads methods, controlled UI/Android/Gecko response adapters, real JVM workers and synthetic files. Not actual Android, native Gecko, network or user-file execution.')
+  report.update(newMetadataProviderBoundaryAdapters=boundary_hashes,sourceCommit=commit,beforeRef=before,beforeWriterRef=writer_before,beforeRangeRef=range_before,beforeLoadRef=load_before,sourceFiles=hashes,executionInputsUnchanged=unchanged,selectedTaskActionsSha256=hashlib.sha256(parts[0].encode()).hexdigest(),selectedAcceptResponseSha256=hashlib.sha256(parts[needles.index('void acceptResponse(')].encode()).hexdigest(),selectedDownloadSha256=hashlib.sha256(parts[needles.index('void download(')].encode()).hexdigest(),selectedLoadTaskSha256=hashlib.sha256(parts[needles.index('boolean loadTask(')].encode()).hexdigest(),jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(),actualAndroidExecution=False,productionClasses=names,productionMethods=needles,scope='Complete production DownloadTasks/revision/continuation/publication classes plus exact FileDownloads methods, controlled UI/Android/Gecko response adapters, real JVM workers and synthetic files. Not actual Android, native Gecko, network or user-file execution.')
   if result.stderr:report['stderr']=result.stderr
   if not unchanged:report['status']='invalid-source-changed'
   a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps({k:report[k] for k in ['status','passed','total','executionInputsUnchanged']}))

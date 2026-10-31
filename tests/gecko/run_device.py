@@ -773,9 +773,11 @@ def main():
         report['legacyDownloadCancelDuringQuery']=held_cancel
         good=update('good');assert good['state']=='ready' and good['uri'].startswith('content://'+package+'.app-updates/'),good
         access=update('verifyAccess');assert access['readOnly'] and access['traversalRejected'] and access['sameSigner'],access
+        history_experience=update('historyExperience');assert history_experience['status']=='passed' and history_experience['actualAndroidExecution'] is True and history_experience['checks'] and all(row['pass'] is True for row in history_experience['checks']),history_experience
+        report['releaseHistoryExperience']=history_experience
         update('showUi');time.sleep(1)
         adb('shell','uiautomator','dump','/sdcard/update-ui.xml');update_ui=adb('shell','cat','/sdcard/update-ui.xml');(OUT/'update-ui.xml').write_text(update_ui)
-        for label in ['应用更新','当前版本','安装更新','删除安装包','自动检查更新','Wi-Fi 下自动下载新版']:assert label in update_ui,(label,update_ui)
+        for label in ['应用更新','当前安装版本','安装更新','删除安装包','自动检查更新','Wi-Fi 下自动下载新版']:assert label in update_ui,(label,update_ui)
         (OUT/'update-ui.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         adb('shell','appops','set',package,'REQUEST_INSTALL_PACKAGES','allow')
         button=next(node for node in ET.fromstring(update_ui).iter('node') if node.attrib.get('text')=='安装更新')

@@ -52,6 +52,8 @@ public final class NotificationQuietIntegrationActivity extends Activity {
     if(!catalog.available(7)||!catalog.available(6)||ownerIdentity.slot!=7||otherIdentity.slot!=6||ownerIdentity.environmentId.equals(otherIdentity.environmentId)
         ||!owner.getSharedPreferences("chat",0).getBoolean("environmentInitialized",false)||!other.getSharedPreferences("chat",0).getBoolean("environmentInitialized",false))throw new IllegalStateException("Notification fixtures require two initialized production environments");
     check("Background completion reminders are off by default",!AppSettings.backgroundCompletionNotice(owner));
+    check("Background reply detection and legacy switches default to off",!BackgroundReplyPolicy.refresh(owner).enabled&&!AppPrefs.enabled(owner,"backgroundWait"));
+    BackgroundReplyPolicy.setEnabled(owner,true);
     check("Browser and network child processes cannot count as visible UI",!QuietNotifications.uiProcess(getPackageName()+":gecko_env7_tab0_disable_art_image_",getPackageName())&&!QuietNotifications.uiProcess(getPackageName()+":network",getPackageName())&&QuietNotifications.uiProcess(getPackageName()+":profile7",getPackageName()));
     for(int slot:new int[]{6,7}){Context c=Profiles.context(this,slot);c.getSharedPreferences("chat",0).edit().putBoolean("replyNotice",true).commit();manager.cancel(Profiles.notification(c,4102));}
     owner.getSharedPreferences("chat",0).edit().putStringSet("notifiedJobs",Collections.singleton(prefix+"-aggregate-legacy")).commit();
@@ -196,7 +198,8 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   }
   void quietEvents()throws Exception{
     check("Attention and network events remain in-app without separate reminders",notice(Profiles.notification(owner,4103))==null&&notice(Profiles.notification(owner,4105))==null);
-    check("Background observation remains enabled by default",AppPrefs.enabled(owner,"backgroundWait"));
+    check("Explicit global opt-in keeps detection enabled without reviving legacy switches",BackgroundReplyPolicy.refresh(owner).enabled&&!AppPrefs.enabled(owner,"backgroundWait"));
+    check("An empty proxy service withdraws its foreground card without stopping a proxy",notice(NetworkTransportService.NOTICE)==null);
     savedFile=DefaultDownloads.create(owner,"quiet-completion-"+prefix+".txt","text/plain");try(OutputStream out=savedFile.output()){out.write("complete local file".getBytes(java.nio.charset.StandardCharsets.UTF_8));}savedFile.publish();
     DownloadTasks tasks=new DownloadTasks(owner);savedTask=tasks.add("","",MainActivity.ORIGIN);DownloadTasks.put(savedTask,"state","saved","name",savedFile.name,"uri",savedFile.uri.toString(),"location",savedFile.location,"received",19,"total",19);tasks.save();
     ChatService.downloaded(owner,savedTask.optString("id"),savedFile.name);await("opted-in saved download completion",()->notice(Profiles.notification(owner,4104))!=null,this::downloadCompleted);
@@ -214,6 +217,6 @@ public final class NotificationQuietIntegrationActivity extends Activity {
       });
     });
   }
-  void cleanup(){if(owner!=null)ChatService.end(owner);stopService(new Intent(this,NetworkTransportService.class));if(savedFile!=null)savedFile.abort();if(session!=null){session.pending=null;session.prefs.edit().remove("pending").commit();session.handler.removeCallbacks(session.tick);session.web.destroy();}for(Context c:new Context[]{owner,other})if(c!=null){manager.cancel(Profiles.notification(c,4102));manager.cancel(Profiles.notification(c,4104));}}
+  void cleanup(){if(owner!=null){BackgroundReplyPolicy.setEnabled(owner,false);ChatService.end(owner);}stopService(new Intent(this,NetworkTransportService.class));if(savedFile!=null)savedFile.abort();if(session!=null){session.pending=null;session.prefs.edit().remove("pending").commit();session.handler.removeCallbacks(session.tick);session.web.destroy();}for(Context c:new Context[]{owner,other})if(c!=null){manager.cancel(Profiles.notification(c,4102));manager.cancel(Profiles.notification(c,4104));}}
   void fail(Exception e){if(finished)return;finished=true;handler.removeCallbacksAndMessages(null);cleanup();report("failed",e.toString());}
 }

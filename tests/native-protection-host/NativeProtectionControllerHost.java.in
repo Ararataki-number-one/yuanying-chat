@@ -69,6 +69,9 @@ final class NativeProtectionControllerHost {
     static final class ExitRouteReceipt {int proxy=8080;boolean matches(NativeNetwork n,JSONObject state){return true;}}
     boolean ready=true,starting,recoveryBlocked;ExitRouteReceipt verifiedRoute=new ExitRouteReceipt();Transport transport=new Transport();
   }
+  // Original protection cases have no auxiliary IP document. Its real lifecycle
+  // is exercised elsewhere; never simulate successful auxiliary behavior here.
+  static final class AuxiliaryPageBoundary {boolean fresh(){throw new AssertionError("Auxiliary IP page is outside this protection fixture");}}
   static final class View {
     final Owner owner=new Owner();final Metadata metadata=new Metadata();final CookieCallbacks cookieCallbacks=new CookieCallbacks();
     final NativeProtectionState nativeProtection=new NativeProtectionState();
@@ -80,6 +83,8 @@ final class NativeProtectionControllerHost {
     long protectionRequest;String queued="";Object surface,extension=new Object();
     GeckoSession current,primary;WebExtension.Port routePort=new WebExtension.Port();Runnable protectionTimeout,protectionRetry;
     ProtectionRestore protectionRestore;
+    AuxiliaryPageBoundary exitIpPage;
+    boolean closeExitIpPage(){if(exitIpPage!=null)throw new AssertionError("Auxiliary IP page is outside this protection fixture");return false;}
     __PROTECTION_RESTORE__
     void acknowledgeIdentity(){metadata.policyAcknowledged=privacyReady&&metadata.rfpAcknowledged;}
     void open(){opens++;ready=true;}

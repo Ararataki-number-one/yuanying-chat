@@ -84,6 +84,32 @@ final class EnvironmentSpecRuntime {
       return snapshot.equals(NetworkChanges.pendingStrict(context).toString())&&baseline.equals(NetworkChanges.hash(context));
     });
   }
+  /** Choice changes only application metadata, never the frozen route/model revision. */
+  static String selectNetworkApplicationPolicy(Context context,EnvironmentSpec.Identity expected,String snapshot,String candidateId,String policy)throws Exception{
+    return withIntent(context,()->{
+      requireIdentity(context,expected);JSONObject current=NetworkChanges.pendingStrict(context);
+      if(snapshot.isEmpty()||!snapshot.equals(current.toString())||!candidateId.equals(NetworkApplyCoordinator.candidateId(current)))throw new java.io.IOException("待应用设置已变化，请重新检查");
+      NetworkCatalog.put(current,"applicationPolicy",policy);NetworkApplyCoordinator.policy(current);
+      String selected=current.toString();SecretStore vault=new SecretStore(context);vault.put("pending-network",selected.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      requireIdentity(context,expected);if(!selected.equals(NetworkChanges.pendingStrict(context).toString()))throw new java.io.IOException("应用方式保存结果尚未确认");return selected;
+    });
+  }
+  static JSONObject recordNetworkApplication(Context context,NetworkApplyCoordinator.RuntimeBinding expected,NetworkCoreApplication proof)throws Exception{
+    return withIntent(context,()->{
+      expected.requireCurrent(context);if(!proof.current(NativeNetwork.peek()))throw new java.io.IOException("网络核心回执已变化");
+      EnvironmentSpec current=new EnvironmentSpecRepository(context).load();
+      NetworkApplicationReceipt receipt=NetworkApplicationReceipt.saved(expected.identity,expected.candidateId,current,current.desired().network);
+      JSONObject result=receipt.appliedNetwork(current,proof.receipt(),"网络设置已应用");
+      byte[] encoded=proof.json().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);SecretStore vault=new SecretStore(context);vault.put("network-application",encoded);
+      if(!java.util.Arrays.equals(encoded,vault.get("network-application")))throw new java.io.IOException("网络应用回执尚未写入存储");
+      expected.requireCurrent(context);if(!proof.current(NativeNetwork.peek()))throw new java.io.IOException("网络核心回执已变化");return result;
+    });
+  }
+  static JSONObject networkApplication(Context context,EnvironmentSpec.Identity owner)throws Exception{
+    requireIdentity(context,owner);byte[] bytes=new SecretStore(context).get("network-application");if(bytes==null)return new JSONObject();
+    if(bytes.length>16384)throw new java.io.IOException("网络应用回执过大");JSONObject value=EnvironmentSpecRepository.strictObject(bytes);
+    if(!owner.environmentId.equals(value.optString("environmentId"))||owner.generation!=value.optInt("generation",-1)||owner.slot!=value.optInt("slot",-1))return new JSONObject();return value;
+  }
   static final class IntentRecoveryRequired extends java.io.IOException {
     IntentRecoveryRequired(Exception cause){super("网络设置保存状态暂未确认，请在存储恢复后检查待应用设置",cause);}
   }
@@ -124,7 +150,7 @@ final class EnvironmentSpecRuntime {
         if(proof(before,stamp).equals(cached)){requireIdentity(context,expected);return new Reconciled(before.pending,cached,null);}
         EnvironmentSpec.NetworkBinding network=before.network();mirror(context,expected,network);
         String first=modelStamp(context);EnvironmentSpec confirmed=new EnvironmentSpecRepository(context).load();String second=modelStamp(context);Authority after=authority(context,expected);
-        if(first.equals(second)&&confirmed.identity.equals(expected)&&routeMatches(confirmed,network)&&before.proof.equals(after.proof))return new Reconciled(after.pending,proof(after,second),confirmed);cached="";
+        if(first.equals(second)&&confirmed.identity.equals(expected)&&routeMatches(confirmed,network)&&before.proof.equals(after.proof)){try{NetworkShareSelection.migrate(context,expected,after.config,after.pending.toString(),confirmed);}catch(Exception unavailable){try{NetworkShareSelection.invalidateSaved(context,expected);}catch(Exception ignored){}}return new Reconciled(after.pending,proof(after,second),confirmed);}cached="";
       }
       throw new java.io.IOException("网络候选已变化，请稍后重试");
     });

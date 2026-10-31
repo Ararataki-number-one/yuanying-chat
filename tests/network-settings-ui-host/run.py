@@ -34,7 +34,7 @@ public class UiSnapshotTest {
   String secret="socks://private-user:private-password@host:1080";check(externalName(obj("proxy",secret)).equals("应用专用代理")&&!externalName(obj("proxy",secret)).contains(secret),"proxy summary omits credentials");
   JSONObject metadata=obj("available",true,"desiredRevision",9,"appliedRevision",7,"pendingReady",true);
   JSONObject item=obj("uiMetadata",metadata,"pendingNetwork",true,"pendingAction","external","pendingConfig",obj("proxy",secret));
-  check(metadataSummary(item).equals("已保存 v9 · 已应用 v7"),"saved and applied versions remain distinct");
+  check(metadataSummary(item).equals("已保存 v9 · 网页配置已确认 v7"),"saved and applied versions remain distinct");
   check(pendingSummary(item).equals("应用专用代理"),"pending external route is summarized without secrets");
   check(editingContext(item,true).startsWith("正在编辑待应用配置"),"editing pending is explicit");
   check(editingContext(item,false).contains("保存后将替换它"),"switching route modes explains replacement");
@@ -42,12 +42,12 @@ public class UiSnapshotTest {
   JSONObject receipt=obj("environmentId","scope-a","generation",2,"saveState","saved","applicationState","pending","scope","session","savedRevision",9,"appliedRevision",7);
   check(operationResult(state,obj("operationResult",receipt))==receipt,"exact result scope is accepted");
   receipt.put("environmentId","scope-b");check(operationResult(state,obj("operationResult",receipt))==null,"slot reuse UUID rejects old result");receipt.put("environmentId","scope-a");receipt.put("generation",3);check(operationResult(state,obj("operationResult",receipt))==null,"new generation rejects old result");receipt.put("generation",2);
-  check(operationText(receipt,"waiting").startsWith("已保存 · 待应用\n已保存 v9 · 已应用 v7"),"pending receipt never claims application");
-  receipt.put("applicationState","applying");check(operationText(receipt,"").startsWith("已保存 · 正在应用"),"applying has distinct state");
+  check(operationText(receipt,"waiting").startsWith("等待应用")&&!operationText(receipt,"waiting").contains("已应用")&&!operationText(receipt,"waiting").contains("v9"),"pending receipt never claims application");
+  receipt.put("applicationState","applying");check(operationText(receipt,"").startsWith("连接中")&&!operationText(receipt,"").contains("已应用"),"applying has distinct state");
   receipt.put("applicationState","saved-unconfirmed");check(operationText(receipt,"").startsWith("已保存 · 核验未完成"),"unverified save is not success");
-  receipt.put("applicationState","applied");receipt.put("scope","core");check(operationText(receipt,"").startsWith("网络核心已应用 · 网页状态待确认"),"core proof cannot claim webpage proof");
-  receipt.put("scope","session");check(operationText(receipt,"").startsWith("已应用到当前会话"),"session receipt has precise scope");
-  receipt.put("scope","next-session");check(operationText(receipt,"").contains("下次打开会话"),"future session does not claim current application");
+  receipt.put("applicationState","applied");receipt.put("scope","core");check(operationText(receipt,"").equals("已应用")&&receipt.getString("scope").equals("core")&&receipt.getLong("appliedRevision")<receipt.getLong("savedRevision")&&!operationText(receipt,"").contains("网页配置已确认"),"core proof cannot claim webpage proof");
+  receipt.put("scope","session");check(operationText(receipt,"").equals("已应用")&&receipt.getString("scope").equals("session"),"session receipt has precise scope");
+  receipt.put("scope","next-session");check(operationText(receipt,"").equals("等待应用")&&!operationText(receipt,"").startsWith("已应用"),"future session does not claim current application");
   receipt.put("saveState","superseded");check(operationText(receipt,"").startsWith("已由较新的设置替换"),"superseded receipt is explicit");
   receipt.put("saveState","failed");check(operationText(receipt,"").startsWith("未能保存"),"failed save cannot inherit old success");
   check(operationText(null,"legacy success").startsWith("操作结果待确认"),"a callback boolean alone is insufficient proof");

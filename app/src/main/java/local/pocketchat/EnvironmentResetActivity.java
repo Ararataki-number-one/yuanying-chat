@@ -52,6 +52,7 @@ public final class EnvironmentResetActivity extends ThemedActivity {
     }
     verifyRoots(c,slot);catalog.withReset(plan.next,()->null);
     EnvironmentBrowserData.clear(profile.getNoBackupFilesDir(),profile.getCacheDir());
+    new SecretStore(profile).remove("network-application");NetworkShareSelection.clear(profile);
     new SecretStore(profile).remove("environment-audit");
     // These are login-scoped local recovery copies. Saved downloaded files and
     // every network/template/preference record are deliberately outside this set.

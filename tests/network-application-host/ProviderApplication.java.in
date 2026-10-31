@@ -15,6 +15,7 @@ final class NetworkHealthPolicy {enum Admission {VERIFIED,DEGRADED_VERIFICATION,
 final class NativeNetwork {
  boolean starting,ready=true,fresh=true;JSONObject settings=J.obj("entry","new","exit","fixed");Transport transport=new Transport();ExitRouteReceipt verifiedRoute=new ExitRouteReceipt();int freshCalls;boolean workerOnly=true;
  NetworkHealthPolicy.Admission admission=NetworkHealthPolicy.Admission.VERIFIED;
+ static NativeNetwork peek(){return null;}
  static String hash(String value){return Integer.toHexString(value.hashCode());}
  static boolean subscribedExit(JSONObject value){return "subscription".equals(value.optString("exitSource"));}
  static String transportFingerprint(JSONObject value){return value.optString("entry")+":"+value.optString("exit");}
@@ -24,6 +25,10 @@ final class NativeNetwork {
  static final class Transport {JSONObject state=J.obj("alive",true);}
  static final class ExitRouteReceipt {String configuration="new:fixed",entry="Entry|new",fingerprint="exit-fingerprint";boolean matches(NativeNetwork network,JSONObject state){return state.optBoolean("alive")&&configuration.equals(transportFingerprint(network.settings));}}
 }
+final class NetworkApplyCoordinator {static final String AUTO="idle",DEFER="defer",IMMEDIATE="immediate";}
+final class NetworkShareSelection {static void savedActive(Profile profile,EnvironmentSpec.Identity owner,JSONObject settings,EnvironmentSpec model){}static void invalidateSaved(Profile profile,EnvironmentSpec.Identity owner){}}
+final class SecretStore {SecretStore(Profile profile){}JSONObject settings(){return new JSONObject();}}
+final class NetworkCoreApplication {EnvironmentSpec.Identity identity;NativeNetwork.ExitRouteReceipt route;boolean current(NativeNetwork network){return false;}static NetworkCoreApplication observed(NativeNetwork network){return null;}}
 final class Profile {EnvironmentSpec.Identity identity;EnvironmentSpec model;String pending="candidate",active="published";}
 final class EnvironmentSpecRuntime {
  interface Action<T>{T run()throws Exception;}static <T>T withIntent(Profile profile,Action<T> action)throws Exception{return action.run();}
@@ -32,12 +37,15 @@ final class EnvironmentSpecRuntime {
  static EnvironmentSpec.NetworkBinding route(String mode,String entry,String exit,String proxy){return new EnvironmentSpec.NetworkBinding(mode,"source",entry,"exit",exit,"manual",proxy,"","");}
 }
 final class EnvironmentSpecRepository {final Profile profile;EnvironmentSpecRepository(Profile profile){this.profile=profile;}EnvironmentSpec load(){return profile.model;}}
-final class NetworkChanges {static final class Pending {final String value;Pending(String value){this.value=value;}public String toString(){return value;}}static Pending pendingStrict(Profile profile){return new Pending(profile.pending);}static String hash(Profile profile){return profile.active;}}
+final class NetworkChanges {static final class Pending {final String value;Pending(String value){this.value=value;}public String toString(){return value;}}static Pending pendingStrict(Profile profile){return new Pending(profile.pending);}static String hash(Profile profile){return profile.active;}static boolean clearIfCurrent(Profile profile,String snapshot){if(!profile.pending.equals(snapshot))return false;profile.pending="";return true;}}
 final class GeckoWebView {static final String VERSION="actual-gecko";}
 final class NetworkUiProvider {
+ final Map<String,JSONObject> jobs=new HashMap<>();final Map<String,Choice> choices=new HashMap<>();int selectedCount;String selectedId,selectedPolicy;
+ void selectPolicy(String id,String action,JSONObject candidate,String baseline,String policy){selectedCount++;selectedId=id;selectedPolicy=policy;}
  final TestQueue main=new TestQueue(),io=new TestQueue();final Map<String,RequestBinding> bindings=new HashMap<>();final Profile profile=new Profile();boolean maintenanceStopped;long saveRevision=1;String activeApply="save";Transition activeTransition;boolean completed,ok;String message;JSONObject result;int completions;
  @METHODS@
- static final class Transition {String id="save",expectedPendingSnapshot="candidate",publishedHash="published";long revision=1;boolean cancelled,cancelledByUser,cancellationConfirmed,confirmed=true;ChatSession session;}
+ static final class Transition {String id="save",expectedPendingSnapshot="candidate",publishedHash="published";long revision=1;boolean cancelled,cancelledByUser,cancellationConfirmed,confirmed=true,settledRoute,pendingReleased;ChatSession session;}
+ void rollbackApplied(Transition transition,String reason){finish(transition.id,false,reason);}
  void finish(String id,boolean ok,String message){completed=true;this.ok=ok;this.message=message;completions++;RequestBinding binding=bindings.get(id);result=binding==null?null:binding.outcome;}
 }
 

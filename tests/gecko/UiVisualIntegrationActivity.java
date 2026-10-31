@@ -26,11 +26,17 @@ public final class UiVisualIntegrationActivity extends Activity {
       LinearLayout root=DesignUi.screen(this),box=DesignUi.body(this,root,downloads?"下载中心":"应用设置",this::finish);
       if(downloads){
         savedActions=new SavedFileActions(this);DesignDownloads.Controller controller=new DesignDownloads.Controller(this,box,0,n->{},savedActions);
+        // Synthetic visual rows must not be replaced by an unrelated real-library callback.
+        controller.setVisible(false);
         long now=System.currentTimeMillis();JSONArray data=J.arr(
           J.obj("id","visual-active","slot",0,"name","项目资料与界面设计说明.pdf","state","downloading","received",1200000,"total",5000000,"time",now,"updated",now),
           J.obj("id","visual-paused","slot",1,"name","稍后继续的文件.zip","state","paused","received",900000,"total",3000000,"time",now-1000),
           J.obj("id","visual-failed","slot",0,"name","等待重试的文件.pdf","state","failed","reason","连接中断，可检查网络后重试。","time",now-2000),
-          J.obj("id","visual-saved","slot",0,"name","已保存的笔记.pdf","state","saved","time",now-3000,"location","Download/元婴期院士/"));controller.apply(data,0,now);
+          J.obj("id","visual-saved","slot",0,"name","已保存的笔记.pdf","state","saved","time",now-3000,"location","Download/元婴期院士/"));
+        // Labels belong only to these synthetic rows; they are not file-ownership receipts.
+        controller.preparedOwners=new java.util.HashMap<>();
+        for(int i=0;i<data.length();i++){JSONObject row=data.optJSONObject(i);controller.preparedOwners.put(DesignDownloads.key(row),row.optInt("slot")==1?"资料整理":"日常会话");}
+        try{controller.apply(data,0,now);}finally{controller.preparedOwners=null;}
       }else DesignSettingsUi.render(this,box,()->{});
       root.addView(ReferenceUi.nav(this,downloads?2:4,n->{},new Button[5]));setContentView(root);AppAppearance.apply(root);
       if("downloads".equals(action))downloadLocationEvidence=new DownloadLocationLayoutEvidence(this,root,getIntent().getStringExtra("visualNonce"));

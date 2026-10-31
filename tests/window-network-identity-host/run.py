@@ -24,6 +24,7 @@ def main():
     extractor=ROOT/'tests/chrome-network-state-host/run.py'
     spec=importlib.util.spec_from_file_location('actual_constructor_extractor',extractor);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);member=module.member
     names=['WindowNetworkState','NetworkWorkspaceUi','NetworkCatalog','NativeNetwork','LatencyRefreshPolicy','LatencyProbePolicy','NetworkStatusPolicy','NetworkOptimizationPolicy','Sha256']
+    if not args.before_ref:names+=['NetworkCoreApplication','NetworkHealthPolicy','EnvironmentSpec','J']
     selected={name:(subprocess.check_output(['git','show',selected_ref+':'+PROD+name+'.java'],cwd=ROOT) if args.before_ref else (ROOT/(PROD+name+'.java')).read_bytes())for name in names}
     for name,data in selected.items():
         saved=raw/'selected-production'/(name+'.java');saved.parent.mkdir(exist_ok=True);saved.write_bytes(data)
@@ -51,7 +52,7 @@ def main():
         'android/util/Log.java':'package android.util; public class Log{public static int i(String tag,String value){return 0;}}',
     }
     for name,value in stubs.items():path=src/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(value)
-    inputs=[HERE/'WindowNetworkIdentityHost.java',Path(__file__).resolve(),extractor,device_fixture]+[ROOT/(PROD+name+'.java')for name in names]+sorted((ROOT/'tools/gecko').glob('*.py'))
+    inputs=[HERE/'WindowNetworkIdentityHost.java',HERE/'ColdCoreWindowStateHost.java.in',Path(__file__).resolve(),extractor,device_fixture]+[ROOT/(PROD+name+'.java')for name in names]+sorted((ROOT/'tools/gecko').glob('*.py'))
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()for path in inputs}
     def execute(label,command):
         result=subprocess.run(command,cwd=ROOT,capture_output=True,timeout=60)
@@ -74,6 +75,31 @@ def main():
         rows=projection['checks'];summary=rows[0]['readModelSummary']
         public=dict(networkReadModelIdentity=dict(summary,cases=[row['readModel']for row in rows]),checks=rows)
         report['controlledAndroidProjectionPublicReplay']=verify_read_model_identity(public)
+    if not args.before_ref:
+        cold=raw/'cold-src';cold.mkdir();cold_java=(HERE/'ColdCoreWindowStateHost.java.in').read_text()
+        cold_members=dict(replacements)
+        cold_members.update(STATE_RUNNING=member(state,'static JSONObject running('),STATE_LIVE=member(state,'static JSONObject live('),
+            CORE_OBSERVED=member(text['NetworkCoreApplication'],'static NetworkCoreApplication observed('),
+            CORE_CURRENT=member(text['NetworkCoreApplication'],'boolean current('),
+            CATALOG_PUT=member(text['NetworkCatalog'],'static void put('),
+            NATIVE_ADMISSION=member(text['NativeNetwork'],'NetworkHealthPolicy.Admission connectionAdmission('),
+            NATIVE_RECEIPT=member(text['NativeNetwork'],'static final class ExitRouteReceipt {'))
+        for key,value in cold_members.items():cold_java=cold_java.replace('/* '+key+' */',value)
+        (cold/'ColdCoreWindowStateHost.java').write_text(cold_java)
+        for name in ('LatencyRefreshPolicy','LatencyProbePolicy','NetworkStatusPolicy','NetworkOptimizationPolicy','Sha256','NetworkHealthPolicy','EnvironmentSpec','J'):(cold/(name+'.java')).write_bytes(selected[name])
+        cold_stubs=dict(stubs,**{'android/os/Process.java':'package android.os;public class Process{public static int myPid(){return 1234;}}',
+            'android/content/Context.java':'package android.content;public class Context{public static Runnable beforeRead;public SharedPreferences getSharedPreferences(String name,int mode){Runnable hook=beforeRead;beforeRead=null;if(hook!=null)hook.run();return new SharedPreferences();}}'})
+        for name,value in cold_stubs.items():
+            path=cold/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(value)
+        cold_classes=raw/'cold-classes';cold_compile_command=[str(args.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(args.json_jar),'-d',str(cold_classes),*map(str,sorted(cold.rglob('*.java')))]
+        cold_compiled=execute('cold-compile',cold_compile_command)
+        if cold_compiled.returncode:raise RuntimeError('Actual cold producer failed compilation; originals retained in '+str(raw))
+        cold_run_command=[str(args.java_home/'bin/java'),'-cp',str(cold_classes)+':'+str(args.json_jar),'local.pocketchat.ColdCoreWindowStateHost']
+        cold_run=execute('cold-execute',cold_run_command);cold_report=json.loads(cold_run.stdout)
+        if cold_run.returncode or cold_report.get('status')!='passed' or cold_report.get('total')!=35 or cold_report.get('passed')!=35 or len(cold_report.get('checks',[]))!=35 or not all(row.get('pass') is True for row in cold_report['checks']):report['status']='failed'
+        report['coldCoreProducerHostReplay']=cold_report
+        report['coldCoreProducerCommands']=dict(compile=cold_compile_command,execute=cold_run_command)
+        report['coldCoreProducerScope']='Exact running/live producers, observed/current predicates and ExitRouteReceipt matching; actual EnvironmentSpec identity and portable policies. Controlled proof construction, cached transport state, opaque fingerprint, preferences and latency adapters. No service IPC/capture, Android, live core or historical-event admission claim.'
     unchanged=source==git('rev-parse','HEAD') and status==git('status','--porcelain') and all(hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==digest for path,digest in hashes.items())
     if not unchanged:report['status']='source-changed'
     report.update(schema=1,sourceCommit=source,sourceDirty=bool(status),selectedProductionRef=selected_ref,

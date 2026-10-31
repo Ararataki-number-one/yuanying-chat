@@ -30,16 +30,16 @@ public final class NetworkTransportService extends Service {
   }
   static final class StaleGeneration extends IOException {StaleGeneration(){super("网络实例已变化");}}
   void note(Node n,NetworkDiagnostics.Event event,NetworkDiagnostics.Reason reason,NetworkDiagnostics.Stage stage,long value){NetworkDiagnostics d=n.diagnostics;if(d!=null)d.record(event,n.generation,reason,stage,value);}
-  @Override public void onCreate(){super.onCreate();for(int slot=0;slot<nodes.length;slot++)nodes[slot]=new Node(slot);preconnectEpoch=new ExitPreconnectEpoch(this,this::writePreconnectEpochs);QuietNotifications.backgroundChannel(this,QuietNotifications.NETWORK_BACKGROUND,"后台连接服务 · 静默");}
+  @Override public void onCreate(){super.onCreate();for(int slot=0;slot<nodes.length;slot++)nodes[slot]=new Node(slot);preconnectEpoch=new ExitPreconnectEpoch(this,this::writePreconnectEpochs);QuietNotifications.backgroundChannel(this,QuietNotifications.NETWORK_BACKGROUND,"代理连接运行中");}
   @Override public void onTrimMemory(int level){super.onTrimMemory(level);if(destroying||nodes[0]==null)return;try{nodes[0].commands.execute(()->{if(!destroying)writePreconnectEpochs();});}catch(RejectedExecutionException ignored){}}
   @Override public void onLowMemory(){super.onLowMemory();onTrimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE);}
   void writePreconnectEpochs(){ExitPreconnectEpoch epoch=preconnectEpoch;if(epoch==null)return;File base=Profiles.global(this).getNoBackupFilesDir();for(Node n:nodes){File profile=n.slot==0?base:new File(base,"profiles/env"+n.slot);File directory=new File(profile,"network-runtime");android.util.AtomicFile file=new android.util.AtomicFile(new File(directory,ExitPreconnectEpoch.FILE));try{if(file.getBaseFile().isFile())epoch.writeExisting(directory);}catch(Exception unavailable){file.delete();}}}
   @Override public IBinder onBind(Intent intent){return endpoint.getBinder();}
-  @Override public int onStartCommand(Intent intent,int flags,int startId){main.removeCallbacks(idleStop);notification();return START_NOT_STICKY;}
+  @Override public int onStartCommand(Intent intent,int flags,int startId){main.removeCallbacks(idleStop);notification();updateNotification();return START_NOT_STICKY;}
   void notification(){
     if(destroying)return;main.removeCallbacks(idleStop);
     PendingIntent open=PendingIntent.getActivity(this,NOTICE,new Intent(this,WindowHomeActivity.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-    Notification notice=QuietNotifications.background(this,QuietNotifications.NETWORK_BACKGROUND,"后台连接服务",open);
+    Notification notice=QuietNotifications.background(this,QuietNotifications.NETWORK_BACKGROUND,"代理连接运行中",null,open);
     if(Build.VERSION.SDK_INT>=34)startForeground(NOTICE,notice,ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);else startForeground(NOTICE,notice);
   }
   void updateNotification(){main.post(()->{boolean live=false;for(Node n:nodes)live|=n.alive();if(live)notification();else{main.removeCallbacks(idleStop);main.postDelayed(idleStop,1000);}});}
@@ -49,7 +49,8 @@ public final class NetworkTransportService extends Service {
     Node n=nodes[slot];Messenger reply=request.replyTo;String id=data.getString("id",""),action=data.getString("action","");
     n.subscribers.put(reply.getBinder(),reply);if(action.equals("launch")){main.removeCallbacks(idleStop);n.pendingLaunches.incrementAndGet();}
     n.commands.execute(()->{JSONObject result;try{
-      if("launch".equals(action)){launch(n,data.getString("configuration",""));}
+      if(("launch".equals(action)||"stop".equals(action))&&data.getBoolean("guardGeneration",false))guardedChange(n,data,action);
+      else if("launch".equals(action)){launch(n,data.getString("configuration",""));}
       else if("stop".equals(action)){String expected=data.getString("expectedGeneration","");if(!expected.isEmpty()&&!expected.equals(n.generation))throw new StaleGeneration();stop(n,true,NetworkDiagnostics.reason(data.getString("stopReason","UNKNOWN")));}
       else if("ready".equals(action)){if(!n.generation.equals(data.getString("generation"))||!n.alive())throw new IOException("网络实例已变化");n.state="running";event(n);}
       else if("detach".equals(action))n.subscribers.remove(reply.getBinder());
@@ -58,6 +59,17 @@ public final class NetworkTransportService extends Service {
     }catch(Exception e){note(n,NetworkDiagnostics.Event.FAILURE,"launch".equals(action)?NetworkDiagnostics.Reason.START_FAILED:NetworkDiagnostics.Reason.CONTROL_UNAVAILABLE,"launch".equals(action)?NetworkDiagnostics.Stage.START:"stop".equals(action)?NetworkDiagnostics.Stage.STOP:NetworkDiagnostics.Stage.IPC,0);result=J.obj("ok",false,"message","网络服务操作失败","failureCode",e instanceof StaleGeneration?"stale_generation":"operation_failed","state",n.snapshot());}
       if(action.equals("launch")){n.pendingLaunches.decrementAndGet();updateNotification();}
       Message response=Message.obtain(null,REPLY);Bundle body=new Bundle();body.putString("id",id);body.putString("json",result.toString());response.setData(body);try{reply.send(response);}catch(RemoteException dead){note(n,NetworkDiagnostics.Event.IPC_REPLY_SEND_FAILED,NetworkDiagnostics.Reason.CONTROL_UNAVAILABLE,NetworkDiagnostics.Stage.REPLY,0);n.subscribers.remove(reply.getBinder());}
+    });
+  }
+  /** Identity and generation are checked in the same serialized command that
+   * replaces/stops the core. Empty is a valid expected never-started generation. */
+  void guardedChange(Node n,Bundle data,String action)throws Exception{
+    JSONObject raw=new JSONObject(data.getString("expectedOwner",""));
+    EnvironmentSpec.Identity expected=new EnvironmentSpec.Identity(raw.getInt("slot"),raw.getInt("generation"),raw.getString("environmentId"));
+    if(expected.slot!=n.slot)throw new StaleGeneration();Context profile=Profiles.context(this,n.slot);
+    ProfileCatalog.get(profile).withIdentity(expected,()->{
+      if(!data.getString("expectedGeneration","").equals(n.generation))throw new StaleGeneration();
+      if("launch".equals(action))launch(n,data.getString("configuration",""));else stop(n,true,NetworkDiagnostics.reason(data.getString("stopReason","UNKNOWN")));return null;
     });
   }
   File root(Node n){return new File(Profiles.context(this,n.slot).getNoBackupFilesDir(),"network-runtime");}

@@ -42,3 +42,8 @@ host control which directly replaced `layoutText` without setting a layout
 request was corrected: that adapter invented a stale-text predicate rather
 than modeling Android's legal transformed Layout text. The original Android
 geometry/ellipsis assertions and runner are unchanged.
+
+The 46 update scene changes only its readiness text to `当前安装版本`. A scoped
+inverse restores that single dictionary entry before the original readiness-map,
+capture-function and full-module AST checks. All prior expected digests, actions,
+deadlines and 44 host cases remain intact; other label/scene changes are rejected.

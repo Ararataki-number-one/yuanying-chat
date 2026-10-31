@@ -18,8 +18,8 @@ public class DownloadCenterActivity extends ThemedActivity {
   void refresh(){render(true);}
   void render(boolean preserveScroll){if(downloadsView!=null)downloadsView.refresh(filter);}
   @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putInt("filter",filter);}
-  @Override protected void onResume(){super.onResume();handler.removeCallbacks(tick);handler.post(tick);}
-  @Override protected void onPause(){handler.removeCallbacks(tick);super.onPause();}
+  @Override protected void onResume(){super.onResume();if(downloadsView!=null)downloadsView.setVisible(true);handler.removeCallbacks(tick);handler.post(tick);}
+  @Override protected void onPause(){if(downloadsView!=null)downloadsView.setVisible(false);handler.removeCallbacks(tick);super.onPause();}
   @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==SavedFileActions.EXPORT)actions.result(result,data);}
-  @Override protected void onDestroy(){handler.removeCallbacks(tick);if(actions!=null)actions.close();super.onDestroy();}
+  @Override protected void onDestroy(){if(downloadsView!=null)downloadsView.setVisible(false);handler.removeCallbacks(tick);if(actions!=null)actions.close();super.onDestroy();}
 }

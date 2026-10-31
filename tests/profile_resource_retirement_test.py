@@ -89,7 +89,7 @@ def execute(root=ROOT, expect_fixed=True):
     counts = re.findall(r'^TOTAL ([0-9]+)$', run.stdout, re.MULTILINE)
     return dict(status='passed' if run.returncode == 0 else 'failed', expectedFixed=expect_fixed,
                 actualAndroidExecution=False, actualGeckoExecution=False, actualNativeHttpExecution=False,
-                physicalMemoryMeasurement=False, scope='Exact extracted production methods on JVM; explicit fake scheduler and HttpURLConnection',
+                physicalMemoryMeasurement=False, auxiliaryPageBoundary='Default absent; close returns false only while absent and auxiliary selection fails explicitly. Real auxiliary close is outside this host.', scope='Exact extracted production methods on JVM; explicit fake scheduler and HttpURLConnection',
                 returncode=run.returncode, stdout=run.stdout, stderr=run.stderr,
                 passed=int(counts[0]) if len(counts) == 1 else None, metrics=metrics[0] if len(metrics) == 1 else None,
                 sourceSha256={str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths.values()},

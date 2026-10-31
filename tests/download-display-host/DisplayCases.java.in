@@ -12,13 +12,13 @@
         if(phase.equals("one-progress-change"))live.put("received",11);
         Meter.reset();resetQueries(p);int created=c.createdRows();c.apply(data,0,1000);
         boolean same=original==null||original.entrySet().stream().allMatch(e->c.views.get(e.getKey())==e.getValue());if(original==null)original=new LinkedHashMap<>(c.views);
-        int expected=phase.equals("initial")||baseline?n+1:phase.equals("one-progress-change")?1:0;
+        int expected=phase.equals("initial")||baseline?(reviewed46?40:n+1):phase.equals("one-progress-change")?1:0;
         check(n+" "+phase+" exact bind count",Meter.binds==expected);
-        check(n+" "+phase+" formatter count",Meter.timeLabels==(phase.equals("initial")||baseline?n+1:0));
-        check(n+" "+phase+" description setter count",Meter.descriptions==(phase.equals("initial")||baseline?n+1:0));
+        check(n+" "+phase+" formatter count",Meter.timeLabels==(phase.equals("initial")||baseline?(reviewed46?40:n+1):0));
+        check(n+" "+phase+" description setter count",Meter.descriptions==(phase.equals("initial")||baseline?(reviewed46?40:n+1):0));
         check(n+" "+phase+" names read remains one",p.db.queries.size()==1);
-        check(n+" "+phase+" rows/cards remain identical",same&&c.list.getChildCount()==n+1&&(phase.equals("initial")||c.createdRows()==created));
-        check(n+" "+phase+" text updates stay exact",phase.equals("initial")||Meter.textWrites==(phase.equals("unchanged")?0:1));
+        check(n+" "+phase+" rows/cards remain identical",same&&c.list.getChildCount()==(reviewed46?40:n+1)&&(phase.equals("initial")||c.createdRows()==created));
+        check(n+" "+phase+" text updates stay exact",phase.equals("initial")||Meter.textWrites==(phase.equals("unchanged")?0:reviewed46?2:1));
         measurements.put(J.obj("savedHistory",n,"phase",phase,"bindCalls",Meter.binds,"timeLabelCalls",Meter.timeLabels,"descriptionSetters",Meter.descriptions,"textSetters",Meter.textWrites,"nameQueries",p.db.queries.size(),"newRows",c.createdRows()-created,"attachedCards",c.list.getChildCount(),"renderedSha256",rendered(c)));
       }
     }
@@ -29,7 +29,7 @@
     task.put("updated",16001);Meter.reset();c.apply(data,0,16001);check("Fresh heartbeat hides stale label",keep.stale.getVisibility()==View.GONE&&(baseline||Meter.binds==1));
     for(String field:new String[]{"name","reason","location","state","total","received","time"}){
       if(field.equals("total")||field.equals("received")||field.equals("time"))task.put(field,task.optLong(field)+1);else task.put(field,field.equals("state")?"failed":"changed-"+field);
-      Meter.reset();c.apply(data,0,16001);check("Rendered field "+field+" invalidates one row",baseline||Meter.binds==1);
+      Meter.reset();c.apply(data,0,16001);check("Rendered field "+field+" invalidates one row",baseline||Meter.binds==(reviewed46&&field.equals("location")?0:1));
       check("Row action payload remains the current object for "+field,keep.value==task);
     }
     p.db.rows.get(1).put("name","已改名");Meter.reset();c.apply(data,0,17000);check("Environment rename updates without stale cache",label(c,saved).equals("已改名 · saved")&&(baseline||Meter.binds==1));
@@ -48,7 +48,7 @@
       check("Read fault stage "+stage+" clears prepared transient labels",c.preparedNames==null);
     }
     RefreshIO.failure=0;RefreshIO.data=first;c.refresh(0);check("Successful retry clears failure without rebuilding rows",!c.refreshUi.failed&&c.views.size()==3&&before.entrySet().stream().allMatch(e->c.views.get(e.getKey())==e.getValue()));
-    check("Successful retry updates package key only after render",c.packageKey.equals("changed"));
+    check("Successful retry updates package key only after render",c.packageKey.equals(reviewed46?"changed:0:false":"changed"));
   }
   static boolean baseline=Boolean.getBoolean("baseline");
   public static void main(String[] ignored){Locale.setDefault(Locale.ROOT);TimeZone.setDefault(TimeZone.getTimeZone("UTC"));incremental();invalidations();refreshFailures();int passed=0;for(int i=0;i<checks.length();i++)if(checks.getJSONObject(i).getBoolean("pass"))passed++;System.out.println(J.obj("status",passed==checks.length()?"passed":"failed","passed",passed,"total",checks.length(),"variant",baseline?"base31":"38-current","measurements",measurements,"checks",checks));if(passed!=checks.length())System.exit(1);}

@@ -30,7 +30,7 @@ final class Profiles {
       if(!edit.commit())throw new java.io.IOException("新环境配置无法保存");return null;
     });
   }
-  static void clearConfiguration(SecretStore vault)throws Exception{for(String record:new String[]{"network","subscription","subscription-meta","subscription-ui","exit-subscription","exit-subscription-meta","exit-subscription-ui","exit-baseline","pending-network",EnvironmentSpecRepository.STORE,EnvironmentSpecRepository.RESET})vault.remove(record);}
+  static void clearConfiguration(SecretStore vault)throws Exception{for(String record:new String[]{"network","subscription","subscription-meta","subscription-ui","exit-subscription","exit-subscription-meta","exit-subscription-ui","exit-baseline","pending-network","network-application",EnvironmentSpecRepository.STORE,EnvironmentSpecRepository.RESET})vault.remove(record);NetworkShareSelection.clear(vault.context);}
   static final class NetworkCopy {
     final String mode,proxy,entry;final boolean requireVpn,configured;final java.util.Map<String,byte[]> records=new java.util.LinkedHashMap<>();
     NetworkCopy(android.content.SharedPreferences prefs){mode=prefs.getString("networkMode","external");proxy=prefs.getString("proxy","");entry=prefs.getString("lastGoodEntry","");requireVpn=prefs.getBoolean("requireExternalVpn",true);configured=prefs.getBoolean("networkConfigured",false);}

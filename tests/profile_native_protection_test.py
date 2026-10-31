@@ -83,6 +83,7 @@ def execute():
         if result.returncode:raise AssertionError(result.stdout+result.stderr)
     report=json.loads(result.stdout)
     report.update(scope='Actual production pure-Java state plus byte-extracted native controller, route, navigation, load, checkpoint restore, port-message and diagnostic URL policy methods. Handler, Gecko/Android, environment lifecycle, network guard and JSON boundaries are synthetic; no actual network or SDK execution.',
+                  auxiliaryPageBoundary='Default absent; close returns false only while absent, and any auxiliary freshness/close behavior fails explicitly. Real auxiliary lifecycle is not exercised.',
                   newNetworkRequestsActuallySent=False,fullFingerprintProtectionAccepted=False,
                   sourceSha256={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [VIEW,POLICY,IDENTITY,TEMPLATE,Path(__file__)]},
                   extractedProductionSha256={name:hashlib.sha256(value.encode()).hexdigest() for name,value in parts.items()})

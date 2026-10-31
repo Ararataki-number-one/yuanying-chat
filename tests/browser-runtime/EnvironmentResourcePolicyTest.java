@@ -29,7 +29,7 @@ public final class EnvironmentResourcePolicyTest {
     // Official webpage regeneration can be busy without a native pending job.
     boolean currentReply=BrowserSettingsPolicy.currentReply(true,true,true,8,8);
     check("Background website-only reply remains observable without a pending job",
-        EnvironmentResourcePolicy.observePage(false,false,false,false,false,currentReply));
+        EnvironmentResourcePolicy.observePage(false,false,false,false,false,currentReply,true));
     check("Current reply keeps the retained background runtime active",
         EnvironmentResourcePolicy.keepActivityRunning(false,currentReply,false,false,false,false));
     currentReply=BrowserSettingsPolicy.currentReply(true,true,false,8,8);

@@ -35,6 +35,18 @@ public final class NetworkApplicationHostTest {
     JSONObject savedUnknown=NetworkApplicationReceipt.savedUnconfirmed(identity,"candidate-a","version read failed");check("Failure to read the model after durable save never becomes save failed",savedUnknown.optString("saveState").equals("saved")&&savedUnknown.optString("applicationState").equals("saved-unconfirmed")&&savedUnknown.optLong("savedRevision")==0);
     JSONObject uncertain=NetworkApplicationReceipt.uncertain(identity,"storage uncertain");check("Uncertain durable storage is not mislabeled saved or failed",uncertain.optString("saveState").equals("uncertain")&&uncertain.optBoolean("recoveryRequired")&&uncertain.optLong("appliedRevision")==0);
     JSONObject newerUnknown=NetworkApplicationReceipt.supersededUnknown(identity,"newer");check("A superseded save with unavailable version is still distinct from failed",newerUnknown.optString("saveState").equals("superseded")&&newerUnknown.optLong("savedRevision")==0);
+    NetworkApplicationReceipt.CoreProof networkProof=new NetworkApplicationReceipt.CoreProof(identity,"candidate-a",1,first.network,"core-generation-a",123);
+    JSONObject networkResult=receipt.appliedNetwork(model,networkProof,"network applied");
+    check("A strict network proof can acknowledge the route before any browser exists",networkResult.optString("applicationState").equals("applied")&&networkResult.optString("scope").equals("core")&&networkResult.optLong("networkAppliedRevision")==1);
+    check("A cold network proof does not fabricate browser or full environment acknowledgement",networkResult.optLong("appliedRevision")==0&&networkResult.optLong("browserAppliedRevision")==0&&model.appliedRevision==0&&model.engineVersion.isEmpty());
+    check("Network proof cannot borrow another candidate",!receipt.matchesNetworkApplied(model,new NetworkApplicationReceipt.CoreProof(identity,"candidate-b",1,first.network,"core-generation-a",123)));
+    check("Network proof cannot borrow another environment",!receipt.matchesNetworkApplied(model,new NetworkApplicationReceipt.CoreProof(recreated,"candidate-a",1,first.network,"core-generation-a",123)));
+    check("Network proof cannot borrow another desired revision",!receipt.matchesNetworkApplied(newer,networkProof));
+    check("Network proof retains exact fixed exit and source parameters",!receipt.matchesNetworkApplied(model,new NetworkApplicationReceipt.CoreProof(identity,"candidate-a",1,route("a","other"),"core-generation-a",123)));
+    check("Network proof requires an actual core generation and verification time",!receipt.matchesNetworkApplied(model,new NetworkApplicationReceipt.CoreProof(identity,"candidate-a",1,first.network,"",123))&&!receipt.matchesNetworkApplied(model,new NetworkApplicationReceipt.CoreProof(identity,"candidate-a",1,first.network,"core-generation-a",0)));
+    JSONObject restored=receipt.applicationFailed("restored","应用失败，仍使用原线路"),unknown=receipt.applicationFailed("unconfirmed","应用失败，原线路恢复待确认");
+    check("Application failure preserves saved candidate and offers retry without claiming applied",restored.optString("saveState").equals("saved")&&restored.optString("applicationState").equals("failed")&&restored.optBoolean("retryAvailable")&&restored.optString("candidateId").equals("candidate-a")&&restored.optLong("appliedRevision")==0);
+    check("Unconfirmed rollback cannot claim a healthy original route",unknown.optString("rollbackState").equals("unconfirmed")&&!unknown.optString("message").contains("仍使用原线路"));
     System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualCoreVerification",false,"productionModelAndReceipt",true));
   }
 }

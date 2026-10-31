@@ -6,7 +6,15 @@ The repository, UUID catalogue, preferences and SecretStore are explicit host
 doubles; files are atomic plain bytes. This does **not** execute Android SQLite,
 AES-GCM/Keystore, Gecko, the native network core, accounts or WAN traffic.
 
-The 85 checks include the production proxy validation method, extracted verbatim
+The v46 dependency adaptation additionally compiles the complete production
+`NetworkApplicationReceipt` and `NetworkApplyCoordinator`. The original cases
+do not exercise live core application or publish share selections: explicit
+boundary adapters reject every core-proof invocation and report optional share
+migration/invalidation unavailable, instead of manufacturing successful results.
+The production configuration and share-selection host suites cover those new
+behaviors separately. All original intent cases and transaction guards remain.
+
+The 124 checks include the production proxy validation method, extracted verbatim
 from MainActivity, with positive HTTP/HTTPS/SOCKS and invalid syntax controls.
 Only the Android URI parser has a JVM syntax adapter; actual Android storage
 checks use the real Android validator. Legal synthetic routes use `socks://`.

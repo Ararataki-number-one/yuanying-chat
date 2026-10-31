@@ -17,6 +17,7 @@ final class DesignSettingsUi {
     group(a,appearance,"白天与黑夜",AppAppearance.label()+" · 应用与网页外观","brand",()->appearance(a,refresh));
     DesignUi.section(box,"提醒与后台", "");
     LinearLayout background=DesignUi.group(a);box.addView(background);
+    group(a,background,"后台回复检测",BackgroundReplySettingsUi.summary(a),"chat",()->BackgroundReplySettingsUi.open(a,refresh));
     group(a,background,"后台完成提醒",AppSettings.backgroundCompletionNotice(a)?"离开应用后提醒回复和下载完成":"已关闭 · 使用时保持安静","chat",()->completionReminders(a,refresh));
     group(a,background,"通知与电池设置","通知提醒与后台运行权限","chat",()->FeatureDialogs.backgroundSettings(a));
     DesignUi.section(box,"配置备份","");
@@ -35,7 +36,7 @@ final class DesignSettingsUi {
   static void completionReminders(Activity a,Runnable refresh){
     LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));
     Switch enabled=new Switch(a);enabled.setText("离开应用后提醒完成");NativeControls.prepare(enabled);enabled.setChecked(AppSettings.backgroundCompletionNotice(a));box.addView(enabled);
-    DesignUi.note(box,"回复和文件下载完成后提醒。使用应用时保持安静；系统仍可能显示后台服务的静默提示。");
+    DesignUi.note(box,"下载完成提醒可独立使用；回复完成提醒还需开启后台回复检测。使用应用时保持安静；系统仍可能显示后台服务的静默提示。");
     enabled.setOnCheckedChangeListener((button,value)->{AppSettings.put(a,"backgroundCompletionNotice",String.valueOf(value));if(value){ChatService.channels(a);if(android.os.Build.VERSION.SDK_INT>=33&&a.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)a.requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},91);}refresh.run();});
     AppAppearance.dialog(a).setTitle("后台完成提醒").setView(box).setPositiveButton("完成",null).show();
   }

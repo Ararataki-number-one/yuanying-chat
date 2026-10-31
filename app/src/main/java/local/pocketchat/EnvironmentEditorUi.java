@@ -73,8 +73,8 @@ final class EnvironmentEditorUi {
     }));
 
     CheckBox[] options=new CheckBox[AppPrefs.KEYS.length];
-    String[] headings={"会话与恢复","后台与通知","下载与存储"};
-    String[][] preferenceGroups={{"saveDraft","restoreScroll"},{"backgroundWait","replyNotice"},{"wifiDownloads","cleanTemporaryCache"}};
+    String[] headings={"会话与恢复","回复提醒","下载与存储"};
+    String[][] preferenceGroups={{"saveDraft","restoreScroll"},{"replyNotice"},{"wifiDownloads","cleanTemporaryCache"}};
     List<String> preferenceKeys=Arrays.asList(AppPrefs.KEYS);
     for(int section=0;section<preferenceGroups.length;section++){
       DesignUi.section(preferences,headings[section],"");LinearLayout card=DesignUi.card(a);
@@ -84,6 +84,7 @@ final class EnvironmentEditorUi {
         options[i].setChecked(initial.has(AppPrefs.KEYS[i])?initial.optBoolean(AppPrefs.KEYS[i]):AppPrefs.enabled(a,AppPrefs.KEYS[i]));card.addView(options[i]);
       }DesignUi.addCard(preferences,card);
     }
+    DesignUi.note(preferences,"后台回复检测由应用设置统一控制；关闭检测时不会发出回复完成提醒。");
     DesignUi.action(preferences,"下载位置与存储",false,()->storage(a));
 
     java.util.function.Supplier<JSONObject> read=()->{
@@ -140,7 +141,7 @@ final class EnvironmentEditorUi {
     boolean deferred=browserIntent&&(failedOverride||browserBusy(s));
 
     if(deferred&&!DeferredBrowserSettings.save(s,level,value.optBoolean("desktopSite"))){a.status("设置暂时无法保存，请重试");return false;}Profiles.rename(a,Profiles.slot(a),title);ProfileCatalog.get(a).details(Profiles.slot(a),value.optString("group"),value.optString("notes"));if(!preserveBrowser&&!deferred){DeferredBrowserSettings.cancel(s);ProfileCatalog.get(a).browserDisplay(Profiles.slot(a),value.optBoolean("desktopSite",s.privacy.wantsDesktop()));s.prefs.edit().putInt("privacyLevel",level).commit();}AppPrefs.apply(a,value);ProfileCatalog.get(a).draft(Profiles.slot(a),null);
-    if(browserIntent)s.browserIdentitySaved(level,value.optBoolean("desktopSite",s.privacy.wantsDesktop()));if(!AppPrefs.enabled(a,"backgroundWait"))ChatService.end(a);if(!deferred&&browserIntent)s.applyBrowserSettings(change);
+    if(browserIntent)s.browserIdentitySaved(level,value.optBoolean("desktopSite",s.privacy.wantsDesktop()));if(!deferred&&browserIntent)s.applyBrowserSettings(change);
     s.audit.refresh(true);ProfileCatalog.get(a).heartbeat(s,true);if(a.hub!=null)a.hub.refresh();if(a.designChrome!=null)a.designChrome.update();a.status(preserveBrowser?"环境资料已保存；上次模板排队失败，期望配置已保留，请重新保存模板":deferred?"环境已保存，当前回复结束后自动应用网页设置":displayChange&&!s.networkReady?"环境配置已保存，加载网页时应用显示方式":"环境配置已保存");return true;
   }
   static String browserTaskReason(ChatSession s){return BrowserSettingsPolicy.reason(s.pending!=null,s.submitting,s.operation,s.transferActive,s.uploading(),false);}

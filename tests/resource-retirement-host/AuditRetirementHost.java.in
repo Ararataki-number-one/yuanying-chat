@@ -20,6 +20,10 @@ final class DummyConnection extends HttpURLConnection {
 final class Probe {boolean active;int cancels;void cancel(){cancels++;}}
 final class Browser {
   String url="https://chatgpt.com/c/original";boolean ready=true;int cancellations,stops;long cancellationEpoch=-1;ChatSession owner;
+  // Original retirement cases contain no auxiliary IP document. Its real close
+  // implementation is outside this host's cancellation/retention measurements.
+  boolean auxiliaryPageVisible;
+  boolean closeExitIpPage(){if(auxiliaryPageVisible)throw new AssertionError("Auxiliary IP page is outside this retirement fixture");return false;}
   String getUrl(){return url;}boolean hasOpenPopup(){return false;}
   void cancelEnvironmentAudit(){cancellations++;cancellationEpoch=owner.navigationEpoch;}
   void stopLoading(){stops++;}

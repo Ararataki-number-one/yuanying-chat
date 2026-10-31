@@ -30,7 +30,8 @@ class CompilationReached(Exception):pass
 class DownloadNamesCatalogCompatibilityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.current=(PROD/'ProfileCatalog.java').read_text()
+        cls.raw_current=(PROD/'ProfileCatalog.java').read_text()
+        cls.current=runner.remove_reviewed46(cls.raw_current,'ProfileCatalog.java')
         begin=cls.current.index(START);finish=cls.current.index(END,begin+len(START))
         cls.block=cls.current[begin:finish]
         assert len(cls.block.encode())==1579
@@ -66,6 +67,13 @@ class DownloadNamesCatalogCompatibilityTest(unittest.TestCase):
     def test_exact_addition_retains_all_four_original_guards(self):
         with self.assertRaises(CompilationReached):self.guards_reach_compile(self.current)
         self.assertEqual(runner.remove_reviewed_delete_identity(self.current),self.current.replace(self.block,'',1))
+
+    def test_exact_reviewed46_catalog_invalidation_reaches_original_guards(self):
+        with self.assertRaises(CompilationReached):self.guards_reach_compile(self.raw_current)
+
+    def test_changed_reviewed46_catalog_hook_is_rejected(self):
+        changed=self.raw_current.replace('DownloadLibrary.changed(root);','DownloadLibrary.changed(null);',1)
+        with self.assertRaisesRegex(AssertionError,'Reviewed46 bounded edit'):self.guards_reach_compile(changed)
 
     def test_legacy_catalogue_method_mutation_is_still_rejected(self):
         needle='String name(int slot){return item(slot).optString("name",slot==0?"默认环境":"环境 "+(slot+1));}'

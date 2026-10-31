@@ -7,7 +7,7 @@ import android.os.*;
 
 public class ChatService extends Service {
   @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}
-  static boolean running=false;static String lastText="";PowerManager.WakeLock wake;
+  static boolean running=false;static String lastText="";private static ChatService active;PowerManager.WakeLock wake;
   static final String WAIT=QuietNotifications.REPLY_BACKGROUND,DONE="chat-replies",FILES="chat-download-complete";
   static void channels(Context c){QuietNotifications.backgroundChannel(c,WAIT,"后台回复服务 · 静默");NotificationManager m=c.getSystemService(NotificationManager.class);m.createNotificationChannel(new NotificationChannel(DONE,"后台回复完成",NotificationManager.IMPORTANCE_DEFAULT));m.createNotificationChannel(new NotificationChannel(FILES,"后台文件下载完成",NotificationManager.IMPORTANCE_DEFAULT));}
   static String waitingIdentity(){ChatSession s=ChatSession.peek();String id=s==null?"":s.pending==null?s.activeDeliveryId:s.pending.optString("id");return "wait:"+id;}
@@ -16,8 +16,11 @@ public class ChatService extends Service {
   static Notification notification(Context c,String channel,String title,String text,String url,boolean ongoing){return notification(c,channel,title,text,url,ongoing,ongoing?waitingIdentity():channel+":"+String.valueOf(url));}
   static Notification notification(Context c,String channel,String title,String text,String url,boolean ongoing,String identity){return new Notification.Builder(c,channel).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(title).setContentText(text).setContentIntent(open(c,url,identity)).setCategory(Notification.CATEGORY_STATUS).setVisibility(Notification.VISIBILITY_PRIVATE).setOnlyAlertOnce(ongoing).setOngoing(ongoing).setAutoCancel(!ongoing).build();}
 
-  static void begin(Context c){if(!AppPrefs.enabled(c,"backgroundWait"))return;try{channels(c);c.startForegroundService(new Intent(c,Profiles.service(c)));}catch(Exception e){ChatSession s=ChatSession.peek();if(s!=null)s.setStatus("后台服务未启动，保持应用在前台等待回复");}}
+  static void begin(Context c){BackgroundReplyPolicy.Snapshot value=BackgroundReplyPolicy.refresh(c);if(!value.enabled){policyChanged(c,value);return;}try{channels(c);c.startForegroundService(new Intent(c,Profiles.service(c)));}catch(Exception e){ChatSession s=ChatSession.peek();if(s!=null)s.setStatus("后台服务未启动，保持应用在前台等待回复");}}
   static void end(Context c){c.stopService(new Intent(c,Profiles.service(c)));}
+  static void policyChanged(Context c,BackgroundReplyPolicy.Snapshot value){if(!value.enabled){if(active!=null)active.stopDetection();else end(c);}}
+  private void stopDetection(){releaseDetection();stopSelf();}
+  private void releaseDetection(){running=false;lastText="";if(wake!=null&&wake.isHeld())wake.release();stopForeground(STOP_FOREGROUND_REMOVE);}
   // Progress stays in the app. Reposting the foreground notification on every
   // page poll would resurface a card the user deliberately dismissed.
   static void update(Context c,String text){}
@@ -29,12 +32,15 @@ public class ChatService extends Service {
       // A foreground completion was already visible to the user. Record it so
       // later page polling cannot turn it into a delayed background reminder.
       if(QuietNotifications.actualForeground(c)){ledger.record(id);return;}
+      // A suppressed finished reply must not become a delayed reminder after enabling.
+      if(!BackgroundReplyPolicy.refresh(c).enabled){ledger.record(id);return;}
       if(!AppPrefs.enabled(c,"replyNotice")||!QuietNotifications.backgroundCompletionAllowed(c))return;
       channels(c);NotificationManager manager=c.getSystemService(NotificationManager.class);
       if(manager.getNotificationChannel(DONE).getImportance()==NotificationManager.IMPORTANCE_NONE)return;
       String name=Profiles.display(c,Profiles.slot(c));
       manager.notify(Profiles.notification(c,4102),notification(c,DONE,"ChatGPT 已回复",name+" · 点击查看完整回复",url,false,"done:"+id));
       ledger.record(id);
+      if(!BackgroundReplyPolicy.refresh(c).enabled)manager.cancel(Profiles.notification(c,4102));
     }catch(Exception ignored){}
   }
   static void needsAttention(Context c,String text){QuietNotifications.migrate(c);}
@@ -50,9 +56,17 @@ public class ChatService extends Service {
       manager.notify(Profiles.notification(c,4104),new Notification.Builder(c,FILES).setSmallIcon(android.R.drawable.stat_sys_download_done).setContentTitle("文件已下载").setContentText(name+" · 点击查看").setContentIntent(downloadIntent(c,id)).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).build());ledger.record(identity);
     }catch(Exception ignored){}
   }
-  @Override public void onCreate(){super.onCreate();channels(this);}
-  @Override public int onStartCommand(Intent i,int flags,int id){if(!ProfileCatalog.get(this).available(Profiles.slot(this))||!AppPrefs.enabled(this,"backgroundWait")){stopSelf();return START_NOT_STICKY;}Notification n=QuietNotifications.background(this,WAIT,"后台回复检测",open(this,null,waitingIdentity()));if(Build.VERSION.SDK_INT>=29)startForeground(Profiles.notification(this,4101),n,ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);else startForeground(Profiles.notification(this,4101),n);running=true;ChatSession s=ChatSession.get(this);s.updateBrowserActivity();if(wake==null){wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"PocketChat:reply");wake.setReferenceCounted(false);}if(!wake.isHeld())wake.acquire(6*60*60*1000L);if(s.pending==null&&!s.submitting)stopSelf();return START_NOT_STICKY;}
+  @Override public void onCreate(){super.onCreate();active=this;}
+  @Override public int onStartCommand(Intent i,int flags,int id){
+    if(!BackgroundReplyPolicy.refresh(this).enabled||!ProfileCatalog.get(this).available(Profiles.slot(this))){stopDetection();return START_NOT_STICKY;}
+    // A service restart cannot manufacture a hidden browser merely to inspect a reply.
+    ChatSession s=ChatSession.peek();if(s==null||s.deleted||s.pending==null&&!s.submitting){stopDetection();return START_NOT_STICKY;}
+    channels(this);Notification n=QuietNotifications.background(this,WAIT,"后台回复检测",open(this,null,waitingIdentity()));
+    if(Build.VERSION.SDK_INT>=29)startForeground(Profiles.notification(this,4101),n,ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);else startForeground(Profiles.notification(this,4101),n);
+    if(!BackgroundReplyPolicy.refresh(this).enabled){stopDetection();return START_NOT_STICKY;}
+    running=true;if(wake==null){wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"PocketChat:reply");wake.setReferenceCounted(false);}if(!wake.isHeld())wake.acquire(6*60*60*1000L);s.updateBrowserActivity();return START_NOT_STICKY;
+  }
   @Override public void onTimeout(int startId,int fgsType){ChatSession s=ChatSession.peek();if(s!=null)s.timeout();stopSelf();}
-  @Override public void onDestroy(){running=false;lastText="";if(wake!=null&&wake.isHeld())wake.release();stopForeground(STOP_FOREGROUND_REMOVE);ChatSession s=ChatSession.peek();if(s!=null)s.updateBrowserActivity();super.onDestroy();}
+  @Override public void onDestroy(){if(active==this)active=null;releaseDetection();BackgroundReplyPolicy.Snapshot value=BackgroundReplyPolicy.refresh(this);ChatSession s=ChatSession.peek();if(s!=null){if(!value.enabled)s.backgroundReplyPolicyChanged(value);else s.updateBrowserActivity(false);}super.onDestroy();}
   @Override public IBinder onBind(Intent i){return null;}
 }

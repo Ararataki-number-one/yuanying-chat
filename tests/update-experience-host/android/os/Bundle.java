@@ -1,0 +1,3 @@
+package android.os;
+import java.util.*;
+public final class Bundle {final Map<String,Object> data=new HashMap<>();public void putLong(String k,long v){data.put(k,v);}public void putInt(String k,int v){data.put(k,v);}public void putBoolean(String k,boolean v){data.put(k,v);}public void putString(String k,String v){data.put(k,v);}public long getLong(String k){return data.containsKey(k)?((Number)data.get(k)).longValue():0;}public int getInt(String k){return data.containsKey(k)?((Number)data.get(k)).intValue():0;}public boolean getBoolean(String k){return Boolean.TRUE.equals(data.get(k));}public String getString(String k){return (String)data.get(k);}}

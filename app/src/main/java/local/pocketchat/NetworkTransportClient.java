@@ -103,14 +103,19 @@ final class NetworkTransportClient {
   JSONObject call(String action,String configuration,NetworkDiagnostics.Reason stopReason,String expectedGeneration)throws Exception{
     return performCall(action,configuration,stopReason,expectedGeneration).state;
   }
-  Reply performCall(String action,String configuration,NetworkDiagnostics.Reason stopReason,String expectedGeneration)throws Exception{
+  JSONObject callBound(String action,String configuration,NetworkDiagnostics.Reason reason,String expectedGeneration,EnvironmentSpec.Identity expectedOwner)throws Exception{
+    if(expectedOwner==null||expectedOwner.slot!=slot)throw new IOException("网络环境身份不匹配");return performCall(action,configuration,reason,expectedGeneration,true,expectedOwner).state;
+  }
+  Reply performCall(String action,String configuration,NetworkDiagnostics.Reason stopReason,String expectedGeneration)throws Exception{return performCall(action,configuration,stopReason,expectedGeneration,false,null);}
+  Reply performCall(String action,String configuration,NetworkDiagnostics.Reason stopReason,String expectedGeneration,boolean guardGeneration,EnvironmentSpec.Identity expectedOwner)throws Exception{
+
     if(Looper.myLooper()==Looper.getMainLooper())throw new IOException("网络服务操作需要后台线程");NetworkDiagnosticStore.bind(diagnostics,context);Binding binding=bind();Epoch epoch;
     synchronized(this){epoch=binding.epoch;}CountDownLatch gate=epoch.gate;boolean connectedInTime;
     try{connectedInTime=gate.await(10,TimeUnit.SECONDS);}catch(InterruptedException cancelled){note(NetworkDiagnostics.Event.IPC_BIND_INTERRUPTED,NetworkDiagnostics.Stage.BIND,0);throw cancelled;}
     synchronized(this){if(!connectedInTime||!binding.current()||binding.epoch!=epoch||service==null||service!=epoch.target){note(NetworkDiagnostics.Event.IPC_BIND_TIMEOUT,NetworkDiagnostics.Stage.BIND,0);throw new IOException("网络服务未就绪");}}
     if(action.equals("launch")){try{context.startForegroundService(new Intent(context,NetworkTransportService.class));}catch(RuntimeException e){note(NetworkDiagnostics.Event.IPC_FOREGROUND_REJECTED,NetworkDiagnostics.Stage.START,0);throw new IOException("请在应用打开时连接网络",e);}}
     String id=UUID.randomUUID().toString();Pending waiting=new Pending(epoch);
-    Message request=Message.obtain(null,NetworkTransportService.COMMAND);request.replyTo=epoch.replies;Bundle data=new Bundle();data.putString("id",id);data.putInt("slot",slot);data.putString("action",action);data.putString("configuration",configuration);data.putString("generation",state.optString("generation"));data.putString("stopReason",(stopReason==null?NetworkDiagnostics.Reason.UNKNOWN:stopReason).name());data.putString("expectedGeneration",expectedGeneration==null?"":expectedGeneration);request.setData(data);
+    Message request=Message.obtain(null,NetworkTransportService.COMMAND);request.replyTo=epoch.replies;Bundle data=new Bundle();data.putString("id",id);data.putInt("slot",slot);data.putString("action",action);data.putString("configuration",configuration);data.putString("generation",state.optString("generation"));data.putString("stopReason",(stopReason==null?NetworkDiagnostics.Reason.UNKNOWN:stopReason).name());data.putString("expectedGeneration",expectedGeneration==null?"":expectedGeneration);if(guardGeneration){if(expectedOwner==null||expectedOwner.slot!=slot)throw new IOException("网络环境身份不匹配");data.putBoolean("guardGeneration",true);data.putString("expectedOwner",expectedOwner.json().toString());}request.setData(data);
     try{
       try{Messenger target;synchronized(this){if(!binding.current()||binding.epoch!=epoch||service!=epoch.target||service==null)throw new IOException("网络服务暂时退出");requests.put(id,waiting);target=epoch.target;}target.send(request);}catch(Exception failed){note(NetworkDiagnostics.Event.IPC_SEND_FAILED,NetworkDiagnostics.Stage.SEND,0);throw failed;}
       JSONObject result;try{result=waiting.result.get(15,TimeUnit.SECONDS);}catch(TimeoutException timeout){note(NetworkDiagnostics.Event.IPC_REPLY_TIMEOUT,NetworkDiagnostics.Stage.REPLY,0);throw timeout;}catch(ExecutionException failed){note(NetworkDiagnostics.Event.IPC_REPLY_FAILED,NetworkDiagnostics.Stage.REPLY,0);throw failed;}catch(InterruptedException cancelled){note(NetworkDiagnostics.Event.IPC_REPLY_INTERRUPTED,NetworkDiagnostics.Stage.REPLY,0);throw cancelled;}

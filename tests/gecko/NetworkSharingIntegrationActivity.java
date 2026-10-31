@@ -159,7 +159,12 @@ public final class NetworkSharingIntegrationActivity extends Activity {
   void action(LinearLayout controls,String title,Attempt action){Button button=new Button(this);button.setText(title);button.setOnClickListener(v->{try{action.run();}catch(Throwable e){fail(e);}});controls.addView(button);}
   void rememberSnapshot()throws Exception{shareSnapshot.clear();for(String key:NetworkSourceSelection.ActiveSnapshot.RECORDS)shareSnapshot.put(key,vault.get(key));}
   void unchanged(String name)throws Exception{for(Map.Entry<String,byte[]> saved:shareSnapshot.entrySet())check(name+" "+saved.getKey(),Arrays.equals(saved.getValue(),vault.get(saved.getKey())));}
-  void openRoute(){
+  void openRoute()throws Exception{
+    // The synthetic fixture publishes the same side selections as a real save.
+    EnvironmentSpec.Identity owner=ProfileCatalog.get(this).identity(6);
+    EnvironmentSpec saved=EnvironmentSpecRuntime.desireNetwork(profile,owner,"apply",uiConfig);
+    NetworkShareSelection.invalidateSaved(profile,owner);
+    NetworkShareSelection.savedActive(profile,owner,uiConfig,saved);
     long now=System.currentTimeMillis();JSONObject row=ProfileCatalog.get(this).item(6);
     JSONObject runtime=J.obj("environmentId",row.opt("environmentId"),"generation",row.opt("generation"),"mode","internal","configured",true,"connected",true,"at",now,"subscriptionId",NativeNetwork.hash(uiConfig.optString("subscriptionUrl")),"entry","Entry|Portable VLESS");
     NetworkShareUi.route(this,new WindowNetworkState(this,row,uiConfig,runtime,true,now));

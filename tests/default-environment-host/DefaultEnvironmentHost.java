@@ -48,3 +48,30 @@ class J{static JSONObject obj(Object...x){JSONObject o=new JSONObject();try{for(
 class MainActivity extends Activity{}class DownloadCenterActivity extends Activity{}class AppSettingsActivity extends Activity{}class AppUpdates{static void schedule(android.content.Context c){}}
 class BrandLaunchActivity extends Activity{/* BRAND */}
 class WindowHomeActivity extends Activity{int lastWindow(){return AppSettings.recentSlot(this);}void showProblem(String message){}/* OPEN_WINDOW */}
+
+/** New 46 dependencies are boundary adapters only. The original catalogue/default
+ * cases do not exercise global reply-policy methods, metadata I/O, or UI rendering.
+ * A reply-policy snapshot being constructed/read here is an explicit scope failure;
+ * the full actual policy is exercised by background-reply-policy/runtime-host.
+ */
+class BackgroundReplyPolicy {
+  static final class Snapshot {
+    final boolean known,enabled;final long revision;final int legacyPendingMask;
+    Snapshot(boolean known,boolean enabled,long revision,int legacyPendingMask){
+      throw new AssertionError("Global background policy is outside the default/catalogue host");
+    }
+    static Snapshot unknown(){throw new AssertionError("Global background policy is outside the default/catalogue host");}
+  }
+}
+/** Production calls this as an invalidation signal; no metadata/database work is
+ * performed synchronously here. Actual download invalidation is covered elsewhere. */
+class DownloadLibrary {
+  static final java.util.concurrent.atomic.AtomicInteger notifications=new java.util.concurrent.atomic.AtomicInteger();
+  static void changed(Context context){if(context==null)throw new AssertionError("Missing catalogue notification context");notifications.incrementAndGet();}
+}
+/** Manual-open marker boundary; the real nonce/owner/deadline behavior is covered
+ * by experience46-overview-host. This fixture retains the original launch intent. */
+class EnvironmentOverviewUi {
+  static final java.util.concurrent.atomic.AtomicInteger markers=new java.util.concurrent.atomic.AtomicInteger();
+  static void mark(Intent opening,Context context,int slot){if(opening==null||context==null||slot<0||slot>=Profiles.MAX)throw new AssertionError("Invalid manual overview marker");markers.incrementAndGet();}
+}

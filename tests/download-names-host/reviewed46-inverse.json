@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "scope": "Exact reviewed46 byte/ownership card presentation, bounded worker-prepared paging, lifecycle/reflow anchor changes and five root catalog invalidation hooks. Invert these edits before untouched reviewed38 and all four historical preservation guards; unrelated bytes remain for those guards.",
+  "baseCommit": "542eff9fe69102458c775e15d2322d2842721957",
+  "formal45AppTree": "cbb37b32ad11ec52bc91216185a033bf1d475e08",
+  "files": {
+    "DesignDownloads.java": {
+      "baseSha256": "56a0b106f919a565bf512988959527041345af543573401b7f31bb7b33fd812a",
+      "approvedSha256": "5949b180c552425315c7f6f3746cfc2d09a19a6f706491d7d286d3b5f6907ad2",
+      "edits": [
+        {
+          "before": "",
+          "after": "import android.database.ContentObserver;\n",
+          "beforeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "afterSha256": "961eebcf085e139e98b408b979ad8431551363b889704f63d5bfb1e54ae40c4d"
+        },
+        {
+          "before": "  static void updatePackage(Activity a,LinearLayout box){\n    Bundle update=AppUpdates.call(a,\"status\",null);long bytes=update.getLong(\"packageStoredBytes\");\n",
+          "after": "  static void updatePackage(Activity a,LinearLayout box){updatePackage(a,box,AppUpdates.call(a,\"status\",null));}\n  static void updatePackage(Activity a,LinearLayout box,Bundle update){\n    long bytes=update.getLong(\"packageStoredBytes\");\n",
+          "beforeSha256": "7af847a997e714699da350c9cefaca0cde7789c66aa41b44880ce10768352c15",
+          "afterSha256": "00081f2f24f879881172be84c9720ca5178d34245972be66d9716bbd6d4fd4b9"
+        },
+        {
+          "before": "    final DownloadRefreshUi refreshUi;Map<Integer,String> preparedNames;int requestedFilter;\n",
+          "after": "    final DownloadRefreshUi refreshUi;Map<Integer,String> preparedNames;Map<String,String> preparedTimes,preparedOwners;int requestedFilter;\n    final LinearLayout paging;final TextView pageLabel;final Button previous,next,latest;\n    final Map<Integer,String> anchors=new HashMap<>();final Map<String,Integer> scrollStates=new HashMap<>();\n    DownloadDisplayCache.Page prepared;SavedDownloadMetadata.Watch metadata;boolean attached=true,visible=true,loading,pending;long epoch;\n    String anchor=\"\",viewed=\"\";boolean navigating;final ContentObserver changes;\n    final android.view.ViewTreeObserver.OnScrollChangedListener scrolled=this::rememberViewed;\n    void rememberViewed(){ScrollView scroll=scroll();if(scroll==null)return;int y=scroll.getScrollY();for(int i=0;i<list.getChildCount();i++){View card=list.getChildAt(i);if(list.getTop()+card.getTop()+card.getHeight()>y){Object key=card.getTag();if(key instanceof String)viewed=(String)key;break;}}}\n    ScrollView scroll(){return box.getParent() instanceof ScrollView?(ScrollView)box.getParent():null;}\n    String stateKey(){return requestedFilter+\":\"+anchor;}\n    void saveScroll(){ScrollView scroll=scroll();if(scroll!=null)scrollStates.put(stateKey(),scroll.getScrollY());}\n    void page(String selected){saveScroll();anchor=selected;viewed=\"\";anchors.put(requestedFilter,anchor);navigating=true;epoch++;refresh(requestedFilter);}\n    void setVisible(boolean value){visible=value;if(!value){saveScroll();epoch++;if(metadata!=null){metadata.close();metadata=null;}}else if(attached){if(metadata==null)metadata=SavedDownloadMetadata.watch(a);refresh(requestedFilter);}}\n    void close(){if(!attached)return;attached=false;setVisible(false);box.getViewTreeObserver().removeOnScrollChangedListener(scrolled);try{a.getContentResolver().unregisterContentObserver(changes);}catch(RuntimeException ignored){}}\n\n",
+          "beforeSha256": "de5a233c1309da860555dbfa1414dd0210a7666c1dedd37291fd0b03cf1ed59e",
+          "afterSha256": "0fef33910815af5d8827cfdc0a482138c27579b9eb32dd83cad2b70ced346067"
+        },
+        {
+          "before": "",
+          "after": "      paging=DesignUi.row(a);previous=DesignUi.button(a,\"上一页\",false,()->{if(prepared!=null&&!prepared.window.previous.isEmpty())page(prepared.window.previous);});next=DesignUi.button(a,\"下一页\",false,()->{if(prepared!=null&&!prepared.window.next.isEmpty())page(prepared.window.next);});pageLabel=DesignUi.text(a,\"正在读取下载记录…\",12,DesignUi.MUTED);latest=DesignUi.button(a,\"返回最新\",false,()->page(\"\"));paging.addView(previous);paging.addView(pageLabel,new LinearLayout.LayoutParams(0,-2,1));paging.addView(next);box.addView(paging);box.addView(latest);\n",
+          "beforeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "afterSha256": "9c85f965919bfb24f40cb55c75089ddf2b78f0391e16041a2e08bcb2aa0e20f1"
+        },
+        {
+          "before": "      this.filter=filter;refresh(filter);\n",
+          "after": "      changes=new ContentObserver(new Handler(Looper.getMainLooper())){@Override public void onChange(boolean self){DownloadLibraryChanges.revision.incrementAndGet();if(attached&&visible)refresh(requestedFilter);}};\n      a.getContentResolver().registerContentObserver(DownloadLibraryChanges.uri(a),false,changes);\n      // Another process may have changed the library while no workspace was attached.\n      DownloadLibraryChanges.revision.incrementAndGet();\n      box.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View v){}public void onViewDetachedFromWindow(View v){close();}});\n      box.getViewTreeObserver().addOnScrollChangedListener(scrolled);\n      metadata=SavedDownloadMetadata.watch(a);this.filter=filter;requestedFilter=filter;refresh(filter);\n",
+          "beforeSha256": "517286b08ec816287ffd23cc2eab92d8a5fff647ee191d51024b43d655c78075",
+          "afterSha256": "31932618e7afc5714c93fd364d0a188b2671e5192c29b2afc0fc444ae78a26b0"
+        },
+        {
+          "before": "      requestedFilter=selected;final JSONArray data;final Map<Integer,String> names;final String next;final LinearLayout update;\n      try{\n        data=rows(a);names=DownloadDisplaySnapshot.names(a,data,selected);next=updateKey(a);\n        update=next.equals(packageKey)?null:DesignUi.column(a);if(update!=null)updatePackage(a,update);\n      }catch(RuntimeException unavailable){refreshUi.failed();return;}\n      preparedNames=names;try{apply(data,selected,System.currentTimeMillis());}finally{preparedNames=null;}\n      if(update!=null){packages.removeAllViews();while(update.getChildCount()>0){View child=update.getChildAt(0);update.removeView(child);packages.addView(child);}packageKey=next;}\n      refreshUi.clear();\n",
+          "after": "      if(!attached||!visible)return;\n      if(selected!=requestedFilter){saveScroll();anchors.put(requestedFilter,anchor);requestedFilter=selected;anchor=anchors.getOrDefault(selected,\"\");viewed=\"\";navigating=true;epoch++;}\n      if(loading){pending=true;return;}loading=true;pending=false;final long request=epoch;final int chosen=requestedFilter;final String selectedAnchor=anchor;\n      DownloadDisplayCache.request(a,chosen,selectedAnchor,viewed,page->{\n        loading=false;if(!attached||!visible)return;\n        if(request==epoch&&chosen==requestedFilter&&page.currentFormat()){\n          prepared=page;preparedNames=page.names;preparedTimes=page.times;preparedOwners=page.environmentLabels;\n          try{apply(page.window.rows,chosen,System.currentTimeMillis());}finally{preparedNames=null;preparedTimes=null;preparedOwners=null;}\n          if(page.window.rows.length()>0){anchor=key(page.window.rows.optJSONObject(0));anchors.put(chosen,anchor);if(viewed.isEmpty())viewed=anchor;}\n          String key=page.update.getString(\"state\",\"\")+\":\"+page.update.getLong(\"packageStoredBytes\")+\":\"+page.update.getBoolean(\"packageDeleteRetry\");\n          if(!key.equals(packageKey)){packages.removeAllViews();updatePackage(a,packages,page.update);packageKey=key;}\n          previous.setEnabled(!page.window.previous.isEmpty());next.setEnabled(!page.window.next.isEmpty());pageLabel.setText(page.window.total==0?\"0 条记录\":(page.window.start+1)+\"–\"+(page.window.start+page.window.rows.length())+\" / \"+page.window.total);latest.setVisibility(page.window.newer?View.VISIBLE:View.GONE);refreshUi.clear();\n          if(navigating){ScrollView scroll=scroll();int restore=scrollStates.getOrDefault(stateKey(),0);if(scroll!=null)scroll.post(()->scroll.scrollTo(0,restore));navigating=false;}\n        }\n        if(pending||request!=epoch){pending=false;refresh(requestedFilter);}\n      },error->{loading=false;if(!attached||!visible)return;if(request==epoch)refreshUi.failed();if(pending||request!=epoch){pending=false;refresh(requestedFilter);}});\n",
+          "beforeSha256": "cc08d7914ded27fb76b9ce514730776a60acf414a3217f97d75685b27647f66f",
+          "afterSha256": "f94931fc7560982de409ff9b5f89d08857d16dea5bbbc1e61189c5b39e9902a9"
+        },
+        {
+          "before": "      Set<String> visible=new HashSet<>();int index=0;boolean structure=changedFilter;Map<Integer,String> environmentNames=preparedNames;DownloadRowBinding.Frame frame=new DownloadRowBinding.Frame(DesignUi.RED,DesignUi.CYAN,DesignUi.GREEN);\n      for(int i=0;i<data.length();i++){\n",
+          "after": "      Set<String> visible=new HashSet<>();int index=0;boolean structure=changedFilter,rebound=false;Map<String,String> environmentLabels=preparedOwners;DownloadRowBinding.Frame frame=new DownloadRowBinding.Frame(DesignUi.RED,DesignUi.CYAN,DesignUi.GREEN);\n      for(int i=0;i<data.length()&&i<DownloadPageWindow.LIMIT;i++){\n",
+          "beforeSha256": "fb50e8a8b072f203e927d6c429434716855d27b54d1925c9bd721244b1557cd4",
+          "afterSha256": "f02a404e56b584c74477f48afe0294e07063f6af406ce475fc5eece64211cac1"
+        },
+        {
+          "before": "        Row row=views.get(key);if(row==null){row=new Row(a,actions);views.put(key,row);}if(environmentNames==null)environmentNames=ProfileCatalog.get(a).names();String environment=ProfileCatalog.displayName(environmentNames,value.optInt(\"slot\"));\n        row.value=value;DownloadRowBinding.Stamp next=row.binding.next(value,now,environment,frame);if(next!=null){row.bind(value,now,environment);row.binding.applied(next);}\n",
+          "after": "        Row row=views.get(key);if(row==null){row=new Row(a,actions);row.card.setTag(key);views.put(key,row);}String environment=environmentLabels==null?DownloadOwnerLabels.UNKNOWN:environmentLabels.getOrDefault(key,DownloadOwnerLabels.UNKNOWN);\n        row.value=value;if(preparedTimes!=null)row.binding.preparedTime(value,preparedTimes.get(key));DownloadRowBinding.Stamp next=row.binding.next(value,now,environment,frame);if(next!=null){row.bind(value,now,environment);row.binding.applied(next);rebound=true;}\n",
+          "beforeSha256": "7b28e522b320afdb50f0986e9c064910acf19512df559d684cd136f132672d0e",
+          "afterSha256": "ab86f4bcf0bb82bb6178fd1b15aa12a5ffcedac109daad356477e96f784b0555"
+        },
+        {
+          "before": "      if(scroll!=null&&structure){View kept=anchor;int offset=anchorTop;scroll.post(()->{if(changedFilter)scroll.scrollTo(0,0);else if(kept!=null&&kept.getParent()==list)scroll.scrollTo(0,list.getTop()+kept.getTop()-offset);else scroll.scrollTo(0,oldY);});}\n",
+          "after": "      if(scroll!=null&&(structure||rebound)){View kept=anchor;int offset=anchorTop;scroll.post(()->{if(changedFilter)scroll.scrollTo(0,0);else if(kept!=null&&kept.getParent()==list)scroll.scrollTo(0,list.getTop()+kept.getTop()-offset);else scroll.scrollTo(0,oldY);});}\n",
+          "beforeSha256": "fc5984957f1dd08299aa2db3f8ae9a37651c3f6075e76f9d31d6706929d7be6a",
+          "afterSha256": "f250a06c66de52640f1002f8f11a386c9e0ea07bb9d19a5182eee5e0f59e3ee8"
+        },
+        {
+          "before": "      this.a=a;card=DesignUi.card(a);LinearLayout top=DesignUi.row(a);icon=DesignUi.icon(a,\"download\",DesignUi.GREEN,36);top.addView(icon);LinearLayout labels=DesignUi.column(a);labels.setPadding(DesignUi.dp(a,12),0,DesignUi.dp(a,8),0);name=ReferenceUi.text(a,\"\",16,DesignUi.TEXT,true);name.setMaxLines(3);name.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(name);status=DesignUi.text(a,\"\",13,DesignUi.MUTED);status.setPadding(0,DesignUi.dp(a,5),0,0);labels.addView(status);time=DesignUi.text(a,\"\",12,DesignUi.MUTED);time.setPadding(0,DesignUi.dp(a,5),0,0);labels.addView(time);top.addView(labels,new LinearLayout.LayoutParams(0,-2,1));\n      menu=ReferenceUi.more(a,()->actions.show(value));top.addView(menu,new LinearLayout.LayoutParams(DesignUi.dp(a,48),DesignUi.dp(a,48)));arrow=DesignUi.text(a,\"\",22,DesignUi.GREEN);Ui.Icon disclosure=new Ui.Icon(\"chevron-right\",DesignUi.MUTED);disclosure.setBounds(0,0,DesignUi.dp(a,18),DesignUi.dp(a,18));arrow.setCompoundDrawables(disclosure,null,null,null);arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);top.addView(arrow);card.addView(top);\n      progress=new ProgressBar(a,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(DesignUi.BLUE));progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(DesignUi.LINE));LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-1,DesignUi.dp(a,6));pp.topMargin=DesignUi.dp(a,14);card.addView(progress,pp);progressText=DesignUi.text(a,\"\",13,DesignUi.MUTED);progressText.setPadding(0,DesignUi.dp(a,8),0,0);card.addView(progressText);reason=DesignUi.text(a,\"\",13,DesignUi.RED);reason.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);card.addView(reason);stale=DesignUi.text(a,\"记录待刷新，点按核对任务\",13,DesignUi.MUTED);card.addView(stale);location=DesignUi.text(a,\"\",12,DesignUi.MUTED);location.setMaxLines(3);location.setPadding(0,DesignUi.dp(a,8),0,0);card.addView(location);\n",
+          "after": "      this.a=a;card=DesignUi.card(a);LinearLayout top=DesignUi.row(a);icon=DesignUi.icon(a,\"download\",DesignUi.GREEN,36);top.addView(icon);LinearLayout labels=DesignUi.column(a);labels.setPadding(DesignUi.dp(a,12),0,DesignUi.dp(a,8),0);name=ReferenceUi.text(a,\"\",16,DesignUi.TEXT,true);name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(name);status=DesignUi.text(a,\"\",13,DesignUi.MUTED);status.setPadding(0,DesignUi.dp(a,5),0,0);labels.addView(status);time=DesignUi.text(a,\"\",12,DesignUi.MUTED);time.setPadding(0,DesignUi.dp(a,5),0,0);LinearLayout date=DesignUi.row(a);date.addView(time,new LinearLayout.LayoutParams(0,-2,1));labels.addView(date);top.addView(labels,new LinearLayout.LayoutParams(0,-2,1));\n      menu=ReferenceUi.more(a,()->actions.show(value));date.addView(menu,new LinearLayout.LayoutParams(DesignUi.dp(a,48),DesignUi.dp(a,48)));arrow=DesignUi.text(a,\"\",22,DesignUi.GREEN);Ui.Icon disclosure=new Ui.Icon(\"chevron-right\",DesignUi.MUTED);disclosure.setBounds(0,0,DesignUi.dp(a,18),DesignUi.dp(a,18));arrow.setCompoundDrawables(disclosure,null,null,null);arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);top.addView(arrow);card.addView(top);\n      progress=new ProgressBar(a,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(DesignUi.BLUE));progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(DesignUi.LINE));LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-1,DesignUi.dp(a,6));pp.topMargin=DesignUi.dp(a,14);card.addView(progress,pp);progressText=DesignUi.text(a,\"\",13,DesignUi.MUTED);progressText.setPadding(0,DesignUi.dp(a,8),0,0);card.addView(progressText);reason=DesignUi.text(a,\"\",13,DesignUi.RED);reason.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);card.addView(reason);stale=DesignUi.text(a,\"记录待刷新，点按核对任务\",13,DesignUi.MUTED);card.addView(stale);location=DesignUi.text(a,\"\",12,DesignUi.MUTED);location.setMaxLines(3);location.setPadding(0,DesignUi.dp(a,8),0,0);\n",
+          "beforeSha256": "ac1cfb6731de7b2d9016a547cc1877c1da0ed4c040f903c4e3c5dd0887ce8cb2",
+          "afterSha256": "bc48fa184ae1ea3bca11e3bac8f73209619643c1850652312a5b66691d7cd01f"
+        },
+        {
+          "before": "      text(name,row.optString(\"name\",\"文件\"));text(status,environmentName+\" · \"+DownloadTasks.label(state));text(time,binding.time(row,()->timeLabel(row)));String description=\"管理 \"+row.optString(\"name\",\"文件\");if(!android.text.TextUtils.equals(menu.getContentDescription(),description))menu.setContentDescription(description);visible(menu,saved);visible(arrow,!saved);\n      visible(progress,!saved);visible(progressText,!saved);visible(reason,!saved&&!row.optString(\"reason\").isEmpty());visible(stale,!saved&&busy(state)&&row.optLong(\"updated\")>0&&now-row.optLong(\"updated\")>15000);visible(location,saved);\n      long total=row.optLong(\"total\",-1),received=row.optLong(\"received\");boolean indefinite=total<=0&&busy(state);if(progress.isIndeterminate()!=indefinite)progress.setIndeterminate(indefinite);int percent=total>0?(int)Math.min(100,received*100/total):0;if(progress.getProgress()!=percent)progress.setProgress(percent);text(progressText,DownloadTasks.progress(row));text(reason,row.optString(\"reason\"));text(location,row.optString(\"location\",\"原先选择的保存位置\"));\n",
+          "after": "      text(name,DownloadMetadataValues.name(row));text(status,environmentName+\" · \"+DownloadTasks.label(state)+\" · \"+(saved?DownloadTasks.amount(DownloadMetadataValues.bytes(row)):DownloadTasks.progress(row)));text(time,binding.time(row,()->timeLabel(row)));String description=\"管理 \"+DownloadMetadataValues.name(row);if(!android.text.TextUtils.equals(menu.getContentDescription(),description))menu.setContentDescription(description);visible(menu,saved);visible(arrow,!saved);\n      visible(progress,!saved);visible(progressText,!saved);visible(reason,!saved&&!row.optString(\"reason\").isEmpty());visible(stale,!saved&&busy(state)&&row.optLong(\"updated\")>0&&now-row.optLong(\"updated\")>15000);visible(location,false);\n      long total=row.optLong(\"total\",-1),received=row.optLong(\"received\");boolean indefinite=total<=0&&busy(state);if(progress.isIndeterminate()!=indefinite)progress.setIndeterminate(indefinite);int percent=total>0?(int)Math.min(100,received*100/total):0;if(progress.getProgress()!=percent)progress.setProgress(percent);text(progressText,DownloadTasks.progress(row));text(reason,row.optString(\"reason\"));\n",
+          "beforeSha256": "6d1f402c94a4444ded119565e85a5232aad5e75048dd22ce5bc8d8bf00e24f6f",
+          "afterSha256": "bbe730d2aa95adad01779e06155cfa1beca4d022337836acc08f80e31bec46e0"
+        },
+        {
+          "before": "  static AlertDialog folder(Activity a){return DesignUi.message(a,\"保存位置\",\"默认位置：\"+(Build.VERSION.SDK_INT>=29?\"Download/元婴期院士/窗口_编号/\":\"各窗口的应用内文件目录\")+\"\\n\\n点文件右侧菜单可打开、分享、另存为或删除。每个文件卡片显示它实际的保存位置。\");}\n",
+          "after": "  static AlertDialog folder(Activity a){return DesignUi.message(a,\"保存位置\",\"默认位置：\"+(Build.VERSION.SDK_INT>=29?\"Download/元婴期院士/窗口_编号/\":\"各窗口的应用内文件目录\")+\"\\n\\n点文件右侧菜单可打开、分享、另存为或删除。每个文件菜单的“详细信息”显示实际保存位置，并可复制位置。\");}\n",
+          "beforeSha256": "b66863bbe2f9116ac6d533df37ef357c3eac7fb40d5ae3aab38d40683b95beec",
+          "afterSha256": "08c7513e1a2beac35065134a612e09b044f4bea33cade9e5e924cd70e7c42f24"
+        }
+      ]
+    },
+    "ProfileCatalog.java": {
+      "baseSha256": "47a3aa2a033b84156049532b6c2d075665bdd443df98e01239ed98b8af162052",
+      "approvedSha256": "91afd17498b2e0a0f0c4f9979b286ae53e7ea0eded3cc9c5dde43d0c8bd81832",
+      "edits": [
+        {
+          "before": "  void rename(int slot,String name){String text=name.trim();if(text.isEmpty()||text.length()>24)return;ContentValues v=new ContentValues();v.put(\"name\",text);getWritableDatabase().update(\"environments\",v,\"slot=?\",new String[]{String.valueOf(slot)});}\n",
+          "after": "  void rename(int slot,String name){String text=name.trim();if(text.isEmpty()||text.length()>24)return;ContentValues v=new ContentValues();v.put(\"name\",text);getWritableDatabase().update(\"environments\",v,\"slot=?\",new String[]{String.valueOf(slot)});DownloadLibrary.changed(root);}\n",
+          "beforeSha256": "f5739eb9aaa963b5f5bad7acaaf46eca0b0538689c89158f4ef3129db9dbbf66",
+          "afterSha256": "01fe9f075776dd7c7f545c3d9a5991e24996a50ecdacb55f3fa602608e801455"
+        },
+        {
+          "before": "    }finally{db.endTransaction();}\n",
+          "after": "    }finally{db.endTransaction();}\n    DownloadLibrary.changed(root);\n",
+          "beforeSha256": "91c85ef8599bfa71083751df52025e2f1bb7799f65f11a7965fd57132c340f1d",
+          "afterSha256": "e1771ad48af3047ac70d0f6351f9c0cf7dcde821a923f8f19fa427d741a7d812"
+        },
+        {
+          "before": "    }finally{db.endTransaction();}\n",
+          "after": "    }finally{db.endTransaction();DownloadLibrary.changed(root);}\n",
+          "beforeSha256": "91c85ef8599bfa71083751df52025e2f1bb7799f65f11a7965fd57132c340f1d",
+          "afterSha256": "744698724060ffdceeb27f2a35efa0864903fe95eecb05dc57b4c4896c527664"
+        },
+        {
+          "before": "    withReset(expected,()->{ContentValues values=new ContentValues();values.put(\"resetting\",0);values.put(\"draft\",\"\");values.put(\"pid\",0);values.put(\"seen\",0);values.put(\"connected\",0);values.put(\"waiting\",0);values.put(\"problem\",\"\");values.put(\"desktop\",desktop?1:0);getWritableDatabase().update(\"environments\",values,\"slot=?\",new String[]{String.valueOf(expected.slot)});return null;});\n",
+          "after": "    withReset(expected,()->{ContentValues values=new ContentValues();values.put(\"resetting\",0);values.put(\"draft\",\"\");values.put(\"pid\",0);values.put(\"seen\",0);values.put(\"connected\",0);values.put(\"waiting\",0);values.put(\"problem\",\"\");values.put(\"desktop\",desktop?1:0);getWritableDatabase().update(\"environments\",values,\"slot=?\",new String[]{String.valueOf(expected.slot)});return null;});\n    DownloadLibrary.changed(root);\n",
+          "beforeSha256": "4a209937d75ebcfe461fb7b427f10043c5967863f56cdddf46f2960b65a60539",
+          "afterSha256": "6ac9bd8630bf6e70edc9e0f6ce0ca77b4a91862ecca49b409f53e75c1d77c477"
+        },
+        {
+          "before": "  void completeDelete(int slot){ContentValues v=new ContentValues();v.put(\"environment_id\",\"\");v.put(\"name\",slot==0?\"默认环境\":\"环境 \"+(slot+1));v.put(\"created\",0);v.put(\"deleting\",0);v.put(\"resetting\",0);v.put(\"draft\",\"\");v.put(\"pid\",0);v.put(\"seen\",0);v.put(\"connected\",0);v.put(\"waiting\",0);v.put(\"mode\",\"\");v.put(\"privacy\",1);v.put(\"opened\",0);v.put(\"favorite\",0);v.put(\"problem\",\"\");v.put(\"page\",\"原网页\");v.put(\"group_name\",\"\");v.put(\"notes\",\"\");v.put(\"desktop\",0);getWritableDatabase().update(\"environments\",v,\"slot=? AND deleting=1\",new String[]{String.valueOf(slot)});}\n",
+          "after": "  void completeDelete(int slot){ContentValues v=new ContentValues();v.put(\"environment_id\",\"\");v.put(\"name\",slot==0?\"默认环境\":\"环境 \"+(slot+1));v.put(\"created\",0);v.put(\"deleting\",0);v.put(\"resetting\",0);v.put(\"draft\",\"\");v.put(\"pid\",0);v.put(\"seen\",0);v.put(\"connected\",0);v.put(\"waiting\",0);v.put(\"mode\",\"\");v.put(\"privacy\",1);v.put(\"opened\",0);v.put(\"favorite\",0);v.put(\"problem\",\"\");v.put(\"page\",\"原网页\");v.put(\"group_name\",\"\");v.put(\"notes\",\"\");v.put(\"desktop\",0);getWritableDatabase().update(\"environments\",v,\"slot=? AND deleting=1\",new String[]{String.valueOf(slot)});DownloadLibrary.changed(root);}\n",
+          "beforeSha256": "a7da7366d4a83fc7bbec55ac47422b5ddab51ca5ec8aa3929f1fb916688f2f16",
+          "afterSha256": "380f2a916f617f6e5d8a224926ee765332cd2f5f5d699e7f8f778175b3cb2c60"
+        }
+      ]
+    }
+  }
+}

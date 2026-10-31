@@ -19,7 +19,7 @@ def method(signature,text=source):
         end+=1
     return text[start:end]
 
-names=['static boolean internalJob(', 'void pruneJobs(', 'void recordResult(String id,boolean ok,String message){', 'void recordResult(String id,boolean ok,String message,JSONObject operationResult){', 'void observeSession(', 'void sessionChanged(']
+names=['static boolean internalJob(', 'void pruneJobs(', 'void recordResult(String id,boolean ok,String message){', 'void recordResult(String id,boolean ok,String message,JSONObject operationResult){', 'void observeSession(', 'void sessionChanged(', 'static boolean taskIdle(']
 methods=[method(name) for name in names]
 constants=re.search(r'static final long JOB_RETENTION=\d+;static final int MAX_JOBS=\d+;',source).group(0)
 generated=work/'generated/local/pocketchat/NetworkUiProvider.java';generated.parent.mkdir(parents=True,exist_ok=True)
@@ -36,7 +36,7 @@ chat_source=(production/'ChatSession.java').read_text()
 chat_methods=[method(signature,chat_source) for signature in ['void add(Observer o)', 'void remove(Observer o)']]
 observation=work/'generated/local/pocketchat/ProviderObservation.java'
 observation.write_text((pathlib.Path(__file__).parent/'ProviderObservation.java.in').read_text().replace('@CHAT_OBSERVER_METHODS@','\n'.join(chat_methods)))
-files=[production/'NetworkApplyRetry.java',production/'J.java',generated,observation,*pathlib.Path(__file__).parent.rglob('*.java')]
+files=[production/'NetworkApplyRetry.java',production/'TaskGuardSnapshot.java',production/'J.java',generated,observation,*pathlib.Path(__file__).parent.rglob('*.java')]
 subprocess.run([str(a.java_home/'bin/javac'),'-J-XX:ActiveProcessorCount=2','-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),*map(str,files)],check=True)
 r=subprocess.run([str(a.java_home/'bin/java'),'-XX:ActiveProcessorCount=2','-cp',str(classes)+':'+str(a.json_jar),'local.pocketchat.NetworkApplyHostTest'],text=True,stdout=subprocess.PIPE,check=True)
 result=json.loads(r.stdout);assert result['status']=='passed' and result['passed']==len(result['checks']) and all(c['pass'] is True for c in result['checks'])

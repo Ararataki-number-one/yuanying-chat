@@ -9,7 +9,7 @@ def extract(name,text=src):
  while depth:
   depth+=(text[pos]=='{')-(text[pos]=='}');pos+=1
  return text[s:pos]
-names=['static final class RequestBinding {','static JSONObject operationOutcome(RequestBinding binding,Transition transition,String id,String message)','static final class ApplicationAttempt {','boolean owns(Transition transition)','boolean applicationCurrent(ApplicationAttempt attempt)','boolean applicationRouteReady(ApplicationAttempt attempt)','void waitConnection(String id,ChatSession s,NativeNetwork n,boolean saved,long began)','void pollApplication(ApplicationAttempt attempt)']
+names=['static final class RequestBinding {','static final class Choice {','void requireChoice(','void resolveChoice(','static JSONObject operationOutcome(RequestBinding binding,Transition transition,String id,String message)','static final class ApplicationAttempt {','boolean owns(Transition transition)','boolean applicationCurrent(ApplicationAttempt attempt)','boolean applicationRouteReady(ApplicationAttempt attempt)','void waitConnection(String id,ChatSession s,NativeNetwork n,boolean saved,long began)','void pollApplication(ApplicationAttempt attempt)','void completeSessionApplication(ApplicationAttempt attempt)']
 methods=[extract(n) for n in names];before_source=None
 if a.before_ref:
  before_source=subprocess.check_output(['git','show',a.before_ref+':app/src/main/java/local/pocketchat/NetworkUiProvider.java'],cwd=r,text=True);key='void waitConnection(String id,ChatSession s,NativeNetwork n,boolean saved,long began)';methods[names.index(key)]=extract(key,before_source)

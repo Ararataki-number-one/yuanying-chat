@@ -21,6 +21,9 @@ def xml():
 def nodes(tree,text):return [n for n in tree.iter('node') if n.get('text')==text]
 def tap(text):
  tree=wait(xml,lambda t:bool(nodes(t,text)),30);n=nodes(tree,text)[0];x1,y1,x2,y2=map(int,re.findall(r'\d+',n.get('bounds')));assert x2>x1 and y2>y1;adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2));checks.append(text)
+def prepare(scope='整条线路'):
+ tap(scope);tap('准备分享')
+ wait(xml,lambda t:bool(nodes(t,'分享'+scope)),40)
 def report():
  raw=adb('exec-out','content','read','--uri','content://'+pkg+'.evidence/network-source-sharing')
  (out/'network-source-sharing-native-raw.json').write_text(raw)
@@ -32,18 +35,20 @@ try:
  source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip();assert r['buildIdentity']['sourceCommit']==source
  installed=hashlib.sha256((root/'app/build/outputs/apk/integration/app-x86_64-integration.apk').read_bytes()).hexdigest();assert r['buildIdentity']['apkSha256']==installed
  verify_network_sharing(r,source,installed,run_token=token)
- tap('仅分享入口');wait(xml,lambda t:bool(nodes(t,'分享入口')),20);tap('复制配置')
- tap('测试订阅整条线路');wait(xml,lambda t:bool(nodes(t,'分享整条线路')),30)
+ prepare();tap('仅分享入口');wait(xml,lambda t:bool(nodes(t,'分享入口')),20);tap('复制配置')
+ tap('测试订阅整条线路');prepare()
  tap('仅分享出口');wait(xml,lambda t:bool(nodes(t,'分享出口')),20);tap('复制配置')
  for trigger,title in [('测试入口分享','分享入口'),('测试出口分享','分享出口'),('测试固定出口分享','分享出口')]:
   tap(trigger);wait(xml,lambda t:bool(nodes(t,title)),30);tap('复制配置')
  tap('检查分享未改动线路')
  r=wait(report,lambda value:value.get('sharePreparationPreservesActiveSnapshot') is True or value.get('status')=='failed',20)
  assert r['status']=='passed' and r['sharePreparationPreservesActiveSnapshot'] and all(x['pass'] for x in r['checks']),r
- tap('测试入口失败后仅分享出口');partial=wait(xml,lambda t:bool(nodes(t,'分享出口')),40)
- partial_text=' '.join(n.get('text','') for n in partial.iter('node'));assert '入口读取阶段' in partial_text and '整条线路未生成' in partial_text,partial_text
+ tap('测试入口失败后仅分享出口');prepare();partial=wait(xml,lambda t:bool(nodes(t,'分享整条线路')),40)
+ partial_text=' '.join(n.get('text','') for n in partial.iter('node'));assert '入口' in partial_text and '整条线路暂未生成' in partial_text and '出口配置已准备好' in partial_text,partial_text
+ assert not nodes(partial,'复制配置') and not nodes(partial,'分享文件'),partial_text
+ assert nodes(partial,'重试入口'),partial_text
  assert not nodes(partial,'仅分享入口')
- tap('复制配置');tap('恢复分享测试线路')
+ tap('仅分享出口');wait(xml,lambda t:bool(nodes(t,'分享出口')),20);tap('复制配置');tap('恢复分享测试线路')
  r=wait(report,lambda value:value.get('partialSharePreservesActiveSnapshot') is True or value.get('status')=='failed',20)
  assert r['status']=='passed' and r['partialSharePreservesActiveSnapshot'],r
  # Open a real provider file through the production Activity; preview must be explicit.

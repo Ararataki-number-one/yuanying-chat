@@ -78,7 +78,7 @@ final class DownloadTasks {
   catch(RuntimeException error){DownloadTaskRevisions.restore(row,previous);throw error instanceof PersistenceFailure?error:new PersistenceFailure(error);}
  }
  static void put(JSONObject r,Object... pairs){try{for(int i=0;i<pairs.length;i+=2)r.put((String)pairs[i],pairs[i+1]);}catch(Exception ignored){}}
- JSONObject add(String source,String key,String conversation){release();JSONObject r=J.obj("id",UUID.randomUUID().toString(),"source",source,"key",key,"conversation",conversation,"name","正在获取文件","state","preparing","reason","","received",0,"total",-1,"time",System.currentTimeMillis());JSONArray next=new JSONArray();next.put(r);for(int i=0;i<rows.length();i++)next.put(rows.optJSONObject(i));rows=next;try{if(!claim(r))throw new IllegalStateException("下载任务已变化，请重试");}catch(PersistenceFailure failure){put(r,"state","paused","reason",failure.getMessage());throw failure;}return r;}
+ JSONObject add(String source,String key,String conversation){release();JSONObject environment=ProfileCatalog.get(context).item(Profiles.slot(context));JSONObject r=J.obj("slot",Profiles.slot(context),"environmentId",environment.optString("environmentId"),"environmentGeneration",environment.optInt("generation"),"environmentName",environment.optString("name",Profiles.slot(context)==0?"默认环境":"环境 "+(Profiles.slot(context)+1)),"id",UUID.randomUUID().toString(),"source",source,"key",key,"conversation",conversation,"name","正在获取文件","state","preparing","reason","","received",0,"total",-1,"time",System.currentTimeMillis());JSONArray next=new JSONArray();next.put(r);for(int i=0;i<rows.length();i++)next.put(rows.optJSONObject(i));rows=next;try{if(!claim(r))throw new IllegalStateException("下载任务已变化，请重试");}catch(PersistenceFailure failure){put(r,"state","paused","reason",failure.getMessage());throw failure;}return r;}
  void save(){save(false);}
  void save(boolean forceCommit){
   try{
@@ -137,5 +137,5 @@ final class DownloadTasks {
  File partial(JSONObject r){String n=r.optString("partial");if(!n.matches("download-[A-Za-z0-9-]+[.]part"))return null;File f=new File(context.getCacheDir(),n);return f.isFile()?f:null;}
  static String label(String state){switch(state){case "preparing":return "获取链接中";case "downloading":return "下载中";case "paused":return "已暂停";case "choosing":return "等待选择保存位置";case "saving":return "保存中";case "saved":return "已保存";case "cancelled":return "已取消";default:return "失败待处理";}}
  static String amount(long n){return Attachments.sizeLabel(n);}
- static String progress(JSONObject r){long received=r.optLong("received"),total=r.optLong("total",-1);return total>0?amount(received)+" / "+amount(total)+" · "+Math.min(100,received*100/total)+"%":amount(received);}
+ static String progress(JSONObject r){long received=r.optLong("received"),total=r.optLong("total",-1);return total>=0?amount(received)+" / "+amount(total):amount(received);}
 }

@@ -37,6 +37,31 @@ DOWNLOAD_EVIDENCE_AST = '48e3a45f0c60cce356412c6f77f1aaf234b22f4b9c375299599d43f
 UI_DEVICE_PREPARATION_AST = 'a15fbf39a69774bfdbe021b92ed1906657601ca3f3f58fcde8e6837f81a75c25'
 ORIGINAL_LAUNCH = "adb('shell','am','start','-W','-n',package+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction',scene)"
 
+# Whole accepted fixture immediately before the two 46-only download isolation
+# additions. This is separate from (and cannot replace) the original runner gates.
+PRE_DOWNLOAD_ISOLATION_FIXTURE_SHA256='0e6b5e11649a0a7a9e6e2badf1cd2c6194b4b0cecd632dc9094fb97d09a37b0e'
+DOWNLOAD_ISOLATION_EDITS=(
+    ('        // Synthetic visual rows must not be replaced by an unrelated real-library callback.\n        controller.setVisible(false);\n', ''),
+    ('));\n        // Labels belong only to these synthetic rows; they are not file-ownership receipts.\n        controller.preparedOwners=new java.util.HashMap<>();\n        for(int i=0;i<data.length();i++){JSONObject row=data.optJSONObject(i);controller.preparedOwners.put(DesignDownloads.key(row),row.optInt("slot")==1?"资料整理":"日常会话");}\n        try{controller.apply(data,0,now);}finally{controller.preparedOwners=null;}', '));controller.apply(data,0,now);'),
+)
+
+
+def verify_download_visual_fixture_source(raw):
+    """Only cancellation + temporary synthetic labels may alter this fixture."""
+    assert isinstance(raw,bytes), 'Fixture source bytes required'
+    text=raw.decode('utf-8')
+    constructor='        savedActions=new SavedFileActions(this);DesignDownloads.Controller controller=new DesignDownloads.Controller(this,box,0,n->{},savedActions);\n'
+    assert text.count(constructor+DOWNLOAD_ISOLATION_EDITS[0][0])==1, 'Synthetic cancellation must follow its constructor'
+    assert text.count('controller.setVisible(false);')==1, 'Synthetic cancellation missing or duplicated'
+    for added,original in DOWNLOAD_ISOLATION_EDITS:
+        assert text.count(added)==1, 'Unreviewed synthetic download fixture change'
+        text=text.replace(added,original,1)
+    assert hashlib.sha256(text.encode('utf-8')).hexdigest()==PRE_DOWNLOAD_ISOLATION_FIXTURE_SHA256, 'Original complete visual fixture changed outside isolation'
+    return {'originalFixtureSha256':PRE_DOWNLOAD_ISOLATION_FIXTURE_SHA256,
+            'selectedFixtureSha256':hashlib.sha256(raw).hexdigest(),
+            'fourSyntheticRowsAndProductionRendererPreserved':True,
+            'actualAndroidExecution':False}
+
 
 def digest(node):
     return hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
@@ -85,9 +110,33 @@ DIAGNOSTIC_PRIVACY_WRITES = tuple(
     for name in ('ui-reload-log.txt', 'ui-visual-log.txt'))
 
 
+def original_update_readiness_bytes(raw):
+    """Invert only the 46 installed-version label at its original scene key."""
+    text=raw.decode('utf-8')
+    if '当前安装版本' not in text:return raw
+    added="'update':'当前安装版本','audit':'环境自检与变更'"
+    previous="'update':'当前版本','audit':'环境自检与变更'"
+    assert text.count('当前安装版本')==1 and text.count(added)==1, 'Update readiness label moved or duplicated'
+    return text.replace(added,previous,1).encode('utf-8')
+
+
+def remove_reviewed_update_readiness_label(tree):
+    capture=exactly_one((node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=='capture'),'update readiness capture')
+    required=exactly_one((node for node in capture.body if assignment(node,'required')),'original readiness map')
+    assert isinstance(required.value,ast.Subscript) and isinstance(required.value.value,ast.Dict), 'Readiness map shape changed'
+    mapping=required.value.value
+    label=exactly_one((value for key,value in zip(mapping.keys,mapping.values) if isinstance(key,ast.Constant) and key.value=='update'),'single update scene readiness')
+    assert isinstance(label,ast.Constant) and label.value in ('当前版本','当前安装版本'), 'Unreviewed update readiness label'
+    if label.value=='当前安装版本':
+        assert len([node for node in ast.walk(tree) if isinstance(node,ast.Constant) and node.value=='当前安装版本'])==1, 'Update readiness label moved or duplicated'
+        label.value='当前版本'
+    assert digest(required)=='ec9ddff532e6ebbcdc23ee66c59f0fe47a30df81bc9beff1826c3e4ac20ce967', 'Original readiness mapping or scene binding changed'
+
+
 def original_ui_diagnostic_privacy_bytes(raw):
     """Undo only the three exact producer additions before old whole-byte pins."""
     assert isinstance(raw, bytes), 'UI source bytes required'
+    raw=original_update_readiness_bytes(raw)
     text = raw.decode('utf-8')
     if 'diagnostic_capture_privacy' not in text and 'checked_text' not in text:
         return raw
@@ -106,6 +155,7 @@ def remove_reviewed_diagnostic_privacy(tree):
     Functional adb/capture/readiness/input nodes are never removed or rewritten.
     The original full-module digest below still verifies every remaining node.
     """
+    remove_reviewed_update_readiness_label(tree)
     imports = [node for node in ast.walk(tree)
                if isinstance(node, ast.ImportFrom) and node.module == 'diagnostic_capture_privacy']
     uses = [node for node in ast.walk(tree)

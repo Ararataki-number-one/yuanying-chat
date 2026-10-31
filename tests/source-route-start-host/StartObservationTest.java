@@ -101,6 +101,9 @@ public final class StartObservationTest {
 
 class NativeNetwork {
   /* ACTUAL_NATIVE_START_MEMBERS */
+  // This original start scheduler fixture has no concurrent configuration apply.
+  // The configuration-bound admission branch is tested in its dedicated suite.
+  final Object activeConfiguration=null;
   final ExecutorService worker=Executors.newSingleThreadExecutor();final Dispatcher main=new Dispatcher();final List<Callback> startWaiters=new ArrayList<>();volatile boolean starting,ready,recoveryBlocked;boolean restartQueued;String message="synthetic source rejected",currentEntry="Entry|synthetic";long reconnectAttempts;ExitRouteReceipt verifiedRoute;int launches;
   static class ExitRouteReceipt {final int pid,servicePid=900;final String generation,configuration="a".repeat(64);ExitRouteReceipt(int index){pid=900+index;generation=String.format("00000000-0000-4000-8000-%012d",index);}}
   static class ExitMismatch extends IOException{}
@@ -118,3 +121,5 @@ class NativeNetwork {
 }
 class Dispatcher {final BlockingQueue<Runnable> queue=new LinkedBlockingQueue<>();void post(Runnable value){queue.add(value);}}
 class NetworkDiagnostics {enum Event{RECONNECT_ATTEMPT,FAILURE}enum Reason{REQUESTED,REPLACE,EXIT_MISMATCH,START_FAILED}enum Stage{RECOVER}}
+/** Fail-explicit boundary: these failure/join cases never create a live core proof. */
+class NetworkCoreApplication {static void observeRunning(NativeNetwork ignored){throw new AssertionError("Live core application is outside the start-observer fixture scope");}}

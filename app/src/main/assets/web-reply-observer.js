@@ -8,7 +8,8 @@
     const uuid = () => typeof crypto.randomUUID === 'function' ? crypto.randomUUID() :
       [...crypto.getRandomValues(new Uint8Array(16))].map(n => n.toString(16).padStart(2, '0')).join('');
     const documentId = window.__pocketAttachmentDocumentId || (window.__pocketAttachmentDocumentId = uuid());
-    let attempt = null, scheduled = false, timer = null;
+    let attempt = null, scheduled = false, timer = null, checkTimer = null;
+    let observationAllowed = window.__pocketReplyObservationAllowed !== false;
     const attachmentEvents=[];
     let readyRoute = '', readyUrl = '', readinessScheduled = false;
     let resourceScheduled=false,lastResource='',resourceSequence=0,resourceZone=null;
@@ -35,16 +36,27 @@
       try { window.PocketWebReply.postMessage(JSON.stringify({type, documentId, url:location.href, resourceBinding, ...data})); }
       catch (_) { /* No website behavior depends on a host callback. */ }
     }
-    function invalidate(reason) {
-      if (!attempt || attempt.ended || attempt.userKey) return;
-      attempt.ended = true;
-      clearTimeout(timer);
+    const confirmationAllowed = () => observationAllowed && window.__pocketReplyObservationAllowed !== false;
+    function clearConfirmationTimers() {
+      clearTimeout(timer); timer = null;
+      clearTimeout(checkTimer); checkTimer = null; scheduled = false;
+    }
+    function sameAttemptDocument(current) {
+      return current.documentId === documentId && window.__pocketAttachmentDocumentId === documentId;
+    }
+    function invalidate(reason, includeBound = false) {
+      if (!attempt || attempt.ended || attempt.userKey && !includeBound) return;
+      attempt.ended = true; attempt.endKind = 'uncertain'; attempt.endReason = reason;
+      clearConfirmationTimers();
       emit('uncertain', {token:attempt.token, reason});
+      scheduleResources();
     }
     function check() {
-      scheduled = false;
+      scheduled = false; checkTimer = null;
+      if (!confirmationAllowed()) return;
       const current = attempt;
       if (!current || current.ended || current.userKey) return;
+      if (!sameAttemptDocument(current)) { invalidate('网页文档已变化，原发送结果需要核对'); return; }
       if (!sameRoute(current.url, location.href)) { invalidate('网页已切换到其他对话'); return; }
       const users = api.messages('user');
       const fresh = users.map((node, index) => ({node, key:api.key(node, index)}))
@@ -58,21 +70,79 @@
       const actual = api.userText(item.node);
       if (current.prompt.trim() && normalized(actual) !== normalized(current.prompt)) return;
       if (!current.prompt.trim() && !api.busy()) return;
-      current.userKey = item.key;
-      clearTimeout(timer);
+      current.userKey = item.key; current.boundText = actual; current.boundUrl = location.href;
+      clearConfirmationTimers();
       attachmentFact('sent',current.attachments,current.started,current.url);
       emit('bound', {token:current.token, userKey:item.key, prompt:actual});
+      scheduleResources();
+    }
+    function armConfirmation(current) {
+      clearTimeout(timer); timer = null;
+      if (attempt !== current || !confirmationAllowed() || current.ended || current.userKey) return;
+      const remaining = current.started + 45000 - Date.now();
+      if (remaining <= 0) { invalidate('未能确认网页接收了这次操作，请核对原消息'); return; }
+      timer = setTimeout(() => {
+        timer = null;
+        if (attempt === current) invalidate('未能确认网页接收了这次操作，请核对原消息');
+      }, remaining);
+    }
+    function replayBound(current) {
+      if (!sameAttemptDocument(current) || !sameRoute(current.boundUrl || current.url, location.href)) {
+        invalidate('网页已变化，原发送结果需要核对', true); return;
+      }
+      const users = api.messages('user');
+      const fresh = users.map((node, index) => ({node, key:api.key(node, index)}))
+        .filter(item => !current.before.has(item.key));
+      const item = fresh.length === 1 ? fresh[0] : null;
+      if (!item || !stable(item.key) || item.key !== current.userKey || item.node !== users[users.length - 1]) {
+        invalidate('原提问的网页消息标识无法重新核对', true); return;
+      }
+      const actual = api.userText(item.node);
+      if (normalized(actual) !== normalized(current.boundText) || current.prompt.trim() && normalized(actual) !== normalized(current.prompt)) {
+        invalidate('原提问的网页内容已变化，请核对原消息', true); return;
+      }
+      // The host may have disabled observation after JS bound but before receipt
+      // delivery. Replay only this revalidated receipt, never the website action.
+      current.boundUrl = location.href;
+      emit('bound', {token:current.token, userKey:item.key, prompt:actual});
+    }
+    function setObservationAllowed(allowed) {
+      if (typeof allowed !== 'boolean') return false;
+      observationAllowed = allowed;
+      window.__pocketReplyObservationAllowed = allowed;
+      clearConfirmationTimers();
+      if (!allowed) return true;
+      const current = attempt;
+      if (!current) return true;
+      if (current.ended) {
+        // An off callback can itself have been delayed. A prior timeout/pagehide
+        // receipt may have been dropped by native; it must not remain silent.
+        if (current.endKind === 'uncertain') emit('uncertain', {token:current.token, reason:current.endReason});
+        else if (current.endKind === 'stopped' && sameAttemptDocument(current) && sameRoute(current.url, location.href)) emit('stop', {token:current.token, userKey:current.stoppedUserKey || ''});
+      } else if (current.userKey) replayBound(current);
+      else {
+        // Exactly one foreground recheck, including after the old deadline.
+        // Repeated explicit native activations remain finite; no polling starts.
+        check();
+        armConfirmation(current);
+      }
+      scheduleResources();
+      return true;
     }
     function schedule() {
       scheduleReadiness();
-      if (!attempt || attempt.ended || attempt.userKey || scheduled) return;
+      if (!confirmationAllowed() || !attempt || attempt.ended || attempt.userKey || scheduled) return;
       scheduled = true;
-      setTimeout(check, 30);
+      const current = attempt;
+      checkTimer = setTimeout(() => {
+        checkTimer = null; scheduled = false;
+        if (attempt === current) check();
+      }, 30);
     }
     function scheduleResources(){
       if(resourceScheduled||typeof api.uploadBusy!=='function'||typeof api.resourceBusy!=='function')return;
       resourceScheduled=true;
-      setTimeout(()=>{resourceScheduled=false;const input=api.composer();resourceZone=input&&(input.closest('form')||input.parentElement?.parentElement);const busy=!!api.resourceBusy(),uploading=!!api.uploadBusy(),signature=address(location.href)+'|'+busy+'|'+uploading;if(signature===lastResource)return;lastResource=signature;emit('resource-work',{busy,uploading,resourceSequence:++resourceSequence,capturedAt:Date.now()});},250);
+      setTimeout(()=>{resourceScheduled=false;const input=api.composer();resourceZone=input&&(input.closest('form')||input.parentElement?.parentElement);const busy=!!api.resourceBusy()||!!attempt&&!attempt.ended&&!attempt.userKey,uploading=!!api.uploadBusy(),signature=address(location.href)+'|'+busy+'|'+uploading;if(signature===lastResource)return;lastResource=signature;emit('resource-work',{busy,uploading,resourceSequence:++resourceSequence,capturedAt:Date.now()});},250);
     }
     function resourceMutations(records){
       // Reply text/markdown mutations never scan page buttons or composer.
@@ -105,11 +175,11 @@
       if (attempt && !attempt.ended && !attempt.userKey && now - attempt.started < 700 &&
           attempt.url === location.href && attempt.prompt === prompt &&
           JSON.stringify(attempt.beforeKeys) === JSON.stringify(beforeKeys)) return;
-      clearTimeout(timer);
-      attempt = {token:uuid(), url:location.href, prompt, beforeKeys,attachments:selectedAttachments(),
-        before:new Set(beforeKeys), started:now, userKey:'', ended:false};
+      clearConfirmationTimers();
+      attempt = {token:uuid(), documentId, url:location.href, prompt, beforeKeys,attachments:selectedAttachments(),
+        before:new Set(beforeKeys), started:now, userKey:'', ended:false, endKind:'', endReason:''};
       emit('intent', {token:attempt.token, prompt, beforeKeys, capturedAt:now});
-      timer = setTimeout(() => invalidate('未能确认网页接收了这次操作，请核对原消息'), 45000);
+      armConfirmation(attempt);
       schedule();
     }
     document.addEventListener('click', event => {
@@ -120,10 +190,10 @@
       if(button&&removeLabel(button)){const input=api.composer(),zone=input&&(input.closest('form')||input.parentElement?.parentElement);if(zone?.contains(button)){attachmentFact('removed',attachmentNames(button,zone),Date.now(),location.href);scheduleResources();}}
       if (button && (button.matches('[data-testid="stop-button"]') ||
           /^(停止|停止生成|Stop|Stop generating|Stop streaming)$/i.test(text))) {
-        if (attempt) attempt.ended = true;
-        clearTimeout(timer);
-        const users = api.messages('user');
-        emit('stop', {token:attempt?.token || '', userKey:users.length ? api.key(users.at(-1), users.length - 1) : ''});
+        clearConfirmationTimers();
+        const users = api.messages('user'), stoppedUserKey = users.length ? api.key(users.at(-1), users.length - 1) : '';
+        if (attempt) { attempt.ended = true; attempt.endKind = 'stopped'; attempt.stoppedUserKey = stoppedUserKey; }
+        emit('stop', {token:attempt?.token || '', userKey:stoppedUserKey});
         return;
       }
       // Most clicks are model/actions/sidebar controls. Do not inspect every
@@ -148,7 +218,12 @@
     document.addEventListener('DOMContentLoaded', scheduleReadiness, {once:true});
     scheduleReadiness();
     scheduleResources();
-    window.__pocketWebReplyObserver = Object.freeze({documentId,lastGestureAt:()=>attempt?.started||0,attachmentEvidence:(name,since)=>{if(!Number.isFinite(since)||since<=0)return {};const facts=attachmentEvents.filter(event=>event.at>since&&event.names.includes(name)&&sameRoute(event.url,location.href));return {sent:facts.some(event=>event.kind==='sent'),removed:facts.some(event=>event.kind==='removed')};},refreshResources:binding=>{if(typeof binding!=='string'||binding.length>80||binding===resourceBinding)return;resourceBinding=binding;lastResource='';scheduleResources();}});
+    function requestResources(request){
+      if(typeof request!=='string'||!/^[a-zA-Z0-9-]{16,80}$/.test(request))return false;
+      const busy=!!api.resourceBusy()||!!attempt&&!attempt.ended&&!attempt.userKey,uploading=!!api.uploadBusy();
+      emit('resource-work',{busy,uploading,guardRequestId:request,resourceSequence:++resourceSequence,capturedAt:Date.now()});return true;
+    }
+    window.__pocketWebReplyObserver = Object.freeze({requestResources,setObservationAllowed,documentId,lastGestureAt:()=>attempt?.started||0,attachmentEvidence:(name,since)=>{if(!Number.isFinite(since)||since<=0)return {};const facts=attachmentEvents.filter(event=>event.at>since&&event.names.includes(name)&&sameRoute(event.url,location.href));return {sent:facts.some(event=>event.kind==='sent'),removed:facts.some(event=>event.kind==='removed')};},refreshResources:binding=>{if(typeof binding!=='string'||binding.length>80||binding===resourceBinding)return;resourceBinding=binding;lastResource='';scheduleResources();}});
     return true;
   };
 })();

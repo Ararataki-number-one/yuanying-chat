@@ -21,7 +21,7 @@ def main():
     def source(name):
         path = 'app/src/main/java/local/pocketchat/' + name
         return subprocess.check_output(['git', 'show', before + ':' + path], cwd=ROOT, text=True) if before else (ROOT / path).read_text()
-    names = ['J.java', 'DownloadTasks.java', 'DownloadTaskRevisions.java', 'DownloadResumePolicy.java', 'DownloadRange.java', 'SavedFileDeletion.java', 'SavedFilePublication.java', 'DefaultDownloads.java', 'SealedFileIo.java']
+    names = ['J.java', 'DownloadTasks.java', 'DownloadTaskRevisions.java', 'DownloadResumePolicy.java', 'DownloadRange.java', 'SavedFileDeletion.java', 'SavedFilePublication.java', 'DefaultDownloads.java', 'SealedFileIo.java','DownloadMetadataValues.java']
     text = source('FileDownloads.java')
     old_needles = ['void taskActions(', 'boolean requestAvailable(', 'String continuationAction(', 'void requestRedownload(', 'void discardForRedownload(', 'boolean loadTask(', 'void newTask(', 'void updateTask(', 'void mark(', 'boolean valid(', 'void acceptResponse(', 'void retry(', 'void fail(', 'void pause(', 'void destroy(', 'void download(', 'void readChunk(']
     extra = ['void transferProgress(', 'void cancel(']
@@ -31,10 +31,14 @@ def main():
     inputs = [ADAPTER / 'DownloadResumeHost.java', ADAPTER / 'run.py', HERE / 'FailureCases.java.in', pathlib.Path(__file__).resolve(), RECOVERY / 'local/pocketchat/Support.java', ROOT / 'tests/sealed-file-host/android/util/AtomicFile.java'] + list((RECOVERY / 'android').rglob('*.java')) + list((ADAPTER / 'stubs').rglob('*.java'))
     hashes = {str(f.relative_to(ROOT)): hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(inputs)}
     selected = {'app/src/main/java/local/pocketchat/' + n: hashlib.sha256(source(n).encode()).hexdigest() for n in names + ['FileDownloads.java']}
+    boundary_path=ROOT/'tests/download46-host/legacy_support.py'
+    hashes[str(boundary_path.relative_to(ROOT))]=hashlib.sha256(boundary_path.read_bytes()).hexdigest()
+    boundary_spec=importlib.util.spec_from_file_location('download46_boundary',boundary_path);boundary=importlib.util.module_from_spec(boundary_spec);boundary_spec.loader.exec_module(boundary)
     with tempfile.TemporaryDirectory(prefix='download-persistence-host-') as temporary:
         temp = pathlib.Path(temporary)
         package = temp / 'local/pocketchat'
         package.mkdir(parents=True)
+        _,boundary_hashes=boundary.emit(package)
         for n in names:
             (package / n).write_text(source(n))
         fixture = (ADAPTER / 'DownloadResumeHost.java').read_text()
@@ -72,7 +76,7 @@ def main():
         unchanged = all(hashlib.sha256((ROOT / n).read_bytes()).hexdigest() == digest for n, digest in hashes.items())
         if not before:
             unchanged = unchanged and all(hashlib.sha256((ROOT / n).read_bytes()).hexdigest() == digest for n, digest in selected.items())
-        report.update(sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), beforeRef=before, selectedProductionSourceFiles=selected, adapterSourceFiles=hashes, selectedProductionMethods=needles, jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(), executionInputsUnchanged=unchanged, actualAndroidExecution=False, actualExternalProviderExecution=False, scope='Exact production FileDownloads callback methods and full production task/publication/recovery classes; JVM UI queue, controlled storage faults, host files and provider double. No phone or real provider claim.')
+        report.update(newMetadataProviderBoundaryAdapters=boundary_hashes,sourceCommit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), beforeRef=before, selectedProductionSourceFiles=selected, adapterSourceFiles=hashes, selectedProductionMethods=needles, jsonJarSha256=hashlib.sha256(a.json_jar.read_bytes()).hexdigest(), executionInputsUnchanged=unchanged, actualAndroidExecution=False, actualExternalProviderExecution=False, scope='Exact production FileDownloads callback methods and full production task/publication/recovery classes; JVM UI queue, controlled storage faults, host files and provider double. No phone or real provider claim.')
         a.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
         print(json.dumps({k: report[k] for k in ['status', 'passed', 'total', 'executionInputsUnchanged']}))
         if run.returncode or report['status'] != 'passed' or not unchanged:

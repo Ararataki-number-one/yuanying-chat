@@ -45,7 +45,7 @@ final class AppHub {
   }
   void show(int target){
     if(target!=page||target==CHAT)feedbackBar.setVisibility(View.GONE);
-    page=target;chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page==CHAT)a.toolbar.setVisibility(View.VISIBLE);else{a.designChrome.cancelWebGesture();a.toolbar.setVisibility(View.GONE);}
+    page=target;downloadsVisible(a.active);chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page==CHAT)a.toolbar.setVisibility(View.VISIBLE);else{a.designChrome.cancelWebGesture();a.toolbar.setVisibility(View.GONE);}
     a.status.setVisibility(View.GONE);panel.setVisibility(page==CHAT?View.GONE:View.VISIBLE);
     a.session.foreground(a.active);mark();a.updateReadingLayout();a.handler.removeCallbacks(tick);
     if(page!=CHAT){a.hideKeyboard();refresh();a.handler.postDelayed(tick,2500);}
@@ -67,11 +67,13 @@ final class AppHub {
     feedbackBar.setBackgroundColor(AppAppearance.color(error?0xfffff1f2:0xffedf5ff));feedbackBar.setVisibility(View.VISIBLE);
   }
   void refresh(){if(page==DOWNLOADS)downloads();if(page==SETTINGS)settings();if(page==NETWORK)networkWorkspace.show(networkTab);}
+  void downloadsVisible(boolean foreground){if(downloadController!=null)downloadController.setVisible(foreground&&page==DOWNLOADS);}
   void downloads(){
     if(downloadController==null||panel.getChildCount()==0||panel.getChildAt(0)!=downloadScreen){
       LinearLayout box=layout("下载中心");downloadScreen=panel.getChildAt(0);
       downloadController=new DesignDownloads.Controller(a,box,downloadFilter,n->{downloadFilter=n;downloads();},a.downloads.savedActions);
     }else downloadController.refresh(downloadFilter);
+    downloadsVisible(a.active);
   }
   void settings(){DesignSettingsUi.render(a,layout("应用设置"),settingsTab);}
   void network(){show(NETWORK);}

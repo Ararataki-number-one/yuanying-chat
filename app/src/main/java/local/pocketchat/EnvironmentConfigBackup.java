@@ -28,7 +28,10 @@ final class EnvironmentConfigBackup {
       JSONArray array=(JSONArray)languages;if(array.length()>3)throw invalid();for(int i=0;i<array.length();i++)if(!(array.opt(i) instanceof String))throw invalid();
       try{this.browser=BrowserIdentitySpec.from(browser);if(!this.browser.validate().isEmpty())throw invalid();}catch(IllegalArgumentException failure){throw invalid();}
       exact(preferences,PREFERENCES);for(String key:PREFERENCES)if(!(preferences.opt(key) instanceof Boolean))throw invalid();
-      this.name=name.trim();this.preferences=preferences.toString();
+      // Retain the old schema/key without exporting or restoring a per-profile opt-in.
+      // The global detection choice belongs only to this installation's app settings.
+      try{JSONObject portable=new JSONObject(preferences.toString());portable.put("backgroundWait",false);this.preferences=portable.toString();}catch(JSONException invalid){throw invalid();}
+      this.name=name.trim();
     }
     JSONObject preferences(){try{return new JSONObject(preferences);}catch(JSONException impossible){throw new IllegalStateException(impossible);}}
     byte[] bytes()throws IOException{

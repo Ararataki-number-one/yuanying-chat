@@ -15,7 +15,8 @@ javac = str(a.java_home / 'bin/javac') if a.java_home else shutil.which('javac')
 if not java or not javac or not a.json_jar.is_file():
     p.error('An explicit org.json jar and JDK are required')
 names = ('Sha256.java','J.java', 'EnvironmentSpec.java', 'EnvironmentSpecMigration.java',
-         'EnvironmentSpecRuntime.java', 'NetworkChanges.java', 'NetworkCatalog.java','NetworkShareSnapshot.java','NetworkShareJson.java',
+         'EnvironmentSpecRuntime.java', 'NetworkApplicationReceipt.java', 'NetworkApplyCoordinator.java',
+         'NetworkChanges.java', 'NetworkCatalog.java','NetworkShareSnapshot.java','NetworkShareJson.java',
          'NetworkSubscriptionCatalogPolicy.java', 'NetworkSourceSelection.java',
          'EntrySelection.java', 'NetworkDraft.java', 'NetworkOptimizationPolicy.java', 'SealedFileIo.java')
 production = [root / 'app/src/main/java/local/pocketchat' / name for name in names]
@@ -57,6 +58,13 @@ receipt['files'] = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes(
 receipt['proxyValidation'] = {'productionMethodExtractedVerbatim': True,
     'methodSha256': hashlib.sha256(validator.encode()).hexdigest(),
     'uriParser': 'JVM java.net.URI adapter; actual Android URI covered separately'}
+receipt['networkApplicationDependencies'] = {
+    'actualReceiptAndCoordinatorCompiled': True,
+    'actualCoreApplicationExecuted': False,
+    'actualShareSelectionExecuted': False,
+    'boundaryAdapters': 'Core proof and NativeNetwork.peek fail on any invocation; share migration/invalidation explicitly unavailable. Existing intent cases do not create a core proof or share representation.',
+    'separateCoverage': 'tests/network-configuration-host and tests/network-share46-host'}
+receipt['driverSha256'] = hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()
 output = a.output or work / 'results.json'
 output.parent.mkdir(parents=True, exist_ok=True)
 output.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + '\n')

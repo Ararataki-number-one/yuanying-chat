@@ -31,4 +31,6 @@ class DownloadLibrary {
  /* LEGACY_MEMBERS */
 }
 class LegacyDisplay {/* LEGACY_DISPLAY */}
-class ProfileCatalog {static ProfileCatalog get(Context c){return new ProfileCatalog();}Map<Integer,String> names(){return new HashMap<>();}}
+class ProfileCatalog {static ProfileCatalog get(Context c){return new ProfileCatalog();}SQLiteDatabase getReadableDatabase(){throw new UnsupportedOperationException("Owner projection unused in snapshot-only cases");}Map<Integer,String> names(){return new HashMap<>();}}
+
+class UiPerfStats{static void catalogRead(){}}

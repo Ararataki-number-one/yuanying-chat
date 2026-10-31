@@ -49,6 +49,14 @@ public final class NetworkApplicationProviderTest {
   check("Non-save operations publish no misleading save failure",NetworkUiProvider.operationOutcome(new NetworkUiProvider.RequestBinding(binding.identity,""),null,"measure","measured")==null);
   check("Pre-save failure has no durable save acknowledgement",NetworkUiProvider.operationOutcome(new NetworkUiProvider.RequestBinding(binding.identity,"",null,true),null,"save","failed").optString("saveState").equals("failed"));
   binding.outcome=J.obj("applicationState","applied","candidateId","frozen");check("Confirmed immutable operation outcome survives pending cleanup",NetworkUiProvider.operationOutcome(binding,transition,"save","done")==binding.outcome);
+  setup(true);provider.jobs.put("save",J.obj("done",false));provider.requireChoice("save","apply",J.obj("secret","must-stay-private"),"baseline","reply busy");JSONObject offered=provider.jobs.get("save").optJSONObject("choice");String decisionToken=offered.optString("token");
+  check("Busy choice exposes only owner/candidate metadata",offered.optString("candidateId").equals("candidate-a")&&!offered.toString().contains("must-stay-private")&&!offered.has("config")&&!offered.has("baseline"));
+  provider.requireChoice("save","apply",J.obj("new","value"),"baseline","duplicate");check("Repeated busy observation does not create another choice token",provider.jobs.get("save").optJSONObject("choice").optString("token").equals(decisionToken));
+  provider.resolveChoice("save","wrong-token","immediate");check("A stale or forged decision cannot change the application policy",provider.selectedCount==0);
+  provider.resolveChoice("save",decisionToken,"unsafe-value");check("Only the two offered application choices are accepted",provider.selectedCount==0);
+  provider.resolveChoice("save",decisionToken,"defer");check("Defer resumes the same operation without resaving a candidate",provider.selectedCount==1&&provider.selectedId.equals("save")&&provider.selectedPolicy.equals("defer"));
+  provider.resolveChoice("save",decisionToken,"immediate");check("An already consumed decision token cannot switch again",provider.selectedCount==1);
+  setup(true);provider.jobs.put("save",J.obj("done",false));provider.requireChoice("save","apply",new JSONObject(),"baseline","busy");String retired=provider.jobs.get("save").optJSONObject("choice").optString("token");provider.saveRevision++;provider.resolveChoice("save",retired,"immediate");check("A newer save retires a pending interruption permission",provider.selectedCount==0);
   System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualCoreVerification",false,"productionWaiterMethods",true));
  }
 }

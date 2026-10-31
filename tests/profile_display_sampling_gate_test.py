@@ -118,7 +118,68 @@ def metadata():
     value['networkReadModelIdentity']=dict(identity_summary,cases=identity_cases)
     return value
 
+def reverse_reviewed_cold_core_producers(case,source,member):
+    # Invert six reviewed producer edits and four exact race-check additions.
+    # Original method goldens remain
+    # authoritative; neither a replacement whole-file hash nor a skipped guard.
+    pairs=[
+      ('    if(n==null)return new JSONObject();\n    NetworkCoreApplication proof=s==null?NetworkCoreApplication.observed(n):null;\n    if(s==null&&proof==null||s!=null&&(s.deleted||!s.networkReady||s.offline||!s.guard.allowed()||s.appliedIdentity.isEmpty()||!s.appliedIdentity.equals(s.networkIdentity())))return new JSONObject();',
+       '    if(s==null||s.deleted||!s.networkReady||s.offline||!s.guard.allowed()||s.appliedIdentity.isEmpty()||!s.appliedIdentity.equals(s.networkIdentity()))return new JSONObject();'),
+      ('if(s!=null&&!s.internalNetwork())return J.obj(', 'if(!s.internalNetwork())return J.obj('),
+      ('"environmentId",s==null?proof.identity.environmentId:s.environmentId,"generation",s==null?proof.identity.generation:s.environmentGeneration,', '"environmentId",s.environmentId,"generation",s.environmentGeneration,'),
+      ('"scope",s==null?"core":"session"', '"scope","session"'),
+      ('"environmentId",s==null?running.optString("environmentId"):s.environmentId,"generation",s==null?running.optInt("generation",-1):s.environmentGeneration,', '"environmentId",s==null?"":s.environmentId,"generation",s==null?-1:s.environmentGeneration,'),
+      ('"connected",s==null?internal&&running.optBoolean("verified")&&n.connectionAdmission()==NetworkHealthPolicy.Admission.VERIFIED:', '"connected",s==null?internal&&n.ready&&n.coreAlive():'),
+      ('return receipt==n.verifiedRoute&&receipt.matches(n,n.transport.state)&&(s!=null||proof.current(n)&&proof.route==receipt)?result:new JSONObject();', 'return receipt==n.verifiedRoute&&receipt.matches(n,n.transport.state)?result:new JSONObject();'),
+      ('long now=System.currentTimeMillis();NetworkCoreApplication cold=s==null?NetworkCoreApplication.observed(n):null;SharedPreferences prefs=', 'long now=System.currentTimeMillis();SharedPreferences prefs='),
+      ('    JSONObject projected=J.obj(', '    return J.obj('),
+      ('    if(s==null&&(cold==null||!cold.current(n)||!cold.identity.environmentId.equals(running.optString("environmentId"))||cold.identity.generation!=running.optInt("generation",-1)||!cold.configuration.equals(running.optString("configurationFingerprint")))){NetworkCatalog.put(projected,"connected",false);NetworkCatalog.put(projected,"admission","BLOCKED");NetworkCatalog.put(projected,"runningConfiguration",new JSONObject());}\n    return projected;\n', ''),
+    ]
+    for added,original in pairs:
+        case.assertEqual(source.count(added),1,'exact-cold-core-producer-addition')
+        source=source.replace(added,original,1)
+    for needle,golden in {
+        'static JSONObject running(':'a4109d3648dc4c24b2ce7f0b7bece8a76d7b02a3fe454bbb0cb450c053dea51c',
+        'static JSONObject live(':'72d6092fa68265d84ba6f0229d23fa721f811fa20173ef0fadbc126d7a5b5938',
+    }.items():case.assertEqual(hashlib.sha256(member(source,needle).encode()).hexdigest(),golden)
+    return source
+
 class DisplayGateTest(unittest.TestCase):
+    def test_update_readiness_label_inverse_preserves_original_capture_gates(self):
+        root=Path(__file__).resolve().parents[1]
+        spec=importlib.util.spec_from_file_location('update_readiness_preservation',root/'tests/ui_visual_preservation_contract.py')
+        contract=importlib.util.module_from_spec(spec);spec.loader.exec_module(contract)
+        source=(root/'tests/gecko/run_ui_visuals.py').read_text()
+        self.assertTrue(contract.verify_shared_ui_source(source)['originalWorkloadSemanticsPreserved'])
+        for changed in [source.replace("'update':'当前安装版本'","'update':'当前版本X'",1),
+                        source.replace("'update':'当前安装版本'","'update':'当前安装版本','update':'当前安装版本'",1),
+                        source.replace("'update':'当前安装版本','audit':'环境自检与变更'","'update':'当前版本','audit':'当前安装版本'",1),
+                        source.replace('deadline=time.monotonic()+35;readiness_scrolls=0','deadline=time.monotonic()+36;readiness_scrolls=0',1)]:
+            with self.subTest(sourceSha256=hashlib.sha256(changed.encode()).hexdigest()):
+                self.assertNotEqual(changed,source)
+                with self.assertRaises(AssertionError):contract.verify_shared_ui_source(changed)
+    def test_cold_core_producer_inverse_rejects_unreviewed_changes(self):
+        root=Path(__file__).resolve().parents[1]
+        spec=importlib.util.spec_from_file_location('cold_producer_preservation',root/'tests/chrome-network-state-host/run.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        source=(root/'app/src/main/java/local/pocketchat/WindowNetworkState.java').read_text()
+        restored=reverse_reviewed_cold_core_producers(self,source,module.member)
+        self.assertNotEqual(restored,source)
+        mutations=[source.replace('NetworkCoreApplication.observed(n)','NetworkCoreApplication.fromHistoricalEvent(n)',1),
+            source.replace('if(s==null&&proof==null||','if(false||',1),
+            source.replace('"scope",s==null?"core":"session"','"scope","core"',1),
+            source.replace('s==null?proof.identity.environmentId:s.environmentId','s==null?"":s.environmentId',1),
+            source.replace('internal&&running.optBoolean("verified")&&n.connectionAdmission()==NetworkHealthPolicy.Admission.VERIFIED','internal&&n.ready',1),
+            source.replace('!admission.usable()','false',1),
+            source.replace('receipt.matches(n,n.transport.state)','true',1),
+            source.replace('"offline",s!=null&&s.offline','"offline",false',1),
+            source.replace('proof.current(n)&&proof.route==receipt','proof.current(n)',1),
+            source.replace('NetworkCatalog.put(projected,"connected",false)','NetworkCatalog.put(projected,"connected",true)',1),
+            source.replace('cold.identity.generation!=running.optInt("generation",-1)','false',1)]
+        for changed in mutations:
+            with self.subTest(sourceSha256=hashlib.sha256(changed.encode()).hexdigest()):
+                self.assertNotEqual(changed,source)
+                with self.assertRaises(AssertionError):reverse_reviewed_cold_core_producers(self,changed,module.member)
     def test_bounded_history_checkout_inverse_rejects_any_other_preparation_change(self):
         root=Path(__file__).resolve().parents[1]
         source=(root/'.github/workflows/gecko-integration.yml').read_text()
@@ -342,6 +403,7 @@ class DisplayGateTest(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('identity_source_preservation',root/'tests/chrome-network-state-host/run.py')
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         source=(root/'app/src/main/java/local/pocketchat/WindowNetworkState.java').read_text()
+        source=reverse_reviewed_cold_core_producers(self,source,module.member)
         hashes={
             'static JSONObject running(':'a4109d3648dc4c24b2ce7f0b7bece8a76d7b02a3fe454bbb0cb450c053dea51c',
             'static JSONObject live(':'72d6092fa68265d84ba6f0229d23fa721f811fa20173ef0fadbc126d7a5b5938',

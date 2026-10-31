@@ -31,6 +31,9 @@ def strip_reviewed_reading_trace_additions(raw,path):
  return source.encode('utf-8')
 
 def original_reading_fixture_bytes(raw,path):
+ if path=='tests/gecko/run_device.py' and hashlib.sha256(raw).hexdigest()!=PATHS[path][0]:
+  from experience46_source_compatibility import experience46_source_bytes
+  raw=experience46_source_bytes(raw,path)
  result=strip_reviewed_reading_trace_additions(raw,path)
  if hashlib.sha256(result).hexdigest()!=PATHS[path][0]:raise ValueError('Original whole-source reading oracle changed')
  return result

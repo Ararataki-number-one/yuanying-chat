@@ -30,7 +30,7 @@ class GeckoWebView extends FrameLayout {
     try{value.put("environmentId",owner.environmentId);value.put("environmentGeneration",owner.environmentGeneration);value.put("configurationRevision",owner.identityAuditAppliedRevision());value.put("identityPolicyRevision",identityPolicyRevision);}catch(JSONException ignored){}
     return value;
   }
-  void setHost(android.app.Activity activity){displayContext.setBaseContext(activity==null?owner.context:activity);}
+  void setHost(android.app.Activity activity){if(activity==null)closeExitIpPage();displayContext.setBaseContext(activity==null?owner.context:activity);}
   OnTouchListener touches;
   @Override public void setOnTouchListener(OnTouchListener listener){touches=listener;}
   @Override public boolean dispatchTouchEvent(MotionEvent event){
@@ -39,10 +39,10 @@ class GeckoWebView extends FrameLayout {
     // BrowserReading and the temporary network input fence keep ownership and priority.
     if(touches!=null&&touches.onTouch(this,event)){if(chrome!=null)chrome.cancelWebGesture();return true;}
     syncSurfaceOrigin();boolean handled=super.dispatchTouchEvent(event);
-    if(chrome!=null)chrome.webTouch(event);return handled;
+    if(chrome!=null){if(readingOwnerVisible())chrome.webTouch(event);else chrome.cancelWebGesture();}return handled;
   }
   void destroy(){
-    if(destroyed)return;destroyed=true;if(contentPermissions!=null)contentPermissions.close();
+    if(destroyed)return;destroyed=true;closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
     cancelZoom();cancelProtectionTasks();nativeProtection.closed();protectionRestore=null;owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
     callbacks.clear();cookieCallbacks.clear();appearanceSync.clear();
     appearanceLoads.clear();appearanceConnections.clear();appearanceDocuments.clear();staleAppearanceConnections.clear();
@@ -57,6 +57,35 @@ class GeckoWebView extends FrameLayout {
   static final String VERSION="GeckoView 157.0.1 · 输入同步修正";
   final ChatSession owner;
   GeckoView surface;GeckoRuntime runtime;WebExtension extension;GeckoSession primary,current;
+  interface ExitIpPageListener{void changed(String message);void closed();}
+  ExitIpPageSession exitIpPage;int exitIpTopInset;
+  boolean hasExitIpPage(){return exitIpPage!=null;}
+  boolean readingOwnerVisible(){return exitIpPage==null&&surface!=null&&current!=null&&surface.getSession()==current;}
+  String openExitIpPage(ExitIpPageListener listener){
+    if(exitIpPage!=null)return "";String unavailable=ExitIpPageSession.unavailable(this);if(!unavailable.isEmpty())return unavailable;
+    ExitIpPageSession page;try{page=new ExitIpPageSession(this,listener);}catch(RuntimeException unavailablePage){return "IP 查询页暂时无法打开，原聊天已保留。";}exitIpPage=page;
+    try{
+      cancelZoom();owner.reading.hideDisplay();page.aux.open(runtime);
+      if(!page.fresh()){closeExitIpPage();return "当前环境已变化，请重新查询。";}
+      if(surface.getSession()!=null)surface.releaseSession();surface.setScaleX(1);surface.setScaleY(1);surface.setSession(page.aux);
+      current.setActive(true);page.aux.setActive(true);originKnown=false;requestLayout();
+      page.aux.loadUri(ExitIpPageSession.URL);owner.handler.post(page.watch);return "";
+    }catch(RuntimeException unavailablePage){closeExitIpPage();return "IP 查询页暂时无法打开，原聊天已保留。";}
+  }
+  boolean closeExitIpPage(){
+    ExitIpPageSession page=exitIpPage;if(page==null)return false;exitIpPage=null;page.closed=true;owner.handler.removeCallbacks(page.watch);
+    if(surface!=null&&surface.getSession()==page.aux)surface.releaseSession();
+    try{if(page.aux.isOpen()){page.aux.stop();page.aux.setActive(false);page.aux.close();}}catch(RuntimeException alreadyClosed){}
+    exitIpTopInset=0;
+    if(!destroyed&&surface!=null&&surface.getSession()==null&&runtime==page.runtime&&current==page.original&&current.isOpen()){
+      surface.setPivotX(0);surface.setPivotY(0);surface.setScaleX(readingLayout);surface.setScaleY(readingLayout);
+      if(getWidth()>0&&getHeight()>0){surface.measure(MeasureSpec.makeMeasureSpec(Math.round(getWidth()/readingLayout),MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(Math.round(getHeight()/readingLayout),MeasureSpec.EXACTLY));surface.layout(0,0,surface.getMeasuredWidth(),surface.getMeasuredHeight());}
+      surface.setSession(current);current.setActive(!owner.browserPaused);
+    }
+    boolean changed=owner.reading.displayPageChanged;if(destroyed){owner.reading.displayHidden=false;owner.reading.displayPageChanged=false;}else owner.reading.showDisplay();
+    if(!destroyed&&changed&&readingOwnerVisible())owner.reading.viewportMeasured(viewportWidths.getOrDefault(current,0f)*readingLayout);
+    originKnown=false;requestLayout();page.listener.closed();return true;
+  }
   GeckoContentPermissions contentPermissions;
   final ArrayList<GeckoSession> popups=new ArrayList<>();
   final Map<GeckoSession,WebExtension.Port> ports=new IdentityHashMap<>();
@@ -174,7 +203,7 @@ class GeckoWebView extends FrameLayout {
           if("cookies".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optBoolean("error")?null:data.optString("value"));
           if("requestIdentityScopeResult".equals(data.optString("kind")))cookieCallbacks.complete(incoming,data.optInt("id"),data.optString("result","null"));
         }
-        @Override public void onDisconnect(WebExtension.Port incoming){if(routePort==incoming){routePort=null;routePrepared=false;cancelProtectionTasks();nativeProtection.disconnected();protectionRequest=nativeProtection.token();privacyReady=false;fingerprintingProtected=false;metadata.policyAcknowledged=false;metadata.rfpAcknowledged=false;if(owner.privacy.level()>=2)owner.setStatus(protectionSummary());owner.changed();}cookieCallbacks.cancel(incoming);}
+        @Override public void onDisconnect(WebExtension.Port incoming){if(routePort==incoming){closeExitIpPage();routePort=null;routePrepared=false;cancelProtectionTasks();nativeProtection.disconnected();protectionRequest=nativeProtection.token();privacyReady=false;fingerprintingProtected=false;metadata.policyAcknowledged=false;metadata.rfpAcknowledged=false;if(owner.privacy.level()>=2)owner.setStatus(protectionSummary());owner.changed();}cookieCallbacks.cancel(incoming);}
       });
       if(previous!=null&&previous!=port)cookieCallbacks.cancel(previous);
       prepareProtectionBridge(port);
@@ -191,6 +220,7 @@ class GeckoWebView extends FrameLayout {
   };
   JSONObject blocked(){return J.obj("type","socks","host","127.0.0.1","port",9,"proxyDNS",true,"failoverTimeout",1);}
   JSONObject route(String target){
+    if(exitIpPage!=null&&!exitIpPage.fresh())closeExitIpPage();
     if(destroyed||!enabled||!protectionAllowsNetwork()||!identityRequestAllowed(target)||owner.guard==null||!owner.guard.allowed()||!allowedUrl(target.startsWith("wss://")?"https"+target.substring(3):target.startsWith("ws://")?"http"+target.substring(2):target))return blocked();
     if(owner.internalNetwork()){
       NativeNetwork n=NativeNetwork.get(owner.context);NativeNetwork.ExitRouteReceipt receipt=n.verifiedRoute;String pool=internalPoolKey(n);
@@ -240,7 +270,7 @@ class GeckoWebView extends FrameLayout {
         Float measured=pageScales.get(source);boolean first=measured==null;
         if(!first&&Math.abs(measured-update.zoom)<.00001f)return;
         pageScales.put(source,update.zoom);
-        if(source==current){float previous=scale;scale=update.zoom*readingLayout;if(client!=null&&Math.abs(scale-previous)>.0001f)client.onScaleChanged(null,previous,scale);if(first)owner.reading.nativeScaleMeasured();}
+        if(source==current){float previous=scale;scale=update.zoom*readingLayout;if(readingOwnerVisible()){if(client!=null&&Math.abs(scale-previous)>.0001f)client.onScaleChanged(null,previous,scale);if(first)owner.reading.nativeScaleMeasured();}}
       }
     });
     session.getWebExtensionController().setMessageDelegate(extension,pageMessages,"pocketpage");
@@ -367,7 +397,7 @@ class GeckoWebView extends FrameLayout {
             // compositor's CSS-to-surface ratio may drive native zoom.
             float width=(float)data.optDouble("width",0);
             if(Float.isFinite(width)&&width>0)viewportWidths.put(source,width);
-            if(source==current){getScale();owner.reading.viewportMeasured(width*readingLayout);}return;
+            if(source==current&&readingOwnerVisible()){getScale();owner.reading.viewportMeasured(width*readingLayout);}return;
           }
           if(source!=current)return;
           if("documentReady".equals(kind)&&data.optString("url").equals(getUrl())&&!crashed.contains(source)){
@@ -442,6 +472,7 @@ class GeckoWebView extends FrameLayout {
     if(client!=null)client.onPageCommitVisible(null,url);
   }
   private void contentStopped(GeckoSession session,String message){
+    if(session==current)closeExitIpPage();
     if(destroyed||!locations.containsKey(session))return;
     crashed.add(session);pendingLoads.remove(session);painted.remove(session);usable.remove(session);WebExtension.Port port=ports.remove(session);if(port!=null){callbacks.cancel(port);retireAppearance(port);}
     if(session==current){cancelZoom();failed=true;owner.webObserver.suspendUnconfirmed("网页进程已关闭，原发送结果需要核对");
@@ -471,6 +502,7 @@ class GeckoWebView extends FrameLayout {
     current.setActive(!owner.browserPaused);crashed.remove(current);failed=false;configure(desktop,owner.privacy.level());return true;
   }catch(Exception error){failure("网页暂未恢复，请重新打开当前环境");return false;}}
   private void activate(GeckoSession session){
+    closeExitIpPage();
     cancelZoom();
     GeckoSession previous=current;
     if(surface.getSession()!=null)surface.releaseSession();
@@ -484,6 +516,7 @@ class GeckoWebView extends FrameLayout {
     }
   }
   void configure(boolean desktop,int protection){
+    closeExitIpPage();
     this.desktop=desktop;configuredProtection=protection;long revision=++identityPolicyRevision;
     metadata.desktop=desktop;metadata.policyAcknowledged=false;metadata.userAgent="";metadata.acceptedBrowserIdentity=new JSONObject();
     GeckoPolicyAdapter.applyRuntime(runtime,protection);
@@ -498,6 +531,7 @@ class GeckoWebView extends FrameLayout {
     if(metadata.policyAcknowledged){metadata.acceptedBrowserIdentity=BrowserIdentitySpec.legacy(desktop,configuredProtection).withLocales(identityPolicy==null?Collections.emptyList():identityPolicy.locales).json();owner.identityPolicyAcknowledged();}
   }
   private void requestProtection(WebExtension.Port port,String kind,int level){
+    closeExitIpPage();
     cancelProtectionTasks();nativeProtection.begin(level);requestedProtection=level;
     if(level<0||level>2){privacyReady=fingerprintingProtected=false;metadata.rfpAcknowledged=metadata.policyAcknowledged=false;owner.setStatus("保护等级无效，请主动重新选择保护等级");owner.changed();return;}
     sendProtectionAttempt(port,kind);
@@ -559,6 +593,7 @@ class GeckoWebView extends FrameLayout {
   private static int protectionReceiptLevel(JSONObject data){long level=protectionCounter(data,"level");return level>=0&&level<=2?(int)level:-1;}
   private boolean identityRequestAllowed(String target){return !RequestIdentityAudit.diagnosticUrl(target)||owner.audit!=null&&owner.audit.requestIdentityAllowsRequest(target);}
   void configureIdentity(BrowserIdentitySpec specification){
+    closeExitIpPage();
     String issue=specification.validate();if(!issue.isEmpty())throw new IllegalArgumentException(issue);
     identityPolicyRevision++;identityPolicy=specification;metadata.policyAcknowledged=false;metadata.acceptedBrowserIdentity=new JSONObject();applyIdentityLocales();
   }
@@ -585,6 +620,7 @@ class GeckoWebView extends FrameLayout {
     if(old.isOpen())old.close();return true;
   }
   public void loadUrl(String target){
+    closeExitIpPage();
     if(destroyed)return;if(!identityRequestAllowed(target)){owner.setStatus("检测地址已失效，请重新开始身份检查");return;}queued=target;
     if(!ready||!privacyReady||current==null||!protectionAllowsNetwork()||!owner.guard.allowed())return;
     if(crashed.contains(current)){
@@ -640,7 +676,7 @@ class GeckoWebView extends FrameLayout {
   public void setWebViewClient(WebViewClient value){client=value;}
   public void setWebChromeClient(WebChromeClient value){chrome=value;}
   public void setDownloadListener(DownloadListener value){download=value;}
-  public void onPause(){checkpointState();if(current!=null&&current.isOpen())current.setActive(false);}
+  public void onPause(){closeExitIpPage();checkpointState();if(current!=null&&current.isOpen())current.setActive(false);}
   public void onResume(){
     if(current!=null&&crashed.contains(current)&&canRecoverAutomatically())owner.handler.post(recovery);
     else{
@@ -655,21 +691,21 @@ class GeckoWebView extends FrameLayout {
   }
   public void pauseTimers(){}
   public void resumeTimers(){}
-  public boolean canGoBack(){return canBack||!popups.isEmpty();}
-  public void goBack(){if(canBack&&current!=null){if(!protectionAllowsNetwork()){owner.setStatus(protectionSummary());return;}current.goBack();}else closePopup();}
+  public boolean canGoBack(){return hasExitIpPage()||canBack||!popups.isEmpty();}
+  public void goBack(){if(closeExitIpPage())return;if(canBack&&current!=null){if(!protectionAllowsNetwork()){owner.setStatus(protectionSummary());return;}current.goBack();}else closePopup();}
   public float getScale(){
-    if(current!=null&&current.isOpen()&&measuredCompositors.contains(current)){
+    if(readingOwnerVisible()&&current!=null&&current.isOpen()&&measuredCompositors.contains(current)){
       current.getClientToSurfaceMatrix(readingMatrix);readingMatrix.getValues(readingValues);
       float value=readingValues[Matrix.MSCALE_X];
       if(Float.isFinite(value)&&value>0){pageScales.put(current,value);scale=value*readingLayout;}
     }
     return scale;
   }
-  boolean readingScaleMeasured(){return current!=null&&measuredCompositors.contains(current);}
+  boolean readingScaleMeasured(){return readingOwnerVisible()&&current!=null&&measuredCompositors.contains(current);}
   boolean readingZoomActive(){return zoomTarget!=null;}
   int readingTouchSlop(){return ViewConfiguration.get(getContext()).getScaledTouchSlop();}
   float readingScrollY(){
-    if(destroyed||failed||current==null||!current.isOpen()||!readingScaleMeasured())return Float.NaN;
+    if(!readingOwnerVisible()||destroyed||failed||current==null||!current.isOpen()||!readingScaleMeasured())return Float.NaN;
     current.getClientToSurfaceMatrix(readingMatrix);readingMatrix.getValues(readingValues);
     float zoom=readingValues[Matrix.MSCALE_X],clientTop=readingValues[Matrix.MTRANS_Y];
     if(!Float.isFinite(zoom)||zoom<=0)return Float.NaN;
@@ -677,7 +713,7 @@ class GeckoWebView extends FrameLayout {
     return (clientTop-readingValues[Matrix.MTRANS_Y])/zoom;
   }
   void alignReadingLeft(float savedY){
-    if(destroyed||failed||current==null||!current.isOpen()||surface==null)return;
+    if(!readingOwnerVisible()||destroyed||failed||current==null||!current.isOpen()||surface==null)return;
     float y=Float.isFinite(savedY)?savedY:readingScrollY();if(!Float.isFinite(y))return;
     // This public API scrolls Gecko's visual viewport, including APZ offsets.
     // Retain the current reading position rather than returning to page top.
@@ -691,10 +727,10 @@ class GeckoWebView extends FrameLayout {
     return visible;
   }
   void revealReadingFocus(String expectedUrl,java.util.function.BooleanSupplier stillCurrent){
-    final GeckoSession target=current;final GeckoView focusSurface=surface;if(destroyed||failed||target==null||!target.isOpen()||focusSurface==null||!readingPage(expectedUrl)||!expectedUrl.equals(getUrl())||!stillCurrent.getAsBoolean())return;
+    final GeckoSession target=current;final GeckoView focusSurface=surface;if(!readingOwnerVisible()||destroyed||failed||target==null||!target.isOpen()||focusSurface==null||!readingPage(expectedUrl)||!expectedUrl.equals(getUrl())||!stillCurrent.getAsBoolean())return;
     final long focusZoomEpoch=zoomEpoch;final float layout=readingLayout;final int viewWidth=getWidth(),viewHeight=getHeight(),surfaceWidth=focusSurface.getWidth(),surfaceHeight=focusSurface.getHeight();final Rect visible=readingFocusBounds();final int[] origin=new int[2];focusSurface.getLocationOnScreen(origin);if(visible.isEmpty())return;
     evaluateJavascript(BrowserReadingPolicy.focusScript(expectedUrl),raw->{
-      if(destroyed||failed||current!=target||!target.isOpen()||surface!=focusSurface||surface.getSession()!=target||!surface.isShown()||!expectedUrl.equals(getUrl()))return;
+      if(!readingOwnerVisible()||destroyed||failed||current!=target||!target.isOpen()||surface!=focusSurface||surface.getSession()!=target||!surface.isShown()||!expectedUrl.equals(getUrl()))return;
       WindowInsets window=getRootWindowInsets();if(Build.VERSION.SDK_INT>=30&&(window==null||!window.isVisible(WindowInsets.Type.ime())))return;
       int[] now=new int[2];focusSurface.getLocationOnScreen(now);if(focusZoomEpoch!=zoomEpoch||layout!=readingLayout||viewWidth!=getWidth()||viewHeight!=getHeight()||surfaceWidth!=focusSurface.getWidth()||surfaceHeight!=focusSurface.getHeight()||origin[0]!=now[0]||origin[1]!=now[1]||!visible.equals(readingFocusBounds()))return;
       JSONObject measured=J.parse(raw),rect=measured.optJSONObject("rect");if(!measured.optBoolean("ok")||!expectedUrl.equals(measured.optString("url"))||rect==null||!stillCurrent.getAsBoolean())return;
@@ -708,13 +744,14 @@ class GeckoWebView extends FrameLayout {
   boolean requiresViewportMeasurement(){return true;}
   public void setInitialScale(int percent){}
   boolean setReadingLayout(float choice){
+    if(!readingOwnerVisible())return false;
     if(!enabled)return false;float next=Math.min(1,BrowserReadingPolicy.bounded(choice));if(Math.abs(next-readingLayout)<.001f)return false;
     cancelZoom();float previous=readingLayout;readingLayout=next;scale=scale/previous*next;
     if(surface!=null){surface.setPivotX(0);surface.setPivotY(0);surface.setScaleX(next);surface.setScaleY(next);}
     requestLayout();return true;
   }
   public void zoomBy(float factor){
-    if(destroyed||failed||current==null||!current.isOpen()||surface==null||factor<=0||!Float.isFinite(factor))return;
+    if(!readingOwnerVisible()||destroyed||failed||current==null||!current.isOpen()||surface==null||factor<=0||!Float.isFinite(factor))return;
     cancelZoom();final GeckoSession target=current;final long started=SystemClock.uptimeMillis(),epoch=zoomEpoch;
     final float x=surface.getWidth()/2f,y=surface.getHeight()/2f,radius=Math.min(surface.getWidth()/5f,48*getResources().getDisplayMetrics().density);
     final float amount=Math.max(.1f,Math.min(10f,factor));
@@ -726,7 +763,7 @@ class GeckoWebView extends FrameLayout {
     // its starting span. Establish that span before applying the requested ratio.
     final float primed=radius*1.6f;
     for(int step=0;step<12;step++){final int n=step;owner.handler.postDelayed(()->{
-      if(target!=current||!enabled||destroyed||failed||epoch!=zoomEpoch||!target.isOpen())return;
+      if(!readingOwnerVisible()||target!=current||!enabled||destroyed||failed||epoch!=zoomEpoch||!target.isOpen())return;
       float next=primed*(1+(amount-1)*Math.max(0,n-1)/10f);pinch(target,started,MotionEvent.ACTION_MOVE,2,x,y,next);
       if(n==11){pinch(target,started,MotionEvent.ACTION_POINTER_UP|(1<<MotionEvent.ACTION_POINTER_INDEX_SHIFT),2,x,y,next);pinch(target,started,MotionEvent.ACTION_UP,1,x,y,next);zoomTarget=null;owner.reading.nativeZoomFinished();}
     },(step+1)*16L);}
@@ -742,7 +779,7 @@ class GeckoWebView extends FrameLayout {
   }
   @Override protected void onFocusChanged(boolean gain,int direction,Rect previous){super.onFocusChanged(gain,direction,previous);if(enabled&&gain&&surface!=null)surface.requestFocus();}
   @Override public boolean onInterceptTouchEvent(MotionEvent event){return !enabled&&super.onInterceptTouchEvent(event);}
-  @Override protected void onMeasure(int width,int height){super.onMeasure(width,height);if(surface!=null)surface.measure(MeasureSpec.makeMeasureSpec(Math.round(getMeasuredWidth()/readingLayout),MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(Math.round(getMeasuredHeight()/readingLayout),MeasureSpec.EXACTLY));}
+  @Override protected void onMeasure(int width,int height){super.onMeasure(width,height);float layout=hasExitIpPage()?1:readingLayout;int inset=hasExitIpPage()?exitIpTopInset:0;if(surface!=null)surface.measure(MeasureSpec.makeMeasureSpec(Math.round(getMeasuredWidth()/layout),MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(Math.round(Math.max(0,getMeasuredHeight()-inset)/layout),MeasureSpec.EXACTLY));}
   private void syncSurfaceOrigin(){
     if(surface==null||!surface.isAttachedToWindow())return;WindowInsets window=surface.getRootWindowInsets();if(window==null)return;
     if(nativePerfEnabled)surfaceOriginChecks++;
@@ -761,5 +798,5 @@ class GeckoWebView extends FrameLayout {
   }
   @Override protected void onAttachedToWindow(){originKnown=false;super.onAttachedToWindow();}
   @Override protected void onDetachedFromWindow(){originKnown=false;super.onDetachedFromWindow();}
-  @Override protected void onLayout(boolean changed,int l,int t,int r,int b){super.onLayout(changed,l,t,r,b);if(surface!=null){surface.layout(0,0,surface.getMeasuredWidth(),surface.getMeasuredHeight());syncSurfaceOrigin();}}
+  @Override protected void onLayout(boolean changed,int l,int t,int r,int b){super.onLayout(changed,l,t,r,b);if(surface!=null){int inset=hasExitIpPage()?exitIpTopInset:0;surface.layout(0,inset,surface.getMeasuredWidth(),inset+surface.getMeasuredHeight());syncSurfaceOrigin();}}
 }

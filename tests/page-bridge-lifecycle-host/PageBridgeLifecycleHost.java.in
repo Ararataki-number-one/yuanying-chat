@@ -49,6 +49,10 @@ public final class PageBridgeLifecycleHost {
   static final class Client {void onPageStarted(Object unused,String target,Object icon){}}
   static final class Bridge {
     boolean destroyed;String url=URL;float readingLayout=1;int appearanceRequests,visible;
+    // Existing bridge cases display their primary surface, with no auxiliary
+    // IP document. Actual surface ownership belongs to the separate overview host.
+    boolean auxiliaryPageVisible;
+    boolean readingOwnerVisible(){if(auxiliaryPageVisible)throw new AssertionError("Auxiliary IP page is outside this bridge fixture");return true;}
     final Owner owner=new Owner();final Clock clock=new Clock();
     final BrowserBridgeRequests callbacks=new BrowserBridgeRequests(clock,"null");
     final Map<GeckoSession,String> locations=new IdentityHashMap<>(),loadingTargets=new IdentityHashMap<>();
@@ -165,6 +169,7 @@ public final class PageBridgeLifecycleHost {
   public static void main(String[] args){staleWindow();replacement();earlyConnection();nonCommit();existingBoundaries();int pass=0;for(JSONObject v:checks)if(v.optBoolean("passed"))pass++;System.out.println(J.obj("status",pass==checks.size()?"passed":"failed","passed",pass,"total",checks.size(),"checks",checks));}
 }
 final class J {
-  static JSONObject obj(Object... values){JSONObject o=new JSONObject();for(int i=0;i<values.length;i+=2)o.put(String.valueOf(values[i]),values[i+1]);return o;}
-  static JSONObject parse(String value){try{return new JSONObject(value);}catch(RuntimeException ignored){return new JSONObject();}}
+  // Match production J's checked Android-JSON boundary as well as desktop JSON.
+  static JSONObject obj(Object... values){JSONObject o=new JSONObject();try{for(int i=0;i<values.length;i+=2)o.put(String.valueOf(values[i]),values[i+1]);}catch(org.json.JSONException invalid){throw new IllegalArgumentException(invalid);}return o;}
+  static JSONObject parse(String value){try{return new JSONObject(value);}catch(Exception ignored){return new JSONObject();}}
 }

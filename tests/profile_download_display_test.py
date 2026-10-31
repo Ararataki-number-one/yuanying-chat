@@ -16,10 +16,16 @@ class DownloadDisplayControls(unittest.TestCase):
  def test_approved_delta_inverts_to_exact_prior31_body(self):
   restored=runner.remove_reviewed38((PROD/'DesignDownloads.java').read_text());self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'8433e4cc4c72d8c6ed0b2f141ebcca762a5f357f2acb877a0a19b2814be98ed0')
  def test_changed_approved_delta_is_rejected(self):
-  current=(PROD/'DesignDownloads.java').read_text();changed=current.replace('row.binding.applied(next);','row.binding.applied(null);',1);self.assertNotEqual(changed,current)
+  current=runner.remove_reviewed46((PROD/'DesignDownloads.java').read_text());changed=current.replace('row.binding.applied(next);','row.binding.applied(null);',1);self.assertNotEqual(changed,current)
   with self.assertRaisesRegex(AssertionError,'Reviewed38 bounded edit'):runner.remove_reviewed38(changed)
  def test_duplicate_approved_block_is_rejected(self):
-  current=(PROD/'DesignDownloads.java').read_text();block=json.loads((ROOT/'tests/download-names-host/reviewed38-inverse.json').read_text())['edits'][0]['after'];self.assertEqual(current.count(block),1)
+  current=runner.remove_reviewed46((PROD/'DesignDownloads.java').read_text());block=json.loads((ROOT/'tests/download-names-host/reviewed38-inverse.json').read_text())['edits'][0]['after'];self.assertEqual(current.count(block),1)
+  with self.assertRaisesRegex(AssertionError,'exactly once'):runner.remove_reviewed38(current+block)
+ def test_changed_reviewed46_card_delta_is_rejected(self):
+  current=(PROD/'DesignDownloads.java').read_text();changed=current.replace('name.setMaxLines(2);','name.setMaxLines(3);',1);self.assertNotEqual(current,changed)
+  with self.assertRaisesRegex(AssertionError,'Reviewed46 bounded edit'):runner.remove_reviewed38(changed)
+ def test_duplicate_reviewed46_block_is_rejected(self):
+  current=(PROD/'DesignDownloads.java').read_text();manifest=json.loads((ROOT/'tests/download-names-host/reviewed46-inverse.json').read_text());block=manifest['files']['DesignDownloads.java']['edits'][0]['after'];self.assertEqual(current.count(block),1)
   with self.assertRaisesRegex(AssertionError,'exactly once'):runner.remove_reviewed38(current+block)
  def test_unrelated_drift_is_preserved_for_original_four_guards(self):
   current=(PROD/'DesignDownloads.java').read_text();mutated=current.replace('package local.pocketchat;','package local.pocketchat;\n// forbidden unrelated change',1);restored=runner.remove_reviewed38(mutated);self.assertIn('// forbidden unrelated change',restored);self.assertNotEqual(hashlib.sha256(restored.encode()).hexdigest(),'8433e4cc4c72d8c6ed0b2f141ebcca762a5f357f2acb877a0a19b2814be98ed0')

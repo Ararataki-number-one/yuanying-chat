@@ -35,10 +35,12 @@ final class NetworkStatusUi {
     TextView details=a.label("",15,Ui.INK);details.setLineSpacing(a.dp(6),1);box.addView(details);
     Button copy=new Button(a);copy.setText("复制耗时诊断");copy.setAllCaps(false);box.addView(copy);
     Button reply=new Button(a);reply.setText("查看发送与回复状态");reply.setAllCaps(false);box.addView(reply);
+    Button ip=new Button(a);ip.setText("查询当前环境 IP");ip.setAllCaps(false);box.addView(ip);
     ScrollView scroll=new ScrollView(a);scroll.addView(box);
     final AlertDialog[] shown={null};
     AlertDialog dialog=AppAppearance.dialog(a).setTitle("连接状态").setView(scroll).setPositiveButton("立即重连",(d,w)->{if(current(a,s)&&shown[0]!=null&&shown[0].isShowing())s.reconnect();}).setNeutralButton("网络设置",(d,w)->{if(current(a,s)&&shown[0]!=null&&shown[0].isShowing())a.networkSettings();}).setNegativeButton("关闭",null).create();
     shown[0]=dialog;a.networkDialog=dialog;
+    ip.setOnClickListener(v->{if(!current(a,s)||!dialog.isShowing())return;dialog.dismiss();ExitIpPageUi.open(a);});
     reply.setOnClickListener(v->{if(!current(a,s)||!dialog.isShowing()||s.pending==null)return;dialog.dismiss();ReplyState.show(a);});
     copy.setOnClickListener(v->{
       copy.setEnabled(false);

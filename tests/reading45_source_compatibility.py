@@ -6,6 +6,7 @@ compile the actual production files. Unknown source/fixture bytes remain errors.
 import hashlib
 import json
 from pathlib import Path
+from experience46_source_compatibility import experience46_source_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 DELTA_PATH = ROOT / 'tests/fixtures/reading45-restoration-source-deltas.json'
@@ -24,6 +25,7 @@ def reading45_source_bytes(raw, relative):
     row = manifest['files'].get(relative)
     if row is None:
         raise ValueError('Reading45 inverse does not cover this path')
+    raw = experience46_source_bytes(raw, relative)
     digest = hashlib.sha256(raw).hexdigest()
     if digest == row['previousSha256']:
         return raw

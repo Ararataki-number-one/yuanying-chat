@@ -7,7 +7,7 @@ import java.text.DateFormat;
 /** Exact selected production methods with counted SQL and deterministic View adapters. */
 public final class DownloadNamesHost {
   static final JSONArray checks=new JSONArray(),measurements=new JSONArray();
-  static boolean before=Boolean.getBoolean("before");
+  static boolean before=Boolean.getBoolean("before"),reviewed46=Boolean.getBoolean("reviewed46");
   static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));}
   static ProfileCatalog setup(){
     ProfileCatalog c=new ProfileCatalog();ProfileCatalog.instance=c;
@@ -18,21 +18,22 @@ public final class DownloadNamesHost {
     Map<String,Object> r=new LinkedHashMap<>();
     for(String k:new String[]{"slot","created","pid","seen","connected","waiting","opened","favorite","privacy","desktop","generation","deleting","resetting"})r.put(k,0);
     for(String k:new String[]{"name","draft","mode","problem","page","group_name","notes","environment_id"})r.put(k,"");
-    r.put("slot",slot);r.put("name",name);r.put("draft","PRIVATE_DRAFT_NOT_FOR_LABELS");r.put("notes","PRIVATE_NOTES_NOT_FOR_LABELS");return r;
+    r.put("slot",slot);r.put("name",name);r.put("created",1);r.put("generation",1);r.put("environment_id",ownerId(slot));r.put("draft","PRIVATE_DRAFT_NOT_FOR_LABELS");r.put("notes","PRIVATE_NOTES_NOT_FOR_LABELS");return r;
   }
-  static JSONObject row(String id,int slot,String state){return J.obj("id",id,"slot",slot,"state",state,"uri","content://download/"+id,"name",id+".txt","time",0,"total",100,"received",10);}
+  static String ownerId(int slot){return "00000000-0000-0000-0000-00000000000"+slot;}
+  static JSONObject row(String id,int slot,String state){JSONObject row=J.obj("id",id,"slot",slot,"state",state,"uri","content://download/"+id,"name",id+".txt","time",0,"total",100,"received",10);if(slot>=0&&slot<8)DownloadTasks.put(row,"environmentId",ownerId(slot),"environmentGeneration",1);return row;}
   static JSONArray rows(int n){JSONArray out=new JSONArray();for(int i=0;i<n;i++)out.put(row("task"+i,i%8,"saved"));return out;}
   static void resetQueries(ProfileCatalog c){c.db.queries.clear();UiPerfStats.reads=0;}
-  static boolean projection(ProfileCatalog c){return before?c.db.queries.stream().allMatch(q->q.columns==null):c.db.queries.stream().allMatch(q->Arrays.equals(q.columns,new String[]{"slot","name"})&&q.where==null&&q.order==null);}
-  static String label(DesignDownloads.Controller c,JSONObject r){return c.views.get(DownloadListPolicy.key(r)).status.getText().toString();}
+  static boolean projection(ProfileCatalog c){return before?c.db.queries.stream().allMatch(q->q.columns==null):c.db.queries.stream().allMatch(q->Arrays.equals(q.columns,reviewed46?new String[]{"slot","name","environment_id","generation","created","deleting","resetting"}:new String[]{"slot","name"})&&q.where==null&&q.order==null);}
+  static String label(DesignDownloads.Controller c,JSONObject r){if(reviewed46&&!c.views.containsKey(DownloadListPolicy.key(r))){c.hostAnchor=DownloadListPolicy.key(r);c.apply(c.hostRows,c.hostSelected,c.hostNow);c.hostAnchor="";}String text=c.views.get(DownloadListPolicy.key(r)).status.getText().toString();return reviewed46?text.substring(0,text.lastIndexOf(" · ")):text;}
   static void counts(){
     for(int n:new int[]{1,100,1000,10000}){
       ProfileCatalog p=setup();DesignDownloads.Controller c=new DesignDownloads.Controller();JSONArray data=rows(n);resetQueries(p);c.apply(data,0,1000);
       int q=p.db.queries.size();check("Actual apply and bind query count for "+n+" unique rows",q==(before?n:1));
       check("SQL projection for "+n+" rows",projection(p));check("Counter records every actual catalogue label query for "+n,UiPerfStats.reads==q);
-      check("All unique rows remain bound for "+n,c.list.getChildCount()==n&&c.views.size()==n);
+      check("Current native page remains bounded; historical unpaged rows retained before46 for "+n,c.list.getChildCount()==(reviewed46?Math.min(40,n):n)&&c.views.size()==(reviewed46?Math.min(40,n):n));
       check("Names and status remain exact for first and last of "+n,label(c,data.getJSONObject(0)).equals("环境名 0 · saved")&&label(c,data.getJSONObject(n-1)).equals("环境名 "+((n-1)%8)+" · saved"));
-      measurements.put(J.obj("rows",n,"labelSqlQueries",q,"projection",before?"all environment fields":"slot,name only","rowCreations",c.createdRows()));
+      measurements.put(J.obj("rows",n,"labelSqlQueries",q,"projection",before?"all environment fields":reviewed46?"slot,name,owner,generation,availability":"slot,name only","rowCreations",c.createdRows()));
     }
   }
   static void freshnessAndFallbacks(){
@@ -40,18 +41,18 @@ public final class DownloadNamesHost {
     Map<String,DesignDownloads.Row> identities=new LinkedHashMap<>(c.views);p.db.rows.get(3).put("name","已重新命名");resetQueries(p);c.apply(data,0,2000);
     check("Next apply reads renamed environment instead of caching across refreshes",label(c,data.getJSONObject(3)).equals("已重新命名 · saved"));
     check("Rename refresh uses the same query bound",p.db.queries.size()==(before?100:1));
-    check("Stable data keeps every Row and card identity",identities.entrySet().stream().allMatch(e->c.views.get(e.getKey())==e.getValue())&&c.createdRows()==100);
+    check("Stable data keeps every Row and card identity",identities.entrySet().stream().allMatch(e->c.views.get(e.getKey())==e.getValue())&&c.createdRows()==(reviewed46?40:100));
     check("Reading names does not mutate download row slots",data.getJSONObject(3).getInt("slot")==3&&c.views.get(DownloadListPolicy.key(data.getJSONObject(3))).value==data.getJSONObject(3));
     p.db.rows.remove(0);p.db.rows.get(2).put("name","");p.db.rows.get(4).put("name",null);
     JSONArray odd=new JSONArray().put(row("missing-default",0,"saved")).put(row("unknown",99,"saved")).put(row("negative",-3,"saved")).put(row("blank",2,"saved")).put(row("null",4,"saved"));resetQueries(p);c.apply(odd,0,3000);
-    check("Absent slot zero keeps the original default fallback",label(c,odd.getJSONObject(0)).equals("默认环境 · saved"));
-    check("Unknown positive slot keeps original arithmetic fallback",label(c,odd.getJSONObject(1)).equals("环境 100 · saved"));
-    check("Unknown negative slot is not clamped to a different environment",label(c,odd.getJSONObject(2)).equals("环境 -2 · saved"));
+    check("Absent slot zero keeps the original default fallback",label(c,odd.getJSONObject(0)).equals(reviewed46?"原环境（已删除） · saved":"默认环境 · saved"));
+    check("Unknown positive slot keeps original arithmetic fallback",label(c,odd.getJSONObject(1)).equals(reviewed46?"归属待确认 · saved":"环境 100 · saved"));
+    check("Unknown negative slot is not clamped to a different environment",label(c,odd.getJSONObject(2)).equals(reviewed46?"归属待确认 · saved":"环境 -2 · saved"));
     check("A present empty name remains empty",label(c,odd.getJSONObject(3)).equals(" · saved"));
     check("Null unavailable name keeps original fallback",label(c,odd.getJSONObject(4)).equals("环境 5 · saved"));
     check("Fallbacks share one projected read",p.db.queries.size()==(before?5:1));
-    p.db.rows.put(0,profile(0,"新建默认环境"));resetQueries(p);c.apply(odd,0,4000);
-    check("Reused slot name is read fresh on the next apply",label(c,odd.getJSONObject(0)).equals("新建默认环境 · saved"));
+    p.db.rows.put(0,profile(0,"新建默认环境"));if(reviewed46){p.db.rows.get(0).put("environment_id","10000000-0000-0000-0000-000000000000");p.db.rows.get(0).put("generation",2);}resetQueries(p);c.apply(odd,0,4000);
+    check("Reused slot cannot relabel the old owner file",label(c,odd.getJSONObject(0)).equals(reviewed46?"原环境（已重建） · saved":"新建默认环境 · saved"));
   }
   static void filteringAndDuplicates(){
     ProfileCatalog p=setup();DesignDownloads.Controller c=new DesignDownloads.Controller();JSONArray data=rows(10);resetQueries(p);c.apply(data,1,1000);
@@ -83,7 +84,7 @@ class UiPerfStats{static int reads;static void catalogRead(){reads++;}}
 class DesignDownloads {
   /* DOWNLOAD_HELPERS */
   static final class Controller {
-    final Activity a=new Activity();final LinearLayout box=new LinearLayout(),packages=new LinearLayout(),list=new LinearLayout(),empty=new LinearLayout();final ScrollView scroll=new ScrollView();final java.util.function.IntConsumer choose=n->{};final SavedFileActions actions=new SavedFileActions();final Map<String,Row> views=new LinkedHashMap<>();int filter=0;String packageKey="";LinearLayout tabs=new LinearLayout();final int firstRowCounter=Row.created;Map<Integer,String> preparedNames;
+    final Activity a=new Activity();final LinearLayout box=new LinearLayout(),packages=new LinearLayout(),list=new LinearLayout(),empty=new LinearLayout();final ScrollView scroll=new ScrollView();final java.util.function.IntConsumer choose=n->{};final SavedFileActions actions=new SavedFileActions();final Map<String,Row> views=new LinkedHashMap<>();int filter=0;String packageKey="";LinearLayout tabs=new LinearLayout();final int firstRowCounter=Row.created;Map<Integer,String> preparedNames;Map<String,String> preparedTimes,preparedOwners;JSONArray hostRows;int hostSelected;long hostNow;String hostAnchor="";
     Controller(){scroll.addView(box);box.addView(tabs);box.addView(list);box.addView(empty);}
     int createdRows(){return Row.created-firstRowCounter;}
     /* CONTROLLER_APPLY */
@@ -99,7 +100,7 @@ class DesignDownloads {
 class Context{}class Activity extends Context{}class SavedFileActions{}
 class View {
   static final int VISIBLE=0,GONE=8;LinearLayout parent;int top,height=100,visibility=VISIBLE;String description="";
-  Object getParent(){return parent;}int getTop(){return top;}int getHeight(){return height;}int getVisibility(){return visibility;}void setVisibility(int value){visibility=value;}void setBackground(Object ignored){}void setContentDescription(String value){description=value;}CharSequence getContentDescription(){return description;}
+  Object tag;void setTag(Object key){tag=key;}Object getTag(){return tag;}Object getParent(){return parent;}int getTop(){return top;}int getHeight(){return height;}int getVisibility(){return visibility;}void setVisibility(int value){visibility=value;}void setBackground(Object ignored){}void setContentDescription(String value){description=value;}CharSequence getContentDescription(){return description;}
 }
 class LinearLayout extends View {
   final ArrayList<View> children=new ArrayList<>();static class LayoutParams{int topMargin;LayoutParams(int w,int h){}}
@@ -113,7 +114,7 @@ class Button extends TextView{}class ImageView extends View{void setImageDrawabl
 class ProgressBar extends View{boolean indefinite;int percent;boolean isIndeterminate(){return indefinite;}void setIndeterminate(boolean value){indefinite=value;}int getProgress(){return percent;}void setProgress(int value){percent=value;}}
 class DesignUi{static final int RED=1,CYAN=2,GREEN=3;static LinearLayout tabs(Activity a,String[] labels,int selected,java.util.function.IntConsumer choose){return new LinearLayout();}static int dp(Activity a,int value){return value;}static Object surface(Activity a,int color,int radius,int border){return new Object();}static void empty(LinearLayout target,String title,String detail,String action,Runnable run){target.addView(new TextView());}}
 class Ui{static final class Icon{Icon(String shape,int color){}}}
-class DownloadTasks{static String label(String state){return state;}static String progress(JSONObject value){return value.optLong("received")+"/"+value.optLong("total");}}
+class DownloadTasks{static void put(JSONObject row,Object...pairs){for(int i=0;i<pairs.length;i+=2)row.put((String)pairs[i],pairs[i+1]);}static String amount(long n){return n<0?"大小未知":n+" B";}static String label(String state){return state;}static String progress(JSONObject value){return value.optLong("received")+"/"+value.optLong("total");}}
 class J{static JSONObject obj(Object...pairs){JSONObject out=new JSONObject();for(int i=0;i<pairs.length;i+=2)out.put((String)pairs[i],pairs[i+1]);return out;}}
 interface Cursor extends AutoCloseable{boolean moveToFirst();boolean moveToNext();int getColumnIndexOrThrow(String key);String getString(int index);int getInt(int index);long getLong(int index);void close();}
 class SQLiteDatabase {

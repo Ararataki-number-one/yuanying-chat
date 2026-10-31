@@ -100,11 +100,12 @@ class FileDownloads {
   void chunk(long attempt){if(!blobValid(attempt)){fail(attempt,"文件页面已改变，请重试");return;}if(offset>=blobSize){clearBlob();choose(attempt);return;}long end=Math.min(blobSize,offset+192*1024);String key=JSONObject.quote(blobKey);a.remote.evaluateJavascript("void((async()=>{const f=window["+key+"];if(!f)return;try{const bytes=new Uint8Array(await f.blob.slice("+offset+","+end+").arrayBuffer());let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));f.chunk=btoa(text);}catch{f.error=true;}})())",r->readChunk(attempt,end,System.currentTimeMillis()+10000));}
   void readChunk(long attempt,long end,long deadline){if(!blobValid(attempt)){fail(attempt,"文件页面已改变，请重试");return;}a.remote.evaluateJavascript("(()=>{const f=window["+JSONObject.quote(blobKey)+"];if(!f||f.error)return {error:true};if(typeof f.chunk!=='string')return {};const chunk=f.chunk;delete f.chunk;return {chunk};})()",raw->{if(!valid(attempt))return;JSONObject f=J.parse(raw);if(f.optBoolean("error")){fail(attempt,"读取文件失败");return;}if(!f.has("chunk")){if(System.currentTimeMillis()<deadline)a.handler.postDelayed(()->readChunk(attempt,end,deadline),100);else fail(attempt,"读取文件超时");return;}File file=temp;worker.execute(()->{try{byte[] bytes=android.util.Base64.decode(f.getString("chunk"),android.util.Base64.DEFAULT);if(bytes.length!=end-offset)throw new IOException();SealedFileIo.lease(file,()->{if(!valid(attempt))throw new IOException();try(OutputStream out=new FileOutputStream(file,true)){out.write(bytes);}return null;});offset=end;receivedBytes=end;totalBytes=blobSize;a.handler.post(()->{if(valid(attempt)){transferProgress();chunk(attempt);}});}catch(Exception e){fail(attempt,"文件片段保存失败，请重试");}});});}
   void chooseManually(long attempt){if(!valid(attempt))return;if(!task.optString("pendingDestination").isEmpty()){a.status("上次保存结果待确认，请先在下载记录中重试核验");return;}completeFile=true;mark("choosing","");if(persistenceBlocked)return;dismiss();pickerTicket=attempt;awaitingPicker=true;try{a.startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(mime).putExtra(Intent.EXTRA_TITLE,name),SAVE);}catch(ActivityNotFoundException e){awaitingPicker=false;fail(attempt,"设备没有文件保存器");}}
-  boolean validSave(long attempt,JSONObject chosenTask){return valid(attempt)&&task==chosenTask&&tasks.owns(chosenTask);}
-  void commitSaved(long attempt,JSONObject chosenTask,String generation,Uri uri,String savedName,String location){
+  boolean validSave(long attempt,JSONObject chosenTask){if(!valid(attempt)||task!=chosenTask||!tasks.owns(chosenTask))return false;JSONObject environment=ProfileCatalog.get(a).item(Profiles.slot(a));return environment.optBoolean("created")&&!environment.optBoolean("deleting")&&!environment.optBoolean("resetting")&&a.session.environmentId.equals(environment.optString("environmentId"))&&a.session.environmentGeneration==environment.optInt("generation");}
+  void commitSaved(long attempt,JSONObject chosenTask,String generation,Uri uri,String savedName,String location,long savedBytes,JSONObject facts){
     if(!validSave(attempt,chosenTask))throw new IllegalStateException("保存已取消");
+    if(savedBytes<0)throw new IllegalStateException("保存字节数尚未确认");
     tasks.requirePending(chosenTask,uri,generation);long published;try{published=DownloadLibrary.get(a).publicationTime(uri);}catch(RuntimeException error){throw new DownloadTasks.PersistenceFailure(error);}name=savedName;
-    tasks.finishSave(chosenTask,uri,generation,()->{updateTask("saved","");DownloadTasks.put(chosenTask,"uri",uri.toString(),"location",location,"time",published);});
+    tasks.finishSave(chosenTask,uri,generation,()->{updateTask("saved","");DownloadTasks.put(chosenTask,"uri",uri.toString(),"location",location,"time",published);if(facts!=null)for(String key:new String[]{"actualName","actualMime"})if(facts.has(key))DownloadTasks.put(chosenTask,key,facts.opt(key));DownloadMetadataValues.checked(chosenTask,savedBytes,"published-copy","known");});
     lastProgressSaved=android.os.SystemClock.elapsedRealtime();savingDestination=null;active=false;retryUrl="";tasks.release();
     // The legacy history is secondary. Its failure cannot roll back committed bytes.
     try{remember(uri);}catch(RuntimeException ignored){}
@@ -129,7 +130,7 @@ class FileDownloads {
     if(!valid(attempt))return;if(!task.optString("pendingDestination").isEmpty()){a.status("上次保存结果待确认，请先在下载记录中重试核验");return;}completeFile=true;mark("saving","");if(persistenceBlocked)return;showProgress("正在保存到默认下载位置…");
     File file=temp;String chosenName=name,chosenMime=mime,generation=UUID.randomUUID().toString();JSONObject chosenTask=task;
     worker.execute(()->{
-      DefaultDownloads.Target target=null;
+      DefaultDownloads.Target target=null;final long[] savedBytes={-1};final JSONObject[] facts={null};
       try{
         target=DefaultDownloads.create(a,chosenName,chosenMime);DefaultDownloads.Target destination=target;
         SavedFilePublication.run(a,target.uri,a.handler,()->{
@@ -137,10 +138,10 @@ class FileDownloads {
           tasks.beginSave(chosenTask,destination.uri,destination.location,destination.name,generation);savingDestination=destination.uri;
         },()->{
           try(InputStream in=new FileInputStream(file);OutputStream out=destination.output()){
-            byte[] bytes=new byte[65536];int count;while((count=in.read(bytes))!=-1){if(!valid(attempt))throw new IOException("保存已暂停");out.write(bytes,0,count);}out.flush();
+            savedBytes[0]=SavedFileBytes.copy(in,out,()->valid(attempt));
           }
-          if(!valid(attempt))throw new IOException("保存已暂停");destination.publish();return null;
-        },()->commitSaved(attempt,chosenTask,generation,destination.uri,destination.name,destination.location),()->{
+          if(!valid(attempt))throw new IOException("保存已暂停");destination.publish();facts[0]=SavedDownloadMetadata.describe(a,destination.uri);return null;
+        },()->commitSaved(attempt,chosenTask,generation,destination.uri,destination.name,destination.location,savedBytes[0],facts[0]),()->{
           if(!tasks.published(chosenTask,destination.uri))destination.abort();
         });
         finishSaved(chosenTask,file,target.name);
@@ -158,7 +159,7 @@ class FileDownloads {
     if(code!=Activity.RESULT_OK||data==null||data.getData()==null){pause();return;}
     long attempt=ticket;Uri uri=data.getData();String generation=UUID.randomUUID().toString(),chosenName=name;JSONObject chosenTask=task;savingDestination=uri;
     try{boolean read=(data.getFlags()&Intent.FLAG_GRANT_READ_URI_PERMISSION)!=0,write=(data.getFlags()&Intent.FLAG_GRANT_WRITE_URI_PERMISSION)!=0;int grants=read?(write?Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION:Intent.FLAG_GRANT_READ_URI_PERMISSION):(write?Intent.FLAG_GRANT_WRITE_URI_PERMISSION:0);a.getContentResolver().takePersistableUriPermission(uri,grants);}catch(Exception ignored){}
-    File file=temp;mark("saving","");if(persistenceBlocked)return;showProgress("正在保存文件…");worker.execute(()->{
+    File file=temp;mark("saving","");if(persistenceBlocked)return;showProgress("正在保存文件…");worker.execute(()->{final long[] savedBytes={-1};final JSONObject[] facts={null};
       // Reject an existing indexed destination before the publication helper owns
       // cleanup, so a failed overwrite never deletes that earlier saved file.
       try{SavedFileDeletion.lease(a,uri,()->{
@@ -168,16 +169,16 @@ class FileDownloads {
           tasks.beginSave(chosenTask,uri,"你选择的保存位置",chosenName,generation);
         },()->{
           try(InputStream in=new FileInputStream(file);OutputStream out=a.getContentResolver().openOutputStream(uri,"wt")){
-            if(out==null)throw new IOException();byte[] bytes=new byte[65536];int count;while((count=in.read(bytes))!=-1){if(!valid(attempt))throw new IOException("保存已暂停");out.write(bytes,0,count);}out.flush();
+            savedBytes[0]=SavedFileBytes.copy(in,out,()->valid(attempt));
           }
-          return null;
-        },()->commitSaved(attempt,chosenTask,generation,uri,chosenName,"你选择的保存位置"),()->{if(!tasks.published(chosenTask,uri))deleteIncomplete(uri);});return null;
+          facts[0]=SavedDownloadMetadata.describe(a,uri);return null;
+        },()->commitSaved(attempt,chosenTask,generation,uri,chosenName,"你选择的保存位置",savedBytes[0],facts[0]),()->{if(!tasks.published(chosenTask,uri))deleteIncomplete(uri);});return null;
       });finishSaved(chosenTask,file,chosenName);
       }catch(Exception error){if(SavedFilePublication.unconfirmed(error)){pauseUnconfirmed(attempt,chosenTask);return;}a.handler.post(()->{if(uri.equals(savingDestination))savingDestination=null;try{tasks.clearPending(chosenTask,uri,generation);}catch(DownloadTasks.PersistenceFailure failure){persistenceFailed(failure);}});fail(attempt,error.getMessage()!=null&&error.getMessage().contains("新的文件名")?error.getMessage():"保存失败，请选择可写入的位置后重试");}
     });
   }
   void deleteIncomplete(Uri uri){try{if(android.provider.DocumentsContract.isDocumentUri(a,uri))android.provider.DocumentsContract.deleteDocument(a.getContentResolver(),uri);else a.getContentResolver().delete(uri,null,null);}catch(Exception ignored){}}
-  void remember(Uri uri){long published=task.optLong("time");JSONArray previous=J.parse(a.prefs.getString("downloadHistory","{}")).optJSONArray("files"),files=new JSONArray();files.put(J.obj("id",task.optString("id"),"name",name,"mime",mime,"uri",uri.toString(),"time",published));if(previous!=null)for(int i=0;i<Math.min(49,previous.length());i++)if(!uri.toString().equals(previous.optJSONObject(i).optString("uri")))files.put(previous.optJSONObject(i));a.prefs.edit().putString("downloadHistory",J.obj("files",files).toString()).apply();}
+  void remember(Uri uri){long published=task.optLong("time");JSONArray previous=J.parse(a.prefs.getString("downloadHistory","{}")).optJSONArray("files"),files=new JSONArray();JSONObject remembered=J.obj("slot",Profiles.slot(a),"id",task.optString("id"),"name",name,"mime",mime,"uri",uri.toString(),"location",task.optString("location"),"time",published);DownloadMetadataValues.copy(task,remembered);files.put(remembered);if(previous!=null)for(int i=0;i<Math.min(49,previous.length());i++)if(!uri.toString().equals(previous.optJSONObject(i).optString("uri")))files.put(previous.optJSONObject(i));a.prefs.edit().putString("downloadHistory",J.obj("files",files).toString()).apply();}
   void openSaved(Uri uri,String type){openSaved(uri,type,name);}
   void openSaved(Uri uri,String type,String title){openSaved(uri,type,title,true);}
   void openSaved(Uri uri,String type,String title,boolean confirmed){try{if("application/pdf".equals(type)||type.startsWith("image/")){a.startActivity(new Intent(a,Profiles.preview(a)).putExtra("uri",uri.toString()).putExtra("name",title).putExtra("mime",type));return;}a.startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri,type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));}catch(ActivityNotFoundException e){a.status(confirmed?"文件已保存；手机尚未安装支持此格式的查看器":"保存结果仍待确认；手机尚未安装支持此格式的查看器");}catch(Exception e){a.status(confirmed?"文件已移动或访问失效，请重新下载":"保存结果仍待确认；无法访问原保存位置，请检查文件权限后重试核验");}}

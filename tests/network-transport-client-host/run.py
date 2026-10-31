@@ -115,6 +115,10 @@ def main():
     before=dict(sourceCommit=git('rev-parse','HEAD'),sourceTree=git('rev-parse','HEAD^{tree}'),sourceDirty=bool(git('status','--porcelain')),
                 sourceFiles={str(p.relative_to(ROOT)):sha(p.read_bytes()) for p in sorted(inputs)})
     baseline,baseline_json,before_snapshot=load_before_snapshot()
+    boundary=(HERE/'adapters/local/pocketchat/Dependencies.java').read_text()
+    begin='/* BEGIN_LIFECYCLE_IDENTITY_BOUNDARY\n';end='\nEND_LIFECYCLE_IDENTITY_BOUNDARY */'
+    if boundary.count(begin)!=1 or boundary.count(end)!=1:raise ValueError('Declared lifecycle owner boundary is missing or ambiguous')
+    owner_boundary=boundary.split(begin,1)[1].split(end,1)[0]
     jar=args.json_jar.resolve();args.output.parent.mkdir(parents=True,exist_ok=True)
     run_dir=args.output.parent/(args.output.stem+'-raw');run_dir.mkdir(exist_ok=True)
     (run_dir/'before-NetworkTransportClient.java').write_bytes(baseline)
@@ -127,8 +131,9 @@ def main():
         with tempfile.TemporaryDirectory(prefix='network-client-host-') as temp_name:
             temp=pathlib.Path(temp_name);package=temp/'local/pocketchat';package.mkdir(parents=True)
             selected=package/'NetworkTransportClient.java';selected.write_bytes(client)
+            owner=package/'EnvironmentSpec.java';owner.write_text('package local.pocketchat;\n'+owner_boundary+'\n')
             classes=temp/'classes';classes.mkdir()
-            sources=[selected,ROOT/'app/src/main/java/local/pocketchat/J.java',HERE/'NetworkTransportClientHost.java',*sorted((HERE/'adapters').rglob('*.java'))]
+            sources=[selected,ROOT/'app/src/main/java/local/pocketchat/J.java',owner,HERE/'NetworkTransportClientHost.java',*sorted((HERE/'adapters').rglob('*.java'))]
             command=[javac,'-encoding','UTF-8','-cp',str(jar),'-d',str(classes),*map(str,sources)]
             compile_run=subprocess.run(command,cwd=ROOT,capture_output=True,timeout=30)
             (run_dir/(name+'-compile-stdout.log')).write_bytes(compile_run.stdout)
@@ -158,7 +163,7 @@ def main():
     result=dict(schema=1,status='passed' if passed and old_reproduced and unchanged else 'failed',sourceIdentity=before,
         beforeRef=args.before_ref,beforeSourceSnapshot=before_snapshot,beforeFailuresRequired=sorted(KNOWN_OLD_FAILURES),oldFailuresReproduced=old_reproduced,
         executionInputsUnchanged=unchanged,actualAndroidExecution=False,actualBinderExecution=False,actualServiceExecution=False,
-        scope='Complete unchanged production NetworkTransportClient and J compiled directly. Context/ServiceConnection/main Looper queue/Messenger Binder endpoints/diagnostics are explicit host adapters. Synthetic callback ordering and in-process threads only, no Android lifecycle or user-device root cause acceptance.',
+        scope='Complete unchanged production NetworkTransportClient and J compiled directly. Context/ServiceConnection/main Looper queue/Messenger Binder endpoints/diagnostics are explicit host adapters. EnvironmentSpec.Identity is extracted verbatim from the declared Dependencies.java boundary and fails if constructed or serialized; original lifecycle cases never exercise callBound. The separate bound-client suite compiles the actual identity model. Synthetic callback ordering and in-process threads only, no Android lifecycle or user-device root cause acceptance.',
         passed=current['checkCount'] if passed else 0,runs=records,jsonJarSha256=sha(jar.read_bytes()),
         fullSelectedClass=True,beforeClientSha256=sha(baseline),sharedWholeJsonHelperSha256=sha(baseline_json),validationErrors=validation_errors,
         rawEvidence={str(p.relative_to(ROOT)):dict(bytes=p.stat().st_size,sha256=sha(p.read_bytes())) for p in sorted(run_dir.iterdir()) if p.is_file()})

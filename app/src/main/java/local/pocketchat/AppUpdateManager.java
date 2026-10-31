@@ -25,11 +25,13 @@ final class AppUpdateManager {
   final ExecutorService worker=backgroundExecutor("app-update-status"),transferWorker=backgroundExecutor("app-update-transfer");final AtomicBoolean polling=new AtomicBoolean();
   final AtomicLong generation=new AtomicLong(),verifySerial=new AtomicLong();
   final File root;volatile long id;volatile AppUpdateInfo info;
+  volatile AppUpdateInfo latestInfo;volatile ReleaseNotes latestNotes=ReleaseNotes.legacy("");long latestRevision,latestCheckedAt;
   String state="idle",message="",raw="";long received,total,verifiedSerial,bytesPerSecond,packageStoredBytes;
   volatile AppUpdateTransfer transfer;volatile AppUpdateTransfer.ConnectionFactory transferFactory=AppUpdateTransfer.OFFICIAL;volatile AppUpdateRoute.Opener routeOpener=AppUpdateRoute.OFFICIAL;
   boolean transferRunning,downloadRequested,userPaused,discardAfterTransfer;java.util.function.BooleanSupplier transferOwner;
   AppUpdateManager(Context c){context=c;prefs=c.getSharedPreferences("app-updates",0);downloads=(DownloadManager)c.getSystemService(Context.DOWNLOAD_SERVICE);legacyQuery=owned->downloads.query(new DownloadManager.Query().setFilterById(owned));root=new File(c.getNoBackupFilesDir(),"app-updates");root.mkdirs();
     raw=prefs.getString("metadata","");try{info=new AppUpdateInfo(new JSONObject(raw));}catch(Exception ignored){raw="";}
+    String latest=prefs.getString("latestMetadata",raw);try{latestInfo=new AppUpdateInfo(new JSONObject(latest));latestCheckedAt=prefs.getLong("latestCheckedAt",prefs.getLong("checkedAt",0));final AppUpdateInfo restored=latestInfo;worker.execute(()->{ReleaseNotes notes=ReleaseNotes.parse(restored.notes,restored.technicalDetails,restored.userNotes);synchronized(this){if(latestInfo==restored){latestNotes=notes;latestRevision++;}}});if(!prefs.contains("latestMetadata"))prefs.edit().putString("latestMetadata",latest).putLong("latestCheckedAt",latestCheckedAt).apply();}catch(Exception ignored){/* Descriptive cache never grants download/install eligibility. */}
     id=prefs.getLong("downloadId",-1);state=prefs.getString("state","idle");message=prefs.getString("message","");downloadRequested=prefs.getBoolean("downloadRequested",false);userPaused=prefs.getBoolean("userPaused",false);
     // Cleanup and its final status are persisted separately. Recheck an
     // interrupted deletion even if death followed the cleanup-marker write.
@@ -45,7 +47,9 @@ final class AppUpdateManager {
   File file(){return new File(root,info==null?"missing.apk":"update-"+info.code+"-"+info.sha+".apk");}
   long downloadId(){return id;}
   synchronized Bundle snapshot(){Bundle b=new Bundle();b.putInt("originSlot",prefs.getInt("originSlot",-1));b.putInt("routeSlot",prefs.getInt("routeSlot",-1));b.putString("sourceType",prefs.getString("routeSource",""));b.putString("state",state);b.putString("message",message);b.putLong("received",received);b.putLong("total",total);b.putLong("bytesPerSecond",bytesPerSecond);b.putLong("packageStoredBytes",packageStoredBytes);b.putBoolean("packageDeleteRetry",prefs.getBoolean("packageDeletePending",false)&&!"deleting".equals(state));b.putLong("remainingSeconds",bytesPerSecond>0&&total>received?(total-received+bytesPerSecond-1)/bytesPerSecond:-1);b.putBoolean("canResume",info!=null&&received>0&&!"ready".equals(state));b.putBoolean("downloadRequested",downloadRequested);b.putLong("verifiedSerial",verifiedSerial);b.putLong("verifyRequestedSerial",verifySerial.get());b.putLong("checkedAt",prefs.getLong("checkedAt",0));b.putBoolean("autoCheck",AppSettings.bool(context,"updateAutoCheck",true));b.putBoolean("autoDownload",AppSettings.bool(context,"updateAutoDownload",false));b.putBoolean("wifiOnly",AppSettings.bool(context,"updateWifiOnly",true));
+    if(latestInfo!=null){b.putString("latestVersion",latestInfo.version);b.putLong("latestCode",latestInfo.code);b.putLong("latestCheckedAt",latestCheckedAt);b.putLong("latestRevision",latestRevision);}
     if(info!=null){b.putString("version",info.version);b.putString("notes",info.notes);b.putLong("bytes",info.bytes);b.putLong("code",info.code);b.putString("packageUri",packageUri());if("ready".equals(state))b.putString("uri",packageUri());}return b;}
+  void rememberLatest(AppUpdateInfo candidate,String json,long checked){ReleaseNotes notes=ReleaseNotes.parse(candidate.notes,candidate.technicalDetails,candidate.userNotes);synchronized(this){latestInfo=candidate;latestNotes=notes;latestCheckedAt=checked;latestRevision++;prefs.edit().putString("latestMetadata",json).putLong("latestCheckedAt",checked).apply();}}
   String packageUri(){return AppUpdates.uri(context).buildUpon().appendPath(file().getName()).build().toString();}
   synchronized void refreshStoredBytes(){File apk=file();long bytes=apk.isFile()?apk.length():0;if(info!=null){File part=new File(root,"transfer-"+info.code+"-"+info.sha+"-"+info.bytes+".part");if(part.isFile())bytes+=part.length();}packageStoredBytes=bytes;}
   synchronized void change(String next,String detail){state=next;message=detail;save();}
@@ -66,6 +70,7 @@ final class AppUpdateManager {
       boolean supported=java.util.Arrays.asList(Build.SUPPORTED_ABIS).contains("arm64-v8a")&&Build.VERSION.SDK_INT>=candidate.minSdk;
       if(!supported)throw new IOException("暂无适合这台设备的更新安装包");
       if(info!=null&&(candidate.code<info.code||candidate.code==info.code&&(!candidate.sha.equals(info.sha)||candidate.bytes!=info.bytes)))throw new IOException("发布信息暂未同步，请稍后重新检查");
+      rememberLatest(candidate,json.toString(),now);
       long installed=AppUpdateFiles.installed(context);if(candidate.code<=installed){info=null;raw="";clearFiles();change("idle","已是最新版本");}
       else{
         boolean same=info!=null&&info.code==candidate.code&&info.sha.equals(candidate.sha)&&info.bytes==candidate.bytes;

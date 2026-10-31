@@ -9,6 +9,7 @@ from unittest.mock import patch
 import window_tap_readiness_contract as contract
 from profile_display_sampling_gate_test import reverse_reviewed_history_checkout_addition
 from reading_zoom_trace_contract import original_reading_fixture_bytes
+from experience46_source_compatibility import experience46_source_bytes
 
 ROOT=Path(__file__).resolve().parents[1]
 FIXTURE=contract.FIXTURE
@@ -60,8 +61,10 @@ class WindowTapReadinessTest(unittest.TestCase):
  def test_old_contract_body_runner_and_other_actions_are_preserved(self):
   added=" if path=='tests/gecko/GeckoIntegrationTestActivity.java':\n  from window_tap_readiness_contract import strip_reviewed_window_additions\n  raw=strip_reviewed_window_additions(raw)\n"
   current=(ROOT/'tests/reading_zoom_trace_contract.py').read_text();self.assertEqual(current.count(added),1)
+  added46=" if path=='tests/gecko/run_device.py' and hashlib.sha256(raw).hexdigest()!=PATHS[path][0]:\n  from experience46_source_compatibility import experience46_source_bytes\n  raw=experience46_source_bytes(raw,path)\n"
+  self.assertEqual(current.count(added46),1);current=current.replace(added46,'',1)
   self.assertEqual(digest(current.replace(added,'',1).encode()),'2ad6c04e7d6fa27b84ae432039a079b887f673ac1d99474dd4441721f12918cd')
-  self.assertEqual(digest((ROOT/'tests/gecko/run_device.py').read_bytes()),'54fa412be9f89e46d61597caf61b0246e451e6c9b5eebca592e36b05686ab8a6')
+  self.assertEqual(digest(experience46_source_bytes((ROOT/'tests/gecko/run_device.py').read_bytes(),'tests/gecko/run_device.py')),'54fa412be9f89e46d61597caf61b0246e451e6c9b5eebca592e36b05686ab8a6')
   self.assertEqual(digest(reverse_reviewed_history_checkout_addition(self,(ROOT/'.github/workflows/gecko-integration.yml').read_text()).encode()),'10e35f9884e6eac2ea2fc2e0e6d6f6d5d14c55dc7e776cd0128019c75ab3f2f5')
   fixture=(ROOT/FIXTURE).read_text();old=contract.strip_reviewed_window_additions(fixture.encode()).decode()
   self.assertEqual(fixture.count('evaluateJavascript('),old.count('evaluateJavascript('));self.assertEqual(fixture.count('postDelayed('),old.count('postDelayed('))

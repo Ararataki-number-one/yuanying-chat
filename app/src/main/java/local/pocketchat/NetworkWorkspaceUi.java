@@ -28,7 +28,9 @@ final class NetworkWorkspaceUi {
         if(pending.length()>0&&(!("apply".equals(pending.optString("action"))||"external".equals(pending.optString("action")))||pending.optJSONObject("config")==null))throw new java.io.IOException("Invalid saved candidate");
         EnvironmentSpec spec=new EnvironmentSpecRepository(profile).load();if(!spec.identity.equals(expected))throw new java.io.IOException("Changed environment");
         SharedPreferences preferences=profile.getSharedPreferences("chat",0);JSONObject marker=NetworkChanges.intent(pending);
-        JSONObject result=J.obj("available",true,"environmentId",expected.environmentId,"generation",expected.generation,"desiredRevision",spec.desiredRevision,"appliedRevision",spec.appliedRevision,"pending",pending,"candidateId",pendingCandidateId(pending,marker),"pendingReady",marker==null||"ready".equals(marker.optString("state")),"mode",preferences.getString("networkMode","external"),"currentConfig",new SecretStore(profile).settings(),"externalConfig",J.obj("proxy",preferences.getString("proxy",""),"requireExternalVpn",preferences.getBoolean("requireExternalVpn",true)),"baseline",NetworkChanges.hash(profile));
+        byte[] activeBytes=new SecretStore(profile).get("network");JSONObject activeConfig=activeBytes==null?new JSONObject():EnvironmentSpecRepository.strictObject(activeBytes);
+        try{NetworkShareSelection.migrate(profile,expected,activeConfig,pending.toString(),spec);}catch(Exception unavailable){/* Sharing reports its own typed read failure; editing stays independent. */}
+        JSONObject result=J.obj("available",true,"environmentId",expected.environmentId,"generation",expected.generation,"desiredRevision",spec.desiredRevision,"appliedRevision",spec.appliedRevision,"pending",pending,"candidateId",pendingCandidateId(pending,marker),"pendingReady",marker==null||"ready".equals(marker.optString("state")),"mode",preferences.getString("networkMode","external"),"currentConfig",activeConfig,"externalConfig",J.obj("proxy",preferences.getString("proxy",""),"requireExternalVpn",preferences.getBoolean("requireExternalVpn",true)),"baseline",NetworkChanges.hash(profile));
         EnvironmentSpecRuntime.requireIdentity(profile,expected);return result;
       });
       JSONObject pending=metadata.optJSONObject("pending");NetworkCatalog.put(item,"uiMetadata",metadata);NetworkCatalog.put(item,"config",metadata.optJSONObject("currentConfig"));NetworkCatalog.put(item,"pendingNetwork",pending.length()>0);NetworkCatalog.put(item,"pendingAction",pending.optString("action"));NetworkCatalog.put(item,"pendingConfig",pending.optJSONObject("config"));
@@ -42,8 +44,8 @@ final class NetworkWorkspaceUi {
   void focus(int slot){focus=slot;focusPending=true;filter=0;tab=0;}
   void renderWindows(){
     LinearLayout summary=DesignUi.row(a);summary.setMinimumHeight(dp(24));int count=0;for(int i=0;i<windows.length();i++)if(matches(state(windows.optJSONObject(i))))count++;summary.addView(ReferenceUi.text(a,count+" 个窗口",13,ReferenceUi.MUTED,false),new LinearLayout.LayoutParams(0,-2,1));box.addView(summary);
-    for(int i=0;i<windows.length();i++){JSONObject item=windows.optJSONObject(i);WindowNetworkState s=state(item);if(!matches(s))continue;LinearLayout card=ReferenceUi.card(a);LinearLayout head=DesignUi.row(a);TextView name=ReferenceUi.text(a,s.name,17,ReferenceUi.TEXT,true);ReferenceUi.single(name);head.addView(name,new LinearLayout.LayoutParams(0,-2,1));TextView status=ReferenceUi.text(a,"● "+s.state,13,s.color(),true);status.setPadding(dp(8),0,0,0);head.addView(status);card.addView(head);
-      TextView line=ReferenceUi.text(a,s.mainline(),14,ReferenceUi.TEXT,false);line.setMaxLines(2);line.setPadding(0,dp(9),0,0);card.addView(line);JSONObject running=runningConfiguration(s);TextView routeLabel=ReferenceUi.secondary(a,windowSubline(s));routeLabel.setSingleLine(false);card.addView(routeLabel);if(running!=null&&"internal".equals(running.optString("mode")))DesignUi.route(card,displayEntry(running),displayExit(running));TextView revisions=ReferenceUi.secondary(a,metadataSummary(item));revisions.setSingleLine(false);card.addView(revisions);if(item.optBoolean("pendingNetwork")){TextView pending=ReferenceUi.secondary(a,"待应用 · "+pendingSummary(item));pending.setSingleLine(false);pending.setTextColor(ReferenceUi.ORANGE);card.addView(pending);}LinearLayout actions=DesignUi.row(a);actions.setPadding(0,dp(6),0,0);
+    for(int i=0;i<windows.length();i++){JSONObject item=windows.optJSONObject(i);WindowNetworkState s=state(item);if(!matches(s))continue;LinearLayout card=ReferenceUi.card(a);LinearLayout head=DesignUi.row(a);TextView name=ReferenceUi.text(a,s.name,17,ReferenceUi.TEXT,true);ReferenceUi.single(name);head.addView(name,new LinearLayout.LayoutParams(0,-2,1));String connectionLabel=s.connected?"已连接":item.optBoolean("pendingNetwork")?"等待应用":"未运行".equals(s.state)?"未连接":s.state;TextView status=ReferenceUi.text(a,"● "+connectionLabel,13,s.color(),true);status.setPadding(dp(8),0,0,0);head.addView(status);card.addView(head);
+      TextView line=ReferenceUi.text(a,s.mainline(),14,ReferenceUi.TEXT,false);line.setMaxLines(2);line.setPadding(0,dp(9),0,0);card.addView(line);JSONObject running=runningConfiguration(s);TextView routeLabel=ReferenceUi.secondary(a,windowSubline(s));routeLabel.setSingleLine(false);card.addView(routeLabel);if(running!=null&&"internal".equals(running.optString("mode")))DesignUi.route(card,displayEntry(running),displayExit(running));if(item.optBoolean("pendingNetwork")){TextView pending=ReferenceUi.secondary(a,"等待应用 · "+pendingSummary(item));pending.setSingleLine(false);pending.setTextColor(ReferenceUi.ORANGE);card.addView(pending);}LinearLayout actions=DesignUi.row(a);actions.setPadding(0,dp(6),0,0);
       actions.addView(ReferenceUi.small(a,"编辑网络",true,()->edit(item)),new LinearLayout.LayoutParams(-2,dp(48)));Button measure=ReferenceUi.small(a,"测速",false,()->operate(s,"measure"));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(48));p.leftMargin=dp(8);actions.addView(measure,p);actions.addView(new View(a),new LinearLayout.LayoutParams(0,1,1));actions.addView(ReferenceUi.more(a,()->more(item)),new LinearLayout.LayoutParams(dp(44),dp(48)));card.addView(actions);ReferenceUi.add(box,card);
       if(s.slot==focus){card.setBackground(ReferenceUi.surface(a,ReferenceUi.WHITE,16,0xff94b8ff));if(focusPending){focusPending=false;card.post(()->scroll.smoothScrollTo(0,card.getTop()));}}
     }
@@ -61,7 +63,7 @@ final class NetworkWorkspaceUi {
   static String externalName(JSONObject config){Object proxy=config.opt("proxy");return Boolean.TRUE.equals(proxy)||proxy instanceof String&&!((String)proxy).isEmpty()?"应用专用代理":"手机网络 / VPN";}
   static JSONObject metadata(JSONObject item){JSONObject value=item==null?null:item.optJSONObject("uiMetadata");return value==null?new JSONObject():value;}
   static String version(long value){return value>0?"v"+value:"待确认";}
-  static String metadataSummary(JSONObject item){JSONObject meta=metadata(item);if(!meta.optBoolean("available"))return "配置版本暂时无法读取";return "已保存 "+version(meta.optLong("desiredRevision"))+" · 已应用 "+version(meta.optLong("appliedRevision"));}
+  static String metadataSummary(JSONObject item){JSONObject meta=metadata(item);if(!meta.optBoolean("available"))return "配置版本暂时无法读取";return "已保存 "+version(meta.optLong("desiredRevision"))+" · 网页配置已确认 "+version(meta.optLong("appliedRevision"));}
   static String pendingCandidateId(JSONObject pending,JSONObject marker){return marker==null?pending.length()==0?"":"legacy:"+NativeNetwork.hash(pending.toString()):marker.optString("id");}
   static String pendingSummary(JSONObject item){JSONObject config=item.optJSONObject("pendingConfig");if(!metadata(item).optBoolean("pendingReady",true))return "保存状态待恢复";if(config==null)return "配置待确认";return "external".equals(item.optString("pendingAction"))?externalName(config):entryModeLabel(config.optString("entryMode"))+" · "+displayEntry(config)+" → "+displayExit(config);}
   JSONObject windowItem(int slot){for(int i=0;i<windows.length();i++){JSONObject item=windows.optJSONObject(i);if(item!=null&&item.optJSONObject("row").optInt("slot",-1)==slot)return item;}return null;}
@@ -183,21 +185,32 @@ final class NetworkWorkspaceUi {
     else if("failed".equals(save))title="未能保存";
     else if("superseded".equals(save)||"superseded".equals(application))title="已由较新的设置替换";
     else if("cancelled".equals(application))title="待应用设置已取消";
-    else if("pending".equals(application))title="已保存 · 待应用";
-    else if("applying".equals(application))title="已保存 · 正在应用";
-    else if("applied".equals(application))title="session".equals(scope)?"已应用到当前会话":"core".equals(scope)?"网络核心已应用 · 网页状态待确认":"已保存 · 下次打开会话应用";
+    else if("pending".equals(application))title="等待应用";
+    else if("applying".equals(application))title="连接中";
+    else if("applied".equals(application))title="session".equals(scope)||"core".equals(scope)?"已应用":"等待应用";
+    else if("failed".equals(application))title="verified".equals(result.optString("rollbackState"))?"应用失败，仍使用原线路":"stopped".equals(result.optString("rollbackState"))?"应用失败，当前未连接":"应用失败，线路状态待确认";
     else if("saved-unconfirmed".equals(application))title="已保存 · 核验未完成";
     else title="saved".equals(save)?"已保存 · 应用状态待确认":"操作结果待确认";
     String versions="已保存 "+version(result.optLong("savedRevision"))+" · 已应用 "+version(result.optLong("appliedRevision"));String detail=result.optString("message");if(detail.isEmpty())detail=message==null?"":message;
-    return title+"\n"+versions+("next-session".equals(scope)?"\n将在下次打开会话时应用":"")+(detail.isEmpty()?"":"\n"+detail);
+    return title+(detail.isEmpty()||detail.equals(title)?"":"\n"+detail);
   }
   void editorResult(ReferenceUi.Modal d,TextView feedback,WindowNetworkState expected,boolean ok,String message,JSONObject snapshot,Runnable failed){
     if(!active()||!d.isShowing())return;JSONObject result=operationResult(expected,snapshot);boolean current=diagnosticWindowCurrent(expected),identityMismatch=snapshot!=null&&snapshot.optJSONObject("operationResult")!=null&&result==null;
     feedback.setText(current&&!identityMismatch?operationText(result,message):"环境已变化，请重新打开网络设置。");boolean saved=result!=null&&"saved".equals(result.optString("saveState"));feedback.setTextColor(current&&!identityMismatch&&result!=null&&(saved||"uncertain".equals(result.optString("saveState")))?("applied".equals(result.optString("applicationState"))&&saved?ReferenceUi.GREEN:ReferenceUi.ORANGE):ReferenceUi.RED);
     if(current&&!identityMismatch&&result!=null&&"failed".equals(result.optString("saveState"))){failed.run();}
+    else if(current&&!identityMismatch&&result!=null&&result.optBoolean("retryAvailable"))d.buttons("关闭",d::dismiss,"重试",()->{
+      d.primary().setEnabled(false);feedback.setText("正在重新应用…");
+      NetworkBridge.run(a,expected.slot,"retryApplication",J.obj("guardCandidateId",result.optString("candidateId")),null,identity(expected),applicationDecision(expected),(again,text,state)->{if(!active())return;reload();editorResult(d,feedback,expected,again,text,state,failed);});
+    });
     else d.buttons("关闭",d::dismiss,current&&!identityMismatch?"继续编辑":"",()->{d.dismiss();refreshEditor(expected);});
     d.resize();
   }
+  NetworkBridge.Decision applicationDecision(WindowNetworkState expected){return (choice,select)->{
+    if(!active()||!diagnosticWindowCurrent(expected))return;
+    ReferenceUi.Modal decision=new ReferenceUi.Modal(a,"选择应用时间");
+    decision.note("当前正在回复或处理文件，或任务状态暂未确认。立即切换可能中断当前任务。");
+    decision.buttons("任务结束后自动应用",()->{decision.dismiss();select.accept(NetworkApplyCoordinator.DEFER);},"立即切换，可能中断当前任务",()->{decision.dismiss();select.accept(NetworkApplyCoordinator.IMMEDIATE);});decision.show();
+  };}
   EditorSession edit(JSONObject item){if(catalog==null||!editorReady(item))return null;WindowNetworkState current=state(item);JSONObject meta=metadata(item),queued=meta.optJSONObject("pending");String action=queued.optString("action");if("external".equals(action)||action.isEmpty()&&!"internal".equals(meta.optString("mode"))){JSONObject external="external".equals(action)?queued.optJSONObject("config"):meta.optJSONObject("externalConfig");external(item,!external.optString("proxy").isEmpty());return null;}return editInternal(item);}
   EditorSession editInternal(JSONObject item){
     if(catalog==null||!editorReady(item))return null;WindowNetworkState state=state(item);JSONObject pending=metadata(item).optJSONObject("pending");
@@ -223,7 +236,7 @@ final class NetworkWorkspaceUi {
       saving[0]=true;editor.completed=false;editor.operationResult=null;d.primary().setEnabled(false);d.primary().setText("正在保存…");((Button)d.footer.getChildAt(0)).setText("收起");
       for(int i=0;i<d.body.getChildCount();i++)d.body.getChildAt(i).setEnabled(false);
       error.setText("正在保存并应用，收起后操作仍会继续…");error.setTextColor(ReferenceUi.MUTED);d.resize();
-      NetworkBridge.run(a,draft.slot,"apply",candidate,metadata(item).optString("baseline"),identity(state),(ok,message,snapshot)->{
+      NetworkBridge.run(a,draft.slot,"apply",candidate,metadata(item).optString("baseline"),identity(state),applicationDecision(state),(ok,message,snapshot)->{
         if(!active())return;saving[0]=false;JSONObject receipt=operationResult(state,snapshot);editor.operationResult=receipt==null?null:J.parse(receipt.toString());editor.completed=true;reload();context.setText("本次保存结果");
         editorResult(d,error,state,ok,message,snapshot,()->{context.setText(editingContext(item,"apply".equals(pending.optString("action"))));d.primary().setEnabled(true);d.primary().setText("保存并应用");((Button)d.footer.getChildAt(0)).setText("取消");for(int i=0;i<d.body.getChildCount();i++)d.body.getChildAt(i).setEnabled(true);});
       });
@@ -424,7 +437,7 @@ final class NetworkWorkspaceUi {
     d.buttons("取消",d::dismiss,"保存并应用",()->{
       if(saving[0])return;String value=proxy?address.getText().toString().trim():"";if(proxy&&!MainActivity.validProxy(value)){address.setError("填写有效的 HTTP / SOCKS 代理地址");return;}
       saving[0]=true;d.primary().setEnabled(false);d.primary().setText("正在保存…");((Button)d.footer.getChildAt(0)).setText("收起");if(address!=null)address.setEnabled(false);vpn.setEnabled(false);error.setText("正在保存并应用，收起后操作仍会继续…");error.setTextColor(ReferenceUi.MUTED);d.resize();
-      NetworkBridge.run(a,slot,"external",J.obj("proxy",value,"requireExternalVpn",vpn.isChecked()),baseline,identity(expected),(ok,message,snapshot)->{
+      NetworkBridge.run(a,slot,"external",J.obj("proxy",value,"requireExternalVpn",vpn.isChecked()),baseline,identity(expected),applicationDecision(expected),(ok,message,snapshot)->{
         if(!active())return;saving[0]=false;reload();context.setText("本次保存结果");editorResult(d,error,expected,ok,message,snapshot,()->{context.setText(editingContext(item,pending));d.primary().setEnabled(true);d.primary().setText("保存并应用");((Button)d.footer.getChildAt(0)).setText("取消");if(address!=null)address.setEnabled(true);vpn.setEnabled(true);});
       });
     });d.show();

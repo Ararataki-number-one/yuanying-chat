@@ -24,6 +24,21 @@ final class NetworkApplicationReceipt {
     if(!matchesApplied(current,acceptedBrowser,actual))throw new IOException("此候选尚未取得对应版本的实际应用回执");
     return result("saved","applied","session",current.appliedRevision,message);
   }
+  static final class CoreProof {
+    final EnvironmentSpec.Identity identity;final String candidateId,coreGeneration;final long savedRevision,verifiedAt;final EnvironmentSpec.NetworkBinding network;
+    CoreProof(EnvironmentSpec.Identity identity,String candidateId,long revision,EnvironmentSpec.NetworkBinding network,String coreGeneration,long verifiedAt){this.identity=identity;this.candidateId=candidateId;savedRevision=revision;this.network=network;this.coreGeneration=coreGeneration;this.verifiedAt=verifiedAt;}
+  }
+  boolean matchesNetworkApplied(EnvironmentSpec current,CoreProof proof){
+    return current!=null&&proof!=null&&identity.equals(current.identity)&&identity.equals(proof.identity)&&candidateId.equals(proof.candidateId)&&savedRevision==proof.savedRevision&&current.desiredRevision==savedRevision&&saved.equals(current.desired())&&proof.coreGeneration!=null&&!proof.coreGeneration.isEmpty()&&proof.verifiedAt>0&&sameNetwork(saved.network,proof.network);
+  }
+  JSONObject appliedNetwork(EnvironmentSpec current,CoreProof proof,String message)throws IOException{
+    if(!matchesNetworkApplied(current,proof))throw new IOException("此候选尚未取得对应版本的网络应用回执");
+    JSONObject result=result("saved","applied","core",current.appliedRevision,message);
+    try{result.put("networkAppliedRevision",savedRevision);result.put("browserAppliedRevision",current.appliedRevision);result.put("coreGeneration",proof.coreGeneration);result.put("verifiedAt",proof.verifiedAt);}catch(org.json.JSONException impossible){throw new IllegalArgumentException(impossible);}return result;
+  }
+  JSONObject applicationFailed(String rollbackState,String message){
+    JSONObject result=result("saved","failed","core",0,message);try{result.put("rollbackState",rollbackState);result.put("retryAvailable",true);}catch(org.json.JSONException impossible){throw new IllegalArgumentException(impossible);}return result;
+  }
   JSONObject cancelled(String message){return result("saved","cancelled","session",0,message);}
   JSONObject pending(String message){return result("saved","pending","session",0,message);}
   JSONObject unconfirmed(String scope,String message){if(!"session".equals(scope)&&!"core".equals(scope)&&!"next-session".equals(scope))throw new IllegalArgumentException("Invalid application scope");return result("saved","saved-unconfirmed",scope,0,message);}

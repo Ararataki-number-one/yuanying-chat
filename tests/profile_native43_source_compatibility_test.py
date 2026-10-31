@@ -10,10 +10,15 @@ import fingerprint_source_compatibility as compat
 import native43_source_compatibility as native
 import page_bridge42_source_compatibility as bridge
 from reading45_source_compatibility import reading45_source_bytes
+from experience46_source_compatibility import experience46_source_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'app/src/main/java/local/pocketchat/GeckoWebView.java'
 sha = lambda raw: hashlib.sha256(raw).hexdigest()
+
+
+def source43():
+    return experience46_source_bytes(SOURCE.read_bytes(), 'app/src/main/java/local/pocketchat/GeckoWebView.java')
 
 
 class Native43SourceCompatibilityTests(unittest.TestCase):
@@ -33,7 +38,7 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
                 actualSdkApiCompile=False, physicalPhoneAcceptance=False), indent=2) + '\n')
 
     def test_exact_readonly_accessors_restore_entire_prior42_browser(self):
-        raw = SOURCE.read_bytes()
+        raw = source43()
         self.assertEqual(sha(raw), native.REVIEWED_SHA256)
         prior = subprocess.check_output(['git', 'show', native.PREVIOUS_INTENDED_TREE + ':app/src/main/java/local/pocketchat/GeckoWebView.java'], cwd=ROOT)
         self.assertEqual(native.native43_preservation_bytes(raw), prior)
@@ -43,7 +48,7 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
         self.completed.append(dict(name='whole-production-inverse', passed=True))
 
     def test_entire_reverse_chain_retains_original_oracles(self):
-        raw = SOURCE.read_bytes()
+        raw = source43()
         expected = [
             (native.native43_preservation_bytes, '07d027899ad2c4a48d3759fe19080d3aa72027aa75aac6147e470f310bb1a5be'),
             (bridge.bridge42_preservation_bytes, '892af2842f87e20f6cf339f6654ca0651cdef11c9bda9ce0477daeff69ecc9bd'),
@@ -60,7 +65,7 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
         self.completed.append(dict(name='43-42-39-37-32-original-chain', passed=True))
 
     def test_only_exact_known_predecessors_pass_unchanged(self):
-        raw = SOURCE.read_bytes()
+        raw = source43()
         ancestors = [fn(raw) for fn in (native.native43_preservation_bytes, bridge.bridge42_preservation_bytes,
                      compat.lifecycle39_preservation_bytes, compat.upload37_preservation_bytes,
                      compat.permission_denial_preservation_bytes, compat.reading_preservation_bytes)]
@@ -75,7 +80,7 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
         self.completed.append(dict(name='known-predecessors-only', passed=True, rejectedUnknownSources=8))
 
     def test_each_accessor_rejects_missing_duplicate_changed_and_relocated(self):
-        raw = SOURCE.read_bytes()
+        raw = source43()
         rejected = 0
         for addition in native.EXACT_ACCESSORS:
             for mutation in (raw.replace(addition, b'', 1), raw.replace(addition, addition + addition, 1),
@@ -92,7 +97,7 @@ class Native43SourceCompatibilityTests(unittest.TestCase):
         self.completed.append(dict(name='accessor-mutations', passed=True, rejectedMutations=rejected + 1))
 
     def test_prior_bridge_geometry_permission_upload_and_resume_edits_stay_rejected(self):
-        raw = SOURCE.read_bytes()
+        raw = source43()
         geometry = b'Math.abs(next-readingLayout)<.001f'
         self.assertEqual(raw.count(geometry), 1)
         mutations = [raw.replace(geometry, b'Math.abs(next-readingLayout)<.002f', 1)]

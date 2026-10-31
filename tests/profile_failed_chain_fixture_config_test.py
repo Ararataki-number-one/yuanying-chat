@@ -48,6 +48,12 @@ EXTRA=r'''
   static final String PROBE="https://www.gstatic.com/generate_204";
   final java.util.concurrent.atomic.AtomicLong probeSequence=new java.util.concurrent.atomic.AtomicLong();
   final ThreadLocal<ProbeTicket> probeTicket=new ThreadLocal<>();
+  // The existing health/repair replay uses the ordinary durable-settings path.
+  // A configuration-bound start has separate production coverage and must not
+  // acquire a synthetic successful owner/source receipt from this old adapter.
+  final Object context=null;final ThreadLocal<ConfigurationSources> configurationSources=new ThreadLocal<>();
+  static final class ConfigurationBinding {final String configuration="";void requireCurrent(Object ignored){throw new AssertionError("Bound configuration owner/source validation is outside this fixture replay");}}
+  static final class ConfigurationSources {final ConfigurationBinding binding=new ConfigurationBinding();boolean unchanged(Secrets ignored){throw new AssertionError("No synthetic successful frozen-source receipt in this fixture replay");}}
   String exitIp="203.0.113.8",healthProbeRoute="";long healthProbeMeasurement;int optimizationRounds;boolean starting;
   JSONObject savedSettings,firstRecoveryControllerRead;final List<JSONObject> validationInputs=new ArrayList<>();final List<String> lifecycleEvents=new ArrayList<>();boolean streamOpen,restoreFailureArmed;Throwable injectedRestoreFailure;final Secrets secrets=new Secrets(this);HttpFixture siteForVerification;
   static final class Secrets {final NativeNetwork owner;byte[] bytes;Secrets(NativeNetwork owner){this.owner=owner;}byte[] get(String key){return bytes==null?null:bytes.clone();}void put(String key,byte[] value)throws Exception{String mode=J.parse(new String(value,StandardCharsets.UTF_8)).optString("entryMode");owner.lifecycleEvents.add("save:"+mode);if(owner.restoreFailureArmed&&owner.injectedRestoreFailure!=null&&mode.equals("latency")){if(owner.injectedRestoreFailure instanceof Exception)throw (Exception)owner.injectedRestoreFailure;throw (Error)owner.injectedRestoreFailure;}bytes=value.clone();}/* ACTUAL_SECRET_SERIALIZATION */}
@@ -136,6 +142,12 @@ EXTRA=r'''
 
 def generated(fixture):
  source=(PRODUCTION/'NativeNetwork.java').read_text();harness,classes,methods=suite.production_harness(source)
+ # The shared controller boundary predates checked Android JSON exceptions.
+ # Keep its exact fault mutation, using this fixture's existing safe setter.
+ unchecked='if(network.fault.equals("service-mismatched-config"))state.put("configuration","unrelated configuration");'
+ checked='if(network.fault.equals("service-mismatched-config"))NetworkCatalog.put(state,"configuration","unrelated configuration");'
+ if harness.count(unchecked)!=1:raise ValueError('Synthetic transport metadata adapter drifted')
+ harness=harness.replace(unchecked,checked,1)
  removed=['  static class Binding ','  static class ProbeResult ','  ProbeResult probeMeasured(String proxy,String entry)','  ProbeResult probeMeasured(String proxy,String entry,RecoveryRoute recovery)','  boolean probeCurrent(','  void recordProbe(','  String verifyExit(','  boolean configurationMatches(','  static String transportFingerprint(','  public static void main(']
  for signature in removed:harness=harness.replace(block(harness,signature),'')
  harness=harness.replace('  JSONObject api(','  JSONObject selectionApi(',1)
@@ -178,6 +190,8 @@ class FailedChainFixtureConfigTest(unittest.TestCase):
    scope='Complete production health, recovery/search/selection, probe producer and low-level interpretation, real configuration fingerprint and durable comparison. Exact original/current Android fault setup/predicate. Core-start/SecretStore/controller/probe response/exit-request and Android platform boundaries are synthetic; real executors/NetworkWork. No actual sockets, WSS, native or Android acceptance.',
    controlledSecondaryHealth='Always returns TRANSPORT_UNAVAILABLE to represent the injected target transport failure; no secondary socket.',
    controlledReceiptRead='Fixture verifiedRouteCurrent helper uses the actual extracted ExitRouteReceipt.matches/sameCore; no fresh service IPC.',
+   configurationApplicationBoundary='The original ordinary durable-settings comparison executes with an empty configurationSources ThreadLocal. Unexpected bound owner/source validation fails explicitly with AssertionError; new bound starts/core proof use their separate production host suite.',
+   checkedJsonBoundary='Only the synthetic transport metadata setter uses the existing checked-safe NetworkCatalog adapter. Actual selected production health/configuration/recovery methods remain verbatim.',
    syntheticExitCounterMeaning='Counts controlled verifyExit callback invocations, not actual HTTP IP requests; ipDelay/fault setup is replayed but does not drive transport timing.',
    unexecutedContinuingRepairPath='The forced scan/rollback flow is not executed by this host. Repair retains its original random branch through a durable save and genuine Android stop/start in the fixture; host lifecycle start/stop and stream are adapters. Original native rollback/WSS gates remain required.',
    secretSerializationScope='Actual SecretStore.settings/save and J.parse bodies execute; encrypted backing storage and core start/stop remain controlled host adapters.',

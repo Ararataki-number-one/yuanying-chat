@@ -3,6 +3,7 @@
 This changes host-test inputs only. Any unknown whole-source bytes remain errors.
 """
 import hashlib
+from experience46_source_compatibility import experience46_source_bytes
 
 PREVIOUS_INTENDED_TREE = '2b2dc1ee24305e020222941f96f851e365af4d62'
 PREVIOUS_SHA256 = '07d027899ad2c4a48d3759fe19080d3aa72027aa75aac6147e470f310bb1a5be'
@@ -22,6 +23,8 @@ def native43_preservation_bytes(raw):
     digest = hashlib.sha256(raw).hexdigest()
     if digest in EXACT_PRE43_SHA256:
         return raw
+    raw = experience46_source_bytes(raw, 'app/src/main/java/local/pocketchat/GeckoWebView.java')
+    digest = hashlib.sha256(raw).hexdigest()
     if digest != REVIEWED_SHA256:
         raise ValueError('Native43 delta is not the exact reviewed whole sequential browser source')
     for addition in EXACT_ACCESSORS:

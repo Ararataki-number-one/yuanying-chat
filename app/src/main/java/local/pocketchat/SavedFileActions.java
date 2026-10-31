@@ -4,25 +4,37 @@ import android.app.*;
 import android.content.*;
 import android.net.Uri;
 import android.os.*;
+import android.widget.*;
+import java.text.DateFormat;
+import java.util.*;
 import org.json.*;
 import java.io.*;
 import java.util.concurrent.*;
 
 /** Saved files can be opened, shared, copied or removed without another download. */
 final class SavedFileActions {
-  static final int EXPORT=85;final Activity a;final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler(Looper.getMainLooper());JSONObject exporting;volatile boolean closed,busy;String deleteProblem="";
+  static final int EXPORT=85;final Activity a;final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler(Looper.getMainLooper());JSONObject exporting;volatile boolean closed,busy;String deleteProblem="";volatile long detailEpoch;AlertDialog detailDialog;
   SavedFileActions(Activity a){this.a=a;}
   void show(JSONObject row){
-    ReferenceUi.Modal d=new ReferenceUi.Modal(a,row.optString("name","文件")).asSheet();
-    String[] labels={"打开","分享","另存为","查看保存位置","删除文件"};
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,DownloadMetadataValues.name(row)).asSheet();
+    String[] labels={"打开","分享","另存为","详细信息","删除文件"};
     for(int i=0;i<labels.length;i++){final int n=i;ReferenceUi.menuAction(d,labels[i],()->{
       d.dismiss();if(n==0)open(a,row);if(n==1)share(a,row);if(n==2)export(row);
-      if(n==3)DesignUi.message(a,"保存位置",row.optString("location","原先选择的保存位置")+"\n\n如果文件被移动或删除，请从原网页重新下载。");
+      if(n==3)details(row);
       if(n==4)confirmDelete(row);
     });}d.show();
   }
+  static String detailsText(JSONObject row){long time=row.optLong("time");return "文件名称\n"+DownloadMetadataValues.name(row)+"\n\n大小\n"+DownloadTasks.amount(DownloadMetadataValues.bytes(row))+"\n\n类型\n"+DownloadMetadataValues.mime(row)+"\n\n保存时间\n"+(time<=0?"时间未记录":DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT,Locale.getDefault()).format(new Date(time)))+"\n\n保存位置\n"+DownloadMetadataValues.location(row);}
+  void details(JSONObject selected){
+    if(closed)return;if(detailDialog!=null)detailDialog.dismiss();long token=++detailEpoch;JSONObject row=J.parse(selected.toString());if(!row.has("slot"))DownloadTasks.put(row,"slot",Profiles.slot(a));final JSONObject[] current={row};
+    LinearLayout box=DesignUi.column(a);int padding=DesignUi.dp(a,20);box.setPadding(padding,padding,padding,padding);TextView text=DesignUi.text(a,detailsText(row),14,DesignUi.TEXT);text.setTextIsSelectable(true);box.addView(text);ScrollView scroll=new ScrollView(a);scroll.addView(box);
+    AlertDialog dialog=AppAppearance.dialog(a).setTitle("详细信息").setView(scroll).setPositiveButton("关闭",null).setNeutralButton("复制位置",null).setNegativeButton("重新读取信息",null).create();detailDialog=dialog;
+    dialog.setOnDismissListener(d->{if(detailEpoch==token){detailEpoch++;detailDialog=null;}});dialog.show();
+    dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{if(closed||detailEpoch!=token)return;ClipboardManager clipboard=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);if(clipboard!=null)clipboard.setPrimaryClip(ClipData.newPlainText("保存位置",DownloadMetadataValues.location(current[0])));});
+    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v->{if(closed||detailEpoch!=token)return;dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(false);SavedDownloadMetadata.retry(a,current[0],()->!closed&&detailEpoch==token,updated->{if(!dialog.isShowing())return;dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);if(updated!=null){current[0]=updated;text.setText(detailsText(updated));}});});
+  }
   AlertDialog confirmDelete(JSONObject row){
-    JSONObject selected=J.parse(row.toString());if(!selected.has("slot"))DownloadTasks.put(selected,"slot",Profiles.slot(a));String name=selected.optString("name","文件");
+    JSONObject selected=J.parse(row.toString());if(!selected.has("slot"))DownloadTasks.put(selected,"slot",Profiles.slot(a));String name=DownloadMetadataValues.name(selected);
     String detail="会从保存位置永久删除这个文件，释放手机存储空间。";
     if(name.toLowerCase(java.util.Locale.ROOT).endsWith(".apk"))detail+="\n已安装的软件不受影响。";
     AlertDialog dialog=AppAppearance.dialog(a).setTitle("删除“"+name+"”？").setMessage(detail)
@@ -41,10 +53,10 @@ final class SavedFileActions {
       });
     });
   }
-  static Intent shareIntent(JSONObject row){Uri uri=Uri.parse(row.optString("uri"));Intent intent=new Intent(Intent.ACTION_SEND).setType(row.optString("mime","application/octet-stream")).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri("已保存文件",uri));return intent;}
-  static void open(Activity a,JSONObject row){Uri uri=Uri.parse(row.optString("uri"));String mime=row.optString("mime","application/octet-stream");try{if(mime.equals("application/pdf")||mime.startsWith("image/"))a.startActivity(new Intent(a,Profiles.preview(a)).putExtra("uri",uri.toString()).putExtra("name",row.optString("name")).putExtra("mime",mime));else{Intent intent=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri("已保存文件",uri));a.startActivity(intent);}}catch(Exception e){problem(a,"文件无法打开，可能已移动或手机没有对应查看器");}}
+  static Intent shareIntent(JSONObject row){Uri uri=Uri.parse(row.optString("uri"));Intent intent=new Intent(Intent.ACTION_SEND).setType(DownloadMetadataValues.mime(row)).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri("已保存文件",uri));return intent;}
+  static void open(Activity a,JSONObject row){Uri uri=Uri.parse(row.optString("uri"));String mime=DownloadMetadataValues.mime(row);try{if(mime.equals("application/pdf")||mime.startsWith("image/"))a.startActivity(new Intent(a,Profiles.preview(a)).putExtra("uri",uri.toString()).putExtra("name",DownloadMetadataValues.name(row)).putExtra("mime",mime));else{Intent intent=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri("已保存文件",uri));a.startActivity(intent);}}catch(Exception e){problem(a,"文件无法打开，可能已移动或手机没有对应查看器");}}
   static void share(Activity a,JSONObject row){try{a.startActivity(Intent.createChooser(shareIntent(row),"分享文件"));}catch(Exception e){problem(a,"文件已移动或无法分享");}}
-  void export(JSONObject row){if(busy||exporting!=null){problem(a,"请先完成当前另存为");return;}exporting=J.parse(row.toString());try{a.startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(row.optString("mime","application/octet-stream")).putExtra(Intent.EXTRA_TITLE,row.optString("name","文件")),EXPORT);}catch(Exception e){exporting=null;problem(a,"设备没有文件保存器");}}
+  void export(JSONObject row){if(busy||exporting!=null){problem(a,"请先完成当前另存为");return;}exporting=J.parse(row.toString());try{a.startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(DownloadMetadataValues.mime(row)).putExtra(Intent.EXTRA_TITLE,DownloadMetadataValues.name(row)),EXPORT);}catch(Exception e){exporting=null;problem(a,"设备没有文件保存器");}}
   void result(int result,Intent data){
     JSONObject source=exporting;exporting=null;if(source==null||result!=Activity.RESULT_OK||data==null||data.getData()==null)return;
     Uri destination=data.getData(),original=Uri.parse(source.optString("uri"));if(destination.equals(original))return;busy=true;
@@ -63,5 +75,5 @@ final class SavedFileActions {
   }
   static void delete(Context c,Uri uri){try{if(android.provider.DocumentsContract.isDocumentUri(c,uri))android.provider.DocumentsContract.deleteDocument(c.getContentResolver(),uri);else c.getContentResolver().delete(uri,null,null);}catch(Exception ignored){}}
   static void problem(Activity a,String message){if(a instanceof MainActivity){MainActivity host=(MainActivity)a;if(host.hub!=null&&host.hub.page!=AppHub.CHAT)host.hub.feedback(message,true);else host.status("文件操作失败："+message);}else if(a instanceof DownloadCenterActivity)((DownloadCenterActivity)a).showProblem(message);else if(a instanceof WindowHomeActivity)((WindowHomeActivity)a).showProblem(message);}
-  void close(){closed=true;worker.shutdown();}
+  void close(){closed=true;detailEpoch++;if(detailDialog!=null){detailDialog.dismiss();detailDialog=null;}worker.shutdown();}
 }

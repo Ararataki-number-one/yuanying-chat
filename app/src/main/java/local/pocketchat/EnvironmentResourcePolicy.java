@@ -21,11 +21,15 @@ final class EnvironmentResourcePolicy {
         && checkpointReady && !draftUncheckpointed;
   }
 
-  /** A reply started entirely on the website still needs inspection in the
-   * background so its eventual idle state can release retained activity. */
+  /** Compatibility entry defaults to no optional background capture. */
   static boolean observePage(boolean foreground,boolean service,boolean pending,
       boolean navigating,boolean deferred,boolean currentReply){
-    return foreground||service||pending||navigating||deferred||currentReply;
+    return observePage(foreground,service,pending,navigating,deferred,currentReply,false);
+  }
+  /** Browser activity and event-driven work guards do not grant response capture. */
+  static boolean observePage(boolean foreground,boolean service,boolean pending,
+      boolean navigating,boolean deferred,boolean currentReply,boolean backgroundDetection){
+    return foreground||backgroundDetection&&(service||pending||navigating||deferred||currentReply);
   }
 
   static final class State {
