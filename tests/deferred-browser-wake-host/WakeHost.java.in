@@ -35,13 +35,13 @@ final class DraftArchive {final Context c;DraftArchive(Context c){this.c=c;}stat
 final class PageMemory {@COMPLETE_DRAFT@ @HAS_DRAFT@}
 final class ChatSession {
  static ChatSession instance;
- final Context context=new Context();final Prefs prefs=new Prefs();final WorkQueue handler=new WorkQueue();final Web web=new Web();final Page pageMemory=new Page();final Store webStore=new Store();final Privacy privacy=new Privacy(this);final Identity identity=new Identity(this);final Audit audit=new Audit();final Uploads resourceUploads=new Uploads();
- final JSONArray attachments=new JSONArray();JSONObject pending,state=new JSONObject();String conversation=web.url,activeDeliveryId="",status="",replyHealthStatus="",resourceObserverDocument="document-observed",deliveryStage="";
+ final Context context=new Context();final Prefs prefs=new Prefs();final WorkQueue handler=new WorkQueue();final Web web;final Page pageMemory=new Page();final Store webStore=new Store();final Privacy privacy=new Privacy(this);final Identity identity=new Identity(this);final Audit audit=new Audit();final Uploads resourceUploads=new Uploads();
+ final JSONArray attachments=new JSONArray();JSONObject pending,state=new JSONObject();String conversation="",activeDeliveryId="",status="",replyHealthStatus="",resourceObserverDocument="document-observed",deliveryStage="";
  boolean resourceWebsiteUploading;boolean identityApplicationPending;boolean deleted,uiVisible,submitting,operation,inFlight,configurationCapture,transferActive,nativeFileWorkBusy,browserPaused,connecting,navigating,websiteRecovering,recoveryScheduled,offline,navigationFailed,networkReady=true,replyStalled,known=true,replyBusy;
  int resourceChoosers,resourceFilePreparations,applied,syncs,resourceUploadStable;JSONArray resourceUploadNames=new JSONArray();long resourceWebsiteEpoch=-1,lastDeferredBrowserAttempt,navigationEpoch=8,resourceObserverEpoch=8,fileWorkGeneration,navigationMono;
  static final class Action {final String name;final Result done;Action(String n,Result d){name=n;done=d;}}
  final ArrayDeque<Action> actions=new ArrayDeque<>();interface Result{void accept(JSONObject value);}
- ChatSession(){instance=this;prefs.edit().putInt("privacyLevel",1).commit();}
+ ChatSession(){web=new Web();conversation=web.url;instance=this;prefs.edit().putInt("privacyLevel",1).commit();}
  void applyBrowserSettings(boolean protection){applied++;privacy.desktop=context.desktop;}void setStatus(String s){status=s;}void delivery(String id,String stage,String detail,boolean attempted,String key,String url){deliveryStage=stage;}void changed(){}
  boolean internalNetwork(){return false;}boolean resourceRestoreWork(){return false;}boolean currentReplyActive(){return replyBusy;}boolean resourcePageUnknown(){return web.resourcePage(web.getUrl())&&!known;}boolean webPerformance(){return true;}void sync(){syncs++;}void checkBackgroundAttachments(){}void checkResourceUploads(){}
  TaskGuardSnapshot taskGuardSnapshot(){return new TaskGuardSnapshot(known,replyBusy||pending!=null,fileWorkActive(),submitting,operation,transferActive,1,3,"owner-one",navigationEpoch,"binding-one","document-observed",1,fileWorkGeneration);}

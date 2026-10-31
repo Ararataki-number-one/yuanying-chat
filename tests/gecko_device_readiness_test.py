@@ -43,6 +43,9 @@ def require(value,message):
     if not value:raise ValueError('Readiness preservation: '+message)
 
 def verify_startup_member(source,needle):
+    if needle in ('synchronized void command(','protected void onDestroy()'):
+        from experience46_source_compatibility import experience46_source_bytes
+        source=experience46_source_bytes(source.encode('utf-8'),'tests/gecko/GeckoIntegrationTestActivity.java').decode('utf-8')
     raw=member(source,needle)
     body=unobserve(raw)
     if needle=='void waitReady(long serial)':

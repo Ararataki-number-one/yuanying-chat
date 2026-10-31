@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DELTA_PATH = ROOT / 'tests/fixtures/experience46-source-deltas.json'
-DELTA_SHA256 = '3aaaa95b63816591696cd86e6f9679f1aa5f26cf135c44a989985dbe78e08957'
+DELTA_SHA256 = '483d6c317b89471b58191cf776ff3bde5713e826584ccfb1dd91265805391f89'
 BASE_COMMIT = 'e15147246ceff2e1ed2ffd9a18df1fd17b03ddee'
 BASE_TREE = 'cbb37b32ad11ec52bc91216185a033bf1d475e08'
 READING45_FIXTURE_SHA256 = '8d9fd8380a5d6337860989ad8ce95b0529773cdfa433ef090b229a8beb423f3c'

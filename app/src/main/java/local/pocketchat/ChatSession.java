@@ -360,12 +360,13 @@ final class ChatSession {
   String entryTiming(){if(navigationMono==0)return "";long network=connectionStarted>0&&proxyReadyAt>=connectionStarted?proxyReadyAt-connectionStarted:-1;String detail=network>=0?"网络准备 "+String.format(Locale.ROOT,"%.1f",network/1000.0)+" 秒":"";if(pageUsableAt>0)detail+=(detail.isEmpty()?"":" · ")+"网页可操作 "+String.format(Locale.ROOT,"%.1f",(pageUsableAt-navigationMono)/1000.0)+" 秒";else if(firstPageVisible>0)detail+=(detail.isEmpty()?"":" · ")+"网页已显示";return detail.isEmpty()?"":"本次进入："+detail;}
   boolean webPerformance(){return BrowserRuntimePolicy.originalWebsite();}
   boolean deferredBrowserWakeQueued;
-  final Runnable deferredBrowserWake=()->{
+  final Runnable deferredBrowserWake=this::drainDeferredBrowserSettingsOnce;
+  void drainDeferredBrowserSettingsOnce(){
     deferredBrowserWakeQueued=false;
     if(peek()!=this||deleted||!DeferredBrowserSettings.candidateAvailable(this)||!DeferredBrowserSettings.idle(this))return;
     if(web.resourcePage(web.getUrl())&&!NetworkUiProvider.taskIdle(this,taskGuardSnapshot()))return;
     DeferredBrowserSettings.drain(this);
-  };
+  }
   void wakeDeferredBrowserSettings(){
     if(deleted||deferredBrowserWakeQueued||!DeferredBrowserSettings.candidateAvailable(this))return;
     deferredBrowserWakeQueued=true;
