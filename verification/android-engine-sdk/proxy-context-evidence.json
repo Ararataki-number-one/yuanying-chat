@@ -1,7 +1,0 @@
-{
-  "sdkSha256": "25de06a6204382c08e405adc36da7373098bdc230d6d768f17a6fe971f0dece0",
-  "member": "assets/omni.ja -> chrome/toolkit/content/extensions/parent/ext-toolkit.js",
-  "function": "global.getCookieStoreIdForOriginAttributes = function (originAttributes) {\n  if (originAttributes.privateBrowsingId) {\n    return PRIVATE_STORE;\n  }\n\n  if (originAttributes.userContextId) {\n    return getCookieStoreIdForContainer(originAttributes.userContextId);\n  }\n\n  return DEFAULT_STORE;\n};\n",
-  "handlesGeckoViewSessionContextId": false,
-  "conclusion": "cookieStoreId is not sufficient for per-GeckoView-context proxy routing; runtime validation still required"
-}
