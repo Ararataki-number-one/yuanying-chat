@@ -1,0 +1,304 @@
+{
+  "total": 44,
+  "checks": [
+    {
+      "pass": true,
+      "name": "Original 200 ms step paints the synthetic state: report-window"
+    },
+    {
+      "pass": true,
+      "name": "Actual queued production render overwrites at 250 ms: report-window"
+    },
+    {
+      "pass": true,
+      "name": "Current capture waits for a pre-draw frame instead of reporting overwritten UI"
+    },
+    {
+      "pass": true,
+      "name": "Covered first frame repaints through actual showNetwork and defers its report"
+    },
+    {
+      "pass": true,
+      "name": "Next laid-out matching frame reports the unchanged 42 ms and 02:00"
+    },
+    {
+      "pass": true,
+      "name": "Successful report detaches listener and deadline callback"
+    },
+    {
+      "pass": true,
+      "name": "After successful release an actual real render updates the UI normally"
+    },
+    {
+      "pass": true,
+      "name": "Later frames cannot report the old capture twice"
+    },
+    {
+      "pass": true,
+      "name": "Unlaid frame cannot be captured"
+    },
+    {
+      "pass": true,
+      "name": "The same capture succeeds after layout actually completes"
+    },
+    {
+      "pass": true,
+      "name": "Text pending a requested layout is rejected even when its model matches"
+    },
+    {
+      "pass": true,
+      "name": "Completing the requested text layout releases the waiting capture"
+    },
+    {
+      "pass": true,
+      "name": "A missing real text Layout cannot be reported"
+    },
+    {
+      "pass": true,
+      "name": "An available Layout completes the existing capture"
+    },
+    {
+      "pass": true,
+      "name": "Legal title ellipsis preserves source length but transforms actual Layout characters"
+    },
+    {
+      "pass": true,
+      "name": "A laid-out title ellipsis reports exact model text without waiting for timeout"
+    },
+    {
+      "pass": true,
+      "name": "Legal title ellipsis does not become a deadline error"
+    },
+    {
+      "pass": true,
+      "name": "After title ellipsis capture production rendering remains authoritative"
+    },
+    {
+      "pass": true,
+      "name": "Legal address ellipsis preserves source length but transforms actual Layout characters"
+    },
+    {
+      "pass": true,
+      "name": "A laid-out address ellipsis reports exact model text without waiting for timeout"
+    },
+    {
+      "pass": true,
+      "name": "Legal address ellipsis does not become a deadline error"
+    },
+    {
+      "pass": true,
+      "name": "After address ellipsis capture production rendering remains authoritative"
+    },
+    {
+      "pass": true,
+      "name": "Original 20-second deadline fails closed with no success report"
+    },
+    {
+      "pass": true,
+      "name": "Timeout release does not inhibit subsequent production rendering"
+    },
+    {
+      "pass": true,
+      "name": "Actual destroy callback releases the pending capture"
+    },
+    {
+      "pass": true,
+      "name": "A late frame after destroy cannot publish the old report"
+    },
+    {
+      "pass": true,
+      "name": "Actual new-intent callback releases prior command capture"
+    },
+    {
+      "pass": true,
+      "name": "New command release leaves real rendering authoritative"
+    },
+    {
+      "pass": true,
+      "name": "New command cannot receive a stale prior report"
+    },
+    {
+      "pass": true,
+      "name": "New command before the initial paint rejects stale scheduled callbacks"
+    },
+    {
+      "pass": true,
+      "name": "Same-command new action invalidates pending capture at 100 ms"
+    },
+    {
+      "pass": true,
+      "name": "Same-command new action invalidates pending capture at 250 ms"
+    },
+    {
+      "pass": true,
+      "name": "Replacement snapshot releases old ownership and reports only the new event"
+    },
+    {
+      "pass": true,
+      "name": "Report exception records failure and releases frame ownership once"
+    },
+    {
+      "pass": true,
+      "name": "Report-error release still permits actual real rendering"
+    },
+    {
+      "pass": true,
+      "name": "Original 200 ms step paints the synthetic state: paint-error"
+    },
+    {
+      "pass": true,
+      "name": "Actual queued production render overwrites at 250 ms: paint-error"
+    },
+    {
+      "pass": true,
+      "name": "A paint exception cannot report success and detaches capture"
+    },
+    {
+      "pass": true,
+      "name": "Paint-error release leaves subsequent actual updates usable"
+    },
+    {
+      "pass": true,
+      "name": "Listener registration failure reports an error and leaves no ownership"
+    },
+    {
+      "pass": true,
+      "name": "Cancelled helper ignores late frame and deadline callbacks"
+    },
+    {
+      "pass": true,
+      "name": "Current-command guard independently rejects stale frame ownership"
+    },
+    {
+      "pass": true,
+      "name": "The original metadata worker callback executes during capture and updates chrome"
+    },
+    {
+      "pass": true,
+      "name": "Capture recovers from the actual metadata render without discarding its new title"
+    }
+  ],
+  "observations": [
+    {
+      "reports": 1,
+      "recorded": [
+        {
+          "expectedLatency": "42 ms（02:00）",
+          "latency": "42 ms（02:00）",
+          "description": "当前环境网络：日本 · Tokyo · 203.0.113.25 · 42 ms · 已连接",
+          "state": "已连接",
+          "event": "ready"
+        }
+      ],
+      "case": "current-200-250-300-316-332-sequence",
+      "afterReleaseLatency": "延迟未测（等待连接）"
+    },
+    {
+      "reports": 1,
+      "sourceText": "Controlled title",
+      "layoutText": "Cont…﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿",
+      "case": "legal-title-ellipsis",
+      "errors": 0,
+      "released": true
+    },
+    {
+      "reports": 1,
+      "sourceText": "日本 · Tokyo · 203.0.113.25",
+      "layoutText": "日本 ·…﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿",
+      "case": "legal-address-ellipsis",
+      "errors": 0,
+      "released": true
+    }
+  ],
+  "passed": 44,
+  "status": "passed",
+  "sourceCommit": "99c5b3bdad6c962bd939070631c2b6ee08156589",
+  "sourceDirty": false,
+  "selectedProductionRef": "working-tree",
+  "selectedSourceSha256": {
+    "app/src/main/java/local/pocketchat/DesignChrome.java": "2ed87d90ba0b567c88997d157e521c079579e11bb11886444dc02ed4ea21a2c4",
+    "app/src/main/java/local/pocketchat/WindowNetworkState.java": "e42bded31878238cfe559b3f797bb072f29178939b85aae878dee64c2b1765e8",
+    "app/src/main/java/local/pocketchat/LatencyRefreshPolicy.java": "e1121d3a46d4872ef8bd3a7e2ce6a75c30110f0615878195d7eef042bb61ac5b",
+    "app/src/main/java/local/pocketchat/LatencyProbePolicy.java": "0fc03b49af6ef3f187a6a1291a2722d43e33fa017a15794ee84c3c88c0e31099",
+    "app/src/main/java/local/pocketchat/NetworkStatusPolicy.java": "382f0ce1d5c5de09d5c8167adaea965774f1fa59e3dce3add100463c8fed164b",
+    "app/src/main/java/local/pocketchat/NetworkOptimizationPolicy.java": "83c6b42793be16fcef241c1865a89bd0dccbc7b07bf87c4701da43e3a89ccbe3",
+    "app/src/main/java/local/pocketchat/Sha256.java": "2f403cee9f4b998e51b34581f85155c804e95e803ad56fb9b3680fea6778494d",
+    "app/src/main/java/local/pocketchat/NativeNetwork.java": "f30bb2daf2f2f183050f47b7fbf599bc7a1b1e2ac11d0e3915837b9e3274c85d",
+    "app/src/main/java/local/pocketchat/NetworkCatalog.java": "a6976177a2c43c5633379d4635a7c9b3913170bdd2abcc37e4d3e1ddb71b3c8d",
+    "tests/gecko/CompactChromeIntegrationActivity.java": "8aef2c3d95744103db29aad526a5d2bf4499c11f08fe747fd4748a4643341fa6",
+    "tests/gecko/run_ui_visuals.py": "2171e979f5071b4cb002e3b2d606ba38d305ef375bc1d90f44f7d07e17974967"
+  },
+  "sourceFiles": {
+    "app/src/main/java/local/pocketchat/DesignChrome.java": "2ed87d90ba0b567c88997d157e521c079579e11bb11886444dc02ed4ea21a2c4",
+    "app/src/main/java/local/pocketchat/WindowNetworkState.java": "e42bded31878238cfe559b3f797bb072f29178939b85aae878dee64c2b1765e8",
+    "app/src/main/java/local/pocketchat/LatencyRefreshPolicy.java": "e1121d3a46d4872ef8bd3a7e2ce6a75c30110f0615878195d7eef042bb61ac5b",
+    "app/src/main/java/local/pocketchat/LatencyProbePolicy.java": "0fc03b49af6ef3f187a6a1291a2722d43e33fa017a15794ee84c3c88c0e31099",
+    "app/src/main/java/local/pocketchat/NetworkStatusPolicy.java": "382f0ce1d5c5de09d5c8167adaea965774f1fa59e3dce3add100463c8fed164b",
+    "app/src/main/java/local/pocketchat/NetworkOptimizationPolicy.java": "83c6b42793be16fcef241c1865a89bd0dccbc7b07bf87c4701da43e3a89ccbe3",
+    "app/src/main/java/local/pocketchat/Sha256.java": "2f403cee9f4b998e51b34581f85155c804e95e803ad56fb9b3680fea6778494d",
+    "app/src/main/java/local/pocketchat/NativeNetwork.java": "f30bb2daf2f2f183050f47b7fbf599bc7a1b1e2ac11d0e3915837b9e3274c85d",
+    "app/src/main/java/local/pocketchat/NetworkCatalog.java": "a6976177a2c43c5633379d4635a7c9b3913170bdd2abcc37e4d3e1ddb71b3c8d",
+    "tests/gecko/CompactChromeIntegrationActivity.java": "8aef2c3d95744103db29aad526a5d2bf4499c11f08fe747fd4748a4643341fa6",
+    "tests/gecko/run_ui_visuals.py": "2171e979f5071b4cb002e3b2d606ba38d305ef375bc1d90f44f7d07e17974967",
+    "tests/gecko/CompactChromePresentationCapture.java": "442398652f5ee69b4bc3feceb7003e93529dbb6c89114227c441608a5a0d441d",
+    "tests/compact-chrome-capture-host/CompactChromeCaptureHost.java": "245509ac33825ab7ccd3dbcb14e13c2e7d98df9371dc6364ce0b9dc6e235c308",
+    "tests/compact-chrome-capture-host/run.py": "530d896fb84b30d9e284da3c4c612bf9135fc4ab8f9065da44543c9e17910dc7",
+    "tests/chrome-network-state-host/run.py": "9084f1c6809777eea2a835d518662592dca45cfe87931b421fcb38ff90b9bf8e",
+    "tests/ui_visual_preservation_contract.py": "4b6aff72ee501af4c1d4d7eab96e36c44de1a2cc9102522b569011b9ccadb99e"
+  },
+  "executionInputsUnchanged": true,
+  "jsonJarSha256": "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed",
+  "actualAndroidExecution": false,
+  "actualLatencyMeasurement": false,
+  "originalGeometryReportPreserved": true,
+  "originalAndroidRunnerPreserved": true,
+  "original42Ms120SecondSamplePreserved": true,
+  "originalPreparationIntervalsPreserved": true,
+  "extractedFixtureMethods": [
+    "void snapshot(",
+    "protected void onDestroy(",
+    "protected void onNewIntent(",
+    "void capturePresentation(",
+    "boolean presentationMatches(",
+    "boolean presentationLaidOut(",
+    "void releasePresentation(",
+    "void detachPresentation("
+  ],
+  "extractedChromeMethods": [
+    "void update(",
+    "private void renderLatest(",
+    "private void refreshMetadata(",
+    "private static void text(",
+    "private static void color(",
+    "private static void description(",
+    "void showNetwork(",
+    "static String profileLabel(",
+    "static boolean profileAvailable(",
+    "static boolean sameProfile(",
+    "private void applyMetadata("
+  ],
+  "scope": "Actual complete fixture snapshot/capture/presentation/lifecycle methods, complete test-only capture helper, actual production chrome render/showNetwork/metadata methods and network-state constructor. Controlled Handler/View/ViewTreeObserver/layout/catalogue/runtime adapters. The geometry report callback records displayed values; the full geometry body is byte-checked and the Android runner preserves the original complete AST after strict normalization of the reviewed downloads-only label addition. Neither source check executes the Android runner. No real Android frame, Gecko, native network or latency execution.",
+  "androidRunnerSourceContract": {
+    "baselineSourceCommit": "64be4b4dc5a3ab36f0399412128f8425b71cd9bb",
+    "selectedSourceSha256": "2171e979f5071b4cb002e3b2d606ba38d305ef375bc1d90f44f7d07e17974967",
+    "originalFunctionsAstSha256": {
+      "adb": "ce733c48ffcb9d7bf0201a8430adce0ec8d29a7bdbc538e3ef35be83e556643f",
+      "dump": "36573a7a814a3ec6484b5925f9a1b0f9b99a175811931f8056a98ad61498afa5",
+      "click": "2684472f9af043ca16f5565ecf1f72f45351a51eadac8628630f465d0d924a42",
+      "click_editor_tab": "4bb39545238dc9907926e815c2e955f14d8a7187af9d706f00fa951fccf62978",
+      "checkpoint": "57d58a5ee75695c7e54a44fbf3a0799022d02767dde3a617ae241ac33a852f3b",
+      "chrome_event": "da73722387fbb0e2c956bc27f79d1039ec280fda10b573a5b7cb5245db7c97a9",
+      "focus": "985e91fa8a40db36eba9dae3c36ff2216e155e60bfa1d6f4f0431bb6d9ce0f4c",
+      "visible": "513634dfad52319c46a9bba50e114511830076b4d781787f04a59d6fe832ba62",
+      "reload_check": "54bf48fcebb09189e358e7bd3ad71a32d121df2206852fec411427269d793c10",
+      "reload_command": "bdfc637b69bb168afd0311d0d3725a278277a754dedf60d0b58ecfb5d58f6713",
+      "reload_tap": "1bc2d286f0098cd0dbb9e84b24dad548987eaeb45a5a068fecc2000dacf71707",
+      "reload_ready": "e36ad6d10fabb18970eac03ba1bb86899772d529a9455c6158e067e90d8fbc01"
+    },
+    "normalizedCaptureAstSha256": "7bfb8cf6cabcce321ba9841a216dbb035f97ceee76384191d55543c80ebaf4d5",
+    "normalizedModuleAstSha256": "5c528802063ccba23d6cc0c36726c8ad3fee41efa44aef29c9f498f8b8e331f1",
+    "authorizedDownloadLabelAddition": true,
+    "originalWorkloadSemanticsPreserved": true,
+    "actualAndroidExecution": false
+  }
+}
