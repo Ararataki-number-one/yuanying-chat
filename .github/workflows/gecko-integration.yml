@@ -610,6 +610,13 @@ jobs:
         # but must not prevent independent UI/network evidence collection.
         if [ "$checks_failed" -ne 0 ]; then echo 'fixture_failed=true' >> "$GITHUB_OUTPUT"; fi
       if: ${{ matrix.phase == 'editing' }}
+    - name: Record bounded editing transport diagnostics
+      if: ${{ always() && matrix.phase == 'editing' }}
+      shell: bash
+      env:
+        POCKET_EDITING_TRANSPORT_PHASE: ${{ matrix.phase }}
+        POCKET_EDITING_TRANSPORT_OUTCOME: ${{ steps.editing.outcome }}
+      run: python3 tests/gecko/print_editing_transport13_diagnostic.py --adb "$(command -v adb)" --serial emulator-5554
     - name: Verify network sharing and explicit import UI
       if: ${{ !cancelled() && matrix.phase == 'ui' && steps.android_boot.outcome == 'success' }}
       shell: bash

@@ -55,3 +55,68 @@ def wrap_bytes_inverse(original):
     def exact_diagnostic_input(raw):
         return original(restore_previous_workflow(raw))
     return exact_diagnostic_input
+
+
+# Source13 adds only a diagnostic after the unchanged editing command. Keep
+# the complete Source10/11 input port above unchanged and feed it exact11 bytes.
+EDITING13_SHA256 = '22f507ecac58d307a237b666460e74c4bd47804c56e9bdd8f3cfed64efcb1578'
+EDITING13_BEFORE = b"      if: ${{ matrix.phase == 'editing' }}\n"
+EDITING13_STEP = b'''    - name: Record bounded editing transport diagnostics
+      if: ${{ always() && matrix.phase == 'editing' }}
+      shell: bash
+      env:
+        POCKET_EDITING_TRANSPORT_PHASE: ${{ matrix.phase }}
+        POCKET_EDITING_TRANSPORT_OUTCOME: ${{ steps.editing.outcome }}
+      run: python3 tests/gecko/print_editing_transport13_diagnostic.py --adb "$(command -v adb)" --serial emulator-5554
+'''
+EDITING13_AFTER = b'    - name: Verify network sharing and explicit import UI\n'
+
+
+def restore_setup11_workflow(raw):
+    """Undo only the exact13 insertion; unknown complete workflow bytes fail."""
+    if type(raw) is not bytes:
+        raise AssertionError('Editing transport diagnostic workflow must be exact bytes')
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest in (PREVIOUS_SHA256, CURRENT_SHA256):
+        return raw
+    if digest != EDITING13_SHA256:
+        raise AssertionError('Unreviewed editing transport diagnostic workflow bytes')
+    context = EDITING13_BEFORE + EDITING13_STEP + EDITING13_AFTER
+    if raw.count(context) != 1 or raw.count(EDITING13_STEP) != 1:
+        raise AssertionError('Editing transport diagnostic insertion context differs')
+    previous = raw.replace(context, EDITING13_BEFORE + EDITING13_AFTER, 1)
+    if (hashlib.sha256(previous).hexdigest() != CURRENT_SHA256
+            or previous.count(EDITING13_BEFORE + EDITING13_AFTER) != 1
+            or previous.replace(EDITING13_BEFORE + EDITING13_AFTER, context, 1) != raw):
+        raise AssertionError('Editing transport diagnostic complete inverse differs')
+    return previous
+
+
+def _editing13_input_inverse(original):
+    @functools.wraps(original)
+    def exact_editing13_input(raw):
+        return original(restore_setup11_workflow(raw))
+    return exact_editing13_input
+
+
+restore_previous_workflow = _editing13_input_inverse(restore_previous_workflow)
+
+
+class Setup11WorkflowInput:
+    """One ordinary file's exact historical11 read view for retained oracles.
+
+    The real13 frontend and new controls read the actual Path directly. This
+    object wraps only the old test module's fixed WORKFLOW.read_bytes call.
+    """
+    def __init__(self, path):
+        self.path = path
+
+    def read_bytes(self):
+        if any(p.is_symlink() for p in (self.path, *self.path.parents)) or not self.path.is_file():
+            raise AssertionError('Ordinary setup11 workflow input required')
+        if self.path.stat().st_size > 128 * 1024:
+            raise AssertionError('Setup11 historical workflow input exceeds bound')
+        raw = self.path.read_bytes()
+        if len(raw) > 128 * 1024:
+            raise AssertionError('Setup11 historical workflow input grew outside bound')
+        return restore_setup11_workflow(raw)

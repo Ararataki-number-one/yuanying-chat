@@ -1,4 +1,4 @@
-"""Prepare two exact historical inputs for unchanged profile source oracles.
+"""Prepare three exact historical inputs for unchanged profile source oracles.
 
 The original checkout depth and all assertions remain unchanged. Full unittest
 discovery imports the additive preparation module before running any test.
@@ -30,6 +30,20 @@ GROUPS = (
         'tests/profile_page_bridge_lifecycle_test.py': ('15c5d8e358a72ec1a4451bab34a25ca69f5413da', 6530, '5db78c19b8a8c764a63ad4a35f881ecf0d7369fc596ca974023ceb2667a66f1d'),
         'tests/profile_content_permission_decisions_test.py': ('dfeb5ce65c903853f40996d50ab21fcd946d84b2', 7966, 'd333590bd584124ed38f70c9da71f6c6989534b45e858ff57a49578b9b7b019f'),
         'tests/profile_reading_fit_completion_test.py': ('4c45d351eb9c4c959db0f716fa7ce190cb81d380', 18536, '8db811422515da902a615a8ba10f55e78950e106af430219d7bd0fc2ba571193'),
+    }),
+    ('f263613422632740caed76505a20cb6696905003', 'fa5fa7aea024e8225781c7da651c740ff7a4a59d', {
+        'app/src/main/java/local/pocketchat/BrowserReading.java': ('3dfc061c70de5869dcef7c5a8a2f1519f7477d96', 8637, '0dfe38b61010a787bbf66dd0df5c10ab9f4f43f2e3eea70bd2c5c7b098165dfc'),
+        'app/src/main/java/local/pocketchat/BrowserReadingPolicy.java': ('d1faf6f7b66d70f69e752785beeb05cb01392db8', 4201, '889e227255f438d881cf7103bbed130c8989297dcd707d82241bdbecd163f2fd'),
+        'tests/profile_reading_fit_completion_test.py': ('4c45d351eb9c4c959db0f716fa7ce190cb81d380', 18536, '8db811422515da902a615a8ba10f55e78950e106af430219d7bd0fc2ba571193'),
+        'tests/profile_native43_source_compatibility_test.py': ('b15815598a4723aac708f47e8aa8835c63cadf47', 8270, '3e36d91feb39362f607e65179c99128ea4ac90091ee04c49d854ea8124c20636'),
+        'tests/profile_reading_zoom_trace_test.py': ('b44ea2468d17b0baa87fa238b66abe4c28c47a67', 13158, '5927302dae44225c3c2cc006f8f3ddbc9a69d098c8ef88df0f7ace0946867fe0'),
+        'app/src/main/java/local/pocketchat/GeckoWebView.java': ('02452dcb4ac47f9a7765bbf014060fb7ec42162a', 70564, '32e06089272bbbaf63ed94449ea208cd2feb930cc05a903ab3e83efb0f140546'),
+        'app/src/main/java/local/pocketchat/ChatSession.java': ('c2111e2d6193506a2415c7015966d4f675e0f530', 69541, '0e0d3b49066ac09c87f072b755d6702d2ded23c8ed66afe545dc7c34ffe4c61c'),
+        'tests/native43_source_compatibility.py': ('88ba6b6508f7570c178343c1b44690154ae47835', 2100, 'bcfd5225bcfd4062dce70fe831da0b376e0e624d561498831ce55a565582e535'),
+        'tests/browser-reading-host/local/pocketchat/ChatSession.java': ('7b9d6e6a28a7e8d38ca00a5bbdec990de61940dd', 3063, '366b6de6e82de8ff8f71226bfb0f15a0125fcb66930f97e82e8c993a222c67ff'),
+        'tests/browser-reading-host/local/pocketchat/BrowserReadingHostTest.java': ('b0bfeb7fe4afd21c4a0675a5fbd4f1b199bf0493', 25274, '8e29601536facc3c49a64346b523fdcc671159cfd2f8d414ec72a129a7bd9a3e'),
+        'tests/gecko/GeckoIntegrationTestActivity.java': ('0a0bdfcf4acda4de28f50c869c8604237dd67598', 123686, 'd79a5f95b521a909a5ef5bfb0ce68a9156cea5f3bdea5657bdd571a705dc4f8f'),
+        'tests/gecko/run_device.py': ('fb8e09d74ceddd57e1683e22b6f60f43f8d6e87f', 88701, '54fa412be9f89e46d61597caf61b0246e451e6c9b5eebca592e36b05686ab8a6'),
     }),
 )
 
@@ -145,7 +159,7 @@ def prepare_original_history(root, environment=None):
                 require(checkout_state(root) == state, 'fetch changed HEAD, tree, index or tracked worktree')
             fetches.append(group[0])
             ready[group[0]] = verify_group(root, group)
-    require(len(ready) == 2, 'both exact historical groups required')
+    require(len(ready) == 3, 'all three exact historical groups required')
     return dict(schema=1, status='verified-original-historical-inputs', groups=[ready[g[0]] for g in GROUPS],
                 fetchedOwnerCommits=fetches, originalAssertionsExecuted=False, actualAndroidExecution=False,
                 scope='Finite original source-oracle input preparation only; original tests must still run and pass')

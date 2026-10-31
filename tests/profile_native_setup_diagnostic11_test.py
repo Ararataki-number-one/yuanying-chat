@@ -19,6 +19,10 @@ import native_setup11_workflow_contract as contract
 ROOT = Path(__file__).resolve().parents[1]
 EMITTER = ROOT / 'tests/gecko/print_native_setup11_diagnostic.py'
 WORKFLOW = ROOT / '.github/workflows/gecko-integration.yml'
+# This retained module observes exact historical S11 workflow bytes. New13
+# controls and the real frontend read the actual Source13 Path directly.
+from native_setup11_workflow_contract import Setup11WorkflowInput
+WORKFLOW = Setup11WorkflowInput(WORKFLOW)
 NORMALIZERS = ROOT / 'tests/profile_display_sampling_gate_test.py'
 FRONTEND = ROOT / 'tests/gecko/source11_targeted_generator_compat.py'
 TARGETED_TEST = ROOT / 'tests/gecko_experience_targeted_workflow_test.py'

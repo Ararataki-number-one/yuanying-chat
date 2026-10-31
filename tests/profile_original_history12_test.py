@@ -6,6 +6,7 @@ Standalone old modules in a shallow checkout require the helper CLI first.
 """
 import json
 import hashlib
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -98,7 +99,7 @@ class OriginalHistoryPreparationTests(unittest.TestCase):
         value = history.prepare_original_history(ROOT, environment={})
         self.assertEqual(value['status'], 'verified-original-historical-inputs')
         self.assertEqual(value['fetchedOwnerCommits'], [])
-        self.assertEqual([len(row['files']) for row in value['groups']], [3, 9])
+        self.assertEqual([len(row['files']) for row in value['groups']], [3, 9, 12])
         self.assertFalse(value['originalAssertionsExecuted'])
         self.assertFalse(value['actualAndroidExecution'])
 
@@ -145,13 +146,13 @@ class OriginalHistoryPreparationTests(unittest.TestCase):
             value = self.run_prepare(fake)
             self.assertEqual(value['fetchedOwnerCommits'], [group[0]])
             self.assertEqual(fake.fetches(), [('fetch', '--no-tags', '--depth=1', '--no-write-fetch-head', 'origin', group[0])])
-            self.assertEqual([len(row['files']) for row in value['groups']], [3, 9])
+            self.assertEqual([len(row['files']) for row in value['groups']], [3, 9, 12])
 
     def test_both_missing_groups_fetch_only_two_fixed_commits(self):
         fake = self.fake(missing=[('commit', row[0]) for row in history.GROUPS])
         value = self.run_prepare(fake)
         self.assertEqual(value['fetchedOwnerCommits'], [row[0] for row in history.GROUPS])
-        self.assertEqual(len(fake.fetches()), 2)
+        self.assertEqual(len(fake.fetches()), 3)
 
     def test_missing_root_tree_subtree_or_blob_is_not_mistaken_for_verified(self):
         group = history.GROUPS[0]
@@ -194,7 +195,7 @@ class OriginalHistoryPreparationTests(unittest.TestCase):
         for replacement in [(owner, '0' * 40, files),
                             (owner, tree, dict(files, **{'tests/fingerprint_source_compatibility.py': ('0' * 40, 10225, '0' * 64)}))]:
             fake = self.fake()
-            with patch.object(history, 'GROUPS', (replacement, history.GROUPS[1])), self.assertRaises(RuntimeError):
+            with patch.object(history, 'GROUPS', (replacement, *history.GROUPS[1:])), self.assertRaises(RuntimeError):
                 self.run_prepare(fake)
             self.assertEqual(fake.fetches(), [])
 
@@ -204,7 +205,7 @@ class OriginalHistoryPreparationTests(unittest.TestCase):
         blob, size, sha = files[path]
         for altered in ((blob, size + 1, sha), (blob, size, '0' * 64)):
             fake = self.fake()
-            with patch.object(history, 'GROUPS', ((owner, tree, dict(files, **{path: altered})), history.GROUPS[1])), self.assertRaisesRegex(RuntimeError, 'whole historical source differs'):
+            with patch.object(history, 'GROUPS', ((owner, tree, dict(files, **{path: altered})), *history.GROUPS[1:])), self.assertRaisesRegex(RuntimeError, 'whole historical source differs'):
                 self.run_prepare(fake)
             self.assertEqual(fake.fetches(), [])
 
@@ -230,7 +231,7 @@ root=pathlib.Path(sys.argv[1]);sys.path.insert(0,str(root/'tests'))
 loader=unittest.TestLoader();all_cases=loader.discover(str(root/'tests'),pattern='profile_*_test.py')
 assert 'profile_original_history12_test' in sys.modules
 proof=sys.modules['profile_original_history12_test'].PREPARATION
-assert [len(row['files']) for row in proof['groups']]==[3,9]
+assert [len(row['files']) for row in proof['groups']]==[3,9,12]
 names=['profile_page_bridge42_source_compatibility_test.SequentialBridge42CompatibilityTests.test_exact_four_line_inverse_matches_whole_actual_prior41_tree','profile_page_bridge42_source_compatibility_test.SequentialBridge42CompatibilityTests.test_compatibility_changes_invert_to_entire_prior41_test_bytes']
 result=unittest.TextTestRunner().run(loader.loadTestsFromNames(names));assert result.wasSuccessful() and result.testsRun==2
 print('HISTORY12_DISCOVERY_ORDER '+json.dumps({'allModulesImportedBeforeOriginalMethods':True,'originalMethodsRun':2,'realHistoricalInputsVerified':True,'actualRemoteFetch':False,'actualAndroidExecution':False}))
@@ -247,6 +248,62 @@ print('HISTORY12_DISCOVERY_ORDER '+json.dumps({'allModulesImportedBeforeOriginal
             'tests/profile_native43_source_compatibility_test.py': 'bba86851f8ccca9f33a64398925f2eb1648947fc7ee628bd9404269c235f3f39',
         }.items():
             self.assertEqual(hashlib.sha256((ROOT / path).read_bytes()).hexdigest(), sha)
+
+    def test_third_group_pins_extend_the_two_original_groups_without_replacing_them(self):
+        digest = lambda value: hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        self.assertEqual(digest(history.GROUPS[:2]), '07317bcda0371f977812cdf2247e6b740eb9e14c6d6acef67ca0b4e467da0518')
+        self.assertEqual(digest(history.GROUPS[2]), 'd03eb035e4d76f7c053984de973b7903dde2b5efa7d85bbb01ed7d226028990a')
+        owner, tree, files = history.GROUPS[2]
+        self.assertEqual((owner, tree), ('f263613422632740caed76505a20cb6696905003',
+                                         'fa5fa7aea024e8225781c7da651c740ff7a4a59d'))
+        manifest = json.loads((ROOT / 'tests/fixtures/reading45-restoration-source-deltas.json').read_bytes())
+        expected = set(manifest['files']) | {
+            'app/src/main/java/local/pocketchat/GeckoWebView.java',
+            'app/src/main/java/local/pocketchat/ChatSession.java',
+            'tests/native43_source_compatibility.py',
+            'tests/browser-reading-host/local/pocketchat/ChatSession.java',
+            'tests/browser-reading-host/local/pocketchat/BrowserReadingHostTest.java',
+            'tests/gecko/GeckoIntegrationTestActivity.java', 'tests/gecko/run_device.py'}
+        self.assertEqual(set(files), expected)
+        self.assertEqual(len(files), 12)
+        self.assertEqual(hashlib.sha256((ROOT / 'tests/profile_reading45_source_compatibility_test.py').read_bytes()).hexdigest(),
+                         '612318d24f9094a768e528e3080e87fe408e74567c4c7a794c25bc2a8e1c7e87')
+
+    def test_third_group_corruption_wrong_whole_bytes_and_incomplete_fetch_are_hard_failures(self):
+        owner, tree, files = history.GROUPS[2]
+        path = 'app/src/main/java/local/pocketchat/BrowserReading.java'
+        blob, size, sha = files[path]
+        for key in [('commit', owner), ('tree', tree), ('blob', blob)]:
+            fake = self.fake(); fake.objects[key] += b' '
+            with self.subTest(corrupt=key), self.assertRaisesRegex(RuntimeError, 'object bytes differ'):
+                self.run_prepare(fake)
+            self.assertEqual(fake.fetches(), [])
+        for altered in ((blob, size + 1, sha), (blob, size, '0' * 64)):
+            fake = self.fake()
+            changed = (owner, tree, dict(files, **{path: altered}))
+            with patch.object(history, 'GROUPS', (*history.GROUPS[:2], changed)), \
+                    self.assertRaisesRegex(RuntimeError, 'whole historical source differs'):
+                self.run_prepare(fake)
+            self.assertEqual(fake.fetches(), [])
+        fake = self.fake(missing=[('commit', owner)], incomplete=True)
+        with self.assertRaises(history.MissingHistoricalInput):
+            self.run_prepare(fake)
+        self.assertEqual(fake.fetches(), [('fetch', '--no-tags', '--depth=1', '--no-write-fetch-head', 'origin', owner)])
+
+    def test_standalone_real_git_cli_verifies_all_three_groups_without_remote_or_checkout_changes(self):
+        commands = [('rev-parse', 'HEAD'), ('rev-parse', 'HEAD^{tree}'), ('ls-files', '--stage', '-z')]
+        before = [history.checked(ROOT, *command) for command in commands]
+        result = subprocess.run([sys.executable, str(ROOT / 'tests/gecko/prepare_bridge42_history12.py'), '--root', str(ROOT)],
+                                cwd=ROOT, env=dict(os.environ, CI='false', GITHUB_ACTIONS='false'),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        value = json.loads(result.stdout)
+        self.assertEqual(value['status'], 'verified-original-historical-inputs')
+        self.assertEqual([len(row['files']) for row in value['groups']], [3, 9, 12])
+        self.assertEqual(value['fetchedOwnerCommits'], [])
+        self.assertFalse(value['originalAssertionsExecuted'])
+        self.assertFalse(value['actualAndroidExecution'])
+        self.assertEqual(before, [history.checked(ROOT, *command) for command in commands])
 
 
 if __name__ == '__main__':
