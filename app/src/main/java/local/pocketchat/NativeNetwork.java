@@ -703,7 +703,7 @@ class NativeNetwork {
   void stopOwnedCore(ExitRouteReceipt owned,NetworkDiagnostics.Reason reason){
     Thread.interrupted();clearReadyState();if(owned==null)return;
     try{
-      if(transport!=null){JSONObject fresh=transport.call("snapshot","");if(!owned.sameCore(this,fresh))return;if(owned.generation.isEmpty()){note(NetworkDiagnostics.Event.FAILURE,NetworkDiagnostics.Reason.CONTROL_UNAVAILABLE,NetworkDiagnostics.Stage.STOP,0);return;}transport.call("stop","",reason,owned.generation);}
+      if(transport!=null){if(owned.generation.isEmpty()){note(NetworkDiagnostics.Event.FAILURE,NetworkDiagnostics.Reason.CONTROL_UNAVAILABLE,NetworkDiagnostics.Stage.STOP,0);return;}transport.call("stop","",reason,owned.generation);}
       else if(owned.process!=null){
         if(process==owned.process)coreStopReason.set(reason);
         owned.process.destroy();if(!owned.process.waitFor(2,TimeUnit.SECONDS)){owned.process.destroyForcibly();owned.process.waitFor(2,TimeUnit.SECONDS);}

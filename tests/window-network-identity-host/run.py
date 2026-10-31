@@ -96,7 +96,7 @@ def main():
         if cold_compiled.returncode:raise RuntimeError('Actual cold producer failed compilation; originals retained in '+str(raw))
         cold_run_command=[str(args.java_home/'bin/java'),'-cp',str(cold_classes)+':'+str(args.json_jar),'local.pocketchat.ColdCoreWindowStateHost']
         cold_run=execute('cold-execute',cold_run_command);cold_report=json.loads(cold_run.stdout)
-        if cold_run.returncode or cold_report.get('status')!='passed' or cold_report.get('total')!=35 or cold_report.get('passed')!=35 or len(cold_report.get('checks',[]))!=35 or not all(row.get('pass') is True for row in cold_report['checks']):report['status']='failed'
+        if cold_run.returncode or cold_report.get('status')!='passed' or cold_report.get('total')!=36 or cold_report.get('passed')!=36 or len(cold_report.get('checks',[]))!=36 or not all(row.get('pass') is True for row in cold_report['checks']):report['status']='failed'
         report['coldCoreProducerHostReplay']=cold_report
         report['coldCoreProducerCommands']=dict(compile=cold_compile_command,execute=cold_run_command)
         report['coldCoreProducerScope']='Exact running/live producers, observed/current predicates and ExitRouteReceipt matching; actual EnvironmentSpec identity and portable policies. Controlled proof construction, cached transport state, opaque fingerprint, preferences and latency adapters. No service IPC/capture, Android, live core or historical-event admission claim.'

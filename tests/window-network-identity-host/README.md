@@ -37,7 +37,7 @@ Existing results are never overwritten.
 No Android scheduling, Binder, Gecko, native core, real network measurement,
 physical phone or user account is exercised by this runner.
 
-Current-source runs also compile a separate cold-core producer JVM: 35 additional
+Current-source runs also compile a separate cold-core producer JVM: 36 additional
 checks execute the selected production `running`/`live` methods, exact
 `NetworkCoreApplication.observed/current` predicates, and exact route-receipt
 matching. Proof construction, cached transport state, fingerprints and latency
@@ -45,6 +45,11 @@ are controlled adapters; no actual service IPC/capture is claimed. Current proof
 ownership, recreated environments, stale core generations/PIDs/configurations,
 degraded admission, and deterministic replacement between producer reads are
 covered. Historical application JSON cannot create observed admission.
+
+The original 35 cases retain their names and order. The configuration cutover
+case changes both settings and cached core configuration. A separate settings-only
+case keeps the old-core receipt observable but requires an empty running
+projection and blocked connection admission; cached proof is not new-config proof.
 
 These results live under `coldCoreProducerHostReplay`; the original top-level
 93 checks and the separate 14 fixture projections retain their exact counts and
