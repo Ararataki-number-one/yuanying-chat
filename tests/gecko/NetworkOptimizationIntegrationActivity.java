@@ -83,8 +83,9 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       NetworkCatalog.put(report,"initialDisplaySampling",J.obj("busyRequests",plain.probeRequests.get()-initialRequests));
       check("Automatic display sampling measures the current route while a reply is busy",plain.probeRequests.get()==initialRequests+2&&n.ready&&!n.latencyRefreshQueued);
       n.busy=false;WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(15,TimeUnit.SECONDS);
-      JSONObject row=J.obj("slot",0,"name","synthetic window","environmentId","controlled-latency-read-model","generation",2),initialRuntime=controlledReadModel(WindowNetworkState.live(null,n),row);WindowNetworkState initialState=new WindowNetworkState(this,row,n.settings,initialRuntime,true,System.currentTimeMillis());
+      JSONObject row=J.obj("slot",0,"name","synthetic window","environmentId","controlled-latency-read-model","generation",2),initialRuntime=controlledLocalProcessReadModel(n,WindowNetworkState.live(null,n),row);WindowNetworkState initialState=new WindowNetworkState(this,row,n.settings,initialRuntime,true,System.currentTimeMillis());
       NetworkCatalog.put(report.optJSONObject("initialDisplaySampling"),"idleRequests",plain.probeRequests.get()-initialRequests);
+      NetworkCatalog.put(report.optJSONObject("initialDisplaySampling"),"readModelProjection",J.obj("scope","controlled local-process renderer only; not IPC admission","localProjection",initialRuntime.optJSONObject("controlledLocalProcessReadModel"),"delayAt",initialRuntime.optLong("delayAt"),"delay",initialRuntime.optInt("delay"),"kind",initialRuntime.optString("delayKind"),"stateConnected",initialState.connected,"label",initialState.latency));
       check("A fresh busy-route sample is reused after the reply becomes idle",initialRuntime.optLong("delayAt")>0&&initialRuntime.optInt("delay")>0&&initialState.latency.matches("[0-9]+ ms")&&plain.probeRequests.get()==initialRequests+2);
       check("Display sampling preserves entry core and fixed exit",n.ready&&n.token.equals(initialToken)&&n.currentEntry.equals(initialEntry)&&n.exitIp.equals("203.0.113.8")&&n.api("GET","/proxies/EntryChoice",null,3000).optString("now").equals(initialEntry));
       int displayRequests=plain.requests;WindowNetworkState.live(null,n);WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(5,TimeUnit.SECONDS);check("Repeated UI reads do not repeatedly probe the route",plain.requests==displayRequests);
@@ -92,10 +93,10 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
       NetworkCatalog.put(staleRuntime,"delayAt",staleNow);NetworkCatalog.put(staleRuntime,"delay",-1);check("A real failed sample is not mislabeled unmeasured",new WindowNetworkState(this,row,n.settings,staleRuntime,true,staleNow).latency.equals("探测未通过"));
       NetworkCatalog.put(staleRuntime,"exitId","different-fixed-exit");check("Display does not reuse a different fixed exit's sample",new WindowNetworkState(this,row,n.settings,staleRuntime,true,staleNow).latency.equals("延迟未测"));n.busy=false;
       n.quality.configure("synthetic-display-failure");NetworkCatalog.put(n.latencyReading,"at",staleNow-LatencyRefreshPolicy.INTERVAL-1);n.latencyRefreshAttempted=-LatencyRefreshPolicy.INTERVAL;plain.probeStatus=403;WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(15,TimeUnit.SECONDS);
-      WindowNetworkState failedDisplay=new WindowNetworkState(this,row,n.settings,controlledReadModel(WindowNetworkState.live(null,n),row),true,System.currentTimeMillis());
+      WindowNetworkState failedDisplay=new WindowNetworkState(this,row,n.settings,controlledLocalProcessReadModel(n,WindowNetworkState.live(null,n),row),true,System.currentTimeMillis());
       check("A blocked display probe reports its failure while preserving the usable connection",failedDisplay.connected&&failedDisplay.state.equals("正常")&&failedDisplay.latency.equals("探测未通过")&&n.ready&&n.currentEntry.equals(initialEntry));
       check("Display-only failure does not poison route quality or trigger switching",n.quality.stats(initialEntry,System.currentTimeMillis()).optInt("samples")==0&&n.failures==0&&n.token.equals(initialToken));
-      n.quality.record(initialEntry,-1,n.latencyReading.optLong("at")-1);JSONObject independentlyFailed=controlledReadModel(WindowNetworkState.live(null,n),row);WindowNetworkState failedHealth=new WindowNetworkState(this,row,n.settings,independentlyFailed,true,System.currentTimeMillis());
+      n.quality.record(initialEntry,-1,n.latencyReading.optLong("at")-1);JSONObject independentlyFailed=controlledLocalProcessReadModel(n,WindowNetworkState.live(null,n),row);WindowNetworkState failedHealth=new WindowNetworkState(this,row,n.settings,independentlyFailed,true,System.currentTimeMillis());
       check("A newer display-only sample cannot hide the original health failure",!independentlyFailed.optBoolean("delayHealth")&&independentlyFailed.optInt("healthDelay")==-1&&independentlyFailed.optLong("healthDelayAt")>0&&!failedHealth.connected&&failedHealth.state.equals("需检查"));
       JSONObject legacyHealth=J.parse(independentlyFailed.toString());legacyHealth.remove("healthDelay");legacyHealth.remove("healthDelayAt");NetworkCatalog.put(legacyHealth,"delayHealth",true);check("Legacy saved runtime keeps its original health failure semantics",new WindowNetworkState(this,row,n.settings,legacyHealth,true,System.currentTimeMillis()).state.equals("需检查"));
       plain.probeStatus=204;n.quality.configure("synthetic-display-recovered");n.latencyReading=new JSONObject();n.latencyRefreshAttempted=-LatencyRefreshPolicy.INTERVAL;WindowNetworkState.live(null,n);n.worker.submit(()->{}).get(15,TimeUnit.SECONDS);
@@ -152,6 +153,17 @@ public final class NetworkOptimizationIntegrationActivity extends Activity {
   }
   /** Isolated no-session network fixtures supply a controlled projection identity;
    * this does not establish session/provider ownership or alter the measured route. */
+  /** Only this direct-process rendering fixture supplies its own connection input.
+   * Production live(null,n) deliberately requires a captured service proof; a
+   * local TestNetwork has no service/Binder/browser admission. Keep that cold
+   * result and every measured/health field unchanged for explicit diagnostics. */
+  static JSONObject controlledLocalProcessReadModel(TestNetwork n,JSONObject runtime,JSONObject row){
+    if(n==null||n.transport!=null)throw new IllegalArgumentException("Only the local-process TestNetwork rendering fixture may use this projection");
+    NativeNetwork.ExitRouteReceipt owned=n.verifiedRoute;JSONObject settings=n.settings;
+    boolean connected=n.ready&&!n.starting&&!n.recoveryBlocked&&n.process!=null&&n.process.isAlive()&&settings!=null&&owned!=null&&owned.matches(n,null)&&owned.configuration.equals(NativeNetwork.transportFingerprint(settings))&&n.connectionAdmission()==NetworkHealthPolicy.Admission.VERIFIED&&n.verifiedRoute==owned&&n.settings==settings;
+    JSONObject value=controlledReadModel(runtime,row);NetworkCatalog.put(value,"connected",connected);
+    NetworkCatalog.put(value,"controlledLocalProcessReadModel",J.obj("scope","fixture local-process renderer input; no service, Binder or browser admission proof","productionColdConnected",runtime.optBoolean("connected"),"productionColdAdmission",runtime.optString("admission"),"ownedLocalRouteVerified",connected));return value;
+  }
   static JSONObject controlledReadModel(JSONObject runtime,JSONObject row){JSONObject value=J.parse(runtime.toString());NetworkCatalog.put(value,"environmentId",row.optString("environmentId"));NetworkCatalog.put(value,"generation",row.optLong("generation"));return value;}
   /** Read-model inputs only. These controlled timestamps are not live IPC or latency evidence. */
   void readModelFreshnessChecks(JSONObject report)throws Exception{

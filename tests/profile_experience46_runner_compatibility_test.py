@@ -57,6 +57,23 @@ class Experience46RunnerCompatibility(unittest.TestCase):
     for guard in (lambda:experience46_source_bytes(candidate.encode(),RUNNER),lambda:original_reading_fixture_bytes(candidate.encode(),RUNNER)):
      with self.assertRaises(ValueError):guard()
 
+ def test_update_scroll_call_and_original_installer_steps_cannot_be_bypassed(self):
+  source=(ROOT/RUNNER).read_text()
+  call="        update_ui,update_scroll=scan_update_controls(adb,update_ui,lambda name,xml:(OUT/name).write_text(xml),package)\n"
+  self.assertEqual(source.count(call),1)
+  originals=["button=next(node for node in ET.fromstring(update_ui).iter('node') if node.attrib.get('text')=='安装更新')",
+   "adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2));time.sleep(3)",
+   "assert 'packageinstaller' in installer_ui and ('Update' in installer_ui or '更新' in installer_ui),installer_ui"]
+  for statement in originals:self.assertEqual(source.count(statement),1)
+  changes=[source.replace(call,'',1),source.replace(call,call*2,1),source.replace(call,call.replace('scan_update_controls(adb,','scan_update_controls(None,'),1),
+   source.replace(call,call.replace('(OUT/name).write_text(xml)','None'),1),
+   source.replace("assert label in update_scroll['labelsSeen']","assert True or label in update_scroll['labelsSeen']",1)]
+  changes.extend(source.replace(statement,statement+';pass',1) for statement in originals)
+  for candidate in changes:
+   self.assertNotEqual(candidate,source)
+   with self.assertRaises(ValueError):experience46_source_bytes(candidate.encode(),RUNNER)
+   with self.assertRaises(ValueError):original_reading_fixture_bytes(candidate.encode(),RUNNER)
+
  def test_unrelated_workload_timeout_and_unknown_path_remain_rejected(self):
   source=(ROOT/RUNNER).read_text()
   for old,new in [('deadline=time.monotonic()+120','deadline=time.monotonic()+121'),("update('showUi');time.sleep(1)","update('showUi');time.sleep(2)"),("history_experience=update('historyExperience')","history_experience=update('showUi')")]:

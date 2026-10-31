@@ -777,7 +777,10 @@ def main():
         report['releaseHistoryExperience']=history_experience
         update('showUi');time.sleep(1)
         adb('shell','uiautomator','dump','/sdcard/update-ui.xml');update_ui=adb('shell','cat','/sdcard/update-ui.xml');(OUT/'update-ui.xml').write_text(update_ui)
-        for label in ['应用更新','当前安装版本','安装更新','删除安装包','自动检查更新','Wi-Fi 下自动下载新版']:assert label in update_ui,(label,update_ui)
+        from update_page_scroll import scan_update_controls
+        update_ui,update_scroll=scan_update_controls(adb,update_ui,lambda name,xml:(OUT/name).write_text(xml),package)
+        for label in ['应用更新','当前安装版本','安装更新','删除安装包','自动检查更新','Wi-Fi 下自动下载新版']:assert label in update_scroll['labelsSeen'],(label,update_scroll)
+        report['updateSettingsScroll']=update_scroll
         (OUT/'update-ui.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
         adb('shell','appops','set',package,'REQUEST_INSTALL_PACKAGES','allow')
         button=next(node for node in ET.fromstring(update_ui).iter('node') if node.attrib.get('text')=='安装更新')

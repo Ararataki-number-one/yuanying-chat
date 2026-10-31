@@ -1,0 +1,54 @@
+package local.pocketchat;
+import android.content.*;import org.json.*;import java.io.*;
+
+/** Real selected producer/constructor/receipt and fixture methods; platform and
+ * local process lifetimes are explicit host boundaries, not Android/Mihomo. */
+public final class LocalProcessProjection46Host {
+  static final JSONArray checks=new JSONArray();
+  static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
+  static TestNetwork local(){
+    NativeNetwork source=ColdCoreWindowStateHost.core();TestNetwork n=new TestNetwork();n.settings=source.settings;n.transport=null;n.process=new Alive();n.fingerprint=NativeNetwork.exitIdentity(n.settings);n.verifiedRoute=new NativeNetwork.ExitRouteReceipt(n,null);
+    n.latencyReading=J.obj("entry",n.currentEntry,"generation",n.token,"routeSerial",n.routeSerial,"at",System.currentTimeMillis(),"delay",12,"kind","warm");NetworkCoreApplication.observed=null;return n;
+  }
+  static JSONObject row(){return ColdCoreWindowStateHost.row(ColdCoreWindowStateHost.OWNER,2);}
+  static JSONObject raw(TestNetwork n){return WindowNetworkState.live(null,n);}
+  static JSONObject adapted(TestNetwork n){return FixtureProjection.controlledLocalProcessReadModel(n,raw(n),row());}
+  static WindowNetworkState shown(TestNetwork n,JSONObject runtime){return new WindowNetworkState(n.context,row(),n.settings,runtime,true,System.currentTimeMillis());}
+  static boolean rejected(TestNetwork n){try{if(n==null)FixtureProjection.controlledLocalProcessReadModel(null,new JSONObject(),row());else adapted(n);return false;}catch(IllegalArgumentException expected){return true;}}
+  public static void main(String[] args)throws Exception{
+    TestNetwork n=local();JSONObject cold=raw(n);String before=cold.toString();
+    check("Original production cold projection keeps missing service proof disconnected despite fresh display bytes",!cold.optBoolean("connected")&&cold.optString("admission").equals("BLOCKED")&&cold.optInt("delay")==12&&cold.optLong("delayAt")>0);
+    WindowNetworkState original=shown(n,FixtureProjection.controlledReadModel(cold,row()));
+    check("Original owner-only fixture input reproduces failed fresh regex via previous-sample suffix",original.latency.equals("12 ms（上次）")&&!original.latency.matches("[0-9]+ ms"));
+    JSONObject model=FixtureProjection.controlledLocalProcessReadModel(n,cold,row());WindowNetworkState fixed=shown(n,model);
+    check("Explicit verified local-process renderer input reaches unchanged fresh-sample regex",fixed.connected&&fixed.latency.matches("[0-9]+ ms")&&fixed.latency.equals("12 ms"));
+    check("Fixture projection never mutates original production snapshot",before.equals(cold.toString()));
+    boolean onlyControlled=true;java.util.Iterator<String> keys=cold.keys();while(keys.hasNext()){String key=keys.next();if(!key.equals("environmentId")&&!key.equals("generation")&&!key.equals("connected"))onlyControlled&=String.valueOf(cold.opt(key)).equals(String.valueOf(model.opt(key)));}
+    check("Every measurement health route and original admission value stays byte-equivalent",onlyControlled&&model.optString("admission").equals("BLOCKED"));
+    JSONObject scope=model.getJSONObject("controlledLocalProcessReadModel");
+    check("Explicit scope does not manufacture service Binder or browser admission",scope.optString("scope").contains("no service, Binder or browser admission proof")&&!scope.optBoolean("productionColdConnected")&&scope.optString("productionColdAdmission").equals("BLOCKED")&&scope.optBoolean("ownedLocalRouteVerified"));
+    check("Production cold proof remains absent and disconnected after fixture projection",NetworkCoreApplication.observed(n)==null&&!raw(n).optBoolean("connected"));
+    n=local();n.verifiedRoute=null;check("Missing local receipt cannot produce a connected rendering input",!adapted(n).optBoolean("connected"));
+    n=local();n.routeSerial++;check("Stale local route serial cannot produce a connected rendering input",!adapted(n).optBoolean("connected"));
+    n=local();n.token="replacement";check("Changed local core token cannot produce a connected rendering input",!adapted(n).optBoolean("connected"));
+    n=local();n.currentEntry="Entry|B";check("Changed selected entry cannot produce a connected rendering input",!adapted(n).optBoolean("connected"));
+    n=local();((Alive)n.process).alive=false;check("Dead owned process cannot produce a connected rendering input",!adapted(n).optBoolean("connected"));
+    n=local();n.ready=false;check("Not-ready owned process cannot produce a connected rendering input",!adapted(n).optBoolean("connected"));
+    n=local();n.starting=true;check("Starting owned process cannot produce a connected rendering input",!adapted(n).optBoolean("connected"));
+    n=local();n.recoveryBlocked=true;check("Blocked fixed exit cannot produce a connected rendering input",!adapted(n).optBoolean("connected"));
+    n=local();n.settings.put("_fingerprint","changed-config");check("Configuration different from verified receipt cannot produce a connected rendering input",!adapted(n).optBoolean("connected"));
+    n=local();n.admission=NetworkHealthPolicy.Admission.DEGRADED_VERIFICATION;check("Unconfirmed degraded local route cannot produce a verified rendering input",!adapted(n).optBoolean("connected"));
+    n=local();n.transport=new Transport();check("Service-backed native paths are outside this fixture-only adapter",rejected(n));
+    check("Null fixture input cannot manufacture connected state",rejected(null));
+    n=local();JSONObject failed=adapted(n);failed.put("healthDelay",-1);failed.put("healthDelayAt",System.currentTimeMillis());WindowNetworkState health=shown(n,failed);check("Original independent health failure still rejects connected renderer state",!health.connected&&health.state.equals("需检查"));
+    JSONObject old=adapted(n);old.put("delayAt",System.currentTimeMillis()-LatencyRefreshPolicy.INTERVAL-1);check("An actually stale measured sample keeps the original previous label",shown(n,old).latency.equals("12 ms（上次）"));
+    JSONObject differentExit=adapted(n);differentExit.put("exitId","different-exit");check("Different fixed exit never reuses the owned local sample",shown(n,differentExit).latency.equals("延迟未测"));
+    System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualMihomoExecution",false,"actualLatencyMeasurement",false,"actualServiceProofCaptured",false,"scope","Exact WindowNetworkState live/constructor, receipt predicates and actual fixture adapter over declared platform/process/proof boundaries; no Android, native request-count or real latency claim."));
+  }
+}
+class TestNetwork extends NativeNetwork {}
+class FixtureProjection {/* ACTUAL_FIXTURE_METHODS */}
+class Alive extends Process {
+  boolean alive=true;public boolean isAlive(){return alive;}public void destroy(){alive=false;}public int waitFor(){return 0;}public int exitValue(){return 0;}
+  public OutputStream getOutputStream(){return new ByteArrayOutputStream();}public InputStream getInputStream(){return new ByteArrayInputStream(new byte[0]);}public InputStream getErrorStream(){return getInputStream();}
+}

@@ -86,7 +86,7 @@ def capture(variant,width,height,scale,scene,theme='light'):
         click_editor_tab(xml,'浏览器');time.sleep(2.5);xml=dump();assert '网页显示方式' in xml
     if scene=='preferences':
         tab_scrolls=click_editor_tab(xml,'使用偏好');time.sleep(.5)
-        expected={'保存本机输入草稿','恢复网页滚动位置','后台检测回复','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}
+        expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}
         seen=set();collected=[]
         for attempt in range(8):
             xml=dump();collected.append(xml)

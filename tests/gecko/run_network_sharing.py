@@ -5,7 +5,7 @@ p=argparse.ArgumentParser();p.add_argument('--adb',required=True);p.add_argument
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration';out.mkdir(parents=True,exist_ok=True)
 sys.path.insert(0,str(root/'tools'))
 from gecko.network_sources_contract import verify_network_sharing
-pkg='local.pocketchat.test';token=uuid.uuid4().hex;checks=[]
+pkg='local.pocketchat.test';token=uuid.uuid4().hex;checks=[];experience_checks=[];tap_journal=[]
 def adb(*args,binary=False):return subprocess.check_output([a.adb,'-s',a.serial,*args],text=not binary,timeout=40)
 def wait(fn,pred,seconds=90):
  end=time.monotonic()+seconds;last=None
@@ -19,11 +19,28 @@ def wait(fn,pred,seconds=90):
 def xml():
  adb('shell','uiautomator','dump','/sdcard/pocket-sharing.xml');raw=adb('exec-out','cat','/sdcard/pocket-sharing.xml');(out/'network-source-sharing-ui.xml').write_text(raw);return ET.fromstring(raw)
 def nodes(tree,text):return [n for n in tree.iter('node') if n.get('text')==text]
-def tap(text):
- tree=wait(xml,lambda t:bool(nodes(t,text)),30);n=nodes(tree,text)[0];x1,y1,x2,y2=map(int,re.findall(r'\d+',n.get('bounds')));assert x2>x1 and y2>y1;adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2));checks.append(text)
+def tap(text,*,additional=False):
+ tree=wait(xml,lambda t:bool(nodes(t,text)),30);n=nodes(tree,text)[0];x1,y1,x2,y2=map(int,re.findall(r'\d+',n.get('bounds')));assert x2>x1 and y2>y1
+ command=['shell','input','tap',str((x1+x2)//2),str((y1+y2)//2)];adb(*command)
+ (experience_checks if additional else checks).append(text)
+ tap_journal.append(dict(text=text,category='experience46' if additional else 'original-contract',bounds=[x1,y1,x2,y2],adbArguments=command))
 def prepare(scope='整条线路'):
- tap(scope);tap('准备分享')
+ tap(scope,additional=True);tap('准备分享',additional=True)
  wait(xml,lambda t:bool(nodes(t,'分享'+scope)),40)
+def verify_tap_accounting(report):
+ # The immutable contract still verifies its original18 actual actions. New46
+ # choices remain actual taps too: retain them separately and in full order.
+ assert checks==[row['text']for row in tap_journal if row['category']=='original-contract']
+ assert experience_checks==[row['text']for row in tap_journal if row['category']=='experience46']
+ assert experience_checks==['整条线路','准备分享']*3+['仅分享出口']
+ assert len(tap_journal)==len(checks)+len(experience_checks)
+ for row in tap_journal:
+  x1,y1,x2,y2=row['bounds'];assert x2>x1 and y2>y1
+  assert row['category']in ('original-contract','experience46')
+  assert row['adbArguments']==['shell','input','tap',str((x1+x2)//2),str((y1+y2)//2)]
+ assert report['uiChecks']==checks and report['actualAndroidTaps']==len(checks)
+ assert report['experienceUiChecks']==experience_checks and report['experienceActualAndroidTaps']==len(experience_checks)
+ assert report['actualAndroidTapJournal']==tap_journal and report['totalActualAndroidTaps']==len(tap_journal)
 def report():
  raw=adb('exec-out','content','read','--uri','content://'+pkg+'.evidence/network-source-sharing')
  (out/'network-source-sharing-native-raw.json').write_text(raw)
@@ -48,7 +65,7 @@ try:
  assert not nodes(partial,'复制配置') and not nodes(partial,'分享文件'),partial_text
  assert nodes(partial,'重试入口'),partial_text
  assert not nodes(partial,'仅分享入口')
- tap('仅分享出口');wait(xml,lambda t:bool(nodes(t,'分享出口')),20);tap('复制配置');tap('恢复分享测试线路')
+ tap('仅分享出口',additional=True);wait(xml,lambda t:bool(nodes(t,'分享出口')),20);tap('复制配置');tap('恢复分享测试线路')
  r=wait(report,lambda value:value.get('partialSharePreservesActiveSnapshot') is True or value.get('status')=='failed',20)
  assert r['status']=='passed' and r['partialSharePreservesActiveSnapshot'],r
  # Open a real provider file through the production Activity; preview must be explicit.
@@ -59,10 +76,11 @@ try:
  tree=xml();text=' '.join(n.get('text','') for n in tree.iter('node'));assert 'Portable VLESS' in text and 'Sharing Exit' in text,text
  tap('取消')
  (out/'network-source-sharing-screen.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
- r['uiChecks']=checks;r['actualAndroidTaps']=len(checks);r['cancelledBeforeRouteApplication']=True
+ r['uiChecks']=checks;r['actualAndroidTaps']=len(checks);r['uiChecksScope']='original-contract-required-actual-Android-taps';r['experienceUiChecks']=experience_checks;r['experienceActualAndroidTaps']=len(experience_checks);r['actualAndroidTapJournal']=tap_journal;r['totalActualAndroidTaps']=len(tap_journal);r['cancelledBeforeRouteApplication']=True
+ verify_tap_accounting(r)
  verify_network_sharing(r,source,installed,complete=True,run_token=token)
  (out/'network-source-sharing-results.json').write_text(json.dumps(r,ensure_ascii=False,indent=2)+'\n')
- print(json.dumps({'status':'passed','nativeChecks':len(r['checks']),'actualAndroidTaps':len(checks)}))
+ print(json.dumps({'status':'passed','nativeChecks':len(r['checks']),'actualAndroidTaps':len(checks),'experienceActualAndroidTaps':len(experience_checks),'totalActualAndroidTaps':len(tap_journal)}))
 except Exception:
  (out/'network-source-sharing-failure-log.txt').write_text(adb('logcat','-d'))
  raise

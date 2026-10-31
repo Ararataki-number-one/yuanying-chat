@@ -2,6 +2,7 @@
 import hashlib,importlib.util,json,os
 from pathlib import Path
 import shutil,subprocess,tempfile,unittest
+from network_performance46_fixture_compatibility import input_for_original_fixture
 ROOT=Path(__file__).resolve().parents[1]
 PRODUCTION=ROOT/'app/src/main/java/local/pocketchat'
 FIXTURE=ROOT/'tests/gecko/NetworkOptimizationIntegrationActivity.java'
@@ -25,6 +26,7 @@ suite=module('one_exit_recovery_suite',ROOT/'tests/network-recovery-host/run.py'
 sha=lambda raw:hashlib.sha256(raw).hexdigest()
 
 def original_fixture(current):
+ current=input_for_original_fixture(current)
  if sha(current.encode())==ORIGINAL_SHA:return current
  repair_setup,repair_restore=next(((setup,restore) for setup,restore in ((REPAIR_NEW,REPAIR_RESTORE),(CAUSAL_REPAIR_NEW,REPAIR_RESTORE),(LEGACY_REPAIR_NEW,LEGACY_REPAIR_RESTORE)) if current.count(setup)==1),(REPAIR_NEW,REPAIR_RESTORE))
  if current.count(DISPLAY_NEW)!=1 or current.count(repair_setup)!=1 or current.count(repair_restore)!=1:raise ValueError('Fixture mode adapters missing')

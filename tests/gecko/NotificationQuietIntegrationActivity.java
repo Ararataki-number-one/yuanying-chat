@@ -9,21 +9,25 @@ import android.util.Log;
 import android.widget.TextView;
 import org.json.*;
 import java.io.*;
+import java.net.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 /** Real Android channels and foreground services; only synthetic completion data. */
 public final class NotificationQuietIntegrationActivity extends Activity {
   final Handler handler=new Handler(Looper.getMainLooper());final JSONArray checks=new JSONArray();
   NotificationManager manager;ChatSession session;Context owner,other;JSONObject job;
-  boolean started,leftApp,finished;long deadline;String prefix=UUID.randomUUID().toString();
+  boolean started,leftApp;volatile boolean finished;long deadline;String prefix=UUID.randomUUID().toString();
   JSONObject foregroundProof,homeProof;DefaultDownloads.Target savedFile;JSONObject savedTask;
+  final ExecutorService proxyWorker=Executors.newSingleThreadExecutor();
+  NetworkTransportClient proxyClient;EnvironmentSpec.Identity proxyOwner;String proxyGeneration="";boolean proxyDetached;JSONObject proxyEvidence;
   @Override protected void attachBaseContext(Context c){super.attachBaseContext(new ProfileContext(c,Profiles.processSlot()));}
   @Override public void onCreate(Bundle state){super.onCreate(state);if(!getPackageName().endsWith(".test")||Profiles.processSlot()!=7)throw new SecurityException("Isolated test profile required");TextView label=new TextView(this);label.setText("后台通知与完成提醒回归");setContentView(label);manager=getSystemService(NotificationManager.class);}
   @Override protected void onResume(){super.onResume();if(!started){started=true;handler.postDelayed(this::begin,300);}}
   @Override protected void onPause(){super.onPause();leftApp=true;}
   void check(String name,boolean pass)throws Exception{JSONObject value=J.obj("name",name,"pass",pass);checks.put(value);event("check",value);if(!pass)throw new IllegalStateException(name);}
   void event(String kind,JSONObject result){Log.i("PocketQuietNotifications",J.obj("kind",kind,"value",result).toString());}
-  void report(String status,String error){Log.i("PocketQuietNotifications",J.obj("status",status,"actualAndroidExecution",true,"checkCount",checks.length(),"error",error,"foregroundEvidence",foregroundProof,"homeEvidence",homeProof,"scope","Android activity-process importance, channels, real foreground services, real Home, production stable-terminal gate, opt-in completion reminders and a real local MediaStore save; no account or network download").toString());}
+  void report(String status,String error){Log.i("PocketQuietNotifications",J.obj("status",status,"actualAndroidExecution",true,"checkCount",checks.length(),"error",error,"foregroundEvidence",foregroundProof,"homeEvidence",homeProof,"proxyEvidence",proxyEvidence,"scope","Android activity-process importance, channels, real foreground services backed by an owned loopback-only deny-all Mihomo core, real Home, production stable-terminal gate, opt-in completion reminders and a real local MediaStore save; no account, remote route or network download").toString());}
   StatusBarNotification notice(int id){for(StatusBarNotification n:manager.getActiveNotifications())if(n.getId()==id)return n;return null;}
   interface Condition {boolean ready()throws Exception;}
   interface Step {void run()throws Exception;}
@@ -102,9 +106,65 @@ public final class NotificationQuietIntegrationActivity extends Activity {
     job=J.obj("id",id,"kind","web","confirmed",true,"userKey","id:synthetic-question","confirmedUrl",url,"expectedUrl",url,"prompt","synthetic waiting question");
     session.pending=job;session.activeDeliveryId=id;session.prefs.edit().putString("pending",job.toString()).commit();
     check("Waiting and disconnected states do not post completion alerts",notice(Profiles.notification(owner,4102))==null);
-    ChatService.begin(owner);startForegroundService(new Intent(this,NetworkTransportService.class));
-    deadline=SystemClock.elapsedRealtime()+15000;handler.postDelayed(this::waiting,200);
+    startLocalProxy();
   }
+  // A foreground proxy card is legitimate only while a real core is alive.
+  // Starting an empty service must not defeat production's idle withdrawal.
+  // This isolated, freshly cleared test app has no subscriber or real exit:
+  // both listeners bind loopback, all routes reject, and DNS/TUN are disabled.
+  void startLocalProxy(){
+    proxyOwner=ProfileCatalog.get(owner).identity(7);proxyClient=new NetworkTransportClient(owner,state->{});
+    proxyWorker.execute(()->{try{
+      JSONObject initial=proxyClient.call("snapshot","");
+      if(initial.optBoolean("alive")||initial.optInt("slot",-1)!=7)throw new IOException("Quiet fixture requires an empty owned proxy slot");
+      int controllerPort=NativeNetwork.freePort(),proxyPort=NativeNetwork.freePort(),probePort=NativeNetwork.freePort();
+      while(proxyPort==controllerPort)proxyPort=NativeNetwork.freePort();while(probePort==controllerPort||probePort==proxyPort)probePort=NativeNetwork.freePort();
+      String secret=UUID.randomUUID().toString();
+      JSONObject config=J.obj("port",0,"socks-port",0,"mixed-port",0,"redir-port",0,"tproxy-port",0,"allow-lan",false,"bind-address","127.0.0.1","mode","rule","log-level","silent","ipv6",false,
+        "external-controller","127.0.0.1:"+controllerPort,"secret",secret,"external-controller-cors",J.obj("allow-origins",new JSONArray(),"allow-private-network",false),
+        "profile",J.obj("store-selected",false,"store-fake-ip",false),"tun",J.obj("enable",false),"sniffer",J.obj("enable",false),"dns",J.obj("enable",false),"geo-auto-update",false,
+        "proxies",new JSONArray(),"proxy-groups",new JSONArray(),"rules",J.arr("MATCH,REJECT"),"listeners",J.arr(
+          J.obj("name","PocketOnly","type","mixed","listen","127.0.0.1","port",proxyPort,"udp",false,"proxy","REJECT"),
+          J.obj("name","WebsiteCheck","type","mixed","listen","127.0.0.1","port",probePort,"udp",false,"proxy","REJECT")));
+      File directory=new File(owner.getNoBackupFilesDir(),"network-runtime");if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("Quiet proxy fixture directory unavailable");
+      J.write(new File(directory,"config.json"),config.toString());J.write(new File(directory,"transport.json"),J.obj("proxyPort",proxyPort,"webProbePort",probePort,"ready",false,"names",new JSONArray()).toString());
+      String configuration=NativeNetwork.hash(config.toString());
+      JSONObject started=proxyClient.callBound("launch",configuration,NetworkDiagnostics.Reason.UNKNOWN,initial.optString("generation"),proxyOwner);
+      proxyGeneration=started.optString("generation");
+      if(proxyGeneration.isEmpty()||!started.optBoolean("alive")||started.optInt("slot",-1)!=7||started.optInt("pid")<=1||started.optInt("servicePid")==android.os.Process.myPid()
+          ||!configuration.equals(started.optString("configuration"))||started.optInt("controllerPort")!=controllerPort||started.optInt("proxyPort")!=proxyPort||started.optInt("webProbePort")!=probePort)throw new IOException("Quiet proxy fixture did not acquire a real owned core");
+      long expires=SystemClock.elapsedRealtime()+10000;Exception last=null;boolean controllerReady=false;
+      while(!finished&&SystemClock.elapsedRealtime()<expires){
+        HttpURLConnection connection=(HttpURLConnection)new URL("http://127.0.0.1:"+controllerPort+"/version").openConnection(Proxy.NO_PROXY);
+        try{connection.setConnectTimeout(500);connection.setReadTimeout(500);connection.setRequestProperty("Authorization","Bearer "+secret);
+          if(connection.getResponseCode()!=200)throw new IOException("Quiet proxy controller rejected its local owner");
+          try(InputStream in=connection.getInputStream()){JSONObject version=new JSONObject(new String(J.read(in,4096),java.nio.charset.StandardCharsets.UTF_8));if(version.optString("version").isEmpty())throw new IOException("Quiet proxy controller has no version");}
+          controllerReady=true;break;
+        }catch(Exception e){last=e;}finally{connection.disconnect();}
+        if(!proxyClient.call("snapshot","").optBoolean("alive"))throw new IOException("Quiet proxy fixture core exited",last);Thread.sleep(100);
+      }
+      if(finished)return;if(!controllerReady)throw new IOException("Quiet proxy fixture controller did not become ready",last);
+      JSONObject ready=proxyClient.call("ready","");
+      proxyEvidence=J.obj("owner",proxyOwner.json(),"started",started,"ready",ready,"controllerReady",true,"loopbackListenersConfigured",true,"denyAllConfigured",true,"fixtureRemoteRequests",false);
+      handler.post(()->{if(finished)return;try{
+        check("A real local-only deny-all core owns the proxy foreground service",ready.optBoolean("alive")&&proxyGeneration.equals(ready.optString("generation"))&&"running".equals(ready.optString("state")));
+        ChatService.begin(owner);deadline=SystemClock.elapsedRealtime()+15000;handler.postDelayed(this::waiting,200);
+      }catch(Exception e){fail(e);}});
+    }catch(Exception e){handler.post(()->fail(e));}});
+  }
+  void stopLocalProxy(Step next){proxyWorker.execute(()->{try{
+    String owned=proxyGeneration;if(owned.isEmpty())throw new IOException("Quiet fixture lost its owned proxy generation");
+    JSONObject stopped=proxyClient.callBound("stop","",NetworkDiagnostics.Reason.REQUESTED,owned,proxyOwner);
+    if(stopped.optBoolean("alive")||stopped.optInt("pid")!=0||stopped.optInt("slot",-1)!=7||owned.equals(stopped.optString("generation")))throw new IOException("Quiet fixture proxy did not stop");
+    proxyGeneration="";proxyEvidence.put("stopped",stopped);proxyClient.detach();proxyDetached=true;
+    handler.post(()->{if(finished)return;try{
+      check("Stopping the owned proxy generation closes the real fixture core",!stopped.optBoolean("alive")&&stopped.optInt("pid")==0);
+      awaitQuiet("stopped proxy foreground card withdrawn",()->notice(NetworkTransportService.NOTICE)==null,next);
+    }catch(Exception e){fail(e);}});
+  }catch(Exception e){handler.post(()->fail(e));}});}
+  void cleanupLocalProxy(){proxyWorker.execute(()->{try{
+    if(proxyClient!=null&&!proxyDetached){if(!proxyGeneration.isEmpty()){proxyClient.callBound("stop","",NetworkDiagnostics.Reason.REQUESTED,proxyGeneration,proxyOwner);proxyGeneration="";}proxyClient.detach();proxyDetached=true;}
+  }catch(Exception e){Log.w("PocketQuietProxyFixture","Owned proxy cleanup did not settle",e);}finally{proxyWorker.shutdown();}});}
   void quiet(String channel)throws Exception{
     NotificationChannel c=manager.getNotificationChannel(channel);
     // Android may promote MIN foreground channels to LOW; never demand an
@@ -115,7 +175,7 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   }
   void waiting(){try{
     StatusBarNotification wait=notice(Profiles.notification(owner,4101)),network=notice(NetworkTransportService.NOTICE);
-    if(!ChatService.running||wait==null||network==null){if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Foreground notifications did not start");handler.postDelayed(this::waiting,200);return;}
+    if(!ChatService.running||wait==null||network==null){if(SystemClock.elapsedRealtime()>deadline)throw new IllegalStateException("Foreground notifications did not start: replyRunning="+ChatService.running+", replyCard="+(wait!=null)+", proxyCard="+(network!=null)+", proxyAlive="+proxyClient.alive());handler.postDelayed(this::waiting,200);return;}
     quiet(ChatService.WAIT);quiet(QuietNotifications.NETWORK_BACKGROUND);
     check("Reply service keeps a legitimate foreground notification",(wait.getNotification().flags&Notification.FLAG_FOREGROUND_SERVICE)!=0);
     check("Network service keeps a legitimate foreground notification",(network.getNotification().flags&Notification.FLAG_FOREGROUND_SERVICE)!=0);
@@ -199,6 +259,9 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   void quietEvents()throws Exception{
     check("Attention and network events remain in-app without separate reminders",notice(Profiles.notification(owner,4103))==null&&notice(Profiles.notification(owner,4105))==null);
     check("Explicit global opt-in keeps detection enabled without reviving legacy switches",BackgroundReplyPolicy.refresh(owner).enabled&&!AppPrefs.enabled(owner,"backgroundWait"));
+    stopLocalProxy(this::emptyProxy);
+  }
+  void emptyProxy()throws Exception{
     check("An empty proxy service withdraws its foreground card without stopping a proxy",notice(NetworkTransportService.NOTICE)==null);
     savedFile=DefaultDownloads.create(owner,"quiet-completion-"+prefix+".txt","text/plain");try(OutputStream out=savedFile.output()){out.write("complete local file".getBytes(java.nio.charset.StandardCharsets.UTF_8));}savedFile.publish();
     DownloadTasks tasks=new DownloadTasks(owner);savedTask=tasks.add("","",MainActivity.ORIGIN);DownloadTasks.put(savedTask,"state","saved","name",savedFile.name,"uri",savedFile.uri.toString(),"location",savedFile.location,"received",19,"total",19);tasks.save();
@@ -217,6 +280,6 @@ public final class NotificationQuietIntegrationActivity extends Activity {
       });
     });
   }
-  void cleanup(){if(owner!=null){BackgroundReplyPolicy.setEnabled(owner,false);ChatService.end(owner);}stopService(new Intent(this,NetworkTransportService.class));if(savedFile!=null)savedFile.abort();if(session!=null){session.pending=null;session.prefs.edit().remove("pending").commit();session.handler.removeCallbacks(session.tick);session.web.destroy();}for(Context c:new Context[]{owner,other})if(c!=null){manager.cancel(Profiles.notification(c,4102));manager.cancel(Profiles.notification(c,4104));}}
+  void cleanup(){if(owner!=null){BackgroundReplyPolicy.setEnabled(owner,false);ChatService.end(owner);}cleanupLocalProxy();if(savedFile!=null)savedFile.abort();if(session!=null){session.pending=null;session.prefs.edit().remove("pending").commit();session.handler.removeCallbacks(session.tick);session.web.destroy();}for(Context c:new Context[]{owner,other})if(c!=null){manager.cancel(Profiles.notification(c,4102));manager.cancel(Profiles.notification(c,4104));}}
   void fail(Exception e){if(finished)return;finished=true;handler.removeCallbacksAndMessages(null);cleanup();report("failed",e.toString());}
 }

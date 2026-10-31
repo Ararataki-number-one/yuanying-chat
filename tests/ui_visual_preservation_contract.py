@@ -103,6 +103,39 @@ def remove_reviewed_ui_device_preparation(tree):
 
 
 
+PREFERENCE_EXPECTED_BEFORE = "        expected={'保存本机输入草稿','恢复网页滚动位置','后台检测回复','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}\n"
+PREFERENCE_EXPECTED_AFTER = "        expected={'保存本机输入草稿','恢复网页滚动位置','允许此环境的后台回复提醒','仅在 Wi-Fi 下载文件','自动清理 30 天以上的无引用中间文件'}\n"
+PREFERENCE_CAPTURE_PREFIX = "    if scene=='preferences':\n        tab_scrolls=click_editor_tab(xml,'使用偏好');time.sleep(.5)\n"
+PREFERENCE_CAPTURE_SUFFIX = '        seen=set();collected=[]\n'
+PREFERENCE_BLOCK_BEFORE_AST = '2660727318568700cd52fe120dfb871207fa3fe0ba8416a7e92c52a1ed045311'
+PREFERENCE_BLOCK_AFTER_AST = 'c7a36f47b0cc32f8d9b262d84f0ab365ae43387e7372cc5a49c1066938d7dc8d'
+
+
+def original_preferences46_bytes(raw):
+    """Restore only the removed per-environment detection checkbox expectation.
+
+    Detection is a global 46 setting. The current environment page must expose
+    exactly its five remaining controls; all polling, actions and gates stay.
+    """
+    text=raw.decode('utf-8')
+    previous=PREFERENCE_CAPTURE_PREFIX+PREFERENCE_EXPECTED_BEFORE+PREFERENCE_CAPTURE_SUFFIX
+    current=PREFERENCE_CAPTURE_PREFIX+PREFERENCE_EXPECTED_AFTER+PREFERENCE_CAPTURE_SUFFIX
+    assert text.count(previous)+text.count(current)==1, 'Preference expectation changed, missing, duplicated or moved'
+    assert text.count(PREFERENCE_EXPECTED_BEFORE)+text.count(PREFERENCE_EXPECTED_AFTER)==1, 'Preference expectation has extra uses'
+    assert text.count('后台检测回复')==(1 if previous in text else 0), 'Retired preference label moved or duplicated'
+    return text.replace(current,previous,1).encode('utf-8') if current in text else raw
+
+
+def remove_reviewed_preferences46_label(capture):
+    preferences=exactly_one((node for node in capture.body if isinstance(node,ast.If)
+        and any(assignment(child,'expected') for child in node.body)), 'original preferences capture')
+    assert digest(preferences) in (PREFERENCE_BLOCK_BEFORE_AST,PREFERENCE_BLOCK_AFTER_AST), 'Preferences actions, labels or gates changed'
+    expected=exactly_one((node for node in preferences.body if assignment(node,'expected')), 'original preference controls')
+    if digest(preferences)==PREFERENCE_BLOCK_AFTER_AST:
+        expected.value=ast.parse(PREFERENCE_EXPECTED_BEFORE.strip()).body[0].value
+    assert digest(preferences)==PREFERENCE_BLOCK_BEFORE_AST, 'Original complete preferences capture did not restore'
+
+
 DIAGNOSTIC_PRIVACY_IMPORT = 'from diagnostic_capture_privacy import checked_text\n'
 DIAGNOSTIC_PRIVACY_WRITES = tuple(
     ("(out/'" + name + "').write_text(adb('logcat','-d'))",
@@ -112,6 +145,7 @@ DIAGNOSTIC_PRIVACY_WRITES = tuple(
 
 def original_update_readiness_bytes(raw):
     """Invert only the 46 installed-version label at its original scene key."""
+    raw=original_preferences46_bytes(raw)
     text=raw.decode('utf-8')
     if '当前安装版本' not in text:return raw
     added="'update':'当前安装版本','audit':'环境自检与变更'"
@@ -131,6 +165,7 @@ def remove_reviewed_update_readiness_label(tree):
         assert len([node for node in ast.walk(tree) if isinstance(node,ast.Constant) and node.value=='当前安装版本'])==1, 'Update readiness label moved or duplicated'
         label.value='当前版本'
     assert digest(required)=='ec9ddff532e6ebbcdc23ee66c59f0fe47a30df81bc9beff1826c3e4ac20ce967', 'Original readiness mapping or scene binding changed'
+    remove_reviewed_preferences46_label(capture)
 
 
 def original_ui_diagnostic_privacy_bytes(raw):
