@@ -1,0 +1,90 @@
+{
+  "status": "failed",
+  "actualAndroidExecution": true,
+  "checkCount": 12,
+  "error": "java.lang.IllegalStateException: Foreground notifications did not start",
+  "foregroundEvidence": {
+    "known": true,
+    "foreground": true,
+    "actualActivityStartedCount": 1,
+    "visibilitySource": "activity-start-stop",
+    "processes": [
+      {
+        "process": "local.pocketchat.test:profile7",
+        "pid": 4106,
+        "importance": 100,
+        "known": true,
+        "actualActivityStartedCount": 1,
+        "visible": true,
+        "activityStarts": 1,
+        "activityStops": 0,
+        "revision": 1,
+        "lastEventAt": 74807
+      },
+      {
+        "process": "local.pocketchat.test",
+        "pid": 4153,
+        "importance": 100,
+        "known": true,
+        "actualActivityStartedCount": 0,
+        "visible": false,
+        "activityStarts": 0,
+        "activityStops": 0,
+        "revision": 0,
+        "lastEventAt": 0
+      }
+    ]
+  },
+  "scope": "Android activity-process importance, channels, real foreground services, real Home, production stable-terminal gate, opt-in completion reminders and a real local MediaStore save; no account or network download",
+  "checks": [
+    {
+      "name": "Background completion reminders are off by default",
+      "pass": true
+    },
+    {
+      "name": "Background reply detection and legacy switches default to off",
+      "pass": true
+    },
+    {
+      "name": "Browser and network child processes cannot count as visible UI",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes old noisy foreground channels",
+      "pass": true
+    },
+    {
+      "name": "Upgrade removes non-completion regular notifications across profiles",
+      "pass": true
+    },
+    {
+      "name": "A real visible app Activity suppresses completion reminders",
+      "pass": true
+    },
+    {
+      "name": "An already running default process exposes real zero-Activity lifecycle over private IPC",
+      "pass": true
+    },
+    {
+      "name": "A visible Activity is proved by real started lifecycle count",
+      "pass": true
+    },
+    {
+      "name": "A private visibility endpoint rejects an obsolete process PID",
+      "pass": true
+    },
+    {
+      "name": "Foreground replies and downloads stay quiet even after opting in",
+      "pass": true
+    },
+    {
+      "name": "Already visible completions are remembered without posting",
+      "pass": true
+    },
+    {
+      "name": "Waiting and disconnected states do not post completion alerts",
+      "pass": true
+    }
+  ],
+  "sourceCommit": "5398ed49c63fddcdbafad40457ce6f27d8ee4670"
+}
