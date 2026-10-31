@@ -9,6 +9,12 @@ runner imports, or device execution is needed in a shallow CI checkout.
 """
 import ast
 import hashlib
+import importlib.util
+from pathlib import Path
+
+_lease_spec = importlib.util.spec_from_file_location('selected_ui_settings_services11_contract', Path(__file__).with_name('ui_settings_services11_contract.py'))
+_lease = importlib.util.module_from_spec(_lease_spec)
+_lease_spec.loader.exec_module(_lease)
 
 
 BASELINE = '64be4b4dc5a3ab36f0399412128f8425b71cd9bb'
@@ -171,6 +177,7 @@ def remove_reviewed_update_readiness_label(tree):
 def original_ui_diagnostic_privacy_bytes(raw):
     """Undo only the three exact producer additions before old whole-byte pins."""
     assert isinstance(raw, bytes), 'UI source bytes required'
+    raw=_lease.original_runner_bytes(raw)
     raw=original_update_readiness_bytes(raw)
     text = raw.decode('utf-8')
     if 'diagnostic_capture_privacy' not in text and 'checked_text' not in text:
@@ -190,6 +197,7 @@ def remove_reviewed_diagnostic_privacy(tree):
     Functional adb/capture/readiness/input nodes are never removed or rewritten.
     The original full-module digest below still verifies every remaining node.
     """
+    _lease.remove_reviewed_lease(tree)
     remove_reviewed_update_readiness_label(tree)
     imports = [node for node in ast.walk(tree)
                if isinstance(node, ast.ImportFrom) and node.module == 'diagnostic_capture_privacy']

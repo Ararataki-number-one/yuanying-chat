@@ -561,6 +561,13 @@ jobs:
         python3 tools/gecko/prepare_emulator.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 tools/gecko/isolate_emulator_background.py --adb "$(command -v adb)" --serial emulator-5554 --apk app/build/outputs/apk/integration/app-x86_64-integration.apk
         python3 -c "$ANDROID_CAPACITY_PREFLIGHT" guest '${{ matrix.phase }}'
+    - name: Record bounded native setup endpoint diagnostics
+      if: always()
+      shell: bash
+      env:
+        POCKET_NATIVE_SETUP_PHASE: ${{ matrix.phase }}
+        POCKET_NATIVE_SETUP_BOOT_OUTCOME: ${{ steps.android_boot.outcome }}
+      run: python3 tests/gecko/print_native_setup11_diagnostic.py
     - name: Verify network performance and compact chrome
       shell: bash
       run: |

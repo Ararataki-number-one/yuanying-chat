@@ -18,6 +18,8 @@ ui_capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnos
 def adb(*values):return subprocess.check_output([args.adb,'-s',args.serial,*values],timeout=90).decode(errors='replace')
 from ui_test_device import prepare_workflow as prepare_ui_test_device
 (out/'ui-test-device-isolation.json').write_text(json.dumps(prepare_ui_test_device(adb,serial=args.serial,environment=os.environ),sort_keys=True,indent=2)+'\n')
+from ui_settings_services_device11 import prepare_workflow as prepare_settings_services_device11, finish_workflow as finish_settings_services_device11
+settings_services_device11=prepare_settings_services_device11(adb,serial=args.serial,environment=os.environ,root=root,source=source,record_path=out/'ui-settings-services-isolation.json')
 def dump(deadline=None):
     return ui_capture.read(deadline=deadline)
 def click(xml,label):
@@ -412,5 +414,8 @@ except Exception as error:
     (out/'ui-visual-failure.xml').write_text(dump())
     raise
 finally:
-    (out/'ui-visual-results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
-    adb('shell','settings','put','system','font_scale','1');adb('shell','wm','size','reset');adb('shell','wm','density','reset')
+    try:
+        finish_settings_services_device11(settings_services_device11,report)
+    finally:
+        (out/'ui-visual-results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+        adb('shell','settings','put','system','font_scale','1');adb('shell','wm','size','reset');adb('shell','wm','density','reset')

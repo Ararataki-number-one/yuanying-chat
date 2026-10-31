@@ -17,8 +17,9 @@ from unittest import mock
 import yaml
 
 ROOT=Path(__file__).resolve().parents[1]
-spec=importlib.util.spec_from_file_location('experience_targeted_generator',ROOT/'tools/gecko/generate_experience_targeted_workflow.py')
-g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
+spec=importlib.util.spec_from_file_location('source11_targeted_generator_frontend',ROOT/'tests/gecko/source11_targeted_generator_compat.py')
+frontend=importlib.util.module_from_spec(spec);spec.loader.exec_module(frontend)
+g=frontend.load_generator()
 
 def restore_job(case,key,job):
     """Independent narrow inverse; every unacknowledged field must still match."""

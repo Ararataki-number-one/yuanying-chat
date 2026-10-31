@@ -49,6 +49,9 @@ def reverse_reviewed_history_checkout_addition(case,source):
     case.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'10e35f9884e6eac2ea2fc2e0e6d6f6d5d14c55dc7e776cd0128019c75ab3f2f5')
     return restored
 
+from native_setup11_workflow_contract import wrap_history_inverse as _native_setup11_wrap_history_inverse
+reverse_reviewed_history_checkout_addition = _native_setup11_wrap_history_inverse(reverse_reviewed_history_checkout_addition)
+
 def reverse_reviewed_experience_workflow_additions(case,source):
     source=reverse_reviewed_history_checkout_addition(case,source)
     source=reverse_reviewed_background_workflow_additions(case,source)
