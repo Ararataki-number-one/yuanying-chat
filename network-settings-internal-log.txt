@@ -1,0 +1,1367 @@
+--------- beginning of main
+10-31 08:47:24.570   581  1313 W JobInfo : Job 'com.google.android.providers.media.module/com.android.providers.media.MediaService#-300' has a deadline with no functional constraints. The deadline won't improve job execution latency. Consider removing the deadline.
+10-31 08:47:24.585  1475  2043 I MediaProvider: Begin Intent { act=android.intent.action.PACKAGE_DATA_CLEARED dat=package: flg=0x5000010 cmp=com.google.android.providers.media.module/com.android.providers.media.MediaService (has extras) }
+10-31 08:47:24.589  1475  2043 D MediaProvider: Deleted 0 Android/media items belonging to local.pocketchat.test on /data/user/0/com.google.android.providers.media.module/databases/external.db
+10-31 08:47:24.592  1475  2043 D MediaGrants: Removed 0 media_grants for 0 user for [local.pocketchat.test, local.pocketchat.test]. Reason: Package orphaned
+10-31 08:47:24.593  1475  2043 I MediaProvider: End Intent { act=android.intent.action.PACKAGE_DATA_CLEARED dat=package: flg=0x5000010 cmp=com.google.android.providers.media.module/com.android.providers.media.MediaService (has extras) }
+10-31 08:47:24.602   445  1208 W VsyncModulator: setTransactionSchedule: Unexpected EarlyEnd
+--------- beginning of system
+10-31 08:47:24.623   581   942 D ShortcutService: Saving package item com.google.android.as to /data/system_ce/0/shortcut_service/launchers/com.google.android.as0.xml
+10-31 08:47:24.627  1206  1206 D SsBaseTemplateCard: No text view can be set up
+10-31 08:47:24.628   581  1313 D SafetySourceDataValidat: No cert check requested for package com.google.android.permissioncontroller
+10-31 08:47:24.628  1206  1206 D SsBaseTemplateCard: Passed-in item info is null
+10-31 08:47:24.628  1206  1206 D SsBaseTemplateCard: Passed-in item info is null
+10-31 08:47:24.628  1206  1206 D SsBaseTemplateCard: Passed-in item info is null
+10-31 08:47:24.628  1206  1206 I SsBaseTemplateCard: Secondary card pane is null
+10-31 08:47:24.632   980  1034 V WindowManagerShell: Transition animation finished (aborted=false), notifying core (#88) android.os.BinderProxy@6d634ef@0
+10-31 08:47:24.634   581   601 V WindowManager: Finish Transition (#88): created at 10-31 08:47:24.059 collect-started=0.585ms request-sent=6.093ms started=104.896ms ready=108.081ms sent=211.976ms finished=574.369ms
+10-31 08:47:24.636   581   942 D ShortcutService: Saving package item com.google.android.apps.nexuslauncher to /data/system_ce/0/shortcut_service/launchers/com.google.android.apps.nexuslauncher0.xml
+--------- beginning of kernel
+10-31 08:47:24.782     0     0 I binder  : 1313:581 cannot find target node
+10-31 08:47:24.785     0     0 I binder  : 581:1313 transaction async to 0:0 failed 733060/29189/-22, size 64-0 line 3344
+10-31 08:47:24.639   581  1313 E IPCThreadState: Binder transaction failure. id: 733060, BR_*: 29189, error: -22 (Invalid argument)
+10-31 08:47:24.639   581  1313 W ActivityManager: pid 581 system sent binder code 7 with flags 1 to frozen apps and got error -32
+10-31 08:47:24.639   581  1313 D ActivityManager: Too many transaction errors, throttling freezer binder callback.
+10-31 08:47:24.640   581  1313 W WindowManager: Exception thrown during dispatchAppVisibility Window{4473081 u0 local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity EXITING}
+10-31 08:47:24.640   581  1313 W WindowManager: android.os.DeadObjectException
+10-31 08:47:24.640   581  1313 W WindowManager: 	at android.os.BinderProxy.transactNative(Native Method)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at android.os.BinderProxy.transact(BinderProxy.java:586)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at android.view.IWindow$Stub$Proxy.dispatchAppVisibility(IWindow.java:553)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at com.android.server.wm.WindowState.sendAppVisibilityToClients(WindowState.java:3253)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at com.android.server.wm.WindowContainer.sendAppVisibilityToClients(WindowContainer.java:1289)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at com.android.server.wm.WindowToken.setClientVisible(WindowToken.java:403)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at com.android.server.wm.ActivityRecord.setClientVisible(ActivityRecord.java:7166)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at com.android.server.wm.ActivityRecord.postApplyAnimation(ActivityRecord.java:5881)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at com.android.server.wm.ActivityRecord.commitVisibility(ActivityRecord.java:5823)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at com.android.server.wm.Transition.finishTransition(Transition.java:1286)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at com.android.server.wm.TransitionController.finishTransition(TransitionController.java:937)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at com.android.server.wm.WindowOrganizerController.finishTransition(WindowOrganizerController.java:494)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at android.window.IWindowOrganizerController$Stub.onTransact(IWindowOrganizerController.java:289)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at com.android.server.wm.WindowOrganizerController.onTransact(WindowOrganizerController.java:204)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at android.os.Binder.execTransactInternal(Binder.java:1500)
+10-31 08:47:24.640   581  1313 W WindowManager: 	at android.os.Binder.execTransact(Binder.java:1444)
+10-31 08:47:24.640   581  1313 W Process : Unable to open /proc/13666/status
+10-31 08:47:24.645   581   942 D ShortcutService: Saving package item com.android.systemui to /data/system_ce/0/shortcut_service/launchers/com.android.systemui0.xml
+10-31 08:47:24.653   982   982 D PersistedStoragePackageUninstalledReceiver: Received android.intent.action.PACKAGE_DATA_CLEARED for local.pocketchat.test for u0
+10-31 08:47:24.656   980  1034 V WindowManagerShell: Track 0 became idle
+10-31 08:47:24.656   980  1034 V WindowManagerShell: All active transition animations finished
+10-31 08:47:24.657  1206  1206 I TopTaskTracker: onTaskRemoved: taskId=19
+10-31 08:47:24.657  1206  1206 I TopTaskTracker: onTaskRemoved: taskId=19
+10-31 08:47:24.657   581  2017 W UserManagerService: Requested status bar icon for non-badged user 0
+10-31 08:47:24.657   581  2017 W UserManagerService: Requested status bar icon for non-badged user 0
+10-31 08:47:24.677   445   445 E BpTransactionCompletedListener: Failed to transact (-32)
+10-31 08:47:25.344   581  2017 W ActivityTaskManager: callingPackage for (uid=2000, pid=14211) has no WPC
+10-31 08:47:25.346   581  2017 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_OVERRIDE
+10-31 08:47:25.346   581  2017 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_FULLSCREEN_OVERRIDE
+10-31 08:47:25.346   581  2017 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE
+10-31 08:47:25.346   581  2017 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10209, packageName = null, attributionTag = null, token = android.os.Binder@314c42e, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-31 08:47:25.347   581  2017 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_RESIZEABLE_ACTIVITY_OVERRIDES
+10-31 08:47:25.347   581  2017 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_MIN_ASPECT_RATIO_OVERRIDE
+10-31 08:47:25.350   581  2017 V SplashScreenExceptionList: SplashScreen checking exception for package local.pocketchat.test (target sdk:35) -> false
+10-31 08:47:25.352   980  1034 V WindowManagerShell: Transition requested (#89): android.os.BinderProxy@636b683 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=20 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity } baseActivity=ComponentInfo{local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity} topActivity=ComponentInfo{local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity} origActivity=null realActivity=ComponentInfo{local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity} numActivities=1 lastActiveTime=790653 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@d39d000} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{efdc039 local.pocketchat.NetworkSafeIdleIntegrationActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= falseisLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false topActivityEligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=320 topActivityLetterboxHeight=640 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false cameraCompatTaskInfo=CameraCompatTaskInfo { cameraCompatControlState=hidden freeformCameraCompatMode=inactive}}}, pipTask = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 89 }
+10-31 08:47:25.352   581  2017 I ActivityTaskManager: START u0 {flg=0x10000000 cmp=local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity (has extras)} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=0
+10-31 08:47:25.352   581   604 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10209, packageName = null, attributionTag = null, token = android.os.Binder@314c42e, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-31 08:47:25.353   581  1313 D CompatChangeReporter: Compat change id reported: 309578419; UID 10209; state: ENABLED
+10-31 08:47:25.353  1206  1206 W SplitSelectStateCtor: Missing session instanceIds
+10-31 08:47:25.354  1206  1206 D StatsLog: LAUNCHER_SPLIT_SELECTION_EXIT_INTERRUPTED
+10-31 08:47:25.355   980  1034 D WindowManagerShell: setLauncherKeepClearAreaHeight: visible=false, height=175
+10-31 08:47:25.356   581  1623 I AppsFilter: interaction: PackageSetting{ef9ed7 com.android.microdroid.empty_payload/10198} -> PackageSetting{f480e2a local.pocketchat.test/10209} BLOCKED
+10-31 08:47:25.359  1206  1206 I TopTaskTracker: onTaskMovedToFront: (moved taskInfo to front) taskId=20, baseIntent=Intent { flg=0x10000000 cmp=local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity }
+10-31 08:47:25.363   980  1055 D SplashScreenView: Build android.window.SplashScreenView{12402e2 V.E...... ......ID 0,0-0,0}
+10-31 08:47:25.363   980  1055 D SplashScreenView: Icon: view: android.widget.ImageView{2024673 V.ED..... ......I. 0,0-0,0 #1020504 android:id/splashscreen_icon_view} drawable: com.android.wm.shell.startingsurface.SplashscreenIconDrawableFactory$ImmobileIconDrawable@c613930 size: 160
+10-31 08:47:25.363   980  1055 D SplashScreenView: Branding: view: android.view.View{ff229a9 G.ED..... ......I. 0,0-0,0 #1020503 android:id/splashscreen_branding_view} drawable: null size w: 0 h: 0
+10-31 08:47:25.372   488  1972 W IPCThreadState: Sending oneway calls to frozen process.
+10-31 08:47:25.373   378   429 I netd    : tetherGetStats() -> {[]} <3.10ms>
+10-31 08:47:25.374   581   927 I AppWidgetServiceImpl: Received broadcast: android.intent.action.PACKAGE_UNSTOPPED on user 0
+10-31 08:47:25.374   581   927 I AppWidgetServiceImpl: Updating package stopped masked state for uid 10209 package local.pocketchat.test isStopped false
+10-31 08:47:25.375   379   379 D Zygote  : Forked child process 14214
+10-31 08:47:25.375   581   614 I ActivityManager: Start proc 14214:local.pocketchat.test/u0a209 for next-top-activity {local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity}
+10-31 08:47:25.377   581  1623 D CoreBackPreview: Window{9df0391 u0 Splash Screen local.pocketchat.test}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@f5e9def, mPriority=0, mIsAnimationCallback=false}
+10-31 08:47:25.390   980  1377 V WindowManagerShell: onTransitionReady(transaction=2495376005813)
+10-31 08:47:25.390 14214 14214 I pocketchat.test: Using CollectorTypeCMC GC.
+10-31 08:47:25.391   581   601 V WindowManager: Sent Transition (#89) createdAt=10-31 08:47:25.347 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=20 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity } baseActivity=ComponentInfo{local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity} topActivity=ComponentInfo{local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity} origActivity=null realActivity=ComponentInfo{local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity} numActivities=1 lastActiveTime=790653 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{bf070e8 Task{a9b2e1e #20 type=standard A=10209:local.pocketchat.test}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{336f301 local.pocketchat.NetworkSafeIdleIntegrationActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= falseisLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false topActivityEligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=320 topActivityLetterboxHeight=640 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false cameraCompatTaskInfo=CameraCompatTaskInfo { cameraCompatControlState=hidden freeformCameraCompatMode=inactive}}}, pipTask = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 89 }
+10-31 08:47:25.391   581   601 V WindowManager:     startWCT=WindowContainerTransaction { changes = {} hops = [] errorCallbackToken=null taskFragmentOrganizer=null }
+10-31 08:47:25.391   980  1034 V WindowManagerShell: onTransitionReady (#89) android.os.BinderProxy@636b683: {id=89 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{android.window.IWindowContainerToken$Stub$Proxy@3816e1d} m=OPEN f=NONE leash=Surface(name=Task=20)/@0x521b206 sb=Rect(0, 0 - 320, 640) eb=Rect(0, 0 - 320, 640) d=0 taskParent=-1},{WCT{android.window.IWindowContainerToken$Stub$Proxy@516e892} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0xa3ad0c7 sb=Rect(0, 0 - 320, 640) eb=Rect(0, 0 - 320, 640) d=0 taskParent=-1}]}
+10-31 08:47:25.391   581   601 V WindowManager:     info={id=89 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[
+10-31 08:47:25.391   581   601 V WindowManager:         {WCT{RemoteToken{bf070e8 Task{a9b2e1e #20 type=standard A=10209:local.pocketchat.test}}} m=OPEN f=NONE leash=Surface(name=Task=20)/@0x54240fc sb=Rect(0, 0 - 320, 640) eb=Rect(0, 0 - 320, 640) d=0 taskParent=-1},
+10-31 08:47:25.391   581   601 V WindowManager:         {WCT{RemoteToken{a93ad01 Task{a1ab572 #1 type=home}}} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0xac39d52 sb=Rect(0, 0 - 320, 640) eb=Rect(0, 0 - 320, 640) d=0 taskParent=-1}
+10-31 08:47:25.391   581   601 V WindowManager:     ]}
+10-31 08:47:25.391   980  1034 V WindowManagerShell: Playing animation for (#89) android.os.BinderProxy@636b683@0
+10-31 08:47:25.391   980  1034 V WindowManagerShell:  try handler com.android.wm.shell.transition.DefaultMixedHandler@f22610a
+10-31 08:47:25.391   980  1034 V WindowManagerShell:  try handler com.android.wm.shell.keyguard.KeyguardTransitionHandler@2f08d7b
+10-31 08:47:25.391   980  1034 V WindowManagerShell:  try handler com.android.wm.shell.pip.PipTransition@3a9e798
+10-31 08:47:25.391   980  1034 V WindowManagerShell:  try handler com.android.wm.shell.activityembedding.ActivityEmbeddingController@b781bf1
+10-31 08:47:25.391   980  1034 V WindowManagerShell:  try handler com.android.wm.shell.recents.RecentsTransitionHandler@80d83d6
+10-31 08:47:25.391   980  1034 V ShellRecents: RecentsTransitionHandler.startAnimation: no controller found
+10-31 08:47:25.391   980  1034 V WindowManagerShell:  try handler com.android.wm.shell.splitscreen.StageCoordinator@9708657
+10-31 08:47:25.391   980  1034 V WindowManagerShell:  try handler com.android.wm.shell.transition.RemoteTransitionHandler@c21e544
+10-31 08:47:25.391   980  1034 V WindowManagerShell: Transition doesn't have explicit remote, search filters for match for {id=89 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{android.window.IWindowContainerToken$Stub$Proxy@3816e1d} m=OPEN f=NONE leash=Surface(name=Task=20)/@0x521b206 sb=Rect(0, 0 - 320, 640) eb=Rect(0, 0 - 320, 640) d=0 taskParent=-1},{WCT{android.window.IWindowContainerToken$Stub$Proxy@516e892} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0xa3ad0c7 sb=Rect(0, 0 - 320, 640) eb=Rect(0, 0 - 320, 640) d=0 taskParent=-1}]}
+10-31 08:47:25.391   980  1034 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0] notFlags=0x0 checks=[{atype=undefined independent=true modes=[OPEN,TO_FRONT] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null},{atype=undefined independent=true modes=[CLOSE,TO_BACK] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@2bc94b, appThread = android.app.IApplicationThread$Stub$Proxy@4fbbf28, debugName = OverlaySwipeBack }}
+10-31 08:47:25.391   980  1034 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0] notFlags=0x0 checks=[{atype=dream independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null},{atype=home independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@45ec441, appThread = android.app.IApplicationThread$Stub$Proxy@76b8de6, debugName = LauncherToDream }}
+10-31 08:47:25.392   980  1034 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0] notFlags=0x100 checks=[{atype=home independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=TOP topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null},{atype=standard independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@3ebaf27, appThread = android.app.IApplicationThread$Stub$Proxy@9e1a5d4, debugName = QuickstepLaunchHome }}
+10-31 08:47:25.392   980  1034 V WindowManagerShell:  Delegate animation for (#89) to null
+10-31 08:47:25.392   980  1034 V WindowManagerShell:  try handler com.android.wm.shell.transition.DefaultTransitionHandler@bbfe94f
+10-31 08:47:25.392   980  1034 V WindowManagerShell: start default transition animation, info = {id=89 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{android.window.IWindowContainerToken$Stub$Proxy@3816e1d} m=OPEN f=NONE leash=Surface(name=Task=20)/@0x521b206 sb=Rect(0, 0 - 320, 640) eb=Rect(0, 0 - 320, 640) d=0 taskParent=-1},{WCT{android.window.IWindowContainerToken$Stub$Proxy@516e892} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0xa3ad0c7 sb=Rect(0, 0 - 320, 640) eb=Rect(0, 0 - 320, 640) d=0 taskParent=-1}]}
+10-31 08:47:25.392   581  1623 W UserManagerService: Requested status bar icon for non-badged user 0
+10-31 08:47:25.392   980  1034 V WindowManagerShell: loadAnimation: anim=android.view.animation.AnimationSet@28d4e60 animAttr=0x13 type=OPEN isEntrance=false
+10-31 08:47:25.393 14214 14214 W pocketchat.test: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:25.393 14214 14214 W pocketchat.test: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:25.397   980  1034 V WindowManagerShell: loadAnimation: anim=android.view.animation.AnimationSet@24bcf19 animAttr=0x12 type=OPEN isEntrance=true
+10-31 08:47:25.400  1206  1794 D EGL_emulation: app_time_stats: avg=31.33ms min=1.39ms max=552.51ms count=28
+10-31 08:47:25.400 14214 14214 E pocketchat.test: Not starting debugger since process cannot load the jdwp agent.
+10-31 08:47:25.402   980  1034 V WindowManagerShell:  animated by com.android.wm.shell.transition.DefaultTransitionHandler@bbfe94f
+10-31 08:47:25.404 14214 14214 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:25.430 14214 14214 D nativeloader: Configuring clns-7 for other apk /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk. target_sdk_version=35, uses_libraries=, library_path=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64:/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/local.pocketchat.test
+10-31 08:47:25.432 14214 14214 D CompatChangeReporter: Compat change id reported: 202956589; UID 10209; state: ENABLED
+10-31 08:47:25.434  1206  1794 D EGL_emulation: app_time_stats: avg=73.33ms min=8.65ms max=684.43ms count=14
+10-31 08:47:25.438 14214 14214 V GraphicsEnvironment: Currently set values for:
+10-31 08:47:25.438 14214 14214 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+10-31 08:47:25.438 14214 14214 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+10-31 08:47:25.438 14214 14214 V GraphicsEnvironment: Global.Settings values are invalid: number of packages: 0, number of values: 0
+10-31 08:47:25.438 14214 14214 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+10-31 08:47:25.445 14214 14214 W SQLiteCompatibilityWalFlags: Cannot read global setting sqlite_compatibility_wal_flags - Application state not available
+10-31 08:47:25.460   445   445 I BpBinder: onLastStrongRef automatically unlinking death recipients: 
+10-31 08:47:25.510   581  1313 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ENABLE_FAKE_FOCUS
+10-31 08:47:25.510   581  1313 D CompatChangeReporter: Compat change id reported: 324203798; UID 10209; state: ENABLED
+10-31 08:47:25.526 14214 14214 D CompatChangeReporter: Compat change id reported: 279646685; UID 10209; state: ENABLED
+10-31 08:47:25.527 14214 14214 D CompatChangeReporter: Compat change id reported: 309578419; UID 10209; state: ENABLED
+10-31 08:47:25.536 14214 14214 W HWUI    : Unknown dataspace 0
+10-31 08:47:25.540 14214 14214 D CompatChangeReporter: Compat change id reported: 312399441; UID 10209; state: ENABLED
+10-31 08:47:25.541 14214 14232 I PocketNetworkSafeIdle: {"kind":"fixtureProviderControl","value":{"schema":1,"registeredProviderIdentity":236264105,"profilePath":"\/data\/data\/local.pocketchat.test\/no_backup","removeCallbacksCalled":true,"drainRevisionBefore":0,"drainRevisionAfter":1,"automaticDrainSuspended":true,"restored":false}}
+10-31 08:47:25.544   581  1623 D CoreBackPreview: Window{cfc93a u0 local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@2d68348, mPriority=0, mIsAnimationCallback=false}
+10-31 08:47:25.551 14214 14229 I EGL_emulation: Opening libGLESv1_CM_emulation.so
+10-31 08:47:25.552 14214 14229 I EGL_emulation: Opening libGLESv2_emulation.so
+10-31 08:47:25.585 14214 14229 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+10-31 08:47:25.602 14214 14232 I PocketNetworkSafeIdle: {"kind":"testTrustPrepared","value":{"schema":1,"method":"NSS SQL public-root profile preload","assetDirectory":"network-safe-idle-trust\/","hostname":"chatgpt.com","testCaSha256":"794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226","testLeafSha256":"66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c","profileDbSha256":"a3114642d39ee1f3bc23c4428b08035abeb101de367547dcfe32680af6286023","profilePath":"\/data\/data\/local.pocketchat.test\/no_backup\/gecko-browser","preparedBeforeRuntime":true,"databaseCopyShaVerified":true,"serverChainShaVerified":true,"certificateValidityChecked":true,"certificateHostnameSanMatches":true,"productionTrustChanged":false,"certificateExceptionUsed":false}}
+10-31 08:47:25.603 14214 14232 D TrafficStats: tagSocket(105) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:25.604 14214 14232 D TrafficStats: tagSocket(106) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:25.607   164   164 I hwservicemanager: getTransport: Cannot find entry android.hardware.graphics.mapper@4.0::IMapper/default in either framework or device VINTF manifest.
+10-31 08:47:25.607 14214 14229 I Gralloc4: mapper 4.x is not supported
+10-31 08:47:25.750     0     0 I servicemanager: Caller(pid=14214,uid=10209,sid=u:r:untrusted_app:s0:c209,c256,c512,c768) Could not find android.hardware.graphics.allocator.IAllocator/default in the VINTF manifest. No alternative instances declared in VINTF.
+10-31 08:47:25.709   980  1034 V WindowManagerShell: Transition animation finished (aborted=false), notifying core (#89) android.os.BinderProxy@636b683@0
+10-31 08:47:25.770   581   601 V WindowManager: Finish Transition (#89): created at 10-31 08:47:25.347 collect-started=0.041ms request-sent=4.011ms started=4.894ms ready=41.649ms sent=42.402ms finished=416.174ms
+10-31 08:47:25.782   980  1034 V WindowManagerShell: Track 0 became idle
+10-31 08:47:25.782   980  1034 V WindowManagerShell: All active transition animations finished
+10-31 08:47:25.782   980  1034 W Looper  : Slow dispatch took 76ms wmshell.main h=android.os.Handler c=com.android.wm.shell.transition.DefaultTransitionHandler$$ExternalSyntheticLambda0@5b90adb m=0
+10-31 08:47:25.794   581  1623 W UserManagerService: Requested status bar icon for non-badged user 0
+10-31 08:47:25.803  1206  1206 D VRI[NexusLauncherActivity]: visibilityChanged oldVisibility=true newVisibility=false
+10-31 08:47:25.818  1206  1206 D NexusLauncherModelDelegate: notifySmartspaceEvent: SmartspaceTargetEvent{mSmartspaceTarget=null, mSmartspaceActionId='null', mEventType=7}
+10-31 08:47:25.824   581  1623 W UserManagerService: Requested status bar icon for non-badged user 0
+10-31 08:47:25.854   581   713 I ImeTracker: local.pocketchat.test:9dae95df: onRequestHide at ORIGIN_SERVER reason HIDE_UNSPECIFIED_WINDOW fromUser false
+10-31 08:47:25.855   581   713 I ImeTracker: local.pocketchat.test:9dae95df: onCancelled at PHASE_SERVER_SHOULD_HIDE
+10-31 08:47:25.874  1435  1435 I GoogleInputMethodService: GoogleInputMethodService.onFinishInput():3157 
+10-31 08:47:25.877  1206  1206 D BaseDepthController: setSurface:
+10-31 08:47:25.877  1206  1206 D BaseDepthController: 	mWaitingOnSurfaceValidity: false
+10-31 08:47:25.877  1206  1206 D BaseDepthController: 	mSurface: null
+10-31 08:47:25.880  1206  1206 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+10-31 08:47:25.883   581   601 I ActivityTaskManager: Displayed local.pocketchat.test/local.pocketchat.NetworkSafeIdleIntegrationActivity for user 0: +464ms
+10-31 08:47:25.884  1206  1206 D StateManager: goToState - fromState: Normal, toState: Normal, partial trace:
+10-31 08:47:25.884  1206  1206 D StateManager: 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme 31f9979659277bb965985aff1272c33e3c3c9e755b77166d20a2465454178f2c:4)
+10-31 08:47:25.884  1206  1206 D StateManager: 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme 31f9979659277bb965985aff1272c33e3c3c9e755b77166d20a2465454178f2c:1)
+10-31 08:47:25.884  1206  1206 D StateManager: 	at com.android.launcher3.statemanager.StatefulActivity.onStop(go/retraceme 31f9979659277bb965985aff1272c33e3c3c9e755b77166d20a2465454178f2c:34)
+10-31 08:47:25.888  1206  1206 D StatsLog: LAUNCHER_ONSTOP
+10-31 08:47:25.891   581  1313 I AppWidgetServiceImpl: setAppWidgetHidden() 0
+10-31 08:47:25.893  1206  2124 D OneSearchSuggestProvider: Shut down the binder channel
+10-31 08:47:25.893  1435  1435 I GoogleInputMethodService: GoogleInputMethodService.updateDeviceLockedStatus():2248 repeatCheckTimes = 0, locked = false
+10-31 08:47:25.894  1435  1435 I GoogleInputMethodService: GoogleInputMethodService.onStartInput():1986 onStartInput(EditorInfo{EditorInfo{packageName=local.pocketchat.test, inputType=0, inputTypeString=NULL, enableLearning=false, autoCorrection=false, autoComplete=false, imeOptions=0, privateImeOptions=null, actionName=UNSPECIFIED, actionLabel=null, initialSelStart=-1, initialSelEnd=-1, initialCapsMode=0, label=null, fieldId=0, fieldName=null, extras=null, hintText=null, hintLocales=[]}}, false)
+10-31 08:47:25.894  1206  1206 D StatsLog: LAUNCHER_GOOGLE_SEARCH_RESTORE_LIST_SIZE_AFTER_ACTIVITY_RESTART
+10-31 08:47:25.901  1435  1435 I GoogleInputMethodService: GoogleInputMethodService.updateDeviceLockedStatus():2248 repeatCheckTimes = 1, locked = false
+10-31 08:47:25.903  1206  1219 I IPCThreadState: oneway function results for code 2 on binder at 0x7f135dfdfc10 will be dropped but finished with status UNKNOWN_TRANSACTION
+10-31 08:47:25.903  1435  1435 I AndroidIME: InputBundleManager.loadActiveInputBundleId():450 loadActiveInputBundleId: und-Latn-x-password, password
+10-31 08:47:25.906   581  1313 W PackageConfigPersister: App-specific configuration not found for packageName: local.pocketchat.test and userId: 0
+10-31 08:47:26.192   488  1972 W IPCThreadState: Sending oneway calls to frozen process.
+10-31 08:47:26.206   980  1054 W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=false callback=android.view.ViewRootImpl$$ExternalSyntheticLambda11@1ab765
+10-31 08:47:26.208   581  1623 W InputManager-JNI: Input channel object '9df0391 Splash Screen local.pocketchat.test (client)' was disposed without first being removed with the input manager!
+10-31 08:47:26.208   581  1313 D CoreBackPreview: Window{9df0391 u0 Splash Screen local.pocketchat.test EXITING}: Setting back callback null
+10-31 08:47:26.224 14243 14243 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:26.241 14243 14243 I AndroidRuntime: Using default boot image
+10-31 08:47:26.241 14243 14243 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:26.249 14243 14243 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:26.250 14243 14243 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:26.316 14214 14232 D TrafficStats: tagSocket(109) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.317 14214 14232 D TrafficStats: tagSocket(109) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.338 14214 14232 D TrafficStats: tagSocket(109) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.334 14245 14245 W libmihomo.so: type=1400 audit(0.0:330): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:26.334 14245 14245 W libmihomo.so: type=1400 audit(0.0:331): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:26.334 14245 14245 W libmihomo.so: type=1400 audit(0.0:332): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:26.334 14245 14245 W libmihomo.so: type=1400 audit(0.0:333): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:26.406 14245 14245 W libmihomo.so: type=1400 audit(0.0:334): avc:  denied  { read } for  name="somaxconn" dev="proc" ino=33218 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:proc_net:s0 tclass=file permissive=0 app=local.pocketchat.test
+10-31 08:47:26.468 14243 14243 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:26.481 14243 14243 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:26.481 14243 14243 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:26.482 14243 14243 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:26.483 14243 14243 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:26.485 14243 14243 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:26.487 14243 14243 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:26.487 14243 14243 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:26.494 14214 14232 D TrafficStats: tagSocket(109) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.497 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Packaged native ELF exposes its actual ABI, streamed SHA and controller version","pass":true}}
+10-31 08:47:26.498 14214 14232 I Process : Sending signal. PID: 14245 SIG: 9
+10-31 08:47:26.515 14214 14266 D TrafficStats: tagSocket(118) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.515 14214 14266 D TrafficStats: tagSocket(118) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.520 14214 14266 D TrafficStats: tagSocket(118) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.522 14243 14243 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:26.523 14243 14243 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:26.675     0     0 W audit   : audit_lost=83 audit_rate_limit=5 audit_backlog_limit=64
+10-31 08:47:26.676     0     0 E audit   : rate limit exceeded
+10-31 08:47:26.534 14243 14243 D AndroidRuntime: Shutting down VM
+10-31 08:47:26.671 14214 14266 D TrafficStats: tagSocket(118) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.683 14214 14266 I Process : Sending signal. PID: 14267 SIG: 9
+10-31 08:47:26.683 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Real native parser returns entry fingerprint","pass":true}}
+10-31 08:47:26.701 14214 14279 D TrafficStats: tagSocket(120) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.701 14214 14279 D TrafficStats: tagSocket(120) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.723 14214 14279 D TrafficStats: tagSocket(120) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.874 14214 14279 D TrafficStats: tagSocket(120) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:26.879 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Real native parser returns exit fingerprint","pass":true}}
+10-31 08:47:26.933   581  1623 D ConnectivityService: requestNetwork for uid/pid:10209/14214 activeRequest: null callbackRequest: 199 [NetworkRequest [ REQUEST id=200, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false
+10-31 08:47:26.935   581   900 D ConnectivityService: NetReassign [200 : null → 102] [c 0] [a 0] [i 1]
+10-31 08:47:26.936   581   893 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=200, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:26.936   581   893 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=200, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:26.936   581   893 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=200, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:26.936 14214 14214 D CompatChangeReporter: Compat change id reported: 63938206; UID 10209; state: ENABLED
+10-31 08:47:26.937   581   893 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=200, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:27.084     0     0 W healthd : battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+10-31 08:47:26.951   581  1623 D FileUtils: Rounded bytes from 3121197056 to 4000000000
+10-31 08:47:26.960 14214 14214 I GeckoRuntime: Adding debug configuration from: /data/user/0/local.pocketchat.test/no_backup/gecko-browser.yaml
+10-31 08:47:26.960 14214 14214 D GeckoDebugConfig: Adding prefs from debug config: {network.proxy.type=1, network.proxy.socks=127.0.0.1, network.proxy.socks_port=9, network.proxy.socks_version=5, network.proxy.socks_remote_dns=true, network.proxy.no_proxies_on=, network.proxy.allow_hijacking_localhost=true, network.trr.mode=5, network.dns.disablePrefetch=true, network.prefetch-next=false, network.http.speculative-parallel-limit=0, media.peerconnection.enabled=false}
+10-31 08:47:26.965   581  1623 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10209, packageName = null, attributionTag = null, token = android.os.Binder@314c42e, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-31 08:47:26.971 14214 14214 D GeckoThread: State changed to LAUNCHED
+10-31 08:47:26.971 14214 14294 I GeckoThread: preparing to run Gecko
+10-31 08:47:26.980 14214 14214 D GeckoRuntime: Lifecycle: onCreate
+10-31 08:47:26.980 14214 14214 D GeckoRuntime: Lifecycle: onStart
+10-31 08:47:26.980 14214 14214 D GeckoRuntime: Lifecycle: onResume
+10-31 08:47:26.983 14214 14294 D nativeloader: Load /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64/libmozglue.so using ns clns-7 from class loader (caller=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!classes2.dex): ok
+10-31 08:47:26.984 14214 14294 D GeckoThread: State changed to MOZGLUE_READY
+10-31 08:47:27.001 14214 14294 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.002 14214 14214 D GeckoNetworkManager: Incoming event start for state OffNoListeners -> OnNoListeners
+10-31 08:47:27.003 14214 14294 W Settings: Setting animator_duration_scale has moved from android.provider.Settings.System to android.provider.Settings.Global, returning read-only global URI.
+10-31 08:47:27.004 14214 14214 D GeckoNetworkManager: New network state: UP, WIFI, WIFI
+10-31 08:47:27.004   379   379 D Zygote  : Forked child process 14295
+10-31 08:47:27.009   581   614 I ActivityManager: Start proc 14295:local.pocketchat.test:crashhelper_disable_art_image_/u0a209 for service {local.pocketchat.test/org.mozilla.gecko.crashhelper.CrashHelper}
+10-31 08:47:27.010   581  1313 D ConnectivityService: requestNetwork for uid/pid:10209/14214 activeRequest: null callbackRequest: 201 [NetworkRequest [ REQUEST id=202, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false
+10-31 08:47:27.011   581   900 D ConnectivityService: NetReassign [202 : null → 102] [c 0] [a 0] [i 0]
+10-31 08:47:27.011   581   893 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=202, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:27.011   581   893 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=202, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:27.011   581   893 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=202, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:27.011   581   893 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=202, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:27.017 14214 14214 D GeckoNetworkManager: Incoming event receivedUpdate for state OnNoListeners -> OnNoListeners
+10-31 08:47:27.017 14214 14214 D GeckoNetworkManager: New network state: UP, WIFI, WIFI
+10-31 08:47:27.018 14214 14294 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.020 14214 14294 E GeckoLibLoad: Load sqlite start
+10-31 08:47:27.023 14214 14294 E GeckoLibLoad: Load sqlite done
+10-31 08:47:27.023 14214 14294 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.023 14214 14294 E GeckoLibLoad: Load nss start
+10-31 08:47:27.023 14214 14294 E GeckoLibLoad: Load nss done
+10-31 08:47:27.023 14214 14294 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.034 14295 14295 I able_art_image_: Using CollectorTypeCMC GC.
+10-31 08:47:27.035 14295 14295 W able_art_image_: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:27.035 14295 14295 W able_art_image_: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:27.037 14295 14295 E able_art_image_: Not starting debugger since process cannot load the jdwp agent.
+10-31 08:47:27.040 14295 14295 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:27.058 14295 14295 I able_art_image_: Skipping app image load for local.pocketchat.test:crashhelper_disable_art_image_
+10-31 08:47:27.058 14295 14295 D nativeloader: Configuring clns-7 for other apk /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk. target_sdk_version=35, uses_libraries=, library_path=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64:/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/local.pocketchat.test
+10-31 08:47:27.059 14295 14295 D CompatChangeReporter: Compat change id reported: 202956589; UID 10209; state: ENABLED
+10-31 08:47:27.059 14214 14294 E GeckoLibLoad: Loaded libs in 36.311619ms total, 0ms(0ms) user, 32ms(34ms) system, 0(0) faults
+10-31 08:47:27.059 14214 14294 D GeckoThread: State changed to LIBS_READY
+10-31 08:47:27.059 14214 14294 W GeckoThread: zerdatime 792362 - runGecko
+10-31 08:47:27.063 14295 14295 V GraphicsEnvironment: Currently set values for:
+10-31 08:47:27.063 14295 14295 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+10-31 08:47:27.063 14295 14295 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+10-31 08:47:27.063 14295 14295 V GraphicsEnvironment: Global.Settings values are invalid: number of packages: 0, number of values: 0
+10-31 08:47:27.063 14295 14295 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+10-31 08:47:27.070 14295 14295 D nativeloader: Load /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64/libcrashhelper.so using ns clns-7 from class loader (caller=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!classes2.dex): ok
+10-31 08:47:27.168   378 14317 I resolv  : GetHostByNameHandler::run: {102 102 102 983142 10209 0}
+10-31 08:47:27.183 14214 14294 I Gecko:DumpUtils: Fifo watcher disabled via pref.
+10-31 08:47:27.199 14214 14294 W pocketchat.test: Accessing hidden field Ljava/lang/Boolean;->value:Z (max-target-p, JNI, denied)
+10-31 08:47:27.199 14214 14294 W pocketchat.test: Accessing hidden field Ljava/lang/Integer;->value:I (max-target-p, JNI, denied)
+10-31 08:47:27.199 14214 14294 W pocketchat.test: Accessing hidden field Ljava/lang/Long;->value:J (max-target-p, JNI, denied)
+10-31 08:47:27.199 14214 14294 W pocketchat.test: Accessing hidden field Ljava/lang/Double;->value:D (max-target-p, JNI, denied)
+10-31 08:47:27.200 14214 14294 D GeckoThread: State changed to JNI_READY
+10-31 08:47:27.266 14214 14294 I GeckoConsole: No chrome package registered for chrome://browser/content/built_in_addons.json
+10-31 08:47:27.275 14214 14294 D GeckoThread: State changed to PROFILE_READY
+10-31 08:47:27.282 14214 14294 D GeckoThread: State changed to RUNNING
+10-31 08:47:27.334 14214 14214 D GeckoNetworkManager: Incoming event enableNotifications for state OnNoListeners -> OnWithListeners
+10-31 08:47:27.334 14214 14214 D GeckoNetworkManager: New network state: UP, WIFI, WIFI
+10-31 08:47:27.335   581  1313 W ActivityManager: Receiver with filter android.content.IntentFilter@d4a0716 already registered for pid 14214, callerPackage is local.pocketchat.test
+10-31 08:47:27.335 14214 14214 D GeckoNetworkManager: Incoming event receivedUpdate for state OnWithListeners -> OnWithListeners
+10-31 08:47:27.336 14214 14214 D GeckoNetworkManager: New network state: UP, WIFI, WIFI
+10-31 08:47:27.367 14214 14294 W GeckoEventDispatcher: No listener for GeckoView:WebExtension:OnInstalling
+10-31 08:47:27.378 14214 14294 W GeckoEventDispatcher: No listener for GeckoView:WebExtension:OnOptionalPermissionsChanged
+10-31 08:47:27.378 14214 14294 W GeckoEventDispatcher: No listener for GeckoView:WebExtension:OnOptionalPermissionsChanged
+10-31 08:47:27.421 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.android.av1-dav1d.decoder
+10-31 08:47:27.421 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.android.av1.decoder
+10-31 08:47:27.421 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.av1.encoder
+10-31 08:47:27.421 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.vp8.decoder
+10-31 08:47:27.421 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.421 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.421 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.421 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.421 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.421 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.421 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x1
+10-31 08:47:27.421 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.vp8.decoder. Color: 0x13
+10-31 08:47:27.421 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.vp8.encoder
+10-31 08:47:27.421 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.vp8.encoder
+10-31 08:47:27.421 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.vp9.decoder
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x100
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Profile: 0x4/Level=0x100
+10-31 08:47:27.422 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.vp9.decoder. Color: 0x13
+10-31 08:47:27.422 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.vp9.encoder
+10-31 08:47:27.422 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.vp9.encoder
+10-31 08:47:27.422 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.h264.decoder
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Profile: 0x10000/Level=0x10000
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x10000
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Profile: 0x2/Level=0x10000
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Profile: 0x80000/Level=0x10000
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Profile: 0x8/Level=0x10000
+10-31 08:47:27.422 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.h264.decoder. Color: 0x13
+10-31 08:47:27.422 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.avc.encoder
+10-31 08:47:27.422 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.h264.encoder
+10-31 08:47:27.422 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.hevc.decoder
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.422 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x80000
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Profile: 0x4/Level=0x80000
+10-31 08:47:27.423 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.hevc.decoder. Color: 0x13
+10-31 08:47:27.423 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.hevc.encoder
+10-31 08:47:27.423 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.avc.encoder
+10-31 08:47:27.423 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.h264.encoder
+10-31 08:47:27.423 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.android.av1-dav1d.decoder
+10-31 08:47:27.423 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.android.av1.decoder
+10-31 08:47:27.423 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.av1.encoder
+10-31 08:47:27.423 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.vp8.decoder
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.423 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x1
+10-31 08:47:27.423 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.vp8.decoder. Color: 0x13
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.vp8.encoder
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.vp8.encoder
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.vp9.decoder
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x100
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Profile: 0x4/Level=0x100
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.vp9.decoder. Color: 0x13
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.vp9.encoder
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.vp9.encoder
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.h264.decoder
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Profile: 0x10000/Level=0x10000
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x10000
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Profile: 0x2/Level=0x10000
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Profile: 0x80000/Level=0x10000
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Profile: 0x8/Level=0x10000
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.h264.decoder. Color: 0x13
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.avc.encoder
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.h264.encoder
+10-31 08:47:27.424 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.hevc.decoder
+10-31 08:47:27.424 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x80000
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Profile: 0x4/Level=0x80000
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.hevc.decoder. Color: 0x13
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.hevc.encoder
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.android.av1-dav1d.decoder
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.android.av1.decoder
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.av1.encoder
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.vp8.decoder
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x1
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.vp8.decoder. Color: 0x13
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.vp8.encoder
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.vp8.encoder
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.vp9.decoder
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x100
+10-31 08:47:27.425 14214 14294 V HardwareCodecCapability:    Profile: 0x4/Level=0x100
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.vp9.decoder. Color: 0x13
+10-31 08:47:27.425 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.vp9.encoder
+10-31 08:47:27.426 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.vp9.encoder
+10-31 08:47:27.426 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.h264.decoder
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Profile: 0x10000/Level=0x10000
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x10000
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Profile: 0x2/Level=0x10000
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Profile: 0x80000/Level=0x10000
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Profile: 0x8/Level=0x10000
+10-31 08:47:27.426 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.h264.decoder. Color: 0x13
+10-31 08:47:27.426 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.avc.encoder
+10-31 08:47:27.426 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.h264.encoder
+10-31 08:47:27.426 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.hevc.decoder
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x80000
+10-31 08:47:27.426 14214 14294 V HardwareCodecCapability:    Profile: 0x4/Level=0x80000
+10-31 08:47:27.426 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.hevc.decoder. Color: 0x13
+10-31 08:47:27.426 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.hevc.encoder
+10-31 08:47:27.432   581  2017 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10209, packageName = null, attributionTag = null, token = android.os.Binder@314c42e, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-31 08:47:27.434 14214 14327 D ServiceAllocator: org.mozilla.gecko.process.GeckoChildProcessServices$gpu updateBindings: FOREGROUND priority, 0 importance, not connected pid, 3 successful binds, 0 failed binds, 0 successful unbinds
+10-31 08:47:27.440   379   379 D Zygote  : Forked child process 14362
+10-31 08:47:27.440   581   614 I ActivityManager: Start proc 14362:local.pocketchat.test:gecko_env0_gpu_disable_art_image_/u0a209 for service {local.pocketchat.test/local.pocketchat.GeckoEnvironmentServices$E0gpu}
+10-31 08:47:27.467 14362 14362 I able_art_image_: Using CollectorTypeCMC GC.
+10-31 08:47:27.468 14362 14362 W able_art_image_: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:27.468 14362 14362 W able_art_image_: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:27.470 14362 14362 E able_art_image_: Not starting debugger since process cannot load the jdwp agent.
+10-31 08:47:27.472 14362 14362 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:27.473   378 14372 I resolv  : GetAddrInfoHandler::run: {102 102 102 983142 10209 0}
+10-31 08:47:27.474   378 14374 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+10-31 08:47:27.475   378 14374 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7d17b58e3150
+10-31 08:47:27.475   378 14374 I resolv  : doQuery: rcode=0, ancount=2, return value=119
+10-31 08:47:27.477   378 14375 I resolv  : res_nmkquery: (QUERY, IN, A)
+10-31 08:47:27.477   378 14375 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7d17b58e12f0
+10-31 08:47:27.477   378 14375 I resolv  : doQuery: rcode=0, ancount=2, return value=107
+10-31 08:47:27.483 14362 14362 I able_art_image_: Skipping app image load for local.pocketchat.test:gecko_env0_gpu_disable_art_image_
+10-31 08:47:27.483 14362 14362 D nativeloader: Configuring clns-7 for other apk /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk. target_sdk_version=35, uses_libraries=, library_path=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64:/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/local.pocketchat.test
+10-31 08:47:27.484 14362 14362 D CompatChangeReporter: Compat change id reported: 202956589; UID 10209; state: ENABLED
+10-31 08:47:27.485 14362 14362 V GraphicsEnvironment: Currently set values for:
+10-31 08:47:27.485 14362 14362 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+10-31 08:47:27.485 14362 14362 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+10-31 08:47:27.486 14362 14362 V GraphicsEnvironment: Global.Settings values are invalid: number of packages: 0, number of values: 0
+10-31 08:47:27.486 14362 14362 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+10-31 08:47:27.488 14362 14362 I ServiceChildProcess: onCreate, process name: local.pocketchat.test:gecko_env0_gpu_disable_art_image_
+10-31 08:47:27.489 14362 14362 D GeckoThread: State changed to LAUNCHED
+10-31 08:47:27.489 14362 14378 I GeckoThread: preparing to run Gecko
+10-31 08:47:27.492 14362 14378 D nativeloader: Load /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64/libmozglue.so using ns clns-7 from class loader (caller=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!classes2.dex): ok
+10-31 08:47:27.492 14362 14378 D GeckoThread: State changed to MOZGLUE_READY
+10-31 08:47:27.493 14362 14378 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.493 14362 14378 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.494 14362 14378 E GeckoLibLoad: Load sqlite start
+10-31 08:47:27.494 14362 14378 E GeckoLibLoad: Load sqlite done
+10-31 08:47:27.494 14362 14378 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.494 14362 14378 E GeckoLibLoad: Load nss start
+10-31 08:47:27.494 14362 14378 E GeckoLibLoad: Load nss done
+10-31 08:47:27.494 14362 14378 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.499 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Connect
+10-31 08:47:27.502 14362 14378 E GeckoLibLoad: Loaded libs in 8.202311ms total, 0ms(0ms) user, 6ms(7ms) system, 0(0) faults
+10-31 08:47:27.503 14362 14378 D GeckoThread: State changed to LIBS_READY
+10-31 08:47:27.503 14362 14378 W GeckoThread: zerdatime 792805 - runGecko
+10-31 08:47:27.505 14214 14294 W GeckoEventDispatcher: No listener for GeckoView:WebExtension:OnInstalled
+10-31 08:47:27.506 14214 14294 W GeckoEventDispatcher: No listener for GeckoView:WebExtension:OnReady
+10-31 08:47:27.506 14214 14214 I WebExtension: releasePendingMessages: extension=browser@pocketchat.local nativeApp=pocketroute session=null
+10-31 08:47:27.506 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Connect
+10-31 08:47:27.508 14214 14294 D HardwareCodecCapability: Found candidate encoder c2.android.vp8.encoder
+10-31 08:47:27.508 14214 14294 D HardwareCodecCapability: Found candidate encoder OMX.google.vp8.encoder
+10-31 08:47:27.508 14214 14294 D HardwareCodecCapability: Found candidate decoder c2.goldfish.vp8.decoder
+10-31 08:47:27.508 14214 14294 V HardwareCodecCapability:    Color: 0x7f000789
+10-31 08:47:27.508 14214 14294 V HardwareCodecCapability:    Color: 0x7f420888
+10-31 08:47:27.508 14214 14294 V HardwareCodecCapability:    Color: 0x13
+10-31 08:47:27.508 14214 14294 V HardwareCodecCapability:    Color: 0x15
+10-31 08:47:27.508 14214 14294 V HardwareCodecCapability:    Color: 0x14
+10-31 08:47:27.508 14214 14294 V HardwareCodecCapability:    Color: 0x27
+10-31 08:47:27.508 14214 14294 V HardwareCodecCapability:    Profile: 0x1/Level=0x1
+10-31 08:47:27.508 14214 14294 D HardwareCodecCapability: Found target decoder c2.goldfish.vp8.decoder. Color: 0x13
+10-31 08:47:27.509 14362 14378 D GeckoThread: State changed to RUNNING
+10-31 08:47:27.512 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:27.518   378 14404 I resolv  : GetAddrInfoHandler::run: {102 102 102 983142 10209 0}
+10-31 08:47:27.519   378 14405 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+10-31 08:47:27.519   378 14406 I resolv  : res_nmkquery: (QUERY, IN, A)
+10-31 08:47:27.519   378 14406 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7d17b58e5f70
+10-31 08:47:27.519   378 14406 I resolv  : doQuery: rcode=0, ancount=2, return value=111
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW audio/3gpp
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW audio/flac
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW video/hevc
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: HW video/x-vnd.on2.vp8
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW video/3gpp
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW audio/g711-mlaw
+10-31 08:47:27.521   378 14405 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7d17b58e4230
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW video/mp4v-es
+10-31 08:47:27.521   378 14405 I resolv  : doQuery: rcode=0, ancount=2, return value=123
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW audio/mp4a-latm
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW audio/vorbis
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: HW video/x-vnd.on2.vp9
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW video/av01
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW audio/raw
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: HW video/avc
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW audio/opus
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW audio/mpeg
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: HW video/hevc
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW audio/g711-alaw
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW audio/amr-wb
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW video/x-vnd.on2.vp8
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW video/avc
+10-31 08:47:27.521 14362 14402 D HardwareCodecCapability: MIME support: SW video/x-vnd.on2.vp9
+10-31 08:47:27.531 14362 14385 I EGL_emulation: Opening libGLESv1_CM_emulation.so
+10-31 08:47:27.531 14362 14385 I EGL_emulation: Opening libGLESv2_emulation.so
+10-31 08:47:27.545 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:27.572   581  2017 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 99019, packageName = null, attributionTag = null, token = android.os.Binder@314c42e, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-31 08:47:27.574 14214 14327 D ServiceAllocator: org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0 updateBindings: FOREGROUND priority, 0 importance, not connected pid, 3 successful binds, 0 failed binds, 0 successful unbinds
+10-31 08:47:27.581   379   379 D Zygote  : Forked child process 14408
+10-31 08:47:27.581   581   614 I ActivityManager: Start proc 14408:local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_1b1e3dc00a504def9331d8476b5bbf34/u0i19 for service {local.pocketchat.test/org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_1b1e3dc00a504def9331d8476b5bbf34}
+10-31 08:47:27.599   378   429 I netd    : tetherGetStats() -> {[]} <4.43ms>
+10-31 08:47:27.608 14408 14408 I 331d8476b5bbf34: Using CollectorTypeCMC GC.
+10-31 08:47:27.609 14408 14408 W 331d8476b5bbf34: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:27.609 14408 14408 W 331d8476b5bbf34: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:27.611 14408 14408 E 331d8476b5bbf34: Not starting debugger since process cannot load the jdwp agent.
+10-31 08:47:27.614 14408 14408 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:27.625 14408 14408 I 331d8476b5bbf34: Skipping app image load for local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessS
+10-31 08:47:27.770     0     0 W servicemanager: Isolated app with UID 99019 requested 'network_management', but the service is not allowed for isolated apps.
+10-31 08:47:27.625 14408 14408 D nativeloader: Configuring clns-7 for other apk /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk. target_sdk_version=35, uses_libraries=, library_path=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64:/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/local.pocketchat.test
+10-31 08:47:27.626 14408 14408 D CompatChangeReporter: Compat change id reported: 202956589; UID 99019; state: ENABLED
+10-31 08:47:27.775     0     0 W servicemanager: Isolated app with UID 99019 requested 'connectivity', but the service is not allowed for isolated apps.
+10-31 08:47:27.779     0     0 W servicemanager: Isolated app with UID 99019 requested 'content_capture', but the service is not allowed for isolated apps.
+10-31 08:47:27.633 14408 14408 I ServiceChildProcess: onCreate, process name: local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_1b1e3dc00a504def9331d8476b5bbf34
+10-31 08:47:27.634 14408 14408 D GeckoThread: State changed to LAUNCHED
+10-31 08:47:27.634 14408 14419 I GeckoThread: preparing to run Gecko
+10-31 08:47:27.636 14408 14419 D nativeloader: Load /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64/libmozglue.so using ns clns-7 from class loader (caller=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!classes2.dex): ok
+10-31 08:47:27.636 14408 14419 D GeckoThread: State changed to MOZGLUE_READY
+10-31 08:47:27.637 14408 14419 W ContextImpl: Failed to ensure /data/user/0/local.pocketchat.test/files: mkdir failed: ENOENT (No such file or directory)
+10-31 08:47:27.637 14408 14419 W ContextImpl: Failed to ensure /data/user/0/local.pocketchat.test/cache: mkdir failed: ENOENT (No such file or directory)
+10-31 08:47:27.638 14408 14419 W ContextImpl: Failed to update user.inode_cache: stat failed: ENOENT (No such file or directory)
+10-31 08:47:27.638 14408 14419 D CompatChangeReporter: Compat change id reported: 312399441; UID 99019; state: ENABLED
+10-31 08:47:27.638 14214 14327 D ServiceAllocator: org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0 updateBindings: FOREGROUND priority, 2 importance, 14408 pid, 1 successful binds, 0 failed binds, 0 successful unbinds
+10-31 08:47:27.638 14408 14419 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.638 14408 14419 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.639 14408 14419 E GeckoLibLoad: Load sqlite start
+10-31 08:47:27.640 14408 14419 E GeckoLibLoad: Load sqlite done
+10-31 08:47:27.640 14408 14419 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.640 14408 14419 E GeckoLibLoad: Load nss start
+10-31 08:47:27.640 14408 14419 E GeckoLibLoad: Load nss done
+10-31 08:47:27.640 14408 14419 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:27.652 14214 14294 I GeckoSession: zerdatime 792954 - chrome startup finished
+10-31 08:47:27.656   164   164 I hwservicemanager: getTransport: Cannot find entry android.hardware.graphics.mapper@4.0::IMapper/default in either framework or device VINTF manifest.
+10-31 08:47:27.656 14362 14385 I Gralloc4: mapper 4.x is not supported
+10-31 08:47:27.799     0     0 I servicemanager: Caller(pid=14362,uid=10209,sid=u:r:untrusted_app:s0:c209,c256,c512,c768) Could not find android.hardware.graphics.allocator.IAllocator/default in the VINTF manifest. No alternative instances declared in VINTF.
+10-31 08:47:27.720 14214 14214 D GeckoSession: handleMessage GeckoView:PageStart uri=about:blank
+10-31 08:47:27.721 14214 14214 D GeckoSession: handleMessage GeckoView:LocationChange uri=about:blank
+10-31 08:47:27.729 14214 14214 D GeckoSession: handleMessage GeckoView:PageStop uri=null
+10-31 08:47:27.745 14408 14419 E GeckoLibLoad: Loaded libs in 103.953642ms total, 12ms(16ms) user, 69ms(69ms) system, 0(0) faults
+10-31 08:47:27.747 14408 14419 D GeckoThread: State changed to LIBS_READY
+10-31 08:47:27.750 14408 14419 W GeckoThread: zerdatime 793052 - runGecko
+10-31 08:47:27.757 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:27.760 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:27.818 14214 14236 D TrafficStats: tagSocket(198) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:27.823 14214 14427 D TrafficStats: tagSocket(145) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:27.825 14214 14294 D GeckoIdleService: Registering Idle observer callback
+10-31 08:47:27.825 14214 14294 D GeckoIdleService: Register idle observer 0x7f10fb855f80 for 180 seconds
+10-31 08:47:27.825 14214 14294 D GeckoIdleService: Register: adjusting next switch from -1 to 180 seconds
+10-31 08:47:27.825 14214 14294 D GeckoIdleService: next timeout 180000 msec from now
+10-31 08:47:27.825 14214 14294 D GeckoIdleService: SetTimerExpiryIfBefore: next timeout 180000 msec from now
+10-31 08:47:27.825 14214 14294 D GeckoIdleService: reset timer expiry to 180010 msec from now
+10-31 08:47:27.825 14214 14235 D TrafficStats: tagSocket(199) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:27.867 14214 14294 D GeckoIdleService: Get idle time: time since reset 42 msec
+10-31 08:47:27.892 14214 14294 D GeckoIdleService: Register idle observer 0x7f1182fb4dc8 for 5 seconds
+10-31 08:47:27.892 14214 14294 D GeckoIdleService: Register: adjusting next switch from 180 to 5 seconds
+10-31 08:47:27.892 14214 14294 D GeckoIdleService: next timeout 4932 msec from now
+10-31 08:47:27.892 14214 14294 D GeckoIdleService: SetTimerExpiryIfBefore: next timeout 4932 msec from now
+10-31 08:47:27.892 14214 14294 D GeckoIdleService: reset timer expiry to 4942 msec from now
+10-31 08:47:27.911 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:27.911 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:27.926   581  2017 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 99020, packageName = null, attributionTag = null, token = android.os.Binder@314c42e, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-31 08:47:27.940 14214 14327 D ServiceAllocator: org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0 updateBindings: FOREGROUND priority, 0 importance, not connected pid, 3 successful binds, 0 failed binds, 0 successful unbinds
+10-31 08:47:27.979 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:27.979 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:27.998 14408 14419 D GeckoThread: State changed to RUNNING
+10-31 08:47:28.020   379   379 D Zygote  : Forked child process 14443
+10-31 08:47:28.021   581   614 W ActivityManager: Slow operation: 89ms so far, now at startProcess: returned from zygote!
+10-31 08:47:28.022   581   614 W ActivityManager: Slow operation: 90ms so far, now at startProcess: done updating battery stats
+10-31 08:47:28.022   581   614 W ActivityManager: Slow operation: 91ms so far, now at startProcess: building log message
+10-31 08:47:28.022   581   614 I ActivityManager: Start proc 14443:local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_57344cf686214b53a9e940bdfb769e08/u0i20 for service {local.pocketchat.test/org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_57344cf686214b53a9e940bdfb769e08}
+10-31 08:47:28.022   581   614 W ActivityManager: Slow operation: 91ms so far, now at startProcess: starting to update pids map
+10-31 08:47:28.023   581   614 W ActivityManager: Slow operation: 91ms so far, now at startProcess: done updating pids map
+10-31 08:47:28.062 14408 14408 W local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProctype=1400 audit(0.0:348): avc:  denied  { read } for  comm=57656220436F6E74656E74 name="product_name" dev="sysfs" ino=1002 scontext=u:r:isolated_app:s0:c512,c768 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+10-31 08:47:28.076 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.077 14443 14443 I 9e940bdfb769e08: Using CollectorTypeCMC GC.
+10-31 08:47:28.078 14214 14229 D EGL_emulation: app_time_stats: avg=762.32ms min=525.41ms max=1229.89ms count=3
+10-31 08:47:28.081 14443 14443 W 9e940bdfb769e08: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:28.081 14443 14443 W 9e940bdfb769e08: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:28.070 14408 14408 W local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProctype=1400 audit(0.0:349): avc:  denied  { read } for  comm=57656220436F6E74656E74 name="product_sku" dev="sysfs" ino=1006 scontext=u:r:isolated_app:s0:c512,c768 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+10-31 08:47:28.083 14214 14214 D GeckoSession: handleMessage GeckoView:ProgressChanged uri=null
+10-31 08:47:28.084 14214 14214 D GeckoSession: handleMessage GeckoView:PageStart uri=https://chatgpt.com/c/network-safe-idle
+10-31 08:47:28.088 14443 14443 E 9e940bdfb769e08: Not starting debugger since process cannot load the jdwp agent.
+10-31 08:47:28.099 14443 14443 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:28.135 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:28.135 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.148 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.162   378 14464 I resolv  : GetAddrInfoHandler::run: {102 102 102 983142 10209 0}
+10-31 08:47:28.164   581  2681 E TaskPersister: File error accessing recents directory (directory doesn't exist?).
+10-31 08:47:28.165   378 14465 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+10-31 08:47:28.165   378 14466 I resolv  : res_nmkquery: (QUERY, IN, A)
+10-31 08:47:28.165   378 14465 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7d17b58e1f50
+10-31 08:47:28.166   378 14466 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7d16b58de630
+10-31 08:47:28.166   378 14465 I resolv  : doQuery: rcode=0, ancount=1, return value=81
+10-31 08:47:28.166   378 14466 I resolv  : doQuery: rcode=0, ancount=1, return value=69
+10-31 08:47:28.313     0     0 W servicemanager: Isolated app with UID 99020 requested 'network_management', but the service is not allowed for isolated apps.
+10-31 08:47:28.169 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.176 14443 14443 I 9e940bdfb769e08: Skipping app image load for local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessS
+10-31 08:47:28.177 14443 14443 D nativeloader: Configuring clns-7 for other apk /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk. target_sdk_version=35, uses_libraries=, library_path=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64:/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/local.pocketchat.test
+10-31 08:47:28.181 14443 14443 D CompatChangeReporter: Compat change id reported: 202956589; UID 99020; state: ENABLED
+10-31 08:47:28.184 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.339     0     0 W servicemanager: Isolated app with UID 99020 requested 'connectivity', but the service is not allowed for isolated apps.
+10-31 08:47:28.202 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.217 14443 14443 I ServiceChildProcess: onCreate, process name: local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_57344cf686214b53a9e940bdfb769e08
+10-31 08:47:28.359     0     0 W servicemanager: Isolated app with UID 99020 requested 'content_capture', but the service is not allowed for isolated apps.
+10-31 08:47:28.221 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.222 14443 14443 D GeckoThread: State changed to LAUNCHED
+10-31 08:47:28.223 14443 14470 I GeckoThread: preparing to run Gecko
+10-31 08:47:28.230 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.235 14443 14470 D nativeloader: Load /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64/libmozglue.so using ns clns-7 from class loader (caller=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!classes2.dex): ok
+10-31 08:47:28.235 14443 14470 D GeckoThread: State changed to MOZGLUE_READY
+10-31 08:47:28.236 14443 14470 W ContextImpl: Failed to ensure /data/user/0/local.pocketchat.test/files: mkdir failed: ENOENT (No such file or directory)
+10-31 08:47:28.236 14443 14470 W ContextImpl: Failed to ensure /data/user/0/local.pocketchat.test/cache: mkdir failed: ENOENT (No such file or directory)
+10-31 08:47:28.236 14443 14470 W ContextImpl: Failed to update user.inode_cache: stat failed: ENOENT (No such file or directory)
+10-31 08:47:28.237 14443 14470 D CompatChangeReporter: Compat change id reported: 312399441; UID 99020; state: ENABLED
+10-31 08:47:28.237 14443 14470 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:28.237 14443 14470 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:28.237 14443 14470 E GeckoLibLoad: Load sqlite start
+10-31 08:47:28.239 14443 14470 E GeckoLibLoad: Load sqlite done
+10-31 08:47:28.239 14443 14470 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:28.239 14443 14470 E GeckoLibLoad: Load nss start
+10-31 08:47:28.239 14443 14470 E GeckoLibLoad: Load nss done
+10-31 08:47:28.239 14443 14470 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:28.253 14214 14327 D ServiceAllocator: org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0 updateBindings: FOREGROUND priority, 2 importance, 14443 pid, 1 successful binds, 0 failed binds, 0 successful unbinds
+10-31 08:47:28.276 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:28.280 14443 14470 E GeckoLibLoad: Loaded libs in 41.612459ms total, 7ms(6ms) user, 29ms(31ms) system, 0(0) faults
+10-31 08:47:28.281 14443 14470 D GeckoThread: State changed to LIBS_READY
+10-31 08:47:28.281 14443 14470 W GeckoThread: zerdatime 793583 - runGecko
+10-31 08:47:28.298 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:28.336 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.336 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.366 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:28.383 14443 14470 D GeckoThread: State changed to RUNNING
+10-31 08:47:28.417 14469 14469 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:28.406 14443 14443 W local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProctype=1400 audit(0.0:350): avc:  denied  { read } for  comm=49736F6C617465642057656220436F name="product_name" dev="sysfs" ino=1002 scontext=u:r:isolated_app:s0:c512,c768 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+10-31 08:47:28.410 14443 14443 W local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProctype=1400 audit(0.0:351): avc:  denied  { read } for  comm=49736F6C617465642057656220436F name="product_sku" dev="sysfs" ino=1006 scontext=u:r:isolated_app:s0:c512,c768 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+10-31 08:47:28.428 14469 14469 I AndroidRuntime: Using default boot image
+10-31 08:47:28.428 14469 14469 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:28.433 14469 14469 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:28.434 14469 14469 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:28.446 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.467 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.467 14214 14214 D GeckoSession: handleMessage GeckoView:LocationChange uri=https://chatgpt.com/c/network-safe-idle
+10-31 08:47:28.469 14214 14214 D GeckoSession: handleMessage GeckoView:SecurityChanged uri=null
+10-31 08:47:28.473 14214 14214 I PocketNetworkSafeIdle: {"kind":"security","value":{"callback":"GeckoSession.ProgressDelegate.onSecurityChange","isSecure":true,"isException":false,"host":"chatgpt.com","origin":"https:\/\/chatgpt.com","certificateSha256":"66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c","testCaSha256":"794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226","certificateSignedByTestCa":true,"certificateValidityChecked":true,"certificateHostnameSanMatches":true,"certificateMatchesPackagedLeaf":true,"accepted":true,"verificationError":""}}
+10-31 08:47:28.476 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:28.500 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:28.513 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Connect
+10-31 08:47:28.528 14214 14214 D GeckoSession: handleMessage GeckoView:ProgressChanged uri=null
+10-31 08:47:28.536 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Public test CA database prepared in the isolated profile before Gecko runtime","pass":true}}
+10-31 08:47:28.537 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Controlled ChatGPT certificate has the exact valid CA signed SAN and server chain","pass":true}}
+10-31 08:47:28.537 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Official Gecko security callback trusts the controlled ChatGPT origin without an exception","pass":true}}
+10-31 08:47:28.537 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Production observer uses the actual controlled HTTPS origin","pass":true}}
+10-31 08:47:28.538 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Only the test origin is proxied","pass":true}}
+10-31 08:47:28.538 14214 14232 I PocketNetworkSafeIdle: {"kind":"ready","value":{"cases":["prepare-send","capture-send","prepare-transfer","capture-navigation","capture-delete","complete-delete","complete-late-save"],"actualAndroidExecution":true,"actualGeckoExecution":true,"actualNativeParsing":true,"actualPublicWebsite":false,"actualRouteApplication":false}}
+10-31 08:47:28.546 14214 14214 D GeckoSession: handleMessage GeckoView:ProgressChanged uri=null
+10-31 08:47:28.546 14214 14214 D GeckoSession: handleMessage GeckoView:PageStop uri=null
+10-31 08:47:28.561 14214 14291 I PocketNetworkSafeIdle: {"kind":"applicationModelObservation","value":{"phase":"browser-only","identity":{"slot":0,"generation":0,"environmentId":"1d25c0ab-eace-4b23-8fda-3d53088c2550"},"desiredRevision":2,"appliedRevision":0,"observedRevision":0,"desiredHash":"5e4871ae86087e9ab7c8a82b682e397a2ba78fec091f6aece950f5d681e9467d","appliedHash":"","actualHash":"96b678cb85515290836b8a590365f32ac0cb6c283578ca4e407e6bcd5d3744f4","browserMatchesAccepted":true,"networkMatchesActual":false,"pendingIntent":false,"mode":"external","connection":0,"policyAcknowledged":true,"networkReady":true,"guardAllowed":true,"appliedIdentityCurrent":false,"engineVersion":"","runtimeEngineVersion":"GeckoView 157.0.1 · 输入同步修正"}}
+10-31 08:47:28.561 14214 14291 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Fixture browser-only update preserves the migrated stale network","pass":true}}
+10-31 08:47:28.562 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:28.577   581  2017 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 99021, packageName = null, attributionTag = null, token = android.os.Binder@314c42e, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-31 08:47:28.586 14214 14327 D ServiceAllocator: org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0 updateBindings: FOREGROUND priority, 0 importance, not connected pid, 3 successful binds, 0 failed binds, 0 successful unbinds
+10-31 08:47:28.594   379   379 D Zygote  : Forked child process 14500
+10-31 08:47:28.594   581   614 I ActivityManager: Start proc 14500:local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_8a31a84179e44af292e58b7f2da1d0cd/u0i21 for service {local.pocketchat.test/org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_8a31a84179e44af292e58b7f2da1d0cd}
+10-31 08:47:28.609   378   429 I netd    : tetherGetStats() -> {[]} <8.25ms>
+10-31 08:47:28.627 14214 14291 I PocketNetworkSafeIdle: {"kind":"applicationModelObservation","value":{"phase":"reconciled","identity":{"slot":0,"generation":0,"environmentId":"1d25c0ab-eace-4b23-8fda-3d53088c2550"},"desiredRevision":3,"appliedRevision":0,"observedRevision":0,"desiredHash":"96b678cb85515290836b8a590365f32ac0cb6c283578ca4e407e6bcd5d3744f4","appliedHash":"","actualHash":"96b678cb85515290836b8a590365f32ac0cb6c283578ca4e407e6bcd5d3744f4","browserMatchesAccepted":true,"networkMatchesActual":true,"pendingIntent":false,"mode":"external","connection":0,"policyAcknowledged":true,"networkReady":true,"guardAllowed":true,"appliedIdentityCurrent":false,"engineVersion":"","runtimeEngineVersion":"GeckoView 157.0.1 · 输入同步修正"}}
+10-31 08:47:28.628 14214 14291 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Fixture reconciliation aligns desired network without acknowledging application","pass":true}}
+10-31 08:47:28.632 14500 14500 I 2e58b7f2da1d0cd: Using CollectorTypeCMC GC.
+10-31 08:47:28.638 14500 14500 W 2e58b7f2da1d0cd: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:28.638 14500 14500 W 2e58b7f2da1d0cd: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:28.644 14500 14500 E 2e58b7f2da1d0cd: Not starting debugger since process cannot load the jdwp agent.
+10-31 08:47:28.648 14500 14500 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:28.664 14500 14500 I 2e58b7f2da1d0cd: Skipping app image load for local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessS
+10-31 08:47:28.808     0     0 W servicemanager: Isolated app with UID 99021 requested 'network_management', but the service is not allowed for isolated apps.
+10-31 08:47:28.665 14500 14500 D nativeloader: Configuring clns-7 for other apk /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk. target_sdk_version=35, uses_libraries=, library_path=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64:/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/local.pocketchat.test
+10-31 08:47:28.667 14500 14500 D CompatChangeReporter: Compat change id reported: 202956589; UID 99021; state: ENABLED
+10-31 08:47:28.817     0     0 W servicemanager: Isolated app with UID 99021 requested 'connectivity', but the service is not allowed for isolated apps.
+10-31 08:47:28.679 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:28.682 14500 14500 I ServiceChildProcess: onCreate, process name: local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0:environment0_8a31a84179e44af292e58b7f2da1d0cd
+10-31 08:47:28.683 14500 14500 D GeckoThread: State changed to LAUNCHED
+10-31 08:47:28.684 14469 14469 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:28.827     0     0 W servicemanager: Isolated app with UID 99021 requested 'content_capture', but the service is not allowed for isolated apps.
+10-31 08:47:28.689 14500 14512 I GeckoThread: preparing to run Gecko
+10-31 08:47:28.691 14500 14512 D nativeloader: Load /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64/libmozglue.so using ns clns-7 from class loader (caller=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!classes2.dex): ok
+10-31 08:47:28.691 14500 14512 D GeckoThread: State changed to MOZGLUE_READY
+10-31 08:47:28.691 14500 14512 W ContextImpl: Failed to ensure /data/user/0/local.pocketchat.test/files: mkdir failed: ENOENT (No such file or directory)
+10-31 08:47:28.691 14500 14512 W ContextImpl: Failed to ensure /data/user/0/local.pocketchat.test/cache: mkdir failed: ENOENT (No such file or directory)
+10-31 08:47:28.691 14500 14512 W ContextImpl: Failed to update user.inode_cache: stat failed: ENOENT (No such file or directory)
+10-31 08:47:28.691 14500 14512 D CompatChangeReporter: Compat change id reported: 312399441; UID 99021; state: ENABLED
+10-31 08:47:28.691 14500 14512 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:28.691 14500 14512 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:28.692 14214 14327 D ServiceAllocator: org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0 updateBindings: BACKGROUND priority, 3 importance, 14500 pid, 1 successful binds, 0 failed binds, 1 successful unbinds
+10-31 08:47:28.692 14214 14232 I PocketNetworkSafeIdle: {"kind":"applicationModelObservation","value":{"phase":"acknowledged","identity":{"slot":0,"generation":0,"environmentId":"1d25c0ab-eace-4b23-8fda-3d53088c2550"},"desiredRevision":3,"appliedRevision":3,"observedRevision":0,"desiredHash":"96b678cb85515290836b8a590365f32ac0cb6c283578ca4e407e6bcd5d3744f4","appliedHash":"96b678cb85515290836b8a590365f32ac0cb6c283578ca4e407e6bcd5d3744f4","actualHash":"96b678cb85515290836b8a590365f32ac0cb6c283578ca4e407e6bcd5d3744f4","browserMatchesAccepted":true,"networkMatchesActual":true,"pendingIntent":false,"mode":"external","connection":2,"policyAcknowledged":true,"networkReady":true,"guardAllowed":true,"appliedIdentityCurrent":true,"engineVersion":"GeckoView 157.0.1 · 输入同步修正","runtimeEngineVersion":"GeckoView 157.0.1 · 输入同步修正"}}
+10-31 08:47:28.692 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Fixture bootstrap is acknowledged only by the production reconnect","pass":true}}
+10-31 08:47:28.701 14500 14512 E GeckoLibLoad: Load sqlite start
+10-31 08:47:28.702 14500 14512 E GeckoLibLoad: Load sqlite done
+10-31 08:47:28.702 14500 14512 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:28.702 14500 14512 E GeckoLibLoad: Load nss start
+10-31 08:47:28.702 14500 14512 E GeckoLibLoad: Load nss done
+10-31 08:47:28.702 14500 14512 D GeckoLoader: Library base=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64
+10-31 08:47:28.706 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:28.710 14214 14214 D GeckoSession: handleMessage GeckoView:ProgressChanged uri=null
+10-31 08:47:28.710 14214 14214 D GeckoSession: handleMessage GeckoView:PageStart uri=https://chatgpt.com/c/network-safe-idle
+10-31 08:47:28.710 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:28.712 14469 14469 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:28.712 14469 14469 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:28.712 14469 14469 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:28.715 14214 14236 D TrafficStats: tagSocket(244) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:28.716 14214 14427 D TrafficStats: tagSocket(245) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:28.717 14214 14235 D TrafficStats: tagSocket(246) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:28.719 14469 14469 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:28.724 14469 14469 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:28.730 14469 14469 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:28.730 14469 14469 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:28.753 14500 14512 E GeckoLibLoad: Loaded libs in 18.477404ms total, 1ms(4ms) user, 4ms(4ms) system, 0(0) faults
+10-31 08:47:28.753 14500 14512 D GeckoThread: State changed to LIBS_READY
+10-31 08:47:28.753 14500 14512 W GeckoThread: zerdatime 794055 - runGecko
+10-31 08:47:28.777 14469 14469 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:28.778 14469 14469 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:28.779 14214 14214 D GeckoSession: handleMessage GeckoView:LocationChange uri=https://chatgpt.com/c/network-safe-idle
+10-31 08:47:28.780 14214 14214 D GeckoSession: handleMessage GeckoView:SecurityChanged uri=null
+10-31 08:47:28.781 14214 14214 I PocketNetworkSafeIdle: {"kind":"security","value":{"callback":"GeckoSession.ProgressDelegate.onSecurityChange","isSecure":true,"isException":false,"host":"chatgpt.com","origin":"https:\/\/chatgpt.com","certificateSha256":"66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c","testCaSha256":"794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226","certificateSignedByTestCa":true,"certificateValidityChecked":true,"certificateHostnameSanMatches":true,"certificateMatchesPackagedLeaf":true,"accepted":true,"verificationError":""}}
+10-31 08:47:28.795 14469 14469 D AndroidRuntime: Shutting down VM
+10-31 08:47:28.811 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Connect
+10-31 08:47:28.841 14214 14214 D GeckoSession: handleMessage GeckoView:ProgressChanged uri=null
+10-31 08:47:28.842 14214 14214 D GeckoSession: handleMessage GeckoView:ProgressChanged uri=null
+10-31 08:47:28.842 14214 14214 D GeckoSession: handleMessage GeckoView:PageStop uri=null
+10-31 08:47:28.880 14500 14512 D GeckoThread: State changed to RUNNING
+10-31 08:47:28.882 14500 14500 W local.pocketchat.test:isolatedTab_disable_art_image_0:org.mozilla.gecko.process.GeckoChildProctype=1400 audit(0.0:352): avc:  denied  { read } for  comm=57656220436F6E74656E74 name="product_name" dev="sysfs" ino=1002 scontext=u:r:isolated_app:s0:c512,c768 tcontext=u:object_r:sysfs:s0 tclass=file permissive=0
+10-31 08:47:29.036     0     0 W audit   : audit_lost=96 audit_rate_limit=5 audit_backlog_limit=64
+10-31 08:47:29.037     0     0 E audit   : rate limit exceeded
+10-31 08:47:28.907 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Internal application begins with a genuinely acknowledged external session","pass":true}}
+10-31 08:47:28.937 14214 14232 D TrafficStats: tagSocket(195) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:28.938 14214 14232 D TrafficStats: tagSocket(201) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:28.939 14214 14232 D TrafficStats: tagSocket(223) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:28.939 14214 14232 D TrafficStats: tagSocket(224) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:28.940 14214 14232 D TrafficStats: tagSocket(226) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:28.940 14214 14232 D TrafficStats: tagSocket(227) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:28.985 14214 14543 D TrafficStats: tagSocket(231) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:28.986 14214 14543 D TrafficStats: tagSocket(231) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:29.000 14214 14543 D TrafficStats: tagSocket(231) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:29.046 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.067 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.128 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.134 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.140 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.145 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.150 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.154 14214 14543 D TrafficStats: tagSocket(238) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:29.150 14544 14544 W libmihomo.so: type=1400 audit(0.0:358): avc:  denied  { read } for  name="somaxconn" dev="proc" ino=33218 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:proc_net:s0 tclass=file permissive=0 app=local.pocketchat.test
+10-31 08:47:29.171 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.189 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.196 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.201 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.209 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.209 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.209 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.271 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.283 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.283 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.295 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.302 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.305 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.312 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.319 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.322 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.343 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.362  4495  4523 W GoogleApiManager: The service for com.google.android.gms.clearcut.internal.i is not available: ConnectionResult{statusCode=SERVICE_DISABLED, resolution=null, message=null}
+10-31 08:47:29.367 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.423  4495  4557 I BistoHotwordHelper: (REDACTED) getHotwordActive::active query: %s, watch: %s, devices connected: %s
+10-31 08:47:29.498 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.664 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.669 14214 14543 D TrafficStats: tagSocket(238) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:29.681 14214 14543 I Process : Sending signal. PID: 14544 SIG: 9
+10-31 08:47:29.682 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Real native parser returns entry fingerprint","pass":true}}
+10-31 08:47:29.689 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.705 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.724 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.733 14214 14556 D TrafficStats: tagSocket(232) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:29.734 14214 14556 D TrafficStats: tagSocket(232) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:29.738 14214 14556 D TrafficStats: tagSocket(232) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:29.746 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.738 14557 14557 W libmihomo.so: type=1400 audit(0.0:359): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:29.738 14557 14557 W libmihomo.so: type=1400 audit(0.0:360): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:29.738 14557 14557 W libmihomo.so: type=1400 audit(0.0:361): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:29.738 14557 14557 W libmihomo.so: type=1400 audit(0.0:362): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:29.766 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:29.889 14214 14556 D TrafficStats: tagSocket(241) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:29.905 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Real native parser returns exit fingerprint","pass":true}}
+10-31 08:47:29.946   581  1623 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10209, packageName = null, attributionTag = null, token = android.os.Binder@314c42e, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-31 08:47:29.954   379   379 D Zygote  : Forked child process 14569
+10-31 08:47:29.954   581   614 I ActivityManager: Start proc 14569:local.pocketchat.test:network/u0a209 for service {local.pocketchat.test/local.pocketchat.NetworkTransportService}
+10-31 08:47:29.988 14569 14569 I at.test:network: Using CollectorTypeCMC GC.
+10-31 08:47:29.988 14569 14569 W at.test:network: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:29.988 14569 14569 W at.test:network: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:29.990 14569 14569 E at.test:network: Not starting debugger since process cannot load the jdwp agent.
+10-31 08:47:29.991 14569 14569 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:30.003 14569 14569 D nativeloader: Configuring clns-7 for other apk /data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk. target_sdk_version=35, uses_libraries=, library_path=/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/lib/x86_64:/data/app/~~cS3v2hiP5IVQbnUgdqmJig==/local.pocketchat.test-Bm2xUkVrLxVALT8Kjx_3Ww==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/local.pocketchat.test
+10-31 08:47:30.003 14569 14569 D CompatChangeReporter: Compat change id reported: 202956589; UID 10209; state: ENABLED
+10-31 08:47:30.008 14569 14569 V GraphicsEnvironment: Currently set values for:
+10-31 08:47:30.008 14569 14569 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+10-31 08:47:30.008 14569 14569 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+10-31 08:47:30.008 14569 14569 V GraphicsEnvironment: Global.Settings values are invalid: number of packages: 0, number of values: 0
+10-31 08:47:30.008 14569 14569 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+10-31 08:47:30.017   581  1623 D ConnectivityService: requestNetwork for uid/pid:10209/14569 activeRequest: null callbackRequest: 203 [NetworkRequest [ REQUEST id=204, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false
+10-31 08:47:30.019   581   893 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=204, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:30.019   581   893 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=204, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:30.019   581   900 D ConnectivityService: NetReassign [204 : null → 102] [c 1] [a 0] [i 1]
+10-31 08:47:30.020   581   893 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=204, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:30.020   581   893 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=204, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:30.039 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"External setup has no running internal core to replace","pass":true}}
+10-31 08:47:30.043 14214 14232 D TrafficStats: tagSocket(237) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:30.307   581  2017 D ConnectivityService: requestNetwork for uid/pid:10209/14569 activeRequest: null callbackRequest: 205 [NetworkRequest [ REQUEST id=206, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false
+10-31 08:47:30.308   581   893 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=206, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:30.308   581   893 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=206, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:30.308   581   893 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=206, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:30.308   581   893 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=206, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10209 RequestorUid: 10209 RequestorPkg: local.pocketchat.test UnderlyingNetworks: Null] ]
+10-31 08:47:30.308   581   900 D ConnectivityService: NetReassign [206 : null → 102] [c 0] [a 0] [i 0]
+10-31 08:47:30.459   378   429 I netd    : tetherGetStats() -> {[]} <1.23ms>
+10-31 08:47:30.474   378   429 I netd    : bandwidthSetGlobalAlert(2097152) <0.43ms>
+10-31 08:47:30.479   378   429 I netd    : bandwidthRemoveInterfaceQuota(eth0) <1.86ms>
+10-31 08:47:30.481   378   429 I netd    : bandwidthSetInterfaceQuota(eth0, 9223372036854775807) <0.80ms>
+10-31 08:47:30.515 14594 14594 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:30.519 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.519 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.519 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.520 14214 14229 D EGL_emulation: app_time_stats: avg=221.92ms min=11.39ms max=2043.59ms count=11
+10-31 08:47:30.520 14594 14594 I AndroidRuntime: Using default boot image
+10-31 08:47:30.520 14594 14594 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:30.523 14594 14594 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:30.524 14594 14594 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:30.527   445   445 D DisplayModeController: setDesiredMode 4619827259835644672 {mode={fps=30.00 Hz, modePtr={id=0, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=true, force=false}
+10-31 08:47:30.533   581   604 I DisplayDeviceRepository: Display device changed: DisplayDeviceInfo{"Built-in Screen": uniqueId="local:4619827259835644672", 320 x 640, modeId 1, renderFrameRate 30.000002, defaultModeId 1, userPreferredModeId -1, supportedModes [{id=1, width=320, height=640, fps=60.000004, vsync=60.000004, synthetic=false, alternativeRefreshRates=[], supportedHdrTypes=[]}], colorMode 0, supportedColorModes [0], hdrCapabilities HdrCapabilities{mSupportedHdrTypes=[], mMaxLuminance=500.0, mMaxAverageLuminance=500.0, mMinLuminance=0.0}, allmSupported false, gameContentTypeSupported false, density 160, 160.0 x 160.0 dpi, appVsyncOff 1000000, presDeadline 16666666, touch INTERNAL, rotation 0, type INTERNAL, address {port=0, model=0x401cec6a7a2b7b}, deviceProductInfo DeviceProductInfo{name=EMU_display_0, manufacturerPnpId=GGL, productId=1, modelYear=null, manufactureDate=ManufactureDate{week=27, year=2006}, connectionToSinkType=0}, state ON, committedState ON, frameRateOverride , brightnessMinimum 0.0, brightnessMaximum 1.0, brightnessDefault 0.39763778, hdrSdrRatio NaN, FLAG_ALLOWED_TO_BE_DEFAULT_DISPLAY, FLAG_ROTATES_WITH_CONTENT, FLAG_SECURE, FLAG_SUPPORTS_PROTECTED_BUFFERS, FLAG_TRUSTED, installOrientation 0, displayShape DisplayShape{ spec=-2047665221 displayWidth=320 displayHeight=640 physicalPixelDisplaySizeRatio=1.0 rotation=0 offsetX=0 offsetY=0 scale=1.0}}
+10-31 08:47:30.539   581   632 D BrightnessThermalClamper: Thermal status observer already started
+10-31 08:47:30.541   581   604 W IPCThreadState: Sending oneway calls to frozen process.
+10-31 08:47:30.555 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.562   980   980 D DisplayRepository: combining enabled=[0], connectedExternalDisplayIds=[], ignored=[]
+10-31 08:47:30.610   445   445 D DisplayModeController: setDesiredMode 4619827259835644672 {mode={fps=60.00 Hz, modePtr={id=0, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=true, force=false}
+10-31 08:47:30.610   581   604 I DisplayDeviceRepository: Display device changed: DisplayDeviceInfo{"Built-in Screen": uniqueId="local:4619827259835644672", 320 x 640, modeId 1, renderFrameRate 60.000004, defaultModeId 1, userPreferredModeId -1, supportedModes [{id=1, width=320, height=640, fps=60.000004, vsync=60.000004, synthetic=false, alternativeRefreshRates=[], supportedHdrTypes=[]}], colorMode 0, supportedColorModes [0], hdrCapabilities HdrCapabilities{mSupportedHdrTypes=[], mMaxLuminance=500.0, mMaxAverageLuminance=500.0, mMinLuminance=0.0}, allmSupported false, gameContentTypeSupported false, density 160, 160.0 x 160.0 dpi, appVsyncOff 1000000, presDeadline 16666666, touch INTERNAL, rotation 0, type INTERNAL, address {port=0, model=0x401cec6a7a2b7b}, deviceProductInfo DeviceProductInfo{name=EMU_display_0, manufacturerPnpId=GGL, productId=1, modelYear=null, manufactureDate=ManufactureDate{week=27, year=2006}, connectionToSinkType=0}, state ON, committedState ON, frameRateOverride , brightnessMinimum 0.0, brightnessMaximum 1.0, brightnessDefault 0.39763778, hdrSdrRatio NaN, FLAG_ALLOWED_TO_BE_DEFAULT_DISPLAY, FLAG_ROTATES_WITH_CONTENT, FLAG_SECURE, FLAG_SUPPORTS_PROTECTED_BUFFERS, FLAG_TRUSTED, installOrientation 0, displayShape DisplayShape{ spec=-2047665221 displayWidth=320 displayHeight=640 physicalPixelDisplaySizeRatio=1.0 rotation=0 offsetX=0 offsetY=0 scale=1.0}}
+10-31 08:47:30.611   581   632 D BrightnessThermalClamper: Thermal status observer already started
+10-31 08:47:30.611   581   604 W IPCThreadState: Sending oneway calls to frozen process.
+10-31 08:47:30.616   980   980 D DisplayRepository: combining enabled=[0], connectedExternalDisplayIds=[], ignored=[]
+10-31 08:47:30.617 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.617 14214 14214 D GeckoSession: handleMessage GeckoView:StateUpdated uri=null
+10-31 08:47:30.681 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.693 14594 14594 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:30.699 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.703 14594 14594 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:30.703 14594 14594 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:30.703 14594 14594 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:30.704 14594 14594 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:30.704 14594 14594 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:30.706 14594 14594 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:30.706 14594 14594 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:30.717 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.722 14594 14594 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:30.723 14594 14594 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:30.726 14594 14594 D AndroidRuntime: Shutting down VM
+10-31 08:47:30.731 14214 14327 D ServiceAllocator: org.mozilla.gecko.process.GeckoChildProcessServices$isolatedTab0 updateBindings: IDLE priority, 6 importance, 14408 pid, 1 successful binds, 0 failed binds, 2 successful unbinds
+10-31 08:47:30.732 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.746 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.754   378   429 I netd    : tetherGetStats() -> {[]} <0.36ms>
+10-31 08:47:30.756 14214 14606 D ProfileInstaller: Installing profile for local.pocketchat.test
+10-31 08:47:30.765 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.780 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.797 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.813 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.833 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.847 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.852 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.881 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.898 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.915 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.930 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.947 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.963 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.980 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:30.996 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.013 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.032 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.047 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.063 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.082 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.097 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.114 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.131 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.153 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.153 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.185 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.201 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.201 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.202 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.203 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.204 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.204 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.204 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.204 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.204 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.204 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.204 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.213 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.221 14214 14607 D TrafficStats: tagSocket(6) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.221 14214 14607 D TrafficStats: tagSocket(6) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.221 14214 14607 D TrafficStats: tagSocket(6) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.231 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.247 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.263 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.264   581  1313 D CompatChangeReporter: Compat change id reported: 311208749; UID 10209; state: ENABLED
+10-31 08:47:31.264   581  1313 I ActivityManager: Background started FGS: Allowed [callingPackage: local.pocketchat.test; callingUid: 10209; uidState: TOP ; uidBFSL: [BFSL]; intent: Intent { cmp=local.pocketchat.test/local.pocketchat.NetworkTransportService }; code:PROC_STATE_TOP; tempAllowListReason:<null>; targetSdkVersion:35; callerTargetSdkVersion:35; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+10-31 08:47:31.267   581  1313 D CompatChangeReporter: Compat change id reported: 296558535; UID 10209; state: ENABLED
+10-31 08:47:31.267   581  1313 D CompatChangeReporter: Compat change id reported: 317799821; UID 10209; state: ENABLED
+10-31 08:47:31.267   581  1313 D CompatChangeReporter: Compat change id reported: 313677553; UID 10209; state: ENABLED
+10-31 08:47:31.269   581  1313 W ForegroundServiceTypeLoggerModule: Foreground service start for UID: 10209 does not have any types
+10-31 08:47:31.273   581  1313 D FileUtils: Rounded bytes from 3121197056 to 4000000000
+10-31 08:47:31.283 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.274 14610 14610 W libmihomo.so: type=1400 audit(0.0:364): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:31.274 14610 14610 W libmihomo.so: type=1400 audit(0.0:365): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:31.274 14610 14610 W libmihomo.so: type=1400 audit(0.0:366): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:31.274 14610 14610 W libmihomo.so: type=1400 audit(0.0:367): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:31.312 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.312 14214 14607 D TrafficStats: tagSocket(192) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.302 14610 14610 W libmihomo.so: type=1400 audit(0.0:368): avc:  denied  { read } for  name="somaxconn" dev="proc" ino=33218 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:proc_net:s0 tclass=file permissive=0 app=local.pocketchat.test
+10-31 08:47:31.339 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.339 14214 14214 E SurfaceViewWrapper: TextureView doesn't support background color.
+10-31 08:47:31.343 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.343 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.343 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.343 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.344 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.344 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.344 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.344 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.344 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.344 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.417 14214 14221 W System  : A resource failed to call Surface.release. 
+10-31 08:47:31.427 14214 14607 D TrafficStats: tagSocket(109) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.429 14214 14541 D TrafficStats: tagSocket(233) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.430 14214 14623 D TrafficStats: tagSocket(245) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.430 14214 14540 D TrafficStats: tagSocket(249) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.431 14214 14625 D TrafficStats: tagSocket(246) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.431 14214 14537 D TrafficStats: tagSocket(253) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.449 14214 14541 D TrafficStats: tagSocket(255) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.450 14214 14541 D TrafficStats: tagSocket(256) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.450 14214 14541 D TrafficStats: tagSocket(257) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.450 14214 14628 D TrafficStats: tagSocket(258) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.450 14214 14629 D TrafficStats: tagSocket(263) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.450 14214 14540 D TrafficStats: tagSocket(259) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.450 14214 14541 D TrafficStats: tagSocket(260) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.451 14214 14540 D TrafficStats: tagSocket(261) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.451 14214 14630 D TrafficStats: tagSocket(262) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.452 14214 14540 D TrafficStats: tagSocket(264) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.452 14214 14635 D TrafficStats: tagSocket(266) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:31.453 14214 14540 D TrafficStats: tagSocket(265) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.278 14214 14214 I PocketNetworkSafeIdle: {"kind":"applicationResult","value":{"id":"4d6cc59c-dc70-41e5-b3d2-504bc944a94f","ok":true,"internal":false,"operationResult":{"environmentId":"1d25c0ab-eace-4b23-8fda-3d53088c2550","generation":0,"candidateId":"ab000c142a7b46d4aa0cbef174f081bd","savedRevision":4,"appliedRevision":4,"saveState":"saved","applicationState":"applied","scope":"session","message":"配置已保存并由当前会话应用"}}}
+10-31 08:47:32.279 14214 14541 D TrafficStats: tagSocket(118) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.280 14214 14641 D TrafficStats: tagSocket(269) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.281 14214 14540 D TrafficStats: tagSocket(271) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.281 14214 14643 D TrafficStats: tagSocket(270) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.283 14214 14538 D TrafficStats: tagSocket(273) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.304 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"bootstrap-a: result belongs to the exact environment and candidate","pass":true}}
+10-31 08:47:32.304 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"bootstrap-a: saved and applied states remain distinct","pass":true}}
+10-31 08:47:32.305 14214 14232 D TrafficStats: tagSocket(118) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.311 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"bootstrap-a: production model and real internal route identify the saved revision","pass":true}}
+10-31 08:47:32.355 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"bootstrap-a: internal application preserves the unsent draft and conversation","pass":true}}
+10-31 08:47:32.357 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"bootstrap-a: actual Gecko fetch dispatched","pass":true}}
+10-31 08:47:32.358 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:32.361 14214 14633 D TrafficStats: tagSocket(267) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.362 14214 14541 D TrafficStats: tagSocket(268) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.362 14214 14539 D TrafficStats: tagSocket(269) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.363 14214 14642 D TrafficStats: tagSocket(272) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.364 14214 14540 D TrafficStats: tagSocket(274) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:32.399 14648 14648 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:32.402 14648 14648 I AndroidRuntime: Using default boot image
+10-31 08:47:32.402 14648 14648 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:32.403 14648 14648 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:32.403 14648 14648 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:32.441 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"bootstrap-a: fetch traverses the mapped fixed SOCKS exit without the external proxy","pass":true}}
+10-31 08:47:32.444 14648 14648 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:32.450 14648 14648 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:32.450 14648 14648 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:32.450 14648 14648 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:32.451 14648 14648 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:32.451 14648 14648 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:32.452 14648 14648 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:32.452 14648 14648 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:32.462 14648 14648 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:32.463 14648 14648 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:32.466 14648 14648 D AndroidRuntime: Shutting down VM
+10-31 08:47:32.820 14214 14214 D GeckoSession: handleMessage GeckoView:StateUpdated uri=null
+10-31 08:47:32.835 14214 14294 D GeckoIdleService: Get idle time: time since reset 5010 msec
+10-31 08:47:32.835 14214 14294 D GeckoIdleService: Idle timer callback: current idle time 5010 msec
+10-31 08:47:32.835 14214 14294 D GeckoIdleService: next timeout 174990 msec from now
+10-31 08:47:32.835 14214 14294 D GeckoIdleService: SetTimerExpiryIfBefore: next timeout 174990 msec from now
+10-31 08:47:32.835 14214 14294 D GeckoIdleService: reset timer expiry to 175000 msec from now
+10-31 08:47:32.835 14214 14294 D GeckoIdleService: Idle timer callback: tell observer 0x7f1182fb4dc8 user is idle
+10-31 08:47:33.183 14214 14607 D TrafficStats: tagSocket(120) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.184 14214 14607 D TrafficStats: tagSocket(120) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.184 14214 14607 D TrafficStats: tagSocket(120) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.314   581  2017 D FileUtils: Rounded bytes from 3121197056 to 4000000000
+10-31 08:47:33.314 14659 14659 W libmihomo.so: type=1400 audit(0.0:369): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:33.326 14214 14607 D TrafficStats: tagSocket(120) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.314 14659 14659 W libmihomo.so: type=1400 audit(0.0:370): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:33.314 14659 14659 W libmihomo.so: type=1400 audit(0.0:371): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:33.314 14659 14659 W libmihomo.so: type=1400 audit(0.0:372): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:33.338 14659 14659 W libmihomo.so: type=1400 audit(0.0:373): avc:  denied  { read } for  name="somaxconn" dev="proc" ino=33218 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:proc_net:s0 tclass=file permissive=0 app=local.pocketchat.test
+10-31 08:47:33.478 14214 14607 D TrafficStats: tagSocket(120) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.534 14214 14607 D TrafficStats: tagSocket(209) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.536 14214 14542 D TrafficStats: tagSocket(229) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.536 14214 14670 D TrafficStats: tagSocket(233) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.536 14214 14540 D TrafficStats: tagSocket(245) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.537 14214 14634 D TrafficStats: tagSocket(238) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.537 14214 14537 D TrafficStats: tagSocket(249) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.538 14214 14542 D TrafficStats: tagSocket(255) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.538 14214 14542 D TrafficStats: tagSocket(256) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.538 14214 14672 D TrafficStats: tagSocket(259) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.538 14214 14542 D TrafficStats: tagSocket(257) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.539 14214 14542 D TrafficStats: tagSocket(258) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.539 14214 14674 D TrafficStats: tagSocket(261) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.539 14214 14673 D TrafficStats: tagSocket(262) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.540 14214 14540 D TrafficStats: tagSocket(260) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.540 14214 14540 D TrafficStats: tagSocket(263) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.540 14214 14540 D TrafficStats: tagSocket(264) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.541 14214 14676 D TrafficStats: tagSocket(265) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:33.541 14214 14540 D TrafficStats: tagSocket(267) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.133 14683 14683 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:34.136 14683 14683 I AndroidRuntime: Using default boot image
+10-31 08:47:34.136 14683 14683 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:34.137 14683 14683 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:34.138 14683 14683 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:34.180 14683 14683 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:34.185 14683 14683 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:34.185 14683 14683 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:34.186 14683 14683 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:34.186 14683 14683 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:34.187 14683 14683 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:34.188 14683 14683 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:34.188 14683 14683 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:34.199 14683 14683 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:34.199 14683 14683 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:34.203 14683 14683 D AndroidRuntime: Shutting down VM
+10-31 08:47:34.381 14214 14214 I PocketNetworkSafeIdle: {"kind":"applicationResult","value":{"id":"f0719d2e-8c53-4c9b-86a5-22d473dac00f","ok":true,"internal":false,"operationResult":{"environmentId":"1d25c0ab-eace-4b23-8fda-3d53088c2550","generation":0,"candidateId":"185c5ce78f104dbb9d2408f311dddf7c","savedRevision":5,"appliedRevision":5,"saveState":"saved","applicationState":"applied","scope":"session","message":"配置已保存并由当前会话应用"}}}
+10-31 08:47:34.382 14214 14542 D TrafficStats: tagSocket(268) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.382 14214 14694 D TrafficStats: tagSocket(241) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.383 14214 14540 D TrafficStats: tagSocket(272) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.383 14214 14633 D TrafficStats: tagSocket(274) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.384 14214 14538 D TrafficStats: tagSocket(275) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.386 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"new-core-candidate-applied: result belongs to the exact environment and candidate","pass":true}}
+10-31 08:47:34.386 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"new-core-candidate-applied: saved and applied states remain distinct","pass":true}}
+10-31 08:47:34.387 14214 14232 D TrafficStats: tagSocket(269) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.390 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"new-core-candidate-applied: production model and real internal route identify the saved revision","pass":true}}
+10-31 08:47:34.434 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"new-core-candidate-applied: internal application preserves the unsent draft and conversation","pass":true}}
+10-31 08:47:34.435 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"new-core-candidate-applied: actual Gecko fetch dispatched","pass":true}}
+10-31 08:47:34.437 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:34.441 14214 14625 D TrafficStats: tagSocket(162) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.441 14214 14539 D TrafficStats: tagSocket(241) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.442 14214 14542 D TrafficStats: tagSocket(272) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.444 14214 14695 D TrafficStats: tagSocket(273) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.444 14214 14540 D TrafficStats: tagSocket(275) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:34.519 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"new-core-candidate-applied: fetch traverses the mapped fixed SOCKS exit without the external proxy","pass":true}}
+10-31 08:47:34.519 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Changed candidate creates a new real core while preserving the fixed exit","pass":true}}
+10-31 08:47:34.519 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Internal entry change preserves the existing Gecko document without reload","pass":true}}
+10-31 08:47:34.601   581   693 D ActivityManager: freezing 3096 com.android.chrome
+10-31 08:47:34.603   581   693 D ActivityManager: freezing 2605 com.google.android.documentsui
+10-31 08:47:34.605   581   900 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-31 08:47:34.605   581   900 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-31 08:47:34.605   581   900 D InetDiagMessage: Destroyed live tcp sockets for uids={10145} in 1ms
+10-31 08:47:34.605   581   900 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-31 08:47:34.605   581   900 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-31 08:47:34.605   581   900 D InetDiagMessage: Destroyed live tcp sockets for uids={10096} in 1ms
+10-31 08:47:34.655   581   693 D ActivityManager: freezing 982 com.google.android.permissioncontroller
+10-31 08:47:34.657   581   900 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-31 08:47:34.657   581   900 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-31 08:47:34.657   581   900 D InetDiagMessage: Destroyed live tcp sockets for uids={10185} in 0ms
+10-31 08:47:34.901 14214 14214 D GeckoSession: handleMessage GeckoView:StateUpdated uri=null
+10-31 08:47:35.264 14214 14607 D TrafficStats: tagSocket(109) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.264 14214 14607 D TrafficStats: tagSocket(109) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.264 14214 14607 D TrafficStats: tagSocket(109) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.290   581  1812 D CompatChangeReporter: Compat change id reported: 311208629; UID 10209; state: ENABLED
+10-31 08:47:35.393   581  1812 D FileUtils: Rounded bytes from 3121197056 to 4000000000
+10-31 08:47:35.394 14696 14696 W libmihomo.so: type=1400 audit(0.0:374): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:35.407 14214 14607 D TrafficStats: tagSocket(109) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.394 14696 14696 W libmihomo.so: type=1400 audit(0.0:375): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:35.394 14696 14696 W libmihomo.so: type=1400 audit(0.0:376): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:35.394 14696 14696 W libmihomo.so: type=1400 audit(0.0:377): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:35.418 14696 14696 W libmihomo.so: type=1400 audit(0.0:378): avc:  denied  { read } for  name="somaxconn" dev="proc" ino=33218 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:proc_net:s0 tclass=file permissive=0 app=local.pocketchat.test
+10-31 08:47:35.558 14214 14607 D TrafficStats: tagSocket(109) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.618 14214 14607 D TrafficStats: tagSocket(118) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.619 14214 14542 D TrafficStats: tagSocket(233) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.619 14214 14678 D TrafficStats: tagSocket(238) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.619 14214 14540 D TrafficStats: tagSocket(245) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.620 14214 14638 D TrafficStats: tagSocket(241) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.620 14214 14537 D TrafficStats: tagSocket(252) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.621 14214 14542 D TrafficStats: tagSocket(255) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.621 14214 14671 D TrafficStats: tagSocket(257) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.621 14214 14542 D TrafficStats: tagSocket(256) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.622 14214 14540 D TrafficStats: tagSocket(258) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.622 14214 14542 D TrafficStats: tagSocket(259) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.623 14214 14670 D TrafficStats: tagSocket(262) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.623 14214 14540 D TrafficStats: tagSocket(264) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.623 14214 14674 D TrafficStats: tagSocket(265) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.623 14214 14540 D TrafficStats: tagSocket(267) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.623 14214 14542 D TrafficStats: tagSocket(260) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.624 14214 14694 D TrafficStats: tagSocket(261) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.624 14214 14540 D TrafficStats: tagSocket(270) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:35.883 14709 14709 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:35.886 14709 14709 I AndroidRuntime: Using default boot image
+10-31 08:47:35.887 14709 14709 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:35.888 14709 14709 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:35.888 14709 14709 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:35.920   581   693 D ActivityManager: freezing 4506 com.google.android.googlequicksearchbox:search
+10-31 08:47:35.942 14709 14709 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:35.946 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"stopped-core-receipt-rejected: negative precondition has the exact acknowledged saved model","pass":true}}
+10-31 08:47:35.950 14709 14709 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:35.950 14709 14709 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:35.950 14709 14709 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:35.951 14709 14709 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:35.951 14709 14709 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:35.952 14709 14709 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:35.952 14709 14709 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:35.964 14709 14709 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:35.964 14709 14709 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:35.967 14709 14709 D AndroidRuntime: Shutting down VM
+10-31 08:47:36.049 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"stopped-core-receipt-rejected: actual stopped service invalidates the captured core receipt","pass":true}}
+10-31 08:47:36.055 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"stopped-core-receipt-rejected: original attempt and saved candidate remain current at injection","pass":true}}
+10-31 08:47:36.609 14214 14214 I PocketNetworkSafeIdle: {"kind":"applicationResult","value":{"id":"e84fe7cd-c370-45b2-9e39-c91b1c488054","ok":false,"internal":false,"operationResult":{"environmentId":"1d25c0ab-eace-4b23-8fda-3d53088c2550","generation":0,"candidateId":"60997b23132046d7b1c9ffd88b54f2b3","savedRevision":5,"appliedRevision":0,"saveState":"saved","applicationState":"failed","scope":"core","message":"应用失败，原线路恢复待确认","rollbackState":"unconfirmed","retryAvailable":true}}}
+10-31 08:47:36.618 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"stopped-core-receipt-rejected: result belongs to the exact environment and candidate","pass":true}}
+10-31 08:47:36.618 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"stopped-core-receipt-rejected: saved and applied states remain distinct","pass":true}}
+10-31 08:47:36.618 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"stopped-core-receipt-rejected: original provider rejects stale application despite earlier ready state","pass":true}}
+10-31 08:47:36.618 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"stopped-core-receipt-rejected: stopped core keeps rollback unconfirmed and retry available","pass":true}}
+10-31 08:47:36.626 14214 14607 D TrafficStats: tagSocket(192) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.626 14214 14607 D TrafficStats: tagSocket(192) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.626 14214 14607 D TrafficStats: tagSocket(192) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.634   581  1812 D FileUtils: Rounded bytes from 3121197056 to 4000000000
+10-31 08:47:36.634 14719 14719 W libmihomo.so: type=1400 audit(0.0:379): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:36.647 14214 14607 D TrafficStats: tagSocket(192) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.634 14719 14719 W libmihomo.so: type=1400 audit(0.0:380): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:36.634 14719 14719 W libmihomo.so: type=1400 audit(0.0:381): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:36.634 14719 14719 W libmihomo.so: type=1400 audit(0.0:382): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:36.654 14719 14719 W libmihomo.so: type=1400 audit(0.0:383): avc:  denied  { read } for  name="somaxconn" dev="proc" ino=33218 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:proc_net:s0 tclass=file permissive=0 app=local.pocketchat.test
+10-31 08:47:36.798 14214 14607 D TrafficStats: tagSocket(192) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.818 14214 14607 D TrafficStats: tagSocket(209) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.819 14214 14542 D TrafficStats: tagSocket(233) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.820 14214 14673 D TrafficStats: tagSocket(238) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.820 14214 14540 D TrafficStats: tagSocket(245) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.820 14214 14637 D TrafficStats: tagSocket(241) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.821 14214 14537 D TrafficStats: tagSocket(252) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.821 14214 14542 D TrafficStats: tagSocket(255) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.823 14214 14542 D TrafficStats: tagSocket(256) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.823 14214 14677 D TrafficStats: tagSocket(259) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.823 14214 14542 D TrafficStats: tagSocket(257) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.823 14214 14542 D TrafficStats: tagSocket(258) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.823 14214 14540 D TrafficStats: tagSocket(261) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.823 14214 14679 D TrafficStats: tagSocket(260) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.824 14214 14671 D TrafficStats: tagSocket(262) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.824 14214 14540 D TrafficStats: tagSocket(265) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.824 14214 14670 D TrafficStats: tagSocket(264) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.824 14214 14540 D TrafficStats: tagSocket(267) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.824 14214 14540 D TrafficStats: tagSocket(263) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.966 14214 14214 D WebExtension: handleMessage GeckoView:WebExtension:Message
+10-31 08:47:36.969 14214 14627 D TrafficStats: tagSocket(270) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.970 14214 14539 D TrafficStats: tagSocket(272) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.970 14214 14542 D TrafficStats: tagSocket(274) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.970 14214 14672 D TrafficStats: tagSocket(275) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:36.971 14214 14540 D TrafficStats: tagSocket(277) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:37.031 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Production reconnect restores a newly verified core generation after the real stop","pass":true}}
+10-31 08:47:37.424 14214 14214 D GeckoSession: handleMessage GeckoView:StateUpdated uri=null
+10-31 08:47:37.646 14732 14732 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:37.649 14732 14732 I AndroidRuntime: Using default boot image
+10-31 08:47:37.649 14732 14732 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:37.651 14732 14732 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:37.651 14732 14732 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:37.690 14732 14732 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:37.695 14732 14732 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:37.695 14732 14732 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:37.695 14732 14732 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:37.696 14732 14732 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:37.696 14732 14732 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:37.697 14732 14732 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:37.697 14732 14732 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:37.708 14732 14732 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:37.708 14732 14732 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:37.711 14732 14732 D AndroidRuntime: Shutting down VM
+10-31 08:47:37.712   581   900 W IPCThreadState: Sending oneway calls to frozen process.
+10-31 08:47:37.712   581   900 W IPCThreadState: Sending oneway calls to frozen process.
+10-31 08:47:37.713   581   900 W IPCThreadState: Sending oneway calls to frozen process.
+10-31 08:47:37.713   581   900 W IPCThreadState: Sending oneway calls to frozen process.
+10-31 08:47:37.810 14214 14607 D TrafficStats: tagSocket(259) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:37.810 14214 14607 D TrafficStats: tagSocket(259) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:37.810 14214 14607 D TrafficStats: tagSocket(259) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:37.940   581  1623 D FileUtils: Rounded bytes from 3121197056 to 4000000000
+10-31 08:47:37.938 14742 14742 W libmihomo.so: type=1400 audit(0.0:384): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:37.953 14214 14607 D TrafficStats: tagSocket(233) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:37.938 14742 14742 W libmihomo.so: type=1400 audit(0.0:385): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:37.938 14742 14742 W libmihomo.so: type=1400 audit(0.0:386): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:37.938 14742 14742 W libmihomo.so: type=1400 audit(0.0:387): avc:  denied  { search } for  name="tests" dev="dm-46" ino=65540 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:shell_test_data_file:s0 tclass=dir permissive=0 app=local.pocketchat.test
+10-31 08:47:37.954 14742 14742 W libmihomo.so: type=1400 audit(0.0:388): avc:  denied  { read } for  name="somaxconn" dev="proc" ino=33218 scontext=u:r:untrusted_app:s0:c209,c256,c512,c768 tcontext=u:object_r:proc_net:s0 tclass=file permissive=0 app=local.pocketchat.test
+10-31 08:47:38.104 14214 14607 D TrafficStats: tagSocket(233) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.164 14214 14607 D TrafficStats: tagSocket(120) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.165 14214 14541 D TrafficStats: tagSocket(245) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.165 14214 14624 D TrafficStats: tagSocket(249) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.166 14214 14540 D TrafficStats: tagSocket(254) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.166 14214 14638 D TrafficStats: tagSocket(252) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.167 14214 14537 D TrafficStats: tagSocket(257) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.167 14214 14541 D TrafficStats: tagSocket(259) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.167 14214 14541 D TrafficStats: tagSocket(260) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.168 14214 14541 D TrafficStats: tagSocket(261) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.168 14214 14541 D TrafficStats: tagSocket(262) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.168 14214 14636 D TrafficStats: tagSocket(263) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.168 14214 14631 D TrafficStats: tagSocket(264) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.168 14214 14629 D TrafficStats: tagSocket(265) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.168 14214 14639 D TrafficStats: tagSocket(269) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.168 14214 14540 D TrafficStats: tagSocket(272) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.168 14214 14540 D TrafficStats: tagSocket(267) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.169 14214 14540 D TrafficStats: tagSocket(274) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.169 14214 14540 D TrafficStats: tagSocket(270) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:38.491 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"newer-desired-revision-rejected: negative precondition has the exact acknowledged saved model","pass":true}}
+10-31 08:47:38.501 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"newer-desired-revision-rejected: newer desired revision coexists with the genuinely verified old route","pass":true}}
+10-31 08:47:38.503 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"newer-desired-revision-rejected: original attempt and saved candidate remain current at injection","pass":true}}
+10-31 08:47:39.376 14756 14756 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:39.379 14756 14756 I AndroidRuntime: Using default boot image
+10-31 08:47:39.379 14756 14756 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:39.380 14756 14756 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:39.380 14756 14756 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:39.421 14756 14756 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:39.428 14756 14756 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:39.428 14756 14756 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:39.428 14756 14756 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:39.429 14756 14756 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:39.429 14756 14756 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:39.430 14756 14756 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:39.430 14756 14756 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:39.441 14756 14756 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:39.441 14756 14756 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:39.444 14756 14756 D AndroidRuntime: Shutting down VM
+10-31 08:47:41.107 14768 14768 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:41.111 14768 14768 I AndroidRuntime: Using default boot image
+10-31 08:47:41.111 14768 14768 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:41.112 14768 14768 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:41.113 14768 14768 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:41.151 14768 14768 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:41.157 14768 14768 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:41.157 14768 14768 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:41.157 14768 14768 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:41.157 14768 14768 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:41.158 14768 14768 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:41.159 14768 14768 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:41.159 14768 14768 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:41.169 14768 14768 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:41.170 14768 14768 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:41.172 14768 14768 D AndroidRuntime: Shutting down VM
+10-31 08:47:42.839 14780 14780 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:42.841 14780 14780 I AndroidRuntime: Using default boot image
+10-31 08:47:42.841 14780 14780 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:42.843 14780 14780 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:42.843 14780 14780 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:42.884 14780 14780 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:42.890 14780 14780 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:42.890 14780 14780 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:42.890 14780 14780 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:42.890 14780 14780 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:42.891 14780 14780 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:42.892 14780 14780 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:42.892 14780 14780 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:42.903 14780 14780 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:42.903 14780 14780 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:42.907 14780 14780 D AndroidRuntime: Shutting down VM
+10-31 08:47:43.954   980  1097 D EGL_emulation: app_time_stats: avg=43819.59ms min=43819.59ms max=43819.59ms count=1
+10-31 08:47:44.073 14214 14214 I PocketNetworkSafeIdle: {"kind":"applicationResult","value":{"id":"918524f5-c12a-4b32-9ac9-134a12e600a4","ok":false,"internal":false,"operationResult":{"environmentId":"1d25c0ab-eace-4b23-8fda-3d53088c2550","generation":0,"candidateId":"c0930098993f49968bbfeba179fcb089","savedRevision":6,"appliedRevision":0,"saveState":"saved","applicationState":"saved-unconfirmed","scope":"session","message":"配置已保存，实际应用回执尚未确认；当前网页保持打开"}}}
+10-31 08:47:44.074 14214 14541 D TrafficStats: tagSocket(117) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:44.075 14214 14628 D TrafficStats: tagSocket(116) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:44.075 14214 14540 D TrafficStats: tagSocket(144) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:44.076 14214 14627 D TrafficStats: tagSocket(170) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:44.077 14214 14538 D TrafficStats: tagSocket(191) with statsTag=0xffffffff, statsUid=-1
+10-31 08:47:44.094 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"newer-desired-revision-rejected: result belongs to the exact environment and candidate","pass":true}}
+10-31 08:47:44.094 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"newer-desired-revision-rejected: saved and applied states remain distinct","pass":true}}
+10-31 08:47:44.094 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"newer-desired-revision-rejected: original provider rejects stale application despite earlier ready state","pass":true}}
+10-31 08:47:44.094 14214 14232 I PocketNetworkSafeIdle: {"kind":"check","value":{"name":"Every mapped exit target stayed inside its explicit loopback allowlist","pass":true}}
+10-31 08:47:44.577 14792 14792 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-31 08:47:44.580 14792 14792 I AndroidRuntime: Using default boot image
+10-31 08:47:44.580 14792 14792 I AndroidRuntime: Leaving lock profiling enabled
+10-31 08:47:44.581 14792 14792 I app_process: Core platform API reporting enabled, enforcing=false
+10-31 08:47:44.582 14792 14792 I app_process: Using CollectorTypeCMC GC.
+10-31 08:47:44.627 14792 14792 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+10-31 08:47:44.633 14792 14792 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:44.633 14792 14792 D app_process: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/8/icu") succeeded. 
+10-31 08:47:44.633 14792 14792 D app_process: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt75l.dat
+10-31 08:47:44.633 14792 14792 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:44.634 14792 14792 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+10-31 08:47:44.635 14792 14792 W app_process: Unexpected CPU variant for x86: x86_64.
+10-31 08:47:44.635 14792 14792 W app_process: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, default
+10-31 08:47:44.646 14792 14792 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-31 08:47:44.646 14792 14792 D AndroidRuntime: Calling main entry com.android.commands.content.Content
+10-31 08:47:44.647 14214 14232 I PocketNetworkSafeIdle: {"kind":"settingsInternalResult","value":{"status":"passed","checkCount":44,"error":""}}
+10-31 08:47:44.659 14792 14792 D AndroidRuntime: Shutting down VM

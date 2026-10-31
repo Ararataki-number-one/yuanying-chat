@@ -1,0 +1,225 @@
+{
+  "actualProviderInvocation": false,
+  "productionJobMethodsExtractedVerbatim": true,
+  "productionObserverMethodsExtractedVerbatim": true,
+  "checks": [
+    {
+      "pass": true,
+      "name": "Retry holds before 100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry becomes due at 100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry holds before 2100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry becomes due at 2100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry holds before 6100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry becomes due at 6100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry holds before 14100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry becomes due at 14100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry holds before 30100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry becomes due at 30100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry holds before 60100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Retry becomes due at 60100 deadline"
+    },
+    {
+      "pass": true,
+      "name": "Unavailable event does not admit a retry"
+    },
+    {
+      "pass": true,
+      "name": "Real availability transition wakes pending work"
+    },
+    {
+      "pass": true,
+      "name": "Repeated unchanged observations retain backoff"
+    },
+    {
+      "pass": true,
+      "name": "Missing composer keeps pending backoff"
+    },
+    {
+      "pass": true,
+      "name": "Composer recovery wakes the same unchanged document"
+    },
+    {
+      "pass": true,
+      "name": "Draft text changes are not event data and preserve backoff"
+    },
+    {
+      "pass": true,
+      "name": "Incomplete draft fallback remains bounded at thirty seconds"
+    },
+    {
+      "pass": true,
+      "name": "New candidate starts without old candidate backoff"
+    },
+    {
+      "pass": true,
+      "name": "Cancellation removes pending retry identity"
+    },
+    {
+      "pass": true,
+      "name": "Internal completion and late callbacks never accumulate"
+    },
+    {
+      "pass": true,
+      "name": "Unknown retired completion cannot create a record"
+    },
+    {
+      "pass": true,
+      "name": "External completion is immutable after publication"
+    },
+    {
+      "pass": true,
+      "name": "Every external result remains readable through retention window"
+    },
+    {
+      "pass": true,
+      "name": "Expired completions retire without deleting active work"
+    },
+    {
+      "pass": true,
+      "name": "Expired callback cannot resurrect its result"
+    },
+    {
+      "pass": true,
+      "name": "Retention exceeds the actual 160 second bridge poll"
+    },
+    {
+      "pass": true,
+      "name": "Operation outcome is frozen atomically with job completion"
+    },
+    {
+      "pass": true,
+      "name": "Late completion cannot replace an operation outcome"
+    },
+    {
+      "pass": true,
+      "name": "An outcome-bearing callback cannot resurrect a retired job"
+    },
+    {
+      "pass": true,
+      "name": "Production synchronous first observer callback only records its baseline"
+    },
+    {
+      "pass": true,
+      "name": "Repeated attachment retains one production observer"
+    },
+    {
+      "pass": true,
+      "name": "Full production observer ignores every-character draft changes"
+    },
+    {
+      "pass": true,
+      "name": "Unavailable composer observation retains the deferred deadline"
+    },
+    {
+      "pass": true,
+      "name": "Actual composer recovery posts exactly one pending wakeup"
+    },
+    {
+      "pass": true,
+      "name": "A new failure on the recovered page retains its backoff"
+    },
+    {
+      "pass": true,
+      "name": "Actual busy-to-idle transition still wakes pending work"
+    },
+    {
+      "pass": true,
+      "name": "Fresh same-work idle wakes apply with stale pending and full reply state retained"
+    },
+    {
+      "pass": true,
+      "name": "Unknown new submission never borrows a prior idle event"
+    },
+    {
+      "pass": true,
+      "name": "A new bound current-work proof releases the deferred action"
+    },
+    {
+      "pass": true,
+      "name": "Cancelled work cannot be woken by a later page recovery"
+    },
+    {
+      "pass": true,
+      "name": "Production detach removes the prior session observer"
+    },
+    {
+      "pass": true,
+      "name": "Concurrent prune retires only the expired external result"
+    },
+    {
+      "pass": true,
+      "name": "Production late completion cannot resurrect a concurrently retired result"
+    },
+    {
+      "pass": true,
+      "name": "Concurrent late callback preserves retained results and new active work"
+    }
+  ],
+  "actualAndroidExecution": false,
+  "passed": 46,
+  "productionRetryClass": true,
+  "status": "passed",
+  "twoActualThreads": true,
+  "methodSha256": {
+    "static boolean internalJob(": "b72a2f02633429b6eb1489cdb472b15401c2cb76e047ddf21efdb1611afb5da6",
+    "void pruneJobs(": "3ea3b9b81ef0dd0f9a076c34b3e5f6b50a1f8788b7e31d935f6a86e6869f0b30",
+    "void recordResult(String id,boolean ok,String message){": "eadfdef61c073aaf048243bb78dfcc616f57fa163e9709cb80d1bb238f376970",
+    "void recordResult(String id,boolean ok,String message,JSONObject operationResult){": "b530a7ccf04bba289b31cb5309f313b7cbab30c6b72193479b123659d25387eb",
+    "void observeSession(": "3f4fb41c1fca8b77aa2a660ced201512252e3c35a662f6f7c67f1424c00e2002",
+    "void sessionChanged(": "7a6a332242e0b1447945eead819bb6322940ae9cf5baa0e2261d71f773252832",
+    "static boolean taskIdle(": "35e96394aece0f9bc860d08c7bee0710695bf792871c41ea7ca93d2d9cc7ae85"
+  },
+  "sourceSha256": "0a3281bb2b99374878a3aeb39a134562423051a78a1433be3a4b36648b819c7e",
+  "retrySourceSha256": "503c84e43550b96e751e87d7b4eb5f4b538bf4fadf7a83413ae638e60aabcf3d",
+  "fixtureSha256": {
+    "tests/network-apply-host/run.py": "e29428160007fa5b0e19a2e76af53fbd8cd79acd3dac5623840d19bd16548d96",
+    "tests/network-apply-host/ProviderObservation.java.in": "3ffb0ab0c39b43e86d29f6bcb8990f28762d95459e6b22bd65accab543aac6b4",
+    "tests/network-apply-host/local/pocketchat/NetworkApplyHostTest.java": "586c0f176b63daa4dc83529a6b6707edee05db4450ee5d14e0a8810e09ec6b15",
+    "tests/network-apply-host/android/os/SystemClock.java": "26370bd50f25a7a9d089fbb6a7fc0271334c0b405853eb783600f40d3d3d2a6b"
+  },
+  "chatObserverSourceSha256": "d7e91533fca9a6d9caf15c1d3264be7aec76182667af123c48028872b0bd88ad",
+  "chatObserverMethodsSha256": [
+    "f90286e7ee9cad9983f73b1c65732e64be271f5e5b4a4cc87a70407d668030a1",
+    "f948b7c6c2ba596a6ade864ffb8bd3433308a210e876a2c8139989838f2c3a82"
+  ],
+  "scope": "Actual retry class and exact provider observer/retention/retirement methods plus ChatSession add/remove; explicit page/looper/clock adapters and two real threads. No Android provider lifecycle, Gecko or route application claim.",
+  "sourceCommit": "7d9daca2d7866d4c5b73505f21433f2536c4c775",
+  "ciSourceDirty": false,
+  "ciHost": {
+    "jsonImplementation": "android",
+    "jsonJarSha256": "dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79"
+  }
+}
