@@ -1,0 +1,595 @@
+{
+  "status": "passed",
+  "checks": [
+    {
+      "name": "Packaged native ELF exposes its actual ABI, streamed SHA and controller version",
+      "pass": true
+    },
+    {
+      "name": "Real native parser returns entry fingerprint",
+      "pass": true
+    },
+    {
+      "name": "Real native parser returns exit fingerprint",
+      "pass": true
+    },
+    {
+      "name": "Public test CA database prepared in the isolated profile before Gecko runtime",
+      "pass": true
+    },
+    {
+      "name": "Controlled ChatGPT certificate has the exact valid CA signed SAN and server chain",
+      "pass": true
+    },
+    {
+      "name": "Official Gecko security callback trusts the controlled ChatGPT origin without an exception",
+      "pass": true
+    },
+    {
+      "name": "Production observer uses the actual controlled HTTPS origin",
+      "pass": true
+    },
+    {
+      "name": "Only the test origin is proxied",
+      "pass": true
+    },
+    {
+      "name": "retry-invalid: exact saved receipt and both private payloads are stable",
+      "pass": true
+    },
+    {
+      "name": "retry-invalid: original core settings and document remain untouched",
+      "pass": true
+    },
+    {
+      "name": "retry-invalid: production drain retires every internal attempt",
+      "pass": true
+    },
+    {
+      "name": "retry-invalid: retry 1 observes bounded exponential backoff",
+      "pass": true
+    },
+    {
+      "name": "retry-invalid: retry 2 observes bounded exponential backoff",
+      "pass": true
+    },
+    {
+      "name": "retry-invalid: retry 3 observes bounded exponential backoff",
+      "pass": true
+    },
+    {
+      "name": "retry-invalid: retry 4 observes bounded exponential backoff",
+      "pass": true
+    },
+    {
+      "name": "retry-invalid: real availability event wakes before original backoff deadline",
+      "pass": true
+    },
+    {
+      "name": "retry-invalid: restored bridge reaches original draft capture without reload",
+      "pass": true
+    },
+    {
+      "name": "retry-invalid: cancellation retires queued work without switching fixed exit",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: exact saved receipt and both private payloads are stable",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: original core settings and document remain untouched",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: production drain retires every internal attempt",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: retry 1 observes bounded exponential backoff",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: retry 2 observes bounded exponential backoff",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: retry 3 observes bounded exponential backoff",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: retry 4 observes bounded exponential backoff",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: injected stall used the original async-driver timeout",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: real availability event wakes before original backoff deadline",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: restored bridge reaches original draft capture without reload",
+      "pass": true
+    },
+    {
+      "name": "retry-timeout: cancellation retires queued work without switching fixed exit",
+      "pass": true
+    },
+    {
+      "name": "Internal completed and late callbacks leave no job records",
+      "pass": true
+    },
+    {
+      "name": "New external start retains the 32 still-readable completion receipts",
+      "pass": true
+    },
+    {
+      "name": "Full external receipt capacity rejects new work without deleting results",
+      "pass": true
+    }
+  ],
+  "checkCount": 32,
+  "retryCases": [
+    {
+      "case": "retry-invalid",
+      "recoveryId": "internal:829e0e9c-fa28-4dd9-a6d2-f40a0b5ed1ae",
+      "fault": "invalid",
+      "requiredAttempts": 5,
+      "attempts": [
+        {
+          "id": "59c12b6f-791f-4a4c-a418-0e70a51f4e35",
+          "at": 687626,
+          "internal": false
+        },
+        {
+          "id": "internal:26d228d6-2498-43f1-8aa8-c138df26473e",
+          "at": 690564,
+          "internal": true
+        },
+        {
+          "id": "internal:839b869e-f319-46af-bd03-3dfb08ed9b5a",
+          "at": 695539,
+          "internal": true
+        },
+        {
+          "id": "internal:c95e12c0-a8ca-44e0-86bf-e469ab615b66",
+          "at": 704521,
+          "internal": true
+        },
+        {
+          "id": "internal:956fd421-f0bb-4fcd-b9c0-903cc19c4f80",
+          "at": 721524,
+          "internal": true
+        }
+      ],
+      "finishes": [
+        {
+          "id": "59c12b6f-791f-4a4c-a418-0e70a51f4e35",
+          "at": 687777,
+          "jobCount": 1
+        },
+        {
+          "id": "internal:26d228d6-2498-43f1-8aa8-c138df26473e",
+          "at": 690772,
+          "jobCount": 1
+        },
+        {
+          "id": "internal:839b869e-f319-46af-bd03-3dfb08ed9b5a",
+          "at": 695738,
+          "jobCount": 1
+        },
+        {
+          "id": "internal:c95e12c0-a8ca-44e0-86bf-e469ab615b66",
+          "at": 704666,
+          "jobCount": 1
+        },
+        {
+          "id": "internal:956fd421-f0bb-4fcd-b9c0-903cc19c4f80",
+          "at": 721674,
+          "jobCount": 1
+        }
+      ],
+      "faultHits": 5,
+      "unavailableObservationHits": 12,
+      "pendingStable": true,
+      "activeStable": true,
+      "draftStable": true,
+      "loadCallsBefore": 1,
+      "loadCallsAfter": 1,
+      "recoveryObservedAt": 721712,
+      "priorRetryDeadline": 751674,
+      "recoveryAttemptAt": 721760,
+      "availabilityEventChanged": true,
+      "heldBeforeCommit": true,
+      "routeApplied": false
+    },
+    {
+      "case": "retry-timeout",
+      "recoveryId": "internal:4a09a3fe-7e97-4c34-be6c-aa1c6cfc332a",
+      "fault": "timeout",
+      "requiredAttempts": 5,
+      "attempts": [
+        {
+          "id": "56fbcf25-0a5a-4548-9a83-c07529ffb118",
+          "at": 722635,
+          "internal": false
+        },
+        {
+          "id": "internal:48b7cbf3-5b38-45dc-94f2-1cb8e9234503",
+          "at": 727587,
+          "internal": true
+        },
+        {
+          "id": "internal:20b47bbb-deda-4f1e-ad57-e31bfc4392e6",
+          "at": 734583,
+          "internal": true
+        },
+        {
+          "id": "internal:5b677d88-b53c-44a8-a948-568c987b150d",
+          "at": 745590,
+          "internal": true
+        },
+        {
+          "id": "internal:c9263d8a-a314-41e6-abea-ec6b7db1942c",
+          "at": 764590,
+          "internal": true
+        }
+      ],
+      "finishes": [
+        {
+          "id": "56fbcf25-0a5a-4548-9a83-c07529ffb118",
+          "at": 725207,
+          "jobCount": 1
+        },
+        {
+          "id": "internal:48b7cbf3-5b38-45dc-94f2-1cb8e9234503",
+          "at": 730149,
+          "jobCount": 1
+        },
+        {
+          "id": "internal:20b47bbb-deda-4f1e-ad57-e31bfc4392e6",
+          "at": 737145,
+          "jobCount": 1
+        },
+        {
+          "id": "internal:5b677d88-b53c-44a8-a948-568c987b150d",
+          "at": 748157,
+          "jobCount": 1
+        },
+        {
+          "id": "internal:c9263d8a-a314-41e6-abea-ec6b7db1942c",
+          "at": 767150,
+          "jobCount": 1
+        }
+      ],
+      "faultHits": 5,
+      "unavailableObservationHits": 12,
+      "pendingStable": true,
+      "activeStable": true,
+      "draftStable": true,
+      "loadCallsBefore": 1,
+      "loadCallsAfter": 1,
+      "recoveryObservedAt": 767174,
+      "priorRetryDeadline": 797150,
+      "recoveryAttemptAt": 767209,
+      "availabilityEventChanged": true,
+      "heldBeforeCommit": true,
+      "routeApplied": false
+    }
+  ],
+  "retryLedger": {
+    "schema": 1,
+    "cases": [
+      {
+        "case": "retry-invalid",
+        "externalId": "59c12b6f-791f-4a4c-a418-0e70a51f4e35",
+        "environmentId": "65c6f936-31eb-4e1b-8126-1644c5d0430d",
+        "generation": 0,
+        "snapshotHash": "0cb145faabef9dd51239af8a05608d42fc6bb948f40e67d46764b50a66259a71",
+        "closed": true,
+        "attempts": [
+          {
+            "id": "59c12b6f-791f-4a4c-a418-0e70a51f4e35",
+            "started": 687626,
+            "retired": 687777,
+            "jobCount": 1
+          },
+          {
+            "id": "internal:26d228d6-2498-43f1-8aa8-c138df26473e",
+            "started": 690564,
+            "retired": 690772,
+            "jobCount": 1
+          },
+          {
+            "id": "internal:839b869e-f319-46af-bd03-3dfb08ed9b5a",
+            "started": 695539,
+            "retired": 695738,
+            "jobCount": 1
+          },
+          {
+            "id": "internal:c95e12c0-a8ca-44e0-86bf-e469ab615b66",
+            "started": 704521,
+            "retired": 704666,
+            "jobCount": 1
+          },
+          {
+            "id": "internal:956fd421-f0bb-4fcd-b9c0-903cc19c4f80",
+            "started": 721524,
+            "retired": 721674,
+            "jobCount": 1
+          },
+          {
+            "id": "internal:829e0e9c-fa28-4dd9-a6d2-f40a0b5ed1ae",
+            "started": 721760,
+            "retired": 722440,
+            "jobCount": 2
+          }
+        ]
+      },
+      {
+        "case": "retry-timeout",
+        "externalId": "56fbcf25-0a5a-4548-9a83-c07529ffb118",
+        "environmentId": "65c6f936-31eb-4e1b-8126-1644c5d0430d",
+        "generation": 0,
+        "snapshotHash": "2c1bf162c56226fe3ae391c58236d1b7fb6245a2fdca85850579a3b3057cda84",
+        "closed": true,
+        "attempts": [
+          {
+            "id": "56fbcf25-0a5a-4548-9a83-c07529ffb118",
+            "started": 722635,
+            "retired": 725207,
+            "jobCount": 1
+          },
+          {
+            "id": "internal:48b7cbf3-5b38-45dc-94f2-1cb8e9234503",
+            "started": 727587,
+            "retired": 730149,
+            "jobCount": 1
+          },
+          {
+            "id": "internal:20b47bbb-deda-4f1e-ad57-e31bfc4392e6",
+            "started": 734583,
+            "retired": 737145,
+            "jobCount": 1
+          },
+          {
+            "id": "internal:5b677d88-b53c-44a8-a948-568c987b150d",
+            "started": 745590,
+            "retired": 748157,
+            "jobCount": 1
+          },
+          {
+            "id": "internal:c9263d8a-a314-41e6-abea-ec6b7db1942c",
+            "started": 764590,
+            "retired": 767150,
+            "jobCount": 1
+          },
+          {
+            "id": "internal:4a09a3fe-7e97-4c34-be6c-aa1c6cfc332a",
+            "started": 767209,
+            "retired": 767786,
+            "jobCount": 2
+          }
+        ]
+      }
+    ],
+    "callbacks": [
+      {
+        "id": "59c12b6f-791f-4a4c-a418-0e70a51f4e35",
+        "case": "retry-invalid",
+        "at": 687777,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 1
+      },
+      {
+        "id": "internal:26d228d6-2498-43f1-8aa8-c138df26473e",
+        "case": "retry-invalid",
+        "at": 690772,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 1
+      },
+      {
+        "id": "internal:839b869e-f319-46af-bd03-3dfb08ed9b5a",
+        "case": "retry-invalid",
+        "at": 695738,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 1
+      },
+      {
+        "id": "internal:c95e12c0-a8ca-44e0-86bf-e469ab615b66",
+        "case": "retry-invalid",
+        "at": 704666,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 1
+      },
+      {
+        "id": "internal:956fd421-f0bb-4fcd-b9c0-903cc19c4f80",
+        "case": "retry-invalid",
+        "at": 721674,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 1
+      },
+      {
+        "id": "internal:829e0e9c-fa28-4dd9-a6d2-f40a0b5ed1ae",
+        "case": "retry-invalid",
+        "at": 722440,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 2
+      },
+      {
+        "id": "internal:829e0e9c-fa28-4dd9-a6d2-f40a0b5ed1ae",
+        "case": "retry-invalid",
+        "at": 722496,
+        "wasActive": false,
+        "isRetired": true,
+        "jobCount": 0
+      },
+      {
+        "id": "56fbcf25-0a5a-4548-9a83-c07529ffb118",
+        "case": "retry-timeout",
+        "at": 725207,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 1
+      },
+      {
+        "id": "internal:48b7cbf3-5b38-45dc-94f2-1cb8e9234503",
+        "case": "retry-timeout",
+        "at": 730149,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 1
+      },
+      {
+        "id": "internal:20b47bbb-deda-4f1e-ad57-e31bfc4392e6",
+        "case": "retry-timeout",
+        "at": 737145,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 1
+      },
+      {
+        "id": "internal:5b677d88-b53c-44a8-a948-568c987b150d",
+        "case": "retry-timeout",
+        "at": 748157,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 1
+      },
+      {
+        "id": "internal:c9263d8a-a314-41e6-abea-ec6b7db1942c",
+        "case": "retry-timeout",
+        "at": 767150,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 1
+      },
+      {
+        "id": "internal:4a09a3fe-7e97-4c34-be6c-aa1c6cfc332a",
+        "case": "retry-timeout",
+        "at": 767786,
+        "wasActive": true,
+        "isRetired": true,
+        "jobCount": 2
+      },
+      {
+        "id": "internal:4a09a3fe-7e97-4c34-be6c-aa1c6cfc332a",
+        "case": "retry-timeout",
+        "at": 767840,
+        "wasActive": false,
+        "isRetired": true,
+        "jobCount": 32
+      }
+    ],
+    "scope": "Test-only admission ownership and every deferral callback; inactive duplicate callbacks remain evidence but are not production retirements."
+  },
+  "actualAndroidExecution": true,
+  "actualGeckoExecution": true,
+  "actualKeystoreEncryption": true,
+  "actualRouteApplication": false,
+  "actualPublicWebsite": false,
+  "productionDrainInvoked": true,
+  "testTrust": {
+    "schema": 1,
+    "method": "NSS SQL public-root profile preload",
+    "assetDirectory": "network-safe-idle-trust/",
+    "hostname": "chatgpt.com",
+    "testCaSha256": "794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226",
+    "testLeafSha256": "66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c",
+    "profileDbSha256": "a3114642d39ee1f3bc23c4428b08035abeb101de367547dcfe32680af6286023",
+    "profilePath": "/data/data/local.pocketchat.test/no_backup/gecko-browser",
+    "preparedBeforeRuntime": true,
+    "databaseCopyShaVerified": true,
+    "serverChainShaVerified": true,
+    "certificateValidityChecked": true,
+    "certificateHostnameSanMatches": true,
+    "productionTrustChanged": false,
+    "certificateExceptionUsed": false
+  },
+  "securityEvents": [
+    {
+      "callback": "GeckoSession.ProgressDelegate.onSecurityChange",
+      "isSecure": true,
+      "isException": false,
+      "host": "chatgpt.com",
+      "origin": "https://chatgpt.com",
+      "certificateSha256": "66c659c8f20a9ea7d132d66e4020897be19fab099aa3cc17fa870a967c16266c",
+      "testCaSha256": "794f38936cb5ebc28b6d0f681f9d5b00a2431f48ced181137f4f3bf45fe67226",
+      "certificateSignedByTestCa": true,
+      "certificateValidityChecked": true,
+      "certificateHostnameSanMatches": true,
+      "certificateMatchesPackagedLeaf": true,
+      "accepted": true,
+      "verificationError": ""
+    }
+  ],
+  "certificateExceptions": 0,
+  "buildIdentity": {
+    "schema": 1,
+    "sourceCommit": "2f195aa7c356873901976a72283732c2560bba90",
+    "sourceTree": "cbb37b32ad11ec52bc91216185a033bf1d475e08",
+    "dirtySource": false,
+    "version": "2.0.45",
+    "versionCode": 98,
+    "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+    "sdkBuildKind": "source-derived-java",
+    "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+    "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+    "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+    "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+    "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+    "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+    "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+    "sdkBuildReceiptSha256": "0c8090a717263d02995816829a9cfa4787361a6c3e832f45d2e17e3c08338999",
+    "sdkBuildSource": "2f195aa7c356873901976a72283732c2560bba90",
+    "sdkBuildIdentity": {
+      "sdkBuildKind": "source-derived-java",
+      "sdkCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkRuntimeCoordinate": "local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3",
+      "sdkInputCoordinate": "org.mozilla.geckoview:geckoview:157.0.20261005135250",
+      "sdkInputAarSha256": "15f1edf3c58abcdaf2783f299b8c19c3a36272d348969106a9009671fef8d268",
+      "sdkAarSha256": "f9fad20c02e554b00da51b72c8cd2643e121b4a81bc656dd5cf03de21ded2e72",
+      "sdkClassesJarSha256": "237fd669f196b6efc6882a3e806a31e7de5b95b4ad1bef3e22233c6b41de684f",
+      "sdkGeckoEditableClassSha256": "02e386e366fc7bad29eb4f5f92d5f762618eb97609c236cf5e0d42604e58fb00",
+      "sdkManifestSha256": "e17c26595f25a7d87b250a92bd1359607e0ec859369f4ade312a129d2fe98902",
+      "sdkBuildReceiptSha256": "0c8090a717263d02995816829a9cfa4787361a6c3e832f45d2e17e3c08338999",
+      "sdkBuildSource": "2f195aa7c356873901976a72283732c2560bba90",
+      "schema": 1,
+      "sourceCommit": "2f195aa7c356873901976a72283732c2560bba90",
+      "sourceTree": "cbb37b32ad11ec52bc91216185a033bf1d475e08",
+      "runId": "41147728773",
+      "runAttempt": "1"
+    },
+    "package": "local.pocketchat.test",
+    "apkBytes": 126650058,
+    "apkSha256": "77aa0f88767b1a2653d48b6207f85d013fcfb2a3e1fe7e017bf31740803c381b",
+    "buildStampSha256": "8bdf4cadc4fcd93d3533447d55c4e15db9bc5a74b770c93fe4d4c2127f8809b3",
+    "scope": "Installed synthetic integration APK bytes and embedded source stamp only"
+  },
+  "runNonce": "adc971674c194fa2a4c6a2ac4f132324",
+  "sourceCommit": "2f195aa7c356873901976a72283732c2560bba90",
+  "fixtureProviderControl": {
+    "schema": 1,
+    "registeredProviderIdentity": 254270219,
+    "profilePath": "/data/data/local.pocketchat.test/no_backup",
+    "removeCallbacksCalled": true,
+    "drainRevisionBefore": 0,
+    "drainRevisionAfter": 1,
+    "automaticDrainSuspended": true,
+    "restored": false,
+    "controlledProviderIdentity": 42007767
+  },
+  "scope": "Production provider drain and async driver with actual Gecko loopback page. Two injected bridge outcomes; original safe-idle guards remain active. Recovery is held before commit, so no candidate route application or public WAN claim.",
+  "installedPackage": "local.pocketchat.test",
+  "installedApkSha256": "77aa0f88767b1a2653d48b6207f85d013fcfb2a3e1fe7e017bf31740803c381b",
+  "runnerOneAttempt": true,
+  "runnerSha256": "d5ae4a4619feee1da65342cf186c117759b78410d5f9e84ea6e83b593278912b"
+}
