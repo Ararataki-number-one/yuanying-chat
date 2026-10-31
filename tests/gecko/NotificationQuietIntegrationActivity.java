@@ -112,7 +112,7 @@ public final class NotificationQuietIntegrationActivity extends Activity {
   // Starting an empty service must not defeat production's idle withdrawal.
   // This isolated, freshly cleared test app has no subscriber or real exit:
   // both listeners bind loopback, all routes reject, and DNS/TUN are disabled.
-  void startLocalProxy(){
+  void startLocalProxy()throws IOException{
     proxyOwner=ProfileCatalog.get(owner).identity(7);proxyClient=new NetworkTransportClient(owner,state->{});
     proxyWorker.execute(()->{try{
       JSONObject initial=proxyClient.call("snapshot","");
