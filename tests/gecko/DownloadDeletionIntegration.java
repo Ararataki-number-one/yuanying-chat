@@ -44,7 +44,7 @@ final class DownloadDeletionIntegration {
     new Thread(()->{
       DownloadDeletionIntegration test=new DownloadDeletionIntegration(activity);
       try{test.exercise();test.report.put("status","passed");}
-      catch(Throwable error){try{test.report.put("status","failed").put("error",error.toString());}catch(Exception ignored){}}
+      catch(Throwable error){android.util.Log.e("PocketDownloadDeletion","Synthetic download deletion fixture failed",error);try{test.report.put("status","failed").put("error",error.toString());}catch(Exception ignored){}}
       finally{try{test.cleanup();}catch(Throwable error){try{test.report.put("status","failed").put("cleanupError",error.toString());}catch(Exception ignored){}}}
       try{test.report.put("checks",test.checks).put("checkCount",test.checks.length());}catch(Exception ignored){}
       activity.runOnUiThread(()->done.accept(test.report));
@@ -208,7 +208,9 @@ final class DownloadDeletionIntegration {
       SavedFileActions actions=new SavedFileActions(activity);AtomicReference<AlertDialog> modal=new AtomicReference<>();
       try{
         android.widget.LinearLayout box=DesignUi.column(activity);android.widget.ScrollView scroll=new android.widget.ScrollView(activity);scroll.addView(box);android.widget.LinearLayout frame=DesignUi.column(activity);frame.addView(scroll,new android.widget.LinearLayout.LayoutParams(-1,DesignUi.dp(activity,300)));
-        DesignDownloads.Controller view=new DesignDownloads.Controller(activity,box,0,n->{},actions);long now=System.currentTimeMillis();
+        DesignDownloads.Controller view=new DesignDownloads.Controller(activity,box,0,n->{},actions);
+        // Keep the synthetic row assertions independent of queued real-library pages.
+        view.setVisible(false);long now=System.currentTimeMillis();
         JSONArray files=new JSONArray();for(int i=0;i<8;i++)files.put(J.obj("id","view-file-"+i,"slot",i%2,"name","visible-file-"+i+".txt","uri","content://synthetic.pocket/view/"+i,"state","saved","time",1609459200000L+i*60000,"location","synthetic view fixture"));
         JSONObject active=J.obj("id","view-progress","slot",7,"name","visible-progress.bin","state","downloading","time",1000,"received",10,"total",100,"updated",now);view.apply(DesignDownloads.ordered(files,new JSONArray().put(active)),0,now);
         AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("下载视图回归").setView(frame).create();modal.set(dialog);dialog.show();

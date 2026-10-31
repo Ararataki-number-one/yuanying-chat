@@ -66,5 +66,5 @@ public final class PeriodicLatencyIntegrationActivity extends Activity {
     Log.i("PocketPeriodicLatency",J.obj("status",report.optString("status"),"error",report.optString("error")).toString());runOnUiThread(this::finish);
   }
   void checkNoEarlyProbe(NativeProbeIntegrationActivity.ProbeFixture target){if(target.count("/periodic")!=2)throw new AssertionError("Unexpected probe before the two-minute deadline");}
-  WindowNetworkState state(NativeNetwork n,JSONObject config){JSONObject row=J.obj("slot",0,"name","Periodic fixture","environmentId","controlled-periodic-read-model","generation",2);return new WindowNetworkState(this,row,config,NetworkOptimizationIntegrationActivity.controlledReadModel(WindowNetworkState.live(null,n),row),true,System.currentTimeMillis());}
+  WindowNetworkState state(NativeProbeIntegrationActivity.ProbeNetwork n,JSONObject config){JSONObject row=J.obj("slot",0,"name","Periodic fixture","environmentId","controlled-periodic-read-model","generation",2);return new WindowNetworkState(this,row,config,NetworkOptimizationIntegrationActivity.controlledLocalProcessReadModel(n,WindowNetworkState.live(null,n),row),true,System.currentTimeMillis());}
 }

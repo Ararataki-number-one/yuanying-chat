@@ -52,3 +52,36 @@ class Alive extends Process {
   boolean alive=true;public boolean isAlive(){return alive;}public void destroy(){alive=false;}public int waitFor(){return 0;}public int exitValue(){return 0;}
   public OutputStream getOutputStream(){return new ByteArrayOutputStream();}public InputStream getInputStream(){return new ByteArrayInputStream(new byte[0]);}public InputStream getErrorStream(){return getInputStream();}
 }
+
+/** The real fixture inheritance is asserted by the Python runner. These types
+ * declare only the renderer boundary needed by the exact selected state method. */
+class NativeProbeIntegrationActivity {static class ProbeNetwork extends TestNetwork {long remaining=120000;@Override long latencyRemaining(long now){return remaining;}}}
+class NetworkOptimizationIntegrationActivity extends FixtureProjection {}
+class ActualPeriodicFixture extends Context {/* ACTUAL_PERIODIC_STATE */}
+class OriginalPeriodicFixture extends Context {/* ORIGINAL_PERIODIC_STATE */}
+class PeriodicState46Host {
+  static final JSONArray checks=new JSONArray();
+  static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
+  static NativeProbeIntegrationActivity.ProbeNetwork local(){TestNetwork original=LocalProcessProjection46Host.local();NativeProbeIntegrationActivity.ProbeNetwork n=new NativeProbeIntegrationActivity.ProbeNetwork();n.settings=original.settings;n.transport=null;n.process=original.process;n.fingerprint=original.fingerprint;n.verifiedRoute=new NativeNetwork.ExitRouteReceipt(n,null);n.latencyReading=J.parse(original.latencyReading.toString());return n;}
+  static WindowNetworkState state(NativeProbeIntegrationActivity.ProbeNetwork n){return new ActualPeriodicFixture().state(n,n.settings);}
+  public static void main(String[] args)throws Exception{
+    NativeProbeIntegrationActivity.ProbeNetwork n=local();String reading=n.latencyReading.toString();WindowNetworkState before=new OriginalPeriodicFixture().state(n,n.settings);
+    check("Original exact periodic state reproduces fresh delay with previous and waiting labels",before.latency.equals("12 ms（上次）")&&before.latencyTimer.equals("（等待连接）"));
+    WindowNetworkState shown=state(n);
+    check("Actual periodic state reaches the unchanged initial countdown expression",!shown.latency.contains("未测")&&shown.latencyTimer.matches("（0[12]:[0-5][0-9]）"));
+    check("The controlled measured delay is current only in the scoped renderer input",shown.connected&&shown.latency.equals("12 ms")&&shown.runtime.optJSONObject("controlledLocalProcessReadModel").optBoolean("ownedLocalRouteVerified"));
+    check("Periodic row keeps its explicit controlled owner instead of claiming provider ownership",shown.environmentId.equals("controlled-periodic-read-model")&&shown.environmentGeneration==2);
+    check("Periodic renderer adapter leaves real cold admission unverified",NetworkCoreApplication.observed(n)==null&&!WindowNetworkState.live(null,n).optBoolean("connected")&&shown.runtime.optString("admission").equals("BLOCKED"));
+    check("Periodic presentation does not mutate the measured probe reading",reading.equals(n.latencyReading.toString()));
+    n.remaining=119000;n.latencyReading.put("at",System.currentTimeMillis());WindowNetworkState after=state(n);
+    check("Actual periodic state reaches the unchanged refreshed countdown expression",!after.latency.contains("未测")&&after.latencyTimer.matches("（01:5[0-9]）"));
+    n=local();n.ready=false;check("Not ready periodic local core still shows waiting",!state(n).connected&&state(n).latencyTimer.equals("（等待连接）"));
+    n=local();n.verifiedRoute=null;check("Missing periodic receipt still shows waiting",!state(n).connected&&state(n).latencyTimer.equals("（等待连接）"));
+    n=local();n.settings.put("_fingerprint","changed");check("Different periodic config is not promoted to a connected rendering input",!state(n).connected);
+    n=local();n.recoveryBlocked=true;check("Blocked periodic fixed exit is not promoted to a connected rendering input",!state(n).connected);
+    n=local();n.admission=NetworkHealthPolicy.Admission.DEGRADED_VERIFICATION;check("Degraded periodic route is not promoted to verified rendering",!state(n).connected);
+    n=local();((Alive)n.process).alive=false;check("Dead periodic process is not promoted to a connected rendering input",!state(n).connected);
+    n=local();n.transport=new Transport();boolean rejected=false;try{state(n);}catch(IllegalArgumentException expected){rejected=true;}check("Service backed periodic paths cannot use the local-process adapter",rejected);
+    System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualMihomoExecution",false,"actualLatencyMeasurement",false,"actualServiceProofCaptured",false,"timingInputsOnly",true,"scope","Exact current and pre-fix PeriodicLatency.state plus actual WindowNetworkState/strict local helper; declared local process and countdown inputs only. No two-minute timing, wire, Android or service admission execution."));
+  }
+}
