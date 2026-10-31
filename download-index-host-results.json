@@ -1,0 +1,310 @@
+{
+  "status": "passed",
+  "checks": [
+    {
+      "name": "v1 to v4 preserves every file row",
+      "pass": true
+    },
+    {
+      "name": "v1 to v4 preserves task rows",
+      "pass": true
+    },
+    {
+      "name": "v1 to v4 preserves deletion tombstones",
+      "pass": true
+    },
+    {
+      "name": "v1 to v4 retains same URI in distinct environments",
+      "pass": true
+    },
+    {
+      "name": "v1 to v4 records schema4",
+      "pass": true
+    },
+    {
+      "name": "v1 files new indexes are nonunique",
+      "pass": true
+    },
+    {
+      "name": "v1 tasks new indexes are nonunique",
+      "pass": true
+    },
+    {
+      "name": "v2 to v4 preserves every file row",
+      "pass": true
+    },
+    {
+      "name": "v2 to v4 preserves task rows",
+      "pass": true
+    },
+    {
+      "name": "v2 to v4 preserves deletion tombstones",
+      "pass": true
+    },
+    {
+      "name": "v2 to v4 retains same URI in distinct environments",
+      "pass": true
+    },
+    {
+      "name": "v2 to v4 records schema4",
+      "pass": true
+    },
+    {
+      "name": "v2 files new indexes are nonunique",
+      "pass": true
+    },
+    {
+      "name": "v2 tasks new indexes are nonunique",
+      "pass": true
+    },
+    {
+      "name": "v3 to v4 preserves every file row",
+      "pass": true
+    },
+    {
+      "name": "v3 to v4 preserves task rows",
+      "pass": true
+    },
+    {
+      "name": "v3 to v4 preserves deletion tombstones",
+      "pass": true
+    },
+    {
+      "name": "v3 to v4 retains same URI in distinct environments",
+      "pass": true
+    },
+    {
+      "name": "v3 to v4 records schema4",
+      "pass": true
+    },
+    {
+      "name": "v3 files new indexes are nonunique",
+      "pass": true
+    },
+    {
+      "name": "v3 tasks new indexes are nonunique",
+      "pass": true
+    },
+    {
+      "name": "indexed-uri query results remain identical",
+      "pass": true
+    },
+    {
+      "name": "newest-uri-time query results remain identical",
+      "pass": true
+    },
+    {
+      "name": "list-time query results remain identical",
+      "pass": true
+    },
+    {
+      "name": "tasks-time query results remain identical",
+      "pass": true
+    },
+    {
+      "name": "prune-time query results remain identical",
+      "pass": true
+    },
+    {
+      "name": "URI lookup uses URI-first index",
+      "pass": true
+    },
+    {
+      "name": "Newest URI lookup uses URI-time index without temporary sort",
+      "pass": true
+    },
+    {
+      "name": "list-time uses time index without temporary sort",
+      "pass": true
+    },
+    {
+      "name": "tasks-time uses time index without temporary sort",
+      "pass": true
+    },
+    {
+      "name": "prune-time uses time index without temporary sort",
+      "pass": true
+    },
+    {
+      "name": "Fresh schema creates all three new indexes",
+      "pass": true
+    },
+    {
+      "name": "files_uri_time exact columns and descending order",
+      "pass": true
+    },
+    {
+      "name": "files_time exact columns and descending order",
+      "pass": true
+    },
+    {
+      "name": "tasks_time exact columns and descending order",
+      "pass": true
+    },
+    {
+      "name": "An interrupted transaction retains schema3 and no partial index",
+      "pass": true
+    }
+  ],
+  "total": 36,
+  "sqliteVersion": "3.45.1",
+  "sourceCommit": "7d9daca2d7866d4c5b73505f21433f2536c4c775",
+  "baselineSourceCommit": "da5004111eaf3e20322ca1fca3f756db82f44c90",
+  "baselineTableDDLUnchanged": true,
+  "sourceFile": "app/src/main/java/local/pocketchat/DownloadLibrary.java",
+  "sourceSha256": "2f06e53ecb5c5265899b28895faf86e150b146681f456177dfa6bae1f9fce122",
+  "productionDDL": [
+    "CREATE TABLE files (slot INTEGER NOT NULL,uri TEXT NOT NULL,row TEXT NOT NULL,time INTEGER NOT NULL,PRIMARY KEY(slot,uri))",
+    "CREATE TABLE tasks(slot INTEGER NOT NULL,id TEXT NOT NULL,row TEXT NOT NULL,time INTEGER NOT NULL,PRIMARY KEY(slot,id))",
+    "CREATE TABLE deleted_files(uri TEXT PRIMARY KEY NOT NULL,time INTEGER NOT NULL)",
+    "CREATE INDEX files_uri_time ON files(uri,time DESC)",
+    "CREATE INDEX files_time ON files(time DESC)",
+    "CREATE INDEX tasks_time ON tasks(time DESC)"
+  ],
+  "productionMigrationBranches": [
+    [
+      "2",
+      "createTasks"
+    ],
+    [
+      "3",
+      "createDeleted"
+    ],
+    [
+      "4",
+      "createIndexes"
+    ]
+  ],
+  "migrations": [
+    {
+      "fromVersion": 1,
+      "toVersion": 4,
+      "fileRows": 5000,
+      "taskRows": 0,
+      "deletedRows": 0
+    },
+    {
+      "fromVersion": 2,
+      "toVersion": 4,
+      "fileRows": 5000,
+      "taskRows": 5000,
+      "deletedRows": 0
+    },
+    {
+      "fromVersion": 3,
+      "toVersion": 4,
+      "fileRows": 5000,
+      "taskRows": 5000,
+      "deletedRows": 1
+    }
+  ],
+  "queryPlans": {
+    "before": {
+      "indexed-uri": [
+        "SCAN files USING COVERING INDEX sqlite_autoindex_files_1"
+      ],
+      "newest-uri-time": [
+        "SCAN files",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ],
+      "list-time": [
+        "SCAN files",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ],
+      "tasks-time": [
+        "SCAN tasks",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ],
+      "prune-time": [
+        "SCAN files",
+        "USE TEMP B-TREE FOR ORDER BY"
+      ]
+    },
+    "after": {
+      "indexed-uri": [
+        "SEARCH files USING COVERING INDEX files_uri_time (uri=?)"
+      ],
+      "newest-uri-time": [
+        "SEARCH files USING INDEX files_uri_time (uri=?)"
+      ],
+      "list-time": [
+        "SCAN files USING INDEX files_time"
+      ],
+      "tasks-time": [
+        "SCAN tasks USING INDEX tasks_time"
+      ],
+      "prune-time": [
+        "SCAN files USING INDEX files_time"
+      ]
+    }
+  },
+  "indexDefinitions": {
+    "files_uri_time": [
+      [
+        0,
+        1,
+        "uri",
+        0,
+        "BINARY",
+        1
+      ],
+      [
+        1,
+        3,
+        "time",
+        1,
+        "BINARY",
+        1
+      ],
+      [
+        2,
+        -1,
+        null,
+        0,
+        "BINARY",
+        0
+      ]
+    ],
+    "files_time": [
+      [
+        0,
+        3,
+        "time",
+        1,
+        "BINARY",
+        1
+      ],
+      [
+        1,
+        -1,
+        null,
+        0,
+        "BINARY",
+        0
+      ]
+    ],
+    "tasks_time": [
+      [
+        0,
+        3,
+        "time",
+        1,
+        "BINARY",
+        1
+      ],
+      [
+        1,
+        -1,
+        null,
+        0,
+        "BINARY",
+        0
+      ]
+    ]
+  },
+  "actualSqliteExecution": true,
+  "actualAndroidExecution": false,
+  "phonePerformanceMeasured": false,
+  "statementCountImprovementClaim": false,
+  "scope": "Production Java DDL strings and simple onUpgrade thresholds executed in real host SQLite; no Android SQLiteOpenHelper/framework or phone timing claim. Full-history serialization/prune/sync remains unchanged."
+}
