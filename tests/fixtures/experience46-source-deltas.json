@@ -359,11 +359,20 @@
     },
     "tests/profile_reading_zoom_trace_test.py": {
       "previousSha256": "0380c60b94a0512ea95dbb652360dd0090047db7a823342fa8936842a1105009",
-      "reviewedSha256": "0380c60b94a0512ea95dbb652360dd0090047db7a823342fa8936842a1105009",
+      "reviewedSha256": "b8189c52020a5563849be8d32083c9421084c1da35bf13ee16831ae05f694a08",
       "exactHistoricalSha256": [
         "5927302dae44225c3c2cc006f8f3ddbc9a69d098c8ef88df0f7ace0946867fe0"
       ],
-      "deltas": []
+      "deltas": [
+        {
+          "previous": "from reading45_source_compatibility import reading45_source_bytes\n",
+          "current": "from reading45_source_compatibility import reading45_source_bytes\nfrom startup46_source_compatibility import startup46_source_bytes\n"
+        },
+        {
+          "previous": "  path=ROOT/'tests/gecko_device_readiness_test.py';s=path.read_text();s=s.replace(",
+          "current": "  path=ROOT/'tests/gecko_device_readiness_test.py';s=startup46_source_bytes(path.read_bytes(),'tests/gecko_device_readiness_test.py').decode();s=s.replace("
+        }
+      ]
     },
     "tests/reading45_source_compatibility.py": {
       "previousSha256": "aa2d5fa6f36f21a3a2b89786673c683efcded1de989b1dd362a8dec9e17576cf",

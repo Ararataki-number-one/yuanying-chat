@@ -55,7 +55,9 @@ class Experience46SourceCompatibility(unittest.TestCase):
  def test_original45_fixture_goldens_and_behavior_hosts_remain(self):
   self.assertEqual(sha((ROOT/'tests/fixtures/reading45-restoration-source-deltas.json').read_bytes()),'8d9fd8380a5d6337860989ad8ce95b0529773cdfa433ef090b229a8beb423f3c')
   for relative in ['tests/profile_reading_restore_precision45_test.py','tests/profile_reading_zoom_trace_test.py']:
-   self.assertEqual((ROOT/relative).read_bytes(),subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+relative],cwd=ROOT))
+   current=(ROOT/relative).read_bytes()
+   if relative=='tests/profile_reading_zoom_trace_test.py':current=compat.experience46_source_bytes(current,relative)
+   self.assertEqual(current,subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+relative],cwd=ROOT))
   relative='tests/profile_reading_fit_completion_test.py';current=(ROOT/relative).read_bytes();previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+relative],cwd=ROOT)
   self.assertEqual(compat.experience46_source_bytes(current,relative),previous)
   for name in ['execute','test_measured_completion_and_failure_controls']:
