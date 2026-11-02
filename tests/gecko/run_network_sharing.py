@@ -54,7 +54,7 @@ try:
  source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip();assert r['buildIdentity']['sourceCommit']==source
  installed=hashlib.sha256((root/'app/build/outputs/apk/integration/app-x86_64-integration.apk').read_bytes()).hexdigest();assert r['buildIdentity']['apkSha256']==installed
  verify_network_sharing(r,source,installed,run_token=token)
- prepare();tap('仅分享入口节点');wait(xml,lambda t:bool(nodes(t,'分享入口')),20);tap('复制配置')
+ prepare();tap('仅分享入口');wait(xml,lambda t:bool(nodes(t,'分享入口')),20);tap('复制配置')
  tap('测试订阅整条线路');prepare()
  tap('仅分享出口');wait(xml,lambda t:bool(nodes(t,'分享出口')),20);tap('复制配置')
  for trigger,title in [('测试入口分享','分享入口'),('测试出口分享','分享出口'),('测试固定出口分享','分享出口')]:
@@ -66,7 +66,7 @@ try:
  partial_text=' '.join(n.get('text','') for n in partial.iter('node'));assert '入口' in partial_text and '整条线路暂未生成' in partial_text and '出口配置已准备好' in partial_text,partial_text
  assert not nodes(partial,'复制配置') and not nodes(partial,'分享文件'),partial_text
  assert nodes(partial,'重试入口'),partial_text
- assert not nodes(partial,'仅分享入口节点')
+ assert not nodes(partial,'仅分享入口')
  tap('仅分享出口',additional=True);wait(xml,lambda t:bool(nodes(t,'分享出口')),20);tap('复制配置');tap('恢复分享测试线路')
  r=wait(report,lambda value:value.get('partialSharePreservesActiveSnapshot') is True or value.get('status')=='failed',20)
  assert r['status']=='passed' and r['partialSharePreservesActiveSnapshot'],r
