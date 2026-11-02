@@ -51,7 +51,7 @@ final class EnvironmentOverviewDashboard extends LinearLayout {
   static void update(TextView view,String value){if(!TextUtils.equals(view.getText(),value))view.setText(value);}
   void render(EnvironmentOverviewInfo.Snapshot v,JSONObject metadata,ChatSession session,boolean checking){
     if(paletteDark!=AppAppearance.dark()){paletteDark=AppAppearance.dark();for(LinearLayout card:cards)card.setBackground(DesignUi.surface(a,DesignUi.CARD,18,DesignUi.LINE));invalidate();}
-    update(clock,TimeZone.getDefault().getID()+"  "+new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.getDefault()).format(new Date())+" · 手机时间");
+    update(clock,TimeZone.getDefault().getID()+"  "+new SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(new Date())+" · 手机时间");
     update(connection,session==null?"正在准备":v.verified?"已连接":session.offline?"未连接":session.connecting?"连接中":session.networkReady?"线路已连接":"等待连接");
     update(region,v.region.isEmpty()?"地区未取得":v.region+" · 上次定位");update(flag,flag(v.region));
     update(ip,"IP："+(v.ip.isEmpty()?(session==null||session.connecting?"查询中…":"未取得"):v.ip));

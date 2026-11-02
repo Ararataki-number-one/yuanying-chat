@@ -4,7 +4,7 @@ Only the existing integration package is seeded. No production display method
 is called by the fixture. This verifies Android display/entry/lifecycle, not
 physical-phone startup performance, public IP123, or ChatGPT compatibility.
 """
-import hashlib,json,pathlib,re,time,xml.etree.ElementTree as ET
+import hashlib,json,pathlib,re,struct,time,xml.etree.ElementTree as ET
 
 PACKAGE='local.pocketchat.test'
 
@@ -32,21 +32,28 @@ def run(adb,binary,source,out,dump):
         assert not any(re.search(r'\d+\s*秒后进入',n.get('text','')) for n in tree(xml)),('countdown still visible',name)
         assert dashboard(xml),('dashboard absent',name)
         raw=binary('exec-out','screencap','-p');assert raw.startswith(b'\x89PNG\r\n\x1a\n')
+        pixels=struct.unpack('>II',raw[16:24]);assert pixels==(width*3,height*3),(name,'actual screenshot viewport differs',pixels,[width*3,height*3])
         (directory/(name+'.xml')).write_text(xml);(directory/(name+'.png')).write_bytes(raw)
-        records.append(dict(name=name,image='ui-visuals/environment-dashboard/'+name+'.png',xml='ui-visuals/environment-dashboard/'+name+'.xml',imageSha256=hashlib.sha256(raw).hexdigest(),**metadata))
+        records.append(dict(name=name,image='ui-visuals/environment-dashboard/'+name+'.png',xml='ui-visuals/environment-dashboard/'+name+'.xml',imageSha256=hashlib.sha256(raw).hexdigest(),actualPixelSize=list(pixels),**metadata))
     try:
-        for name,width,height,scale,night in [('light',360,800,1,False),('large-font',360,800,2,False),('landscape',800,360,1,False),('dark',360,800,1,True)]:
+        for name,width,height,scale,night in [('light',360,640,1,False),('large-font',360,640,2,False),('landscape',640,360,1,False),('dark',360,640,1,True)]:
             adb('shell','am','force-stop',PACKAGE);adb('logcat','-c')
-            adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale));adb('shell','cmd','uimode','night','yes' if night else 'no')
+            adb('shell','cmd','uimode','night','yes' if night else 'no')
+            adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
+            observed=dict(size=adb('shell','wm','size').strip(),density=adb('shell','wm','density').strip(),fontScale=adb('shell','settings','get','system','font_scale').strip())
+            assert float(observed['fontScale'])==scale,('Requested font scale not applied',observed)
             started=time.monotonic()
-            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction','brand')
-            intro=wait(lambda x:'立即进入' in x and '元婴期院士' in x,name+' existing introduction seed')
-            click(intro,'立即进入')
+            # The unchanged fixture seeds local synthetic environments. Enter
+            # through the real exported launcher, without a tall introduction
+            # page whose button is offscreen at large text/landscape sizes.
+            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction','environments')
+            wait(lambda x:'环境管理' in x,name+' existing environment seed')
+            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.BrandLaunchActivity')
             xml=wait(dashboard,name+' actual launcher dashboard')
             node=next(n for n in tree(xml) if n.get('text')=='进入聊天' and n.get('enabled')=='true')
             l,t,r,b=map(int,re.findall(r'\d+',node.get('bounds')))
             assert 0<=l<r<=width*3 and 0<=t<b<=height*3 and b-t>=48*3,(name,'entry action clipped',node.attrib)
-            snapshot(name,xml,entry='production-brand-launcher',viewport=[width,height],fontScale=scale,theme='dark' if night else 'light',observationDelaySeconds=round(time.monotonic()-started,3))
+            snapshot(name,xml,entry='production-brand-launcher',viewport=[width,height],fontScale=scale,theme='dark' if night else 'light',observedAdbDisplay=observed,observationDelaySeconds=round(time.monotonic()-started,3))
             # Scroll the real native content to expose fingerprint rows on small
             # screens; the fixed entry button remains reachable.
             scroll=next(n for n in tree(xml) if n.get('class')=='android.widget.ScrollView')
