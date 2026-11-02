@@ -9,7 +9,7 @@ import hashlib,json,pathlib,re,time,xml.etree.ElementTree as ET
 PACKAGE='local.pocketchat.test'
 
 def run(adb,binary,source,out,dump):
-    records=[];events=[];directory=out/'ui-visuals/environment-dashboard';directory.mkdir(parents=True,exist_ok=True)
+    records=[];events=[];taps=[];directory=out/'ui-visuals/environment-dashboard';directory.mkdir(parents=True,exist_ok=True)
     def tree(xml):return list(ET.fromstring(xml).iter('node'))
     def dashboard(xml):return any(n.get('content-desc')=='环境仪表盘' for n in tree(xml))
     def wait(predicate,label,timeout=35):
@@ -25,6 +25,7 @@ def run(adb,binary,source,out,dump):
         node=next(n for n in tree(xml) if (label is not None and n.get('text')==label or description is not None and n.get('content-desc')==description) and n.get('enabled')=='true')
         l,t,r,b=map(int,re.findall(r'\d+',node.get('bounds')));assert r>l and b>t,(label,node.attrib)
         adb('shell','input','tap',str((l+r)//2),str((t+b)//2))
+        taps.append(dict(label=label,description=description,x=(l+r)//2,y=(t+b)//2))
     def snapshot(name,xml,**metadata):
         for text in ('跳过','停留查看'):
             assert not any(n.get('text')==text for n in tree(xml)),('retired action still visible',text)
@@ -73,6 +74,7 @@ def run(adb,binary,source,out,dump):
             wait(lambda x:not dashboard(x) and '会话' in x,'ordinary resume has no dashboard')
             events.append(dict(name='home-retains-open-dashboard-and-chat-resume-does-not-reinsert',passed=True))
             # Real list button, same existing environment/Activity instance.
+            entry_taps=len(taps)
             adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
             xml=wait(lambda x:'打开环境 日常会话' in x,'environment list button')
             click(xml,description='打开环境 日常会话');xml=wait(dashboard,'warm list opens dashboard');snapshot('warm-list',xml)
@@ -90,17 +92,19 @@ def run(adb,binary,source,out,dump):
             click(xml,'进入聊天');wait(lambda x:not dashboard(x),'second environment explicit entry')
             # Settings workspace -> real bottom chat tab exercises the other
             # previously unmarked native navigation route.
-            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.AppSettingsActivity')
+            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.WindowHomeActivity')
+            xml=wait(lambda x:'环境管理' in x and '设置' in x,'manager settings entry')
+            click(xml,'设置')
             xml=wait(lambda x:'启动与界面' in x and '会话' in x,'settings workspace')
             click(xml,'会话');xml=wait(dashboard,'workspace chat opens dashboard');snapshot('workspace-chat',xml)
-            events.append(dict(name='warm-list-second-process-and-settings-chat-entry',actualAndroidTaps=6,passed=True))
-        result=dict(schema=1,status='passed',sourceCommit=source,actualAndroidExecution=True,actualNativeDashboardRendering=True,physicalPhoneAcceptance=False,actualPublicSiteExecution=False,scope=__doc__.strip(),captures=records,events=events)
+            events.append(dict(name='warm-list-second-process-and-settings-chat-entry',actualAndroidTaps=len(taps)-entry_taps,passed=True))
+        result=dict(schema=1,status='passed',sourceCommit=source,actualAndroidExecution=True,actualNativeDashboardRendering=True,physicalPhoneAcceptance=False,actualPublicSiteExecution=False,scope=__doc__.strip(),captures=records,events=events,actualAndroidTaps=taps)
         (out/'environment-dashboard-results.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
         (directory/'results.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
         return result
     except Exception as error:
         xml=dump();(directory/'failure.xml').write_text(xml);(directory/'failure.png').write_bytes(binary('exec-out','screencap','-p'))
-        failure=dict(status='failed',sourceCommit=source,error=repr(error),captures=records,events=events,physicalPhoneAcceptance=False)
+        failure=dict(status='failed',sourceCommit=source,error=repr(error),captures=records,events=events,actualAndroidTaps=taps,physicalPhoneAcceptance=False)
         (out/'environment-dashboard-results.json').write_text(json.dumps(failure,ensure_ascii=False,indent=2)+'\n');(directory/'results.json').write_text(json.dumps(failure,ensure_ascii=False,indent=2)+'\n');raise
     finally:
         adb('shell','cmd','uimode','night','no');adb('shell','settings','put','system','font_scale','1')
