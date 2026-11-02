@@ -51,6 +51,7 @@ try:
             assert home['known'] and not home['foreground'] and all(not row['visible'] for row in home['processes']),home
             assert foreground['visibilitySource']==home['visibilitySource']=='activity-start-stop' and foreground['actualActivityStartedCount']>0 and home['actualActivityStartedCount']==0
             assert all(row['known'] and row['visible']==(row['actualActivityStartedCount']>0) for proof in [foreground,home] for row in proof['processes'])
+            subprocess.run(['python3', str(root/'tests/gecko/run_environment_dashboard.py'), '--adb', args.adb, '--serial', args.serial], check=True)
             raise SystemExit(0)
         time.sleep(1)
     raise TimeoutError('No notification regression result from Android')

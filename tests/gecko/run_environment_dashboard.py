@@ -38,7 +38,9 @@ def run(adb,binary,source,out,dump):
             adb('shell','am','force-stop',PACKAGE);adb('logcat','-c')
             adb('shell','wm','size',f'{width*3}x{height*3}');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale));adb('shell','cmd','uimode','night','yes' if night else 'no')
             started=time.monotonic()
-            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction','dashboard-entry')
+            adb('shell','am','start','-W','-n',PACKAGE+'/local.pocketchat.UiVisualIntegrationActivity','--es','visualAction','brand')
+            intro=wait(lambda x:'立即进入' in x and '元婴期院士' in x,name+' existing introduction seed')
+            click(intro,'立即进入')
             xml=wait(dashboard,name+' actual launcher dashboard')
             node=next(n for n in tree(xml) if n.get('text')=='进入聊天' and n.get('enabled')=='true')
             l,t,r,b=map(int,re.findall(r'\d+',node.get('bounds')))
@@ -102,3 +104,31 @@ def run(adb,binary,source,out,dump):
         (out/'environment-dashboard-results.json').write_text(json.dumps(failure,ensure_ascii=False,indent=2)+'\n');(directory/'results.json').write_text(json.dumps(failure,ensure_ascii=False,indent=2)+'\n');raise
     finally:
         adb('shell','cmd','uimode','night','no');adb('shell','settings','put','system','font_scale','1')
+
+def main():
+    import argparse,subprocess,sys,os
+    root=pathlib.Path(__file__).resolve().parents[2];out=root/'work/gecko-integration'
+    parser=argparse.ArgumentParser();parser.add_argument('--adb',required=True);parser.add_argument('--serial',required=True);args=parser.parse_args()
+    source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
+    def binary(*parts):return subprocess.check_output([args.adb,'-s',args.serial,*parts],timeout=90)
+    def adb(*parts):return binary(*parts).decode(errors='replace')
+    # Only our integration package is replaced/cleared. The next original UI
+    # runner independently reinstalls and clears this same test package.
+    adb('shell','am','force-stop',PACKAGE)
+    adb('install','-r',str(out/'ui-current.apk'))
+    adb('shell','pm','clear',PACKAGE)
+    if int(adb('shell','getprop','ro.build.version.sdk').strip())>=33:adb('shell','pm','grant',PACKAGE,'android.permission.POST_NOTIFICATIONS')
+    sys.path.insert(0,str(root/'tools/gecko'))
+    from ui_visual_capture import UiVisualCapture
+    from ui_settings_services_device11 import prepare_workflow,finish_workflow
+    capture=UiVisualCapture(adb=args.adb,serial=args.serial,source=source,diagnostics=out/'dashboard-capture-attempts.json')
+    lease=prepare_workflow(adb,serial=args.serial,environment=os.environ,root=root,source=source,record_path=out/'dashboard-settings-services-isolation.json')
+    report={'status':'failed','sourceCommit':source,'physicalPhoneAcceptance':False}
+    try:
+        report=run(adb,binary,source,out,capture.read)
+        print(json.dumps({'status':report['status'],'sourceCommit':source,'actualAndroidExecution':True,'dashboardCaptures':len(report['captures']),'physicalPhoneAcceptance':False}))
+    finally:
+        finish_workflow(lease,report)
+        adb('shell','wm','size','reset');adb('shell','wm','density','reset')
+
+if __name__=='__main__':main()

@@ -16,12 +16,6 @@ public final class UiVisualIntegrationActivity extends Activity {
   @Override public void onCreate(Bundle state){
     super.onCreate(state);String action=getIntent().getStringExtra("visualAction");
     try{seed();}catch(Exception e){Log.e("PocketUiVisual","fixture setup failed",e);finish();return;}
-    if("dashboard-entry".equals(action)){
-      // Seed only this integration package; the production launcher must build
-      // the opening intent and actual MainActivity must show the dashboard.
-      AppSettings.defaultSlot(this,0);AppSettings.put(this,"startupDirect","true");AppSettings.put(this,AppAppearance.KEY,"system");
-      startActivity(new Intent(this,BrandLaunchActivity.class));finish();return;
-    }
     if("environment-picker".equals(action)||"templates".equals(action)||"zoom".equals(action)||"audit".equals(action)){startActivity(new Intent(this,UiDetailsIntegrationActivity.class).putExtra("detailScene",action));finish();return;}
     if("update".equals(action)){startActivity(new Intent(this,AppUpdateActivity.class));finish();return;}
     if("file-preview".equals(action)){startActivity(new Intent(this,AttachmentPreviewActivity.class).putExtra("uri","content://local.pocketchat.test.upload/image").putExtra("mime","image/png").putExtra("name","界面预览图片.png"));finish();return;}
