@@ -39,7 +39,19 @@ def verify_update_route(report, source, core_sha256):
     assert active_seven['entryCircuits'] > seven['entryCircuits'] and active_seven['fixedExitCircuits'] > seven['fixedExitCircuits']
     assert active_seven['entryAuthenticated'] == active_seven['entryCircuits'] and active_seven['fixedExitAuthenticated'] == active_seven['fixedExitCircuits']
     assert active_seven['corePid'] == seven['corePid'] and active_seven['coreGeneration'] == seven['coreGeneration'] and active_seven['routeSerial'] == seven['routeSerial'] and active_seven['verified']
-    assert len(report['opens']) == 3 and report['opens'][0]['officialUrl'].endswith('/latest.json')
+    discovery = report.get('updateDiscovery')
+    if discovery is None:
+        # Retain the complete historical single-feed contract for archived controls.
+        assert len(report['opens']) == 3 and report['opens'][0]['officialUrl'].endswith('/latest.json')
+    else:
+        assert discovery == 'release-catalog-v1'
+        base = 'https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v99.0.0-gecko/'
+        assert [row['officialUrl'] for row in report['opens']] == [
+            'https://api.github.com/repos/Ararataki-number-one/yuanying-chat/releases?per_page=50&page=1',
+            base + 'release-manifest.json', base + 'PocketChat-99.0.0-gecko-arm64.apk', base + 'PocketChat-99.0.0-gecko-arm64.apk']
+        metadata_wire = [row for row in report['serverTrace'] if row['path'] in ('/catalogue', '/manifest', '/feed')]
+        assert [row['path'] for row in metadata_wire] == ['/catalogue', '/manifest']
+        assert all(row['completed'] and row['bytesSent'] > 0 and not row['personalCredentialsSeen'] for row in metadata_wire)
     for row in report['opens']:
         assert row['type'] == 'HTTP' and row['host'] == '127.0.0.1' and row['port'] in {initial['proxyPort'], restored['proxyPort']}
     archive = report['verifiedArchive']

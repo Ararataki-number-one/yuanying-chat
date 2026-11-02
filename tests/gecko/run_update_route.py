@@ -7,6 +7,23 @@ OUT = ROOT / 'work/gecko-integration'
 ETAG = '"route-fixture-v1"'
 
 
+def discovery_fixture(metadata):
+    """Mirror the real catalogue/manifest protocol using only synthetic release data."""
+    version = metadata['version']
+    assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version)
+    tag = 'v' + version + '-gecko'
+    base = 'https://github.com/Ararataki-number-one/yuanying-chat/releases/download/' + tag + '/'
+    filename = 'PocketChat-' + version + '-gecko-arm64.apk'
+    assert metadata['downloadUrl'] == base + filename
+    manifest = dict(metadata, filename=filename, channel='stable')
+    catalogue = [dict(draft=False, prerelease=False, tag_name=tag,
+        html_url='https://github.com/Ararataki-number-one/yuanying-chat/releases/tag/' + tag,
+        body='Synthetic controlled route fixture; never installed.', assets=[
+            dict(name='release-manifest.json', state='uploaded', browser_download_url=base+'release-manifest.json'),
+            dict(name=filename, state='uploaded', browser_download_url=base+filename)])]
+    return catalogue, manifest
+
+
 def verify(report):
     import sys
     sys.path.insert(0, str(ROOT / 'tools/gecko'))
@@ -33,6 +50,7 @@ def main():
                     signerSha256=re.search(r'SIGNER="([a-f0-9]+)"', (ROOT / 'app/src/main/java/local/pocketchat/AppUpdatePolicy.java').read_text()).group(1),
                     downloadUrl='https://github.com/Ararataki-number-one/yuanying-chat/releases/download/v99.0.0-gecko/PocketChat-99.0.0-gecko-arm64.apk',
                     abi='arm64-v8a', minSdk=26, notes='Synthetic controlled route fixture; never installed.')
+    catalogue, manifest = discovery_fixture(metadata)
     wire, lock = [], threading.Lock()
     connections = [0]
     for name in ['update-route-results.json', 'update-route-log.txt', 'update-route-failure-log.txt', 'update-route-host-wire.json']:
@@ -48,9 +66,9 @@ def main():
                            ifRange=self.headers.get('If-Range', ''), personalCredentialsSeen=bool(self.headers.get('Cookie') or self.headers.get('Authorization')),
                            bytesSent=0, startedAt=time.monotonic(), completed=False, etag=ETAG)
                 wire.append(row)
-            if self.path == '/feed':
-                body = json.dumps(metadata).encode()
-                self.send_response(200); self.send_header('Content-Length', str(len(body))); self.send_header('Connection', 'close'); self.end_headers()
+            if self.path in ('/feed', '/catalogue', '/manifest'):
+                body = json.dumps(catalogue if self.path == '/catalogue' else manifest if self.path == '/manifest' else metadata).encode()
+                self.send_response(200); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(body))); self.send_header('Connection', 'close'); self.end_headers()
                 self.wfile.write(body); self.wfile.flush(); row.update(bytesSent=len(body), completed=True); return
             if self.path not in ['/update-route.apk', '/direct-route.apk']:
                 self.send_error(404); return
