@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--java-home', required=True, type=Path)
 parser.add_argument('--json-jar', required=True, type=Path)
 parser.add_argument('--published-manifest', type=Path)
+parser.add_argument('--output', type=Path)
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]
 work = root / 'work/update-channels-host'
@@ -45,13 +46,16 @@ if result.returncode:
 report = json.loads(result.stdout)
 assert report['status'] == 'passed' and report['passed'] == len(report['checks']) > 0
 report['sourceSha256'] = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
-(work / 'results.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
-print(json.dumps({'status': 'passed', 'passed': report['passed'], 'report': str(work / 'results.json')}))
+report_path = args.output or work / 'results.json'
+report_path.parent.mkdir(parents=True, exist_ok=True)
+report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+print(json.dumps({'status': 'passed', 'passed': report['passed'], 'report': str(report_path)}))
 state = subprocess.run([str(args.java_home / 'bin/java'), '-cp', str(classes) + ':' + str(args.json_jar), 'local.pocketchat.ChannelStateHost'], text=True, capture_output=True, timeout=30)
 if state.returncode:
     raise RuntimeError(state.stdout + state.stderr)
 state_report = json.loads(state.stdout)
 assert state_report['status'] == 'passed' and state_report['passed'] > 0
 state_report['productionMethodsSha256'] = hashlib.sha256(methods.encode()).hexdigest()
-(work / 'state-results.json').write_text(json.dumps(state_report, indent=2) + '\n')
-print(json.dumps({'status': 'passed', 'passed': state_report['passed'], 'report': str(work / 'state-results.json')}))
+state_path = report_path.with_name('state-results.json')
+state_path.write_text(json.dumps(state_report, indent=2) + '\n')
+print(json.dumps({'status': 'passed', 'passed': state_report['passed'], 'report': str(state_path)}))
