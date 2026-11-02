@@ -7,6 +7,7 @@ import org.json.*;
 final class NetworkShareUi {
   interface Load { NetworkShareCodec.Bundle run()throws Exception; }
   interface RouteLoad { Prepared run()throws Exception; }
+  interface AddressLoad { String run()throws Exception; }
   static final String WARNING="配置包含代理连接凭据，请仅分享给信任的人。";
   static final class Prepared {
     final String name,scope;final JSONObject[] nodes=new JSONObject[2];final String[] keys={"",""};final boolean[] verified=new boolean[2];
@@ -42,7 +43,8 @@ final class NetworkShareUi {
     },i==0?key:"",i==1?key:"");
   }
   static void nodeMenu(Activity a,JSONObject source,String name){
-    ReferenceUi.Modal d=new ReferenceUi.Modal(a,NetworkWorkspaceUi.nodeName(name));String title=NetworkCatalog.EXIT.equals(source.optString("role"))?"分享出口":"分享入口";
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,NetworkWorkspaceUi.nodeName(name));boolean entry=!NetworkCatalog.EXIT.equals(source.optString("role"));String title=entry?"仅分享此节点":"分享出口";
+    if(entry){final String url=source.optString("url");DesignUi.action(d.body,"分享入口订阅",true,()->{d.dismiss();subscription(a,()->NetworkShareSelection.subscriptionUrl(url));});}
     JSONObject detail=NetworkSourceSelection.byName(source,name);String available=detail==null?"":detail.optString("shareAvailability");
     if(available.equals("unsupported-format"))d.note("此来源可以连接，但暂不支持独立分享。分享支持 Clash / Mihomo YAML 单节点；URI 或 Base64 来源请使用提供方的单节点配置。");
     else {if(available.equals("unsupported-node"))d.note("将重新提取并检查所选节点；原线路不会改变。");else if(available.equals("budget")||available.equals("unavailable"))d.note("分享时会单独读取并核验所选节点。");DesignUi.action(d.body,title,false,()->{d.dismiss();node(a,source,name);});}
@@ -54,8 +56,8 @@ final class NetworkShareUi {
     NetworkWorkspaceUi.libraryWork(()->{JSONArray sources=NetworkShareSelection.describe(Profiles.context(a,owner.slot),owner);a.runOnUiThread(()->{if(a.isDestroyed()||!wait.isShowing())return;wait.dismiss();choose(a,state,owner,sources);});});
   }
   static void choose(Activity a,WindowNetworkState state,EnvironmentSpec.Identity owner,JSONArray sources){
-    ReferenceUi.Modal d=new ReferenceUi.Modal(a,"分享线路");d.note("先选择分享范围与配置来源。");final String[] scope={"route"};final int[] selected={0};
-    String[] scopes={"入口","出口","整条线路"};final RadioButton[] rangeButtons=new RadioButton[scopes.length];RadioGroup ranges=new RadioGroup(a);for(int i=0;i<scopes.length;i++){RadioButton b=new RadioButton(a);b.setText(scopes[i]);b.setId(android.view.View.generateViewId());rangeButtons[i]=b;ranges.addView(b);}ranges.check(rangeButtons[2].getId());ranges.setOnCheckedChangeListener((g,id)->scope[0]=id==rangeButtons[0].getId()?"entry":id==rangeButtons[1].getId()?"exit":"route");d.body.addView(ranges);
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,"分享线路");d.note("先选择分享范围与配置来源。入口订阅只分享地址；整条线路包含所选入口节点与固定出口。");final String[] scope={"route"};final int[] selected={0};
+    String[] scopes={"入口订阅","出口","整条线路"};final RadioButton[] rangeButtons=new RadioButton[scopes.length];RadioGroup ranges=new RadioGroup(a);for(int i=0;i<scopes.length;i++){RadioButton b=new RadioButton(a);b.setText(scopes[i]);b.setId(android.view.View.generateViewId());rangeButtons[i]=b;ranges.addView(b);}ranges.check(rangeButtons[2].getId());ranges.setOnCheckedChangeListener((g,id)->scope[0]=id==rangeButtons[0].getId()?"entry":id==rangeButtons[1].getId()?"exit":"route");d.body.addView(ranges);
     JSONArray usable=new JSONArray();JSONObject saved=null;for(int i=0;i<sources.length();i++){JSONObject s=sources.optJSONObject(i);if(s!=null&&"saved".equals(s.optString("source")))saved=s;}usable.put(saved==null?J.obj("source","saved","unavailable",true):saved);for(int i=0;i<sources.length();i++){JSONObject s=sources.optJSONObject(i);if(s!=null&&"running".equals(s.optString("source"))&&state.connected)usable.put(s);}
     if(usable.length()==0){d.note("已保存的配置暂时无法读取，请刷新网络设置后重试。");d.buttons("关闭",d::dismiss,"",()->{});d.show();return;}
     final RadioButton[] versionButtons=new RadioButton[usable.length()];RadioGroup versions=new RadioGroup(a);for(int i=0;i<usable.length();i++){JSONObject s=usable.optJSONObject(i);RadioButton b=new RadioButton(a);b.setId(android.view.View.generateViewId());versionButtons[i]=b;b.setText(("saved".equals(s.optString("source"))?"已保存的配置（默认）":"正在运行的配置")+(s.optBoolean("unavailable")?" · 暂不可读取":" · v"+s.optLong("savedRevision")));versions.addView(b);}versions.check(versionButtons[0].getId());versions.setOnCheckedChangeListener((g,id)->{for(int i=0;i<versionButtons.length;i++)if(versionButtons[i].getId()==id){selected[0]=i;d.primary().setEnabled(!usable.optJSONObject(i).optBoolean("unavailable"));return;}});d.body.addView(versions);
@@ -63,11 +65,29 @@ final class NetworkShareUi {
     d.buttons("取消",d::dismiss,"准备分享",()->{JSONObject s=usable.optJSONObject(selected[0]);if(s==null||s.optBoolean("unavailable"))return;NetworkSharePreparation.Request request=new NetworkSharePreparation.Request(owner,s.optString("source"),scope[0],s.optString("version"),"");d.dismiss();chooseEntry(a,request);});d.show();d.primary().setEnabled(!usable.optJSONObject(0).optBoolean("unavailable"));
   }
   static void chooseEntry(Activity a,NetworkSharePreparation.Request request){
+    if("entry".equals(request.scope)){subscription(a,()->subscriptionSnapshot(a,request));return;}
     if(!request.wants(0)){prepare(a,request);return;}
     ReferenceUi.Modal wait=new ReferenceUi.Modal(a,"准备分享");wait.note("正在读取所选入口…");wait.buttons("取消",wait::dismiss,"",()->{});wait.show();
     NetworkWorkspaceUi.libraryWork(()->{try{JSONArray options=NetworkShareSelection.entryChoices(Profiles.context(a,request.owner.slot),request);a.runOnUiThread(()->{if(a.isDestroyed()||!wait.isShowing())return;wait.dismiss();if(options.length()<=1){prepare(a,options.length()==1?request.entry(options.optJSONObject(0).optString("name")):request);return;}
       String[] names=new String[options.length()];for(int i=0;i<names.length;i++)names[i]=NetworkWorkspaceUi.nodeName(options.optJSONObject(i).optString("name"));new android.app.AlertDialog.Builder(a).setTitle("选择本次分享的入口").setItems(names,(dialog,which)->prepare(a,request.entry(options.optJSONObject(which).optString("name")))).setNegativeButton("取消",null).show();});}
       catch(Exception failed){a.runOnUiThread(()->{if(a.isDestroyed()||!wait.isShowing())return;if("route".equals(request.scope)){wait.dismiss();prepare(a,request);}else failure(a,wait,NetworkSharePreparation.fail("CONFIG_READ","UNREADABLE","entry"));});}});
+  }
+  static void subscription(Activity a,AddressLoad load){
+    ReferenceUi.Modal wait=new ReferenceUi.Modal(a,"分享入口订阅");wait.note("正在读取订阅地址…");wait.buttons("取消",wait::dismiss,"",()->{});wait.show();
+    NetworkWorkspaceUi.libraryWork(()->{try{String address=load.run();a.runOnUiThread(()->{if(a.isDestroyed()||!wait.isShowing())return;wait.dismiss();shareAddress(a,address,load);});}catch(Exception error){a.runOnUiThread(()->failure(a,wait,error instanceof NetworkSharePreparation.Failure?(NetworkSharePreparation.Failure)error:problem("CONFIG_READ","UNREADABLE",0)));}});
+  }
+  static String subscriptionSnapshot(Activity a,NetworkSharePreparation.Request request)throws Exception {
+    java.util.concurrent.CompletableFuture<String> result=new java.util.concurrent.CompletableFuture<>();
+    NetworkBridge.shareSnapshot(a,request.address(),(frozen,failed)->{try{if(failed!=null)throw failed;NetworkSharePreparation.Part part=frozen.parts[0];if(part==null||part.failure!=null)throw part==null?problem("CONFIG_READ","UNREADABLE",0):part.failure;result.complete(NetworkShareSelection.subscriptionUrl(part.selection.optString("subscriptionUrl")));}catch(Exception unavailable){result.completeExceptionally(unavailable);}});
+    try{return result.get(15,java.util.concurrent.TimeUnit.SECONDS);}catch(java.util.concurrent.ExecutionException error){Throwable cause=error.getCause();if(cause instanceof NetworkSharePreparation.Failure){NetworkSharePreparation.Failure failure=(NetworkSharePreparation.Failure)cause;throw problem(failure.stage,failure.code,0);}throw problem("CONFIG_READ","UNREADABLE",0);}
+  }
+  static void shareAddress(Activity a,String address,AddressLoad load){
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,"分享入口订阅");d.note("仅分享订阅地址，不包含单个节点配置。");d.note("订阅链接可能包含访问凭据，请仅分享给信任的人。");TextView value=ReferenceUi.text(a,address,13,ReferenceUi.TEXT,false);value.setTextIsSelectable(true);d.body.addView(value);TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);d.body.addView(error);
+    DesignUi.action(d.body,"复制订阅地址",false,()->addressAction(a,d,address,load,error,()->{((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("入口订阅",address));d.dismiss();}));
+    d.buttons("取消",d::dismiss,"分享订阅地址",()->addressAction(a,d,address,load,error,()->{Intent send=new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,address);a.startActivity(Intent.createChooser(send,"分享入口订阅"));d.dismiss();}));d.show();
+  }
+  static void addressAction(Activity a,ReferenceUi.Modal d,String address,AddressLoad load,TextView error,Runnable action){
+    d.primary().setEnabled(false);NetworkWorkspaceUi.libraryWork(()->{try{if(!address.equals(load.run()))throw problem("CONFIG_READ","VERSION_CHANGED",0);a.runOnUiThread(()->{if(a.isDestroyed()||!d.isShowing())return;try{action.run();}catch(Exception unavailable){error.setText("无法复制或分享订阅地址，请重试。");d.primary().setEnabled(true);d.resize();}});}catch(Exception changed){a.runOnUiThread(()->{if(a.isDestroyed()||!d.isShowing())return;error.setText(changed instanceof NetworkSharePreparation.Failure?((NetworkSharePreparation.Failure)changed).shortReason():"订阅地址暂时无法读取，请重新打开分享。");d.primary().setEnabled(true);d.resize();});}});
   }
   static void prepare(Activity a,NetworkSharePreparation.Request request){
     ReferenceUi.Modal wait=new ReferenceUi.Modal(a,"准备分享");wait.note("正在读取所选配置…");wait.buttons("取消",wait::dismiss,"",()->{});wait.show();
@@ -104,7 +124,7 @@ final class NetworkShareUi {
   static void failure(Activity a,ReferenceUi.Modal wait,NetworkSharePreparation.Failure f){if(a.isDestroyed()||!wait.isShowing())return;wait.body.removeAllViews();wait.note(f.shortReason());DesignUi.action(wait.body,"查看原因",false,()->ReferenceUi.message(a,"分享原因",f.diagnostic()));wait.buttons("关闭",wait::dismiss,"",()->{});wait.resize();}
   static void show(Activity a,Prepared p){
     if(!alive(a,p))return;if(p.complete()){NetworkShareCodec.Bundle bundle=new NetworkShareCodec.Bundle(p.name,p.nodes[0],p.nodes[1]);show(a,bundle,"",p);return;}
-    ReferenceUi.Modal d=new ReferenceUi.Modal(a,title(p.scope));if("route".equals(p.scope))d.note("整条线路暂未生成。");for(int i=0;i<2;i++)if(p.wants(i)){final int side=i;NetworkSharePreparation.Failure f=p.problems[i];if(p.verified[i]&&p.nodes[i]!=null){d.note(NetworkShareUi.side(i)+"配置已准备好。");DesignUi.action(d.body,"仅分享"+NetworkShareUi.side(i),false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(p.name,side==0?p.nodes[0]:null,side==1?p.nodes[1]:null),"",p);});}
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,title(p.scope));if("route".equals(p.scope))d.note("整条线路暂未生成。");for(int i=0;i<2;i++)if(p.wants(i)){final int side=i;NetworkSharePreparation.Failure f=p.problems[i];if(p.verified[i]&&p.nodes[i]!=null){d.note(NetworkShareUi.side(i)+"配置已准备好。");DesignUi.action(d.body,i==0?"仅分享入口节点":"仅分享出口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(p.name,side==0?p.nodes[0]:null,side==1?p.nodes[1]:null),"",p);});}
       else{d.note(f==null?NetworkShareUi.side(i)+"暂时无法导出。":f.shortReason());if(f!=null)DesignUi.action(d.body,"查看"+NetworkShareUi.side(i)+"原因",false,()->ReferenceUi.message(a,"分享原因",f.diagnostic()));if(p.frozen!=null)DesignUi.action(d.body,"重试"+NetworkShareUi.side(i),false,()->{d.dismiss();retry(a,p,side);});}}
     d.buttons("关闭",d::dismiss,"",()->{});d.show();
   }
@@ -120,7 +140,7 @@ final class NetworkShareUi {
   static void export(Activity a,NetworkShareCodec.Bundle bundle,String encoded,Prepared owner){
     if(a.isDestroyed()||owner!=null&&!alive(a,owner))return;ReferenceUi.Modal d=new ReferenceUi.Modal(a,title(bundle.kind));d.note(bundle.summary());d.note(WARNING);
     if(owner!=null&&owner.frozen!=null)d.note(("saved".equals(owner.frozen.request.source)?"已保存的配置":"正在运行的配置")+" · 本次选定快照");if(bundle.schemaVersion()>1)d.note("此配置需使用 2.0.17 或更新版本导入，以完整保留节点参数。");
-    if("route".equals(bundle.kind)){DesignUi.action(d.body,"仅分享入口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.name,bundle.entry,null),"",owner);});DesignUi.action(d.body,"仅分享出口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.name,null,bundle.exit),"",owner);});}
+    if("route".equals(bundle.kind)){DesignUi.action(d.body,"仅分享入口节点",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.name,bundle.entry,null),"",owner);});DesignUi.action(d.body,"仅分享出口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.name,null,bundle.exit),"",owner);});}
     TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);d.body.addView(error);final NetworkSharePreparation.Failure[] latest={null};DesignUi.action(d.body,"查看原因",false,()->{if(latest[0]!=null)ReferenceUi.message(a,"分享原因",latest[0].diagnostic());});
     DesignUi.action(d.body,"复制配置",false,()->{if(owner!=null&&!alive(a,owner)){error.setText("环境已变化，请重新打开分享。");return;}try{((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("网络配置",encoded));d.dismiss();}catch(Exception failed){latest[0]=NetworkSharePreparation.fail("CLIPBOARD","UNREADABLE","");error.setText(latest[0].shortReason());d.resize();}});
     d.buttons("取消",d::dismiss,"分享文件",()->{if(owner!=null&&!alive(a,owner)){error.setText("环境已变化，请重新打开分享。");return;}d.primary().setEnabled(false);NetworkWorkspaceUi.libraryWork(()->{try{Uri uri=NetworkShareProvider.create(a,encoded);a.runOnUiThread(()->{if(a.isDestroyed()||!d.isShowing()||owner!=null&&!alive(a,owner))return;try{Intent send=new Intent(Intent.ACTION_SEND).setType(NetworkShareCodec.MIME).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);send.setClipData(ClipData.newUri(a.getContentResolver(),"网络配置",uri));a.startActivity(Intent.createChooser(send,"分享网络配置"));d.dismiss();}catch(Exception failed){latest[0]=NetworkSharePreparation.fail("SYSTEM_SHARE","NO_TARGET","");error.setText(latest[0].shortReason());d.primary().setEnabled(true);d.resize();}});}catch(Exception failed){a.runOnUiThread(()->{if(!a.isDestroyed()&&d.isShowing()){latest[0]=NetworkSharePreparation.fail("FILE_GENERATE","FILE_IO","");error.setText(latest[0].shortReason());d.primary().setEnabled(true);d.resize();}});}});});d.show();

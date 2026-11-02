@@ -9,6 +9,8 @@
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <application android:name="local.pocketchat.PocketApplication" android:label="元婴期院士" android:icon="@drawable/ic_brand" android:theme="@style/AppTheme" android:allowBackup="false" android:usesCleartextTraffic="false" android:networkSecurityConfig="@xml/network_security" android:extractNativeLibs="true" android:debuggable="false" android:supportsRtl="true">
+    <meta-data android:name="local.pocketchat.UPDATE_CHANNEL" android:value="${releaseChannel}" />
+    <meta-data android:name="local.pocketchat.CANDIDATE_NUMBER" android:value="${candidateNumber}" />
     <service android:name="local.pocketchat.NetworkTransportService" android:process=":network" android:exported="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps independent per-environment proxy tunnels while the user browses and receives replies" /></service>
     <service android:name="local.pocketchat.ChatService" android:exported="false" android:foregroundServiceType="dataSync" />
     <activity android:name="local.pocketchat.MainActivity" android:launchMode="singleTask" android:exported="true" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode">

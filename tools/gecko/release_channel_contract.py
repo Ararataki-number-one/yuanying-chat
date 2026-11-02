@@ -16,12 +16,14 @@ def release_tag(manifest):
     version = manifest.get('version')
     require(isinstance(version, str) and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'Invalid release version.')
     channel = manifest.get('channel', 'stable')
-    require(channel in ('stable', 'candidate'), 'Unknown release channel.')
+    require(channel in ('stable', 'beta', 'candidate'), 'Unknown release channel.')
     number = manifest.get('candidateNumber')
     if channel == 'candidate':
         require(type(number) is int and 1 <= number <= 999, 'Candidates require a positive sequence number.')
         return f'v{version}-candidate{number}-gecko'
-    require(number is None, 'A stable release cannot carry a candidate sequence.')
+    require(number is None, 'A non-candidate release cannot carry a candidate sequence.')
+    if channel == 'beta':
+        require(re.fullmatch(r'2\.0\.[0-9]+', version), 'Beta releases use 2.0.x versions.')
     return f'v{version}-gecko'
 
 

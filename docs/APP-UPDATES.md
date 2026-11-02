@@ -1,4 +1,10 @@
-应用更新位于“设置 → 应用更新”。默认自动检查打开，Wi-Fi 自动下载关闭，手动下载默认仅使用非计费网络（界面称“Wi-Fi”）。安装 1.5.11 后，后续正式版可在应用中发现。
+应用更新位于“设置 → 应用更新”。提供正式版、测试版和候选版三个独立通道；选择会保存在本机，自动检查与下载只使用所选通道。首次使用跟随当前安装包所属通道。默认自动检查打开，Wi-Fi 自动下载关闭，手动下载默认仅使用非计费网络（界面称“Wi-Fi”）。
+
+- 正式版使用 2.x 版本，例如 2.1 或 2.1.0；历史 1.x 正式版仍可识别。
+- 测试版使用 2.0.x，例如 2.0.47；历史上标作正式发布的 2.0.x 也归入测试通道。
+- 候选版使用独立的 `v2.0.47-candidate1-gecko` 等发布标签，显示候选序号，属于尚不稳定的版本，不会进入正式或测试通道。
+
+下载、暂停保留的任务、校验或删除正在进行时，先完成或取消该任务再切换通道。通道切换会清理当前更新安装包缓存，不会将另一个通道的下载地址或更新说明当作当前通道。Android 不允许降低 versionCode；已安装版本较新时会显示对应提示，各通道后续安装包都必须使用递增的 versionCode。
 
 从 1.5.19 起，更新页提供下载进度、实际传输速度、预计剩余时间、暂停、继续和安装按钮。下载由独立传输线程与 Android JobScheduler 管理，退出更新页仍可继续；网络中断或系统停止任务时保留已下载部分，恢复后请求剩余字节。手动暂停会保留进度；“取消下载”会明确删除进度，并禁止自动重下同一个版本。进度刷新只更新现有控件，不每秒重建整个页面。
 
@@ -10,16 +16,14 @@
 
 更新任务在默认应用进程统一管理，独立环境通过私有 ContentProvider 查询同一状态；不建立 WebView，不操作会话、不更新浏览器网络设置。传输使用手机网络或 VPN，更新请求不携带网页登录凭据。
 
-发现渠道为固定的 HTTPS 地址：
+新客户端通过本仓库 GitHub Releases API 获取发布列表，每页最多 50 条、最多 4 页，先按通道与版本号筛选，再读取所选发布的 `release-manifest.json`。草稿、缺少清单或 ARM64 APK 的发布不参与更新；候选序号、版本、包名、原版证书、文件大小、SHA-256 和该发布下的固定 APK 地址必须一致。候选清单只能授权对应 `candidateN` 地址。检查与下载沿用打开更新页的环境网络，不借用网页登录凭据。
 
-`https://raw.githubusercontent.com/Ararataki-number-one/yuanying-chat/app-updates/latest.json`
-
-元数据限定 schema、正式包名、ARM64、最低 Android 版本、原版证书和固定 GitHub Release 下载路径。正式发布工具先验证签名、安装包和已通过的测试记录，再匿名完整下载公开 APK，核对字节数和 SHA-256，最后推动 `app-updates` 分支；渠道拒绝降级和同版本替换文件。发布流程没有依赖 GitHub API 来发现更新。
+`app-updates/latest.json` 保留给旧客户端；新客户端无需向同一个文件混入测试版和候选版。发布必须明确指定 `--channel stable`、`--channel beta` 或 `--channel candidate --candidate-number N`。测试版和候选版发布为 prerelease，不推进旧正式更新源。构建时通过 `-PreleaseChannel=stable|beta|candidate -PcandidateNumber=N` 写入对应身份；非候选版序号使用 0。本次默认构建身份为 2.0.47 候选1。既有签名、APK 完整性及发布验收检查继续执行。
 
 客户端下载先在应用私有目录保存部分文件，再复制成完整候选文件，在复制过程中核对大小与 SHA-256，随后读取 APK 的包名、版本、系统要求和签名，并与已安装应用核对。失败文件不会得到安装 URI。安装前再次核验，提供给安装器的 URI 只可读单个已核验 APK，不能读取环境文件或写回。
 
 普通 Android 应用无法静默覆盖安装。点击“安装更新”后先检查系统“安装未知应用”权限，必要时引导打开本应用的权限页面；返回后由 Android 安装器确认覆盖安装。用户可以取消安装，已经下载的安装包保留供以后安装。真正覆盖安装会由 Android 结束并替换旧应用进程；账号数据没有被应用清除。
 
-控制更新的来源文件见 `AppUpdates`、`AppUpdateManager`、`AppUpdateTransfer`、`AppUpdateActivity`、`AppUpdateProvider`、`AppUpdateFiles`、`AppUpdatePolicy`、`AppUpdateJob` 和 `AppUpdateReceiver`。`tools/publish-update-feed.py` 维护公网渠道。测试只用合成 APK，原签名密钥不进入 CI 或公网。
+控制更新的来源文件见 `AppUpdates`、`AppUpdateManager`、`AppUpdateCatalog`、`AppUpdateTransfer`、`AppUpdateActivity`、`AppUpdateProvider`、`AppUpdateFiles`、`AppUpdatePolicy`、`AppUpdateJob` 和 `AppUpdateReceiver`。`tools/publish-update-feed.py` 维护旧客户端渠道。测试只用合成 APK，原签名密钥不进入 CI 或公网。
 
 发布时，`docs/RELEASE-v版本.md` 用作应用内用户可读的简短更新说明；实现细节和验证限制写入 CHANGELOG 与 verification 文档，避免技术字段挤占更新页。

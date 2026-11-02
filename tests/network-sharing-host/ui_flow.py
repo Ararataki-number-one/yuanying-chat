@@ -25,7 +25,7 @@ def member(start):
   elif c=='}':depth-=1
   j+=1
  return s[i:j]
-needles=['static final class Prepared','static String side(','static NetworkSharePreparation.Failure problem(','static String readFailure(','static JSONObject selected(','static void nodeMenu(','static boolean alive(','static void verifyPrepared(','static void show(Activity a,Prepared p)','static String title(']
+needles=['interface AddressLoad','static final class Prepared','static String side(','static NetworkSharePreparation.Failure problem(','static String readFailure(','static JSONObject selected(','static void nodeMenu(','static boolean alive(','static void verifyPrepared(','static void show(Activity a,Prepared p)','static String title(']
 source=(pathlib.Path(__file__).parent/'NetworkShareUiFlowHost.java.in').read_text().replace('@PRODUCTION_MEMBERS@','\n'.join(member(x) for x in needles))
 source=source.replace('NetworkShareUi.side','NetworkShareUiFlowHost.side').replace('Prepared p=new Prepared("Route","route");','Prepared p=new Prepared("Route","route");p.frozen=new NetworkSharePreparation.Frozen(new NetworkSharePreparation.Request(ProfileCatalog.identity,"saved","route","a".repeat(32),""),"Route");')
 fixture=work/'NetworkShareUiFlowHost.java';fixture.write_text(source)

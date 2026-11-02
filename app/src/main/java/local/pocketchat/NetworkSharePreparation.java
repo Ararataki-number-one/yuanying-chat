@@ -7,6 +7,7 @@ import org.json.*;
 /** A share request fixes its owner, source, version and scope before any node read. */
 final class NetworkSharePreparation {
   static final int SOURCE_LIMIT=16*1024*1024;
+  static final String ADDRESS_ONLY="subscription-address-only";
   static final class Failure extends IOException {
     final String stage,code,side;
     Failure(String stage,String code,String side){super("网络分享暂不可用");this.stage=stage;this.code=code;this.side=side;}
@@ -16,11 +17,12 @@ final class NetworkSharePreparation {
       if("OWNER_CHANGED".equals(code))reason="环境已变化，请重新打开分享";
       else if("VERSION_CHANGED".equals(code))reason="所选配置版本已变化，请重新打开分享";
       else if("ENTRY_SELECTION_REQUIRED".equals(code))reason="请先选择本次分享的入口";
+      else if("NO_SUBSCRIPTION_ADDRESS".equals(code))reason="没有可分享的 HTTPS 订阅地址；本地导入的入口可选择单节点分享";
       return prefix+reason+"。";
     }
     JSONObject json(){return J.obj("stage",stage,"reason",code,"side",side);}
     String diagnostic(){return "阶段："+stage+"\n原因："+code+"\n范围："+(side.isEmpty()?"所选配置":side)+"\n原线路未改变";}
-    static Failure read(JSONObject o){return new Failure(safe(o.optString("stage"),"CONFIG_READ SUBSCRIPTION_CACHE NODE_EXTRACT PARAMETER_CHECK FILE_GENERATE SYSTEM_SHARE CLIPBOARD","CONFIG_READ"),safe(o.optString("reason"),"UNREADABLE ABSENT MALFORMED OWNER_CHANGED VERSION_CHANGED HASH_MISMATCH ENTRY_SELECTION_REQUIRED NODE_NOT_FOUND UNSUPPORTED NATIVE_REJECTED IDENTITY_MISMATCH FILE_IO NO_TARGET CANCELLED","UNREADABLE"),safe(o.optString("side"),"entry exit",""));}
+    static Failure read(JSONObject o){return new Failure(safe(o.optString("stage"),"CONFIG_READ SUBSCRIPTION_CACHE NODE_EXTRACT PARAMETER_CHECK FILE_GENERATE SYSTEM_SHARE CLIPBOARD","CONFIG_READ"),safe(o.optString("reason"),"UNREADABLE ABSENT MALFORMED OWNER_CHANGED VERSION_CHANGED HASH_MISMATCH ENTRY_SELECTION_REQUIRED NO_SUBSCRIPTION_ADDRESS NODE_NOT_FOUND UNSUPPORTED NATIVE_REJECTED IDENTITY_MISMATCH FILE_IO NO_TARGET CANCELLED","UNREADABLE"),safe(o.optString("side"),"entry exit",""));}
   }
   static String safe(String value,String allowed,String fallback){for(String s:allowed.split(" "))if(s.equals(value))return s;return fallback;}
   static Failure fail(String stage,String code,String side){return new Failure(stage,code,side);}
@@ -33,6 +35,7 @@ final class NetworkSharePreparation {
     }
     boolean wants(int side){return "route".equals(scope)||(side==0?"entry":"exit").equals(scope);}
     Request entry(String selected){return new Request(owner,source,scope,version,selected,id);}
+    Request address(){return new Request(owner,source,"entry",version,ADDRESS_ONLY,id);}
     JSONObject json(){return J.obj("schema",1,"owner",owner.json(),"source",source,"scope",scope,"version",version,"entry",entry,"id",id);}
     boolean same(Request other){return other!=null&&json().toString().equals(other.json().toString());}
   }

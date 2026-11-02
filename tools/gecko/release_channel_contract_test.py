@@ -24,6 +24,14 @@ class ReleaseChannelTests(unittest.TestCase):
         self.assertFalse(advances_update_channel(m))
         self.assertFalse(requires_manual_acceptance(m))
 
+    def test_beta_is_independent_from_stable_updates(self):
+        m=dict(version='2.0.47',channel='beta')
+        self.assertEqual(release_tag(m),'v2.0.47-gecko')
+        self.assertFalse(advances_update_channel(m))
+        self.assertFalse(requires_manual_acceptance(m))
+        for invalid in (dict(version='2.1.0',channel='beta'),dict(m,candidateNumber=1)):
+            with self.subTest(manifest=invalid),self.assertRaises(ReleaseChannelError):release_tag(invalid)
+
     def test_stable_roadmap_needs_manual_acceptance(self):
         self.assertTrue(requires_manual_acceptance(dict(version='1.6.0')))
         self.assertFalse(requires_manual_acceptance(dict(version='1.5.24')))

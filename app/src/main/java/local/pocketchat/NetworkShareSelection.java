@@ -56,11 +56,12 @@ final class NetworkShareSelection {
       // Read-only share capture never performs this whole-authority check.
       if(proof!=null){NativeNetwork n=NativeNetwork.peek();if(n==null||!proof.current(n)||!n.authoritySourcesCurrent())throw NetworkSharePreparation.fail("CONFIG_READ","VERSION_CHANGED","");}
       SecretStore v=new SecretStore(c);String configuration=NativeNetwork.transportFingerprint(config);
-      String stamp=NativeNetwork.hash(expected.json()+"|"+source+"|"+candidate+"|"+revision+"|"+configuration+"|"+actualEntry+(proof==null?"":"|"+proof.route.generation+"|"+proof.route.serial));
+      String stamp=NativeNetwork.hash(expected.json()+"|"+source+"|"+candidate+"|"+revision+"|"+configuration+"|"+actualEntry+(proof==null?"":"|"+proof.route.generation+"|"+proof.route.serial)+"|subscription-address-v1");
       try{JSONObject old=readHead(c,source);if(old.optBoolean("available")&&stamp.equals(old.optString("stamp"))&&owner(old).equals(expected))return null;}catch(Exception absent){}
       String version=id(),entry="share-entry-selection-"+version,exit="share-exit-selection-"+version;
       JSONObject common=J.obj("schema",1,"owner",expected.json(),"source",source,"version",version,"stamp",stamp,"savedRevision",revision,"candidateId",candidate,"configurationFingerprint",configuration,"available",true);
       JSONObject entryPart=J.obj("schema",1,"owner",expected.json(),"version",version,"side","entry","choices",choices(config,actualEntry),"name",actualEntry.isEmpty()?config.optString("entry"):actualEntry);
+      entryPart.put("subscriptionUrl",config.optString("subscriptionUrl"));
       attach(v,entryPart,entrySlot,entryMeta,"entry",version);
       if(entryPart.getJSONArray("choices").length()==0&&"subscription".equals(entrySlot)){JSONObject ui=null;try{byte[] b=v.get("subscription-ui");if(b!=null)ui=object(b);}catch(Exception ignored){}if(ui!=null&&!entryPart.optString("payloadHash").isEmpty()&&entryPart.optString("payloadHash").equals(ui.optString("payloadHash"))){JSONArray rows=ui.optJSONArray("nodeDetails");JSONArray options=new JSONArray();if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&row.optString("name").startsWith("Entry|")&&row.optString("configFingerprint").matches("[0-9a-f]{64}")&&(actualEntry.isEmpty()? !"manual".equals(config.optString("entryMode"))||config.optString("entry").equals(row.optString("name")):actualEntry.equals(row.optString("name"))))options.put(J.obj("name",row.optString("name"),"key",row.optString("configFingerprint")));}entryPart.put("choices",options);}}
       JSONObject exitPart=J.obj("schema",1,"owner",expected.json(),"version",version,"side","exit");
@@ -90,12 +91,18 @@ final class NetworkShareSelection {
     if(!owner(part).equals(request.owner)||!request.version.equals(part.optString("version"))||!field.equals(part.optString("side")))throw NetworkSharePreparation.fail("CONFIG_READ","VERSION_CHANGED",field);return part;
   }
   static JSONArray entryChoices(Context c,NetworkSharePreparation.Request request)throws Exception {return NetworkSourceSelection.withActiveSnapshot(c,()->{JSONObject p=selection(c,request,0);return p.optJSONArray("choices")==null?new JSONArray():p.getJSONArray("choices");});}
+  static String subscriptionUrl(String value)throws NetworkSharePreparation.Failure {
+    try{java.net.URI url=new java.net.URI(value);if(value.length()>8192||!"https".equals(url.getScheme())||url.getHost()==null||url.getUserInfo()!=null||url.getPort()>65535||url.getPort()==0||value.matches("(?s).*[\\p{Cntrl}\\s].*"))throw new IllegalArgumentException();return value;}
+    catch(Exception invalid){throw NetworkSharePreparation.fail("CONFIG_READ","NO_SUBSCRIPTION_ADDRESS","entry");}
+  }
   static NetworkSharePreparation.Frozen capture(Context c,NetworkSharePreparation.Request request)throws Exception {
     return NetworkSourceSelection.withActiveSnapshot(c,()->{requireOwner(c,request.owner);if(!current(c,request))throw NetworkSharePreparation.fail("CONFIG_READ","VERSION_CHANGED","");NetworkSharePreparation.Frozen frozen=new NetworkSharePreparation.Frozen(request,"网络配置");for(int i=0;i<2;i++)if(request.wants(i))frozen.parts[i]=part(c,request,i);requireOwner(c,request.owner);return frozen;});
   }
   static NetworkSharePreparation.Part retryPart(Context c,NetworkSharePreparation.Request request,int side)throws Exception {return NetworkSourceSelection.withActiveSnapshot(c,()->part(c,request,side));}
   static NetworkSharePreparation.Part part(Context c,NetworkSharePreparation.Request request,int index){String side=index==0?"entry":"exit";JSONObject p=null;try{
-    try{p=selection(c,request,index);}catch(Exception read){throw read instanceof NetworkSharePreparation.Failure?(NetworkSharePreparation.Failure)read:NetworkSharePreparation.fail("CONFIG_READ","UNREADABLE",side);}if(index==0){JSONArray options=p.getJSONArray("choices");JSONObject found=null;for(int i=0;i<options.length();i++){JSONObject row=options.optJSONObject(i);if(row!=null&&(request.entry.equals(row.optString("name"))||request.entry.isEmpty()&&options.length()==1))found=row;}
+    try{p=selection(c,request,index);}catch(Exception read){throw read instanceof NetworkSharePreparation.Failure?(NetworkSharePreparation.Failure)read:NetworkSharePreparation.fail("CONFIG_READ","UNREADABLE",side);}
+    if(index==0&&"entry".equals(request.scope)&&NetworkSharePreparation.ADDRESS_ONLY.equals(request.entry)){subscriptionUrl(p.optString("subscriptionUrl"));return new NetworkSharePreparation.Part(p,null,null);}
+    if(index==0){JSONArray options=p.getJSONArray("choices");JSONObject found=null;for(int i=0;i<options.length();i++){JSONObject row=options.optJSONObject(i);if(row!=null&&(request.entry.equals(row.optString("name"))||request.entry.isEmpty()&&options.length()==1))found=row;}
       if(found==null)throw NetworkSharePreparation.fail("CONFIG_READ","ENTRY_SELECTION_REQUIRED",side);p.put("name",found.getString("name"));p.put("key",found.getString("key"));}
     if(p.optJSONObject("manual")!=null)return new NetworkSharePreparation.Part(p,null,null);
     SecretStore v=new SecretStore(c);String hash=p.optString("payloadHash"),slot=p.optString("provider");if(!slot.matches("share-"+side+"-provider-[a-p]{32}"))throw NetworkSharePreparation.fail("CONFIG_READ","MALFORMED",side);byte[] bytes=null;try{bytes=v.get(slot);}catch(Exception ignored){}

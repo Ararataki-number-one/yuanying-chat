@@ -46,6 +46,16 @@ public final class UpdateExperienceHost {
   for(AppUpdateRoute.Purpose purpose:AppUpdateRoute.Purpose.values()){String origin=purpose==AppUpdateRoute.Purpose.FEED?AppUpdatePolicy.FEED:purpose==AppUpdateRoute.Purpose.APK?AppUpdatePolicy.asset("2.0.46"):ReleaseHistoryPolicy.url(1);AppUpdateRoute.Factory factory=new AppUpdateRoute.Factory(context,selection,AppUpdateRoute.OFFICIAL,direct,origin,purpose);boolean rejected=false;try{factory.open(purpose==AppUpdateRoute.Purpose.HISTORY?AppUpdatePolicy.FEED:ReleaseHistoryPolicy.url(1));}catch(IOException expected){rejected=true;}finally{factory.finished();}check("Exact production Factory purpose separation "+purpose,rejected);}
   check("Wrong-purpose URL never reaches connection factory",opens.get()==0);
   AppUpdateRoute.admitted=false;AppUpdateRoute.Factory blocked=new AppUpdateRoute.Factory(context,selection,AppUpdateRoute.OFFICIAL,direct,ReleaseHistoryPolicy.url(1),AppUpdateRoute.Purpose.HISTORY);boolean rejected=false;try{blocked.open(ReleaseHistoryPolicy.url(1));}catch(IOException expected){rejected=true;}finally{blocked.finished();AppUpdateRoute.admitted=true;}check("Unadmitted selected scope opens zero direct requests",rejected&&opens.get()==0);
+  String catalogue="https://api.github.com/repos/"+AppUpdatePolicy.REPO+"/releases?per_page=50&page=1";
+  String manifest="https://github.com/"+AppUpdatePolicy.REPO+"/releases/download/v2.0.46-candidate2-gecko/release-manifest.json";
+  for(String origin:Arrays.asList(catalogue,manifest)){
+    AppUpdateRoute.Factory factory=new AppUpdateRoute.Factory(context,selection,AppUpdateRoute.OFFICIAL,direct,origin);
+    try{check("New update metadata uses the exact production metadata purpose "+origin,factory.purpose==AppUpdateRoute.Purpose.FEED);HttpURLConnection connection=factory.open(origin);factory.released(connection);connection.disconnect();}finally{factory.finished();}
+  }
+  check("Catalogue and manifest requests retain the selected environment admission",opens.get()==2);
+  AppUpdateRoute.Factory guarded=new AppUpdateRoute.Factory(context,selection,AppUpdateRoute.OFFICIAL,direct,catalogue);
+  rejected=false;try{guarded.open("https://api.github.com/repos/another/repository/releases?per_page=50&page=1");}catch(IOException expected){rejected=true;}finally{guarded.finished();}check("New catalogue purpose cannot open another repository",rejected&&opens.get()==2);
+  AppUpdateRoute.admitted=false;guarded=new AppUpdateRoute.Factory(context,selection,AppUpdateRoute.OFFICIAL,direct,manifest);rejected=false;try{guarded.open(manifest);}catch(IOException expected){rejected=true;}finally{guarded.finished();AppUpdateRoute.admitted=true;}check("Lost metadata environment admission never falls back to a direct request",rejected&&opens.get()==2);
  }
  static void history(int port)throws Exception{
   File root=Files.createTempDirectory("history-store").toFile(),apk=new File(new File(root,"app-updates"),"sentinel.apk");apk.getParentFile().mkdirs();Files.writeString(apk.toPath(),"owned signed transfer identity");Context context=new Context(root);ReleaseHistory history=new ReleaseHistory(context);

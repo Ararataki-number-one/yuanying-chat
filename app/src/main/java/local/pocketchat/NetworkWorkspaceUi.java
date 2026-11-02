@@ -400,6 +400,7 @@ final class NetworkWorkspaceUi {
     if(source.optBoolean("stale"))d.note("以下是上次成功读取的节点。更新当前地址后，才能用于新的窗口配置。");
     DesignUi.action(d.body,"查看节点 · "+NetworkSourceSelection.names(source).size()+" 个",false,()->new ExitNodePickerUi(a,source,null,null).show());
     if(!NetworkCatalog.local(source))DesignUi.action(d.body,"编辑订阅",false,()->{d.dismiss();subscriptionForm(role,source,null);});
+    if(NetworkCatalog.ENTRY.equals(role)&&!NetworkCatalog.local(source))DesignUi.action(d.body,"分享入口订阅",false,()->{d.dismiss();final String address=source.optString("url");NetworkShareUi.subscription(a,()->NetworkShareSelection.subscriptionUrl(address));});
     DesignUi.action(d.body,NetworkCatalog.local(source)?"删除本地节点":"删除订阅",false,()->{d.dismiss();deleteSource(role,source);});
     d.buttons("关闭",d::dismiss,NetworkCatalog.local(source)?"":"更新订阅",()->{d.dismiss();loadPool(role,source,true,null);});d.show();
   }

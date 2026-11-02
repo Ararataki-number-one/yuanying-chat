@@ -1,0 +1,51 @@
+package local.pocketchat;
+
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import org.json.*;
+
+/** Exact production channel selection methods; preference/Android/job adapters only. */
+public final class ChannelStateHost {
+  @CHANNEL_METHODS@
+  final Object context=new Object();final Prefs prefs;
+  long id=-1,verifiedSerial=5,latestCheckedAt=123,latestRevision,received=99,total=100,bytesPerSecond=25,packageStoredBytes=99;
+  final AtomicLong generation=new AtomicLong(),verifySerial=new AtomicLong();
+  final java.util.concurrent.Executor worker=Runnable::run;
+  boolean downloadRequested,transferRunning,userPaused;String state="idle",raw="cached metadata";
+  Object info=new Object(),latestInfo=new Object();ReleaseNotes latestNotes=ReleaseNotes.legacy("cached notes");
+  int checksScheduled,lastOrigin=-1,forgottenScopes,clearedFiles;
+  ChannelStateHost(){this(new Prefs());}ChannelStateHost(Prefs prefs){this.prefs=prefs;}
+  Bundle snapshot(){Bundle result=new Bundle();result.putString("channel",selectedChannel());return result;}
+  void forgetScope(){forgottenScopes++;}
+  void clearFiles(){clearedFiles++;}
+  void change(String state,String message){this.state=state;}
+  void check(boolean automatic,int origin,Runnable done){checksScheduled++;lastOrigin=origin;}
+  static int passed;static void check(boolean yes,String message){if(!yes)throw new AssertionError(message);passed++;}
+  public static void main(String[] args)throws Exception{
+    ChannelStateHost fresh=new ChannelStateHost();check(fresh.selectedChannel().equals("candidate"),"Initial channel follows the installed candidate build");
+    fresh.prefs.put("channel","unrecognized");check(fresh.selectedChannel().equals("candidate"),"Invalid old preference falls back to the installed channel");
+    String[] phases={"checking","verifying","deleting","downloading","paused","waiting","legacy-id"};
+    for(String phase:phases){ChannelStateHost host=new ChannelStateHost();host.state=phase;if(phase.equals("downloading"))host.transferRunning=true;if(phase.equals("paused")||phase.equals("waiting"))host.downloadRequested=true;if(phase.equals("legacy-id"))host.id=10;Object info=host.info,notes=host.latestInfo;Bundle result=host.selectChannel("stable",2);
+      check(host.selectedChannel().equals("candidate")&&!result.getString("channelError").isEmpty(),"Busy channel change is rejected: "+phase);
+      check(host.info==info&&host.latestInfo==notes&&host.generation.get()==0&&host.checksScheduled==0&&host.clearedFiles==0,"Rejected change preserves download, cache and callbacks: "+phase);
+    }
+    ChannelStateHost host=new ChannelStateHost();host.state="ready";host.prefs.put("attemptedAt",123L);host.prefs.put("cancelledCode",101L);host.prefs.put("latestMetadata","previous channel notes");host.selectChannel("stable",7);
+    check(host.selectedChannel().equals("stable")&&host.lastOrigin==7&&host.checksScheduled==1,"Idle selection persists its exact channel and checks through the originating environment");
+    check(host.info==null&&host.latestInfo==null&&host.raw.isEmpty()&&host.latestCheckedAt==0&&host.latestNotes.user.isEmpty(),"Switching cannot expose the previous channel's download or notes");
+    check(host.clearedFiles==1,"Switching leaves no orphan update installer in private storage");
+    check(host.received==0&&host.total==0&&host.bytesPerSecond==0&&host.packageStoredBytes==0,"Old-channel progress cannot enable resume for a different release");
+    check(host.generation.get()==1&&host.verifySerial.get()==1&&host.verifiedSerial==0,"Old verification callbacks are invalidated by channel selection");
+    check(!host.prefs.containsKey("attemptedAt")&&!host.prefs.containsKey("cancelledCode")&&!host.prefs.containsKey("latestMetadata"),"Previous channel timing and cancellation cannot suppress the new channel");
+    check(new ChannelStateHost(host.prefs).selectedChannel().equals("stable"),"The chosen channel survives manager recreation");
+    host.selectChannel("beta",3);check(host.selectedChannel().equals("beta")&&host.lastOrigin==3&&host.checksScheduled==2,"Beta is selectable independently after stable");
+    try{host.selectChannel("all",3);throw new AssertionError("Unknown channel accepted");}catch(IllegalArgumentException expected){passed++;}
+    System.out.println(new JSONObject().put("status","passed").put("passed",passed).put("actualAndroidExecution",false));
+  }
+}
+final class AppVersion {static String channel(Object context){return "candidate";}}
+final class Bundle extends HashMap<String,Object> {void putString(String key,String value){put(key,value);}String getString(String key){return (String)getOrDefault(key,"");}}
+final class Prefs extends HashMap<String,Object> {
+  String getString(String key,String fallback){return (String)getOrDefault(key,fallback);}
+  Editor edit(){return new Editor(this);}
+  static final class Editor {final Prefs prefs;Editor(Prefs prefs){this.prefs=prefs;}Editor putString(String key,String value){prefs.put(key,value);return this;}Editor remove(String key){prefs.remove(key);return this;}void apply(){}}
+}

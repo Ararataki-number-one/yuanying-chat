@@ -106,14 +106,14 @@ final class AppUpdateRoute {
     final java.util.Set<HttpURLConnection> active=java.util.concurrent.ConcurrentHashMap.newKeySet();
     final ScheduledExecutorService watcher=Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"update-route-watch");t.setPriority(Thread.MIN_PRIORITY);return t;});
     volatile IOException failure;volatile boolean closed;
-    Factory(Context context,Selection selected,Opener opener,AppUpdateTransfer.ConnectionFactory direct,String origin){this(context,selected,opener,direct,origin,AppUpdatePolicy.FEED.equals(origin)?Purpose.FEED:Purpose.APK);}
+    Factory(Context context,Selection selected,Opener opener,AppUpdateTransfer.ConnectionFactory direct,String origin){this(context,selected,opener,direct,origin,AppUpdatePolicy.FEED.equals(origin)||AppUpdatePolicy.metadataOrigin(origin)?Purpose.FEED:Purpose.APK);}
     Factory(Context context,Selection selected,Opener opener,AppUpdateTransfer.ConnectionFactory direct,String origin,Purpose purpose){this.context=Profiles.global(context);this.scope=selected.scope;this.lease=selected.lease;this.opener=opener;this.direct=direct;this.origin=origin;this.purpose=purpose;watcher.scheduleWithFixedDelay(this::watch,1000,1000,TimeUnit.MILLISECONDS);}
     boolean admitted()throws IOException {return lease==null?DIRECT.equals(scope.source)&&validScope(context,scope):valid(context,lease);}
     void watch(){if(closed||failure!=null)return;try{if(!admitted())lose();}catch(IOException unavailable){lose();}}
     synchronized void lose(){if(closed||failure!=null)return;failure=new Unavailable("环境网络已变化，恢复后继续下载");watcher.shutdown();for(HttpURLConnection connection:active)AppUpdateTransfer.disconnectLater(connection);}
     @Override public void check()throws IOException {if(failure!=null)throw failure;if(closed)throw new Unavailable("下载已暂停，进度已保留");if(lease==null)direct.check();}
     @Override public HttpURLConnection open(String url)throws IOException {
-      if(!(purpose==Purpose.HISTORY?ReleaseHistoryPolicy.trusted(origin)&&ReleaseHistoryPolicy.trusted(url):purpose==Purpose.FEED?AppUpdatePolicy.FEED.equals(origin)&&AppUpdatePolicy.feedRedirect(url):AppUpdateTransfer.officialOrigin(origin)&&AppUpdateTransfer.trusted(url,origin)))throw new AppUpdateTransfer.InvalidResponse("更新下载地址不受信任，已停止下载");
+      if(!(purpose==Purpose.HISTORY?ReleaseHistoryPolicy.trusted(origin)&&ReleaseHistoryPolicy.trusted(url):purpose==Purpose.FEED?(AppUpdatePolicy.FEED.equals(origin)&&AppUpdatePolicy.feedRedirect(url)||AppUpdatePolicy.metadataTarget(url,origin)):AppUpdateTransfer.officialOrigin(origin)&&AppUpdateTransfer.trusted(url,origin)))throw new AppUpdateTransfer.InvalidResponse("更新下载地址不受信任，已停止下载");
       check();if(!admitted()){lose();throw failure;}check();
       HttpURLConnection connection=lease==null?direct.open(url):opener.open(url,new Proxy(Proxy.Type.HTTP,new InetSocketAddress("127.0.0.1",lease.port)));active.add(connection);
       if(closed||failure!=null){AppUpdateTransfer.disconnectLater(connection);check();}return connection;

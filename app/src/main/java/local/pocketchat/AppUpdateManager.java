@@ -31,6 +31,7 @@ final class AppUpdateManager {
   boolean transferRunning,downloadRequested,userPaused,discardAfterTransfer;java.util.function.BooleanSupplier transferOwner;
   AppUpdateManager(Context c){context=c;prefs=c.getSharedPreferences("app-updates",0);downloads=(DownloadManager)c.getSystemService(Context.DOWNLOAD_SERVICE);legacyQuery=owned->downloads.query(new DownloadManager.Query().setFilterById(owned));root=new File(c.getNoBackupFilesDir(),"app-updates");root.mkdirs();
     raw=prefs.getString("metadata","");try{info=new AppUpdateInfo(new JSONObject(raw));}catch(Exception ignored){raw="";}
+    if(!AppUpdatePolicy.channel(prefs.getString("channel",""))){boolean pending=prefs.getBoolean("downloadRequested",false)||prefs.getLong("downloadId",-1)>0;String initial=pending&&info!=null&&info.code>AppUpdateFiles.installed(c)?info.channel:AppVersion.channel(c);prefs.edit().putString("channel",initial).remove("attemptedAt").remove("checkedAt").apply();}
     String latest=prefs.getString("latestMetadata",raw);try{latestInfo=new AppUpdateInfo(new JSONObject(latest));latestCheckedAt=prefs.getLong("latestCheckedAt",prefs.getLong("checkedAt",0));final AppUpdateInfo restored=latestInfo;worker.execute(()->{ReleaseNotes notes=ReleaseNotes.parse(restored.notes,restored.technicalDetails,restored.userNotes);synchronized(this){if(latestInfo==restored){latestNotes=notes;latestRevision++;}}});if(!prefs.contains("latestMetadata"))prefs.edit().putString("latestMetadata",latest).putLong("latestCheckedAt",latestCheckedAt).apply();}catch(Exception ignored){/* Descriptive cache never grants download/install eligibility. */}
     id=prefs.getLong("downloadId",-1);state=prefs.getString("state","idle");message=prefs.getString("message","");downloadRequested=prefs.getBoolean("downloadRequested",false);userPaused=prefs.getBoolean("userPaused",false);
     // Cleanup and its final status are persisted separately. Recheck an
@@ -47,14 +48,27 @@ final class AppUpdateManager {
   File file(){return new File(root,info==null?"missing.apk":"update-"+info.code+"-"+info.sha+".apk");}
   long downloadId(){return id;}
   synchronized Bundle snapshot(){Bundle b=new Bundle();b.putInt("originSlot",prefs.getInt("originSlot",-1));b.putInt("routeSlot",prefs.getInt("routeSlot",-1));b.putString("sourceType",prefs.getString("routeSource",""));b.putString("state",state);b.putString("message",message);b.putLong("received",received);b.putLong("total",total);b.putLong("bytesPerSecond",bytesPerSecond);b.putLong("packageStoredBytes",packageStoredBytes);b.putBoolean("packageDeleteRetry",prefs.getBoolean("packageDeletePending",false)&&!"deleting".equals(state));b.putLong("remainingSeconds",bytesPerSecond>0&&total>received?(total-received+bytesPerSecond-1)/bytesPerSecond:-1);b.putBoolean("canResume",info!=null&&received>0&&!"ready".equals(state));b.putBoolean("downloadRequested",downloadRequested);b.putLong("verifiedSerial",verifiedSerial);b.putLong("verifyRequestedSerial",verifySerial.get());b.putLong("checkedAt",prefs.getLong("checkedAt",0));b.putBoolean("autoCheck",AppSettings.bool(context,"updateAutoCheck",true));b.putBoolean("autoDownload",AppSettings.bool(context,"updateAutoDownload",false));b.putBoolean("wifiOnly",AppSettings.bool(context,"updateWifiOnly",true));
-    if(latestInfo!=null){b.putString("latestVersion",latestInfo.version);b.putLong("latestCode",latestInfo.code);b.putLong("latestCheckedAt",latestCheckedAt);b.putLong("latestRevision",latestRevision);}
-    if(info!=null){b.putString("version",info.version);b.putString("notes",info.notes);b.putLong("bytes",info.bytes);b.putLong("code",info.code);b.putString("packageUri",packageUri());if("ready".equals(state))b.putString("uri",packageUri());}return b;}
+    b.putString("channel",selectedChannel());b.putBoolean("canChangeChannel",canChangeChannel());
+    if(latestInfo!=null&&selectedChannel().equals(latestInfo.channel)){b.putString("latestVersion",latestInfo.version);b.putString("latestDisplay",latestInfo.display());b.putString("latestTag",latestInfo.tag);b.putLong("latestCode",latestInfo.code);b.putLong("latestCheckedAt",latestCheckedAt);b.putLong("latestRevision",latestRevision);}
+    if(info!=null){b.putString("version",info.version);b.putString("versionDisplay",info.display());b.putString("notes",info.notes);b.putLong("bytes",info.bytes);b.putLong("code",info.code);b.putString("packageUri",packageUri());if("ready".equals(state))b.putString("uri",packageUri());}return b;}
+  String selectedChannel(){String saved=prefs.getString("channel","");return AppUpdatePolicy.channel(saved)?saved:AppVersion.channel(context);}
+  synchronized boolean canChangeChannel(){return id<=0&&!downloadRequested&&!transferRunning&&!"checking".equals(state)&&!"verifying".equals(state)&&!"deleting".equals(state);}
+  synchronized Bundle selectChannel(String channel,int origin){
+    if(!AppUpdatePolicy.channel(channel))throw new IllegalArgumentException("更新通道无效");
+    if(!selectedChannel().equals(channel)){
+      if(!canChangeChannel()){Bundle result=snapshot();result.putString("channelError","请先完成或取消当前下载，再切换更新通道");return result;}
+      generation.incrementAndGet();verifySerial.incrementAndGet();verifiedSerial=0;info=null;raw="";latestInfo=null;latestNotes=ReleaseNotes.legacy("");latestCheckedAt=0;latestRevision++;received=total=bytesPerSecond=packageStoredBytes=0;userPaused=false;forgetScope();
+      prefs.edit().putString("channel",channel).remove("latestMetadata").remove("latestCheckedAt").remove("attemptedAt").remove("checkedAt").remove("cancelledCode").apply();change("idle","已切换至"+AppUpdatePolicy.channelName(channel));
+      worker.execute(this::clearFiles);
+    }
+    check(false,origin,null);return snapshot();
+  }
   void rememberLatest(AppUpdateInfo candidate,String json,long checked){ReleaseNotes notes=ReleaseNotes.parse(candidate.notes,candidate.technicalDetails,candidate.userNotes);synchronized(this){latestInfo=candidate;latestNotes=notes;latestCheckedAt=checked;latestRevision++;prefs.edit().putString("latestMetadata",json).putLong("latestCheckedAt",checked).apply();}}
   String packageUri(){return AppUpdates.uri(context).buildUpon().appendPath(file().getName()).build().toString();}
   synchronized void refreshStoredBytes(){File apk=file();long bytes=apk.isFile()?apk.length():0;if(info!=null){File part=new File(root,"transfer-"+info.code+"-"+info.sha+"-"+info.bytes+".part");if(part.isFile())bytes+=part.length();}packageStoredBytes=bytes;}
   synchronized void change(String next,String detail){state=next;message=detail;save();}
   static String readable(Exception error,String fallback){String text=error.getMessage();return text!=null&&text.matches("(?s).*[\\u4e00-\\u9fff].*")?text:fallback;}
-  synchronized void save(){if(!state.equals(prefs.getString("state",""))||!message.equals(prefs.getString("message",""))||!raw.equals(prefs.getString("metadata",""))||id!=prefs.getLong("downloadId",-1)||downloadRequested!=prefs.getBoolean("downloadRequested",false)||userPaused!=prefs.getBoolean("userPaused",false))prefs.edit().putString("state",state).putString("message",message).putString("metadata",raw).putLong("downloadId",id).putBoolean("downloadRequested",downloadRequested).putBoolean("userPaused",userPaused).apply();String label=info==null?"当前版本 "+AppVersion.name(context):"ready".equals(state)?"新版 "+info.version+" 已下载":"downloading".equals(state)?"正在下载 "+info.version:"可更新至 "+info.version;if(!label.equals(AppSettings.get(context,"updateLabel","")))AppSettings.put(context,"updateLabel",label);}
+  synchronized void save(){if(!state.equals(prefs.getString("state",""))||!message.equals(prefs.getString("message",""))||!raw.equals(prefs.getString("metadata",""))||id!=prefs.getLong("downloadId",-1)||downloadRequested!=prefs.getBoolean("downloadRequested",false)||userPaused!=prefs.getBoolean("userPaused",false))prefs.edit().putString("state",state).putString("message",message).putString("metadata",raw).putLong("downloadId",id).putBoolean("downloadRequested",downloadRequested).putBoolean("userPaused",userPaused).apply();String label=info==null?"当前版本 "+AppVersion.name(context):"ready".equals(state)?"新版 "+info.display()+" 已下载":"downloading".equals(state)?"正在下载 "+info.display():"可更新至 "+info.display();if(!label.equals(AppSettings.get(context,"updateLabel","")))AppSettings.put(context,"updateLabel",label);}
   void rememberOrigin(int slot){if(AppUpdates.validSlot(slot))worker.execute(()->setOrigin(slot));}
   void setOrigin(int slot){if(AppUpdates.validSlot(slot))prefs.edit().putInt("originSlot",slot).apply();}
   void check(boolean automatic,Runnable done){check(automatic,-1,done);}
@@ -66,12 +80,12 @@ final class AppUpdateManager {
     String previous;synchronized(this){if(id>0||downloadRequested||transferRunning||"verifying".equals(state)||"deleting".equals(state))previous=null;else{previous=state;change("checking","正在检查更新");prefs.edit().putLong("attemptedAt",now).apply();}}
     if(previous==null){pollNow();return;}
     try{
-      String text=readFeed();JSONObject json=new JSONObject(text);AppUpdateInfo candidate=new AppUpdateInfo(json);
+      String text=readFeed();JSONObject json=new JSONObject(text);AppUpdateInfo candidate=new AppUpdateInfo(json);if(!selectedChannel().equals(candidate.channel))throw new IOException("更新通道与发布信息不符");
       boolean supported=java.util.Arrays.asList(Build.SUPPORTED_ABIS).contains("arm64-v8a")&&Build.VERSION.SDK_INT>=candidate.minSdk;
       if(!supported)throw new IOException("暂无适合这台设备的更新安装包");
       if(info!=null&&(candidate.code<info.code||candidate.code==info.code&&(!candidate.sha.equals(info.sha)||candidate.bytes!=info.bytes)))throw new IOException("发布信息暂未同步，请稍后重新检查");
       rememberLatest(candidate,json.toString(),now);
-      long installed=AppUpdateFiles.installed(context);if(candidate.code<=installed){info=null;raw="";clearFiles();change("idle","已是最新版本");}
+      long installed=AppUpdateFiles.installed(context);if(candidate.code<=installed){info=null;raw="";clearFiles();change("idle","当前安装版本不低于此通道最新版本");}
       else{
         boolean same=info!=null&&info.code==candidate.code&&info.sha.equals(candidate.sha)&&info.bytes==candidate.bytes;
         if(!same){clearFiles();forgetScope();}info=candidate;raw=json.toString();change(same&&"ready".equals(previous)?"ready":"available","");
@@ -79,7 +93,8 @@ final class AppUpdateManager {
         if(automatic&&AppSettings.bool(context,"updateAutoDownload",false)&&prefs.getLong("cancelledCode",0)!=candidate.code&&!"ready".equals(state))downloadNow(true);
       }
       prefs.edit().putLong("checkedAt",now).apply();
-    }catch(Exception error){change(info==null?"error":"ready".equals(previous)?"ready":"available",readable(error,"暂时无法检查更新，请检查所选环境的网络后重试"));}
+    }catch(AppUpdateCatalog.Empty empty){prefs.edit().putLong("checkedAt",now).apply();change(info==null?"idle":"ready".equals(previous)?"ready":"available",empty.getMessage());}
+    catch(Exception error){change(info==null?"error":"ready".equals(previous)?"ready":"available",readable(error,"暂时无法检查更新，请检查所选环境的网络后重试"));}
   }
   AppUpdateRoute.Scope savedScope(AppUpdateInfo release)throws IOException {if(release==null||!(release.code+":"+release.sha+":"+release.bytes).equals(prefs.getString("routeIdentity","")))return null;return new AppUpdateRoute.Scope(prefs.getInt("routeSlot",-1),prefs.getInt("routeGeneration",-1),prefs.getString("routeSource",""));}
   AppUpdateRoute.Selection selection(AppUpdateInfo release)throws IOException {AppUpdateRoute.Scope scope=savedScope(release);int slot=scope==null?prefs.getInt("originSlot",-1):scope.slot;if(!AppUpdates.validSlot(slot))throw new AppUpdateRoute.Unavailable("请从正在使用的环境打开应用更新");return AppUpdateRoute.select(context,slot,scope);}
@@ -87,13 +102,16 @@ final class AppUpdateManager {
   void forgetScope(){prefs.edit().remove("routeIdentity").remove("routeSlot").remove("routeGeneration").remove("routeSource").apply();}
   AppUpdateTransfer.ConnectionFactory connectionFactory(AppUpdateRoute.Selection route,String origin)throws IOException {if(AppUpdateRoute.INTERNAL.equals(route.scope.source)&&route.lease==null)throw new AppUpdateRoute.Unavailable("恢复环境网络后继续下载");return new AppUpdateRoute.Factory(context,route,routeOpener,transferFactory,origin);}
   String readFeed()throws IOException {
-    AppUpdateTransfer.ConnectionFactory factory=connectionFactory(selection(null),AppUpdatePolicy.FEED);try{
-    String url=AppUpdatePolicy.FEED;for(int redirects=0;redirects<4;redirects++){
-      if(!AppUpdatePolicy.feedRedirect(url))throw new IOException("更新地址无效");
+    return AppUpdateCatalog.fetch(selectedChannel(),this::readJson).toString();
+  }
+  String readJson(String origin,int maximum)throws IOException {
+    if(!AppUpdatePolicy.metadataOrigin(origin))throw new IOException("更新地址无效");AppUpdateTransfer.ConnectionFactory factory=connectionFactory(selection(null),origin);try{
+    String url=origin;for(int redirects=0;redirects<4;redirects++){
+      if(!AppUpdatePolicy.metadataTarget(url,origin))throw new IOException("更新地址无效");
       HttpURLConnection connection=factory.open(url);connection.setConnectTimeout(15000);connection.setReadTimeout(15000);connection.setInstanceFollowRedirects(false);connection.setUseCaches(false);connection.setRequestProperty("Accept","application/json");connection.setRequestProperty("User-Agent","PocketChat-update/"+AppVersion.name(context));
       try{int code=connection.getResponseCode();factory.check();if(code>=300&&code<400){String location=connection.getHeaderField("Location");if(location==null)throw new IOException("更新服务器响应异常");url=new URL(new URL(url),location).toString();continue;}if(code!=200)throw new IOException("暂时无法获取更新（"+code+"），请稍后重试");
-        try(InputStream in=connection.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int size;while((size=in.read(buffer))!=-1){factory.check();if(out.size()+size>65536)throw new IOException("更新信息过大");out.write(buffer,0,size);}return out.toString(StandardCharsets.UTF_8.name());}
-      }finally{connection.disconnect();}
+        try(InputStream in=connection.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int size;while((size=in.read(buffer))!=-1){factory.check();if(out.size()+size>maximum)throw new IOException("更新信息过大");out.write(buffer,0,size);}return out.toString(StandardCharsets.UTF_8.name());}
+      }finally{connection.disconnect();factory.released(connection);}
     }throw new IOException("更新服务器跳转次数过多");
     }catch(IOException error){factory.check();throw error;}finally{factory.finished();}
   }
@@ -134,7 +152,7 @@ final class AppUpdateManager {
         try(InputStream in=new FileInputStream(current.partial())){AppUpdatePolicy.copyVerified(in,verified,release.bytes,release.sha,()->generation.get()!=serial);}
         AppUpdateFiles.archive(context,verified,release.code,release.version);
         synchronized(AppUpdateManager.this){if(generation.get()!=serial)throw new AppUpdateTransfer.Stopped();File target=file();if(target.exists()&&!target.delete()||!verified.renameTo(target))throw new IOException("无法保存更新安装包，请重试");current.clear();downloadRequested=false;userPaused=false;received=release.bytes;total=release.bytes;refreshStoredBytes();prefs.edit().putInt("transferFailures",0).apply();change("ready","");}
-        notice("新版 "+release.version+" 已下载","点击查看更新并确认安装");
+        notice("新版 "+release.display()+" 已下载","点击查看更新并确认安装");
       }catch(AppUpdateTransfer.Stopped pausedTransfer){throw pausedTransfer;}catch(Exception invalid){if(generation.get()!=serial||stopped.getAsBoolean())throw new AppUpdateTransfer.Stopped();current.clear();synchronized(AppUpdateManager.this){if(generation.get()==serial){downloadRequested=false;received=0;change("available",readable(invalid,"安装包核验失败，请重新下载"));}}}finally{verified.delete();}
     }catch(AppUpdateTransfer.Stopped pausedTransfer){/* Pause, OS stop and cancellation already record their own state. */}
     catch(Exception error){synchronized(AppUpdateManager.this){if(generation.get()==serial){bytesPerSecond=0;received=current.received();if(error instanceof AppUpdateTransfer.InvalidResponse){current.clear();received=0;downloadRequested=false;change("available",readable(error,"更新服务器续传响应无效，请重试"));}else{int failures=Math.min(6,prefs.getInt("transferFailures",0)+1);prefs.edit().putInt("transferFailures",failures).apply();change("waiting",readable(error,"网络暂时中断，已保留进度，稍后自动续传"));}}}}
@@ -167,7 +185,7 @@ final class AppUpdateManager {
       try(ParcelFileDescriptor descriptor=downloads.openDownloadedFile(owned);InputStream in=new ParcelFileDescriptor.AutoCloseInputStream(descriptor)){AppUpdatePolicy.copyVerified(in,partial,release.bytes,release.sha,()->generation.get()!=serial||id!=owned||info!=release);}
       AppUpdateFiles.archive(context,partial,release.code,release.version);
       synchronized(this){if(generation.get()!=serial||id!=owned||info!=release)return;File target=file();if(target.exists()&&!target.delete()||!partial.renameTo(target))throw new IOException("无法保存更新安装包，请重试");removeDownload();downloadRequested=false;userPaused=false;received=release.bytes;total=release.bytes;refreshStoredBytes();change("ready","");}
-      if(generation.get()==serial)notice("新版 "+release.version+" 已下载","点击查看更新并确认安装");
+      if(generation.get()==serial)notice("新版 "+release.display()+" 已下载","点击查看更新并确认安装");
     }catch(Exception error){synchronized(this){if(generation.get()==serial&&id==owned&&info==release){removeDownload();change("available",readable(error,"安装包核验失败，请重新下载"));}}}finally{partial.delete();}
   }
   long verify(){final long request=verifySerial.incrementAndGet(),serial;final AppUpdateInfo release;final File source;
