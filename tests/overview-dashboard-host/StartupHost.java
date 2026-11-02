@@ -17,6 +17,7 @@ public final class StartupHost {
     MainActivity retired=new MainActivity(true);retired.onCreate(new Bundle());retired.onResume();retired.destroyed=true;retired.browserStartup.close();retired.environmentOverview.paint();check(retired.creates==0,"destroyed Activity cannot be revived by old draw callback");
     MainActivity normal=new MainActivity(false);normal.onCreate(new Bundle());check(normal.creates==1&&!normal.environmentOverview.shown,"notification or normal opening adds no overview delay");
     MainActivity arriving=new MainActivity(true);arriving.onCreate(new Bundle());Intent notification=new Intent(false);arriving.onNewIntent(notification);check(arriving.getIntent()==notification&&!arriving.finished&&arriving.creates==0,"incoming intent is retained during native startup without finishing the Activity");
+    MainActivity replaced=new MainActivity(true);replaced.onCreate(new Bundle());replaced.onResume();Runnable oldFrame=replaced.environmentOverview.draw;replaced.onNewIntent(new Intent(true));oldFrame.run();check(replaced.creates==0,"retired overview draw cannot authorize a replacement dashboard");replaced.environmentOverview.paint();check(replaced.creates==1,"replacement dashboard starts only after its own native frame");
     ProfileCatalog.available=false;MainActivity deleted=new MainActivity(true);deleted.onCreate(new Bundle());check(deleted.finished&&deleted.creates==0,"deleted or resetting environment cannot create browser");ProfileCatalog.available=true;
 
     BrowserStartupGate gate=new BrowserStartupGate("A",0,1);check(gate.matches("A",0,1)&&!gate.matches("B",0,1)&&!gate.matches("A",1,1)&&!gate.matches("A",0,2),"startup identity cannot cross environment, slot or generation");check(!gate.take(),"new gate starts nothing");gate.frame();check(!gate.take(),"draw without foreground starts nothing");gate.foreground(true);check(gate.take()&&!gate.take(),"gate issues a single start");
@@ -49,7 +50,7 @@ class ProfileCatalog{static boolean available=true;static ProfileCatalog get(Mai
 class ExitIpPageUi{static void close(MainActivity a){}}
 class EnvironmentOverviewUi {
   OverviewIdentity state=new OverviewIdentity();boolean shown;Runnable draw;EnvironmentOverviewUi(MainActivity a){}
-  boolean consume(Intent i){shown=i.manual;return shown;}void afterFirstFrame(Runnable r){draw=r;}void paint(){if(draw!=null)draw.run();}
+  boolean consume(Intent i){shown=i.manual;return shown;}void afterFirstFrame(Runnable r){draw=r;}void paint(){if(draw!=null)draw.run();}void resume(){}
 }
 
 class OverviewIdentity{String environmentId="A";int slot=0,generation=1;}

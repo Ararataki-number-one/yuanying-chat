@@ -77,9 +77,12 @@ public class MainActivity extends ThemedActivity {
     environmentOverview=new EnvironmentOverviewUi(this);
     LinearLayout startup=new LinearLayout(this);startup.setBackgroundColor(ReferenceUi.CHAT_BG);setContentView(startup);
     if(environmentOverview.consume(getIntent())){
-      browserStartup=new BrowserStartupGate(environmentOverview.state.environmentId,environmentOverview.state.slot,environmentOverview.state.generation);
-      environmentOverview.afterFirstFrame(()->{if(browserStartup!=null){browserStartup.frame();startBrowserAfterOverview();}});
+      prepareBrowserAfterOverview();
     }else createChatUi();
+  }
+  void prepareBrowserAfterOverview(){
+    BrowserStartupGate gate=new BrowserStartupGate(environmentOverview.state.environmentId,environmentOverview.state.slot,environmentOverview.state.generation);browserStartup=gate;gate.foreground(active);
+    environmentOverview.afterFirstFrame(()->{if(browserStartup==gate){gate.frame();startBrowserAfterOverview();}});
   }
   void startBrowserAfterOverview(){if(browserStartup!=null&&browserStartup.take()&&!destroyed&&!isFinishing())createChatUi();}
   void createChatUi(){
@@ -264,10 +267,10 @@ public class MainActivity extends ThemedActivity {
     if(session.networkReady){if(WebReplyObserver.same(url,remote.getUrl())&&!session.navigationFailed){session.sync();showPage(true);}else switchConversation(url);}
     else{session.requestedConversation=url;session.conversation=url;conversation=url;session.connect();}
   }
-  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);ExitIpPageUi.close(this);if(environmentOverview!=null)environmentOverview.consume(intent);if(session!=null)openNotification(intent);}
-  @Override protected void onResume(){super.onResume();if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}active=true;if(session==null){if(browserStartup!=null){browserStartup.foreground(true);startBrowserAfterOverview();}return;}resumeChatUi();}
+  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);ExitIpPageUi.close(this);if(environmentOverview!=null&&environmentOverview.consume(intent)&&session==null)prepareBrowserAfterOverview();if(session!=null)openNotification(intent);}
+  @Override protected void onResume(){super.onResume();if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}active=true;if(environmentOverview!=null)environmentOverview.resume();if(session==null){if(browserStartup!=null){browserStartup.foreground(true);startBrowserAfterOverview();}return;}resumeChatUi();}
   void resumeChatUi(){AppUpdates.schedule(this);if(hub!=null)hub.downloadsVisible(true);AppPrefs.maintainCache(this);session.add(sessionObserver);session.audit.refresh(true);session.foreground(true);session.connect();if(hub!=null&&hub.page!=AppHub.CHAT){hub.refresh();handler.removeCallbacks(hub.tick);handler.postDelayed(hub.tick,2500);}handler.removeCallbacks(ticker);handler.post(ticker);}
-  @Override protected void onPause(){super.onPause();active=false;if(browserStartup!=null)browserStartup.foreground(false);if(environmentOverview!=null)environmentOverview.close();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(designChrome!=null)designChrome.cancelWebGesture();handler.removeCallbacks(ticker);if(session==null||session.deleted)return;NativeNetwork.get(this).traffic.watch(false);session.remove(sessionObserver);session.audit.cancel();session.reading.keyboard(false);session.foreground(false);}
+  @Override protected void onPause(){super.onPause();active=false;if(browserStartup!=null)browserStartup.foreground(false);if(environmentOverview!=null)environmentOverview.pause();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(designChrome!=null)designChrome.cancelWebGesture();handler.removeCallbacks(ticker);if(session==null||session.deleted)return;NativeNetwork.get(this).traffic.watch(false);session.remove(sessionObserver);session.audit.cancel();session.reading.keyboard(false);session.foreground(false);}
   @Override protected void onDestroy(){destroyed=true;if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);if(remote!=null&&remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);if(remote!=null)remote.setHost(null);super.onDestroy();}
   @Override public void onBackPressed(){if(ExitIpPageUi.back(this)||environmentOverview!=null&&environmentOverview.back())return;if(hub!=null&&hub.page!=AppHub.CHAT){hub.select(AppHub.CHAT);return;}if(remote!=null&&remote.canGoBack()){remote.goBack();return;}moveTaskToBack(true);}
 }

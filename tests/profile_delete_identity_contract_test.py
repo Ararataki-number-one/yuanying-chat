@@ -48,6 +48,7 @@ class DeleteIdentityContractTest(unittest.TestCase):
             "/* IDENTITY */", host.member((PROD / "EnvironmentSpec.java").read_text(), "static final class Identity")).replace(
             "/* BRAND */", host.member((PROD / "BrandLaunchActivity.java").read_text(), "void route(")).replace(
             "/* OPEN_WINDOW */", host.member((PROD / "WindowHomeActivity.java").read_text(), "void openWindow("))
+        text = text.replace("/* OPENING_HELPERS */", host.opening_helpers((PROD / "EnvironmentOverviewUi.java").read_text()))
         text += "\nclass EnvironmentDeleteActivity{static final class Expired extends java.io.IOException{}\n" + host.member(
             (PROD / "EnvironmentDeleteActivity.java").read_text(), "static void requireCurrent(") + "}\n"
         text = text.replace("import android.app.Activity;", "import java.io.IOException;import android.app.Activity;")

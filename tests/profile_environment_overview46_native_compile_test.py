@@ -39,7 +39,7 @@ class NetworkRegion{static JSONObject read(Context c){return new JSONObject();}s
 class BrowserIdentitySpec{static BrowserIdentitySpec from(JSONObject o){return new BrowserIdentitySpec();}String label(){return "";}}
 class FingerprintObservationHistory{static boolean integer(Object o,int min,int max){return true;}}
 class AuditReport{static boolean observedField(JSONObject o,String field){return true;}}
-class Profiles{static int slot(Context c){return 0;}static String display(Context c,int slot){return "";}}
+class Profiles{static int slot(Context c){return 0;}static String display(Context c,int slot){return "";}static Class<?> activity(int slot){return MainActivity.class;}}
 class ProfileCatalog{static ProfileCatalog get(Context c){return new ProfileCatalog();}JSONObject item(int slot){return new JSONObject();}boolean available(int slot){return true;}}
 class NetworkStatusUi{static boolean current(MainActivity a,ChatSession s){return true;}static boolean connectionReady(ChatSession s){return true;}static void show(MainActivity a){}}
 class EnvironmentAuditUi{static void show(MainActivity a){}}

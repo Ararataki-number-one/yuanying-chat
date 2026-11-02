@@ -136,7 +136,7 @@ final class NetworkWorkspaceUi {
   }
   String updated(long at){if(at<=0)return "未记录";Calendar now=Calendar.getInstance(),date=Calendar.getInstance();date.setTimeInMillis(at);boolean today=now.get(Calendar.YEAR)==date.get(Calendar.YEAR)&&now.get(Calendar.DAY_OF_YEAR)==date.get(Calendar.DAY_OF_YEAR);return new java.text.SimpleDateFormat(today?"'今天' HH:mm":"MM-dd HH:mm",Locale.getDefault()).format(new Date(at));}
   void more(JSONObject item){WindowNetworkState s=state(item);ReferenceUi.Modal d=new ReferenceUi.Modal(a,s.name).asSheet();String[] labels={"分享整条线路","窗口详情","重新连接","网络方式","打开会话"};Runnable[] actions={()->NetworkShareUi.route(a,s),()->details(item),()->operate(s,"reconnect"),()->networkMode(s),()->openChat(s.slot)};for(int i=0;i<labels.length;i++){final int n=i;ReferenceUi.menuAction(d,labels[i],()->{d.dismiss();actions[n].run();});}d.show();}
-  void openChat(int slot){if(a instanceof MainActivity&&slot==Profiles.slot(a)){((MainActivity)a).hub.select(AppHub.CHAT);return;}a.startActivity(new Intent(a,Profiles.activity(slot)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));}
+  void openChat(int slot){if(a instanceof MainActivity&&slot==Profiles.slot(a)){((MainActivity)a).hub.select(AppHub.CHAT);return;}a.startActivity(EnvironmentOverviewUi.opening(a,slot));}
   void details(JSONObject item){
     WindowNetworkState s=state(item);ReferenceUi.Modal d=new ReferenceUi.Modal(a,"窗口详情 · "+s.name);JSONObject running=runningConfiguration(s);
     field(d,"网络状态",s.state);field(d,"运行线路",windowSubline(s));field(d,"出口地区",s.region.isEmpty()?"未标注":s.region);field(d,"出口 IP",s.ip.isEmpty()?"未核验":s.ip);field(d,s.internal?"完整线路延迟":"连接响应",s.latency);

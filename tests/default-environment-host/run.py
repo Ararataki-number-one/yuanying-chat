@@ -25,12 +25,22 @@ def member(text,needle):
   i+=1
  raise ValueError(needle)
 
+def opening_helpers(source):
+ constants=next(line for line in source.splitlines() if 'static final String NONCE=' in line)
+ return constants+'\n'+member(source,'static Intent opening(')+'\n'+member(source,'static void mark(')
+
 def main():
  p=argparse.ArgumentParser();p.add_argument('--java-home',required=True,type=pathlib.Path);p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--before-ref');p.add_argument('--output',required=True,type=pathlib.Path);a=p.parse_args();prod=ROOT/'app/src/main/java/local/pocketchat'
  names=['AppSettings.java','ProfileCatalog.java','EnvironmentSpec.java','BrandLaunchActivity.java','WorkspaceNavigation.java','WindowHomeActivity.java'];source={n:(subprocess.check_output(['git','show',a.before_ref+':app/src/main/java/local/pocketchat/'+n],cwd=ROOT) if a.before_ref else (prod/n).read_bytes()) for n in names}
+ if not a.before_ref:
+  names.append('EnvironmentOverviewUi.java');source[names[-1]]=(prod/names[-1]).read_bytes()
  inputs=[prod/n for n in names]+sorted(HERE.rglob('*.java'))+[pathlib.Path(__file__).resolve()];hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
  catalog=['JSONObject item(','static JSONObject row(','JSONArray list(','EnvironmentSpec.Identity identity(','boolean available(','void opened(','void beginDelete(']
  text=(HERE/'DefaultEnvironmentHost.java').read_text().replace('/* CATALOG */','\n'.join(member(source['ProfileCatalog.java'].decode(),x) for x in catalog)).replace('/* IDENTITY */',member(source['EnvironmentSpec.java'].decode(),'static final class Identity')).replace('/* BRAND */',member(source['BrandLaunchActivity.java'].decode(),'void route(')).replace('/* OPEN_WINDOW */',member(source['WindowHomeActivity.java'].decode(),'void openWindow('))
+ helpers='static void mark(Intent i,Context c,int slot){}'
+ if not a.before_ref:
+  helpers=opening_helpers(source['EnvironmentOverviewUi.java'].decode())
+ text=text.replace('/* OPENING_HELPERS */',helpers)
  with tempfile.TemporaryDirectory(prefix='default-environment-host-') as raw:
   tmp=pathlib.Path(raw);base=tmp/'local/pocketchat';base.mkdir(parents=True);(base/'DefaultEnvironmentHost.java').write_text(text);(base/'AppSettings.java').write_bytes(source['AppSettings.java']);(base/'WorkspaceNavigation.java').write_bytes(source['WorkspaceNavigation.java']);classes=tmp/'classes';files=[*base.glob('*.java'),*HERE.glob('stubs/**/*.java')]
   subprocess.run([str(a.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),*map(str,files)],check=True)

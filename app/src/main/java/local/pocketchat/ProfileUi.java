@@ -29,8 +29,7 @@ final class ProfileUi {
   /** Only the user's environment chooser requests an overview, never generic launches. */
   static void openManual(MainActivity a,int target){
     if(a.isDestroyed()||a.isFinishing()||!ProfileCatalog.get(a).available(target)||target==Profiles.slot(a))return;
-    android.content.Intent opening=new android.content.Intent(a,Profiles.activity(target)).putExtra("openWindowAction","chat").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK|android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-    EnvironmentOverviewUi.mark(opening,a,target);a.startActivity(opening);
+    a.startActivity(EnvironmentOverviewUi.opening(a,target));
   }
   static void rename(MainActivity a,int slot){EditText name=new EditText(a);name.setSingleLine(true);name.setText(Profiles.display(a,slot));AppAppearance.dialog(a).setTitle("环境名称（最多 24 字）").setView(name).setPositiveButton("保存",(d,w)->Profiles.rename(a,slot,name.getText().toString())).setNegativeButton("取消",null).show();}
   static boolean working(ChatSession s){return s.pending!=null||s.submitting||s.operation||s.transferActive||s.fileWorkActive();}

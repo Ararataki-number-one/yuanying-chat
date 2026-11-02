@@ -15,7 +15,7 @@ final class WorkspaceNavigation {
     if(target==1)intent=new Intent(a,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     else if(target==2)intent=new Intent(a,DownloadCenterActivity.class);
     else if(target==4)intent=new Intent(a,AppSettingsActivity.class);
-    else {int slot=AppSettings.recentSlot(a);intent=slot<0?new Intent(a,WindowHomeActivity.class):new Intent(a,Profiles.activity(slot)).putExtra("openWindowAction",target==3?"network":"chat");intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);}
+    else {int slot=AppSettings.recentSlot(a);intent=slot<0?new Intent(a,WindowHomeActivity.class):target==0?EnvironmentOverviewUi.opening(a,slot):new Intent(a,Profiles.activity(slot)).putExtra("openWindowAction","network");intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);}
     a.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
     if(!(a instanceof WindowHomeActivity))a.finish();
   }

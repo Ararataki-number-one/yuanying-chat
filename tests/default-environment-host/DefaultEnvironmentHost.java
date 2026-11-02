@@ -18,9 +18,15 @@ public final class DefaultEnvironmentHost{
  static void routing()throws Exception{
   ProfileCatalog c=setup(3);BrandLaunchActivity brand=new BrandLaunchActivity();brand.route();check("Direct launch with no available environment routes to manager without indexing Profiles",brand.launched!=null&&brand.launched.target==WindowHomeActivity.class&&Profiles.lastActivity==-1&&brand.finished);
   c=setup(2,1,2);EnvironmentSpec.Identity identity=c.identity(2);brand=new BrandLaunchActivity();brand.route();check("Valid default launch keeps exact selected environment identity",Profiles.lastActivity==2&&brand.launched!=null&&Boolean.TRUE.equals(brand.launched.extras.get("forceWebMode"))&&c.identity(2).equals(identity));
+  overview("Default launcher shows the selected native dashboard",brand.launched,identity);
   c=setup(7);Activity downloads=new DownloadCenterActivity();WorkspaceNavigation.select(downloads,2,0);check("Conversation tab with no available environment opens existing manager",downloads.launched!=null&&downloads.launched.target==WindowHomeActivity.class&&Profiles.lastActivity==-1);
   WindowHomeActivity home=new WindowHomeActivity();WorkspaceNavigation.select(home,1,3);check("Manager with no available environment does not pass an invalid slot to Profiles",home.launched==null&&Profiles.lastActivity==-1);
-  c=setup(2,1,2);WorkspaceNavigation.select(new DownloadCenterActivity(),2,0);check("Conversation navigation retains valid default fallback",Profiles.lastActivity==2);
+  c=setup(2,1,2);Activity workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,0);check("Conversation navigation retains valid default fallback",Profiles.lastActivity==2);overview("Workspace conversation opens the identity-bound dashboard",workspace.launched,c.identity(2));
+  home=new WindowHomeActivity();home.openWindow(2,"chat");overview("Environment list uses the same one-shot dashboard contract",home.launched,c.identity(2));
+  workspace=new DownloadCenterActivity();WorkspaceNavigation.select(workspace,2,3);check("Opening network settings does not insert a chat dashboard",workspace.launched!=null&&!workspace.launched.extras.containsKey("manualEnvironmentOverview"));
+ }
+ static void overview(String label,Intent intent,EnvironmentSpec.Identity identity){
+  check(label,intent!=null&&"chat".equals(intent.extras.get("openWindowAction"))&&"environment-list-chat".equals(intent.extras.get("overviewSource"))&&identity.environmentId.equals(intent.extras.get("overviewEnvironmentId"))&&Integer.valueOf(identity.slot).equals(intent.extras.get("overviewSlot"))&&Integer.valueOf(identity.generation).equals(intent.extras.get("overviewGeneration"))&&Long.valueOf(123456L).equals(intent.extras.get("overviewRequestedAt"))&&String.valueOf(intent.extras.get("manualEnvironmentOverview")).matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"));
  }
  static void current()throws Exception{
   for(int selected=0;selected<8;selected++){int other=(selected+1)%8;ProfileCatalog c=setup(selected,selected,other);EnvironmentSpec.Identity keep=c.identity(other),gone=c.identity(selected);c.beginDelete(selected);check("Default deletion chooses actual remaining environment "+selected,AppSettings.defaultSlot(c.root)==other&&String.valueOf(other).equals(c.db.settings.get("defaultSlot")));check("Only deleted generation advances; remaining UUID and generation stay exact "+selected,c.identity(other).equals(keep)&&c.item(selected).optInt("generation")==gone.generation+1&&c.item(selected).optString("environmentId").equals(gone.environmentId)&&!c.item(selected).optBoolean("created")&&c.item(selected).optBoolean("deleting"));int generation=c.item(selected).optInt("generation");c.beginDelete(selected);check("Repeated deletion does not reassign or advance generation "+selected,c.item(selected).optInt("generation")==generation&&AppSettings.defaultSlot(c.root)==other);boolean last=false;try{c.beginDelete(other);}catch(java.io.IOException expected){last=true;}check("Every slot retains the existing last-environment guard "+other,last&&c.identity(other).equals(keep));}
@@ -69,9 +75,8 @@ class DownloadLibrary {
   static final java.util.concurrent.atomic.AtomicInteger notifications=new java.util.concurrent.atomic.AtomicInteger();
   static void changed(Context context){if(context==null)throw new AssertionError("Missing catalogue notification context");notifications.incrementAndGet();}
 }
-/** Manual-open marker boundary; the real nonce/owner/deadline behavior is covered
- * by experience46-overview-host. This fixture retains the original launch intent. */
+/** Exact production opening/mark helpers; the monotonic clock is a declared adapter. */
 class EnvironmentOverviewUi {
-  static final java.util.concurrent.atomic.AtomicInteger markers=new java.util.concurrent.atomic.AtomicInteger();
-  static void mark(Intent opening,Context context,int slot){if(opening==null||context==null||slot<0||slot>=Profiles.MAX)throw new AssertionError("Invalid manual overview marker");markers.incrementAndGet();}
+  /* OPENING_HELPERS */
 }
+class SystemClock{static long elapsedRealtime(){return 123456L;}}
