@@ -43,6 +43,14 @@ final class SubscriptionRouteExperience {
     throw new AssertionError("Native button did not become ready: "+label);
   }
   String clipboard()throws Exception{return ui(()->{ClipboardManager manager=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);ClipData clip=manager.getPrimaryClip();return clip==null?"":clip.getItemAt(0).coerceToText(a).toString();});}
+  void copyCompleted()throws Exception{
+    // Copy revalidates the selected snapshot asynchronously. Observe completion
+    // of that single native action before reading its clipboard output; decode
+    // and every payload assertion still run on the actual resulting bytes.
+    long end=android.os.SystemClock.elapsedRealtime()+25000;
+    while(android.os.SystemClock.elapsedRealtime()<end){if(shown("复制配置")==null)return;Thread.sleep(50);}
+    throw new AssertionError("Native copy dialog did not close after its one Copy action");
+  }
   void open()throws Exception{ui(()->{a.openRoute();return null;});click("整条线路");click("准备分享");waitFor("复制配置");}
   void run()throws Exception{
     JSONArray names=new JSONArray();JSONObject keys=new JSONObject();for(int i=0;i<a.portableDetails.length();i++){JSONObject item=a.portableDetails.getJSONObject(i);names.put(item.getString("name"));keys.put(item.getString("name"),item.getString("configFingerprint"));}
@@ -51,7 +59,7 @@ final class SubscriptionRouteExperience {
     NetworkSourceSelection.withActiveSnapshot(a.vault.context,()->{a.vault.put("subscription",a.portableRaw);return null;});
     ClipData previous=ui(()->((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).getPrimaryClip());Uri file=null;
     try{
-      open();click("复制配置");String copied=clipboard();NetworkShareCodec.Bundle decoded=NetworkShareCodec.decode(copied);
+      open();click("复制配置");copyCompleted();String copied=clipboard();NetworkShareCodec.Bundle decoded=NetworkShareCodec.decode(copied);
       a.check("Actual whole-route UI copies subscription address without choosing a node",decoded.kind.equals("route")&&decoded.entry==null&&URL.equals(decoded.subscriptionUrl));
       a.check("Copied whole route keeps the fixed exit credentials",decoded.exit.getString("server").equals(a.exit.getString("server"))&&decoded.exit.optString("password").equals(a.exit.optString("password")));
       ui(()->{a.captureSubscriptionShare=true;a.subscriptionShareIntent=null;return null;});open();click("分享文件");
