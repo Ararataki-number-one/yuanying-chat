@@ -82,6 +82,7 @@ class BoundedPublisherTest(unittest.TestCase):
         shutil.copy2(PUBLISHER.with_name('network_scope_artifacts.py'),self.seed/'tools/gecko/network_scope_artifacts.py')
         # Explicit capture-privacy dependency; missing modules must fail closed.
         shutil.copy2(PUBLISHER.with_name('caret_ime_guard.py'),self.seed/'tools/gecko/caret_ime_guard.py')
+        shutil.copy2(PUBLISHER.with_name('source_route_report_privacy.py'),self.seed/'tools/gecko/source_route_report_privacy.py')
         (self.seed/'app').mkdir()
         (self.seed/'app/build.gradle').write_text("android { defaultConfig { versionName '2.0.0'; versionCode 53 } }\n")
         (self.seed/'.gitignore').write_text('work/\napp/build/\n')

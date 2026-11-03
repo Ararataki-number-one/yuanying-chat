@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'tools/gecko'), str(ROOT/'tests')]
 import caret_ime_guard as G
 import gecko_caret_ime_guard_test as HOST
+import source_route_report_privacy as ROUTE_PRIVACY
 
 MARKER = '[REDACTED_SERVICE_API_KEY]'
 GBOARD = 'AIza' + 'g'*35
@@ -119,12 +120,46 @@ def verify_accepted_guard_source(source):
             raise AssertionError('Accepted094 guard source bytes differ: '+name)
 
 
+ROUTE_URL_PACK_CHANGES = (
+    ('    files = []\n', '    files = []\n    public_overrides = {}\n'),
+    ('', '''        if name == str(OUT / _route_privacy.REPORT):
+            original = _route_privacy.read_report(path)
+            public = _route_privacy.public_report_bytes(original)
+            if public != original:
+                # Original provider/runner bytes stay private in OUT. The bundle
+                # carries the declared URL derivative with its own exact hash.
+                _privacy.assert_public_diagnostic_text(path, public)
+                sha = hashlib.sha256(public).hexdigest()
+                if baseline.get(name) != sha:
+                    files.append(dict(path=name, bytes=len(public), sha256=sha))
+                    public_overrides[name] = public
+                continue
+'''),
+    ("            archive.add(root / item['path'], arcname=item['path'], recursive=False)\n",
+     '''            if item['path'] in public_overrides:
+                payload = public_overrides[item['path']]
+                info = tarfile.TarInfo(item['path']); info.size = len(payload)
+                archive.addfile(info, io.BytesIO(payload))
+            else:
+                archive.add(root / item['path'], arcname=item['path'], recursive=False)
+'''),
+)
+ROUTE_URL_PUBLISHER_ADDITIONS = (
+    'from source_route_report_privacy import prepare_stage as prepare_source_route_stage\n',
+    'prepare_source_route_stage(stage)\n',
+)
+
+
 def verify_accepted_bundle_source(source):
     current=functions(source)
     for name in ('allowed','restore'):
         if digest(current[name]) != ACCEPTED_BUNDLE_FUNCTION_SHA256[name]:
             raise AssertionError('Accepted094 bundle source bytes differ: '+name)
     pack=current['pack']
+    for original, addition in ROUTE_URL_PACK_CHANGES:
+        if pack.count(addition) != 1:
+            raise AssertionError('Exact route diagnostic URL publication addition missing or repeated')
+        pack=pack.replace(addition,original,1)
     for addition in ('        scan_diagnostic_capture(path)\n',
                      "    _privacy.assert_public_diagnostic_text(Path('_ci_bundle.json'), raw)\n"):
         if pack.count(addition) != 1:
@@ -135,6 +170,10 @@ def verify_accepted_bundle_source(source):
 
 
 def accepted_publisher_inverse(source):
+    for addition in ROUTE_URL_PUBLISHER_ADDITIONS:
+        if source.count(addition) != 1:
+            raise AssertionError('Exact route diagnostic URL publisher addition missing or repeated')
+        source=source.replace(addition,'',1)
     for addition in PUBLISHER_CAPTURE_ADDITIONS:
         if source.count(addition) != 1:
             raise AssertionError('Exact additive publisher capture hook missing or repeated')
@@ -543,6 +582,129 @@ class DiagnosticPublicationPrivacyTest(unittest.TestCase):
             with self.subTest(publisher_mutation=index):
                 self.assertNotEqual(mutated,publisher)
                 with self.assertRaises(AssertionError):accepted_publisher_inverse(mutated)
+
+
+class SourceRouteUrlPublicationPrivacyTest(unittest.TestCase):
+    def report(self):
+        return dict(status='failed', sourceCommit='a'*40,
+                    checks=[dict(name='Original route assertion', **{'pass': False})],
+                    routes=[dict(url='https://127.0.0.1:9879/bytes?id=original',
+                                 route=dict(type='socks', host='127.0.0.1', port=9),
+                                 atNs=2**62),
+                            dict(url=mls(), route=dict(type='socks', host='127.0.0.1', port=9),
+                                 session=dict(unchanged=True), atNs=2**62+1)])
+
+    def raw(self, value):
+        return (json.dumps(value,indent=2)+'\n').encode()
+
+    def test_only_incidental_url_key_values_change_and_failed_result_stays_failed(self):
+        original=self.report();raw=self.raw(original)
+        with self.assertRaises(ValueError):G.assert_public_diagnostic_text(Path(ROUTE_PRIVACY.REPORT),raw)
+        public=ROUTE_PRIVACY.public_report_bytes(raw);value=json.loads(public)
+        self.assertEqual(value['status'],'failed');self.assertFalse(value['checks'][0]['pass'])
+        self.assertEqual(value['routes'][0],original['routes'][0])
+        self.assertEqual(value['routes'][1]['url'],mls(MARKER))
+        marker=value.pop(ROUTE_PRIVACY.MARKER)
+        self.assertEqual(marker['sourceReport'],dict(bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()))
+        value['routes'][1]['url']=original['routes'][1]['url']
+        self.assertEqual(value,original)
+        self.assertEqual(raw,self.raw(original))
+        G.assert_public_diagnostic_text(Path(ROUTE_PRIVACY.REPORT),public)
+        self.assertEqual(ROUTE_PRIVACY.public_report_bytes(public),public)
+
+    def test_existing_encoded_policy_is_reused_without_touching_fixture_urls(self):
+        for url in (mls().replace('key=','%6bey='),
+                    'https://safebrowsing.googleapis.com/v4/check?key='+SAFE+'&kept=1',
+                    'https://sdk.example.invalid/?token='+'%41%49%7a%61'+'u'*35):
+            with self.subTest(url_kind=url.split('/')[2]):
+                original=self.report();original['routes'][1]['url']=url
+                public=ROUTE_PRIVACY.public_report_bytes(self.raw(original))
+                self.assertEqual(json.loads(public)['routes'][0],original['routes'][0])
+                self.assertEqual(G.service_api_key_findings(public.decode()),[])
+
+    def test_keys_in_fixture_urls_or_acceptance_fields_still_fail_closed(self):
+        originals=[]
+        value=self.report();value['checks'][0]['name']=UNKNOWN;originals.append(value)
+        value=self.report();value['routes'][0]['url']+='&key='+UNKNOWN;originals.append(value)
+        value=self.report();value['credentials']=dict(key=UNKNOWN);originals.append(value)
+        value=self.report();value[ROUTE_PRIVACY.MARKER]=dict(schema=1);originals.append(value)
+        for index,value in enumerate(originals):
+            with self.subTest(case=index),self.assertRaises(ValueError):
+                ROUTE_PRIVACY.public_report_bytes(self.raw(value))
+
+    def test_key_free_original_bytes_and_bad_derivative_markers(self):
+        harmless=b'{ "status":"failed", "routes":[], "integer":4611686018427387904 }\r\n'
+        self.assertEqual(ROUTE_PRIVACY.public_report_bytes(harmless),harmless)
+        public=ROUTE_PRIVACY.public_report_bytes(self.raw(self.report()))
+        for field,bad in (('schema',True),('onlyDiagnosticUrlValuesChanged',False),
+                          ('originalHashIsProvenanceOnly',False)):
+            value=json.loads(public);value[ROUTE_PRIVACY.MARKER][field]=bad
+            with self.subTest(field=field),self.assertRaises(ValueError):
+                ROUTE_PRIVACY.public_report_bytes(self.raw(value))
+        value=json.loads(public);value[ROUTE_PRIVACY.MARKER]['captures'][0]['capturePrivacy']['finalSha256']='0'*64
+        with self.assertRaises(ValueError):ROUTE_PRIVACY.public_report_bytes(self.raw(value))
+
+    def test_actual_stage_preparation_leaves_original_runner_file_and_global_gate_intact(self):
+        with tempfile.TemporaryDirectory(prefix='route-url-publication-') as temporary:
+            root=Path(temporary);original=root/'original';stage=root/'stage';original.mkdir();stage.mkdir()
+            raw=self.raw(self.report());(original/ROUTE_PRIVACY.REPORT).write_bytes(raw)
+            (stage/ROUTE_PRIVACY.REPORT).write_bytes(raw)
+            ROUTE_PRIVACY.prepare_stage(stage)
+            self.assertEqual((original/ROUTE_PRIVACY.REPORT).read_bytes(),raw)
+            self.assertEqual((stage/ROUTE_PRIVACY.REPORT).read_bytes(),ROUTE_PRIVACY.public_report_bytes(raw))
+            publisher_scanner()['scan_public_diagnostics'](stage)
+            (stage/'unrelated.json').write_text(json.dumps(dict(key=UNKNOWN)))
+            with self.assertRaises(ValueError):publisher_scanner()['scan_public_diagnostics'](stage)
+
+    def test_actual_bundle_archives_exact_public_derivative_without_rewriting_original(self):
+        import tarfile
+        bundle=load_bundle();current=dict(sourceCommit='a'*40,sourceTree='b'*40,runId='1',runAttempt='1')
+        with tempfile.TemporaryDirectory(prefix='route-url-bundle-') as temporary:
+            root=Path(temporary);out=root/bundle.OUT;out.mkdir(parents=True)
+            index=json.dumps(dict(kind='build',**current,files=[])).encode()
+            (root/bundle.BUILD_INDEX).write_bytes(index)
+            raw=self.raw(self.report());path=out/ROUTE_PRIVACY.REPORT;path.write_bytes(raw)
+            target=root/'phase.tar.gz'
+            with patch.object(bundle,'identity',return_value=current):manifest=bundle.pack(root,target,'phase','connections')
+            self.assertEqual(path.read_bytes(),raw)
+            public=ROUTE_PRIVACY.public_report_bytes(raw)
+            member=str(bundle.OUT/ROUTE_PRIVACY.REPORT)
+            with tarfile.open(target,'r:gz') as archive:self.assertEqual(archive.extractfile(member).read(),public)
+            entry=next(row for row in manifest['files'] if row['path']==member)
+            self.assertEqual(entry['sha256'],hashlib.sha256(public).hexdigest())
+            self.assertEqual(entry['bytes'],len(public))
+            consumer=root/'consumer';(consumer/bundle.OUT).mkdir(parents=True)
+            (consumer/bundle.BUILD_INDEX).write_bytes(index)
+            with patch.object(bundle,'identity',return_value=current):bundle.restore(consumer,target,'phase','connections')
+            self.assertEqual((consumer/member).read_bytes(),public)
+            self.assertEqual(json.loads(public)['routes'][1]['route'],self.report()['routes'][1]['route'])
+
+    def test_exact_new_hunks_cannot_hide_missing_duplicated_or_modified_hooks(self):
+        source=(ROOT/'tools/gecko/ci_bundle.py').read_text()
+        for old,new in ROUTE_URL_PACK_CHANGES:
+            for mutated in (source.replace(new,old,1),source.replace(new,new+new,1),
+                            source.replace(new,new.replace('\n',' # invalid hook\n',1),1)):
+                with self.assertRaises(AssertionError):verify_accepted_bundle_source(mutated)
+        source=(ROOT/'tools/gecko/publish_ci.py').read_text()
+        for addition in ROUTE_URL_PUBLISHER_ADDITIONS:
+            for mutated in (source.replace(addition,'',1),source.replace(addition,addition+addition,1),
+                            source.replace(addition,addition.replace('\n',' # invalid hook\n',1),1)):
+                with self.assertRaises(AssertionError):accepted_publisher_inverse(mutated)
+
+    def test_missing_route_url_adapter_cannot_publish_unfiltered_fallback(self):
+        from profile_publish_bounded_history_test import BoundedPublisherTest, REF
+        case=BoundedPublisherTest('test_first_publication_has_only_source_parent_and_never_fetches_artifact_history')
+        try:
+            case.setUp();case.prepare(history=False)
+            (case.client/'tools/gecko/source_route_report_privacy.py').unlink()
+            case.environment.pop('PYTHONPATH',None);case.environment['PYTHONNOUSERSITE']='1'
+            result=case.publish()
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn("No module named 'source_route_report_privacy'",result.stderr)
+            self.assertEqual(case.commands(),[])
+            self.assertNotEqual(case.remote_git('show-ref','--verify',REF,check=False).returncode,0)
+        finally:
+            case.doCleanups()
 
 
 if __name__ == '__main__':

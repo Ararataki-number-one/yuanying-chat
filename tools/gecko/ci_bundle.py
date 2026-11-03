@@ -55,6 +55,9 @@ _privacy_spec = importlib.util.spec_from_file_location('ci_diagnostic_capture_pr
 _privacy = importlib.util.module_from_spec(_privacy_spec)
 sys.modules[_privacy_spec.name] = _privacy
 _privacy_spec.loader.exec_module(_privacy)
+_route_spec = importlib.util.spec_from_file_location('ci_source_route_report_privacy', Path(__file__).with_name('source_route_report_privacy.py'))
+_route_privacy = importlib.util.module_from_spec(_route_spec)
+_route_spec.loader.exec_module(_route_privacy)
 DIAGNOSTIC_TEXT_SUFFIXES = frozenset(('.json', '.txt', '.log', '.xml', '.raw', '.jsonl', '.yml', '.yaml',
                                     '.md', '.py', '.js', '.html', '.css', '.csv', '.pom', '.properties',
                                     '.gradle', '.java', '.kt', '.conf', '.cfg', '.ini', '.sh'))
@@ -137,11 +140,24 @@ def pack(root, target, kind, phase=None):
         for directory in ('caret-compat', 'ui-visuals'):
             candidates += [p for p in (root / OUT / directory).glob('*') if p.is_file()]
     files = []
+    public_overrides = {}
     for path in sorted(set(candidates)):
         name = path.relative_to(root).as_posix()
         if not allowed(name, kind):
             continue
         assert path.is_file() and not path.is_symlink(), 'CI bundle refuses nonregular files or symbolic links'
+        if name == str(OUT / _route_privacy.REPORT):
+            original = _route_privacy.read_report(path)
+            public = _route_privacy.public_report_bytes(original)
+            if public != original:
+                # Original provider/runner bytes stay private in OUT. The bundle
+                # carries the declared URL derivative with its own exact hash.
+                _privacy.assert_public_diagnostic_text(path, public)
+                sha = hashlib.sha256(public).hexdigest()
+                if baseline.get(name) != sha:
+                    files.append(dict(path=name, bytes=len(public), sha256=sha))
+                    public_overrides[name] = public
+                continue
         scan_diagnostic_capture(path)
         sha = digest(path)
         if baseline.get(name) == sha:
@@ -157,7 +173,12 @@ def pack(root, target, kind, phase=None):
         info = tarfile.TarInfo('_ci_bundle.json'); info.size = len(raw)
         archive.addfile(info, io.BytesIO(raw))
         for item in files:
-            archive.add(root / item['path'], arcname=item['path'], recursive=False)
+            if item['path'] in public_overrides:
+                payload = public_overrides[item['path']]
+                info = tarfile.TarInfo(item['path']); info.size = len(payload)
+                archive.addfile(info, io.BytesIO(payload))
+            else:
+                archive.add(root / item['path'], arcname=item['path'], recursive=False)
     return manifest
 
 

@@ -19,6 +19,7 @@ def scan_public_diagnostics(directory):
                 raw = stream.read(16 * 1024 * 1024 + 1)
             assert_public_diagnostic_text(path, raw)
 
+from source_route_report_privacy import prepare_stage as prepare_source_route_stage
 root = pathlib.Path(__file__).resolve().parents[2]
 out = root / 'work/gecko-integration'
 stage = out / 'public'
@@ -115,6 +116,7 @@ for pattern in ['network-latency-*.png','network-latency-*.xml']:
 for name in ('gecko-performance-capture-privacy.json', 'preconnect-capture-privacy.json'):
     if (out/name).exists():shutil.copy2(out/name,stage/name)
 (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
+prepare_source_route_stage(stage)
 scan_public_diagnostics(stage)
 branch = 'apk/gecko-integration-build-20261003'
 env = dict(os.environ, GIT_INDEX_FILE=str(out/'public-index'), GIT_WORK_TREE=str(stage),
