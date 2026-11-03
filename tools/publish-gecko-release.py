@@ -278,6 +278,10 @@ if version_code>=70:
         name='run_network_settings_'+mode+'.py'
         shutil.copy2(root/'tests/gecko'/name,stage/'tools/gecko'/name)
     shutil.copy2(root/'tests/gecko/assets/sharing-schema-matrix.json',stage/'tools/gecko/sharing-schema-matrix.json')
+    for name in ('diagnostic_capture_privacy.py','caret_ime_guard.py'):
+        shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+    (stage/'tests').mkdir(exist_ok=True)
+    shutil.copy2(root/'tests/network_settings_internal46_contract.py',stage/'tests/network_settings_internal46_contract.py')
 # Local preparation has run the same checks and copied the same public inputs.
 # A separate authenticated transport can publish the exact reviewed tree later.
 if args.stage_only:
@@ -299,7 +303,7 @@ if previous:
 subprocess.run(['git','read-tree','--empty'],cwd=root,env=env,check=True)
 if resource_release:
     for name in ['check_resource_evidence.py','resource_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
-subprocess.run(['git','add','-f','--','.github','tools','release-manifest.json','RELEASE.md','device-results.json',*(['manual-acceptance.json'] if manual_raw is not None else []),*(['release-authorization.json'] if authorization_raw is not None else []),*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
+subprocess.run(['git','add','-f','--','.github','tools',*(['tests/network_settings_internal46_contract.py'] if version_code>=70 else []),'release-manifest.json','RELEASE.md','device-results.json',*(['manual-acceptance.json'] if manual_raw is not None else []),*(['release-authorization.json'] if authorization_raw is not None else []),*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
 tree=subprocess.check_output(['git','write-tree'],cwd=root,env=env,text=True).strip()
 commit=subprocess.check_output(['git','commit-tree',tree,*parents,'-m','Publish original-signed production Gecko APK'],cwd=root,env=env,text=True).strip()
 subprocess.run(['git','-c','http.postBuffer=524288000','push','origin',commit+':refs/heads/'+branch],cwd=root,check=True)

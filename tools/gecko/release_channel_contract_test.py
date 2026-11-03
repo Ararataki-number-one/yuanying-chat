@@ -616,5 +616,53 @@ class TransportProvenanceTests(unittest.TestCase):
         with self.assertRaisesRegex(p.TransportError,'Immutable unsigned artifact identity differs'):self.invoke()
 
 
+class StandaloneSettingsVerifierTests(unittest.TestCase):
+    def test_public_staging_loads_all_verifiers_without_checkout_imports(self):
+        import ast
+        from pathlib import Path
+        import shutil
+        import subprocess
+        import sys
+        import tempfile
+
+        root=Path(__file__).resolve().parents[2]
+        tree=ast.parse((root/'tools/publish-gecko-release.py').read_text())
+        blocks=[node for node in tree.body if isinstance(node,ast.If)
+                and ast.unparse(node.test)=='version_code >= 70']
+        self.assertEqual(len(blocks),2)
+        inputs={'tests/gecko/run_network_settings_'+mode+'.py':'tools/gecko/run_network_settings_'+mode+'.py'
+                for mode in ('retry','application','internal')}
+        inputs.update({'tests/gecko/assets/sharing-schema-matrix.json':'tools/gecko/sharing-schema-matrix.json',
+                       'tools/gecko/diagnostic_capture_privacy.py':'tools/gecko/diagnostic_capture_privacy.py',
+                       'tools/gecko/caret_ime_guard.py':'tools/gecko/caret_ime_guard.py',
+                       'tests/network_settings_internal46_contract.py':'tests/network_settings_internal46_contract.py'})
+        with tempfile.TemporaryDirectory(prefix='standalone-release-verifiers-') as directory:
+            mirror=Path(directory)/'source';stage=Path(directory)/'public'
+            (stage/'tools/gecko').mkdir(parents=True)
+            for source,fallback in inputs.items():
+                original=root/source
+                if not original.is_file():original=root/fallback
+                target=mirror/source;target.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(original,target)
+            exec(compile(ast.Module(body=[blocks[-1]],type_ignores=[]),'staged-settings','exec'),
+                 dict(root=mirror,stage=stage,shutil=shutil,version_code=70))
+            script='''import importlib.util,pathlib,sys
+root=pathlib.Path.cwd();sys.path.insert(0,str(root/'tools/gecko'))
+for mode in ('retry','application','internal'):
+    path=root/'tools/gecko'/('run_network_settings_'+mode+'.py')
+    spec=importlib.util.spec_from_file_location('cold_'+mode,path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    assert callable(module.verify)
+print('ALL_COLD_SETTINGS_VERIFIERS_LOADED')
+'''
+            result=subprocess.run([sys.executable,'-I','-c',script],cwd=stage,text=True,capture_output=True,timeout=20)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('ALL_COLD_SETTINGS_VERIFIERS_LOADED',result.stdout)
+            (stage/'tools/gecko/diagnostic_capture_privacy.py').unlink()
+            result=subprocess.run([sys.executable,'-I','-c',script],cwd=stage,text=True,capture_output=True,timeout=20)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn("No module named 'diagnostic_capture_privacy'",result.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()
