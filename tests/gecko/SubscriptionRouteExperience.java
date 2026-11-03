@@ -26,7 +26,11 @@ final class SubscriptionRouteExperience {
       if(shown("选择本次分享的入口")!=null)throw new AssertionError("Whole subscription route opened a node chooser");
       boolean clicked=ui(()->{
         TextView view=null;for(View root:WindowInspector.getGlobalWindowViews()){view=find(root,label);if(view!=null)break;}
-        Rect visible=new Rect();if(!(view instanceof Button)||!view.isEnabled()||!view.isClickable()||!view.getGlobalVisibleRect(visible)||visible.isEmpty())return false;
+        if(!(view instanceof Button)||!view.isEnabled()||!view.isClickable()||view.getWidth()<=0||view.getHeight()<=0)return false;
+        // Export notes and narrowing actions can put Copy below the fold on a
+        // compact screen. Scroll the actual native control into its viewport.
+        view.requestRectangleOnScreen(new Rect(0,0,view.getWidth(),view.getHeight()),true);
+        Rect visible=new Rect();if(!view.getGlobalVisibleRect(visible)||visible.isEmpty())return false;
         boolean handled=view.performClick();
         // CompoundButton changes its checked state even when no OnClickListener
         // handles the click; RadioGroup observes OnCheckedChangeListener instead.
