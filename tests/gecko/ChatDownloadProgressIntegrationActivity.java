@@ -16,7 +16,7 @@ public final class ChatDownloadProgressIntegrationActivity extends MainActivity 
   final List<File> partials=new ArrayList<>();final List<DownloadResumeIntegrationActivity.BlockedBody> bodies=new ArrayList<>();
   final Map<String,Object> oldPrefs=new HashMap<>();JSONObject oldEnvironment,published;String environmentId;
   @Override void startNetwork(){}
-  @Override void resumeChatUi(){if(session!=null){session.networkReady=true;session.offline=false;session.navigating=false;session.guard.setBlocked(false);if(chatDownloadProgress!=null)chatDownloadProgress.update();}}
+  @Override void resumeChatUi(){if(session!=null){session.networkReady=true;session.offline=false;session.navigating=false;session.guard.setBlocked(false);if(chatDownloadProgress!=null)chatDownloadProgress.update();handler.removeCallbacks(ticker);handler.post(ticker);}}
   @Override public void onCreate(Bundle state){
     if(!"local.pocketchat.test".equals(getPackageName())||Profiles.processSlot()!=7)throw new SecurityException("Owned integration profile required");
     try{
@@ -37,6 +37,9 @@ public final class ChatDownloadProgressIntegrationActivity extends MainActivity 
     try{
       GeckoWebView browser=remote;visible(()->active&&chatDownloadProgress!=null?Boolean.TRUE:null);
       for(boolean known:new boolean[]{true,false}){
+        // Pause deliberately rejects late callbacks for a short interval. Wait
+        // for that production guard instead of submitting another response early.
+        visible(()->System.currentTimeMillis()>=downloads.ignoreUntil?Boolean.TRUE:null);
         DownloadResumeIntegrationActivity.BlockedBody body=new DownloadResumeIntegrationActivity.BlockedBody();bodies.add(body);
         WebResponse.Builder builder=new WebResponse.Builder("https://download-fixture.example/chat-progress.bin").statusCode(200).header("Content-Type","application/octet-stream").body(body);if(known)builder.header("Content-Length","5");
         ui(()->{downloads.acceptResponse(builder.build());ids.add(downloads.task.optString("id"));return null;});
@@ -52,6 +55,7 @@ public final class ChatDownloadProgressIntegrationActivity extends MainActivity 
         check("Card pause retains partial bytes and the browser "+known,downloads.task.optLong("received")==4&&remote==browser&&!downloads.active);
         body.release.countDown();drain();partials.add(downloads.temp);
       }
+      visible(()->System.currentTimeMillis()>=downloads.ignoreUntil?Boolean.TRUE:null);
       byte[] bytes={81,82,83,84,85,86,87};WebResponse response=new WebResponse.Builder("https://download-fixture.example/chat-completed.bin").statusCode(200).header("Content-Type","application/octet-stream").body(new ByteArrayInputStream(bytes)).build();
       ui(()->{downloads.acceptResponse(response);ids.add(downloads.task.optString("id"));return null;});drain();
       visible(()->"saved".equals(downloads.task.optString("state"))&&chatDownloadProgress.card.isShown()&&"已保存".contentEquals(chatDownloadProgress.status.getText())&&chatDownloadProgress.progress.getProgress()==1000?Boolean.TRUE:null);
