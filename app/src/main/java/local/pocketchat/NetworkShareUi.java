@@ -12,12 +12,12 @@ final class NetworkShareUi {
   static final class Prepared {
     final String name,scope;final JSONObject[] nodes=new JSONObject[2];final String[] keys={"",""};final boolean[] verified=new boolean[2];
     final NetworkSharePreparation.Failure[] problems=new NetworkSharePreparation.Failure[2];
-    NetworkSharePreparation.Frozen frozen;
+    NetworkSharePreparation.Frozen frozen;String subscriptionUrl="";
     Prepared(String name){this(name,"route");}
     Prepared(String name,String scope){this.name=name;this.scope=scope;}
-    Prepared(NetworkShareCodec.Bundle b){this(b.name,b.kind);nodes[0]=b.entry;nodes[1]=b.exit;}
+    Prepared(NetworkShareCodec.Bundle b){this(b.name,b.kind);nodes[0]=b.entry;nodes[1]=b.exit;subscriptionUrl=b.subscriptionUrl;}
     boolean wants(int i){return "route".equals(scope)||(i==0?"entry":"exit").equals(scope);}
-    boolean complete(){for(int i=0;i<2;i++)if(wants(i)&&(!verified[i]||nodes[i]==null))return false;return true;}
+    boolean complete(){for(int i=0;i<2;i++)if(wants(i)&&(!verified[i]||nodes[i]==null&&(i!=0||subscriptionUrl.isEmpty())))return false;return true;}
   }
   static String side(int i){return i==0?"入口":"出口";}
   static NetworkSharePreparation.Failure problem(String stage,String code,int i){return NetworkSharePreparation.fail(stage,code,i==0?"entry":"exit");}
@@ -56,7 +56,7 @@ final class NetworkShareUi {
     NetworkWorkspaceUi.libraryWork(()->{JSONArray sources=NetworkShareSelection.describe(Profiles.context(a,owner.slot),owner);a.runOnUiThread(()->{if(a.isDestroyed()||!wait.isShowing())return;wait.dismiss();choose(a,state,owner,sources);});});
   }
   static void choose(Activity a,WindowNetworkState state,EnvironmentSpec.Identity owner,JSONArray sources){
-    ReferenceUi.Modal d=new ReferenceUi.Modal(a,"分享线路");d.note("先选择分享范围与配置来源。入口订阅只分享地址；整条线路包含所选入口节点与固定出口。");final String[] scope={"route"};final int[] selected={0};
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,"分享线路");d.note("入口订阅只分享地址；整条线路包含入口订阅地址与固定出口，无需选择入口节点。复制配置与分享文件使用相同内容。");final String[] scope={"route"};final int[] selected={0};
     String[] scopes={"入口订阅","出口","整条线路"};final RadioButton[] rangeButtons=new RadioButton[scopes.length];RadioGroup ranges=new RadioGroup(a);for(int i=0;i<scopes.length;i++){RadioButton b=new RadioButton(a);b.setText(scopes[i]);b.setId(android.view.View.generateViewId());rangeButtons[i]=b;ranges.addView(b);}ranges.check(rangeButtons[2].getId());ranges.setOnCheckedChangeListener((g,id)->scope[0]=id==rangeButtons[0].getId()?"entry":id==rangeButtons[1].getId()?"exit":"route");d.body.addView(ranges);
     JSONArray usable=new JSONArray();JSONObject saved=null;for(int i=0;i<sources.length();i++){JSONObject s=sources.optJSONObject(i);if(s!=null&&"saved".equals(s.optString("source")))saved=s;}usable.put(saved==null?J.obj("source","saved","unavailable",true):saved);for(int i=0;i<sources.length();i++){JSONObject s=sources.optJSONObject(i);if(s!=null&&"running".equals(s.optString("source"))&&state.connected)usable.put(s);}
     if(usable.length()==0){d.note("已保存的配置暂时无法读取，请刷新网络设置后重试。");d.buttons("关闭",d::dismiss,"",()->{});d.show();return;}
@@ -66,6 +66,10 @@ final class NetworkShareUi {
   }
   static void chooseEntry(Activity a,NetworkSharePreparation.Request request){
     if("entry".equals(request.scope)){subscription(a,()->subscriptionSnapshot(a,request));return;}
+    if("route".equals(request.scope)&&(request.entry.isEmpty()||NetworkSharePreparation.ADDRESS_ONLY.equals(request.entry))){prepare(a,request.subscription());return;}
+    chooseNodeEntry(a,request);
+  }
+  static void chooseNodeEntry(Activity a,NetworkSharePreparation.Request request){
     if(!request.wants(0)){prepare(a,request);return;}
     ReferenceUi.Modal wait=new ReferenceUi.Modal(a,"准备分享");wait.note("正在读取所选入口…");wait.buttons("取消",wait::dismiss,"",()->{});wait.show();
     NetworkWorkspaceUi.libraryWork(()->{try{JSONArray options=NetworkShareSelection.entryChoices(Profiles.context(a,request.owner.slot),request);a.runOnUiThread(()->{if(a.isDestroyed()||!wait.isShowing())return;wait.dismiss();if(options.length()<=1){prepare(a,options.length()==1?request.entry(options.optJSONObject(0).optString("name")):request);return;}
@@ -92,12 +96,16 @@ final class NetworkShareUi {
   static void prepare(Activity a,NetworkSharePreparation.Request request){
     ReferenceUi.Modal wait=new ReferenceUi.Modal(a,"准备分享");wait.note("正在读取所选配置…");wait.buttons("取消",wait::dismiss,"",()->{});wait.show();
     NetworkBridge.shareSnapshot(a,request,(frozen,failed)->{if(a.isDestroyed()||!wait.isShowing())return;if(failed!=null){failure(a,wait,failed);return;}
+      // Local imported nodes have no subscription address. Retain their explicit
+      // node-based export without turning a real subscription into a single node.
+      NetworkSharePreparation.Part entry=frozen.parts[0];if("route".equals(request.scope)&&NetworkSharePreparation.ADDRESS_ONLY.equals(request.entry)&&entry!=null&&entry.selection!=null&&entry.selection.optString("subscriptionUrl").startsWith("pocketnet:")&&entry.failure!=null&&"NO_SUBSCRIPTION_ADDRESS".equals(entry.failure.code)){wait.dismiss();chooseNodeEntry(a,request.entry(""));return;}
       Prepared p=new Prepared(frozen.name,request.scope);p.frozen=frozen;extract(a,wait,p,-1);
     });
   }
   static void extract(Activity a,ReferenceUi.Modal wait,Prepared p,int only){NetworkWorkspaceUi.libraryWork(()->{for(int i=0;i<2;i++)if(p.wants(i)&&(only<0||only==i)){
     NetworkSharePreparation.Part part=p.frozen.parts[i];p.nodes[i]=null;p.verified[i]=false;p.problems[i]=part==null?problem("CONFIG_READ","ABSENT",i):part.failure;if(p.problems[i]!=null)continue;
-    try{if(part.selection.optJSONObject("manual")!=null)p.nodes[i]=NetworkShareCodec.manual(part.selection.getJSONObject("manual"));else p.nodes[i]=NetworkShareCodec.extract(part.bytes,part.selection.getString("name"),i==0?"entry":"exit");p.keys[i]=part.selection.optString("key");}
+    try{if(i==0&&NetworkSharePreparation.ADDRESS_ONLY.equals(p.frozen.request.entry)){p.subscriptionUrl=NetworkShareSelection.subscriptionUrl(part.selection.optString("subscriptionUrl"));p.verified[i]=true;}
+      else if(part.selection.optJSONObject("manual")!=null)p.nodes[i]=NetworkShareCodec.manual(part.selection.getJSONObject("manual"));else p.nodes[i]=NetworkShareCodec.extract(part.bytes,part.selection.getString("name"),i==0?"entry":"exit");p.keys[i]=part.selection.optString("key");}
     catch(Exception invalid){p.problems[i]=problem(part.selection.optJSONObject("manual")!=null?"PARAMETER_CHECK":"NODE_EXTRACT","UNSUPPORTED",i);}
     }a.runOnUiThread(()->verifyPrepared(a,wait,p,0,p.keys[0],p.keys[1]));});}
   static void prepare(Activity a,Load load,String entryKey,String exitKey){prepareRoute(a,()->new Prepared(load.run()),entryKey,exitKey);}
@@ -123,12 +131,12 @@ final class NetworkShareUi {
   static void failure(Activity a,ReferenceUi.Modal wait,String ignored){failure(a,wait,NetworkSharePreparation.fail("CONFIG_READ","UNREADABLE",""));}
   static void failure(Activity a,ReferenceUi.Modal wait,NetworkSharePreparation.Failure f){if(a.isDestroyed()||!wait.isShowing())return;wait.body.removeAllViews();wait.note(f.shortReason());DesignUi.action(wait.body,"查看原因",false,()->ReferenceUi.message(a,"分享原因",f.diagnostic()));wait.buttons("关闭",wait::dismiss,"",()->{});wait.resize();}
   static void show(Activity a,Prepared p){
-    if(!alive(a,p))return;if(p.complete()){NetworkShareCodec.Bundle bundle=new NetworkShareCodec.Bundle(p.name,p.nodes[0],p.nodes[1]);show(a,bundle,"",p);return;}
-    ReferenceUi.Modal d=new ReferenceUi.Modal(a,title(p.scope));if("route".equals(p.scope))d.note("整条线路暂未生成。");for(int i=0;i<2;i++)if(p.wants(i)){final int side=i;NetworkSharePreparation.Failure f=p.problems[i];if(p.verified[i]&&p.nodes[i]!=null){d.note(NetworkShareUi.side(i)+"配置已准备好。");DesignUi.action(d.body,"仅分享"+NetworkShareUi.side(i),false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(p.name,side==0?p.nodes[0]:null,side==1?p.nodes[1]:null),"",p);});}
+    if(!alive(a,p))return;if(p.complete()){try{NetworkShareCodec.Bundle bundle=p.subscriptionUrl.isEmpty()?new NetworkShareCodec.Bundle(p.name,p.nodes[0],p.nodes[1]):NetworkShareCodec.Bundle.subscription(p.name,p.subscriptionUrl,p.nodes[1]);show(a,bundle,"",p);}catch(Exception invalid){ReferenceUi.message(a,"分享线路","订阅地址暂时无法读取，请重新打开分享。");}return;}
+    ReferenceUi.Modal d=new ReferenceUi.Modal(a,title(p.scope));if("route".equals(p.scope))d.note("整条线路暂未生成。");for(int i=0;i<2;i++)if(p.wants(i)){final int side=i;NetworkSharePreparation.Failure f=p.problems[i];if(p.verified[i]&&(p.nodes[i]!=null||i==0&&!p.subscriptionUrl.isEmpty())){d.note(NetworkShareUi.side(i)+"配置已准备好。");if(i==0&&!p.subscriptionUrl.isEmpty())DesignUi.action(d.body,"仅分享入口订阅",false,()->{d.dismiss();subscription(a,()->p.frozen==null?p.subscriptionUrl:subscriptionSnapshot(a,p.frozen.request));});else DesignUi.action(d.body,"仅分享"+NetworkShareUi.side(i),false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(p.name,side==0?p.nodes[0]:null,side==1?p.nodes[1]:null),"",p);});}
       else{d.note(f==null?NetworkShareUi.side(i)+"暂时无法导出。":f.shortReason());if(f!=null)DesignUi.action(d.body,"查看"+NetworkShareUi.side(i)+"原因",false,()->ReferenceUi.message(a,"分享原因",f.diagnostic()));if(p.frozen!=null)DesignUi.action(d.body,"重试"+NetworkShareUi.side(i),false,()->{d.dismiss();retry(a,p,side);});}}
     d.buttons("关闭",d::dismiss,"",()->{});d.show();
   }
-  static void retry(Activity a,Prepared p,int side){if(side==0&&p.frozen.request.entry.isEmpty()){chooseEntry(a,p.frozen.request);return;}ReferenceUi.Modal wait=new ReferenceUi.Modal(a,"准备分享");wait.note("正在重试"+NetworkShareUi.side(side)+"…");wait.buttons("取消",wait::dismiss,"",()->{});wait.show();NetworkWorkspaceUi.libraryWork(()->{try{
+  static void retry(Activity a,Prepared p,int side){if(side==0&&p.frozen.request.entry.isEmpty()){chooseNodeEntry(a,p.frozen.request);return;}ReferenceUi.Modal wait=new ReferenceUi.Modal(a,"准备分享");wait.note("正在重试"+NetworkShareUi.side(side)+"…");wait.buttons("取消",wait::dismiss,"",()->{});wait.show();NetworkWorkspaceUi.libraryWork(()->{try{
       Context profile=Profiles.context(a,p.frozen.request.owner.slot);if(!NetworkShareSelection.current(profile,p.frozen.request))throw problem("CONFIG_READ","VERSION_CHANGED",side);NetworkSharePreparation.Part old=p.frozen.parts[side];if(old==null||old.failure!=null)p.frozen.parts[side]=NetworkShareSelection.retryPart(profile,p.frozen.request,side);a.runOnUiThread(()->{if(alive(a,p)&&wait.isShowing())extract(a,wait,p,side);});
     }catch(Exception changed){a.runOnUiThread(()->{if(alive(a,p)&&wait.isShowing()){p.problems[side]=problem("CONFIG_READ","VERSION_CHANGED",side);wait.dismiss();show(a,p);}});}});}
   static String title(String scope){return "route".equals(scope)?"分享整条线路":"entry".equals(scope)?"分享入口":"分享出口";}
@@ -137,12 +145,23 @@ final class NetworkShareUi {
   static void show(Activity a,NetworkShareCodec.Bundle bundle,String unavailable,Prepared owner){
     NetworkWorkspaceUi.libraryWork(()->{try{String encoded=bundle.encode();a.runOnUiThread(()->export(a,bundle,encoded,owner));}catch(Exception invalid){a.runOnUiThread(()->ReferenceUi.message(a,title(bundle.kind),NetworkSharePreparation.fail("PARAMETER_CHECK","UNSUPPORTED","").shortReason()));}});
   }
+  static void exportCurrent(Activity a,ReferenceUi.Modal dialog,NetworkShareCodec.Bundle bundle,Prepared owner,TextView error,Runnable action){
+    if(a.isDestroyed()||!dialog.isShowing()||owner!=null&&!alive(a,owner)){error.setText("环境已变化，请重新打开分享。");return;}
+    if(bundle.subscriptionUrl.isEmpty()||owner==null||owner.frozen==null){action.run();return;}
+    dialog.primary().setEnabled(false);NetworkBridge.shareSnapshot(a,owner.frozen.request,(fresh,failure)->{
+      if(a.isDestroyed()||!dialog.isShowing())return;dialog.primary().setEnabled(true);
+      if(failure==null)for(int i=0;i<2;i++)if(owner.frozen.request.wants(i)&&(fresh==null||fresh.parts[i]==null||fresh.parts[i].selection==null||fresh.parts[i].failure!=null)){failure=fresh!=null&&fresh.parts[i]!=null&&fresh.parts[i].failure!=null?fresh.parts[i].failure:problem("CONFIG_READ","UNREADABLE",i);break;}
+      if(failure!=null){error.setText(failure.shortReason());dialog.resize();return;}
+      if(!bundle.subscriptionUrl.equals(fresh.parts[0].selection.optString("subscriptionUrl"))){error.setText("所选配置版本已变化，请重新打开分享。");dialog.resize();return;}
+      action.run();
+    });
+  }
   static void export(Activity a,NetworkShareCodec.Bundle bundle,String encoded,Prepared owner){
-    if(a.isDestroyed()||owner!=null&&!alive(a,owner))return;ReferenceUi.Modal d=new ReferenceUi.Modal(a,title(bundle.kind));d.note(bundle.summary());d.note(WARNING);
-    if(owner!=null&&owner.frozen!=null)d.note(("saved".equals(owner.frozen.request.source)?"已保存的配置":"正在运行的配置")+" · 本次选定快照");if(bundle.schemaVersion()>1)d.note("此配置需使用 2.0.17 或更新版本导入，以完整保留节点参数。");
-    if("route".equals(bundle.kind)){DesignUi.action(d.body,"仅分享入口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.name,bundle.entry,null),"",owner);});DesignUi.action(d.body,"仅分享出口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.name,null,bundle.exit),"",owner);});}
+    if(a.isDestroyed()||owner!=null&&!alive(a,owner))return;ReferenceUi.Modal d=new ReferenceUi.Modal(a,title(bundle.kind));d.note(bundle.summary());d.note(WARNING);if(!bundle.subscriptionUrl.isEmpty())d.note("入口保留完整订阅地址，接收方导入后可更新订阅；复制和文件分享内容一致。");
+    if(owner!=null&&owner.frozen!=null)d.note(("saved".equals(owner.frozen.request.source)?"已保存的配置":"正在运行的配置")+" · 本次选定快照");if(bundle.schemaVersion()==3)d.note("请使用支持订阅线路分享的新版本导入此配置。");else if(bundle.schemaVersion()>1)d.note("此配置需使用 2.0.17 或更新版本导入，以完整保留节点参数。");
+    if("route".equals(bundle.kind)){if(!bundle.subscriptionUrl.isEmpty())DesignUi.action(d.body,"仅分享入口订阅",false,()->{d.dismiss();subscription(a,()->owner!=null&&owner.frozen!=null?subscriptionSnapshot(a,owner.frozen.request):bundle.subscriptionUrl);});else DesignUi.action(d.body,"仅分享入口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.name,bundle.entry,null),"",owner);});DesignUi.action(d.body,"仅分享出口",false,()->{d.dismiss();show(a,new NetworkShareCodec.Bundle(bundle.name,null,bundle.exit),"",owner);});}
     TextView error=ReferenceUi.text(a,"",12,ReferenceUi.RED,false);d.body.addView(error);final NetworkSharePreparation.Failure[] latest={null};DesignUi.action(d.body,"查看原因",false,()->{if(latest[0]!=null)ReferenceUi.message(a,"分享原因",latest[0].diagnostic());});
-    DesignUi.action(d.body,"复制配置",false,()->{if(owner!=null&&!alive(a,owner)){error.setText("环境已变化，请重新打开分享。");return;}try{((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("网络配置",encoded));d.dismiss();}catch(Exception failed){latest[0]=NetworkSharePreparation.fail("CLIPBOARD","UNREADABLE","");error.setText(latest[0].shortReason());d.resize();}});
-    d.buttons("取消",d::dismiss,"分享文件",()->{if(owner!=null&&!alive(a,owner)){error.setText("环境已变化，请重新打开分享。");return;}d.primary().setEnabled(false);NetworkWorkspaceUi.libraryWork(()->{try{Uri uri=NetworkShareProvider.create(a,encoded);a.runOnUiThread(()->{if(a.isDestroyed()||!d.isShowing()||owner!=null&&!alive(a,owner))return;try{Intent send=new Intent(Intent.ACTION_SEND).setType(NetworkShareCodec.MIME).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);send.setClipData(ClipData.newUri(a.getContentResolver(),"网络配置",uri));a.startActivity(Intent.createChooser(send,"分享网络配置"));d.dismiss();}catch(Exception failed){latest[0]=NetworkSharePreparation.fail("SYSTEM_SHARE","NO_TARGET","");error.setText(latest[0].shortReason());d.primary().setEnabled(true);d.resize();}});}catch(Exception failed){a.runOnUiThread(()->{if(!a.isDestroyed()&&d.isShowing()){latest[0]=NetworkSharePreparation.fail("FILE_GENERATE","FILE_IO","");error.setText(latest[0].shortReason());d.primary().setEnabled(true);d.resize();}});}});});d.show();
+    DesignUi.action(d.body,"复制配置",false,()->exportCurrent(a,d,bundle,owner,error,()->{if(owner!=null&&!alive(a,owner)){error.setText("环境已变化，请重新打开分享。");return;}try{((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("网络配置",encoded));d.dismiss();}catch(Exception failed){latest[0]=NetworkSharePreparation.fail("CLIPBOARD","UNREADABLE","");error.setText(latest[0].shortReason());d.resize();}}));
+    d.buttons("取消",d::dismiss,"分享文件",()->exportCurrent(a,d,bundle,owner,error,()->{if(owner!=null&&!alive(a,owner)){error.setText("环境已变化，请重新打开分享。");return;}d.primary().setEnabled(false);NetworkWorkspaceUi.libraryWork(()->{try{Uri uri=NetworkShareProvider.create(a,encoded);a.runOnUiThread(()->{if(a.isDestroyed()||!d.isShowing()||owner!=null&&!alive(a,owner))return;try{Intent send=new Intent(Intent.ACTION_SEND).setType(NetworkShareCodec.MIME).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);send.setClipData(ClipData.newUri(a.getContentResolver(),"网络配置",uri));a.startActivity(Intent.createChooser(send,"分享网络配置"));d.dismiss();}catch(Exception failed){latest[0]=NetworkSharePreparation.fail("SYSTEM_SHARE","NO_TARGET","");error.setText(latest[0].shortReason());d.primary().setEnabled(true);d.resize();}});}catch(Exception failed){a.runOnUiThread(()->{if(!a.isDestroyed()&&d.isShowing()){latest[0]=NetworkSharePreparation.fail("FILE_GENERATE","FILE_IO","");error.setText(latest[0].shortReason());d.primary().setEnabled(true);d.resize();}});}});}));d.show();
   }
 }

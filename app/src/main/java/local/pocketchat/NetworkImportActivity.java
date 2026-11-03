@@ -28,7 +28,7 @@ public final class NetworkImportActivity extends ThemedActivity {
   void parseWorker(String text){try{NetworkShareCodec.Bundle bundle=NetworkShareCodec.decode(text);runOnUiThread(()->{if(!isFinishing()&&!isDestroyed()){current.dismiss();preview(bundle);}});}catch(Exception e){runOnUiThread(this::invalid);}}
   void invalid(){if(isFinishing()||isDestroyed())return;if(current!=null)current.dismiss();ReferenceUi.Modal d=new ReferenceUi.Modal(this,"无法导入");current=d;d.cancel=this::finish;d.note("文件不可读取、配置不完整或版本不支持。请重新选择 .pocketnet 分享文件，或让发送方重新分享。");d.buttons("关闭",this::finish,"重新选择",()->{d.dismiss();menu();});d.show();}
   void preview(NetworkShareCodec.Bundle bundle){
-    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"导入预览");current=d;d.cancel=this::finish;d.note(bundle.name);d.note(bundle.summary());d.note((bundle.entry==null?"":"1 个入口")+(bundle.entry!=null&&bundle.exit!=null?" · ":"")+(bundle.exit==null?"":"1 个固定出口"));d.note("只导入网络配置，保留登录与草稿。出口需要在本机重新核验。");
+    ReferenceUi.Modal d=new ReferenceUi.Modal(this,"导入预览");current=d;d.cancel=this::finish;d.note(bundle.name);d.note(bundle.summary());d.note((!bundle.subscriptionUrl.isEmpty()?"1 个入口订阅":bundle.entry==null?"":"1 个入口节点")+(bundle.hasEntry()&&bundle.exit!=null?" · ":"")+(bundle.exit==null?"":"1 个固定出口"));if(!bundle.subscriptionUrl.isEmpty())d.note("确认导入后会读取入口订阅，保留原订阅地址及全部可用节点，之后可以刷新订阅。");d.note("只导入网络配置，保留登录与草稿。出口需要在本机重新核验。");
     TextView error=ReferenceUi.text(this,"",12,ReferenceUi.RED,false);d.body.addView(error);final boolean[] busy={false};
     DesignUi.action(d.body,"导入并选择环境",false,()->{if(busy[0])return;busy[0]=true;save(bundle,d,error,true,()->busy[0]=false);});
     d.buttons("取消",this::finish,"只保存到网络库",()->{if(busy[0])return;busy[0]=true;save(bundle,d,error,false,()->busy[0]=false);});d.show();
@@ -40,13 +40,19 @@ public final class NetworkImportActivity extends ThemedActivity {
   void parseNode(NetworkShareCodec.Bundle b,int i,JSONObject[] records,byte[][] payloads,ReferenceUi.Modal d,TextView error,boolean configure,Runnable retry){
     if(isFinishing()||isDestroyed()||!d.isShowing())return;
     if(i==2){NetworkWorkspaceUi.libraryWork(()->{try{NetworkCatalog catalog=new NetworkCatalog(this);JSONObject ids=catalog.importLocalSources(records[0],payloads[0],records[1],payloads[1]);runOnUiThread(()->{if(isFinishing()||isDestroyed()||!d.isShowing())return;d.dismiss();if(configure)chooseEnvironment(ids);else finish();});}catch(Exception e){runOnUiThread(()->saveError(d,error,retry));}});return;}
+    if(i==0&&!b.subscriptionUrl.isEmpty()){
+      error.setText("正在读取入口订阅…");NativeNetwork.previewSubscription(this,NetworkCatalog.ENTRY,b.subscriptionUrl,null,(ok,message,names,details,bytes)->{
+        if(isFinishing()||isDestroyed()||!d.isShowing())return;if(!ok||names==null||names.length()==0||details==null||details.length()!=names.length()||bytes==null){saveError(d,error,retry);return;}
+        records[0]=J.obj("name",b.name,"sourceType","subscription","url",b.subscriptionUrl,"nodes",names,"nodeDetails",details);payloads[0]=bytes;parseNode(b,1,records,payloads,d,error,configure,retry);
+      });return;
+    }
     JSONObject node=i==0?b.entry:b.exit;if(node==null){parseNode(b,i+1,records,payloads,d,error,configure,retry);return;}
     byte[] raw=NetworkShareCodec.provider(node);NativeNetwork.previewSubscription(this,i==0?NetworkCatalog.ENTRY:NetworkCatalog.EXIT,"",raw,(ok,message,names,details,bytes)->{
       if(isFinishing()||isDestroyed()||!d.isShowing())return;if(!ok||names.length()!=1||details.length()!=1){saveError(d,error,retry);return;}
       records[i]=J.obj("name",node.optString("name"),"nodes",names,"nodeDetails",details);payloads[i]=raw;parseNode(b,i+1,records,payloads,d,error,configure,retry);
     });
   }
-  void saveError(ReferenceUi.Modal d,TextView error,Runnable retry){if(isFinishing()||isDestroyed()||!d.isShowing())return;retry.run();error.setText("节点无法解析或保存，原环境未改变。请检查配置后重试。");error.setTextColor(ReferenceUi.RED);d.primary().setEnabled(true);d.resize();}
+  void saveError(ReferenceUi.Modal d,TextView error,Runnable retry){if(isFinishing()||isDestroyed()||!d.isShowing())return;retry.run();error.setText("订阅或节点无法读取、解析或保存，原环境未改变。请检查配置后重试。");error.setTextColor(ReferenceUi.RED);d.primary().setEnabled(true);d.resize();}
   void chooseEnvironment(JSONObject ids){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"选择应用环境");current=d;d.cancel=this::finish;d.note("配置已保存到网络库。选择环境后仍需点击“保存并应用”；其他一端保留原选择。");
     NetworkWorkspaceUi.libraryWork(()->{JSONArray windows=WindowNetworkState.windows(this);NetworkWorkspaceUi.readUiMetadata(this,windows);NetworkCatalog catalog=new NetworkCatalog(this);runOnUiThread(()->{
@@ -54,7 +60,7 @@ public final class NetworkImportActivity extends ThemedActivity {
       for(int i=0;i<windows.length();i++){JSONObject item=windows.optJSONObject(i);JSONObject row=item.optJSONObject("row");int slot=row.optInt("slot");DesignUi.action(d.body,Profiles.display(this,slot),false,()->{
         d.dismiss();workspace.show(0);NetworkWorkspaceUi.EditorSession editor=workspace.editInternal(item);if(editor==null)return;
         JSONObject entry=catalog.subscription(NetworkCatalog.ENTRY,ids.optString(NetworkCatalog.ENTRY)),exit=catalog.subscription(NetworkCatalog.EXIT,ids.optString(NetworkCatalog.EXIT));
-        if(entry!=null){editor.draft.subscription(entry.optString("id"),catalog);editor.draft.mode="manual";editor.draft.chooseEntry(NetworkSourceSelection.names(entry).get(0),catalog);}
+        if(entry!=null){editor.draft.subscription(entry.optString("id"),catalog);if(NetworkCatalog.local(entry)){editor.draft.mode="manual";editor.draft.chooseEntry(NetworkSourceSelection.names(entry).get(0),catalog);}else{editor.draft.mode="latency";for(String name:NetworkSourceSelection.names(entry))editor.draft.allowEntry(name,true,catalog);}}
         if(exit!=null){String name=NetworkSourceSelection.names(exit).get(0);editor.draft.exitSubscription(exit.optString("id"),catalog);editor.draft.exitNode(NetworkSourceSelection.fingerprint(exit,name),name,catalog);}
         editor.refresh.run();
       });}if(windows.length()==0)d.note("暂时没有可用环境，请先创建环境，再从网络库选择这些节点。");d.resize();

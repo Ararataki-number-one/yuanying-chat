@@ -161,6 +161,7 @@ final class NetworkCatalog {
     return write(latest->{JSONObject result=new JSONObject();
       JSONObject[] items={entry,exit};byte[][] payloads={entryBytes,exitBytes};String[] roles={ENTRY,EXIT};
       for(int n=0;n<2;n++)if(items[n]!=null){JSONObject item=items[n];byte[] bytes=payloads[n];String role=roles[n];
+        if(n==0&&"subscription".equals(item.optString("sourceType"))){put(result,role,importSharedSubscription(latest,item,bytes));continue;}
         if(bytes==null||bytes.length==0||bytes.length>1024*1024||item.optJSONArray("nodes")==null||item.optJSONArray("nodes").length()!=1||item.optJSONArray("nodeDetails")==null||item.optJSONArray("nodeDetails").length()!=1)throw new IOException("分享节点未完成解析");
         String hash=NativeNetwork.hash(new String(bytes,StandardCharsets.UTF_8));JSONArray rows=latest.optJSONArray(key(role));JSONObject found=null;
         for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(local(row)&&hash.equals(row.optString("sharePayloadHash"))){found=row;break;}}
@@ -170,6 +171,17 @@ final class NetworkCatalog {
         put(result,role,found.optString("id"));
       }return result;
     });
+  }
+  String importSharedSubscription(JSONObject latest,JSONObject item,byte[] bytes)throws Exception{
+    String address=item.optString("url"),title=item.optString("name","入口订阅");validateSource(ENTRY,title,address);
+    JSONArray names=copy(item.optJSONArray("nodes"));if(bytes==null||bytes.length==0||bytes.length>16*1024*1024||names.length()==0||item.optJSONArray("nodeDetails")==null||item.optJSONArray("nodeDetails").length()!=names.length())throw new IOException("入口订阅未完成解析");
+    Set<String> seen=new HashSet<>();for(int i=0;i<names.length();i++)if(names.optString(i).isEmpty()||!seen.add(names.optString(i)))throw new IOException("订阅节点名称无效或重复");
+    JSONArray rows=latest.optJSONArray(key(ENTRY));JSONObject row=null;for(int i=0;i<rows.length();i++){JSONObject candidate=rows.optJSONObject(i);if(!local(candidate)&&address.equals(candidate.optString("url"))){row=candidate;break;}}
+    if(row==null){row=J.obj("id",UUID.randomUUID().toString(),"role",ENTRY,"sourceType","subscription","name",title,"url",address,"urlHash",NativeNetwork.hash(address),"owner",Profiles.slot(c),"revision",1L,"addressRevision",1L);alias(row,row.optString("urlHash"));rows.put(row);}
+    String generation=UUID.randomUUID().toString(),slot=encodedSlot("source-pool-"+ENTRY+"-",row.optString("id")+"|"+generation);store.put(slot,bytes);
+    NetworkShareSnapshot.Parts share=NetworkShareSnapshot.split(item.getJSONArray("nodeDetails"),bytes);String shareSlot=saveShareIndex(encodedSlot("source-pool-"+ENTRY+"-",row.optString("id")+"|"+generation+"|share-v"+NetworkShareSnapshot.VERSION),share);
+    if(!row.optString("cacheSlot").isEmpty())put(row,"previousCacheSlot",row.optString("cacheSlot"));if(!row.optString("shareCacheSlot").isEmpty())put(row,"previousShareCacheSlot",row.optString("shareCacheSlot"));long now=System.currentTimeMillis();
+    JSONObject parsed=J.obj("cacheSlot",slot,"shareCacheSlot",shareSlot,"cacheAddressRevision",row.optLong("addressRevision"),"cacheUrl",address,"cacheUrlHash",NativeNetwork.hash(address),"nodes",names,"nodeDetails",share.details,"updatedAt",now,"lastSuccessAt",now,"cacheUpdatedAt",now,"stale",false,"updating",false,"refreshToken","","lastError","");for(Iterator<String> keys=parsed.keys();keys.hasNext();){String field=keys.next();put(row,field,parsed.opt(field));}bump(row);return row.getString("id");
   }
   JSONObject addSubscription(String name,String url)throws Exception{return addSubscription(ENTRY,name,url);}
   JSONObject addSubscription(String role,String name,String url)throws Exception{

@@ -4,6 +4,7 @@ public final class NetworkShareUiFlowHost {
  @PRODUCTION_MEMBERS@
  static int checks,nodeCalls;static String sharedAddress;static NetworkShareCodec.Bundle payload;static Prepared delivered;static int retried=-1;
  static void subscription(Activity a,AddressLoad load){try{sharedAddress=load.run();}catch(Exception invalid){throw new AssertionError(invalid);}}
+ static String subscriptionSnapshot(Activity a,NetworkSharePreparation.Request request)throws Exception{NetworkSharePreparation.Part part=NetworkShareSelection.capture(Profiles.context(a,request.owner.slot),request.address()).parts[0];if(part.failure!=null)throw part.failure;return NetworkShareSelection.subscriptionUrl(part.selection.optString("subscriptionUrl"));}
  static void show(Activity a,NetworkShareCodec.Bundle b,String unavailable,Prepared owner){payload=b;delivered=owner;}
  static void retry(Activity a,Prepared p,int side){retried=side;}
  static void node(Activity a,JSONObject source,String name){nodeCalls++;}

@@ -46,6 +46,7 @@ final class AppHub {
   void show(int target){
     if(target!=page||target==CHAT)feedbackBar.setVisibility(View.GONE);
     page=target;downloadsVisible(a.active);chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page==CHAT)a.toolbar.setVisibility(View.VISIBLE);else{a.designChrome.cancelWebGesture();a.toolbar.setVisibility(View.GONE);}
+    if(a.chatDownloadProgress!=null)a.chatDownloadProgress.update();
     a.status.setVisibility(View.GONE);panel.setVisibility(page==CHAT?View.GONE:View.VISIBLE);
     a.session.foreground(a.active);mark();a.updateReadingLayout();a.handler.removeCallbacks(tick);
     if(page!=CHAT){a.hideKeyboard();refresh();a.handler.postDelayed(tick,2500);}

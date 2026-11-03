@@ -24,7 +24,7 @@ public final class Share46UiHost {
  static String entrySelection(Activity a)throws Exception{return NetworkShareSelection.readHead(a,"saved").getString("entry");}
  static Map<String,String> vaultBytes(){Map<String,String> snapshot=new TreeMap<>();for(Map.Entry<String,byte[]> entry:SecretStore.data.entrySet())snapshot.put(entry.getKey(),Base64.getEncoder().encodeToString(entry.getValue()));return snapshot;}
  static void unreadableEntryPreflight()throws Exception{
-  Activity a=seed(false);NetworkSharePreparation.Request request=requested(a,"route");String selection=entrySelection(a);SecretStore.data.remove(selection);SecretStore.reads.clear();Map<String,String> beforeShare=vaultBytes();chooseEntry(a,request);
+  Activity a=seed(false);NetworkSharePreparation.Request request=requested(a,"route");String selection=entrySelection(a);SecretStore.data.remove(selection);SecretStore.reads.clear();Map<String,String> beforeShare=vaultBytes();chooseNodeEntry(a,request);
   check(NetworkBridge.requests.size()==1&&NetworkBridge.requests.get(0).same(request),"Entry selection preflight failure preserves exact route/source/version/request at real capture");
   check(NetworkBridge.frozen.get(0).parts[0].failure.stage.equals("CONFIG_READ")&&NetworkBridge.frozen.get(0).parts[1].failure==null,"Missing entry selection stays config-stage while exit captures successfully");
   check(NativeNetwork.requested.equals(Arrays.asList("exit"))&&NativeNetwork.pending.size()==1,"Real preflight failure still extracts and verifies the readable exit");
@@ -41,16 +41,16 @@ public final class Share46UiHost {
   check(NetworkBridge.requests.size()==1&&NativeNetwork.requested.equals(Arrays.asList("exit")),"Exit-only path bypasses broken entry preflight and reaches only exit verification");
   check(SecretStore.reads.stream().noneMatch(k->k.contains("entry")),"Exit-only path never reads entry selection or provider");answer(true,OTHER);
   check(payload!=null&&payload.kind.equals("exit"),"Exit-only broken-entry control still produces its own payload");
-  a=seed(false);request=requested(a,"route");new SecretStore(a).put(entrySelection(a),"PRIVATE_BAD_SELECTION-{TOKEN".getBytes(StandardCharsets.UTF_8));chooseEntry(a,request);
+  a=seed(false);request=requested(a,"route");new SecretStore(a).put(entrySelection(a),"PRIVATE_BAD_SELECTION-{TOKEN".getBytes(StandardCharsets.UTF_8));chooseNodeEntry(a,request);
   check(NetworkBridge.frozen.get(0).parts[0].failure.stage.equals("CONFIG_READ"),"Malformed selection is classified as config read rather than subscription cache");answer(true,OTHER);
   check(!ReferenceUi.latest.notes.toString().contains("PRIVATE_BAD_SELECTION")&&!NetworkBridge.frozen.get(0).parts[0].failure.diagnostic().contains("TOKEN"),"Preflight partial errors never disclose raw selection or parser content");
-  a=seed(true);request=requested(a,"route");selection=entrySelection(a);byte[] retained=SecretStore.data.remove(selection);chooseEntry(a,request);answer(true,OTHER);SecretStore.data.put(selection,retained);new SecretStore(a).put("exit-subscription","proxies:\n  - name: B\n    type: socks5\n    server: newer-exit.invalid\n    port: 1080\n".getBytes(StandardCharsets.UTF_8));DesignUi.actions.get("重试入口").run();
+  a=seed(true);request=requested(a,"route");selection=entrySelection(a);byte[] retained=SecretStore.data.remove(selection);chooseNodeEntry(a,request);answer(true,OTHER);SecretStore.data.put(selection,retained);new SecretStore(a).put("exit-subscription","proxies:\n  - name: B\n    type: socks5\n    server: newer-exit.invalid\n    port: 1080\n".getBytes(StandardCharsets.UTF_8));DesignUi.actions.get("重试入口").run();
   check(android.app.AlertDialog.Builder.names!=null&&android.app.AlertDialog.Builder.names.length==2&&NetworkBridge.requests.size()==1,"Retry after restored automatic entry asks for explicit node without guessing");
   android.app.AlertDialog.Builder.pick(1);NetworkSharePreparation.Request selected=NetworkBridge.requests.get(1);
   check(selected.entry.equals("Entry|C")&&selected.scope.equals(request.scope)&&selected.source.equals(request.source)&&selected.version.equals(request.version)&&selected.id.equals(request.id),"Recovered explicit entry choice retains original route/source/version/request identity");
   check(Arrays.equals(NetworkBridge.frozen.get(0).parts[1].bytes,NetworkBridge.frozen.get(1).parts[1].bytes),"Recovered route recaptures exact retained exit bytes despite newer origin cache");check(NativeNetwork.pending.size()==1&&NativeNetwork.requested.equals(Arrays.asList("exit","entry")),"Recovered selected entry is verified before a new route payload is created");answer(true,OTHER);answer(true,OTHER);
   check(payload!=null&&payload.kind.equals("route")&&payload.entry.optString("server").equals("entry-c.invalid")&&payload.exit.optString("server").equals("exit.invalid"),"Recovered route retains chosen entry and original-version exit parameters");
-  a=seed(false);request=requested(a,"route");SecretStore.fail="share-entry-selection-";ReferenceUi.cancelOnShow=true;chooseEntry(a,request);
+  a=seed(false);request=requested(a,"route");SecretStore.fail="share-entry-selection-";ReferenceUi.cancelOnShow=true;chooseNodeEntry(a,request);
   check(NetworkBridge.requests.isEmpty()&&NativeNetwork.requested.isEmpty(),"Cancelled entry-preflight wait does not start late fallback work");ReferenceUi.cancelOnShow=false;
  }
  static void subscriptionAddress()throws Exception{
@@ -63,7 +63,19 @@ public final class Share46UiHost {
   a=seed(false);request=requested(a,"entry");chooseEntry(a,request);new SecretStore(a).put("environment-spec",J.obj("revision",5,"fingerprint","newer").toString().getBytes(StandardCharsets.UTF_8));DesignUi.actions.get("分享订阅地址").run();check(a.sent==null&&ReferenceUi.latest.body.children.stream().filter(v->v instanceof TextView).anyMatch(v->((TextView)v).text.contains("版本已变化")),"A changed saved revision cannot export an older address");
   a=seed(false);request=requested(a,"entry");String selection=entrySelection(a);JSONObject part=NetworkShareSelection.object(new SecretStore(a).get(selection));part.put("subscriptionUrl","pocketnet:imported-local-node");NetworkShareSelection.write(new SecretStore(a),selection,part);chooseEntry(a,request);check(ReferenceUi.latest.notes.stream().anyMatch(n->n.contains("没有可分享的 HTTPS 订阅地址")),"Local imported nodes offer no invented subscription address");
  }
+ static void wholeSubscriptionRoute()throws Exception{
+  Activity a=seed(true);Map<String,String> before=vaultBytes();SecretStore.fail="share-entry-provider-";SecretStore.reads.clear();chooseEntry(a,requested(a,"route"));
+  check(android.app.AlertDialog.Builder.names==null,"Whole subscription route never opens a node chooser");
+  check(NetworkBridge.requests.size()==1&&NetworkBridge.requests.get(0).scope.equals("route")&&NetworkBridge.requests.get(0).entry.equals(NetworkSharePreparation.ADDRESS_ONLY),"Whole route captures one source/version with an address-only entrance");
+  check(NetworkBridge.frozen.get(0).parts[0].bytes==null&&SecretStore.reads.stream().noneMatch(k->k.contains("entry-provider")),"Whole route does not decrypt or parse entry node providers");
+  check(NativeNetwork.requested.equals(Arrays.asList("exit")),"Only the fixed exit needs native node verification");answer(true,OTHER);
+  check(payload!=null&&payload.kind.equals("route")&&payload.entry==null&&payload.subscriptionUrl.equals("https://entry.invalid/sub?token=private%2Ftoken&mode=all"),"Whole route retains the full unchanged subscription address instead of one node");
+  NetworkShareCodec.Bundle copied=NetworkShareCodec.decode(payload.encode());check(copied.subscriptionUrl.equals(payload.subscriptionUrl)&&copied.exit.optString("server").equals("exit.invalid")&&copied.schemaVersion()==3,"Copied configuration restores the subscription and the same fixed exit");
+  check(vaultBytes().equals(before),"Whole subscription sharing leaves the saved route and provider bytes unchanged");
+  a=seed(true);chooseEntry(a,requested(a,"route"));answer(false,"");check(payload==null&&DesignUi.actions.containsKey("仅分享入口订阅")&&DesignUi.actions.containsKey("重试出口"),"Failed exit cannot silently downgrade a whole route into a node or incomplete file");
+ }
  public static void main(String[] args)throws Exception{
+  wholeSubscriptionRoute();
   subscriptionAddress();
   reset();Activity a=new Activity();Prepared p=pair();ReferenceUi.Modal wait=new ReferenceUi.Modal(a,"wait");verifyPrepared(a,wait,p,0,KEY,KEY);answer(true,KEY);answer(true,KEY);check(payload!=null&&payload.kind.equals("route"),"Complete requested route payload");
   reset();p=pair();wait=new ReferenceUi.Modal(a,"wait");verifyPrepared(a,wait,p,0,KEY,KEY);answer(false,"");check(NativeNetwork.pending.size()==1,"Exit still checked after entry failure");answer(true,KEY);check(payload==null&&ReferenceUi.latest.title.equals("分享整条线路"),"Partial request keeps route title and has no payload");check(DesignUi.actions.containsKey("仅分享出口")&&DesignUi.actions.containsKey("重试入口"),"Partial route requires explicit narrow or same-side retry");check(!ReferenceUi.latest.notes.toString().contains("SYNTHETIC_RAW_PASSWORD_URL_TOKEN"),"Raw native secret never appears");DesignUi.actions.get("仅分享出口").run();check(payload!=null&&payload.kind.equals("exit")&&payload.entry==null,"Only explicit narrowing creates exit payload");

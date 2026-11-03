@@ -36,19 +36,29 @@ final class NetworkShareCodec {
     else if(!(v instanceof Boolean)&&!(v instanceof Number))throw invalid();
   }
   static JSONObject node(JSONObject value,boolean exit)throws Exception{return NetworkShareSchema.node(value,exit);}
+  static String subscriptionAddress(String value)throws IOException{
+    try{java.net.URI uri=new java.net.URI(value);if(value.length()>8192||!"https".equals(uri.getScheme())||uri.getHost()==null||uri.getUserInfo()!=null||uri.getPort()==0||uri.getPort()>65535||value.matches("(?s).*[\\p{Cntrl}\\s].*"))throw invalid();return value;}
+    catch(Exception invalid){throw failure("入口订阅地址无效，请使用完整的 HTTPS 订阅地址。");}
+  }
   static final class Bundle {
-    final String name,kind;final JSONObject entry,exit;
-    Bundle(String name,JSONObject entry,JSONObject exit){this.name=name;this.entry=entry;this.exit=exit;kind=entry!=null&&exit!=null?"route":entry!=null?"entry":"exit";}
-    int schemaVersion(){return NetworkShareJson.requiresExactNumbers(entry)||NetworkShareJson.requiresExactNumbers(exit)?2:1;}
-    String encode()throws Exception{return NetworkShareJson.encode(J.obj("format","pocketchat-network","schemaVersion",schemaVersion(),"kind",kind,"name",name,"entry",entry,"exit",exit),LIMIT);}
-    String summary(){return (entry==null?"":entry.optString("name"))+(entry!=null&&exit!=null?" → ":"")+(exit==null?"":exit.optString("name"))+" → ChatGPT";}
+    final String name,kind,subscriptionUrl;final JSONObject entry,exit;
+    Bundle(String name,JSONObject entry,JSONObject exit){this(name,entry,exit,"");}
+    private Bundle(String name,JSONObject entry,JSONObject exit,String subscriptionUrl){this.name=name;this.entry=entry;this.exit=exit;this.subscriptionUrl=subscriptionUrl;kind=hasEntry()&&exit!=null?"route":hasEntry()?"entry":"exit";}
+    static Bundle subscription(String name,String address,JSONObject exit)throws Exception{return new Bundle(name,null,exit,subscriptionAddress(address));}
+    boolean hasEntry(){return entry!=null||!subscriptionUrl.isEmpty();}
+    int schemaVersion(){return !subscriptionUrl.isEmpty()?3:NetworkShareJson.requiresExactNumbers(entry)||NetworkShareJson.requiresExactNumbers(exit)?2:1;}
+    String encode()throws Exception{JSONObject value=J.obj("format","pocketchat-network","schemaVersion",schemaVersion(),"kind",kind,"name",name,"entry",entry,"exit",exit);if(!subscriptionUrl.isEmpty())value.put("entrySubscription",J.obj("url",subscriptionUrl));return NetworkShareJson.encode(value,LIMIT);}
+    String summary(){return (!subscriptionUrl.isEmpty()?"入口订阅":entry==null?"":entry.optString("name"))+(hasEntry()&&exit!=null?" → ":"")+(exit==null?"":exit.optString("name"))+" → ChatGPT";}
   }
   static Bundle decode(String text)throws Exception{
     if(text==null||text.getBytes(StandardCharsets.UTF_8).length>LIMIT)throw invalid();
+    if(text.trim().startsWith("https://"))return Bundle.subscription("入口订阅",text.trim(),null);
     int depth=0;boolean quote=false,escape=false;for(int i=0;i<text.length();i++){char ch=text.charAt(i);if(quote){if(escape)escape=false;else if(ch=='\\')escape=true;else if(ch=='"')quote=false;}else if(ch=='"')quote=true;else if(ch=='{'||ch=='['){if(++depth>12)throw invalid();}else if(ch=='}'||ch==']'){if(--depth<0)throw invalid();}}
     if(depth!=0||quote)throw invalid();Object raw;try{raw=NetworkShareJson.decode(text,LIMIT);}catch(Exception malformed){throw invalid();}if(!(raw instanceof JSONObject))throw invalid();JSONObject o=(JSONObject)raw;
-    keys(o,set("format schemaVersion kind name entry exit"));if(!"pocketchat-network".equals(o.optString("format"))||!(o.opt("schemaVersion") instanceof Number)||(o.getDouble("schemaVersion")!=1&&o.getDouble("schemaVersion")!=2))throw new IOException("此分享版本不支持，请更新应用或重新分享。");
-    JSONObject e=o.optJSONObject("entry"),x=o.optJSONObject("exit");if(e==null&&x==null||o.has("entry")&&!o.isNull("entry")&&e==null||o.has("exit")&&!o.isNull("exit")&&x==null)throw invalid();
+    keys(o,set("format schemaVersion kind name entry exit entrySubscription"));if(!"pocketchat-network".equals(o.optString("format"))||!(o.opt("schemaVersion") instanceof Number)||(o.getDouble("schemaVersion")!=1&&o.getDouble("schemaVersion")!=2&&o.getDouble("schemaVersion")!=3))throw new IOException("此分享版本不支持，请更新应用或重新分享。");
+    JSONObject e=o.optJSONObject("entry"),x=o.optJSONObject("exit");if(o.has("entry")&&!o.isNull("entry")&&e==null||o.has("exit")&&!o.isNull("exit")&&x==null)throw invalid();
+    if(o.getInt("schemaVersion")==3){JSONObject subscription=o.optJSONObject("entrySubscription");if(e!=null||subscription==null)throw invalid();keys(subscription,set("url"));Bundle b=Bundle.subscription(string(o,"name",200,true),string(subscription,"url",8192,true),x==null?null:node(x,true));if(!b.kind.equals(o.optString("kind")))throw invalid();return b;}
+    if(o.has("entrySubscription")||e==null&&x==null)throw invalid();
     Bundle b=new Bundle(string(o,"name",200,true),e==null?null:node(e,false),x==null?null:node(x,true));if(!b.kind.equals(o.optString("kind")))throw invalid();return b;
   }
   static Object canonical(Object value)throws Exception{

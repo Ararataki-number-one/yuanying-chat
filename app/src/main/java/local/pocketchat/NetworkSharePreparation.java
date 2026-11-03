@@ -36,6 +36,7 @@ final class NetworkSharePreparation {
     boolean wants(int side){return "route".equals(scope)||(side==0?"entry":"exit").equals(scope);}
     Request entry(String selected){return new Request(owner,source,scope,version,selected,id);}
     Request address(){return new Request(owner,source,"entry",version,ADDRESS_ONLY,id);}
+    Request subscription(){return new Request(owner,source,scope,version,ADDRESS_ONLY,id);}
     JSONObject json(){return J.obj("schema",1,"owner",owner.json(),"source",source,"scope",scope,"version",version,"entry",entry,"id",id);}
     boolean same(Request other){return other!=null&&json().toString().equals(other.json().toString());}
   }

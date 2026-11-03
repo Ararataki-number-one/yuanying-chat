@@ -101,7 +101,7 @@ final class NetworkShareSelection {
   static NetworkSharePreparation.Part retryPart(Context c,NetworkSharePreparation.Request request,int side)throws Exception {return NetworkSourceSelection.withActiveSnapshot(c,()->part(c,request,side));}
   static NetworkSharePreparation.Part part(Context c,NetworkSharePreparation.Request request,int index){String side=index==0?"entry":"exit";JSONObject p=null;try{
     try{p=selection(c,request,index);}catch(Exception read){throw read instanceof NetworkSharePreparation.Failure?(NetworkSharePreparation.Failure)read:NetworkSharePreparation.fail("CONFIG_READ","UNREADABLE",side);}
-    if(index==0&&"entry".equals(request.scope)&&NetworkSharePreparation.ADDRESS_ONLY.equals(request.entry)){subscriptionUrl(p.optString("subscriptionUrl"));return new NetworkSharePreparation.Part(p,null,null);}
+    if(index==0&&NetworkSharePreparation.ADDRESS_ONLY.equals(request.entry)){subscriptionUrl(p.optString("subscriptionUrl"));return new NetworkSharePreparation.Part(p,null,null);}
     if(index==0){JSONArray options=p.getJSONArray("choices");JSONObject found=null;for(int i=0;i<options.length();i++){JSONObject row=options.optJSONObject(i);if(row!=null&&(request.entry.equals(row.optString("name"))||request.entry.isEmpty()&&options.length()==1))found=row;}
       if(found==null)throw NetworkSharePreparation.fail("CONFIG_READ","ENTRY_SELECTION_REQUIRED",side);p.put("name",found.getString("name"));p.put("key",found.getString("key"));}
     if(p.optJSONObject("manual")!=null)return new NetworkSharePreparation.Part(p,null,null);

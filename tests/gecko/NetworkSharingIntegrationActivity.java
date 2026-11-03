@@ -8,6 +8,8 @@ public final class NetworkSharingIntegrationActivity extends Activity {
   final JSONArray schemaEvidence=new JSONArray();JSONArray schemaSamples;
   byte[] portableRaw;JSONObject portableEntry;String portableFingerprint;JSONArray portableDetails;
   JSONObject uiConfig,result;String portableSourceId;final Map<String,byte[]> shareSnapshot=new LinkedHashMap<>();
+  volatile boolean captureSubscriptionShare;volatile Intent subscriptionShareIntent;JSONObject subscriptionRouteExperience,chatDownloadProgressExperience;
+  @Override public void startActivity(Intent intent){if(captureSubscriptionShare&&Intent.ACTION_CHOOSER.equals(intent.getAction())){Intent target=intent.getParcelableExtra(Intent.EXTRA_INTENT);if(target!=null&&Intent.ACTION_SEND.equals(target.getAction())&&NetworkShareCodec.MIME.equals(target.getType())){subscriptionShareIntent=target;return;}}super.startActivity(intent);}
   final JSONArray checks=new JSONArray();JSONObject buildIdentity;JSONObject entry,exit;JSONObject[] records=new JSONObject[2];byte[][] payloads=new byte[2][];NetworkCatalog catalog;String entryId,exitId;Context profile;SecretStore vault;byte[] before;Uri file;NetworkOptimizationIntegrationActivity.HttpFixture site,plain;PreconnectIntegrationActivity.TraceSocks wireEntry,wireExit;
   void check(String name,boolean passed){checks.put(J.obj("name",name,"pass",passed));if(!passed)throw new AssertionError(name);}
   interface Attempt{void run()throws Exception;}
@@ -92,7 +94,7 @@ public final class NetworkSharingIntegrationActivity extends Activity {
       }catch(Throwable error){fail(error);}});
     }catch(Throwable error){fail(error);}
   }
-  void parse(int i){if(i==2){new Thread(()->{try{imported();runOnUiThread(()->{try{ui();}catch(Throwable e){fail(e);}});}catch(Throwable e){fail(e);}}).start();return;}
+  void parse(int i){if(i==2){new Thread(()->{try{imported();new SubscriptionRouteExperience(this).run();runOnUiThread(()->startActivityForResult(new Intent(this,ChatDownloadProgressIntegrationActivity.class),982));}catch(Throwable e){fail(e);}}).start();return;}
     JSONObject node=i==0?entry:exit;byte[] raw;
     try{raw=completeProvider(NetworkShareCodec.provider(node));}catch(Exception e){fail(e);return;}
     NativeNetwork.previewSubscription(this,i==0?NetworkCatalog.ENTRY:NetworkCatalog.EXIT,"",raw,(ok,msg,names,details,bytes)->{try{check("Actual native parser accepts shared "+i,ok&&names.length()==1&&details.length()==1);check("Complete provider extraction preserves node "+i,NetworkShareCodec.extract(raw,(i==0?"Entry|":"Exit|")+node.getString("name"),i==0?NetworkCatalog.ENTRY:NetworkCatalog.EXIT).getString("password").equals(node.getString("password")));records[i]=J.obj("name",node.optString("name"),"nodes",names,"nodeDetails",details);payloads[i]=raw;parse(i+1);}catch(Throwable e){fail(e);}});
@@ -169,6 +171,7 @@ public final class NetworkSharingIntegrationActivity extends Activity {
     JSONObject runtime=J.obj("environmentId",row.opt("environmentId"),"generation",row.opt("generation"),"mode","internal","configured",true,"connected",true,"at",now,"subscriptionId",NativeNetwork.hash(uiConfig.optString("subscriptionUrl")),"entry","Entry|Portable VLESS");
     NetworkShareUi.route(this,new WindowNetworkState(this,row,uiConfig,runtime,true,now));
   }
-  void saveResult()throws Exception{result.put("checkCount",checks.length());J.write(new File(getFilesDir(),"network-source-sharing-results.json"),result.toString());}
+  @Override protected void onActivityResult(int request,int code,Intent data){super.onActivityResult(request,code,data);if(request==982)try{if(code!=RESULT_OK||data==null)throw new AssertionError("Chat progress fixture did not return its native result");chatDownloadProgressExperience=new JSONObject(data.getStringExtra("chatProgressResult"));if(!"passed".equals(chatDownloadProgressExperience.optString("status")))throw new AssertionError("Chat progress fixture: "+chatDownloadProgressExperience);check("Independent Android chat-card workload passed",chatDownloadProgressExperience.optBoolean("actualNativeView")&&chatDownloadProgressExperience.optInt("actualCardPauseClicks")==2);ui();}catch(Throwable error){fail(error);}}
+  void saveResult()throws Exception{result.put("checkCount",checks.length());if(subscriptionRouteExperience!=null)result.put("subscriptionRouteExperience",subscriptionRouteExperience);if(chatDownloadProgressExperience!=null)result.put("chatDownloadProgressExperience",chatDownloadProgressExperience);J.write(new File(getFilesDir(),"network-source-sharing-results.json"),result.toString());}
   void fail(Throwable e){try{J.write(new File(getFilesDir(),"network-source-sharing-results.json"),J.obj("runToken",getIntent().getStringExtra("runToken"),"status","failed","error",e.getClass().getSimpleName(),"checks",checks).toString());}catch(Exception ignored){}android.util.Log.e("PocketSharing","Synthetic sharing check failed",e);}
 }

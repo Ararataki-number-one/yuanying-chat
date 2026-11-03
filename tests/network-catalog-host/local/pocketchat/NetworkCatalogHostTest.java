@@ -19,6 +19,18 @@ public final class NetworkCatalogHostTest {
   static String cache(NetworkCatalog c,JSONObject row){byte[] raw=c.cache(row);return raw==null?"":new String(raw,StandardCharsets.UTF_8);}
   static String good(NetworkCatalog c,JSONObject row){byte[] raw=c.lastGoodCache(row);return raw==null?"":new String(raw,StandardCharsets.UTF_8);}
   static NetworkCatalog fresh(Context c){return new NetworkCatalog(c);}
+  static void sharedSubscriptions()throws Exception{
+    Context context=new Context(Files.createTempDirectory("shared-subscription-import-").toFile(),0);NetworkCatalog catalog=fresh(context);
+    String address="https://entry.invalid/full?token=encoded%2Fsecret";byte[] raw=bytes("complete subscription bytes");
+    JSONObject entry=J.obj("sourceType","subscription","name","Imported subscription","url",address,"nodes",J.arr("Entry|A","Entry|B"),"nodeDetails",J.arr(details("Entry|A").getJSONObject(0),details("Entry|B").getJSONObject(0)));
+    JSONObject ids=catalog.importLocalSources(entry,raw,null,null);String id=ids.getString("entry");JSONObject restored=fresh(context).subscription(id);
+    check("Shared entrance remains a refreshable remote subscription",!NetworkCatalog.local(restored)&&restored.getString("url").equals(address));
+    check("Shared entrance retains every parsed subscription node",restored.getJSONArray("nodes").length()==2&&Arrays.equals(raw,fresh(context).cache(restored)));
+    NetworkCatalog updated=fresh(context);NetworkCatalog.RefreshToken refresh=updated.beginRefresh("entry",id);updated.parsed(refresh,J.arr("Entry|A","Entry|B","Entry|C"),J.arr(details("Entry|A").getJSONObject(0),details("Entry|B").getJSONObject(0),details("Entry|C").getJSONObject(0)),bytes("refreshed full subscription"),System.currentTimeMillis());
+    check("Imported subscription can refresh and add a later node",fresh(context).subscription(id).getJSONArray("nodes").length()==3);
+    NetworkCatalog atomic=fresh(context);byte[] before=atomic.store.get("network-catalog");rejects("Bad fixed exit rejects the complete subscription route",()->atomic.importLocalSources(entry,raw,new JSONObject(),bytes("bad")));
+    check("Failed route import keeps the whole previous catalogue byte-identical",Arrays.equals(before,atomic.store.get("network-catalog")));
+  }
   static void readOnly(String label,byte[] raw)throws Exception{
     Context c=new Context(Files.createTempDirectory("network-catalog-format-").toFile(),0);SecretStore vault=new SecretStore(c);NetworkCatalog stale=fresh(c);vault.put("network-catalog",raw);NetworkCatalog current=fresh(c);
     check(label+" is explicitly read only",!current.readError().isEmpty());
@@ -212,6 +224,7 @@ public final class NetworkCatalogHostTest {
     check("Cross-process stale save cannot resurrect another process's deletion",fresh(context).subscription("exit",xid)==null);
     Context corrupt=new Context(Files.createTempDirectory("network-catalog-corrupt-").toFile(),0);SecretStore corruptStore=new SecretStore(corrupt);corruptStore.put("network-catalog",bytes("invalid JSON"));NetworkCatalog unreadable=fresh(corrupt);rejects("Unreadable catalogue fails closed instead of replacing saved data",()->unreadable.addSubscription("entry","Do not overwrite","https://fixture.invalid/new"));check("Unreadable saved catalogue bytes remain intact",new String(corruptStore.get("network-catalog"),StandardCharsets.UTF_8).equals("invalid JSON"));
     shareCandidates();
+    sharedSubscriptions();
     JSONObject result=J.obj("passed",checks.length(),"total",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualEncryptionExecution",false,"actualCrossProcessFileLocks",true,"scope","Production NetworkCatalog with host Context/SecretStore fixtures; actual file locks, immutable cache generations, atomic source/candidate-sidecar publication, migration and independent JVM races. Synthetic native fingerprint values are not core verification. Android keystore and public proxy connectivity are not tested.");
     System.out.println(result.toString(2));
   }

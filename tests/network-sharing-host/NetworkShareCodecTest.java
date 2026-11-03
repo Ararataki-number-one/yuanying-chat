@@ -57,6 +57,21 @@ public final class NetworkShareCodecTest {
     safeReject(plain()+"metadata: [0"+",0".repeat(65536)+"]\n","Whole syntax node allocation is bounded");
     safeReject(plain()+"metadata: "+"[".repeat(70)+"PRIVATE-MARKER"+"]".repeat(70)+"\n","Whole syntax depth is bounded");
   }
+  static void subscriptionRoutes()throws Exception{
+    String address="https://subscription.example.invalid/full?token=encoded%2Fsecret&group=all";
+    JSONObject exit=NetworkShareCodec.node(J.obj("name","Fixed exit","type","socks5","server","exit.invalid","port",1080,"username","user","password","secret"),true);
+    NetworkShareCodec.Bundle shared=NetworkShareCodec.Bundle.subscription("Subscription route",address,exit);String encoded=shared.encode();JSONObject json=new JSONObject(encoded);
+    check(shared.kind.equals("route")&&shared.entry==null&&shared.schemaVersion()==3,"Whole subscription route has no selected entry node");
+    check(json.getJSONObject("entrySubscription").getString("url").equals(address)&&(!json.has("entry")||json.isNull("entry")),"Portable route carries only the unchanged entrance subscription address");
+    NetworkShareCodec.Bundle imported=NetworkShareCodec.decode(encoded);check(imported.subscriptionUrl.equals(address)&&same(imported.exit,exit)&&imported.entry==null,"Copied route restores the same subscription URL and fixed exit");
+    check(java.util.Arrays.equals(encoded.getBytes(StandardCharsets.UTF_8),imported.encode().getBytes(StandardCharsets.UTF_8)),"Configuration roundtrip retains exactly the bytes used for file sharing");
+    check(NetworkShareCodec.decode(address).subscriptionUrl.equals(address),"A copied plain subscription URL can be previewed for import");
+    check(NetworkShareCodec.decode(new NetworkShareCodec.Bundle("Legacy",null,exit).encode()).subscriptionUrl.isEmpty(),"Legacy selected-node and exit shares keep their original format");
+    for(String bad:new String[]{"http://subscription.invalid/sub","https://user:pass@subscription.invalid/sub","https://subscription.invalid:0/sub","https://subscription.invalid:65536/sub","https://subscription.invalid/sub\nother","pocketnet:local"})reject(()->NetworkShareCodec.Bundle.subscription("Bad",bad,exit),"Invalid subscription URL rejected");
+    JSONObject mixed=new JSONObject(encoded).put("entry",exit);reject(()->NetworkShareCodec.decode(mixed.toString()),"A subscription route cannot silently select an entry node");
+    JSONObject extra=new JSONObject(encoded);extra.getJSONObject("entrySubscription").put("cookies","private");reject(()->NetworkShareCodec.decode(extra.toString()),"Subscription imports reject unrelated credential fields");
+    JSONObject downgrade=new JSONObject(encoded).put("schemaVersion",2);reject(()->NetworkShareCodec.decode(downgrade.toString()),"Subscription data cannot be silently treated as a legacy node share");
+  }
   public static void main(String[] args)throws Exception{
     byte[] raw=Files.readAllBytes(Paths.get("tests/gecko/assets/sharing-vless.yaml"));
     JSONObject e=NetworkShareCodec.extract(raw,"Entry|Portable VLESS","entry");
@@ -88,7 +103,7 @@ public final class NetworkShareCodecTest {
     reject(()->NetworkShareCodec.extract(raw,"Entry|Missing","entry"),"stale selected node");
     reject(()->NetworkShareCodec.extract("!!java.net.URL [https://example.invalid]".getBytes(StandardCharsets.UTF_8),"Entry|Portable VLESS","entry"),"YAML object tags");
     check(!NetworkShareCodec.explanation(new Exception("PRIVATE-MARKER")).contains("PRIVATE-MARKER"),"raw errors hidden");
-    completeSubscriptions();
+    completeSubscriptions();subscriptionRoutes();
     System.out.println("Network sharing codec: "+checks+" checks passed");
   }
 }
