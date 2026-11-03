@@ -20,7 +20,24 @@ final class SubscriptionRouteExperience {
   static TextView find(View view,String text){if(view instanceof TextView&&text.contentEquals(((TextView)view).getText())&&view.isShown())return (TextView)view;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){TextView found=find(((ViewGroup)view).getChildAt(i),text);if(found!=null)return found;}return null;}
   TextView shown(String text)throws Exception{return ui(()->{for(View root:WindowInspector.getGlobalWindowViews()){TextView found=find(root,text);if(found!=null)return found;}return null;});}
   TextView waitFor(String text)throws Exception{long end=android.os.SystemClock.elapsedRealtime()+25000;while(android.os.SystemClock.elapsedRealtime()<end){if(shown("选择本次分享的入口")!=null)throw new AssertionError("Whole subscription route opened a node chooser");TextView view=shown(text);if(view!=null)return view;Thread.sleep(50);}throw new AssertionError("Native view did not become visible: "+text);}
-  void click(String label)throws Exception{TextView view=waitFor(label);ui(()->{Rect visible=new Rect();if(!(view instanceof Button)||!view.isEnabled()||!view.isClickable()||!view.getGlobalVisibleRect(visible)||visible.isEmpty()||!view.performClick())throw new AssertionError("Native button unavailable: "+label);return null;});}
+  void click(String label)throws Exception{
+    long end=android.os.SystemClock.elapsedRealtime()+25000;
+    while(android.os.SystemClock.elapsedRealtime()<end){
+      if(shown("选择本次分享的入口")!=null)throw new AssertionError("Whole subscription route opened a node chooser");
+      boolean clicked=ui(()->{
+        TextView view=null;for(View root:WindowInspector.getGlobalWindowViews()){view=find(root,label);if(view!=null)break;}
+        Rect visible=new Rect();if(!(view instanceof Button)||!view.isEnabled()||!view.isClickable()||!view.getGlobalVisibleRect(visible)||visible.isEmpty())return false;
+        boolean handled=view.performClick();
+        // CompoundButton changes its checked state even when no OnClickListener
+        // handles the click; RadioGroup observes OnCheckedChangeListener instead.
+        if(view instanceof RadioButton){if(!((RadioButton)view).isChecked())throw new AssertionError("Native radio choice was not selected: "+label);}
+        else if(!handled)throw new AssertionError("Native button did not handle its click: "+label);
+        return true;
+      });
+      if(clicked)return;Thread.sleep(50);
+    }
+    throw new AssertionError("Native button did not become ready: "+label);
+  }
   String clipboard()throws Exception{return ui(()->{ClipboardManager manager=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);ClipData clip=manager.getPrimaryClip();return clip==null?"":clip.getItemAt(0).coerceToText(a).toString();});}
   void open()throws Exception{ui(()->{a.openRoute();return null;});click("整条线路");click("准备分享");waitFor("复制配置");}
   void run()throws Exception{
