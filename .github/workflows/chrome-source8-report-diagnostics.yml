@@ -1,0 +1,101 @@
+name: Read fixed Source8 reload diagnostic reports (text only; no screenshots)
+'on':
+  push:
+    branches:
+    - diagnostics/chrome-2.1.0-source8
+    paths:
+    - .github/workflows/chrome-source8-report-diagnostics.yml
+permissions:
+  actions: read
+  contents: read
+jobs:
+  read_existing_reports:
+    if: github.repository == 'Ararataki-number-one/yuanying-chat'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Verify fixed identity and emit bounded original JSON plus declared synthetic
+        trace lines
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p diagnostic-input
+        gh api repos/Ararataki-number-one/yuanying-chat/actions/runs/41881064165 > diagnostic-input/run.json
+        gh api repos/Ararataki-number-one/yuanying-chat/git/commits/89d9b76a093ddd61b548894746b13586a3aad7d1 > diagnostic-input/source.json
+        gh api repos/Ararataki-number-one/yuanying-chat/actions/artifacts/13350038247 > diagnostic-input/artifact.json
+        gh api repos/Ararataki-number-one/yuanying-chat/actions/artifacts/13350038247/zip > diagnostic-input/artifact.zip
+        python3 - <<'PYCODE'
+        """Read one immutable failed diagnostic artifact; no app invocation or screenshots."""
+        import base64,hashlib,io,json,pathlib,re,stat,zipfile
+        REPO='Ararataki-number-one/yuanying-chat';REPO_ID=1401080063
+        RUN=41881064165;ATTEMPT=1;ARTIFACT=13350038247
+        SOURCE='89d9b76a093ddd61b548894746b13586a3aad7d1';TREE='4f8de182a54f6e5bdabbc1e48c235bd9647235a6'
+        NAME='chrome-diagnostic-41881064165-1-after-reload';SIZE=281581
+        SHA='ec6ac8bc7060f6945c457f2cbc16d325ec4d92f52c71dce21622398427b02ed7'
+        TAGS=('PocketReloadTrace','PocketReloadWindow');CHUNK=8192
+        LINE=re.compile(rb'^\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+\s+\d+\s+\d+\s+I\s+(?P<tag>PocketReloadTrace|PocketReloadWindow)\s*:\s*(?P<json>\{.*\})$')
+        def require(value,message):
+            if not value:raise ValueError(message)
+        def sha(data):return hashlib.sha256(data).hexdigest()
+        def metadata(root):
+            run=json.loads((root/'run.json').read_bytes());artifact=json.loads((root/'artifact.json').read_bytes());commit=json.loads((root/'source.json').read_bytes())
+            require(run['id']==RUN and run['run_attempt']==ATTEMPT and run['head_sha']==SOURCE,'Run/source/attempt differs')
+            require(run['repository']['full_name']==REPO and run['repository']['id']==REPO_ID,'Repository differs')
+            require(run['head_branch']=='release/browser-2.1.0' and run['path']=='.github/workflows/browser-2_1-acceptance.yml','Branch/workflow differs')
+            require(commit['sha']==SOURCE and commit['tree']['sha']==TREE,'Source tree differs')
+            require(artifact['id']==ARTIFACT and artifact['name']==NAME and artifact['size_in_bytes']==SIZE and artifact['expired']is False,'Artifact differs')
+            require(artifact['digest']=='sha256:'+SHA,'Artifact metadata digest differs')
+            origin=artifact['workflow_run'];require(origin['id']==RUN and origin['head_sha']==SOURCE and origin['head_branch']=='release/browser-2.1.0','Artifact source/run differs')
+            require(origin['repository_id']==REPO_ID and origin['head_repository_id']==REPO_ID,'Artifact repository differs')
+        def filter_trace(raw):
+            raw.decode('utf-8');selected=[];counts={tag:0 for tag in TAGS}
+            for line in raw.splitlines(keepends=True):
+                content=line.rstrip(b'\r\n');match=LINE.fullmatch(content)
+                if not match:
+                    require(not any((' '+tag+':').encode() in content for tag in TAGS),'Unexpected synthetic log line format')
+                    continue
+                value=json.loads(match['json'].decode('utf-8'));tag=match['tag'].decode('ascii')
+                require(isinstance(value,dict) and type(value.get('schema'))is int and value['schema']==1 and value.get('diagnosticOnly')is True,'Log row not explicitly synthetic diagnostic')
+                if tag=='PocketReloadWindow':require(value.get('releaseAcceptance')is False,'Window row claims acceptance')
+                selected.append(line);counts[tag]+=1
+            output=b''.join(selected);require(0<len(output)<=262144,'Filtered trace missing or exceeds export cap')
+            return output,dict(sourceFile='native-log.txt',sourceBytes=len(raw),sourceSha256=sha(raw),exportFile='reload-trace.log',exportBytes=len(output),exportSha256=sha(output),tags=list(TAGS),tagCounts=counts,filter='Exact original UTF8 threadtime INFO lines whose tag is PocketReloadTrace or PocketReloadWindow and JSON schema1 diagnosticOnly=true. Original selected line bytes/order/endings retained; every other native-log line omitted.',wholeOriginalLogExported=False)
+        def reports(raw):
+            require(len(raw)==SIZE and sha(raw)==SHA,'Downloaded ZIP differs');files={}
+            with zipfile.ZipFile(io.BytesIO(raw))as bundle:
+                entries=bundle.infolist();names=[item.filename for item in entries]
+                require(len(entries)<=64 and len(names)==len(set(names)),'Invalid ZIP count or duplicate path')
+                require(sum(item.file_size for item in entries)<=8*1024*1024,'ZIP expansion exceeds bound')
+                for item in entries:
+                    path=pathlib.PurePosixPath(item.filename)
+                    require(not path.is_absolute() and '..'not in path.parts and '\\'not in item.filename and '\x00'not in item.filename,'Unsafe ZIP path')
+                    require(not stat.S_ISLNK(item.external_attr>>16) and not item.flag_bits&1,'ZIP symlink/encryption forbidden')
+                # Only these3UTF8 members are read. Images and all other members remain unopened.
+                for name,limit in [('results.json',262144),('ui-collapse-server-trace.json',262144),('native-log.txt',4*1024*1024)]:
+                    require(names.count(name)==1,'Required root report missing: '+name);item=bundle.getinfo(name)
+                    require(not item.is_dir() and 0<item.file_size<=limit,'Selected report byte cap differs: '+name)
+                    data=bundle.read(item);require(len(data)==item.file_size,'Report length differs');data.decode('utf-8');files[name]=data
+            report=json.loads(files['results.json']);server=json.loads(files['ui-collapse-server-trace.json'])
+            require(report['sourceCommit']==SOURCE and report['sourceTree']==TREE and report['scenario']=='after-reload','Diagnostic source/tree/scenario differs')
+            require(report['status']=='failed' and report['diagnosticOnly']is True and report['releaseAcceptance']is False and report['fullUiAcceptance']is False,'Expected failed diagnostic-only report')
+            require(report['attempts']==1 and report['sourceInputsUnchanged']is True and report['oracleChanged']is False and report['deadlinesChanged']is False,'Diagnostic execution scope differs')
+            identity=report['buildIdentity'];require(identity['sourceCommit']==SOURCE and identity['sourceTree']==TREE and identity['dirtySource']is False,'APK source/tree differs')
+            sdk=identity['sdkBuildIdentity'];require(str(sdk['runId'])==str(RUN) and str(sdk['runAttempt'])==str(ATTEMPT),'APK SDK run/attempt differs')
+            require(server['sourceCommit']==SOURCE and server['diagnosticOnly']is True and server['releaseAcceptance']is False and isinstance(server['events'],list),'Server trace scope differs')
+            trace,projection=filter_trace(files.pop('native-log.txt'));files['reload-trace.log']=trace
+            require(sum(map(len,files.values()))<=786432,'Aggregate export exceeds bound')
+            return files,projection
+        def main():
+            root=pathlib.Path('diagnostic-input');metadata(root);raw=(root/'artifact.zip').read_bytes();files,projection=reports(raw)
+            summary=dict(schema=1,diagnosticOnly=True,releaseAcceptance=False,actualWorkloadInvoked=False,readExistingArtifactOnly=True,targetRepository=REPO,targetRunId=str(RUN),targetRunAttempt=str(ATTEMPT),sourceCommit=SOURCE,sourceTree=TREE,artifactId=ARTIFACT,artifactName=NAME,artifactZipBytes=len(raw),artifactZipSha256=SHA,screenshotsExported=False,nativeLogProjection=projection,files={name:dict(bytes=len(data),sha256=sha(data),originalBytes=name.endswith('.json'))for name,data in files.items()})
+            print('CHROME_DIAG_SUMMARY '+json.dumps(summary,sort_keys=True),flush=True)
+            for name,data in files.items():
+                encoded=base64.b64encode(data).decode('ascii');parts=[encoded[i:i+CHUNK]for i in range(0,len(encoded),CHUNK)];entry=dict(name=name,bytes=len(data),sha256=sha(data),parts=len(parts),originalBytes=name.endswith('.json'))
+                print('CHROME_DIAG_FILE_BEGIN '+json.dumps(entry,sort_keys=True),flush=True)
+                for index,part in enumerate(parts):print('CHROME_DIAG_FILE_CHUNK '+json.dumps(dict(name=name,part=index,base64=part),sort_keys=True),flush=True)
+                print('CHROME_DIAG_FILE_END '+json.dumps(entry,sort_keys=True),flush=True)
+            print('CHROME_DIAG_COMPLETE '+json.dumps(dict(diagnosticOnly=True,releaseAcceptance=False,files=len(files),screenshotsExported=False)),flush=True)
+        if __name__=='__main__':main()
+        PYCODE
