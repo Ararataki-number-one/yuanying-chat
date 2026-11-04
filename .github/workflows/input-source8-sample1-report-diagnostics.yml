@@ -1,0 +1,139 @@
+name: Read fixed Source8 sample1 native-input text (diagnostic only)
+'on':
+  push:
+    branches:
+    - diagnostics/input-2.1.0-source8-sample1-reports
+    paths:
+    - .github/workflows/input-source8-sample1-report-diagnostics.yml
+permissions:
+  actions: read
+  contents: read
+jobs:
+  read_existing_reports:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Verify fixed sample artifact and print only nonce-bound native-input text
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p diagnostic-input
+        gh api repos/Ararataki-number-one/yuanying-chat/actions/runs/41881064165 > diagnostic-input/run.json
+        gh api repos/Ararataki-number-one/yuanying-chat/git/commits/89d9b76a093ddd61b548894746b13586a3aad7d1 > diagnostic-input/source.json
+        gh api repos/Ararataki-number-one/yuanying-chat/actions/artifacts/13352375219 > diagnostic-input/artifact.json
+        gh api repos/Ararataki-number-one/yuanying-chat/actions/artifacts/13352375219/zip > diagnostic-input/artifact.zip
+        python3 - <<'PYCODE'
+        """Read only pinned existing sample1 text; never run, retry or qualify a workload."""
+        import base64,hashlib,io,json,pathlib,re,stat,zipfile
+        
+        REPO='Ararataki-number-one/yuanying-chat';REPO_ID=1401080063
+        RUN=41881064165;ATTEMPT=1;ARTIFACT=13352375219
+        SOURCE='89d9b76a093ddd61b548894746b13586a3aad7d1';TREE='4f8de182a54f6e5bdabbc1e48c235bd9647235a6'
+        NAME='key-order-41881064165-1-sample-1';SIZE=1475008
+        SHA='5a95c6f541de7d2980777e8bd483cd92f050f90d6e1df001164e69a2715743ef'
+        ROOT=pathlib.Path('diagnostic-input')
+        
+        def require(value,message):
+            if not value:raise ValueError(message)
+        
+        def strict(raw):
+            def pairs(items):
+                value={}
+                for key,item in items:
+                    require(key not in value,'Duplicate JSON field');value[key]=item
+                return value
+            return json.loads(raw.decode('utf-8'),object_pairs_hook=pairs,
+                parse_constant=lambda _:(_ for _ in ()).throw(ValueError('Nonfinite JSON')))
+        
+        def select_reports(raw):
+            # The original upload path is work/key-order-sample/, a direct flat ZIP.
+            # Unexpected phase/tar/nested layouts fail; they are never guessed/extracted.
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                members=archive.infolist();names=[item.filename for item in members]
+                require(2<=len(members)<=512 and len(names)==len(set(names)),'ZIP file count/duplicates')
+                require(sum(item.file_size for item in members)<=64*1024*1024,'ZIP expansion bound')
+                for item in members:
+                    path=pathlib.PurePosixPath(item.filename);mode=item.external_attr>>16
+                    require(not item.is_dir() and not path.is_absolute() and len(path.parts)==1 and '..' not in path.parts
+                        and re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}',item.filename) is not None,'Unsafe/nonflat ZIP member')
+                    require(stat.S_IFMT(mode) in (0,stat.S_IFREG) and not item.flag_bits&1,'Nonregular/encrypted ZIP member')
+                    require(item.compress_type in (zipfile.ZIP_DEFLATED,zipfile.ZIP_STORED) and item.file_size<=16*1024*1024,'ZIP member bound/type')
+                require(names.count('sample-receipt.json')==1,'Original sample manifest missing')
+                manifest_raw=archive.read('sample-receipt.json');require(len(manifest_raw)<=512*1024,'Sample manifest bound')
+                manifest=strict(manifest_raw)
+                require(type(manifest.get('schema')) is int and manifest['schema']==1 and manifest.get('sample')=='1'
+                    and manifest.get('status')=='failed','Original failed sample identity')
+                require((manifest.get('sourceCommit'),manifest.get('runId'),manifest.get('runAttempt'))==(SOURCE,str(RUN),str(ATTEMPT)),'Sample source/run/attempt differs')
+                require(manifest.get('workloadRerun') is False and manifest.get('predeclaredAdditionalSamples')==['1','2']
+                    and manifest.get('physicalPhoneAcceptance') is False,'Sample scope differs')
+                declared=manifest.get('files');require(isinstance(declared,dict) and set(declared)==set(names)-{'sample-receipt.json'},'ZIP/sample-manifest paths differ')
+                # The pinned whole-ZIP digest authenticates the original archive.
+                # Inspect only directory metadata and hash syntax for unselected paths;
+                # never decompress/read images or unrelated logs, even for hashing.
+                for name,sha in declared.items():
+                    require(isinstance(sha,str) and re.fullmatch('[0-9a-f]{64}',sha) is not None,'Invalid manifest hash')
+                report_name='gecko-performance-results.json';require(report_name in declared,'Original performance report missing')
+                report_raw=archive.read(report_name);require(len(report_raw)<=512*1024,'Performance report bound')
+                require(hashlib.sha256(report_raw).hexdigest()==declared[report_name],'Original performance report hash differs')
+                report=strict(report_raw)
+                require(report.get('sourceCommit')==SOURCE and report.get('status')=='failed','Failed performance source differs')
+                driver=report.get('nativeInputDriver');require(isinstance(driver,dict) and driver.get('purpose')=='qualification','Original native driver scope')
+                nonce=driver.get('nonce');require(isinstance(nonce,str) and re.fullmatch('[0-9a-f]{32}',nonce) is not None,'Original native driver nonce')
+                rows=driver.get('receipts');require(isinstance(rows,list) and 1<=len(rows)<=2,'Original native driver invocation count')
+                allowed={'sample-receipt.json',report_name};optional=set();gestures=[]
+                for row in rows:
+                    require(isinstance(row,dict) and row.get('gesture') in ('baseline-scroll','current-scroll'),'Original scroll gesture')
+                    gesture=row['gesture'];require(gesture not in gestures,'Repeated original gesture');gestures.append(gesture)
+                    base='native-input-'+nonce+'-'+gesture
+                    require(row.get('file')==base+'.json','Native receipt filename differs')
+                    optional.update(base+suffix for suffix in ('.json','-stdout.log','-stderr.log','-owner.json','-owner-stderr.log','-cleanup.json','-collection.json','-read-stderr.log'))
+                    sha=row.get('sha256')
+                    if sha is not None:
+                        require(re.fullmatch('[0-9a-f]{64}',sha) is not None and declared.get(base+'.json')==sha,'Original driver receipt hash differs')
+                allowed.update(optional.intersection(declared))
+                require(len(allowed)<=18,'Selected text count bound')
+                files={}
+                for name in sorted(allowed):
+                    require(name.endswith(('.json','.log')) and not any(token in name.lower() for token in ('png','screen','failure-log','native-test')),'Nonallowlisted output')
+                    item=archive.getinfo(name);require(item.file_size<=512*1024,'Selected text size bound')
+                    data=archive.read(name);require(len(data)==item.file_size,'Selected original byte count differs')
+                    if name!='sample-receipt.json':require(hashlib.sha256(data).hexdigest()==declared[name],'Original selected text hash differs: '+name)
+                    data.decode('utf-8');files[name]=data
+                require(sum(map(len,files.values()))<=2*1024*1024,'Selected text aggregate bound')
+                return files,dict(archiveFormat='direct-flat-actions-upload',archiveFileCount=len(names),
+                    originalManifest='sample-receipt.json',ciBundleMetadataPresent='_ci_bundle.json' in names,
+                    nativeRunNonce=nonce,nativeGestures=gestures,absentOptionalFiles=sorted(optional-set(names)),
+                    selectedFromOriginalManifest=True)
+        
+        def main():
+            run=strict((ROOT/'run.json').read_bytes());artifact=strict((ROOT/'artifact.json').read_bytes());commit=strict((ROOT/'source.json').read_bytes())
+            require(run['id']==RUN and run['run_attempt']==ATTEMPT and run['head_sha']==SOURCE,'Run/source/attempt differs')
+            require(run['repository']['full_name']==REPO and run['repository']['id']==REPO_ID,'Repository differs')
+            require(run['head_branch']=='release/browser-2.1.0' and run['path']=='.github/workflows/browser-2_1-acceptance.yml','Branch/workflow differs')
+            require(commit['sha']==SOURCE and commit['tree']['sha']==TREE,'Source tree differs')
+            require(artifact['id']==ARTIFACT and artifact['name']==NAME and artifact['size_in_bytes']==SIZE and artifact['expired'] is False,'Artifact differs')
+            require(artifact['digest']=='sha256:'+SHA,'Artifact digest differs')
+            origin=artifact['workflow_run']
+            require(origin['id']==RUN and origin['head_sha']==SOURCE and origin['head_branch']=='release/browser-2.1.0','Artifact origin differs')
+            require(origin['repository_id']==REPO_ID and origin['head_repository_id']==REPO_ID,'Artifact repository differs')
+            raw=(ROOT/'artifact.zip').read_bytes();require(len(raw)==SIZE and hashlib.sha256(raw).hexdigest()==SHA,'Downloaded ZIP differs')
+            files,structure=select_reports(raw)
+            summary=dict(schema=1,diagnosticOnly=True,releaseAcceptance=False,actualWorkloadInvoked=False,
+                readExistingArtifactOnly=True,targetRepository=REPO,targetRunId=str(RUN),targetRunAttempt=str(ATTEMPT),
+                sourceCommit=SOURCE,sourceTree=TREE,artifactId=ARTIFACT,artifactName=NAME,artifactZipBytes=len(raw),artifactZipSha256=SHA,
+                screenshotsExported=False,otherRawLogsExported=False,structure=structure,
+                files={name:dict(bytes=len(data),sha256=hashlib.sha256(data).hexdigest()) for name,data in files.items()})
+            print('SAMPLE1_INPUT_DIAG_SUMMARY '+json.dumps(summary,sort_keys=True),flush=True)
+            for name,data in files.items():
+                encoded=base64.b64encode(data).decode('ascii');parts=[encoded[i:i+8192] for i in range(0,len(encoded),8192)]
+                metadata=dict(name=name,bytes=len(data),sha256=hashlib.sha256(data).hexdigest(),parts=len(parts))
+                print('SAMPLE1_INPUT_DIAG_FILE_BEGIN '+json.dumps(metadata,sort_keys=True),flush=True)
+                for index,part in enumerate(parts):print('SAMPLE1_INPUT_DIAG_FILE_CHUNK '+json.dumps(dict(name=name,part=index,base64=part),sort_keys=True),flush=True)
+                print('SAMPLE1_INPUT_DIAG_FILE_END '+json.dumps(metadata,sort_keys=True),flush=True)
+            print('SAMPLE1_INPUT_DIAG_COMPLETE '+json.dumps(dict(diagnosticOnly=True,releaseAcceptance=False,files=len(files),screenshotsExported=False,otherRawLogsExported=False)),flush=True)
+        
+        if __name__=='__main__':main()
+        
+        PYCODE
