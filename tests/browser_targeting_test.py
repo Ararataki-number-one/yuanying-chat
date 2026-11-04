@@ -399,6 +399,86 @@ public final class ActualResponseHost {
         print(json.dumps(dict(scope='Actual current and Source9 fixture HTTP response methods on host JVM with explicit in-memory Socket output; no Android/WebView or MIME-sniffer execution claim',
                               actualAndroidExecution=False, **observed)))
 
+    def test_actual_start_predicate_waits_for_independent_progress_completion(self):
+        fixture = ROOT / 'tests/gecko/BrowserIntegrationActivity.java'
+        source = fixture.read_text()
+        previous = subprocess.check_output(['git', 'show',
+            'c5972098df75c92bde6e7dbd6572ee7604ad97bf:tests/gecko/BrowserIntegrationActivity.java'],
+            cwd=ROOT, text=True)
+        old = re.search(r'await\("start",\(\)->(.*?),this::started\);', previous).group(1)
+        actual_page = next(line.strip() for line in source.splitlines()
+                           if line.strip().startswith('boolean page(String path)'))
+        actual_ready = next(line.strip() for line in source.splitlines()
+                            if line.strip().startswith('boolean startReady()'))
+        original_check = re.search(r'check\("The actual Android WebView rendered the proxy response",(.*?)\);', previous).group(1)
+        self.assertIn('check("The actual Android WebView rendered the proxy response",' + original_check + ');', source)
+        self.assertEqual(source.count('await("start",'), 1)
+        self.assertIn('await("start",this::startReady,this::started);', source)
+        for original_budget in ('deadline=SystemClock.elapsedRealtime()+90000;',
+                                'probe.postDelayed(this,75);'):
+            self.assertIn(original_budget, previous)
+            self.assertIn(original_budget, source)
+        origin = next(line.strip() for line in source.splitlines()
+                      if line.strip().startswith('static final String ORIGIN='))
+        program = r'''
+import java.util.concurrent.atomic.AtomicInteger;
+public final class ActualStartupReadyHost {
+  static int checks;
+  static void check(boolean value){if(!value)throw new AssertionError("Startup readiness check "+checks);checks++;}
+  static final class RuntimeBoundary {boolean valid=true;boolean allowed(){return valid;}}
+  static final class WebBoundary {String url=ORIGIN+"/start",title="Fixture /start";int progress=10;
+    String getUrl(){return url;}String getTitle(){return title;}int getProgress(){return progress;}}
+  static final class TabBoundary {boolean loading;}
+  static final class ProxyBoundary {final AtomicInteger successes=new AtomicInteger(1);}
+  RuntimeBoundary runtime=new RuntimeBoundary();WebBoundary surface=new WebBoundary();
+  final TabBoundary selected=new TabBoundary();final ProxyBoundary fixture=new ProxyBoundary();
+  WebBoundary web(){return surface;}
+  public static void main(String[] args){
+    ActualStartupReadyHost f=new ActualStartupReadyHost();
+    // Explicit callback boundary: page-finished cleared the native loading bit
+    // before the independently delivered progress reached one hundred.
+    check(f.oldStartReady());check(!f.originalRenderCheck());check(!f.startReady());
+    int continuations=0;
+    for(int progress:new int[]{50,99}){f.surface.progress=progress;check(f.oldStartReady());check(!f.startReady());if(f.startReady())continuations++;}
+    check(continuations==0);f.surface.progress=100;
+    check(f.startReady());check(f.originalRenderCheck());if(f.startReady())continuations++;check(continuations==1);
+    f.fixture.successes.set(0);check(f.oldStartReady());check(!f.startReady());check(!f.originalRenderCheck());f.fixture.successes.set(1);
+    f.surface.title="Stale fixture title";check(!f.startReady());f.surface.title="Fixture /start";
+    f.surface.url=ORIGIN+"/other";check(!f.startReady());f.surface.url=ORIGIN+"/start";
+    f.selected.loading=true;check(!f.startReady());f.selected.loading=false;
+    f.runtime.valid=false;check(!f.startReady());f.runtime=null;check(!f.startReady());
+    f.runtime=new RuntimeBoundary();f.surface=null;check(!f.startReady());f.surface=new WebBoundary();f.surface.progress=100;check(f.startReady());
+    System.out.println("{\"checks\":"+checks+",\"oldPredicateAdvancesBeforeProgress\":true,\"newPredicateWaits\":true,\"continuationsAfterProgress100\":"+continuations+",\"originalRenderCheckAfterWait\":true}");
+  }
+}
+'''
+        at = program.index('  static int checks;')
+        program = (program[:at] + origin + '\n' + actual_page + '\n' + actual_ready
+            + '\nboolean oldStartReady(){return ' + old + ';}\n'
+            + 'boolean originalRenderCheck(){return ' + original_check + ';}\n' + program[at:])
+        home = Path(os.environ.get('JAVA_HOME', str(ROOT / 'work/browser-ci-jdk/jdk-17.0.21+9')))
+        javac = str(home / 'bin/javac') if (home / 'bin/javac').is_file() else shutil.which('javac')
+        java = str(home / 'bin/java') if (home / 'bin/java').is_file() else shutil.which('java')
+        self.assertTrue(java and javac, 'Actual JDK17 is required for startup predicate controls')
+        with tempfile.TemporaryDirectory(prefix='browser-start-predicate-host-') as directory:
+            temporary = Path(directory)
+            (temporary / 'ActualStartupReadyHost.java').write_text(program)
+            built = subprocess.run([javac, '--release', '17', '-d', str(temporary),
+                str(temporary / 'ActualStartupReadyHost.java')], capture_output=True, text=True, timeout=30)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            ran = subprocess.run([java, '-cp', str(temporary), 'ActualStartupReadyHost'],
+                capture_output=True, text=True, timeout=20)
+            self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+            observed = json.loads(ran.stdout)
+            self.assertEqual(observed['checks'], 21)
+            self.assertTrue(observed['oldPredicateAdvancesBeforeProgress'])
+            self.assertTrue(observed['newPredicateWaits'])
+            self.assertEqual(observed['continuationsAfterProgress100'], 1)
+            self.assertTrue(observed['originalRenderCheckAfterWait'])
+        self.assertEqual(fixture.read_text(), source)
+        print(json.dumps(dict(scope='Actual fixture page/start predicate and Source11 original predicate/render check on host JVM with explicit page-finished/progress callback boundaries; no Android/WebView execution claim',
+                              actualAndroidExecution=False, **observed)))
+
     def test_failure_diagnostic_preserves_only_controlled_bounded_fields(self):
         current = self.current()
         current.update(cookie='NEVER_LOG_COOKIE', draft='NEVER_LOG_DRAFT',

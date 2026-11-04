@@ -47,6 +47,7 @@ class CompactChromeIntegrationActivity extends MainActivity{
   CompactChromeIntegrationActivity(){designChrome=new DesignChrome(this);}
   void report(String event,WindowNetworkState network){if(failReport)throw new IllegalStateException("controlled report exception");reports++;records.put(J.obj("event",event,"latency",designChrome.latencyWord.getText(),"expectedLatency",network.latency+network.latencyTimer,"state",designChrome.stateWord.getText(),"description",designChrome.networkRow.getContentDescription()));}
   void reloadCommand(String action){}void performance(){performanceCalls++;}
+  void beginReloadCommand(){throw new UnsupportedOperationException("Compilation-only reloadFixture boundary; capture controls never enter reload mode");}
   /* FIXTURE_METHODS */
 }
 class MainActivity extends Context{boolean destroyed,active=true;final Session session=new Session();final Scheduler handler=Scheduler.current;final View toolbar=new View();final TextView networkLine=new TextView();final Runnable ticker=()->{};final Object sessionObserver=new Object();JSONObject runtime=J.obj("environmentId","scope-a","generation",2,"at",System.currentTimeMillis(),"mode","external","configured",false,"connected",false,"route","controlled","delayRoute","controlled","delayAt",0);protected void onDestroy(){destroyed=true;}protected void onNewIntent(Intent i){}}

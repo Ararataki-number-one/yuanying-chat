@@ -24,6 +24,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   boolean reloadFixture;String reloadBefore="",reloadArchivedDraft="";int reloadDocuments;
   int reloadTraceSequence,reloadTraceDropped;boolean reloadTraceTerminalRecorded;
   ReferenceUi.Modal reloadObservedModal;int reloadWindowSequence,reloadWindowDropped;
+  int reloadCommandGeneration;long reloadCommandDeadline;ReloadForegroundRequest pendingReloadRequest;
   ChromeCollapseIntegration collapse;
   // Test-only observation. Keep production guards/callbacks authoritative and never
   // log draft text, cookies, configuration, proxy identity, or database contents.
@@ -193,6 +194,7 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
   @Override public boolean dispatchTouchEvent(MotionEvent event){boolean handled=super.dispatchTouchEvent(event);if(collapse!=null)collapse.nativeTouch(event);return handled;}
 
   @Override protected void onNewIntent(Intent intent){
+    if(reloadFixture)beginReloadCommand();
     releasePresentation();
     super.onNewIntent(intent);
     command=intent.getStringExtra("compactCommand");
@@ -214,11 +216,39 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       String url=MainActivity.ORIGIN+"c/reload-A",id=session.deliveries.begin(url,"already sent fixture question",new JSONArray(),"web",null);session.pending=J.obj("id",id,"kind","web","engine","gecko","confirmed",true,"userKey","id:reload-user","prompt","already sent fixture question","confirmedUrl",url,"expectedUrl",url);session.conversation=url;session.prefs.edit().putString("pending",session.pending.toString()).putString("conversation",url).commit();
       remote.evaluateJavascript("history.replaceState(null,'','/c/reload-B');document.getElementById('composer').insertAdjacentHTML('beforeend','<button id=\"stop-button\" data-testid=\"stop-button\" aria-label=\"Stop\">Stop</button>');({ready:true})",raw->reloadSnapshot("reloadReady"));return;
     }
-    if("requestReload".equals(action)){requestReload();waitReloadModal(SystemClock.elapsedRealtime()+10000);return;}
+    if("requestReload".equals(action)){
+      ReloadForegroundRequest request=new ReloadForegroundRequest(reloadCommandDeadline,reloadCommandGeneration,command,session,remote,
+        remote==null?null:remote.current,session==null?-1:session.environmentGeneration,remote instanceof ReloadView?((ReloadView)remote).reloadRun:"");
+      pendingReloadRequest=request;requestReloadWhenForeground(request);return;
+    }
     if("reloadSnapshot".equals(action)){reloadSnapshot("reloadSnapshot");return;}
     if("changeRoute".equals(action)){remote.evaluateJavascript("history.replaceState(null,'','/c/reload-C');({changed:true})",raw->reloadSnapshot("routeChanged"));return;}
     if("restoreRoute".equals(action)){remote.evaluateJavascript("history.replaceState(null,'','/c/reload-B');({changed:true})",raw->reloadSnapshot("routeRestored"));return;}
     if("idleReload".equals(action)){session.pending=null;session.prefs.edit().remove("pending").commit();session.state=new JSONObject();remote.evaluateJavascript("document.getElementById('stop-button')?.remove();document.getElementById('prompt-textarea').value='   ';({idle:true})",raw->{requestReload();});}
+  }
+  void beginReloadCommand(){reloadCommandDeadline=SystemClock.elapsedRealtime()+10000;reloadCommandGeneration++;pendingReloadRequest=null;}
+  static final class ReloadForegroundRequest {
+    final long deadline,environmentGeneration;final int generation;final String command,fixtureRun;final ChatSession owner;final GeckoWebView browser;final Object sdk;
+    ReloadForegroundRequest(long deadline,int generation,String command,ChatSession owner,GeckoWebView browser,Object sdk,long environmentGeneration,String fixtureRun){
+      this.deadline=deadline;this.generation=generation;this.command=command;this.owner=owner;this.browser=browser;this.sdk=sdk;this.environmentGeneration=environmentGeneration;this.fixtureRun=fixtureRun;
+    }
+  }
+  void requestReloadWhenForeground(ReloadForegroundRequest request){
+    if(pendingReloadRequest!=request)return;
+    if(!reloadFixture||destroyed||collapse!=null||request.generation!=reloadCommandGeneration||!java.util.Objects.equals(command,request.command)
+        ||session!=request.owner||session==null||session.deleted||session.environmentGeneration!=request.environmentGeneration
+        ||remote!=request.browser||!(remote instanceof ReloadView)||remote.current!=request.sdk||!((ReloadView)remote).reloadRun.equals(request.fixtureRun)){
+      pendingReloadRequest=null;return;
+    }
+    if(SystemClock.elapsedRealtime()>request.deadline){
+      pendingReloadRequest=null;reloadModalReadinessTimeout();reloadTrace("foreground-timeout",null,null);
+      reloadEvent("error",J.obj("error","Reload request host window is not input-ready"));return;
+    }
+    View decor=getWindow().getDecorView();
+    if(active&&decor.isAttachedToWindow()&&decor.hasWindowFocus()){
+      pendingReloadRequest=null;requestReload();waitReloadModal(request.deadline);return;
+    }
+    handler.postDelayed(()->requestReloadWhenForeground(request),50);
   }
   void waitReloadModal(long deadline){
     ReferenceUi.Modal modal=reloadDialog;

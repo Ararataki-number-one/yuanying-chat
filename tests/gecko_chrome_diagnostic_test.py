@@ -5,8 +5,10 @@ import importlib.machinery
 import importlib.util
 import itertools
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import types
@@ -301,7 +303,9 @@ class FocusedDevicePreparationTest(unittest.TestCase):
 class ReloadTimeoutObservationTest(unittest.TestCase):
     def test_timeout_keeps_original_deadline_predicate_error_and_adds_read_only_observation(self):
         java=(ROOT/'tests/gecko/CompactChromeIntegrationActivity.java').read_text()
-        self.assertIn('waitReloadModal(SystemClock.elapsedRealtime()+10000)',java)
+        self.assertIn('reloadCommandDeadline=SystemClock.elapsedRealtime()+10000',java)
+        self.assertIn('waitReloadModal(request.deadline)',java)
+        self.assertNotIn('waitReloadModal(SystemClock.elapsedRealtime()+10000)',java)
         self.assertIn('if(reloadDialog==modal&&attached&&focused&&laidOut&&controls.length()==2)',java)
         self.assertIn('if(SystemClock.elapsedRealtime()>deadline){reloadModalReadinessTimeout();reloadTrace("modal-timeout",null,null);reloadEvent("error",J.obj("error","Reload confirmation did not appear"));return;}handler.postDelayed(()->waitReloadModal(deadline),50);',java)
         snapshot=java[java.index('  JSONObject reloadReadinessView('):java.index('  void reloadSnapshot(')]
@@ -311,6 +315,82 @@ class ReloadTimeoutObservationTest(unittest.TestCase):
         self.assertIn('"host",reloadReadinessView(getWindow().getDecorView())',snapshot)
         for mutation in ('requestFocus(', 'requestLayout(', '.layout(', '.measure(', 'evaluateJavascript(', 'loadUrl(', 'ProfileCatalog', '.set'):
             self.assertNotIn(mutation,snapshot)
+
+
+class ReloadForegroundPreparationTest(unittest.TestCase):
+    """Execute exact new Java members with declared clock/window/session edges."""
+    def test_actual_shared_deadline_single_invocation_and_stale_command_cancellation(self):
+        java=(ROOT/'tests/gecko/CompactChromeIntegrationActivity.java').read_text()
+        reader_spec=importlib.util.spec_from_file_location('foreground_member_reader',ROOT/'tests/chrome-network-state-host/run.py')
+        reader=importlib.util.module_from_spec(reader_spec);reader_spec.loader.exec_module(reader)
+        names=('void beginReloadCommand(','static final class ReloadForegroundRequest','void requestReloadWhenForeground(')
+        members='\n'.join(reader.member(java,name) for name in names)
+        branch=reader.member(java,'if("requestReload".equals(action))')
+        intent=reader.member(java,'protected void onNewIntent(')
+        self.assertLess(intent.index('if(reloadFixture)beginReloadCommand();'),intent.index('super.onNewIntent(intent);'))
+        self.assertNotIn('SystemClock.elapsedRealtime()+10000',branch)
+        self.assertIn('waitReloadModal(request.deadline)',members)
+        for forbidden in ('requestFocus(', 'requestLayout(', 'setVisibility(', 'evaluateJavascript(', 'loadUrl(', 'ProfileCatalog'):
+            self.assertNotIn(forbidden,members)
+        home=os.environ.get('JAVA_HOME_17_X64') or os.environ.get('JAVA_HOME')
+        compiler=Path(home)/'bin/javac' if home else Path(shutil.which('javac') or '');runtime=compiler.with_name('java')
+        jars=[Path(os.environ['PROFILE_JSON_JAR'])] if os.environ.get('PROFILE_JSON_JAR') else []
+        jars += [ROOT/'work/gecko-integration/catalog-json.jar',ROOT/'work/ux-build-deps/json-20240303.jar']
+        jar=next((path for path in jars if path.is_file()),None)
+        self.assertTrue(compiler.is_file() and runtime.is_file() and jar is not None,'Actual JDK and JSON jar required; no skip')
+        with tempfile.TemporaryDirectory() as directory:
+            target=Path(directory)/'ReloadForegroundHost.java'
+            target.write_text('''package local.pocketchat;import org.json.*;import java.util.*;
+              public final class ReloadForegroundHost {
+                static int checks;static void check(boolean value){checks++;if(!value)throw new AssertionError("foreground control "+checks);}
+                static final class SystemClock {static long now;static long elapsedRealtime(){return now;}}
+                static final class View {boolean attached=true,focused=true;boolean isAttachedToWindow(){return attached;}boolean hasWindowFocus(){return focused;}}
+                static final class Window {final View decor=new View();View getDecorView(){return decor;}}
+                static final class ChatSession {long environmentGeneration=7;boolean deleted;}
+                static class GeckoWebView {Object current=new Object();}
+                static final class ReloadView extends GeckoWebView {final String reloadRun="recorded-fixture-run";}
+                static final class Handler {final ArrayDeque<Runnable> queue=new ArrayDeque<>();void postDelayed(Runnable r,long delay){check(delay==50);queue.add(r);}void next(){queue.remove().run();}}
+                boolean reloadFixture=true,destroyed,active=true;Object collapse;int reloadCommandGeneration;long reloadCommandDeadline;ReloadForegroundRequest pendingReloadRequest;
+                ChatSession session=new ChatSession();GeckoWebView remote=new ReloadView();String command="owned-command";Handler handler=new Handler();Window window=new Window();
+                int reloadCalls,modalCalls,errors,snapshots;long modalDeadline,requestedAt;
+                Window getWindow(){return window;}
+                void requestReload(){check(active&&window.decor.attached&&window.decor.focused&&!destroyed);reloadCalls++;requestedAt=SystemClock.now;}
+                void waitReloadModal(long deadline){modalCalls++;modalDeadline=deadline;}
+                void reloadModalReadinessTimeout(){snapshots++;}void reloadTrace(String phase,Object target,Boolean result){}
+                void reloadEvent(String event,JSONObject value){check(event.equals("error")&&value.optString("error").equals("Reload request host window is not input-ready"));errors++;}
+            '''+members+'\nvoid submit(String action){'+branch+'''}
+                static ReloadForegroundHost fresh(boolean ready){SystemClock.now=1000;ReloadForegroundHost h=new ReloadForegroundHost();h.window.decor.focused=ready;h.beginReloadCommand();return h;}
+                public static void main(String[] args){
+                  ReloadForegroundHost h=fresh(true);SystemClock.now=2500;h.submit("requestReload");check(h.reloadCalls==1&&h.modalCalls==1&&h.modalDeadline==11000&&h.pendingReloadRequest==null);
+                  for(int edge=0;edge<3;edge++){
+                    h=fresh(true);if(edge==0)h.active=false;if(edge==1)h.window.decor.attached=false;if(edge==2)h.window.decor.focused=false;
+                    h.submit("requestReload");ReloadForegroundRequest saved=h.pendingReloadRequest;check(h.reloadCalls==0&&h.handler.queue.size()==1);
+                    SystemClock.now=5000;h.handler.next();check(h.reloadCalls==0&&h.handler.queue.size()==1);
+                    h.active=true;h.window.decor.attached=true;h.window.decor.focused=true;SystemClock.now=6000;h.handler.next();
+                    check(h.reloadCalls==1&&h.modalCalls==1&&h.modalDeadline==11000&&h.requestedAt==6000);h.requestReloadWhenForeground(saved);check(h.reloadCalls==1);
+                  }
+                  for(int stale=0;stale<11;stale++){
+                    h=fresh(false);h.submit("requestReload");ReloadForegroundRequest saved=h.pendingReloadRequest;
+                    if(stale==0)h.reloadCommandGeneration++;if(stale==1)h.command="new-command";if(stale==2)h.session=new ChatSession();
+                    if(stale==3)h.session.deleted=true;if(stale==4)h.session.environmentGeneration++;if(stale==5)h.remote=new ReloadView();
+                    if(stale==6)h.remote.current=new Object();if(stale==7)h.reloadFixture=false;if(stale==8)h.destroyed=true;if(stale==9)h.collapse=new Object();
+                    if(stale==10){saved=new ReloadForegroundRequest(saved.deadline,saved.generation,saved.command,saved.owner,saved.browser,saved.sdk,saved.environmentGeneration,"wrong-fixture-run");h.pendingReloadRequest=saved;}
+                    h.window.decor.focused=true;h.requestReloadWhenForeground(saved);check(h.reloadCalls==0&&h.modalCalls==0&&h.errors==0&&h.pendingReloadRequest==null);
+                  }
+                  h=fresh(false);h.submit("requestReload");SystemClock.now=11001;h.window.decor.focused=true;h.handler.next();
+                  check(h.reloadCalls==0&&h.modalCalls==0&&h.errors==1&&h.snapshots==1&&h.pendingReloadRequest==null);
+                  h=fresh(false);h.submit("requestReload");SystemClock.now=11000;h.window.decor.focused=true;h.handler.next();check(h.reloadCalls==1&&h.modalDeadline==11000);
+                  h=fresh(false);h.submit("requestReload");ReloadForegroundRequest old=h.pendingReloadRequest;SystemClock.now=2000;
+                  h.beginReloadCommand();h.command="next-command";h.submit("requestReload");ReloadForegroundRequest next=h.pendingReloadRequest;h.window.decor.focused=true;
+                  h.handler.next();check(h.reloadCalls==0&&h.pendingReloadRequest==next);h.handler.next();check(h.reloadCalls==1&&h.modalDeadline==12000);
+                  h.requestReloadWhenForeground(old);h.requestReloadWhenForeground(next);check(h.reloadCalls==1&&h.modalCalls==1);
+                  System.out.println(checks+" exact source foreground checks");
+                }}''')
+            built=subprocess.run([str(compiler),'-encoding','UTF-8','-cp',str(jar),'-d',directory,str(ROOT/'app/src/main/java/local/pocketchat/J.java'),str(target)],capture_output=True,text=True,timeout=30)
+            self.assertEqual(built.returncode,0,built.stderr)
+            ran=subprocess.run([str(runtime),'-cp',directory+os.pathsep+str(jar),'local.pocketchat.ReloadForegroundHost'],capture_output=True,text=True,timeout=10)
+            self.assertEqual(ran.returncode,0,ran.stderr)
+            self.assertIn(' exact source foreground checks',ran.stdout)
 
 
 def controlled_key_diagnostic():

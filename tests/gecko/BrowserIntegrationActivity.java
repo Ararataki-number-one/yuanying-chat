@@ -49,12 +49,13 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
       getIntent().putExtra("url",ORIGIN+"/start");
     }catch(Exception error){throw new IllegalStateException("Synthetic browser setup failed",error);}
     super.onCreate(null);deadline=SystemClock.elapsedRealtime()+90000;
-    await("start",()->runtime!=null&&runtime.allowed()&&page("/start"),this::started);
+    await("start",this::startReady,this::started);
   }
   interface Ready{boolean get()throws Exception;}
   interface Step{void run()throws Exception;}
   void check(String name,boolean pass)throws Exception{checks.put(new JSONObject().put("name",name).put("pass",pass));if(!pass)throw new AssertionError(name);}
   boolean page(String path){return web()!=null&&(ORIGIN+path).equals(web().getUrl())&&("Fixture "+path).equals(web().getTitle())&&!selected.loading;}
+  boolean startReady(){return runtime!=null&&runtime.allowed()&&page("/start")&&fixture.successes.get()>0&&web().getProgress()==100;}
   void await(String name,Ready ready,Step next){
     probe.post(new Runnable(){public void run(){if(finished||destroyed)return;try{if(ready.get()){next.run();return;}if(SystemClock.elapsedRealtime()>deadline)throw new AssertionError("Timed out: "+name+" / "+(runtime==null?"no runtime":runtime.status()));probe.postDelayed(this,75);}catch(Throwable error){fail(error);}}});
   }
