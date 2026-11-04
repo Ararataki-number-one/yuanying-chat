@@ -694,7 +694,10 @@ class StandaloneSettingsVerifierTests(unittest.TestCase):
         inputs.update({'tests/gecko/assets/sharing-schema-matrix.json':'tools/gecko/sharing-schema-matrix.json',
                        'tools/gecko/diagnostic_capture_privacy.py':'tools/gecko/diagnostic_capture_privacy.py',
                        'tools/gecko/caret_ime_guard.py':'tools/gecko/caret_ime_guard.py',
-                       'tests/network_settings_internal46_contract.py':'tests/network_settings_internal46_contract.py'})
+                       'tests/network_settings_internal46_contract.py':'tests/network_settings_internal46_contract.py',
+                       'tests/gecko/network_settings_callback_contract.py':'tools/gecko/network_settings_callback_contract.py',
+                       'tests/network_settings_callback_source_compatibility.py':'tests/network_settings_callback_source_compatibility.py',
+                       'tests/fixtures/network-settings-callback-source-deltas.json':'tests/fixtures/network-settings-callback-source-deltas.json'})
         with tempfile.TemporaryDirectory(prefix='standalone-release-verifiers-') as directory:
             mirror=Path(directory)/'source';stage=Path(directory)/'public'
             (stage/'tools/gecko').mkdir(parents=True)
