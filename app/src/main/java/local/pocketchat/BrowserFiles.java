@@ -95,6 +95,7 @@ final class BrowserFiles {
   void cancelFor(WebView owner){if(pending!=null&&pending.owner==owner)cancel();}
   void cancel(){++choiceGeneration;clear(pending,true);}
   boolean hasActiveDownload(){return transfer!=null;}
+  void cancelActiveDownload(){BrowserDownloadTransfer selected=transfer;if(selected!=null)selected.cancel();}
   static boolean webAddress(String url){try{BrowserDownloadTransfer.address(url);return true;}catch(IOException invalid){return false;}}
   void download(String url,String agent,String disposition,String mime,long size){download(null,url,agent,disposition,mime,size);}
   void download(WebView source,String url,String agent,String disposition,String mime,long size){
@@ -106,8 +107,9 @@ final class BrowserFiles {
     if(route==null||!route.current()){message("浏览器连接尚未确认，未开始下载");return;}
     BrowserDownloadTransfer selected=new BrowserDownloadTransfer();transfer=selected;message("开始下载文件…");
     try{worker.execute(()->{
-      BrowserDownloadTransfer.Result result=null;
+      BrowserDownloadTransfer.Result result=null;ChromiumRouteLease.Handle lease=ChromiumRouteLease.acquireDownload();
       try{
+        if(lease==null)throw new IOException("正在应用环境线路，下载尚未开始");
         BrowserDownloadTransfer.Route protectedRoute=new BrowserDownloadTransfer.Route(){
           public boolean current(){if(destroyed||!route.current())return false;try{AppPrefs.requireDownloadNetwork(activity);return true;}catch(IOException restricted){return false;}}
           public java.net.HttpURLConnection open(URL target)throws IOException{return route.open(target);}
@@ -117,7 +119,7 @@ final class BrowserFiles {
         JSONObject saved=store.save(result,name,()->!destroyed&&!selected.cancelled&&protectedRoute.current());
         main.post(()->{if(transfer==selected){transfer=null;message("已保存 · "+saved.optString("name")+" · 可在浏览器下载列表打开");}});
       }catch(Exception error){String reason=selected.cancelled&&!(error instanceof BrowserDownloadStore.Unconfirmed)?"下载已取消":error.getMessage()==null?"下载失败，未保存文件":error.getMessage();main.post(()->{if(transfer==selected){transfer=null;message(reason);}});}
-      finally{if(result!=null)result.file.delete();}
+      finally{try{if(result!=null)result.file.delete();}finally{if(lease!=null)lease.close();}}
     });}catch(RejectedExecutionException closed){transfer=null;message("浏览器已关闭，下载未开始");}
   }
   static String bytes(long value){if(value<1024)return value+" B";return String.format(Locale.ROOT,value<1048576?"%.1f KB":"%.1f MB",value/(value<1048576?1024.0:1048576.0));}

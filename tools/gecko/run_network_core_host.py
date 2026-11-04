@@ -53,7 +53,7 @@ def main():
     harness=template.read_text().replace('// PRODUCTION_CLASSES',classes).replace('// PRODUCTION_METHODS','\n'.join(bodies))
     (work/'NativeNetwork.java').write_text(harness)
     (work/'SystemClock.java').write_text('package android.os;public class SystemClock{public static long elapsedRealtime(){return System.nanoTime()/1000000;}}')
-    production=[ROOT/'app/src/main/java/local/pocketchat'/name for name in ['NetworkHealthPolicy.java','NetworkOptimizationPolicy.java','NetworkWork.java','NetworkDiagnostics.java']]
+    production=[ROOT/'app/src/main/java/local/pocketchat'/name for name in ['ChromiumRouteLease.java','NetworkHealthPolicy.java','NetworkOptimizationPolicy.java','NetworkWork.java','NetworkDiagnostics.java']]
     jar=args.json_jar.resolve();classes_path=work/'classes';classes_path.mkdir(exist_ok=True)
     inputs=[*production,template,pathlib.Path(__file__).resolve()];hashes={str(f.relative_to(ROOT)):hashlib.sha256(f.read_bytes()).hexdigest() for f in inputs}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True))

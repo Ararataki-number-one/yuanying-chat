@@ -38,7 +38,7 @@ final class NetworkRegion {__BACKGROUND_BUSY__}
 final class ProfileUi {__WORKING__}
 final class NetworkUiProvider {
   boolean saving;final Profile profile=new Profile();
-  static final class Transition {ChatSession session;boolean capture=true,immediate;long epoch=7,browserPolicy,identityEdit;String url="https://chatgpt.com/c/test",scope="scope";TaskGuardSnapshot work;
+  static final class Transition {ChatSession session;boolean capture=true,immediate;long epoch=7,browserPolicy,identityEdit;String waitReason="",url="https://chatgpt.com/c/test",scope="scope";TaskGuardSnapshot work;
     Transition(){ChatSession selected=ChatSession.peek();if(selected==null)throw new AssertionError("Cold transition is outside the file-consumer host");browserPolicy=selected.web.identityPolicyRevision;identityEdit=selected.identity.editSerial;work=selected.taskGuardSnapshot();}
   }
   boolean owns(Transition transition){return true;}

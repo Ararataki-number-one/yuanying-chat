@@ -8,6 +8,14 @@ public class NetworkUiProvider extends ContentProvider {
   Context profile;AppUpdateRoute.Server updateRoutes;final Handler main=new Handler(Looper.getMainLooper());final Map<String,JSONObject> jobs=new ConcurrentHashMap<>();boolean applying,saving,drainReading;volatile boolean maintenanceStopped;long drainRevision,saveRevision;String activeApply="";volatile String modelProof="";volatile Transition activeTransition;final Runnable drain=()->{pruneJobs();observeSession();drainPending();};final ExecutorService io=Executors.newSingleThreadExecutor();
   static volatile NetworkUiProvider instance;
   static void sessionAvailable(){NetworkUiProvider provider=instance;if(provider!=null)provider.main.post(()->{provider.observeSession();provider.sessionChanged();provider.drainPending();});}
+  long chromiumRevision=-1;boolean chromiumUnavailable;
+  static void chromiumLeaseChanged(){NetworkUiProvider provider=instance;if(provider!=null){ChromiumRouteLease.Snapshot state=ChromiumRouteLease.snapshot();provider.main.post(()->provider.observeChromiumLease(state));}}
+  void observeChromiumLease(){observeChromiumLease(ChromiumRouteLease.snapshot());}
+  void observeChromiumLease(ChromiumRouteLease.Snapshot state){
+    if(maintenanceStopped||state.revision<=chromiumRevision)return;
+    boolean unavailable=state.held()||state.changes>0,released=chromiumUnavailable&&!unavailable;chromiumRevision=state.revision;chromiumUnavailable=unavailable;
+    retry.observe("chromium:"+state.revision,!unavailable);if(released){main.removeCallbacks(pendingWake);main.post(pendingWake);}
+  }
   long nativeWorkEpoch;
   static void nativeWorkChanged(ChatSession session){NetworkUiProvider provider=instance;if(provider!=null)provider.main.post(()->provider.refreshNativeWork(session));}
   static boolean nativeWorkBusy(ChatSession session){return session.transferActive||session.submitting||session.operation||session.uploading()||session.resourceChoosers>0||session.resourceFilePreparations>0;}
@@ -47,13 +55,13 @@ public class NetworkUiProvider extends ContentProvider {
   void observeSession(){ChatSession current=ChatSession.peek();if(current==observedSession)return;if(observedSession!=null)observedSession.remove(sessionObserver);observedSession=current;if(current!=null)current.add(sessionObserver);}
   void sessionChanged(){
     ChatSession session=observedSession;if(session==null||session.deleted||maintenanceStopped)return;
-    TaskGuardSnapshot guard=session.taskGuardSnapshot();boolean idle=taskIdle(session,guard)&&!session.connecting&&!session.navigating&&!session.recoveryScheduled;
+    TaskGuardSnapshot guard=session.taskGuardSnapshot();boolean idle=!ChromiumRouteLease.held()&&taskIdle(session,guard)&&!session.connecting&&!session.navigating&&!session.recoveryScheduled;
     String event=guard.environmentId+":"+guard.generation+":"+guard.navigationEpoch+":"+guard.resourceBinding+":"+guard.documentId+":"+guard.resourceSequence+":"+guard.workGeneration+":"+idle;
     if(retry.observe(event,idle)){main.removeCallbacks(pendingWake);main.post(pendingWake);}
   }
-  static boolean taskIdle(ChatSession session,TaskGuardSnapshot guard){return guard!=null&&guard.known&&!guard.replyBusy&&!guard.fileBusy&&!guard.submitting&&!guard.downloading&&(!guard.operation||session.configurationCapture);}
+  static boolean taskIdle(ChatSession session,TaskGuardSnapshot guard){return !ChromiumRouteLease.held()&&guard!=null&&guard.known&&!guard.replyBusy&&!guard.fileBusy&&!guard.submitting&&!guard.downloading&&(!guard.operation||session.configurationCapture);}
   public static class Profile1 extends NetworkUiProvider{}public static class Profile2 extends NetworkUiProvider{}public static class Profile3 extends NetworkUiProvider{}public static class Profile4 extends NetworkUiProvider{}public static class Profile5 extends NetworkUiProvider{}public static class Profile6 extends NetworkUiProvider{}public static class Profile7 extends NetworkUiProvider{}
-  @Override public boolean onCreate(){profile=Profiles.context(getContext(),Profiles.processSlot());updateRoutes=new AppUpdateRoute.Server(profile);instance=this;return true;}
+  @Override public boolean onCreate(){profile=Profiles.context(getContext(),Profiles.processSlot());updateRoutes=new AppUpdateRoute.Server(profile);instance=this;ChromiumRouteLease.addListener(NetworkUiProvider::chromiumLeaseChanged);observeChromiumLease();return true;}
   @Override public Bundle call(String method,String arg,Bundle extras){
     if(Binder.getCallingUid()!=android.os.Process.myUid())throw new SecurityException();Bundle result=new Bundle();
     if("stopForDelete".equals(method)||"stopForReset".equals(method)){
@@ -92,7 +100,7 @@ public class NetworkUiProvider extends ContentProvider {
     if(maintenanceStopped)return;if(Looper.myLooper()!=Looper.getMainLooper()){main.post(()->finish(id,ok,message));return;}
     RequestBinding binding=bindings.get(id);if(binding!=null)binding.outcome=operationOutcome(binding,activeTransition,id,message);
     choices.remove(id);manualRetries.remove(id);
-    if(id.equals(activeApply)){Transition transition=activeTransition;applying=false;activeApply="";if(transition!=null){releaseCapture(transition,!transition.confirmed);transition.cancelled=true;activeTransition=null;}ChatSession session=ChatSession.peek();if(session!=null){if(transition==null)session.operation=false;session.changed();}}
+    if(id.equals(activeApply)){Transition transition=activeTransition;applying=false;activeApply="";if(transition!=null){releaseCapture(transition,!transition.confirmed);transition.cancelled=true;activeTransition=null;if(transition.routeChange!=null){transition.routeChange.close();transition.routeChange=null;}}ChatSession session=ChatSession.peek();if(session!=null){if(transition==null)session.operation=false;session.changed();}}
     NativeNetwork network=NativeNetwork.peek();if(network!=null)WindowNetworkState.save(profile,ChatSession.peek(),network);
     recordResult(id,ok,message,binding==null?null:binding.outcome);bindings.remove(id);
   }
@@ -107,6 +115,7 @@ public class NetworkUiProvider extends ContentProvider {
     return binding.receipt.pending(message);
   }
   boolean busy(ChatSession session,NativeNetwork network){
+    if(ChromiumRouteLease.held())return true;
     if(applying||network!=null&&(network.starting||network.measuringLatency))return true;
     return session==null?coldPending():!taskIdle(session,session.taskGuardSnapshot())||session.connecting;
   }
@@ -176,6 +185,7 @@ public class NetworkUiProvider extends ContentProvider {
   }
   void admitCandidate(String id,String action,JSONObject candidate,String baseline,boolean automatic){
     RequestBinding binding=bindings.get(id);if(binding==null)return;ChatSession session=ChatSession.peek();
+    if(ChromiumRouteLease.held()){selectPolicy(id,action,candidate,baseline,NetworkApplyCoordinator.DEFER);return;}
     if(automatic){if(session==null?!coldPending():taskIdle(session,session.taskGuardSnapshot()))operate(id,action,candidate,baseline);else waitSaved(id,"等待回复和文件操作结束");return;}
     if(session==null){if(coldPending())requireChoice(id,action,candidate,baseline,"当前任务状态待确认");else selectPolicy(id,action,candidate,baseline,NetworkApplyCoordinator.AUTO);return;}
     TaskGuardSnapshot before=session.taskGuardSnapshot();
@@ -193,15 +203,15 @@ public class NetworkUiProvider extends ContentProvider {
     choices.remove(id);jobs.computeIfPresent(id,(key,old)->J.obj("done",false,"phase","applying"));selectPolicy(id,choice.action,choice.candidate,choice.baseline,policy);
   }
   void selectPolicy(String id,String action,JSONObject candidate,String baseline,String policy){
-    RequestBinding binding=bindings.get(id);if(binding==null)return;long revision=saveRevision;
-    io.execute(()->{String selected="",error="";try{selected=EnvironmentSpecRuntime.selectNetworkApplicationPolicy(profile,binding.identity,binding.snapshot,binding.receipt.candidateId,policy);}catch(Exception failure){error=failure.getMessage()==null?"网络操作结果尚未确认":failure.getMessage();}String snapshot=selected,failure=error;main.post(()->{
+    RequestBinding binding=bindings.get(id);if(binding==null)return;long revision=saveRevision;String applicationPolicy=ChromiumRouteLease.held()?NetworkApplyCoordinator.DEFER:policy;
+    io.execute(()->{String selected="",error="";try{selected=EnvironmentSpecRuntime.selectNetworkApplicationPolicy(profile,binding.identity,binding.snapshot,binding.receipt.candidateId,applicationPolicy);}catch(Exception failure){error=failure.getMessage()==null?"网络操作结果尚未确认":failure.getMessage();}String snapshot=selected,failure=error;main.post(()->{
       if(bindings.get(id)!=binding||revision!=saveRevision){finish(id,false,"本次应用已由较新的设置替换");return;}
       if(!failure.isEmpty()){binding.outcome=binding.receipt.unconfirmed("core",failure);finish(id,false,failure);return;}
       bindings.put(id,new RequestBinding(binding.identity,snapshot,binding.receipt));
-      if(NetworkApplyCoordinator.DEFER.equals(policy)){waitSaved(id,"等待回复和文件操作结束");return;}operate(id,action,candidate,baseline);
+      if(NetworkApplyCoordinator.DEFER.equals(applicationPolicy)){waitSaved(id,"等待回复和文件操作结束");return;}operate(id,action,candidate,baseline);
     });});
   }
-  void waitSaved(String id,String reason){RequestBinding binding=bindings.get(id);if(binding!=null)retry.defer(binding.key(),reason,SystemClock.elapsedRealtime());finish(id,true,"网络设置已保存，"+reason+"后自动应用");}
+  void waitSaved(String id,String reason){boolean chromium=ChromiumRouteLease.held();if(chromium)reason=ChromiumRouteLease.REASON;RequestBinding binding=bindings.get(id);if(binding!=null)retry.defer(binding.key(),reason,SystemClock.elapsedRealtime());finish(id,true,chromium?"网络设置已保存；"+reason:"网络设置已保存，"+reason+"后自动应用");}
   NetworkApplicationReceipt captureSaved(EnvironmentSpec.Identity expected,String snapshot)throws Exception{
     EnvironmentSpecRuntime.requireIdentity(profile,expected);JSONObject pending=NetworkChanges.pendingStrict(profile);
     if(snapshot.isEmpty()||!snapshot.equals(pending.toString())||!NetworkChanges.identityMatches(pending,expected.json()))throw new java.io.IOException("保存结果已变化，请重新读取网络设置");
@@ -217,6 +227,7 @@ public class NetworkUiProvider extends ContentProvider {
     if("cancelPending".equals(action)){cancelPending(id,candidate);return;}
     if("measure".equals(action)){if("internal".equals(profile.getSharedPreferences("chat",0).getString("networkMode","external")))n.measureLatency((ok,msg)->finish(id,ok,msg));else if(s!=null)NetworkRegion.refreshLatency(s,(ok,msg)->finish(id,ok,msg));else finish(id,false,"请先打开此窗口的会话后测量连接响应");return;}
     boolean apply="apply".equals(action)||"external".equals(action);RequestBinding binding=bindings.get(id);boolean immediate=apply&&binding!=null&&NetworkApplyCoordinator.IMMEDIATE.equals(J.parse(binding.snapshot).optString("applicationPolicy"));
+    if(ChromiumRouteLease.held()){if(apply)selectPolicy(id,action,candidate,baseline,NetworkApplyCoordinator.DEFER);else finish(id,false,ChromiumRouteLease.REASON);return;}
     if(busy(s,n)&&!immediate){if(apply)waitSaved(id,"等待回复和文件操作结束");else finish(id,false,"当前回复继续进行，网络配置可以先编辑保存");return;}
     if("verify".equals(action)){if(!n.ready){finish(id,false,"请先连接此窗口，再核验出口");return;}applying=true;activeApply=id;if(s!=null)s.operation=true;n.checkExit((ok,msg)->finish(id,ok,msg));return;}
     if("reconnect".equals(action)){if(s!=null){s.reconnect();waitConnection(id,s,n,false,SystemClock.elapsedRealtime());}else if("internal".equals(profile.getSharedPreferences("chat",0).getString("networkMode","external")))n.restart((ok,msg)->finish(id,ok,msg));else finish(id,false,"打开此窗口的会话后可重连手机网络");return;}
@@ -264,6 +275,7 @@ public class NetworkUiProvider extends ContentProvider {
     });
   }
   static final class Transition {
+    ChromiumRouteLease.Handle routeChange;
     final String id,action,baseline;final JSONObject candidate;final ChatSession session;final EnvironmentSpec.Identity identity;final int generation;final long revision;String waitReason="等待回复和文件操作结束";
     String url="",scope="",preparedProof="",expectedPendingSnapshot="",oldMode="external",oldEntry="",oldProxy="";long epoch;JSONObject page;boolean oldConfigured,oldVpn,capture,fenced,confirmed,pendingReleased,previousBlocked,rollbackFailed,cancellationConfirmed;
     volatile boolean cancelled,cancelledByUser;boolean rollbackComplete,immediate,originalRunning;TaskGuardSnapshot work;long connectionLease,originalRevision,browserPolicy,identityEdit;NetworkApplicationReceipt savedReceipt;EnvironmentSpec.NetworkBinding originalNetwork;NetworkApplyCoordinator.RuntimeBinding runtimeBinding;NetworkCoreApplication coreProof;boolean rollbackAttempted,settledRoute;String runtimeGeneration;byte[] oldExitBaseline;volatile String publishedHash="";NetworkSourceSelection.ActiveSnapshot transaction;android.view.View.OnTouchListener previousTouch,touchFence;android.view.View keyTarget;
@@ -271,6 +283,7 @@ public class NetworkUiProvider extends ContentProvider {
   }
   static final class DeferredTransition extends Exception {}
   void beginTransition(String id,String action,JSONObject candidate,String baseline){
+    if(ChromiumRouteLease.held()){selectPolicy(id,action,candidate,baseline,NetworkApplyCoordinator.DEFER);return;}
     RequestBinding binding=bindings.get(id);if(binding==null){finish(id,false,"保存回执不可用，请重新检查配置");return;}Transition transition=new Transition(id,action,candidate,baseline,ChatSession.peek(),binding.identity,saveRevision);transition.expectedPendingSnapshot=binding.snapshot;transition.savedReceipt=binding.receipt;if(transition.session!=null){transition.browserPolicy=transition.session.web.identityPolicyRevision;transition.identityEdit=transition.session.identity.editSerial;}transition.immediate=NetworkApplyCoordinator.IMMEDIATE.equals(J.parse(binding.snapshot).optString("applicationPolicy"));transition.work=transition.session==null?null:transition.session.taskGuardSnapshot();applying=true;activeApply=id;activeTransition=transition;
     // Preparation never suppresses the real webpage's send observer or polling.
     io.execute(()->prepareTransition(transition));
@@ -295,6 +308,7 @@ public class NetworkUiProvider extends ContentProvider {
   boolean owns(Transition transition){return !transition.cancelled&&activeTransition==transition&&transition.id.equals(activeApply)&&transition.revision==saveRevision;}
   boolean currentEnvironment(Transition transition){JSONObject row=ProfileCatalog.get(profile).item(Profiles.slot(profile));return row.optBoolean("created")&&!row.optBoolean("deleting")&&!row.optBoolean("resetting")&&row.optInt("generation")==transition.generation&&row.optString("environmentId").equals(transition.identity.environmentId)&&(transition.session==null||transition.session.environmentGeneration==transition.generation&&transition.session.environmentId.equals(transition.identity.environmentId));}
   boolean fenceIdle(Transition transition){
+    if(ChromiumRouteLease.held()){transition.waitReason=ChromiumRouteLease.REASON;return false;}
     if(!owns(transition)||saving||!currentEnvironment(transition)||ChatSession.peek()!=transition.session)return false;NativeNetwork network=NativeNetwork.get(profile);if(network.starting||network.measuringLatency)return false;ChatSession session=transition.session;
     if(session==null)return transition.immediate||!coldPending();
     TaskGuardSnapshot guard=session.taskGuardSnapshot();
@@ -325,7 +339,7 @@ public class NetworkUiProvider extends ContentProvider {
   /** The source/private leases wait only for this short main-thread state check, never HTTP or JS. */
   void commitGate(Transition transition)throws Exception{
     CountDownLatch gate=new CountDownLatch(1);java.util.concurrent.atomic.AtomicBoolean admitted=new java.util.concurrent.atomic.AtomicBoolean(),waiting=new java.util.concurrent.atomic.AtomicBoolean(true);
-    main.post(()->{try{if(!waiting.get()||!fenceIdle(transition))return;ChatSession session=transition.session;if(session!=null){transition.previousBlocked=session.guard.blocked;transition.previousTouch=session.web.touches;transition.touchFence=(view,event)->true;session.web.cancelPendingInputEvents();session.web.setOnTouchListener(transition.touchFence);if(session.web.surface!=null){transition.keyTarget=session.web.surface;transition.keyTarget.cancelPendingInputEvents();transition.keyTarget.setOnKeyListener((view,key,event)->true);}session.guard.setBlocked(true);}transition.fenced=true;admitted.set(true);}finally{gate.countDown();}});
+    main.post(()->{try{if(!waiting.get()||!fenceIdle(transition))return;if(transition.routeChange==null){transition.routeChange=ChromiumRouteLease.tryChange();if(transition.routeChange==null){transition.waitReason=ChromiumRouteLease.REASON;return;}}ChatSession session=transition.session;if(session!=null){transition.previousBlocked=session.guard.blocked;transition.previousTouch=session.web.touches;transition.touchFence=(view,event)->true;session.web.cancelPendingInputEvents();session.web.setOnTouchListener(transition.touchFence);if(session.web.surface!=null){transition.keyTarget=session.web.surface;transition.keyTarget.cancelPendingInputEvents();transition.keyTarget.setOnKeyListener((view,key,event)->true);}session.guard.setBlocked(true);}transition.fenced=true;admitted.set(true);}finally{gate.countDown();}});
     if(!gate.await(3,TimeUnit.SECONDS)){waiting.set(false);throw new DeferredTransition();}waiting.set(false);if(!admitted.get())throw new DeferredTransition();
     if(transition.cancelled)throw new DeferredTransition();
   }
@@ -445,8 +459,9 @@ public class NetworkUiProvider extends ContentProvider {
   void deferTransition(Transition transition){
     if(activeTransition!=transition)return;if(transition.rollbackFailed){failTransition(transition,new java.io.IOException("网络设置恢复未完成，请重试应用"));return;}
     releaseCapture(transition,true);RequestBinding binding=bindings.get(transition.id);
+    if(ChromiumRouteLease.held()&&!transition.cancelledByUser&&!transition.confirmed&&!transition.fenced){transition.cancelled=true;applying=false;activeApply="";activeTransition=null;if(transition.routeChange!=null){transition.routeChange.close();transition.routeChange=null;}selectPolicy(transition.id,transition.action,transition.candidate,transition.baseline,NetworkApplyCoordinator.DEFER);return;}
     if(!transition.cancelledByUser&&binding!=null&&NetworkApplyCoordinator.AUTO.equals(J.parse(binding.snapshot).optString("applicationPolicy"))&&(transition.session==null?coldPending():!taskIdle(transition.session,transition.session.taskGuardSnapshot()))){
-      transition.cancelled=true;applying=false;activeApply="";activeTransition=null;
+      transition.cancelled=true;applying=false;activeApply="";activeTransition=null;if(transition.routeChange!=null){transition.routeChange.close();transition.routeChange=null;}
       requireChoice(transition.id,transition.action,transition.candidate,transition.baseline,"应用前的任务状态发生变化");return;
     }
     if(!transition.cancelledByUser&&transition.immediate){failTransition(transition,new java.io.IOException("当前任务或网页状态已变化，请重试应用"));return;}

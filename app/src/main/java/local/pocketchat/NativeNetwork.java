@@ -47,7 +47,8 @@ class NativeNetwork {
   void stopConfiguration(NetworkApplyCoordinator.RuntimeBinding expected,Callback callback){configurationOperation(expected,callback,true);}
   synchronized void configurationOperation(NetworkApplyCoordinator.RuntimeBinding expected,Callback callback,boolean stop){
     if(starting||activeConfiguration!=null){main.post(()->callback.done(false,"网络操作正在进行，请重试应用"));return;}
-    activeConfiguration=expected;starting=true;routeChanged();cancelMaintenance();worker.execute(()->runConfigurationOperation(expected,callback,stop));
+    ChromiumRouteLease.Handle change=ChromiumRouteLease.tryChange();if(change==null){main.post(()->callback.done(false,ChromiumRouteLease.REASON));return;}
+    activeConfiguration=expected;starting=true;routeChanged();cancelMaintenance();worker.execute(()->{try{runConfigurationOperation(expected,callback,stop);}finally{change.close();}});
   }
   void runConfigurationOperation(NetworkApplyCoordinator.RuntimeBinding expected,Callback callback,boolean stop){
     boolean ok=false;String detail="网络应用尚未确认";ExitRouteReceipt launched=null;
@@ -140,7 +141,7 @@ class NativeNetwork {
   }
   static final String PROBE="https://www.gstatic.com/generate_204";
   NativeNetwork(Context c){this(c,new File(c.getNoBackupFilesDir(),"network-runtime"),true);}
-  NativeNetwork(Context c,File directory,boolean monitor){context=c.getApplicationContext();quality=new RouteQuality(context);websiteQuality=new RouteQuality(context,"website-quality");dns=new NetworkDns(context);traffic=new TrafficMonitor(this);secrets=new SecretStore(c);root=directory;root.mkdirs();diagnostics=NetworkDiagnosticStore.forContext(context,root.getName().equals("network-runtime")?NetworkDiagnostics.Source.CONTROL:NetworkDiagnostics.Source.PREVIEW);transport=root.getName().equals("network-runtime")?new NetworkTransportClient(context,this::transportChanged):null;if(monitor)worker.scheduleWithFixedDelay(()->runHealth(),30,30,TimeUnit.SECONDS);}
+  NativeNetwork(Context c,File directory,boolean monitor){context=c.getApplicationContext();quality=new RouteQuality(context);websiteQuality=new RouteQuality(context,"website-quality");dns=new NetworkDns(context);traffic=new TrafficMonitor(this);secrets=new SecretStore(c);root=directory;root.mkdirs();diagnostics=NetworkDiagnosticStore.forContext(context,root.getName().equals("network-runtime")?NetworkDiagnostics.Source.CONTROL:NetworkDiagnostics.Source.PREVIEW);transport=root.getName().equals("network-runtime")?new NetworkTransportClient(context,this::transportChanged):null;if(monitor){ChromiumRouteLease.addListener(this::pauseBackgroundWhenBusy);worker.scheduleWithFixedDelay(()->runHealth(),30,30,TimeUnit.SECONDS);}}
   static void validateSourceUrl(String url,String role)throws Exception{URI u=new URI(url);if(!"https".equals(u.getScheme())||u.getHost()==null||u.getUserInfo()!=null)throw new IOException("请填写 HTTPS 格式的"+role+"订阅地址");}
   static void validateBoundSource(JSONObject config,String prefix,String field,String label)throws Exception{
     String url=config.optString(field),id=config.optString(prefix+"SubscriptionId");
@@ -209,7 +210,7 @@ class NativeNetwork {
     report("出口核验暂不可用 · 已核验的原线路保持连接");return true;
   }
   void start(Callback callback){startOperation(callback,0);}
-  void restart(Callback callback){recoveryBlocked=false;startOperation(callback,2);}
+  void restart(Callback callback){startOperation(callback,2);}
   void recover(Callback callback){if(recoveryBlocked){main.post(()->callback.done(false,message));return;}startOperation(callback,1);}
   void recoverOutcome(RecoveryCallback callback){recover(new RecoveryAdapter(callback));}
   /** Main-thread read: the worker already revalidated this exact outcome using fresh IPC. */
@@ -217,7 +218,7 @@ class NativeNetwork {
     ExitRouteReceipt receipt=outcome==null?null:outcome.receipt;
     return outcome!=null&&outcome.state==RecoveryState.RETAINED&&receipt!=null&&receipt==verifiedRoute&&ready&&!recoveryBlocked&&admission.usable()&&receipt.matches(this,transport==null?null:transport.state);
   }
-  synchronized void startOperation(Callback callback,int mode){if(activeConfiguration!=null){main.post(()->callback.done(false,"网络设置正在应用"));return;}if(mode==0&&connectionAdmission().usable()&&coreAlive()){main.post(()->callback.done(true,message));return;}startWaiters.add(callback);if(starting){if(mode==2)restartQueued=true;return;}starting=true;routeChanged();cancelMaintenance();worker.execute(()->runStartOperation(mode));
+  synchronized void startOperation(Callback callback,int mode){if(activeConfiguration!=null){main.post(()->callback.done(false,"网络设置正在应用"));return;}if(mode==0&&connectionAdmission().usable()&&coreAlive()){main.post(()->callback.done(true,message));return;}if(ChromiumRouteLease.held()){main.post(()->callback.done(false,ChromiumRouteLease.REASON));return;}startWaiters.add(callback);if(starting){if(mode==2)restartQueued=true;return;}ChromiumRouteLease.Handle change=ChromiumRouteLease.tryChange();if(change==null){startWaiters.remove(callback);main.post(()->callback.done(false,ChromiumRouteLease.REASON));return;}if(mode==2)recoveryBlocked=false;starting=true;routeChanged();cancelMaintenance();worker.execute(()->{try{runStartOperation(mode);}finally{change.close();}});
   }
   void runStartOperation(int mode){bindDiagnostics();if(mode!=0)note(NetworkDiagnostics.Event.RECONNECT_ATTEMPT,NetworkDiagnostics.Reason.REQUESTED,NetworkDiagnostics.Stage.RECOVER,++reconnectAttempts);boolean ok=false,retainedResult=false;try{
       if(mode==1&&recoveryBlocked)throw new ExitMismatch();
@@ -443,7 +444,7 @@ class NativeNetwork {
   boolean maintenanceCancelled(){NetworkWork work=maintenance.get();return work!=null&&work.cancelled;}
   void track(HttpURLConnection c)throws InterruptedIOException{NetworkWork work=maintenance.get();if(work!=null)work.add(c);}
   void untrack(HttpURLConnection c){NetworkWork work=maintenance.get();if(work!=null)work.remove(c);}
-  boolean backgroundIdle(){ChatSession s=ChatSession.peek();return s!=null&&!s.uiVisible&&!s.browserWorkActive();}
+  boolean backgroundIdle(){if(ChromiumRouteLease.held())return false;ChatSession s=ChatSession.peek();return s!=null&&!s.uiVisible&&!s.browserWorkActive();}
   long latestLatencyAt(String entry,String epoch){long at=quality.currentSample(entry,System.currentTimeMillis(),probeRouteKey()).optLong("at");JSONObject displayed=latencyReading;if(entry.equals(displayed.optString("entry"))&&epoch.equals(displayed.optString("generation"))&&routeSerial==displayed.optLong("routeSerial"))at=Math.max(at,displayed.optLong("at"));return at;}
   long latencyRemaining(long now){
     long left=LatencyRefreshPolicy.remaining(latestLatencyAt(currentEntry,token),now),mono=android.os.SystemClock.elapsedRealtime();
@@ -526,7 +527,7 @@ class NativeNetwork {
   String probeUrl(){return PROBE;}
   String exitCheckUrl(){return "https://api.ipify.org?format=json";}
   boolean lowLatency(){return settings!=null&&"latency".equals(settings.optString("entryMode"));}
-  boolean routeBusy(){return NetworkRegion.backgroundBusy(ChatSession.peek());}
+  boolean routeBusy(){return ChromiumRouteLease.held()||NetworkRegion.backgroundBusy(ChatSession.peek());}
   List<String> rankedRoutes(){long now=System.currentTimeMillis();List<String> ordered=quality.ranked(names,now);if(lowLatency())ordered.sort(Comparator.comparingDouble(name->{JSONObject q=websiteQuality.stats(name,now);return q.optInt("samples")>=3&&q.optInt("latest")>0?q.optDouble("score"):1000000+quality.stats(name,now).optDouble("score");}));return ordered;}
   List<String> optimizationBatch(){
     long now=System.currentTimeMillis();Map<String,Integer> samples=new HashMap<>(),delays=new HashMap<>();
@@ -589,8 +590,12 @@ class NativeNetwork {
     try{return expected.entry.equals(api("GET","/proxies/EntryChoice",null,3000).optString("now"))&&expected==verifiedRoute&&verifiedRouteCurrent();}catch(Exception unavailable){return false;}
   }
   void selectNow(String name)throws Exception{
+    ChromiumRouteLease.Handle change=ChromiumRouteLease.tryChange();if(change==null)throw retained(ChromiumRouteLease.REASON);
+    try{
     invalidateVerifiedRoute();api("PUT","/proxies/EntryChoice",J.obj("name",name),3000);
     if(!name.equals(api("GET","/proxies/EntryChoice",null,3000).optString("now")))throw new IOException("入口切换未得到确认");currentEntry=name;
+
+    }finally{change.close();}
   }
   void commitSelection(){long now=System.currentTimeMillis();quality.selected(currentEntry,now);websiteQuality.selected(currentEntry,now);websiteResult=new JSONObject();}
   /** Only startNow can grant initial-route admission for a newly launched core.
@@ -612,6 +617,8 @@ class NativeNetwork {
     boolean accepts(long serial){return core!=null&&serial>=core.serial&&serial<=this.serial;}
   }
   private void recoverFirstVerifiedRoute(String rejected)throws Exception{
+    ChromiumRouteLease.Handle change=ChromiumRouteLease.tryChange();if(change==null)throw retained(ChromiumRouteLease.REASON);
+    try{
     maintenanceCheck();if(routeBusy())throw retained("当前操作继续使用原线路；尚未完成重连");
     ExitRouteReceipt owned=verifiedRoute;RecoveryRoute recovery=null;
     try{
@@ -628,6 +635,8 @@ class NativeNetwork {
       String detail=failure.getMessage()==null?"故障线路恢复未完成，当前窗口连接已暂停":failure.getMessage();report(detail);
       throw failure instanceof RouteTransactionFailure?(RouteTransactionFailure)failure:new RouteTransactionFailure(detail,failure);
     }finally{if(recovery!=null)recovery.active=false;}
+
+    }finally{change.close();}
   }
   JSONObject recoveryState(RecoveryRoute recovery)throws Exception{
     maintenanceCheck();try{
@@ -672,6 +681,8 @@ class NativeNetwork {
     selectVerifiedRoute(name,measure,bootstrap,null);
   }
   void selectVerifiedRoute(String name,boolean measure,StartupRoute bootstrap,RecoveryRoute recovery)throws Exception{
+    ChromiumRouteLease.Handle change=ChromiumRouteLease.tryChange();if(change==null)throw retained(ChromiumRouteLease.REASON);
+    try{
     maintenanceCheck();if(bootstrap==null&&routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");
     ExitRouteReceipt previous=bootstrap==null&&verifiedRouteCurrent()?verifiedRoute:null;String old=currentEntry;
     maintenanceCheck();if(bootstrap!=null)startupState(bootstrap,true);else if(routeBusy())throw retained("正在回复或处理附件，入口切换已暂停");if(recovery!=null)recoveryState(recovery);
@@ -701,6 +712,8 @@ class NativeNetwork {
       finally{if(work!=null)maintenance.set(work);if(interrupted)Thread.currentThread().interrupt();}
       throw retained("候选入口未通过验证，已恢复并重新核验原入口");
     }
+
+    }finally{change.close();}
   }
   /** A stale transaction can revoke its own admission, never stop a replacement core. */
   void stopFailedTransaction(ExitRouteReceipt owned){stopOwnedCore(owned,NetworkDiagnostics.Reason.ROLLBACK_FAILED);}

@@ -67,7 +67,7 @@ def main():
     java_file.write_text(harness)
     clock = work / 'SystemClock.java'
     clock.write_text('package android.os;public class SystemClock{public static long offset;public static long elapsedRealtime(){return System.nanoTime()/1000000+offset;}public static void advance(long delta){offset+=delta;}}')
-    production = [ROOT / 'app/src/main/java/local/pocketchat' / name for name in ('NetworkHealthPolicy.java', 'NetworkWork.java', 'NetworkDiagnostics.java')]
+    production = [ROOT / 'app/src/main/java/local/pocketchat' / name for name in ('ChromiumRouteLease.java', 'NetworkHealthPolicy.java', 'NetworkWork.java', 'NetworkDiagnostics.java')]
     inputs = [*production, template, helper, pathlib.Path(__file__).resolve()]
     digests = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     compiler = subprocess.run([str(args.java_home / 'bin/javac'), '-encoding', 'UTF-8', '-cp', str(args.json_jar), '-d', str(work), str(java_file), str(clock), *map(str, production)], capture_output=True, text=True, timeout=60)

@@ -42,7 +42,7 @@ class AppAppearance {static void install(Application application){}static void r
 class AppVisibility {static void install(Application application){}}
 class BackgroundReplyPolicy {static void bootstrap(Application application){}static void install(Application application){}}
 '''.replace('__EXIT_ROUTE_RECEIPT__',receipt))
-names=['ChromiumRuntime.java','ChromiumRoutePolicy.java','BrowserNetworkGuard.java','BrowserAddressPolicy.java','NetworkHealthPolicy.java','VpnDefaultRouteCoverage.java','PocketApplication.java','ProfileContext.java','EnvironmentProcessPolicy.java','EnvironmentBrowserData.java','DownloadLibraryChanges.java']
+names=['ChromiumRuntime.java','ChromiumRouteLease.java','ChromiumRoutePolicy.java','BrowserNetworkGuard.java','BrowserAddressPolicy.java','NetworkHealthPolicy.java','VpnDefaultRouteCoverage.java','PocketApplication.java','ProfileContext.java','EnvironmentProcessPolicy.java','EnvironmentBrowserData.java','DownloadLibraryChanges.java']
 sources=[root/'app/src/main/java/local/pocketchat'/name for name in names]
 result=subprocess.run([str(java),'-encoding','UTF-8','-cp',str(android)+':'+str(webkit),'-d',str(work/'classes'),str(boundary),*map(str,sources)],capture_output=True,text=True,timeout=60)
 (work/'javac.log').write_text(result.stdout+result.stderr)

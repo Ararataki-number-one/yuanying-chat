@@ -25,7 +25,7 @@ def main():
  generated=out/'generated';generated.mkdir(exist_ok=True);host=generated/'WakeHost.java';host.write_text(text)
  clock=generated/'SystemClock.java';clock.write_text('package android.os;public final class SystemClock{public static long now=20001;public static long elapsedRealtime(){return now;}}')
  uri=generated/'Uri.java';uri.write_text('package android.net;public final class Uri{final java.net.URI u;private Uri(String v){u=java.net.URI.create(v);}public static Uri parse(String v){return new Uri(v);}public String getScheme(){return u.getScheme();}public String getHost(){return u.getHost();}public String getUserInfo(){return u.getUserInfo();}public int getPort(){return u.getPort();}}')
- files=[prod/(n+'.java') for n in ['J','DeferredBrowserSettings','TaskGuardSnapshot','EnvironmentResourcePolicy']]+[host,clock,uri];classes=out/'classes';classes.mkdir(exist_ok=True)
+ files=[prod/'ChromiumRouteLease.java']+[prod/(n+'.java') for n in ['J','DeferredBrowserSettings','TaskGuardSnapshot','EnvironmentResourcePolicy']]+[host,clock,uri];classes=out/'classes';classes.mkdir(exist_ok=True)
  cmd=[str(a.java_home/'bin/javac'),'-J-XX:ActiveProcessorCount=2','-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),*map(str,files)];c=subprocess.run(cmd,capture_output=True,text=True,timeout=45);(out/'compile.stdout.txt').write_text(c.stdout);(out/'compile.stderr.txt').write_text(c.stderr)
  if a.negative_direct_field_read:
   assert fixed and c.returncode!=0 and 'variable web might not have been initialized' in c.stderr

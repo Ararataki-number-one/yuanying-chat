@@ -21,6 +21,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   final Handler probe=new Handler(Looper.getMainLooper());
   final JSONArray checks=new JSONArray();
   final JSONArray layoutObservations=new JSONArray();
+  final JSONArray leaseObservations=new JSONArray();
   FixtureProxy fixture;JSONObject build;String nonce,stage="starting",failure="";long deadline;
   WebView first,returnSurface;Object oldRoute;int picker;boolean pickerOpened,finished,switchedAway;
   int baselineDownloads;JSONObject target=new JSONObject();
@@ -62,6 +63,8 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     check("The proxy override has acknowledged the actual route",runtime.allowed()&&actualProxy!=null&&actualProxy.type()==java.net.Proxy.Type.HTTP&&actualProxy.address() instanceof InetSocketAddress&&((InetSocketAddress)actualProxy.address()).getPort()==fixture.port());
     PackageInfo provider=WebView.getCurrentWebViewPackage();check("Android reports an installed WebView provider",provider!=null&&provider.versionName!=null&&!provider.versionName.isEmpty());
     check("The actual Android WebView rendered the proxy response",fixture.successes.get()>0&&web().getProgress()==100);
+    ChromiumRouteLease.Snapshot liveLease=observeLease("first-surface");
+    check("A live browser surface retains the actual native route",ChromiumRouteLease.held()&&liveLease.surfaces==1&&NativeNetwork.get(this).routeBusy());
     check("Production surface disables file and content access",!web().getSettings().getAllowFileAccess()&&!web().getSettings().getAllowContentAccess());
     check("Production surface blocks mixed content",web().getSettings().getMixedContentMode()==WebSettings.MIXED_CONTENT_NEVER_ALLOW);
     check("The address bar follows the actual page URL",address.getText().toString().equals(ORIGIN+"/start"));
@@ -82,6 +85,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     first=web();js("({draft:(document.getElementById('draft').value='first tab exact draft'),marker:(window.__fixtureProbe='kept')})",value->{try{
       step("second-tab");newTab(ORIGIN+"/tab");await("tab",()->page("/tab"),()->{
         check("A second tab uses another real WebView",tabs.size()==2&&web()!=first);
+        check("Both live tab surfaces own separate route leases",observeLease("two-surfaces").surfaces==2);
         check("The same browser environment retains its cookie across tabs",CookieManager.getInstance().getCookie(ORIGIN).contains("browser_fixture=preserved"));
         select(tabs.get(0));check("Selecting the first tab reuses its existing surface",web()==first);
         js("({draft:document.getElementById('draft').value,marker:window.__fixtureProbe})",state->{try{
@@ -111,7 +115,13 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     });
   });}
   void prepareDownload()throws Exception{
-    baselineDownloads=files.store.rows().length();target("download",()->{step("download-click");await("native download publication",()->files.transfer==null&&files.store.rows().length()>baselineDownloads,this::downloaded);});
+    baselineDownloads=files.store.rows().length();target("download",()->{step("download-click");
+      await("in-flight native download route ownership",()->files.transfer!=null&&ChromiumRouteLease.snapshot().downloads>0,()->{
+        check("In-flight native download owns its route lease",observeLease("download-in-flight").downloads==1&&ChromiumRouteLease.held()&&NativeNetwork.get(this).routeBusy());
+        fixture.downloadRelease.countDown();step("download-publication");
+        await("native download publication",()->files.transfer==null&&files.store.rows().length()>baselineDownloads&&ChromiumRouteLease.snapshot().downloads==0,this::downloaded);
+      });
+    });
   }
   void downloaded()throws Exception{
     JSONArray rows=files.store.rows();JSONObject saved=rows.getJSONObject(0);
@@ -120,9 +130,11 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     check("The browser file is discoverable in the global download index",indexed);
     try(InputStream stream=getContentResolver().openInputStream(android.net.Uri.parse(saved.getString("uri")))){check("The published Android content URI contains the exact fixture bytes",BODY.equals(J.text(stream,1024)));}
     check("Native downloads use the same controlled proxy",fixture.downloads.get()>0);
+    check("Completed native downloads release their own route lease",observeLease("download-complete").downloads==0&&ChromiumRouteLease.snapshot().surfaces==2);
     oldRoute=runtime.routeStamp();step("route-block");getSharedPreferences("chat",0).edit().putBoolean("networkConfigured",false).commit();
-    await("unconfigured route closes surfaces",()->!runtime.allowed()&&tabs.stream().allMatch(tab->tab.web==null),()->{
+    await("unconfigured route closes surfaces",()->!runtime.allowed()&&tabs.stream().allMatch(tab->tab.web==null)&&!ChromiumRouteLease.held(),()->{
       check("A route configuration change retires every live surface",tabs.stream().allMatch(tab->tab.web==null));
+      ChromiumRouteLease.Snapshot retired=observeLease("route-blocked");check("Retired surfaces and completed downloads release every route hold",!ChromiumRouteLease.held()&&retired.surfaces==0&&retired.downloads==0);
       check("The old route token is rejected",!runtime.current(oldRoute));
       int observed=fixture.blockedRequests.get();go(ORIGIN+"/blocked");
       probe.postDelayed(()->{try{
@@ -130,6 +142,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
         step("route-restore");getSharedPreferences("chat",0).edit().putBoolean("networkConfigured",true).commit();
         await("restored actual route",()->runtime.allowed()&&page("/blocked"),()->{
           check("Explicit route restoration creates a fresh live document",web()!=first&&runtime.current(runtime.routeStamp())&&!runtime.current(oldRoute));
+          check("Restored live surface reacquires native route protection",observeLease("route-restored").surfaces==1&&ChromiumRouteLease.held()&&NativeNetwork.get(this).routeBusy());
           check("The controlled proxy has never forwarded an external request",fixture.upstreamConnections==0);
           returnSurface=web();js("({draft:(document.getElementById('draft').value='engine roundtrip exact draft'),marker:(window.__fixtureRoundtrip='same document')})",value->{try{
             orientations(this::switchEngines);
@@ -137,6 +150,9 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
         });
       }catch(Throwable error){fail(error);}},500);
     });
+  }
+  ChromiumRouteLease.Snapshot observeLease(String name)throws JSONException{
+    ChromiumRouteLease.Snapshot value=ChromiumRouteLease.snapshot();leaseObservations.put(new JSONObject().put("stage",name).put("surfaces",value.surfaces).put("downloads",value.downloads).put("changes",value.changes).put("held",ChromiumRouteLease.held()).put("nativeRouteBusy",NativeNetwork.get(this).routeBusy()));return value;
   }
   boolean controlsVisible()throws JSONException{
     JSONArray controls=new JSONArray();boolean available=true;String[] names={"address","back","forward","tabs","reload"};int at=0;
@@ -155,6 +171,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   void switchEngines()throws Exception{
     step("switch-to-gecko");openChat();await("enhanced activity and browser task roundtrip",()->switchedAway&&foreground,()->{
       check("Returning from the actual enhanced activity retains the browser surface",web()==returnSurface&&runtime.allowed());
+      check("Engine task roundtrip retains the live Chromium route lease",observeLease("engine-roundtrip").surfaces==1&&ChromiumRouteLease.held()&&NativeNetwork.get(this).routeBusy());
       js("({draft:document.getElementById('draft').value,marker:window.__fixtureRoundtrip})",returned->{try{
         check("Engine UI roundtrip preserves the exact live browser document and draft",returned.getString("draft").equals("engine roundtrip exact draft")&&returned.getString("marker").equals("same document"));finished=true;stage="complete";publish(true);
       }catch(Throwable error){fail(error);}});
@@ -163,7 +180,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   void fail(Throwable error){if(finished)return;failure=error.getClass().getSimpleName()+": "+String.valueOf(error.getMessage());stage="failed";finished=true;try{publish(true);}catch(Exception ignored){} }
   void publish(boolean terminal)throws Exception{
     int passed=0;for(int i=0;i<checks.length();i++)if(checks.getJSONObject(i).optBoolean("pass"))passed++;
-    PackageInfo provider=WebView.getCurrentWebViewPackage();JSONObject value=new JSONObject().put("schema",1).put("status",terminal?(failure.isEmpty()?"passed":"failed"):"running").put("stage",stage).put("runNonce",nonce).put("taskId",getTaskId()).put("buildIdentity",build).put("sourceCommit",build.getString("sourceCommit")).put("checks",checks).put("layoutObservations",layoutObservations).put("passed",passed).put("total",checks.length()).put("failure",failure).put("tapTarget",target).put("provider",provider==null?JSONObject.NULL:new JSONObject().put("package",provider.packageName).put("version",provider.versionName)).put("proxy",fixture.snapshot()).put("actualAndroidExecution",true).put("actualAndroidWebViewExecution",web()!=null||first!=null).put("actualGeckoExecution",false).put("actualPublicWebsiteExecution",false).put("actualDevicePerformanceMeasurement",false).put("scope","Real production BrowserActivity, ChromiumRuntime, ProxyController, Android WebView and native download store with a loopback synthetic HTTP proxy; no upstream forwarding. Chooser and download actions require trusted shell taps. Not phone, public ChatGPT, camera/microphone or frame-rate acceptance.");
+    PackageInfo provider=WebView.getCurrentWebViewPackage();JSONObject value=new JSONObject().put("schema",1).put("status",terminal?(failure.isEmpty()?"passed":"failed"):"running").put("stage",stage).put("runNonce",nonce).put("taskId",getTaskId()).put("buildIdentity",build).put("sourceCommit",build.getString("sourceCommit")).put("checks",checks).put("layoutObservations",layoutObservations).put("leaseObservations",leaseObservations).put("passed",passed).put("total",checks.length()).put("failure",failure).put("tapTarget",target).put("provider",provider==null?JSONObject.NULL:new JSONObject().put("package",provider.packageName).put("version",provider.versionName)).put("proxy",fixture.snapshot()).put("actualAndroidExecution",true).put("actualAndroidWebViewExecution",web()!=null||first!=null).put("actualGeckoExecution",false).put("actualPublicWebsiteExecution",false).put("actualDevicePerformanceMeasurement",false).put("scope","Real production BrowserActivity, ChromiumRuntime, ProxyController, Android WebView and native download store with a loopback synthetic HTTP proxy; no upstream forwarding. Chooser and download actions require trusted shell taps. Not phone, public ChatGPT, camera/microphone or frame-rate acceptance.");
     AtomicFile file=new AtomicFile(new File(getFilesDir(),"browser-integration-results.json"));FileOutputStream stream=null;try{stream=file.startWrite();stream.write((value.toString()+"\n").getBytes(StandardCharsets.UTF_8));file.finishWrite(stream);}catch(Exception error){if(stream!=null)file.failWrite(stream);throw error;}
   }
   @Override protected void onPause(){
@@ -173,7 +190,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   @Override protected void onDestroy(){probe.removeCallbacksAndMessages(null);if(fixture!=null)fixture.close();super.onDestroy();}
 
   static final class FixtureProxy implements AutoCloseable {
-    final ServerSocket server;final ExecutorService clients=Executors.newFixedThreadPool(4);volatile boolean closed;final AtomicInteger successes=new AtomicInteger(),downloads=new AtomicInteger(),rejected=new AtomicInteger(),blockedRequests=new AtomicInteger();final int upstreamConnections=0;
+    final ServerSocket server;final ExecutorService clients=Executors.newFixedThreadPool(4);final CountDownLatch downloadRelease=new CountDownLatch(1);volatile boolean closed;final AtomicInteger successes=new AtomicInteger(),downloads=new AtomicInteger(),rejected=new AtomicInteger(),blockedRequests=new AtomicInteger();final int upstreamConnections=0;
     FixtureProxy()throws IOException{server=new ServerSocket(0,16,InetAddress.getByName("127.0.0.1"));}
     int port(){return server.getLocalPort();}
     void start(){Thread thread=new Thread(()->{while(!closed)try{Socket socket=server.accept();clients.execute(()->serve(socket));}catch(IOException|RejectedExecutionException done){if(!closed)rejected.incrementAndGet();}},"browser-fixture-proxy");thread.setDaemon(true);thread.start();}
@@ -183,8 +200,8 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
       String path=uri.getPath();successes.incrementAndGet();if(path.equals("/blocked"))blockedRequests.incrementAndGet();if(path.equals("/file.txt")){downloads.incrementAndGet();respond(value,200,"text/plain",BODY.getBytes(StandardCharsets.UTF_8),true);}
       else{String html="<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>Fixture "+path+"</title></head><body><h1>Controlled Chromium "+path+"</h1><textarea id='draft' style='display:block;width:90%;height:80px'>untouched website draft</textarea><input id='upload' type='file' multiple style='display:block;margin:30px 0;height:50px'><a id='download' href='/file.txt' download='fixture.txt' style='display:block;padding:25px'>Download controlled fixture</a></body></html>";respond(value,200,"text/html; charset=UTF-8",html.getBytes(StandardCharsets.UTF_8),false);}
     }catch(Exception ignored){rejected.incrementAndGet();}}
-    void respond(Socket socket,int code,String type,byte[] body,boolean attachment)throws IOException{OutputStream stream=socket.getOutputStream();String headers="HTTP/1.1 "+code+" "+(code==200?"OK":"Bad Gateway")+"\r\nContent-Type: "+type+"\r\nContent-Length: "+body.length+"\r\nConnection: close\r\nCache-Control: no-store\r\nSet-Cookie: browser_fixture=preserved; Path=/; SameSite=Lax\r\n"+(attachment?"Content-Disposition: attachment; filename=fixture.txt\r\n":"")+"\r\n";stream.write(headers.getBytes(StandardCharsets.ISO_8859_1));stream.write(body);stream.flush();}
+    void respond(Socket socket,int code,String type,byte[] body,boolean attachment)throws IOException{OutputStream stream=socket.getOutputStream();String headers="HTTP/1.1 "+code+" "+(code==200?"OK":"Bad Gateway")+"\r\nContent-Type: "+type+"\r\nContent-Length: "+body.length+"\r\nConnection: close\r\nCache-Control: no-store\r\nSet-Cookie: browser_fixture=preserved; Path=/; SameSite=Lax\r\n"+(attachment?"Content-Disposition: attachment; filename=fixture.txt\r\n":"")+"\r\n";stream.write(headers.getBytes(StandardCharsets.ISO_8859_1));if(attachment&&body.length>0){stream.write(body,0,1);stream.flush();try{if(!downloadRelease.await(45,TimeUnit.SECONDS))throw new IOException("Controlled download gate timed out");}catch(InterruptedException stopped){Thread.currentThread().interrupt();throw new IOException("Controlled download interrupted",stopped);}stream.write(body,1,body.length-1);}else stream.write(body);stream.flush();}
     JSONObject snapshot()throws JSONException{return new JSONObject().put("successfulFixtureRequests",successes.get()).put("downloadRequests",downloads.get()).put("blockedPathRequests",blockedRequests.get()).put("rejectedRequests",rejected.get()).put("upstreamConnections",upstreamConnections).put("forwardingImplemented",false);}
-    public void close(){closed=true;try{server.close();}catch(IOException ignored){}clients.shutdownNow();}
+    public void close(){closed=true;downloadRelease.countDown();try{server.close();}catch(IOException ignored){}clients.shutdownNow();}
   }
 }

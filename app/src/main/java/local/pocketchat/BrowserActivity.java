@@ -27,7 +27,7 @@ public class BrowserActivity extends ThemedActivity {
   final ExecutorService cookieWorker=Executors.newSingleThreadExecutor(r->new Thread(r,"browser-cookie-save"));final AtomicBoolean flushingCookies=new AtomicBoolean();
   Tab selected;View customView;WebChromeClient.CustomViewCallback customCallback;boolean foreground,destroyed,createdSurface;
   static final class Tab {
-    WebView web;Bundle saved;String url,title="";boolean loading,desktop,failed;long generation;
+    WebView web;ChromiumRouteLease.Handle routeLease;Bundle saved;String url,title="";boolean loading,desktop,failed;long generation;
     Tab(String url){this.url=url;}
   }
   public static class Profile1 extends BrowserActivity {}
@@ -89,7 +89,7 @@ public class BrowserActivity extends ThemedActivity {
   void message(String text){if(destroyed)return;notice.setText(text==null?"":text);notice.setVisibility(text==null||text.isEmpty()?View.GONE:View.VISIBLE);}
   void routeChanged(boolean ready,String reason){
     if(destroyed)return;message(ready?"":reason);
-    if(!ready){hideCustomView();for(Tab tab:tabs)retire(tab);content.removeAllViews();}
+    if(!ready){if(files!=null)files.cancelActiveDownload();hideCustomView();for(Tab tab:tabs)retire(tab);content.removeAllViews();}
     else if(selected!=null)showSelected();
     updateChrome();
   }
@@ -109,9 +109,10 @@ public class BrowserActivity extends ThemedActivity {
     if(foreground)view.onResume();else view.onPause();
   }
   void createSurface(Tab tab){
+    ChromiumRouteLease.Handle lease=ChromiumRouteLease.acquireSurface();if(lease==null){runtime.surfaceDeferred();message("正在应用环境线路，完成后再打开网页");return;}
     WebView view;
-    try{view=new WebView(this);}catch(RuntimeException failure){message("系统 Chromium 组件无法启动，请更新 Android System WebView 或 Chrome 后重试");return;}
-    tab.web=view;createdSurface=true;
+    try{view=new WebView(this);}catch(RuntimeException failure){lease.close();message("系统 Chromium 组件无法启动，请更新 Android System WebView 或 Chrome 后重试");return;}
+    tab.web=view;tab.routeLease=lease;createdSurface=true;
     WebSettings settings=view.getSettings();settings.setBlockNetworkLoads(true);settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setMediaPlaybackRequiresUserGesture(true);settings.setSupportMultipleWindows(true);settings.setJavaScriptCanOpenWindowsAutomatically(false);settings.setBuiltInZoomControls(true);settings.setDisplayZoomControls(false);settings.setLoadWithOverviewMode(true);settings.setUseWideViewPort(true);settings.setOffscreenPreRaster(false);settings.setSafeBrowsingEnabled(true);
     CookieManager.getInstance().setAcceptThirdPartyCookies(view,false);applyDesktop(tab);
     view.setWebViewClient(new WebViewClient(){
@@ -178,10 +179,10 @@ public class BrowserActivity extends ThemedActivity {
     back.setEnabled(web()!=null&&web().canGoBack());forward.setEnabled(web()!=null&&web().canGoForward());tabCount.setText(String.valueOf(tabs.size()));tabCount.setContentDescription(tabs.size()+" 个标签页，点击管理");reload.setContentDescription(selected.loading?"停止加载":"刷新网页");progress.setVisibility(selected.loading?View.VISIBLE:View.INVISIBLE);
   }
   void retire(Tab tab){
-    WebView view=tab.web;if(view==null)return;tab.web=null;tab.loading=false;tab.generation++;files.cancelFor(view);permissions.onNavigation(view);
+    WebView view=tab.web;ChromiumRouteLease.Handle lease=tab.routeLease;tab.routeLease=null;if(view==null){if(lease!=null)lease.close();return;}try{tab.web=null;tab.loading=false;tab.generation++;files.cancelFor(view);permissions.onNavigation(view);
     try{tab.saved=new Bundle();view.saveState(tab.saved);}catch(RuntimeException gone){tab.saved=null;}
     try{view.stopLoading();view.getSettings().setBlockNetworkLoads(true);view.onPause();}catch(RuntimeException gone){}
-    finally{if(view.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)view.getParent()).removeView(view);try{view.setWebChromeClient(null);view.destroy();}catch(RuntimeException gone){}}
+    finally{if(view.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)view.getParent()).removeView(view);try{view.setWebChromeClient(null);view.destroy();}catch(RuntimeException gone){}}}finally{if(lease!=null)lease.close();}
   }
   void closeTab(Tab tab){if(!tabs.contains(tab))return;int index=tabs.indexOf(tab);boolean active=tab==selected;retire(tab);tabs.remove(tab);if(active){selected=null;if(tabs.isEmpty())newTab(BrowserPreferences.home(this));else select(tabs.get(Math.min(index,tabs.size()-1)));}updateChrome();}
   void showTabs(){ReferenceUi.Modal dialog=new ReferenceUi.Modal(this,"标签页 · "+tabs.size()+"/8").asSheet();for(Tab tab:new ArrayList<>(tabs)){LinearLayout row=DesignUi.row(this);Button open=ReferenceUi.link(this,(tab==selected?"● ":"")+(tab.title.isEmpty()?tab.url:tab.title),()->{dialog.dismiss();select(tab);});open.setMaxLines(2);row.addView(open,new LinearLayout.LayoutParams(0,-2,1));row.addView(ReferenceUi.iconButton(this,"close","关闭标签页 "+tab.url,()->{dialog.dismiss();closeTab(tab);}),new LinearLayout.LayoutParams(dp(48),dp(48)));dialog.body.addView(row);}dialog.buttons("返回",dialog::dismiss,"新标签页",()->{dialog.dismiss();newTab(BrowserPreferences.home(this));focusAddress();});dialog.show();}
@@ -194,6 +195,7 @@ public class BrowserActivity extends ThemedActivity {
     action(dialog,selected.desktop?"切换手机版网站":"请求桌面版网站",()->{selected.desktop=!selected.desktop;applyDesktop(selected);if(web()!=null){files.cancelFor(web());permissions.onNavigation(web());web().reload();}});
     action(dialog,"分享当前网址",this::share);action(dialog,"复制当前网址",()->{((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("网址",selected.url));message("已复制网址");});
     action(dialog,"下载文件",files::showDownloads);
+    action(dialog,"关闭浏览器",this::confirmCloseBrowser);
     action(dialog,"当前网站权限",this::sitePermissions);
     action(dialog,"此环境的网络设置",()->startActivity(new Intent(this,Profiles.activity(Profiles.slot(this))).putExtra("openWindowAction","network").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
     action(dialog,"首页与启动界面",()->BrowserSettingsUi.show(this,()->{}));
@@ -224,8 +226,9 @@ public class BrowserActivity extends ThemedActivity {
   void saveCookies(){if(!createdSurface||!flushingCookies.compareAndSet(false,true))return;cookieWorker.execute(()->{try{CookieManager.getInstance().flush();}catch(RuntimeException unavailable){}finally{flushingCookies.set(false);}});}
   @Override protected void onPause(){foreground=false;hideCustomView();if(web()!=null)web().onPause();saveCookies();super.onPause();}
   @Override protected void onSaveInstanceState(Bundle state){ArrayList<String> urls=new ArrayList<>();for(Tab tab:tabs)urls.add(tab.url);state.putStringArrayList("browser.urls",urls);state.putInt("browser.selected",tabs.indexOf(selected));super.onSaveInstanceState(state);}
-  void leaveBrowser(){super.onBackPressed();}
-  @Override public void onBackPressed(){if(customView!=null){hideCustomView();return;}if(findBar!=null&&findBar.getVisibility()==View.VISIBLE){closeFind();return;}if(web()!=null&&web().canGoBack()){history(-1);return;}if(files!=null&&files.hasActiveDownload()){AppAppearance.dialog(this).setTitle("退出并取消下载？").setMessage("退出浏览器会取消当前下载。留在此页或切到后台可继续下载。").setNegativeButton("继续下载",null).setPositiveButton("退出并取消",(d,w)->leaveBrowser()).show();return;}leaveBrowser();}
+  void leaveBrowser(){if(runtime!=null)runtime.close();if(files!=null)files.destroy();for(Tab tab:tabs)retire(tab);finish();}
+  void confirmCloseBrowser(){boolean downloading=files!=null&&files.hasActiveDownload();AppAppearance.dialog(this).setTitle("关闭浏览器？").setMessage("将关闭全部标签页，未保存的网页输入可能丢失。"+(downloading?"正在进行的下载会取消。":"")+"关闭后，此环境等待中的网络设置可以应用。").setNegativeButton("继续浏览",null).setPositiveButton(downloading?"关闭并取消下载":"关闭浏览器",(d,w)->leaveBrowser()).show();}
+  @Override public void onBackPressed(){if(customView!=null){hideCustomView();return;}if(findBar!=null&&findBar.getVisibility()==View.VISIBLE){closeFind();return;}if(web()!=null&&web().canGoBack()){history(-1);return;}confirmCloseBrowser();}
   @Override public boolean dispatchKeyEvent(KeyEvent event){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.isCtrlPressed()){switch(event.getKeyCode()){case KeyEvent.KEYCODE_L:focusAddress();return true;case KeyEvent.KEYCODE_T:newTab(BrowserPreferences.home(this));focusAddress();return true;case KeyEvent.KEYCODE_W:if(selected!=null)closeTab(selected);return true;case KeyEvent.KEYCODE_F:findBar.setVisibility(View.VISIBLE);findText.requestFocus();return true;case KeyEvent.KEYCODE_R:reloadOrStop();return true;}}return super.dispatchKeyEvent(event);}
   @Override protected void onDestroy(){destroyed=true;hideCustomView();if(runtime!=null)runtime.close();for(Tab tab:tabs)retire(tab);if(permissions!=null)permissions.close();if(files!=null)files.destroy();saveCookies();cookieWorker.shutdown();super.onDestroy();}
 }

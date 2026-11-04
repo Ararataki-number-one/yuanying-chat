@@ -43,6 +43,7 @@ final class GuardedService {
 }
 
 final class NativeNetwork {
+ int routeChangeEvents;void routeChanged(){routeChangeEvents++;}
  interface Callback{void done(boolean ok,String message);}final Context context;final SecretStore secrets;final Transport transport;
  final ThreadLocal<ConfigurationSources> configurationSources=new ThreadLocal<>();volatile NetworkApplyCoordinator.RuntimeBinding activeConfiguration;
  final WorkQueue worker=new WorkQueue();static final class WorkQueue implements Executor{boolean paused;final List<Runnable> tasks=new ArrayList<>();public void execute(Runnable r){if(paused)tasks.add(r);else r.run();}void runAll(){paused=false;for(Runnable r:new ArrayList<>(tasks)){tasks.remove(r);r.run();}}}final Main main=new Main();static final class Main{void post(Runnable run){run.run();}}

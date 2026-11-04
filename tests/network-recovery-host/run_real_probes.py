@@ -61,7 +61,7 @@ def main():
     work=args.output.parent/(args.output.stem+'-host');work.mkdir(parents=True,exist_ok=True)
     java_file=work/'NativeNetwork.java';java_file.write_text(harness)
     clock=work/'SystemClock.java';clock.write_text('package android.os;public class SystemClock{public static volatile long offset;public static long elapsedRealtime(){return System.nanoTime()/1000000+offset;}public static void advance(long delta){offset+=delta;}}')
-    production=[ROOT/'app/src/main/java/local/pocketchat'/name for name in ('NetworkHealthPolicy.java','NetworkWork.java','NetworkDiagnostics.java','LatencyProbePolicy.java')]
+    production=[ROOT/'app/src/main/java/local/pocketchat'/name for name in ('ChromiumRouteLease.java','NetworkHealthPolicy.java','NetworkWork.java','NetworkDiagnostics.java','LatencyProbePolicy.java')]
     inputs=[*production,helper,suite_path,ROOT/'tests/network-recovery-host/RecoverySearchHarness.java.txt',boundary,Path(__file__).resolve()]
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     compile_run=subprocess.run([str(args.java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(args.json_jar),'-d',str(work),str(java_file),str(clock),*map(str,production)],capture_output=True,text=True,timeout=60)

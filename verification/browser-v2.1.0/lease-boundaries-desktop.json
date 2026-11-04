@@ -1,0 +1,246 @@
+{
+  "checks": [
+    {
+      "pass": true,
+      "name": "startup with no page/download is not treated as busy"
+    },
+    {
+      "pass": true,
+      "name": "existing hidden idle Gecko observation remains idle"
+    },
+    {
+      "pass": true,
+      "name": "Chrome-only without ChatSession blocks maintenance and candidate busy"
+    },
+    {
+      "pass": true,
+      "name": "live Chromium is never classified as idle background"
+    },
+    {
+      "pass": true,
+      "name": "Chrome lease also protects an unrelated idle Gecko session"
+    },
+    {
+      "pass": true,
+      "name": "actual maintenance entry cancels before health/scan while Chrome holds"
+    },
+    {
+      "pass": true,
+      "name": "native download alone keeps actual mutation and provider gates busy"
+    },
+    {
+      "pass": true,
+      "name": "all real work retired releases actual busy gates"
+    },
+    {
+      "pass": true,
+      "name": "actual health maintenance resumes after final release"
+    },
+    {
+      "pass": true,
+      "name": "true core death remains fail-closed even while page holds"
+    },
+    {
+      "pass": true,
+      "name": "actual late Chromium hold cancels already running background work"
+    },
+    {
+      "pass": true,
+      "name": "explicit bounded read-only work keeps its allowBusy semantics"
+    },
+    {
+      "pass": true,
+      "name": "actual final selectNow refuses before any invalidation or controller IO"
+    },
+    {
+      "pass": true,
+      "name": "unheld actual selection proceeds under a barrier and releases it"
+    },
+    {
+      "pass": true,
+      "name": "failed controller mutation releases admission barrier"
+    },
+    {
+      "pass": true,
+      "name": "browser can create a page after mutation failure"
+    },
+    {
+      "pass": true,
+      "name": "actual initial start is admitted before first surface"
+    },
+    {
+      "pass": true,
+      "name": "initial startup fences premature surface creation"
+    },
+    {
+      "pass": true,
+      "name": "initial startup completes and releases barrier"
+    },
+    {
+      "pass": true,
+      "name": "valid verified start reuses live route without retiring held page"
+    },
+    {
+      "pass": true,
+      "name": "explicit restart cannot bypass live Chromium or clear its recovery block"
+    },
+    {
+      "pass": true,
+      "name": "explicit recovery also preserves active page until closed"
+    },
+    {
+      "pass": true,
+      "name": "explicit restart works after browser closes"
+    },
+    {
+      "pass": true,
+      "name": "cold candidate admission defers Chrome for automatic=false"
+    },
+    {
+      "pass": true,
+      "name": "cold candidate admission defers Chrome for automatic=true"
+    },
+    {
+      "pass": true,
+      "name": "cold IMMEDIATE final fence still refuses live Chromium"
+    },
+    {
+      "pass": true,
+      "name": "actual IMMEDIATE application does not restart or begin transition"
+    },
+    {
+      "pass": true,
+      "name": "actual reconnect action cannot restart live Chromium"
+    },
+    {
+      "pass": true,
+      "name": "deferred reason names real browser work rather than inventing GPT reply"
+    },
+    {
+      "pass": true,
+      "name": "warm IMMEDIATE final fence also refuses browser work"
+    },
+    {
+      "pass": true,
+      "name": "warm automatic external candidate also defers"
+    },
+    {
+      "pass": true,
+      "name": "download-only candidate fence still refuses"
+    },
+    {
+      "pass": true,
+      "name": "last release admits a matching idle warm task"
+    },
+    {
+      "pass": true,
+      "name": "last release admits a cold immediate candidate"
+    },
+    {
+      "pass": true,
+      "name": "automatic cold candidate proceeds after release"
+    },
+    {
+      "pass": true,
+      "name": "retiring page does not wake apply while native download remains"
+    },
+    {
+      "pass": true,
+      "name": "exact provider observer wakes once on final release"
+    },
+    {
+      "pass": true,
+      "name": "duplicate observer and idempotent closes cannot repeat wake"
+    },
+    {
+      "pass": true,
+      "name": "maintenance shutdown suppresses candidate wake"
+    },
+    {
+      "pass": true,
+      "name": "captured acquire/release events wake even without pending retry state"
+    },
+    {
+      "pass": true,
+      "name": "stale observer snapshot cannot reopen or repeat pending wake"
+    },
+    {
+      "pass": true,
+      "name": "surface deferred before observing change acquisition retries after last barrier"
+    },
+    {
+      "pass": true,
+      "name": "ordinary page hold events cannot cause repeated ready callbacks"
+    },
+    {
+      "pass": true,
+      "name": "deferred surface on lost route requests controlled refresh"
+    },
+    {
+      "pass": true,
+      "name": "replacement owner rejects queued deferred surface callback"
+    },
+    {
+      "pass": true,
+      "name": "closed runtime rejects queued deferred surface callback"
+    },
+    {
+      "pass": true,
+      "name": "surface admission loss after already-finished barrier schedules its own retry"
+    },
+    {
+      "pass": true,
+      "name": "fixture leaves no process work or mutation lease"
+    }
+  ],
+  "actualAndroidExecution": false,
+  "passed": 48,
+  "status": "passed",
+  "actualControllerHttp": false,
+  "scope": "Complete production ChromiumRouteLease and exact NativeNetwork routeBusy/backgroundIdle/selectNow/startOperation/runHealth; exact NetworkUiProvider candidate busy/task/final fence/admit/operate/reason/release-wake methods and ChromiumRuntime surfaceDeferred/leaseChanged. Controller, startup execution, session, persistence, looper and android.os.SystemClock use explicit JVM boundaries. The single-method clock double is host-only and is not Android API verification. No Android device, real HTTP/controller or full configuration transaction execution claimed.",
+  "productionMethodSha256": {
+    "NATIVE_ROUTE_BUSY": "dd767a7606200be629b373a0936d585b227317dfaf7604eb084f17ae9034127c",
+    "NATIVE_BACKGROUND_IDLE": "22aeb8bff987ec4596ac7e2643be42cb06ed4fd5a137c1281cfdf1baef1c55c7",
+    "NATIVE_SELECT_NOW": "d2e9b4d9b5e68ce71d18c89b09e0bdcab23023143ca8ed63767c6e622b76e0ba",
+    "NATIVE_START_OPERATION": "9cdf81c67393b361873a78519467e456f8a62256c037bbe42cb2260e76e169e0",
+    "NATIVE_RUN_HEALTH": "d77c34ccca9bb4bfec5c4a048406ca511593fb6fef5e155713c3ce4a662c5822",
+    "NATIVE_PAUSE_BACKGROUND": "d73189d31ede4eb487a0124a62af2479babd6d9ee614da86ded7ab4054641b6a",
+    "NATIVE_CANCEL_MAINTENANCE": "d2bdb1493ff30d331d2953de598bb0ece5fd2eedccb00fb60dd12b8c03689c80",
+    "PROVIDER_CHROMIUM_CHANGED": "1ad328e92cbb9b1f3d6f8bf46b51ac5699f60848a6da419aabb77a7757eb7b0f",
+    "PROVIDER_OBSERVE_CHROMIUM": "d86c8d0296c9593fc4b4338edd269dfed972fe130c49adcc645a7cd3b9a0d0ed",
+    "PROVIDER_OBSERVE_CHROMIUM_SNAPSHOT": "b57492ef7d63237e73ea78127cbfe9a25ccd4bf115d1e6bf7963118c9c09d55b",
+    "PROVIDER_BUSY": "6877ad8ddc7caaca17e8697f5a8075489ed8766343ae4b503f55608b19cc10a2",
+    "PROVIDER_TASK_IDLE": "31541ea3bd51083429f7913d4d7b9d54ea6b5ca693bfadac0661f60cadab1c87",
+    "PROVIDER_FENCE_IDLE": "222518352d0c1f3a8ccca52ea935c03f68b4d61dfd28ae5d6a51dc0020b39dc3",
+    "PROVIDER_ADMIT_CANDIDATE": "34743b24d3c8747a1d2a51a2ae641a5a44cace65e7fc8020724062bf00103ddb",
+    "PROVIDER_WAIT_SAVED": "ec44c8567d5bd24b789df32679a110c767689df266552d6eaf82d0f779d4f114",
+    "PROVIDER_OPERATE": "5816af5811faa0f36f5027112ad32b555ce4ac791d715a3c33fd7b8094c27f58",
+    "RUNTIME_SURFACE_DEFERRED": "49ff8bb807e76e073802fa12e30c6df0a6e85b770ea3b6234d640490f828ff67",
+    "RUNTIME_LEASE_CHANGED": "efccd2cc08b40179717151173987159219f1e6b6a4a116647fa8e77a18b7b7c1",
+    "REGION_BACKGROUND_BUSY": "c26ebf563be6cbb8c37d528ea980b5ef72b4bc23867ee2234956889738413139",
+    "COORDINATOR_CONSTANTS": "e282639219ebb5a0e3d3e496910f30a246bee02088474ff08f29da35fcdf3e94"
+  },
+  "sourceSha256": {
+    "app/src/main/java/local/pocketchat/ChromiumRouteLease.java": "d98185140cd6807bf315e38169a1f8e9b91781cc3cbbae4addbced3bec3e2e93",
+    "app/src/main/java/local/pocketchat/NetworkHealthPolicy.java": "08279fe9e9a05be1634d3883bf0a52a4c791c79a49b9bf28913523986a29018b",
+    "app/src/main/java/local/pocketchat/NetworkOptimizationPolicy.java": "83c6b42793be16fcef241c1865a89bd0dccbc7b07bf87c4701da43e3a89ccbe3",
+    "app/src/main/java/local/pocketchat/NetworkWork.java": "de34134adc227c8dcc48e52db9a23937537e95ae05abf5192b426224295446bf",
+    "app/src/main/java/local/pocketchat/NetworkApplyRetry.java": "503c84e43550b96e751e87d7b4eb5f4b538bf4fadf7a83413ae638e60aabcf3d",
+    "app/src/main/java/local/pocketchat/TaskGuardSnapshot.java": "610330cbf7c4e9d2be7b53838f81a275a3939939b88ca920ba57e39b4d7e5cce",
+    "app/src/main/java/local/pocketchat/BrowserRuntimePolicy.java": "e697e80c615be56ff7eb6648ff1c3ef366b233e4a4f5839e25bfe5944fcafe5a",
+    "app/src/main/java/local/pocketchat/J.java": "772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493",
+    "app/src/main/java/local/pocketchat/NativeNetwork.java": "72b79ee6925334702863899983a99ce7a5013489a8fe6a8eb2d10679cc72b05d",
+    "app/src/main/java/local/pocketchat/NetworkUiProvider.java": "0404a22157e04abbc4580ce9e5ae8cab609f28d20fa8bdaea8ed89c6e0eb497b",
+    "app/src/main/java/local/pocketchat/NetworkRegion.java": "1d5e9f7d4cbbce5f04f761dc77f70789ffd129827abb182be718818f1c9beada",
+    "app/src/main/java/local/pocketchat/NetworkApplyCoordinator.java": "298487473ca269ed6cae12914fb1efaea68cd7ca749cbac2415c94ff93ab7745",
+    "app/src/main/java/local/pocketchat/ChromiumRuntime.java": "32cee522bd2be30ecf31732cd0f444468f257e298ca1030378297c38c9c1da80",
+    "tests/chromium-route-host/LeaseBoundaries.java.in": "2a20888a2e3fcc11b3ff9c19dec25c40ddac51a03493e1d659dc5d9a540ae12d",
+    "tests/chromium-route-host/lease_boundaries.py": "0c5fc6b2633abcf75c91cf3cd388273acbfdc1e94d99832b242823efa076d83d",
+    "tools/gecko/run_network_core_host.py": "5030a26cb8f5dd20b70d33fb3cddde96dae152dd0ca05708e5037074769ad893"
+  },
+  "generatedAdapterSha256": "3af562230f262cd127f04f5749de03d604936a5aea60442b9f0f9743b05075d0",
+  "jsonJarSha256": "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed",
+  "hostClockSha256": "dad1e0c3e085b5bda953e7ace724a6e89755755d4a73c6fb8e8f1911d1648388",
+  "executionInputsUnchanged": true,
+  "javaVersion": "openjdk version \"17.0.21\" 2026-10-20\nOpenJDK Runtime Environment Temurin-17.0.21+9 (build 17.0.21+9)\nOpenJDK 64-Bit Server VM Temurin-17.0.21+9 (build 17.0.21+9, mixed mode, sharing)"
+}

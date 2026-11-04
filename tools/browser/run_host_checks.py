@@ -23,6 +23,7 @@ def main():
     add('route','tests/chromium-route-host/run.py',java+['--output',out/'route.json'],out/'route.json')
     add('runtime','tests/chromium-route-host/runtime.py',java+['--android-jar',a.android_jar.resolve(),'--webkit-jar',a.webkit_jar.resolve(),'--json-jar',desktop,'--output',out/'runtime.json'],out/'runtime.json')
     for label,jar in [('desktop',desktop),('android-json',android_json)]:
+        target=out/('lease-boundaries-'+label+'.json');add('lease-boundaries-'+label,'tests/chromium-route-host/lease_boundaries.py',java+['--json-jar',jar,'--output',target],target)
         for name,script in [('preferences','tests/browser-preferences-host/run.py'),('library','tests/browser-library-host/run.py'),('transcript-store','tests/transcript-store-performance-host/run.py'),('chat-progress','tests/chat-progress-performance-host/run.py')]:
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('chooser-'+label);add('chooser-'+label,'tests/browser-files-host/chooser.py',java+['--json-jar',jar,'--output',target],target/'results.json')
@@ -47,12 +48,19 @@ def main():
         ran=subprocess.run(command,cwd=ROOT,env=environment,capture_output=True,text=True,timeout=300)
         log=out/(name+'.log');log.write_text(ran.stdout+ran.stderr)
         row=dict(suite=name,status='passed' if ran.returncode==0 else 'failed',command=command,exitCode=ran.returncode,log=str(log),logSha256=hashlib.sha256(log.read_bytes()).hexdigest())
+        if ran.returncode:row['failureReason']='Child process exited with code '+str(ran.returncode)
         if report and report.is_file():
             value=json.loads(report.read_text());row.update(report=str(report),reportSha256=hashlib.sha256(report.read_bytes()).hexdigest())
-            if value.get('status','passed')!='passed' or value.get('executionInputsUnchanged',True) is not True or value.get('sourceUnchangedDuringChecks',True) is not True:row['status']='failed'
-        elif report:row['status']='failed'
+            if value.get('status','passed')!='passed' or value.get('executionInputsUnchanged',True) is not True or value.get('sourceUnchangedDuringChecks',True) is not True:row.update(status='failed',failureReason='Report failed or execution inputs changed')
+        elif report:row.update(status='failed',failureReason='Required report was not produced: '+str(report))
         results.append(row);print(json.dumps(dict(suite=name,status=row['status'])),flush=True)
-        if row['status']!='passed':break
+        if row['status']!='passed':
+            # These fixed suites consume synthetic fixtures, never signing keys.
+            # Keep their full local log and expose a bounded tail in Actions logs
+            # so a failed artifact transport cannot hide the actual assertion.
+            print(json.dumps(dict(suite=name,failureReason=row.get('failureReason'),logTailLimitCharacters=20000)),flush=True)
+            print((ran.stdout+ran.stderr)[-20000:],flush=True)
+            break
     stable=all(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==hashes[str(path.relative_to(ROOT))] for path in files)
     passed=stable and len(results)==len(cases) and all(r['status']=='passed' for r in results)
     report=dict(status='passed' if passed else 'failed',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),executionInputsUnchanged=stable,sourceFiles=hashes,suites=results,requiredSuites=len(cases),completedSuites=len(results),dependencies={str(path.resolve()):hashlib.sha256(path.read_bytes()).hexdigest() for path in [desktop,android_json,a.android_jar,a.webkit_jar]},actualAndroidExecution=False,actualAndroidWebViewExecution=False,scope='Production Java/JavaScript host behavior and actual-API compilation with declared adapters. New browser policies/files/route/permissions and prior shell/loading/progress/chrome/control-cache/transcript regressions; no device or frame-rate claim.')

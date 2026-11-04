@@ -1,0 +1,226 @@
+package local.pocketchat;
+
+import java.io.*;
+import java.util.*;
+import java.util.concurrent.*;
+import org.json.*;
+
+/** Exact extracted production admission/mutation methods; controlled session,
+ * controller, looper and persistence boundaries. No Android or HTTP execution. */
+public final class LeaseBoundaries {
+  static final JSONArray checks=new JSONArray();
+  static void check(String label,boolean pass){checks.put(J.obj("name",label,"pass",pass));if(!pass)throw new AssertionError(label);}
+  static NetworkUiProvider provider(){ChatSession.current=null;NativeNetwork.instance=new NativeNetwork();NetworkUiProvider p=new NetworkUiProvider();NetworkUiProvider.instance=p;p.bindings.put("candidate",new NetworkUiProvider.RequestBinding("{\"applicationPolicy\":\"immediate\"}"));return p;}
+  static void finishHandle(ChromiumRouteLease.Handle handle){if(handle!=null)handle.close();}
+  static void admissionAndHealth()throws Exception{
+    NetworkUiProvider p=provider();NativeNetwork network=NativeNetwork.instance;
+    check("startup with no page/download is not treated as busy",!network.routeBusy()&&!p.busy(null,network));
+    ChatSession gecko=new ChatSession();gecko.uiVisible=false;gecko.work=false;ChatSession.current=gecko;
+    check("existing hidden idle Gecko observation remains idle",network.backgroundIdle());ChatSession.current=null;
+    ChromiumRouteLease.Handle first=ChromiumRouteLease.acquireSurface(),background=ChromiumRouteLease.acquireSurface(),download=ChromiumRouteLease.acquireDownload();
+    try{
+      check("Chrome-only without ChatSession blocks maintenance and candidate busy",network.routeBusy()&&p.busy(null,network));
+      check("live Chromium is never classified as idle background",!network.backgroundIdle());
+      ChatSession.current=gecko;check("Chrome lease also protects an unrelated idle Gecko session",network.routeBusy()&&!network.backgroundIdle()&&!NetworkUiProvider.taskIdle(gecko,gecko.guard));ChatSession.current=null;
+      network.ready=true;network.alive=true;network.runHealth();
+      check("actual maintenance entry cancels before health/scan while Chrome holds",network.maintenanceGeneration==1&&network.healthCalls==0&&network.stops==0);
+      first.close();background.close();check("native download alone keeps actual mutation and provider gates busy",network.routeBusy()&&p.busy(null,network));
+      download.close();check("all real work retired releases actual busy gates",!network.routeBusy()&&!p.busy(null,network));
+      android.os.SystemClock.now+=NetworkOptimizationPolicy.ACTIVE_INTERVAL+1;network.runHealth();
+      check("actual health maintenance resumes after final release",network.healthCalls==1&&network.maintenanceGeneration==1);
+      ChromiumRouteLease.Handle failingSurface=ChromiumRouteLease.acquireSurface();try{
+        network.alive=false;network.runHealth();
+        check("true core death remains fail-closed even while page holds",network.stops==1&&!network.ready&&network.healthCalls==1);
+      }finally{failingSurface.close();}
+    }finally{finishHandle(first);finishHandle(background);finishHandle(download);ChatSession.current=null;}
+  }
+  static void pauseInFlight(){
+    provider();NativeNetwork network=NativeNetwork.instance;ChromiumRouteLease.Handle surface=ChromiumRouteLease.acquireSurface();
+    try{
+      NetworkWork work=new NetworkWork();network.backgroundWork=work;network.pauseBackgroundWhenBusy();
+      check("actual late Chromium hold cancels already running background work",work.cancelled&&network.maintenanceGeneration==1);Thread.interrupted();
+      NetworkWork permitted=new NetworkWork(true);network.backgroundWork=permitted;network.pauseBackgroundWhenBusy();
+      check("explicit bounded read-only work keeps its allowBusy semantics",!permitted.cancelled&&network.maintenanceGeneration==1);
+    }finally{surface.close();Thread.interrupted();}
+  }
+  static void lastMutationFence()throws Exception{
+    NetworkUiProvider p=provider();NativeNetwork network=NativeNetwork.instance;ChromiumRouteLease.Handle surface=ChromiumRouteLease.acquireSurface();
+    try{
+      boolean denied=false;try{network.selectNow("candidate-b");}catch(NativeNetwork.RetainedRouteFailure expected){denied=ChromiumRouteLease.REASON.equals(expected.getMessage());}
+      check("actual final selectNow refuses before any invalidation or controller IO",denied&&network.invalidations==0&&network.controllerCalls==0&&network.currentEntry.equals("original"));
+    }finally{surface.close();}
+    network.invalidationHook=()->{
+      ChromiumRouteLease.Handle page=ChromiumRouteLease.acquireSurface(),download=ChromiumRouteLease.acquireDownload();
+      if(page!=null||download!=null){finishHandle(page);finishHandle(download);throw new AssertionError("new work crossed final mutation barrier");}
+    };
+    network.selectNow("candidate-b");
+    check("unheld actual selection proceeds under a barrier and releases it",network.invalidations==1&&network.controllerCalls==2&&network.currentEntry.equals("candidate-b")&&ChromiumRouteLease.snapshot().changes==0);
+    network.failController=true;boolean failed=false;try{network.selectNow("candidate-c");}catch(IOException expected){failed=true;}
+    check("failed controller mutation releases admission barrier",failed&&ChromiumRouteLease.snapshot().changes==0);
+    ChromiumRouteLease.Handle restored=ChromiumRouteLease.acquireSurface();check("browser can create a page after mutation failure",restored!=null);finishHandle(restored);
+  }
+  static void explicitStartup(){
+    NetworkUiProvider p=provider();NativeNetwork network=NativeNetwork.instance;final boolean[] completed={false};
+    network.startOperation((ok,text)->completed[0]=ok,0);
+    check("actual initial start is admitted before first surface",network.starting&&network.worker.tasks.size()==1&&ChromiumRouteLease.snapshot().changes==1);
+    check("initial startup fences premature surface creation",ChromiumRouteLease.acquireSurface()==null);
+    network.worker.drain();network.main.drain();
+    check("initial startup completes and releases barrier",completed[0]&&network.starts==1&&!network.starting&&ChromiumRouteLease.snapshot().changes==0);
+    ChromiumRouteLease.Handle surface=ChromiumRouteLease.acquireSurface();try{
+      int changes=network.changed,starts=network.starts;long cancellations=network.maintenanceGeneration;completed[0]=false;
+      network.startOperation((ok,text)->completed[0]=ok,0);network.main.drain();
+      check("valid verified start reuses live route without retiring held page",completed[0]&&network.starts==starts&&network.changed==changes&&network.maintenanceGeneration==cancellations&&ChromiumRouteLease.held());
+      network.recoveryBlocked=true;completed[0]=true;network.startOperation((ok,text)->completed[0]=ok,2);network.main.drain();
+      check("explicit restart cannot bypass live Chromium or clear its recovery block",!completed[0]&&network.recoveryBlocked&&network.worker.tasks.isEmpty()&&!network.starting);
+      network.startOperation((ok,text)->completed[0]=ok,1);network.main.drain();
+      check("explicit recovery also preserves active page until closed",!completed[0]&&network.starts==starts&&network.worker.tasks.isEmpty());
+    }finally{surface.close();}
+    completed[0]=false;network.startOperation((ok,text)->completed[0]=ok,2);network.worker.drain();network.main.drain();
+    check("explicit restart works after browser closes",completed[0]&&network.starts==2&&!network.recoveryBlocked&&ChromiumRouteLease.snapshot().changes==0);
+  }
+  static void candidateFences(){
+    NetworkUiProvider p=provider();NativeNetwork network=NativeNetwork.instance;ChromiumRouteLease.Handle surface=ChromiumRouteLease.acquireSurface(),download=ChromiumRouteLease.acquireDownload();
+    try{
+      for(boolean automatic:new boolean[]{false,true}){
+        p.admitCandidate("candidate","apply",new JSONObject(),"baseline",automatic);
+        check("cold candidate admission defers Chrome for automatic="+automatic,NetworkApplyCoordinator.DEFER.equals(p.selected)&&p.operated==0&&p.transitions==0);
+      }
+      NetworkUiProvider.Transition cold=new NetworkUiProvider.Transition();cold.immediate=true;
+      check("cold IMMEDIATE final fence still refuses live Chromium",!p.fenceIdle(cold)&&ChromiumRouteLease.REASON.equals(cold.waitReason));
+      p.operate("candidate","apply",new JSONObject(),"baseline");
+      check("actual IMMEDIATE application does not restart or begin transition",NetworkApplyCoordinator.DEFER.equals(p.selected)&&p.transitions==0&&network.restartCalls==0);
+      p.operate("candidate","reconnect",new JSONObject(),"baseline");
+      check("actual reconnect action cannot restart live Chromium",network.restartCalls==0&&ChromiumRouteLease.REASON.equals(p.finishedReason));
+      p.waitSaved("candidate","等待回复和文件操作结束");
+      check("deferred reason names real browser work rather than inventing GPT reply",ChromiumRouteLease.REASON.equals(p.retry.reason)&&p.finishedReason.contains(ChromiumRouteLease.REASON));
+      ChatSession session=new ChatSession();ChatSession.current=session;NetworkUiProvider.Transition warm=p.transition(session);warm.immediate=true;
+      check("warm IMMEDIATE final fence also refuses browser work",!p.fenceIdle(warm));
+      p.admitCandidate("candidate","external",new JSONObject(),"baseline",true);
+      check("warm automatic external candidate also defers",NetworkApplyCoordinator.DEFER.equals(p.selected)&&p.operated==0&&p.transitions==0);
+      surface.close();check("download-only candidate fence still refuses",!p.fenceIdle(warm)&&p.busy(session,network));
+      download.close();check("last release admits a matching idle warm task",p.fenceIdle(warm)&&NetworkUiProvider.taskIdle(session,session.guard));
+      ChatSession.current=null;check("last release admits a cold immediate candidate",p.fenceIdle(cold));
+      p.admitCandidate("candidate","apply",new JSONObject(),"baseline",true);
+      check("automatic cold candidate proceeds after release",p.transitions==1&&p.operated==1);
+    }finally{finishHandle(surface);finishHandle(download);ChatSession.current=null;}
+  }
+  static void releaseWake(){
+    NetworkUiProvider p=provider();Runnable listener=NetworkUiProvider::chromiumLeaseChanged;ChromiumRouteLease.addListener(listener);
+    ChromiumRouteLease.Handle surface=null,download=null;
+    try{
+      p.observeChromiumLease();surface=ChromiumRouteLease.acquireSurface();p.main.drain();download=ChromiumRouteLease.acquireDownload();p.main.drain();
+      p.retry.defer("candidate",ChromiumRouteLease.REASON,SystemClock.elapsedRealtime());
+      surface.close();p.main.drain();check("retiring page does not wake apply while native download remains",p.drains==0&&p.chromiumUnavailable);
+      download.close();p.main.drain();check("exact provider observer wakes once on final release",p.drains==1&&!p.chromiumUnavailable&&p.retry.nextAttempt==0);
+      p.observeChromiumLease();p.main.drain();surface.close();download.close();p.main.drain();check("duplicate observer and idempotent closes cannot repeat wake",p.drains==1);
+      p.maintenanceStopped=true;surface=ChromiumRouteLease.acquireSurface();p.main.drain();surface.close();p.main.drain();check("maintenance shutdown suppresses candidate wake",p.drains==1);
+      NetworkUiProvider noPending=provider();noPending.bindings.clear();noPending.retry.clear();noPending.observeChromiumLease();
+      ChromiumRouteLease.Snapshot stale=ChromiumRouteLease.snapshot();surface=ChromiumRouteLease.acquireSurface();surface.close();noPending.main.drain();
+      check("captured acquire/release events wake even without pending retry state",noPending.drains==1&&noPending.retry.key.isEmpty()&&!noPending.chromiumUnavailable);
+      noPending.observeChromiumLease(stale);noPending.main.drain();check("stale observer snapshot cannot reopen or repeat pending wake",noPending.drains==1&&!noPending.chromiumUnavailable);
+    }finally{finishHandle(surface);finishHandle(download);ChromiumRouteLease.removeListener(listener);}
+  }
+  static void runtimeDeferredSurface(){
+    ChromiumRuntime runtime=new ChromiumRuntime();ChromiumRuntime.owner=runtime;ChromiumRouteLease.Handle change=ChromiumRouteLease.tryChange();Runnable listener=runtime::leaseChanged;ChromiumRouteLease.addListener(listener);
+    try{
+      runtime.surfaceDeferred();change.close();runtime.main.drain();
+      check("surface deferred before observing change acquisition retries after last barrier",runtime.readyCallbacks==1&&!runtime.surfaceDeferred&&runtime.refreshes==0);
+      ChromiumRouteLease.Handle page=ChromiumRouteLease.acquireSurface();page.close();runtime.main.drain();
+      check("ordinary page hold events cannot cause repeated ready callbacks",runtime.readyCallbacks==1);
+      runtime.available=false;change=ChromiumRouteLease.tryChange();runtime.surfaceDeferred();change.close();runtime.main.drain();
+      check("deferred surface on lost route requests controlled refresh",runtime.refreshes==1&&runtime.readyCallbacks==1);
+      runtime.available=true;change=ChromiumRouteLease.tryChange();runtime.surfaceDeferred();change.close();ChromiumRuntime.owner=new ChromiumRuntime();runtime.main.drain();
+      check("replacement owner rejects queued deferred surface callback",runtime.refreshes==1&&runtime.readyCallbacks==1);
+      ChromiumRuntime.owner=runtime;change=ChromiumRouteLease.tryChange();runtime.surfaceDeferred();change.close();runtime.closed=true;runtime.main.drain();
+      check("closed runtime rejects queued deferred surface callback",runtime.refreshes==1&&runtime.readyCallbacks==1);
+    }finally{finishHandle(change);ChromiumRouteLease.removeListener(listener);ChromiumRuntime.owner=null;}
+    ChromiumRuntime late=new ChromiumRuntime();ChromiumRuntime.owner=late;ChromiumRouteLease.Handle completed=ChromiumRouteLease.tryChange();completed.close();
+    try{late.surfaceDeferred();late.main.drain();check("surface admission loss after already-finished barrier schedules its own retry",late.readyCallbacks==1&&!late.surfaceDeferred);}finally{completed.close();ChromiumRuntime.owner=null;}
+  }
+  public static void main(String[] args)throws Exception{
+    admissionAndHealth();pauseInFlight();lastMutationFence();explicitStartup();candidateFences();releaseWake();runtimeDeferredSurface();
+    check("fixture leaves no process work or mutation lease",!ChromiumRouteLease.held()&&ChromiumRouteLease.snapshot().changes==0);
+    System.out.println(J.obj("status","passed","passed",checks.length(),"checks",checks,"actualAndroidExecution",false,"actualControllerHttp",false));
+  }
+}
+
+final class NativeNetwork {
+  interface Callback {void done(boolean ok,String text);}
+  static NativeNetwork instance;static NativeNetwork get(Object profile){return instance;}
+  final MainBoundary main=new MainBoundary();final WorkerBoundary worker=new WorkerBoundary();final List<Callback> startWaiters=new ArrayList<>();
+  Object activeConfiguration,context=new Object();boolean ready,starting,restartQueued,recoveryBlocked,measuringLatency,alive=true,failController;NetworkHealthPolicy.Admission admission=NetworkHealthPolicy.Admission.BLOCKED;
+  String message="fixture",currentEntry="original",controllerEntry="original";int starts,changed,cancelled,invalidations,controllerCalls,stops,healthCalls,measureCalls,restartCalls,verifyCalls;long maintenanceGeneration,lastMaintenanceAt;NetworkWork backgroundWork;final java.util.concurrent.Executor closers=Runnable::run;Runnable invalidationHook;
+  NetworkHealthPolicy.Admission connectionAdmission(){return admission;}boolean coreAlive(){return alive;}
+  void routeChanged(){changed++;}void runStartOperation(int mode){starts++;ready=true;starting=false;admission=NetworkHealthPolicy.Admission.VERIFIED;List<Callback> callbacks=new ArrayList<>(startWaiters);startWaiters.clear();main.post(()->{for(Callback callback:callbacks)callback.done(true,message);});}
+  void invalidateVerifiedRoute(){invalidations++;if(invalidationHook!=null)invalidationHook.run();}
+  JSONObject api(String method,String path,JSONObject value,int timeout)throws IOException{controllerCalls++;if(failController)throw new IOException("fixture controller failure");if("PUT".equals(method))controllerEntry=value.optString("name");return J.obj("now",controllerEntry);}
+  RetainedRouteFailure retained(String text){return new RetainedRouteFailure(text);}static final class RetainedRouteFailure extends IOException {RetainedRouteFailure(String text){super(text);}}
+  NetworkWork beginMaintenance(long generation){return new NetworkWork();}void finishMaintenance(NetworkWork work){work.finish();}void health(boolean reuse){healthCalls++;}void stopNow(NetworkDiagnostics.Reason reason){stops++;ready=false;}void report(String text){message=text;}
+  void measureLatency(Callback callback){measureCalls++;}void checkExit(Callback callback){verifyCalls++;}void restart(Callback callback){restartCalls++;startOperation(callback,2);}
+  @NATIVE_ROUTE_BUSY@
+  @NATIVE_BACKGROUND_IDLE@
+  @NATIVE_SELECT_NOW@
+  @NATIVE_START_OPERATION@
+  @NATIVE_RUN_HEALTH@
+  @NATIVE_PAUSE_BACKGROUND@
+  @NATIVE_CANCEL_MAINTENANCE@
+}
+final class NetworkUiProvider {
+  static NetworkUiProvider instance;long chromiumRevision=-1;boolean chromiumUnavailable,maintenanceStopped,applying,saving,cold;String activeApply="";ProfileBoundary profile=new ProfileBoundary();
+  final MainBoundary main=new MainBoundary();final NetworkApplyRetry retry=new NetworkApplyRetry();final Runnable pendingWake=this::drainPending;
+  final Map<String,RequestBinding> bindings=new HashMap<>();int operated,transitions,drains,finished;String selected="",finishedReason="";
+  static final class RequestBinding {final String snapshot;RequestBinding(String snapshot){this.snapshot=snapshot;}String key(){return "candidate";}}
+  static final class Transition {ChatSession session;boolean immediate,capture;String waitReason="",url="",scope="";long browserPolicy,identityEdit,epoch;TaskGuardSnapshot work;}
+  Transition transition(ChatSession session){Transition transition=new Transition();transition.session=session;transition.work=session.guard;transition.browserPolicy=session.web.identityPolicyRevision;transition.identityEdit=session.identity.editSerial;return transition;}
+  boolean owns(Transition transition){return true;}boolean currentEnvironment(Transition transition){return true;}boolean coldPending(){return cold;}
+  void selectPolicy(String id,String action,JSONObject candidate,String baseline,String policy){selected=policy;}
+  void requireChoice(String id,String action,JSONObject candidate,String baseline,String reason){finishedReason=reason;}
+  void finish(String id,boolean ok,String message){finished++;finishedReason=message;}void drainPending(){drains++;}
+  void beginTransition(String id,String action,JSONObject candidate,String baseline){transitions++;operated++;}
+  void cancelPending(String id,JSONObject candidate){}void waitConnection(String id,ChatSession session,NativeNetwork network,boolean applying,long at){}
+  @PROVIDER_CHROMIUM_CHANGED@
+  @PROVIDER_OBSERVE_CHROMIUM@
+  @PROVIDER_OBSERVE_CHROMIUM_SNAPSHOT@
+  @PROVIDER_BUSY@
+  @PROVIDER_TASK_IDLE@
+  @PROVIDER_FENCE_IDLE@
+  @PROVIDER_ADMIT_CANDIDATE@
+  @PROVIDER_WAIT_SAVED@
+  @PROVIDER_OPERATE@
+}
+final class ChatSession {
+  static ChatSession current;static ChatSession peek(){return current;}
+  long navigationEpoch=1;Object pending;boolean submitting,operation,transferActive,navigating,connecting,deleted,recoveryScheduled,configurationCapture,uiVisible,work,fileWork;JSONObject state=new JSONObject();
+  final WebBoundary web=new WebBoundary();final IdentityBoundary identity=new IdentityBoundary();final MemoryBoundary pageMemory=new MemoryBoundary();
+  TaskGuardSnapshot guard=new TaskGuardSnapshot(true,false,false,false,false,false,0,1,"environment",1,"binding","document",1,1);
+  boolean fileWorkActive(){return fileWork;}boolean browserWorkActive(){return work;}TaskGuardSnapshot taskGuardSnapshot(){return guard;}
+  void requestTaskGuardStatus(String id,java.util.function.Consumer<TaskGuardSnapshot> callback){callback.accept(guard);}void reconnect(){}
+}
+final class NetworkRegion {
+  @REGION_BACKGROUND_BUSY@
+  static void refreshLatency(ChatSession session,NativeNetwork.Callback callback){}
+}
+final class NetworkApplyCoordinator {@COORDINATOR_CONSTANTS@}
+final class SystemClock {static long elapsedRealtime(){return android.os.SystemClock.elapsedRealtime();}}
+final class NetworkDiagnostics {enum Reason {CORE_EXITED}}
+final class WindowNetworkState {static void save(Object context,ChatSession session,NativeNetwork network){}}
+final class MainBoundary {final ArrayDeque<Runnable> tasks=new ArrayDeque<>();void post(Runnable action){tasks.add(action);}void removeCallbacks(Runnable action){tasks.removeIf(item->item==action);}void drain(){int safety=0;while(!tasks.isEmpty()){if(++safety>1000)throw new AssertionError("fixture main loop recursed");tasks.remove().run();}}}
+final class WorkerBoundary {final ArrayDeque<Runnable> tasks=new ArrayDeque<>();void execute(Runnable action){tasks.add(action);}void drain(){while(!tasks.isEmpty())tasks.remove().run();}}
+final class WebBoundary {long identityPolicyRevision=1;String getUrl(){return "https://example.com/";}}
+final class IdentityBoundary {long editSerial=1;}
+final class MemoryBoundary {String scope(){return "scope";}}
+final class MainActivity {static boolean chatUrl(String url){return false;}}
+final class WebReplyObserver {static boolean same(String first,String second){return Objects.equals(first,second);}}
+final class ProfileBoundary {PreferencesBoundary getSharedPreferences(String name,int mode){return new PreferencesBoundary();}}
+final class PreferencesBoundary {String getString(String name,String fallback){return "networkMode".equals(name)?"internal":fallback;}}
+final class ProfileCatalog {static ProfileCatalog get(Object profile){return new ProfileCatalog();}boolean available(int slot){return true;}}
+final class Profiles {static int slot(Object profile){return 0;}}
+
+final class ChromiumRuntime {
+  interface Listener{void changed(boolean ready,String message);}
+  static ChromiumRuntime owner;final MainBoundary main=new MainBoundary();boolean surfaceDeferred,closed,available=true;int leaseChanges,readyCallbacks,refreshes;String message="ready";
+  final Listener listener=(ready,text)->{if(ready)readyCallbacks++;};
+  boolean allowed(){return available;}void refresh(){refreshes++;}void onMain(Runnable action){main.post(action);}
+  @RUNTIME_SURFACE_DEFERRED@
+  @RUNTIME_LEASE_CHANGED@
+}

@@ -25,6 +25,13 @@ REQUIRED=(
     'Large-font landscape keeps address and navigation targets visible',
     'Large-font portrait keeps address and navigation targets visible',
     'Large-font orientation changes preserve the live website draft and document',
+    'A live browser surface retains the actual native route',
+    'Both live tab surfaces own separate route leases',
+    'In-flight native download owns its route lease',
+    'Completed native downloads release their own route lease',
+    'Retired surfaces and completed downloads release every route hold',
+    'Restored live surface reacquires native route protection',
+    'Engine task roundtrip retains the live Chromium route lease',
 )
 SOURCE_INPUTS={
     'tools/browser/run_integration.py',
@@ -33,6 +40,7 @@ SOURCE_INPUTS={
     '.github/workflows/browser-2_1-acceptance.yml',
     'app/src/main/java/local/pocketchat/BrowserActivity.java',
     'app/src/main/java/local/pocketchat/ChromiumRuntime.java',
+    'app/src/main/java/local/pocketchat/ChromiumRouteLease.java',
     'app/src/main/java/local/pocketchat/BrowserFiles.java',
     'app/src/main/java/local/pocketchat/BrowserDownloadStore.java',
 }
@@ -65,6 +73,12 @@ def validate_behavior(report,source,reader=source_bytes):
         require(isinstance(layout.get('fontScale'),(int,float)) and layout['fontScale']>=1.9,'large-font measurement required')
         controls=layout.get('controls',[]);require(len(controls)==5 and {c.get('name') for c in controls}=={'address','back','forward','tabs','reload'},'all native control bounds required')
         require(all(c.get('shown') is True and type(c.get('minimum')) is int and c['minimum']>0 and c.get('visibleWidth',0)>=c['minimum'] and c.get('visibleHeight',0)>=c['minimum'] for c in controls),'native control targets are clipped')
+    leases=result.get('leaseObservations',[])
+    expected_leases=[('first-surface',1,0),('two-surfaces',2,0),('download-in-flight',2,1),('download-complete',2,0),('route-blocked',0,0),('route-restored',1,0),('engine-roundtrip',1,0)]
+    require(len(leases)==len(expected_leases),'complete actual route-lease observations required')
+    for observed,(stage,surfaces,downloads) in zip(leases,expected_leases):
+        require(observed.get('stage')==stage and observed.get('surfaces')==surfaces and observed.get('downloads')==downloads and observed.get('held') is bool(surfaces or downloads),'surface/download route retention differs')
+        if surfaces or downloads:require(observed.get('nativeRouteBusy') is True,'native background route selector did not retain active Chromium work')
     proxy=result.get('proxy',{});require(proxy.get('upstreamConnections')==0 and proxy.get('forwardingImplemented') is False and proxy.get('downloadRequests',0)>0,'controlled proxy/download scope differs')
     hashes=report.get('sourceFiles',{});require(isinstance(hashes,dict) and SOURCE_INPUTS<=set(hashes),'source and harness hashes required')
     for path,sha in hashes.items():

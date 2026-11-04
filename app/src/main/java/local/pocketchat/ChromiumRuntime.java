@@ -29,6 +29,7 @@ final class ChromiumRuntime implements AutoCloseable {
   final ConnectivityManager connectivity;final NativeNetwork network;
   final SharedPreferences.OnSharedPreferenceChangeListener preferenceListener=(p,key)->{if("networkMode".equals(key)||"proxy".equals(key)||"requireExternalVpn".equals(key)||"networkConfigured".equals(key))changedRoute();};
   final Runnable nativeListener=this::nativeChanged;
+  final Runnable leaseListener=this::leaseChanged;
   final ConnectivityManager.NetworkCallback networkListener=new ConnectivityManager.NetworkCallback(){
     public void onAvailable(Network value){defaultNetworkChanged();}
     public void onLost(Network value){defaultNetworkChanged();}
@@ -37,14 +38,14 @@ final class ChromiumRuntime implements AutoCloseable {
   };
   final ContentObserver catalogListener=new ContentObserver(main){public void onChange(boolean self){checkIdentity();}};
   volatile Route route;volatile boolean closed,observing;volatile String message="浏览器网络尚未就绪";
-  boolean refreshQueued,protectionReady;String observedNetworkKey="";volatile EnvironmentSpec.Identity identity;
+  boolean refreshQueued,protectionReady,surfaceDeferred;int leaseChanges;String observedNetworkKey="";volatile EnvironmentSpec.Identity identity;
   ChromiumRuntime(Activity activity,Listener listener){
     this.activity=activity;this.listener=listener;context=Profiles.context(activity,Profiles.processSlot());
     prefs=context.getSharedPreferences("chat",0);connectivity=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);network=NativeNetwork.get(context);
   }
   void start(){onMain(()->{
     if(closed)return;if(owner==this&&protectionReady){refresh();return;}if(owner!=null&&owner!=this)owner.close();owner=this;
-    if(!observing){observing=true;prefs.registerOnSharedPreferenceChangeListener(preferenceListener);network.addRouteListener(nativeListener);
+    if(!observing){observing=true;prefs.registerOnSharedPreferenceChangeListener(preferenceListener);network.addRouteListener(nativeListener);leaseChanges=ChromiumRouteLease.snapshot().changes;ChromiumRouteLease.addListener(leaseListener);
       try{if(connectivity==null)throw new IllegalStateException();observedNetworkKey=defaultNetworkKey();connectivity.registerDefaultNetworkCallback(networkListener);}catch(RuntimeException unavailable){block("无法监测当前网络，浏览器已暂停");return;}
       context.getContentResolver().registerContentObserver(DownloadLibraryChanges.uri(context),false,catalogListener);
     }
@@ -136,13 +137,15 @@ final class ChromiumRuntime implements AutoCloseable {
   void defaultNetworkChanged(){onMain(()->{if(closed||owner!=this)return;String key;try{key=defaultNetworkKey();}catch(RuntimeException unavailable){key="unavailable";}if(key.equals(observedNetworkKey)){Route selected=route;if(selected!=null&&!selected.evidenceCurrent())changedRoute();return;}observedNetworkKey=key;changedRoute();});}
   void changedRoute(){onMain(()->{if(closed||owner!=this)return;block("网络设置或默认线路已变化，正在重新连接…");if(refreshQueued)return;refreshQueued=true;main.post(()->{refreshQueued=false;if(!closed)refresh();});});}
   void nativeChanged(){onMain(()->{if(closed||owner!=this)return;Route selected=route;if(selected!=null&&selected.receipt!=null&&!selected.evidenceCurrent())block("应用内线路已变化，浏览器已暂停");if(route==null&&"internal".equals(prefs.getString("networkMode","external"))&&network.ready&&!network.starting&&!network.recoveryBlocked)changedRoute();});}
+  void surfaceDeferred(){surfaceDeferred=true;if(ChromiumRouteLease.snapshot().changes==0)main.post(this::leaseChanged);}
+  void leaseChanged(){int changes=ChromiumRouteLease.snapshot().changes;onMain(()->{boolean finished=changes==0&&(leaseChanges>0||surfaceDeferred);leaseChanges=changes;if(finished&&!closed&&owner==this){surfaceDeferred=false;if(allowed())listener.changed(true,message);else refresh();}});}
   void checkIdentity(){try{reader.execute(()->{try{EnvironmentSpec.Identity expected=identity;if(expected!=null&&!expected.equals(ProfileCatalog.get(context).identity(Profiles.slot(context))))onMain(()->close());}catch(Exception removed){onMain(()->close());}});}catch(RejectedExecutionException ignored){}}
   void fail(ChromiumRoutePolicy.Ticket ticket,Exception error){main.post(()->{if(policy.pending(ticket))block(error.getMessage()==null?"浏览器线路尚未就绪":error.getMessage());});}
   void block(String reason){policy.block();route=null;message=reason==null?"浏览器线路尚未就绪":reason;try{ServiceWorkerController.getInstance().getServiceWorkerWebSettings().setBlockNetworkLoads(true);}catch(RuntimeException ignored){}if(!closed)listener.changed(false,message);}
   static void stopProcess(){ChromiumRuntime active=owner;if(active!=null)active.close();}
   @Override public void close(){onMain(()->{
     if(closed)return;block("浏览器已停止联网");closed=true;policy.close();if(owner==this)owner=null;
-    if(observing){observing=false;prefs.unregisterOnSharedPreferenceChangeListener(preferenceListener);network.removeRouteListener(nativeListener);try{connectivity.unregisterNetworkCallback(networkListener);}catch(RuntimeException ignored){}try{context.getContentResolver().unregisterContentObserver(catalogListener);}catch(RuntimeException ignored){}}
+    if(observing){observing=false;ChromiumRouteLease.removeListener(leaseListener);prefs.unregisterOnSharedPreferenceChangeListener(preferenceListener);network.removeRouteListener(nativeListener);try{connectivity.unregisterNetworkCallback(networkListener);}catch(RuntimeException ignored){}try{context.getContentResolver().unregisterContentObserver(catalogListener);}catch(RuntimeException ignored){}}
     reader.shutdownNow();
     // Keep the last proxy override in place. Clearing here could expose another
     // system WebView or a persisted worker to the default direct route.

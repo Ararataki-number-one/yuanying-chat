@@ -67,7 +67,7 @@ def main():
     generated.write_text(rendered)
     state_test = ROOT / 'tests/resource-upload-host/local/pocketchat/ResourceUploadHostTest.java'
     js_test = ROOT / 'tests/browser-runtime/attachment-lifecycle.test.cjs'
-    files = [production / name for name in ('J.java', 'ResourceUploadState.java', 'GeckoWebView.java')]
+    files = [production / name for name in ('ChromiumRouteLease.java', 'J.java', 'ResourceUploadState.java', 'GeckoWebView.java')]
     files += [production / name for name, _ in bindings.values()]
     files += [ROOT / 'app/src/main/assets' / name for name in ('attachment-driver.js', 'web-reply-observer.js')]
     files += [template, state_test, js_test, Path(__file__).resolve()]
@@ -89,7 +89,7 @@ def main():
         return result.stdout
 
     try:
-        run('compile', [args.javac, '-cp', args.json_jar, '-d', classes, production / 'J.java', production / 'ResourceUploadState.java', state_test, generated])
+        run('compile', [args.javac, '-cp', args.json_jar, '-d', classes, production / 'ChromiumRouteLease.java', production / 'J.java', production / 'ResourceUploadState.java', state_test, generated])
         for suite, main_class, expected in [('state', 'ResourceUploadHostTest', 20), ('consumers', 'FileWorkConsumersHostTest', 9)]:
             raw = run(suite, [args.java, '-cp', str(classes) + os.pathsep + str(args.json_jar), 'local.pocketchat.' + main_class])
             names = re.findall(r'^PASS (.+)$', raw, re.M)
