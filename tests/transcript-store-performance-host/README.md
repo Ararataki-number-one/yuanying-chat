@@ -15,10 +15,17 @@ method, with the real single-worker executor. Handler, cache, preferences and
 URI boundaries are explicit controlled adapters. Reports bind production,
 harness and jar hashes and require unchanged execution inputs.
 
-Both JSON implementations pass 139 baseline and 139 current checks. The
+Both JSON implementations pass 145 baseline and 145 current checks. The
 workloads cover 100 changing 64-message snapshots, a 40-offer burst, stale
 queued snapshots, native cancellation, cross-conversation saves, legacy
 preference preservation, offline loading and failure recovery. Assertions
 compare full saved payloads and count actual preference setters, their UTF-16
 characters, and production serialization calls. They do not execute Android,
 SQLite or SharedPreferences and do not measure device frame time or disk I/O.
+
+The conversation-switch cases use a worker gate before the first main drain.
+They verify the writer is held, then release it and verify both main callbacks
+are pending before choosing either delivery order. Delivery while A is current
+may persist A; delivery after switching to B must preserve the original
+late-preference assertion and leave preferences untouched. This controls the
+schedule without assuming the worker is slower than the main dispatcher.

@@ -1,14 +1,14 @@
 {
   "status": "passed",
-  "passed": 278,
-  "total": 278,
-  "sourceCommit": "856e7ccbb8f032d5ced7b01c6f43884f9d61a4b7",
+  "passed": 290,
+  "total": 290,
+  "sourceCommit": "01f76a901545a91a2f056943c0d3cb69ac8333d2",
   "baselineCommit": "f43adac5d746235f91edfeba50f495b84baa8acd",
   "sourceFiles": {
     "app/src/main/java/local/pocketchat/WebTranscriptStore.java": "62adf489a4caf673e3e527c3bb26891e8550fb480f2ec2d53236b25d1762bad2",
     "app/src/main/java/local/pocketchat/MainActivity.java": "a185ebc94537b9b60630c856b0f7efc278ac7c53b286317773dfa104d0b08f15",
     "app/src/main/java/local/pocketchat/J.java": "772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493",
-    "tests/transcript-store-performance-host/TranscriptStorePerformanceHost.java": "5d930724b2f0d3f1753e6c968a721952a4aa82c4446d4eb323b256935e31f1a0",
+    "tests/transcript-store-performance-host/TranscriptStorePerformanceHost.java": "6ed7c1a92baa8999c9a84a13ce5715d0de48e42e42b3721291af6ac47408f3b2",
     "tests/transcript-store-performance-host/run.py": "3589749c799695c1f34216cc9f20d03507b9c37e67f5e49d4d807d1d2e69d3e4"
   },
   "executionInputsUnchanged": true,
@@ -24,7 +24,7 @@
     "baseline": true,
     "streamingSerializations": 100,
     "staleQueuedSerializations": 1,
-    "total": 139,
+    "total": 145,
     "checks": [
       "Streaming snapshot 0 preserves exact cache body",
       "Streaming snapshot 1 preserves exact cache body",
@@ -152,6 +152,12 @@
       "Two conversations each preserve their own exact history",
       "Only current conversation updates cursor",
       "Only current conversation can write legacy transcript",
+      "Early-delivery writer waits behind controlled worker gate",
+      "Early preference delivery waits for explicit main dispatch",
+      "Delivery before conversation switch may persist the current cursor",
+      "A later conversation switch does not rewrite an already delivered cursor",
+      "Late-delivery writer waits behind controlled worker gate",
+      "Late preference callback is pending before conversation switch",
       "Late preference delivery respects conversation switch",
       "Offline load does not synchronously read cache",
       "Offline load publishes exact cached content",
@@ -167,7 +173,7 @@
       "All counted full-history serializations happen off main"
     ],
     "streamingSnapshots": 100,
-    "passed": 139,
+    "passed": 145,
     "burstOffers": 40,
     "status": "passed",
     "selectedSourceSha256": {
@@ -176,7 +182,7 @@
       "J.java": "772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493"
     },
     "chatUrlMethodSha256": "8fd7a5fd58b455252a8b18b2bb5aee2865806e70cd62a1412c329a2ff943f7e3",
-    "generatedHarnessSha256": "21b7fe28f0920aa485a7f661207d8e341b8aea5ce89d2f005aa8ebd15bc07b11"
+    "generatedHarnessSha256": "ae90ae4435c1aaba445bcbb28e45fed4dd5ab4ffbe81fc33c7560b078e615fde"
   },
   "after": {
     "streamingCacheWrites": 100,
@@ -189,7 +195,7 @@
     "baseline": false,
     "streamingSerializations": 100,
     "staleQueuedSerializations": 0,
-    "total": 139,
+    "total": 145,
     "checks": [
       "Streaming snapshot 0 preserves exact cache body",
       "Streaming snapshot 1 preserves exact cache body",
@@ -317,6 +323,12 @@
       "Two conversations each preserve their own exact history",
       "Only current conversation updates cursor",
       "Only current conversation can write legacy transcript",
+      "Early-delivery writer waits behind controlled worker gate",
+      "Early preference delivery waits for explicit main dispatch",
+      "Delivery before conversation switch may persist the current cursor",
+      "A later conversation switch does not rewrite an already delivered cursor",
+      "Late-delivery writer waits behind controlled worker gate",
+      "Late preference callback is pending before conversation switch",
       "Late preference delivery respects conversation switch",
       "Offline load does not synchronously read cache",
       "Offline load publishes exact cached content",
@@ -332,7 +344,7 @@
       "All counted full-history serializations happen off main"
     ],
     "streamingSnapshots": 100,
-    "passed": 139,
+    "passed": 145,
     "burstOffers": 40,
     "status": "passed",
     "selectedSourceSha256": {
@@ -341,7 +353,7 @@
       "J.java": "772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493"
     },
     "chatUrlMethodSha256": "8fd7a5fd58b455252a8b18b2bb5aee2865806e70cd62a1412c329a2ff943f7e3",
-    "generatedHarnessSha256": "21b7fe28f0920aa485a7f661207d8e341b8aea5ce89d2f005aa8ebd15bc07b11"
+    "generatedHarnessSha256": "ae90ae4435c1aaba445bcbb28e45fed4dd5ab4ffbe81fc33c7560b078e615fde"
   },
   "actualAndroidExecution": false,
   "actualGeckoExecution": false,

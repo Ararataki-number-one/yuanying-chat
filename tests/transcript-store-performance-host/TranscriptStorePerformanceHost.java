@@ -85,7 +85,20 @@ public final class TranscriptStorePerformanceHost {
       check("Two conversations each preserve their own exact history",two.session.cache.writes==2&&expected(first).equals(two.session.cache.values.get(A))&&expected(second).equals(two.session.cache.values.get(B)));
       check("Only current conversation updates cursor",two.session.prefs.conversationPuts==1&&two.session.prefs.cursorValues.equals(Collections.singletonList(B)));
       check("Only current conversation can write legacy transcript",two.session.prefs.transcriptPuts==(baseline?1:0));
-      WebTranscriptStore departed=store(A);CountedArray departing=entries(25);departed.offer(A,departing);departed.flush();departed.session.handler.runReady();barrier(departed);departed.current(B);departed.session.conversation=B;departed.session.handler.runReady();
+      WebTranscriptStore delivered=store(A);Gate deliveryGate=new Gate(delivered);CountedArray delivering=entries(24);delivered.offer(A,delivering);delivered.flush();delivered.session.handler.runReady();
+      check("Early-delivery writer waits behind controlled worker gate",delivered.writing&&delivering.serializations.get()==0&&delivered.session.cache.writes==0&&delivered.session.prefs.applies==0);
+      deliveryGate.release();barrier(delivered);
+      check("Early preference delivery waits for explicit main dispatch",delivered.writing&&delivered.session.cache.writes==1&&delivered.session.prefs.applies==0&&delivered.session.handler.size()==2);
+      delivered.session.handler.runReady();
+      check("Delivery before conversation switch may persist the current cursor",delivered.session.prefs.applies==1&&delivered.session.prefs.cursorValues.equals(Collections.singletonList(A))&&!delivered.writing);
+      delivered.current(B);delivered.session.conversation=B;delivered.session.handler.runReady();
+      check("A later conversation switch does not rewrite an already delivered cursor",delivered.session.prefs.applies==1&&delivered.session.prefs.cursorValues.equals(Collections.singletonList(A)));
+
+      WebTranscriptStore departed=store(A);Gate departureGate=new Gate(departed);CountedArray departing=entries(25);departed.offer(A,departing);departed.flush();departed.session.handler.runReady();
+      check("Late-delivery writer waits behind controlled worker gate",departed.writing&&departing.serializations.get()==0&&departed.session.cache.writes==0&&departed.session.prefs.applies==0);
+      departureGate.release();barrier(departed);
+      check("Late preference callback is pending before conversation switch",departed.writing&&departed.session.cache.writes==1&&departed.session.prefs.applies==0&&departed.session.handler.size()==2);
+      departed.current(B);departed.session.conversation=B;departed.session.handler.runReady();
       check("Late preference delivery respects conversation switch",departed.session.cache.writes==1&&departed.session.prefs.applies==0&&!departed.writing);
 
       session.entries=new JSONArray();session.offline=true;int previousReads=session.cache.reads;Gate offlineGate=new Gate(streaming);streaming.loadIfNeeded();
