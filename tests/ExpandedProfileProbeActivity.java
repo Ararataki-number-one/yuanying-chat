@@ -1,6 +1,0 @@
-package local.pocketchat;
-import android.app.Activity;import android.content.Context;import android.os.Bundle;import android.webkit.*;import org.json.*;import java.io.*;import java.nio.charset.StandardCharsets;
-public class ExpandedProfileProbeActivity extends Activity {
-  @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}
-  @Override public void onCreate(Bundle b){super.onCreate(b);WebView web=new WebView(getApplicationContext());CookieManager cookies=CookieManager.getInstance();String before=cookies.getCookie("https://profile.fixture.invalid/");cookies.setCookie("https://profile.fixture.invalid/","expanded_env=child7; Secure");cookies.flush();JSONObject result=J.obj("slot",Profiles.slot(this),"process",android.app.Application.getProcessName(),"sawDefaultCookie",before!=null&&before.contains("default-main"));try{new SecretStore(this).put("expanded-secret","child-seven".getBytes(StandardCharsets.UTF_8));ProfileCatalog.get(this).created(7);Profiles.rename(this,7,"第八环境测试");J.write(new File(getFilesDir(),"expanded-profile-child.json"),result.toString(2));}catch(Exception e){try{J.write(new File(getFilesDir(),"expanded-profile-child.json"),J.obj("error",e.getClass().getSimpleName()).toString());}catch(Exception ignored){}}web.destroy();finish();}
-}
