@@ -5,6 +5,7 @@ acceptance. The real Android workload still has to observe DocumentsUI twice.
 """
 import copy
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -41,6 +42,7 @@ class BrowserTargetingTests(unittest.TestCase):
                     'screenX': 0, 'screenY': 215, 'width': 324, 'height': 353,
                     'visibleLeft': 0, 'visibleTop': 215,
                     'visibleRight': 324, 'visibleBottom': 568,
+                    'nativeScale': 1.0,
                     'shown': True, 'windowFocus': True, 'foreground': True,
                     'layoutRequested': False,
                 },
@@ -53,6 +55,8 @@ class BrowserTargetingTests(unittest.TestCase):
                     'hitTag': 'A' if identifier == 'download' else 'INPUT',
                     'scrollX': 0.0, 'scrollY': 240.0,
                     'devicePixelRatio': 1.0, 'visualScale': 1.0,
+                    'visualWidth': 324.0, 'visualHeight': 353.0,
+                    'visualOffsetLeft': 0.0, 'visualOffsetTop': 0.0,
                     'url': 'http://browser-fixture.example/second',
                 },
             },
@@ -71,7 +75,7 @@ class BrowserTargetingTests(unittest.TestCase):
         frame, dom = current['tapTarget']['nativeFrame'], current['tapTarget']['dom']
         frame.update(screenX=10, screenY=210, width=648, height=706,
                      visibleLeft=10, visibleTop=210,
-                     visibleRight=658, visibleBottom=916)
+                     visibleRight=658, visibleBottom=916, nativeScale=2.0)
         dom.update(left=8.25, right=315.25, x=161.75, devicePixelRatio=2.0)
         current['tapTarget'].update(x=334, y=540)
         self.assertEqual(controller.validate_tap_target(current), (334, 540))
@@ -101,6 +105,11 @@ class BrowserTargetingTests(unittest.TestCase):
             'zero native width': lambda c: c['tapTarget']['nativeFrame'].update(width=0),
             'negative native height': lambda c: c['tapTarget']['nativeFrame'].update(height=-1),
             'boolean native size': lambda c: c['tapTarget']['nativeFrame'].update(width=True),
+            'missing native scale': lambda c: c['tapTarget']['nativeFrame'].pop('nativeScale'),
+            'zero native scale': lambda c: c['tapTarget']['nativeFrame'].update(nativeScale=0),
+            'negative native scale': lambda c: c['tapTarget']['nativeFrame'].update(nativeScale=-1),
+            'nonfinite native scale': lambda c: c['tapTarget']['nativeFrame'].update(nativeScale=math.inf),
+            'boolean native scale': lambda c: c['tapTarget']['nativeFrame'].update(nativeScale=True),
             'empty native visible rect': lambda c: c['tapTarget']['nativeFrame'].update(visibleRight=0),
             'point clipped by native view': lambda c: c['tapTarget']['nativeFrame'].update(visibleLeft=200),
             'wrong transformed X': lambda c: c['tapTarget'].update(x=163),
@@ -115,6 +124,14 @@ class BrowserTargetingTests(unittest.TestCase):
             'point no longer rect center': lambda c: c['tapTarget']['dom'].update(x=160.0),
             'inverted element rect': lambda c: c['tapTarget']['dom'].update(right=7.0),
             'point beyond CSS viewport': lambda c: c['tapTarget']['dom'].update(viewportHeight=160.0),
+            'missing visual width': lambda c: c['tapTarget']['dom'].pop('visualWidth'),
+            'zero visual height': lambda c: c['tapTarget']['dom'].update(visualHeight=0),
+            'nonfinite visual offset': lambda c: c['tapTarget']['dom'].update(visualOffsetTop=math.nan),
+            'boolean visual offset': lambda c: c['tapTarget']['dom'].update(visualOffsetLeft=True),
+            'negative visual offset': lambda c: c['tapTarget']['dom'].update(visualOffsetLeft=-1),
+            'visual frame beyond layout viewport': lambda c: c['tapTarget']['dom'].update(visualOffsetLeft=2),
+            'visual frame differs from native size': lambda c: c['tapTarget']['dom'].update(visualWidth=320),
+            'layout hit outside visual viewport': lambda c: c['tapTarget']['dom'].update(visualHeight=160.0),
             'missing native frame': lambda c: c['tapTarget'].pop('nativeFrame'),
             'missing DOM proof': lambda c: c['tapTarget'].pop('dom'),
         }
@@ -124,6 +141,164 @@ class BrowserTargetingTests(unittest.TestCase):
                 mutate(current)
                 with self.assertRaises(AssertionError):
                     controller.validate_tap_target(current)
+
+    def source8_target(self):
+        # Exact controlled Android Source8 geometry from run 41881064165.
+        # No screenshot or private page is used. Its real nativeScale and visual
+        # viewport disproved using nativeWidth / layoutViewportWidth as scale.
+        current = self.current()
+        current['tapTarget']['nativeFrame'].update(
+            screenX=0, screenY=214, width=320, height=350,
+            visibleLeft=0, visibleTop=214, visibleRight=320,
+            visibleBottom=564, nativeScale=1.0)
+        current['tapTarget']['dom'].update(x=263, y=392.875, left=8,
+            top=367.875, right=518, bottom=417.875,
+            viewportWidth=518, viewportHeight=567, scrollX=0, scrollY=16,
+            visualWidth=320, visualHeight=350, visualOffsetLeft=103,
+            visualOffsetTop=217, devicePixelRatio=1, visualScale=1)
+        current['tapTarget'].update(x=160, y=390)
+        return current
+
+    def test_real_source8_visual_pan_projects_to_actual_native_point(self):
+        current = self.source8_target()
+        self.assertEqual(controller.validate_tap_target(current), (160, 390))
+        before = copy.deepcopy(current)
+        for stage in ('file-picker-1', 'file-picker-2', 'download-click'):
+            with self.subTest(stage=stage):
+                current['stage'] = stage
+                identifier = 'download' if stage == 'download-click' else 'upload'
+                current['tapTarget']['id'] = current['tapTarget']['dom']['id'] = identifier
+                self.assertEqual(controller.validate_tap_target(current), (160, 390))
+        self.assertEqual(before['tapTarget']['dom']['scrollY'], 16)
+
+    def test_old_layout_width_projection_from_source8_is_rejected(self):
+        current = self.source8_target()
+        frame, dom = current['tapTarget']['nativeFrame'], current['tapTarget']['dom']
+        old_scale = frame['width'] / dom['viewportWidth']
+        old_point = (frame['screenX'] + math.floor(dom['x'] * old_scale + .5),
+                     frame['screenY'] + math.floor(dom['y'] * old_scale + .5))
+        self.assertEqual(old_point, (162, 457))
+        current['tapTarget'].update(x=old_point[0], y=old_point[1])
+        with self.assertRaisesRegex(AssertionError, 'screen transform differs'):
+            controller.validate_tap_target(current)
+
+    def test_pan_and_native_zoom_use_one_scale_with_java_rounding(self):
+        current = self.source8_target()
+        frame, dom = current['tapTarget']['nativeFrame'], current['tapTarget']['dom']
+        frame.update(screenX=10, screenY=210, width=640, height=700,
+            visibleLeft=10, visibleTop=210, visibleRight=650,
+            visibleBottom=910, nativeScale=2.0)
+        dom.update(devicePixelRatio=2.0, visualScale=1.0)
+        current['tapTarget'].update(x=330, y=562)
+        self.assertEqual(controller.validate_tap_target(current), (330, 562))
+        # Pinch zoom changes nativeScale and the actual visual dimensions; DPR
+        # stays two and is not multiplied into an already native scale again.
+        frame.update(width=960, height=1050, visibleRight=970,
+                     visibleBottom=1260, nativeScale=3.0)
+        dom.update(visualScale=1.5)
+        current['tapTarget'].update(x=490, y=738)
+        self.assertEqual(controller.validate_tap_target(current), (490, 738))
+
+    def test_stale_scale_offsets_or_native_visual_size_cannot_authorize_a_tap(self):
+        for key, mutate in {
+            'stale native scale': lambda n, d: n.update(nativeScale=.625),
+            'stale left offset': lambda n, d: d.update(visualOffsetLeft=0),
+            'stale top offset': lambda n, d: d.update(visualOffsetTop=0),
+            'height discrepancy': lambda n, d: d.update(visualHeight=347),
+            'width discrepancy': lambda n, d: d.update(visualWidth=317),
+            'center outside visible pan': lambda n, d: d.update(visualOffsetTop=400,
+                viewportHeight=800),
+        }.items():
+            with self.subTest(key=key):
+                current = self.source8_target()
+                mutate(current['tapTarget']['nativeFrame'], current['tapTarget']['dom'])
+                with self.assertRaises(AssertionError):
+                    controller.validate_tap_target(current)
+
+    def test_actual_java_geometry_helpers_and_projection_on_both_json_runtimes(self):
+        path = ROOT / 'tests/gecko/BrowserIntegrationActivity.java'
+        source = path.read_text()
+        def method(name):
+            start = source.index('  static boolean ' + name + '(')
+            opened = source.index('{', start)
+            depth = 1
+            end = opened + 1
+            while depth:
+                depth += (source[end] == '{') - (source[end] == '}')
+                end += 1
+            return source[start:end]
+        declarations = '\n'.join(line for line in source.splitlines()
+            if 'static final String[] NATIVE_TARGET_FIELDS=' in line
+            or 'static final String[] DOM_TARGET_FIELDS=' in line)
+        helpers = '\n'.join(method(name) for name in (
+            'nativeTargetReady', 'sameNativeTarget', 'sameDomTarget', 'nativeVisualTargetReady'))
+        projection = next(line.strip() for line in source.splitlines()
+                          if line.strip().startswith('double scale=nativeAfter.getDouble("nativeScale");int x='))
+        previous = subprocess.check_output(['git', 'show',
+            '89d9b76a093ddd61b548894746b13586a3aad7d1:tests/gecko/BrowserIntegrationActivity.java'],
+            cwd=ROOT, text=True)
+        old_projection = next(line.strip() for line in previous.splitlines()
+                              if line.strip().startswith('double scale=nativeAfter.getInt("width")/'))
+        body = r'''
+static int checks;static void check(boolean value){if(!value)throw new AssertionError("Geometry check "+checks);checks++;}
+static JSONObject copy(JSONObject value)throws Exception{return new JSONObject(value.toString());}
+public static void main(String[] args)throws Exception{
+ JSONObject packet=new JSONObject(args[0]),n=packet.getJSONObject("nativeFrame"),d=packet.getJSONObject("dom");
+ check(nativeTargetReady(n));check(sameNativeTarget(n,copy(n)));check(sameDomTarget(d,copy(d)));check(nativeVisualTargetReady(n,d));
+ int[] base=point(n,d),old=oldPoint(n,d);check(base[0]==160&&base[1]==390);check(old[0]==162&&old[1]==457);
+ JSONObject changed=copy(n);changed.put("nativeScale",1.0001);check(!sameNativeTarget(n,changed));
+ changed=copy(n);changed.put("nativeScale",0);check(!nativeTargetReady(changed));
+ for(String key:new String[]{"visualWidth","visualHeight","visualOffsetLeft","visualOffsetTop"}){JSONObject c=copy(d);c.put(key,c.getDouble(key)+.25);check(!sameDomTarget(d,c));}
+ changed=copy(n);changed.put("width",323);check(!nativeVisualTargetReady(changed,d));
+ changed.put("width",321);check(nativeVisualTargetReady(changed,d));
+ JSONObject zoom=copy(n);zoom.put("screenX",10);zoom.put("screenY",210);zoom.put("width",640);zoom.put("height",700);zoom.put("nativeScale",2);
+ JSONObject zd=copy(d);zd.put("devicePixelRatio",2);check(nativeVisualTargetReady(zoom,zd));
+ int[] twice=point(zoom,zd);check(twice[0]==330&&twice[1]==562);
+ zoom.put("width",960);zoom.put("height",1050);zoom.put("nativeScale",3);zd.put("visualScale",1.5);check(nativeVisualTargetReady(zoom,zd));
+ int[] pinch=point(zoom,zd);check(pinch[0]==490&&pinch[1]==738);
+ JSONObject half=copy(d);half.put("y",392.5);int[] rounded=point(n,half);check(rounded[1]==390);
+ System.out.println(new JSONObject().put("checks",checks).put("point",new JSONArray(base)).put("oldPoint",new JSONArray(old)).put("javaVersion",System.getProperty("java.version")).toString());
+}
+'''
+        java_source = ('import org.json.*; public final class TargetGeometryHost {\n'
+            + declarations + '\n' + helpers
+            + '\nstatic int[] point(JSONObject nativeAfter,JSONObject dom)throws Exception{' + projection + 'return new int[]{x,y};}\n'
+            + 'static int[] oldPoint(JSONObject nativeAfter,JSONObject dom)throws Exception{' + old_projection + 'return new int[]{x,y};}\n'
+            + body + '\n}')
+        home = Path(os.environ.get('JAVA_HOME', str(ROOT / 'work/browser-ci-jdk/jdk-17.0.21+9')))
+        javac = str(home / 'bin/javac') if (home / 'bin/javac').is_file() else shutil.which('javac')
+        java = str(home / 'bin/java') if (home / 'bin/java').is_file() else shutil.which('java')
+        self.assertTrue(java and javac, 'Actual JDK17 is required for native projection controls')
+        runtimes = [
+            ('desktop', '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed',
+             ['work/browser-host-deps/json.jar', 'work/ux-build-deps/json-20240303.jar']),
+            ('android-json', 'dfb7bae2f404cfe0b72b4d23944698cb716b7665171812a0a4d0f5926c0fac79',
+             ['work/browser-host-deps/android-json.jar', 'work/ux-build-deps/android-json.jar'])]
+        reports = []
+        for name, digest, candidates in runtimes:
+            jar = next((ROOT / value for value in candidates if (ROOT / value).is_file()
+                        and hashlib.sha256((ROOT / value).read_bytes()).hexdigest() == digest), None)
+            self.assertIsNotNone(jar, 'Pinned real JSON dependency required: ' + name)
+            with tempfile.TemporaryDirectory(prefix='browser-native-geometry-host-') as directory:
+                temporary = Path(directory)
+                (temporary / 'TargetGeometryHost.java').write_text(java_source)
+                compiled = subprocess.run([javac, '--release', '17', '-cp', str(jar),
+                    '-d', str(temporary), str(temporary / 'TargetGeometryHost.java')],
+                    capture_output=True, text=True, timeout=30)
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                ran = subprocess.run([java, '-cp', str(temporary) + os.pathsep + str(jar),
+                    'TargetGeometryHost', json.dumps(self.source8_target()['tapTarget'])],
+                    capture_output=True, text=True, timeout=20)
+                self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+                report = json.loads(ran.stdout)
+                self.assertEqual(report['checks'], 19)
+                self.assertEqual(report['point'], [160, 390])
+                self.assertEqual(report['oldPoint'], [162, 457])
+                self.assertTrue(report['javaVersion'].startswith('17.'))
+                reports.append(dict(runtime=name, jsonJarSha256=digest, **report))
+        self.assertEqual(path.read_text(), source)
+        print(json.dumps(dict(scope='Actual fixture Java geometry methods and current/previous projection statements on host JVM; explicit native/DOM JSON inputs, no Android execution',
+                              actualAndroidExecution=False, reports=reports)))
 
     def test_failure_diagnostic_preserves_only_controlled_bounded_fields(self):
         current = self.current()
@@ -343,7 +518,7 @@ const dom=new JSDOM('<!doctype html><input id="upload" type="file" multiple><a i
   {url:'http://browser-fixture.example/second',runScripts:'outside-only'});
 const w=dom.window, d=w.document, upload=d.getElementById('upload'), download=d.getElementById('download');
 Object.defineProperties(w,{innerWidth:{value:324,configurable:true},innerHeight:{value:353,configurable:true},devicePixelRatio:{value:1,configurable:true}});
-w.visualViewport={scale:1};let rect={left:8,top:500,right:316,bottom:550,width:308,height:50};
+w.visualViewport={scale:1,width:324,height:353,offsetLeft:0,offsetTop:0};let rect={left:8,top:500,right:316,bottom:550,width:308,height:50};
 let clicks=0, scrolls=[];
 for(const element of [upload,download]){
   element.click=()=>{clicks++;};
@@ -379,6 +554,7 @@ w.close();
         self.assertFalse(observed['covered']['hitTarget'])
         self.assertTrue(observed['descendant']['hitTarget'])
         self.assertEqual(observed['withoutVisualViewport']['visualScale'], 1)
+        self.assertIsNone(observed['withoutVisualViewport']['visualWidth'])
         current = self.current()
         current['tapTarget']['dom'] = observed['after']
         self.assertEqual(controller.validate_tap_target(current), (162, 380))
@@ -502,7 +678,7 @@ sequence.dom.window.close();navigation.dom.window.close();wrongStart.dom.window.
                 if key != 'token':
                     self.assertFalse(value['matching'])
 
-    def test_original_java_checks_projection_and_controller_gates_are_preserved(self):
+    def test_original_java_checks_and_controller_gates_are_preserved(self):
         def java_checks(text):
             values = []
             for match in re.finditer(r'\bcheck\("', text):
@@ -534,8 +710,9 @@ sequence.dom.window.close();navigation.dom.window.close();wrongStart.dom.window.
         current = (ROOT / fixture).read_text()
         self.assertEqual(len(java_checks(before)), 49)
         self.assertEqual(java_checks(current), java_checks(before))
-        projection = r'double scale=nativeAfter.getInt\("width"\).*?Math.round\(dom.getDouble\("y"\)\*scale\);'
-        self.assertEqual(re.search(projection, current).group(), re.search(projection, before).group())
+        self.assertIn('double scale=nativeAfter.getInt("width")/dom.getDouble("viewportWidth")', before)
+        self.assertNotIn('double scale=nativeAfter.getInt("width")/dom.getDouble("viewportWidth")', current)
+        self.assertIn('double scale=nativeAfter.getDouble("nativeScale")', current)
         import ast
         controller_before = subprocess.check_output(
             ['git', 'show', baseline + ':tools/browser/run_integration.py'], cwd=ROOT, text=True)

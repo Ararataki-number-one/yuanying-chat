@@ -16,7 +16,7 @@ sys.path.insert(0,str(ROOT/'tools/gecko'))
 from profile_invocation_contract import expected_build,verify_installed
 
 NATIVE_TARGET_FIELDS=('screenX','screenY','width','height','visibleLeft','visibleTop','visibleRight','visibleBottom')
-DOM_TARGET_FIELDS=('x','y','left','top','right','bottom','viewportWidth','viewportHeight','scrollX','scrollY','devicePixelRatio','visualScale')
+DOM_TARGET_FIELDS=('x','y','left','top','right','bottom','viewportWidth','viewportHeight','scrollX','scrollY','devicePixelRatio','visualScale','visualWidth','visualHeight','visualOffsetLeft','visualOffsetTop')
 
 
 def target_number(value,name,integer=False):
@@ -35,14 +35,17 @@ def validate_tap_target(current):
     if type(native) is not dict or type(dom) is not dict:raise AssertionError('Trusted target geometry is missing')
     for key in NATIVE_TARGET_FIELDS:target_number(native.get(key),key,True)
     for key in DOM_TARGET_FIELDS:target_number(dom.get(key),key)
+    scale=target_number(native.get('nativeScale'),'nativeScale')
     if any(native.get(key) is not True for key in ('shown','windowFocus','foreground')) or native.get('layoutRequested') is not False:raise AssertionError('Trusted target native layout is not ready')
     if dom.get('id')!=expected or dom.get('hitTarget') is not True or not str(dom.get('url','')).startswith('http://browser-fixture.example/'):raise AssertionError('Trusted target DOM hit is not the fixture element')
     width,height=dom['viewportWidth'],dom['viewportHeight'];x,y=dom['x'],dom['y']
     if not (width>0 and height>0 and native['width']>0 and native['height']>0 and dom['right']>dom['left'] and dom['bottom']>dom['top'] and 0<x<width and 0<y<height and dom['left']<x<dom['right'] and dom['top']<y<dom['bottom'] and abs(x-(dom['left']+dom['right'])/2)<.01 and abs(y-(dom['top']+dom['bottom'])/2)<.01):raise AssertionError('Trusted target center is outside the DOM viewport')
+    visual_width,visual_height=dom['visualWidth'],dom['visualHeight'];left,top=dom['visualOffsetLeft'],dom['visualOffsetTop']
+    if not (scale>0 and visual_width>0 and visual_height>0 and left>=0 and top>=0 and left+visual_width<=width+1 and top+visual_height<=height+1 and left<x<left+visual_width and top<y<top+visual_height):raise AssertionError('Trusted target center is outside the actual visual viewport')
+    if abs(visual_width*scale-native['width'])>1 or abs(visual_height*scale-native['height'])>1:raise AssertionError('Trusted target native scale and visual viewport differ')
     point_x=target_number(target.get('x'),'screen x',True);point_y=target_number(target.get('y'),'screen y',True)
     if not (native['screenX']<=native['visibleLeft']<native['visibleRight']<=native['screenX']+native['width'] and native['screenY']<=native['visibleTop']<native['visibleBottom']<=native['screenY']+native['height'] and native['visibleLeft']<=point_x<native['visibleRight'] and native['visibleTop']<=point_y<native['visibleBottom']):raise AssertionError('Trusted target is outside the visible native WebView')
-    scale=native['width']/width
-    if point_x!=native['screenX']+math.floor(x*scale+.5) or point_y!=native['screenY']+math.floor(y*scale+.5):raise AssertionError('Trusted target screen transform differs')
+    if point_x!=native['screenX']+math.floor((x-left)*scale+.5) or point_y!=native['screenY']+math.floor((y-top)*scale+.5):raise AssertionError('Trusted target screen transform differs')
     return point_x,point_y
 
 
@@ -54,7 +57,7 @@ def target_summary(value):
     if type(value) is not dict:return None
     result={key:value[key] for key in ('ready','stableSamples','visualStateComplete','x','y') if type(value.get(key)) in (bool,int,float) and (type(value[key]) is bool or abs(value[key])<=10000000 and math.isfinite(value[key]))}
     if type(value.get('id')) is str:result['id']=brief(value['id'],80)
-    for section,keys in [('nativeFrame',NATIVE_TARGET_FIELDS+('nativeScale','viewFocus','shown','windowFocus','foreground','layoutRequested')),('dom',DOM_TARGET_FIELDS+('visualWidth','visualHeight','visualOffsetLeft','visualOffsetTop','documentFocus','hitTarget'))]:
+    for section,keys in [('nativeFrame',NATIVE_TARGET_FIELDS+('nativeScale','viewFocus','shown','windowFocus','foreground','layoutRequested')),('dom',DOM_TARGET_FIELDS+('documentFocus','hitTarget'))]:
         source=value.get(section)
         if type(source) is dict:result[section]={key:source[key] for key in keys if type(source.get(key)) in (bool,int,float) and (type(source[key]) is bool or abs(source[key])<=10000000 and math.isfinite(source[key]))}
     if type(value.get('dom')) is dict:

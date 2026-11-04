@@ -230,7 +230,33 @@ public final class CompactChromeIntegrationActivity extends MainActivity {
       if(reloadDialog==modal&&attached&&focused&&laidOut&&controls.length()==2){reloadEvent("reloadModal",J.obj("centered",modal.getWindow().getAttributes().gravity==Gravity.CENTER,"controls",controls,
         "inputReady",J.obj("sameDialog",reloadDialog==modal,"modalRef",System.identityHashCode(modal),"attached",attached,"windowFocus",focused,"elapsedMs",SystemClock.elapsedRealtime())));return;}
     }
-    if(SystemClock.elapsedRealtime()>deadline){reloadTrace("modal-timeout",null,null);reloadEvent("error",J.obj("error","Reload confirmation did not appear"));return;}handler.postDelayed(()->waitReloadModal(deadline),50);
+    if(SystemClock.elapsedRealtime()>deadline){reloadModalReadinessTimeout();reloadTrace("modal-timeout",null,null);reloadEvent("error",J.obj("error","Reload confirmation did not appear"));return;}handler.postDelayed(()->waitReloadModal(deadline),50);
+  }
+  JSONObject reloadReadinessView(View view){
+    if(view==null)return J.obj("present",false);
+    Rect visible=new Rect(),bounds=screenBounds(view);boolean globallyVisible=view.getGlobalVisibleRect(visible);
+    return J.obj("present",true,"attached",view.isAttachedToWindow(),"windowFocus",view.hasWindowFocus(),"shown",view.isShown(),
+      "visibility",view.getVisibility(),"laidOut",view.isLaidOut(),"layoutRequested",view.isLayoutRequested(),
+      "width",view.getWidth(),"height",view.getHeight(),"measuredWidth",view.getMeasuredWidth(),"measuredHeight",view.getMeasuredHeight(),
+      "bounds",J.arr(bounds.left,bounds.top,bounds.right,bounds.bottom),"globallyVisible",globallyVisible,
+      "visibleBounds",J.arr(visible.left,visible.top,visible.right,visible.bottom));
+  }
+  void reloadModalReadinessTimeout(){
+    if(!reloadFixture)return;
+    try{
+      ReferenceUi.Modal modal=reloadDialog;JSONArray controls=new JSONArray();
+      if(modal!=null)for(int i=0;i<Math.min(8,modal.footer.getChildCount());i++){
+        View view=modal.footer.getChildAt(i);if(view instanceof Button){String label=((Button)view).getText().toString();
+          controls.put(J.obj("label",label.equals("取消")||label.equals("重新加载")?label:"<outside-fixture>","enabled",view.isEnabled(),"clickable",view.isClickable(),"view",reloadReadinessView(view)));}
+      }
+      Window window=modal==null?null:modal.getWindow();
+      Log.i("PocketReloadWindow",J.obj("schema",1,"phase","input-timeout","command",command,"elapsedMs",SystemClock.elapsedRealtime(),
+        "diagnosticOnly",true,"releaseAcceptance",false,"rootCauseEstablished",false,"currentModal",modal!=null,"showing",modal!=null&&modal.isShowing(),
+        "activityActive",active,"activityDestroyed",destroyed,"host",reloadReadinessView(getWindow().getDecorView()),
+        "decor",reloadReadinessView(window==null?null:window.getDecorView()),"root",reloadReadinessView(modal==null?null:modal.root),
+        "windowFlags",window==null?JSONObject.NULL:window.getAttributes().flags,"windowType",window==null?JSONObject.NULL:window.getAttributes().type,
+        "softInputMode",window==null?JSONObject.NULL:window.getAttributes().softInputMode,"controls",controls).toString());
+    }catch(Throwable observationFailure){reloadWindowObservationFailure("input-timeout",observationFailure);}
   }
   void reloadSnapshot(String event){remote.evaluateJavascript("({body:document.documentElement.outerHTML,draft:document.getElementById('prompt-textarea').value,cookie:document.cookie,sendCount:Number(document.getElementById('send-count').textContent),path:location.pathname,document:document.documentElement.getAttribute('data-reload-document')})",raw->{
     JSONObject result=J.parse(raw);ReloadView web=(ReloadView)remote;try{result.put("documents",reloadDocuments).put("stops",web.stops).put("loads",web.loads).put("requested",web.requested).put("currentUrl",web.getUrl()).put("nativeUrl",web.rawUrl()).put("nativeSession",System.identityHashCode(web.current)).put("visibleDocument",web.hasVisibleDocument()).put("documentReadyEvidence",web.documentReadyEvidence).put("cachedResumeUrl",session.resumeUrl()).put("modal",reloadDialog!=null&&reloadDialog.isShowing());}catch(Exception ignored){}

@@ -76,6 +76,8 @@ class FocusedMainExecutionTest(unittest.TestCase):
             inputs=('tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py',
                     'tests/gecko/run_chrome_collapse_diagnostic.py',
                     'tests/gecko/ChromeCollapseIntegration.java','tools/gecko/chrome_collapse_contract.py','app/build.gradle',
+                    'tests/gecko/CompactChromeIntegrationActivity.java','tests/gecko/ReloadWindowCallbackObservation.java',
+                    'tools/gecko/ui_test_device.py','tests/gecko/ui_settings_services_device11.py',
                     'tools/gecko/diagnostic_capture_privacy.py','tools/gecko/caret_ime_guard.py')
             for name in inputs:
                 target=root/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/name,target)
@@ -167,6 +169,7 @@ class FocusedMainExecutionTest(unittest.TestCase):
             before_path=sys.path[:]
             try:
                 with mock.patch.object(module,'ROOT',root),mock.patch.object(module,'time',clock),\
+                     mock.patch.dict(module.os.environ,{'CI':'false'},clear=True),\
                      mock.patch.object(module.subprocess,'check_output',side_effect=check_output),\
                      mock.patch.object(module.importlib.util,'spec_from_file_location',side_effect=selected_spec),\
                      mock.patch.object(module.http.server,'ThreadingHTTPServer',Server),\
@@ -196,6 +199,118 @@ class FocusedMainExecutionTest(unittest.TestCase):
         self.execute('cold',controlled_key_diagnostic())
     def test_real_main_reload_redacts_selected_write_and_finally_native_write(self):
         self.execute('after-reload',controlled_key_diagnostic())
+
+
+class FocusedDevicePreparationTest(unittest.TestCase):
+    """Actual runner control flow with declared host-only device/API boundaries."""
+    def execute(self, *, preparation_error=False, workload_error=False, restoration_error=False, sourcehash_error=False, partial_copy_error=False):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)/'source';out=Path(directory)/'diagnostic';order=[];record_path=None
+            inputs=('tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py',
+                'tests/gecko/run_chrome_collapse_diagnostic.py','tests/gecko/ChromeCollapseIntegration.java',
+                'tools/gecko/chrome_collapse_contract.py','tests/gecko/CompactChromeIntegrationActivity.java',
+                'tests/gecko/ReloadWindowCallbackObservation.java','tools/gecko/ui_test_device.py',
+                'tests/gecko/ui_settings_services_device11.py','app/build.gradle')
+            for name in inputs:
+                target=root/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(ROOT/name,target)
+            integration=root/'work/gecko-integration';integration.mkdir(parents=True)
+            (integration/'ui-current.apk').write_bytes(b'HOST-ONLY-FAKE-BUILD')
+            identity={'hostOnly':True,'apkSha256':'3'*64};lease=object()
+            wellbeing=types.ModuleType('ui_test_device');settings=types.ModuleType('ui_settings_services_device11')
+            def prepare_wellbeing(adb,**kwargs):
+                self.assertEqual(kwargs,dict(serial='fake-serial',environment=module.os.environ))
+                order.append('wellbeing');return {'status':'host-only-control','previousFailureCauseProven':False}
+            def prepare_settings(adb,**kwargs):
+                nonlocal record_path
+                self.assertEqual(kwargs,dict(serial='fake-serial',environment=module.os.environ,root=root,source='1'*40,record_path=out/'ui-settings-services-isolation.json'))
+                order.append('settings');record_path=kwargs['record_path']
+                record_path.write_text(json.dumps(dict(status='host-only-control',mutationAttempted=False,restorationVerified=preparation_error)))
+                if preparation_error:raise RuntimeError('host-only preparation failure after its own restoration')
+                return lease
+            def finish_settings(actual,report):
+                self.assertIs(actual,lease);order.append('restore')
+                if restoration_error:raise RuntimeError('host-only restoration failure')
+                value=json.loads(record_path.read_text());value['restorationVerified']=True
+                record_path.write_text(json.dumps(value))
+            wellbeing.prepare_workflow=prepare_wellbeing
+            settings.prepare_workflow=prepare_settings;settings.finish_workflow=finish_settings
+            def workload():
+                self.assertEqual(order,['identity','wellbeing','settings']);order.append('workload')
+                if partial_copy_error:(integration/'ui-reload-confirmation.json').write_bytes(b'host-only partial report')
+                if workload_error:raise RuntimeError('host-only workload failure')
+            original_read,original_write=Path.read_bytes,Path.write_bytes
+            def read_bytes(path):
+                if sourcehash_error and path==root/inputs[0] and 'workload' in order:
+                    raise OSError('host-only source verification read failure')
+                return original_read(path)
+            def write_bytes(path,value):
+                if partial_copy_error and path==out/'ui-reload-confirmation.json':
+                    raise OSError('host-only partial report copy failure')
+                return original_write(path,value)
+            def check_output(command,**kwargs):
+                if command==['git','rev-parse','HEAD']:return '1'*40+'\n'
+                if command==['git','rev-parse','HEAD^{tree}']:return '2'*40+'\n'
+                if command[:2]==['git','status']:return ''
+                self.assertEqual(command[:3],['fake-adb','-s','fake-serial'])
+                if command[3:6]==['exec-out','content','read']:return json.dumps(identity).encode()
+                return b'host-only external response'
+            build=types.ModuleType('profile_invocation_contract');build.expected_build=lambda *args:identity
+            def verify(actual,expected):self.assertEqual(actual,expected);order.append('identity')
+            build.verify_installed=verify
+            privacy=types.ModuleType('diagnostic_capture_privacy');privacy.checked_text=lambda value:(value,None)
+            contract=types.ModuleType('chrome_collapse_contract');contract.verify_auto_collapse=lambda *args:{'hostOnly':True}
+            before_path=sys.path[:];error=None
+            try:
+                with mock.patch.object(module,'ROOT',root),mock.patch.object(module,'selected_program',return_value=ast.parse("reload_confirmation={'hostOnly':True}\nworkload_boundary()\nauto_collapse={'hostOnly':True}")),\
+                     mock.patch.object(module,'workload_boundary',workload,create=True),\
+                     mock.patch.object(Path,'read_bytes',read_bytes),mock.patch.object(Path,'write_bytes',write_bytes),\
+                     mock.patch.object(module.subprocess,'check_output',side_effect=check_output),\
+                     mock.patch.dict(sys.modules,{'profile_invocation_contract':build,'diagnostic_capture_privacy':privacy,
+                         'chrome_collapse_contract':contract,'ui_test_device':wellbeing,'ui_settings_services_device11':settings}),\
+                     mock.patch.object(sys,'argv',['focused','--adb','fake-adb','--serial','fake-serial','--scenario','after-reload','--out',str(out)]):
+                    try:module.main()
+                    except Exception as actual:error=actual
+            finally:sys.path[:]=before_path
+            report=json.loads((out/'results.json').read_text())
+            self.assertFalse(report['rootCauseEstablished']);self.assertEqual(report['sourceInputsUnchanged'],not sourcehash_error)
+            self.assertFalse(report['deviceIsolation']['previousFailureCauseProven'])
+            self.assertEqual(report['settingsServicesIsolation']['restorationVerified'],preparation_error or not restoration_error)
+            self.assertEqual(report['status'],'failed' if preparation_error or workload_error or restoration_error or sourcehash_error or partial_copy_error else 'passed')
+            self.assertEqual(order,['identity','wellbeing','settings']+([] if preparation_error else ['workload','restore']))
+            if preparation_error:self.assertIn('preparation failure',str(error))
+            elif workload_error:self.assertIn('workload failure',str(error))
+            elif sourcehash_error:self.assertIn('source verification read failure',str(error))
+            elif partial_copy_error:self.assertIn('partial report copy failure',str(error))
+            elif restoration_error:self.assertIn('restoration failure',str(error))
+            else:self.assertIsNone(error)
+            if restoration_error:self.assertIn('restoration failure',report['deviceRestorationError'])
+            if sourcehash_error:self.assertIn('source verification read failure',report['diagnosticCollectionError'])
+            if partial_copy_error:self.assertIn('partial report copy failure',report['diagnosticCollectionError'])
+    def test_same_preconditions_run_before_workload_and_restore_after_success(self):self.execute()
+    def test_workload_failure_still_restores_and_retains_failure(self):self.execute(workload_error=True)
+    def test_preparation_failure_keeps_its_own_restoration_record_without_running_workload(self):self.execute(preparation_error=True)
+    def test_restoration_failure_cannot_produce_success(self):self.execute(restoration_error=True)
+    def test_restoration_failure_does_not_mask_original_workload_failure(self):self.execute(workload_error=True,restoration_error=True)
+    def test_source_read_failure_still_restores_and_cannot_produce_success(self):self.execute(sourcehash_error=True)
+    def test_partial_copy_failure_still_restores_and_cannot_produce_success(self):self.execute(partial_copy_error=True)
+    def test_collection_and_restoration_failures_do_not_mask_original_workload_failure(self):
+        for failure in ('sourcehash_error','partial_copy_error'):
+            with self.subTest(failure=failure):self.execute(workload_error=True,restoration_error=True,**{failure:True})
+
+
+class ReloadTimeoutObservationTest(unittest.TestCase):
+    def test_timeout_keeps_original_deadline_predicate_error_and_adds_read_only_observation(self):
+        java=(ROOT/'tests/gecko/CompactChromeIntegrationActivity.java').read_text()
+        self.assertIn('waitReloadModal(SystemClock.elapsedRealtime()+10000)',java)
+        self.assertIn('if(reloadDialog==modal&&attached&&focused&&laidOut&&controls.length()==2)',java)
+        self.assertIn('if(SystemClock.elapsedRealtime()>deadline){reloadModalReadinessTimeout();reloadTrace("modal-timeout",null,null);reloadEvent("error",J.obj("error","Reload confirmation did not appear"));return;}handler.postDelayed(()->waitReloadModal(deadline),50);',java)
+        snapshot=java[java.index('  JSONObject reloadReadinessView('):java.index('  void reloadSnapshot(')]
+        self.assertIn('Math.min(8,modal.footer.getChildCount())',snapshot)
+        self.assertIn('"rootCauseEstablished",false',snapshot)
+        self.assertIn('"<outside-fixture>"',snapshot)
+        self.assertIn('"host",reloadReadinessView(getWindow().getDecorView())',snapshot)
+        for mutation in ('requestFocus(', 'requestLayout(', '.layout(', '.measure(', 'evaluateJavascript(', 'loadUrl(', 'ProfileCatalog', '.set'):
+            self.assertNotIn(mutation,snapshot)
 
 
 def controlled_key_diagnostic():

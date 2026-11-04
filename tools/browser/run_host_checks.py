@@ -38,6 +38,7 @@ def main():
     for name,script in [('browser-controls','tests/browser-controls-performance-host/run.py'),('transcript-order','tests/browser-transcript-order-host/run.py')]:
         target=out/(name+'.json');add(name,script,['--jsdom-module',a.jsdom_module.resolve(),'--output',target],target)
     add('browser-targeting','tests/browser_targeting_test.py')
+    add('chrome-diagnostic-controls','tests/gecko_chrome_diagnostic_test.py')
     add('network-callback-cohort','tests/network_settings_callback_contract_test.py')
     add('network-completion-proof','tests/network_fence_completion_contract_test.py')
     add('network-callback-source-history','tests/profile_network_settings_callback_source_compatibility_test.py')

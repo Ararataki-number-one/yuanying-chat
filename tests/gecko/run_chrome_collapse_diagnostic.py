@@ -12,6 +12,7 @@ import hashlib
 import http.server
 import importlib.util
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -73,14 +74,16 @@ def main():
     apk=integration/'ui-current.apk'
     if not apk.is_file():raise ValueError('Restored selected-source UI APK is missing')
     original=ROOT/'tests/gecko/run_ui_visuals.py';program=selected_program(original.read_text(),args.scenario)
-    inputs=['tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py','tests/gecko/run_chrome_collapse_diagnostic.py','tests/gecko/ChromeCollapseIntegration.java','tools/gecko/chrome_collapse_contract.py']
+    inputs=['tests/gecko/run_ui_visuals.py','tests/gecko/run_chrome_collapse.py','tests/gecko/run_chrome_collapse_diagnostic.py','tests/gecko/ChromeCollapseIntegration.java','tools/gecko/chrome_collapse_contract.py',
+        'tests/gecko/CompactChromeIntegrationActivity.java','tests/gecko/ReloadWindowCallbackObservation.java',
+        'tools/gecko/ui_test_device.py','tests/gecko/ui_settings_services_device11.py']
     hashes={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in inputs}
     namespace=dict(globals(),checked_text=checked_text,root=ROOT,out=integration,source=source,package=package,args=args,adb=adb,component=package+'/local.pocketchat.CompactChromeIntegrationActivity')
     report=dict(status='running',diagnosticOnly=True,releaseAcceptance=False,fullUiAcceptance=False,
         actualAndroidExecution=False,sourceCommit=source,sourceTree=tree,sourceFiles=hashes,scenario=args.scenario,
         earlierUiPreludeReplayed=False,originalReloadSequenceRequested=args.scenario=='after-reload',
-        attempts=1,oracleChanged=False,deadlinesChanged=False)
-    failure=None
+        attempts=1,oracleChanged=False,deadlinesChanged=False,rootCauseEstablished=False,sourceInputsUnchanged=False)
+    failure=None;settings_services_device11=None
     try:
         partials=('ui-reload-confirmation.json','ui-reload-log.txt','ui-collapse-server-trace.json')
         if any((integration/name).exists() for name in partials):raise ValueError('Pre-existing partial UI evidence cannot join a new diagnostic invocation')
@@ -90,6 +93,13 @@ def main():
         identity=expected_build(apk,source,tree,re.search(r"versionName '([^']+)'",gradle).group(1),int(re.search(r'versionCode (\d+)',gradle).group(1)))
         verify_installed(json.loads(adb('exec-out','content','read','--uri','content://'+package+'.evidence/build-identity')),identity)
         report['buildIdentity']=identity;report['actualAndroidExecution']=True
+        # Reuse the complete UI invocation's device preconditions, not its earlier
+        # workload. This setup alignment does not establish a prior failure cause.
+        from ui_test_device import prepare_workflow as prepare_ui_test_device
+        report['deviceIsolation']=prepare_ui_test_device(adb,serial=args.serial,environment=os.environ)
+        (args.out/'ui-test-device-isolation.json').write_text(json.dumps(report['deviceIsolation'],sort_keys=True,indent=2)+'\n')
+        from ui_settings_services_device11 import prepare_workflow as prepare_settings_services_device11, finish_workflow as finish_settings_services_device11
+        settings_services_device11=prepare_settings_services_device11(adb,serial=args.serial,environment=os.environ,root=ROOT,source=source,record_path=args.out/'ui-settings-services-isolation.json')
         exec(compile(program,str(original)+':focused-unmodified-sections','exec'),namespace)
         from chrome_collapse_contract import verify_auto_collapse
         report['autoCollapse']=namespace['auto_collapse']
@@ -98,27 +108,53 @@ def main():
     except Exception as error:
         failure=error;report['status']='failed';report['error']=repr(error)
     finally:
-        if 'reload_confirmation' in namespace:report['reloadConfirmation']=namespace['reload_confirmation']
-        if 'reload_checks' in namespace:report['completedReloadChecks']=namespace['reload_checks']
-        if 'reload_taps' in namespace:report['actualReloadTaps']=namespace['reload_taps']
-        report['sourceInputsUnchanged']=all(hashlib.sha256((ROOT/p).read_bytes()).hexdigest()==h for p,h in hashes.items())
-        if not report['sourceInputsUnchanged']:
-            report['status']='failed'
-            if failure is None:failure=ValueError('Selected diagnostic source changed during execution');report['error']=repr(failure)
-        if 'reload_loopback' in namespace:report['controlledServerEvents']=namespace['reload_loopback'].TRACE
-        for name in ('ui-reload-confirmation.json','ui-reload-log.txt','ui-collapse-server-trace.json'):
-            path=integration/name
-            produced=('reload_confirmation' in namespace if name.startswith('ui-reload-') else 'reload_loopback' in namespace)
-            if produced and path.is_file():
-                (args.out/name).write_bytes(path.read_bytes())
-        try:(args.out/'native-log.txt').write_text(checked_text(adb('logcat','-d'))[0])
-        except Exception as error:report['nativeLogError']=type(error).__name__
-        try:(args.out/'screen.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
-        except Exception as error:report['screenError']=type(error).__name__
-        (args.out/'results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
-        for parts in [('shell','settings','put','system','font_scale','1'),('shell','wm','size','reset'),('shell','wm','density','reset')]:
-            try:adb(*parts)
-            except Exception:pass
+        try:
+            if 'reload_confirmation' in namespace:report['reloadConfirmation']=namespace['reload_confirmation']
+            if 'reload_checks' in namespace:report['completedReloadChecks']=namespace['reload_checks']
+            if 'reload_taps' in namespace:report['actualReloadTaps']=namespace['reload_taps']
+            report['sourceInputsUnchanged']=all(hashlib.sha256((ROOT/p).read_bytes()).hexdigest()==h for p,h in hashes.items())
+            if not report['sourceInputsUnchanged']:
+                report['status']='failed'
+                if failure is None:failure=ValueError('Selected diagnostic source changed during execution');report['error']=repr(failure)
+            if 'reload_loopback' in namespace:report['controlledServerEvents']=namespace['reload_loopback'].TRACE
+            for name in ('ui-reload-confirmation.json','ui-reload-log.txt','ui-collapse-server-trace.json'):
+                path=integration/name
+                produced=('reload_confirmation' in namespace if name.startswith('ui-reload-') else 'reload_loopback' in namespace)
+                if produced and path.is_file():
+                    (args.out/name).write_bytes(path.read_bytes())
+            try:(args.out/'native-log.txt').write_text(checked_text(adb('logcat','-d'))[0])
+            except Exception as error:report['nativeLogError']=type(error).__name__
+            try:(args.out/'screen.png').write_bytes(subprocess.check_output([args.adb,'-s',args.serial,'exec-out','screencap','-p'],timeout=30))
+            except Exception as error:report['screenError']=type(error).__name__
+        except Exception as error:
+            report.update(status='failed',diagnosticCollectionError=repr(error))
+            if failure is None:failure=error;report['error']=repr(error)
+        finally:
+            # No diagnostic read/write may skip restoration of an acquired lease.
+            try:
+                if settings_services_device11 is not None:
+                    finish_settings_services_device11(settings_services_device11,report)
+            except Exception as error:
+                report.update(status='failed',deviceRestorationError=repr(error))
+                if failure is None:failure=error;report['error']=repr(error)
+            finally:
+                try:
+                    record=args.out/'ui-settings-services-isolation.json'
+                    if record.is_file():
+                        value=json.loads(record.read_text())
+                        report['settingsServicesIsolation']=dict(recordFile=record.name,recordSha256=hashlib.sha256(record.read_bytes()).hexdigest(),
+                            status=value.get('status'),mutationAttempted=value.get('mutationAttempted'),restorationVerified=value.get('restorationVerified'))
+                except Exception as error:
+                    report.update(status='failed',deviceRecordError=repr(error))
+                    if failure is None:failure=error;report['error']=repr(error)
+                try:(args.out/'results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+                except Exception as error:
+                    report['status']='failed'
+                    if failure is None:failure=error
+                finally:
+                    for parts in [('shell','settings','put','system','font_scale','1'),('shell','wm','size','reset'),('shell','wm','density','reset')]:
+                        try:adb(*parts)
+                        except Exception:pass
     if failure is not None:raise failure
 
 
