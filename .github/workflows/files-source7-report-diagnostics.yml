@@ -1,0 +1,76 @@
+name: Read fixed Source7 files sequence validation reports (diagnostic only; no screenshots)
+'on':
+  push:
+    branches:
+    - diagnostics/files-2.1.0-source7-reports
+    paths:
+    - .github/workflows/files-source7-report-diagnostics.yml
+permissions:
+  actions: read
+  contents: read
+jobs:
+  read_existing_reports:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Verify fixed artifact and print only source-bound synthetic sequence reports
+      shell: bash
+      run: "set -euo pipefail\nmkdir -p diagnostic-input\ngh api repos/Ararataki-number-one/yuanying-chat/actions/runs/41869129422\
+        \ > diagnostic-input/run.json\ngh api repos/Ararataki-number-one/yuanying-chat/git/commits/03d0c4ace70942a3f6899daffac086cc6682885e\
+        \ > diagnostic-input/source.json\ngh api repos/Ararataki-number-one/yuanying-chat/actions/artifacts/13346201765\
+        \ > diagnostic-input/artifact.json\ngh api repos/Ararataki-number-one/yuanying-chat/actions/artifacts/13346201765/zip\
+        \ > diagnostic-input/artifact.zip\npython3 - <<'PYCODE'\nimport base64,hashlib,io,json,pathlib,stat,tarfile,zipfile\n\
+        REPO='Ararataki-number-one/yuanying-chat';REPO_ID=1401080063\nRUN=41869129422;ATTEMPT=1;ARTIFACT=13346201765\n\
+        SOURCE='03d0c4ace70942a3f6899daffac086cc6682885e';TREE='bfd7bbcdf89ef947dd466dab795e94e83fc992c3'\n\
+        NAME='gecko-41869129422-1-files';SIZE=2141281\nSHA='deae136aa489ede62bd8f37bbb97e9ac5396011a0c95998d529e68ba8e50eff1'\n\
+        root=pathlib.Path('diagnostic-input')\ndef require(value,message):\n    if\
+        \ not value:raise ValueError(message)\nrun=json.loads((root/'run.json').read_bytes());artifact=json.loads((root/'artifact.json').read_bytes());commit=json.loads((root/'source.json').read_bytes())\n\
+        require(run['id']==RUN and run['run_attempt']==ATTEMPT and run['head_sha']==SOURCE,'Run/source/attempt\
+        \ differs')\nrequire(run['repository']['full_name']==REPO and run['repository']['id']==REPO_ID,'Repository\
+        \ differs')\nrequire(run['head_branch']=='release/browser-2.1.0' and run['path']=='.github/workflows/browser-2_1-acceptance.yml','Branch/workflow\
+        \ differs')\nrequire(commit['sha']==SOURCE and commit['tree']['sha']==TREE,'Source\
+        \ tree differs')\nrequire(artifact['id']==ARTIFACT and artifact['name']==NAME\
+        \ and artifact['size_in_bytes']==SIZE and artifact['expired']is False,'Artifact\
+        \ differs')\nrequire(artifact['digest']=='sha256:'+SHA,'Artifact digest differs')\n\
+        origin=artifact['workflow_run']\nrequire(origin['id']==RUN and origin['head_sha']==SOURCE\
+        \ and origin['head_branch']=='release/browser-2.1.0','Artifact origin differs')\n\
+        require(origin['repository_id']==REPO_ID and origin['head_repository_id']==REPO_ID,'Artifact\
+        \ repository differs')\nraw=(root/'artifact.zip').read_bytes()\nrequire(len(raw)==SIZE\
+        \ and hashlib.sha256(raw).hexdigest()==SHA,'Downloaded ZIP differs')\nwith\
+        \ zipfile.ZipFile(io.BytesIO(raw))as bundle:\n    entries=bundle.infolist();require(len(entries)==1\
+        \ and entries[0].filename=='bundle.tar.gz' and not entries[0].is_dir(),'Expected\
+        \ one phase bundle')\n    require(not stat.S_ISLNK(entries[0].external_attr>>16)\
+        \ and entries[0].file_size<=32*1024*1024,'Invalid phase bundle size/mode')\n\
+        \    packed=bundle.read(entries[0])\nnames=['device-event-sequence-failure.json','device-event-sequence-filtered.log']+[f'device-event-sequence-{role}.{stream}.log'for\
+        \ role in ('expected','current')for stream in ('stdout','stderr')]\nselected=['_ci_bundle.json']+['work/gecko-integration/'+name\
+        \ for name in names]\nfiles={}\nwith tarfile.open(fileobj=io.BytesIO(packed),mode='r:gz')as\
+        \ archive:\n    members=archive.getmembers();require(len(members)<=2048 and\
+        \ sum(item.size for item in members)<=256*1024*1024,'Phase expansion bound\
+        \ differs')\n    all_names=[item.name for item in members];require(len(all_names)==len(set(all_names)),'Duplicate\
+        \ phase path')\n    for item in members:\n        path=pathlib.PurePosixPath(item.name)\n\
+        \        require(item.isfile() and not path.is_absolute() and '..'not in path.parts\
+        \ and '\\\\'not in item.name,'Unsafe phase member')\n    for name in selected:\n\
+        \        require(all_names.count(name)==1,'Required original diagnostic missing:\
+        \ '+name)\n        item=archive.getmember(name);require(0<=item.size<=1024*1024,'Selected\
+        \ text exceeds bound')\n        data=archive.extractfile(item).read();require(len(data)==item.size,'Selected\
+        \ bytes differ');data.decode('utf-8');files[name]=data\nmanifest=json.loads(files['_ci_bundle.json'])\n\
+        require(manifest['schema']==1 and manifest['kind']=='phase' and manifest['phase']=='files','Bundle\
+        \ kind differs')\nrequire((manifest['sourceCommit'],manifest['sourceTree'],manifest['runId'],manifest['runAttempt'])==(SOURCE,TREE,str(RUN),str(ATTEMPT)),'Bundle\
+        \ identity differs')\ndeclared={item['path']:item for item in manifest['files']};require(len(declared)==len(manifest['files']),'Duplicate\
+        \ manifest path')\nfor name,data in files.items():\n    if name=='_ci_bundle.json':continue\n\
+        \    entry=declared[name];require(entry['bytes']==len(data) and entry['sha256']==hashlib.sha256(data).hexdigest(),'Original\
+        \ report manifest hash differs: '+name)\nrequire(sum(map(len,files.values()))<=2*1024*1024,'Selected\
+        \ text aggregate exceeds bound')\nsummary=dict(schema=1,diagnosticOnly=True,releaseAcceptance=False,actualWorkloadInvoked=False,readExistingArtifactOnly=True,\n\
+        \    targetRepository=REPO,targetRunId=str(RUN),targetRunAttempt=str(ATTEMPT),sourceCommit=SOURCE,sourceTree=TREE,\n\
+        \    artifactId=ARTIFACT,artifactName=NAME,artifactZipBytes=len(raw),artifactZipSha256=SHA,screenshotsExported=False,\n\
+        \    files={name:dict(bytes=len(data),sha256=hashlib.sha256(data).hexdigest())for\
+        \ name,data in files.items()})\nprint('FILES_DIAG_SUMMARY '+json.dumps(summary,sort_keys=True),flush=True)\n\
+        for name,data in files.items():\n    encoded=base64.b64encode(data).decode('ascii');parts=[encoded[i:i+8192]for\
+        \ i in range(0,len(encoded),8192)]\n    metadata=dict(name=name,bytes=len(data),sha256=hashlib.sha256(data).hexdigest(),parts=len(parts))\n\
+        \    print('FILES_DIAG_FILE_BEGIN '+json.dumps(metadata,sort_keys=True),flush=True)\n\
+        \    for index,part in enumerate(parts):print('FILES_DIAG_FILE_CHUNK '+json.dumps(dict(name=name,part=index,base64=part),sort_keys=True),flush=True)\n\
+        \    print('FILES_DIAG_FILE_END '+json.dumps(metadata,sort_keys=True),flush=True)\n\
+        print('FILES_DIAG_COMPLETE '+json.dumps(dict(diagnosticOnly=True,releaseAcceptance=False,files=len(files),screenshotsExported=False)),flush=True)\n\
+        \nPYCODE\n"
