@@ -4,7 +4,7 @@ import argparse,hashlib,json,os,pathlib,subprocess,tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[2];HERE=pathlib.Path(__file__).resolve().parent;PROD=ROOT/'app/src/main/java/local/pocketchat';OLD=ROOT/'tests/download-display-host/stubs';RECOVERY=ROOT/'tests/download-recovery-host/android/os'
 def main():
  p=argparse.ArgumentParser();p.add_argument('--java-home',required=True,type=pathlib.Path);p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=True)
- names=['J.java','DownloadDisplayCache.java','DownloadDisplaySnapshot.java','DownloadPageWindow.java','DownloadListPolicy.java','DownloadOwnerLabels.java'];inputs=[PROD/n for n in names]+[HERE/'Worker46Cases.java',pathlib.Path(__file__).resolve(),*OLD.rglob('*.java'),RECOVERY/'Handler.java',RECOVERY/'Looper.java'];hashes={str(f.relative_to(ROOT)):hashlib.sha256(f.read_bytes()).hexdigest()for f in inputs}
+ names=['J.java','DownloadDisplayCache.java','DownloadDisplaySnapshot.java','DownloadPageWindow.java','DownloadListPolicy.java','DownloadOwnerLabels.java','DownloadQuery.java'];inputs=[PROD/n for n in names]+[HERE/'Worker46Cases.java',pathlib.Path(__file__).resolve(),*OLD.rglob('*.java'),RECOVERY/'Handler.java',RECOVERY/'Looper.java'];hashes={str(f.relative_to(ROOT)):hashlib.sha256(f.read_bytes()).hexdigest()for f in inputs}
  with tempfile.TemporaryDirectory(prefix='download46-worker-')as raw:
   temp=pathlib.Path(raw);pkg=temp/'local/pocketchat';pkg.mkdir(parents=True)
   for name in names:(pkg/name).write_bytes((PROD/name).read_bytes())

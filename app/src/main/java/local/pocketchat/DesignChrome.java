@@ -26,7 +26,7 @@ final class DesignChrome {
   private ChromeTouchDelegate touchTargets;
   private static final ExecutorService metadataReader=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"ChromeMetadata");t.setPriority(Thread.MIN_PRIORITY);return t;});
   private final Runnable render=this::renderLatest;
-  private boolean queued,metadataPending;
+  private boolean queued,metricsPending,metadataPending;
   private long metadataAt;
   private String profileName;
   private JSONObject profileRow;
@@ -141,7 +141,7 @@ final class DesignChrome {
   /** Explicit native navigation offers the environment controls again. */
   void reveal(){
     cancelWebGesture();setCollapsed(false);
-    if((a.hub==null||a.hub.page==AppHub.CHAT)&&a.toolbar.getVisibility()!=View.VISIBLE)a.toolbar.setVisibility(View.VISIBLE);
+    a.applyFocusLayout();
   }
 
   void cancelWebGesture(){
@@ -149,7 +149,7 @@ final class DesignChrome {
   }
 
   private boolean gestureAllowed(boolean reading){
-    if(a.destroyed||!a.active||a.keyboardVisible||a.hub==null||a.hub.page!=AppHub.CHAT)return false;
+    if(a.destroyed||!a.active||a.keyboardVisible||a.focusActive()||a.hub==null||a.hub.page!=AppHub.CHAT)return false;
     if(reading){
       if(a.remote==null||!a.remote.hasVisibleDocument())return false;
       String url=a.remote.getUrl();if(!MainActivity.chatUrl(url)||LoginPagePolicy.login(url))return false;
@@ -205,8 +205,8 @@ final class DesignChrome {
     visible.animate().cancel();
     if(android.animation.ValueAnimator.areAnimatorsEnabled()){visible.setAlpha(.65f);visible.animate().alpha(1f).setDuration(140).start();}else visible.setAlpha(1f);
     networkRow.setVisibility(View.VISIBLE);
-    if(a.hub==null||a.hub.page==AppHub.CHAT)a.toolbar.setVisibility(View.VISIBLE);
     a.toolbar.post(this::layoutTouchTargets);
+    a.applyFocusLayout();
   }
 
   private static int textHeight(TextView text){
@@ -215,21 +215,35 @@ final class DesignChrome {
   }
 
   void update(){
-    if(queued||a.destroyed)return;queued=true;a.handler.post(render);
+    if(queued||a.destroyed||!a.active)return;queued=true;a.toolbar.postOnAnimation(render);
+  }
+
+  /** The ticker and session notifications share this frame with explicit chrome updates. */
+  void updateMetrics(){
+    if(a.destroyed||!a.active)return;metricsPending=true;update();
+  }
+
+  void cancelUpdates(){
+    a.toolbar.removeCallbacks(render);queued=false;metricsPending=false;
   }
 
   private void renderLatest(){
-    queued=false;if(a.destroyed)return;UiPerfStats.chromeUpdate();refreshMetadata();
+    queued=false;boolean metrics=metricsPending;metricsPending=false;
+    if(a.destroyed||!a.active)return;UiPerfStats.chromeUpdate();refreshMetadata();
     text(title,profileName);
     text(compactTitle,profileName);
     description(compact,"当前环境："+profileName+"，点击展开环境工具栏");
     description(title,"当前环境："+profileName+"，点击切换环境");
     boolean diagnostic=a.session.audit.canReturnRequestIdentity();int diagnosticVisibility=diagnostic?View.VISIBLE:View.GONE;if(diagnosticRow.getVisibility()!=diagnosticVisibility)diagnosticRow.setVisibility(diagnosticVisibility);diagnosticResults.setEnabled(!a.session.audit.running);
-    NativeNetwork network=NativeNetwork.get(a);
+    NativeNetwork network=metrics?NetworkMetricsUi.maintainNow(a):NativeNetwork.get(a);
     JSONObject config=network.settings==null?new JSONObject():network.settings;
+    // Resolve the current session only in this frame. Neither a pending request
+    // nor metadata delivery retains a runtime reading from an earlier state turn.
+    JSONObject observation=WindowNetworkState.live(a.session,network);
+    if(metrics)WindowNetworkState.save(a,a.session,network,observation);
     // Reuse the actual catalog identity from the existing metadata read. A
     // session receipt cannot establish that its own environment still exists.
-    showNetwork(new WindowNetworkState(a,profileRow,config,WindowNetworkState.live(a.session,network),profileAvailable(profileRow,Profiles.slot(a)),System.currentTimeMillis()));
+    showNetwork(new WindowNetworkState(a,profileRow,config,observation,profileAvailable(profileRow,Profiles.slot(a)),System.currentTimeMillis()));
   }
 
   private void refreshMetadata(){

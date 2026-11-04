@@ -6,7 +6,7 @@ import android.os.Build;
 
 public class PocketApplication extends Application {
   final Context[] profiles=new Context[Profiles.MAX];
-  @Override protected void attachBaseContext(Context base){super.attachBaseContext(base);BackgroundReplyPolicy.bootstrap(this);}
+  @Override protected void attachBaseContext(Context base){super.attachBaseContext(base);if(Build.VERSION.SDK_INT>=28&&EnvironmentProcessPolicy.owns(getPackageName(),Application.getProcessName(),Profiles.processSlot()))android.webkit.WebView.setDataDirectorySuffix("env"+Profiles.processSlot());BackgroundReplyPolicy.bootstrap(this);}
   @Override public void onCreate(){super.onCreate();AppAppearance.install(this);AppVisibility.install(this);BackgroundReplyPolicy.install(this);int id=Profiles.processSlot();if(id>0&&Build.VERSION.SDK_INT<28)throw new IllegalStateException("独立登录环境需要 Android 9 或更新版本");}
   synchronized Context profile(int id){if(profiles[id]==null)profiles[id]=new ProfileContext(this,id);return profiles[id];}
   // Android and AndroidX initializers require an Application here. Browser callers

@@ -11,6 +11,17 @@
   const signature = s => norm(s).replace(/\s+/g, ' ');
   const label = el => [el.getAttribute('aria-label'), el.getAttribute('title'), el.innerText].filter(Boolean).join(' ').trim();
   const buttons = () => [...document.querySelectorAll('button,[role="button"]')].filter(visible);
+  const sendLabel=/^(发送|发送消息|Send|Send prompt|Send message)$/i;
+  const stopLabel=/^(停止|停止生成|Stop|Stop generating|Stop streaming)$/i;
+  const retryLabel=/^(重试|重新尝试|Retry|Try again)$/i;
+  const effortLabel=/thinking effort|reasoning effort|思考强度|推理强度|思考时间|thinking time/i;
+  function controlCandidates(kind,test,testId=''){
+    // Only attribute-based candidate membership is cached. Unlabelled controls
+    // remain candidates and their rendered text is checked live, including
+    // CSS/SVG/localization changes. Visibility and final status are never memoed.
+    const accept=el=>(!!testId&&el.getAttribute('data-testid')===testId)||!el.getAttribute('aria-label')||test.test(el.getAttribute('aria-label').trim());
+    return window.__pocketWebPerformance?.controlCandidates?.(kind,accept)??[...document.querySelectorAll('button,[role="button"]')].filter(accept);
+  }
   function composer(includeInactive=false) {
     const selectors = ['[contenteditable="true"][data-composer-markdown]','#prompt-textarea', '[data-composer-body] [contenteditable="true"]',
       'textarea[placeholder*="ChatGPT"]', '[contenteditable="true"][role="textbox"]',
@@ -29,12 +40,12 @@
     return el.innerText;
   }
   function sendButton() {
-    return [...document.querySelectorAll('button,[role="button"]')].find(el => (el.matches('[data-testid="send-button"]') ||
-      /^(发送|发送消息|Send|Send prompt|Send message)$/i.test((el.getAttribute('aria-label') || el.innerText || '').trim()))&&visible(el));
+    return controlCandidates('send',sendLabel,'send-button').find(el => (el.matches('[data-testid="send-button"]') ||
+      sendLabel.test((el.getAttribute('aria-label') || el.innerText || '').trim()))&&visible(el));
   }
   function busy() {
-    return [...document.querySelectorAll('button,[role="button"]')].some(el => (el.matches('[data-testid="stop-button"]') ||
-      /^(停止|停止生成|Stop|Stop generating|Stop streaming)$/i.test((el.getAttribute('aria-label') || el.innerText || '').trim())) && rendered(el));
+    return controlCandidates('stop',stopLabel,'stop-button').some(el => (el.matches('[data-testid="stop-button"]') ||
+      stopLabel.test((el.getAttribute('aria-label') || el.innerText || '').trim())) && rendered(el));
   }
   function modelControl() {
     const selectors = ['[data-testid="model-switcher-dropdown-button"]',
@@ -145,8 +156,8 @@
     };
     const alerts = [...root.querySelectorAll('[role="alert"]')].filter(activeSurface);
     let retryText='';
-    const retry = [...root.querySelectorAll('button,[role="button"]')].find(el=>{
-      if(!/^(重试|重新尝试|Retry|Try again)$/i.test((el.getAttribute('aria-label')||el.innerText||'').trim())||!activeSurface(el))return false;
+    const retry = controlCandidates('retry',retryLabel).find(el=>{
+      if(el===root||!root.contains(el)||!retryLabel.test((el.getAttribute('aria-label')||el.innerText||'').trim())||!activeSurface(el))return false;
       const text=retryContext(el);
       if(!el.closest('[role="alert"]')&&!/Something went wrong|network error|failed|出现错误|出了点问题|网络错误|失败/i.test(text)&&!socketClosed.test(text))return false;
       retryText=text;return true;
@@ -433,11 +444,14 @@
   function uploadBusy(){const input=composer(),zone=input&&(input.closest('form')||input.parentElement?.parentElement);return !!zone&&[...zone.querySelectorAll('[data-state="uploading"],[data-upload-state="uploading"],[role="progressbar"],[aria-busy="true"]')].slice(0,64).some(visible);}
   if (action === 'observe-install') return {ok:!!window.__pocketInstallWebReplyObserver?.({composer,draft,sendButton,busy,resourceBusy,uploadBusy,messages,key,userText,hasMessages},arg.resourceBinding||'')};
   if (action === 'inspect') return ready();
-  function webModelInfo(){const saved=window.__pocketModelControls||(window.__pocketModelControls={});if(!saved.model?.isConnected||!visible(saved.model))saved.model=modelControl();if(!saved.effort?.isConnected||!visible(saved.effort)){saved.effort=[...document.querySelectorAll('button[aria-label],[role="button"][aria-label]')].find(el=>el!==saved.model&&/thinking effort|reasoning effort|思考强度|推理强度|思考时间|thinking time/i.test(el.getAttribute('aria-label')||'')&&visible(el))||null;}const text=saved.model?norm(saved.model.innerText||saved.model.getAttribute('aria-valuetext')||label(saved.model)):'';return {text,effort:saved.effort?norm(saved.effort.innerText||saved.effort.getAttribute('aria-label')):'',known:!!saved.model};}
+  function webModelInfo(){const saved=window.__pocketModelControls||(window.__pocketModelControls={});if(!saved.model?.isConnected||!visible(saved.model))saved.model=modelControl();if(!saved.effort?.isConnected||!visible(saved.effort)){saved.effort=controlCandidates('effort',effortLabel).find(el=>el!==saved.model&&effortLabel.test(el.getAttribute('aria-label')||'')&&visible(el))||null;}const text=saved.model?norm(saved.model.innerText||saved.model.getAttribute('aria-valuetext')||label(saved.model)):'';return {text,effort:saved.effort?norm(saved.effort.innerText||saved.effort.getAttribute('aria-label')):'',known:!!saved.model};}
   if(action==='web-inspect'){const model=webModelInfo(),meta=window.__pocketWebPerformance?.meta();return {url:location.href,documentId:documentKey(),title:document.title,composer:!!composer(),hasMessages:hasMessages(),contentKey:arg.navigationCheck?contentKey():'',model:model.text,effort:model.effort,modelKnown:model.known,busy:busy(),...siteObservation(null,true),transcriptDirty:!meta||meta.dirty,interacting:!!meta?.interacting};}
 
   function assistantScope(el){return el && (el.closest('[data-turn="assistant"],[data-testid^="conversation-turn-"],[data-content-search-turn-key],[data-turn-key],article')||el.closest('[data-conversation-screenshot-content]')||el.parentElement||el);}
-  function entryNodes(){return [...messages('user'),...messages('assistant')].sort((a,b)=>(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1);}
+  function entryNodes(){
+    const build=()=>[...messages('user'),...messages('assistant')].sort((a,b)=>(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1);
+    return window.__pocketWebPerformance?.orderedMessageNodes?.(build)??build();
+  }
   function byEntry(id){const nodes=entryNodes();return nodes.find((el,i)=>key(el,i)===id);}
   const extension=/\.(?:docx?|pdf|xlsx?|pptx?|csv|txt|md|zip|png|jpe?g|webp|gif|svg|json|xml|html|py|ipynb|js|mp3|mp4)(?:$|[\s?#])/i;
   function fileControls(message){const scope=assistantScope(message);if(!scope)return [];const found=[],covered=[];const fileName=e=>norm(e.getAttribute('download')||e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText);const nameFrom=e=>{const lines=[...e.querySelectorAll('[title],[aria-label],span,p,a,button')].map(fileName).filter(t=>t.length<180&&extension.test(t));return lines.find(t=>/\.(?:docx?|pdf|xlsx?|pptx?|csv|txt|md|zip|png|jpe?g|webp|gif|svg|json|xml|html|py|ipynb|js|mp3|mp4)$/i.test(t))||lines.find(t=>!/^download|^下载/i.test(t))||lines[0]||'';};

@@ -1,0 +1,35 @@
+{
+  "fullAppBuild": false,
+  "actualAndroidExecution": false,
+  "pinnedToolchainPrepared": true,
+  "gradleConfigurationTasks": {
+    "status": "passed",
+    "tasks": [
+      ":app:prepareGeckoManifest",
+      ":app:verifyBrowserExtensionVersion"
+    ],
+    "log": "work/ux-build-gradle-config.log"
+  },
+  "blockers": [
+    {
+      "dependency": "org.mozilla.geckoview:geckoview:157.0.20261005135250 official upstream AAR",
+      "reason": "HTTPS proxy CONNECT denied403 for maven.mozilla.org; hostname not in current environment allow list."
+    },
+    {
+      "artifact": "GitHub Actions13227592740 from candidate2 run41629157827",
+      "reason": "Existing729493361-byte exact build bundle exceeds GitHub connector536870912-byte download cap; shell gh API request Forbidden."
+    }
+  ],
+  "noFakeSdkUsed": true,
+  "sourceBranch": "codex/2.0.47-candidate2-ux-ten-rounds",
+  "latestPartialNativeCompile": {
+    "status": "passed",
+    "productionFiles": 36,
+    "executionInputsUnchanged": true,
+    "receipt": "work/ux-native-performance-final/receipt.json",
+    "compilerLog": "work/ux-native-performance-final/javac.log",
+    "portableHarness": "tests/ux-native-compile/run.py",
+    "scope": "Real Android37.1 API compilation of complete36 changed production files; explicit source-derived application boundaries; no Gecko SDK, APK or Android execution."
+  },
+  "profilingFeasibility": "work/ux-build-profiling-feasibility.json"
+}

@@ -9,11 +9,12 @@ import java.util.*;
 final class DesignSettingsUi {
   static void render(MainActivity a,LinearLayout box,int selected){render(a,box,()->a.hub.settings());}
   static void render(Activity a,LinearLayout box,Runnable refresh){
-
+    DesignUi.action(box,"搜索操作",false,()->ActionSearchUi.show(a));
     DesignUi.section(box,"启动与界面","");
     LinearLayout appearance=DesignUi.group(a);box.addView(appearance);
     int defaultSlot=AppSettings.defaultSlot(a);
     group(a,appearance,"默认环境与启动入口","默认："+(defaultSlot<0?"暂不可用":Profiles.display(a,defaultSlot)),"window",()->defaultEntry(a,refresh));
+    group(a,appearance,"此环境的浏览器与启动",Profiles.display(a,Profiles.slot(a))+" · "+(BrowserPreferences.startBrowser(a)?"通用浏览器 · Chromium":"ChatGPT 增强 · Gecko"),"window",()->BrowserSettingsUi.show(a,refresh));
     group(a,appearance,"白天与黑夜",AppAppearance.label()+" · 应用与网页外观","brand",()->appearance(a,refresh));
     DesignUi.section(box,"提醒与后台", "");
     LinearLayout background=DesignUi.group(a);box.addView(background);
@@ -31,8 +32,8 @@ final class DesignSettingsUi {
     group(a,help,"功能支持范围","查看支持的功能","shield",()->capabilities(a));
   }
   static void group(Activity a,LinearLayout box,String title,String detail,String icon,Runnable click){DesignUi.groupedRow(box,DesignUi.setting(a,icon,title,detail,"",click));}
-  static void about(Activity a){DesignUi.message(a,"元婴期院士 · "+AppVersion.name(a),"Android ChatGPT 网页客户端\n\n使用 Mozilla GeckoView 打开 ChatGPT 官方网页。消息、模型选择和输入框沿用网站本身。\n\n在环境列表新建或编辑环境，各环境分别保存登录和网络配置。下载中心汇总已保存的文件。\n\n后台完成提醒默认关闭，可在应用设置中开启。登录数据保存在本机，网络凭据由 Android Keystore 加密。第三方许可随源码提供。\n\n浏览器保护范围以实际自检为准。");}
-  static void capabilities(Activity a){DesignUi.message(a,"功能支持范围","• GeckoView 浏览器与 ChatGPT 官方网页\n• 最多 8 个独立环境，支持分组、备注、收藏和删除\n• 每个环境分别保存登录、Cookie、草稿和网络配置\n• 手机网络、订阅入口与固定出口\n• 文件下载和后台回复检测\n\n后台完成提醒需主动开启。浏览器保护范围以自检结果为准。Chrome 扩展尚不支持。\n\n"+NativeCapabilityManifest.officialGecko().unsupportedSummary()+"\n多环境同时运行容量尚未测量。后台空闲只暂停保留会话的活动；回复、上传、下载和维护任务继续受到保护。");}
+  static void about(Activity a){DesignUi.message(a,"元婴期院士 · "+AppVersion.name(a),"Android 双内核浏览器\n\n默认进入 ChatGPT 增强界面，使用 Mozilla GeckoView 显示官方网页，沿用网站的输入框和会话操作。\n\n通用浏览器使用 Chromium（Android System WebView），支持切换网址、搜索、多标签、收藏与历史、页内查找和文件上传下载。可为每个环境选择启动界面及默认网站，初始首页仍为 https://chatgpt.com/。\n\n每个环境分别保存登录与网络配置，Chromium 和 Gecko 的 Cookie 不互通。Gecko 的环境模板、回复检测和草稿救援仅用于 ChatGPT 增强界面。\n\n后台完成提醒默认关闭，可在应用设置中开启。登录数据保存在本机，网络凭据由 Android Keystore 加密。第三方许可随源码提供。");}
+  static void capabilities(Activity a){DesignUi.message(a,"功能支持范围","• ChatGPT 增强 · Gecko：官方网页、草稿救援、离线会话检索、回复检测与环境模板\n• 通用浏览器 · Chromium：网址与搜索、多标签、收藏与历史、页内查找、手机版／电脑版、文件上传下载\n• 最多 8 个独立环境，支持分组、备注、收藏和删除\n• 每个环境分别保存登录、Cookie 和网络配置，两种内核的登录状态独立\n• 手机网络、订阅入口与固定出口\n\nChromium 可按当前 HTTPS 网站的请求逐次授权相机、麦克风和大致位置，不保存网站的长期允许记录。Chrome 扩展尚不支持。\n\nChromium 不继承 Gecko 的 WebRTC 限制，HTTP 代理不能覆盖 WebRTC 连接；这类连接需要设备 VPN 保护，应用不会自动开启 VPN。\n\n后台完成提醒需主动开启。以下原生模板与指纹能力说明仅适用于 Gecko，不代表 Chromium 的能力：\n\n"+NativeCapabilityManifest.officialGecko().unsupportedSummary()+"\n\nGecko 的保护范围以环境自检为准；Chromium 的网络与权限范围见“内核信息”。多环境同时运行容量尚未测量。");}
   static void completionReminders(Activity a,Runnable refresh){
     LinearLayout box=DesignUi.column(a);box.setPadding(DesignUi.dp(a,18),0,DesignUi.dp(a,18),DesignUi.dp(a,14));
     Switch enabled=new Switch(a);enabled.setText("离开应用后提醒完成");NativeControls.prepare(enabled);enabled.setChecked(AppSettings.backgroundCompletionNotice(a));box.addView(enabled);

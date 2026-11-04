@@ -5,10 +5,13 @@
     if (window.__pocketWebPerformance) return window.__pocketWebPerformance;
     const selector = '[data-message-author-role],article[data-turn],[data-chatgpt-search-unit-key],[data-content-search-unit-key]';
     const memoOwnerSelector=selector+',.markdown,[data-markdown-text-style="assistant-message"]';
-    const cache = new WeakMap(), sent = new Map(), messageGroups=new Map();
+    const cache = new WeakMap(), sent = new Map(), messageGroups=new Map(), controlGroups=new Map();
+    const controlSelector='button,[role="button"]';
+    const controlAttributes=new Set(['role','aria-label','data-testid']);
+    let controlNodes=null;
     const documentId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random();
     let dirty = true, revision = 0, orderKey = '', lastUrl = '', lastInteraction = 0, nodeSequence=0, capture=null;
-    const stats = {entriesBuilt:0,snapshots:0,derivedBuilt:0,messageListsBuilt:0,mutationBatches:0,mutationRecords:0,ancestorVisits:0,capturesScheduled:0,capturesPrepared:0};
+    const stats = {entriesBuilt:0,snapshots:0,derivedBuilt:0,messageListsBuilt:0,controlListsBuilt:0,controlGroupsBuilt:0,mutationBatches:0,mutationRecords:0,ancestorVisits:0,capturesScheduled:0,capturesPrepared:0};
     const messageAttributes=new Set(['data-message-author-role','data-turn','data-chatgpt-search-unit-key','data-content-search-unit-key']);
     function record(node) {
       let saved=cache.get(node);
@@ -65,7 +68,8 @@
       }
       return roots;
     }
-    new MutationObserver(records => {
+    function mutations(records) {
+      if(controlNodes&&records.some(record=>(record.type==='attributes'&&controlAttributes.has(record.attributeName))||(record.type==='childList'&&[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===Node.ELEMENT_NODE&&(node.matches(controlSelector)||node.querySelector(controlSelector)))))){controlNodes=null;controlGroups.clear();}
       const visited=new Set(),expired=new Set();stats.mutationBatches++;stats.mutationRecords+=records.length;
       const inserted=insertedRoots(records);
       for (const record of records) {
@@ -82,11 +86,21 @@
       // Records in one delivery see the same final DOM. Expire its maximal
       // eligible added subtrees once without delaying any cache invalidation.
       for(const node of inserted)expireInserted(node,expired);
-    }).observe(document, {subtree:true,childList:true,characterData:true,attributes:true,
+    }
+    const observer=new MutationObserver(mutations);
+    observer.observe(document, {subtree:true,childList:true,characterData:true,attributes:true,
       attributeFilter:['data-message-id','data-chatgpt-selection-message-id','data-chatgpt-search-message-ids',
         'href','download','src','srcset','sizes','alt','title','aria-label','hidden','aria-hidden','data-file-name','data-language','encoding',
-        'class','data-testid','data-turn','data-markdown-text-style','data-is-reasoning',
+        'class','role','data-testid','data-turn','data-markdown-text-style','data-is-reasoning',
         'data-message-author-role','data-chatgpt-search-unit-key','data-content-search-unit-key']});
+    function drainMutations(){const pending=observer.takeRecords();if(pending.length)mutations(pending);}
+    function messageNodes(role,build){
+      // Message moves and role changes can be followed by an immediate native
+      // read in the same task. Retain every content invalidation while draining.
+      drainMutations();
+      if(!messageGroups.has(role)){messageGroups.set(role,build());stats.messageListsBuilt++;}
+      return messageGroups.get(role);
+    }
     document.addEventListener('load', event => mark(event.target), true);
     for (const event of ['touchmove','pointerdown','wheel','scroll','keydown','input'])
       document.addEventListener(event, () => { lastInteraction = Date.now(); }, {capture:true,passive:true});
@@ -96,6 +110,14 @@
       meta:() => ({dirty,documentId,revision,interacting:interacting()}),
       stats:() => ({...stats}),
       memo,
+      controlCandidates(name,accept){
+        // Native polls may run in the same task as a page mutation. Drain it
+        // before consulting any collection, rather than waiting a microtask.
+        drainMutations();
+        if(!controlNodes){controlNodes=[...document.querySelectorAll(controlSelector)];stats.controlListsBuilt++;}
+        if(!controlGroups.has(name)){controlGroups.set(name,controlNodes.filter(accept));stats.controlGroupsBuilt++;}
+        return controlGroups.get(name);
+      },
       deferCapture(key,prepare){
         if(capture?.key===key&&capture.prepared)return false;
         if(!interacting()){cancelCapture();return false;}
@@ -110,7 +132,8 @@
         }
         return true;
       },
-      messageNodes:(role,build)=>{if(!messageGroups.has(role)){messageGroups.set(role,build());stats.messageListsBuilt++;}return messageGroups.get(role);},
+      messageNodes,
+      orderedMessageNodes:build=>messageNodes('document-order',build),
       contentRevision:nodes => documentId+':'+nodes.map(node=>{const saved=record(node);return saved.identity+'.'+saved.version;}).join(','),
       snapshot(arg) {
         stats.snapshots++;

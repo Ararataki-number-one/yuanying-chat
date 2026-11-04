@@ -158,6 +158,65 @@ class DirectReleaseTests(unittest.TestCase):
             with self.subTest(request=request):
                 self.assertEqual(verify_direct_release(record, self.identity)['userRequest'], request)
 
+    def test_exact_version_publication_preserves_the_actual_user_command(self):
+        identity = dict(self.identity, version='2.1.0')
+        for request in ('然后发布2.1.0', '发布2.1.0', '请现在发布 2.1.0。',
+                        '直接发布v2.1.0正式版', '然后发布2.1.0吧', '发布版本2.1.0',
+                        '  然后发布2.1.0  '):
+            record = dict(self.record, version='2.1.0', userRequest=request)
+            before = copy.deepcopy(record)
+            with self.subTest(request=request):
+                result = verify_direct_release(record, identity)
+                self.assertEqual(result['userRequest'], request)
+                self.assertEqual(record, before)
+
+    def test_named_release_version_must_match_identity_exactly(self):
+        identity = dict(self.identity, version='2.1.0')
+        for request in ('然后发布2.0.47', '发布2.1.1', '发布2.01.0', '发布02.1.0',
+                        '发布2.1.00', '发布2.1', '发布2.1.0.1', '发布2.1.0候选版',
+                        '发布2.1.0-beta', '发布2.1.0或2.1.1', '发布2.1.0以及2.2.0'):
+            with self.subTest(request=request), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(self.record, version='2.1.0', userRequest=request), identity)
+
+    def test_version_command_cannot_be_question_negation_or_reported_speech(self):
+        identity = dict(self.identity, version='2.1.0')
+        for request in ('然后发布2.1.0？', '然后发布2.1.0?', '然后发布2.1.0吗',
+                        '然后不要发布2.1.0', '不要然后发布2.1.0', '不能发布2.1.0',
+                        '不是让你发布2.1.0', '他说“然后发布2.1.0”', '用户说然后发布2.1.0',
+                        '“然后发布2.1.0”', '讨论：然后发布2.1.0', '以后发布2.1.0',
+                        '准备发布2.1.0', '如果通过就然后发布2.1.0', '待确认后发布2.1.0',
+                        '继续', '继续优化', '然后发布'):
+            with self.subTest(request=request), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(self.record, version='2.1.0', userRequest=request), identity)
+
+    def test_version_command_keeps_exact_signed_apk_identity_requirements(self):
+        identity = dict(self.identity, version='2.1.0')
+        record = dict(self.record, version='2.1.0', userRequest='然后发布2.1.0')
+        for key, value in dict(sourceCommit='d'*40, sha256='d'*64, signerSha256='d'*64,
+                               versionCode=56, bytes=119000001).items():
+            with self.subTest(key=key), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(dict(record, **{key:value}), identity)
+
+    def test_version_command_is_authorization_without_phone_acceptance(self):
+        identity = dict(self.identity, version='2.1.0')
+        record = dict(self.record, version='2.1.0', userRequest='然后发布2.1.0')
+        result = verify_direct_release(record, identity)
+        self.assertEqual(result['physicalArmPhone'], 'not-tested')
+        self.assertEqual(result['physicalPhoneAcceptanceStatus'], 'not-reported')
+        self.assertNotIn('actualPhysicalPhoneExecution', result)
+        self.assertNotIn('manualAcceptance', result)
+        self.assertTrue(requires_manual_acceptance(identity))
+        with self.assertRaises(ReleaseChannelError):verify_manual_acceptance(record, identity)
+        with self.assertRaises(ReleaseChannelError):
+            verify_direct_release(dict(record, actualPhysicalPhoneExecution=True), identity)
+
+    def test_version_command_cannot_authorize_a_nonstable_identity(self):
+        record = dict(self.record, version='2.1.0', userRequest='然后发布2.1.0')
+        for identity in (dict(self.identity, version='2.1.0', channel='candidate', candidateNumber=1),
+                         {key:value for key,value in dict(self.identity, version='2.1.0').items() if key != 'channel'}):
+            with self.subTest(identity=identity), self.assertRaises(ReleaseChannelError):
+                verify_direct_release(record, identity)
+
     def test_recording_time_must_be_valid_iso8601_with_timezone(self):
         for recorded_at in ('', '2026-10-15', '2026-10-15T15:00:00', '2026-02-30T00:00:00Z',
                             '2026-10-15T25:00:00Z', '2026-10-15T15:00:00+24:00', None):

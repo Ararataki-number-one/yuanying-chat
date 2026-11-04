@@ -1,0 +1,8 @@
+package local.pocketchat;
+import android.app.Activity;import android.content.Context;import android.net.Uri;import android.os.Handler;import org.json.*;import java.util.*;import java.util.concurrent.*;
+/** Counted storage and app boundaries, not Android filesystem/database execution. */
+class SavedFileActions{volatile boolean closed,busy;JSONObject exporting;final ExecutorService worker=Executors.newSingleThreadExecutor();final Handler main=new Handler();static String issue="";static void problem(Activity a,String value){issue=value;}}
+class DownloadLibrary{static final DownloadLibrary instance=new DownloadLibrary();final Map<String,JSONObject> rows=new HashMap<>();static DownloadLibrary get(Context c){return instance;}JSONObject saved(JSONObject expected){JSONObject current=rows.get(expected.optString("uri"));return current!=null&&DownloadCollection.key(current).equals(DownloadCollection.key(expected))?current:null;}}
+class SealedFileIo{interface Action<T>{T run()throws Exception;}}
+class SavedFileDeletion{static int leases,held;static <T>T lease(Context c,Uri uri,SealedFileIo.Action<T> action)throws Exception{leases++;return action.run();}static <T>T leaseAll(Context c,List<Uri> uris,SealedFileIo.Action<T> action)throws Exception{leases+=uris.size();held++;try{return action.run();}finally{held--;}}static void onMain(Handler main,Runnable action)throws Exception{if(held==0)throw new AssertionError("Grant dispatched without URI leases");action.run();}}
+class DownloadMetadataValues{static String name(JSONObject row){return row.optString("actualName",row.optString("name"));}}

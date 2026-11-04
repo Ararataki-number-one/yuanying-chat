@@ -52,6 +52,7 @@ public final class EnvironmentResetActivity extends ThemedActivity {
     }
     verifyRoots(c,slot);catalog.withReset(plan.next,()->null);
     EnvironmentBrowserData.clear(profile.getNoBackupFilesDir(),profile.getCacheDir());
+    EnvironmentBrowserData.clearChromium(new File(Profiles.global(c).getApplicationInfo().dataDir),slot);
     new SecretStore(profile).remove("network-application");NetworkShareSelection.clear(profile);
     new SecretStore(profile).remove("environment-audit");
     // These are login-scoped local recovery copies. Saved downloaded files and

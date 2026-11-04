@@ -5,12 +5,12 @@ ROOT=pathlib.Path(__file__).resolve().parents[2];HERE=pathlib.Path(__file__).res
 def main():
  p=argparse.ArgumentParser();p.add_argument('--java-home',required=True,type=pathlib.Path);p.add_argument('--json-jar',required=True,type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=True)
  names=['J.java','DownloadTaskRevisions.java','DownloadTasks.java','DownloadResumePolicy.java','DefaultDownloads.java','SavedFilePublication.java','SavedFileDeletion.java','SealedFileIo.java','DownloadMetadataValues.java','SavedDownloadMetadata.java','SavedFileBytes.java','DownloadPageWindow.java','DownloadListPolicy.java','DownloadRowBinding.java','DownloadOwnerLabels.java']
- inputs=[PROD/n for n in names]+[HERE/'Metadata46Cases.java',pathlib.Path(__file__).resolve(),OLD/'local/pocketchat/Support.java',OLD/'local/pocketchat/DownloadRecoveryHostTest.java',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java']+sorted((OLD/'android').rglob('*.java'))
+ inputs=[PROD/n for n in names]+[HERE/'Metadata46Cases.java',HERE/'CollectionLeaseCases.java',pathlib.Path(__file__).resolve(),OLD/'local/pocketchat/Support.java',OLD/'local/pocketchat/DownloadRecoveryHostTest.java',ROOT/'tests/sealed-file-host/android/util/AtomicFile.java']+sorted((OLD/'android').rglob('*.java'))
  hashes={str(f.relative_to(ROOT)):hashlib.sha256(f.read_bytes()).hexdigest()for f in inputs}
  with tempfile.TemporaryDirectory(prefix='download46-host-')as raw:
   temp=pathlib.Path(raw);pkg=temp/'local/pocketchat';pkg.mkdir(parents=True)
   for name in names:(pkg/name).write_bytes((PROD/name).read_bytes())
-  for name in ['Metadata46Cases.java']:(pkg/name).write_bytes((HERE/name).read_bytes())
+  for name in ['Metadata46Cases.java','CollectionLeaseCases.java']:(pkg/name).write_bytes((HERE/name).read_bytes())
   (pkg/'DownloadRecoveryHostTest.java').write_bytes((OLD/'local/pocketchat/DownloadRecoveryHostTest.java').read_bytes())
   support=(OLD/'local/pocketchat/Support.java').read_text()
   support=support.replace('static Context global(Context c)', 'static final int MAX=8;static Context context(Context c,int slot){return new Context(c.root,slot);}static Context global(Context c)')
@@ -39,7 +39,7 @@ def main():
   java=[*pkg.glob('*.java'),*sorted((temp/'android').rglob('*.java')),ROOT/'tests/sealed-file-host/android/util/AtomicFile.java'];classes=temp/'classes';binary=lambda n:str(a.java_home/'bin'/n)
   compile=subprocess.run([binary('javac'),'-encoding','UTF-8','-cp',str(a.json_jar),'-d',str(classes),*map(str,java)],text=True,capture_output=True);(a.output/'compile.stdout.txt').write_text(compile.stdout);(a.output/'compile.stderr.txt').write_text(compile.stderr);compile.check_returncode()
   reports=[]
-  for name in ['DownloadRecoveryHostTest','Metadata46Cases']:
+  for name in ['DownloadRecoveryHostTest','Metadata46Cases','CollectionLeaseCases']:
    run=subprocess.run([binary('java'),'-cp',str(classes)+os.pathsep+str(a.json_jar),'local.pocketchat.'+name],text=True,capture_output=True,timeout=90);(a.output/(name+'.stdout.txt')).write_text(run.stdout);(a.output/(name+'.stderr.txt')).write_text(run.stderr)
    report=json.loads(run.stdout);report['exitCode']=run.returncode;reports.append(report);assert run.returncode==0 and report['status']=='passed',report
   unchanged=all(hashlib.sha256((ROOT/path).read_bytes()).hexdigest()==digest for path,digest in hashes.items());receipt={'status':'passed'if unchanged else'invalid-source-changed','reports':reports,'sourceFiles':hashes,'executionInputsUnchanged':unchanged,'jsonJarSha256':hashlib.sha256(a.json_jar.read_bytes()).hexdigest(),'actualAndroidExecution':False,'phonePerformanceMeasured':False};(a.output/'results.json').write_text(json.dumps(receipt,ensure_ascii=False,indent=2)+'\n');assert unchanged

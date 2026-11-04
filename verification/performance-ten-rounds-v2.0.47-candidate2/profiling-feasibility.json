@@ -1,0 +1,45 @@
+{
+  "kvmDeviceExists": false,
+  "gpuDevicesExists": false,
+  "hostCpuAffinityCount": 5,
+  "memory": {
+    "MemTotal": "18440100 kB",
+    "MemAvailable": "17556392 kB"
+  },
+  "avd": {
+    "work/cloud-setup/avd/manager.ini": "avd.ini.encoding=UTF-8\npath=/workspace/yuanying-chat/work/cloud-setup/avd/manager.avd\ntarget=android-35\n",
+    "work/cloud-setup/avd/manager.avd/config.ini": "avd.ini.encoding = UTF-8\nhw.cpu.arch = x86_64\nhw.cpu.ncore = 4\nhw.ramSize = 2048\nhw.lcd.width = 1080\nhw.lcd.height = 1920\nhw.lcd.density = 420\nhw.gpu.enabled = yes\nhw.gpu.mode = swiftshader_indirect\nhw.keyboard = yes\nhw.audioInput = no\nhw.audioOutput = no\ndisk.dataPartition.size = 6442450944\nimage.sysdir.1 = /workspace/yuanying-chat/work/cloud-setup/system-image/x86_64/\ntag.id = default\nabi.type = x86_64\nskin.name = 1080x1920\nshowDeviceFrame = no\n"
+  },
+  "note": "Read-only profiling feasibility observation; no application/frame execution.",
+  "adbDevices": {
+    "command": [
+      "/workspace/yuanying-chat/work/cloud-setup/adb/platform-tools/adb",
+      "devices",
+      "-l"
+    ],
+    "exitCode": 0,
+    "stdout": "List of devices attached\n\n",
+    "stderr": ""
+  },
+  "emulatorAcceleration": {
+    "command": [
+      "/workspace/yuanying-chat/work/cloud-setup/emulator/emulator/emulator",
+      "-accel-check"
+    ],
+    "exitCode": 3,
+    "stdout": "accel:\n3\nKVM requires a CPU that supports vmx or svm\naccel\n",
+    "stderr": ""
+  },
+  "actualAndroidExecution": false,
+  "currentCodeFrameMeasurementAvailable": false,
+  "currentCodeApkAvailable": false,
+  "frameTimingSamples": null,
+  "jankRate": null,
+  "reason": "No attached Android device, no KVM/GPU device, and no rebuilt current-source APK because fixed Gecko SDK inputs are unavailable. Software-only emulator launch was not attempted; historical APKs were not profiled as current code.",
+  "existingHarness": [
+    "tests/gecko/ExperienceBenchmarkActivity.java",
+    "tests/gecko/run_experience_benchmark.py",
+    "tools/gecko/run_experience_comparison.py"
+  ],
+  "knownHarnessLimit": "ExperienceScenarios.downloadsVisible expects all saved rows as visible children; history1000/history3000 workloads need fixture alignment with40-row paging before use."
+}

@@ -84,7 +84,7 @@ public final class ChromeNetworkStateHost {
 }
 
 class DesignChrome {
-  final MainActivity a;TextView title,compactTitle;final View compact=new View(),diagnosticRow=new View(),diagnosticResults=new View();String profileName;JSONObject profileRow=new JSONObject();boolean queued,metadataPending;long metadataAt;int renders;WindowNetworkState last;
+  final MainActivity a;TextView title,compactTitle;final View compact=new View(),diagnosticRow=new View(),diagnosticResults=new View();String profileName;JSONObject profileRow=new JSONObject();boolean queued,metadataPending,metricsPending;long metadataAt;int renders;WindowNetworkState last;
   static final TaskQueue metadataReader=new TaskQueue();final Runnable render=this::renderLatest;
   DesignChrome(MainActivity a){this.a=a;/* INITIAL_METADATA */}
   void showNetwork(WindowNetworkState state){last=state;renders++;}
@@ -96,12 +96,13 @@ class WindowNetworkState {
   /* STATE_CONSTRUCTOR */
   /* STATE_MAINLINE */
   static JSONObject live(Object session,NativeNetwork n){return n.owner.runtime;}
+  static void save(Context context,Object session,NativeNetwork n,JSONObject observation){}
 }
-class MainActivity extends Context{boolean destroyed;final Session session=new Session();JSONObject runtime;TaskQueue handler=new TaskQueue();}
+class MainActivity extends Context{boolean destroyed,active=true;final Session session=new Session();JSONObject runtime;TaskQueue handler=new TaskQueue();final View toolbar=new View(handler);}
 class Session{final AuditState audit=new AuditState();}
 class AuditState{boolean running,returnIdentity;boolean canReturnRequestIdentity(){return returnIdentity;}}
-class TaskQueue{final ArrayDeque<Runnable> tasks=new ArrayDeque<>();void post(Runnable r){tasks.add(r);}void execute(Runnable r){tasks.add(r);}int size(){return tasks.size();}void clear(){tasks.clear();}void drain(){int count=0;while(!tasks.isEmpty()){if(++count>1000)throw new AssertionError("Nonterminating callback queue");tasks.remove().run();}}}
-class View{static final int VISIBLE=0,GONE=8;int visibility=VISIBLE,visibilityChanges;boolean enabled=true;CharSequence description="";int getVisibility(){return visibility;}void setVisibility(int value){visibility=value;visibilityChanges++;}void setEnabled(boolean value){enabled=value;}CharSequence getContentDescription(){return description;}void setContentDescription(CharSequence value){description=value;}}
+class TaskQueue{final ArrayDeque<Runnable> tasks=new ArrayDeque<>(),frames=new ArrayDeque<>();void post(Runnable r){tasks.add(r);}void execute(Runnable r){tasks.add(r);}int size(){return tasks.size()+frames.size();}void clear(){tasks.clear();frames.clear();}void drain(){int count=0;while(!tasks.isEmpty()||!frames.isEmpty()){if(++count>1000)throw new AssertionError("Nonterminating callback queue");while(!tasks.isEmpty())tasks.remove().run();List<Runnable> frame=new ArrayList<>(frames);frames.clear();for(Runnable task:frame)task.run();}}}
+class View{static final int VISIBLE=0,GONE=8;final TaskQueue queue;View(){queue=null;}View(TaskQueue queue){this.queue=queue;}void postOnAnimation(Runnable task){if(queue==null)throw new AssertionError("Unowned frame callback");queue.frames.add(task);}boolean removeCallbacks(Runnable task){return queue!=null&&(queue.frames.remove(task)|queue.tasks.remove(task));}int visibility=VISIBLE,visibilityChanges;boolean enabled=true;CharSequence description="";int getVisibility(){return visibility;}void setVisibility(int value){visibility=value;visibilityChanges++;}void setEnabled(boolean value){enabled=value;}CharSequence getContentDescription(){return description;}void setContentDescription(CharSequence value){description=value;}}
 class TextView extends View{CharSequence text="";CharSequence getText(){return text;}void setText(CharSequence value){text=value;}}
 class TextUtils{static boolean equals(CharSequence a,CharSequence b){return Objects.equals(a==null?null:a.toString(),b==null?null:b.toString());}}
 class ReferenceUi{static final int TEXT=1;static TextView text(Context a,String value,int size,int color,boolean bold){TextView view=new TextView();view.setText(value);return view;}}
@@ -112,4 +113,5 @@ class UiPerfStats{static void chromeUpdate(){}static void textChange(){}}
 class NetworkRegion{static String region(Context c,String ip){return "";}}
 class NetworkCatalog{/* CATALOG_EXIT_ID */static String subscriptionName(JSONObject c){return "controlled subscription";}}
 class NativeNetwork{MainActivity owner;JSONObject settings=new JSONObject();static NativeNetwork get(MainActivity a){NativeNetwork n=new NativeNetwork();n.owner=a;return n;}/* NATIVE_METHODS */}
+class NetworkMetricsUi{static NativeNetwork maintainNow(MainActivity activity){return NativeNetwork.get(activity);}}
 class J{static JSONObject obj(Object...args){JSONObject value=new JSONObject();try{for(int i=0;i<args.length;i+=2)value.put((String)args[i],args[i+1]);}catch(JSONException e){throw new IllegalStateException(e);}return value;}}

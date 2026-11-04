@@ -18,11 +18,14 @@ final class BrowserNetworkGuard {
   boolean requiresVpn(){return needsVpn(session.internalNetwork(),session.prefs.getString("proxy",""),session.prefs.getBoolean("requireExternalVpn",true));}
   boolean vpnActive(){try{ConnectivityManager cm=(ConnectivityManager)session.context.getSystemService(Context.CONNECTIVITY_SERVICE);Network n=cm.getActiveNetwork();NetworkCapabilities caps=n==null?null:cm.getNetworkCapabilities(n);return caps!=null&&caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)&&caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);}catch(Exception e){return false;}}
   String vpnDefaultRouteIssue(){
+    return vpnDefaultRouteIssue(session.context);
+  }
+  static String vpnDefaultRouteIssue(Context context){
     // getType() is public only from API 33. Older public snapshots cannot
     // distinguish excluded routes; never infer protection or silently downgrade.
     if(android.os.Build.VERSION.SDK_INT<33)return "vpn-route-inspection-unsupported";
     try{
-      ConnectivityManager cm=(ConnectivityManager)session.context.getSystemService(Context.CONNECTIVITY_SERVICE);
+      ConnectivityManager cm=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
       if(cm==null)return "vpn-network-unavailable";
       Network network=cm.getActiveNetwork();
       NetworkCapabilities caps=network==null?null:cm.getNetworkCapabilities(network);

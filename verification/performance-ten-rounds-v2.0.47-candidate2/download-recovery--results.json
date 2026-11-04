@@ -1,0 +1,1688 @@
+{
+  "status": "passed",
+  "reports": [
+    {
+      "total": 42,
+      "checks": [
+        {
+          "pass": true,
+          "name": "Successful writer permits a new main-thread constructor while retaining its URI lease"
+        },
+        {
+          "pass": true,
+          "name": "Successful writer permits another main-thread message before lease release"
+        },
+        {
+          "pass": true,
+          "name": "Successful publication retains its exact bytes after new-instance recovery"
+        },
+        {
+          "pass": true,
+          "name": "Recovery follows the old publisher's committed task and saved index"
+        },
+        {
+          "pass": true,
+          "name": "Late old-instance updates cannot restore a deleted task or saved file"
+        },
+        {
+          "pass": true,
+          "name": "Cancelled writer permits a new main-thread constructor while retaining its URI lease"
+        },
+        {
+          "pass": true,
+          "name": "Cancelled writer permits another main-thread message before lease release"
+        },
+        {
+          "pass": true,
+          "name": "Cancelled publication removes its bytes before the waiting recovery inspects them"
+        },
+        {
+          "pass": true,
+          "name": "Waiting recovery never records an aborted destination as saved"
+        },
+        {
+          "pass": true,
+          "name": "An abandoned incomplete destination is cleaned without inventing a saved record"
+        },
+        {
+          "pass": true,
+          "name": "A published orphan is recovered only after its real destination exists"
+        },
+        {
+          "pass": true,
+          "name": "A late failed-save callback cannot clear a newer destination and generation"
+        },
+        {
+          "pass": true,
+          "name": "An older save generation cannot commit after task replacement"
+        },
+        {
+          "pass": true,
+          "name": "Conflicting stale task edits preserve the newer durable row"
+        },
+        {
+          "pass": true,
+          "name": "Saving one instance preserves tasks added by another instance"
+        },
+        {
+          "pass": true,
+          "name": "The direct recovery API rejects main-thread file-lock acquisition"
+        },
+        {
+          "pass": true,
+          "name": "Publication rejects main-thread lease acquisition instead of waiting for itself"
+        },
+        {
+          "pass": true,
+          "name": "A live older download without a pending destination is not marked interrupted"
+        },
+        {
+          "pass": true,
+          "name": "A second instance cannot take over a still-live owner by selecting its task"
+        },
+        {
+          "pass": true,
+          "name": "An unchanged local merge retains the running task object and later real progress"
+        },
+        {
+          "pass": true,
+          "name": "After its owner ends an interrupted task is recovered without retaining a live writer"
+        },
+        {
+          "pass": true,
+          "name": "A rejected task commit preserves published bytes and restores the previous pending row"
+        },
+        {
+          "pass": true,
+          "name": "Recovery retries rejected metadata before confirming the retained published bytes"
+        },
+        {
+          "pass": true,
+          "name": "Index failure after durable saved metadata cannot abort or downgrade publication"
+        },
+        {
+          "pass": true,
+          "name": "A new instance repairs the saved index even when every task has no pending destination"
+        },
+        {
+          "pass": true,
+          "name": "After-memory commit failure keeps cached saved separate from disk pending slot 8"
+        },
+        {
+          "pass": true,
+          "name": "Failed memory receipt cannot delete source or notify completion slot 8"
+        },
+        {
+          "pass": true,
+          "name": "After-memory failure preserves destination and pending generation slot 8"
+        },
+        {
+          "pass": true,
+          "name": "A new instance ignores failed cached saved and explicitly commits recovery"
+        },
+        {
+          "pass": true,
+          "name": "Only a confirmed recovery receipt permits source cleanup and completion"
+        },
+        {
+          "pass": true,
+          "name": "Equal cached rows never bypass a new instance's unconfirmed write retry"
+        },
+        {
+          "pass": true,
+          "name": "A new empty instance also retries equal rows after failed persistence"
+        },
+        {
+          "pass": true,
+          "name": "Pending recovery returns the replacement row when destination is missing"
+        },
+        {
+          "pass": true,
+          "name": "Recovered failed row can be claimed and saved in a new generation"
+        },
+        {
+          "pass": true,
+          "name": "Equivalent reordered JSON retains the running task object"
+        },
+        {
+          "pass": true,
+          "name": "restart-writer: After-memory commit failure keeps cached saved separate from disk pending slot 9"
+        },
+        {
+          "pass": true,
+          "name": "restart-writer: Failed memory receipt cannot delete source or notify completion slot 9"
+        },
+        {
+          "pass": true,
+          "name": "restart-writer: After-memory failure preserves destination and pending generation slot 9"
+        },
+        {
+          "pass": true,
+          "name": "restart-writer: Writer exits with disk pending plus preserved source and published destination"
+        },
+        {
+          "pass": true,
+          "name": "restart-reader: Fresh JVM loads disk pending without the dead process cached saved"
+        },
+        {
+          "pass": true,
+          "name": "restart-reader: Fresh JVM recovers the real published destination with a successful disk commit"
+        },
+        {
+          "pass": true,
+          "name": "restart-reader: Fresh JVM cleanup occurs only after confirmed saved persistence"
+        }
+      ],
+      "actualHostJvmRestart": true,
+      "actualAndroidExecution": false,
+      "actualSQLiteExecution": false,
+      "scope": "Production Java download task/recovery/publication/deletion methods and real host files/locks. Android main queue, preferences with independent memory/disk, local URI provider and index are explicit doubles. Includes failures before memory, after memory before disk, post-commit index failure, completion/source-cleanup gate and two separate JVM processes loading persisted fixture disk. No Android durability, physical-device or latency evidence.",
+      "actualMediaStoreExecution": false,
+      "executed": 42,
+      "actualProductionFileLease": true,
+      "actualProductionPublicationCoordinator": true,
+      "status": "passed",
+      "actualProductionTaskRecovery": true,
+      "exitCode": 0
+    },
+    {
+      "actualExternalProviderExecution": false,
+      "total": 341,
+      "checks": [
+        {
+          "pass": true,
+          "name": "Unknown value remains unknown: null"
+        },
+        {
+          "pass": true,
+          "name": "Unknown value remains unknown: -1"
+        },
+        {
+          "pass": true,
+          "name": "Unknown value remains unknown: -3"
+        },
+        {
+          "pass": true,
+          "name": "Unknown value remains unknown: 0.5"
+        },
+        {
+          "pass": true,
+          "name": "Unknown value remains unknown: 0"
+        },
+        {
+          "pass": true,
+          "name": "Unknown value remains unknown: true"
+        },
+        {
+          "pass": true,
+          "name": "Known zero and large bytes stay exact"
+        },
+        {
+          "pass": true,
+          "name": "Legacy preference merge retains cached zero"
+        },
+        {
+          "pass": true,
+          "name": "Actual publication bytes outrank provider size"
+        },
+        {
+          "pass": true,
+          "name": "Failed query caches unknown without zero"
+        },
+        {
+          "pass": true,
+          "name": "Cache invalidates on genuine URI change"
+        },
+        {
+          "pass": true,
+          "name": "SAF location is genuine URI without invented absolute path"
+        },
+        {
+          "pass": true,
+          "name": "Numeric storage parsing does not manufacture metadata rewrites"
+        },
+        {
+          "pass": true,
+          "name": "Matching file owner uses its current name"
+        },
+        {
+          "pass": true,
+          "name": "Rename follows the same owner only"
+        },
+        {
+          "pass": true,
+          "name": "Deleted owner is labelled as historical"
+        },
+        {
+          "pass": true,
+          "name": "Reused slot never labels old file as its new owner even while new owner deletes"
+        },
+        {
+          "pass": true,
+          "name": "Generation mismatch is a retired owner"
+        },
+        {
+          "pass": true,
+          "name": "Slot-only legacy file never inherits current owner"
+        },
+        {
+          "pass": true,
+          "name": "Absent owner keeps saved file as historical"
+        },
+        {
+          "pass": true,
+          "name": "Partial owner identity is explicitly unconfirmed"
+        },
+        {
+          "pass": true,
+          "name": "Known-zero total and unknown total differ"
+        },
+        {
+          "pass": true,
+          "name": "Actual copy count and bytes 0"
+        },
+        {
+          "pass": true,
+          "name": "Actual copy count and bytes 1"
+        },
+        {
+          "pass": true,
+          "name": "Actual copy count and bytes 65537"
+        },
+        {
+          "pass": true,
+          "name": "Actual copy count and bytes 131089"
+        },
+        {
+          "pass": true,
+          "name": "Failed output cannot return a byte receipt"
+        },
+        {
+          "pass": true,
+          "name": "Cancelled copy cannot return a receipt"
+        },
+        {
+          "pass": true,
+          "name": "Explicit empty provider object is zero"
+        },
+        {
+          "pass": true,
+          "name": "Cached metadata skips repeated provider queries"
+        },
+        {
+          "pass": true,
+          "name": "Nullable provider size remains unknown"
+        },
+        {
+          "pass": true,
+          "name": "Cached unknown skips refresh queries"
+        },
+        {
+          "pass": true,
+          "name": "Explicit retry can refresh cached unknown"
+        },
+        {
+          "pass": true,
+          "name": "Nonintegral provider size is not truncated into known bytes"
+        },
+        {
+          "pass": true,
+          "name": "Absent provider size column stays unknown"
+        },
+        {
+          "pass": true,
+          "name": "Metadata refresh cannot replace actual copy count with provider estimate"
+        },
+        {
+          "pass": true,
+          "name": "Provider missing object reporting zero remains unknown"
+        },
+        {
+          "pass": true,
+          "name": "Permission failure is cached unknown"
+        },
+        {
+          "pass": true,
+          "name": "Late metadata never resurrects a deleted file"
+        },
+        {
+          "pass": true,
+          "name": "Late metadata never modifies a replaced publication"
+        },
+        {
+          "pass": true,
+          "name": "Environment generation change drops in-flight result"
+        },
+        {
+          "pass": true,
+          "name": "Missing private provider file is not an empty file"
+        },
+        {
+          "pass": true,
+          "name": "URI lease and persisted cache suppress concurrent duplicate query"
+        },
+        {
+          "pass": true,
+          "name": "Provider metadata explicitly rejects main-thread work"
+        },
+        {
+          "pass": true,
+          "name": "Saved bytes durably committed independently of HTTP total 0"
+        },
+        {
+          "pass": true,
+          "name": "Only confirmed publication permits source cleanup 0"
+        },
+        {
+          "pass": true,
+          "name": "New task captures stable owner ID/generation 0"
+        },
+        {
+          "pass": true,
+          "name": "Saved bytes durably committed independently of HTTP total 65539"
+        },
+        {
+          "pass": true,
+          "name": "Only confirmed publication permits source cleanup 65539"
+        },
+        {
+          "pass": true,
+          "name": "New task captures stable owner ID/generation 65539"
+        },
+        {
+          "pass": true,
+          "name": "100 page 1 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "100 page 2 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "100 page 3 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "100 all records remain reachable and in-progress globally first"
+        },
+        {
+          "pass": true,
+          "name": "100 insertion does not replace anchored file"
+        },
+        {
+          "pass": true,
+          "name": "100 status reorder retains the viewed surviving file"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 1 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 2 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 3 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 4 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 5 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 6 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 7 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 8 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 9 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 10 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 11 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 12 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 13 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 14 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 15 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 16 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 17 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 18 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 19 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 20 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 21 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 22 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 23 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 24 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 25 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 page 26 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "1000 all records remain reachable and in-progress globally first"
+        },
+        {
+          "pass": true,
+          "name": "1000 insertion does not replace anchored file"
+        },
+        {
+          "pass": true,
+          "name": "1000 status reorder retains the viewed surviving file"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 1 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 2 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 3 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 4 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 5 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 6 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 7 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 8 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 9 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 10 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 11 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 12 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 13 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 14 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 15 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 16 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 17 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 18 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 19 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 20 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 21 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 22 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 23 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 24 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 25 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 26 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 27 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 28 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 29 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 30 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 31 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 32 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 33 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 34 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 35 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 36 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 37 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 38 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 39 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 40 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 41 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 42 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 43 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 44 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 45 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 46 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 47 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 48 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 49 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 50 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 51 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 52 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 53 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 54 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 55 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 56 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 57 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 58 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 59 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 60 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 61 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 62 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 63 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 64 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 65 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 66 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 67 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 68 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 69 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 70 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 71 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 72 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 73 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 74 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 75 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 76 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 77 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 78 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 79 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 80 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 81 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 82 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 83 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 84 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 85 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 86 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 87 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 88 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 89 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 90 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 91 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 92 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 93 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 94 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 95 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 96 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 97 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 98 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 99 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 100 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 101 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 102 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 103 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 104 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 105 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 106 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 107 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 108 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 109 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 110 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 111 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 112 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 113 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 114 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 115 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 116 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 117 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 118 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 119 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 120 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 121 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 122 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 123 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 124 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 125 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 126 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 127 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 128 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 129 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 130 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 131 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 132 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 133 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 134 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 135 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 136 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 137 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 138 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 139 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 140 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 141 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 142 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 143 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 144 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 145 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 146 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 147 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 148 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 149 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 150 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 151 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 152 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 153 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 154 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 155 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 156 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 157 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 158 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 159 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 160 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 161 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 162 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 163 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 164 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 165 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 166 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 167 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 168 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 169 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 170 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 171 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 172 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 173 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 174 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 175 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 176 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 177 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 178 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 179 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 180 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 181 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 182 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 183 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 184 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 185 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 186 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 187 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 188 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 189 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 190 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 191 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 192 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 193 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 194 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 195 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 196 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 197 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 198 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 199 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 200 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 201 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 202 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 203 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 204 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 205 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 206 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 207 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 208 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 209 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 210 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 211 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 212 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 213 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 214 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 215 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 216 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 217 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 218 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 219 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 220 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 221 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 222 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 223 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 224 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 225 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 226 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 227 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 228 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 229 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 230 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 231 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 232 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 233 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 234 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 235 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 236 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 237 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 238 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 239 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 240 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 241 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 242 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 243 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 244 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 245 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 246 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 247 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 248 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 249 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 250 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 page 251 respects 40-row bound"
+        },
+        {
+          "pass": true,
+          "name": "10000 all records remain reachable and in-progress globally first"
+        },
+        {
+          "pass": true,
+          "name": "10000 insertion does not replace anchored file"
+        },
+        {
+          "pass": true,
+          "name": "10000 status reorder retains the viewed surviving file"
+        },
+        {
+          "pass": true,
+          "name": "Hidden path change does not rebind card"
+        },
+        {
+          "pass": true,
+          "name": "Unknown to known zero invalidates card"
+        }
+      ],
+      "actualAndroidExecution": false,
+      "scope": "Production metadata/copy/page/revision/task/publication classes with real JVM streams/files/leases; controlled Android provider, catalog and SQLite-index doubles. Existing 42 publication/recovery cases execute separately. No phone/Android/provider performance claim.",
+      "phonePerformanceMeasured": false,
+      "status": "passed",
+      "measurements": [
+        {
+          "metadataWrites": 9,
+          "unknownCachePersistsInIndexedRow": true,
+          "mainProviderQueries": 0,
+          "providerQueries": 12
+        },
+        {
+          "actualPhoneFPS": false,
+          "pageLimit": 40,
+          "pages": 3,
+          "reachableRows": 101,
+          "history": 100
+        },
+        {
+          "actualPhoneFPS": false,
+          "pageLimit": 40,
+          "pages": 26,
+          "reachableRows": 1001,
+          "history": 1000
+        },
+        {
+          "actualPhoneFPS": false,
+          "pageLimit": 40,
+          "pages": 251,
+          "reachableRows": 10001,
+          "history": 10000
+        }
+      ],
+      "exitCode": 0
+    },
+    {
+      "total": 11,
+      "checks": [
+        {
+          "pass": true,
+          "name": "Constructed two different URIs sharing the actual production stripe"
+        },
+        {
+          "pass": true,
+          "name": "Duplicate URIs and stripe collisions acquire exactly one gate"
+        },
+        {
+          "pass": true,
+          "name": "Colliding stripe is acquired once without nested same-stripe holds"
+        },
+        {
+          "pass": true,
+          "name": "Opposite URI orders complete 100 multi-file operations without deadlock"
+        },
+        {
+          "pass": true,
+          "name": "Grant callback reached without blocking the main thread on a lease"
+        },
+        {
+          "pass": true,
+          "name": "Contending writer started"
+        },
+        {
+          "pass": true,
+          "name": "Grant is still awaiting explicit callback release"
+        },
+        {
+          "pass": true,
+          "name": "Full validation precedes grant callback"
+        },
+        {
+          "pass": true,
+          "name": "Earlier URI cannot be republished before grant callback"
+        },
+        {
+          "pass": true,
+          "name": "Writer proceeds after grant dispatch"
+        },
+        {
+          "pass": true,
+          "name": "All leases release after grant handoff"
+        }
+      ],
+      "actualAndroidExecution": false,
+      "scope": "real SealedFileIo/SavedFileDeletion locks and main handoff, JVM concurrency with explicit Context/main adapters",
+      "passed": 11,
+      "status": "passed",
+      "exitCode": 0
+    }
+  ],
+  "sourceFiles": {
+    "app/src/main/java/local/pocketchat/J.java": "772bcc91b130ace1f33b529c2d828771ff9f12ba44805685a703df14f7d68493",
+    "app/src/main/java/local/pocketchat/DownloadTaskRevisions.java": "3ee3d4035650831d9dbf85444f29533ba8ebb11f52221cb72ec2b172b76d9dfd",
+    "app/src/main/java/local/pocketchat/DownloadTasks.java": "91ebb2dd962babdf1ac667e6140d60a7a3c248a7a3f372561ea86162874a6764",
+    "app/src/main/java/local/pocketchat/DownloadResumePolicy.java": "35277aa5f64fe6172b40dd557e091b079292d8b95768e04e6c2256d10d6c3a35",
+    "app/src/main/java/local/pocketchat/DefaultDownloads.java": "6826132189f5f719130021180bc4f6e560313670200580fd10b4617e2b87fccc",
+    "app/src/main/java/local/pocketchat/SavedFilePublication.java": "14fabe1b59ebbc05dcc0f63492199aef3e6f7e89e305cd032731dcc630ce0be2",
+    "app/src/main/java/local/pocketchat/SavedFileDeletion.java": "372d428a60bffd8982207d7a08138bc61d09bdc7370f18cfe341f9717ea2556c",
+    "app/src/main/java/local/pocketchat/SealedFileIo.java": "02c4c325a071a37cd9e2dc01e612a7590a4d045117aad089d37b57dbb77f4473",
+    "app/src/main/java/local/pocketchat/DownloadMetadataValues.java": "4203104a781af2f9b698e4da9a13060e4f737de2dc686d5c2b54652107297728",
+    "app/src/main/java/local/pocketchat/SavedDownloadMetadata.java": "31569a7912d1f1b0e3a93a1feeb30b1d1a5daa5e28fc38331edc448ab0c68900",
+    "app/src/main/java/local/pocketchat/SavedFileBytes.java": "26cc9d2cdda6b3c4ab799023e69fa92675c958a7b4558e6b67b486d388288aae",
+    "app/src/main/java/local/pocketchat/DownloadPageWindow.java": "816caae8082f5b94228de9b4f585a75e0dab86b66884a1cc0d8b74ce5d00b619",
+    "app/src/main/java/local/pocketchat/DownloadListPolicy.java": "d604f6f17ca53122e215695f4f4e358d8132de2df59ceb6ac3ee490861626332",
+    "app/src/main/java/local/pocketchat/DownloadRowBinding.java": "60152358f0da21ce4a0ade6abb795f84d2d463ec37230f568fd712b9c77090fa",
+    "app/src/main/java/local/pocketchat/DownloadOwnerLabels.java": "81625e87b66117ab8ba8b1a6084f22f21f55886fb805099b0965826db6874473",
+    "tests/download46-host/Metadata46Cases.java": "d254ee2fbfc343cd19c97d80f7bce3c76a76c024a4cd4e46e420b55feb51d1f5",
+    "tests/download46-host/CollectionLeaseCases.java": "7a68ae12d654a283e462c40fb417bc188a8cda87eb8252651a905a690ae41761",
+    "tests/download46-host/run.py": "11f64c235c56be144a7ecb0c633df63c64df3939c2d8e32a731ea8bc8c927c9f",
+    "tests/download-recovery-host/local/pocketchat/Support.java": "20907ea7e3b8f7508b48f34bebbb928deb2ee7116e76ce4deb98fc85d5891e89",
+    "tests/download-recovery-host/local/pocketchat/DownloadRecoveryHostTest.java": "e29b58705e7caf284ca9c3337bf9f5d3ebfab1672dd39ecd1dc4670a66318b06",
+    "tests/sealed-file-host/android/util/AtomicFile.java": "f626a8654d39d5d54aab447fa4c75e17216cad7ec24be89d38946336e7d63faa",
+    "tests/download-recovery-host/android/annotation/TargetApi.java": "6e650f0a9beaf8c7a4d2f6bdf2d3a005ff6b5556749fc12a336e8d4e7b9a8881",
+    "tests/download-recovery-host/android/content/ContentResolver.java": "8cf87c3f153cfab8f9cd91533ce910a22df5a6a2a987dafda33f42d7cd989403",
+    "tests/download-recovery-host/android/content/ContentValues.java": "b0edd2b99312c142baa8e83b5106edbfc365a77d4845ccf7a2c8c598fbd3a612",
+    "tests/download-recovery-host/android/content/Context.java": "66583fd224c12f58c33748980537edcbb0008239eb610a3c5ab13af7d694f85d",
+    "tests/download-recovery-host/android/content/SharedPreferences.java": "1e65bad639f2eebd26d90b8a6e12a680bf8f65103363429e1973816edecc5317",
+    "tests/download-recovery-host/android/database/Cursor.java": "ad3f5f17531b31a09a209b0fd7475a1e05aa2e0b168a336876541d29dbf55eae",
+    "tests/download-recovery-host/android/net/Uri.java": "2d38951579a876d31918b94c4391702316a687d6c44f711439bd5ed95908c4f5",
+    "tests/download-recovery-host/android/os/Build.java": "65ff3a55568a0664b8b7f5d86ccaf68eeeea71a345a768517f0f20bcd80b07d8",
+    "tests/download-recovery-host/android/os/Environment.java": "829efbf9ab0d293a5fa7a2a770b804c24257d72e8d79a5252d844be1a46077c6",
+    "tests/download-recovery-host/android/os/Handler.java": "eee27ad00d9e3d7af25cf369da228a4280a37b4f4fcc60387e4b64eec247d485",
+    "tests/download-recovery-host/android/os/Looper.java": "4109d98dc3c02046108943bd590c605392d2f6439e01f7bfea2705c51e0c892e",
+    "tests/download-recovery-host/android/provider/DocumentsContract.java": "a38f8d361f037353a5c3c27e84e0575ed835b286be941809076fc5c26650a9d3",
+    "tests/download-recovery-host/android/provider/MediaStore.java": "12a0b2215ac5138a0b7f7c51b3709c3ded9614ec2d412c706b3cdf199f9ab7c7",
+    "tests/download-recovery-host/android/provider/OpenableColumns.java": "82b842f9d8fb614daf4a600e8bfc65f870e5c9305fbb858ee625cd361389a1bc"
+  },
+  "executionInputsUnchanged": true,
+  "jsonJarSha256": "3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed",
+  "actualAndroidExecution": false,
+  "phonePerformanceMeasured": false
+}

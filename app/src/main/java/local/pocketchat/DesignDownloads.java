@@ -36,24 +36,36 @@ final class DesignDownloads {
   static final class Controller {
     final Activity a;final LinearLayout box,packages,list,empty;final java.util.function.IntConsumer choose;final SavedFileActions actions;
     final Map<String,Row> views=new LinkedHashMap<>();int filter=-1;String packageKey="";LinearLayout tabs;
+    DownloadQuery query;final android.content.SharedPreferences preferences;final EditText search;
+    final Button scopeButton,kindButton,sortButton,collectButton,basketButton;final DownloadCollection collection;final DownloadCollectionSession.State collectionSession;
+    final Map<String,String> scopes=new LinkedHashMap<>();boolean collecting;String collectionNotice="",emptyDiscoveryKey="";
+    final Handler discoveryHandler=new Handler(Looper.getMainLooper());final Runnable discovery=()->refresh(this.requestedFilter);
     final DownloadRefreshUi refreshUi;Map<Integer,String> preparedNames;Map<String,String> preparedTimes,preparedOwners;int requestedFilter;
     final LinearLayout paging;final TextView pageLabel;final Button previous,next,latest;
     final Map<Integer,String> anchors=new HashMap<>();final Map<String,Integer> scrollStates=new HashMap<>();
-    DownloadDisplayCache.Page prepared;SavedDownloadMetadata.Watch metadata;boolean attached=true,visible=true,loading,pending;long epoch;
+    DownloadDisplayCache.Page prepared;SavedDownloadMetadata.Watch metadata;boolean attached=true,visible=true;long epoch;
+    final DownloadReadGate reads=new DownloadReadGate();final DownloadDisplayCache.Scope requestScope=new DownloadDisplayCache.Scope();
     String anchor="",viewed="";boolean navigating;final ContentObserver changes;
     final android.view.ViewTreeObserver.OnScrollChangedListener scrolled=this::rememberViewed;
     void rememberViewed(){ScrollView scroll=scroll();if(scroll==null)return;int y=scroll.getScrollY();for(int i=0;i<list.getChildCount();i++){View card=list.getChildAt(i);if(list.getTop()+card.getTop()+card.getHeight()>y){Object key=card.getTag();if(key instanceof String)viewed=(String)key;break;}}}
     ScrollView scroll(){return box.getParent() instanceof ScrollView?(ScrollView)box.getParent():null;}
-    String stateKey(){return requestedFilter+":"+anchor;}
+    String stateKey(){return requestedFilter+":"+query.key()+":"+anchor;}
     void saveScroll(){ScrollView scroll=scroll();if(scroll!=null)scrollStates.put(stateKey(),scroll.getScrollY());}
-    void page(String selected){saveScroll();anchor=selected;viewed="";anchors.put(requestedFilter,anchor);navigating=true;epoch++;refresh(requestedFilter);}
-    void setVisible(boolean value){visible=value;if(!value){saveScroll();epoch++;if(metadata!=null){metadata.close();metadata=null;}}else if(attached){if(metadata==null)metadata=SavedDownloadMetadata.watch(a);refresh(requestedFilter);}}
-    void close(){if(!attached)return;attached=false;setVisible(false);box.getViewTreeObserver().removeOnScrollChangedListener(scrolled);try{a.getContentResolver().unregisterContentObserver(changes);}catch(RuntimeException ignored){}}
+    void page(String selected){saveScroll();anchor=selected;viewed="";anchors.put(requestedFilter,anchor);navigating=true;epoch++;requestScope.invalidate();refresh(requestedFilter);}
+    void setVisible(boolean value){visible=value;if(!value){saveScroll();epoch++;requestScope.invalidate();if(metadata!=null){metadata.close();metadata=null;}}else if(attached){if(metadata==null)metadata=SavedDownloadMetadata.watch(a);refresh(requestedFilter);}}
+    void close(){if(!attached)return;discoveryHandler.removeCallbacksAndMessages(null);attached=false;setVisible(false);box.getViewTreeObserver().removeOnScrollChangedListener(scrolled);try{a.getContentResolver().unregisterContentObserver(changes);}catch(RuntimeException ignored){}}
 
     Controller(Activity a,LinearLayout box,int filter,java.util.function.IntConsumer choose,SavedFileActions actions){
       this.a=a;this.box=box;this.choose=choose;this.actions=actions;
+      collectionSession=DownloadCollectionSession.get(a);collection=collectionSession.files;collecting=collectionSession.collecting;
+      preferences=Profiles.global(a).getSharedPreferences("download-discovery",0);
+      query=new DownloadQuery(preferences.getString("query",""),preferences.getString("owner",""),preferences.getInt("kind",0),preferences.getInt("sort",0));
       tabs=DesignUi.tabs(a,new String[]{"全部","进行中","已完成","失败"},filter,choose);box.addView(tabs);
-      LinearLayout link=DesignUi.row(a);TextView scope=DesignUi.text(a,"全部环境",12,DesignUi.MUTED);link.addView(scope,new LinearLayout.LayoutParams(0,-2,1));Button folder=DesignUi.button(a,"保存位置",false,()->folder(a));folder.setTextSize(12);link.addView(folder,new LinearLayout.LayoutParams(DesignUi.actionWidth(folder,88),android.view.ViewGroup.LayoutParams.WRAP_CONTENT));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=DesignUi.dp(a,10);box.addView(link,lp);
+      search=DesignUi.searchInput(box,"搜索全部下载：文件名、类型或环境");search.setContentDescription("搜索全部下载记录");search.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});search.setText(query.text);
+      LinearLayout discoveryTools=DesignUi.row(a);if(a.getResources().getConfiguration().fontScale>=1.4f||a.getResources().getConfiguration().screenWidthDp<360)discoveryTools.setOrientation(LinearLayout.VERTICAL);
+      scopeButton=DesignUi.button(a,"全部环境",false,this::chooseScope);kindButton=DesignUi.button(a,DownloadQuery.KINDS[query.kind],false,this::chooseKind);sortButton=DesignUi.button(a,DownloadQuery.SORTS[query.sort],false,this::chooseSort);
+      for(Button button:new Button[]{scopeButton,kindButton,sortButton}){button.setTextSize(12);LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(discoveryTools.getOrientation()==LinearLayout.VERTICAL?-1:0,-2,discoveryTools.getOrientation()==LinearLayout.VERTICAL?0:1);params.topMargin=DesignUi.dp(a,6);discoveryTools.addView(button,params);}box.addView(discoveryTools);
+      LinearLayout link=DesignUi.row(a);boolean stackCollection=discoveryTools.getOrientation()==LinearLayout.VERTICAL;if(stackCollection)link.setOrientation(LinearLayout.VERTICAL);collectButton=DesignUi.button(a,"收集文件",false,()->{collecting=!collecting;syncCollection();});link.addView(collectButton,new LinearLayout.LayoutParams(stackCollection?-1:0,-2,stackCollection?0:1));basketButton=DesignUi.button(a,"收集篮 · 0",false,this::showCollection);link.addView(basketButton,new LinearLayout.LayoutParams(stackCollection?-1:0,-2,stackCollection?0:1));Button folder=DesignUi.button(a,"保存位置",false,()->folder(a));folder.setTextSize(12);link.addView(folder,new LinearLayout.LayoutParams(stackCollection?-1:DesignUi.actionWidth(folder,80),android.view.ViewGroup.LayoutParams.WRAP_CONTENT));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=DesignUi.dp(a,10);box.addView(link,lp);
       packages=DesignUi.column(a);box.addView(packages);list=DesignUi.column(a);box.addView(list);empty=DesignUi.column(a);box.addView(empty);
       paging=DesignUi.row(a);previous=DesignUi.button(a,"上一页",false,()->{if(prepared!=null&&!prepared.window.previous.isEmpty())page(prepared.window.previous);});next=DesignUi.button(a,"下一页",false,()->{if(prepared!=null&&!prepared.window.next.isEmpty())page(prepared.window.next);});pageLabel=DesignUi.text(a,"正在读取下载记录…",12,DesignUi.MUTED);latest=DesignUi.button(a,"返回最新",false,()->page(""));paging.addView(previous);paging.addView(pageLabel,new LinearLayout.LayoutParams(0,-2,1));paging.addView(next);box.addView(paging);box.addView(latest);
       refreshUi=new DownloadRefreshUi(a,box,()->refresh(requestedFilter));
@@ -63,25 +75,53 @@ final class DesignDownloads {
       DownloadLibraryChanges.revision.incrementAndGet();
       box.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){public void onViewAttachedToWindow(View v){}public void onViewDetachedFromWindow(View v){close();}});
       box.getViewTreeObserver().addOnScrollChangedListener(scrolled);
-      metadata=SavedDownloadMetadata.watch(a);this.filter=filter;requestedFilter=filter;refresh(filter);
+      metadata=SavedDownloadMetadata.watch(a);this.filter=filter;requestedFilter=filter;
+      search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence text,int start,int count,int after){}public void afterTextChanged(android.text.Editable value){}public void onTextChanged(CharSequence text,int start,int before,int count){changeQuery(query.text(text.toString()),true);}});
+      discoveryLabels();syncCollection();refresh(filter);
     }
+    void changeQuery(DownloadQuery next,boolean debounce){
+      if(next.key().equals(query.key()))return;saveScroll();query=next;anchor="";viewed="";anchors.clear();navigating=true;epoch++;requestScope.invalidate();emptyDiscoveryKey="";empty.removeAllViews();
+      preferences.edit().putString("query",query.text).putString("owner",query.owner).putInt("kind",query.kind).putInt("sort",query.sort).apply();discoveryLabels();
+      discoveryHandler.removeCallbacks(discovery);if(debounce)discoveryHandler.postDelayed(discovery,220);else refresh(requestedFilter);
+    }
+    void discoveryLabels(){Row.text(scopeButton,scopes.getOrDefault(query.owner,query.owner.isEmpty()?"全部环境":"原环境文件"));Row.text(kindButton,DownloadQuery.KINDS[query.kind]);Row.text(sortButton,DownloadQuery.SORTS[query.sort]);if(latest!=null)Row.text(latest,query.sort<2?"返回最新":"回到开头");}
+    void chooseScope(){
+      List<String> keys=new ArrayList<>(scopes.keySet());if(keys.isEmpty())keys.add("");String[] names=new String[keys.size()];for(int i=0;i<keys.size();i++)names[i]=scopes.getOrDefault(keys.get(i),"全部环境");
+      AppAppearance.dialog(a).setTitle("文件所属环境").setSingleChoiceItems(names,keys.indexOf(query.owner),(dialog,which)->{dialog.dismiss();changeQuery(query.owner(keys.get(which)),false);}).setNegativeButton("取消",null).show();
+    }
+    void chooseKind(){AppAppearance.dialog(a).setTitle("文件类型").setSingleChoiceItems(DownloadQuery.KINDS,query.kind,(dialog,which)->{dialog.dismiss();changeQuery(query.kind(which),false);}).setNegativeButton("取消",null).show();}
+    void chooseSort(){AppAppearance.dialog(a).setTitle("文件排序").setSingleChoiceItems(DownloadQuery.SORTS,query.sort,(dialog,which)->{dialog.dismiss();changeQuery(query.sort(which),false);}).setNegativeButton("取消",null).show();}
+    void toggleCollection(JSONObject row){if(actions.busy){syncCollection();return;}collectionNotice="";if(!collection.toggle(row))SavedFileActions.problem(a,"最多收集 "+DownloadCollection.LIMIT+" 个已完成文件；同一文件不能重复加入");syncCollection();}
+    void syncCollection(){collectionSession.collecting=collecting;Row.text(collectButton,collecting?"完成选择":"收集文件");Row.text(basketButton,"收集篮 · "+collection.size());if(collectButton.isEnabled()==actions.busy)collectButton.setEnabled(!actions.busy);if(basketButton.isEnabled()==actions.busy)basketButton.setEnabled(!actions.busy);for(Row row:views.values())row.selection(collecting,collection.size()>0&&collection.containsKey(row.collectionKey()),!actions.busy,this);}
+    void decorateDiscoveryPage(JSONArray rows){syncCollection();if(rows.length()==0&&query.restricted()){String key=requestedFilter+":"+query.key();if(!key.equals(emptyDiscoveryKey)){emptyDiscoveryKey=key;empty.removeAllViews();DesignUi.empty(empty,"没有匹配的文件","搜索覆盖全部记录。可清除关键词、环境和类型筛选后重试。","清除搜索与筛选",()->{changeQuery(DownloadQuery.all(),false);search.setText("");choose.accept(0);});}}else emptyDiscoveryKey="";}
+    void showCollection(){
+      LinearLayout content=DesignUi.column(a);int pad=DesignUi.dp(a,18);content.setPadding(pad,pad,pad,pad);JSONArray selected=collection.snapshot();
+      DesignUi.note(content,selected.length()==0?"点击“收集文件”，可跨页、跨筛选选择已保存文件，一次分享。":"已收集 "+selected.length()+" / "+DownloadCollection.LIMIT+" 个文件。搜索或翻页会保留选择；分享前会核对文件是否仍可读取。");
+      if(!collectionNotice.isEmpty())DesignUi.note(content,collectionNotice);final AlertDialog[] holder={null};
+      for(int i=0;i<selected.length();i++){JSONObject value=selected.optJSONObject(i);LinearLayout row=DesignUi.row(a);TextView label=DesignUi.text(a,DownloadMetadataValues.name(value),14,DesignUi.TEXT);label.setMaxLines(2);row.addView(label,new LinearLayout.LayoutParams(0,-2,1));Button remove=DesignUi.button(a,"移除",false,()->{collection.toggle(value);syncCollection();holder[0].dismiss();showCollection();});row.addView(remove);content.addView(row);}
+      Button pageFiles=DesignUi.button(a,"加入本页已完成文件",false,()->{int added=0,skipped=0;for(Row row:views.values())if(DownloadCollection.eligible(row.value)&&!collection.contains(row.value)){if(collection.toggle(row.value))added++;else skipped++;}collectionNotice="本次加入 "+added+" 个文件"+(skipped>0?"；"+skipped+" 个未加入（最多 "+DownloadCollection.LIMIT+" 个，同一文件不重复加入）":"");collecting=true;syncCollection();holder[0].dismiss();showCollection();});content.addView(pageFiles);
+      ScrollView overflow=new ScrollView(a);overflow.addView(content);AlertDialog dialog=AppAppearance.dialog(a).setTitle("文件收集篮").setView(overflow).setNegativeButton("继续选择",(d,w)->{collecting=true;syncCollection();}).setNeutralButton("清空收集篮",(d,w)->{collection.clear();syncCollection();}).setPositiveButton("分享 "+selected.length()+" 个文件",null).create();holder[0]=dialog;dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(selected.length()>0&&!actions.busy);
+      dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{dialog.dismiss();DownloadCollectionShare.share(a,actions,selected,this::syncCollection);syncCollection();});
+    }
+    void saveState(Bundle state){state.putString("downloadCollection",collection.snapshot().toString());state.putBoolean("downloadCollecting",collecting);}
+    void restoreState(Bundle state){if(state==null)return;try{collection.restore(new JSONArray(state.getString("downloadCollection","[]")));}catch(JSONException invalid){collection.clear();}collecting=state.getBoolean("downloadCollecting");syncCollection();}
     void refresh(int selected){
       if(!attached||!visible)return;
-      if(selected!=requestedFilter){saveScroll();anchors.put(requestedFilter,anchor);requestedFilter=selected;anchor=anchors.getOrDefault(selected,"");viewed="";navigating=true;epoch++;}
-      if(loading){pending=true;return;}loading=true;pending=false;final long request=epoch;final int chosen=requestedFilter;final String selectedAnchor=anchor;
-      DownloadDisplayCache.request(a,chosen,selectedAnchor,viewed,page->{
-        loading=false;if(!attached||!visible)return;
+      if(selected!=requestedFilter){saveScroll();anchors.put(requestedFilter,anchor);requestedFilter=selected;anchor=anchors.getOrDefault(selected,"");viewed="";navigating=true;epoch++;requestScope.invalidate();}
+      if(!reads.begin(epoch,DownloadLibraryChanges.revision.get()))return;final long request=epoch;final int chosen=requestedFilter;final String selectedAnchor=anchor;
+      DownloadDisplayCache.request(a,chosen,selectedAnchor,viewed,query,requestScope,page->{
+        reads.complete();if(!attached||!visible)return;
         if(request==epoch&&chosen==requestedFilter&&page.currentFormat()){
-          prepared=page;preparedNames=page.names;preparedTimes=page.times;preparedOwners=page.environmentLabels;
-          try{apply(page.window.rows,chosen,System.currentTimeMillis());}finally{preparedNames=null;preparedTimes=null;preparedOwners=null;}
+          prepared=page;if(!scopes.equals(page.scopes)){scopes.clear();scopes.putAll(page.scopes);}discoveryLabels();preparedNames=page.names;preparedTimes=page.times;preparedOwners=page.environmentLabels;
+          try{apply(page.window.rows,chosen,System.currentTimeMillis());decorateDiscoveryPage(page.window.rows);}finally{preparedNames=null;preparedTimes=null;preparedOwners=null;}
           if(page.window.rows.length()>0){anchor=key(page.window.rows.optJSONObject(0));anchors.put(chosen,anchor);if(viewed.isEmpty())viewed=anchor;}
           String key=page.update.getString("state","")+":"+page.update.getLong("packageStoredBytes")+":"+page.update.getBoolean("packageDeleteRetry");
           if(!key.equals(packageKey)){packages.removeAllViews();updatePackage(a,packages,page.update);packageKey=key;}
-          previous.setEnabled(!page.window.previous.isEmpty());next.setEnabled(!page.window.next.isEmpty());pageLabel.setText(page.window.total==0?"0 条记录":(page.window.start+1)+"–"+(page.window.start+page.window.rows.length())+" / "+page.window.total);latest.setVisibility(page.window.newer?View.VISIBLE:View.GONE);refreshUi.clear();
+          if(previous.isEnabled()==page.window.previous.isEmpty())previous.setEnabled(!page.window.previous.isEmpty());if(next.isEnabled()==page.window.next.isEmpty())next.setEnabled(!page.window.next.isEmpty());Row.text(pageLabel,page.window.total==0?"0 条记录":(page.window.start+1)+"–"+(page.window.start+page.window.rows.length())+" / "+page.window.total);Row.visible(latest,page.window.newer);refreshUi.clear();
           if(navigating){ScrollView scroll=scroll();int restore=scrollStates.getOrDefault(stateKey(),0);if(scroll!=null)scroll.post(()->scroll.scrollTo(0,restore));navigating=false;}
         }
-        if(pending||request!=epoch){pending=false;refresh(requestedFilter);}
-      },error->{loading=false;if(!attached||!visible)return;if(request==epoch)refreshUi.failed();if(pending||request!=epoch){pending=false;refresh(requestedFilter);}});
+        if(reads.replay(epoch))refresh(requestedFilter);
+      },error->{reads.complete();if(!attached||!visible)return;if(request==epoch&&!(error instanceof java.util.concurrent.CancellationException))refreshUi.failed();if(reads.replay(epoch))refresh(requestedFilter);});
     }
     void apply(JSONArray data,int selected,long now){
       boolean changedFilter=selected!=filter;if(changedFilter){filter=selected;box.removeView(tabs);tabs=DesignUi.tabs(a,new String[]{"全部","进行中","已完成","失败"},filter,choose);box.addView(tabs,0);}
@@ -100,13 +140,22 @@ final class DesignDownloads {
     }
   }
   static final class Row {
-    final Activity a;final LinearLayout card;final ImageView icon;final TextView name,status,time,progressText,reason,stale,location,arrow;final Button menu;final ProgressBar progress;JSONObject value;String appearance="";
+    final Activity a;final LinearLayout card;final ImageView icon;final TextView name,status,time,progressText,reason,stale,location,arrow;final Button menu;final ProgressBar progress;final CheckBox collected;boolean syncingSelection,selectionKnown,selectionVisible,selectionChecked,selectionEnabled;Controller selectionOwner;JSONObject value,selectionKeyRow;String appearance="",selectionLabel="",selectedKey="";
     final DownloadRowBinding binding=new DownloadRowBinding();
     Row(Activity a,SavedFileActions actions){
-      this.a=a;card=DesignUi.card(a);LinearLayout top=DesignUi.row(a);icon=DesignUi.icon(a,"download",DesignUi.GREEN,36);top.addView(icon);LinearLayout labels=DesignUi.column(a);labels.setPadding(DesignUi.dp(a,12),0,DesignUi.dp(a,8),0);name=ReferenceUi.text(a,"",16,DesignUi.TEXT,true);name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(name);status=DesignUi.text(a,"",13,DesignUi.MUTED);status.setPadding(0,DesignUi.dp(a,5),0,0);labels.addView(status);time=DesignUi.text(a,"",12,DesignUi.MUTED);time.setPadding(0,DesignUi.dp(a,5),0,0);LinearLayout date=DesignUi.row(a);date.addView(time,new LinearLayout.LayoutParams(0,-2,1));labels.addView(date);top.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+      this.a=a;card=DesignUi.card(a);LinearLayout top=DesignUi.row(a);collected=new CheckBox(a);collected.setVisibility(View.GONE);top.addView(collected,new LinearLayout.LayoutParams(DesignUi.dp(a,48),DesignUi.dp(a,48)));icon=DesignUi.icon(a,"download",DesignUi.GREEN,36);top.addView(icon);LinearLayout labels=DesignUi.column(a);labels.setPadding(DesignUi.dp(a,12),0,DesignUi.dp(a,8),0);name=ReferenceUi.text(a,"",16,DesignUi.TEXT,true);name.setMaxLines(2);name.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(name);status=DesignUi.text(a,"",13,DesignUi.MUTED);status.setPadding(0,DesignUi.dp(a,5),0,0);labels.addView(status);time=DesignUi.text(a,"",12,DesignUi.MUTED);time.setPadding(0,DesignUi.dp(a,5),0,0);LinearLayout date=DesignUi.row(a);date.addView(time,new LinearLayout.LayoutParams(0,-2,1));labels.addView(date);top.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
       menu=ReferenceUi.more(a,()->actions.show(value));date.addView(menu,new LinearLayout.LayoutParams(DesignUi.dp(a,48),DesignUi.dp(a,48)));arrow=DesignUi.text(a,"",22,DesignUi.GREEN);Ui.Icon disclosure=new Ui.Icon("chevron-right",DesignUi.MUTED);disclosure.setBounds(0,0,DesignUi.dp(a,18),DesignUi.dp(a,18));arrow.setCompoundDrawables(disclosure,null,null,null);arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);top.addView(arrow);card.addView(top);
       progress=new ProgressBar(a,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(DesignUi.BLUE));progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(DesignUi.LINE));LinearLayout.LayoutParams pp=new LinearLayout.LayoutParams(-1,DesignUi.dp(a,6));pp.topMargin=DesignUi.dp(a,14);card.addView(progress,pp);progressText=DesignUi.text(a,"",13,DesignUi.MUTED);progressText.setPadding(0,DesignUi.dp(a,8),0,0);card.addView(progressText);reason=DesignUi.text(a,"",13,DesignUi.RED);reason.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);card.addView(reason);stale=DesignUi.text(a,"记录待刷新，点按核对任务",13,DesignUi.MUTED);card.addView(stale);location=DesignUi.text(a,"",12,DesignUi.MUTED);location.setMaxLines(3);location.setPadding(0,DesignUi.dp(a,8),0,0);
-      card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->open(a,value,actions));
+      card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{if(selectionOwner!=null&&selectionOwner.collecting&&DownloadCollection.eligible(value))selectionOwner.toggleCollection(value);else open(a,value,actions);});collected.setOnCheckedChangeListener((button,isChecked)->{if(!syncingSelection&&selectionOwner!=null)selectionOwner.toggleCollection(value);});
+    }
+    String collectionKey(){if(value!=selectionKeyRow){selectionKeyRow=value;selectedKey=value==null?"":DownloadCollection.key(value);}return selectedKey;}
+    void selection(boolean mode,boolean checked,boolean enabled,Controller owner){
+      selectionOwner=owner;boolean shown=mode&&DownloadCollection.eligible(value);syncingSelection=true;
+      if(!selectionKnown||selectionVisible!=shown){selectionVisible=shown;collected.setVisibility(shown?View.VISIBLE:View.GONE);}
+      if(!selectionKnown||collected.isChecked()!=checked){selectionChecked=checked;collected.setChecked(checked);}
+      if(!selectionKnown||selectionEnabled!=enabled){selectionEnabled=enabled;collected.setEnabled(enabled);}
+      String label=value==null?"":DownloadMetadataValues.name(value);if(!selectionKnown||!selectionLabel.equals(label)){selectionLabel=label;collected.setContentDescription("收集文件 "+label);}
+      selectionKnown=true;syncingSelection=false;
     }
     void bind(JSONObject row,long now,String environmentName){
       value=row;String state=row.optString("state");boolean saved="saved".equals(state);int color="failed".equals(state)?DesignUi.RED:saved?DesignUi.CYAN:DesignUi.GREEN;

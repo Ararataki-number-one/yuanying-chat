@@ -25,7 +25,8 @@ public class MainActivity extends ThemedActivity {
   WebView reader; EditText input; Button send; LinearLayout composer;
   TextView nativeTab,webTab;
   DesignChrome designChrome; AppHub hub; ChatSession session;EnvironmentOverviewUi environmentOverview;BrowserStartupGate browserStartup;
-  final ChatSession.Observer sessionObserver=()->applySession();
+  UiFrameScheduler sessionUi;boolean sessionStatusDirty=true;
+  final ChatSession.Observer sessionObserver=()->requestSessionUi();
   SharedPreferences prefs; JSONObject pending; JSONArray entries=new JSONArray();
   String conversation="";
   boolean keyboardVisible,active,submitting,destroyed,networkReady,legacyDraftLoading;
@@ -34,11 +35,12 @@ public class MainActivity extends ThemedActivity {
   long shownGoogleLoginNotice=-1;
   LoadingUi loading; Attachments attachments; FileDownloads downloads;
   ChatDownloadProgressUi chatDownloadProgress;
+  Button focusExit;boolean focusReading;Bundle downloadUiState;
   TextView status,exitIpLine,networkLine; LinearLayout toolbar;
   AlertDialog networkDialog; Ui.IconButton navigation; Dialog drawer;
   ReferenceUi.Modal reloadDialog;boolean reloadChecking;
   interface Result {void accept(JSONObject value);}
-  void chooseEnvironment(){ProfileUi.show(this);}
+  void chooseEnvironment(){EnvironmentSwitcherUi.show(this);}
   void showStatusDetails(){
     if(session==null||!NetworkStatusUi.current(this,session))return;
     if(session.pending!=null||session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())ReplyState.show(this);
@@ -67,9 +69,12 @@ public class MainActivity extends ThemedActivity {
   @Override protected void attachBaseContext(Context base){super.attachBaseContext(new ProfileContext(base,Profiles.processSlot()));}
   @Override public void onCreate(Bundle state){
     super.onCreate(state);
+    focusReading=state!=null&&state.getBoolean("focusReading",false);
+    downloadUiState=state==null?null:state.getBundle("uxDownloads");
     if(!ProfileCatalog.get(this).available(Profiles.slot(this))){startActivity(new Intent(this,WindowHomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));finish();return;}
     if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
     prefs=getSharedPreferences("chat",MODE_PRIVATE);
+    if(dispatchBrowser(getIntent()))return;
     // Migrate only the display preference. Cookies, old drafts and engine stores
     // stay untouched, including profiles previously opened in simple mode.
     pageMode=true;if(!prefs.getBoolean("pageMode",false))prefs.edit().putBoolean("pageMode",true).apply();
@@ -102,7 +107,11 @@ public class MainActivity extends ThemedActivity {
     attachments=new Attachments(this);downloads=new FileDownloads(this);remote.setWebViewClient(remoteClient());remote.setWebChromeClient(attachments.chrome());
     chatDownloadProgress=new ChatDownloadProgressUi(this,root,stack,downloads);
     stack.addView(remote,new FrameLayout.LayoutParams(-1,-1));stack.addView(loading.cover,new FrameLayout.LayoutParams(-1,-1));
+    focusExit=DesignUi.button(this,"退出专注",false,()->setFocusReading(false));focusExit.setContentDescription("退出专注阅读，恢复应用工具栏和导航");focusExit.setTextSize(12);focusExit.setElevation(dp(4));focusExit.setBackground(DesignUi.surface(this,DesignUi.CARD,18,DesignUi.LINE));focusExit.setVisibility(View.GONE);
+    FrameLayout.LayoutParams focusParams=new FrameLayout.LayoutParams(-2,dp(48),Gravity.TOP|Gravity.END);focusParams.topMargin=dp(8);focusParams.rightMargin=dp(8);stack.addView(focusExit,focusParams);
     hub=new AppHub(this,root,stack);setContentView(root);
+    sessionUi=new UiFrameScheduler(new UiFrameScheduler.Frames(){public void post(Runnable frame){remote.postOnAnimation(frame);}public void cancel(Runnable frame){remote.removeCallbacks(frame);}},this::applySession);
+    sessionUi.visible(active);
     session.add(sessionObserver);showPage(true);if(active)resumeChatUi();else startNetwork();applySession();openNotification(getIntent());
   }
   static WebResourceResponse blocked(){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}
@@ -138,17 +147,43 @@ public class MainActivity extends ThemedActivity {
     if(loading!=null)loading.update();if(designChrome!=null)designChrome.update();updateReadingLayout();
     if(session!=null)session.wakePolling();
   }
-  void updateReadingLayout(){if(hub!=null)hub.keyboard();if(session!=null)session.reading.keyboard(keyboardVisible&&hub!=null&&hub.page==AppHub.CHAT);}
+  void updateReadingLayout(){if(session!=null)session.reading.keyboard(keyboardVisible&&hub!=null&&hub.page==AppHub.CHAT);applyFocusLayout();}
+  boolean focusActive(){return FocusReadingPolicy.active(focusReading,hub!=null&&hub.page==AppHub.CHAT,remote!=null&&remote.hasVisibleDocument()&&chatUrl(remote.getUrl())&&!LoginPagePolicy.login(remote.getUrl())&&session!=null&&!session.audit.canReturnRequestIdentity());}
+  void setFocusReading(boolean value){
+    focusReading=value;
+    if(value&&hub!=null&&hub.page!=AppHub.CHAT)hub.select(AppHub.CHAT);
+    if(designChrome!=null)designChrome.cancelWebGesture();
+    applyFocusLayout();
+    if(!value&&designChrome!=null)designChrome.reveal();
+    if(focusExit!=null)focusExit.announceForAccessibility(value?"已进入专注阅读，返回键或退出专注按钮可恢复工具栏":"已退出专注阅读");
+  }
+  void applyFocusLayout(){
+    if(hub==null||toolbar==null)return;
+    boolean chat=hub.page==AppHub.CHAT,focused=focusActive();
+    chromeVisibility(toolbar,chat&&!focused);
+    boolean navigation=FocusReadingPolicy.navigation(focused,chat,keyboardVisible);
+    chromeVisibility(hub.bar,navigation);chromeVisibility(hub.divider,navigation);
+    if(focusExit!=null)chromeVisibility(focusExit,FocusReadingPolicy.exitControl(focused,keyboardVisible));
+  }
+  static void chromeVisibility(View view,boolean visible){int value=visible?View.VISIBLE:View.GONE;if(view.getVisibility()!=value)view.setVisibility(value);}
   void hideKeyboard(){if(remote!=null)((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(remote.getWindowToken(),0);}
   void runDriver(String action,JSONObject args,Result cb){session.runDriver(action,args,r->cb.accept(r));}
-  final Runnable ticker=new Runnable(){public void run(){if(!active||destroyed)return;NetworkMetricsUi.update(MainActivity.this);if(loading!=null)loading.update();if(chatDownloadProgress!=null)chatDownloadProgress.update();handler.postDelayed(this,1000);}};
+  final Runnable ticker=new Runnable(){public void run(){if(!active||destroyed)return;requestPresentationUi();handler.postDelayed(this,1000);}};
   void applySession(){
-    if(session==null||destroyed)return;pending=session.pending;networkReady=session.networkReady;submitting=session.submitting;entries=session.entries;conversation=session.conversation;
-    status(session.status);NetworkMetricsUi.update(this);if(loading!=null)loading.update();if(designChrome!=null)designChrome.update();
+    if(session==null||destroyed)return;syncSessionReferences();
+    if(sessionStatusDirty){sessionStatusDirty=false;status(session.status);}NetworkMetricsUi.update(this);if(loading!=null)loading.update();if(chatDownloadProgress!=null)chatDownloadProgress.update();
   }
+  void syncSessionReferences(){if(session==null)return;pending=session.pending;networkReady=session.networkReady;submitting=session.submitting;entries=session.entries;conversation=session.conversation;}
+  void requestSessionUi(){if(destroyed)return;sessionStatusDirty=true;requestPresentationUi();}
+  void requestPresentationUi(){if(destroyed)return;syncSessionReferences();if(sessionUi!=null)sessionUi.request();else applySession();}
   TextView label(String text,int size,int color){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(AppAppearance.text(color));return v;}
   void moreSheet(){
     ReferenceUi.Modal d=new ReferenceUi.Modal(this,"会话选项").asSheet();
+    option(d,"搜索操作",()->ActionSearchUi.show(this));
+    option(d,"快速切换环境",()->EnvironmentSwitcherUi.show(this));
+    option(d,"通用浏览器 · Chromium",()->BrowserActivity.open(this,BrowserPreferences.home(this)));
+    option(d,"浏览器与启动偏好",()->BrowserSettingsUi.show(this));
+    option(d,focusReading?"退出专注阅读":"进入专注阅读",()->setFocusReading(!focusReading));
     if(session.privacy.desktop&&BrowserReadingPolicy.chat(remote.getUrl()))option(d,"网页缩放",()->BrowserReadingUi.show(this));
     option(d,"重新加载网页",this::requestReload);
     if(session.websiteConnectionIssue||session.replyStalled||!session.pageError.isEmpty())option(d,"恢复网页连接",()->ReplyState.websiteConnection(this));
@@ -160,6 +195,8 @@ public class MainActivity extends ThemedActivity {
     option(d,"下载管理",()->hub.select(AppHub.DOWNLOADS));
     option(d,"应用设置",()->hub.select(AppHub.SETTINGS));
     option(d,"暂存草稿",()->copyLegacyDraft());
+    option(d,"草稿救援",()->LocalDraftsUi.show(this));
+    option(d,"离线会话检索",()->LocalHistoryUi.show(this));
     if(LoginPagePolicy.google(remote.getUrl()))option(d,"登录帮助",()->LoginHelpUi.show(this));
     d.show();
   }
@@ -269,10 +306,24 @@ public class MainActivity extends ThemedActivity {
     if(session.networkReady){if(WebReplyObserver.same(url,remote.getUrl())&&!session.navigationFailed){session.sync();showPage(true);}else switchConversation(url);}
     else{session.requestedConversation=url;session.conversation=url;conversation=url;session.connect();}
   }
-  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);ExitIpPageUi.close(this);if(environmentOverview!=null&&environmentOverview.consume(intent)&&session==null)prepareBrowserAfterOverview();if(session!=null)openNotification(intent);}
-  @Override protected void onResume(){super.onResume();if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}active=true;if(environmentOverview!=null)environmentOverview.resume();if(session==null){if(browserStartup!=null){browserStartup.foreground(true);startBrowserAfterOverview();}return;}resumeChatUi();}
+  boolean dispatchBrowser(Intent intent){
+    if(!BrowserPreferences.shouldOpenBrowser(this,intent)||!ProfileCatalog.get(this).available(Profiles.slot(this)))return false;
+    BrowserActivity.open(this,BrowserPreferences.home(this));
+    // A cold open has no Gecko document to retain. A warm environment may have
+    // ongoing replies or files, so leave its existing session behind the browser.
+    if(session==null)finish();return true;
+  }
+  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);ExitIpPageUi.close(this);if(dispatchBrowser(intent))return;if(environmentOverview!=null&&environmentOverview.consume(intent)&&session==null)prepareBrowserAfterOverview();if(session!=null)openNotification(intent);}
+  @Override protected void onResume(){super.onResume();if(!ProfileCatalog.get(this).available(Profiles.slot(this))){finish();return;}active=true;if(sessionUi!=null)sessionUi.visible(true);if(environmentOverview!=null)environmentOverview.resume();if(session==null){if(browserStartup!=null){browserStartup.foreground(true);startBrowserAfterOverview();}return;}resumeChatUi();}
   void resumeChatUi(){AppUpdates.schedule(this);if(hub!=null)hub.downloadsVisible(true);AppPrefs.maintainCache(this);session.add(sessionObserver);session.audit.refresh(true);session.foreground(true);session.connect();if(hub!=null&&hub.page!=AppHub.CHAT){hub.refresh();handler.removeCallbacks(hub.tick);handler.postDelayed(hub.tick,2500);}handler.removeCallbacks(ticker);handler.post(ticker);}
-  @Override protected void onPause(){super.onPause();active=false;if(chatDownloadProgress!=null)chatDownloadProgress.visible(false);if(browserStartup!=null)browserStartup.foreground(false);if(environmentOverview!=null)environmentOverview.pause();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(designChrome!=null)designChrome.cancelWebGesture();handler.removeCallbacks(ticker);if(session==null||session.deleted)return;NativeNetwork.get(this).traffic.watch(false);session.remove(sessionObserver);session.audit.cancel();session.reading.keyboard(false);session.foreground(false);}
-  @Override protected void onDestroy(){destroyed=true;if(chatDownloadProgress!=null)chatDownloadProgress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);if(remote!=null&&remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);if(remote!=null)remote.setHost(null);super.onDestroy();}
-  @Override public void onBackPressed(){if(ExitIpPageUi.back(this)||environmentOverview!=null&&environmentOverview.back())return;if(hub!=null&&hub.page!=AppHub.CHAT){hub.select(AppHub.CHAT);return;}if(remote!=null&&remote.canGoBack()){remote.goBack();return;}moveTaskToBack(true);}
+  @Override protected void onPause(){super.onPause();active=false;if(sessionUi!=null)sessionUi.visible(false);if(chatDownloadProgress!=null)chatDownloadProgress.visible(false);if(browserStartup!=null)browserStartup.foreground(false);if(environmentOverview!=null)environmentOverview.pause();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(designChrome!=null){designChrome.cancelWebGesture();designChrome.cancelUpdates();}handler.removeCallbacks(ticker);if(session==null||session.deleted)return;NativeNetwork.get(this).traffic.watch(false);session.remove(sessionObserver);session.audit.cancel();session.reading.keyboard(false);session.foreground(false);}
+  @Override protected void onDestroy(){destroyed=true;if(sessionUi!=null)sessionUi.close();if(designChrome!=null)designChrome.cancelUpdates();if(chatDownloadProgress!=null)chatDownloadProgress.close();if(browserStartup!=null)browserStartup.close();if(environmentOverview!=null)environmentOverview.close();ExitIpPageUi.close(this);if(hub!=null)hub.downloadsVisible(false);if(reloadDialog!=null)reloadDialog.dismiss();if(networkDialog!=null)networkDialog.dismiss();if(downloads!=null)downloads.destroy();if(attachments!=null)attachments.destroy();if(loading!=null)loading.dismissTask();if(hub!=null)hub.networkWorkspace.close();handler.removeCallbacksAndMessages(null);if(session!=null)session.remove(sessionObserver);if(remote!=null&&remote.getParent() instanceof ViewGroup)((ViewGroup)remote.getParent()).removeView(remote);if(remote!=null)remote.setHost(null);super.onDestroy();}
+  @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putBoolean("focusReading",focusReading);Bundle downloadsState=new Bundle();if(hub!=null&&hub.downloadController!=null)hub.downloadController.saveState(downloadsState);else if(downloadUiState!=null)downloadsState.putAll(downloadUiState);state.putBundle("uxDownloads",downloadsState);}
+  @Override public boolean dispatchKeyEvent(KeyEvent event){
+    if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){
+      if(event.getKeyCode()==KeyEvent.KEYCODE_ESCAPE&&focusActive()){setFocusReading(false);return true;}
+    }
+    return super.dispatchKeyEvent(event);
+  }
+  @Override public void onBackPressed(){if(ExitIpPageUi.back(this)||environmentOverview!=null&&environmentOverview.back())return;if(hub!=null&&hub.page!=AppHub.CHAT){hub.select(AppHub.CHAT);return;}if(focusActive()){setFocusReading(false);return;}if(remote!=null&&remote.canGoBack()){remote.goBack();return;}moveTaskToBack(true);}
 }

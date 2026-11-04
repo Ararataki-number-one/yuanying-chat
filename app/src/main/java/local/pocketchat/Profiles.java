@@ -76,7 +76,7 @@ final class Profiles {
     }}
   }
   static final class FileCheck {
-    static void requireUnusedBrowser(Context dest)throws Exception{for(String name:new String[]{"gecko-browser","gecko-session.json","gecko-session.json.bak","gecko-session.json.new"})if(java.nio.file.Files.exists(new java.io.File(dest.getNoBackupFilesDir(),name).toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS))throw new java.io.IOException("目标槽位仍有网页数据，请先完成清理");}
+    static void requireUnusedBrowser(Context dest)throws Exception{for(String name:new String[]{"gecko-browser","gecko-session.json","gecko-session.json.bak","gecko-session.json.new"})if(java.nio.file.Files.exists(new java.io.File(dest.getNoBackupFilesDir(),name).toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS))throw new java.io.IOException("目标槽位仍有网页数据，请先完成清理");for(String name:EnvironmentBrowserData.chromiumNames(slot(dest)))if(java.nio.file.Files.exists(new java.io.File(Profiles.global(dest).getApplicationInfo().dataDir,name).toPath(),java.nio.file.LinkOption.NOFOLLOW_LINKS))throw new java.io.IOException("目标槽位仍有 Chromium 网页数据，请先完成清理");}
   }
   static NetworkCopy captureNetwork(Context c)throws Exception{
     SecretStore source=new SecretStore(c);

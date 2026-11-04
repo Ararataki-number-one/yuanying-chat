@@ -1,0 +1,324 @@
+package local.pocketchat;
+
+import android.app.*;
+import android.content.*;
+import android.content.pm.*;
+import android.net.Uri;
+import android.webkit.*;
+import java.util.*;
+import java.util.function.Consumer;
+import org.json.*;
+
+/** Actual chooser bodies, with Android/UI boundaries modelled explicitly. */
+public final class ChooserCases {
+  static final List<String> checks=new ArrayList<>();
+  static void check(String name,boolean value){if(!value)throw new AssertionError(name);checks.add(name);}
+  static Uri uri(String path){return Uri.parse("content://documents/"+path);}
+  static Intent data(Uri value){return new Intent("result").setData(value);}
+  static Intent clip(Uri... values){return new Intent("result").setClipData(new ClipData(values));}
+  static WebChromeClient.FileChooserParams params(int mode,String... types){return new WebChromeClient.FileChooserParams(){public int getMode(){return mode;}public String[] getAcceptTypes(){return types;}};}
+  static final class Callback implements ValueCallback<Uri[]> {
+    final List<Uri[]> values=new ArrayList<>();Consumer<Uri[]> action;
+    public void onReceiveValue(Uri[] value){values.add(value);if(action!=null)action.accept(value);}
+    boolean cancelled(){return values.size()==1&&values.get(0)==null;}
+    boolean selected(Uri... wanted){return values.size()==1&&Arrays.equals(values.get(0),wanted);}
+  }
+  static final class Fixture implements AutoCloseable {
+    final Activity activity=new Activity();final List<String> messages=new ArrayList<>();
+    final BrowserFiles files=new BrowserFiles(activity,messages::add);final WebView web=new WebView("https://example.test/files");
+    Fixture(){provider("documents",2000);}
+    void provider(String authority,int uid){ProviderInfo provider=new ProviderInfo();provider.applicationInfo.uid=uid;activity.packages.providers.put(authority,provider);}
+    Uri grant(String name){Uri value=uri(name);activity.grants.add(value);return value;}
+    int choose(Callback callback,boolean multiple){check("Chooser accepts a supported website request",files.choose(web,callback,params(multiple?1:0)));return activity.requests.get(activity.requests.size()-1);}
+    public void close(){files.destroy();activity.clean();}
+  }
+  static void staleAndMultiple(){
+    try(Fixture f=new Fixture()){
+      Callback first=new Callback(),second=new Callback();int firstCode=f.choose(first,false),secondCode=f.choose(second,true);
+      check("Replacement settles the old callback once before launching another picker",first.cancelled()&&f.activity.finished.contains(firstCode));
+      check("Picker request codes are distinct and in their reserved range",firstCode!=secondCode&&firstCode>=BrowserFiles.FIRST_REQUEST&&secondCode<=BrowserFiles.LAST_REQUEST);
+      Uri a=f.grant("a"),b=f.grant("b");
+      check("Late retired result is consumed without changing the current callback",f.files.result(firstCode,Activity.RESULT_OK,data(a))&&second.values.isEmpty());
+      f.files.result(secondCode,Activity.RESULT_OK,clip(a,a,b));
+      check("Multiple results are deduplicated in their original order",second.selected(a,b));
+      f.files.result(secondCode,Activity.RESULT_OK,data(b));
+      check("Duplicate current result never calls a callback twice",second.values.size()==1);
+      check("Foreign request codes remain available to the Activity",!f.files.result(74,Activity.RESULT_OK,data(a)));
+      check("Retired reserved results remain consumed after completion",f.files.result(firstCode,Activity.RESULT_CANCELED,null));
+    }
+  }
+  static void lifecycle(){
+    int old;
+    try(Fixture f=new Fixture()){
+      Callback selected=new Callback();old=f.choose(selected,false);
+      f.files.cancelFor(new WebView(f.web.url));check("Equal URLs do not confuse distinct WebView owners",selected.values.isEmpty());
+      String unchanged=f.web.url;f.files.cancelFor(f.web);
+      check("A same-URL navigation cancellation settles its exact owner",selected.cancelled()&&unchanged.equals(f.web.url));
+      f.files.result(old,Activity.RESULT_OK,data(f.grant("late")));check("A result after navigation cancellation remains ignored",selected.values.size()==1);
+      Callback changed=new Callback();int request=f.choose(changed,false);f.web.url="https://example.test/other";f.files.result(request,Activity.RESULT_OK,data(f.grant("changed")));
+      check("A changed URL rejects result delivery even without an earlier cancellation",changed.cancelled());
+      Callback disposed=new Callback();f.choose(disposed,false);f.files.destroy();f.files.destroy();
+      check("Repeated destroy settles a pending callback exactly once",disposed.cancelled()&&f.files.worker.isShutdown());
+      int launches=f.activity.requests.size();Callback after=new Callback();f.files.choose(f.web,after,params(0));
+      check("A destroyed helper rejects new chooser requests without launching",after.cancelled()&&f.activity.requests.size()==launches);
+    }
+    try(Fixture fresh=new Fixture()){
+      int next=fresh.choose(new Callback(),false);check("New helper instances do not reuse a retired process request code",next>old);
+    }
+  }
+  static void reentry(){
+    try(Fixture f=new Fixture()){
+      Callback a=new Callback(),b=new Callback(),c=new Callback();f.choose(a,false);
+      a.action=value->{if(value==null)f.choose(c,true);};
+      int launches=f.activity.requests.size();f.files.choose(f.web,b,params(0));
+      check("Reentrant choose settles both superseded callbacks once",a.cancelled()&&b.cancelled()&&c.values.isEmpty());
+      check("Outer choose cannot overwrite or launch beyond a callback's newer picker",f.files.pending!=null&&f.files.pending.callback==c&&f.activity.requests.size()==launches+1);
+      Uri selected=f.grant("reentered");f.files.result(f.files.pending.request,Activity.RESULT_OK,data(selected));check("The reentrant surviving picker still delivers its own file",c.selected(selected));
+    }
+    try(Fixture f=new Fixture()){
+      Callback a=new Callback(),b=new Callback();f.choose(a,false);a.action=value->f.files.destroy();int launches=f.activity.requests.size();f.files.choose(f.web,b,params(0));
+      check("Destroy inside an old callback prevents the outer picker from launching",a.cancelled()&&b.cancelled()&&f.files.destroyed&&f.activity.requests.size()==launches);
+    }
+    try(Fixture f=new Fixture()){
+      Callback a=new Callback(),b=new Callback();f.choose(a,false);a.action=value->{throw new IllegalStateException("callback disposed");};f.activity.finishFailure=new IllegalStateException("activity vanished");f.choose(b,false);
+      check("A throwing old callback or finishActivity does not strand the next picker",a.cancelled()&&f.files.pending.callback==b);
+      b.action=value->{throw new IllegalStateException("webview disposed");};f.files.cancel();check("Throwing callbacks still remain settled exactly once",b.cancelled()&&f.files.pending==null);
+    }
+    try(Fixture f=new Fixture()){
+      Callback old=new Callback(),newer=new Callback();f.activity.launchFailure=new ActivityNotFoundException();f.activity.onLaunch=()->f.choose(newer,false);f.files.choose(f.web,old,params(0));
+      check("Launch failure cleanup never cancels a newer reentrant picker",old.cancelled()&&newer.values.isEmpty()&&f.files.pending.callback==newer);
+    }
+  }
+  static void invalidAndLaunch(){
+    try(Fixture f=new Fixture()){
+      int initial=f.activity.requests.size();
+      for(int mode:new int[]{2,3,99}){Callback callback=new Callback();f.files.choose(f.web,callback,params(mode));check("Unsupported chooser mode settles without launch: "+mode,callback.cancelled());}
+      check("Unsupported modes never launch an external picker",f.activity.requests.size()==initial);
+      for(String url:new String[]{"about:blank","file:///private","data:text/plain,a","https://user:pass@example.test/", "https://example.test/a b"}){f.web.url=url;Callback callback=new Callback();f.files.choose(f.web,callback,params(0));check("Unsupported chooser owner address is rejected: "+url,callback.cancelled());}
+      f.web.url="https://example.test/files";Callback missing=new Callback();f.files.choose(null,missing,params(0));check("Missing WebView is settled without launching",missing.cancelled());
+      Callback noParams=new Callback();f.files.choose(f.web,noParams,null);check("Missing chooser params are settled",noParams.cancelled());
+      check("A null callback is not claimed by the helper",!f.files.choose(f.web,null,params(0)));
+      for(RuntimeException failure:new RuntimeException[]{new ActivityNotFoundException(),new SecurityException("denied"),new IllegalStateException("framework failure")}){
+        Callback callback=new Callback();f.activity.launchFailure=failure;f.files.choose(f.web,callback,params(0));check("Picker launch failure settles once: "+failure.getClass().getSimpleName(),callback.cancelled()&&f.files.pending==null);
+      }
+    }
+  }
+  static void selections(){
+    try(Fixture f=new Fixture()){
+      Uri a=f.grant("a"),b=f.grant("b");Callback single=new Callback();int request=f.choose(single,false);f.files.result(request,Activity.RESULT_OK,clip(a,b));check("A single-file request rejects unexpected multiple selections",single.cancelled());
+      Callback fallback=new Callback();request=f.choose(fallback,false);f.files.result(request,Activity.RESULT_OK,clip((Uri)null).setData(a));check("Empty clip URIs fall back to the returned data URI",fallback.selected(a));
+      Callback canceled=new Callback();request=f.choose(canceled,false);f.files.result(request,Activity.RESULT_CANCELED,data(a));check("System cancellation never delivers a file",canceled.cancelled());
+      Callback absent=new Callback();request=f.choose(absent,false);f.files.result(request,Activity.RESULT_OK,null);check("A missing result Intent settles as cancellation",absent.cancelled());
+      Callback empty=new Callback();request=f.choose(empty,true);f.files.result(request,Activity.RESULT_OK,clip());check("An empty selection settles as cancellation",empty.cancelled());
+      Uri[] maximum=new Uri[BrowserFiles.MAX_FILES];for(int i=0;i<maximum.length;i++)maximum[i]=f.grant("max-"+i);
+      Callback all=new Callback();request=f.choose(all,true);f.files.result(request,Activity.RESULT_OK,clip(maximum));check("The exact maximum multi-file selection remains supported",all.selected(maximum));
+      Uri[] oversized=new Uri[BrowserFiles.MAX_FILES+1];Arrays.fill(oversized,a);Callback tooMany=new Callback();request=f.choose(tooMany,true);f.files.result(request,Activity.RESULT_OK,clip(oversized));check("Raw clip size is bounded before URI deduplication",tooMany.cancelled());
+    }
+  }
+  static void grants(){
+    try(Fixture f=new Fixture()){
+      Uri permitted=f.grant("granted");check("An explicitly granted external provider URI is selectable",f.files.selectable(permitted));
+      check("An external URI without read permission is rejected",!f.files.selectable(uri("not-granted")));
+      Uri own=Uri.parse("content://private/settings");f.provider("private",android.os.Process.myUid());f.activity.grants.add(own);check("An app-owned private provider is rejected even with a forged grant",!f.files.selectable(own));
+      Uri unknown=Uri.parse("content://unknown/file");f.activity.grants.add(unknown);check("An unresolved provider is rejected",!f.files.selectable(unknown));
+      ProviderInfo malformed=new ProviderInfo();malformed.applicationInfo=null;f.activity.packages.providers.put("missing-app",malformed);check("A provider lacking application identity is rejected",!f.files.selectable(Uri.parse("content://missing-app/file")));
+      for(Uri invalid:new Uri[]{null,Uri.parse("file:///private/file"),Uri.parse("https://example.test/file"),Uri.parse("content:/file"),Uri.parse("content://documents/"+"x".repeat(16385))})check("Invalid or oversized URI is rejected",!f.files.selectable(invalid));
+      f.activity.permissionFailure=new SecurityException("grant revoked");check("A permission-check failure rejects the selection",!f.files.selectable(permitted));f.activity.permissionFailure=null;
+      f.activity.packages.failure=new IllegalStateException("provider removed");check("A provider-resolution failure rejects the selection",!f.files.selectable(permitted));f.activity.packages.failure=null;
+      Callback mixed=new Callback();int request=f.choose(mixed,true);f.files.result(request,Activity.RESULT_OK,clip(permitted,own));check("One unsafe URI rejects the whole selection without partial upload",mixed.cancelled());
+    }
+  }
+  static void malformedResults(){
+    for(int point=0;point<4;point++)try(Fixture f=new Fixture()){
+      Uri selected=f.grant("valid");Intent data=data(selected);
+      if(point==0)data.clipFailure=new IllegalStateException("malformed ClipData parcel");
+      if(point==1)data.dataFailure=new IllegalStateException("malformed URI parcel");
+      if(point>=2){data=clip(selected);if(point==2)data.clip.itemFailure=new IllegalStateException("malformed clip item");else data.clip.items.get(0).uriFailure=new IllegalStateException("malformed clip URI");}
+      Callback callback=new Callback();int request=f.choose(callback,false);f.files.result(request,Activity.RESULT_OK,data);
+      check("Malformed result settles exactly once without propagating: "+point,callback.cancelled()&&f.files.pending==null);
+      f.files.result(request,Activity.RESULT_OK,data(selected));check("A repeated malformed result cannot revive its retired callback: "+point,callback.values.size()==1);
+    }
+  }
+  static void mimeAndFlags(){
+    Intent intent=BrowserFiles.chooserIntent(params(1,".PDF, image/png","application/pdf",null,"bad/value;param",""));
+    check("Chooser uses the system open-document flow with openable category",Intent.ACTION_OPEN_DOCUMENT.equals(intent.action)&&intent.categories.contains(Intent.CATEGORY_OPENABLE));
+    check("Chooser requests read access without write or persistent grants",intent.flags==Intent.FLAG_GRANT_READ_URI_PERMISSION);
+    check("Mixed accepted MIME types are deduplicated and retained",Arrays.equals((String[])intent.extras.get(Intent.EXTRA_MIME_TYPES),new String[]{"application/pdf","image/png"})&&"*/*".equals(intent.type));
+    check("Multiple-selection intent matches the website mode",Boolean.TRUE.equals(intent.extras.get(Intent.EXTRA_ALLOW_MULTIPLE)));
+    Intent single=BrowserFiles.chooserIntent(params(0,".txt"));check("A single supported extension maps to its MIME filter","text/plain".equals(single.type)&&Boolean.FALSE.equals(single.extras.get(Intent.EXTRA_ALLOW_MULTIPLE)));
+    check("Unknown or malformed MIME filters safely fall back to all files","*/*".equals(BrowserFiles.chooserIntent(params(0,".unknown","wrong","text/plain;foo")).type));
+    check("Explicit wildcard MIME filters remain supported","*/*".equals(BrowserFiles.chooserIntent(params(0,"*/*")).type));
+    String[] many=new String[40];for(int i=0;i<many.length;i++)many[i]="application/type"+i;Intent capped=BrowserFiles.chooserIntent(params(0,many));check("Accepted MIME alternatives remain bounded",((String[])capped.extras.get(Intent.EXTRA_MIME_TYPES)).length==32);
+    check("Oversized individual MIME groups are ignored","*/*".equals(BrowserFiles.chooserIntent(params(0,"a".repeat(4097))).type));
+  }
+  static void exhaustion(){
+    int before=BrowserFiles.NEXT_REQUEST.get();try(Fixture f=new Fixture()){
+      BrowserFiles.NEXT_REQUEST.set(BrowserFiles.LAST_REQUEST);Callback last=new Callback();int request=f.choose(last,false);check("The last reserved request code can still launch",request==BrowserFiles.LAST_REQUEST);
+      Callback exhausted=new Callback();int launches=f.activity.requests.size();f.files.choose(f.web,exhausted,params(0));check("Request-code exhaustion cancels both old and new requests without reuse",last.cancelled()&&exhausted.cancelled()&&f.activity.requests.size()==launches&&f.files.pending==null);
+    }finally{BrowserFiles.NEXT_REQUEST.set(before);}
+  }
+  static void storeSlots()throws Exception {
+    int original=android.os.Build.VERSION.SDK_INT;
+    try{
+      for(int slot:new int[]{0,3}){
+        android.content.Context context=new android.content.Context();context.slot=slot;
+        try{
+          Profiles.contexts.put(slot,context);
+          BrowserDownloadStore store=new BrowserDownloadStore(context);android.os.Build.VERSION.SDK_INT=28;
+          BrowserDownloadStore.Target legacy=store.create("report.pdf","application/pdf");List<String> segments=legacy.uri.getPathSegments();
+          check("Legacy slot "+slot+" URI retains the saved-downloads authority",legacy.uri.getAuthority().equals(context.getPackageName()+".saved-downloads"));
+          check("Legacy slot "+slot+" URI includes slot, publication ID and filename",segments.size()==3&&segments.get(0).equals(String.valueOf(slot))&&segments.get(2).equals("report.pdf"));
+          check("Legacy slot "+slot+" provider publication matches its actual private directory",legacy.file.getParentFile().getName().equals(segments.get(1))&&legacy.file.getParentFile().getParentFile().equals(new java.io.File(context.getFilesDir(),"saved-downloads")));
+          check("Legacy slot "+slot+" remains unpublished with a separate partial name",!legacy.file.exists()&&legacy.part.getName().equals("payload.part"));
+          android.content.Context caller=new android.content.Context();java.io.File resolved=SavedDownloadResolve.resolve(caller,legacy.uri);
+          check("Actual saved-provider resolver routes URI slot "+slot+" to the correct profile directory",Profiles.requestedSlot==slot&&resolved.equals(legacy.file.getCanonicalFile()));legacy.abort();
+          BrowserDownloadStore.Target renamed=store.create("payload.part","application/octet-stream");
+          check("Legacy slot "+slot+" cannot publish a filename reserved for partial content",renamed.name.equals("文件")&&SavedDownloadResolve.resolve(caller,renamed.uri).equals(renamed.file.getCanonicalFile()));renamed.abort();
+          android.os.Build.VERSION.SDK_INT=29;context.resolver.displayName="report (1).pdf";
+          BrowserDownloadStore.Target modern=store.create("report.pdf","application/pdf");android.content.ContentValues values=context.resolver.insertedValues;
+          check("MediaStore slot "+slot+" uses its isolated visible download directory",values.get(android.provider.MediaStore.MediaColumns.RELATIVE_PATH).equals("Download/元婴期浏览器/窗口_"+(slot+1)+"/"));
+          check("MediaStore slot "+slot+" requests a pending download with its MIME",Integer.valueOf(1).equals(values.get(android.provider.MediaStore.MediaColumns.IS_PENDING))&&values.get(android.provider.MediaStore.MediaColumns.MIME_TYPE).equals("application/pdf")&&context.resolver.insertedCollection.equals(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI));
+          check("MediaStore slot "+slot+" retains the actual provider filename",modern.file==null&&modern.part==null&&modern.name.equals("report (1).pdf")&&modern.location.equals(store.directory()+modern.name));
+          check("Creating a MediaStore target never publishes before file copy",context.resolver.updates==0);modern.abort();
+          context.resolver.denyInsert=true;boolean denied=false;try{store.create("denied.pdf","application/pdf");}catch(java.io.IOException expected){denied=true;}check("MediaStore slot "+slot+" creation failure remains uncommitted",denied&&context.resolver.updates==0);
+        }finally{context.clean();Profiles.contexts.remove(slot);}
+      }
+    }finally{android.os.Build.VERSION.SDK_INT=original;}
+  }
+  static final class StoreFixture implements AutoCloseable {
+    final android.content.Context context=new android.content.Context();final DownloadLibrary library;final BrowserDownloadStore store;
+    final byte[] bytes=new byte[131089];final java.io.File input;final int originalSdk;
+    StoreFixture(int slot)throws Exception {
+      context.slot=slot;Profiles.contexts.put(slot,context);library=DownloadLibrary.reset();SavedFileDeletion.reset();ProfileCatalog.failure=null;
+      originalSdk=android.os.Build.VERSION.SDK_INT;android.os.Build.VERSION.SDK_INT=28;store=new BrowserDownloadStore(context);
+      for(int i=0;i<bytes.length;i++)bytes[i]=(byte)(i*31);input=new java.io.File(context.getFilesDir(),"source.bin");java.nio.file.Files.write(input.toPath(),bytes);
+    }
+    BrowserDownloadTransfer.Result result(long length){return new BrowserDownloadTransfer.Result(input,"https://example.test/download?token=secret","attachment","application/pdf",length);}
+    JSONObject save()throws Exception{return store.save(result(bytes.length),"report.pdf",()->{if(SavedFileDeletion.depth<=0)throw new AssertionError("Copy/current check outside publication lease");return true;});}
+    java.io.File published(JSONObject row)throws Exception{return SavedDownloadResolve.resolve(context,Uri.parse(row.optString("uri")));}
+    long destinations()throws Exception {java.nio.file.Path root=new java.io.File(context.getFilesDir(),"saved-downloads").toPath();if(!java.nio.file.Files.exists(root))return 0;try(java.util.stream.Stream<java.nio.file.Path> paths=java.nio.file.Files.walk(root)){return paths.filter(java.nio.file.Files::isRegularFile).count();}}
+    java.io.IOException fail(java.util.function.BooleanSupplier valid,long length)throws Exception {try{store.save(result(length),"report.pdf",valid);}catch(java.io.IOException expected){return expected;}throw new AssertionError("Save unexpectedly succeeded");}
+    public void close(){android.os.Build.VERSION.SDK_INT=originalSdk;Profiles.contexts.remove(context.slot);context.clean();DownloadLibrary.getFailure=null;ProfileCatalog.failure=null;SavedFileDeletion.reset();}
+  }
+  static void globalSaveSuccess()throws Exception {
+    for(int slot:new int[]{0,3})try(StoreFixture f=new StoreFixture(slot)){
+      JSONObject saved=f.save();java.io.File file=f.published(saved);
+      check("Global publication slot "+slot+" copies the exact local source bytes",Arrays.equals(java.nio.file.Files.readAllBytes(file.toPath()),f.bytes));
+      check("Global publication slot "+slot+" confirms exactly one shared-library add",f.library.adds==1&&f.library.savedQueries==1&&f.library.records.size()==1&&f.library.saved(saved)!=null);
+      check("Global publication slot "+slot+" has a durable saved identity",saved.optInt("slot",-1)==slot&&!saved.optString("id").isEmpty()&&saved.optLong("time")>0&&saved.optString("state").equals("saved"));
+      check("Global publication slot "+slot+" has checked exact-byte metadata",DownloadMetadataValues.bytes(saved)==f.bytes.length&&DownloadMetadataValues.checked(saved)&&saved.optString("sizeSource").equals("published-copy")&&saved.optString("metadataResult").equals("known"));
+      check("Global publication slot "+slot+" preserves actual name and MIME",saved.optString("actualName").equals("report.pdf")&&saved.optString("actualMime").equals("application/pdf"));
+      check("Global publication slot "+slot+" retains environment ownership after profile loss",saved.optString("environmentId").equals("environment-"+slot)&&saved.optInt("environmentGeneration")==100+slot&&saved.optString("environmentName").equals("Environment "+slot));
+      check("Global publication slot "+slot+" writes no second preference index",f.context.preferenceNames.isEmpty()&&f.context.preferences.writes==0);
+      check("Global publication slot "+slot+" records no source URL or Cookie",!saved.toString().contains("token=secret")&&!saved.has("url")&&!saved.has("cookie")&&!saved.has("agent"));
+      JSONObject existing=DownloadLibrary.copy(saved);DownloadTasks.put(existing,"id","other-existing","uri","content://documents/existing-"+slot);f.library.install(existing);
+      JSONObject foreign=DownloadLibrary.copy(saved);DownloadTasks.put(foreign,"slot",slot==0?3:0,"id","foreign","uri","content://documents/foreign-"+slot);f.library.install(foreign);
+      JSONArray visible=f.store.rows();check("Global rows slot "+slot+" includes same-slot files from every producer",visible.length()==2&&visible.optJSONObject(1).optString("id").equals("other-existing"));
+      f.context.preferences.values.clear();ProfileCatalog.failure=new IllegalStateException("profile preferences cleared");
+      check("Global rows slot "+slot+" survive clearing private profile preferences",f.store.rows().length()==2&&file.isFile());ProfileCatalog.failure=null;
+      f.library.listFailure=new IllegalStateException("global query unavailable");boolean propagated=false;try{f.store.rows();}catch(IllegalStateException expected){propagated=true;}check("Global rows slot "+slot+" never disguise index failure as an empty history",propagated);
+    }
+    try(StoreFixture f=new StoreFixture(3)){
+      android.os.Build.VERSION.SDK_INT=29;JSONObject saved=f.save();Uri destination=Uri.parse(saved.optString("uri"));
+      check("Successful MediaStore save copies all bytes before global confirmation",Arrays.equals(f.context.resolver.contents.get(destination),f.bytes)&&f.context.resolver.updates==1&&f.context.resolver.deletes==0);
+      check("Successful MediaStore save shares the same checked global metadata",f.library.saved(saved)!=null&&DownloadMetadataValues.bytes(saved)==f.bytes.length&&DownloadMetadataValues.checked(saved));
+    }
+  }
+  static void globalSaveRollback()throws Exception {
+    try(StoreFixture f=new StoreFixture(0)){
+      f.library.rejectAdd=true;f.fail(()->true,f.bytes.length);
+      check("A rejected global add removes the unindexed destination",f.library.adds==1&&f.library.records.isEmpty()&&f.destinations()==0&&SavedFileDeletion.removeAttempts==0);
+    }
+    try(StoreFixture f=new StoreFixture(3)){
+      f.library.addBefore=new IllegalStateException("add before commit");f.fail(()->true,f.bytes.length);
+      check("A throwing uncommitted add removes only the unindexed destination",f.library.records.isEmpty()&&f.destinations()==0&&f.library.indexedQueries==1);
+    }
+    try(StoreFixture f=new StoreFixture(0)){
+      f.library.addAfter=new IllegalStateException("add after commit");f.fail(()->true,f.bytes.length);
+      check("An add throwing after commit removes its exact indexed publication",SavedFileDeletion.removeAttempts==1&&f.library.records.isEmpty()&&f.destinations()==0);
+      check("Indexed rollback reenters the same publication lease safely",SavedFileDeletion.maxDepth==2&&SavedFileDeletion.depth==0);
+    }
+    try(StoreFixture f=new StoreFixture(3)){
+      f.library.afterAdd=row->{JSONObject wrong=DownloadLibrary.copy(row);DownloadTasks.put(wrong,"savedBytes",f.bytes.length+1L);f.library.install(wrong);};f.fail(()->true,f.bytes.length);
+      check("A shared record with an unconfirmed byte count is rolled back",f.library.records.isEmpty()&&f.destinations()==0&&SavedFileDeletion.removeAttempts==1);
+    }
+    try(StoreFixture f=new StoreFixture(0)){
+      f.library.afterAdd=row->{JSONObject newer=DownloadLibrary.copy(row);DownloadTasks.put(newer,"id","newer-publication","time",row.optLong("time")+1);f.library.install(newer);try{java.nio.file.Files.write(f.published(newer).toPath(),new byte[]{9,8,7});}catch(Exception error){throw new IllegalStateException(error);}};
+      f.fail(()->true,f.bytes.length);JSONObject newer=f.library.records.values().iterator().next();
+      check("A different indexed identity prevents stale rollback from deleting its file",newer.optString("id").equals("newer-publication")&&Arrays.equals(java.nio.file.Files.readAllBytes(f.published(newer).toPath()),new byte[]{9,8,7})&&SavedFileDeletion.removeAttempts==0);
+    }
+    try(StoreFixture f=new StoreFixture(3)){
+      f.library.addAfter=new IllegalStateException("post-commit failure");f.library.savedFailure=new IllegalStateException("saved query unavailable");java.io.IOException failure=f.fail(()->true,f.bytes.length);
+      check("Failed ownership query preserves the publication as explicitly unconfirmed",failure instanceof BrowserDownloadStore.Unconfirmed&&failure.getMessage().contains("待确认")&&failure.getSuppressed().length==1&&f.library.records.size()==1&&f.destinations()==1&&SavedFileDeletion.removeAttempts==0);
+    }
+    try(StoreFixture f=new StoreFixture(0)){
+      f.library.rejectAdd=true;f.library.indexedFailure=new IllegalStateException("index query unavailable");java.io.IOException failure=f.fail(()->true,f.bytes.length);
+      check("Failed indexed query preserves a destination whose ownership is unknown",failure instanceof BrowserDownloadStore.Unconfirmed&&failure.getMessage().contains("待确认")&&f.destinations()==1&&SavedFileDeletion.removeAttempts==0);
+    }
+    try(StoreFixture f=new StoreFixture(3)){
+      f.library.addAfter=new IllegalStateException("post-commit failure");SavedFileDeletion.removeFailure=new IllegalStateException("delete unavailable");java.io.IOException failure=f.fail(()->true,f.bytes.length);
+      check("Failed identity-aware removal preserves the record and destination",failure instanceof BrowserDownloadStore.Unconfirmed&&failure.getMessage().contains("待确认")&&f.library.records.size()==1&&f.destinations()==1);
+    }
+    try(StoreFixture f=new StoreFixture(0)){
+      java.util.concurrent.atomic.AtomicInteger checks=new java.util.concurrent.atomic.AtomicInteger();f.fail(()->checks.incrementAndGet()<2,f.bytes.length);
+      check("Cancellation during copying removes the partial before indexing",f.library.adds==0&&f.destinations()==0);
+    }
+    try(StoreFixture f=new StoreFixture(3)){
+      f.fail(()->true,f.bytes.length+1L);check("A mismatched copied byte count aborts before indexing",f.library.adds==0&&f.destinations()==0);
+    }
+    try(StoreFixture f=new StoreFixture(0)){
+      f.fail(()->f.library.adds==0,f.bytes.length);check("Cancellation after index confirmation uses identity-aware rollback",f.library.adds==1&&f.library.records.isEmpty()&&SavedFileDeletion.removeAttempts==1&&f.destinations()==0);
+    }
+    try(StoreFixture f=new StoreFixture(3)){
+      DownloadLibrary.getFailure=new IllegalStateException("database unavailable");f.fail(()->true,f.bytes.length);check("Library construction failure cleans an unindexed target",f.destinations()==0);
+    }
+    try(StoreFixture f=new StoreFixture(0)){
+      ProfileCatalog.failure=new IllegalStateException("owner unavailable");f.fail(()->true,f.bytes.length);check("Owner identity lookup failure never leaves an unindexed destination",f.library.adds==0&&f.destinations()==0);
+    }
+    try(StoreFixture f=new StoreFixture(3)){
+      SavedFileDeletion.leaseFailure=new IllegalStateException("lease unavailable");f.fail(()->true,f.bytes.length);check("Failure before entering the publication lease cleans the created target",f.library.adds==0&&f.destinations()==0);
+    }
+    try(StoreFixture f=new StoreFixture(0)){
+      android.os.Build.VERSION.SDK_INT=29;f.context.resolver.updateResult=0;f.fail(()->true,f.bytes.length);check("MediaStore publication failure deletes the unindexed pending row",f.library.adds==0&&f.context.resolver.deletes==1&&f.context.resolver.contents.isEmpty());
+    }
+  }
+  static void externalHandoff(){
+    try(Fixture f=new Fixture()){
+      String url="https://example.test/file.pdf?token=destination";f.files.handoff(f.web,url,"temporary export");
+      check("External handoff requires confirmation before launching",f.activity.started.isEmpty()&&f.files.externalDialog!=null);
+      check("Handoff explains independent external login and network settings",f.files.externalDialog.message.contains("自己的登录状态和网络设置")&&f.files.externalDialog.message.contains("不会转交 Cookie"));
+      f.files.externalDialog.confirm();Intent chooser=f.activity.started.get(0);
+      check("Handoff launches an Android chooser rather than an implicit default browser",Intent.ACTION_CHOOSER.equals(chooser.action));
+      Object excluded=chooser.extras.get(Intent.EXTRA_EXCLUDE_COMPONENTS);ComponentName[] components=excluded instanceof ComponentName[]?(ComponentName[])excluded:new ComponentName[0];
+      check("External chooser excludes the exported app browser to prevent default-app loops",components.length==1&&components[0].packageName.equals(f.activity.getPackageName())&&components[0].className.equals(BrowserActivity.class.getName()));
+      Object nested=chooser.extras.get(Intent.EXTRA_INTENT);check("External chooser retains one explicit nested VIEW target",nested instanceof Intent&&Intent.ACTION_VIEW.equals(((Intent)nested).action));Intent target=(Intent)nested;
+      check("Nested external target retains only the requested HTTP URL and BROWSABLE category",target.data!=null&&target.data.toString().equals(url)&&target.categories.size()==1&&target.categories.contains(Intent.CATEGORY_BROWSABLE));
+      check("No headers, Cookie, agent, MIME, grants or picker extras are forwarded",target.extras.isEmpty()&&target.type==null&&target.flags==0&&target.clip==null);
+      check("Handoff success requests external selection without claiming a saved file",f.messages.get(f.messages.size()-1).equals("请选择外部浏览器继续"));
+    }
+    try(Fixture f=new Fixture()){
+      f.files.handoff(f.web,"https://example.test/file","export");AlertDialog stale=f.files.externalDialog;f.web.url="https://example.test/another";stale.confirm();
+      check("A changed source page prevents an old confirmation from launching",f.activity.startAttempts==0&&f.messages.get(f.messages.size()-1).contains("未移交"));
+    }
+    try(Fixture f=new Fixture()){
+      f.files.handoff(f.web,"https://example.test/file","export");AlertDialog stale=f.files.externalDialog;f.files.destroy();stale.confirm();
+      check("A destroyed helper cannot launch a queued external confirmation",f.activity.startAttempts==0&&stale.dismissed>0);
+    }
+    try(Fixture f=new Fixture()){
+      f.files.handoff(f.web,"https://example.test/file","export");f.files.externalDialog.cancel();check("Canceling external handoff starts no activity",f.activity.startAttempts==0);
+      AlertDialog old=f.files.externalDialog;f.files.handoff(f.web,"https://example.test/second","export");check("A new handoff dismisses its old dialog",old.dismissed>0&&f.files.externalDialog!=old);
+    }
+    for(RuntimeException failure:new RuntimeException[]{new ActivityNotFoundException(),new SecurityException("denied")})try(Fixture f=new Fixture()){
+      f.activity.viewLaunchFailure=failure;f.files.handoff(f.web,"https://example.test/file","export");f.files.externalDialog.confirm();
+      check("External launch failure never records a successful handoff: "+failure.getClass().getSimpleName(),f.activity.started.isEmpty()&&f.activity.startAttempts==1&&!f.messages.contains("请选择外部浏览器继续"));
+      check("External launch failure reports its actionable reason: "+failure.getClass().getSimpleName(),f.messages.get(f.messages.size()-1).contains(failure instanceof SecurityException?"未允许":"没有可用"));
+    }
+    for(String url:new String[]{"intent://example.test/file","blob:https://example.test/file","data:text/plain,secret","file:///private/file","content://documents/private","https://user:password@example.test/file","https://127.0.0.1/file"})try(Fixture f=new Fixture()){
+      f.files.handoff(f.web,url,"export");check("Unsafe external URL creates no actionable dialog: "+url,f.files.externalDialog==null&&f.activity.startAttempts==0);
+    }
+  }
+  public static void main(String[] args)throws Exception {
+    staleAndMultiple();lifecycle();reentry();invalidAndLaunch();selections();grants();malformedResults();mimeAndFlags();exhaustion();storeSlots();globalSaveSuccess();globalSaveRollback();externalHandoff();
+    System.out.println(new JSONObject().put("status","passed").put("passed",checks.size()).put("checks",new JSONArray(checks)).toString());
+  }
+}

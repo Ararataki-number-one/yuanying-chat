@@ -17,10 +17,24 @@ final class SavedFileDeletion {
     catch(Exception error){throw new IOException("删除失败，下载记录已保留，请稍后重试",error);}
   }
   static <T>T lease(Context context,Uri uri,SealedFileIo.Action<T> action)throws Exception {
+    return SealedFileIo.lease(leaseTarget(context,uri),action);
+  }
+  private static File leaseTarget(Context context,Uri uri)throws IOException {
     File directory=new File(Profiles.global(context).getNoBackupFilesDir(),"saved-download-leases");
     if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("文件管理暂时不可用，请稍后重试");
     String name=AppUpdatePolicy.hash(uri.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-    return SealedFileIo.lease(new File(directory,name),action);
+    return new File(directory,name);
+  }
+  /** A collected share holds every publication through grant dispatch. Sort the
+   * actual bounded stripe identities, not URI names; deduplicate stripe collisions.
+   * Existing write/delete paths acquire just one URI stripe and main never waits. */
+  static <T>T leaseAll(Context context,java.util.List<Uri> uris,SealedFileIo.Action<T> action)throws Exception {
+    java.util.SortedMap<String,File> stripes=new java.util.TreeMap<>();
+    for(Uri uri:uris){File target=leaseTarget(context,uri);stripes.putIfAbsent(SealedFileIo.lockFile(target).getCanonicalPath(),target);}
+    return leaseOrdered(new java.util.ArrayList<>(stripes.values()),0,action);
+  }
+  private static <T>T leaseOrdered(java.util.List<File> targets,int index,SealedFileIo.Action<T> action)throws Exception {
+    return index==targets.size()?action.run():SealedFileIo.lease(targets.get(index),()->leaseOrdered(targets,index+1,action));
   }
   /** Keep the worker's URI lease until publication really finishes. A timed-out
    * queued callback is made inert; a callback already running must finish first. */

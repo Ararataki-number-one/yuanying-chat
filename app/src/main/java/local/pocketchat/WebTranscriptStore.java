@@ -4,7 +4,8 @@ import java.util.concurrent.*;
 import java.util.*;
 import org.json.*;
 
-/** Coalesces whole-history serialization and SQLite writes off the Android UI thread. */
+/** Coalesces whole-history serialization and SQLite writes off the Android UI thread.
+ * SQLite owns transcript content; preferences retain only the current conversation cursor. */
 final class WebTranscriptStore {
   final ChatSession session;
   final ExecutorService worker=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"WebTranscriptStore");t.setPriority(Thread.MIN_PRIORITY);return t;});
@@ -28,11 +29,12 @@ final class WebTranscriptStore {
   void schedule(long delay){if(scheduled||writing||latest==null)return;scheduled=true;session.handler.postDelayed(drain,delay);}
   void drain(){scheduled=false;if(writing||latest==null)return;Snapshot snapshot=latest;queued.remove(snapshot.url);updateLatest();writing=true;urgent=false;
     worker.execute(()->{try{
+      if(!current(snapshot))return;
       String serial=snapshot.entries.toString();
       if(current(snapshot)&&(!snapshot.url.equals(savedUrl)||!serial.equals(savedSerial)||snapshot.nativeRevision!=savedNativeRevision)){
         String title="未命名对话";for(int i=0;i<snapshot.entries.length();i++){JSONObject row=snapshot.entries.optJSONObject(i);if(row!=null&&"user".equals(row.optString("role"))){title=row.optString("text").replaceAll("\\s+"," ").trim();if(title.length()>80)title=title.substring(0,80)+"…";break;}}
         synchronized(session.cache){if(!current(snapshot))return;if(snapshot.entries.length()>0)session.cache.saveSerializedMessages(snapshot.url,serial,title);}
-        session.handler.post(()->{if(current(snapshot)&&snapshot.url.equals(currentUrl)&&snapshot.url.equals(session.conversation))session.prefs.edit().putString("transcript",serial).putString("conversation",snapshot.url).apply();});
+        session.handler.post(()->{if(current(snapshot)&&snapshot.url.equals(currentUrl)&&snapshot.url.equals(session.conversation)&&!snapshot.url.equals(session.prefs.getString("conversation","")))session.prefs.edit().putString("conversation",snapshot.url).apply();});
         savedUrl=snapshot.url;savedSerial=serial;savedNativeRevision=snapshot.nativeRevision;
       }
     }catch(Exception e){session.handler.post(()->session.setStatus("本地记录保存失败，请保留原网页核对"));}

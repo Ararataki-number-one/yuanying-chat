@@ -45,14 +45,14 @@ final class AppHub {
   }
   void show(int target){
     if(target!=page||target==CHAT)feedbackBar.setVisibility(View.GONE);
-    page=target;downloadsVisible(a.active);chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page==CHAT)a.toolbar.setVisibility(View.VISIBLE);else{a.designChrome.cancelWebGesture();a.toolbar.setVisibility(View.GONE);}
+    page=target;downloadsVisible(a.active);chat.setVisibility(page==CHAT?View.VISIBLE:View.GONE);if(page!=CHAT)a.designChrome.cancelWebGesture();
     if(a.chatDownloadProgress!=null)a.chatDownloadProgress.update();
     a.status.setVisibility(View.GONE);panel.setVisibility(page==CHAT?View.GONE:View.VISIBLE);
     a.session.foreground(a.active);mark();a.updateReadingLayout();a.handler.removeCallbacks(tick);
     if(page!=CHAT){a.hideKeyboard();refresh();a.handler.postDelayed(tick,2500);}
     else{a.status(a.session.status);a.session.pageMemory.restorePending=true;if(a.session.networkReady&&MainActivity.chatUrl(a.remote.getUrl()))a.session.pageMemory.restore(a.remote.getUrl(),a.session.navigationEpoch);a.session.wakePolling();}
   }
-  void keyboard(){boolean hide=BrowserReadingPolicy.hideNavigation(page==CHAT,true,a.keyboardVisible);bar.setVisibility(hide?View.GONE:View.VISIBLE);divider.setVisibility(hide?View.GONE:View.VISIBLE);}
+  void keyboard(){a.applyFocusLayout();}
   void mark(){int selected=0;for(int i=0;i<DESTINATIONS.length;i++)if(DESTINATIONS[i]==page)selected=i;ReferenceUi.markNav(tabs,selected);}
   LinearLayout layout(String title){
     String identity=page+"|"+settingsTab+"|"+networkTab+"|"+downloadFilter+"|"+title;int oldY=0;
@@ -73,6 +73,7 @@ final class AppHub {
     if(downloadController==null||panel.getChildCount()==0||panel.getChildAt(0)!=downloadScreen){
       LinearLayout box=layout("下载中心");downloadScreen=panel.getChildAt(0);
       downloadController=new DesignDownloads.Controller(a,box,downloadFilter,n->{downloadFilter=n;downloads();},a.downloads.savedActions);
+      if(a.downloadUiState!=null){downloadController.restoreState(a.downloadUiState);a.downloadUiState=null;}
     }else downloadController.refresh(downloadFilter);
     downloadsVisible(a.active);
   }

@@ -33,6 +33,8 @@ jobs:
           parents=[line.split()[1] for line in subprocess.check_output(['git','cat-file','-p',os.environ['GITHUB_SHA']],text=True).split('\n\n',1)[0].splitlines() if line.startswith('parent ')]
           assert parents[0]==m['sourceCommit'] and tools_commit in parents
           release_files={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}
+          if tuple(map(int,m['version'].split('.'))) >= (2,1,0):
+              release_files.add('tools/browser/check_evidence.py')
           if tools_commit!=m['sourceCommit']:
               subprocess.run(['git','merge-base','--is-ancestor',m['sourceCommit'],tools_commit],check=True)
               changed=set(subprocess.check_output(['git','diff','--name-only',m['sourceCommit'],tools_commit],text=True).splitlines())
@@ -127,6 +129,9 @@ jobs:
           if tuple(map(int,m['version'].split('.'))) >= (2,0,0):
               from tools.gecko.check_resource_evidence import verify_resource_evidence
               assert verify_resource_evidence(pathlib.Path('.'),m['sourceCommit'])==m['resourcePressureDiagnostic']
+          if tuple(map(int,m['version'].split('.'))) >= (2,1,0):
+              from tools.browser.check_evidence import verify_browser_evidence
+              assert verify_browser_evidence(pathlib.Path('.'),m['sourceCommit'])==m['controlledBrowserRegression']
           # Optional byte transport only. The same original parts and all
           # release/signature gates below remain mandatory after reconstruction.
           from tools.gecko.release_channel_contract import (restore_signed_transport, signed_transport_artifact_commit,

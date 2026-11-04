@@ -1,6 +1,12 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.pocketchat" android:versionCode="61" android:versionName="2.0.8">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.pocketchat" android:versionCode="102" android:versionName="2.1.0">
   <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
   <uses-permission android:name="android.permission.INTERNET" /><uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.CAMERA" />
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+  <uses-feature android:name="android.hardware.camera" android:required="false" />
+  <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+  <uses-feature android:name="android.hardware.microphone" android:required="false" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -8,7 +14,22 @@
   <uses-permission android:name="android.permission.WAKE_LOCK" />
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-  <application android:name="local.pocketchat.PocketApplication" android:label="元婴期院士" android:icon="@drawable/ic_brand" android:theme="@style/AppTheme" android:allowBackup="false" android:usesCleartextTraffic="false" android:networkSecurityConfig="@xml/network_security" android:extractNativeLibs="true" android:debuggable="false" android:supportsRtl="true">
+  <application android:name="local.pocketchat.PocketApplication" android:label="元婴期院士" android:icon="@drawable/ic_brand" android:theme="@style/AppTheme" android:allowBackup="false" android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml/network_security" android:extractNativeLibs="true" android:debuggable="false" android:supportsRtl="true">
+    <activity android:name="local.pocketchat.BrowserActivity" android:taskAffinity="local.pocketchat.browser0" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="http" /><data android:scheme="https" />
+      </intent-filter>
+    </activity>
+    <activity android:name="local.pocketchat.BrowserActivity$Profile1" android:process=":profile1" android:taskAffinity="local.pocketchat.browser1" android:exported="false" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+    <activity android:name="local.pocketchat.BrowserActivity$Profile2" android:process=":profile2" android:taskAffinity="local.pocketchat.browser2" android:exported="false" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+    <activity android:name="local.pocketchat.BrowserActivity$Profile3" android:process=":profile3" android:taskAffinity="local.pocketchat.browser3" android:exported="false" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+    <activity android:name="local.pocketchat.BrowserActivity$Profile4" android:process=":profile4" android:taskAffinity="local.pocketchat.browser4" android:exported="false" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+    <activity android:name="local.pocketchat.BrowserActivity$Profile5" android:process=":profile5" android:taskAffinity="local.pocketchat.browser5" android:exported="false" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+    <activity android:name="local.pocketchat.BrowserActivity$Profile6" android:process=":profile6" android:taskAffinity="local.pocketchat.browser6" android:exported="false" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
+    <activity android:name="local.pocketchat.BrowserActivity$Profile7" android:process=":profile7" android:taskAffinity="local.pocketchat.browser7" android:exported="false" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" />
     <meta-data android:name="local.pocketchat.UPDATE_CHANNEL" android:value="${releaseChannel}" />
     <meta-data android:name="local.pocketchat.CANDIDATE_NUMBER" android:value="${candidateNumber}" />
     <service android:name="local.pocketchat.NetworkTransportService" android:process=":network" android:exported="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps independent per-environment proxy tunnels while the user browses and receives replies" /></service>

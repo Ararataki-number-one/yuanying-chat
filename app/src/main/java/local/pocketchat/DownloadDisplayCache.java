@@ -7,6 +7,7 @@ import java.text.DateFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Expensive complete reads stay on one worker; main receives at most forty rows. */
 final class DownloadDisplayCache {
@@ -14,26 +15,56 @@ final class DownloadDisplayCache {
   static final Handler main=new Handler(Looper.getMainLooper());
   static JSONArray cached;static Map<Integer,DownloadOwnerLabels.Owner> cachedOwners;static long cachedRevision=-1;
   static final LinkedHashMap<String,Page> pages=new LinkedHashMap<String,Page>(4,.75f,true){protected boolean removeEldestEntry(Map.Entry<String,Page> entry){return size()>3;}};
+  static final LinkedHashMap<String,DownloadPageWindow.Index> selections=new LinkedHashMap<String,DownloadPageWindow.Index>(4,.75f,true){protected boolean removeEldestEntry(Map.Entry<String,DownloadPageWindow.Index> entry){return size()>3;}};
+  /** Each visible controller owns one scope; cancelling it never affects another host. */
+  static final class Scope {
+    final AtomicLong generation=new AtomicLong();
+    void invalidate(){generation.incrementAndGet();}
+    void require(long selected){if(generation.get()!=selected)throw new CancellationException("Download view changed");}
+  }
   static final class Page {
-    final DownloadPageWindow window;final Map<Integer,String> names=new HashMap<>();final Map<String,String> times=new HashMap<>(),environmentLabels=new HashMap<>();
-    final Locale locale=Locale.getDefault();final TimeZone zone=TimeZone.getDefault();final long revision;final Bundle update;
+    final DownloadPageWindow window;final Map<Integer,String> names;final Map<String,String> times,environmentLabels;
+    final Map<String,String> scopes;
+    final Locale locale;final TimeZone zone;final long revision;final Bundle update;
     Page(JSONArray all,Map<Integer,DownloadOwnerLabels.Owner> owners,int filter,String anchor,String viewed,long revision,Bundle update){
-      window=new DownloadPageWindow(all,filter,anchor,viewed);this.revision=revision;this.update=update;
+      this(all,owners,filter,anchor,viewed,revision,update,DownloadQuery.all());
+    }
+    Page(JSONArray all,Map<Integer,DownloadOwnerLabels.Owner> owners,int filter,String anchor,String viewed,long revision,Bundle update,DownloadQuery query){
+      this(new DownloadPageWindow.Index(query.select(all,filter,owners),0),owners,anchor,viewed,revision,update);
+    }
+    Page(DownloadPageWindow.Index selected,Map<Integer,DownloadOwnerLabels.Owner> owners,String anchor,String viewed,long revision,Bundle update){
+      window=new DownloadPageWindow(selected,anchor,viewed);this.revision=revision;this.update=update;
+      names=new HashMap<>();times=new HashMap<>();environmentLabels=new HashMap<>();scopes=new LinkedHashMap<>();locale=Locale.getDefault();zone=TimeZone.getDefault();
+      scopes.put("","全部环境");for(DownloadOwnerLabels.Owner owner:owners.values())if(owner.created&&!owner.deleting&&!owner.resetting)scopes.put(DownloadQuery.identity(owner),owner.name==null?"环境 "+(owner.slot+1):owner.name);
+      scopes.put("historical","历史环境文件");scopes.put("unknown","归属待确认");
       for(DownloadOwnerLabels.Owner owner:owners.values())names.put(owner.slot,owner.name);
       DateFormat format=DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT,locale);format.setTimeZone(zone);
       for(int i=0;i<window.rows.length();i++){JSONObject row=window.rows.optJSONObject(i);String key=DownloadListPolicy.key(row);long time=row.optLong("time");times.put(key,time<=0?"时间未记录":("saved".equals(row.optString("state"))?"保存于 ":"开始于 ")+format.format(new Date(time)));environmentLabels.put(key,DownloadOwnerLabels.label(row,owners));}
     }
-    Page(Page original,Bundle update){window=original.window;names.putAll(original.names);times.putAll(original.times);environmentLabels.putAll(original.environmentLabels);revision=original.revision;this.update=update;}
+    Page(Page original,Bundle update){window=original.window;names=original.names;times=original.times;environmentLabels=original.environmentLabels;scopes=original.scopes;locale=original.locale;zone=original.zone;revision=original.revision;this.update=update;}
     boolean currentFormat(){return locale.equals(Locale.getDefault())&&zone.equals(TimeZone.getDefault());}
   }
   static void request(Context context,int filter,String anchor,String viewed,Consumer<Page> done,Consumer<RuntimeException> failure){
+    request(context,filter,anchor,viewed,DownloadQuery.all(),done,failure);
+  }
+  static void request(Context context,int filter,String anchor,String viewed,DownloadQuery query,Consumer<Page> done,Consumer<RuntimeException> failure){
+    request(context,filter,anchor,viewed,query,new Scope(),done,failure);
+  }
+  static void request(Context context,int filter,String anchor,String viewed,DownloadQuery query,Scope scope,Consumer<Page> done,Consumer<RuntimeException> failure){
     Context app=Profiles.global(context);
+    long ticket=scope.generation.get();
     worker.execute(()->{try{
+      scope.require(ticket);
       long revision=DownloadLibraryChanges.revision.get();
-      if(cached==null||cachedRevision!=revision){JSONArray next=DownloadDisplaySnapshot.read(app);Map<Integer,DownloadOwnerLabels.Owner> owners=DownloadDisplaySnapshot.owners(app);cached=next;cachedOwners=owners;cachedRevision=revision;pages.clear();}
-      String key=filter+":"+anchor;Page prepared=pages.get(key);Bundle update=AppUpdates.call(app,"status",null);
-      if(prepared==null||!prepared.currentFormat()){prepared=new Page(cached,cachedOwners,filter,anchor,viewed,cachedRevision,update);pages.put(key,prepared);}
-      Page page=new Page(prepared,update);main.post(()->done.accept(page));
+      if(cached==null||cachedRevision!=revision){JSONArray next=DownloadDisplaySnapshot.read(app);scope.require(ticket);Map<Integer,DownloadOwnerLabels.Owner> owners=DownloadDisplaySnapshot.owners(app);scope.require(ticket);cached=next;cachedOwners=owners;cachedRevision=revision;pages.clear();selections.clear();}
+      String selectionKey=filter+":"+query.key(),key=new JSONArray().put(selectionKey).put(anchor).put(viewed).toString();Page prepared=pages.get(key);
+      if(prepared==null||!prepared.currentFormat()){
+        scope.require(ticket);DownloadPageWindow.Index selected=selections.get(selectionKey);
+        if(selected==null){selected=new DownloadPageWindow.Index(query.select(cached,filter,cachedOwners),0);scope.require(ticket);selections.put(selectionKey,selected);}
+        prepared=new Page(selected,cachedOwners,anchor,viewed,cachedRevision,null);pages.put(key,prepared);
+      }
+      scope.require(ticket);Bundle update=AppUpdates.call(app,"status",null);Page page=new Page(prepared,update);
+      main.post(()->{try{scope.require(ticket);done.accept(page);}catch(CancellationException changed){failure.accept(changed);}});
     }catch(RuntimeException unavailable){main.post(()->failure.accept(unavailable));}});
   }
 }

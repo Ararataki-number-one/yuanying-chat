@@ -1,6 +1,6 @@
-# 构建当前 Gecko 版本
+# 构建 2.1.0 双内核版本
 
-正式应用以 Mozilla 官方 GeckoView 为基础，使用固定来源、源码派生的输入同步修正 SDK。使用 Gradle 构建以合并 SDK 的 Java、原生库、资源、服务和依赖；旧版手工 AAPT2/D8 流程不再适用于本版本。
+ChatGPT 增强界面以 Mozilla 官方 GeckoView 为基础，使用固定来源、源码派生的输入同步修正 SDK；通用浏览器使用系统 Chromium 和 AndroidX WebKit 1.14.0。使用 Gradle 构建以合并 SDK 的 Java、原生库、资源、服务和依赖；旧版手工 AAPT2/D8 流程不再适用于本版本。
 
 ## 工具与构建
 
@@ -20,11 +20,11 @@ Windows 使用 `gradlew.bat`。发布输出在 `app/build/outputs/apk/release/`�
 
 ## 原签名覆盖安装
 
-用户提供的原密钥保存在被 Git 忽略的 `work/android-test/private/local-test.jks`，不进入源码、CI 或发布附件。缺少原密钥时构建未签名包；签名助手会报错，不会偷偷生成替代密钥。
+原签名密钥须由维护者提供，保存在 Git 忽略目录，不进入源码、CI 或发布附件。文件名与存放路径不能证明签名身份，必须核对证书指纹。缺少原密钥或证书不匹配时保留未签名包；签名助手会报错，不会生成替代密钥。以下路径是维护者准备原密钥后的示例，不表示工作区已经具备原签名。
 
 ```bash
 python3 tools/sign-apk.py app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk \
-  --key work/android-test/private/local-test.jks \
+  --key work/release-signing/original-release.jks \
   --tools "$ANDROID_HOME/build-tools/37.0.0" --java "$JAVA_HOME/bin/java"
 ```
 
@@ -34,11 +34,11 @@ python3 tools/sign-apk.py app/build/outputs/apk/release/app-arm64-v8a-release-un
 
 已准备工具位于 `work/cloud-setup/jdk/` 与 `work/gecko-sdk-validation/`。`python3 engine-probe/tools/setup.py` 用官方地址与固定校验和准备 SDK 37.1、Build Tools 37、Gradle 和早期验证包所用的 Gecko AAR；它只写忽略目录。该独立验证包保留历史 SDK pin，正式应用 SDK 以 `app/build.gradle` 与上述来源收据为准。
 
-完整 Gradle 构建可通过 `.github/workflows/gecko-integration.yml` 在 GitHub runner 执行。本地网络错误以本次实际请求为准，不沿用历史 429 记录。该工作流先校验官方 SDK 和 Gradle，再运行发布编译、发布版 LintVital、回调生命周期检查和 Android 15 KVM 回归。不要将本地 javac 成功描述为完整 APK 构建成功。
+2.1.0 的完整构建与验收通过 `.github/workflows/browser-2_1-acceptance.yml` 在 GitHub runner 执行，分支为 `release/browser-2.1.0`。本地网络错误以本次实际请求为准。该工作流保留原有 Gecko 验收门槛，增加必需的 `lintRelease`、29 组主机检查，以及使用同批 APK 的真实 Android WebView 验收。主机 API 编译不能代替完整 APK 构建。构建产物仍未使用正式版原签名。
 
 无需常驻服务即可进行编译。设备回归需要 Android 设备或带 KVM 的模拟器，受控样本与 HTTP/SOCKS 服务由 `tests/gecko/run_device.py` 启动并结束。真实 Google/ChatGPT 登录需要在手机上验收，不在合成样本测试范围内。
 
-正式源码保留单 GeckoView 与原网页，不依赖 AndroidX WebKit，也不打包旧简洁页面及其渲染库。正常验收保留原网页输入、存储、上传、下载和环境线路检查，并追加仅原网页、前台安静／后台选用以及更新线路续传检查。官方输入 AAR 校验和固定；运行包使用 `third-party/gecko/` 与 `tools/gecko/build_caret_sdk.py` 声明的源码派生输入同步修正。当前证据以本次 `work/native-caret-sdk/sdk-build-receipt.json`、派生 SDK 核验与 Gradle 实际解析结果为准，历史候选 JSON 不等于当前 Android 验收。
+Gecko 增强界面保留原网页输入、存储、上传、下载、环境线路、前台安静／后台选用及更新续传检查。Chromium 通用浏览器不注入 ChatGPT 专用桥接，另行验证导航、标签、文件选择、下载、线路失效和界面往返；它不继承 Gecko 的指纹模板或 WebRTC 限制。应用不打包旧简洁页面及其渲染库。官方输入 AAR 校验和固定；Gecko 运行包使用 `third-party/gecko/` 与 `tools/gecko/build_caret_sdk.py` 声明的源码派生输入同步修正。当前证据以本次 SDK 来源回执、Gradle 实际解析结果和同源码验收为准，历史候选 JSON 不等于当前 Android 验收。
 
 工作流在构建前核验官方 AAR/POM/源码包，再按固定源码和配方生成派生 AAR，构建后核验 Gradle 实际解析的派生 AAR、源回执及保持不变的 SDK 载荷。`tools/gecko/verify_official_sdk.py` 只读取并比对，不重写 AAR、SDK 类或原生库。SDK 来源核验和编译通过不代表输入问题已修复；仍需保留原单次 Android 硬件输入、草稿与选择范围断言，全部正常设备验收通过后才能发布。
 

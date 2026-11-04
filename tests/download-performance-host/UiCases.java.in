@@ -1,0 +1,60 @@
+package local.pocketchat;
+
+import org.json.*;import java.util.*;
+
+/** Exact production Row plus collection sync methods with counted widget boundaries. */
+public final class DownloadUiPerformanceCases {
+  static final JSONArray checks=new JSONArray(),measurements=new JSONArray();
+  static void check(String name,boolean pass){checks.put(J.obj("name",name,"pass",pass));if(!pass)throw new AssertionError(name);}
+  static JSONObject row(int number){return J.obj("id","file"+number,"slot",0,"uri","content://fixture/"+number,"state","saved","time",number+1,"name","record-"+number+".pdf","mime","application/pdf");}
+  static JSONObject counters(){return J.obj("textWrites",Meter.text,"enabledWrites",Meter.enabled,"visibilityWrites",Meter.visibility,"checkedWrites",Meter.checked,"descriptionWrites",Meter.description,"checkboxListenerInstalls",Meter.checkboxListeners,"cardListenerInstalls",Meter.clickListeners);}
+  static int writes(){return Meter.text+Meter.enabled+Meter.visibility+Meter.checked+Meter.description+Meter.checkboxListeners+Meter.clickListeners;}
+  public static void main(String[] args)throws Exception{
+    boolean before=Boolean.getBoolean("before");DesignDownloads.Controller controller=new DesignDownloads.Controller();
+    for(int i=0;i<40;i++){DesignDownloads.Row row=new DesignDownloads.Row(controller.a,controller.actions);row.value=row(i);controller.views.put("row"+i,row);}
+    controller.syncCollection();Meter.reset();
+    for(int i=0;i<100;i++)controller.syncCollection();JSONObject repeated=counters();measurements.put(J.obj("workload","40 visible rows,100 unchanged collection syncs","counts",repeated));
+    if(before)check("Captured baseline really repeats collection UI work",writes()>20000);else check("Unchanged collection sync performs zero widget/listener writes",writes()==0);
+    controller.collecting=true;controller.syncCollection();Meter.reset();for(int i=0;i<100;i++){for(DesignDownloads.Row row:controller.views.values())row.value.put("received",i);controller.syncCollection();}JSONObject progress=counters();measurements.put(J.obj("workload","40 visible rows,100 byte-only progress updates","counts",progress));
+    if(before)check("Captured baseline repeats selection UI during byte-only progress",writes()>20000);else check("Byte-only progress does not reconfigure selection UI/listeners",writes()==0);
+    DesignDownloads.Row chosen=controller.views.get("row12");JSONObject current=J.parse(chosen.value.toString());current.put("actualName","renamed.pdf");chosen.value=current;Meter.reset();controller.syncCollection();check("Changed filename updates checkbox accessibility label",chosen.collected.description.equals("收集文件 renamed.pdf"));if(!before)check("One changed filename causes one description write only",Meter.description==1&&Meter.checkboxListeners==0&&Meter.clickListeners==0);
+    JSONObject clicked=J.parse(current.toString());clicked.put("time",9999);chosen.value=clicked;controller.syncCollection();chosen.card.performClick();check("Stable card listener uses newest row publication",controller.collection.contains(clicked));check("Programmatic checkbox binding never toggles collection twice",controller.collection.size()==1);
+    controller.actions.busy=true;controller.syncCollection();check("Busy disables row selection and collection controls",!chosen.collected.enabled&&!controller.collectButton.enabled&&!controller.basketButton.enabled);int selected=controller.collection.size();chosen.collected.performUserToggle();check("Disabled checkbox cannot mutate collection",controller.collection.size()==selected);
+    controller.actions.busy=false;controller.syncCollection();check("Busy completion re-enables explicit choices",chosen.collected.enabled&&controller.collectButton.enabled&&controller.basketButton.enabled);
+    for(DesignDownloads.Row row:controller.views.values())if(controller.collection.size()<DownloadCollection.LIMIT&&!controller.collection.contains(row.value))controller.collection.toggle(row.value);controller.syncCollection();DesignDownloads.Row rejected=controller.views.get("row39");check("Capacity test starts at full basket with unchecked row",controller.collection.size()==DownloadCollection.LIMIT&&!rejected.collected.isChecked());rejected.collected.performUserToggle();check("Rejected capacity selection restores actual widget check state",!controller.collection.contains(rejected.value)&&!rejected.collected.isChecked());
+    chosen.value=J.parse(chosen.value.toString()).put("state","downloading");controller.syncCollection();check("Saved-to-task transition hides checkbox",chosen.collected.visibility==View.GONE);
+    controller.collecting=false;controller.syncCollection();chosen.card.performClick();check("Stable card listener opens task when collection mode is off",DesignDownloads.opened==chosen.value);
+    check("Row/card identities are retained across every collection update",controller.views.size()==40&&controller.views.get("row12")==chosen);
+    System.out.println(J.obj("status","passed","variant",before?"before":"after","checks",checks,"total",checks.length(),"measurements",measurements,"actualAndroidExecution",false,"actualPhoneFrameMeasurement",false,"scope","Exact production Row constructor/selection/bind and Controller sync/toggle methods, deterministic counted widgets; counts are setter/listener calls, not Android layout time or FPS").toString(2));
+  }
+}
+class DesignDownloads{
+  static JSONObject opened;static void open(Activity a,JSONObject row,SavedFileActions actions){opened=row;}
+  static boolean busy(String state){return DownloadListPolicy.busy(state);}static String timeLabel(JSONObject row){return "time";}
+  static final class Controller{
+    final Activity a=new Activity();final SavedFileActions actions=new SavedFileActions();final LinkedHashMap<String,Row> views=new LinkedHashMap<>();
+    final Button collectButton=new Button(),basketButton=new Button();final DownloadCollection collection=new DownloadCollection();final DownloadCollectionSession.State collectionSession=DownloadCollectionSession.get(this);boolean collecting;String collectionNotice="";
+    /* SYNC_COLLECTION */
+    /* TOGGLE_COLLECTION */
+  }
+  /* ROW */
+}
+class Context{}class Activity extends Context{}class SavedFileActions{boolean busy;void show(JSONObject row){}static void problem(Activity activity,String value){}}
+class Meter{static int text,enabled,visibility,checked,description,checkboxListeners,clickListeners;static void reset(){text=enabled=visibility=checked=description=checkboxListeners=clickListeners=0;}}
+class View{
+  static final int VISIBLE=0,GONE=8,IMPORTANT_FOR_ACCESSIBILITY_NO=2,ACCESSIBILITY_LIVE_REGION_POLITE=1;boolean enabled=true;int visibility=VISIBLE;String description="";OnClickListener click;
+  interface OnClickListener{void onClick(View view);}void setOnClickListener(OnClickListener listener){Meter.clickListeners++;click=listener;}void performClick(){if(enabled&&click!=null)click.onClick(this);}
+  void setVisibility(int value){Meter.visibility++;visibility=value;}int getVisibility(){return visibility;}void setEnabled(boolean value){Meter.enabled++;enabled=value;}boolean isEnabled(){return enabled;}void setContentDescription(String value){Meter.description++;description=value;}CharSequence getContentDescription(){return description;}
+  void setClickable(boolean value){}void setFocusable(boolean value){}void setImportantForAccessibility(int value){}void setAccessibilityLiveRegion(int value){}void setPadding(int left,int top,int right,int bottom){}void setBackground(Object value){}
+}
+class TextView extends View{String text="";CharSequence getText(){return text;}void setText(String value){Meter.text++;text=value;}void setTextColor(int color){}void setMaxLines(int lines){}void setEllipsize(Object value){}void setCompoundDrawables(Object one,Object two,Object three,Object four){}}
+class Button extends TextView{}
+class CheckBox extends Button{interface OnCheckedChangeListener{void onCheckedChanged(CheckBox box,boolean checked);}boolean checked;OnCheckedChangeListener listener;CheckBox(Activity a){}void setChecked(boolean value){Meter.checked++;boolean changed=checked!=value;checked=value;if(changed&&listener!=null)listener.onCheckedChanged(this,value);}boolean isChecked(){return checked;}void setOnCheckedChangeListener(OnCheckedChangeListener value){Meter.checkboxListeners++;listener=value;}void performUserToggle(){if(enabled)setChecked(!checked);}}
+class LinearLayout extends View{static class LayoutParams{int topMargin;LayoutParams(int width,int height){}LayoutParams(int width,int height,float weight){}}void addView(View view){}void addView(View view,LayoutParams params){}}
+class ImageView extends View{void setImageDrawable(Object image){}}
+class ProgressBar extends View{boolean indefinite;int progress;ProgressBar(Activity a,Object attrs,int style){}void setMax(int max){}void setProgressTintList(Object value){}void setProgressBackgroundTintList(Object value){}boolean isIndeterminate(){return indefinite;}void setIndeterminate(boolean value){indefinite=value;}int getProgress(){return progress;}void setProgress(int value){progress=value;}}
+class DesignUi{static final int RED=1,CYAN=2,GREEN=3,MUTED=4,TEXT=5,BLUE=6,LINE=7;static LinearLayout card(Activity a){return new LinearLayout();}static LinearLayout row(Activity a){return new LinearLayout();}static LinearLayout column(Activity a){return new LinearLayout();}static int dp(Activity a,int value){return value;}static ImageView icon(Activity a,String key,int color,int size){return new ImageView();}static TextView text(Activity a,String text,int size,int color){return new TextView();}static Object surface(Activity a,int color,int radius,int border){return new Object();}}
+class ReferenceUi{static TextView text(Activity a,String text,int size,int color,boolean bold){return new TextView();}static Button more(Activity a,Runnable action){return new Button();}}
+class Ui{static final class Icon{Icon(String key,int color){}void setBounds(int l,int t,int r,int b){}}}
+class DownloadTasks{static void put(JSONObject row,Object...pairs){try{for(int i=0;i<pairs.length;i+=2)row.put((String)pairs[i],pairs[i+1]);}catch(JSONException error){throw new IllegalStateException(error);}}static String amount(long n){return ""+n;}static String label(String state){return state;}static String progress(JSONObject row){return row.optLong("received")+"/"+row.optLong("total");}}
+class J{static JSONObject parse(String json){try{return new JSONObject(json);}catch(JSONException error){return new JSONObject();}}static JSONObject obj(Object...pairs){JSONObject out=new JSONObject();try{for(int i=0;i<pairs.length;i+=2)out.put((String)pairs[i],pairs[i+1]);return out;}catch(JSONException error){throw new IllegalStateException(error);}}}

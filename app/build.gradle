@@ -26,9 +26,9 @@ android {
     compileSdk { version = release(37) { minorApiLevel = 1 } }
     // Core flows keep API 26 support; protected external VPN route inspection needs API 33+.
     defaultConfig {
-        applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 101; versionName '2.0.47'
-        manifestPlaceholders = [releaseChannel: providers.gradleProperty('releaseChannel').orElse('candidate').get(),
-                                candidateNumber: providers.gradleProperty('candidateNumber').orElse('2').get()]
+        applicationId 'local.pocketchat'; minSdk 26; targetSdk 35; versionCode 102; versionName '2.1.0'
+        manifestPlaceholders = [releaseChannel: providers.gradleProperty('releaseChannel').orElse('stable').get(),
+                                candidateNumber: providers.gradleProperty('candidateNumber').orElse('0').get()]
     }
     signingConfigs { debug { if (providers.gradleProperty('testSigningKey').isPresent()) storeFile file(providers.gradleProperty('testSigningKey').get()) } }
     sourceSets {
@@ -55,6 +55,7 @@ tasks.named('preBuild').configure { dependsOn 'prepareGeckoManifest', 'verifyBro
 dependencies {
     implementation 'org.yaml:snakeyaml:2.3'
     implementation 'androidx.startup:startup-runtime:1.2.0'
+    implementation 'androidx.webkit:webkit:1.14.0'
     implementation 'local.pocketchat.sdk:geckoview-caret:157.0.20261005135250-pocket3'
 }
 

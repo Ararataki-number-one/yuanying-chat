@@ -47,7 +47,8 @@ public final class EnvironmentDeleteActivity extends ThemedActivity {
     String prefix=slot==0?"":"env"+slot+"_";
     if(slot>0){File files=new File(data,"files/profiles/env"+slot);File[] personal=files.listFiles();if(personal!=null)for(File f:personal)if(!f.getName().equals("saved-downloads"))erase(f);erase(new File(data,"cache/profiles/env"+slot));erase(new File(data,"no_backup/profiles/env"+slot));}
     else{
-      for(String name:new String[]{"gecko-browser","gecko-browser.yaml","gecko-session.json","gecko-session.json.bak","gecko-session.json.new","network-runtime"})erase(new File(profile.getNoBackupFilesDir(),name));
+      EnvironmentBrowserData.clear(profile.getNoBackupFilesDir(),profile.getCacheDir());
+      for(String name:new String[]{"gecko-browser.yaml","network-runtime"})erase(new File(profile.getNoBackupFilesDir(),name));
       SecretStore privateStore=new SecretStore(profile);for(String name:new String[]{"network","network-ui","exit-baseline","exit-region","subscription","subscription-meta","subscription-ui","exit-subscription","exit-subscription-meta","exit-subscription-ui","pending-network","environment-spec","browser-reset","environment-audit"})privateStore.remove(name);
       erase(new File(profile.getNoBackupFilesDir(),"environment-spec.lock"));
       erase(new File(profile.getFilesDir(),"network-import.json"));erase(new File(profile.getCacheDir(),"gecko-uploads"));
@@ -55,8 +56,8 @@ public final class EnvironmentDeleteActivity extends ThemedActivity {
       File[] temporary=profile.getCacheDir().listFiles();if(temporary!=null)for(File f:temporary)if(f.getName().matches("download-.*[.]part")||f.getName().startsWith("subscription-preview-"))erase(f);
     }
     // System WebView data is private to this process suffix, even if Gecko is selected.
-    erase(new File(data,slot==0?"app_webview":"app_webview_env"+slot));
-    File[] prefs=new File(data,"shared_prefs").listFiles();if(prefs!=null)for(File f:prefs){String name=f.getName();if(slot>0&&name.startsWith(prefix)||slot==0&&(name.matches("(chat|download-tasks|network-journal|environment-audit|browser-reading|web-perf|route-quality|traffic-monitor)[.]xml(\\.bak)?"))){String base=name.replaceFirst("[.]xml(\\.bak)?$","");Profiles.global(c).getSharedPreferences(base,0).edit().clear().commit();if(f.exists()&&!f.delete())throw new IOException();}}
+    EnvironmentBrowserData.clearChromium(data,slot);
+    File[] prefs=new File(data,"shared_prefs").listFiles();if(prefs!=null)for(File f:prefs){String name=f.getName();if(slot>0&&name.startsWith(prefix)||slot==0&&(name.matches("(chat|download-tasks|network-journal|environment-audit|browser-reading|web-perf|route-quality|traffic-monitor|universal-browser)[.]xml(\\.bak)?"))){String base=name.replaceFirst("[.]xml(\\.bak)?$","");Profiles.global(c).getSharedPreferences(base,0).edit().clear().commit();if(f.exists()&&!f.delete())throw new IOException();}}
     for(String name:new String[]{"conversations.db","deliveries.db","draft-archive.db",ReplyNoticeLedger.DATABASE})profile.deleteDatabase(name);
     if(slot>0){File[] dbs=new File(data,"databases").listFiles();if(dbs!=null)for(File f:dbs)if(f.getName().startsWith(prefix))erase(f);}
     // Saved files in Downloads or the user's chosen folder are user-owned and remain accessible.

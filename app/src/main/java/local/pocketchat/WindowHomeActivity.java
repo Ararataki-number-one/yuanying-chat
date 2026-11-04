@@ -16,7 +16,10 @@ public class WindowHomeActivity extends ThemedActivity {
   EditText search;
   Button groupButton,sortButton,selectionButton,visibleSelectionButton;
   Button batchGroupButton,favoriteSelectedButton,unfavoriteSelectedButton;
-  Button createButton,filterOptions;
+  Button createButton,filterOptions,viewsButton;
+  LinearLayout inbox;
+  final EnvironmentSavedViews savedViews=new EnvironmentSavedViews();
+  String activeView="",inboxSignature="";
   LinearLayout preparation;
   int filter,sort;
   String selectedGroup;
@@ -24,10 +27,24 @@ public class WindowHomeActivity extends ThemedActivity {
   final Set<Integer> selectedIds=new LinkedHashSet<>();
   final List<Integer> visibleIds=new ArrayList<>();
   final Handler handler=new Handler(Looper.getMainLooper());
-  String lastSignature="";
-  final Runnable update=()->{refresh();handler.postDelayed(this.update,3000);};
+  String maintenanceSignature="",emptySignature="";
+  static final String SNAPSHOT_READ_PROBLEM="环境记录暂时无法读取，请稍后重试";
+  boolean workspaceVisible,snapshotReadIssue;
+  EnvironmentHomeSnapshot snapshot;
+  EnvironmentRefreshQueue<EnvironmentHomeSnapshot> snapshotQueue;
+  final java.util.concurrent.ExecutorService snapshotWorker=java.util.concurrent.Executors.newSingleThreadExecutor(r->{Thread thread=new Thread(r,"environment-workspace-read");thread.setDaemon(true);return thread;});
+  LinearLayout environmentList,maintenanceRows,emptyRows;
+  final Map<String,EnvironmentRow> rowViews=new LinkedHashMap<>();
+  final Button[] filterButtons=new Button[5];
+  final Runnable update=new Runnable(){public void run(){if(!workspaceVisible)return;if(snapshotQueue!=null)snapshotQueue.request();handler.postDelayed(this,3000);}};
+  void requestSnapshot(){if(snapshotQueue!=null)snapshotQueue.request();}
+  void renderCached(){if(workspaceVisible&&snapshot!=null)renderSnapshot(snapshot);}
+  final Runnable searchRender=this::renderCached;
+  void scheduleSearch(){if(!workspaceVisible)return;handler.removeCallbacks(searchRender);handler.postDelayed(searchRender,48);}
+
+
   int dp(int n){return DesignUi.dp(this,n);}
-  void showProblem(String message){problem.setText(message);problem.setVisibility(message.isEmpty()?View.GONE:View.VISIBLE);}
+  void showProblem(String message){snapshotReadIssue=SNAPSHOT_READ_PROBLEM.equals(message);problem.setText(message);problem.setVisibility(message.isEmpty()?View.GONE:View.VISIBLE);}
 
   @Override public void onCreate(Bundle state){
     super.onCreate(state);
@@ -38,22 +55,32 @@ public class WindowHomeActivity extends ThemedActivity {
     boolean largeText=getResources().getConfiguration().fontScale>=1.4f;
     if(largeText){LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.bottomMargin=dp(6);box.addView(count,cp);tools.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);}
     else tools.addView(count,new LinearLayout.LayoutParams(0,-2,1));
+    Button actionSearch=ReferenceUi.iconButton(this,"search","搜索操作",()->ActionSearchUi.show(this));if(!largeText)tools.addView(actionSearch,new LinearLayout.LayoutParams(dp(48),dp(48)));
     selectionButton=DesignUi.button(this,"多选",false,()->setSelecting(!selecting));
     tools.addView(selectionButton,new LinearLayout.LayoutParams(DesignUi.actionWidth(selectionButton,64),dp(48)));
     LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(dp(112),dp(48));
     createParams.leftMargin=dp(8);
     createButton=DesignUi.button(this,"＋ 新建环境",true,()->createWindow());createParams.width=DesignUi.actionWidth(createButton,112);tools.addView(createButton,createParams);
     box.addView(tools);
+    LinearLayout shortcuts=DesignUi.row(this);
+    Button switcher=DesignUi.button(this,"快速切换环境",false,()->EnvironmentSwitcherUi.show(this));
+    viewsButton=DesignUi.button(this,"工作视图",false,this::chooseView);
+    Button commands=DesignUi.button(this,"搜索操作",false,()->ActionSearchUi.show(this));
+    for(Button action:largeText?new Button[]{switcher,viewsButton,commands}:new Button[]{switcher,viewsButton}){LinearLayout.LayoutParams shortcut=new LinearLayout.LayoutParams(largeText?-1:0,-2,largeText?0:1);if(shortcuts.getChildCount()>0){if(largeText)shortcut.topMargin=dp(6);else shortcut.leftMargin=dp(8);}shortcuts.addView(action,shortcut);}
+    if(largeText)shortcuts.setOrientation(LinearLayout.VERTICAL);
+    box.addView(shortcuts);
+    inbox=DesignUi.column(this);box.addView(inbox);
     preparation=DesignUi.progress(this,"正在创建环境…","完成后会打开新环境，请稍候。");
     preparation.setVisibility(View.GONE);DesignUi.addCard(box,preparation);
     LinearLayout searchRow=DesignUi.row(this),searchBox=DesignUi.column(this);
     search=DesignUi.searchInput(searchBox,largeText?"搜索环境":"搜索名称、分组或备注");
+    search.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
     search.setContentDescription("搜索环境");searchRow.addView(searchBox,new LinearLayout.LayoutParams(0,-2,1));
     filterOptions=DesignUi.button(this,"筛选",false,this::chooseFilters);LinearLayout.LayoutParams op=new LinearLayout.LayoutParams(DesignUi.actionWidth(filterOptions,72),dp(48));op.leftMargin=dp(8);searchRow.addView(filterOptions,op);
     LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(8);box.addView(searchRow,sp);
     search.addTextChangedListener(new TextWatcher(){
       public void beforeTextChanged(CharSequence s,int x,int c,int f){}
-      public void onTextChanged(CharSequence s,int x,int b,int c){lastSignature="";refresh();}
+      public void onTextChanged(CharSequence s,int x,int b,int c){scheduleSearch();}
       public void afterTextChanged(Editable e){}
     });
     groupButton=DesignUi.button(this,"全部分组 ▾",false,this::chooseGroup);
@@ -62,10 +89,17 @@ public class WindowHomeActivity extends ThemedActivity {
     filterScroll.setHorizontalScrollBarEnabled(false);
     filterScroll.setHorizontalFadingEdgeEnabled(true);filterScroll.setFadingEdgeLength(dp(12));
     filters=DesignUi.row(this);filterScroll.addView(filters);
+    String[] filterNames={"全部","收藏","运行中","等待回复","需处理"};
+    for(int i=0;i<filterButtons.length;i++){final int target=i;Button button=ReferenceUi.link(this,filterNames[i]+" 0",()->{filter=target;renderCached();});button.setTextSize(12);button.setSingleLine(true);filterButtons[i]=button;LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(DesignUi.actionWidth(button,i==3?100:88),dp(48));params.rightMargin=dp(6);filters.addView(button,params);}
+
     LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,dp(48));
     fp.topMargin=dp(8);box.addView(filterScroll,fp);
     problem=DesignUi.text(this,"",13,DesignUi.RED);problem.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);problem.setVisibility(View.GONE);box.addView(problem);
     cards=DesignUi.column(this);box.addView(cards);
+    maintenanceRows=DesignUi.column(this);cards.addView(maintenanceRows);
+    environmentList=DesignUi.group(this);DesignUi.addCard(cards,environmentList);
+    emptyRows=DesignUi.column(this);cards.addView(emptyRows);
+
     selectionBar=DesignUi.column(this);
     selectionBar.setPadding(dp(14),dp(8),dp(14),dp(10));
     selectionBar.setBackground(DesignUi.surface(this,DesignUi.CARD,0,DesignUi.LINE));
@@ -94,10 +128,14 @@ public class WindowHomeActivity extends ThemedActivity {
     selectionBar.addView(batchActions);root.addView(selectionBar);
     root.addView(DesignUi.nav(this,1,n->WorkspaceNavigation.select(this,1,n),null));
     setContentView(root);
+    Context workspaceContext=Profiles.global(this);
+    snapshotQueue=new EnvironmentRefreshQueue<>(snapshotWorker,task->handler.post(task),()->EnvironmentHomeSnapshot.read(workspaceContext),this::acceptSnapshot,error->{if(workspaceVisible)showProblem(SNAPSHOT_READ_PROBLEM);});
+
+    if(state==null)applyView(savedViews.current(this));
     if(state!=null){
       filter=Math.max(0,Math.min(4,state.getInt("filter")));
       sort=Math.max(0,Math.min(2,state.getInt("sort")));
-      selectedGroup=state.getString("group");selecting=state.getBoolean("selecting");
+      selectedGroup=state.getString("group");activeView=state.getString("activeView","");selecting=state.getBoolean("selecting");
       int[] ids=state.getIntArray("selectedIds");
       if(selecting&&ids!=null)for(int id:ids)selectedIds.add(id);
       search.setText(state.getString("query",""));
@@ -106,22 +144,16 @@ public class WindowHomeActivity extends ThemedActivity {
   }
   @Override protected void onSaveInstanceState(Bundle state){
     super.onSaveInstanceState(state);
-    state.putInt("filter",filter);state.putInt("sort",sort);state.putString("group",selectedGroup);
+    state.putInt("filter",filter);state.putInt("sort",sort);state.putString("group",selectedGroup);state.putString("activeView",activeView);
     state.putString("query",search.getText().toString());state.putBoolean("selecting",selecting);
     state.putIntArray("selectedIds",selectedIds.stream().mapToInt(Integer::intValue).toArray());
   }
-  @Override protected void onResume(){super.onResume();DesignUi.Stars.refresh(this);lastSignature="";handler.removeCallbacks(update);handler.post(update);}
-  @Override protected void onPause(){handler.removeCallbacks(update);super.onPause();}
-  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);lastSignature="";refresh();}
+  @Override protected void onResume(){super.onResume();workspaceVisible=true;renderCached();if(snapshotQueue!=null)snapshotQueue.visible(true);handler.removeCallbacks(update);handler.postDelayed(update,3000);}
+  @Override protected void onPause(){workspaceVisible=false;handler.removeCallbacks(update);handler.removeCallbacks(searchRender);if(snapshotQueue!=null)snapshotQueue.visible(false);if(search!=null)savedViews.remember(this,currentView(activeView));super.onPause();}
+  @Override protected void onDestroy(){workspaceVisible=false;handler.removeCallbacksAndMessages(null);if(snapshotQueue!=null)snapshotQueue.close();snapshotWorker.shutdown();super.onDestroy();}
+  @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);refresh();}
   @Override public void onBackPressed(){if(selecting){setSelecting(false);return;}super.onBackPressed();}
-  Set<Integer> live(){
-    Set<Integer> out=new HashSet<>();
-    try{
-      List<ActivityManager.RunningAppProcessInfo> rows=getSystemService(ActivityManager.class).getRunningAppProcesses();
-      if(rows!=null)for(ActivityManager.RunningAppProcessInfo r:rows)out.add(r.pid);
-    }catch(Exception ignored){}
-    return out;
-  }
+  Set<Integer> live(){return snapshot==null?Collections.emptySet():snapshot.running;}
   int lastWindow(){return AppSettings.recentSlot(this);}
   void chooseFilters(){
     LinearLayout choices=DesignUi.column(this);choices.setPadding(dp(18),dp(8),dp(18),dp(16));
@@ -132,7 +164,7 @@ public class WindowHomeActivity extends ThemedActivity {
   }
   void chooseGroup(){
     List<String> groups=new ArrayList<>();groups.add(null);groups.add("");
-    JSONArray rows=ProfileCatalog.get(this).list();
+    JSONArray rows=snapshot==null?new JSONArray():snapshot.rows;
     for(int i=0;i<rows.length();i++){
       JSONObject row=rows.optJSONObject(i);String group=row.optString("group");
       if(row.optBoolean("created")&&!group.isEmpty()&&!groups.contains(group))groups.add(group);
@@ -141,19 +173,18 @@ public class WindowHomeActivity extends ThemedActivity {
     for(int i=0;i<names.length;i++)names[i]=groups.get(i)==null?"全部分组":groups.get(i).isEmpty()?"未分组":groups.get(i);
     AppAppearance.dialog(this).setTitle("按分组查看")
       .setSingleChoiceItems(names,groups.indexOf(selectedGroup),(d,n)->{
-        selectedGroup=groups.get(n);d.dismiss();lastSignature="";refresh();
+        selectedGroup=groups.get(n);d.dismiss();renderCached();
       }).setNegativeButton("取消",null).show();
   }
   void chooseSort(){
     AppAppearance.dialog(this).setTitle("环境排序")
       .setSingleChoiceItems(new String[]{"编号排序","最近使用","名称排序"},sort,(d,n)->{
-        sort=n;d.dismiss();lastSignature="";refresh();
+        sort=n;d.dismiss();renderCached();
       }).setNegativeButton("取消",null).show();
   }
   static boolean matches(JSONObject row,String query,String group){
     if(group!=null&&!group.equals(row.optString("group")))return false;
-    String text=row.optString("name")+" "+String.format(Locale.ROOT,"%02d",row.optInt("slot")+1)+" "+row.optString("group")+" "+row.optString("notes");
-    return text.toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT));
+    return EnvironmentWorkspacePolicy.matches(row,query);
   }
   static String recentUse(long opened,long now){
     if(opened<=0)return "尚未打开";
@@ -164,114 +195,155 @@ public class WindowHomeActivity extends ThemedActivity {
     if(elapsed<604800000)return elapsed/86400000+" 天前";
     return new java.text.SimpleDateFormat("MM-dd HH:mm",Locale.getDefault()).format(new Date(opened));
   }
-  static String networkStatus(JSONObject row,boolean active,boolean fresh){
-    String mode=row.optString("mode");
-    if(mode.isEmpty())return "暂无网络记录";
-    if(!active)return mode;
-    if(!fresh)return mode+" · 状态待核对";
-    String problem=row.optString("problem");
-    return mode+" · "+(!problem.isEmpty()?problem:row.optBoolean("connected")?"已连接":"待连接");
+  static String networkStatus(JSONObject row,boolean active,boolean fresh){return EnvironmentPresentation.network(row,active,fresh);}
+  void acceptSnapshot(EnvironmentHomeSnapshot value){
+    if(!workspaceVisible||isDestroyed()||isFinishing())return;
+    if(snapshotReadIssue)showProblem("");snapshot=value;DesignUi.Stars.setting(value.stars);renderSnapshot(value);
   }
-  void refresh(){
+  void refresh(){requestSnapshot();renderCached();}
+  void renderSnapshot(EnvironmentHomeSnapshot value){
     if(cards==null||selectionBar==null)return;
-    JSONArray rows=ProfileCatalog.get(this).list();Set<Integer> running=live(),created=new HashSet<>();
+    JSONArray rows=value.rows;Set<Integer> running=value.running,created=new HashSet<>();long now=System.currentTimeMillis();
     int[] counts=new int[5];List<JSONObject> ordered=new ArrayList<>();
-    for(int i=0;i<rows.length();i++){
-      JSONObject row=rows.optJSONObject(i);if(!row.optBoolean("created")||row.optBoolean("resetting"))continue;
-      ordered.add(row);created.add(row.optInt("slot"));counts[0]++;
-      if(row.optBoolean("favorite"))counts[1]++;
-      if(running.contains(row.optInt("pid")))counts[2]++;
-      if(row.optBoolean("waiting")&&running.contains(row.optInt("pid")))counts[3]++;
-      if(!row.optString("problem").isEmpty())counts[4]++;
-    }
-    selectedIds.retainAll(created);
-    String query=search.getText().toString().trim();long now=System.currentTimeMillis();
-    String signature=rows.toString()+running+filter+query+selectedGroup+sort+AppSettings.defaultSlot(this)+selecting+selectedIds+now/60000;
-    if(signature.equals(lastSignature))return;lastSignature=signature;
-    groupButton.setText((selectedGroup==null?"全部分组":selectedGroup.isEmpty()?"未分组":selectedGroup)+" ▾");
-    sortButton.setText(new String[]{"编号排序 ▾","最近使用 ▾","名称排序 ▾"}[sort]);
-    filterOptions.setText(selectedGroup!=null||sort!=0?"筛选 ●":"筛选");filterOptions.setContentDescription("筛选与排序，当前分组："+(selectedGroup==null?"全部":selectedGroup.isEmpty()?"未分组":selectedGroup));
+    for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(!EnvironmentWorkspacePolicy.eligible(row))continue;ordered.add(row);created.add(row.optInt("slot"));counts[0]++;boolean active=EnvironmentPresentation.active(row,running);if(row.optBoolean("favorite"))counts[1]++;if(active)counts[2]++;if(row.optBoolean("waiting")&&active)counts[3]++;if(!row.optString("problem").isEmpty())counts[4]++;}
+    selectedIds.retainAll(created);String query=search.getText().toString().trim();String[] searchTokens=EnvironmentSearchIndex.tokens(query);
+    renderInbox(rows,running,now);updateViewLabel();
+    setText(groupButton,(selectedGroup==null?"全部分组":selectedGroup.isEmpty()?"未分组":selectedGroup)+" ▾");setText(sortButton,new String[]{"编号排序 ▾","最近使用 ▾","名称排序 ▾"}[sort]);
+    setText(filterOptions,selectedGroup!=null||sort!=0?"筛选 ●":"筛选");filterOptions.setContentDescription("筛选与排序，当前分组："+(selectedGroup==null?"全部":selectedGroup.isEmpty()?"未分组":selectedGroup));
     int filterWidth=DesignUi.actionWidth(filterOptions,72);if(filterOptions.getLayoutParams().width!=filterWidth){filterOptions.getLayoutParams().width=filterWidth;filterOptions.requestLayout();}
-    filters.removeAllViews();String[] labels={"全部","收藏","运行中","等待回复","需处理"};
-    for(int i=0;i<labels.length;i++){
-      final int n=i;
-      Button button=ReferenceUi.link(this,labels[i]+" "+counts[i],()->{filter=n;lastSignature="";refresh();});
-      button.setTextSize(12);button.setSingleLine(true);button.setSelected(i==filter);button.setTextColor(i==filter?DesignUi.BLUE:DesignUi.MUTED);
-      if(i==filter){button.setTextColor(DesignUi.BLUE);button.setBackground(DesignUi.surface(this,0xffeaf1ff,8,0xffb6cdfa));}
-      LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(DesignUi.actionWidth(button,i==3?100:88),dp(48));
-      p.rightMargin=dp(6);filters.addView(button,p);
+    String[] labels={"全部","收藏","运行中","等待回复","需处理"};
+    for(int i=0;i<filterButtons.length;i++){Button button=filterButtons[i];setText(button,labels[i]+" "+counts[i]);boolean chosen=i==filter;if(button.isSelected()!=chosen||button.getTag()==null){button.setTag(Boolean.TRUE);button.setSelected(chosen);button.setTextColor(chosen?DesignUi.BLUE:DesignUi.MUTED);button.setBackground(chosen?DesignUi.surface(this,0xffeaf1ff,8,0xffb6cdfa):Ui.ripple(this,android.graphics.Color.TRANSPARENT,9));}int width=DesignUi.actionWidth(button,i==3?100:88);if(button.getLayoutParams().width!=width){button.getLayoutParams().width=width;button.requestLayout();}}
+    if(sort==1)ordered.sort((l,r)->Long.compare(r.optLong("opened"),l.optLong("opened")));if(sort==2)ordered.sort((l,r)->l.optString("name").compareToIgnoreCase(r.optString("name")));
+    renderMaintenance(rows);visibleIds.clear();Set<String> retained=new HashSet<>();int index=0;
+    ScrollView scroll=cards.getParent() instanceof ScrollView?(ScrollView)cards.getParent():null; // body owns scroll; locate below when needed.
+    View parent=cards;while(parent.getParent() instanceof View&&!(parent.getParent() instanceof ScrollView))parent=(View)parent.getParent();if(parent.getParent() instanceof ScrollView)scroll=(ScrollView)parent.getParent();
+    final ScrollView scrolling=scroll;int oldY=scrolling==null?0:scrolling.getScrollY();boolean structure=false;
+    for(JSONObject row:ordered){String key=EnvironmentPresentation.key(row);retained.add(key);EnvironmentRow holder=rowViews.get(key);if(holder==null){holder=new EnvironmentRow();rowViews.put(key,holder);structure=true;}holder.value=row;
+      boolean show=EnvironmentPresentation.visible(row,running,filter,"",selectedGroup)&&value.search.matches(row,searchTokens);if(show)visibleIds.add(row.optInt("slot"));
+      if(holder.root.getVisibility()!=(show?View.VISIBLE:View.GONE)){holder.root.setVisibility(show?View.VISIBLE:View.GONE);structure=true;}
+      if(show)holder.bind(row,running,now,value.defaultSlot);
+      if(index>=environmentList.getChildCount()||environmentList.getChildAt(index)!=holder.root){if(holder.root.getParent()==environmentList)environmentList.removeView(holder.root);environmentList.addView(holder.root,index,new LinearLayout.LayoutParams(-1,-2));structure=true;}index++;
     }
-    if(sort==1)ordered.sort((l,r)->Long.compare(r.optLong("opened"),l.optLong("opened")));
-    if(sort==2)ordered.sort((l,r)->l.optString("name").compareToIgnoreCase(r.optString("name")));
-    cards.removeAllViews();visibleIds.clear();for(int i=0;i<rows.length();i++){JSONObject deleted=rows.optJSONObject(i);if(deleted.optBoolean("deleting")){int id=deleted.optInt("slot");DesignUi.action(cards,"继续清理 · "+deleted.optString("name"),false,()->{try{startDelete(new EnvironmentSpec.Identity(id,deleted.optInt("generation"),deleted.getString("environmentId")));}catch(Exception invalid){showProblem("删除环境已变化，请刷新列表");}});}}
-    for(int i=0;i<rows.length();i++){JSONObject paused=rows.optJSONObject(i);if(paused.optBoolean("resetting")){int id=paused.optInt("slot");DesignUi.action(cards,"继续重置登录 · "+paused.optString("name"),false,()->startReset(id,paused.optInt("generation")-1,paused.optString("environmentId")));}}
-    LinearLayout environmentList=DesignUi.group(this);DesignUi.addCard(cards,environmentList);
-    for(JSONObject row:ordered){
-      boolean active=running.contains(row.optInt("pid"));
-      boolean fresh=row.optLong("seen")>0&&now-row.optLong("seen")<60000;
-      if(filter==1&&!row.optBoolean("favorite")||filter==2&&!active||filter==3&&!(row.optBoolean("waiting")&&active)||filter==4&&row.optString("problem").isEmpty()||!matches(row,query,selectedGroup))continue;
-      int id=row.optInt("slot");visibleIds.add(id);
-      LinearLayout card=DesignUi.card(this);
-      card.setBackground(Ui.ripple(this,DesignUi.CARD,0));
-      card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name"));
-      card.setClickable(true);card.setFocusable(true);
-      card.setOnClickListener(v->{if(selecting)toggleSelection(id);else openWindow(id,"chat");});
-      card.setOnLongClickListener(v->{toggleSelection(id);return true;});
-      if(selecting&&selectedIds.contains(id))card.setBackground(Ui.ripple(this,0xfff0f5ff,0));
-      LinearLayout head=DesignUi.row(this);
-      if(selecting){
-        CheckBox check=new CheckBox(this);check.setChecked(selectedIds.contains(id));
-        check.setContentDescription("选择环境 "+String.format(Locale.ROOT,"%02d",id+1)+" "+row.optString("name"));
-        check.setOnCheckedChangeListener((b,selected)->toggleSelection(id));
-        head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));
-      }else{TextView number=DesignUi.text(this,String.format(Locale.ROOT,"%02d",id+1),12,DesignUi.MUTED);number.setSingleLine(true);number.setGravity(Gravity.CENTER);int width=Math.max(dp(24),(int)Math.ceil(number.getPaint().measureText(number.getText().toString()))+dp(4));head.addView(number,new LinearLayout.LayoutParams(width,-2));}
-      LinearLayout title=DesignUi.column(this);title.setPadding(dp(10),0,dp(6),0);
-      TextView name=DesignUi.text(this,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"),16,DesignUi.TEXT);
-      name.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);title.addView(name);
-      String group=row.optString("group").isEmpty()?"未分组":row.optString("group");
-      TextView sub=DesignUi.text(this,(selecting?String.format(Locale.ROOT,"%02d",id+1)+" · ":"")+(row.optBoolean("desktopSite")?"电脑版 · ":"")+group+(id==AppSettings.defaultSlot(this)?" · 默认":"")+(!row.optString("draft").isEmpty()?" · 草稿":""),12,DesignUi.MUTED);
-      sub.setSingleLine();sub.setEllipsize(TextUtils.TruncateAt.END);title.addView(sub);
-      head.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-      boolean problem=!row.optString("problem").isEmpty();
-      String status=problem?(active?"需处理":"上次异常"):active?(row.optBoolean("waiting")?"等待回复":fresh?"运行中":"待核对"):"未运行";
-      head.addView(DesignUi.badge(this,status,problem?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED));card.addView(head);
-      TextView network=DesignUi.text(this,networkStatus(row,active,fresh),12,problem?DesignUi.RED:DesignUi.MUTED);
-      network.setMaxLines(2);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,dp(8),0,dp(4));card.addView(network);
-      TextView recent=DesignUi.text(this,(row.optLong("opened")<=0?"":"最近 "+recentUse(row.optLong("opened"),now)),12,DesignUi.MUTED);
-      if(selecting){if(row.optLong("opened")>0)card.addView(recent);}
-      else{
-        LinearLayout actions=DesignUi.row(this);actions.setPadding(0,dp(4),0,0);
-        actions.addView(recent,new LinearLayout.LayoutParams(0,-2,1));
-        Button open=ReferenceUi.small(this,"打开环境",true,()->openWindow(id,"chat"));open.setContentDescription("打开环境 "+row.optString("name"));open.setTextSize(13);open.setSingleLine(true);open.setPadding(dp(4),0,dp(4),0);
-        actions.addView(open,new LinearLayout.LayoutParams(DesignUi.actionWidth(open,96),dp(48)));
-        Button more=ReferenceUi.more(this,()->menu(id));more.setContentDescription("更多操作 "+row.optString("name"));
-        LinearLayout.LayoutParams moreParams=new LinearLayout.LayoutParams(dp(48),dp(48));moreParams.leftMargin=dp(6);actions.addView(more,moreParams);card.addView(actions);
-      }
-      DesignUi.groupedRow(environmentList,card);
-    }
+    for(Iterator<Map.Entry<String,EnvironmentRow>> it=rowViews.entrySet().iterator();it.hasNext();){Map.Entry<String,EnvironmentRow> entry=it.next();if(!retained.contains(entry.getKey())){environmentList.removeView(entry.getValue().root);it.remove();structure=true;}}
+    int visibleIndex=0;for(int i=0;i<environmentList.getChildCount();i++){View child=environmentList.getChildAt(i);if(child.getVisibility()==View.VISIBLE){EnvironmentRow holder=null;for(EnvironmentRow candidate:rowViews.values())if(candidate.root==child){holder=candidate;break;}if(holder!=null)holder.separator.setVisibility(visibleIndex++==0?View.GONE:View.VISIBLE);}}
+    environmentList.setVisibility(visibleIds.isEmpty()?View.GONE:View.VISIBLE);
     int maintenance=0;for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.optBoolean("resetting")||row.optBoolean("deleting"))maintenance++;}
-    count.setText(counts[0]==0&&maintenance>0?maintenance+" 个环境待完成维护":visibleIds.size()==counts[0]?counts[0]+" 个环境":"显示 "+visibleIds.size()+" / "+counts[0]);
-    if(visibleIds.isEmpty()){
-      if(counts[0]==0&&maintenance>0)DesignUi.note(cards,"有环境等待完成维护，请点击上方继续重置或清理。");
-      else DesignUi.empty(cards,"没有匹配的环境","试试其他关键词，或重置分组与状态筛选。","重置筛选",()->{filter=0;selectedGroup=null;search.setText("");lastSignature="";refresh();});
+    setText(count,counts[0]==0&&maintenance>0?maintenance+" 个环境待完成维护":visibleIds.size()==counts[0]?counts[0]+" 个环境":"显示 "+visibleIds.size()+" / "+counts[0]);
+    String empty=visibleIds.isEmpty()?(counts[0]==0&&maintenance>0?"maintenance":"filtered"):"";if(!empty.equals(emptySignature)){emptySignature=empty;emptyRows.removeAllViews();if("maintenance".equals(empty))DesignUi.note(emptyRows,"有环境等待完成维护，请点击上方继续重置或清理。");else if("filtered".equals(empty))DesignUi.empty(emptyRows,"没有匹配的环境","试试其他关键词，或重置分组与状态筛选。","重置筛选",()->{filter=0;selectedGroup=null;search.setText("");renderCached();});}
+    updateSelectionBar(rows);if(structure&&scrolling!=null)scrolling.post(()->{if(workspaceVisible)scrolling.scrollTo(0,oldY);});
+  }
+  static void setText(TextView view,String text){if(!android.text.TextUtils.equals(view.getText(),text))view.setText(text);}
+  void renderMaintenance(JSONArray rows){
+    JSONArray signature=new JSONArray();for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.optBoolean("deleting")||row.optBoolean("resetting"))signature.put(new JSONArray().put(EnvironmentPresentation.key(row)).put(row.optString("name")).put(row.optBoolean("deleting")).put(row.optBoolean("resetting")));}
+    if(signature.toString().equals(maintenanceSignature))return;maintenanceSignature=signature.toString();maintenanceRows.removeAllViews();
+    for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);int id=row.optInt("slot");if(row.optBoolean("deleting"))DesignUi.action(maintenanceRows,"继续清理 · "+row.optString("name"),false,()->{try{startDelete(new EnvironmentSpec.Identity(id,row.optInt("generation"),row.getString("environmentId")));}catch(Exception invalid){showProblem("删除环境已变化，请刷新列表");}});else if(row.optBoolean("resetting"))DesignUi.action(maintenanceRows,"继续重置登录 · "+row.optString("name"),false,()->startReset(id,row.optInt("generation")-1,row.optString("environmentId")));}
+  }
+  final class EnvironmentRow {
+    final LinearLayout root=DesignUi.column(WindowHomeActivity.this),card=DesignUi.card(WindowHomeActivity.this),head=DesignUi.row(WindowHomeActivity.this),actions=DesignUi.row(WindowHomeActivity.this);
+    final View separator=new View(WindowHomeActivity.this);final CheckBox check=new CheckBox(WindowHomeActivity.this);
+    final TextView number=DesignUi.text(WindowHomeActivity.this,"",12,DesignUi.MUTED),name=DesignUi.text(WindowHomeActivity.this,"",16,DesignUi.TEXT),sub=DesignUi.text(WindowHomeActivity.this,"",12,DesignUi.MUTED),badge=DesignUi.badge(WindowHomeActivity.this,"",DesignUi.MUTED),network=DesignUi.text(WindowHomeActivity.this,"",12,DesignUi.MUTED),recent=DesignUi.text(WindowHomeActivity.this,"",12,DesignUi.MUTED);
+    JSONObject value;boolean syncing;
+    final Button open=ReferenceUi.small(WindowHomeActivity.this,"打开环境",true,()->openExpected(value,"chat",true)),more=ReferenceUi.more(WindowHomeActivity.this,()->{if(value!=null)menu(value.optInt("slot"));});
+    final EnvironmentPresentation.Binding binding=new EnvironmentPresentation.Binding();
+    EnvironmentRow(){
+      separator.setBackgroundColor(DesignUi.LINE);LinearLayout.LayoutParams line=new LinearLayout.LayoutParams(-1,Math.max(1,dp(1)/2));line.leftMargin=dp(60);line.rightMargin=dp(16);root.addView(separator,line);root.addView(card);
+      card.setClickable(true);card.setFocusable(true);card.setOnClickListener(v->{if(value!=null){if(selecting)toggleSelection(value.optInt("slot"));else openExpected(value,"chat",true);}});card.setOnLongClickListener(v->{if(value!=null)toggleSelection(value.optInt("slot"));return true;});
+      check.setOnCheckedChangeListener((button,selected)->{if(!syncing&&value!=null)toggleSelection(value.optInt("slot"));});head.addView(check,new LinearLayout.LayoutParams(dp(48),dp(48)));number.setSingleLine(true);number.setGravity(Gravity.CENTER);head.addView(number,new LinearLayout.LayoutParams(dp(28),-2));
+      LinearLayout titles=DesignUi.column(WindowHomeActivity.this);titles.setPadding(dp(10),0,dp(6),0);name.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));name.setSingleLine();name.setEllipsize(TextUtils.TruncateAt.END);sub.setSingleLine();sub.setEllipsize(TextUtils.TruncateAt.END);titles.addView(name);titles.addView(sub);head.addView(titles,new LinearLayout.LayoutParams(0,-2,1));head.addView(badge);card.addView(head);network.setMaxLines(2);network.setEllipsize(TextUtils.TruncateAt.END);network.setPadding(0,dp(8),0,dp(4));card.addView(network);
+      actions.setPadding(0,dp(4),0,0);actions.addView(recent,new LinearLayout.LayoutParams(0,-2,1));open.setTextSize(13);open.setSingleLine(true);open.setPadding(dp(4),0,dp(4),0);actions.addView(open,new LinearLayout.LayoutParams(DesignUi.actionWidth(open,96),dp(48)));LinearLayout.LayoutParams extra=new LinearLayout.LayoutParams(dp(48),dp(48));extra.leftMargin=dp(6);actions.addView(more,extra);card.addView(actions);
     }
-    updateSelectionBar(rows);
+    void bind(JSONObject row,Set<Integer> running,long now,int defaultSlot){
+      if(!binding.changed(EnvironmentPresentation.stamp(row,running,now,defaultSlot,selecting,selectedIds.contains(row.optInt("slot")))))return;
+      int id=row.optInt("slot");boolean active=EnvironmentPresentation.active(row,running),fresh=EnvironmentPresentation.fresh(row,now),problem=!row.optString("problem").isEmpty();
+      card.setContentDescription((selecting?"选择环境：":"打开环境：")+row.optString("name"));card.setBackground(Ui.ripple(WindowHomeActivity.this,selecting&&selectedIds.contains(id)?0xfff0f5ff:DesignUi.CARD,0));syncing=true;check.setChecked(selectedIds.contains(id));syncing=false;check.setVisibility(selecting?View.VISIBLE:View.GONE);number.setVisibility(selecting?View.GONE:View.VISIBLE);check.setContentDescription("选择环境 "+String.format(Locale.ROOT,"%02d",id+1)+" "+row.optString("name"));setText(number,String.format(Locale.ROOT,"%02d",id+1));setText(name,(row.optBoolean("favorite")?"★ ":"")+row.optString("name"));String group=row.optString("group").isEmpty()?"未分组":row.optString("group");setText(sub,(selecting?String.format(Locale.ROOT,"%02d",id+1)+" · ":"")+(row.optBoolean("desktopSite")?"电脑版 · ":"")+group+(id==defaultSlot?" · 默认":"")+(!row.optString("draft").isEmpty()?" · 草稿":""));
+      int color=problem?DesignUi.RED:active?DesignUi.GREEN:DesignUi.MUTED;setText(badge,EnvironmentPresentation.status(row,active,fresh));badge.setTextColor(color);badge.setBackground(DesignUi.surface(WindowHomeActivity.this,(color&0x00ffffff)|0x11000000,7,android.graphics.Color.TRANSPARENT));setText(network,networkStatus(row,active,fresh));network.setTextColor(problem?DesignUi.RED:DesignUi.MUTED);setText(recent,row.optLong("opened")<=0?"":"最近 "+recentUse(row.optLong("opened"),now));open.setVisibility(selecting?View.GONE:View.VISIBLE);more.setVisibility(selecting?View.GONE:View.VISIBLE);actions.setVisibility(selecting&&row.optLong("opened")<=0?View.GONE:View.VISIBLE);open.setContentDescription("打开环境 "+row.optString("name"));more.setContentDescription("更多操作 "+row.optString("name"));
+    }
+  }
+  JSONObject currentView(String name){return EnvironmentSavedViews.view(name,search.getText().toString(),selectedGroup,filter,sort);}
+  void applyView(JSONObject view){
+    if(view==null)return;
+    filter=view.optInt("filter");sort=view.optInt("sort");selectedGroup=view.isNull("group")?null:view.optString("group");activeView=view.optString("name");
+    selecting=false;selectedIds.clear();search.setText(view.optString("query"));handler.removeCallbacks(searchRender);renderCached();
+  }
+  void updateViewLabel(){
+    JSONObject saved=savedViews.find(this,activeView);
+    boolean matches=saved!=null&&EnvironmentSavedViews.sameSettings(saved,currentView(activeView));
+    setText(viewsButton,matches?"视图："+activeView:"工作视图"+(saved==null?"":" · 已修改"));
+    viewsButton.setContentDescription(matches?"当前工作视图："+activeView+"，点按切换":"切换或保存工作视图");
+  }
+  void chooseView(){
+    ReferenceUi.Modal panel=new ReferenceUi.Modal(this,"工作视图").asSheet();
+    DesignUi.note(panel.body,"保存搜索、分组、状态和排序，下次一键回到同一工作范围。");
+    ReferenceUi.menuAction(panel,"保存当前视图",()->{panel.dismiss();saveView();});
+    ReferenceUi.menuAction(panel,"查看全部环境",()->{panel.dismiss();applyView(EnvironmentSavedViews.view("","",null,0,0));});
+    JSONArray views=savedViews.list(this);
+    for(int i=0;i<views.length();i++){
+      JSONObject view=views.optJSONObject(i);if(view==null)continue;
+      ReferenceUi.menuAction(panel,view.optString("name"),()->{panel.dismiss();applyView(view);});
+    }
+    if(views.length()>0)ReferenceUi.menuAction(panel,"管理已保存视图",()->{panel.dismiss();manageViews();});
+    panel.show();
+  }
+  void saveView(){
+    LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),0,dp(18),dp(16));
+    EditText name=DesignUi.input(box,"视图名称",activeView,"例如：工作组待处理");name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});
+    DesignUi.note(box,"同名视图会更新为当前条件。保存视图不会更改环境配置或多选结果。");
+    AlertDialog dialog=AppAppearance.dialog(this).setTitle("保存工作视图").setView(box).setNegativeButton("取消",null).setPositiveButton("保存",null).create();dialog.show();
+    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+      String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("请输入视图名称");return;}
+      if(!savedViews.save(this,currentView(title))){name.setError("视图未保存；最多 8 个，请删除多余视图或重试");return;}
+      activeView=title;updateViewLabel();dialog.dismiss();
+    });
+  }
+  void manageViews(){
+    JSONArray views=savedViews.list(this);String[] names=new String[views.length()];for(int i=0;i<names.length;i++)names[i]=views.optJSONObject(i).optString("name");
+    AppAppearance.dialog(this).setTitle("删除已保存视图").setItems(names,(d,n)->{
+      String name=names[n];AppAppearance.dialog(this).setTitle("删除视图“"+name+"”？").setMessage("只移除此筛选组合，环境和配置会保留。")
+        .setNegativeButton("取消",null).setPositiveButton("删除视图",(prompt,which)->{savedViews.remove(this,name);if(name.equals(activeView))activeView="";updateViewLabel();}).show();
+    }).setNegativeButton("完成",null).show();
+  }
+  void renderInbox(JSONArray rows,Set<Integer> running,long now){
+    List<JSONObject> tasks=EnvironmentWorkspacePolicy.actionable(rows,running,now);
+    int issues=0,drafts=0,waiting=0;for(JSONObject row:tasks){if(!row.optString("problem").isEmpty())issues++;if(!row.optString("draft").isEmpty())drafts++;if(row.optBoolean("waiting")&&EnvironmentWorkspacePolicy.running(row,running,now))waiting++;}
+    String next=selecting+":"+tasks.size()+":"+issues+":"+drafts+":"+waiting;if(next.equals(inboxSignature))return;inboxSignature=next;
+    inbox.removeAllViews();if(selecting){inbox.setVisibility(View.GONE);return;}inbox.setVisibility(View.VISIBLE);
+    if(tasks.isEmpty())return;
+    LinearLayout card=DesignUi.card(this);TextView title=ReferenceUi.text(this,"全部环境任务 · "+tasks.size()+" 个环境",16,DesignUi.TEXT,true);card.addView(title);
+    DesignUi.note(card,(issues>0?issues+" 个连接需处理  ":"")+(drafts>0?drafts+" 个配置草稿  ":"")+(waiting>0?waiting+" 个正在等待回复":""));
+    DesignUi.action(card,"查看并继续任务",true,this::showInbox);DesignUi.addCard(inbox,card);
+  }
+  void showInbox(){
+    ReferenceUi.Modal panel=new ReferenceUi.Modal(this,"环境任务收件箱").asSheet();
+    List<JSONObject> tasks=EnvironmentWorkspacePolicy.actionable(snapshot==null?new JSONArray():snapshot.rows,live(),System.currentTimeMillis());
+    if(tasks.isEmpty())DesignUi.note(panel.body,"当前没有待处理的连接、配置草稿或正在等待的回复。");
+    for(JSONObject row:tasks){
+      LinearLayout card=DesignUi.card(this);card.addView(ReferenceUi.text(this,row.optString("name"),16,DesignUi.TEXT,true));
+      boolean issue=!row.optString("problem").isEmpty(),draft=!row.optString("draft").isEmpty();
+      if(issue){DesignUi.note(card,(EnvironmentWorkspacePolicy.running(row,live(),System.currentTimeMillis())?"":"上次记录 · ")+row.optString("problem"));DesignUi.action(card,"排查此环境连接",true,()->{panel.dismiss();openExpected(row,"network",false);});}
+      if(draft){DesignUi.note(card,"已保存环境配置草稿，尚未应用。");DesignUi.action(card,"继续编辑配置",!issue,()->{panel.dismiss();openExpected(row,"edit",false);});}
+      if(row.optBoolean("waiting")&&EnvironmentWorkspacePolicy.running(row,live(),System.currentTimeMillis()))DesignUi.note(card,"此环境正在等待回复，可切回原会话查看。");
+      DesignUi.action(card,"回到原会话",!issue&&!draft,()->{panel.dismiss();openExpected(row,"chat",false);});DesignUi.addCard(panel.body,card);
+    }
+    DesignUi.note(panel.body,"任务来自本机环境状态；不自动重发消息或应用配置。");panel.show();
+  }
+  void openExpected(JSONObject expected,String action,boolean overview){
+    if(!EnvironmentSwitcherUi.open(this,expected,action,overview))showProblem("环境已变化，请刷新后重新选择");
   }
   void setSelecting(boolean value){
-    selecting=value;if(!value)selectedIds.clear();lastSignature="";refresh();
+    selecting=value;if(!value)selectedIds.clear();renderCached();
   }
   void toggleSelection(int id){
-    if(!ProfileCatalog.get(this).item(id).optBoolean("created"))return;
-    selecting=true;if(!selectedIds.remove(id))selectedIds.add(id);lastSignature="";refresh();
+    if(snapshot==null)return;boolean created=false;for(int i=0;i<snapshot.rows.length();i++){JSONObject row=snapshot.rows.optJSONObject(i);if(row.optInt("slot")==id&&EnvironmentWorkspacePolicy.eligible(row)){created=true;break;}}if(!created)return;
+    selecting=true;if(!selectedIds.remove(id))selectedIds.add(id);renderCached();
   }
   void selectVisible(){
     if(visibleIds.isEmpty())return;
     selecting=true;
     if(selectedIds.containsAll(visibleIds))selectedIds.removeAll(visibleIds);else selectedIds.addAll(visibleIds);
-    lastSignature="";refresh();
+    renderCached();
   }
   void updateSelectionBar(JSONArray rows){
-    selectionButton.setText(selecting?"完成":"多选");selectionButton.setSelected(selecting);
+    setText(selectionButton,selecting?"完成":"多选");selectionButton.setSelected(selecting);
     selectionBar.setVisibility(selecting?View.VISIBLE:View.GONE);
     int hidden=0;boolean hasFavorite=false,hasUnfavorite=false;
     for(int id:selectedIds)if(!visibleIds.contains(id))hidden++;
@@ -279,8 +351,8 @@ public class WindowHomeActivity extends ThemedActivity {
       JSONObject row=rows.optJSONObject(i);
       if(selectedIds.contains(row.optInt("slot"))){if(row.optBoolean("favorite"))hasFavorite=true;else hasUnfavorite=true;}
     }
-    selectionCount.setText("已选 "+selectedIds.size()+" 个"+(hidden>0?"\n筛选外 "+hidden+" 个":""));
-    visibleSelectionButton.setText(!visibleIds.isEmpty()&&selectedIds.containsAll(visibleIds)?"取消当前结果选中":"全选当前结果");
+    setText(selectionCount,"已选 "+selectedIds.size()+" 个"+(hidden>0?"\n筛选外 "+hidden+" 个":""));
+    setText(visibleSelectionButton,!visibleIds.isEmpty()&&selectedIds.containsAll(visibleIds)?"取消当前结果选中":"全选当前结果");
     visibleSelectionButton.setEnabled(!visibleIds.isEmpty());
     batchGroupButton.setEnabled(!selectedIds.isEmpty());
     favoriteSelectedButton.setEnabled(hasUnfavorite);unfavoriteSelectedButton.setEnabled(hasFavorite);
@@ -289,7 +361,7 @@ public class WindowHomeActivity extends ThemedActivity {
   void batchFavorite(boolean favorite){
     if(selectedIds.isEmpty())return;
     ProfileCatalog.get(this).favorites(new ArrayList<>(selectedIds),favorite);
-    lastSignature="";refresh();
+    refresh();
   }
   AlertDialog batchGroup(){
     if(selectedIds.isEmpty())return null;
@@ -313,7 +385,7 @@ public class WindowHomeActivity extends ThemedActivity {
       .setPositiveButton("保存分组",null).setNegativeButton("取消",null).create();
     dialog.show();
     dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-      catalog.group(ids,group.getText().toString());dialog.dismiss();lastSignature="";refresh();
+      catalog.group(ids,group.getText().toString());dialog.dismiss();refresh();
     });
     return dialog;
   }
@@ -324,8 +396,8 @@ public class WindowHomeActivity extends ThemedActivity {
     ReferenceUi.Modal panel=new ReferenceUi.Modal(this,row.optString("name")).asSheet();
     for(int i=0;i<labels.length;i++){final int n=i;Button item=ReferenceUi.menuAction(panel,labels[i],()->{panel.dismiss();
       if(n==0)openWindow(id,"edit");if(n==1)metadata(id);
-      if(n==2){ProfileCatalog.get(this).favorite(id,!row.optBoolean("favorite"));lastSignature="";refresh();}
-      if(n==3){AppSettings.defaultSlot(this,id);lastSignature="";refresh();}
+      if(n==2){ProfileCatalog.get(this).favorite(id,!row.optBoolean("favorite"));refresh();}
+      if(n==3){AppSettings.defaultSlot(this,id);refresh();}
       if(n==4)openWindow(id,"network");if(n==5)toggleSelection(id);if(n==6)copyEnvironment(id);if(n==7)resetEnvironment(id);if(n==8)deleteEnvironment(id);
     });if(i>=7)item.setTextColor(DesignUi.RED);}
     panel.show();
@@ -342,7 +414,7 @@ public class WindowHomeActivity extends ThemedActivity {
     if(target<0){showProblem("环境已满，请先删除不再使用的环境");return;}
     final int destination=target;final EnvironmentSpec.Identity expected;try{expected=new EnvironmentSpec.Identity(sourceId,source.optInt("generation"),source.getString("environmentId"));}catch(Exception invalid){showProblem("源环境已变化，请重试");return;}
     LinearLayout box=DesignUi.column(this);box.setPadding(dp(18),0,dp(18),dp(16));String label=source.optString("name");if(label.length()>20)label=label.substring(0,20);EditText name=DesignUi.input(box,"新环境名称",label+" 副本","");name.setFilters(new InputFilter[]{new InputFilter.LengthFilter(24)});DesignUi.note(box,"复制已保存的浏览器模板、网络和使用偏好。账号、聊天和草稿在新环境独立，不会复制。");
-    AlertDialog dialog=AppAppearance.dialog(this).setTitle("复制环境配置").setView(box).setPositiveButton("创建副本",null).setNegativeButton("取消",null).create();dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("请输入环境名称");return;}if(preparing)return;preparing=true;dialog.dismiss();createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);new Thread(()->{String error="";try{Context origin=Profiles.context(this,sourceId);EnvironmentSpec.Identity copied=Profiles.copyConfiguration(origin,destination,expected);ProfileCatalog.get(this).withIdentity(copied,()->{Profiles.rename(this,destination,title);ProfileCatalog.get(this).details(destination,source.optString("group"),source.optString("notes"));return null;});}catch(Exception failure){error=failure.getMessage()==null?"复制未完成，请重试":failure.getMessage();}String issue=error;handler.post(()->{preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);lastSignature="";refresh();if(!issue.isEmpty())showProblem(issue);});},"environment-copy").start();});
+    AlertDialog dialog=AppAppearance.dialog(this).setTitle("复制环境配置").setView(box).setPositiveButton("创建副本",null).setNegativeButton("取消",null).create();dialog.show();dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String title=name.getText().toString().trim();if(title.isEmpty()){name.setError("请输入环境名称");return;}if(preparing)return;preparing=true;dialog.dismiss();createButton.setEnabled(false);preparation.setVisibility(View.VISIBLE);new Thread(()->{String error="";try{Context origin=Profiles.context(this,sourceId);EnvironmentSpec.Identity copied=Profiles.copyConfiguration(origin,destination,expected);ProfileCatalog.get(this).withIdentity(copied,()->{Profiles.rename(this,destination,title);ProfileCatalog.get(this).details(destination,source.optString("group"),source.optString("notes"));return null;});}catch(Exception failure){error=failure.getMessage()==null?"复制未完成，请重试":failure.getMessage();}String issue=error;handler.post(()->{preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);refresh();if(!issue.isEmpty())showProblem(issue);});},"environment-copy").start();});
   }
   void startDelete(EnvironmentSpec.Identity expected){startActivity(new Intent(this,EnvironmentDeleteActivity.class).putExtra("slot",expected.slot).putExtra("confirmedGeneration",expected.generation).putExtra("confirmedEnvironmentId",expected.environmentId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));}
   void deleteEnvironment(int id){
@@ -361,7 +433,7 @@ public class WindowHomeActivity extends ThemedActivity {
     notes.setFilters(new InputFilter[]{new InputFilter.LengthFilter(120)});
     AlertDialog dialog=AppAppearance.dialog(this).setTitle("分组与备注 · "+row.optString("name")).setView(box)
       .setPositiveButton("保存",(d,w)->{
-        ProfileCatalog.get(this).details(id,group.getText().toString(),notes.getText().toString());lastSignature="";refresh();
+        ProfileCatalog.get(this).details(id,group.getText().toString(),notes.getText().toString());refresh();
       }).setNegativeButton("取消",null).show();
     DesignUi.protectEdits(this,dialog,()->!group.getText().toString().equals(row.optString("group"))||!notes.getText().toString().equals(row.optString("notes")));
   }
@@ -480,7 +552,7 @@ public class WindowHomeActivity extends ThemedActivity {
         String error="";try{Profiles.prepare(source,id,clone);Profiles.rename(source,id,title);ProfileCatalog.get(source).details(id,group,"");ProfileCatalog.get(source).browserDisplay(id,desktopSetting);if(makeDefault)AppSettings.defaultSlot(source,id);}
         catch(Exception e){error="环境准备失败，请重试";}
         String failure=error;handler.post(()->{
-          preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);lastSignature="";refresh();
+          preparing=false;if(isFinishing()||isDestroyed())return;createButton.setEnabled(true);preparation.setVisibility(View.GONE);refresh();
           if(failure.isEmpty())openWindow(id,sourceType==2?"network":"chat");else showProblem(failure);
         });
       },"window-create").start();

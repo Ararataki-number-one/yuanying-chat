@@ -25,6 +25,10 @@ class NativeNetwork {
     void complete(RecoveryOutcome outcome){callback.done(outcome);}
   }
   private static NativeNetwork instance;
+  final Set<Runnable> routeListeners=new CopyOnWriteArraySet<>();
+  void addRouteListener(Runnable listener){routeListeners.add(listener);}
+  void removeRouteListener(Runnable listener){routeListeners.remove(listener);}
+  void routeChanged(){for(Runnable listener:routeListeners)try{listener.run();}catch(RuntimeException ignored){}}
   static synchronized NativeNetwork get(Context c){if(Profiles.slot(c)!=Profiles.processSlot())throw new IllegalStateException("网络操作必须由当前环境进程执行");if(instance==null)instance=new NativeNetwork(c);if(Profiles.slot(instance.context)!=Profiles.slot(c))throw new IllegalStateException("网络实例属于其他环境");return instance;}
   static synchronized NativeNetwork peek(){return instance;}
   volatile NetworkApplyCoordinator.RuntimeBinding activeConfiguration;ExitRouteReceipt queuedProof;boolean proofQueued;
@@ -43,7 +47,7 @@ class NativeNetwork {
   void stopConfiguration(NetworkApplyCoordinator.RuntimeBinding expected,Callback callback){configurationOperation(expected,callback,true);}
   synchronized void configurationOperation(NetworkApplyCoordinator.RuntimeBinding expected,Callback callback,boolean stop){
     if(starting||activeConfiguration!=null){main.post(()->callback.done(false,"网络操作正在进行，请重试应用"));return;}
-    activeConfiguration=expected;starting=true;cancelMaintenance();worker.execute(()->runConfigurationOperation(expected,callback,stop));
+    activeConfiguration=expected;starting=true;routeChanged();cancelMaintenance();worker.execute(()->runConfigurationOperation(expected,callback,stop));
   }
   void runConfigurationOperation(NetworkApplyCoordinator.RuntimeBinding expected,Callback callback,boolean stop){
     boolean ok=false;String detail="网络应用尚未确认";ExitRouteReceipt launched=null;
@@ -175,17 +179,17 @@ class NativeNetwork {
   }
   void bindDiagnostics(){if(Looper.myLooper()!=Looper.getMainLooper())NetworkDiagnosticStore.bind(diagnostics,context);}
   void note(NetworkDiagnostics.Event event,NetworkDiagnostics.Reason reason,NetworkDiagnostics.Stage stage,long value){diagnostics.record(event,transport==null?coreGeneration:transport.state.optString("generation",NetworkDiagnostics.UNKNOWN),reason,stage,value);}
-  void report(String text){message=text;ChatSession session=ChatSession.peek();if(session!=null)try{EnvironmentSpec.Identity owner=ProfileCatalog.get(context).identity(Profiles.slot(context));if(owner.slot!=Profiles.slot(session.context)||owner.generation!=session.environmentGeneration||!owner.environmentId.equals(session.environmentId))session=null;}catch(Exception unavailable){session=null;}WindowNetworkState.save(context,session,this);final ChatSession target=session;if(target!=null)main.post(()->{if(!target.deleted&&ChatSession.peek()==target)target.networkStatus(text,ready);});}
+  void report(String text){message=text;routeChanged();ChatSession session=ChatSession.peek();if(session!=null)try{EnvironmentSpec.Identity owner=ProfileCatalog.get(context).identity(Profiles.slot(context));if(owner.slot!=Profiles.slot(session.context)||owner.generation!=session.environmentGeneration||!owner.environmentId.equals(session.environmentId))session=null;}catch(Exception unavailable){session=null;}WindowNetworkState.save(context,session,this);final ChatSession target=session;if(target!=null)main.post(()->{if(!target.deleted&&ChatSession.peek()==target)target.networkStatus(text,ready);});}
   String proxy(){return "http://127.0.0.1:"+proxyPort;}
   static int freePort()throws Exception{try(ServerSocket s=new ServerSocket(0,0,InetAddress.getByName("127.0.0.1"))){return s.getLocalPort();}}
   boolean coreAlive(){return transport!=null?transport.alive():process!=null&&process.isAlive();}
-  void transportChanged(JSONObject state){if(!state.optBoolean("alive")){verifiedRoute=null;admission=NetworkHealthPolicy.Admission.BLOCKED;if(ready){ready=false;cancelMaintenance();report("独立网络服务暂时退出，请重新连接");}}}
+  void transportChanged(JSONObject state){routeChanged();if(!state.optBoolean("alive")){verifiedRoute=null;admission=NetworkHealthPolicy.Admission.BLOCKED;if(ready){ready=false;cancelMaintenance();report("独立网络服务暂时退出，请重新连接");}}}
   static class ExitMismatch extends IOException{ExitMismatch(){super("出口 IP 与保存记录不一致，连接已停止；请检查固定出口设置");}}
   static final class ExitCheckUnavailable extends IOException {
     final String reason;
     ExitCheckUnavailable(String reason,Throwable cause){super("出口核验服务暂时不可用，请稍后再试",cause);this.reason=reason;}
   }
-  void invalidateVerifiedRoute(){verifiedRoute=null;admission=NetworkHealthPolicy.Admission.BLOCKED;routeSerial++;exitCheckFailures=0;nextExitCheckAt=0;failures=0;healthStatus="unknown";healthTargetCode=0;healthObservedAt=0;}
+  void invalidateVerifiedRoute(){verifiedRoute=null;admission=NetworkHealthPolicy.Admission.BLOCKED;routeSerial++;exitCheckFailures=0;nextExitCheckAt=0;failures=0;healthStatus="unknown";healthTargetCode=0;healthObservedAt=0;routeChanged();}
   /** Nonblocking read for UI/fast admission; worker retention checks fresh IPC state. */
   NetworkHealthPolicy.Admission connectionAdmission(){ExitRouteReceipt receipt=verifiedRoute;return ready&&!recoveryBlocked&&receipt!=null&&receipt.matches(this,transport==null?null:transport.state)?admission:NetworkHealthPolicy.Admission.BLOCKED;}
   ExitRouteReceipt exitRouteReceipt()throws Exception{JSONObject state=transport==null?null:transport.call("snapshot","");ExitRouteReceipt receipt=new ExitRouteReceipt(this,state);if(!receipt.matches(this,state))throw new IOException("内置网络实例已变化，请重新连接");return receipt;}
@@ -213,7 +217,7 @@ class NativeNetwork {
     ExitRouteReceipt receipt=outcome==null?null:outcome.receipt;
     return outcome!=null&&outcome.state==RecoveryState.RETAINED&&receipt!=null&&receipt==verifiedRoute&&ready&&!recoveryBlocked&&admission.usable()&&receipt.matches(this,transport==null?null:transport.state);
   }
-  synchronized void startOperation(Callback callback,int mode){if(activeConfiguration!=null){main.post(()->callback.done(false,"网络设置正在应用"));return;}if(mode==0&&connectionAdmission().usable()&&coreAlive()){main.post(()->callback.done(true,message));return;}startWaiters.add(callback);if(starting){if(mode==2)restartQueued=true;return;}starting=true;cancelMaintenance();worker.execute(()->runStartOperation(mode));
+  synchronized void startOperation(Callback callback,int mode){if(activeConfiguration!=null){main.post(()->callback.done(false,"网络设置正在应用"));return;}if(mode==0&&connectionAdmission().usable()&&coreAlive()){main.post(()->callback.done(true,message));return;}startWaiters.add(callback);if(starting){if(mode==2)restartQueued=true;return;}starting=true;routeChanged();cancelMaintenance();worker.execute(()->runStartOperation(mode));
   }
   void runStartOperation(int mode){bindDiagnostics();if(mode!=0)note(NetworkDiagnostics.Event.RECONNECT_ATTEMPT,NetworkDiagnostics.Reason.REQUESTED,NetworkDiagnostics.Stage.RECOVER,++reconnectAttempts);boolean ok=false,retainedResult=false;try{
       if(mode==1&&recoveryBlocked)throw new ExitMismatch();

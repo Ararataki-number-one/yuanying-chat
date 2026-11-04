@@ -17,8 +17,22 @@ final class EnvironmentBrowserData {
     if(!child.exists()&&!child.mkdir()||!child.isDirectory())throw new IOException("环境目录不可用");return child;
   }
   static void clear(File noBackup,File cache)throws IOException{
+    clearBrowserDownloadParts(cache);
     for(String name:new String[]{"gecko-browser","gecko-session.json","gecko-session.json.bak","gecko-session.json.new"})erase(new File(noBackup,name));
     erase(new File(cache,"gecko-uploads"));
+  }
+  static void clearBrowserDownloadParts(File cache)throws IOException{
+    if(Files.isSymbolicLink(cache.toPath())||!cache.isDirectory())throw new IOException("环境缓存目录不可用");
+    File[] files=cache.listFiles();if(files==null)throw new IOException("无法读取环境缓存目录");
+    for(File file:files)if(file.getName().matches("browser-download-.*[.]part")&&(Files.isSymbolicLink(file.toPath())||file.isFile()))erase(file);
+  }
+  static String[] chromiumNames(int slot)throws IOException{
+    if(slot<0||slot>=8)throw new IOException("环境槽位无效");
+    return slot==0?new String[]{"app_webview_env0","app_webview"}:new String[]{"app_webview_env"+slot};
+  }
+  static void clearChromium(File trustedData,int slot)throws IOException{
+    if(Files.isSymbolicLink(trustedData.toPath())||!trustedData.isDirectory())throw new IOException("应用存储目录不可用");
+    for(String name:chromiumNames(slot))erase(new File(trustedData,name));
   }
   static void erase(File file)throws IOException{
     if(Files.isSymbolicLink(file.toPath())){if(!file.delete())throw new IOException("无法清理链接");return;}

@@ -67,6 +67,7 @@ version_code=int(re.search(r'versionCode ([0-9]+)',settings).group(1))
 roadmap_release=tuple(map(int,version.split('.'))) >= (1,6,0)
 template_release=tuple(map(int,version.split('.'))) >= (1,7,0)
 resource_release=tuple(map(int,version.split('.'))) >= (2,0,0)
+browser_release=tuple(map(int,version.split('.'))) >= (2,1,0)
 p=argparse.ArgumentParser()
 p.add_argument('--source',required=True)
 p.add_argument('--apk',type=pathlib.Path,default=root/f'dist/PocketChat-{version}-gecko-arm64.apk')
@@ -94,6 +95,7 @@ if version_code>=46:
 release_tools_commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
 assert not subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True).strip(),'Freeze and commit release tools before publishing.'
 release_tool_files={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}
+if browser_release:release_tool_files.add('tools/browser/check_evidence.py')
 if release_tools_commit!=args.source:
     subprocess.run(['git','merge-base','--is-ancestor',args.source,release_tools_commit],cwd=root,check=True)
     changed=set(subprocess.check_output(['git','diff','--name-only',args.source,release_tools_commit],cwd=root,text=True).splitlines())
@@ -210,6 +212,9 @@ if template_release:
 if resource_release:
     from gecko.check_resource_evidence import verify_resource_evidence
     manifest['resourcePressureDiagnostic']=verify_resource_evidence(args.evidence,args.source)
+if browser_release:
+    from browser.check_evidence import verify_browser_evidence
+    manifest['controlledBrowserRegression']=verify_browser_evidence(args.evidence,args.source)
 for number,offset in enumerate(range(0,len(raw),60_000_000)):
     part=raw[offset:offset+60_000_000];name=f'{args.apk.name}.part{number:02d}'
     manifest['parts'].append({'file':name,'bytes':len(part),'sha256':hashlib.sha256(part).hexdigest()})
@@ -236,6 +241,7 @@ if caret is not None and caret.get('controlledImeEnvironment'):
     performance_files.extend(['caret-ime-environment.json','editing-phase-environment.json'])
 if template_release:performance_files.extend(['gecko-template-results.json','gecko-template-runner-log.json','identity-controller-host-results.json','deferred-browser-host-results.json','identity-bridge-host-results.json'])
 if resource_release:performance_files.extend(['resource-observer-host-results.json','resource-pressure-host-results.json','resource-pressure-results.json','resource-pressure-runner-log.json'])
+if browser_release:performance_files.append('browser-results.json')
 if version_code>=46:performance_files.extend(chain_files+['browser-runtime-policy-host-results.json','original-website-policy-host-results.json','update-route-results.json','official-sdk-verification.json','official-sdk-input.json'])
 if version_code>=59:performance_files.extend(['appearance-results.json','appearance-light.png','appearance-dark.png','network-source-sharing-results.json'])
 if version_code>=70:
@@ -272,6 +278,9 @@ if version_code>=45:
     for name in ['check_interaction_transfer_evidence.py','local_draft_contract.py','download_resume_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
 if version_code>=46:
     for name in ['check_chain_evidence.py','chain_runtime_contract.py','preconnect_contract.py','network_sources_contract.py','check_client_evidence.py','check_sdk_build_evidence.py','sdk_identity_contract.py','update_route_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
+if browser_release:
+    (stage/'tools/browser').mkdir(parents=True,exist_ok=True)
+    shutil.copy2(root/'tools/browser/check_evidence.py',stage/'tools/browser/check_evidence.py')
 branch='apk/gecko-release-20261003'
 if version_code>=70:
     for mode in ('retry','application','internal'):
