@@ -1,0 +1,131 @@
+name: Read fixed Source11 main editing input text (diagnostic only)
+'on':
+  push:
+    branches: [diagnostics/input-2.1.0-source11-main-reports]
+    paths: [.github/workflows/input-source11-main-report-diagnostics.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  read_existing_reports:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Verify fixed phase artifact and print only nonce-bound native-input text
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p diagnostic-input
+        gh api repos/Ararataki-number-one/yuanying-chat/actions/runs/41905469995 > diagnostic-input/run.json
+        gh api repos/Ararataki-number-one/yuanying-chat/git/commits/c5972098df75c92bde6e7dbd6572ee7604ad97bf > diagnostic-input/source.json
+        gh api repos/Ararataki-number-one/yuanying-chat/actions/artifacts/13362351432 > diagnostic-input/artifact.json
+        gh api repos/Ararataki-number-one/yuanying-chat/actions/artifacts/13362351432/zip > diagnostic-input/artifact.zip
+        python3 - <<'PYCODE'
+        """Read fixed existing phase input receipts only; no workload or images."""
+        import base64,hashlib,io,json,pathlib,re,stat,tarfile,zipfile
+        REPO='Ararataki-number-one/yuanying-chat';REPO_ID=1401080063
+        RUN=41905469995;ATTEMPT=1;ARTIFACT=13362351432
+        SOURCE='c5972098df75c92bde6e7dbd6572ee7604ad97bf';TREE='509f6cf98c9a0193f6b9a51875a684c64a34f6f9'
+        NAME='gecko-41905469995-1-editing';SIZE=1766292
+        SHA='2c15095ccfb0200cb76027b171afcb5c6d0c7cde029e751f1fb823905b673284'
+        ROOT=pathlib.Path('diagnostic-input');PREFIX='work/gecko-integration/'
+        def require(value,message):
+            if not value:raise ValueError(message)
+        def strict(raw):
+            def pairs(items):
+                value={}
+                for key,item in items:
+                    require(key not in value,'Duplicate JSON field');value[key]=item
+                return value
+            return json.loads(raw.decode('utf-8'),object_pairs_hook=pairs,
+                parse_constant=lambda _:(_ for _ in ()).throw(ValueError('Nonfinite JSON')))
+        def select_reports(raw):
+            # Original phase upload is one bundle.tar.gz inside the Actions ZIP. Never
+            # guess a sample/flat layout or extract members to filesystem paths.
+            with zipfile.ZipFile(io.BytesIO(raw))as archive:
+                entries=archive.infolist()
+                require(len(entries)==1 and entries[0].filename=='bundle.tar.gz' and not entries[0].is_dir(),'One phase bundle required')
+                item=entries[0]
+                require(stat.S_IFMT(item.external_attr>>16) in (0,stat.S_IFREG) and not item.flag_bits&1,'Unsafe ZIP entry')
+                require(item.compress_type in (zipfile.ZIP_STORED,zipfile.ZIP_DEFLATED) and 0<item.file_size<=32*1024*1024,'ZIP bundle bound/type')
+                packed=archive.read(item)
+            with tarfile.open(fileobj=io.BytesIO(packed),mode='r:gz')as archive:
+                members={};expanded=0
+                for item in archive:
+                    path=pathlib.PurePosixPath(item.name);expanded+=item.size
+                    require(len(members)<2048 and expanded<=128*1024*1024 and 0<=item.size<=16*1024*1024,'Phase expansion bound')
+                    require(item.isfile() and not path.is_absolute() and '..' not in path.parts and '\\' not in item.name
+                        and str(path)==item.name and item.name not in members,'Unsafe/duplicate phase path')
+                    require(item.name=='_ci_bundle.json' or item.name.startswith(PREFIX),'Unexpected phase root')
+                    members[item.name]=item
+                require('_ci_bundle.json' in members and members['_ci_bundle.json'].size<=512*1024,'Phase manifest missing/bound')
+                def read(name):
+                    item=members[name];require(item.size<=512*1024,'Selected text bound')
+                    data=archive.extractfile(item).read();require(len(data)==item.size,'Selected byte count differs');data.decode('utf-8');return data
+                manifest_raw=read('_ci_bundle.json');manifest=strict(manifest_raw)
+                require(type(manifest.get('schema'))is int and manifest['schema']==1 and manifest.get('kind')=='phase' and manifest.get('phase')=='editing','Phase kind differs')
+                require((manifest.get('sourceCommit'),manifest.get('sourceTree'),manifest.get('runId'),manifest.get('runAttempt'))
+                    ==(SOURCE,TREE,str(RUN),str(ATTEMPT)),'Phase source/tree/run/attempt differs')
+                require(isinstance(manifest.get('buildIndexSha256'),str) and re.fullmatch('[0-9a-f]{64}',manifest['buildIndexSha256'])is not None,'Original build index identity missing')
+                rows=manifest.get('files');require(isinstance(rows,list) and 1<=len(rows)<=2047,'Phase file declaration bound')
+                declared={}
+                for row in rows:
+                    require(isinstance(row,dict) and set(row)=={'path','bytes','sha256'},'Phase file declaration shape')
+                    name=row['path'];require(isinstance(name,str) and name in members and name!='_ci_bundle.json' and name not in declared,'Phase declaration path')
+                    require(type(row['bytes'])is int and row['bytes']==members[name].size and re.fullmatch('[0-9a-f]{64}',row.get('sha256',''))is not None,'Phase declared bytes/hash')
+                    declared[name]=row
+                require(set(declared)==set(members)-{'_ci_bundle.json'},'Phase declaration/member set differs')
+                def selected(name):
+                    require(name in declared,'Required original text missing: '+name)
+                    data=read(name);require(hashlib.sha256(data).hexdigest()==declared[name]['sha256'],'Selected original hash differs: '+name);return data
+                report_name=PREFIX+'gecko-performance-results.json';report_raw=selected(report_name);report=strict(report_raw)
+                require(report.get('status')=='failed' and report.get('sourceCommit')==SOURCE,'Failed original performance source differs')
+                driver=report.get('nativeInputDriver');require(isinstance(driver,dict) and driver.get('purpose')=='qualification','Native input purpose differs')
+                nonce=driver.get('nonce');require(isinstance(nonce,str) and re.fullmatch('[0-9a-f]{32}',nonce)is not None,'Native input nonce')
+                receipts=driver.get('receipts');require(isinstance(receipts,list) and 1<=len(receipts)<=2,'Native invocation count')
+                optional=set();gestures=[]
+                for row in receipts:
+                    require(isinstance(row,dict) and row.get('gesture') in ('baseline-scroll','current-scroll'),'Original native gesture')
+                    gesture=row['gesture'];require(gesture not in gestures,'Repeated original gesture');gestures.append(gesture)
+                    base='native-input-'+nonce+'-'+gesture;require(row.get('file')==base+'.json','Native receipt name differs')
+                    optional.update(PREFIX+base+suffix for suffix in ('.json','-stdout.log','-stderr.log','-owner.json','-owner-stderr.log','-cleanup.json','-collection.json','-read-stderr.log'))
+                    if row.get('sha256')is not None:
+                        require(re.fullmatch('[0-9a-f]{64}',row['sha256'])is not None and declared.get(PREFIX+base+'.json',{}).get('sha256')==row['sha256'],'Original receipt row hash differs')
+                names={'_ci_bundle.json',report_name}|optional.intersection(declared)
+                require(len(names)<=18,'Selected text count bound')
+                files={'_ci_bundle.json':manifest_raw,report_name:report_raw}
+                for name in sorted(names-set(files)):
+                    require(name.endswith(('.json','.log')) and not any(word in name.lower() for word in ('png','screen','failure-log','native-test')),'Nonallowlisted text')
+                    files[name]=selected(name)
+                require(sum(map(len,files.values()))<=2*1024*1024,'Selected aggregate bound')
+                return files,dict(archiveFormat='actions-zip/phase-tar-gzip',phase='editing',phaseFileCount=len(members),
+                    nativeRunNonce=nonce,nativeGestures=gestures,absentOptionalFiles=sorted(optional-set(declared)),
+                    originalBuildIndexSha256=manifest['buildIndexSha256'],unselectedMemberContentsOpened=False)
+        def main():
+            run=strict((ROOT/'run.json').read_bytes());artifact=strict((ROOT/'artifact.json').read_bytes());commit=strict((ROOT/'source.json').read_bytes())
+            require(run['id']==RUN and run['run_attempt']==ATTEMPT and run['head_sha']==SOURCE,'Run/source/attempt differs')
+            require(run['repository']['full_name']==REPO and run['repository']['id']==REPO_ID,'Repository differs')
+            require(run['head_branch']=='release/browser-2.1.0' and run['path']=='.github/workflows/browser-2_1-acceptance.yml','Branch/workflow differs')
+            require(commit['sha']==SOURCE and commit['tree']['sha']==TREE,'Source tree differs')
+            require(artifact['id']==ARTIFACT and artifact['name']==NAME and artifact['size_in_bytes']==SIZE and artifact['expired']is False,'Artifact differs')
+            require(artifact['digest']=='sha256:'+SHA,'Artifact digest differs')
+            origin=artifact['workflow_run'];require(origin['id']==RUN and origin['head_sha']==SOURCE and origin['head_branch']=='release/browser-2.1.0','Artifact origin differs')
+            require(origin['repository_id']==REPO_ID and origin['head_repository_id']==REPO_ID,'Artifact repository differs')
+            raw=(ROOT/'artifact.zip').read_bytes();require(len(raw)==SIZE and hashlib.sha256(raw).hexdigest()==SHA,'Downloaded ZIP differs')
+            files,structure=select_reports(raw)
+            summary=dict(schema=1,diagnosticOnly=True,releaseAcceptance=False,actualWorkloadInvoked=False,readExistingArtifactOnly=True,
+                sourceCommit=SOURCE,sourceTree=TREE,targetRunId=str(RUN),targetRunAttempt=str(ATTEMPT),artifactId=ARTIFACT,artifactName=NAME,
+                artifactZipBytes=len(raw),artifactZipSha256=SHA,screenshotsExported=False,otherRawLogsExported=False,structure=structure,
+                files={name:dict(bytes=len(data),sha256=hashlib.sha256(data).hexdigest())for name,data in files.items()})
+            print('EDITING_INPUT_DIAG_SUMMARY '+json.dumps(summary,sort_keys=True),flush=True)
+            for name,data in files.items():
+                encoded=base64.b64encode(data).decode('ascii');parts=[encoded[i:i+8192]for i in range(0,len(encoded),8192)]
+                meta=dict(name=name,bytes=len(data),sha256=hashlib.sha256(data).hexdigest(),parts=len(parts))
+                print('EDITING_INPUT_DIAG_FILE_BEGIN '+json.dumps(meta,sort_keys=True),flush=True)
+                for index,part in enumerate(parts):print('EDITING_INPUT_DIAG_FILE_CHUNK '+json.dumps(dict(name=name,part=index,base64=part),sort_keys=True),flush=True)
+                print('EDITING_INPUT_DIAG_FILE_END '+json.dumps(meta,sort_keys=True),flush=True)
+            print('EDITING_INPUT_DIAG_COMPLETE '+json.dumps(dict(diagnosticOnly=True,releaseAcceptance=False,files=len(files),screenshotsExported=False)),flush=True)
+        if __name__=='__main__':main()
+        PYCODE
