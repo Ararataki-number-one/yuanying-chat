@@ -291,6 +291,10 @@ if version_code>=70:
         shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
     (stage/'tests').mkdir(exist_ok=True)
     shutil.copy2(root/'tests/network_settings_internal46_contract.py',stage/'tests/network_settings_internal46_contract.py')
+    shutil.copy2(root/'tests/gecko/network_settings_callback_contract.py',stage/'tools/gecko/network_settings_callback_contract.py')
+    shutil.copy2(root/'tests/network_settings_callback_source_compatibility.py',stage/'tests/network_settings_callback_source_compatibility.py')
+    (stage/'tests/fixtures').mkdir(exist_ok=True)
+    shutil.copy2(root/'tests/fixtures/network-settings-callback-source-deltas.json',stage/'tests/fixtures/network-settings-callback-source-deltas.json')
 # Local preparation has run the same checks and copied the same public inputs.
 # A separate authenticated transport can publish the exact reviewed tree later.
 if args.stage_only:
@@ -312,7 +316,7 @@ if previous:
 subprocess.run(['git','read-tree','--empty'],cwd=root,env=env,check=True)
 if resource_release:
     for name in ['check_resource_evidence.py','resource_invocation_contract.py']:shutil.copy2(root/'tools/gecko'/name,stage/'tools/gecko'/name)
-subprocess.run(['git','add','-f','--','.github','tools',*(['tests/network_settings_internal46_contract.py'] if version_code>=70 else []),'release-manifest.json','RELEASE.md','device-results.json',*(['manual-acceptance.json'] if manual_raw is not None else []),*(['release-authorization.json'] if authorization_raw is not None else []),*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
+subprocess.run(['git','add','-f','--','.github','tools',*(['tests/network_settings_internal46_contract.py','tests/network_settings_callback_source_compatibility.py','tests/fixtures/network-settings-callback-source-deltas.json'] if version_code>=70 else []),'release-manifest.json','RELEASE.md','device-results.json',*(['manual-acceptance.json'] if manual_raw is not None else []),*(['release-authorization.json'] if authorization_raw is not None else []),*(['network-performance-results.json'] if version_code>=40 else []),*(['quiet-notification-results.json','compact-chrome-results.json'] if version_code>=42 else []),*performance_files,*[x['file'] for x in manifest['parts']]],cwd=root,env=env,check=True)
 tree=subprocess.check_output(['git','write-tree'],cwd=root,env=env,text=True).strip()
 commit=subprocess.check_output(['git','commit-tree',tree,*parents,'-m','Publish original-signed production Gecko APK'],cwd=root,env=env,text=True).strip()
 subprocess.run(['git','-c','http.postBuffer=524288000','push','origin',commit+':refs/heads/'+branch],cwd=root,check=True)

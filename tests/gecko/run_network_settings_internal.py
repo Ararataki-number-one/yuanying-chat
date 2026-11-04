@@ -13,9 +13,12 @@ import uuid
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tests'))
 from network_settings_internal46_contract import require_runner_source
-require_runner_source(pathlib.Path(__file__).read_bytes())
+from network_settings_callback_source_compatibility import source_input
+require_runner_source(source_input(pathlib.Path(__file__).read_bytes(), 'tests/gecko/run_network_settings_internal.py'))
 sys.path.insert(0, str(ROOT / 'tools/gecko'))
 from diagnostic_capture_privacy import checked_text, safe_error_text
+sys.path.insert(0, str(ROOT / "tests/gecko"))
+from network_settings_callback_contract import verify_callback_cohort
 # Stored diagnostic text is a verified service-key derivative.
 PKG = 'local.pocketchat.test'
 ACTIVITY = PKG + '/local.pocketchat.NetworkSafeIdleIntegrationActivity'
@@ -322,6 +325,7 @@ def verify(report, source, nonce, apk_sha):
         assert row['internal'] is False  # Direct user job; the route itself is internal.
         assert row['ok'] is case['result']['ok'] and row['operationResult'] == case['result']['operationResult']
     assert len({row['id'] for row in observations}) == len(observations)
+    verify_callback_cohort(report)
 
 
 def main():

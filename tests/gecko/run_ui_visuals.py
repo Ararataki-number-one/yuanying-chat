@@ -22,6 +22,42 @@ from ui_settings_services_device11 import prepare_workflow as prepare_settings_s
 settings_services_device11=prepare_settings_services_device11(adb,serial=args.serial,environment=os.environ,root=root,source=source,record_path=out/'ui-settings-services-isolation.json')
 def dump(deadline=None):
     return ui_capture.read(deadline=deadline)
+def adb_scene(deadline,*values):
+    remaining=deadline-time.monotonic()
+    if remaining<=0:raise TimeoutError('Existing UI scene deadline expired before native observation')
+    return subprocess.check_output([args.adb,'-s',args.serial,*values],timeout=min(90,remaining)).decode(errors='replace')
+def download_label_packets(raw,nonce):
+    payloads=[]
+    for line in raw.splitlines():
+        if '{' not in line:continue
+        packet=line[line.index('{'):]
+        def pairs(values):
+            result={}
+            for key,value in values:
+                assert key not in result,'Duplicate native label observation field'
+                result[key]=value
+            return result
+        value=json.loads(packet,object_pairs_hook=pairs,parse_constant=lambda _:(_ for _ in ()).throw(ValueError('Nonfinite native observation')))
+        if value.get('nonce')==nonce:payloads.append(packet)
+    return payloads
+def observe_scrolled_download(invocation_nonce,deadline):
+    prior=download_label_packets(adb_scene(deadline,'logcat','-d','-s','PocketDownloadLabel:I','*:S'),invocation_nonce)
+    assert len(prior)==1,('Missing or duplicate initial native download observation',prior)
+    initial=json.loads(prior[0]);assert initial.get('status')=='observed' and initial.get('sourceCommit')==source and initial.get('invocationNonce')==invocation_nonce,initial
+    nonce=uuid.uuid4().hex
+    adb_scene(deadline,'shell','am','start','-W','--activity-single-top','-n',package+'/local.pocketchat.UiVisualIntegrationActivity',
+      '--es','visualObserveAction','download-location','--es','visualObserveNonce',nonce,'--es','visualParentNonce',invocation_nonce,'--es','visualSourceCommit',source)
+    while True:
+        current=download_label_packets(adb_scene(deadline,'logcat','-d','-s','PocketDownloadLabel:I','*:S'),nonce)
+        if current:break
+        remaining=deadline-time.monotonic()
+        if remaining<=0:raise TimeoutError('Existing UI scene deadline expired awaiting native download observation')
+        time.sleep(min(.2,remaining))
+    assert len(current)==1,('Duplicate fresh native download observation',current)
+    measured=json.loads(current[0]);assert measured.get('status')=='observed' and measured.get('sourceCommit')==source and measured.get('invocationNonce')==invocation_nonce,measured
+    for key in ('activityIdentity','rootIdentity','buttonIdentity'):
+        assert type(initial.get(key)) is int and type(measured.get(key)) is int and initial[key]==measured[key],('Native download observation changed its actual view owner',key,initial,measured)
+    return nonce,[prior[0],current[0]]
 def click(xml,label):
     node=next(n for n in ET.fromstring(xml).iter('node') if n.attrib.get('text')==label)
     x1,y1,x2,y2=map(int,re.findall(r'\d+',node.attrib['bounds']));adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
@@ -60,19 +96,24 @@ def capture(variant,width,height,scale,scene,theme='light'):
     required={'chat':'会话','environments':'环境管理','network':'固定测试出口','proxy':'代理地址','entries':'选择入口','browser':'基本信息','preferences':'基本信息','settings':'启动与界面','network-menu':'导入网络',
       'environment-picker':'切换环境','downloads':'项目资料与界面设计说明.pdf','feedback':'一句话说明','appearance':'白天与黑夜','default-entry':'默认环境与启动入口',
       'subscription-form':'订阅名称','exit-form':'SOCKS5 服务器','route-editor':'保存并应用','import':'选择分享文件','brand':'元婴期院士','templates':'选择模板','zoom':'网页缩放','update':'当前安装版本','audit':'环境自检与变更','file-preview':'双指缩放 · 拖动查看','delete-file':'删除文件','share-preview':'分享整条线路'}[scene]
-    deadline=time.monotonic()+35;readiness_scrolls=0
+    deadline=time.monotonic()+35;readiness_scrolls=0;download_observation_history=None
     while True:
         xml=dump(deadline=deadline)
         runtime=adb('logcat','-d','-s','AndroidRuntime:E','*:S')
         if 'FATAL EXCEPTION' in runtime:raise AssertionError((variant,scene,'Android UI crashed',runtime[-5000:]))
         if required in xml:break
-        if scene in ('exit-form','templates') and readiness_scrolls<8:
+        if scene in ('exit-form','templates','downloads') and readiness_scrolls<8:
             candidates=[n for n in ET.fromstring(xml).iter('node') if n.attrib.get('class')=='android.widget.ScrollView' and n.attrib.get('scrollable')=='true']
             if candidates:
                 left,top,right,bottom=map(int,re.findall(r'\d+',candidates[-1].attrib['bounds']));x=(left+right)//2
                 adb('shell','input','swipe',str(x),str(top+(bottom-top)*4//5),str(x),str(top+(bottom-top)//5),'350');readiness_scrolls+=1
         if time.monotonic()>deadline:raise AssertionError((variant,scene,'screen did not appear',xml[-2000:]))
         time.sleep(.5)
+    if scene=='downloads' and readiness_scrolls:
+        # The file cards share a real ScrollView with the discovery controls.
+        # Retain the first clipped native observation; after actual user input,
+        # request a fresh read of the same laid-out button without rebuilding UI.
+        label_nonce,download_observation_history=observe_scrolled_download(label_nonce,deadline)
     if scene=='templates':
         # Both fixed footer actions must fit without scrolling or clipping.
         for label in ('关闭','保存模板'):
@@ -130,7 +171,9 @@ def capture(variant,width,height,scale,scene,theme='light'):
     if scene=='downloads':
         # Small native payload from this exact Activity invocation; never infer
         # drawn text completeness from accessibility XML's full text attribute.
-        label_log=subprocess.check_output([args.adb,'-s',args.serial,'logcat','-d','-s','PocketDownloadLabel:I','*:S'],timeout=30).decode('utf-8')
+        remaining=deadline-time.monotonic()
+        if remaining<=0:raise TimeoutError('Existing UI scene deadline expired before final native download evidence')
+        label_log=subprocess.check_output([args.adb,'-s',args.serial,'logcat','-d','-s','PocketDownloadLabel:I','*:S'],timeout=min(30,remaining)).decode('utf-8')
         payloads=[]
         for line in label_log.splitlines():
             if '{' not in line:continue
@@ -139,6 +182,9 @@ def capture(variant,width,height,scale,scene,theme='light'):
             if value.get('nonce')==label_nonce:payloads.append(raw)
         assert len(payloads)==1,(variant,scene,'Missing or duplicate owned native label observation',payloads)
         record.update(downloadLocationNonce=label_nonce,downloadLocationRaw=payloads[0])
+        if download_observation_history is not None:
+            assert payloads[0]==download_observation_history[-1],('Native download observation changed after readiness',payloads)
+            record.update(downloadLocationObservationHistory=download_observation_history,downloadLocationSameActivityRootButton=True)
         (shots/(stem+'-download-location.json')).write_text(payloads[0]+'\n')
         verify_download_location(record,source)
     if scene=='preferences':record.update(preference_check)

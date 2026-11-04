@@ -137,3 +137,25 @@ def original_sharing13_tree(tree):
     outer[0].finalbody = []
     assert tree_digest(tree) == SHARING_OLD_AST, 'Original sharing AST did not restore'
     return tree
+
+
+# Source6 adds an owned fresh observation after real readiness scrolling. Only
+# historical source inputs use this exact inverse; runtime hosts keep current bytes.
+import importlib.util as _observer_import
+from pathlib import Path as _ObserverPath
+_observer_spec = _observer_import.spec_from_file_location('selected_ui_observer_source_input', _ObserverPath(__file__).with_name('ui_observer_source_compatibility.py'))
+_observer_input = _observer_import.module_from_spec(_observer_spec)
+_observer_spec.loader.exec_module(_observer_input)
+
+
+def original_observer_fixture_bytes(raw):
+    return _observer_input.source_input(raw, 'tests/gecko/UiVisualIntegrationActivity.java', allow_previous=True)
+
+
+def original_ui_preservation_contract_bytes(raw):
+    return _observer_input.source_input(raw, 'tests/ui_visual_preservation_contract.py')
+
+
+original_ui13_bytes = _observer_input.wrap_runner_bytes(original_ui13_bytes)
+require_current_ui14 = _observer_input.wrap_runner_bytes(require_current_ui14)
+remove_reviewed_ui14_deadline = _observer_input.wrap_runner_ast(remove_reviewed_ui14_deadline)

@@ -13,6 +13,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tests'))
 import network_settings_internal46_contract as contract
+from network_settings_callback_source_compatibility import source_input as network_source_input
 
 
 def load(name, path):
@@ -49,7 +50,7 @@ class Internal46ContractTests(unittest.TestCase):
 
     def test_entire_reviewed_files_invert_to_exact_original_whole_sources(self):
         for path, (previous, reviewed, _) in contract.REVIEWED.items():
-            raw = (ROOT / path).read_bytes()
+            raw = network_source_input((ROOT / path).read_bytes(), path)
             self.assertEqual(hashlib.sha256(raw).hexdigest(), reviewed)
             self.assertEqual(hashlib.sha256(contract.previous_source_bytes(raw, path)).hexdigest(), previous)
         self.assertEqual(contract.REVIEWED['tests/gecko/run_network_settings_internal.py'][0],
@@ -59,7 +60,7 @@ class Internal46ContractTests(unittest.TestCase):
 
     def test_missing_duplicate_altered_relocated_and_unknown_source_deltas_rejected(self):
         for path, (_, _, deltas) in contract.REVIEWED.items():
-            raw = (ROOT / path).read_bytes()
+            raw = network_source_input((ROOT / path).read_bytes(), path)
             for _, addition in deltas:
                 for changed in [raw.replace(addition, b'', 1),
                                 raw.replace(addition, addition + addition, 1),
@@ -75,7 +76,7 @@ class Internal46ContractTests(unittest.TestCase):
 
     def test_original_wire_owner_nonce_source_and_timeout_predicates_cannot_be_edited(self):
         path = 'tests/gecko/run_network_settings_internal.py'
-        raw = (ROOT / path).read_bytes()
+        raw = network_source_input((ROOT / path).read_bytes(), path)
         for old, changed in [(b"wire['authenticated'] is True", b"wire['authenticated'] is False"),
                              (b"deadline, report = time.monotonic() + 540, None", b"deadline, report = time.monotonic() + 541, None"),
                              (b"actual[field] == wanted[field]", b"actual[field] != wanted[field]"),
@@ -87,7 +88,7 @@ class Internal46ContractTests(unittest.TestCase):
 
     def test_every_original_gate_test_method_is_byte_identical(self):
         path = 'tests/gecko_settings_internal_gate_test.py'
-        current = (ROOT / path).read_text()
+        current = network_source_input((ROOT / path).read_bytes(), path).decode()
         prior = contract.previous_source_bytes(current.encode(), path).decode()
         def methods(text):
             tree = ast.parse(text)
@@ -165,7 +166,7 @@ class Internal46ContractTests(unittest.TestCase):
 
     def test_actual_injection_capture_and_original_assertion_counts_are_preserved(self):
         path = 'tests/gecko/NetworkSettingsInternalApplication.java'
-        current = (ROOT / path).read_bytes()
+        current = network_source_input((ROOT / path).read_bytes(), path)
         prior = current
         for before, after in reversed(contract.REVIEWED[path][2][-3:]):
             self.assertEqual(prior.count(after), 1)
@@ -179,7 +180,7 @@ class Internal46ContractTests(unittest.TestCase):
         self.assertLess(current.index(capture), current.index(b'a.provider.pollApplication(attempt)'))
         self.assertIn(b'originalAttemptCurrent&&pendingUnchangedAtPoll&&connectionAtInjection==attempt.connection', current)
         path = 'tests/gecko/run_network_settings_internal.py'
-        current = (ROOT / path).read_bytes()
+        current = network_source_input((ROOT / path).read_bytes(), path)
         before, after = contract.REVIEWED[path][2][-1]
         prior = current.replace(after, before, 1)
         self.assertEqual(hashlib.sha256(prior).hexdigest(),

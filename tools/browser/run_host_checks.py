@@ -27,6 +27,8 @@ def main():
         for name,script in [('preferences','tests/browser-preferences-host/run.py'),('library','tests/browser-library-host/run.py'),('transcript-store','tests/transcript-store-performance-host/run.py'),('chat-progress','tests/chat-progress-performance-host/run.py')]:
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('chooser-'+label);add('chooser-'+label,'tests/browser-files-host/chooser.py',java+['--json-jar',jar,'--output',target],target/'results.json')
+        target=out/('network-fence-'+label);add('network-fence-'+label,'tests/network-fence-completion-host/run.py',java+['--json-jar',jar,'--output',target],target/'results.json')
+        target=out/('ui-download-observer-'+label+'.json');add('ui-download-observer-'+label,'tests/gecko-ui-download-observer-host/run.py',java+['--json-jar',jar,'--output',target],target)
         for ref in ['1e3086a',None]:
             name='chat-chrome-'+label+('-before' if ref else '-current');target=out/(name+'.json');arguments=java+['--json-jar',jar,'--output',target]+(['--before-ref',ref] if ref else []);add(name,'tests/chat-chrome-performance-host/run.py',arguments,target)
     add('shell','tests/ux-shell-host/run.py',java+['--output',out/'shell'])
@@ -34,6 +36,10 @@ def main():
         target=out/(name+'.json');add(name,script,java+['--output',target],target)
     for name,script in [('browser-controls','tests/browser-controls-performance-host/run.py'),('transcript-order','tests/browser-transcript-order-host/run.py')]:
         target=out/(name+'.json');add(name,script,['--jsdom-module',a.jsdom_module.resolve(),'--output',target],target)
+    add('browser-targeting','tests/browser_targeting_test.py')
+    add('network-callback-cohort','tests/network_settings_callback_contract_test.py')
+    add('network-completion-proof','tests/network_fence_completion_contract_test.py')
+    add('network-callback-source-history','tests/profile_network_settings_callback_source_compatibility_test.py')
     add('evidence-gate','tests/browser_evidence_test.py')
     add('publisher-gate','tests/browser_publish_gate_test.py')
     add('baseline-bundle','tests/browser_baseline_bundle_test.py')

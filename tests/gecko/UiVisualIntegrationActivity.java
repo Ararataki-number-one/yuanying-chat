@@ -12,6 +12,7 @@ public final class UiVisualIntegrationActivity extends Activity {
   NetworkWorkspaceUi workspace;
   SavedFileActions savedActions;
   DownloadLocationLayoutEvidence downloadLocationEvidence;
+  final java.util.Set<String> downloadObservationNonces=new java.util.HashSet<>();
   final Handler handler=new Handler(Looper.getMainLooper());
   @Override public void onCreate(Bundle state){
     super.onCreate(state);String action=getIntent().getStringExtra("visualAction");
@@ -39,7 +40,7 @@ public final class UiVisualIntegrationActivity extends Activity {
         try{controller.apply(data,0,now);}finally{controller.preparedOwners=null;}
       }else DesignSettingsUi.render(this,box,()->{});
       root.addView(ReferenceUi.nav(this,downloads?2:4,n->{},new Button[5]));setContentView(root);AppAppearance.apply(root);
-      if("downloads".equals(action))downloadLocationEvidence=new DownloadLocationLayoutEvidence(this,root,getIntent().getStringExtra("visualNonce"));
+      if("downloads".equals(action)){String nonce=getIntent().getStringExtra("visualNonce");downloadObservationNonces.add(nonce);downloadLocationEvidence=new DownloadLocationLayoutEvidence(this,root,nonce);}
       if("appearance".equals(action))DesignSettingsUi.appearance(this,()->{});
       if("default-entry".equals(action))DesignSettingsUi.defaultEntry(this,()->{});
       if("feedback".equals(action))FeedbackUi.open(this);
@@ -84,6 +85,31 @@ public final class UiVisualIntegrationActivity extends Activity {
       Log.i("PocketUiVisual","ready "+action);
     };
   }
+  @Override protected void onNewIntent(Intent request){
+    super.onNewIntent(request);
+    String nonce=null;
+    try{
+      nonce=request==null?null:request.getStringExtra("visualObserveNonce");
+      String reason=downloadObservationRejection(request);
+      if(!reason.isEmpty()){rejectDownloadObservation(nonce,reason);return;}
+      DownloadLocationLayoutEvidence previous=downloadLocationEvidence;downloadObservationNonces.add(nonce);previous.close();
+      DownloadLocationLayoutEvidence fresh=new DownloadLocationLayoutEvidence(this,previous.root,nonce,previous.invocationNonce);downloadLocationEvidence=fresh;
+      // Read an already laid-out native view; do not request layout, change
+      // visibility, recreate the Activity or mutate its real scroll position.
+      handler.post(()->{if(downloadLocationEvidence==fresh&&!fresh.closed)fresh.onPreDraw();});
+    }catch(Exception invalid){rejectDownloadObservation(nonce,"invalid-observation");}
+  }
+  String downloadObservationRejection(Intent request)throws Exception{
+    if(request==null)return "action";
+    if(!"local.pocketchat.test".equals(getPackageName()))return "test-package";
+    if(!"downloads".equals(getIntent().getStringExtra("visualAction"))||downloadLocationEvidence==null)return "scene";
+    if(!"download-location".equals(request.getStringExtra("visualObserveAction")))return "action";
+    String nonce=request.getStringExtra("visualObserveNonce"),parent=request.getStringExtra("visualParentNonce");
+    if(nonce==null||!nonce.matches("[0-9a-f]{32}")||downloadObservationNonces.contains(nonce)||!downloadLocationEvidence.invocationNonce.equals(parent))return "nonce";
+    if(!DownloadLocationLayoutEvidence.cleanSource(this).equals(request.getStringExtra("visualSourceCommit")))return "source";
+    return "";
+  }
+  void rejectDownloadObservation(String nonce,String reason){Log.w("PocketDownloadLabel",J.obj("schema",1,"scene","downloads","status","rejected","nonce",nonce!=null&&nonce.matches("[0-9a-f]{32}")?nonce:"","reason",reason).toString());}
   /** Synthetic visual data only. Never a core receipt, applied model or network test. */
   static JSONObject networkPresentation(JSONObject row,long now){
     if(row==null||row.optString("environmentId").isEmpty()||!row.has("generation")||row.optLong("generation",-1)<0||now<=0)throw new IllegalArgumentException("Visual environment identity required");

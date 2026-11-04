@@ -68,6 +68,16 @@ def receipt():
                 entryPayloadBeforeHash='e' * 64, entryPayloadAfterHash='e' * 64,
                 exitPayloadBeforeHash='f' * 64, exitPayloadAfterHash='f' * 64,
                 candidateChangedOnlyBaselineAndConsumedLineage=True, lineageConsumed=True, laterValidationPassed=True)
+        owner_id = '00000000-0000-4000-8000-%012d' % (len(rows) + 1)
+        owner_token = len(rows) + 1
+        row['completionProof'] = dict(schema=1, case=name, jobId=owner_id, ownerId=owner_id, ownerToken=owner_token,
+            boundary='after-production-recordResult', activeTransitionIsOwner=False, activeTransitionPresent=False,
+            ownerCapture=False, cancelled=True, job=copy.deepcopy(state['job']),
+            **{field: state[field] for field in ('operation', 'configurationCapture', 'touchRestored', 'fenced', 'confirmed')})
+        row['currentOwnership'] = dict(ownerPresent=False, ownerId='', ownerToken=0, isOriginal=False,
+            sameSession=True, internal=False, operation=False, configurationCapture=False, ownerCapture=False,
+            ownerFenced=False, touchOwned=False, originalTouchRestored=True, touchFenceSharedWithCurrent=False)
+        events.append(event('caseOwner', dict(case=name, jobId=owner_id, ownerId=owner_id, ownerToken=owner_token)))
         if name != 'complete-delete':
             phase = 'prepare' if name.startswith('prepare') else 'commit' if name.startswith('capture') else 'complete'
             events.append(event('phase', dict(case=name, phase=phase, operation=phase != 'prepare',
@@ -93,6 +103,9 @@ def receipt():
                 pendingAfterHash=row['pendingAfterHash'], activeUnchanged=True, pendingUnchanged=True)
             separations.append(separation)
             events.append(event('candidateSeparation', separation))
+        events.append(event('caseCompletion', row['completionProof']))
+        events.append(event('caseOwnershipObservation', dict(case=name, jobId=owner_id,
+            completionProof=row['completionProof'], currentOwnership=row['currentOwnership'])))
         rows.append(row)
         events.append(event('case', row))
     events.append(event('result', dict(status='passed', checkCount=59)))

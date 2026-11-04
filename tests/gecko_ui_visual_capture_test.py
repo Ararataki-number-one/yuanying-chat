@@ -1,13 +1,18 @@
 """Real fake-ADB capture controls; no Android, UI acceptance or input execution."""
+import ast
+import copy
 import importlib.util
 import json
 from pathlib import Path
+import re
 import stat
 import sys
 import tempfile
 import time
+import types
 import unittest
 from unittest import mock
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('actual_ui_visual_capture', ROOT / 'tools/gecko/ui_visual_capture.py')
@@ -17,6 +22,227 @@ MATRIX_SPEC = importlib.util.spec_from_file_location('native_ui_matrix', ROOT / 
 MATRIX = importlib.util.module_from_spec(MATRIX_SPEC)
 MATRIX_SPEC.loader.exec_module(MATRIX)
 XML = b'<?xml version="1.0"?><hierarchy rotation="0"><node text="fresh current native UI" /></hierarchy>'
+RUNNER = ROOT / 'tests/gecko/run_ui_visuals.py'
+
+
+def runner_functions(*names):
+    """Compile actual runner functions without its device/install top-level actions."""
+    tree = ast.parse(RUNNER.read_text())
+    functions = [copy.deepcopy(n) for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
+    assert {n.name for n in functions} == set(names)
+    return ast.Module(body=functions, type_ignores=[])
+
+
+class ModelClock:
+    """Deterministic transport model, not Android timing or screenshot evidence."""
+    def __init__(self, value=100): self.value = value
+    def monotonic(self): return self.value
+    def sleep(self, seconds): self.value += seconds
+
+
+class DownloadReadinessRunnerTest(unittest.TestCase):
+    def run_readiness(self, *, reveal_after=1, scene='downloads', scrollable=True, crash=False):
+        # Keep the actual setup and complete original readiness loop verbatim in
+        # AST form; stop before the downstream Android capture operations.
+        module = runner_functions('capture')
+        capture = module.body[0]
+        end = next(i for i, node in enumerate(capture.body) if isinstance(node, ast.While)) + 1
+        capture.body = capture.body[:end] + [ast.parse('return xml,readiness_scrolls,label_nonce,deadline').body[0]]
+        ast.fix_missing_locations(module)
+        clock = ModelClock(); calls = []; deadlines = []; gestures = []
+        target = '项目资料与界面设计说明.pdf'
+        def adb(*values):
+            calls.append(values)
+            if values[:3] == ('shell', 'input', 'swipe'): gestures.append(values)
+            if values[:4] == ('logcat', '-d', '-s', 'AndroidRuntime:E'):
+                return 'FATAL EXCEPTION: actual fixture failure' if crash else ''
+            return ''
+        def dump(deadline=None):
+            deadlines.append(deadline); clock.value += 1
+            visible = reveal_after is not None and len(gestures) >= reveal_after
+            text = target if visible else '保存位置'
+            return ('<hierarchy><node class="android.widget.ScrollView" scrollable="'
+                    + str(scrollable).lower() + '" bounds="[0,264][1920,828]">'
+                    + '<node text="'+text+'" /></node></hierarchy>')
+        namespace = dict(time=clock, json=json, print=lambda *a, **k: None, adb=adb, dump=dump,
+                         last_geometry=(640, 360, 1), records=[], package='local.pocketchat.test',
+                         uuid=types.SimpleNamespace(uuid4=lambda: types.SimpleNamespace(hex='a'*32)),
+                         ET=ET, re=re)
+        exec(compile(module, str(RUNNER), 'exec'), namespace)
+        try:
+            result = namespace['capture']('current', 640, 360, 1, scene)
+        except Exception as failure:
+            return failure, gestures, deadlines, clock, calls
+        return result, gestures, deadlines, clock, calls
+
+    def test_actual_download_loop_uses_one_real_bounded_viewport_swipe(self):
+        result, gestures, deadlines, clock, _ = self.run_readiness()
+        self.assertEqual(result[1], 1); self.assertIn('项目资料与界面设计说明.pdf', result[0])
+        self.assertEqual(gestures, [('shell','input','swipe','960','715','960','376','350')])
+        self.assertEqual(deadlines, [135, 135]); self.assertEqual(result[3], 135)
+        self.assertLess(clock.value, 135)
+
+    def test_already_visible_filename_needs_no_scroll(self):
+        result, gestures, deadlines, _, _ = self.run_readiness(reveal_after=0)
+        self.assertEqual(result[1], 0); self.assertEqual(gestures, []); self.assertEqual(deadlines, [135])
+
+    def test_missing_filename_is_not_replaced_by_save_location_or_eight_swipes(self):
+        result, gestures, deadlines, clock, _ = self.run_readiness(reveal_after=None)
+        self.assertIsInstance(result, AssertionError); self.assertIn('screen did not appear', str(result))
+        self.assertEqual(len(gestures), 8); self.assertEqual(set(deadlines), {135})
+        self.assertGreater(clock.value, 135)
+
+    def test_no_scrollable_content_and_other_scene_cannot_fabricate_readiness(self):
+        for options in (dict(scrollable=False, reveal_after=None), dict(scene='chat', reveal_after=None)):
+            with self.subTest(options=options):
+                result, gestures, deadlines, _, _ = self.run_readiness(**options)
+                self.assertIsInstance(result, AssertionError); self.assertEqual(gestures, [])
+                self.assertEqual(set(deadlines), {135})
+
+    def test_runtime_crash_is_fatal_before_any_readiness_swipe(self):
+        result, gestures, _, _, _ = self.run_readiness(crash=True)
+        self.assertIsInstance(result, AssertionError); self.assertIn('Android UI crashed', str(result))
+        self.assertEqual(gestures, [])
+
+
+class DownloadFreshObservationRunnerTest(unittest.TestCase):
+    def setUp(self):
+        self.parent_nonce = 'a'*32; self.fresh_nonce = 'b'*32; self.source = 'c'*40
+        self.clock = ModelClock(120); self.commands = []; self.log_reads = 0
+        row = dict(downloadLocationNonce=self.parent_nonce, fontScale=1)
+        self.initial = NativeCaptureCoverageTest().label(row)
+        self.initial.update(sourceCommit=self.source, invocationNonce=self.parent_nonce,
+                            activityIdentity=10, rootIdentity=20, buttonIdentity=30,
+                            top=750, visibleHeight=78)
+        self.fresh = dict(self.initial, nonce=self.fresh_nonce, top=450, visibleHeight=144,
+                          startedUptimeMs=120, observedUptimeMs=130)
+        self.initial_raw = json.dumps(self.initial, separators=(',', ':'))
+        self.fresh_raw = json.dumps(self.fresh, separators=(',', ':'))
+        self.initial_log = 'I PocketDownloadLabel: '+self.initial_raw+'\n'
+        self.fresh_log = self.initial_log+'I PocketDownloadLabel: '+self.fresh_raw+'\n'
+        self.namespace = dict(time=self.clock, json=json, source=self.source,
+            args=types.SimpleNamespace(adb='model-adb', serial='emulator-model'), package='local.pocketchat.test',
+            subprocess=types.SimpleNamespace(check_output=self.check_output),
+            uuid=types.SimpleNamespace(uuid4=lambda: types.SimpleNamespace(hex=self.fresh_nonce)))
+        exec(compile(runner_functions('adb_scene','download_label_packets','observe_scrolled_download'), str(RUNNER), 'exec'), self.namespace)
+
+    def check_output(self, values, timeout):
+        self.commands.append((values, timeout)); self.clock.value += .1
+        if values[3] == 'logcat':
+            self.log_reads += 1
+            return (self.initial_log if self.log_reads == 1 else self.fresh_log).encode()
+        return b'Status: ok\nActivity: local.pocketchat.test/local.pocketchat.UiVisualIntegrationActivity\n'
+
+    def observe(self, deadline=135):
+        return self.namespace['observe_scrolled_download'](self.parent_nonce, deadline)
+
+    def replace_fresh(self, **changes):
+        value = dict(self.fresh, **changes)
+        self.fresh_log = self.initial_log+'I PocketDownloadLabel: '+json.dumps(value)+'\n'
+
+    def test_actual_helpers_keep_clipped_raw_and_request_same_activity_fresh_probe(self):
+        nonce, history = self.observe()
+        self.assertEqual(nonce, self.fresh_nonce); self.assertEqual(history, [self.initial_raw, self.fresh_raw])
+        self.assertEqual(json.loads(history[0])['visibleHeight'], 78)
+        launch = self.commands[1][0]
+        self.assertEqual(launch[:9], ['model-adb','-s','emulator-model','shell','am','start','-W','--activity-single-top','-n'])
+        extras = launch[10:]
+        self.assertEqual(extras, ['--es','visualObserveAction','download-location','--es','visualObserveNonce',self.fresh_nonce,
+            '--es','visualParentNonce',self.parent_nonce,'--es','visualSourceCommit',self.source])
+        self.assertNotIn('visualAction', launch); self.assertNotIn('visualNonce', launch)
+        self.assertTrue(all(0 < timeout <= 15 for _, timeout in self.commands))
+        row = dict(scene='downloads',downloadLocationNonce=nonce,downloadLocationRaw=history[1],fontScale=1,
+                   actualPixels=[1920,1080],densityDpi=480)
+        MATRIX.verify_download_location(row, self.source)
+        row.update(downloadLocationNonce=self.parent_nonce, downloadLocationRaw=history[0])
+        with self.assertRaises(AssertionError): MATRIX.verify_download_location(row, self.source)
+
+    def test_same_activity_root_and_button_are_each_required(self):
+        for key in ('activityIdentity','rootIdentity','buttonIdentity'):
+            for replacement in (999, '10', True, None):
+                with self.subTest(field=key,replacement=replacement):
+                    self.log_reads=0;self.clock.value=120;self.replace_fresh(**{key:replacement})
+                    with self.assertRaises(AssertionError): self.observe()
+
+    def test_wrong_source_parent_or_failed_probe_is_rejected(self):
+        for key, value in (('sourceCommit','d'*40),('invocationNonce','e'*32),('status','rejected'),('status','failed')):
+            with self.subTest(field=key, value=value):
+                self.log_reads=0;self.clock.value=120;self.replace_fresh(**{key:value})
+                with self.assertRaises(AssertionError): self.observe()
+
+    def test_missing_duplicate_or_wrong_initial_packet_never_requests_fresh_probe(self):
+        initial=self.initial_log
+        for log in ('', initial+initial,
+                    'I PocketDownloadLabel: '+json.dumps(dict(self.initial, sourceCommit='d'*40)),
+                    'I PocketDownloadLabel: '+json.dumps(dict(self.initial, invocationNonce='e'*32)),
+                    'I PocketDownloadLabel: '+json.dumps(dict(self.initial, status='failed'))):
+            with self.subTest(log=log[:100]):
+                self.initial_log=log;self.log_reads=0;self.commands=[];self.clock.value=120
+                with self.assertRaises(AssertionError): self.observe()
+                self.assertEqual(len(self.commands),1)
+
+    def test_duplicate_fresh_packet_is_rejected(self):
+        self.fresh_log += 'I PocketDownloadLabel: '+self.fresh_raw+'\n'
+        with self.assertRaises(AssertionError): self.observe()
+
+    def test_parser_rejects_duplicate_fields_and_nonfinite_values(self):
+        parse=self.namespace['download_label_packets']
+        for raw, error in ((self.fresh_raw.replace('{','{"schema":1,',1), AssertionError),
+                           (self.fresh_raw.replace('"density":3','"density":NaN'), ValueError)):
+            with self.subTest(raw=raw[:50]), self.assertRaises(error): parse(raw,self.fresh_nonce)
+
+    def test_old_nonce_only_cannot_satisfy_fresh_observation_and_deadline_is_not_reset(self):
+        self.fresh_log=self.initial_log
+        with self.assertRaises(TimeoutError): self.observe(deadline=121)
+        self.assertLessEqual(self.clock.value,121.1)
+        self.assertTrue(all(0 < timeout <= 1 for _, timeout in self.commands))
+
+    def test_expired_existing_scene_budget_runs_no_transport(self):
+        with self.assertRaises(TimeoutError): self.observe(deadline=119)
+        self.assertEqual(self.commands,[])
+
+    def test_fresh_glyph_or_visibility_failure_still_fails_original_native_gate(self):
+        for changes in (dict(visibleHeight=143), dict(lines=[dict(start=0,end=2,left=0,right=140,bottom=86,ellipsisCount=1)])):
+            with self.subTest(changes=changes):
+                self.log_reads=0;self.clock.value=120;self.replace_fresh(**changes)
+                nonce,history=self.observe()
+                row=dict(scene='downloads',downloadLocationNonce=nonce,downloadLocationRaw=history[-1],fontScale=1,actualPixels=[1920,1080],densityDpi=480)
+                with self.assertRaises(AssertionError): MATRIX.verify_download_location(row,self.source)
+
+    def final_evidence(self, raw=None, deadline=135, history=None):
+        capture=runner_functions('capture').body[0]
+        actual=next(node for node in capture.body if isinstance(node,ast.If) and
+                    any(isinstance(child,ast.Name) and isinstance(child.ctx,ast.Store) and child.id=='label_log'
+                        for child in ast.walk(node)))
+        function=ast.parse('def final_download_evidence(label_nonce,download_observation_history,deadline,record):\n pass').body[0]
+        function.body=[actual,ast.parse('return record').body[0]]
+        module=ast.fix_missing_locations(ast.Module(body=[function],type_ignores=[]))
+        def check_output(values,timeout):
+            self.commands.append((values,timeout))
+            return (self.fresh_log.encode() if raw is None else raw)
+        with tempfile.TemporaryDirectory(prefix='download-final-evidence-') as directory:
+            namespace=dict(self.namespace, variant='current',scene='downloads',stem='model',shots=Path(directory),
+                           subprocess=types.SimpleNamespace(check_output=check_output),verify_download_location=MATRIX.verify_download_location)
+            exec(compile(module,str(RUNNER),'exec'),namespace)
+            row=dict(scene='downloads',fontScale=1,actualPixels=[1920,1080],densityDpi=480)
+            return namespace['final_download_evidence'](self.fresh_nonce,
+                [self.initial_raw,self.fresh_raw] if history is None else history,deadline,row)
+
+    def test_actual_final_block_keeps_history_strict_utf8_and_remaining_deadline(self):
+        row=self.final_evidence()
+        self.assertEqual(row['downloadLocationRaw'],self.fresh_raw)
+        self.assertEqual(row['downloadLocationObservationHistory'],[self.initial_raw,self.fresh_raw])
+        self.assertIs(row['downloadLocationSameActivityRootButton'],True)
+        self.assertEqual(self.commands[-1][1],15)
+        with self.assertRaises(UnicodeDecodeError): self.final_evidence(raw=b'\xff')
+        before=len(self.commands)
+        with self.assertRaises(TimeoutError): self.final_evidence(deadline=119)
+        self.assertEqual(len(self.commands),before)
+
+    def test_final_log_must_match_original_fresh_raw_not_just_equivalent_json(self):
+        reformatted=json.dumps(self.fresh,indent=1).replace('\n',' ')
+        self.assertEqual(json.loads(reformatted),json.loads(self.fresh_raw))
+        with self.assertRaises(AssertionError): self.final_evidence(raw=('I PocketDownloadLabel: '+reformatted).encode())
 
 class NativeCaptureCoverageTest(unittest.TestCase):
     def records(self):

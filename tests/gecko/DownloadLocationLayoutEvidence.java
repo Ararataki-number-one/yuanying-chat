@@ -21,10 +21,13 @@ import java.util.ArrayList;
 /** Test-only observation of the existing production button, without layout mutations. */
 final class DownloadLocationLayoutEvidence implements ViewTreeObserver.OnPreDrawListener, Runnable {
   static final String TAG="PocketDownloadLabel", LABEL="保存位置";
-  final Activity activity; final View root; final String nonce; final Handler handler=new Handler(Looper.getMainLooper());
+  final Activity activity; final View root; final String nonce,invocationNonce; final Handler handler=new Handler(Looper.getMainLooper());
   final long started=SystemClock.uptimeMillis(); boolean closed;
   DownloadLocationLayoutEvidence(Activity activity,View root,String nonce){
-    this.activity=activity;this.root=root;this.nonce=nonce;
+    this(activity,root,nonce,nonce);
+  }
+  DownloadLocationLayoutEvidence(Activity activity,View root,String nonce,String invocationNonce){
+    this.activity=activity;this.root=root;this.nonce=nonce;this.invocationNonce=invocationNonce;
     root.getViewTreeObserver().addOnPreDrawListener(this);handler.postDelayed(this,5000);
   }
   @Override public boolean onPreDraw(){
@@ -44,7 +47,8 @@ final class DownloadLocationLayoutEvidence implements ViewTreeObserver.OnPreDraw
         .put("contentHeight",button.getHeight()-button.getCompoundPaddingTop()-button.getCompoundPaddingBottom()).put("layoutWidth",layout.getWidth()).put("layoutHeight",layout.getHeight())
         .put("left",point[0]).put("top",point[1]).put("visibleWidth",visible.width()).put("visibleHeight",visible.height())
         .put("shown",shown&&button.isShown()).put("enabled",button.isEnabled()).put("clickable",button.isClickable()).put("windowFocused",button.hasWindowFocus())
-        .put("layoutRequested",button.isLayoutRequested()).put("scrollX",button.getScrollX()).put("scrollY",button.getScrollY()).put("lines",lines);
+        .put("layoutRequested",button.isLayoutRequested()).put("scrollX",button.getScrollX()).put("scrollY",button.getScrollY()).put("lines",lines)
+        .put("activityIdentity",System.identityHashCode(activity)).put("rootIdentity",System.identityHashCode(root)).put("buttonIdentity",System.identityHashCode(button));
       emit(value);
     }catch(Exception failure){failed(failure);}
     return true;
@@ -53,8 +57,8 @@ final class DownloadLocationLayoutEvidence implements ViewTreeObserver.OnPreDraw
     if(view instanceof Button&&LABEL.contentEquals(((Button)view).getText()))result.add((Button)view);
     if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)find(group.getChildAt(i),result);}
   }
-  JSONObject base()throws Exception{
-    if(!"local.pocketchat.test".equals(activity.getPackageName())||nonce==null||!nonce.matches("[0-9a-f]{32}"))throw new IllegalStateException("Owned synthetic capture required");
+  static String cleanSource(Activity activity)throws Exception{
+    if(!"local.pocketchat.test".equals(activity.getPackageName()))throw new IllegalStateException("Owned synthetic capture required");
     JSONObject stamp;
     try(InputStream in=activity.getAssets().open("pocketchat-integration-build.json");ByteArrayOutputStream out=new ByteArrayOutputStream()){
       byte[] bytes=new byte[1024];int count;while((count=in.read(bytes))!=-1){out.write(bytes,0,count);if(out.size()>8192)throw new IllegalStateException("Source stamp too large");}
@@ -62,7 +66,11 @@ final class DownloadLocationLayoutEvidence implements ViewTreeObserver.OnPreDraw
     }
     String source=stamp.getString("sourceCommit");
     if(!source.matches("[0-9a-f]{40}")||stamp.getBoolean("dirtySource"))throw new IllegalStateException("Clean source stamp required");
-    return new JSONObject().put("schema",1).put("sourceCommit",source).put("nonce",nonce).put("scene","downloads")
+    return source;
+  }
+  JSONObject base()throws Exception{
+    if(nonce==null||!nonce.matches("[0-9a-f]{32}")||invocationNonce==null||!invocationNonce.matches("[0-9a-f]{32}"))throw new IllegalStateException("Owned synthetic capture required");
+    return new JSONObject().put("schema",1).put("sourceCommit",cleanSource(activity)).put("nonce",nonce).put("invocationNonce",invocationNonce).put("scene","downloads")
       .put("fontScale",activity.getResources().getConfiguration().fontScale).put("density",activity.getResources().getDisplayMetrics().density)
       .put("startedUptimeMs",started).put("observedUptimeMs",SystemClock.uptimeMillis());
   }

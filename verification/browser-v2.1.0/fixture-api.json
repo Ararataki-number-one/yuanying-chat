@@ -1,28 +1,31 @@
 {
   "status": "passed",
-  "sourceSha256": {
-    "tests/gecko/BrowserIntegrationActivity.java": "5b5d2e40f4508578a48ebf65b276f1514798e66055979756d8101212e722aa42",
-    "tests/gecko/BrowserEvidenceProvider.java": "fb61b1308b556687ca6e8de380b1e4ccdcc2fed92b8c167f3f0742cd5bfa7b37",
-    "tests/gecko/IntegrationBuildIdentity.java": "da07b5a21c1c6439189266d31790dd8ca3ad4f037f16998ae543873ff13f5215"
-  },
-  "executionInputsUnchanged": true,
   "command": [
-    "work/cloud-setup/jdk/usr/lib/jvm/java-17-openjdk-amd64/bin/javac",
+    "/workspace/yuanying-chat/work/browser-ci-jdk/jdk-17.0.21+9/bin/javac",
     "-encoding",
     "UTF-8",
+    "-source",
+    "17",
+    "-target",
+    "17",
     "-cp",
-    "work/ux-build-toolchain/platform-37.1_r01/android-37.1/android.jar:work/chromium-runtime-deps/webkit-1.14.0.jar:work/chromium-route-lease-native-full/classes",
-    "-sourcepath",
-    "work/chromium-route-lease-native-full/stubs",
+    "/workspace/yuanying-chat/work/ux-build-toolchain/platform-37.1_r01/android-37.1/android.jar:/workspace/yuanying-chat/work/chromium-runtime-deps/webkit-1.14.0.jar:/workspace/yuanying-chat/work/source6-browser-targeting-native/classes",
     "-d",
-    "work/browser-route-lease-fixture-api/classes",
-    "tests/gecko/BrowserIntegrationActivity.java",
-    "tests/gecko/BrowserEvidenceProvider.java",
-    "tests/gecko/IntegrationBuildIdentity.java"
+    "/workspace/yuanying-chat/work/source6-browser-targeting-fixture/classes",
+    "/workspace/yuanying-chat/tests/gecko/BrowserIntegrationActivity.java",
+    "/workspace/yuanying-chat/tests/gecko/BrowserEvidenceProvider.java",
+    "/workspace/yuanying-chat/tests/gecko/IntegrationBuildIdentity.java",
+    "/workspace/yuanying-chat/app/src/main/java/local/pocketchat/NormalCaretSdkReceipt.java"
   ],
-  "productionNativeReceipt": "work/chromium-route-lease-native-full/receipt.json",
-  "productionNativeReceiptSha256": "1d3e098043e75b243cb7a057e6aac2b618e326e5dc3be7f8dc2c3f3233a20c27",
-  "fullAppBuild": false,
+  "exitCode": 0,
+  "sourceFiles": {
+    "tests/gecko/BrowserIntegrationActivity.java": "7bdc4eb26ed1ef15a93b4976f8da39c947123142b4e8c609a7df22f7b200a897",
+    "tests/gecko/BrowserEvidenceProvider.java": "fb61b1308b556687ca6e8de380b1e4ccdcc2fed92b8c167f3f0742cd5bfa7b37",
+    "tests/gecko/IntegrationBuildIdentity.java": "da07b5a21c1c6439189266d31790dd8ca3ad4f037f16998ae543873ff13f5215",
+    "app/src/main/java/local/pocketchat/NormalCaretSdkReceipt.java": "12f8c1065fab59c0b1f0a5f8fe62be55940f6ac9fd2358492191ad5f793c2f8c"
+  },
+  "executionInputsUnchanged": true,
+  "nativeCompileReceiptSha256": "88a3f9df6fe777879b59899bd5bc9c4640995aa7596dc07d9efd056618944de1",
   "actualAndroidExecution": false,
-  "scope": "Compile complete integration fixture/server/provider/helper against actual Android API+AndroidX and the actual59 production source compilation with declared app-only boundaries. Does not execute the fixture or supply GeckoSDK."
+  "scope": "Three actual integration fixture/provider/identity sources and actual SDK receipt compile against real Android API 37.1, actual AndroidX WebKit, and verified native 59 compilation-only app boundaries; no emulator or Gecko SDK runtime acceptance."
 }

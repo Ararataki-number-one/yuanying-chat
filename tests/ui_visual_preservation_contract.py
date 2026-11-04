@@ -55,7 +55,7 @@ DOWNLOAD_ISOLATION_EDITS=(
 def verify_download_visual_fixture_source(raw):
     """Only cancellation + temporary synthetic labels may alter this fixture."""
     assert isinstance(raw,bytes), 'Fixture source bytes required'
-    text=raw.decode('utf-8')
+    text=_lease._input14.original_observer_fixture_bytes(raw).decode('utf-8')
     constructor='        savedActions=new SavedFileActions(this);DesignDownloads.Controller controller=new DesignDownloads.Controller(this,box,0,n->{},savedActions);\n'
     assert text.count(constructor+DOWNLOAD_ISOLATION_EDITS[0][0])==1, 'Synthetic cancellation must follow its constructor'
     assert text.count('controller.setVisible(false);')==1, 'Synthetic cancellation missing or duplicated'

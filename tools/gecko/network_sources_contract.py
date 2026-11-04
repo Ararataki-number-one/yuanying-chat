@@ -457,6 +457,54 @@ def _verify_safe_idle_job(row, events):
     assert proof['pendingBeforeHash'] == phase['pendingCandidateHash'] == row['pendingBeforeHash'] == row['pendingAfterHash'] == separation['pendingBeforeHash'] == separation['pendingAfterHash']
 
 
+def _verify_safe_idle_completion(row, events):
+    """Bind release evidence to the original owner, before any later drain."""
+    proof, current, state = row['completionProof'], row['currentOwnership'], row['outcome']
+    assert type(proof['schema']) is int and proof['schema'] == 1
+    assert proof['case'] == row['name']
+    job = proof['jobId']
+    assert isinstance(job, str) and re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', job)
+    assert proof['ownerId'] == job and type(proof['ownerToken']) is int and proof['ownerToken'] != 0
+    assert proof['boundary'] == 'after-production-recordResult'
+    for field in ('activeTransitionIsOwner', 'activeTransitionPresent', 'ownerCapture'):
+        assert proof[field] is False, field
+    assert proof['cancelled'] is True and proof['job']['done'] is True
+    for field in ('operation', 'configurationCapture', 'touchRestored', 'fenced', 'confirmed'):
+        assert type(proof[field]) is bool and state[field] is proof[field], field
+    assert proof['operation'] is False and proof['configurationCapture'] is False and proof['touchRestored'] is True
+    assert state['job'] == proof['job']
+    for field in ('ownerPresent', 'isOriginal', 'sameSession', 'internal', 'operation',
+                  'configurationCapture', 'ownerCapture', 'ownerFenced', 'touchOwned', 'originalTouchRestored', 'touchFenceSharedWithCurrent'):
+        assert type(current[field]) is bool, field
+    assert current['isOriginal'] is False and current['sameSession'] is True
+    assert current['originalTouchRestored'] is True or (current['ownerPresent'] is True
+        and current['touchFenceSharedWithCurrent'] is True and current['touchOwned'] is True)
+    assert isinstance(current['ownerId'], str) and type(current['ownerToken']) is int
+    if current['touchFenceSharedWithCurrent']:
+        assert current['ownerPresent'] is True and proof['fenced'] is True and current['ownerFenced'] is True
+        assert current['touchOwned'] is True and current['originalTouchRestored'] is False
+    if current['ownerPresent']:
+        assert current['internal'] is True and current['ownerId'].startswith('internal:')
+        assert current['ownerId'] != job and current['ownerToken'] not in (0, proof['ownerToken'])
+        assert current['operation'] is current['configurationCapture'] is current['ownerCapture']
+        assert current['ownerFenced'] is current['touchOwned']
+    else:
+        assert current['ownerId'] == '' and current['ownerToken'] == 0
+        for field in ('internal', 'operation', 'configurationCapture', 'ownerCapture', 'ownerFenced', 'touchOwned', 'touchFenceSharedWithCurrent'):
+            assert current[field] is False, field
+    selected = {}
+    for kind in ('caseOwner', 'caseCompletion', 'caseOwnershipObservation', 'case'):
+        matches = [(index, event['value']) for index, event in enumerate(events)
+                   if event.get('kind') == kind and event['value'].get('case', event['value'].get('name')) == row['name']]
+        assert len(matches) == 1, kind
+        selected[kind] = matches[0]
+    assert selected['caseOwner'][0] < selected['caseCompletion'][0] < selected['caseOwnershipObservation'][0] < selected['case'][0]
+    assert selected['caseOwner'][1] == dict(case=row['name'], jobId=job, ownerId=job, ownerToken=proof['ownerToken'])
+    assert selected['caseCompletion'][1] == proof
+    assert selected['caseOwnershipObservation'][1] == dict(case=row['name'], jobId=job, completionProof=proof, currentOwnership=current)
+    assert selected['case'][1] == row
+
+
 def verify_safe_idle(report):
     """Replay the actual report's gestures/events without runner-global state."""
     assert report['status'] == 'passed', report.get('error')
@@ -509,6 +557,7 @@ def verify_safe_idle(report):
         else:
             assert row['pendingBeforeHash'] == row['pendingAfterHash']
         _verify_safe_idle_job(row, events)
+        _verify_safe_idle_completion(row, events)
         assert state['confirmed'] is False and row['reconnectAttempts'] == 0
         assert not state['operation'] and not state['configurationCapture'] and state['touchRestored'] is True
         if row['name'].endswith('send'):

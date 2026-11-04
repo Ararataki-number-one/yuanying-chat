@@ -323,6 +323,7 @@ class SourcePreservationTests(unittest.TestCase):
 
     def test_shared_consumer_only_adds_two_precise_hooks_before_old_bodies(self):
         raw = (ROOT / 'tests/ui_visual_preservation_contract.py').read_bytes()
+        raw = original_ui._lease._input14.original_ui_preservation_contract_bytes(raw)
         for added in (b"import importlib.util\nfrom pathlib import Path\n\n_lease_spec = importlib.util.spec_from_file_location('selected_ui_settings_services11_contract', Path(__file__).with_name('ui_settings_services11_contract.py'))\n_lease = importlib.util.module_from_spec(_lease_spec)\n_lease_spec.loader.exec_module(_lease)\n",
                       b'    raw=_lease.original_runner_bytes(raw)\n',
                       b'    _lease.remove_reviewed_lease(tree)\n'):

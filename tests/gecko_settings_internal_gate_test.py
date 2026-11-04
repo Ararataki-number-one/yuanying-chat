@@ -135,6 +135,10 @@ def receipt():
                                     'ok': row['result']['ok'],
                                     'operationResult': copy.deepcopy(row['result']['operationResult'])}
                                    for i, row in enumerate(operations)]
+    report['applicationDirectJobs'] = [row['id'] for row in report['applicationResults']]
+    report['applicationCallbackEvents'] = [dict(copy.deepcopy(row), sequence=index, targetDirect=True)
+                                           for index, row in enumerate(report['applicationResults'])]
+    report['applicationCallbackCount'] = len(report['applicationCallbackEvents'])
     report['applicationBootstrap'] = bootstrap_proof()
     report['checks'].extend({'name': name, 'pass': True} for name in m.BOOTSTRAP_CHECKS)
     report['checkCount'] = len(report['checks'])

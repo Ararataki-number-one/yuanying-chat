@@ -165,5 +165,75 @@ print('STAGED_BROWSER_VERIFIERS_IMPORTED')
             result=subprocess.run([sys.executable,'-I','-c',script],cwd=stage,text=True,capture_output=True,timeout=20)
             self.assertNotEqual(result.returncode,0);self.assertIn('profile_invocation_contract',result.stderr)
 
+    def test_actual_staged_settings_verifier_has_its_complete_dependency_set(self):
+        copies=[node for node in self.tool.body if isinstance(node,ast.If)
+                and ast.unparse(node.test)=='version_code >= 70'
+                and any(isinstance(value,ast.Constant) and value.value=='tests/gecko/assets/sharing-schema-matrix.json'
+                        for value in ast.walk(node))]
+        self.assertEqual(len(copies),1)
+        stage_exit=next(node for node in self.tool.body if isinstance(node,ast.If) and ast.unparse(node.test)=='args.stage_only')
+        self.assertLess(copies[0].lineno,stage_exit.lineno)
+        dependencies=['tools/gecko/network_settings_callback_contract.py',
+                      'tests/network_settings_callback_source_compatibility.py',
+                      'tests/fixtures/network-settings-callback-source-deltas.json']
+        with tempfile.TemporaryDirectory(prefix='settings-release-cold-import-') as temporary:
+            stage=Path(temporary);(stage/'tools/gecko').mkdir(parents=True)
+            execute(copies,dict(version_code=102,root=ROOT,stage=stage,shutil=shutil))
+            shutil.copy2(ROOT/'tools/gecko/network_sources_contract.py',stage/'tools/gecko/network_sources_contract.py')
+            origins=['tests/gecko/network_settings_callback_contract.py',dependencies[1],dependencies[2]]
+            for target,origin in zip(dependencies,origins):
+                self.assertEqual((stage/target).read_bytes(),(ROOT/origin).read_bytes())
+            script="""import pathlib,sys
+root=pathlib.Path.cwd();sys.path.insert(0,str(root/'tools/gecko'))
+from network_sources_contract import _settings_verifier
+module,path=_settings_verifier('internal')
+assert callable(module.verify) and path==root/'tools/gecko/run_network_settings_internal.py'
+print('STAGED_SETTINGS_VERIFIER_IMPORTED')
+"""
+            result=subprocess.run([sys.executable,'-I','-c',script],cwd=stage,text=True,capture_output=True,timeout=20)
+            self.assertEqual(result.returncode,0,result.stderr);self.assertIn('STAGED_SETTINGS_VERIFIER_IMPORTED',result.stdout)
+            for target in dependencies:
+                path=stage/target;data=path.read_bytes();path.unlink()
+                result=subprocess.run([sys.executable,'-I','-c',script],cwd=stage,text=True,capture_output=True,timeout=20)
+                self.assertNotEqual(result.returncode,0,target);path.write_bytes(data)
+        git_add=[node for node in ast.walk(self.tool) if isinstance(node,ast.Call)
+                 and ast.unparse(node.func)=='subprocess.run' and node.args
+                 and isinstance(node.args[0],ast.List)
+                 and any(isinstance(value,ast.Constant) and value.value=='add' for value in node.args[0].elts)]
+        self.assertEqual(len(git_add),1)
+        namespace=dict(version_code=102,manual_raw=None,authorization_raw=None,performance_files=[],manifest={'parts':[]})
+        paths=eval(compile(ast.Expression(git_add[0].args[0]),'actual-public-git-paths','eval'),namespace)
+        for target in dependencies[1:]:self.assertIn(target,paths)
+
+    def test_public_workflow_pins_each_settings_dependency_to_tested_source(self):
+        blocks=[node for node in self.workflow.body if isinstance(node,ast.If)
+                and any(isinstance(value,ast.Constant) and isinstance(value.value,str)
+                        and value.value.startswith('Network settings dependency differs from tested source:')
+                        for value in ast.walk(node))]
+        self.assertEqual(len(blocks),1)
+        self.assertLess(blocks[0].lineno,self.browser_blocks(self.workflow)[0].lineno)
+        mapping={'tools/gecko/network_settings_callback_contract.py':'tests/gecko/network_settings_callback_contract.py',
+                 'tests/network_settings_callback_source_compatibility.py':'tests/network_settings_callback_source_compatibility.py',
+                 'tests/fixtures/network-settings-callback-source-deltas.json':'tests/fixtures/network-settings-callback-source-deltas.json'}
+        expected={name:(ROOT/origin).read_bytes() for name,origin in mapping.items()}
+        commands=[]
+        def git_show(command):
+            commands.append(command)
+            self.assertEqual(command[:2],['git','show'])
+            commit,origin=command[-1].split(':',1);self.assertEqual(commit,SOURCE)
+            return (ROOT/origin).read_bytes()
+        with tempfile.TemporaryDirectory(prefix='settings-release-source-pins-') as temporary,directory(temporary):
+            for name,data in expected.items():path=Path(name);path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+            namespace=dict(m={'version':'2.1.0','sourceCommit':SOURCE,'releaseToolsCommit':'d'*40},
+                           pathlib=types.SimpleNamespace(Path=Path),subprocess=types.SimpleNamespace(check_output=git_show))
+            execute(blocks,namespace);self.assertEqual(len(commands),3)
+            for name,data in expected.items():
+                with self.subTest(tampered=name):
+                    Path(name).write_bytes(b'def verify_callback_cohort(*args): return None\n')
+                    with self.assertRaises(AssertionError):execute(blocks,namespace)
+                    Path(name).unlink()
+                    with self.assertRaises(FileNotFoundError):execute(blocks,namespace)
+                    Path(name).write_bytes(data)
+
 
 if __name__=='__main__':unittest.main()

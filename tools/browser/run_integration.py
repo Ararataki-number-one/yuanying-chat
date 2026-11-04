@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import subprocess
@@ -13,6 +14,76 @@ import uuid
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'tools/gecko'))
 from profile_invocation_contract import expected_build,verify_installed
+
+NATIVE_TARGET_FIELDS=('screenX','screenY','width','height','visibleLeft','visibleTop','visibleRight','visibleBottom')
+DOM_TARGET_FIELDS=('x','y','left','top','right','bottom','viewportWidth','viewportHeight','scrollX','scrollY','devicePixelRatio','visualScale')
+
+
+def target_number(value,name,integer=False):
+    if type(value) not in (int,float) or integer and type(value) is not int or abs(value)>10000000 or not math.isfinite(value):
+        raise AssertionError('Invalid trusted target '+name)
+    return value
+
+
+def validate_tap_target(current):
+    """Accept only a current, hit-tested point inside the real visible WebView."""
+    stage=current.get('stage');expected='upload' if stage in ('file-picker-1','file-picker-2') else 'download' if stage=='download-click' else None
+    target=current.get('tapTarget')
+    if expected is None or type(target) is not dict:raise AssertionError('Unexpected trusted target stage')
+    if target.get('id')!=expected or target.get('ready') is not True or type(target.get('stableSamples')) is not int or target['stableSamples']!=2 or target.get('visualStateComplete') is not True:raise AssertionError('Trusted target has no stable visual proof')
+    native=target.get('nativeFrame');dom=target.get('dom')
+    if type(native) is not dict or type(dom) is not dict:raise AssertionError('Trusted target geometry is missing')
+    for key in NATIVE_TARGET_FIELDS:target_number(native.get(key),key,True)
+    for key in DOM_TARGET_FIELDS:target_number(dom.get(key),key)
+    if any(native.get(key) is not True for key in ('shown','windowFocus','foreground')) or native.get('layoutRequested') is not False:raise AssertionError('Trusted target native layout is not ready')
+    if dom.get('id')!=expected or dom.get('hitTarget') is not True or not str(dom.get('url','')).startswith('http://browser-fixture.example/'):raise AssertionError('Trusted target DOM hit is not the fixture element')
+    width,height=dom['viewportWidth'],dom['viewportHeight'];x,y=dom['x'],dom['y']
+    if not (width>0 and height>0 and native['width']>0 and native['height']>0 and dom['right']>dom['left'] and dom['bottom']>dom['top'] and 0<x<width and 0<y<height and dom['left']<x<dom['right'] and dom['top']<y<dom['bottom'] and abs(x-(dom['left']+dom['right'])/2)<.01 and abs(y-(dom['top']+dom['bottom'])/2)<.01):raise AssertionError('Trusted target center is outside the DOM viewport')
+    point_x=target_number(target.get('x'),'screen x',True);point_y=target_number(target.get('y'),'screen y',True)
+    if not (native['screenX']<=native['visibleLeft']<native['visibleRight']<=native['screenX']+native['width'] and native['screenY']<=native['visibleTop']<native['visibleBottom']<=native['screenY']+native['height'] and native['visibleLeft']<=point_x<native['visibleRight'] and native['visibleTop']<=point_y<native['visibleBottom']):raise AssertionError('Trusted target is outside the visible native WebView')
+    scale=native['width']/width
+    if point_x!=native['screenX']+math.floor(x*scale+.5) or point_y!=native['screenY']+math.floor(y*scale+.5):raise AssertionError('Trusted target screen transform differs')
+    return point_x,point_y
+
+
+def brief(value,limit=512):
+    return str(value).encode('utf-8','replace')[:limit].decode('utf-8','ignore')
+
+
+def target_summary(value):
+    if type(value) is not dict:return None
+    result={key:value[key] for key in ('ready','stableSamples','visualStateComplete','x','y') if type(value.get(key)) in (bool,int,float) and (type(value[key]) is bool or abs(value[key])<=10000000 and math.isfinite(value[key]))}
+    if type(value.get('id')) is str:result['id']=brief(value['id'],80)
+    for section,keys in [('nativeFrame',NATIVE_TARGET_FIELDS+('shown','windowFocus','foreground','layoutRequested')),('dom',DOM_TARGET_FIELDS+('hitTarget',))]:
+        source=value.get(section)
+        if type(source) is dict:result[section]={key:source[key] for key in keys if type(source.get(key)) in (bool,int,float) and (type(source[key]) is bool or abs(source[key])<=10000000 and math.isfinite(source[key]))}
+    if type(value.get('dom')) is dict:
+        for key in ('id','hitId','hitTag'):
+            if type(value['dom'].get(key)) is str:result.setdefault('dom',{})[key]=brief(value['dom'][key],80)
+    return result
+
+
+def diagnostic_failure(current,error,last_resumed,actions):
+    """Bounded synthetic diagnostics; excludes page content, cookies and extras."""
+    value=current if type(current) is dict else {};summary={}
+    for key in ('status','stage','runNonce','sourceCommit','failure'):
+        if type(value.get(key)) is str:summary[key]=brief(value[key],512 if key=='failure' else 100)
+    for key in ('taskId','passed','total','foreground','pendingChooser','routeAllowed'):
+        if type(value.get(key)) in (bool,int) and abs(value[key])<=10000000:summary[key]=value[key]
+    summary['tapTarget']=target_summary(value.get('tapTarget'))
+    checks=value.get('checks',[])
+    if type(checks) is list:summary['checks']=[{'name':brief(row.get('name',''),220),'pass':row.get('pass') is True} for row in checks[-6:] if type(row) is dict]
+    resumed=[brief(line,320) for line in last_resumed[-8:]] if type(last_resumed) is list else []
+    trusted=[]
+    for row in actions[-8:] if type(actions) is list else []:
+        if type(row) is not dict:continue
+        selected={key:brief(row[key],100) for key in ('kind','stage') if type(row.get(key)) is str}
+        selected.update({key:row[key] for key in ('x','y','value','browserTaskId','enhancedTaskId','actualDocumentsUiObserved','actualEnhancedActivityResumed') if type(row.get(key)) in (bool,int) and abs(row[key])<=10000000})
+        trusted.append(selected)
+    packet=dict(event='browser-acceptance-failure',error=brief(error),lastValidatedReport=summary,lastResumedComponents=resumed,trustedAndroidActions=trusted)
+    if len(json.dumps(packet,ensure_ascii=False,separators=(',',':')).encode('utf-8'))>16000:
+        packet.update(lastResumedComponents=[],trustedAndroidActions=[],diagnosticTrimmed=True);summary.pop('checks',None)
+    return packet
 
 
 def main():
@@ -33,7 +104,7 @@ def main():
     paths=[Path(__file__).resolve(),ROOT/'tests/gecko/BrowserIntegrationActivity.java',ROOT/'tests/gecko/BrowserEvidenceProvider.java',ROOT/'tests/gecko/AndroidManifest.xml',ROOT/'.github/workflows/browser-2_1-acceptance.yml']
     paths+=list((ROOT/'app/src/main/java/local/pocketchat').glob('*.java'))
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
-    nonce=uuid.uuid4().hex;actions=[];handled=set();result=None;error=None;browser_task=None;original_settings={}
+    nonce=uuid.uuid4().hex;actions=[];handled=set();result=None;error=None;browser_task=None;original_settings={};last_validated_report=None;last_resumed=[]
     report=dict(status='running',sourceCommit=source,sourceTree=tree,runNonce=nonce,expectedBuildIdentity=identity,actualAndroidExecution=False,actualAndroidWebViewExecution=False,actualDesktopChromiumExecution=False,actualPublicWebsiteExecution=False,actualDevicePerformanceMeasurement=False)
     try:
         if adb('shell','getprop','ro.kernel.qemu').stdout.decode().strip()!='1':raise ValueError('A real controlled Android emulator is required')
@@ -51,20 +122,22 @@ def main():
             if current.get('runNonce')!=nonce:time.sleep(.25);continue
             verify_installed(current['buildIdentity'],identity)
             if current.get('sourceCommit')!=source:raise ValueError('Browser report source differs')
+            last_validated_report=current
             stage=current.get('stage','')
             if stage.startswith('file-picker-') and stage not in handled:
-                target=current['tapTarget'];x,y=int(target['x']),int(target['y'])
-                adb('shell','input','tap',str(x),str(y));actions.append(dict(kind='tap',stage=stage,x=x,y=y))
+                x,y=validate_tap_target(current)
+                adb('shell','input','tap',str(x),str(y));actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']))
                 chooser_until=time.monotonic()+20;chooser=False
                 while time.monotonic()<chooser_until:
                     top=adb('shell','dumpsys','activity','activities').stdout.decode(errors='replace')
                     active=[line for line in top.splitlines() if 'mResumedActivity:' in line or 'topResumedActivity=' in line]
+                    last_resumed=active
                     if any('documentsui' in line.lower() for line in active):chooser=True;break
                     time.sleep(.2)
                 if not chooser:raise AssertionError('The trusted tap did not open Android DocumentsUI: '+stage)
                 adb('shell','input','keyevent','KEYCODE_BACK');actions.append(dict(kind='back',stage=stage,actualDocumentsUiObserved=True));handled.add(stage)
             elif stage=='download-click' and stage not in handled:
-                target=current['tapTarget'];x,y=int(target['x']),int(target['y']);adb('shell','input','tap',str(x),str(y));actions.append(dict(kind='tap',stage=stage,x=x,y=y));handled.add(stage)
+                x,y=validate_tap_target(current);adb('shell','input','tap',str(x),str(y));actions.append(dict(kind='tap',stage=stage,x=x,y=y,targetProof=current['tapTarget']));handled.add(stage)
             elif stage in ('rotate-landscape','rotate-portrait') and stage not in handled:
                 rotation='1' if stage=='rotate-landscape' else '0';adb('shell','settings','put','system','user_rotation',rotation);actions.append(dict(kind='rotation',stage=stage,value=int(rotation)));handled.add(stage)
             elif stage=='switch-to-gecko' and 'engine-roundtrip' not in handled:
@@ -72,6 +145,7 @@ def main():
                 while time.monotonic()<switch_until:
                     top=adb('shell','dumpsys','activity','activities').stdout.decode(errors='replace')
                     active=[line for line in top.splitlines() if 'mResumedActivity:' in line or 'topResumedActivity=' in line]
+                    last_resumed=active
                     match=next((re.search(r'\bt(\d+)\b',line) for line in active if '/local.pocketchat.MainActivity' in line),None)
                     if match:enhanced=True;enhanced_task=int(match.group(1));break
                     time.sleep(.2)
@@ -92,9 +166,15 @@ def main():
         report.update(status='passed',actualAndroidExecution=True,actualAndroidWebViewExecution=True)
     except Exception as failure:
         error=failure;report.update(status='failed',error=type(failure).__name__+': '+str(failure))
+        try:
+            top=adb('shell','dumpsys','activity','activities',check=False,timeout=10).stdout.decode(errors='replace')
+            last_resumed=[line for line in top.splitlines() if 'mResumedActivity:' in line or 'topResumedActivity=' in line]
+        except Exception:pass
+        diagnostic=diagnostic_failure(last_validated_report,report['error'],last_resumed,actions);report['failureDiagnostic']=diagnostic
+        print('BROWSER_ACCEPTANCE_FAILURE '+json.dumps(diagnostic,ensure_ascii=False,separators=(',',':')),flush=True)
     finally:
         unchanged=all(p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest()==hashes[str(p.relative_to(ROOT))] for p in paths)
-        report.update(sourceFiles=hashes,executionInputsUnchanged=unchanged,result=result,trustedAndroidActions=actions,actualAndroidTaps=sum(a['kind']=='tap' for a in actions),scope='Real Android emulator and production browser classes with controlled proxy-origin HTML, real Android DocumentsUI cancellation and native file publication. Installed integration APK/source/SDK identity is checked. No desktop-as-WebView, public website, physical phone or frame-time acceptance.')
+        report.update(sourceFiles=hashes,executionInputsUnchanged=unchanged,result=result,lastValidatedReport=last_validated_report,trustedAndroidActions=actions,actualAndroidTaps=sum(a['kind']=='tap' for a in actions),scope='Real Android emulator and production browser classes with controlled proxy-origin HTML, real Android DocumentsUI cancellation and native file publication. Installed integration APK/source/SDK identity is checked. No desktop-as-WebView, public website, physical phone or frame-time acceptance.')
         if not unchanged:report.update(status='failed',error='Execution source changed');error=error or ValueError('Execution source changed')
         try:(args.output/'webview-provider.txt').write_bytes(adb('shell','dumpsys','webviewupdate',check=False).stdout)
         except Exception:pass

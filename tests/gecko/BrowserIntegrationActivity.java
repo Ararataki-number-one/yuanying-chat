@@ -18,6 +18,10 @@ import org.json.*;
 public final class BrowserIntegrationActivity extends BrowserActivity {
   static final String ORIGIN="http://browser-fixture.example";
   static final String BODY="Controlled Chromium download\n";
+  static final String TARGET_SCROLL_SCRIPT="function(id){const e=document.getElementById(id);if(!e)throw new Error('Missing target '+id);e.scrollIntoView({block:'center',inline:'center'});return {id:e.id};}";
+  static final String TARGET_SAMPLE_SCRIPT="function(id){const e=document.getElementById(id);if(!e)throw new Error('Missing target '+id);const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,h=document.elementFromPoint(x,y);return {id:e.id,x,y,left:r.left,top:r.top,right:r.right,bottom:r.bottom,viewportWidth:innerWidth,viewportHeight:innerHeight,scrollX,scrollY,devicePixelRatio,visualScale:window.visualViewport?visualViewport.scale:1,hitTarget:h===e||e.contains(h),hitId:h&&h.id||'',hitTag:h&&h.tagName||'',url:location.href};}";
+  static final String[] NATIVE_TARGET_FIELDS={"screenX","screenY","width","height","visibleLeft","visibleTop","visibleRight","visibleBottom"};
+  static final String[] DOM_TARGET_FIELDS={"x","y","left","top","right","bottom","viewportWidth","viewportHeight","scrollX","scrollY","devicePixelRatio","visualScale"};
   final Handler probe=new Handler(Looper.getMainLooper());
   final JSONArray checks=new JSONArray();
   final JSONArray layoutObservations=new JSONArray();
@@ -25,6 +29,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   FixtureProxy fixture;JSONObject build;String nonce,stage="starting",failure="";long deadline;
   WebView first,returnSurface;Object oldRoute;int picker;boolean pickerOpened,finished,switchedAway;
   int baselineDownloads;JSONObject target=new JSONObject();
+  long targetGeneration,visualSequence;Runnable targetTimeout;
 
   @Override protected void onCreate(Bundle saved){
     if(!"local.pocketchat.test".equals(getPackageName()))throw new SecurityException("Integration package only");
@@ -100,8 +105,50 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     }catch(Throwable error){fail(error);}});
   }
   void target(String id,Step next){
-    js("(()=>{const r=document.getElementById('"+id+"').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,width:innerWidth}})()",value->{try{
-      int[] location=new int[2];web().getLocationOnScreen(location);double scale=web().getWidth()/value.getDouble("width");target=new JSONObject().put("x",location[0]+(int)Math.round(value.getDouble("x")*scale)).put("y",location[1]+(int)Math.round(value.getDouble("y")*scale));next.run();
+    try{
+      if(!id.equals("upload")&&!id.equals("download"))throw new AssertionError("Unknown trusted target");
+      WebView view=web();long generation=++targetGeneration;step("target-"+id+"-"+picker);
+      target=new JSONObject().put("id",id).put("ready",false);publish(false);
+      targetTimeout=()->fail(new AssertionError("Trusted target did not stabilize: "+id));probe.postDelayed(targetTimeout,45000);
+      scrollTarget(view,id,generation,()->targetFrame(view,id,generation,next,null,null));
+    }catch(Throwable error){fail(error);}
+  }
+  boolean targetCurrent(WebView view,long generation){return !finished&&!destroyed&&targetGeneration==generation&&view!=null&&view==web()&&foreground&&runtime.allowed();}
+  void scrollTarget(WebView view,String id,long generation,Step next){
+    if(!targetCurrent(view,generation)){fail(new AssertionError("Trusted target document is no longer current"));return;}
+    js("("+TARGET_SCROLL_SCRIPT+")("+JSONObject.quote(id)+")",value->{try{if(!targetCurrent(view,generation))throw new AssertionError("Target changed during scroll");next.run();}catch(Throwable error){fail(error);}});
+  }
+  JSONObject nativeTargetFrame(WebView view)throws JSONException{
+    int[] location=new int[2],rootLocation=new int[2];view.getLocationOnScreen(location);view.getRootView().getLocationOnScreen(rootLocation);android.graphics.Rect visible=new android.graphics.Rect();boolean shown=view.isShown()&&view.getGlobalVisibleRect(visible);visible.offset(rootLocation[0],rootLocation[1]);
+    return new JSONObject().put("screenX",location[0]).put("screenY",location[1]).put("width",view.getWidth()).put("height",view.getHeight()).put("visibleLeft",visible.left).put("visibleTop",visible.top).put("visibleRight",visible.right).put("visibleBottom",visible.bottom).put("shown",shown).put("windowFocus",view.hasWindowFocus()).put("foreground",foreground).put("layoutRequested",root.isLayoutRequested()||content.isLayoutRequested()||view.isLayoutRequested());
+  }
+  static boolean nativeTargetReady(JSONObject frame)throws JSONException{return frame.getBoolean("shown")&&frame.getBoolean("windowFocus")&&frame.getBoolean("foreground")&&!frame.getBoolean("layoutRequested")&&frame.getInt("width")>0&&frame.getInt("height")>0&&frame.getInt("visibleRight")>frame.getInt("visibleLeft")&&frame.getInt("visibleBottom")>frame.getInt("visibleTop");}
+  static boolean sameNativeTarget(JSONObject first,JSONObject second)throws JSONException{if(first==null||second==null)return false;for(String key:NATIVE_TARGET_FIELDS)if(first.getInt(key)!=second.getInt(key))return false;return nativeTargetReady(first)&&nativeTargetReady(second);}
+  static boolean sameDomTarget(JSONObject first,JSONObject second)throws JSONException{if(first==null||second==null)return false;for(String key:DOM_TARGET_FIELDS)if(Double.compare(first.getDouble(key),second.getDouble(key))!=0)return false;return first.getString("id").equals(second.getString("id"))&&first.getString("url").equals(second.getString("url"))&&first.getBoolean("hitTarget")&&second.getBoolean("hitTarget");}
+  boolean domTargetReady(String id,JSONObject value,WebView view)throws JSONException{
+    for(String key:DOM_TARGET_FIELDS)if(!Double.isFinite(value.getDouble(key)))return false;
+    double x=value.getDouble("x"),y=value.getDouble("y");return id.equals(value.getString("id"))&&view.getUrl().equals(value.getString("url"))&&value.getBoolean("hitTarget")&&value.getDouble("right")>value.getDouble("left")&&value.getDouble("bottom")>value.getDouble("top")&&x>0&&x<value.getDouble("viewportWidth")&&y>0&&y<value.getDouble("viewportHeight");
+  }
+  void targetFrame(WebView view,String id,long generation,Step next,JSONObject previousNative,JSONObject previousDom){
+    if(!targetCurrent(view,generation))return;
+    view.postOnAnimation(()->{try{
+      if(!targetCurrent(view,generation))return;JSONObject before=nativeTargetFrame(view);target=new JSONObject().put("id",id).put("ready",false).put("nativeFrame",before);
+      if(!nativeTargetReady(before)){targetFrame(view,id,generation,next,null,null);return;}
+      view.postVisualStateCallback(++visualSequence,new WebView.VisualStateCallback(){@Override public void onComplete(long request){
+        view.postOnAnimation(()->{try{
+          if(!targetCurrent(view,generation))return;JSONObject nativeBefore=nativeTargetFrame(view);
+          if(!sameNativeTarget(before,nativeBefore)){targetFrame(view,id,generation,next,null,null);return;}
+          js("("+TARGET_SAMPLE_SCRIPT+")("+JSONObject.quote(id)+")",dom->{try{
+            if(!targetCurrent(view,generation))return;JSONObject nativeAfter=nativeTargetFrame(view);target=new JSONObject().put("id",id).put("ready",false).put("nativeFrame",nativeAfter).put("dom",dom);
+            if(!sameNativeTarget(nativeBefore,nativeAfter)){targetFrame(view,id,generation,next,null,null);return;}
+            if(!domTargetReady(id,dom,view)){scrollTarget(view,id,generation,()->targetFrame(view,id,generation,next,null,null));return;}
+            if(!sameNativeTarget(previousNative,nativeAfter)||!sameDomTarget(previousDom,dom)){targetFrame(view,id,generation,next,nativeAfter,dom);return;}
+            double scale=nativeAfter.getInt("width")/dom.getDouble("viewportWidth");int x=nativeAfter.getInt("screenX")+(int)Math.round(dom.getDouble("x")*scale),y=nativeAfter.getInt("screenY")+(int)Math.round(dom.getDouble("y")*scale);
+            if(x<nativeAfter.getInt("visibleLeft")||x>=nativeAfter.getInt("visibleRight")||y<nativeAfter.getInt("visibleTop")||y>=nativeAfter.getInt("visibleBottom"))throw new AssertionError("Trusted target is outside the visible native WebView");
+            target=new JSONObject().put("id",id).put("x",x).put("y",y).put("ready",true).put("stableSamples",2).put("visualStateComplete",true).put("nativeFrame",nativeAfter).put("dom",dom);probe.removeCallbacks(targetTimeout);targetTimeout=null;next.run();
+          }catch(Throwable error){fail(error);}});
+        }catch(Throwable error){fail(error);}});
+      }});
     }catch(Throwable error){fail(error);}});
   }
   void preparePicker(){target("upload",()->{
@@ -177,10 +224,11 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
       }catch(Throwable error){fail(error);}});
     });
   }
-  void fail(Throwable error){if(finished)return;failure=error.getClass().getSimpleName()+": "+String.valueOf(error.getMessage());stage="failed";finished=true;try{publish(true);}catch(Exception ignored){} }
+  void fail(Throwable error){if(finished)return;if(targetTimeout!=null)probe.removeCallbacks(targetTimeout);failure=error.getClass().getSimpleName()+": "+String.valueOf(error.getMessage());stage="failed";finished=true;try{publish(true);}catch(Exception ignored){} }
   void publish(boolean terminal)throws Exception{
     int passed=0;for(int i=0;i<checks.length();i++)if(checks.getJSONObject(i).optBoolean("pass"))passed++;
     PackageInfo provider=WebView.getCurrentWebViewPackage();JSONObject value=new JSONObject().put("schema",1).put("status",terminal?(failure.isEmpty()?"passed":"failed"):"running").put("stage",stage).put("runNonce",nonce).put("taskId",getTaskId()).put("buildIdentity",build).put("sourceCommit",build.getString("sourceCommit")).put("checks",checks).put("layoutObservations",layoutObservations).put("leaseObservations",leaseObservations).put("passed",passed).put("total",checks.length()).put("failure",failure).put("tapTarget",target).put("provider",provider==null?JSONObject.NULL:new JSONObject().put("package",provider.packageName).put("version",provider.versionName)).put("proxy",fixture.snapshot()).put("actualAndroidExecution",true).put("actualAndroidWebViewExecution",web()!=null||first!=null).put("actualGeckoExecution",false).put("actualPublicWebsiteExecution",false).put("actualDevicePerformanceMeasurement",false).put("scope","Real production BrowserActivity, ChromiumRuntime, ProxyController, Android WebView and native download store with a loopback synthetic HTTP proxy; no upstream forwarding. Chooser and download actions require trusted shell taps. Not phone, public ChatGPT, camera/microphone or frame-rate acceptance.");
+    value.put("foreground",foreground).put("pendingChooser",files!=null&&files.pending!=null).put("routeAllowed",runtime!=null&&runtime.allowed());
     AtomicFile file=new AtomicFile(new File(getFilesDir(),"browser-integration-results.json"));FileOutputStream stream=null;try{stream=file.startWrite();stream.write((value.toString()+"\n").getBytes(StandardCharsets.UTF_8));file.finishWrite(stream);}catch(Exception error){if(stream!=null)file.failWrite(stream);throw error;}
   }
   @Override protected void onPause(){
