@@ -18,7 +18,7 @@ final class ChromeCollapseIntegration {
   String task="";
   int documents;
   int activityStarts,menuOpens;
-  int diagnosticSequence,diagnosticTicks,readyEvaluations,readyCallbacks,snapshotEvaluations,snapshotCallbacks;
+  int diagnosticSequence,diagnosticTicks,readyEvaluations,readyCallbacks,snapshotEvaluations,snapshotCallbacks,inputReadinessSequence;
   boolean diagnosticReady;
   final Runnable diagnosticTick=new Runnable(){public void run(){
     if(diagnosticReady||diagnosticTicks>=32)return;
@@ -47,11 +47,61 @@ final class ChromeCollapseIntegration {
   JSONArray nativeTouches=new JSONArray();
   final BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent intent){
     if(!nonce.equals(intent.getStringExtra("eventNonce")))return;
+    String readiness=intent.getStringExtra("collapseReadiness");
+    if(readiness!=null){if(readiness.matches(nonce+"-[1-9][0-9]{0,2}"))inputReadiness(readiness);return;}
     String command=intent.getStringExtra("collapseCommand");
     if(command==null||!command.matches("[a-zA-Z0-9_-]{1,80}"))return;
     if("clear".equals(command)){web().touchesObserved=new JSONArray();nativeTouches=new JSONArray();return;}
     a.handler.postDelayed(()->snapshot(command),150);
   }};
+  void inputReadiness(String request){
+    if(!"local.pocketchat.test".equals(a.getPackageName())||!request.matches(nonce+"-[1-9][0-9]{0,2}")||inputReadinessSequence>=128)return;
+    CollapseView w=web();View compact=a.designChrome.compact;android.graphics.Rect visible=new android.graphics.Rect();
+    boolean globallyVisible=compact.getGlobalVisibleRect(visible);int[] rootLocation=new int[2];compact.getRootView().getLocationOnScreen(rootLocation);visible.offset(rootLocation[0],rootLocation[1]);JSONObject pending=a.session.pending;
+    String url=w.getUrl(),document=w.inputDocument(nonce,events.buildIdentity.optString("sourceCommit"));InputDocumentBinding binding=w.inputBinding;
+    JSONObject value=J.obj("schema",1,"kind","nativeInputReadiness","diagnosticOnly",true,"releaseAcceptance",false,
+      "sourceCommit",events.buildIdentity.optString("sourceCommit"),"sourceTree",events.buildIdentity.optString("sourceTree"),"apkSha256",events.buildIdentity.optString("apkSha256"),
+      "runNonce",nonce,"request",request,"fixtureAction","chromeCollapse","sequence",++inputReadinessSequence,"observedAtElapsedRealtime",SystemClock.elapsedRealtime(),
+      "pid",android.os.Process.myPid(),"uid",android.os.Process.myUid(),"activityRef",System.identityHashCode(a),
+      "surface",System.identityHashCode(w),"sdkSession",System.identityHashCode(w.current),"attachedSession",System.identityHashCode(w.surface==null?null:w.surface.getSession()),
+      "appearanceDocument",document,"documentBinding","fixture-admitted-current-port","documentPort",System.identityHashCode(binding==null?null:binding.port),"currentPort",System.identityHashCode(w.ports.get(w.current)),
+      "url",TARGET.equals(url)?url:"<outside-fixture>","visibleDocument",w.hasVisibleDocument(),
+      "pendingId",pending==null?"":pending.optString("id"),"pendingConfirmed",pending!=null&&pending.optBoolean("confirmed"),
+      "windowFocus",a.hasWindowFocus(),"decorFocus",a.getWindow().getDecorView().hasWindowFocus(),"attached",compact.isAttachedToWindow(),
+      "shown",compact.isShown(),"enabled",compact.isEnabled(),"clickable",compact.isClickable(),"laidOut",compact.isLaidOut(),"layoutRequested",compact.isLayoutRequested(),
+      "globallyVisible",globallyVisible,"expanded",a.designChrome.expanded(),"toolbarVisibility",a.toolbar.getVisibility(),"compactVisibility",compact.getVisibility(),
+      "page",a.hub.page,"activityStarts",activityStarts,"menuOpens",menuOpens,"nativeTouchCount",nativeTouches.length(),
+      "hostBounds",a.bounds(a.getWindow().getDecorView()),"toolbarBounds",a.bounds(a.toolbar),"compactBounds",a.bounds(compact),"visibleBounds",a.rect(visible),
+      "webBounds",a.bounds(w),"point",a.center(compact));
+    String raw=value.toString();if(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>3500)throw new IllegalStateException("Bounded native input readiness required");
+    android.util.Log.i("PocketChromeInputReady",raw);
+  }
+  /** The loopback fixture uses its admitted message, not production appearance cache. */
+  static final class InputDocumentBinding {
+    final Object port,sdk;final int sdkId;final String nonce,source,document;final JSONObject evidence;
+    InputDocumentBinding(Object port,Object sdk,int sdkId,String nonce,String source,String document,JSONObject evidence){this.port=port;this.sdk=sdk;this.sdkId=sdkId;this.nonce=nonce;this.source=source;this.document=document;this.evidence=evidence;}
+    static boolean number(Object value,int expected){return value instanceof Number&&((Number)value).doubleValue()==expected;}
+    static String document(JSONObject evidence,int sdkId,String actual,String visible,Object sender,Object sdk,boolean topLevel,boolean contentScript,boolean loadCurrent){
+      String local="http://127.0.0.1:8765/c/reload-collapse";
+      if(evidence==null||sdk==null||sdkId<=0||sender!=sdk||!topLevel||!contentScript||!loadCurrent||!local.equals(actual)||!TARGET.equals(visible)
+          ||!Boolean.TRUE.equals(evidence.opt("acceptedByProduction"))||!Boolean.TRUE.equals(evidence.opt("topLevel"))||!Boolean.TRUE.equals(evidence.opt("contentScript"))
+          ||!number(evidence.opt("nativeSession"),sdkId)||!number(evidence.opt("currentSession"),sdkId)
+          ||!local.equals(evidence.optString("senderUrl"))||!local.equals(evidence.optString("actualUrl"))||!TARGET.equals(evidence.optString("visibleUrl")))return "";
+      JSONObject raw=evidence.optJSONObject("rawMessage"),normalized=evidence.optJSONObject("normalizedMessage");
+      if(raw==null||normalized==null||!"documentReady".equals(raw.optString("kind"))||!local.equals(raw.optString("url"))||!number(raw.opt("appearanceProtocol"),1)
+          ||!"documentReady".equals(normalized.optString("kind"))||!TARGET.equals(normalized.optString("url")))return "";
+      String document=raw.optString("appearanceDocument");return document.matches("[a-zA-Z0-9-]{16,80}")&&document.equals(normalized.optString("appearanceDocument"))?document:"";
+    }
+    static InputDocumentBinding admit(Object incoming,Object currentPort,Object sdk,int sdkId,String nonce,String source,JSONObject evidence,String actual,String visible,Object sender,boolean topLevel,boolean contentScript,boolean loadCurrent){
+      if(incoming==null||incoming!=currentPort||nonce==null||!nonce.matches("[0-9a-f]{32}")||source==null||!source.matches("[0-9a-f]{40}"))return null;
+      String document=document(evidence,sdkId,actual,visible,sender,sdk,topLevel,contentScript,loadCurrent);
+      return document.isEmpty()?null:new InputDocumentBinding(incoming,sdk,sdkId,nonce,source,document,evidence);
+    }
+    String current(Object currentPort,Object currentSdk,int currentSdkId,String currentNonce,String currentSource,JSONObject currentEvidence,String actual,String visible,Object sender,boolean topLevel,boolean contentScript,boolean loadCurrent){
+      if(port!=currentPort||sdk!=currentSdk||sdkId!=currentSdkId||evidence!=currentEvidence||!nonce.equals(currentNonce)||!source.equals(currentSource))return "";
+      String current=document(currentEvidence,currentSdkId,actual,visible,sender,currentSdk,topLevel,contentScript,loadCurrent);return document.equals(current)?current:"";
+    }
+  }
   ChromeCollapseIntegration(CompactChromeIntegrationActivity activity,String runNonce){
     a=activity;nonce=runNonce;
     try{events=new IntegrationEventStore(a,Profiles.slot(a),nonce,"chromeCollapse",1,IntegrationBuildIdentity.read(Profiles.global(a)));}
@@ -60,6 +110,13 @@ final class ChromeCollapseIntegration {
   static final class CollapseView extends CompactChromeIntegrationActivity.ReloadView {
     JSONArray touchesObserved=new JSONArray();
     JSONObject documentReadyEvidence=new JSONObject();
+    InputDocumentBinding inputBinding;
+    String inputDocument(String nonce,String source){
+      WebExtension.Port port=ports.get(current);if(inputBinding==null||port==null)return "";
+      return inputBinding.current(port,current,System.identityHashCode(current),nonce,source,documentReadyEvidence,rawUrl(),getUrl(),port.sender.session,
+        port.sender.isTopLevel(),port.sender.environmentType==WebExtension.MessageSender.ENV_TYPE_CONTENT_SCRIPT,
+        !staleAppearanceConnections.contains(port)&&java.util.Objects.equals(appearanceConnections.get(port),appearanceLoads.getOrDefault(current,0L)));
+    }
     ChromeCollapseIntegration diagnostic;
     int routeCalls,fixtureRoutes,blockedRoutes,otherRoutes;
     @Override JSONObject route(String target){
@@ -91,7 +148,12 @@ final class ChromeCollapseIntegration {
               // The original production delegate alone may mark the real SDK usable.
               if(mapped&&diagnostic!=null)diagnostic.diagnostic("document-ready-before");
               original.onPortMessage(forwarded,incoming);
-              if(mapped)try{documentReadyEvidence.put("acceptedByProduction",hasVisibleDocument());}catch(JSONException failure){throw new IllegalStateException(failure);}
+              if(mapped)try{documentReadyEvidence.put("acceptedByProduction",hasVisibleDocument());
+                if(diagnostic!=null)inputBinding=InputDocumentBinding.admit(incoming,ports.get(current),current,System.identityHashCode(current),diagnostic.nonce,
+                  diagnostic.events.buildIdentity.optString("sourceCommit"),documentReadyEvidence,rawUrl(),getUrl(),port.sender.session,
+                  port.sender.isTopLevel(),port.sender.environmentType==WebExtension.MessageSender.ENV_TYPE_CONTENT_SCRIPT,
+                  !staleAppearanceConnections.contains(incoming)&&java.util.Objects.equals(appearanceConnections.get(incoming),appearanceLoads.getOrDefault(current,0L)));
+              }catch(JSONException failure){throw new IllegalStateException(failure);}
               if(mapped&&diagnostic!=null)diagnostic.diagnostic("document-ready-after");
             }
             @Override public void onDisconnect(WebExtension.Port incoming){original.onDisconnect(incoming);}

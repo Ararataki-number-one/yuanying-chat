@@ -39,6 +39,7 @@ def main():
         target=out/(name+'.json');add(name,script,['--jsdom-module',a.jsdom_module.resolve(),'--output',target],target)
     add('browser-targeting','tests/browser_targeting_test.py')
     add('chrome-diagnostic-controls','tests/gecko_chrome_diagnostic_test.py')
+    add('chrome-firsttap-controls','tests/profile_chrome_first_tap_readiness_test.py')
     add('network-callback-cohort','tests/network_settings_callback_contract_test.py')
     add('network-completion-proof','tests/network_fence_completion_contract_test.py')
     add('network-callback-source-history','tests/profile_network_settings_callback_source_compatibility_test.py')
@@ -46,7 +47,7 @@ def main():
     add('publisher-gate','tests/browser_publish_gate_test.py')
     add('baseline-bundle','tests/browser_baseline_bundle_test.py')
     add('workflow-gate','tests/browser_acceptance_workflow_test.py')
-    names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','tests','tools/browser','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
+    names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
     environment=dict(os.environ,JSDOM_MODULE=str(a.jsdom_module.resolve()),JAVA_HOME=str(a.java_home.resolve()));environment['PATH']=str(a.java_home.resolve()/'bin')+os.pathsep+environment['PATH']

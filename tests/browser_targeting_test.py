@@ -300,6 +300,105 @@ public static void main(String[] args)throws Exception{
         print(json.dumps(dict(scope='Actual fixture Java geometry methods and current/previous projection statements on host JVM; explicit native/DOM JSON inputs, no Android execution',
                               actualAndroidExecution=False, reports=reports)))
 
+    def test_actual_http_response_declares_no_sniff_without_releasing_the_body_gate(self):
+        source_path = ROOT / 'tests/gecko/BrowserIntegrationActivity.java'
+        source = source_path.read_text()
+        previous = subprocess.check_output(['git', 'show',
+            'd10843d321f426cb66a3fef7a232adf52fd0d15e:tests/gecko/BrowserIntegrationActivity.java'],
+            cwd=ROOT, text=True)
+        def response_method(text):
+            start = text.index('    void respond(Socket socket,')
+            end = text.index('\n    JSONObject snapshot()', start)
+            return text[start:end]
+        current_method, old_method = response_method(source), response_method(previous)
+        header = 'X-Content-Type-Options: nosniff\\r\\n'
+        self.assertEqual(current_method.replace(header, '', 1), old_method)
+        self.assertEqual(current_method.count(header), 1)
+        self.assertIn('downloadRelease.await(45,TimeUnit.SECONDS)', current_method)
+        body_declaration = next(line.strip() for line in source.splitlines()
+                                if line.strip().startswith('static final String BODY='))
+        self.assertIn(body_declaration, previous)
+        java_source = r'''
+import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;
+import java.util.*;import java.util.concurrent.*;import java.util.concurrent.atomic.*;
+public final class ActualResponseHost {
+  static int checks;
+  static void check(boolean value){if(!value)throw new AssertionError("HTTP response check "+checks);checks++;}
+  final CountDownLatch downloadRelease=new CountDownLatch(1);
+  static final class MemorySocket extends Socket {
+    final CountDownLatch firstFlush=new CountDownLatch(1);
+    final ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+    final OutputStream output=new OutputStream(){
+      public void write(int value){synchronized(bytes){bytes.write(value);}}
+      public void write(byte[] value,int offset,int count){synchronized(bytes){bytes.write(value,offset,count);}}
+      public void flush(){firstFlush.countDown();}
+    };
+    @Override public OutputStream getOutputStream(){return output;}
+    byte[] snapshot(){synchronized(bytes){return bytes.toByteArray();}}
+  }
+  static int bodyStart(byte[] wire){
+    for(int i=0;i+3<wire.length;i++)if(wire[i]==13&&wire[i+1]==10&&wire[i+2]==13&&wire[i+3]==10)return i+4;
+    throw new AssertionError("Actual response did not end its headers");
+  }
+  static void exercise(boolean current,boolean attachment)throws Exception {
+    ActualResponseHost fixture=new ActualResponseHost();MemorySocket socket=new MemorySocket();
+    byte[] body=BODY.getBytes(StandardCharsets.UTF_8);AtomicReference<Throwable> failed=new AtomicReference<>();
+    Thread writer=new Thread(()->{try{if(current)fixture.respond(socket,200,"text/plain",body,attachment);else fixture.respondOld(socket,200,"text/plain",body,attachment);}catch(Throwable error){failed.set(error);}},"actual-fixture-response-host");
+    writer.setDaemon(true);writer.start();
+    try {
+      check(socket.firstFlush.await(5,TimeUnit.SECONDS));
+      byte[] prefix=socket.snapshot();int start=bodyStart(prefix);
+      String headers=new String(prefix,0,start,StandardCharsets.ISO_8859_1);
+      check(headers.startsWith("HTTP/1.1 200 OK\r\n"));
+      check(headers.contains("Content-Type: text/plain\r\n"));
+      check(headers.contains("Content-Length: "+body.length+"\r\n"));
+      check(headers.contains("Content-Disposition: attachment; filename=fixture.txt\r\n")==attachment);
+      check(headers.contains("X-Content-Type-Options: nosniff\r\n")==(current&&attachment));
+      check(fixture.downloadRelease.getCount()==1);
+      if(attachment){
+        check(prefix.length-start==1);check(prefix[start]==body[0]);check(writer.isAlive());
+        check(!Arrays.equals(Arrays.copyOfRange(prefix,start,prefix.length),body));
+      }
+    } finally {fixture.downloadRelease.countDown();writer.join(5000);}
+    check(!writer.isAlive());check(failed.get()==null);
+    byte[] complete=socket.snapshot();int start=bodyStart(complete);
+    check(Arrays.equals(Arrays.copyOfRange(complete,start,complete.length),body));
+  }
+  public static void main(String[] args)throws Exception{
+    check(BODY.getBytes(StandardCharsets.UTF_8).length==29);
+    exercise(false,true);exercise(true,true);exercise(false,false);exercise(true,false);
+    System.out.println("{\"checks\":"+checks+",\"bodyBytes\":29,\"attachmentBodyHeldUntilRelease\":true,\"previousAttachmentNoSniff\":false,\"currentAttachmentNoSniff\":true,\"nonAttachmentUnchanged\":true}");
+  }
+}
+'''
+        insertion = java_source.index('  static int checks;')
+        java_source = (java_source[:insertion] + body_declaration + '\n'
+            + current_method + '\n' + old_method.replace('void respond(', 'void respondOld(', 1)
+            + '\n' + java_source[insertion:])
+        home = Path(os.environ.get('JAVA_HOME', str(ROOT / 'work/browser-ci-jdk/jdk-17.0.21+9')))
+        javac = str(home / 'bin/javac') if (home / 'bin/javac').is_file() else shutil.which('javac')
+        java = str(home / 'bin/java') if (home / 'bin/java').is_file() else shutil.which('java')
+        self.assertTrue(java and javac, 'Actual JDK17 is required for response controls')
+        with tempfile.TemporaryDirectory(prefix='browser-actual-response-host-') as directory:
+            temporary = Path(directory)
+            (temporary / 'ActualResponseHost.java').write_text(java_source)
+            compiled = subprocess.run([javac, '--release', '17', '-d', str(temporary),
+                str(temporary / 'ActualResponseHost.java')], capture_output=True, text=True, timeout=30)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            ran = subprocess.run([java, '-cp', str(temporary), 'ActualResponseHost'],
+                capture_output=True, text=True, timeout=25)
+            self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+            observed = json.loads(ran.stdout)
+            self.assertEqual(observed['checks'], 49)
+            self.assertEqual(observed['bodyBytes'], 29)
+            self.assertTrue(observed['attachmentBodyHeldUntilRelease'])
+            self.assertFalse(observed['previousAttachmentNoSniff'])
+            self.assertTrue(observed['currentAttachmentNoSniff'])
+            self.assertTrue(observed['nonAttachmentUnchanged'])
+        self.assertEqual(source_path.read_text(), source)
+        print(json.dumps(dict(scope='Actual current and Source9 fixture HTTP response methods on host JVM with explicit in-memory Socket output; no Android/WebView or MIME-sniffer execution claim',
+                              actualAndroidExecution=False, **observed)))
+
     def test_failure_diagnostic_preserves_only_controlled_bounded_fields(self):
         current = self.current()
         current.update(cookie='NEVER_LOG_COOKIE', draft='NEVER_LOG_DRAFT',

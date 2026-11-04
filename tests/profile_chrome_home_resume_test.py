@@ -27,6 +27,8 @@ focus('local.pocketchat.CompactChromeIntegrationActivity')
 
 
 def original_header_runner(source):
+    from chrome_first_tap_source_compatibility import source_input
+    source = source_input(source.encode('utf-8'), 'tests/gecko/run_chrome_collapse.py').decode('utf-8')
     reviewed = ("        from chrome_header_readiness import header_up_once\n"
                 "        header_up_once(argv=sys.argv[1:],source=source,identity=identity,start=start,end=end,nonce=nonce,out=out)\n")
     original = "        adb('shell','input','swipe',str(start[0]),str(start[1]),str(end[0]),str(end[1]),'320')\n"

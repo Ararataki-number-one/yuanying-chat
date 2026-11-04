@@ -129,7 +129,12 @@ def run(adb,adb_bytes,source,trace,out,focus):
             inputs.append({'kind':'swipe','label':label,'actualAndroidInput':True,'from':[x1,y1],'to':[x2,y2],'durationMs':320})
             return snapshot(label)
         def tap(before,label,key):
-            point=before[key];adb('shell','input','tap',str(point[0]),str(point[1]))
+            point=before[key]
+            if label=='initialChat':
+                from chrome_first_tap_readiness import first_tap_once
+                prepared=first_tap_once(argv=sys.argv[1:],source=source,identity=identity,before=before,nonce=nonce,out=out)
+                point=prepared['point']
+            else:adb('shell','input','tap',str(point[0]),str(point[1]))
             inputs.append({'kind':'tap','label':label,'actualAndroidInput':True,'point':point})
             return snapshot(label)
         def unchanged(before,after):
