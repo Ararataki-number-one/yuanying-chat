@@ -1,0 +1,61 @@
+name: Read fixed Source11 attempt2 browser validation reports (diagnostic only; no screenshots)
+'on':
+  push:
+    branches:
+    - diagnostics/browser-2.1.0-source11-attempt2-reports
+    paths:
+    - .github/workflows/browser-source11-attempt2-report-diagnostics.yml
+permissions:
+  actions: read
+  contents: read
+jobs:
+  read_existing_artifact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Verify fixed metadata and print only authorized validation report and provider metadata
+      shell: bash
+      run: "set -euo pipefail\nmkdir -p diagnostic-input\ngh api repos/Ararataki-number-one/yuanying-chat/actions/runs/41905469995/attempts/2\
+        \ > diagnostic-input/run.json\ngh api repos/Ararataki-number-one/yuanying-chat/git/commits/c5972098df75c92bde6e7dbd6572ee7604ad97bf\
+        \ > diagnostic-input/source.json\ngh api repos/Ararataki-number-one/yuanying-chat/actions/artifacts/13365625081\
+        \ > diagnostic-input/artifact.json\ngh api repos/Ararataki-number-one/yuanying-chat/actions/artifacts/13365625081/zip\
+        \ > diagnostic-input/artifact.zip\npython3 - <<'PYCODE'\nimport base64,hashlib,json,pathlib,re,stat,zipfile\n\
+        REPO='Ararataki-number-one/yuanying-chat';REPO_ID=1401080063\nRUN=41905469995;ATTEMPT=2;ARTIFACT=13365625081\n\
+        SOURCE='c5972098df75c92bde6e7dbd6572ee7604ad97bf';TREE='509f6cf98c9a0193f6b9a51875a684c64a34f6f9'\nNAME='browser-41905469995-2-android';SIZE=62481\n\
+        SHA='a52922f35e0df09887b176703139183e76d77cf7a2590ed191beeb7281788f43'\nLIMIT=1024*1024;CHUNK=8192\nroot=pathlib.Path('diagnostic-input')\n\
+        def require(condition,message):\n    if not condition:raise ValueError(message)\nrun=json.loads((root/'run.json').read_text());artifact=json.loads((root/'artifact.json').read_text());commit=json.loads((root/'source.json').read_text())\n\
+        require(run['id']==RUN and run['run_attempt']==ATTEMPT and run['head_sha']==SOURCE,'Target run/source/attempt\
+        \ differs')\nrequire(run['repository']['full_name']==REPO and run['repository']['id']==REPO_ID,'Target repository\
+        \ differs')\nrequire(run['head_branch']=='release/browser-2.1.0' and run['path']=='.github/workflows/browser-2_1-acceptance.yml','Target\
+        \ branch/workflow differs')\nrequire(commit['sha']==SOURCE and commit['tree']['sha']==TREE,'Actual source\
+        \ tree differs')\nrequire(artifact['id']==ARTIFACT and artifact['name']==NAME and artifact['size_in_bytes']==SIZE\
+        \ and artifact['expired']is False,'Fixed artifact metadata differs')\nrequire(artifact['digest']=='sha256:'+SHA,'Artifact\
+        \ metadata digest differs')\norigin=artifact['workflow_run'];require(origin['id']==RUN and origin['head_sha']==SOURCE\
+        \ and origin['head_branch']=='release/browser-2.1.0','Artifact source/run differs')\nrequire(origin['repository_id']==REPO_ID\
+        \ and origin['head_repository_id']==REPO_ID,'Artifact repository differs')\narchive=root/'artifact.zip';require(archive.stat().st_size==SIZE,'Downloaded\
+        \ ZIP byte count differs');raw=archive.read_bytes();require(hashlib.sha256(raw).hexdigest()==SHA,'Downloaded\
+        \ ZIP SHA256 differs')\nfiles={}\nwith zipfile.ZipFile(archive)as bundle:\n    entries=bundle.infolist();require(len(entries)<=64,'Too\
+        \ many ZIP entries')\n    names=[item.filename for item in entries];require(len(names)==len(set(names)),'Duplicate\
+        \ ZIP path')\n    require(sum(item.file_size for item in entries)<=LIMIT,'Total decompressed bytes exceed\
+        \ one MiB')\n    for item in entries:\n        path=pathlib.PurePosixPath(item.filename)\n        require(not\
+        \ path.is_absolute() and '..'not in path.parts and '\\\\'not in item.filename and '\\x00'not in item.filename,'Unsafe\
+        \ ZIP path')\n        require(not stat.S_ISLNK(item.external_attr>>16),'ZIP symlink is forbidden')\n   \
+        \ for name,maximum in [('results.json',262144),('webview-provider.txt',262144)]:\n        require(names.count(name)==1,'Required\
+        \ single root file missing: '+name)\n        item=bundle.getinfo(name);require(not item.is_dir() and 0<item.file_size<=maximum,'Selected\
+        \ file byte cap differs: '+name)\n        data=bundle.read(item);require(len(data)==item.file_size,'Selected\
+        \ file bytes differ: '+name);files[name]=data\nreport=json.loads(files['results.json'].decode('utf-8'));files['webview-provider.txt'].decode('utf-8')\n\
+        require(report['sourceCommit']==SOURCE and report['sourceTree']==TREE,'Existing report source/tree differs')\n\
+        require(report['status']=='failed' and re.fullmatch('[0-9a-f]{32}',report['runNonce']),'Expected original\
+        \ failure report/nonce missing')\nidentity=report['expectedBuildIdentity'];require(identity['sourceCommit']==SOURCE\
+        \ and identity['sourceTree']==TREE,'APK source/tree differs')\nrequire(identity['dirtySource']is False,'APK\
+        \ came from dirty source')\nsdk=identity['sdkBuildIdentity'];require(str(sdk['runId'])==str(RUN) and str(sdk['runAttempt'])==str(ATTEMPT),'APK\
+        \ SDK run/attempt differs')\nsummary=dict(schema=1,diagnosticOnly=True,releaseAcceptance=False,actualWorkloadInvoked=False,readExistingArtifactOnly=True,targetRepository=REPO,targetRunId=str(RUN),targetRunAttempt=str(ATTEMPT),sourceCommit=SOURCE,sourceTree=TREE,artifactId=ARTIFACT,artifactName=NAME,artifactZipBytes=len(raw),artifactZipSha256=SHA,files={name:dict(bytes=len(data),sha256=hashlib.sha256(data).hexdigest())for\
+        \ name,data in files.items()})\nprint('BROWSER_DIAG_SUMMARY '+json.dumps(summary,sort_keys=True),flush=True)\n\
+        for name,data in files.items():\n    encoded=base64.b64encode(data).decode('ascii');parts=[encoded[i:i+CHUNK]for\
+        \ i in range(0,len(encoded),CHUNK)]\n    metadata=dict(name=name,bytes=len(data),sha256=hashlib.sha256(data).hexdigest(),parts=len(parts))\n\
+        \    print('BROWSER_DIAG_FILE_BEGIN '+json.dumps(metadata,sort_keys=True),flush=True)\n    for index,part\
+        \ in enumerate(parts):print('BROWSER_DIAG_FILE_CHUNK '+json.dumps(dict(name=name,part=index,base64=part),sort_keys=True),flush=True)\n\
+        \    print('BROWSER_DIAG_FILE_END '+json.dumps(metadata,sort_keys=True),flush=True)\nprint('BROWSER_DIAG_COMPLETE\
+        \ '+json.dumps(dict(diagnosticOnly=True,releaseAcceptance=False,files=len(files))),flush=True)\nPYCODE\n"
