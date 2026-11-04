@@ -1,0 +1,70 @@
+name: Start one complete Source11 requalification after preserving the failed attempt
+'on':
+  push:
+    branches: [diagnostics/requalify-2.1.0-source11-whole-run]
+    paths: [.github/workflows/requalify-source11-whole-run.yml]
+permissions:
+  actions: write
+  contents: read
+jobs:
+  request_one_full_attempt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Require exact completed original results and request all jobs afresh once
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        import json,subprocess
+        REPO='Ararataki-number-one/yuanying-chat'
+        RUN=41905469995
+        SOURCE='c5972098df75c92bde6e7dbd6572ee7604ad97bf'
+        TREE='509f6cf98c9a0193f6b9a51875a684c64a34f6f9'
+        def require(value,message):
+            if not value:raise ValueError(message)
+        def get(path):
+            return json.loads(subprocess.check_output(['gh','api','repos/'+REPO+'/'+path],text=True,timeout=30))
+        run=get('actions/runs/'+str(RUN))
+        require(run['id']==RUN and run['run_attempt']==1 and run['head_sha']==SOURCE,'Exact original source/run/attempt required')
+        require(run['repository']['full_name']==REPO and run['repository']['id']==1401080063,'Exact authorized repository required')
+        require(run['path']=='.github/workflows/browser-2_1-acceptance.yml' and run['head_branch']=='release/browser-2.1.0' and run['event']=='push','Original complete workflow required')
+        require(run['status']=='completed' and run['conclusion']=='failure','Preserved completed failed qualification required')
+        commit=get('git/commits/'+SOURCE)
+        require(commit['sha']==SOURCE and commit['tree']['sha']==TREE,'Frozen source tree differs')
+        jobs=get('actions/runs/'+str(RUN)+'/attempts/1/jobs?per_page=100')
+        expected={
+         'build':126838836246,
+         'Chrome diagnostic (cold)':126846677362,
+         'Chrome diagnostic (after-reload)':126846677683,
+         'editing-samples (1)':126846677436,
+         'editing-samples (2)':126846677383,
+         'Real Android Chromium browser acceptance':126846677463,
+         'android (profiles)':126846677553,
+         'android (files)':126846677568,
+         'android (connections)':126846677576,
+         'android (ui)':126846677634,
+         'android (editing)':126846677684,
+         'verify':126862854532,
+        }
+        require(jobs['total_count']==12 and len(jobs['jobs'])==12,'Complete original twelve-job snapshot required')
+        seen=set();snapshot=[]
+        for job in jobs['jobs']:
+            name=job['name'];require(name not in seen,'Duplicate original job');seen.add(name)
+            require(expected.get(name)==job['id'],'Unexpected original job ID')
+            require(job['run_id']==RUN and job['run_attempt']==1 and job['head_sha']==SOURCE and job['status']=='completed','Original job identity/status differs')
+            if name=='verify':
+                require(job['conclusion']=='failure','Original failure must remain rejected by verifier')
+            else:
+                require(expected.get(name)==job['id'],'Unexpected original job')
+                require(job['conclusion']==('failure' if name=='android (editing)' else 'success'),'Unexpected additional original failure; stop for diagnosis')
+            snapshot.append(dict(id=job['id'],name=name,status=job['status'],conclusion=job['conclusion']))
+        require(seen==set(expected),'Original job set differs')
+        print('FULL_REQUALIFICATION_BEFORE '+json.dumps(dict(source=SOURCE,tree=TREE,runId=RUN,preservedFailedAttempt=1,requestedFreshAttempt=2,jobs=snapshot,scope='All original build and Android jobs execute afresh. No failed-job-only retry, no artifact carryover, no workload replay inside a sample, no altered thresholds.'),sort_keys=True),flush=True)
+        # Exactly one canonical full-run request. Do not retry an ambiguous mutation.
+        request=subprocess.run(['gh','api','--method','POST','repos/'+REPO+'/actions/runs/'+str(RUN)+'/rerun'],capture_output=True,text=True,timeout=30)
+        require(request.returncode==0,'Full-run request failed; inspect actual run before any further mutation')
+        print('FULL_REQUALIFICATION_REQUEST '+json.dumps(dict(status='requested',source=SOURCE,runId=RUN,priorAttempt=1,requestedAttempt=2,canonicalEndpoint='actions/runs/'+str(RUN)+'/rerun',requestCount=1,allJobs=True,priorFailurePreserved=True,releaseAcceptance=False,actualSigning=False)),flush=True)
+        PYCODE
