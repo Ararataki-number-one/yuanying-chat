@@ -182,6 +182,7 @@ class ProfileCatalog {static int reads;static EnvironmentSpec.Identity current;s
 class AppPrefs {static void requireDownloadNetwork(Context c)throws IOException{}}
 class Transport {JSONObject state=J.obj("alive",true,"generation","core-A","pid",123,"servicePid",456,"configuration","configuration","controllerPort",12123,"proxyPort",32123);boolean freshAlive=true;int calls;JSONObject call(String command,String ignored){calls++;return freshAlive?state:J.obj("alive",false);}}
 class NativeNetwork {
+  int routeChangeNotifications;void routeChanged(){routeChangeNotifications++;}
   static NativeNetwork current;static NativeNetwork get(Context c){return current;}
   final Context context;Transport transport=new Transport();java.lang.Process process;JSONObject settings;
   String fingerprint="fixed-exit",token="controlled-private-token",currentEntry="entry-A";int controllerPort=12123,proxyPort=32123;long routeSerial=1,nextExitCheckAt,healthObservedAt;int exitCheckFailures,failures,healthTargetCode;String healthStatus="unknown";

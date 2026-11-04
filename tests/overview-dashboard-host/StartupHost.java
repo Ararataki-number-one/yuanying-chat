@@ -20,6 +20,13 @@ public final class StartupHost {
     MainActivity replaced=new MainActivity(true);replaced.onCreate(new Bundle());replaced.onResume();Runnable oldFrame=replaced.environmentOverview.draw;replaced.onNewIntent(new Intent(true));oldFrame.run();check(replaced.creates==0,"retired overview draw cannot authorize a replacement dashboard");replaced.environmentOverview.paint();check(replaced.creates==1,"replacement dashboard starts only after its own native frame");
     ProfileCatalog.available=false;MainActivity deleted=new MainActivity(true);deleted.onCreate(new Bundle());check(deleted.finished&&deleted.creates==0,"deleted or resetting environment cannot create browser");ProfileCatalog.available=true;
 
+    MainActivity chromium=new MainActivity(true);chromium.intent.browser=true;chromium.onCreate(null);
+    check(chromium.finished&&chromium.creates==0&&BrowserActivity.opens==1&&"https://browser-fixture.example/".equals(BrowserActivity.lastUrl),"cold Chromium selection dispatches homepage without creating Gecko");
+    MainActivity warm=new MainActivity(false);warm.onCreate(null);ChatSession retained=warm.session;warm.sessionUi=new UiFrames();warm.onResume();check(warm.sessionUi.visible,"resumed session requests its presentation frame");
+    Intent browserIntent=new Intent(false);browserIntent.browser=true;warm.onNewIntent(browserIntent);
+    check(!warm.finished&&warm.session==retained&&warm.creates==1&&BrowserActivity.opens==2,"warm Chromium dispatch retains the exact existing Gecko session");
+    MainActivity focused=new MainActivity(true);focused.onCreate(new Bundle(true));check(focused.focusReading&&focused.creates==0,"native focus preference restores before deferred Gecko startup");
+
     BrowserStartupGate gate=new BrowserStartupGate("A",0,1);check(gate.matches("A",0,1)&&!gate.matches("B",0,1)&&!gate.matches("A",1,1)&&!gate.matches("A",0,2),"startup identity cannot cross environment, slot or generation");check(!gate.take(),"new gate starts nothing");gate.frame();check(!gate.take(),"draw without foreground starts nothing");gate.foreground(true);check(gate.take()&&!gate.take(),"gate issues a single start");
     BrowserStartupGate never=new BrowserStartupGate("A",0,1);never.close();never.foreground(true);never.frame();check(!never.take(),"closed gate stays closed");
     PageLoadingWait wait=new PageLoadingWait();check(!wait.update(true,0),"empty page starts a real monotonic wait");
@@ -32,19 +39,19 @@ public final class StartupHost {
 }
 
 class MainActivity extends Activity {
-  static final int MODE_PRIVATE=0;boolean pageMode,active,destroyed,finished;int creates,resumes,content;BrowserStartupGate browserStartup;ChatSession session;EnvironmentOverviewUi environmentOverview;Intent intent;Prefs prefs;
+  static final int MODE_PRIVATE=0;boolean pageMode,active,destroyed,finished,focusReading;Bundle downloadUiState;UiFrames sessionUi;int creates,resumes,content;BrowserStartupGate browserStartup;ChatSession session;EnvironmentOverviewUi environmentOverview;Intent intent;Prefs prefs;
   MainActivity(boolean manual){intent=new Intent(manual);}
   Intent getIntent(){return intent;}void setIntent(Intent value){intent=value;}boolean isFinishing(){return finished;}void finish(){finished=true;}void setContentView(LinearLayout v){content++;}Prefs getSharedPreferences(String name,int mode){return new Prefs();}Window getWindow(){return new Window();}void startActivity(Intent value){}
   void createChatUi(){creates++;session=new ChatSession();if(active)resumeChatUi();}void resumeChatUi(){resumes++;}void openNotification(Intent i){}
   /*ACTUAL_ENTRY_METHODS*/
 }
 class Activity {public void onCreate(Bundle b){}protected void onResume(){}protected void onNewIntent(Intent i){}}
-class Bundle{}class ChatSession{}class WindowHomeActivity{}class Window{void setDecorFitsSystemWindows(boolean b){}}
+class Bundle{boolean focused;Bundle(){}Bundle(boolean focused){this.focused=focused;}boolean getBoolean(String name,boolean fallback){return "focusReading".equals(name)?focused:fallback;}Bundle getBundle(String name){return null;}}class ChatSession{}class WindowHomeActivity{}class Window{void setDecorFitsSystemWindows(boolean b){}}
 class Build{static class VERSION{static int SDK_INT=35;}}
 class LinearLayout{LinearLayout(MainActivity a){}void setBackgroundColor(int color){}}
 class ReferenceUi{static int CHAT_BG;}
 class Prefs{boolean getBoolean(String k,boolean v){return v;}Prefs edit(){return this;}Prefs putBoolean(String k,boolean v){return this;}void apply(){}}
-class Intent{static int FLAG_ACTIVITY_NEW_TASK=1;final boolean manual;Intent(boolean v){manual=v;}Intent(MainActivity a,Class<?> c){manual=false;}Intent addFlags(int f){return this;}}
+class Intent{static int FLAG_ACTIVITY_NEW_TASK=1;boolean browser;final boolean manual;Intent(boolean v){manual=v;}Intent(MainActivity a,Class<?> c){manual=false;}Intent addFlags(int f){return this;}}
 class Profiles{static int slot(MainActivity a){return 0;}}
 class ProfileCatalog{static boolean available=true;static ProfileCatalog get(MainActivity a){return new ProfileCatalog();}boolean available(int slot){return available;}}
 class ExitIpPageUi{static void close(MainActivity a){}}
@@ -54,3 +61,8 @@ class EnvironmentOverviewUi {
 }
 
 class OverviewIdentity{String environmentId="A";int slot=0,generation=1;}
+
+/** Preference/launcher boundaries only; MainActivity.dispatchBrowser is verbatim production. */
+class BrowserPreferences{static boolean shouldOpenBrowser(MainActivity activity,Intent intent){return intent!=null&&intent.browser;}static String home(MainActivity activity){return "https://browser-fixture.example/";}}
+class BrowserActivity{static int opens;static String lastUrl;static void open(MainActivity activity,String url){opens++;lastUrl=url;}}
+class UiFrames{boolean visible;void visible(boolean value){visible=value;}}

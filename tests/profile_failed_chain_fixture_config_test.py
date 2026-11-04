@@ -181,7 +181,7 @@ class FailedChainFixtureConfigTest(unittest.TestCase):
   java=os.environ.get('PROFILE_JAVA') or shutil.which('java');self.assertTrue(java)
   candidates=[os.environ.get('PROFILE_JSON_JAR',''),str(ROOT/'work/profile-host/json.jar'),str(ROOT/'work/gecko-integration/catalog-json.jar')]
   jar=next((Path(p) for p in candidates if p and Path(p).is_file()),None);self.assertIsNotNone(jar)
-  source,blocks,oracle=generated(FIXTURE.read_text());production=[PRODUCTION/name for name in ('NetworkHealthPolicy.java','NetworkOptimizationPolicy.java','NetworkWork.java','NetworkDiagnostics.java','LatencyProbePolicy.java','LatencyRefreshPolicy.java','Sha256.java')]
+  source,blocks,oracle=generated(FIXTURE.read_text());production=[PRODUCTION/name for name in ('ChromiumRouteLease.java','NetworkHealthPolicy.java','NetworkOptimizationPolicy.java','NetworkWork.java','NetworkDiagnostics.java','LatencyProbePolicy.java','LatencyRefreshPolicy.java','Sha256.java')]
   paths=[*production,PRODUCTION/'NativeNetwork.java',PRODUCTION/'EntrySelection.java',PRODUCTION/'NetworkSourceSelection.java',PRODUCTION/'SecretStore.java',PRODUCTION/'J.java',FIXTURE,HELPER,ROOT/'tests/network-recovery-host/run.py',ROOT/'tests/network-recovery-host/RecoverySearchHarness.java.txt',Path(__file__)]
   hashes={str(p.relative_to(ROOT)):sha(p.read_bytes()) for p in paths}
   with tempfile.TemporaryDirectory(prefix='one-exit-recovery-') as temp:

@@ -48,11 +48,34 @@ class LocalProcessProjection46(unittest.TestCase):
         for mutated in mutants:
             with self.subTest(mutantSha=hashlib.sha256(mutated).hexdigest()),self.assertRaises(ValueError):compatibility.restore_to_source3(mutated)
         with self.assertRaises(ValueError):compatibility.restore_to_source3(current,'other/fixture.java')
-        legacy=ROOT/'tests/profile_failed_chain_fixture_config_test.py';raw=legacy.read_bytes();imported=b'from network_performance46_fixture_compatibility import input_for_original_fixture\n';normalized=b' current=input_for_original_fixture(current)\n';self.assertEqual(raw.count(imported),1);self.assertEqual(raw.count(normalized),1);self.assertEqual(hashlib.sha256(raw.replace(imported,b'',1).replace(normalized,b'',1)).hexdigest(),'f5c95f9d8422f93f97bcd012af877cceeb4ce3df615bd30107f023a2d41ccf39')
+        from failed_chain_host_dependency_compatibility import restore_current_host
+        legacy=ROOT/'tests/profile_failed_chain_fixture_config_test.py';raw=restore_current_host(legacy.read_bytes());imported=b'from network_performance46_fixture_compatibility import input_for_original_fixture\n';normalized=b' current=input_for_original_fixture(current)\n';self.assertEqual(raw.count(imported),1);self.assertEqual(raw.count(normalized),1);self.assertEqual(hashlib.sha256(raw.replace(imported,b'',1).replace(normalized,b'',1)).hexdigest(),'f5c95f9d8422f93f97bcd012af877cceeb4ce3df615bd30107f023a2d41ccf39')
         spec=importlib.util.spec_from_file_location('exact_old_failed_chain_consumer',legacy);old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old);self.assertEqual(hashlib.sha256(old.original_fixture(current.decode()).encode()).hexdigest(),old.ORIGINAL_SHA)
         with __import__('tempfile').TemporaryDirectory(prefix='performance46-inverse-negative-')as directory:
             fake=Path(directory)/compatibility.MANIFEST_PATH;fake.parent.mkdir(parents=True);fake.write_bytes((ROOT/compatibility.MANIFEST_PATH).read_bytes()+b' ')
             with patch.object(compatibility,'ROOT',Path(directory)),self.assertRaises(ValueError):compatibility.manifest()
+    def test_reviewed_host_dependency_inverse_rejects_missing_moved_and_altered_bytes(self):
+        from unittest.mock import patch
+        import failed_chain_host_dependency_compatibility as compatibility
+        current=(ROOT/compatibility.PATH).read_bytes();prior=compatibility.restore_current_host(current)
+        self.assertEqual(hashlib.sha256(current).hexdigest(),'2a16d59efb3f74684f4ffe4e30a7eb39d4be0a75f496b3d7d37ead4b3d4451e6')
+        self.assertEqual(hashlib.sha256(prior).hexdigest(),'1780f6213812f9a44203cb4ced9d2aa9740b6590d41df59f817c76da910c2a56')
+        row,=compatibility.manifest()['changes'];literal=(row['before']+row['new']+row['after']).encode();self.assertEqual(current.count(literal),1)
+        addition=b"'ChromiumRouteLease.java',";self.assertEqual(current.count(addition),1)
+        oracle=b"self.assertEqual(value['current']['exitRequests'],1)";self.assertEqual(current.count(oracle),1)
+        mutants=[current+b'\n',prior,current.replace(addition,addition+addition,1),current.replace(addition,b'',1)+b'\n# relocated '+addition,current.replace(oracle,oracle[:-2]+b'0)',1),current.replace(row['before'].encode(),row['before'].encode()+b' ',1),current.replace(b'\n',b'\r\n')]
+        for raw in mutants:
+            with self.subTest(mutantSha=hashlib.sha256(raw).hexdigest()),self.assertRaises(ValueError):compatibility.restore_current_host(raw)
+        with self.assertRaises(ValueError):compatibility.restore_current_host(current,'other/profile_failed_chain_fixture_config_test.py')
+        with self.assertRaises(ValueError):compatibility.restore_current_host(current.decode())
+        with __import__('tempfile').TemporaryDirectory(prefix='host-dependency-inverse-negative-')as directory:
+            fake=Path(directory)/compatibility.MANIFEST_PATH;fake.parent.mkdir(parents=True);raw=(ROOT/compatibility.MANIFEST_PATH).read_bytes()
+            metadata=json.loads(raw);metadata['changes'][0]['old']=metadata['changes'][0]['new'];counterfeit=json.dumps(metadata).encode()
+            for altered in [raw+b' ',counterfeit,raw.replace(b'"schema": 1',b'"schema": 1, "schema": 1',1)]:
+                fake.write_bytes(altered)
+                with patch.object(compatibility,'ROOT',Path(directory)),self.assertRaises(ValueError):compatibility.restore_current_host(current)
+            fake.unlink();fake.symlink_to(ROOT/compatibility.MANIFEST_PATH)
+            with patch.object(compatibility,'ROOT',Path(directory)),self.assertRaises(ValueError):compatibility.restore_current_host(current)
     def test_actual_cold_producer_and_local_fixture_boundary_on_both_json_runtimes(self):
         self._execute_fixture_hosts('LocalProcessProjection46Host',22)
     def test_actual_periodic_state_preserves_strict_local_core_boundary_on_both_json_runtimes(self):

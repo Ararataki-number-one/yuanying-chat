@@ -272,12 +272,14 @@ class IntegrationPackagingTests(unittest.TestCase):
                     else:exec(predicate,{'archive':archive})
 
     def test_actual_release_dex_assertion_rejects_service_and_nested_class_definitions(self):
-        predicate=actual_release_assertion('Caret fixture class present in production DEX.')
+        predicate=actual_release_assertion('Integration fixture class present in production DEX.')
         exec(predicate,{'definitions':{'Llocal/pocketchat/ProductionSyntheticControl;'}})
-        for definition in ('Llocal/pocketchat/ControlledCaretInputMethodService;',
-                           'Llocal/pocketchat/ControlledCaretInputMethodService$SyntheticNested;'):
-            with self.subTest(definition=definition),self.assertRaises(AssertionError):
-                exec(predicate,{'definitions':{'Llocal/pocketchat/ProductionSyntheticControl;',definition}})
+        for name in ('GeckoCaretCompatibilityIntegrationActivity','CaretCompatibilityBuildIdentity',
+                     'ControlledCaretInputMethodService','BrowserIntegrationActivity','BrowserEvidenceProvider'):
+            for suffix in (';','$SyntheticNested;'):
+                definition='Llocal/pocketchat/'+name+suffix
+                with self.subTest(definition=definition),self.assertRaises(AssertionError):
+                    exec(predicate,{'definitions':{'Llocal/pocketchat/ProductionSyntheticControl;',definition}})
 
     def test_actual_release_manifest_assertion_rejects_service_or_metadata_reference(self):
         predicate=actual_release_assertion('Test component present in release.')

@@ -5,7 +5,8 @@ from experience46_host_evidence import INVOCATION_FILES, emit_evidence, new_atte
 ROOT=Path(__file__).resolve().parents[1];HERE=ROOT/'tests/download46-host'
 OUTPUT_FILES=('results.json','compile.stdout.txt','compile.stderr.txt','stdout.txt','stderr.txt',
               'DownloadRecoveryHostTest.stdout.txt','DownloadRecoveryHostTest.stderr.txt',
-              'Metadata46Cases.stdout.txt','Metadata46Cases.stderr.txt',*INVOCATION_FILES)
+              'Metadata46Cases.stdout.txt','Metadata46Cases.stderr.txt',
+              'CollectionLeaseCases.stdout.txt','CollectionLeaseCases.stderr.txt',*INVOCATION_FILES)
 
 class Download46Behavior(unittest.TestCase):
     @classmethod
@@ -32,7 +33,7 @@ class Download46Behavior(unittest.TestCase):
         return reports
     def test_actual_copy_metadata_and_publication_barriers(self):
         for report in self.run_host('run.py'):
-            self.assertEqual([part['total']for part in report['reports']],[42,341])
+            self.assertEqual([part['total']for part in report['reports']],[42,341,11])
             for part in report['reports']:self.assertTrue(all(case['pass']is True for case in part['checks']))
     def test_actual_worker_reads_names_times_and_package_status(self):
         for report in self.run_host('worker.py'):

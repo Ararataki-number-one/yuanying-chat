@@ -121,6 +121,24 @@ def metadata():
     value['networkReadModelIdentity']=dict(identity_summary,cases=identity_cases)
     return value
 
+def reverse_reviewed_shared_observation_save(case,source,member):
+    """Only invert the exact reviewed shared-save split for the old producer golden.
+
+    The current implementations execute in chat-chrome-performance-host; this
+    source-preservation adapter cannot substitute a different persistence policy.
+    """
+    legacy_signature='static synchronized void save(Context c,ChatSession s,NativeNetwork n)'
+    shared_signature='static synchronized void save(Context c,ChatSession s,NativeNetwork n,JSONObject value)'
+    for signature in (legacy_signature,shared_signature):case.assertEqual(source.count(signature+'{'),1,'exact-shared-save-overload-count')
+    legacy=member(source,legacy_signature);shared=member(source,shared_signature)
+    case.assertEqual(hashlib.sha256(legacy.encode()).hexdigest(),'f072492b16c666288f2000f8a839540b7f39382050ff78283481770329cb6ce3','reviewed-shared-save-dispatch-bytes')
+    case.assertEqual(hashlib.sha256(shared.encode()).hexdigest(),'8e2c066a76e8d0eb939f99839ee92fd9cc20729abcf8c6983a30f5d590f53c27','reviewed-shared-save-policy-bytes')
+    restored=shared.replace(shared_signature,legacy_signature,1)
+    case.assertEqual(restored.count('try{String signature='),1,'exact-shared-save-observation-site')
+    restored=restored.replace('try{String signature=','try{JSONObject value=live(s,n);String signature=',1)
+    case.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'67e3713bf07b69deee0ff1c2529f7b4b3e8260f9a38428016688620ef7981705','original-save-golden-preserved')
+    return source.replace(shared,'',1).replace(legacy,restored,1)
+
 def reverse_reviewed_cold_core_producers(case,source,member):
     # Invert six reviewed producer edits and four exact race-check additions.
     # Original method goldens remain
@@ -148,6 +166,23 @@ def reverse_reviewed_cold_core_producers(case,source,member):
     return source
 
 class DisplayGateTest(unittest.TestCase):
+    def test_shared_save_inverse_rejects_policy_and_dispatch_drift(self):
+        root=Path(__file__).resolve().parents[1]
+        spec=importlib.util.spec_from_file_location('shared_save_source_preservation',root/'tests/chrome-network-state-host/run.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        source=(root/'app/src/main/java/local/pocketchat/WindowNetworkState.java').read_text()
+        restored=reverse_reviewed_shared_observation_save(self,source,module.member)
+        self.assertEqual(hashlib.sha256(module.member(restored,'static synchronized void save(').encode()).hexdigest(),'67e3713bf07b69deee0ff1c2529f7b4b3e8260f9a38428016688620ef7981705')
+        shared=module.member(source,'static synchronized void save(Context c,ChatSession s,NativeNetwork n,JSONObject value)')
+        changes=[source.replace('save(c,s,n,live(s,n))','save(c,s,n,new JSONObject())',1),
+                 source.replace('now-savedAt<5000','now-savedAt<50000',1),
+                 source.replace('value.optString("admission")','value.optString("wrong-admission")',1),
+                 source.replace('if(!n.root.getName().equals("network-runtime"))return;','if(false)return;',1),
+                 source.replace(shared,'',1),source+'\n'+shared]
+        for changed in changes:
+            with self.subTest(sourceSha256=hashlib.sha256(changed.encode()).hexdigest()):
+                self.assertNotEqual(changed,source)
+                with self.assertRaises(AssertionError):reverse_reviewed_shared_observation_save(self,changed,module.member)
     def test_update_readiness_label_inverse_preserves_original_capture_gates(self):
         root=Path(__file__).resolve().parents[1]
         spec=importlib.util.spec_from_file_location('update_readiness_preservation',root/'tests/ui_visual_preservation_contract.py')
@@ -407,6 +442,7 @@ class DisplayGateTest(unittest.TestCase):
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         source=(root/'app/src/main/java/local/pocketchat/WindowNetworkState.java').read_text()
         source=reverse_reviewed_cold_core_producers(self,source,module.member)
+        source=reverse_reviewed_shared_observation_save(self,source,module.member)
         hashes={
             'static JSONObject running(':'a4109d3648dc4c24b2ce7f0b7bece8a76d7b02a3fe454bbb0cb450c053dea51c',
             'static JSONObject live(':'72d6092fa68265d84ba6f0229d23fa721f811fa20173ef0fadbc126d7a5b5938',

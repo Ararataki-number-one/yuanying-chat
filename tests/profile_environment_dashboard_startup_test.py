@@ -1,6 +1,6 @@
 """Real native startup methods and wait policy on explicit JVM platform doubles.
 
-No Android frame timing, actual Gecko initialization or phone speed is claimed.
+Browser selection/homepage and Activity launch use explicit controlled boundaries; the actual MainActivity dispatcher is executed for both cold Chromium and retained warm Gecko sessions. No Android frame timing, actual Gecko initialization or phone speed is claimed.
 """
 import hashlib,json,os
 from pathlib import Path
@@ -22,7 +22,7 @@ class DashboardStartup(unittest.TestCase):
     def test_real_entry_lifecycle_and_wait_boundaries(self):
         java=Path(os.environ.get('PROFILE_JAVA') or shutil.which('java') or '')
         source=(PROD/'MainActivity.java').read_text()
-        methods='\n'.join(member(source,x) for x in ['  @Override public void onCreate(', '  void prepareBrowserAfterOverview(', '  void startBrowserAfterOverview(', '  @Override protected void onResume(', '  @Override protected void onNewIntent('])
+        methods='\n'.join(member(source,x) for x in ['  @Override public void onCreate(', '  void prepareBrowserAfterOverview(', '  void startBrowserAfterOverview(', '  @Override protected void onResume(', '  @Override protected void onNewIntent(', '  boolean dispatchBrowser('])
         host=(ROOT/'tests/overview-dashboard-host/StartupHost.java').read_text().replace('/*ACTUAL_ENTRY_METHODS*/',methods)
         with tempfile.TemporaryDirectory(prefix='overview-dashboard-startup-') as folder:
             folder=Path(folder);(folder/'StartupHost.java').write_text(host)

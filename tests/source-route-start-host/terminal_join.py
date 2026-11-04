@@ -12,7 +12,7 @@ from run import ROOT, member
 EXPECTED_CHECK_NAMES = ['Complete observer waits for actual workerAfter after both original callbacks', 'Complete observer accepts exact joined restart with one fresh read and unchanged raw serials', 'Worker completion stays inside the original fetch budget and precedes the sole fresh read', 'Complete observer rejects a joined restart with wrong source', 'Complete observer rejects a joined restart with wrong nonce', 'Complete observer rejects a joined restart with wrong case', 'Original deadline rejects unfinished worker observation without fresh IPC or cancellation', 'Complete observer rejects real queued-worker ABA despite retained root waiter and closed core']
 BEFORE_CHECK_NAMES = ['Original observer rejects the same actual joined restart before the fixture fix']
 
-NEEDLES = ['interface Callback', 'enum RecoveryState', 'static final class RecoveryOutcome', 'interface RecoveryCallback', 'static final class RecoveryAdapter', 'void restart(Callback callback)', 'void recover(Callback callback)', 'void recoverOutcome(RecoveryCallback callback)', 'synchronized void startOperation(', 'void runStartOperation(']
+NEEDLES = ['interface Callback', 'enum RecoveryState', 'static final class RecoveryOutcome', 'interface RecoveryCallback', 'static final class RecoveryAdapter', 'void routeChanged()', 'void restart(Callback callback)', 'void recover(Callback callback)', 'void recoverOutcome(RecoveryCallback callback)', 'synchronized void startOperation(', 'void runStartOperation(']
 
 def run(java_home, json_jar, output, before_observer_ref=None):
     production=ROOT/'app/src/main/java/local/pocketchat/NativeNetwork.java'
@@ -21,12 +21,19 @@ def run(java_home, json_jar, output, before_observer_ref=None):
     fixture=pathlib.Path(__file__).with_name('TerminalJoinTest.java')
     base=fixture.with_name('StartObservationTest.java')
     contract=ROOT/'tools/gecko/network_sources_contract.py'
-    inputs=[production,observer,helper,fixture,base,pathlib.Path(__file__).resolve(),fixture.with_name('run.py'),contract,ROOT/'app/src/main/java/local/pocketchat/J.java']
+    lease=ROOT/'app/src/main/java/local/pocketchat/ChromiumRouteLease.java'
+    json_source=ROOT/'app/src/main/java/local/pocketchat/J.java'
+    inputs=[production,observer,helper,fixture,base,pathlib.Path(__file__).resolve(),fixture.with_name('run.py'),contract,json_source,lease]
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     source=observer.read_text() if before_observer_ref is None else subprocess.check_output(['git','show',before_observer_ref+':tests/gecko/SourceRouteTerminalObserver.java'],cwd=ROOT,text=True)
     adapter=base.read_text().split('\nclass NativeNetwork {',1)[1]
     adapter='class NativeNetwork {'+adapter
     adapter=adapter.replace('/* ACTUAL_NATIVE_START_MEMBERS */','\n'.join(member(production.read_text(),needle) for needle in NEEDLES))
+    # Keep actual route notifications and lease barriers in the scheduler. This
+    # observer-only fixture installs no browser listeners or surface/download holds.
+    listener_fields=[line.strip() for line in production.read_text().splitlines() if line.strip().startswith('final Set<Runnable> routeListeners=')]
+    assert len(listener_fields)==1
+    adapter=adapter.replace('class NativeNetwork {','class NativeNetwork {\n  '+listener_fields[0],1)
     adapter=adapter.replace('final ExecutorService worker=', 'final SourceRouteStartObservation startObservation=new SourceRouteStartObservation();final NetworkTransportClient transport=new NetworkTransportClient();long routeSerial;\n  final ExecutorService worker=')
     adapter=adapter.replace('boolean coreAlive(){return false;}', 'boolean coreAlive(){return transport.state.optBoolean("alive");}')
     adapter=adapter.replace('generation=String.format("00000000-0000-4000-8000-%012d",index);', 'generation=TerminalJoinTest.generation(true,index);')
@@ -36,7 +43,7 @@ def run(java_home, json_jar, output, before_observer_ref=None):
         java.write_text(fixture.read_text().replace('/* BASE_NATIVE_ADAPTER */',adapter))
         actual_observer=java.with_name('SourceRouteTerminalObserver.java');actual_observer.write_text(source)
         clock=work/'android/os/SystemClock.java';clock.parent.mkdir(parents=True);clock.write_text('package android.os; public final class SystemClock { public static long elapsedRealtimeNanos(){return System.nanoTime();} }\n')
-        subprocess.run([str(java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(json_jar),'-d',str(work),str(java),str(actual_observer),str(helper),str(inputs[-1]),str(clock)],check=True)
+        subprocess.run([str(java_home/'bin/javac'),'-encoding','UTF-8','-cp',str(json_jar),'-d',str(work),str(java),str(actual_observer),str(helper),str(json_source),str(lease),str(clock)],check=True)
         output.parent.mkdir(parents=True,exist_ok=True)
         subprocess.run([str(java_home/'bin/java'),'-cp',str(work)+':'+str(json_jar),'local.pocketchat.TerminalJoinTest',str(output), 'before' if before_observer_ref else 'current'],check=True,timeout=30)
     report=json.loads(output.read_text())

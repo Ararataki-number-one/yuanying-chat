@@ -41,20 +41,26 @@ def run(java_home, json_jar, output):
     production = ROOT/'app/src/main/java/local/pocketchat/NativeNetwork.java'
     helper = ROOT/'tests/gecko/SourceRouteStartObservation.java'
     fixture = pathlib.Path(__file__).with_name('StartObservationTest.java')
-    inputs = [production, helper, fixture, pathlib.Path(__file__).resolve(), ROOT/'app/src/main/java/local/pocketchat/J.java']
+    json_source = ROOT/'app/src/main/java/local/pocketchat/J.java'
+    lease = ROOT/'app/src/main/java/local/pocketchat/ChromiumRouteLease.java'
+    inputs = [production, helper, fixture, pathlib.Path(__file__).resolve(), json_source, lease]
     hashes = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
-    needles = ['interface Callback', 'enum RecoveryState', 'static final class RecoveryOutcome', 'interface RecoveryCallback', 'static final class RecoveryAdapter', 'void restart(Callback callback)', 'void recover(Callback callback)', 'void recoverOutcome(RecoveryCallback callback)', 'synchronized void startOperation(', 'void runStartOperation(']
+    needles = ['interface Callback', 'enum RecoveryState', 'static final class RecoveryOutcome', 'interface RecoveryCallback', 'static final class RecoveryAdapter', 'void routeChanged()', 'void restart(Callback callback)', 'void recover(Callback callback)', 'void recoverOutcome(RecoveryCallback callback)', 'synchronized void startOperation(', 'void runStartOperation(']
     original = production.read_text()
     methods = [member(original, needle) for needle in needles]
+    # Preserve real notification dispatch and lease arbitration. This fixture has
+    # no browser listeners or holds; it controls only worker/transport observation.
+    listener_fields = [line.strip() for line in original.splitlines() if line.strip().startswith('final Set<Runnable> routeListeners=')]
+    assert len(listener_fields) == 1
     with tempfile.TemporaryDirectory(prefix='source-route-start-') as temp:
         work = pathlib.Path(temp)
         java = work/'local/pocketchat/StartObservationTest.java'
         java.parent.mkdir(parents=True)
-        java.write_text(fixture.read_text().replace('/* ACTUAL_NATIVE_START_MEMBERS */', '\n'.join(methods)))
+        java.write_text(fixture.read_text().replace('/* ACTUAL_NATIVE_START_MEMBERS */', listener_fields[0]+'\n'+'\n'.join(methods)))
         clock = work/'android/os/SystemClock.java'
         clock.parent.mkdir(parents=True)
         clock.write_text('package android.os; public final class SystemClock { public static long elapsedRealtimeNanos(){return System.nanoTime();} }\n')
-        subprocess.run([str(java_home/'bin/javac'), '-encoding', 'UTF-8', '-cp', str(json_jar), '-d', str(work), str(java), str(helper), str(inputs[-1]), str(clock)], check=True)
+        subprocess.run([str(java_home/'bin/javac'), '-encoding', 'UTF-8', '-cp', str(json_jar), '-d', str(work), str(java), str(helper), str(json_source), str(lease), str(clock)], check=True)
         output.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run([str(java_home/'bin/java'), '-cp', str(work)+':'+str(json_jar), 'local.pocketchat.StartObservationTest', str(output)], check=True, timeout=30)
     report = json.loads(output.read_text())

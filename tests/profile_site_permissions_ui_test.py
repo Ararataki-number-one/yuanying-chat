@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION = ROOT / 'app/src/main/java/local/pocketchat'
@@ -48,8 +49,17 @@ class SitePermissionsUiTest(unittest.TestCase):
         self.assertTrue('onAndroidPermissionsRequest(GeckoSession s,String[] permissions,Callback callback){callback.reject();}' in browser)
         self.assertTrue('onMediaPermissionRequest(GeckoSession s,String origin,MediaSource[] video,MediaSource[] audio,MediaCallback callback){callback.reject();}' in browser)
         manifest = (ROOT / 'app/src/main/AndroidManifest.xml').read_text()
-        for permission in ['CAMERA', 'RECORD_AUDIO', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION']:
-            self.assertNotIn('android.permission.' + permission, manifest)
+        # The permission declarations support only explicit Chromium requests.
+        # The two original Gecko refusals above remain unconditional.
+        application=ET.fromstring(manifest);android='{http://schemas.android.com/apk/res/android}'
+        declared={row.get(android+'name') for row in application.findall('uses-permission')}
+        for permission in ['CAMERA','RECORD_AUDIO','ACCESS_COARSE_LOCATION']:
+            self.assertIn('android.permission.'+permission,declared)
+        self.assertNotIn('android.permission.ACCESS_FINE_LOCATION',declared)
+        for feature in ['android.hardware.camera','android.hardware.camera.autofocus','android.hardware.microphone']:
+            entries=[row for row in application.findall('uses-feature') if row.get(android+'name')==feature]
+            self.assertEqual(len(entries),1)
+            self.assertEqual(entries[0].get(android+'required'),'false')
         native = (PRODUCTION / 'GeckoSitePermissions.java').read_text()
         self.assertIn('getPermissions(scope.origin,scope.contextId,scope.privateMode)', native)
         self.assertIn('.withHandler(web.owner.handler)', native)
@@ -65,6 +75,25 @@ class SitePermissionsUiTest(unittest.TestCase):
             self.assertIn('configure(desktop,owner.privacy.level())', body[:body.index('\n  }')])
         self.assertIn('long revision=++identityPolicyRevision', browser)
         self.assertIn('appearanceLoads.put(s,++appearanceLoadSerial)', browser)
+
+    def test_chromium_permissions_execute_current_origin_and_android_grant_controls(self):
+        java=os.environ.get('PROFILE_JAVA') or shutil.which('java')
+        self.assertTrue(java,'JDK17+ required')
+        before={name:hashlib.sha256((PRODUCTION/name).read_bytes()).hexdigest() for name in ['BrowserPermissions.java','BrowserAddressPolicy.java']}
+        with tempfile.TemporaryDirectory(prefix='browser-permission-scope-') as temporary:
+            report_path=Path(temporary)/'results.json'
+            result=subprocess.run([os.environ.get('PYTHON','python3'),str(ROOT/'tests/browser-permissions-host/run.py'),
+                '--java-home',str(Path(java).resolve().parent.parent),'--output',str(report_path)],cwd=ROOT,capture_output=True,text=True,timeout=45)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            report=json.loads(report_path.read_text())
+            self.assertEqual(report['status'],'passed')
+            self.assertGreaterEqual(report['passed'],43)
+            self.assertEqual(report['passed'],report['total'])
+            self.assertTrue(report['executionInputsUnchanged'])
+            self.assertIs(report['actualAndroidExecution'],False)
+            self.assertIs(report['actualWebViewExecution'],False)
+            for name,sha in before.items():self.assertEqual(report['sourceFiles']['app/src/main/java/local/pocketchat/'+name],sha)
+        self.assertEqual(before,{name:hashlib.sha256((PRODUCTION/name).read_bytes()).hexdigest() for name in before})
 
 
 if __name__ == '__main__':

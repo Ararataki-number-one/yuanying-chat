@@ -61,6 +61,50 @@ def encoded(value):
     return json.dumps(value, separators=(',', ':')).encode()
 
 
+# Exact current shared-save test-input view; old S11 functions remain unchanged.
+class SharedSaveNormalizersInput:
+    REVIEWED_SHA256 = '2141a7360b32a13f6987fe71519abf502f1bc8855148627204205db8b444be47'
+    PREVIOUS_SHA256 = '3c0f755bf0718db15ecf403d448f4c48a55261b241d1671f6574342f947a34e0'
+    BLOCKS = (
+        (b'def reverse_reviewed_shared_observation_save(case,source,member):\n',
+         b'def reverse_reviewed_cold_core_producers(case,source,member):\n',
+         1596, '32bcf85e31272b49439226db7b447d460f417d24014217809d24cb64062b4360'),
+        (b'    def test_shared_save_inverse_rejects_policy_and_dispatch_drift(self):\n',
+         b'    def test_update_readiness_label_inverse_preserves_original_capture_gates(self):\n',
+         1580, '7e1ce8093c396a854ee4c9b6780dc074f3d4a37e64fd963711abac889ead1449'),
+    )
+    CALL = b'        source=reverse_reviewed_shared_observation_save(self,source,module.member)\n'
+
+    def __init__(self, path):
+        assert path == ROOT / 'tests/profile_display_sampling_gate_test.py'
+        self.path = path
+
+    @classmethod
+    def restore(cls, raw):
+        # This view is only an input to the retained whole-file source oracle.
+        # Runtime hosts and the new shared-save controls use current bytes.
+        assert type(raw) is bytes and len(raw) == 51147
+        assert hashlib.sha256(raw).hexdigest() == cls.REVIEWED_SHA256
+        for begin, end, size, digest in cls.BLOCKS:
+            assert raw.count(begin) == raw.count(end) == 1
+            block = raw[raw.index(begin):raw.index(end)]
+            assert len(block) == size and hashlib.sha256(block).hexdigest() == digest
+            assert raw.count(block) == 1
+            raw = raw.replace(block, b'', 1)
+        assert len(cls.CALL) == 83 and hashlib.sha256(cls.CALL).hexdigest() == 'fdf0f4e1565d0dd569d14292a0470d4e13ba13d646502fc9d1a6259649a1b7c9'
+        assert raw.count(cls.CALL) == 1
+        raw = raw.replace(cls.CALL, b'', 1)
+        assert len(raw) == 47888 and hashlib.sha256(raw).hexdigest() == cls.PREVIOUS_SHA256
+        return raw
+
+    def read_bytes(self):
+        assert self.path.is_file() and not self.path.is_symlink()
+        return self.restore(self.path.read_bytes())
+
+
+NORMALIZERS = SharedSaveNormalizersInput(NORMALIZERS)
+
+
 class NativeSetupDiagnostic11Tests(unittest.TestCase):
     def test_single_addition_whole_inverse_keeps_every_old_function_body_and_golden(self):
         current = WORKFLOW.read_bytes()

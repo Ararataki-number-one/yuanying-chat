@@ -33,6 +33,21 @@ spec.loader.exec_module(emitter)
 SOURCE, TREE = 'a' * 40, 'b' * 40
 
 
+def restore_native_setup_shared_save_view(raw):
+    """Remove only the exact reviewed S11 source-input view, preserving its oracle."""
+    assert type(raw) is bytes and len(raw) == 19777
+    assert sha(raw) == '1e1fbe80f0e66ae29e40edc63c83d7fa1d9faf0343db5d6b91898ed24d97bc9f'
+    begin = b'# Exact current shared-save test-input view; old S11 functions remain unchanged.\n'
+    end = b'NORMALIZERS = SharedSaveNormalizersInput(NORMALIZERS)\n\n\n'
+    assert raw.count(begin) == raw.count(end) == 1
+    addition = raw[raw.index(begin):raw.index(end) + len(end)]
+    assert len(addition) == 2269 and sha(addition) == '77d2ee4728f68caf59a1ef0c89555cc59775358531fb16fd087e97081a465686'
+    assert raw.count(addition) == 1
+    previous = raw.replace(addition, b'', 1)
+    assert len(previous) == 17508 and sha(previous) == 'f4f01aa91c2e9f0a31859cf239a0d0e35172abee8267d69478c24a4616d503c5'
+    return previous
+
+
 def environment():
     return dict(CI='true', GITHUB_ACTIONS='true', GITHUB_SERVER_URL='https://github.com',
                 GITHUB_REPOSITORY='Ararataki-number-one/yuanying-chat', GITHUB_JOB='android',
@@ -117,7 +132,7 @@ class EditingTransport13WorkflowTests(unittest.TestCase):
         self.assertEqual(adapter.count(marker), 1)
         previous_adapter = adapter.split(marker, 1)[0]
         self.assertEqual(sha(previous_adapter), 'f7c31b6d5bad40140978f8f14347769b738583feea2226d0c11c2c90b015d3d8')
-        current = OLD_TEST.read_bytes()
+        current = restore_native_setup_shared_save_view(OLD_TEST.read_bytes())
         self.assertEqual(current.count(VIEW_BINDING), 1)
         previous = current.replace(VIEW_BINDING, b'', 1)
         self.assertEqual(sha(previous), '6d1831300cdda830c6bf2366731818320634ae7cebc635f2dc3f6d0f28384e44')
@@ -129,6 +144,43 @@ class EditingTransport13WorkflowTests(unittest.TestCase):
         self.assertEqual(sum(name.startswith('test_') for name in methods(previous)), 11)
         self.assertEqual(sorted(methods(previous_adapter).items()),
                          sorted((k, v) for k, v in methods(adapter).items() if k in methods(previous_adapter)))
+
+    def test_shared_save_source_views_reject_missing_duplicate_and_unreviewed_bytes(self):
+        native = OLD_TEST.read_bytes()
+        restored = restore_native_setup_shared_save_view(native)
+        begin = b'# Exact current shared-save test-input view; old S11 functions remain unchanged.\n'
+        end = b'NORMALIZERS = SharedSaveNormalizersInput(NORMALIZERS)\n\n\n'
+        addition = native[native.index(begin):native.index(end) + len(end)]
+        invalid_native = [restored, native.replace(addition, addition * 2, 1), native + b'\n',
+                          native.replace(b'current = WORKFLOW.read_bytes()', b'current = b"unreviewed"', 1),
+                          native.replace(b'len(raw) == 51147', b'len(raw) == 51148', 1)]
+        for raw in invalid_native:
+            self.assertNotEqual(raw, native)
+            with self.subTest(nativeSha256=sha(raw)), self.assertRaises(AssertionError):
+                restore_native_setup_shared_save_view(raw)
+        spec = importlib.util.spec_from_file_location('shared_save_native_setup_controls', OLD_TEST)
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        display = (ROOT / 'tests/profile_display_sampling_gate_test.py').read_bytes()
+        old_display = module.SharedSaveNormalizersInput.restore(display)
+        self.assertEqual(sha(old_display), '3c0f755bf0718db15ecf403d448f4c48a55261b241d1671f6574342f947a34e0')
+        for begin, end, _, _ in module.SharedSaveNormalizersInput.BLOCKS:
+            addition = display[display.index(begin):display.index(end)]
+            for raw in (display.replace(addition, b'', 1), display.replace(addition, addition * 2, 1)):
+                with self.subTest(displaySha256=sha(raw)), self.assertRaises(AssertionError):
+                    module.SharedSaveNormalizersInput.restore(raw)
+        invalid_display = [display + b'\n', old_display,
+                           display.replace(module.SharedSaveNormalizersInput.CALL, b'', 1),
+                           display.replace(module.SharedSaveNormalizersInput.CALL, module.SharedSaveNormalizersInput.CALL * 2, 1),
+                           display.replace(b'checks_failed=1', b'checks_failed=0', 1),
+                           display.replace(b'now-savedAt<5000', b'now-savedAt<50000', 1)]
+        for raw in invalid_display:
+            self.assertNotEqual(raw, display)
+            with self.subTest(displaySha256=sha(raw)), self.assertRaises(AssertionError):
+                module.SharedSaveNormalizersInput.restore(raw)
+        for raw in (None, native.decode(), bytearray(native)):
+            with self.assertRaises(AssertionError):restore_native_setup_shared_save_view(raw)
+        for raw in (None, display.decode(), bytearray(display)):
+            with self.assertRaises(AssertionError):module.SharedSaveNormalizersInput.restore(raw)
 
     def test_historical_view_is_one_ordinary_bounded_reader_and_keeps_real_path_unmodified(self):
         raw = WORKFLOW.read_bytes()

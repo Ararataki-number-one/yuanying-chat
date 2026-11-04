@@ -22,7 +22,31 @@ class EnvironmentConfigBackupTest(unittest.TestCase):
         android = '{http://schemas.android.com/apk/res/android}'
         application = root.find('application')
         self.assertEqual(application.get(android + 'allowBackup'), 'false')
-        self.assertEqual(application.get(android + 'usesCleartextTraffic'), 'false')
+        # Public HTTP browsing is explicitly provided by the separate Chromium
+        # activity in 2.1. Gecko retains its own HTTPS-only navigation boundary.
+        self.assertEqual(application.get(android + 'usesCleartextTraffic'), 'true')
+        self.assertEqual(application.get(android + 'networkSecurityConfig'), '@xml/network_security')
+        guard=(PRODUCTION/'BrowserNetworkGuard.java').read_text()
+        self.assertIn('return !allowed()||!publicHttps(uri)?denied():null;',guard)
+        self.assertIn('"https".equalsIgnoreCase(uri.getScheme())',guard)
+        gecko=(PRODUCTION/'GeckoWebView.java').read_text()
+        self.assertIn('protected boolean allowedUrl(String target){return target!=null&&BrowserNetworkGuard.publicHttps(Uri.parse(target));}',gecko)
+        browser=[a for a in application.findall('activity') if a.get(android+'name')=='local.pocketchat.BrowserActivity']
+        self.assertEqual(len(browser),1)
+        self.assertEqual(browser[0].get(android+'exported'),'true')
+        self.assertEqual(browser[0].get(android+'launchMode'),'singleTask')
+        self.assertEqual(browser[0].get(android+'taskAffinity'),'local.pocketchat.browser0')
+        filters=browser[0].findall('intent-filter');self.assertEqual(len(filters),1)
+        self.assertEqual([a.get(android+'name') for a in filters[0].findall('action')],['android.intent.action.VIEW'])
+        self.assertEqual({a.get(android+'name') for a in filters[0].findall('category')},{'android.intent.category.DEFAULT','android.intent.category.BROWSABLE'})
+        self.assertEqual({a.get(android+'scheme') for a in filters[0].findall('data')},{'http','https'})
+        for slot in range(1,8):
+            profile=[a for a in application.findall('activity') if a.get(android+'name')=='local.pocketchat.BrowserActivity$Profile'+str(slot)]
+            self.assertEqual(len(profile),1)
+            self.assertEqual(profile[0].get(android+'exported'),'false')
+            self.assertEqual(profile[0].get(android+'process'),':profile'+str(slot))
+            self.assertEqual(profile[0].get(android+'taskAffinity'),'local.pocketchat.browser'+str(slot))
+            self.assertEqual(profile[0].findall('intent-filter'),[])
         activities = [a for a in application.findall('activity') if a.get(android + 'name') == 'local.pocketchat.EnvironmentConfigBackupActivity']
         self.assertEqual(len(activities), 1)
         self.assertEqual(activities[0].get(android + 'exported'), 'false')

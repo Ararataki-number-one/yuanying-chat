@@ -102,7 +102,12 @@ class DeleteIdentityContractTest(unittest.TestCase):
         intent = host.member(ui, "void startDelete(")
         for field in ["expected.slot", "expected.generation", "expected.environmentId"]:
             self.assertIn(field, intent)
-        self.assertIn('startDelete(new EnvironmentSpec.Identity(id,deleted.optInt("generation"),deleted.getString("environmentId")))', ui)
+        # The maintenance actions moved into the keyed workspace renderer. Its
+        # displayed row still supplies the complete identity, never only a slot.
+        maintenance = host.member(ui, "void renderMaintenance(")
+        self.assertIn('if(row.optBoolean("deleting"))', maintenance)
+        self.assertIn('startDelete(new EnvironmentSpec.Identity(id,row.optInt("generation"),row.getString("environmentId")))', maintenance)
+        self.assertNotIn('startDelete(id)', maintenance)
         deletion = (PROD / "EnvironmentDeleteActivity.java").read_text()
         outer = host.member(deletion, "static void remove(Context c,EnvironmentSpec.Identity expected)")
         body = host.member(deletion, "private static void performRemove(")
