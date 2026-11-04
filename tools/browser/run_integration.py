@@ -54,12 +54,27 @@ def target_summary(value):
     if type(value) is not dict:return None
     result={key:value[key] for key in ('ready','stableSamples','visualStateComplete','x','y') if type(value.get(key)) in (bool,int,float) and (type(value[key]) is bool or abs(value[key])<=10000000 and math.isfinite(value[key]))}
     if type(value.get('id')) is str:result['id']=brief(value['id'],80)
-    for section,keys in [('nativeFrame',NATIVE_TARGET_FIELDS+('shown','windowFocus','foreground','layoutRequested')),('dom',DOM_TARGET_FIELDS+('hitTarget',))]:
+    for section,keys in [('nativeFrame',NATIVE_TARGET_FIELDS+('nativeScale','viewFocus','shown','windowFocus','foreground','layoutRequested')),('dom',DOM_TARGET_FIELDS+('visualWidth','visualHeight','visualOffsetLeft','visualOffsetTop','documentFocus','hitTarget'))]:
         source=value.get(section)
         if type(source) is dict:result[section]={key:source[key] for key in keys if type(source.get(key)) in (bool,int,float) and (type(source[key]) is bool or abs(source[key])<=10000000 and math.isfinite(source[key]))}
     if type(value.get('dom')) is dict:
         for key in ('id','hitId','hitTag'):
             if type(value['dom'].get(key)) is str:result.setdefault('dom',{})[key]=brief(value['dom'][key],80)
+    return result
+
+
+def input_summary(value):
+    """Bounded controlled-input metadata, without document text or event payloads."""
+    if type(value) is not dict:return None
+    result={key:value[key] for key in ('matching','ordinal','completed','ready','afterTask','afterFrame','rejected') if type(value.get(key)) in (bool,int) and abs(value[key])<=10000000}
+    events=value.get('events')
+    if type(events) is list:
+        result['events']=[]
+        for row in events[-12:]:
+            if type(row) is not dict:continue
+            event={key:brief(row[key],60) for key in ('type',) if type(row.get(key)) is str}
+            event.update({key:row[key] for key in ('trusted','ordinal','x','y','focused') if type(row.get(key)) in (bool,int,float) and (type(row[key]) is bool or abs(row[key])<=10000000 and math.isfinite(row[key]))})
+            result['events'].append(event)
     return result
 
 
@@ -71,6 +86,15 @@ def diagnostic_failure(current,error,last_resumed,actions):
     for key in ('taskId','passed','total','foreground','pendingChooser','routeAllowed'):
         if type(value.get(key)) in (bool,int) and abs(value[key])<=10000000:summary[key]=value[key]
     summary['tapTarget']=target_summary(value.get('tapTarget'))
+    summary['pickerBarrier']=input_summary(value.get('pickerBarrier'))
+    native=value.get('nativeInputEvents')
+    if type(native) is list:
+        summary['nativeInputEvents']=[]
+        for row in native[-12:]:
+            if type(row) is not dict:continue
+            event={'stage':brief(row['stage'],60)} if type(row.get('stage')) is str else {}
+            event.update({key:row[key] for key in ('action','x','y','handled') if type(row.get(key)) in (bool,int,float) and (type(row[key]) is bool or abs(row[key])<=10000000 and math.isfinite(row[key]))})
+            summary['nativeInputEvents'].append(event)
     checks=value.get('checks',[])
     if type(checks) is list:summary['checks']=[{'name':brief(row.get('name',''),220),'pass':row.get('pass') is True} for row in checks[-6:] if type(row) is dict]
     resumed=[brief(line,320) for line in last_resumed[-8:]] if type(last_resumed) is list else []
@@ -166,6 +190,14 @@ def main():
         report.update(status='passed',actualAndroidExecution=True,actualAndroidWebViewExecution=True)
     except Exception as failure:
         error=failure;report.update(status='failed',error=type(failure).__name__+': '+str(failure))
+        # The stage snapshot precedes its single tap. Read only current,
+        # source-bound diagnostics after a failure; this never retries a tap.
+        try:
+            latest=json.loads(adb('exec-out','content','read','--uri','content://local.pocketchat.test.browser-evidence/result',check=False,timeout=10).stdout)
+            if latest.get('runNonce')==nonce and latest.get('sourceCommit')==source:
+                verify_installed(latest['buildIdentity'],identity)
+                last_validated_report=latest
+        except Exception:pass
         try:
             top=adb('shell','dumpsys','activity','activities',check=False,timeout=10).stdout.decode(errors='replace')
             last_resumed=[line for line in top.splitlines() if 'mResumedActivity:' in line or 'topResumedActivity=' in line]

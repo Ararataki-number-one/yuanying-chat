@@ -493,4 +493,137 @@ class UiVisualCaptureTest(unittest.TestCase):
         self.assertEqual(value['bytes'],10000);self.assertEqual(len(value['text']),8192);self.assertTrue(value['truncated'])
 
 
+class CompactQuickEnvironmentContractTest(unittest.TestCase):
+    """Execute actual runner guards on synthetic hierarchies and input boundaries."""
+    @staticmethod
+    def functions(*names):
+        tree=ast.parse(RUNNER.read_text())
+        functions=[copy.deepcopy(node) for node in ast.walk(tree) if isinstance(node,ast.FunctionDef) and node.name in names]
+        assert {node.name for node in functions}==set(names) and len(functions)==len(names)
+        namespace={'ET':ET,'re':re}
+        exec(compile(ast.Module(body=functions,type_ignores=[]),'actual-compact-guards','exec'),namespace)
+        return namespace
+
+    @staticmethod
+    def hierarchy(slot=0):
+        root=ET.Element('hierarchy')
+        fields=[('TextView','快速切换环境','快速切换环境','false'),
+                ('EditText','搜索名称、分组、备注或编号','搜索要切换的环境','false'),
+                ('Button','','关闭快速切换环境','false'),
+                ('Button',f'{slot+1:02d}  Controlled environment · 当前\n工作 · 继续会话','切换到 Controlled environment，工作 · 继续会话','true')]
+        for index,(kind,text,description,selected) in enumerate(fields):
+            ET.SubElement(root,'node',{'class':'android.widget.'+kind,'package':'local.pocketchat.test',
+                'text':text,'content-desc':description,'selected':selected,'enabled':'true','clickable':'true',
+                'bounds':f'[20,{100+index*100}][700,{180+index*100}]'})
+        return root
+
+    def parse(self,root,slot=0):
+        return self.functions('quick_environment_sheet')['quick_environment_sheet'](ET.tostring(root,encoding='unicode'),slot,'local.pocketchat.test')
+
+    def test_current_production_quick_sheet_requires_title_search_close_and_current_slot(self):
+        value=self.parse(self.hierarchy())
+        self.assertEqual(value['title'],'快速切换环境');self.assertEqual(value['currentSlot'],0)
+        self.assertEqual(value['searchDescription'],'搜索要切换的环境')
+        self.assertEqual(value['closeDescription'],'关闭快速切换环境')
+        producer=(ROOT/'app/src/main/java/local/pocketchat/EnvironmentSwitcherUi.java').read_text()
+        self.assertIn('new ReferenceUi.Modal(activity,"快速切换环境")',producer)
+        self.assertIn('search.setContentDescription("搜索要切换的环境")',producer)
+        self.assertIn('action.setSelected(current)',producer)
+        self.assertEqual(self.parse(self.hierarchy(7),7)['currentSlot'],7)
+
+    def test_missing_ambiguous_old_title_and_wrong_application_are_rejected(self):
+        for index in range(4):
+            root=self.hierarchy();root.remove(root[index])
+            with self.subTest(missing=index),self.assertRaises(AssertionError):self.parse(root)
+        for index in range(4):
+            root=self.hierarchy();root.append(copy.deepcopy(root[index]))
+            with self.subTest(duplicate=index),self.assertRaises(AssertionError):self.parse(root)
+            root=self.hierarchy();root[index].set('package','other.application')
+            with self.subTest(package=index),self.assertRaises(AssertionError):self.parse(root)
+        root=self.hierarchy();root[0].set('text','切换环境');root[0].set('content-desc','切换环境')
+        with self.assertRaises(AssertionError):self.parse(root)
+        root=self.hierarchy();root[0].set('text','快速切换环境 - different dialog')
+        with self.assertRaises(AssertionError):self.parse(root)
+
+    def test_wrong_slot_role_identity_and_noninteractive_controls_are_rejected(self):
+        for index,key,value in [(0,'class','android.widget.Button'),(1,'content-desc','wrong search'),
+                                (2,'content-desc','关闭其他对话框'),(3,'selected','false'),
+                                (3,'text','02  Other · 当前\n工作'),(3,'content-desc','not an environment')]:
+            root=self.hierarchy();root[index].set(key,value)
+            with self.subTest(index=index,key=key),self.assertRaises(AssertionError):self.parse(root)
+        for index in (1,2,3):
+            for key in ('enabled','clickable'):
+                root=self.hierarchy();root[index].set(key,'false')
+                with self.subTest(index=index,key=key),self.assertRaises(AssertionError):self.parse(root)
+        for slot in (True,False,-1,8,'0',0.0):
+            with self.subTest(slot=slot),self.assertRaises(AssertionError):self.parse(self.hierarchy(),slot)
+
+    def test_empty_inverted_and_missing_rendered_bounds_are_rejected(self):
+        for index in range(4):
+            for bounds in ('','[0,0][0,1]','[5,8][4,9]','[1,9][2,8]','unobserved'):
+                root=self.hierarchy();root[index].set('bounds',bounds)
+                with self.subTest(index=index,bounds=bounds),self.assertRaises(AssertionError):self.parse(root)
+
+    def run_controls(self,names=('drawer','environment','more'),home_resumes=True):
+        namespace=self.functions('visible','focus','quick_environment_sheet');clock=ModelClock()
+        state={'xml':'<hierarchy/>','resumed':'local.pocketchat.CompactChromeIntegrationActivity','actions':0,'action':''};commands=[]
+        targets={name:[10+index*10,20] for index,name in enumerate(('drawer','environment','more'))}
+        sample={'controls':[{'name':name,'tap':targets[name]} for name in names]}
+        def adb(*command):
+            commands.append(command)
+            if command[:3]==('shell','input','tap'):
+                name=next(name for name,target in targets.items() if command[3:]==tuple(map(str,target)))
+                state['actions']+=1;state['action']='activity:local.pocketchat.WindowHomeActivity' if name=='drawer' else name
+                if name=='drawer' and home_resumes:state['resumed']='local.pocketchat.WindowHomeActivity'
+                if name=='environment':state['xml']=ET.tostring(self.hierarchy(),encoding='unicode')
+                if name=='more':state['xml']='<hierarchy><node text="会话选项" /></hierarchy>'
+            elif command==('shell','input','keyevent','KEYCODE_BACK'):
+                state['resumed']='local.pocketchat.CompactChromeIntegrationActivity';state['xml']='<hierarchy/>'
+            elif command==('shell','dumpsys','activity','activities'):return 'topResumedActivity= '+state['resumed']
+            return ''
+        def event(command,kind):return {'action':state['action'],'actions':state['actions'],'page':0}
+        namespace.update(adb=adb,chrome_event=event,dump=lambda:state['xml'],time=clock,package='local.pocketchat.test',component='local.pocketchat.test/local.pocketchat.CompactChromeIntegrationActivity',command='controlled',sample=sample,taps=[],management_navigation=None,environment_sheet=None)
+        loop=next(node for node in ast.walk(ast.parse(RUNNER.read_text())) if isinstance(node,ast.For) and ast.unparse(node.target)=='control' and ast.unparse(node.iter)=="sample['controls']" and any(isinstance(value,ast.Name) and value.id=='management_navigation' for value in ast.walk(node)))
+        exec(compile(ast.Module(body=[copy.deepcopy(loop)],type_ignores=[]),'actual-compact-input-loop','exec'),namespace)
+        return namespace,commands
+
+    def test_three_actual_control_calls_preserve_management_quick_switch_and_close(self):
+        namespace,commands=self.run_controls()
+        self.assertEqual(len([command for command in commands if command[:3]==('shell','input','tap')]),3)
+        self.assertEqual(len([command for command in commands if command==('shell','input','keyevent','KEYCODE_BACK')]),3)
+        self.assertEqual([row['control'] for row in namespace['taps']],['drawer','environment','more'])
+        self.assertEqual(namespace['management_navigation'],dict(activity='local.pocketchat.WindowHomeActivity',actualDrawerTap=True,resumedThenReturned=True))
+        self.assertEqual(namespace['environment_sheet']['currentSlot'],0)
+
+    def test_environment_cannot_replace_missing_or_unresumed_management_navigation(self):
+        with self.assertRaises(AssertionError):self.run_controls(('environment','more'))
+        with self.assertRaises(TimeoutError):self.run_controls(home_resumes=False)
+
+    def test_exact_visible_gate_and_twenty_second_budget_are_unchanged(self):
+        namespace=self.functions('visible');clock=ModelClock()
+        namespace.update(time=clock,dump=lambda:'<hierarchy><node text="快速切换环境" /></hierarchy>')
+        namespace['visible']('快速切换环境')
+        with self.assertRaises(TimeoutError):namespace['visible']('切换环境')
+        self.assertGreaterEqual(clock.value,120);self.assertLess(clock.value,120.3)
+        clock=ModelClock();namespace['time']=clock
+        with self.assertRaises(TimeoutError):namespace['visible']('快速切换环境',False)
+        self.assertGreaterEqual(clock.value,120);self.assertLess(clock.value,120.3)
+
+    def test_original_capture_test_methods_and_screenshot_matrix_are_preserved(self):
+        import subprocess
+        base='03d0c4ace70942a3f6899daffac086cc6682885e'
+        path=Path(__file__).resolve().relative_to(ROOT).as_posix()
+        old=subprocess.check_output(['git','show',base+':'+path],cwd=ROOT,text=True)
+        def methods(source):
+            return {node.name:{child.name:ast.get_source_segment(source,child) for child in node.body if isinstance(child,ast.FunctionDef)}
+                    for node in ast.parse(source).body if isinstance(node,ast.ClassDef)}
+        before,after=methods(old),methods(Path(__file__).read_text())
+        for name,value in before.items():self.assertEqual(after[name],value)
+        old=subprocess.check_output(['git','show',base+':tests/gecko/run_ui_visuals.py'],cwd=ROOT,text=True);current=RUNNER.read_text()
+        def functions(source):return [ast.get_source_segment(source,node) for node in ast.walk(ast.parse(source)) if isinstance(node,ast.FunctionDef)]
+        before_functions,after_functions=functions(old),functions(current)
+        for function in before_functions:self.assertEqual(after_functions.count(function),before_functions.count(function))
+        self.assertIn("for width,scale in [(360,1),(412,1),(360,2)]",current)
+
+
 if __name__=='__main__':unittest.main()

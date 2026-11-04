@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "scope": "Exact historical source-input preservation only; actual current journal runner and original EventTransfer remain execution inputs. No Android or release acceptance.",
+  "baseCommit": "03d0c4ace70942a3f6899daffac086cc6682885e",
+  "files": {
+    "tests/gecko/run_device.py": {
+      "previousSha256": "65b5c56e3576f645a10d6f2b5a69147e2904601641d56e4a9ed31de246b0a103",
+      "previousBytes": 89703,
+      "reviewedSha256": "18340d331bc78f1e8033bad4f4de2399a4b3bd9c417214e87551f8967cfe5474",
+      "reviewedBytes": 92698,
+      "deltas": [
+        {
+          "id": "1",
+          "previous": "from profile_invocation_contract import expected_build, verify_installed\nfrom page_continuity_contract import verify_page_continuity\nfrom local_draft_contract import verify_local_draft_policy\nfrom download_resume_contract import verify_download_resume\ndef collect_readiness(log,identity,invocations):\n    \"\"\"Diagnostic sidecar only. Never feeds a business decoder or acceptance gate.\"\"\"\n    owners={value['runNonce']:value for value in invocations};observations=[];counts={}\n    def unique(pairs):\n",
+          "current": "from profile_invocation_contract import expected_build, verify_installed\nfrom page_continuity_contract import verify_page_continuity\nfrom local_draft_contract import verify_local_draft_policy\nfrom download_resume_contract import verify_download_resume\nclass ReceiptJournalDiscovery:\n    \"\"\"Discover actual native markers from committed, immutable prefix snapshots.\n\n    Logcat remains a diagnostic/error channel. This never constructs a receipt\n    from an event payload, sorts entries, fills a gap, or changes EventTransfer.\n    \"\"\"\n    MAX_BYTES=4*1024*1024\n    def __init__(self,transfer):\n        self.transfer=transfer;self.prefix=()\n    def uri(self):\n        return ('content://local.pocketchat.test.evidence/gecko-event-receipts/'\n                +str(self.transfer.slot)+'/'+self.transfer.nonce)\n    def snapshot(self,raw):\n        if type(raw) is not bytes or not 0<len(raw)<=self.MAX_BYTES:raise ValueError('Native receipt journal byte bound')\n        def pairs(items):\n            value={}\n            for key,item in items:\n                if key in value:raise ValueError('Duplicate native receipt journal field')\n                value[key]=item\n            return value\n        value=json.loads(raw.decode('utf-8',errors='strict'),object_pairs_hook=pairs,\n            parse_constant=lambda _:(_ for _ in ()).throw(ValueError('Nonfinite native receipt journal')))\n        if not isinstance(value,dict) or type(value.get('schema')) is not int or value['schema']!=1:raise ValueError('Native receipt journal schema')\n        if value.get('runNonce')!=self.transfer.nonce or type(value.get('processSlot')) is not int or value['processSlot']!=self.transfer.slot:raise ValueError('Native receipt journal owner')\n        if value.get('status')=='pending':\n            if self.prefix or set(value)!={'schema','status','runNonce','processSlot'}:raise ValueError('Committed native receipt journal disappeared')\n            return []\n        if value.get('status')!='committed' or value.get('fixtureAction')!=self.transfer.action:raise ValueError('Native receipt journal action or status')\n        command=value.get('command')\n        if type(command) is not int or command<=0 or self.transfer.command is not None and command!=self.transfer.command:raise ValueError('Native receipt journal command')\n        markers=value.get('receipts')\n        if not isinstance(markers,list) or not 1<=len(markers)<=4096 or any(type(marker) is not str for marker in markers):raise ValueError('Native receipt journal markers')\n        if len(markers)<len(self.prefix) or tuple(markers[:len(self.prefix)])!=self.prefix:raise ValueError('Native receipt journal prefix changed')\n        receipts=[]\n        for marker in markers:\n            receipt=parse_receipt_line(marker)\n            if receipt is None or receipt.get('kind')!='eventReceipt' or receipt.get('command')!=command:raise ValueError('Native receipt journal marker')\n            receipts.append(receipt)\n        self.prefix=tuple(markers)\n        return receipts\ndef collect_readiness(log,identity,invocations):\n    \"\"\"Diagnostic sidecar only. Never feeds a business decoder or acceptance gate.\"\"\"\n    owners={value['runNonce']:value for value in invocations};observations=[];counts={}\n    def unique(pairs):\n",
+          "previousSha256": "a6c9dc614bb19755ccf1c6e2d84b0444eaa0ae99124502ddf86a42e8843eef91",
+          "currentSha256": "0a6d2619f43b1386bb16ced07366581f898856b6d239643e6df6ae7dfe4115f0"
+        },
+        {
+          "id": "2",
+          "previous": "        def fetch_event(uri):\n            raw=adb_bytes('exec-out','content','read','--uri',uri)\n            return raw\n        transfer=EventTransfer(identity=identity,nonce=nonce,slot=context-1,action=action,fetch=fetch_event)\n        tapped=set()\n        reading_events=set();reading_trace=[];reading_lifecycle=[];reading_geometry=[];reading_readiness=None;bounds_before=None;bounds_pan=None\n        surface_gestures[(context,action)]=[]\n        activity='GeckoIntegrationTestActivity' if context==1 else 'ProfileGeckoIntegrationActivity1'\n",
+          "current": "        def fetch_event(uri):\n            raw=adb_bytes('exec-out','content','read','--uri',uri)\n            return raw\n        transfer=EventTransfer(identity=identity,nonce=nonce,slot=context-1,action=action,fetch=fetch_event)\n        discovery=ReceiptJournalDiscovery(transfer)\n        transfer_record['discovery']='native-committed-marker-journal'\n        tapped=set()\n        reading_events=set();reading_trace=[];reading_lifecycle=[];reading_geometry=[];reading_readiness=None;bounds_before=None;bounds_pan=None\n        surface_gestures[(context,action)]=[]\n        activity='GeckoIntegrationTestActivity' if context==1 else 'ProfileGeckoIntegrationActivity1'\n",
+          "previousSha256": "48af361a7a0ac9cf49bdad062c46f9cb1fd4bf3e5d18295e4a5fa497e6b57ba3",
+          "currentSha256": "a456409047650b3632be8ac942fc31b6ae054d08135dd2c89538206b17215d5c"
+        },
+        {
+          "id": "3",
+          "previous": "                receipt=parse_receipt_line(line)\n                if receipt is None:continue\n                if receipt.get('runNonce')!=nonce or receipt.get('processSlot')!=context-1:continue\n                if receipt.get('kind')=='eventTransportError':raise ValueError('Native complete event publication failed: '+str(receipt))\n                event=read_with_sequence_failure_diagnostics(transfer,receipt,filtered_log=output,out=OUT,adb=args.adb,serial=args.serial)\n                transfer_record['events']=transfer.records\n                if action in {'readingBounds','readingBoundsProtected'} and event.get('kind') in {'readingBoundsBefore','readingBoundsPan'}:\n                    if event['kind']=='readingBoundsBefore':bounds_before=event['result']\n",
+          "current": "                receipt=parse_receipt_line(line)\n                if receipt is None:continue\n                if receipt.get('runNonce')!=nonce or receipt.get('processSlot')!=context-1:continue\n                if receipt.get('kind')=='eventTransportError':raise ValueError('Native complete event publication failed: '+str(receipt))\n            for receipt in discovery.snapshot(adb_bytes('exec-out','content','read','--uri',discovery.uri())):\n                event=read_with_sequence_failure_diagnostics(transfer,receipt,filtered_log=output,out=OUT,adb=args.adb,serial=args.serial)\n                transfer_record['events']=transfer.records\n                if action in {'readingBounds','readingBoundsProtected'} and event.get('kind') in {'readingBoundsBefore','readingBoundsPan'}:\n                    if event['kind']=='readingBoundsBefore':bounds_before=event['result']\n",
+          "previousSha256": "b1e74d9ea70642d300660555f8c4a4d8fa906bf514886b9d0a83acbe01785aae",
+          "currentSha256": "b8359502a01daf6b961c1463039fcf0d0029da94e159ad1fd609f6908a80942d"
+        }
+      ]
+    },
+    "tests/experience46_source_compatibility.py": {
+      "previousSha256": "164cf90253f0fb7836217af6f5266dfb6898f1e4e468fb0b82ef8efebb7bddbf",
+      "previousBytes": 2415,
+      "reviewedSha256": "98396e4103ab39cf3cf2fd4064e1d0fe06c3e466ef49ea6f0c3723437cc262a5",
+      "reviewedBytes": 2731,
+      "deltas": [
+        {
+          "id": "1",
+          "previous": "    row = manifest46()['files'].get(relative)\n    if row is None:\n        raise ValueError('Experience46 inverse does not cover this exact path')\n    digest = hashlib.sha256(raw).hexdigest()\n    if digest == row['previousSha256'] or digest in row['exactHistoricalSha256']:\n        return raw\n    if digest != row['reviewedSha256']:\n        raise ValueError('Experience46 inverse rejects unknown whole source bytes')\n",
+          "current": "    row = manifest46()['files'].get(relative)\n    if row is None:\n        raise ValueError('Experience46 inverse does not cover this exact path')\n    digest = hashlib.sha256(raw).hexdigest()\n    if relative == 'tests/gecko/run_device.py' and digest not in (\n            row['reviewedSha256'], row['previousSha256'], *row['exactHistoricalSha256']):\n        from event_journal_source_compatibility import source_input\n        raw = source_input(raw, relative)\n        digest = hashlib.sha256(raw).hexdigest()\n    if digest == row['previousSha256'] or digest in row['exactHistoricalSha256']:\n        return raw\n    if digest != row['reviewedSha256']:\n        raise ValueError('Experience46 inverse rejects unknown whole source bytes')\n",
+          "previousSha256": "7d2c9b5b4b95c89757fa4c731447f1104ed6c22df90148efd74f072fed0845d7",
+          "currentSha256": "388c1867f3b48c356d98b376b236d35dc108ec3f93dbcd0736dcf29241851929"
+        }
+      ]
+    },
+    "tests/profile_experience46_source_compatibility_test.py": {
+      "previousSha256": "1d4262603591526d86282623c35441da7664de98713423082e268bfe359ab7f1",
+      "previousBytes": 5912,
+      "reviewedSha256": "e4db3632734a8fb4deb900e0d7a7c19398a356fdfd1731e31a064e6d5291b20e",
+      "reviewedBytes": 6059,
+      "deltas": [
+        {
+          "id": "1",
+          "previous": "  old45=json.loads((ROOT/'tests/fixtures/reading45-restoration-source-deltas.json').read_bytes())\n  for path,row in manifest['files'].items():\n   with self.subTest(path=path):\n    previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()\n    self.assertEqual(sha(previous),row['previousSha256']);self.assertEqual(sha(current),row['reviewedSha256'])\n    self.assertEqual(compat.experience46_source_bytes(previous,path),previous)\n    self.assertEqual(compat.experience46_source_bytes(current,path),previous)\n    allowed=[]\n",
+          "current": "  old45=json.loads((ROOT/'tests/fixtures/reading45-restoration-source-deltas.json').read_bytes())\n  for path,row in manifest['files'].items():\n   with self.subTest(path=path):\n    previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()\n    if path=='tests/gecko/run_device.py':\n     from event_journal_source_compatibility import source_input\n     current=source_input(current,path)\n    self.assertEqual(sha(previous),row['previousSha256']);self.assertEqual(sha(current),row['reviewedSha256'])\n    self.assertEqual(compat.experience46_source_bytes(previous,path),previous)\n    self.assertEqual(compat.experience46_source_bytes(current,path),previous)\n    allowed=[]\n",
+          "previousSha256": "e1eec748ee8f15a95a439656b17399aa1b4d05933fb5ceaf276668f296afc460",
+          "currentSha256": "99c5e8fcd9cbdbdbde38c8bbb8faf15065c420eb5eec450295175545977d0200"
+        }
+      ]
+    },
+    "tests/gecko_device_readiness_test.py": {
+      "previousSha256": "cba98e557c620e848d27eb4d67ca2281cf2ffd388c02866570c61290bc63226c",
+      "previousBytes": 27413,
+      "reviewedSha256": "9ed090d2fd70b8073b29b14bbf3262683d4a0c9ed97f78391d4669d62e2bf1fc",
+      "reviewedBytes": 27917,
+      "deltas": [
+        {
+          "id": "1",
+          "previous": "\ndef verify_runner_consumer(source):\n    from reading_zoom_trace_contract import strip_reviewed_reading_trace_additions\n    source=strip_reviewed_reading_trace_additions(source.encode('utf-8'),'tests/gecko/run_device.py').decode('utf-8')\n    run=copy.deepcopy(run_node(source))\n    dump=lambda node:ast.dump(node,include_attributes=False)\n    statement=lambda text:ast.parse(text.encode('utf-8')).body[0]\n    # Only this exact diagnostic wrapper may replace the old read at its\n    # original site. Stripping arbitrary try/except or callbacks would permit\n",
+          "current": "\ndef verify_runner_consumer(source):\n    from reading_zoom_trace_contract import strip_reviewed_reading_trace_additions\n    source=strip_reviewed_reading_trace_additions(source.encode('utf-8'),'tests/gecko/run_device.py').decode('utf-8')\n    from event_journal_source_compatibility import original_runner_tree\n    run=original_runner_tree(copy.deepcopy(run_node(source)))\n    dump=lambda node:ast.dump(node,include_attributes=False)\n    statement=lambda text:ast.parse(text.encode('utf-8')).body[0]\n    # Only this exact diagnostic wrapper may replace the old read at its\n    # original site. Stripping arbitrary try/except or callbacks would permit\n",
+          "previousSha256": "b72272daa39f35b08dc48e255d4f40ad038cced5c3c7cdf2c7b034246b6d335c",
+          "currentSha256": "c45d8a0c7888c646511041e07af62db7be813a807e13b7f8b32032a2254bee57"
+        },
+        {
+          "id": "2",
+          "previous": "        bindings,calls=transport.GeckoEventTransportControls().device_runner_control(receipt,raw)\n        clock=types.SimpleNamespace(now=0)\n        line='10-25 00:00 I PocketReadiness: '+json.dumps(dict(kind='readinessObservation',diagnosticOnly=True,acceptance=False))\n        def adb(*parts):return line if parts==('logcat','-d','-s','PocketGeckoIntegration:I','*:S') else ''\n        bindings.update(adb=adb,time=types.SimpleNamespace(monotonic=lambda:clock.now,sleep=lambda n:setattr(clock,'now',clock.now+121)))\n        with tempfile.TemporaryDirectory() as directory:\n            bindings['OUT']=Path(directory)\n            with self.assertRaisesRegex(TimeoutError,'No integration result: 1, read, fixture'):bindings['run'](1,'read')\n",
+          "current": "        bindings,calls=transport.GeckoEventTransportControls().device_runner_control(receipt,raw)\n        clock=types.SimpleNamespace(now=0)\n        line='10-25 00:00 I PocketReadiness: '+json.dumps(dict(kind='readinessObservation',diagnosticOnly=True,acceptance=False))\n        def adb(*parts):return line if parts==('logcat','-d','-s','PocketGeckoIntegration:I','*:S') else ''\n        def pending_journal(*parts):\n            if parts!=('exec-out','content','read','--uri','content://local.pocketchat.test.evidence/gecko-event-receipts/0/'+'e'*32):\n                raise ValueError('Diagnostic-only control cannot fetch an event payload')\n            return json.dumps(dict(schema=1,status='pending',runNonce='e'*32,processSlot=0)).encode()\n        bindings['adb_bytes']=pending_journal\n        bindings.update(adb=adb,time=types.SimpleNamespace(monotonic=lambda:clock.now,sleep=lambda n:setattr(clock,'now',clock.now+121)))\n        with tempfile.TemporaryDirectory() as directory:\n            bindings['OUT']=Path(directory)\n            with self.assertRaisesRegex(TimeoutError,'No integration result: 1, read, fixture'):bindings['run'](1,'read')\n",
+          "previousSha256": "40ae0e59bfc5abb8245d4224a7dfc6b4291901dda888f35427c0ad293111fb2f",
+          "currentSha256": "1f5a32afaaef9f25ff766aac7e50c54e7b69320b81b4cb88ff7e357a1f6e9288"
+        }
+      ]
+    },
+    "tests/startup46_source_compatibility.py": {
+      "previousSha256": "c64fa99add6e8c4f635645ac178c83a935f2192ce82fde0f8a9db225a0d9628a",
+      "previousBytes": 1309,
+      "reviewedSha256": "04f18d259d68dbfe013793d3f381a29d2d900d5536274530600f1062278f2732",
+      "reviewedBytes": 1518,
+      "deltas": [
+        {
+          "id": "1",
+          "previous": "def startup46_source_bytes(raw,relative):\n    if relative!=PATH:\n        raise ValueError('Startup inverse does not cover this exact path')\n    digest=hashlib.sha256(raw).hexdigest()\n    if digest==PREVIOUS_SHA256:\n        return raw\n    if digest!=CURRENT_SHA256:\n        raise ValueError('Startup inverse rejects unknown whole source bytes')\n",
+          "current": "def startup46_source_bytes(raw,relative):\n    if relative!=PATH:\n        raise ValueError('Startup inverse does not cover this exact path')\n    digest=hashlib.sha256(raw).hexdigest()\n    if digest not in (PREVIOUS_SHA256,CURRENT_SHA256):\n        from event_journal_source_compatibility import source_input\n        raw=source_input(raw,relative)\n        digest=hashlib.sha256(raw).hexdigest()\n    if digest==PREVIOUS_SHA256:\n        return raw\n    if digest!=CURRENT_SHA256:\n        raise ValueError('Startup inverse rejects unknown whole source bytes')\n",
+          "previousSha256": "c6ab3b72c5b6403ffab7a91a83732d1a65c99b43b620133ccd5bd688090bf028",
+          "currentSha256": "bec5e7d26de903a23212326324a101de3b488c2f78417009619f91df3e964a86"
+        }
+      ]
+    },
+    "tests/profile_startup_whole_source46_test.py": {
+      "previousSha256": "812a3bd5930cf95d9a6915027de1d5bd3aca447c67c3a9e555d9d99dec5b7b51",
+      "previousBytes": 3196,
+      "reviewedSha256": "7870bb0ff601ca8064f257b7a561aaaf32297bf3f4dc63986c70f17e8ac16fdb",
+      "reviewedBytes": 3307,
+      "deltas": [
+        {
+          "id": "1",
+          "previous": "\nclass StartupWholeSource46(unittest.TestCase):\n    def test_both_exact_inputs_recover_the_complete_old_consumer_and_golden(self):\n        self.assertEqual(HOOK,REVIEWED_HOOK)\n        raw=(ROOT/PATH).read_bytes();self.assertEqual(hashlib.sha256(raw).hexdigest(),CURRENT_SHA256)\n        previous=startup46_source_bytes(raw,PATH)\n        self.assertEqual(hashlib.sha256(previous).hexdigest(),PREVIOUS_SHA256)\n        self.assertEqual(startup46_source_bytes(previous,PATH),previous)\n        trace=\"    from reading_zoom_trace_contract import strip_reviewed_reading_trace_additions\\n    source=strip_reviewed_reading_trace_additions(source.encode('utf-8'),'tests/gecko/run_device.py').decode('utf-8')\\n\".encode()\n",
+          "current": "\nclass StartupWholeSource46(unittest.TestCase):\n    def test_both_exact_inputs_recover_the_complete_old_consumer_and_golden(self):\n        self.assertEqual(HOOK,REVIEWED_HOOK)\n        raw=(ROOT/PATH).read_bytes()\n        from event_journal_source_compatibility import source_input\n        raw=source_input(raw,PATH)\n        self.assertEqual(hashlib.sha256(raw).hexdigest(),CURRENT_SHA256)\n        previous=startup46_source_bytes(raw,PATH)\n        self.assertEqual(hashlib.sha256(previous).hexdigest(),PREVIOUS_SHA256)\n        self.assertEqual(startup46_source_bytes(previous,PATH),previous)\n        trace=\"    from reading_zoom_trace_contract import strip_reviewed_reading_trace_additions\\n    source=strip_reviewed_reading_trace_additions(source.encode('utf-8'),'tests/gecko/run_device.py').decode('utf-8')\\n\".encode()\n",
+          "previousSha256": "422b6cccb3d27cca5a3cf34aa9b3077885984473f6aa4613bbb97768bc9dfb95",
+          "currentSha256": "6399c67157552e1a0a268299a0546603bb7e3113803c04b1e3e064f573b14fc6"
+        }
+      ]
+    },
+    "tests/profile_startup_f14_compatibility46_test.py": {
+      "previousSha256": "01f919635c41c6a64845dafeb39198e3e0da0d70c2697df2d76f51ed8e925c76",
+      "previousBytes": 3090,
+      "reviewedSha256": "e4457291108ac16d6a18aefd772c7c06e62cca5368b658e28b56e073b737857b",
+      "reviewedBytes": 3199,
+      "deltas": [
+        {
+          "id": "1",
+          "previous": "\n\nclass StartupF14Compatibility46(unittest.TestCase):\n    def test_only_exact_hook_added_and_both_approved_inputs_keep_original_members(self):\n        current=(ROOT/CONSUMER).read_text();self.assertEqual(current.count(HOOK),1)\n        self.assertEqual(hashlib.sha256(current.replace(HOOK,'',1).encode()).hexdigest(),BEFORE_SHA256)\n        source=(ROOT/FIXTURE).read_bytes();previous=experience46_source_bytes(source,FIXTURE)\n        for value in (source,previous):\n            for needle in NEEDLES:\n",
+          "current": "\n\nclass StartupF14Compatibility46(unittest.TestCase):\n    def test_only_exact_hook_added_and_both_approved_inputs_keep_original_members(self):\n        from event_journal_source_compatibility import source_input\n        current=source_input((ROOT/CONSUMER).read_bytes(),CONSUMER).decode()\n        self.assertEqual(current.count(HOOK),1)\n        self.assertEqual(hashlib.sha256(current.replace(HOOK,'',1).encode()).hexdigest(),BEFORE_SHA256)\n        source=(ROOT/FIXTURE).read_bytes();previous=experience46_source_bytes(source,FIXTURE)\n        for value in (source,previous):\n            for needle in NEEDLES:\n",
+          "previousSha256": "fc59ffd8ec5a299af67131d8221889e4274837833c7f9233c8913d2d9649a75b",
+          "currentSha256": "6aa01ee6f307d0e9685cdfaf0c20229e51f21e94ea9d5ab80d91e7e97683a785"
+        }
+      ]
+    }
+  },
+  "runTree": {
+    "phase": "Complete run AST after existing optional-reading-trace removal, before original sequence-wrapper and F06 inverses",
+    "previousSha256": "cb8b5a1e5704613db4906cd1a4bc7bc1efe782d39e9ba1fdac058d8486ba9dc2",
+    "reviewedSha256": "6925c97416f26e30d240e74d140772678da2339b008e8fdc5789491f8598e5c4"
+  }
+}

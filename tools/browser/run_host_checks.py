@@ -29,6 +29,7 @@ def main():
         target=out/('chooser-'+label);add('chooser-'+label,'tests/browser-files-host/chooser.py',java+['--json-jar',jar,'--output',target],target/'results.json')
         target=out/('network-fence-'+label);add('network-fence-'+label,'tests/network-fence-completion-host/run.py',java+['--json-jar',jar,'--output',target],target/'results.json')
         target=out/('ui-download-observer-'+label+'.json');add('ui-download-observer-'+label,'tests/gecko-ui-download-observer-host/run.py',java+['--json-jar',jar,'--output',target],target)
+        target=out/('event-journal-'+label+'.json');add('event-journal-'+label,'tests/gecko-event-journal-host/run.py',java+['--json-jar',jar,'--output',target],target)
         for ref in ['1e3086a',None]:
             name='chat-chrome-'+label+('-before' if ref else '-current');target=out/(name+'.json');arguments=java+['--json-jar',jar,'--output',target]+(['--before-ref',ref] if ref else []);add(name,'tests/chat-chrome-performance-host/run.py',arguments,target)
     add('shell','tests/ux-shell-host/run.py',java+['--output',out/'shell'])

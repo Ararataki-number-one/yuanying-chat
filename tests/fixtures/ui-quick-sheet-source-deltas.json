@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "baseCommit": "03d0c4ace70942a3f6899daffac086cc6682885e",
+  "baseTree": "bfd7bbcdf89ef947dd466dab795e94e83fc992c3",
+  "scope": "Finite historical source inputs only; actual compact runtime and host evidence remain current.",
+  "files": {
+    "tests/gecko/run_ui_visuals.py": {
+      "previousSha256": "8816b3f7b36b59d1aac21827bbe06833ae6843462940c025dd3ba918efe6b81a",
+      "reviewedSha256": "65fb205cbb7a466858a0a1869cd4b5388f70026d4e09da078318827e92432f4f",
+      "previousBytes": 43202,
+      "reviewedBytes": 45804,
+      "deltas": [
+        {
+          "previous": "            time.sleep(.2)\n        raise TimeoutError(('Dialog visibility did not settle',label,present,xml[-3000:]))\n    for width,scale in [(360,1),(412,1),(360,2)]:\n        adb('shell','am','force-stop',package);adb('logcat','-c')\n",
+          "current": "            time.sleep(.2)\n        raise TimeoutError(('Dialog visibility did not settle',label,present,xml[-3000:]))\n    def quick_environment_sheet(xml,slot,expected_package):\n        assert type(slot) is int and 0<=slot<8,slot\n        nodes=list(ET.fromstring(xml).iter('node'))\n        def owned(node,kind):return node.attrib.get('package')==expected_package and node.attrib.get('class')=='android.widget.'+kind\n        def bounds(node):\n            match=re.fullmatch(r'\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]',node.attrib.get('bounds',''))\n            assert match is not None,node.attrib\n            left,top,right,bottom=map(int,match.groups());assert left<right and top<bottom,node.attrib\n            return [left,top,right,bottom]\n        title=[node for node in nodes if owned(node,'TextView') and node.attrib.get('text')=='快速切换环境' and node.attrib.get('content-desc')=='快速切换环境']\n        search=[node for node in nodes if owned(node,'EditText') and node.attrib.get('content-desc')=='搜索要切换的环境']\n        close=[node for node in nodes if owned(node,'Button') and node.attrib.get('content-desc')=='关闭快速切换环境']\n        current=[node for node in nodes if owned(node,'Button') and node.attrib.get('selected')=='true']\n        assert len(title)==len(search)==len(close)==len(current)==1,(title,search,close,current)\n        for node in (search[0],close[0],current[0]):assert node.attrib.get('enabled')=='true' and node.attrib.get('clickable')=='true',node.attrib\n        assert current[0].attrib.get('text','').startswith(f'{slot+1:02d}  ') and ' · 当前\\n' in current[0].attrib.get('text',''),current[0].attrib\n        assert current[0].attrib.get('content-desc','').startswith('切换到 '),current[0].attrib\n        return {'title':'快速切换环境','searchDescription':'搜索要切换的环境','closeDescription':'关闭快速切换环境','currentSlot':slot,\n                'titleBounds':bounds(title[0]),'searchBounds':bounds(search[0]),'currentBounds':bounds(current[0]),'closeBounds':bounds(close[0])}\n    for width,scale in [(360,1),(412,1),(360,2)]:\n        adb('shell','am','force-stop',package);adb('logcat','-c')\n"
+        },
+        {
+          "previous": "        adb('shell','am','start','-W','--activity-single-top','-n',component,'--es','compactAction','snapshot','--es','compactCommand',command)\n        after=chrome_event(command,'snapshot');assert after['actions']==sample['actions']==0 and after['page']==0,after\n        taps=[]\n        for control in sample['controls']:\n            command+= '-'+control['name']\n",
+          "current": "        adb('shell','am','start','-W','--activity-single-top','-n',component,'--es','compactAction','snapshot','--es','compactCommand',command)\n        after=chrome_event(command,'snapshot');assert after['actions']==sample['actions']==0 and after['page']==0,after\n        taps=[];management_navigation=None;environment_sheet=None\n        for control in sample['controls']:\n            command+= '-'+control['name']\n"
+        },
+        {
+          "previous": "                adb('shell','input','keyevent','KEYCODE_BACK')\n                focus('local.pocketchat.CompactChromeIntegrationActivity')\n            elif control['name']=='environment':\n                visible('切换环境');visible('管理全部环境')\n                adb('shell','input','keyevent','KEYCODE_BACK');visible('切换环境',False)\n            elif control['name']=='more':\n                label='会话选项'\n",
+          "current": "                adb('shell','input','keyevent','KEYCODE_BACK')\n                focus('local.pocketchat.CompactChromeIntegrationActivity')\n                management_navigation={'activity':'local.pocketchat.WindowHomeActivity','actualDrawerTap':True,'resumedThenReturned':True}\n            elif control['name']=='environment':\n                visible('快速切换环境')\n                environment_sheet=quick_environment_sheet(dump(),0,package)\n                # Management is the preceding real drawer action; the current\n                # quick switcher returns to an existing environment directly.\n                assert management_navigation=={'activity':'local.pocketchat.WindowHomeActivity','actualDrawerTap':True,'resumedThenReturned':True},management_navigation\n                adb('shell','input','keyevent','KEYCODE_BACK');visible('快速切换环境',False)\n            elif control['name']=='more':\n                label='会话选项'\n"
+        },
+        {
+          "previous": "        performance=chrome_event(command,'performance')\n        assert performance['status']=='passed',performance\n        compact.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','readOnlyStatus':True,'actualAndroidTaps':taps,'layout':sample,'performance':performance['performance']})\n    # Real Gecko document + real protected loopback SOCKS, isolated synthetic login.\n    # The ordinary three chrome cases and their trusted touch assertions remain intact.\n",
+          "current": "        performance=chrome_event(command,'performance')\n        assert performance['status']=='passed',performance\n        compact.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','readOnlyStatus':True,'actualAndroidTaps':taps,'layout':sample,'performance':performance['performance'],'environmentSheet':environment_sheet,'managementNavigation':management_navigation})\n    # Real Gecko document + real protected loopback SOCKS, isolated synthetic login.\n    # The ordinary three chrome cases and their trusted touch assertions remain intact.\n"
+        }
+      ]
+    },
+    "tests/ui_observer_source_compatibility.py": {
+      "previousSha256": "4521e34e43eea33a88dd9897f9cf6c562c97149def13d6c173279c6ca511745b",
+      "reviewedSha256": "34220ba811982bd92513cd52fd6541568206bd1a2127a77f7a5d013c421276ad",
+      "previousBytes": 5606,
+      "reviewedBytes": 6063,
+      "deltas": [
+        {
+          "previous": "import json\nfrom pathlib import Path\n\nROOT = Path(__file__).resolve().parents[1]\n",
+          "current": "import json\nfrom pathlib import Path\nimport importlib.util as _quick_import\n\n_quick_spec = _quick_import.spec_from_file_location('selected_ui_quick_sheet_source_input', Path(__file__).with_name('ui_quick_sheet_source_compatibility.py'))\n_quick_input = _quick_import.module_from_spec(_quick_spec)\n_quick_spec.loader.exec_module(_quick_input)\n\nROOT = Path(__file__).resolve().parents[1]\n"
+        },
+        {
+          "previous": "def source_input(raw, path, *, allow_previous=False):\n    assert type(raw) is bytes and type(path) is str and path in PATHS, 'Exact source bytes and owned relative path required'\n    assert type(allow_previous) is bool\n    row = manifest()['files'][path]\n",
+          "current": "def source_input(raw, path, *, allow_previous=False):\n    assert type(raw) is bytes and type(path) is str and path in PATHS, 'Exact source bytes and owned relative path required'\n    raw = _quick_input.history_input(raw, path)\n    assert type(allow_previous) is bool\n    row = manifest()['files'][path]\n"
+        },
+        {
+          "previous": "    def observed_ui_source(raw):\n        assert type(raw) is bytes, 'Complete UI runner bytes required'\n        if sha(raw) == manifest()['files'][RUNNER]['reviewedSha256']:\n            raw = source_input(raw, RUNNER)\n",
+          "current": "    def observed_ui_source(raw):\n        assert type(raw) is bytes, 'Complete UI runner bytes required'\n        raw = _quick_input.history_input(raw, RUNNER)\n        if sha(raw) == manifest()['files'][RUNNER]['reviewedSha256']:\n            raw = source_input(raw, RUNNER)\n"
+        },
+        {
+          "previous": "def original_runner_tree(tree):\n    assert type(tree) is ast.Module, 'A complete parsed UI module is required'\n    assert len([node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'capture']) == 1\n    assert len([node for node in tree.body if isinstance(node, ast.Try) and node.finalbody]) == 1, 'Complete UI workload required, never an excerpt'\n",
+          "current": "def original_runner_tree(tree):\n    assert type(tree) is ast.Module, 'A complete parsed UI module is required'\n    tree = _quick_input.original_runner_tree(tree)\n    assert len([node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'capture']) == 1\n    assert len([node for node in tree.body if isinstance(node, ast.Try) and node.finalbody]) == 1, 'Complete UI workload required, never an excerpt'\n"
+        }
+      ]
+    },
+    "tests/profile_ui_observer_source_compatibility_test.py": {
+      "previousSha256": "8d92b22bc6ccea310d7dc066e6a844464d8d2c568d6d5df77d557ece156621d6",
+      "reviewedSha256": "4252e747d12bb45305cb5a8b29e7fdf1dbbe70643ccca1b7a104343155929998",
+      "previousBytes": 8025,
+      "reviewedBytes": 8303,
+      "deltas": [
+        {
+          "previous": "import ui_observer_source_compatibility as source_input\nimport ui_visual_preservation_contract as original_ui\n\nROOT = Path(__file__).resolve().parents[1]\n",
+          "current": "import ui_observer_source_compatibility as source_input\nimport ui_visual_preservation_contract as original_ui\nimport ui_quick_sheet_source_compatibility as quick_input\n\nROOT = Path(__file__).resolve().parents[1]\n"
+        },
+        {
+          "previous": "        self.assertEqual(set(PREVIOUS), set(manifest['files']))\n        for path, expected in PREVIOUS.items():\n            current = (ROOT / path).read_bytes()\n            original = source_input.source_input(current, path)\n            self.assertEqual(hashlib.sha256(original).hexdigest(), expected)\n",
+          "current": "        self.assertEqual(set(PREVIOUS), set(manifest['files']))\n        for path, expected in PREVIOUS.items():\n            current = quick_input.history_input((ROOT / path).read_bytes(), path)\n            original = source_input.source_input(current, path)\n            self.assertEqual(hashlib.sha256(original).hexdigest(), expected)\n"
+        },
+        {
+          "previous": "    def test_unknown_missing_duplicate_relocated_and_changed_context_are_rejected(self):\n        for path, row in source_input.manifest()['files'].items():\n            raw = (ROOT / path).read_bytes()\n            changes = [raw + b'\\n', b'unknown', b'']\n            for delta in row['deltas']:\n",
+          "current": "    def test_unknown_missing_duplicate_relocated_and_changed_context_are_rejected(self):\n        for path, row in source_input.manifest()['files'].items():\n            raw = quick_input.history_input((ROOT / path).read_bytes(), path)\n            changes = [raw + b'\\n', b'unknown', b'']\n            for delta in row['deltas']:\n"
+        },
+        {
+          "previous": "\n    def test_raw_types_relative_paths_and_incomplete_excerpts_fail_closed(self):\n        raw = (ROOT / source_input.RUNNER).read_bytes()\n        for value in (None, raw.decode(), bytearray(raw), raw[:1024]):\n            with self.assertRaises(AssertionError):source_input.source_input(value, source_input.RUNNER)\n",
+          "current": "\n    def test_raw_types_relative_paths_and_incomplete_excerpts_fail_closed(self):\n        raw = quick_input.history_input((ROOT / source_input.RUNNER).read_bytes(), source_input.RUNNER)\n        for value in (None, raw.decode(), bytearray(raw), raw[:1024]):\n            with self.assertRaises(AssertionError):source_input.source_input(value, source_input.RUNNER)\n"
+        },
+        {
+          "previous": "\n    def test_formatted_and_no_preparation_ast_inputs_keep_all_original_goldens(self):\n        raw = (ROOT / source_input.RUNNER).read_bytes()\n        old = source_input.source_input(raw, source_input.RUNNER)\n        block = (\"from ui_test_device import prepare_workflow as prepare_ui_test_device\\n\"\n",
+          "current": "\n    def test_formatted_and_no_preparation_ast_inputs_keep_all_original_goldens(self):\n        raw = quick_input.history_input((ROOT / source_input.RUNNER).read_bytes(), source_input.RUNNER)\n        old = source_input.source_input(raw, source_input.RUNNER)\n        block = (\"from ui_test_device import prepare_workflow as prepare_ui_test_device\\n\"\n"
+        },
+        {
+          "previous": "\n    def test_old_predicates_and_fresh_scope_mutations_never_normalize_away(self):\n        source = (ROOT / source_input.RUNNER).read_text()\n        changes = [(\"assert '已选 8 个' in xml\", 'assert True'),\n                   ('deadline=time.monotonic()+35;readiness_scrolls=0', 'deadline=time.monotonic()+36;readiness_scrolls=0'),\n",
+          "current": "\n    def test_old_predicates_and_fresh_scope_mutations_never_normalize_away(self):\n        source = quick_input.history_input((ROOT / source_input.RUNNER).read_bytes(), source_input.RUNNER).decode()\n        changes = [(\"assert '已选 8 个' in xml\", 'assert True'),\n                   ('deadline=time.monotonic()+35;readiness_scrolls=0', 'deadline=time.monotonic()+36;readiness_scrolls=0'),\n"
+        }
+      ]
+    }
+  },
+  "runnerAst": {
+    "currentStart": 12,
+    "currentEnd": 14,
+    "currentBlockSha256": "a5c9e30638ea88c2bd39e959a0f4bc2a2060c0c1c9ff93124dcedaac026118b7",
+    "previousBlockSha256": "fada783d7f842c79e01a545dc173a5a5d4c7396187209fc203a392167f9264b3",
+    "previousSource": "for width, scale in [(360, 1), (412, 1), (360, 2)]:\n    adb('shell', 'am', 'force-stop', package)\n    adb('logcat', '-c')\n    adb('shell', 'wm', 'size', f'{width * 3}x1920')\n    adb('shell', 'wm', 'density', '480')\n    adb('shell', 'settings', 'put', 'system', 'font_scale', str(scale))\n    command = f'compact-{width}-{scale}'\n    adb('shell', 'am', 'start', '-W', '-n', component, '--es', 'compactCommand', command)\n    sample = chrome_event(command, 'ready')\n    assert sample['geckoOnly'] and sample['pageMode'] and sample['noNativeChat'] and (sample['systemWebViews'] == 0), sample\n    assert [control['name'] for control in sample['controls']] == ['drawer', 'environment', 'more'], sample\n    assert sample['latency'] == sample['expectedLatency'] == '42 ms（02:00）', sample\n    assert not sample['networkClickable'] and (not sample['networkFocusable']) and (sample['networkBackground'] == 'none') and ('点击' not in sample['networkDescription']), sample\n    assert sample['toolbarHeightDp'] <= (59 if scale == 1 else 100), sample\n    assert sample['topHeightDp'] >= 40 and sample['networkHeightDp'] >= 18, sample\n    dot = sample['decorativeDot']\n    assert abs(dot['textSizeDp'] - 9) < 0.01 and dot['inkWidth'] <= dot['contentWidth'] + 1 and (dot['fontHeight'] <= dot['contentHeight'] + 1), (sample, dot)\n    for text in sample['texts']:\n        assert text['fontHeight'] <= text['contentHeight'] + 1, (sample, text)\n        assert text['text'] not in ['简洁', '原网页'], (sample, text)\n        if text['text'] in ['42 ms（02:00）', '已连接']:\n            assert not text['ellipsized'] and text['inkWidth'] <= text['contentWidth'] + 1, (sample, text)\n    if scale == 2:\n        assert sample['texts'][0]['ellipsized'], sample\n    for control in sample['controls']:\n        assert control['widthDp'] >= 47.9 and control['heightDp'] >= 47.9, (sample, control)\n        l, t, r, b = control['touch']\n        tl, tt, tr, tb = sample['toolbar']\n        assert tl <= l < r <= tr and tt <= t < b <= tb, (sample, control)\n        vl, vt, vr, vb = control['visible']\n        assert l <= (vl + vr) // 2 < r and t <= (vt + vb) // 2 < b, (sample, control, 'Touch target misses visible view center')\n        assert l <= vl < vr <= r and t <= vt < vb <= b, (sample, control, 'Touch target does not cover visible view frame')\n        assert b <= sample['networkTap'][1], (sample, control, 'Touch target overlaps read-only network center')\n    for left_control, right_control in zip(sample['controls'], sample['controls'][1:]):\n        assert left_control['touch'][2] <= right_control['touch'][0], (sample, left_control, right_control, 'Neighboring touch targets overlap')\n    stem = f'compact-chrome-{width}-font{scale}'\n    (shots / (stem + '.xml')).write_text(dump())\n    (shots / (stem + '.png')).write_bytes(subprocess.check_output([args.adb, '-s', args.serial, 'exec-out', 'screencap', '-p'], timeout=30))\n    for point in [sample['networkTap'], sample['stateTap']]:\n        adb('shell', 'input', 'tap', str(point[0]), str(point[1]))\n    command += '-status'\n    adb('shell', 'am', 'start', '-W', '--activity-single-top', '-n', component, '--es', 'compactAction', 'snapshot', '--es', 'compactCommand', command)\n    after = chrome_event(command, 'snapshot')\n    assert after['actions'] == sample['actions'] == 0 and after['page'] == 0, after\n    taps = []\n    for control in sample['controls']:\n        command += '-' + control['name']\n        adb('shell', 'am', 'start', '-W', '--activity-single-top', '-n', component, '--es', 'compactAction', 'snapshot', '--es', 'compactCommand', command)\n        before = chrome_event(command, 'snapshot')\n        adb('shell', 'input', 'tap', str(control['tap'][0]), str(control['tap'][1]))\n        action = chrome_event(command, 'action')\n        expected = 'activity:local.pocketchat.WindowHomeActivity' if control['name'] == 'drawer' else control['name']\n        assert action['action'] == expected and action['actions'] == before['actions'] + 1 and (action['page'] == 0), (control, action)\n        if control['name'] == 'drawer':\n            focus('local.pocketchat.WindowHomeActivity')\n            adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')\n            focus('local.pocketchat.CompactChromeIntegrationActivity')\n        elif control['name'] == 'environment':\n            visible('切换环境')\n            visible('管理全部环境')\n            adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')\n            visible('切换环境', False)\n        elif control['name'] == 'more':\n            label = '会话选项'\n            visible(label)\n            adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')\n            visible(label, False)\n        taps.append({'control': control['name'], 'expandedRegion': True, 'action': action['action']})\n    command += '-performance'\n    adb('shell', 'am', 'start', '-W', '--activity-single-top', '-n', component, '--es', 'compactAction', 'performance', '--es', 'compactCommand', command)\n    performance = chrome_event(command, 'performance')\n    assert performance['status'] == 'passed', performance\n    compact.append({'viewport': width, 'fontScale': scale, 'image': stem + '.png', 'xml': stem + '.xml', 'readOnlyStatus': True, 'actualAndroidTaps': taps, 'layout': sample, 'performance': performance['performance']})",
+    "helperName": "quick_environment_sheet",
+    "allowedModulePairs": {
+      "bce34002d46c253efc144e2a709d92ebeeff26880cd60bb7861b94794b991132": "13052be64b20d2f3179b97870ebf295ba52c4b5ed646c8bafd53324a7df467f7",
+      "e321267b96c447c8d6253482134b9bec71a95838d67911ec363666ed0ff3b1ed": "a611c80c0370f8299f346b44e4042da4dfdaa68701b97fed1534fb40989ec2e5"
+    }
+  },
+  "host": {
+    "path": "tests/gecko_ui_visual_capture_test.py",
+    "reviewedSha256": "8ab2a6335b9f313e38cb52deb4b7265ee1be3e8fefc4009d5ef5c3825c40d0c6",
+    "previousMethods": {
+      "ModelClock": {
+        "__init__": "f8afc9e1bc3da7c5a5d38be3cce9e420ffea45b96f2e11686bada9a22c7db16b",
+        "monotonic": "861982cb47293b19101ec51dfd775ca629ad2500f34a5862e0169cc25f2e0bf6",
+        "sleep": "9ef27f0179863cf8226003dadac98102a51c7c93bc780646dedafb742900dd5d"
+      },
+      "DownloadReadinessRunnerTest": {
+        "run_readiness": "aa1b1257f2a14c20eb23b9c9c40f64b2383fd50e1ad16a99fd180c46aa9fb430",
+        "test_actual_download_loop_uses_one_real_bounded_viewport_swipe": "efa9300f90d1ce751333d2c2fd6d6c3612ae9e131f72fe032ce5c99331dcc9f8",
+        "test_already_visible_filename_needs_no_scroll": "ede07b95b58213f3d1d9158cc4d2700d0a8f6a64aa4cc403e2edde65bdd0f070",
+        "test_missing_filename_is_not_replaced_by_save_location_or_eight_swipes": "5ed4bb00939beb3ac66074292a906b175896ecd182469ea91b390ea0f4143c99",
+        "test_no_scrollable_content_and_other_scene_cannot_fabricate_readiness": "292c9b731a16ee938c076628c057e61a5fbcd5549d60c9558fb9b1909a6a650a",
+        "test_runtime_crash_is_fatal_before_any_readiness_swipe": "f2b36e91750ffa9d3a7e7e409c8e8f877f0596f431255a3e709702e2ce17cca6"
+      },
+      "DownloadFreshObservationRunnerTest": {
+        "setUp": "d5b4fc5af072f1a126e59777363eaaaa6e4dce7eb047ebfcb2dda16f0e25d52d",
+        "check_output": "e3fca2941eb1126c3ef8d852debf7899801efb8474c6e5bc84a291682932fb9e",
+        "observe": "f14fe129c3ef94d80f871af1dcd1c059964eff584bdc1048e01620d82d97beb2",
+        "replace_fresh": "d2da2b75fdde6a7b4cef656a40f139de4549fe373dd3a510aa0aacf0d3af5796",
+        "test_actual_helpers_keep_clipped_raw_and_request_same_activity_fresh_probe": "1132fb57df03cd6fff2201328e708ab36ce19d2141b7fa73d777f5a56def8093",
+        "test_same_activity_root_and_button_are_each_required": "240a4d9596267760f849d08afb301c920db6b5405b7526cf430059ddfe27cedf",
+        "test_wrong_source_parent_or_failed_probe_is_rejected": "f614ae8e717b4c910204b891b1228404d580b01aedb7d552867c436a0f04e3dc",
+        "test_missing_duplicate_or_wrong_initial_packet_never_requests_fresh_probe": "ea5c836f30cf81931b0b8a78d4295a5f1fbe5c9965b34725b6f8105445350b04",
+        "test_duplicate_fresh_packet_is_rejected": "22380b9198d0fd37d3adbb6312c74fbf86f2af5e55782714411877a2a4be8f44",
+        "test_parser_rejects_duplicate_fields_and_nonfinite_values": "0ee10207bf1e10921f257dc9ffa6439df1232719e2513bb98db7db071caf8fbd",
+        "test_old_nonce_only_cannot_satisfy_fresh_observation_and_deadline_is_not_reset": "112a515f67fa8159bb507e60b6afd8e69743e31f9d8a785560efa19a81f688a9",
+        "test_expired_existing_scene_budget_runs_no_transport": "566e9898a05925762da8bb466650e69395391e3c3145feda1fa2ad2f909d7797",
+        "test_fresh_glyph_or_visibility_failure_still_fails_original_native_gate": "1fecbe7d9475b8b6f37ec5a40756455f1b07d38a8692f5a8be50f6339a16f4c3",
+        "final_evidence": "760e0cabfa23284dc96bd45ee431b6388f24ab8b640fc4560801ef16738cec7e",
+        "test_actual_final_block_keeps_history_strict_utf8_and_remaining_deadline": "2b1f55373698c2edaef2e8a36ebaac7b5c7bcc3586cb310b5e89ef0e9c4a55bf",
+        "test_final_log_must_match_original_fresh_raw_not_just_equivalent_json": "9947a69701fed60b6423d6cb1ac8c82bbb9a0a9bb493ab7c6c10740cbc2f0a49"
+      },
+      "NativeCaptureCoverageTest": {
+        "records": "159741f97d3e5d5260a90481e45a1e3508ff952bfc71e1c318e388b30dec1917",
+        "label": "e81091933974fc0c8211143719c731fb048e0aab0f35eaf0dc58ea4201ff18b9",
+        "download": "fb69d637fdfebbde43ba05189e6f8a97db502b5f6be0f4e6c1289700d4a31460",
+        "test_actual_layout_accepts_full_default_large_and_wrapped_text": "84c8e74fc8519be80802b1ae082da8e69c056d10ec662aad1337c0581228a536",
+        "test_full_accessibility_text_does_not_hide_native_layout_clipping": "dab580fd6c7bd90278ac60e0a6705dd51b1052a9f94028652e9d994a9f5efd75",
+        "test_download_layout_source_nonce_scale_and_actual_observation_required": "2141a5d9d87f5b94f09e5f26fdfe66007896ef2393206f5477d3a08c82eb294b",
+        "test_download_layout_duplicate_or_nonfinite_raw_json_rejected": "616d6a40597cb095d4e7e6c81dce8d39096ef0d1adfd5b78b653de5c472dc241",
+        "test_current_ui_has_full_detail_matrix_and_retains_every_previous_scene": "4afff63b1e2b9a4b39cf6b8f015d3eeb08d4b21ab3e37a6546d04caf19de4119",
+        "test_missing_dark_ui_is_rejected": "2d766cd92bb5343eade90cda491ade9b2302754774e78e57b881c5667800b981",
+        "test_duplicate_cannot_replace_a_required_scene": "9a4adb2e006985baa8c4dd5726be29f54684c61997c6c08a6c08ba03ea1ffb15",
+        "test_historical_app_cannot_supply_a_current_ui_capture": "89f7e280b611766864206744c7968bbebc14164c75d3412743a14d9e8d47fce5",
+        "test_dark_capture_cannot_be_labeled_as_light": "9d342366e39baedfb26d5dcc112933e212014caf4ad8a08a331bbdb546e5bf64"
+      },
+      "UiVisualCaptureTest": {
+        "setUp": "4c1aeb0f6a51f190e5c24966ec811a1eecfb40588842c37d1f50093f7ea051f7",
+        "modes": "f54d924abc7c42d69c09785eb8b40747ae4b8e0c7bb69611ee2e82fef821baa2",
+        "commands": "21a01b4a9c259686a171d1d48fb133339a424467c98d2d924950ba6eda80d56a",
+        "report": "3aef2fa7d6ad32ed7235d23b608c94d2ec7a8624af9c216076c6a84d3abec385",
+        "assert_read_only": "761c64c05b9210dcc3f02dfc2c3577ef63a3beae106c4abc4c83a134d412c5cb",
+        "test_actual_null_root_then_current_xml_recovers_with_only_read_commands": "df12bb65a39741e164a7e285e839c416564a1c0ae586a99ab912f7d60244579f",
+        "test_old_and_null_root_owned_files_cannot_be_accepted_as_success": "6624120dd8561746c3563a20bc05215c92ba4aecc10f4f433d6b47e8b09660c3",
+        "test_only_missing_exact_current_attempt_file_is_retryable": "4e3c2c04a4543a2ad72a9aaa0e2591757727e8cd0177e4964aa13e436214e2fc",
+        "test_unknown_accessibility_error_is_fatal_even_with_readable_xml": "cd555812116463b0edca0a07a024e800d2041f3cded4e56e3ba8191b90d26896",
+        "test_adb_transport_failure_is_not_retried": "36b6fe45747cc67089c15afe8521f136dc94985891de24594db054ed646f76d1",
+        "test_permission_and_malformed_xml_fail_without_another_attempt": "a81ae6cc10640e3106a42932192bd14f816bc68751944db69b625fcedb49f6e4",
+        "test_no_deadline_means_one_acquisition_without_a_new_retry_budget": "0ea446c08fb6eb6f00d132ec1f5763315851a62d39341ffffeffbc84e4791f22",
+        "test_expired_existing_deadline_runs_no_adb_commands": "3562a9d77512cfe7c449f248ca5bf7b6e3b04ed5268cd314db6f8d98717eaf12",
+        "test_existing_deadline_bounds_the_real_subprocess": "6e2f3836db0d61e9c3755f29e3c1d30a4fc6641ef58efbcb2855c98fc50ca43b",
+        "test_not_ready_does_not_start_another_attempt_after_expiry": "e659d6abfbbe4abfb93d16a9e71e67208a34139b31cd1fd5344530d98b32e2ec",
+        "test_successful_cat_or_validation_after_absolute_deadline_is_rejected": "528d50436002be65f43c6cc0207acbb3b02d14197237e7d563a1aa29eda9b742",
+        "test_diagnostics_retain_bounded_bytes_and_explicit_dropped_attempt_count": "29f3af61e5eee547b84bc7749979feb96bed99a4a4cd861b0576b6bf52ba8f08"
+      }
+    },
+    "previousTests": 37
+  }
+}

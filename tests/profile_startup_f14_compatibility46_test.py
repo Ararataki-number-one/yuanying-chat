@@ -18,7 +18,9 @@ NEEDLES=('synchronized void command(','protected void onDestroy()')
 
 class StartupF14Compatibility46(unittest.TestCase):
     def test_only_exact_hook_added_and_both_approved_inputs_keep_original_members(self):
-        current=(ROOT/CONSUMER).read_text();self.assertEqual(current.count(HOOK),1)
+        from event_journal_source_compatibility import source_input
+        current=source_input((ROOT/CONSUMER).read_bytes(),CONSUMER).decode()
+        self.assertEqual(current.count(HOOK),1)
         self.assertEqual(hashlib.sha256(current.replace(HOOK,'',1).encode()).hexdigest(),BEFORE_SHA256)
         source=(ROOT/FIXTURE).read_bytes();previous=experience46_source_bytes(source,FIXTURE)
         for value in (source,previous):

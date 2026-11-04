@@ -168,7 +168,7 @@ class BrowserTargetingTests(unittest.TestCase):
         self.assertIn('Controlled boot failure', encoded)
         self.assertLessEqual(len(encoded.encode('utf-8')), 16000)
 
-    def run_controller_failure(self, ready):
+    def run_controller_failure(self, ready, latest=None):
         """Run the real controller with explicit, failing device boundaries.
 
         No emulator or build is impersonated as successful acceptance. The
@@ -182,6 +182,7 @@ class BrowserTargetingTests(unittest.TestCase):
         resumed = ('topResumedActivity=ActivityRecord{controlled '
                    'local.pocketchat.test/local.pocketchat.BrowserIntegrationActivity t2}\n')
         calls = []
+        report_reads = 0
 
         def checked_source(args, **kwargs):
             self.assertEqual(kwargs, {'cwd': ROOT, 'text': True})
@@ -194,6 +195,7 @@ class BrowserTargetingTests(unittest.TestCase):
             self.fail('Unexpected source boundary: ' + repr(args))
 
         def device_boundary(args, **kwargs):
+            nonlocal report_reads
             self.assertEqual(args[:3], ['adb', '-s', 'emulator-5554'])
             self.assertTrue(kwargs.get('capture_output'))
             self.assertIn('timeout', kwargs)
@@ -207,7 +209,8 @@ class BrowserTargetingTests(unittest.TestCase):
                 output = json.dumps(identity).encode()
             elif parts == ['exec-out', 'content', 'read', '--uri',
                            'content://local.pocketchat.test.browser-evidence/result']:
-                output = json.dumps(current).encode()
+                report_reads += 1
+                output = json.dumps(latest if latest is not None and report_reads > 1 else current).encode()
             elif parts == ['shell', 'dumpsys', 'activity', 'activities']:
                 output = resumed.encode()
             elif parts[:4] == ['shell', 'settings', 'get', 'system']:
@@ -277,6 +280,47 @@ class BrowserTargetingTests(unittest.TestCase):
         self.assertFalse(report['actualAndroidWebViewExecution'])
         self.assertFalse(diagnostic['lastValidatedReport']['tapTarget']['ready'])
 
+    def test_failure_refresh_observes_current_trusted_input_without_retrying(self):
+        latest = self.current()
+        latest['buildIdentity'] = {'controlledHostBoundary': True}
+        latest['pickerBarrier'] = dict(matching=True, ordinal=1, completed=0,
+            ready=False, afterTask=False, afterFrame=False, rejected=0,
+            events=[dict(type='pointerdown', trusted=True, ordinal=1, x=162, y=165, focused=True)])
+        latest['nativeInputEvents'] = [dict(stage='file-picker-1', action=0, x=162, y=380, handled=True)]
+        failure, report, diagnostic, calls = self.run_controller_failure(True, latest)
+        self.assertEqual(failure, 'The trusted tap did not open Android DocumentsUI: file-picker-1')
+        self.assertEqual(report['lastValidatedReport']['pickerBarrier'], latest['pickerBarrier'])
+        self.assertTrue(diagnostic['lastValidatedReport']['pickerBarrier']['events'][0]['trusted'])
+        self.assertEqual(len(diagnostic['lastValidatedReport']['nativeInputEvents']), 1)
+        self.assertEqual(len([row for row in calls if row[:3] == ['shell', 'input', 'tap']]), 1)
+        self.assertFalse(report['actualAndroidExecution'])
+
+    def test_failure_refresh_rejects_another_run_source_or_installed_apk(self):
+        for key, value in [('runNonce', 'f' * 32), ('sourceCommit', 'f' * 40),
+                           ('buildIdentity', {'wrongInstalledApk': True})]:
+            with self.subTest(key=key):
+                latest = self.current()
+                latest.update(buildIdentity={'controlledHostBoundary': True}, failure='NEVER_ACCEPT_STALE_REPORT')
+                latest[key] = value
+                _, report, diagnostic, calls = self.run_controller_failure(True, latest)
+                self.assertNotIn('NEVER_ACCEPT_STALE_REPORT', json.dumps(diagnostic))
+                self.assertNotIn('failure', report['lastValidatedReport'])
+                self.assertEqual(len([row for row in calls if row[:3] == ['shell', 'input', 'tap']]), 1)
+
+    def test_new_input_diagnostics_remain_bounded_and_exclude_payloads(self):
+        current = self.current()
+        current['pickerBarrier'] = dict(matching=True, ordinal=1, completed=0, ready=False,
+            events=[dict(type='pointerdown', trusted=True, x=1, y=2,
+                         cookie='NEVER_LOG_INPUT_PAYLOAD', arbitrary='NEVER_LOG_ARBITRARY') for _ in range(1000)])
+        current['nativeInputEvents'] = [dict(stage='file-picker-1', action=0, x=1, y=2,
+            handled=True, document='NEVER_LOG_NATIVE_DOCUMENT') for _ in range(1000)]
+        packet = controller.diagnostic_failure(current, 'controlled failure', [], [])
+        encoded = json.dumps(packet, ensure_ascii=False)
+        self.assertNotIn('NEVER_LOG_', encoded)
+        self.assertEqual(len(packet['lastValidatedReport']['pickerBarrier']['events']), 12)
+        self.assertEqual(len(packet['lastValidatedReport']['nativeInputEvents']), 12)
+        self.assertLessEqual(len(encoded.encode()), 16000)
+
     def test_exact_fixture_scripts_scroll_and_observe_without_clicking(self):
         # Only DOM geometry and the hit-test are controlled here. This executes
         # the real Java fixture's JS, but it is not an Android rendering test.
@@ -341,6 +385,184 @@ w.close();
         current['tapTarget']['dom'] = observed['covered']
         with self.assertRaises(AssertionError):
             controller.validate_tap_target(current)
+
+
+class BrowserPickerBarrierTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        source = (ROOT / 'tests/gecko/BrowserIntegrationActivity.java').read_text()
+        scripts = {}
+        for name in ('PICKER_ARM_SCRIPT', 'PICKER_OBSERVE_SCRIPT'):
+            match = re.search(r'^\s*static final String ' + name
+                              + r'\s*=\s*("(?:\\.|[^"\\])*");\s*$', source, re.MULTILINE)
+            if match is None:
+                raise AssertionError('Missing actual fixture script: ' + name)
+            scripts[name] = json.loads(match.group(1))
+        program = r'''
+const fs=require('node:fs'),{JSDOM}=require(process.env.JSDOM_MODULE),code=JSON.parse(fs.readFileSync(0,'utf8'));
+function setup(){
+  const dom=new JSDOM('<!doctype html><input id="upload" type="file" multiple><div id="other"></div>',{url:'http://browser-fixture.example/second',runScripts:'outside-only'});
+  const w=dom.window,input=w.document.getElementById('upload'),handlers=[],tasks=[],frames=[];
+  const original=input.addEventListener.bind(input);
+  input.addEventListener=(type,handler,...args)=>{if(type==='cancel')handlers.push(handler);return original(type,handler,...args);};
+  w.setTimeout=fn=>{tasks.push(fn);return tasks.length;};w.requestAnimationFrame=fn=>{frames.push(fn);return frames.length;};
+  const arm=w.eval('('+code.PICKER_ARM_SCRIPT+')'),observe=w.eval('('+code.PICKER_OBSERVE_SCRIPT+')');
+  const binding=n=>({nonce:'a'.repeat(32),source:'b'.repeat(40),url:w.location.href,ordinal:n,token:String(n).repeat(32)});
+  const trusted=(handler=handlers.at(-1),target=input)=>handler({type:'cancel',isTrusted:true,target});
+  const task=()=>{if(tasks.length)tasks.shift()();},frame=()=>{if(frames.length)frames.shift()();};
+  return {dom,w,input,handlers,tasks,frames,arm,observe,binding,trusted,task,frame};
+}
+const sequence=setup(),b1=sequence.binding(1);sequence.arm(b1);
+const initial=sequence.observe(b1);
+sequence.input.dispatchEvent(new sequence.w.Event('cancel',{bubbles:true}));
+const untrusted=sequence.observe(b1),untrustedTasks=sequence.tasks.length;
+sequence.trusted(sequence.handlers[0],sequence.w.document.getElementById('other'));
+const wrongInput=sequence.observe(b1);
+sequence.trusted();const seen=sequence.observe(b1);
+sequence.trusted(sequence.handlers[0]);const taskCountAfterReplay=sequence.tasks.length;
+sequence.task();const afterTask=sequence.observe(b1);
+sequence.frame();const firstComplete=sequence.observe(b1);
+const staleToken=sequence.observe({...b1,token:'f'.repeat(32)});
+let duplicateOrdinalRejected=false,reusedTokenRejected=false;
+try{sequence.arm(b1);}catch(e){duplicateOrdinalRejected=true;}
+try{sequence.arm({...sequence.binding(2),token:b1.token});}catch(e){reusedTokenRejected=true;}
+const b2=sequence.binding(2);sequence.arm(b2);
+sequence.trusted(sequence.handlers[0]);const oldRequestReplay=sequence.observe(b2),oldReplayTasks=sequence.tasks.length;
+sequence.trusted();sequence.task();const secondBeforeFrame=sequence.observe(b2);sequence.frame();const secondComplete=sequence.observe(b2);
+const isolation={};
+for(const name of ['nonce','source','url','token']){
+  const x=setup(),binding=x.binding(1);x.arm(binding);x.trusted();x.task();x.frame();
+  const value=name==='url'?'http://browser-fixture.example/other':name==='source'?'c'.repeat(40):'c'.repeat(32);
+  isolation[name]=x.observe({...binding,[name]:value});x.dom.window.close();
+}
+for(const moment of ['beforeEvent','beforeTask','beforeFrame']){
+  const x=setup(),binding=x.binding(1);x.arm(binding);
+  if(moment!=='beforeEvent')x.trusted();if(moment==='beforeFrame')x.task();
+  const replacement=x.w.document.createElement('input');replacement.id='upload';replacement.type='file';x.input.replaceWith(replacement);
+  if(moment==='beforeEvent')x.trusted();x.task();x.frame();isolation[moment]=x.observe(binding);x.dom.window.close();
+}
+const navigation=setup(),navBinding=navigation.binding(1);navigation.arm(navBinding);navigation.trusted();navigation.w.history.pushState({},'','/other');navigation.task();navigation.frame();isolation.navigation=navigation.observe(navBinding);
+const wrongStart=setup();let wrongStartRejected=false;try{wrongStart.arm(wrongStart.binding(2));}catch(e){wrongStartRejected=true;}
+process.stdout.write(JSON.stringify({scope:'Actual fixture JavaScript on explicitly controlled host event/task/frame boundaries; no Android or trusted browser event claim',actualAndroidExecution:false,initial,untrusted,untrustedTasks,wrongInput,seen,taskCountAfterReplay,afterTask,firstComplete,staleToken,duplicateOrdinalRejected,reusedTokenRejected,oldRequestReplay,oldReplayTasks,secondBeforeFrame,secondComplete,isolation,wrongStartRejected}));
+sequence.dom.window.close();navigation.dom.window.close();wrongStart.dom.window.close();
+'''
+        environment = dict(os.environ, JSDOM_MODULE=os.environ.get(
+            'JSDOM_MODULE', str(ROOT / 'work/chat-smoothness-deps/node_modules/jsdom')))
+        run = subprocess.run([shutil.which('node'), '-e', program], input=json.dumps(scripts),
+                             env=environment, text=True, capture_output=True, timeout=20)
+        if run.returncode:
+            raise AssertionError(run.stdout + run.stderr)
+        cls.observed = json.loads(run.stdout)
+
+    def test_native_release_without_renderer_event_cannot_advance(self):
+        self.assertFalse(self.observed['actualAndroidExecution'])
+        self.assertFalse(self.observed['initial']['ready'])
+        self.assertEqual(self.observed['initial']['completed'], 0)
+
+    def test_untrusted_cancel_and_other_input_cannot_complete_request(self):
+        for key in ('untrusted', 'wrongInput'):
+            with self.subTest(key=key):
+                self.assertFalse(self.observed[key]['ready'])
+                self.assertEqual(self.observed[key]['completed'], 0)
+                self.assertGreater(self.observed[key]['rejected'], 0)
+        self.assertEqual(self.observed['untrustedTasks'], 0)
+
+    def test_cancel_requires_a_later_task_then_a_real_frame_boundary(self):
+        seen, task = self.observed['seen'], self.observed['afterTask']
+        self.assertFalse(seen['ready'])
+        self.assertFalse(seen['afterTask'])
+        self.assertFalse(seen['afterFrame'])
+        self.assertFalse(task['ready'])
+        self.assertTrue(task['afterTask'])
+        self.assertFalse(task['afterFrame'])
+        self.assertEqual(self.observed['taskCountAfterReplay'], 1)
+        self.assertTrue(self.observed['firstComplete']['ready'])
+        self.assertTrue(self.observed['firstComplete']['afterTask'])
+        self.assertTrue(self.observed['firstComplete']['afterFrame'])
+
+    def test_both_cancellations_require_their_own_ordinal_and_fresh_request(self):
+        self.assertEqual(self.observed['firstComplete']['completed'], 1)
+        self.assertFalse(self.observed['secondBeforeFrame']['ready'])
+        self.assertTrue(self.observed['secondComplete']['ready'])
+        self.assertEqual(self.observed['secondComplete']['completed'], 2)
+        self.assertTrue(self.observed['duplicateOrdinalRejected'])
+        self.assertTrue(self.observed['reusedTokenRejected'])
+        self.assertTrue(self.observed['wrongStartRejected'])
+
+    def test_old_request_callback_replay_cannot_complete_second_picker(self):
+        self.assertFalse(self.observed['oldRequestReplay']['ready'])
+        self.assertEqual(self.observed['oldRequestReplay']['completed'], 1)
+        self.assertEqual(self.observed['oldReplayTasks'], 0)
+        self.assertFalse(self.observed['staleToken']['ready'])
+
+    def test_wrong_source_nonce_page_token_or_replaced_input_cannot_advance(self):
+        for key, value in self.observed['isolation'].items():
+            with self.subTest(key=key):
+                self.assertFalse(value['ready'])
+                if key != 'token':
+                    self.assertFalse(value['matching'])
+
+    def test_original_java_checks_projection_and_controller_gates_are_preserved(self):
+        def java_checks(text):
+            values = []
+            for match in re.finditer(r'\bcheck\("', text):
+                start = match.start()
+                depth, quoted, escaped = 0, False, False
+                for index in range(text.index('(', start), len(text)):
+                    char = text[index]
+                    if quoted:
+                        if escaped:
+                            escaped = False
+                        elif char == '\\':
+                            escaped = True
+                        elif char == '"':
+                            quoted = False
+                    elif char == '"':
+                        quoted = True
+                    elif char == '(':
+                        depth += 1
+                    elif char == ')':
+                        depth -= 1
+                        if depth == 0:
+                            values.append(text[start:index + 1])
+                            break
+            return values
+
+        baseline = '03d0c4ace70942a3f6899daffac086cc6682885e'
+        fixture = 'tests/gecko/BrowserIntegrationActivity.java'
+        before = subprocess.check_output(['git', 'show', baseline + ':' + fixture], cwd=ROOT, text=True)
+        current = (ROOT / fixture).read_text()
+        self.assertEqual(len(java_checks(before)), 49)
+        self.assertEqual(java_checks(current), java_checks(before))
+        projection = r'double scale=nativeAfter.getInt\("width"\).*?Math.round\(dom.getDouble\("y"\)\*scale\);'
+        self.assertEqual(re.search(projection, current).group(), re.search(projection, before).group())
+        import ast
+        controller_before = subprocess.check_output(
+            ['git', 'show', baseline + ':tools/browser/run_integration.py'], cwd=ROOT, text=True)
+        def main_raises(text):
+            main = next(node for node in ast.parse(text).body
+                        if isinstance(node, ast.FunctionDef) and node.name == 'main')
+            return [ast.dump(node, include_attributes=False) for node in ast.walk(main)
+                    if isinstance(node, ast.Raise)]
+        self.assertEqual(len(main_raises(controller_before)), 14)
+        self.assertEqual(main_raises((ROOT / 'tools/browser/run_integration.py').read_text()),
+                         main_raises(controller_before))
+
+    def test_both_old_native_callbacks_now_require_the_renderer_barrier(self):
+        source = (ROOT / 'tests/gecko/BrowserIntegrationActivity.java').read_text()
+        before = subprocess.check_output(['git', 'show',
+            '03d0c4ace70942a3f6899daffac086cc6682885e:tests/gecko/BrowserIntegrationActivity.java'],
+            cwd=ROOT, text=True)
+        old = before[before.index('  void preparePicker()'):before.index('  void prepareDownload()')]
+        current = source[source.index('  void prepareArmedPicker('):source.index('  void prepareDownload()')]
+        # The old fixture could advance from its native callback plus a value
+        # already equal to zero. The new path must wait on the actual renderer
+        # event/task/frame result for either ordinal before reading that value.
+        self.assertNotIn('awaitRendererCancellation', old)
+        self.assertLess(current.index('check("Native file chooser'), current.index('awaitRendererCancellation('))
+        self.assertLess(current.index('awaitRendererCancellation('), current.index('js("({files:'))
+        self.assertIn('if(picker++==1)preparePicker();else prepareDownload();', current)
+        self.assertIn('deadline-SystemClock.elapsedRealtime()', current)
 
 
 if __name__ == '__main__':

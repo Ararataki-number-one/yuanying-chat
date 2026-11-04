@@ -293,6 +293,25 @@ try:
             if found==present:return
             time.sleep(.2)
         raise TimeoutError(('Dialog visibility did not settle',label,present,xml[-3000:]))
+    def quick_environment_sheet(xml,slot,expected_package):
+        assert type(slot) is int and 0<=slot<8,slot
+        nodes=list(ET.fromstring(xml).iter('node'))
+        def owned(node,kind):return node.attrib.get('package')==expected_package and node.attrib.get('class')=='android.widget.'+kind
+        def bounds(node):
+            match=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',node.attrib.get('bounds',''))
+            assert match is not None,node.attrib
+            left,top,right,bottom=map(int,match.groups());assert left<right and top<bottom,node.attrib
+            return [left,top,right,bottom]
+        title=[node for node in nodes if owned(node,'TextView') and node.attrib.get('text')=='快速切换环境' and node.attrib.get('content-desc')=='快速切换环境']
+        search=[node for node in nodes if owned(node,'EditText') and node.attrib.get('content-desc')=='搜索要切换的环境']
+        close=[node for node in nodes if owned(node,'Button') and node.attrib.get('content-desc')=='关闭快速切换环境']
+        current=[node for node in nodes if owned(node,'Button') and node.attrib.get('selected')=='true']
+        assert len(title)==len(search)==len(close)==len(current)==1,(title,search,close,current)
+        for node in (search[0],close[0],current[0]):assert node.attrib.get('enabled')=='true' and node.attrib.get('clickable')=='true',node.attrib
+        assert current[0].attrib.get('text','').startswith(f'{slot+1:02d}  ') and ' · 当前\n' in current[0].attrib.get('text',''),current[0].attrib
+        assert current[0].attrib.get('content-desc','').startswith('切换到 '),current[0].attrib
+        return {'title':'快速切换环境','searchDescription':'搜索要切换的环境','closeDescription':'关闭快速切换环境','currentSlot':slot,
+                'titleBounds':bounds(title[0]),'searchBounds':bounds(search[0]),'currentBounds':bounds(current[0]),'closeBounds':bounds(close[0])}
     for width,scale in [(360,1),(412,1),(360,2)]:
         adb('shell','am','force-stop',package);adb('logcat','-c')
         adb('shell','wm','size',f'{width*3}x1920');adb('shell','wm','density','480');adb('shell','settings','put','system','font_scale',str(scale))
@@ -326,7 +345,7 @@ try:
         command+='-status'
         adb('shell','am','start','-W','--activity-single-top','-n',component,'--es','compactAction','snapshot','--es','compactCommand',command)
         after=chrome_event(command,'snapshot');assert after['actions']==sample['actions']==0 and after['page']==0,after
-        taps=[]
+        taps=[];management_navigation=None;environment_sheet=None
         for control in sample['controls']:
             command+= '-'+control['name']
             adb('shell','am','start','-W','--activity-single-top','-n',component,'--es','compactAction','snapshot','--es','compactCommand',command)
@@ -339,9 +358,14 @@ try:
                 focus('local.pocketchat.WindowHomeActivity')
                 adb('shell','input','keyevent','KEYCODE_BACK')
                 focus('local.pocketchat.CompactChromeIntegrationActivity')
+                management_navigation={'activity':'local.pocketchat.WindowHomeActivity','actualDrawerTap':True,'resumedThenReturned':True}
             elif control['name']=='environment':
-                visible('切换环境');visible('管理全部环境')
-                adb('shell','input','keyevent','KEYCODE_BACK');visible('切换环境',False)
+                visible('快速切换环境')
+                environment_sheet=quick_environment_sheet(dump(),0,package)
+                # Management is the preceding real drawer action; the current
+                # quick switcher returns to an existing environment directly.
+                assert management_navigation=={'activity':'local.pocketchat.WindowHomeActivity','actualDrawerTap':True,'resumedThenReturned':True},management_navigation
+                adb('shell','input','keyevent','KEYCODE_BACK');visible('快速切换环境',False)
             elif control['name']=='more':
                 label='会话选项'
                 visible(label)
@@ -352,7 +376,7 @@ try:
         adb('shell','am','start','-W','--activity-single-top','-n',component,'--es','compactAction','performance','--es','compactCommand',command)
         performance=chrome_event(command,'performance')
         assert performance['status']=='passed',performance
-        compact.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','readOnlyStatus':True,'actualAndroidTaps':taps,'layout':sample,'performance':performance['performance']})
+        compact.append({'viewport':width,'fontScale':scale,'image':stem+'.png','xml':stem+'.xml','readOnlyStatus':True,'actualAndroidTaps':taps,'layout':sample,'performance':performance['performance'],'environmentSheet':environment_sheet,'managementNavigation':management_navigation})
     # Real Gecko document + real protected loopback SOCKS, isolated synthetic login.
     # The ordinary three chrome cases and their trusted touch assertions remain intact.
     spec=importlib.util.spec_from_file_location('reload_loopback',root/'engine-probe/tests/run_device.py')

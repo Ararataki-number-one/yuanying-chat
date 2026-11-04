@@ -13,6 +13,46 @@ from profile_invocation_contract import expected_build, verify_installed
 from page_continuity_contract import verify_page_continuity
 from local_draft_contract import verify_local_draft_policy
 from download_resume_contract import verify_download_resume
+class ReceiptJournalDiscovery:
+    """Discover actual native markers from committed, immutable prefix snapshots.
+
+    Logcat remains a diagnostic/error channel. This never constructs a receipt
+    from an event payload, sorts entries, fills a gap, or changes EventTransfer.
+    """
+    MAX_BYTES=4*1024*1024
+    def __init__(self,transfer):
+        self.transfer=transfer;self.prefix=()
+    def uri(self):
+        return ('content://local.pocketchat.test.evidence/gecko-event-receipts/'
+                +str(self.transfer.slot)+'/'+self.transfer.nonce)
+    def snapshot(self,raw):
+        if type(raw) is not bytes or not 0<len(raw)<=self.MAX_BYTES:raise ValueError('Native receipt journal byte bound')
+        def pairs(items):
+            value={}
+            for key,item in items:
+                if key in value:raise ValueError('Duplicate native receipt journal field')
+                value[key]=item
+            return value
+        value=json.loads(raw.decode('utf-8',errors='strict'),object_pairs_hook=pairs,
+            parse_constant=lambda _:(_ for _ in ()).throw(ValueError('Nonfinite native receipt journal')))
+        if not isinstance(value,dict) or type(value.get('schema')) is not int or value['schema']!=1:raise ValueError('Native receipt journal schema')
+        if value.get('runNonce')!=self.transfer.nonce or type(value.get('processSlot')) is not int or value['processSlot']!=self.transfer.slot:raise ValueError('Native receipt journal owner')
+        if value.get('status')=='pending':
+            if self.prefix or set(value)!={'schema','status','runNonce','processSlot'}:raise ValueError('Committed native receipt journal disappeared')
+            return []
+        if value.get('status')!='committed' or value.get('fixtureAction')!=self.transfer.action:raise ValueError('Native receipt journal action or status')
+        command=value.get('command')
+        if type(command) is not int or command<=0 or self.transfer.command is not None and command!=self.transfer.command:raise ValueError('Native receipt journal command')
+        markers=value.get('receipts')
+        if not isinstance(markers,list) or not 1<=len(markers)<=4096 or any(type(marker) is not str for marker in markers):raise ValueError('Native receipt journal markers')
+        if len(markers)<len(self.prefix) or tuple(markers[:len(self.prefix)])!=self.prefix:raise ValueError('Native receipt journal prefix changed')
+        receipts=[]
+        for marker in markers:
+            receipt=parse_receipt_line(marker)
+            if receipt is None or receipt.get('kind')!='eventReceipt' or receipt.get('command')!=command:raise ValueError('Native receipt journal marker')
+            receipts.append(receipt)
+        self.prefix=tuple(markers)
+        return receipts
 def collect_readiness(log,identity,invocations):
     """Diagnostic sidecar only. Never feeds a business decoder or acceptance gate."""
     owners={value['runNonce']:value for value in invocations};observations=[];counts={}
@@ -300,6 +340,8 @@ def main():
             raw=adb_bytes('exec-out','content','read','--uri',uri)
             return raw
         transfer=EventTransfer(identity=identity,nonce=nonce,slot=context-1,action=action,fetch=fetch_event)
+        discovery=ReceiptJournalDiscovery(transfer)
+        transfer_record['discovery']='native-committed-marker-journal'
         tapped=set()
         reading_events=set();reading_trace=[];reading_lifecycle=[];reading_geometry=[];reading_readiness=None;bounds_before=None;bounds_pan=None
         surface_gestures[(context,action)]=[]
@@ -324,6 +366,7 @@ def main():
                 if receipt is None:continue
                 if receipt.get('runNonce')!=nonce or receipt.get('processSlot')!=context-1:continue
                 if receipt.get('kind')=='eventTransportError':raise ValueError('Native complete event publication failed: '+str(receipt))
+            for receipt in discovery.snapshot(adb_bytes('exec-out','content','read','--uri',discovery.uri())):
                 event=read_with_sequence_failure_diagnostics(transfer,receipt,filtered_log=output,out=OUT,adb=args.adb,serial=args.serial)
                 transfer_record['events']=transfer.records
                 if action in {'readingBounds','readingBoundsProtected'} and event.get('kind') in {'readingBoundsBefore','readingBoundsPan'}:

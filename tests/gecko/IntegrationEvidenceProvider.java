@@ -18,6 +18,24 @@ public final class IntegrationEvidenceProvider extends ContentProvider {
   }
   @Override public ParcelFileDescriptor openFile(Uri uri,String mode)throws FileNotFoundException {
     if(!"r".equals(mode)||Binder.getCallingUid()!=2000)throw new SecurityException("Read-only shell evidence");
+    if(uri.getPath()!=null&&uri.getPath().startsWith("/gecko-event-receipts/")){
+      java.util.List<String> parts=uri.getPathSegments();
+      if(parts.size()!=3||!parts.get(1).matches("[0-7]")||!parts.get(2).matches("[0-9a-f]{32}"))throw new FileNotFoundException("Invalid synthetic receipt path");
+      try{
+        int slot=Integer.parseInt(parts.get(1));String nonce=parts.get(2);File journal=IntegrationEventStore.journalFile(getContext(),slot,nonce);
+        if(!journal.exists()){
+          // An explicit native pending observation contains no event or receipt.
+          // Its bounded pipe fits before the shell reader starts; it is not a
+          // fabricated empty committed journal or an invocation success.
+          byte[] pending=(J.obj("schema",1,"status","pending","runNonce",nonce,"processSlot",slot).toString()+"\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+          ParcelFileDescriptor[] pipe=ParcelFileDescriptor.createPipe();
+          try{try(java.io.OutputStream out=new ParcelFileDescriptor.AutoCloseOutputStream(pipe[1])){out.write(pending);}return pipe[0];}
+          catch(IOException failure){pipe[0].close();throw failure;}
+        }
+        if(!journal.isFile()||journal.length()<=0||journal.length()>IntegrationEventStore.MAX_JOURNAL_BYTES)throw new FileNotFoundException("Synthetic receipt journal unavailable");
+        return ParcelFileDescriptor.open(journal,ParcelFileDescriptor.MODE_READ_ONLY);
+      }catch(IOException failure){throw new FileNotFoundException("Synthetic receipt journal unavailable");}
+    }
     if(uri.getPath()!=null&&uri.getPath().startsWith("/gecko-events/")){
       java.util.List<String> parts=uri.getPathSegments();
       if(parts.size()!=4||!parts.get(1).matches("[0-7]")||!parts.get(2).matches("[0-9a-f]{32}")||!parts.get(3).matches("[1-9][0-9]{0,3}"))throw new FileNotFoundException("Invalid synthetic event path");

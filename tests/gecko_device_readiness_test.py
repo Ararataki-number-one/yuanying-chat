@@ -79,7 +79,8 @@ def verify_startup_member(source,needle):
 def verify_runner_consumer(source):
     from reading_zoom_trace_contract import strip_reviewed_reading_trace_additions
     source=strip_reviewed_reading_trace_additions(source.encode('utf-8'),'tests/gecko/run_device.py').decode('utf-8')
-    run=copy.deepcopy(run_node(source))
+    from event_journal_source_compatibility import original_runner_tree
+    run=original_runner_tree(copy.deepcopy(run_node(source)))
     dump=lambda node:ast.dump(node,include_attributes=False)
     statement=lambda text:ast.parse(text.encode('utf-8')).body[0]
     # Only this exact diagnostic wrapper may replace the old read at its
@@ -266,6 +267,11 @@ public class BudgetChecks {
         clock=types.SimpleNamespace(now=0)
         line='10-25 00:00 I PocketReadiness: '+json.dumps(dict(kind='readinessObservation',diagnosticOnly=True,acceptance=False))
         def adb(*parts):return line if parts==('logcat','-d','-s','PocketGeckoIntegration:I','*:S') else ''
+        def pending_journal(*parts):
+            if parts!=('exec-out','content','read','--uri','content://local.pocketchat.test.evidence/gecko-event-receipts/0/'+'e'*32):
+                raise ValueError('Diagnostic-only control cannot fetch an event payload')
+            return json.dumps(dict(schema=1,status='pending',runNonce='e'*32,processSlot=0)).encode()
+        bindings['adb_bytes']=pending_journal
         bindings.update(adb=adb,time=types.SimpleNamespace(monotonic=lambda:clock.now,sleep=lambda n:setattr(clock,'now',clock.now+121)))
         with tempfile.TemporaryDirectory() as directory:
             bindings['OUT']=Path(directory)

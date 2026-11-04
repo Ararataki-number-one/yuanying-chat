@@ -8,6 +8,11 @@ import functools
 import hashlib
 import json
 from pathlib import Path
+import importlib.util as _quick_import
+
+_quick_spec = _quick_import.spec_from_file_location('selected_ui_quick_sheet_source_input', Path(__file__).with_name('ui_quick_sheet_source_compatibility.py'))
+_quick_input = _quick_import.module_from_spec(_quick_spec)
+_quick_spec.loader.exec_module(_quick_input)
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'tests/fixtures/ui-observer-source-deltas.json'
@@ -38,6 +43,7 @@ def manifest():
 
 def source_input(raw, path, *, allow_previous=False):
     assert type(raw) is bytes and type(path) is str and path in PATHS, 'Exact source bytes and owned relative path required'
+    raw = _quick_input.history_input(raw, path)
     assert type(allow_previous) is bool
     row = manifest()['files'][path]
     if allow_previous and len(raw) == row['previousBytes'] and sha(raw) == row['previousSha256']:
@@ -57,6 +63,7 @@ def wrap_runner_bytes(original):
     @functools.wraps(original)
     def observed_ui_source(raw):
         assert type(raw) is bytes, 'Complete UI runner bytes required'
+        raw = _quick_input.history_input(raw, RUNNER)
         if sha(raw) == manifest()['files'][RUNNER]['reviewedSha256']:
             raw = source_input(raw, RUNNER)
         return original(raw)
@@ -65,6 +72,7 @@ def wrap_runner_bytes(original):
 
 def original_runner_tree(tree):
     assert type(tree) is ast.Module, 'A complete parsed UI module is required'
+    tree = _quick_input.original_runner_tree(tree)
     assert len([node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'capture']) == 1
     assert len([node for node in tree.body if isinstance(node, ast.Try) and node.finalbody]) == 1, 'Complete UI workload required, never an excerpt'
     value = manifest()['runnerAst']

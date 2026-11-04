@@ -91,6 +91,8 @@ def main():
     input_paths.update((ROOT / "tests").rglob("*.java"))
     input_paths.update((ROOT / "tests").rglob("*.py"))
     input_paths.update((ROOT / "tests").rglob("*.cjs"))
+    input_paths.update(path for path in (ROOT / 'tests/gecko-event-journal-host').rglob('*')
+                       if path.is_file() and path.suffix in ('.py', '.java', '.in', '.json', '.md'))
     input_paths.update((ROOT / "tests/gecko/assets").glob("*.js"))
     input_paths.add(ROOT/'tests/fixtures/android-launcher-package-86db516.txt')
     input_paths.add(ROOT/'tests/fixtures/profile-display-workflow-additions.json')

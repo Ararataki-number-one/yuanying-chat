@@ -58,13 +58,20 @@ class GeckoEventTransportControls(unittest.TestCase):
         self.assertFalse(any(isinstance(node,ast.Name) and isinstance(node.ctx,ast.Store)
                              and node.id=='identity' for node in ast.walk(run)),
                          'A local dedup identity must not shadow the installed build identity')
-        calls=[]
+        calls=[];journal_calls=[]
         def fake_adb(*parts):
             calls.append(parts)
             if parts==('logcat','-d','-s','PocketGeckoIntegration:I','*:S'):
                 return '10-13 12:00 I PocketGeckoIntegration: '+json.dumps(receipt)+'\n'
             return ''
         def fake_bytes(*parts):
+            if parts==('exec-out','content','read','--uri','content://local.pocketchat.test.evidence/gecko-event-receipts/0/'+'e'*32):
+                # New native discovery boundary, separately recorded so the
+                # original calls assertions still count exact payload reads.
+                # This fixed receipt fixture is not derived from payload bytes.
+                journal_calls.append(parts)
+                return json.dumps(dict(schema=1,status='committed',runNonce='e'*32,processSlot=0,
+                    fixtureAction=receipt['fixtureAction'],command=receipt['command'],receipts=[json.dumps(receipt)])).encode()
             self.assertEqual(parts,('exec-out','content','read','--uri',transfer.event_uri(receipt)))
             calls.append(parts)
             return raw
@@ -74,8 +81,9 @@ class GeckoEventTransportControls(unittest.TestCase):
                       read_with_sequence_failure_diagnostics=transfer.read_with_sequence_failure_diagnostics,
                       args=types.SimpleNamespace(adb='counterfeit-adb',serial='counterfeit-serial'),
                       has_pixel_launcher=False,launcher='counterfeit-unused-launcher',package='local.pocketchat.test',
-                      surface_gestures={},time=time,json=json,report={},logs=[],steps=[],OUT=ROOT/'work/gecko-integration')
-        exec(compile(ast.fix_missing_locations(ast.Module(body=[run],type_ignores=[])),
+                      surface_gestures={},time=time,json=json,report={},logs=[],steps=[],OUT=ROOT/'work/gecko-integration',journal_calls=journal_calls)
+        discovery=copy.deepcopy(next(node for node in source.body if isinstance(node,ast.ClassDef) and node.name=='ReceiptJournalDiscovery'))
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[discovery,run],type_ignores=[])),
                      '<counterfeit-device-consumer-control>','exec'),bindings)
         return bindings,calls
 

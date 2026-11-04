@@ -33,6 +33,11 @@ def experience46_source_bytes(raw, relative):
     if row is None:
         raise ValueError('Experience46 inverse does not cover this exact path')
     digest = hashlib.sha256(raw).hexdigest()
+    if relative == 'tests/gecko/run_device.py' and digest not in (
+            row['reviewedSha256'], row['previousSha256'], *row['exactHistoricalSha256']):
+        from event_journal_source_compatibility import source_input
+        raw = source_input(raw, relative)
+        digest = hashlib.sha256(raw).hexdigest()
     if digest == row['previousSha256'] or digest in row['exactHistoricalSha256']:
         return raw
     if digest != row['reviewedSha256']:

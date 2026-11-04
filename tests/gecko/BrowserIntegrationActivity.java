@@ -19,13 +19,18 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   static final String ORIGIN="http://browser-fixture.example";
   static final String BODY="Controlled Chromium download\n";
   static final String TARGET_SCROLL_SCRIPT="function(id){const e=document.getElementById(id);if(!e)throw new Error('Missing target '+id);e.scrollIntoView({block:'center',inline:'center'});return {id:e.id};}";
-  static final String TARGET_SAMPLE_SCRIPT="function(id){const e=document.getElementById(id);if(!e)throw new Error('Missing target '+id);const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,h=document.elementFromPoint(x,y);return {id:e.id,x,y,left:r.left,top:r.top,right:r.right,bottom:r.bottom,viewportWidth:innerWidth,viewportHeight:innerHeight,scrollX,scrollY,devicePixelRatio,visualScale:window.visualViewport?visualViewport.scale:1,hitTarget:h===e||e.contains(h),hitId:h&&h.id||'',hitTag:h&&h.tagName||'',url:location.href};}";
+  static final String TARGET_SAMPLE_SCRIPT="function(id){const e=document.getElementById(id);if(!e)throw new Error('Missing target '+id);const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,h=document.elementFromPoint(x,y),v=window.visualViewport;return {id:e.id,x,y,left:r.left,top:r.top,right:r.right,bottom:r.bottom,viewportWidth:innerWidth,viewportHeight:innerHeight,scrollX,scrollY,devicePixelRatio,visualScale:window.visualViewport?visualViewport.scale:1,visualWidth:v&&Number.isFinite(v.width)?v.width:null,visualHeight:v&&Number.isFinite(v.height)?v.height:null,visualOffsetLeft:v&&Number.isFinite(v.offsetLeft)?v.offsetLeft:null,visualOffsetTop:v&&Number.isFinite(v.offsetTop)?v.offsetTop:null,documentFocus:document.hasFocus(),hitTarget:h===e||e.contains(h),hitId:h&&h.id||'',hitTag:h&&h.tagName||'',url:location.href};}";
+  static final String PICKER_ARM_SCRIPT="function(b){const input=document.getElementById('upload');if(!input||!input.isConnected||location.href!==b.url||!/^([0-9a-f]{32})$/.test(b.nonce)||!/^([0-9a-f]{40})$/.test(b.source)||!/^([0-9a-f]{32})$/.test(b.token)||!Number.isInteger(b.ordinal)||b.ordinal<1||b.ordinal>2)throw new Error('Invalid picker document');let s=window.__fixturePickerBarrier;if(!s){if(b.ordinal!==1)throw new Error('Picker sequence did not start at one');s={nonce:b.nonce,source:b.source,url:b.url,input,completed:0,lastToken:'',active:null,rejected:0,events:[]};window.__fixturePickerBarrier=s;for(const type of ['pointerdown','pointerup','click'])document.addEventListener(type,e=>{if(e.target!==input)return;s.events.push({type:e.type,trusted:e.isTrusted,ordinal:s.active?s.active.ordinal:0,x:e.clientX,y:e.clientY,focused:document.hasFocus()});if(s.events.length>12)s.events.shift();},true);}if(s.nonce!==b.nonce||s.source!==b.source||s.url!==b.url||s.input!==input||s.active||s.completed!==b.ordinal-1||s.lastToken===b.token)throw new Error('Picker request is stale');const r={token:b.token,ordinal:b.ordinal,seen:false,afterTask:false,afterFrame:false};s.active=r;const current=()=>window.__fixturePickerBarrier===s&&s.active===r&&s.input===input&&input.isConnected&&document.getElementById('upload')===input&&location.href===s.url&&s.nonce===b.nonce&&s.source===b.source;const cancelled=e=>{s.events.push({type:e.type,trusted:e.isTrusted,ordinal:r.ordinal,focused:document.hasFocus()});if(s.events.length>12)s.events.shift();if(!current()||e.target!==input||e.isTrusted!==true||r.seen){s.rejected++;return;}r.seen=true;input.removeEventListener('cancel',cancelled);setTimeout(()=>{if(!current())return;r.afterTask=true;requestAnimationFrame(()=>{if(!current())return;r.afterFrame=true;s.completed=r.ordinal;s.lastToken=r.token;s.active=null;});},0);};input.addEventListener('cancel',cancelled);return {armed:true,ordinal:r.ordinal,token:r.token};}";
+  static final String PICKER_OBSERVE_SCRIPT="function(b){const s=window.__fixturePickerBarrier,input=document.getElementById('upload');const matching=!!s&&s.nonce===b.nonce&&s.source===b.source&&s.url===b.url&&location.href===b.url&&s.input===input&&!!input&&input.isConnected;const current=matching&&s.active&&s.active.token===b.token&&s.active.ordinal===b.ordinal;const complete=matching&&s.completed===b.ordinal&&s.lastToken===b.token&&s.active===null;return {matching,ordinal:b.ordinal,completed:matching?s.completed:0,ready:!!complete,afterTask:complete||!!(current&&s.active.afterTask),afterFrame:!!complete,rejected:matching?s.rejected:0,events:matching?s.events:[]};}";
   static final String[] NATIVE_TARGET_FIELDS={"screenX","screenY","width","height","visibleLeft","visibleTop","visibleRight","visibleBottom"};
   static final String[] DOM_TARGET_FIELDS={"x","y","left","top","right","bottom","viewportWidth","viewportHeight","scrollX","scrollY","devicePixelRatio","visualScale"};
   final Handler probe=new Handler(Looper.getMainLooper());
   final JSONArray checks=new JSONArray();
   final JSONArray layoutObservations=new JSONArray();
   final JSONArray leaseObservations=new JSONArray();
+  final JSONArray nativeInputEvents=new JSONArray();
+  final JSONArray pickerBarrierHistory=new JSONArray();
+  JSONObject pickerBarrierObservation=new JSONObject();
   FixtureProxy fixture;JSONObject build;String nonce,stage="starting",failure="";long deadline;
   WebView first,returnSurface;Object oldRoute;int picker;boolean pickerOpened,finished,switchedAway;
   int baselineDownloads;JSONObject target=new JSONObject();
@@ -120,7 +125,7 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
   }
   JSONObject nativeTargetFrame(WebView view)throws JSONException{
     int[] location=new int[2],rootLocation=new int[2];view.getLocationOnScreen(location);view.getRootView().getLocationOnScreen(rootLocation);android.graphics.Rect visible=new android.graphics.Rect();boolean shown=view.isShown()&&view.getGlobalVisibleRect(visible);visible.offset(rootLocation[0],rootLocation[1]);
-    return new JSONObject().put("screenX",location[0]).put("screenY",location[1]).put("width",view.getWidth()).put("height",view.getHeight()).put("visibleLeft",visible.left).put("visibleTop",visible.top).put("visibleRight",visible.right).put("visibleBottom",visible.bottom).put("shown",shown).put("windowFocus",view.hasWindowFocus()).put("foreground",foreground).put("layoutRequested",root.isLayoutRequested()||content.isLayoutRequested()||view.isLayoutRequested());
+    return new JSONObject().put("screenX",location[0]).put("screenY",location[1]).put("width",view.getWidth()).put("height",view.getHeight()).put("visibleLeft",visible.left).put("visibleTop",visible.top).put("visibleRight",visible.right).put("visibleBottom",visible.bottom).put("nativeScale",(double)view.getScale()).put("viewFocus",view.hasFocus()).put("shown",shown).put("windowFocus",view.hasWindowFocus()).put("foreground",foreground).put("layoutRequested",root.isLayoutRequested()||content.isLayoutRequested()||view.isLayoutRequested());
   }
   static boolean nativeTargetReady(JSONObject frame)throws JSONException{return frame.getBoolean("shown")&&frame.getBoolean("windowFocus")&&frame.getBoolean("foreground")&&!frame.getBoolean("layoutRequested")&&frame.getInt("width")>0&&frame.getInt("height")>0&&frame.getInt("visibleRight")>frame.getInt("visibleLeft")&&frame.getInt("visibleBottom")>frame.getInt("visibleTop");}
   static boolean sameNativeTarget(JSONObject first,JSONObject second)throws JSONException{if(first==null||second==null)return false;for(String key:NATIVE_TARGET_FIELDS)if(first.getInt(key)!=second.getInt(key))return false;return nativeTargetReady(first)&&nativeTargetReady(second);}
@@ -151,16 +156,58 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
       }});
     }catch(Throwable error){fail(error);}});
   }
-  void preparePicker(){target("upload",()->{
-    pickerOpened=false;step("file-picker-"+picker);
+  void preparePicker(){
+    try{
+      WebView owner=web();int ordinal=picker;
+      JSONObject binding=new JSONObject().put("nonce",nonce).put("source",build.getString("sourceCommit")).put("url",owner.getUrl()).put("ordinal",ordinal).put("token",UUID.randomUUID().toString().replace("-",""));
+      js("("+PICKER_ARM_SCRIPT+")("+binding.toString()+")",armed->{try{
+        if(web()!=owner||!armed.getBoolean("armed")||armed.getInt("ordinal")!=ordinal||!armed.getString("token").equals(binding.getString("token")))throw new AssertionError("Renderer picker request was not armed");
+        prepareArmedPicker(owner,ordinal,binding);
+      }catch(Throwable error){fail(error);}});
+    }catch(Throwable error){fail(error);}
+  }
+  void prepareArmedPicker(WebView owner,int ordinal,JSONObject binding){target("upload",()->{
+    pickerOpened=false;step("file-picker-"+picker);observePickerInput(owner,ordinal,binding);
     await("actual chooser open and cancellation",()->{if(files.pending!=null)pickerOpened=true;return pickerOpened&&files.pending==null&&foreground;},()->{
       check("Native file chooser "+picker+" returns its callback after user cancellation",pickerOpened&&files.pending==null);
+      awaitRendererCancellation(owner,ordinal,binding,()->{
       js("({files:document.getElementById('upload').files.length,draft:document.getElementById('draft').value})",value->{try{
         check("Cancelled chooser "+picker+" preserves the website draft and selects no files",value.getInt("files")==0&&value.getString("draft").equals("first tab exact draft"));
         if(picker++==1)preparePicker();else prepareDownload();
       }catch(Throwable error){fail(error);}});
+      });
     });
   });}
+  void observePickerInput(WebView owner,int ordinal,JSONObject binding){
+    if(finished||destroyed||web()!=owner||!stage.equals("file-picker-"+ordinal))return;
+    if(!foreground||files.pending!=null){probe.postDelayed(()->observePickerInput(owner,ordinal,binding),250);return;}
+    try{owner.evaluateJavascript("JSON.stringify(("+PICKER_OBSERVE_SCRIPT+")("+binding.toString()+"))",raw->{
+      if(finished||destroyed||web()!=owner||!stage.equals("file-picker-"+ordinal))return;
+      try{JSONObject value=new JSONObject(String.valueOf(new JSONTokener(raw).nextValue()));if(value.optBoolean("matching")&&!value.toString().equals(pickerBarrierObservation.toString())){pickerBarrierObservation=value;publish(false);}}catch(Exception ignored){}
+      probe.postDelayed(()->observePickerInput(owner,ordinal,binding),250);
+    });}catch(RuntimeException ignored){}
+  }
+  void awaitRendererCancellation(WebView owner,int ordinal,JSONObject binding,Step next){
+    Runnable timeout=()->fail(new AssertionError("Renderer trusted picker cancellation did not complete: "+ordinal));
+    probe.postDelayed(timeout,Math.max(0,deadline-SystemClock.elapsedRealtime()));
+    pollRendererCancellation(owner,ordinal,binding,next,timeout);
+  }
+  void pollRendererCancellation(WebView owner,int ordinal,JSONObject binding,Step next,Runnable timeout){
+    if(finished||destroyed)return;
+    try{
+      if(web()!=owner||picker!=ordinal||!owner.getUrl().equals(binding.getString("url"))||!foreground||files.pending!=null)throw new AssertionError("Renderer cancellation belongs to an old picker document");
+      if(SystemClock.elapsedRealtime()>=deadline)throw new AssertionError("Renderer trusted picker cancellation exceeded its original step deadline");
+      js("("+PICKER_OBSERVE_SCRIPT+")("+binding.toString()+")",value->{try{
+        if(web()!=owner||picker!=ordinal||!value.getBoolean("matching"))throw new AssertionError("Renderer cancellation request differs");
+        if(!value.toString().equals(pickerBarrierObservation.toString())){pickerBarrierObservation=value;publish(false);}
+        if(value.getBoolean("ready")){
+          if(value.getInt("completed")!=ordinal||!value.getBoolean("afterTask")||!value.getBoolean("afterFrame"))throw new AssertionError("Renderer cancellation has no completed event task and frame");
+          probe.removeCallbacks(timeout);pickerBarrierHistory.put(value);
+          probe.post(()->{try{if(finished||destroyed)return;if(web()!=owner||picker!=ordinal||!foreground||files.pending!=null)throw new AssertionError("Renderer cancellation changed before continuation");next.run();}catch(Throwable error){fail(error);}});
+        }else probe.postDelayed(()->pollRendererCancellation(owner,ordinal,binding,next,timeout),125);
+      }catch(Throwable error){fail(error);}});
+    }catch(Throwable error){fail(error);}
+  }
   void prepareDownload()throws Exception{
     baselineDownloads=files.store.rows().length();target("download",()->{step("download-click");
       await("in-flight native download route ownership",()->files.transfer!=null&&ChromiumRouteLease.snapshot().downloads>0,()->{
@@ -229,11 +276,21 @@ public final class BrowserIntegrationActivity extends BrowserActivity {
     int passed=0;for(int i=0;i<checks.length();i++)if(checks.getJSONObject(i).optBoolean("pass"))passed++;
     PackageInfo provider=WebView.getCurrentWebViewPackage();JSONObject value=new JSONObject().put("schema",1).put("status",terminal?(failure.isEmpty()?"passed":"failed"):"running").put("stage",stage).put("runNonce",nonce).put("taskId",getTaskId()).put("buildIdentity",build).put("sourceCommit",build.getString("sourceCommit")).put("checks",checks).put("layoutObservations",layoutObservations).put("leaseObservations",leaseObservations).put("passed",passed).put("total",checks.length()).put("failure",failure).put("tapTarget",target).put("provider",provider==null?JSONObject.NULL:new JSONObject().put("package",provider.packageName).put("version",provider.versionName)).put("proxy",fixture.snapshot()).put("actualAndroidExecution",true).put("actualAndroidWebViewExecution",web()!=null||first!=null).put("actualGeckoExecution",false).put("actualPublicWebsiteExecution",false).put("actualDevicePerformanceMeasurement",false).put("scope","Real production BrowserActivity, ChromiumRuntime, ProxyController, Android WebView and native download store with a loopback synthetic HTTP proxy; no upstream forwarding. Chooser and download actions require trusted shell taps. Not phone, public ChatGPT, camera/microphone or frame-rate acceptance.");
     value.put("foreground",foreground).put("pendingChooser",files!=null&&files.pending!=null).put("routeAllowed",runtime!=null&&runtime.allowed());
+    value.put("nativeInputEvents",nativeInputEvents).put("pickerBarrier",pickerBarrierObservation).put("pickerBarrierHistory",pickerBarrierHistory);
     AtomicFile file=new AtomicFile(new File(getFilesDir(),"browser-integration-results.json"));FileOutputStream stream=null;try{stream=file.startWrite();stream.write((value.toString()+"\n").getBytes(StandardCharsets.UTF_8));file.finishWrite(stream);}catch(Exception error){if(stream!=null)file.failWrite(stream);throw error;}
   }
   @Override protected void onPause(){
     if(stage.startsWith("file-picker-")&&files!=null&&files.pending!=null)pickerOpened=true;
     super.onPause();if("switch-to-gecko".equals(stage)){switchedAway=true;try{publish(false);}catch(Exception error){fail(error);}}
+  }
+  @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){
+    boolean handled=super.dispatchTouchEvent(event);
+    int action=event.getActionMasked();
+    if(!finished&&build!=null&&fixture!=null&&(stage.startsWith("file-picker-")||stage.equals("download-click"))&&(action==android.view.MotionEvent.ACTION_DOWN||action==android.view.MotionEvent.ACTION_UP))try{
+      while(nativeInputEvents.length()>=12)nativeInputEvents.remove(0);
+      nativeInputEvents.put(new JSONObject().put("stage",stage).put("action",action).put("x",(double)event.getRawX()).put("y",(double)event.getRawY()).put("handled",handled).put("eventTime",event.getEventTime()));publish(false);
+    }catch(Exception error){fail(error);}
+    return handled;
   }
   @Override protected void onDestroy(){probe.removeCallbacksAndMessages(null);if(fixture!=null)fixture.close();super.onDestroy();}
 

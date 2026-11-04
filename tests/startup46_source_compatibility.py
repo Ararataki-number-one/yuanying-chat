@@ -14,6 +14,10 @@ def startup46_source_bytes(raw,relative):
     if relative!=PATH:
         raise ValueError('Startup inverse does not cover this exact path')
     digest=hashlib.sha256(raw).hexdigest()
+    if digest not in (PREVIOUS_SHA256,CURRENT_SHA256):
+        from event_journal_source_compatibility import source_input
+        raw=source_input(raw,relative)
+        digest=hashlib.sha256(raw).hexdigest()
     if digest==PREVIOUS_SHA256:
         return raw
     if digest!=CURRENT_SHA256:

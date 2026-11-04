@@ -15,7 +15,10 @@ GOLDEN='a034b67f5e1e951bc4742f7f866c906516dd5bfa4acacfef616baf434d714c61'
 class StartupWholeSource46(unittest.TestCase):
     def test_both_exact_inputs_recover_the_complete_old_consumer_and_golden(self):
         self.assertEqual(HOOK,REVIEWED_HOOK)
-        raw=(ROOT/PATH).read_bytes();self.assertEqual(hashlib.sha256(raw).hexdigest(),CURRENT_SHA256)
+        raw=(ROOT/PATH).read_bytes()
+        from event_journal_source_compatibility import source_input
+        raw=source_input(raw,PATH)
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),CURRENT_SHA256)
         previous=startup46_source_bytes(raw,PATH)
         self.assertEqual(hashlib.sha256(previous).hexdigest(),PREVIOUS_SHA256)
         self.assertEqual(startup46_source_bytes(previous,PATH),previous)

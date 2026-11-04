@@ -18,6 +18,9 @@ class Experience46SourceCompatibility(unittest.TestCase):
   for path,row in manifest['files'].items():
    with self.subTest(path=path):
     previous=subprocess.check_output(['git','show',compat.BASE_COMMIT+':'+path],cwd=ROOT);current=(ROOT/path).read_bytes()
+    if path=='tests/gecko/run_device.py':
+     from event_journal_source_compatibility import source_input
+     current=source_input(current,path)
     self.assertEqual(sha(previous),row['previousSha256']);self.assertEqual(sha(current),row['reviewedSha256'])
     self.assertEqual(compat.experience46_source_bytes(previous,path),previous)
     self.assertEqual(compat.experience46_source_bytes(current,path),previous)
