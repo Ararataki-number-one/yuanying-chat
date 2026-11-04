@@ -1,6 +1,13 @@
 """Ensure the additive browser workflow retains every original release check."""
 from pathlib import Path
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 import yaml
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -45,5 +52,35 @@ class BrowserWorkflowTests(unittest.TestCase):
             for line in step['with']['path'].splitlines():
                 self.assertNotIn('private',line);self.assertNotIn('.jks',line);self.assertNotIn('.keystore',line);self.assertNotIn('.pem',line)
         self.assertIn('work/native-caret-sdk/maven/',upload[1]['with']['path'])
+
+    def test_actual_manifest_runtime_names_and_browser_fixture_contract(self):
+        android='{http://schemas.android.com/apk/res/android}'
+        manifest=ROOT/'tests/gecko/AndroidManifest.xml'
+        application=ET.parse(manifest).getroot().find('application')
+        activities=[item for item in application.findall('activity') if item.get(android+'name')=='local.pocketchat.BrowserIntegrationActivity']
+        self.assertEqual(len(activities),1)
+        fixture=activities[0]
+        self.assertEqual(fixture.get(android+'taskAffinity'),'local.pocketchat.test.browser_probe')
+        self.assertEqual(fixture.get(android+'launchMode'),'singleTask')
+        self.assertEqual(fixture.get(android+'exported'),'true')
+        self.assertIsNone(fixture.get(android+'process'))
+        with tempfile.TemporaryDirectory(prefix='browser-manifest-contract-') as directory:
+            target=Path(directory)/'results.json'
+            command=[sys.executable,str(ROOT/'tests/browser-manifest-host/run.py'),'--output',str(target)]
+            if os.environ.get('JAVA_HOME'):command+=['--java-home',os.environ['JAVA_HOME']]
+            result=subprocess.run(command,cwd=ROOT,text=True,capture_output=True,timeout=60)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            report=json.loads(target.read_text())
+            self.assertEqual(report['status'],'passed')
+            self.assertEqual(report['passed'],report['total'])
+            self.assertGreaterEqual(report['manifestCount'],4)
+            self.assertTrue(report['executionInputsUnchanged'])
+            self.assertTrue(report['actualAospNameMethodJvmExecution'])
+            self.assertIs(report['actualAndroidExecution'],False)
+            self.assertIs(report['actualPackageManagerExecution'],False)
+            self.assertEqual(report['sourceFiles']['tests/gecko/AndroidManifest.xml'],hashlib.sha256(manifest.read_bytes()).hexdigest())
+            controls=[row for row in report['checks'] if row['name'].startswith('control:')]
+            self.assertEqual(len(controls),15)
+            self.assertTrue(all(row['passed'] for row in controls))
 
 if __name__=='__main__':unittest.main(verbosity=2)
