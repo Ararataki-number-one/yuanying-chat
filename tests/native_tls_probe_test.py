@@ -14,6 +14,9 @@ import subprocess
 import sys
 import time
 import unittest
+import io
+import zipfile
+import warnings
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/browser"))
@@ -21,6 +24,46 @@ sys.path.insert(0, str(ROOT / "tools/gecko"))
 from fingerprint_fixture_server import EphemeralCertificates
 from native_tls_probe_server import NativeTlsServer, TRIALS, parse_client_hello, handshake_bytes, NeedMore, HOSTS
 from native_tls_probe_contract import validate_native_tls, validate_wire, strict_json, MIN, MAX, PROTECTED
+from check_native_tls_package import audit_key_entries,PUBLIC_SYNTHETIC_INTEGRATION_KEYS
+
+
+class PackageKeyControls(unittest.TestCase):
+    def fixtures(self):
+        return {name:(ROOT/'tests/gecko'/name).read_bytes() for name in PUBLIC_SYNTHETIC_INTEGRATION_KEYS}
+
+    def audit(self,entries,integration):
+        output=io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore',UserWarning)
+            with zipfile.ZipFile(output,'w')as archive:
+                for name,raw in entries:archive.writestr(name,raw)
+        with zipfile.ZipFile(io.BytesIO(output.getvalue()))as archive:return audit_key_entries(archive,integration)
+
+    def test_only_exact_existing_public_synthetic_keys_admitted_in_integration(self):
+        result=self.audit(list(self.fixtures().items()),True)
+        self.assertEqual(set(result),set(PUBLIC_SYNTHETIC_INTEGRATION_KEYS))
+        self.assertEqual(self.audit([('classes.dex',b'host-only')],False),{})
+
+    def test_release_rejects_even_unchanged_public_fixture_keys(self):
+        for name,raw in self.fixtures().items():
+            with self.assertRaises(ValueError):self.audit([(name,raw)],False)
+
+    def test_unknown_key_names_or_suffix_case_rejected(self):
+        for name in ('assets/original-signing.jks','assets/another.p12','assets/host.key','assets/HOST.KEY'):
+            with self.assertRaises(ValueError):self.audit([*self.fixtures().items(),(name,b'synthetic-negative-only')],True)
+
+    def test_allowed_name_requires_exact_original_bytes_and_size(self):
+        for name,raw in self.fixtures().items():
+            for bad in (raw[:-1],raw+b'x',bytes([raw[0]^1])+raw[1:]):
+                entries=self.fixtures();entries[name]=bad
+                with self.assertRaises(ValueError):self.audit(list(entries.items()),True)
+
+    def test_missing_duplicate_or_aliased_fixture_is_not_an_exception(self):
+        fixtures=list(self.fixtures().items())
+        with self.assertRaises(ValueError):self.audit(fixtures[:-1],True)
+        with self.assertRaises(ValueError):self.audit(fixtures+[fixtures[0]],True)
+        for path in ('assets/../network-fixture.p12','assets//network-fixture.p12','/assets/network-fixture.p12','assets\\network-fixture.p12'):
+            with self.assertRaises(ValueError):self.audit(fixtures+[(path,fixtures[0][1])],True)
 
 
 def context(strict=False, ca=None):
