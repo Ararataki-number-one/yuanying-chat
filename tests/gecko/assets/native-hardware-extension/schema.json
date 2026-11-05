@@ -1,0 +1,28 @@
+[
+  {
+    "namespace": "pocketNativeHardware",
+    "description": "Integration-only native CPU exposure preference probe. A setting receipt is not an observed navigator value.",
+    "types": [{"id": "Receipt", "type": "object", "properties": {
+      "schema": {"type": "integer", "minimum": 1, "maximum": 1},
+      "status": {"type": "string", "enum": ["read", "applied", "reset"]},
+      "operation": {"type": "string", "enum": ["read", "set", "reset"]},
+      "requestToken": {"type": "string"},
+      "requestedCap": {"choices": [{"type": "integer"}, {"type": "null"}]},
+      "configuredCap": {"type": "integer"},
+      "hasUserValue": {"type": "boolean"},
+      "rfpEnabled": {"type": "boolean"},
+      "nativePreferenceReadback": {"type": "boolean"},
+      "scope": {"type": "string", "enum": ["runtime-native-pref"]},
+      "workerCoverageVerified": {"type": "boolean"},
+      "fingerprintProtectionVerified": {"type": "boolean"}
+    }}],
+    "functions": [
+      {"name": "read", "type": "function", "async": true,
+        "parameters": [{"name": "requestToken", "type": "string", "minLength": 1, "maxLength": 160}], "returns": {"$ref": "Receipt"}},
+      {"name": "setCap", "type": "function", "async": true,
+        "parameters": [{"name": "cap", "type": "integer", "minimum": 1, "maximum": 2}, {"name": "requestToken", "type": "string", "minLength": 1, "maxLength": 160}], "returns": {"$ref": "Receipt"}},
+      {"name": "reset", "type": "function", "async": true,
+        "parameters": [{"name": "requestToken", "type": "string", "minLength": 1, "maxLength": 160}], "returns": {"$ref": "Receipt"}}
+    ]
+  }
+]

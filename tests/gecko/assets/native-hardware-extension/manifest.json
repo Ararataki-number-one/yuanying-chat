@@ -1,0 +1,15 @@
+{
+  "manifest_version": 2,
+  "name": "PocketChat native CPU exposure capability probe",
+  "version": "1.0.0",
+  "browser_specific_settings": {"gecko": {"id": "hardware-probe@pocketchat.local"}},
+  "permissions": ["nativeMessaging", "geckoViewAddons"],
+  "background": {"scripts": ["background.js"]},
+  "experiment_apis": {
+    "pocketNativeHardware": {
+      "schema": "schema.json",
+      "parent": {"scopes": ["addon_parent"], "paths": [["pocketNativeHardware"]], "script": "parent.js"}
+    }
+  },
+  "content_scripts": [{"matches": ["http://127.0.0.1/*"], "js": ["content.js"], "run_at": "document_start"}]
+}
