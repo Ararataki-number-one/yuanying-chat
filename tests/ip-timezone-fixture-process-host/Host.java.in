@@ -57,12 +57,17 @@ public final class Host {
   check("Dedicated setup retains actual parent lifecycle",parentCreates==1&&parentInstalls==3&&bootstrapCalls==1);
  }
  public static void main(String[] args)throws Exception{
-  for(String process:new String[]{PACKAGE+":tab0",null,"",PACKAGE+":socket",PACKAGE+":gecko",PACKAGE+":rdd",PACKAGE+":utility",PACKAGE+":engine_restart",PACKAGE+":ip_timezone_setup_foreign","foreign.app:profile6","foreign.app",PACKAGE+":profile0",PACKAGE+":profile8",PACKAGE+":profile6:tab0"})child(process,10200);
+  for(String process:new String[]{PACKAGE+":tab0",null,"",PACKAGE+":socket",PACKAGE+":gecko",PACKAGE+":rdd",PACKAGE+":utility",PACKAGE+":engine_restart",PACKAGE+":ip_timezone_setup_foreign",PACKAGE+":native_tls_probe_foreign","foreign.app:native_tls_probe",PACKAGE+":native_tls_probe:tab0","foreign.app:profile6","foreign.app",PACKAGE+":profile0",PACKAGE+":profile8",PACKAGE+":profile6:tab0"})child(process,10200);
   child(PACKAGE+":tab0",99000);child("org.mozilla.gecko.process.GeckoChildProcess0",99000);child(PACKAGE,99000);child(PACKAGE+":profile6",99000);child(PACKAGE+":ip_timezone_setup",99000);
   for(String suffix:LEGACY)child(PACKAGE+suffix,99000);
   List<String> types=new ArrayList<>(Arrays.asList("socket","gpu","rdd","utility","gmplugin","ipdlunittest"));for(int i=0;i<40;i++)types.add("tab"+i);
   for(int slot=0;slot<8;slot++)for(String type:types)child(PACKAGE+":gecko_env"+slot+"_"+type+"_disable_art_image_",10200);
+  reset(PACKAGE+":native_tls_probe");app.attachBaseContext(app);app.onCreate();
+  check("Final native TLS fixture retains exact generic eight-slot preparation",loads==8&&saves==8&&GeckoTimeZoneStore.states.size()==8);
+  check("Final native TLS fixture checks actual application identity once",identityReads==1&&parentCreates==1&&parentInstalls==3);
+  check("Final native TLS fixture seeds only actual system specs",GeckoTimeZoneStore.states.values().stream().allMatch(value->value.spec.followsSystem()));
+  Context tlsProfile=app.profile(6);check("Final native TLS late profile remains same and does not reseed",tlsProfile==app.profile(6)&&loads==8&&saves==8&&GeckoTimeZoneStore.monitorViolations==0);
   for(int slot=0;slot<8;slot++)owned(slot);for(String suffix:LEGACY)legacy(suffix);dedicatedSetup();rejectedPackagesAndMissingIdentity();
-  System.out.println(J.obj("status","passed","passed",passed,"total",passed,"checks",new JSONArray(checks),"childCases",new JSONArray(children),"ownerCases",8,"legacyCases",14,"dedicatedSetupCases",1));
+  System.out.println(J.obj("status","passed","passed",passed,"total",passed,"checks",new JSONArray(checks),"childCases",new JSONArray(children),"ownerCases",8,"legacyCases",15,"dedicatedSetupCases",1));
  }
 }

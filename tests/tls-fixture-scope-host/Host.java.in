@@ -1,0 +1,172 @@
+package local.pocketchat;
+
+import android.content.Context;
+import android.os.SystemClock;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import org.json.*;
+
+/** Full current scope/store code; framework, catalog and vault are host boundaries. */
+public final class Host {
+  static final String SOURCE="a".repeat(40),RUN="b".repeat(32),OTHER="c".repeat(32),CASE="d".repeat(32);
+  static final JSONArray checks=new JSONArray();static int passed;
+  static TestContext app;static Path root;static int prepares,vaultReads,writes,storeReads;
+  static volatile Runnable prepareHook,afterRawReadHook;static volatile boolean failVaultWrite;
+  interface Work{void run()throws Exception;}
+  static void check(String name,boolean condition){if(!condition)throw new AssertionError(name);passed++;checks.put(J.obj("name",name,"pass",true));}
+  static void reject(String name,Work work){boolean denied=false;try{work.run();}catch(Exception expected){denied=true;}check(name,denied);}
+  static void reset()throws Exception{
+    root=Files.createTempDirectory("tls-manual-scope-");app=new TestContext(root,0);Context.packageName="local.pocketchat.test";
+    android.app.Application.processName="local.pocketchat.test:ip_timezone_setup";SystemClock.now=5000;
+    ProfileCatalog.current=new ProfileCatalog();prepares=vaultReads=writes=storeReads=0;prepareHook=null;afterRawReadHook=null;failVaultWrite=false;
+    java.lang.reflect.Field field=GeckoTlsFixtureScopes.class.getDeclaredField("installed");field.setAccessible(true);field.set(null,null);
+    field=GeckoTlsFixtureScopes.class.getDeclaredField("USED");field.setAccessible(true);((Map<?,?>)field.get(null)).clear();
+  }
+  static Path marker(int slot){return app.getNoBackupFilesDir().toPath().resolve("tls-manual-fixture-"+slot+".json");}
+  static Context profile(int slot){return Profiles.context(app,slot);}
+  static Context activity(int slot){return slot==1?new GeckoTlsAcceptanceActivity.Profile1():new GeckoTlsAcceptanceActivity.Profile2();}
+  static byte[] raw(int slot)throws Exception{return new SecretStore(profile(slot)).get(GeckoTimeZoneStore.STORE);}
+  static void raw(int slot,byte[] bytes)throws Exception{new SecretStore(profile(slot)).put(GeckoTimeZoneStore.STORE,bytes);}
+  static void raw(int slot,String text)throws Exception{raw(slot,text.getBytes(StandardCharsets.UTF_8));}
+  static JSONObject prepare(int slot)throws Exception{return GeckoTlsFixtureScopes.prepareManual(app,SOURCE,RUN,slot,GeckoTlsFixtureScopes.purpose(slot));}
+  static JSONObject admit(int slot,String nonce,String claim)throws Exception{android.app.Application.processName="local.pocketchat.test:profile"+slot;return GeckoTlsFixtureScopes.admitCase(activity(slot),SOURCE,RUN,slot,GeckoTlsFixtureScopes.purpose(slot),nonce,claim);}
+  static void setup(){android.app.Application.processName="local.pocketchat.test:ip_timezone_setup";}
+  static JSONObject object(byte[] bytes)throws Exception{return GeckoTimeZonePolicy.object(bytes,GeckoTimeZoneStore.MAX_BYTES);}
+  static void change(String key,Object value)throws Exception{JSONObject packet=object(Files.readAllBytes(marker(1)));packet.put(key,value);Files.writeString(marker(1),packet.toString());}
+  static JSONObject currentRecord(int slot)throws Exception{Profiles.prepare(app,slot,false);GeckoTimeZoneStore.State state=GeckoTimeZoneStore.load(profile(slot));state=GeckoTimeZoneStore.save(profile(slot),state.identity,state.revision,GeckoTimeZoneSpec.system());return object(raw(slot));}
+  static void assertUnchanged(String label,int slot,byte[] before)throws Exception{check(label,Arrays.equals(before,raw(slot)));}
+
+  static void missingAndRetained()throws Exception{
+    reset();JSONObject marker=prepare(1);GeckoTimeZoneStore.State state=GeckoTimeZoneStore.load(profile(1));
+    check("Missing record executes actual default IP then actual explicit manual-system CAS",state.spec.followsSystem()&&state.revision==2&&marker.getLong("timezoneRevision")==2&&marker.getBoolean("timezoneMissingBefore")&&marker.getBoolean("systemSeeded")&&!marker.getBoolean("retainedBytesPreserved"));
+    check("Preparation is integration scope only, never cold/native admission",marker.getBoolean("scopeOnly")&&!marker.getBoolean("nativeAdmissionGranted")&&!marker.getBoolean("coldRuntimeProvenByScope"));
+    check("Marker binds installed source/tree/APK/SDK tuple and exact purpose",marker.getString("sourceCommit").equals(SOURCE)&&marker.getString("sourceTree").equals("e".repeat(40))&&marker.getString("apkSha256").equals("f".repeat(64))&&marker.getString("sdkRunId").equals("12345")&&marker.getString("sdkRunAttempt").equals("2")&&marker.getString("purpose").equals(GeckoTlsFixtureScopes.purpose(1)));
+    check("Slot one fixture cannot seed missing profile six",raw(6)==null&&!ProfileCatalog.current.created[6]);
+    byte[] before=raw(1),scopeBytes=Files.readAllBytes(marker(1));reject("Second cold claim cannot replace marker without explicit owned clear",()->GeckoTlsFixtureScopes.prepareManual(app,SOURCE,OTHER,1,GeckoTlsFixtureScopes.purpose(1)));check("Rejected replacement preserves exact marker bytes",Arrays.equals(scopeBytes,Files.readAllBytes(marker(1))));assertUnchanged("Rejected replacement preserves actual desired bytes",1,before);
+    JSONObject consumed=admit(1,CASE,null);check("Exact Activity consumes current desired policy read-only",consumed.getBoolean("recordReadOnly")&&consumed.getString("caseNonce").equals(CASE)&&consumed.getString("processName").equals("local.pocketchat.test:profile1")&&consumed.getString("activityClass").equals(GeckoTlsFixtureScopes.purpose(1)));assertUnchanged("Admission never rewrites the retained record",1,before);
+    setup();GeckoTlsFixtureScopes.clearManual(app,SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1));check("Owned clear deletes only the fixture marker",!Files.exists(marker(1)));assertUnchanged("Owned clear keeps saved user timezone selection",1,before);
+    marker=prepare(1);check("A new cold claim retains existing manual-system choice",!marker.getBoolean("timezoneMissingBefore")&&!marker.getBoolean("systemSeeded")&&marker.getBoolean("retainedBytesPreserved")&&marker.getLong("timezoneRevision")==2);assertUnchanged("New retained claim preserves raw bytes exactly",1,before);
+    reset();JSONObject two=prepare(2);check("Second TLS environment has independent exact purpose and owner",two.getInt("slot")==2&&two.getJSONObject("identity").getInt("slot")==2&&two.getString("purpose").equals(GeckoTlsFixtureScopes.purpose(2)));check("Independent slot two preparation does not create slot one marker",!Files.exists(marker(1))&&raw(1)==null);
+    reset();JSONObject record=currentRecord(1);record.put("revision",7);raw(1,record.toString());before=raw(1);marker=prepare(1);check("Retained current manual-system revision is not reset",marker.getLong("timezoneRevision")==7);assertUnchanged("Retained nontrivial revision preserves exact bytes",1,before);
+  }
+
+  static void existingChoices()throws Exception{
+    for(String kind:new String[]{"ip","iana","legacy-system","legacy-iana","corrupt","duplicate","foreign-uuid","foreign-generation","foreign-slot","unknown-field","invalid-receipt","future-schema"}){
+      reset();JSONObject record=currentRecord(1);
+      if(kind.equals("ip"))record.put("spec",GeckoTimeZoneSpec.automatic().json());
+      if(kind.equals("iana"))record.put("spec",GeckoTimeZoneSpec.of("Asia/Kathmandu").json());
+      if(kind.startsWith("legacy-"))record.put("spec",J.obj("schema",1,"engine","gecko","zoneId",kind.equals("legacy-system")?"":"Asia/Kathmandu"));
+      if(kind.equals("foreign-uuid"))record.getJSONObject("identity").put("environmentId","00000000-0000-0000-0000-000000000099");
+      if(kind.equals("foreign-generation"))record.getJSONObject("identity").put("generation",1);
+      if(kind.equals("foreign-slot"))record.getJSONObject("identity").put("slot",2);
+      if(kind.equals("unknown-field"))record.put("nativeAdmissionGranted",true);
+      if(kind.equals("invalid-receipt"))record.put("receipt",J.obj("schema",1));
+      if(kind.equals("future-schema"))record.getJSONObject("spec").put("schema",3);
+      String text=kind.equals("corrupt")?"{not-json":kind.equals("duplicate")?"{\"schema\":1,"+record.toString().substring(1):record.toString();raw(1,text);byte[] before=raw(1);int reads=storeReads,saved=writes;
+      reject("Existing choice rejected without reset or migration: "+kind,()->prepare(1));
+      check("Ineligible retained records do not reach actual loader: "+kind,storeReads==reads);
+      check("Rejected existing selection does not publish any vault bytes: "+kind,writes==saved);assertUnchanged("Rejected existing record remains byte-identical: "+kind,1,before);
+      check("Rejected existing record grants no fixture claim: "+kind,!Files.exists(marker(1)));
+    }
+    for(byte[] bytes:new byte[][]{new byte[GeckoTimeZoneStore.MAX_BYTES+1],new byte[]{(byte)255}}){reset();Profiles.prepare(app,1,false);raw(1,bytes);int reads=storeReads;reject("Oversize or malformed UTF8 retained record rejected",()->prepare(1));check("Malformed byte record is rejected before actual loader",reads==storeReads);assertUnchanged("Malformed retained bytes are not overwritten",1,bytes);}
+  }
+
+  static void invocationAndScope()throws Exception{
+    for(int slot:new int[]{0,3,6,7}){reset();reject("Manual TLS helper rejects non-owned slot "+slot,()->GeckoTlsFixtureScopes.prepareManual(app,SOURCE,RUN,slot,"local.pocketchat.GeckoTlsAcceptanceActivity$Profile"+slot));check("Other slot rejection never prepares or writes",prepares==0&&writes==0&&!Files.exists(marker(1))&&!Files.exists(marker(2)));}
+    reset();reject("Foreign source rejected before preparation",()->GeckoTlsFixtureScopes.prepareManual(app,"1".repeat(40),RUN,1,GeckoTlsFixtureScopes.purpose(1)));check("Foreign source does not touch desired state",prepares==0&&vaultReads==0&&writes==0);
+    for(String run:new String[]{null,"", "x".repeat(32),"b".repeat(31),"b".repeat(33)}){reset();reject("Malformed run nonce rejected",()->GeckoTlsFixtureScopes.prepareManual(app,SOURCE,run,1,GeckoTlsFixtureScopes.purpose(1)));check("Malformed nonce has no profile/vault side effects",prepares==0&&vaultReads==0&&writes==0);}
+    reset();reject("Other fixture purpose cannot seed manual state",()->GeckoTlsFixtureScopes.prepareManual(app,SOURCE,RUN,1,"local.pocketchat.GeckoCpuIpComboIntegrationActivity"));check("Foreign purpose leaves all profile bytes untouched",prepares==0&&writes==0);
+    reset();android.app.Application.processName="local.pocketchat.test:profile1";reject("Profile cannot allocate its own setup marker",()->prepare(1));check("Wrong process allocation does no store IO",prepares==0&&vaultReads==0&&writes==0);
+    reset();Context.packageName="local.pocketchat";reject("Production package cannot use integration helper",()->prepare(1));check("Production-package rejection performs no writes",writes==0&&prepares==0);
+    reset();synchronized(app){reject("Application profile monitor is refused before Store IO",()->prepare(1));}check("Monitor rejection has no vault reads",vaultReads==0&&writes==0);
+    reset();JSONObject claim=prepare(1);byte[] before=raw(1);String token=claim.getString("claimNonce");
+    android.app.Application.processName="local.pocketchat.test";reject("Main process cannot consume profile claim",()->GeckoTlsFixtureScopes.admitCase(activity(1),SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1),CASE,null));
+    android.app.Application.processName="local.pocketchat.test:profile1";reject("Generic Context cannot consume exact Activity claim",()->GeckoTlsFixtureScopes.admitCase(profile(1),SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1),CASE,null));
+    reject("Wrong Activity subclass cannot consume slot one claim",()->GeckoTlsFixtureScopes.admitCase(new GeckoTlsAcceptanceActivity.Impostor(),SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1),CASE,null));
+    reject("Wrong slot Activity cannot consume slot one claim",()->GeckoTlsFixtureScopes.admitCase(activity(2),SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1),CASE,null));
+    reject("Foreign run cannot consume claim",()->GeckoTlsFixtureScopes.admitCase(activity(1),SOURCE,OTHER,1,GeckoTlsFixtureScopes.purpose(1),CASE,null));
+    reject("Foreign installed source cannot consume claim",()->GeckoTlsFixtureScopes.admitCase(activity(1),"1".repeat(40),RUN,1,GeckoTlsFixtureScopes.purpose(1),CASE,null));
+    reject("Warm case requires exact original claim",()->GeckoTlsFixtureScopes.admitCase(activity(1),SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1),CASE,OTHER));
+    reject("Malformed case nonce rejected",()->GeckoTlsFixtureScopes.admitCase(activity(1),SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1),"bad",token));
+    admit(1,CASE,token);reject("Same case nonce cannot replay",()->admit(1,CASE,token));JSONObject next=admit(1,"e".repeat(32),token);check("Warm case keeps exact original manual claim",next.getString("claimNonce").equals(token));assertUnchanged("All rejected/warm admissions leave sealed selection unchanged",1,before);
+    setup();reject("Foreign source cannot clear marker",()->GeckoTlsFixtureScopes.clearManual(app,"1".repeat(40),RUN,1,GeckoTlsFixtureScopes.purpose(1)));reject("Foreign run cannot clear marker",()->GeckoTlsFixtureScopes.clearManual(app,SOURCE,OTHER,1,GeckoTlsFixtureScopes.purpose(1)));check("Foreign clear preserves original marker",Files.exists(marker(1)));assertUnchanged("Foreign clear preserves desired bytes",1,before);
+    setup();GeckoTlsFixtureScopes.clearManual(app,SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1));GeckoTlsFixtureScopes.clearManual(app,SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1));check("Repeated exact clear is harmless and never erases user record",!Files.exists(marker(1))&&Arrays.equals(before,raw(1)));
+  }
+
+  static void markerValidation()throws Exception{
+    for(String key:new String[]{"schema","kind","phase","sourceCommit","sourceTree","apkSha256","sdkRunId","sdkRunAttempt","runNonce","claimNonce","slot","purpose","identity","timezoneDesired","timezoneRevision","createdAtElapsed","timezoneMissingBefore","systemSeeded","retainedBytesPreserved","scopeOnly","nativeAdmissionGranted","coldRuntimeProvenByScope"}){
+      reset();prepare(1);Object value="foreign";
+      if(key.equals("nativeAdmissionGranted")||key.equals("coldRuntimeProvenByScope"))value=true;
+      if(key.equals("scopeOnly"))value=false;
+      if(key.equals("createdAtElapsed"))value=6000;
+      if(key.equals("timezoneRevision"))value=0;
+      change(key,value);reject("Strict installed/scope marker field "+key,()->GeckoTlsFixtureScopes.inspectManual(app,SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1)));
+    }
+    reset();prepare(1);change("unknown",true);reject("Unknown marker fields are refused",()->GeckoTlsFixtureScopes.inspectManual(app,SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1)));
+    reset();prepare(1);SystemClock.now+=GeckoTlsFixtureScopes.MAX_AGE+1;reject("Expired setup cannot admit",()->admit(1,CASE,null));
+    reset();prepare(1);ProfileCatalog.current.ids[1]=new EnvironmentSpec.Identity(1,1,"00000000-0000-0000-0000-000000000001");reject("Environment generation replacement invalidates claim",()->admit(1,CASE,null));
+    reset();prepare(1);GeckoTimeZoneStore.State current=GeckoTimeZoneStore.load(profile(1));GeckoTimeZoneStore.save(profile(1),current.identity,current.revision,GeckoTimeZoneSpec.of("Asia/Kathmandu"));byte[] before=raw(1);reject("User policy changed after setup invalidates admission",()->admit(1,CASE,null));assertUnchanged("Rejected stale claim does not restore manual-system over user choice",1,before);
+    reset();prepare(1);Path path=marker(1);Files.delete(path);Path outside=Files.createTempFile("tls-foreign-marker-",".json");byte[] outsideBytes="foreign-content".getBytes(StandardCharsets.UTF_8);Files.write(outside,outsideBytes);Files.createSymbolicLink(path,outside);reject("Marker leaf symlink read is refused",()->GeckoTlsFixtureScopes.inspectManual(app,SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1)));reject("Marker leaf symlink is not overwritten by prepare",()->prepare(1));reject("Marker leaf symlink is not deleted by clear",()->GeckoTlsFixtureScopes.clearManual(app,SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1)));check("Foreign marker symlink target bytes preserved",Arrays.equals(outsideBytes,Files.readAllBytes(outside)));
+    reset();prepare(1);Files.write(marker(1),new byte[GeckoTlsFixtureScopes.MAX_BYTES+1]);reject("Oversized marker is refused",()->GeckoTlsFixtureScopes.inspectManual(app,SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1)));
+    reset();prepare(1);String text=Files.readString(marker(1));Files.writeString(marker(1),"{\"schema\":1,"+text.substring(1));reject("Duplicate marker keys rejected by strict current JSON",()->GeckoTlsFixtureScopes.inspectManual(app,SOURCE,RUN,1,GeckoTlsFixtureScopes.purpose(1)));
+    reset();JSONObject packet=prepare(1);for(int i=0;i<256;i++)admit(1,String.format("%032x",i),packet.getString("claimNonce"));reject("Warm case replay registry is bounded to 256",()->admit(1,"f".repeat(32),packet.getString("claimNonce")));
+    reset();prepare(1);for(int i=0;i<8;i++){setup();change("claimNonce",String.format("%032x",i));admit(1,CASE,null);}setup();change("claimNonce","f".repeat(32));reject("Distinct claim replay registry is bounded to eight",()->admit(1,CASE,null));
+  }
+
+  static void receiptAndPublication()throws Exception{
+    reset();JSONObject marker=prepare(1);Context profile=profile(1);GeckoTimeZoneStore.State state=GeckoTimeZoneStore.load(profile);byte[] before=raw(1);
+    GeckoTimeZoneStore.Binding binding=new GeckoTimeZoneStore.Binding("237.0","session-one","session-epoch","123");GeckoTimeZoneStore.Ticket ticket=GeckoTimeZoneStore.activate(profile,state.identity,state.revision,binding);
+    String nativeAck=J.obj("schema",1,"status","applied","requestToken",ticket.requestToken,"requestedZoneId","","nativeZoneId","","sessionId",binding.sessionId,"contextId",binding.contextId,"nativeSettingReadback",true,"scope","top-browsing-context","workerCoverageVerified",false,"serviceWorkerCoverageVerified",false).toString();
+    GeckoTimeZoneStore.record(profile,ticket,nativeAck);byte[] after=raw(1);check("Actual Store may publish a receipt without changing desired revision",!Arrays.equals(before,after)&&GeckoTimeZoneStore.load(profile).revision==marker.getLong("timezoneRevision"));int reads=storeReads;JSONObject actual=admit(1,CASE,marker.getString("claimNonce"));check("Receipt-only byte updates do not invalidate exact desired manual scope",actual.getLong("timezoneRevision")==2&&actual.getBoolean("recordReadOnly"));check("Admitting retained receipt does not call migration-capable loader",reads==storeReads);assertUnchanged("Admission after receipt does not rewrite receipt bytes",1,after);
+    for(String replacement:new String[]{"generation","uuid"}){reset();currentRecord(1);byte[] retained=raw(1);int oldWrites=writes,oldReads=storeReads;afterRawReadHook=()->{EnvironmentSpec.Identity old=ProfileCatalog.current.ids[1];ProfileCatalog.current.ids[1]=new EnvironmentSpec.Identity(1,replacement.equals("generation")?old.generation+1:old.generation,replacement.equals("uuid")?"00000000-0000-0000-0000-000000000099":old.environmentId);};reject("Owner change after raw read cannot publish claim: "+replacement,()->prepare(1));check("Owner race performs no vault writes or loader migration: "+replacement,writes==oldWrites&&storeReads==oldReads);assertUnchanged("Owner race preserves exact pre-existing record: "+replacement,1,retained);check("Owner race grants no marker: "+replacement,!Files.exists(marker(1)));}
+    for(String replacement:new String[]{"generation","uuid"}){reset();Profiles.prepare(app,1,false);int oldWrites=writes,oldReads=storeReads;afterRawReadHook=()->{EnvironmentSpec.Identity old=ProfileCatalog.current.ids[1];ProfileCatalog.current.ids[1]=new EnvironmentSpec.Identity(1,replacement.equals("generation")?old.generation+1:old.generation,replacement.equals("uuid")?"00000000-0000-0000-0000-000000000099":old.environmentId);};reject("Missing owner change before CAS cannot seed replacement: "+replacement,()->prepare(1));check("Missing owner race performs no vault writes or loader migration: "+replacement,writes==oldWrites&&storeReads==oldReads&&raw(1)==null);check("Missing owner race grants no marker: "+replacement,!Files.exists(marker(1)));}
+    reset();failVaultWrite=true;reject("Actual Store publication failure cannot arm marker",()->prepare(1));check("Failed Store write publishes no native or fixture success",!Files.exists(marker(1))&&raw(1)==null);
+    reset();CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1),attempted=new CountDownLatch(1),finished=new CountDownLatch(1);AtomicInteger accepted=new AtomicInteger(),denied=new AtomicInteger();AtomicBoolean first=new AtomicBoolean();
+    prepareHook=()->{if(first.compareAndSet(false,true)){entered.countDown();try{if(!release.await(3,TimeUnit.SECONDS))throw new AssertionError("bounded prepare release");}catch(InterruptedException error){throw new AssertionError(error);}}};
+    Thread one=new Thread(()->{try{prepare(1);accepted.incrementAndGet();}catch(Exception expected){denied.incrementAndGet();}});Thread two=new Thread(()->{attempted.countDown();try{GeckoTlsFixtureScopes.prepareManual(app,SOURCE,OTHER,1,GeckoTlsFixtureScopes.purpose(1));accepted.incrementAndGet();}catch(Exception expected){denied.incrementAndGet();}finally{finished.countDown();}});
+    one.start();check("First preparation reaches actual profile boundary under scope lock",entered.await(2,TimeUnit.SECONDS));two.start();check("Second preparation actually starts",attempted.await(1,TimeUnit.SECONDS));check("Competing preparation cannot replace in-flight scope",!finished.await(50,TimeUnit.MILLISECONDS));release.countDown();one.join(3000);two.join(3000);prepareHook=null;
+    check("Concurrent preparation terminates without deadlock",!one.isAlive()&&!two.isAlive());check("Exactly one run owns the marker",accepted.get()==1&&denied.get()==1&&object(Files.readAllBytes(marker(1))).getString("runNonce").equals(RUN));
+  }
+
+  public static void main(String[] args)throws Exception{missingAndRetained();existingChoices();invocationAndScope();markerValidation();receiptAndPublication();System.out.println(J.obj("status","passed","passed",passed,"total",passed,"checks",checks));}
+}
+
+/** Explicit host context and profile preparation/catalog. No Android/native proof. */
+class TestContext extends Context {
+  final Path base;final int slot;
+  TestContext(Path base,int slot){this.base=base;this.slot=slot;}
+  @Override public File getNoBackupFilesDir(){File path=base.resolve(slot==0?"global":"profile-"+slot).resolve("no_backup").toFile();path.mkdirs();return path;}
+}
+final class GeckoTlsAcceptanceActivity {
+  static final class Profile1 extends TestContext {Profile1(){super(Host.root,1);}}
+  static final class Profile2 extends TestContext {Profile2(){super(Host.root,2);}}
+  static final class Impostor extends TestContext {Impostor(){super(Host.root,1);}}
+}
+final class Profiles {
+  static Context global(Context context){return Host.app;}
+  static Context context(Context context,int slot){return new TestContext(Host.root,slot);}
+  static int slot(Context context){if(!(context instanceof TestContext))throw new IllegalArgumentException("Host context required");return ((TestContext)context).slot;}
+  static void prepare(Context context,int slot,boolean reset)throws Exception{if(reset||slot<0||slot>7)throw new IOException("Unexpected host profile operation");Host.prepares++;Runnable hook=Host.prepareHook;if(hook!=null)hook.run();synchronized(ProfileCatalog.current){ProfileCatalog.current.created[slot]=true;}Profiles.context(context,slot).getNoBackupFilesDir();}
+}
+final class ProfileCatalog {
+  static ProfileCatalog current;final EnvironmentSpec.Identity[] ids=new EnvironmentSpec.Identity[8];final boolean[] created=new boolean[8];
+  ProfileCatalog(){for(int slot=0;slot<8;slot++)ids[slot]=new EnvironmentSpec.Identity(slot,0,String.format("00000000-0000-0000-0000-%012d",slot));created[0]=true;}
+  static ProfileCatalog get(Context context){return current;}
+  synchronized EnvironmentSpec.Identity identity(int slot)throws IOException{if(slot<0||slot>7||!created[slot])throw new IOException("Unavailable host profile");return ids[slot];}
+  interface Action<T>{T run()throws Exception;}
+  synchronized <T>T withIdentity(EnvironmentSpec.Identity expected,Action<T> action)throws Exception{if(expected==null||!identity(expected.slot).equals(expected))throw new IOException("Host catalog owner changed");return action.run();}
+}
+/** Plain atomic files; deliberately not an AES/Keystore execution claim. */
+final class SecretStore {
+  final Context context;SecretStore(Context context){this.context=context;}
+  Path file(String name)throws IOException{if(!name.equals(GeckoTimeZoneStore.STORE))throw new IOException("Unexpected vault key");return context.getNoBackupFilesDir().toPath().resolve(name+".host-vault");}
+  byte[] get(String name)throws IOException{Host.vaultReads++;for(StackTraceElement frame:Thread.currentThread().getStackTrace())if(frame.getClassName().equals("local.pocketchat.GeckoTimeZoneStore$Repository")&&frame.getMethodName().equals("load")){Host.storeReads++;break;}Path path=file(name);byte[] raw=Files.exists(path)?Files.readAllBytes(path):null;Runnable hook=Host.afterRawReadHook;if(hook!=null){Host.afterRawReadHook=null;hook.run();}return raw;}
+  void put(String name,byte[] value)throws IOException{if(Host.failVaultWrite){Host.failVaultWrite=false;throw new IOException("Injected plain-vault write failure");}Path target=file(name),temporary=Files.createTempFile(target.getParent(),"scope-vault-",".tmp");try{Files.write(temporary,value);Files.move(temporary,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);Host.writes++;}finally{Files.deleteIfExists(temporary);}}
+}
+final class IntegrationBuildIdentity {
+  static JSONObject read(Context context){return J.obj("sourceCommit",Host.SOURCE,"sourceTree","e".repeat(40),"apkSha256","f".repeat(64),"sdkBuildIdentity",J.obj("runId","12345","runAttempt","2"));}
+}

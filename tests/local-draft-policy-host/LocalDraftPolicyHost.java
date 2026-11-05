@@ -145,6 +145,8 @@ class GeckoWebView{
  boolean rejectDisabledNavigation(GeckoSession session,String target){return addonAdmission.reject(session,target);}
  boolean timeZoneAllows(GeckoSession session){return timeZoneBoundary.allows(session);}
  void prepareTimeZone(GeckoSession session,Consumer<Boolean> done){timeZoneBoundary.prepare(session,done);}
+ void queueIpRouteCheck(){timeZoneBoundary.queueIpRouteCheck();}
+ void tryStartIpLookup(){timeZoneBoundary.tryStartIpLookup();}
  void loadSessionUri(GeckoSession session,String target){timeZoneBoundary.uriDispatches++;if(!timeZoneAllows(session))throw new AssertionError("System-ready time-zone boundary rejected dispatch");session.loadUri(target);}
  boolean protectionAllowsNetwork(){return protectionAllowed;}boolean identityRequestAllowed(String url){return identityAllowed;}
  boolean allowedUrl(String url){return GeckoNavigationPolicy.publicWeb(url);}
@@ -153,8 +155,10 @@ class GeckoWebView{
 }
 /** Explicit ready-system boundary only; never simulates Date, native settings or custom zones. */
 class SystemReadyTimeZoneBoundary {
- boolean defaultSystemReady=true,customZoneRequested;int readinessCalls,preparationCalls,uriDispatches;
- void requireSystemScope(){if(customZoneRequested||!defaultSystemReady)throw new AssertionError("Custom or unready native time-zone execution is outside this legacy host");}
+ boolean defaultSystemReady=true,customZoneRequested,automaticIpRequested;int readinessCalls,preparationCalls,uriDispatches,ipRouteChecks,ipLookupAttempts;
+ void requireSystemScope(){if(automaticIpRequested)throw new AssertionError("Automatic IP time-zone execution is outside this legacy host");if(customZoneRequested||!defaultSystemReady)throw new AssertionError("Custom or unready native time-zone execution is outside this legacy host");}
+ void queueIpRouteCheck(){requireSystemScope();ipRouteChecks++;}
+ void tryStartIpLookup(){requireSystemScope();ipLookupAttempts++;}
  boolean allows(GeckoSession session){readinessCalls++;requireSystemScope();if(session==null)throw new AssertionError("Missing modeled session");return true;}
  void prepare(GeckoSession session,Consumer<Boolean> done){preparationCalls++;requireSystemScope();if(session==null||done==null)throw new AssertionError("Missing modeled preparation boundary");done.accept(true);}
  public static void main(String[] args){SystemReadyTimeZoneBoundary boundary=new SystemReadyTimeZoneBoundary();GeckoSession session=new GeckoSession();int checks=0;if(!boundary.allows(session)||boundary.readinessCalls!=1)throw new AssertionError("Default-system readiness count");checks++;boolean[] callback={false};boundary.prepare(session,ready->callback[0]=ready);if(!callback[0]||boundary.preparationCalls!=1)throw new AssertionError("Default-system prepare count");checks++;for(String kind:new String[]{"custom-read","custom-prepare","unready-read","unready-prepare"}){boundary.customZoneRequested=kind.startsWith("custom");boundary.defaultSystemReady=!kind.startsWith("unready");boolean refused=false;try{if(kind.endsWith("read"))boundary.allows(session);else boundary.prepare(session,value->{throw new AssertionError("Out-of-scope callback must not execute");});}catch(AssertionError expected){if(!expected.getMessage().startsWith("Custom or unready"))throw expected;refused=true;}if(!refused)throw new AssertionError("Out-of-scope time zone accepted");checks++;}System.out.println(J.obj("status","passed","checks",checks,"actualNativeTimeZoneExecution",false,"actualDateOrEngineExecution",false));}
@@ -162,3 +166,16 @@ class SystemReadyTimeZoneBoundary {
 
 /** Admission collaborator only. Real authoritative addon lifecycle runs in its dedicated current-method host. */
 class AddonAdmissionBoundary {boolean enabled=true;int calls;boolean reject(GeckoSession session,String target){calls++;if(session==null||target==null)throw new AssertionError("Missing addon admission boundary");return !enabled;}}
+
+/** The IP scheduling collaborator counts manual-system calls, never a lookup result. */
+class ManualSystemIpBoundary {
+ public static void main(String[] args){
+  SystemReadyTimeZoneBoundary boundary=new SystemReadyTimeZoneBoundary();boundary.automaticIpRequested=false;boundary.queueIpRouteCheck();boundary.tryStartIpLookup();int checks=0;
+  if(boundary.ipRouteChecks!=1||boundary.ipLookupAttempts!=1||boundary.readinessCalls!=0||boundary.preparationCalls!=0)throw new AssertionError("Manual IP scheduling boundary count");checks++;
+  boundary.automaticIpRequested=true;boolean routeRejected=false,lookupRejected=false,readyRejected=false;
+  try{boundary.queueIpRouteCheck();}catch(AssertionError expected){routeRejected=true;}try{boundary.tryStartIpLookup();}catch(AssertionError expected){lookupRejected=true;}
+  if(!routeRejected||!lookupRejected||boundary.ipRouteChecks!=1||boundary.ipLookupAttempts!=1)throw new AssertionError("Automatic IP scheduling silently accepted");checks++;
+  try{boundary.allows(new GeckoSession());}catch(AssertionError expected){readyRejected=true;}if(!readyRejected)throw new AssertionError("Automatic IP readiness fabricated");checks++;
+  System.out.println(J.obj("status","passed","checks",checks,"actualIpLookupExecution",false,"actualNativeTimeZoneExecution",false));
+ }
+}

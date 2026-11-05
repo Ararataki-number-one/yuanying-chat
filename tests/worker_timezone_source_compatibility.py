@@ -60,6 +60,12 @@ def source_input(raw, relative):
         raise ValueError('Worker/timezone inverse requires exact complete bytes and an owned relative path')
     row = manifest()['files'][relative]
     digest = _sha(raw)
+    if ((digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),
+                                  (row['reviewedSha256'], row['reviewedBytes']))
+            and relative == 'app/src/main/java/local/pocketchat/ChatSession.java'):
+        from final_browser_source_compatibility import producer_input
+        raw = producer_input(raw, relative)
+        digest = _sha(raw)
     if (digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),
                                   (row['reviewedSha256'], row['reviewedBytes'])):
         from phase1_context_fix_source_compatibility import PATHS as context_paths, source_input as context_source_input

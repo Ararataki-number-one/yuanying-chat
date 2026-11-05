@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 import dual_browser_source_compatibility as dual
+from final_browser_source_compatibility import producer_input as final_producer_input
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA = lambda raw: hashlib.sha256(raw).hexdigest()
@@ -137,6 +138,7 @@ class DualBrowserSourceCompatibility(unittest.TestCase):
         )
         for relative, old, new in targets:
             current = (ROOT / relative).read_bytes()
+            current = final_producer_input(current, relative)
             self.assertIn(old.encode(), current)
             with self.assertRaises(ValueError):
                 dual.source_input(current.replace(old.encode(), new.encode(), 1), relative)

@@ -9,6 +9,17 @@ public class NativeRuntimeCapabilitiesHost {
  static boolean scalar(JSONObject value,String key,Object wanted){JSONObject v=item(value,key);return v.optString("status").equals("sdk-value")&&Objects.equals(v.opt("value"),wanted);}
  static boolean unproven(JSONObject value){return value.opt("processUidVerified")==Boolean.FALSE&&value.opt("siteIsolationVerified")==Boolean.FALSE&&value.opt("statePartitionVerified")==Boolean.FALSE&&value.opt("fullSandboxVerified")==Boolean.FALSE&&"not-collected".equals(value.optString("processEvidence"))&&"not-collected".equals(value.optString("siteIsolationEvidence"))&&"not-collected".equals(value.optString("statePartitionEvidence"))&&"not-collected".equals(value.optString("sandboxEvidence"));}
  static ChatSession route(){ChatSession s=new ChatSession();s.web=new GeckoWebView(s);s.web.runtime=new GeckoRuntime();return s;}
+ static final JSONArray coldPolicyChecks=new JSONArray();
+ static void coldCheck(String name,boolean value){if(!value)throw new AssertionError(name);coldPolicyChecks.put(J.obj("name",name,"pass",true));}
+ static void coldStatusBoundary()throws Exception{
+  ChatSession owner=route();JSONObject value=owner.web.nativeRuntimeCapabilities();
+  coldCheck("CPU metadata is an explicit unobserved default prerequisite",!value.getJSONObject("cpuPolicy").getBoolean("nativeSettingReadback")&&value.getJSONObject("cpuPolicy").getString("scope").equals("synthetic-unobserved-cold-policy"));
+  coldCheck("TLS metadata cannot turn a modeled prerequisite into a wire claim",!value.getJSONObject("tlsPolicy").getBoolean("nativeSettingReadback")&&!value.getJSONObject("tlsPolicy").getBoolean("wireObservationVerified"));
+  owner.tls.desiredMode="tls13";value=owner.web.nativeRuntimeCapabilities();coldCheck("A strict desired mode does not invent active DEFAULT or handshake confirmation",value.getJSONObject("tlsPolicy").getString("desiredMode").equals("tls13")&&value.getJSONObject("tlsPolicy").isNull("activeBootMode")&&!value.getJSONObject("tlsPolicy").getBoolean("nativeSettingReadback"));
+  value.getJSONObject("tlsPolicy").put("nativeSettingReadback",true);coldCheck("Mutating a returned metadata snapshot cannot manufacture later readback",!owner.web.nativeRuntimeCapabilities().getJSONObject("tlsPolicy").getBoolean("nativeSettingReadback"));
+  owner.web.destroyed=true;value=owner.web.nativeRuntimeCapabilities();coldCheck("A retired runtime retains no CPU or TLS native proof",!value.getBoolean("runtimeAvailable")&&!value.getJSONObject("cpuPolicy").getBoolean("nativeSettingReadback")&&!value.getJSONObject("tlsPolicy").getBoolean("nativeSettingReadback"));
+  coldCheck("CPU and TLS status collection is counted without any policy setter",owner.cpu.calls>0&&owner.tls.calls>0&&GeckoRuntimeSettings.writes==0&&ContentBlocking.Settings.writes==0);
+ }
  public static void main(String[] args)throws Exception{
   int creates=GeckoRuntime.created;JSONObject v=GeckoPolicyAdapter.runtimeCapabilityStatus(null,29);
   check("Null runtime does not create or open a runtime",GeckoRuntime.created==creates&&!v.optBoolean("runtimeAvailable"));
@@ -58,13 +69,19 @@ public class NativeRuntimeCapabilitiesHost {
   a.networkRun=true;s.networkReady=false;check("Network checks still require the admitted current network",!a.fresh());s.networkReady=true;s.guard.allowed=false;check("Network checks still require the existing network guard",!a.fresh());s.guard.allowed=true;s.web.protection=false;check("Network checks still require native protection admission",!a.fresh());
   a.cleanup();check("Completed or cancelled checks release the captured runtime reference",a.nativeRuntimeIdentity==null&&!a.running);
   check("All captures made no native policy setter call",GeckoRuntimeSettings.writes==0&&ContentBlocking.Settings.writes==0);
-  System.out.println(J.obj("status","passed","checks",checks.length(),"results",checks,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualSdkApiCompile",false,"physicalPhoneAcceptance",false,"sandboxAcceptance",false));
+  coldStatusBoundary();
+  System.out.println(J.obj("status","passed","checks",checks.length(),"results",checks,"coldPolicyBoundaryPassed",coldPolicyChecks.length(),"coldPolicyBoundaryChecks",coldPolicyChecks,"actualCpuPolicyExecution",false,"actualTlsNativeExecution",false,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualSdkApiCompile",false,"physicalPhoneAcceptance",false,"sandboxAcceptance",false));
  }
 }
-class ChatSession {Object context=new Object();String environmentId="environment-a";int environmentGeneration=4;long applied=11,navigationEpoch=3,connectionEpoch=9;boolean deleted,networkReady=true,offline;GeckoWebView web;Guard guard=new Guard();Privacy privacy=new Privacy();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();long identityAuditAppliedRevision(){return applied;}boolean internalNetwork(){return false;}void updateBrowserActivity(){}}
+class ChatSession {final ColdPolicyStatusBoundary cpu=new ColdPolicyStatusBoundary("automatic"),tls=new ColdPolicyStatusBoundary("default");Object context=new Object();String environmentId="environment-a";int environmentGeneration=4;long applied=11,navigationEpoch=3,connectionEpoch=9;boolean deleted,networkReady=true,offline;GeckoWebView web;Guard guard=new Guard();Privacy privacy=new Privacy();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();long identityAuditAppliedRevision(){return applied;}boolean internalNetwork(){return false;}void updateBrowserActivity(){}}
 /** Independent default-system policy boundary only; native timezone writes,
  * readback, custom-zone page observations and lifecycle stamps are tested by
  * their separate current-policy hosts, not by this SDK capability reader. */
+/** Unobserved modeled application prerequisites, never native confirmation. */
+class ColdPolicyStatusBoundary {
+ String desiredMode;int calls;ColdPolicyStatusBoundary(String mode){desiredMode=mode;}
+ JSONObject status(){calls++;return J.obj("schema",1,"engine","gecko","desiredMode",desiredMode,"activeBootMode",JSONObject.NULL,"scope","synthetic-unobserved-cold-policy","nativeSettingReadback",false,"wireObservationVerified",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false);}
+}
 class SystemTimeZoneBoundary {
  final boolean followsSystem=true;int expectedCalls,statusCalls;
  JSONObject auditExpected(JSONObject expected){expectedCalls++;if(!followsSystem)throw new AssertionError("Custom timezone audit is outside this system-policy capability fixture");return expected;}

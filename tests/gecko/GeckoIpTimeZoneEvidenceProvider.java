@@ -18,7 +18,7 @@ public final class GeckoIpTimeZoneEvidenceProvider extends ContentProvider {
   }
   public ParcelFileDescriptor openFile(Uri uri,String mode)throws FileNotFoundException{
     shell();if(!"r".equals(mode)||uri.getQuery()!=null||uri.getFragment()!=null)throw new SecurityException("Read-only fixed fixture reports");
-    String name;if("/report".equals(uri.getPath()))name="gecko-ip-timezone-results.json";else if("/transport-debug".equals(uri.getPath()))name="gecko-ip-timezone-transport-debug.json";else if("/setup".equals(uri.getPath()))name=IpTimeZoneFixtureScopes.SETUP;else throw new FileNotFoundException("Unknown fixture report");
+    String name;if("/report".equals(uri.getPath()))name="gecko-ip-timezone-results.json";else if("/setup".equals(uri.getPath()))name=IpTimeZoneFixtureScopes.SETUP;else throw new FileNotFoundException("Unknown fixture report");
     File target="/setup".equals(uri.getPath())?IpTimeZoneFixtureScopes.file(getContext(),name):new File(Profiles.global(getContext()).getFilesDir(),name);
     if(java.nio.file.Files.isSymbolicLink(target.toPath())||!target.isFile()||target.length()>4*1024*1024)throw new FileNotFoundException("Bounded fixture report absent");return ParcelFileDescriptor.open(target,ParcelFileDescriptor.MODE_READ_ONLY);
   }

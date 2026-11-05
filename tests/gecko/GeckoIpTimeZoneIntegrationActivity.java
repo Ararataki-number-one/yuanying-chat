@@ -32,10 +32,6 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
   long deadline,wholeDeadline;boolean terminal,roots;GeckoTimeZoneStore.Ticket originalTicket;
   GeckoWebView.IpLookup isolationClaim;ChromiumRouteLease.Handle observedLease;
   JSONObject applyLeaseProof=new JSONObject();
-  final JSONArray diagnosticHistory=new JSONArray();long lastDiagnosticAt=-1000;String lastDiagnosticSignature="";
-  final java.util.concurrent.atomic.AtomicIntegerArray routingCounters=new java.util.concurrent.atomic.AtomicIntegerArray(15);
-  JSONObject extensionDiagnostic=new JSONObject();int extensionDiagnosticAccepted,extensionDiagnosticRejected;WebExtension diagnosticExtension;GeckoRuntime diagnosticRuntime;
-  int diagnosticHello,diagnosticPolls,diagnosticPollIneligible,diagnosticPostAttempted,diagnosticPostReturned,diagnosticPostThrew;boolean diagnosticConsoleEnabled;boolean legacyReadAttempted,legacyReadReturned,legacyReadThrew;int legacyReadId,legacyReadPendingDelta;WebExtension.Port legacyReadPort;
   interface Ready{boolean get()throws Exception;}interface Step{void run()throws Exception;}
 
   @Override public void onCreate(Bundle saved){try{
@@ -68,19 +64,6 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
 
   final class Observed extends GeckoWebView {
     Observed(android.content.Context context,ChatSession owner){super(context,owner);}
-    @Override void applyAddonState(GeckoRuntime expected,WebExtension value,boolean disabled,long serial){
-      try{if(!disabled&&addonStateSerial==serial&&builtinAddonCurrent(expected,value,false))installExtensionDiagnostic(expected,value);}catch(RuntimeException unavailable){extensionDiagnosticRejected=Math.min(10000,extensionDiagnosticRejected+1);}
-      super.applyAddonState(expected,value,disabled,serial);
-    }
-    @Override boolean ipBootstrapRequest(String target,String method,String token,String stamp){
-      boolean result=super.ipBootstrapRequest(target,method,token,stamp);if(geoHostVariant(target))routingCount(result?11:12);routingCount(GEO.equals(target)?result?0:1:result?2:3);return result;
-    }
-    @Override JSONObject protectedNetworkRoute(String target){
-      JSONObject result=super.protectedNetworkRoute(target);if(geoHostVariant(target))routingCount(13);if(GEO.equals(target))routingCount(4+selectedRoute(result));return result;
-    }
-    @Override JSONObject route(String target){
-      JSONObject result=super.route(target);if(geoHostVariant(target))routingCount(14);if(GEO.equals(target))routingCount(selectedRoute(result)==0?9:10);return result;
-    }
     @Override GeckoSession newSession(){runtime.getSettings().setEnterpriseRootsEnabled(true);roots=runtime.getSettings().getEnterpriseRootsEnabled();
       GeckoSession sdk=super.newSession();GeckoSession.ProgressDelegate original=sdk.getProgressDelegate();
       sdk.setProgressDelegate(new GeckoSession.ProgressDelegate(){
@@ -109,104 +92,11 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
       },fail);
     }
   }
-  static boolean geoHostVariant(String target){try{return !GEO.equals(target)&&"ipwho.is".equals(new URI(target).getHost());}catch(Exception rejected){return false;}}
-  static boolean diagnosticKeys(JSONObject value,String... names){Set<String> actual=new HashSet<>();for(Iterator<String> i=value.keys();i.hasNext();)actual.add(i.next());return actual.equals(new HashSet<>(Arrays.asList(names)));}
-  static boolean extensionDiagnosticPayload(JSONObject value,String requestNonce){try{
-    if(value.toString().length()>16384||!diagnosticKeys(value,"schema","diagnosticOnly","releaseAcceptance","requestNonce","runtimeManifest","helperPresence","events","omitted","invalid","bootstrapObject","bootstrapCreate","headersObject"))return false;
-    if(!(value.opt("schema") instanceof Integer)||value.getInt("schema")!=1||!Boolean.TRUE.equals(value.opt("diagnosticOnly"))||!Boolean.FALSE.equals(value.opt("releaseAcceptance"))||!requestNonce.equals(value.opt("requestNonce")))return false;
-    for(String key:new String[]{"omitted","invalid"})if(!(value.opt(key) instanceof Integer)||value.getInt(key)<0||value.getInt(key)>10000)return false;
-    for(String key:new String[]{"bootstrapObject","bootstrapCreate","headersObject"})if(!(value.opt(key) instanceof Boolean))return false;
-    JSONObject manifest=value.getJSONObject("runtimeManifest");if(!diagnosticKeys(manifest,"available","version","id","scriptCount","scripts")||!(manifest.opt("available") instanceof Boolean)||!(manifest.opt("scriptCount") instanceof Integer)||manifest.getInt("scriptCount")< -1||manifest.getInt("scriptCount")>10000)return false;
-    if(!Arrays.asList("2.1.2.104","other","unavailable").contains(manifest.opt("version"))||!Arrays.asList("browser@pocketchat.local","other","unavailable").contains(manifest.opt("id")))return false;
-    JSONArray scripts=manifest.getJSONArray("scripts");if(scripts.length()>8)return false;for(int i=0;i<scripts.length();i++)if(!Arrays.asList("ip-timezone-bootstrap.js","request-headers.js","request-identity-background.js","native-timezone-bridge.js","background.js","other").contains(scripts.opt(i)))return false;
-    JSONObject helpers=value.getJSONObject("helperPresence");if(!diagnosticKeys(helpers,"bootstrap","headers","identity","timezone"))return false;for(String key:new String[]{"bootstrap","headers","identity","timezone"})if(!Arrays.asList("undefined","object","function","boolean","number","string","symbol","bigint").contains(helpers.opt(key)))return false;
-    JSONArray rows=value.getJSONArray("events");if(rows.length()>32)return false;
-    for(int i=0;i<rows.length();i++){
-      JSONObject row=rows.getJSONObject(i),originalRow=new JSONObject(row.toString());for(String key:new String[]{"generation","portCurrent","messageType","kindClass","nestedKindClass","hasKind","hasMessage","hasData"})originalRow.remove(key);if(!diagnosticKeys(originalRow,"sequence","stage","urlClass","exactGeo","get","origin","document","requestIdPresent","result","errorName")||!(row.opt("sequence") instanceof Integer)||row.getInt("sequence")!=i+1)return false;
-      if(!Arrays.asList("bootstrap-loaded","create-enter","create-rejected","create-ready","lookup-received","lookup-rejected","lookup-start","fetch-start","fetch-response","fetch-rejected","deadline","finish-null","finish-observed","before-request","before-redirect","authorization","native-lookup-received","bootstrap-bound","proxy-event","proxy-authorization","header-event","header-authorization","header-listener","hello-result","hello-send-start","hello-failed","snapshot-send-result","native-prepare-received","native-prepare-result","native-protection-received","native-protection-result","port-message-entry","port-connected","port-disconnected","watchdog-scheduled","watchdog-fired","watchdog-hello-start","watchdog-hello-result","watchdog-hello-failed","watchdog-snapshot-result").contains(row.opt("stage")))return false;
-      if(!Arrays.asList("geo-exact","geo-host-variant","other").contains(row.opt("urlClass"))||!Arrays.asList("own","foreign","absent","invalid","unseen").contains(row.opt("origin"))||!Arrays.asList("own","foreign","absent","invalid","unseen").contains(row.opt("document")))return false;
-      if(!Arrays.asList("none","ready","rejected","missing-port","runtime-url","features","registration","exception","shape-or-busy","pending","accepted","absent","invalid","closed","cancelled","observed").contains(row.opt("result"))||!Arrays.asList("none","AbortError","NetworkError","TypeError","SecurityError","TimeoutError","NotAllowedError","InvalidStateError","other").contains(row.opt("errorName")))return false;
-      for(String key:new String[]{"exactGeo","get","requestIdPresent"})if(!(row.opt(key) instanceof Boolean))return false;
-      if(row.has("generation")||row.has("portCurrent")||row.has("messageType")||row.has("kindClass")||row.has("nestedKindClass")||row.has("hasKind")||row.has("hasMessage")||row.has("hasData")){
-        if(!(row.opt("generation") instanceof Integer)||row.getInt("generation")<0||row.getInt("generation")>10000||!Arrays.asList("undefined","object","string","boolean","number","function","symbol","bigint","null").contains(row.opt("messageType"))||!Arrays.asList("prepare","protection","lookup","snapshot","cancel","header-policy","timezone-read","other").contains(row.opt("kindClass"))||!Arrays.asList("prepare","protection","lookup","snapshot","cancel","header-policy","timezone-read","other","none").contains(row.opt("nestedKindClass")))return false;
-        for(String key:new String[]{"portCurrent","hasKind","hasMessage","hasData"})if(!(row.opt(key) instanceof Boolean))return false;
-      }
-    }return true;
-  }catch(Exception rejected){return false;}}
-  void installExtensionDiagnostic(GeckoRuntime expected,WebExtension value){
-    if(value==null||!value.isBuiltIn||!"browser@pocketchat.local".equals(value.id))return;diagnosticExtension=value;diagnosticRuntime=expected;
-    try{expected.getSettings().setConsoleOutputEnabled(true);diagnosticConsoleEnabled=expected.getSettings().getConsoleOutputEnabled();}catch(RuntimeException unavailable){}
-    value.setMessageDelegate(new WebExtension.MessageDelegate(){
-      @Override public GeckoResult<Object> onMessage(String app,Object message,WebExtension.MessageSender sender){
-        boolean owned=!terminal&&"pocketipdiagnostic".equals(app)&&sender!=null&&sender.environmentType==WebExtension.MessageSender.ENV_TYPE_EXTENSION&&sender.session==null&&sender.webExtension==value&&value==diagnosticExtension&&value.isBuiltIn&&"browser@pocketchat.local".equals(value.id)&&remote!=null&&remote.runtime==expected&&diagnosticRuntime==expected&&remote.extension==value;
-        if(owned&&message instanceof JSONObject){JSONObject payload=(JSONObject)message;
-          if(diagnosticKeys(payload,"schema","kind","diagnosticOnly","releaseAcceptance")&&Integer.valueOf(1).equals(payload.opt("schema"))&&"hello".equals(payload.opt("kind"))&&Boolean.TRUE.equals(payload.opt("diagnosticOnly"))&&Boolean.FALSE.equals(payload.opt("releaseAcceptance"))){diagnosticHello=Math.min(10000,diagnosticHello+1);return GeckoResult.fromValue(nonce);}
-          if(extensionDiagnosticPayload(payload,nonce)){extensionDiagnostic=J.parse(payload.toString());extensionDiagnosticAccepted=Math.min(10000,extensionDiagnosticAccepted+1);}else extensionDiagnosticRejected=Math.min(10000,extensionDiagnosticRejected+1);
-        }else extensionDiagnosticRejected=Math.min(10000,extensionDiagnosticRejected+1);
-        return GeckoResult.fromValue(null);
-      }
-    },"pocketipdiagnostic");
-  }
-  JSONArray diagnosticProcesses(){JSONArray result=new JSONArray();try{android.app.ActivityManager manager=getSystemService(android.app.ActivityManager.class);List<android.app.ActivityManager.RunningAppProcessInfo> all=manager==null?null:manager.getRunningAppProcesses();if(all==null)return result;String pkg=getPackageName();for(android.app.ActivityManager.RunningAppProcessInfo item:all){String role=(pkg+":profile6").equals(item.processName)?"profile6":item.processName!=null&&item.processName.matches(java.util.regex.Pattern.quote(pkg+":gecko_env6_")+"[A-Za-z0-9_]+")?"gecko-env6":"";if(!role.isEmpty()&&item.pkgList!=null&&Arrays.asList(item.pkgList).contains(pkg)&&result.length()<64)result.put(J.obj("pid",item.pid,"uid",item.uid,"role",role));}}catch(RuntimeException unavailable){}return result;}
-  static Object diagnosticField(Object value,String name){try{if(value==null)return null;Field field=value.getClass().getDeclaredField(name);field.setAccessible(true);return field.get(value);}catch(Exception unavailable){return null;}}
-  static JSONObject diagnosticPort(WebExtension.Port port){
-    Object id=diagnosticField(port,"id"),disconnected=diagnosticField(port,"disconnected"),listeners=diagnosticField(port,"mListenersRegistered"),dispatcher=diagnosticField(port,"mEventDispatcher"),attached=diagnosticField(dispatcher,"mAttachedToGecko"),pending=diagnosticField(dispatcher,"mPendingMessages");
-    return J.obj("present",port!=null,"id",id instanceof Long?id:JSONObject.NULL,"disconnected",disconnected instanceof Boolean?disconnected:JSONObject.NULL,"listenersRegistered",listeners instanceof Boolean?listeners:JSONObject.NULL,"dispatcherPresent",dispatcher!=null,"dispatcherAttached",attached instanceof Boolean?attached:JSONObject.NULL,"pendingMessages",pending instanceof Collection?Math.min(10000,((Collection<?>)pending).size()):JSONObject.NULL);
-  }
-  void routingCount(int index){routingCounters.accumulateAndGet(index,1,(old,value)->Math.min(10000,old+value));}
-  static int selectedRoute(JSONObject value){
-    if(value==null)return 4;String type=value.optString("type"),host=value.optString("host");int port=value.optInt("port",-1);
-    if("socks".equals(type)&&"127.0.0.1".equals(host)&&port==9)return 0;
-    if("socks".equals(type)&&"127.0.0.1".equals(host)&&port==18766)return 1;
-    if("http".equals(type)&&"127.0.0.1".equals(host)&&port==18767)return 2;
-    if("https".equals(type)&&"127.0.0.1".equals(host)&&port==18768)return 3;
-    return 4;
-  }
   void event(String kind,GeckoSession sdk,String url){if(terminal)return;if(events.length()>=160){failed(new IOException("Native event bound exceeded"));return;}String path="other";try{URI value=new URI(url);if(Arrays.asList(BrowserFingerprintFixture.A,BrowserFingerprintFixture.B).contains(value.getHost())&&Arrays.asList("/env-policy","/env-frame").contains(value.getPath()))path=value.getPath();}catch(Exception ignored){}
     events.put(J.obj("sequence",events.length()+1,"kind",kind,"path",path,"sessionId",AppSessionIdentity.id(sdk),"navigation",session==null?0:session.navigationEpoch,"stage",stage));}
   String proxy(String route){if("socks".equals(route))return "socks://127.0.0.1:18766";if("http".equals(route))return "http://127.0.0.1:18767";if("https".equals(route))return "https://127.0.0.1:18768";throw new SecurityException("Fixed proxy route only");}
   void within()throws IOException{long now=SystemClock.elapsedRealtime();if(now>deadline||now>wholeDeadline)throw new IOException("IP timezone fixture stage deadline");}
-  void waitFor(String label,Ready ready,Step after){if(terminal)return;try{transportDiagnostic(false);within();if(ready.get()){after.run();return;}probe.postDelayed(()->waitFor(label,ready,after),60);}catch(Throwable error){failed(error);}}
-  static String diagnosticToken(String value){return value!=null&&value.matches("[A-Za-z0-9_.:-]{0,160}")?value:"";}
-  JSONArray diagnosticWindows(){
-    JSONArray out=new JSONArray();if(remote!=null)for(GeckoWebView.TimeZoneWindowDiagnostic row:remote.timeZoneWindowDiagnostics)out.put(J.obj("sequence",row.sequence,"revalidate",row.revalidate,"completed",row.completed,"reason",row.reason,"received",row.received==null?JSONObject.NULL:row.received,"ready",row.ready==null?JSONObject.NULL:row.ready,"consumer",row.consumer==null?JSONObject.NULL:row.consumer));return out;
-  }
-  void transportDiagnostic(boolean force){
-    long now=SystemClock.elapsedRealtime();if(build==null||!force&&now-lastDiagnosticAt<1000)return;lastDiagnosticAt=now;
-    try{
-      diagnosticPolls=Math.min(10000,diagnosticPolls+1);boolean eligible=!terminal&&remote!=null&&remote.routePort!=null&&remote.extension==diagnosticExtension&&remote.runtime==diagnosticRuntime;
-      if(eligible){diagnosticPostAttempted=Math.min(10000,diagnosticPostAttempted+1);try{remote.routePort.postMessage(J.obj("kind","timezoneIpDiagnosticSnapshot","requestNonce",nonce));diagnosticPostReturned=Math.min(10000,diagnosticPostReturned+1);}catch(RuntimeException ignored){diagnosticPostThrew=Math.min(10000,diagnosticPostThrew+1);}}else diagnosticPollIneligible=Math.min(10000,diagnosticPollIneligible+1);
-      if(!legacyReadAttempted&&!terminal&&now<=deadline&&now<=wholeDeadline&&remote!=null&&remote.ipLookup!=null&&remote.ipLookup.sent&&remote.ipLookupCurrent(remote.ipLookup)&&remote.current==remote.ipLookup.session&&remote.routePort==remote.ipLookup.port){
-        legacyReadAttempted=true;legacyReadPort=remote.routePort;try{int before=remote.cookieCallbacks.size();legacyReadId=remote.cookieCallbacks.add(legacyReadPort,null,0);legacyReadPendingDelta=remote.cookieCallbacks.size()-before;
-          String readToken=UUID.randomUUID().toString().replace("-","")+UUID.randomUUID().toString().replace("-","");legacyReadPort.postMessage(J.obj("kind","timezoneRead","id",legacyReadId,"sessionId",AppSessionIdentity.id(remote.current),"requestToken",readToken));legacyReadReturned=true;
-        }catch(RuntimeException unavailable){legacyReadThrew=true;}
-      }
-      JSONObject value=J.obj("elapsedRealtime",now,"stage",stage,"terminal",terminal,"sessionPresent",session!=null,"viewPresent",remote!=null);
-      JSONObject routing=new JSONObject();String[] counterNames={"bootstrapGeoAllowed","bootstrapGeoDenied","bootstrapOtherAllowed","bootstrapOtherDenied","protectedGeoBlocked","protectedGeoFixedSocks","protectedGeoFixedHttp","protectedGeoFixedHttps","protectedGeoOther","ordinaryGeoBlocked","ordinaryGeoOther","bootstrapGeoVariantAllowed","bootstrapGeoVariantDenied","protectedGeoVariant","ordinaryGeoVariant"};boolean capped=false;for(int i=0;i<counterNames.length;i++){int count=routingCounters.get(i);routing.put(counterNames[i],count);capped|=count==10000;}routing.put("capped",capped);value.put("routingCounters",routing);
-      if(session!=null){JSONObject currentPolicy=session.timeZone.status(),policy=new JSONObject();for(String name:new String[]{"schema","desiredMode","desiredRevision","state","effectiveMode","rfpPriority","ipMatched","nativeSettingReadback","issue"})policy.put(name,currentPolicy.opt(name));
-        value.put("networkReady",session.networkReady).put("connecting",session.connecting).put("navigating",session.navigating).put("navigationFailed",session.navigationFailed).put("navigationEpoch",session.navigationEpoch).put("connectionEpoch",session.connectionEpoch).put("ownerDeleted",session.deleted).put("timeZonePolicy",policy);
-        NetworkPoolIdentity.NetworkSnapshot network=session.browserDefaultNetwork.snapshot();if(network!=null)value.put("defaultNetwork",J.obj("known",network.known,"internet",network.internet,"vpn",network.vpn,"revision",network.revision,"identityPresent",!network.identity.isEmpty()));
-      }
-      if(remote!=null){
-        GeckoSession current=remote.current;GeckoWebView.TimeZoneGate gate=remote.timeZoneGates.get(current);GeckoWebView.IpLookup lookup=remote.ipLookup;GeckoIpRouteWatch.Snapshot links=remote.ipRoutes.snapshot();ChromiumRouteLease.Snapshot leases=ChromiumRouteLease.snapshot();
-        value.put("view",J.obj("ready",remote.ready,"failed",remote.failed,"destroyed",remote.destroyed,"privacyReady",remote.privacyReady,"addonDisabled",remote.addonDisabled,"requestHeadersInstalled",remote.requestHeadersInstalled,"routePortPresent",remote.routePort!=null,"nativeProtectionConfirmed",remote.nativeProtection.confirmed(),"protectionLevel",remote.protectionLevel,"currentSessionPresent",current!=null,"currentSessionOpen",current!=null&&current.isOpen(),"currentSessionId",current==null?"":diagnosticToken(AppSessionIdentity.id(current)),"currentPagePortPresent",remote.ports.get(current)!=null,"hasVisibleDocument",remote.hasVisibleDocument(),"ipRouteNeedsReload",remote.ipRouteNeedsReload,"routeStamp",diagnosticToken(remote.ipRouteStamp()),"guardBlocked",session==null||session.guard==null||session.guard.blocked,"generalRouteReady",remote.generalRouteReady()));
-        value.put("linkWatch",J.obj("networkPresent",!links.network.isEmpty(),"linksPresent",!links.links.isEmpty(),"serial",links.serial)).put("routeLeases",J.obj("surfaces",leases.surfaces,"downloads",leases.downloads,"changes",leases.changes,"revision",leases.revision));
-        value.put("gate",gate==null?J.obj("present",false):J.obj("present",true,"epoch",diagnosticToken(gate.epoch),"documentSerial",gate.documentSerial,"preparing",gate.preparing,"ready",gate.ready,"revalidating",gate.revalidating,"waiting",gate.waiting.size(),"proofWaiting",gate.proofWaiting.size(),"networkWaiting",gate.networkWaiting.size(),"routeLeasePresent",remote.ipRouteLeases.containsKey(gate)));
-        value.put("lookup",lookup==null?J.obj("present",false):J.obj("present",true,"sent",lookup.sent,"id",lookup.id,"currentSession",lookup.session==current,"currentGate",lookup.gate==gate,"currentPort",lookup.port==remote.routePort,"currentRuntime",lookup.runtime==remote.runtime,"requestToken",diagnosticToken(lookup.token),"routeStamp",diagnosticToken(lookup.stamp),"remainingMs",Math.max(-120000,Math.min(8000,lookup.expires-now)),"leasePresent",lookup.lease!=null,"leaseClosed",lookup.lease!=null&&lookup.lease.closed,"documentSerial",lookup.document,"connectionEpoch",lookup.connection,"desiredRevision",lookup.revision));
-        Field field=GeckoTimeZoneController.class.getDeclaredField("operations");field.setAccessible(true);Object operation=((Map<?,?>)field.get(session.timeZone)).get(current);JSONObject op=J.obj("present",operation!=null);
-        if(operation!=null)for(String name:new String[]{"started","retired","finished","ready","verified","unsupported","rfpManaged"}){Field member=operation.getClass().getDeclaredField(name);member.setAccessible(true);op.put(name,member.getBoolean(operation));}
-        value.put("operation",op);
-      }
-      // Retain state transitions, rather than losing the 8s pending lookup to
-      // eighty later identical timeout samples. Clock-only changes replace the
-      // latest sample. All observations still consume the original deadline.
-      JSONObject signature=J.parse(value.toString());signature.remove("elapsedRealtime");if(signature.optJSONObject("lookup")!=null)signature.getJSONObject("lookup").remove("remainingMs");String key=signature.toString();
-      if(key.equals(lastDiagnosticSignature)&&diagnosticHistory.length()>0)diagnosticHistory.remove(diagnosticHistory.length()-1);
-      while(diagnosticHistory.length()>=16)diagnosticHistory.remove(0);diagnosticHistory.put(value);lastDiagnosticSignature=key;
-      JSONObject report=J.obj("schema",1,"diagnosticOnly",true,"releaseAcceptance",false,"sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"integrationApkSha256",build.getString("apkSha256"),"sdkRunId",build.getJSONObject("sdkBuildIdentity").getString("runId"),"sdkRunAttempt",build.getJSONObject("sdkBuildIdentity").getString("runAttempt"),"snapshots",diagnosticHistory,"extensionDiagnostic",J.obj("registered",diagnosticExtension!=null,"accepted",extensionDiagnosticAccepted,"rejected",extensionDiagnosticRejected,"hello",diagnosticHello,"latest",extensionDiagnostic,"poll",J.obj("count",diagnosticPolls,"ineligible",diagnosticPollIneligible,"eligible",eligible,"portPresent",remote!=null&&remote.routePort!=null,"extensionSame",remote!=null&&remote.extension==diagnosticExtension,"runtimeSame",remote!=null&&remote.runtime==diagnosticRuntime,"attempted",diagnosticPostAttempted,"returned",diagnosticPostReturned,"threw",diagnosticPostThrew,"consoleEnabled",diagnosticConsoleEnabled,"processPid",android.os.Process.myPid(),"processUid",android.os.Process.myUid()),"port",diagnosticPort(remote==null?null:remote.routePort),"processes",diagnosticProcesses(),"windows",diagnosticWindows(),"legacyRead",J.obj("attempted",legacyReadAttempted,"returned",legacyReadReturned,"threw",legacyReadThrew,"id",legacyReadId,"pendingDelta",legacyReadPendingDelta,"portCurrent",remote!=null&&legacyReadPort!=null&&remote.routePort==legacyReadPort,"responseVerified",false)),"actualPublicIpGeolocationVerified",false,"scope","Read-only memory fields of the actual production native gate/lookup; no readiness is forced and no raw URL, address, credential, page body or TLS material is collected.");
-      android.util.AtomicFile file=new android.util.AtomicFile(new File(Profiles.global(this).getFilesDir(),"gecko-ip-timezone-transport-debug.json"));FileOutputStream out=null;try{byte[] raw=(report.toString()+"\n").getBytes(StandardCharsets.UTF_8);if(raw.length>65536)throw new IOException("Bounded native diagnostic overflow");out=file.startWrite();out.write(raw);file.finishWrite(out);}catch(Exception error){if(out!=null)file.failWrite(out);}
-    }catch(Exception unavailable){/* Diagnostic failure never modifies the original workload outcome. */}
-  }
+  void waitFor(String label,Ready ready,Step after){if(terminal)return;try{within();if(ready.get()){after.run();return;}probe.postDelayed(()->waitFor(label,ready,after),60);}catch(Throwable error){failed(error);}}
   boolean ready(){return session!=null&&remote!=null&&remote.ready&&session.networkReady&&!session.connecting&&!session.navigating&&remote.hasVisibleDocument()&&remote.ports.get(remote.current)!=null&&remote.timeZoneStatus().optBoolean("nativeSettingReadback")&&roots;}
   void next(String name,Step after){try{stage=name;deadline=SystemClock.elapsedRealtime()+60000;publish();control("stage",J.obj("case",name),ignored->run(after));}catch(Throwable error){failed(error);}}
   void run(Step step){try{step.run();}catch(Throwable error){failed(error);}}
@@ -358,7 +248,7 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
   void failed(Throwable error){if(terminal)return;terminal=true;failedStage=stage;stage="failed";failure=error.getClass().getSimpleName();String message=error.getMessage();
     if(error instanceof AssertionError&&message!=null&&message.matches("[A-Za-z0-9._-]{1,160}"))failure+=":"+message;
     else for(StackTraceElement frame:error.getStackTrace())if(frame.getClassName().startsWith("local.pocketchat.GeckoIpTimeZoneIntegrationActivity")){failure+="@"+frame.getMethodName()+":"+frame.getLineNumber();break;}
-    transportDiagnostic(true);try{publish();}catch(Exception ignored){}}
+    try{publish();}catch(Exception ignored){}}
   void publish()throws Exception{if(build==null)return;JSONObject value=J.obj("schema",1,"fixtureType","gecko-production-ip-timezone-v1","engine","gecko","status",terminal?(failure.isEmpty()?"passed":"failed"):"running","stage",stage,"failedAtStage",failedStage,"failure",failure,"sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"buildIdentity",build,"setup",setup==null?new JSONObject():setup,"checks",checks,"cases",cases,"nativeEvents",events,"lastPage",lastPage,"currentTimeZonePolicy",session==null?new JSONObject():session.timeZone.status(),"actualAndroidExecution",true,"actualGeckoExecution",remote!=null&&remote.current!=null,"syntheticGeoService",true,"actualPublicIpGeolocationVerified",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false,"fingerprintProtectionVerified",false,"scope","Canonical MainActivity profile6, actual production UI/native timezone/private bootstrap plus controlled HTTPS proxy responses. Geo JSON is synthetic, not public-location proof; raw Worker clocks and capability-denial observations do not establish full Worker timezone isolation.");
     android.util.AtomicFile file=new android.util.AtomicFile(new File(Profiles.global(this).getFilesDir(),"gecko-ip-timezone-results.json"));FileOutputStream out=null;try{out=file.startWrite();byte[] bytes=(value.toString()+"\n").getBytes(StandardCharsets.UTF_8);if(bytes.length>4*1024*1024)throw new IOException("Bounded IP fixture report overflow");out.write(bytes);file.finishWrite(out);}catch(Exception error){if(out!=null)file.failWrite(out);throw error;}
   }

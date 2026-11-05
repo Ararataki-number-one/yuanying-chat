@@ -61,6 +61,8 @@ def main():
         target=out/('chromium-fingerprint-activity-'+label+'.json');add('chromium-fingerprint-activity-'+label,'tests/chromium-fingerprint-activity-host/run.py',java+['--json-jar',jar,'--output',target],target)
         for name,script in [('chromium-worker-policy','tests/chromium-worker-policy-host/run.py'),('gecko-request-headers','tests/gecko-request-headers-host/run.py'),('gecko-timezone','tests/gecko-timezone-host/run.py'),('gecko-timezone-report','tests/gecko-timezone-host/report.py'),('gecko-timezone-flow','tests/gecko-timezone-flow-host/run.py'),('gecko-timezone-stale','tests/gecko-timezone-stale-host/run.py'),('gecko-timezone-routing','tests/gecko-timezone-routing-host/run.py'),('gecko-timezone-delete','tests/gecko-timezone-delete-host/run.py'),('gecko-timezone-http-wait','tests/gecko-timezone-http-host/run.py'),('gecko-addon-lifecycle','tests/gecko-addon-lifecycle-host/run.py'),('request-identity-timezone','tests/request-identity-timezone-host/run.py'),('environment-audit-pending','tests/environment-audit-pending-host/run.py'),('gecko-ip-timezone','tests/gecko-ip-timezone-host/run.py'),('gecko-ip-transport','tests/gecko-ip-transport-host/run.py'),('ip-timezone-fixture-setup','tests/ip-timezone-fixture-setup-host/run.py'),('gecko-popup-navigation','tests/gecko-popup-navigation-host/run.py')]:
             target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
+        for name,script in [('gecko-cpu-core','tests/gecko-cpu-host/run.py'),('gecko-cpu-ui','tests/gecko-cpu-ui-host/run.py'),('gecko-cpu-controller','tests/gecko-cpu-controller-host/run.py')]:
+            target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
         target=out/('runtime-origin-adapter-'+label+'.json');add('runtime-origin-adapter-'+label,'tests/runtime-origin-adapter-host/run.py',java+['--json-jar',jar,'--android-jar',a.android_jar.resolve(),'--jsdom-module',a.jsdom_module.resolve(),'--output',target],target)
     cases.append(('gecko-site-boundary',['node','--test','tests/browser-runtime/gecko-site-boundary.test.cjs'],None))
     cases.append(('chromium-fingerprint-script',['node','--test','tests/chromium-fingerprint-script.test.cjs'],None))
@@ -76,6 +78,13 @@ def main():
     target=out/'gecko-app-session-api.json';sdk_arguments=(['--sdk-jar',a.gecko_sdk_jar.resolve()] if a.gecko_sdk_jar else [])+(['--sdk-receipt',a.gecko_sdk_receipt.resolve()] if a.gecko_sdk_receipt else []);add('gecko-app-session-api','tests/gecko/app_session_identity_api_contract.py',java+['--android-jar',a.android_jar.resolve(),'--output',target]+sdk_arguments,target)
     add('connection-timezone-prerequisite','tests/profile_connection_timezone_prerequisite_test.py')
     add('connection-route-timezone-prerequisite','tests/connection_route_timezone_prerequisite_test.py')
+    target=out/'gecko-cpu-cleanup.json';add('gecko-cpu-cleanup','tests/gecko-cpu-host/cleanup.py',java+['--output',target],target)
+    add('gecko-cpu-evidence-gate','tests/gecko_cpu_acceptance_test.py')
+    add('gecko-cpu-publication-gate','tests/browser_cpu_publish_gate_test.py')
+    add('cpu-ip-composition-controls','tests/browser_cpu_ip_composition_test.py')
+    cases.append(('cpu-ip-combo-first-inline',['node','tests/browser-runtime/gecko-cpu-ip-combo-page.test.cjs'],None))
+    add('cpu-ip-combo-evidence','tests/gecko_cpu_ip_combo_evidence_test.py')
+    add('cpu-ip-combo-runner','tests/gecko_cpu_ip_combo_runner_test.py')
     add('fingerprint-publisher-gate','tests/browser_fingerprint_publish_gate_test.py')
     add('fingerprint-evidence-gate','tests/browser_fingerprint_evidence_test.py')
     add('fingerprint-fixture-controls','tests/browser_fingerprint_fixture_test.py')
@@ -94,11 +103,27 @@ def main():
     add('public-source-history','tests/browser_public_history_test.py')
     add('page-bridge-guard-adapters','tests/profile_page_bridge_guard_adapters_test.py')
     add('page-bridge-budget-source-history','tests/profile_page_bridge_budget_source_compatibility_test.py')
+    add('ip-timezone-source-history','tests/profile_ip_timezone_source_compatibility_test.py')
     add('ip-timezone-publication','tests/browser_ip_timezone_publication_test.py')
     add('ip-timezone-publisher-gate','tests/browser_ip_timezone_publish_gate_test.py')
     add('ip-timezone-server-controls','tests/browser_ip_timezone_server_test.py')
     add('ip-timezone-evidence-gate','tests/gecko_ip_timezone_evidence_test.py')
     add('ip-timezone-runner-controls','tests/gecko_ip_timezone_runner_test.py')
+    add('cpu-ip-source-history','tests/profile_cpu_ip_source_compatibility_test.py')
+    # Additive native TLS and same-environment combination controls. The
+    # complete prior browser/CPU/IP cohort keeps its command order and budgets.
+    for label,jar in [('desktop',desktop),('android-json',android_json)]:
+        for name,script in [('gecko-tls-store','tests/gecko-tls-host/run.py'),('gecko-tls-ui','tests/gecko-tls-ui-host/run.py'),('gecko-tls-controller','tests/gecko-tls-controller-host/run.py'),('gecko-tls-cleanup','tests/gecko-tls-delete-host/run.py'),('tls-fixture-scope','tests/tls-fixture-scope-host/run.py'),('native-tls-callback','tests/native-tls-callback-host/run.py'),('gecko-ip-window-barrier','tests/gecko-ip-window-barrier-host/run.py')]:
+            target=out/(name+'-'+label+'.json');add(name+'-'+label,script,java+['--json-jar',jar,'--output',target],target)
+    for name,script in [('native-tls-capability-controls','tests/native_tls_probe_test.py'),('gecko-tls-production-evidence','tests/gecko_tls_acceptance_test.py'),('gecko-tls-combined-evidence','tests/gecko_tls_cpu_ip_combo_test.py'),('gecko-tls-combined-wire','tests/gecko_tls_cpu_ip_wire_test.py')]:
+        target=out/(name+'.json');add(name,script,['--output',target],target)
+    add('cpu-tls-retained-host-boundaries','tests/profile_cpu_tls_host_boundary_test.py',report=ROOT/'work/cpu-tls-host-boundary/results.json')
+    add('tls-cpu-ip-source-history','tests/profile_tls_cpu_ip_source_compatibility_test.py')
+    add('final-browser-source-history','tests/profile_final_browser_source_compatibility_test.py')
+    # Final test Application must classify the exact final manifest's fifteen roles.
+    for label,jar in [('desktop',desktop),('android-json',android_json)]:
+        target=out/('ip-timezone-fixture-process-'+label+'.json');add('ip-timezone-fixture-process-'+label,'tests/ip-timezone-fixture-process-host/run.py',java+['--json-jar',jar,'--output',target],target)
+    target=out/'ip-timezone-rfp-standard.json';add('ip-timezone-rfp-standard','tests/gecko_ip_timezone_rfp_standard_test.py',java+['--output',target],target)
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','app/src/main/java','app/src/main/assets','tests','tools/browser','tools/gecko','.github/workflows/browser-2_1-acceptance.yml'],cwd=ROOT,text=True).splitlines()
     files=[ROOT/name for name in sorted(set(names)) if (ROOT/name).is_file()]
     hashes={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in files}

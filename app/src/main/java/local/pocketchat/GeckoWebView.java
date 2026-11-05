@@ -29,7 +29,7 @@ class GeckoWebView extends FrameLayout {
   Object nativeRuntimeIdentity(){return destroyed||!enabled||owner.deleted?null:runtime;}
   JSONObject nativeRuntimeCapabilities(){
     JSONObject value=GeckoPolicyAdapter.runtimeCapabilityStatus((GeckoRuntime)nativeRuntimeIdentity(),Build.VERSION.SDK_INT);
-    try{value.put("environmentId",owner.environmentId);value.put("environmentGeneration",owner.environmentGeneration);value.put("configurationRevision",owner.identityAuditAppliedRevision());value.put("identityPolicyRevision",identityPolicyRevision);value.put("requestHeaderPolicy",J.parse(metadata.requestHeaderPolicy.toString()));value.put("timeZonePolicy",timeZoneStatus());}catch(JSONException ignored){}
+    try{value.put("environmentId",owner.environmentId);value.put("environmentGeneration",owner.environmentGeneration);value.put("configurationRevision",owner.identityAuditAppliedRevision());value.put("identityPolicyRevision",identityPolicyRevision);value.put("requestHeaderPolicy",J.parse(metadata.requestHeaderPolicy.toString()));value.put("timeZonePolicy",timeZoneStatus());value.put("cpuPolicy",owner.cpu.status());value.put("tlsPolicy",owner.tls.status());}catch(JSONException ignored){}
     return value;
   }
   void setHost(android.app.Activity activity){Context next=activity==null?owner.context:activity;if(displayContext.getBaseContext()!=next)blockedPopups.invalidate();if(activity==null)closeExitIpPage();displayContext.setBaseContext(next);}
@@ -45,7 +45,7 @@ class GeckoWebView extends FrameLayout {
     if(chrome!=null){if(readingOwnerVisible())chrome.webTouch(event);else chrome.cancelWebGesture();}return handled;
   }
   void destroy(){
-    if(destroyed)return;destroyed=true;blockedPopups.close();ipRoutes.close();if(ipObservedNetwork!=null)ipObservedNetwork.removeRouteListener(ipRouteSignal);owner.prefs.unregisterOnSharedPreferenceChangeListener(ipPreferences);owner.handler.removeCallbacks(ipRouteCheck);retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
+    if(destroyed)return;destroyed=true;owner.cpu.retire(runtime);owner.tls.retire(runtime);blockedPopups.close();ipRoutes.close();if(ipObservedNetwork!=null)ipObservedNetwork.removeRouteListener(ipRouteSignal);owner.prefs.unregisterOnSharedPreferenceChangeListener(ipPreferences);owner.handler.removeCallbacks(ipRouteCheck);retireTimeZones();requestHeadersInstalled=false;retireRequestHeaderPolicy();generalRestore=null;ChromiumRouteLease.removeListener(routeLeaseChanged);releaseGeneralRoutes();generalSessions.clear();deferredGeneralLoads.clear();closeExitIpPage();if(contentPermissions!=null)contentPermissions.close();
     cancelZoom();cancelProtectionTasks();nativeProtection.closed();protectionRestore=null;owner.handler.removeCallbacks(recovery);owner.handler.removeCallbacks(checkpoint);saveCheckpoint();
     callbacks.clear();cookieCallbacks.clear();appearanceSync.clear();
     appearanceLoads.clear();appearanceConnections.clear();appearanceDocuments.clear();staleAppearanceConnections.clear();
@@ -61,6 +61,7 @@ class GeckoWebView extends FrameLayout {
   final ChatSession owner;
   GeckoView surface;GeckoRuntime runtime;WebExtension extension;GeckoSession primary,current;
   boolean addonDisabled;long addonStateSerial;
+  GeckoCpuController.Boot cpuBoot;boolean cpuStartupRequested;GeckoTlsController.Boot tlsBoot;boolean tlsStartupRequested;
   interface ExitIpPageListener{void changed(String message);void closed();}
   ExitIpPageSession exitIpPage;int exitIpTopInset;
   boolean hasExitIpPage(){return exitIpPage!=null;}
@@ -282,13 +283,15 @@ class GeckoWebView extends FrameLayout {
   void releaseIpRoute(TimeZoneGate gate){ChromiumRouteLease.Handle lease=ipRouteLeases.remove(gate);if(lease!=null)lease.close();}
   boolean ipNavigationFailed(GeckoSession session){IpNavigationFailure value=ipNavigationFailure;return value!=null&&value.session==session&&current==session&&timeZoneGates.get(session)==value.gate&&!value.gate.ready&&value.gate.documentSerial==0&&value.navigation==owner.navigationEpoch&&value.target.equals(owner.navigationTarget)&&autoIpMode();}
   void finishIpNavigationFailure(GeckoSession session,TimeZoneGate gate,String issue){
-    if(destroyed||session!=current||timeZoneGates.get(session)!=gate||gate.ready||gate.revalidating||gate.documentSerial!=0||!autoIpMode()||!owner.navigating||timeZoneIntents.get(session)==null||hasVisibleDocument())return;
-    String location=locations.getOrDefault(session,"");if(!location.isEmpty()&&!"about:blank".equals(location))return;
+    if(destroyed||session!=current||timeZoneGates.get(session)!=gate||gate.ready||gate.revalidating||gate.documentSerial!=0||!autoIpMode()||!owner.navigating||timeZoneIntents.get(session)==null)return;
+    boolean visible=hasVisibleDocument();if(visible&&!ipRouteNeedsReload)return;
+    String location=locations.getOrDefault(session,"");if(!visible&&!location.isEmpty()&&!"about:blank".equals(location))return;
     if(owner.pending!=null||owner.submitting||owner.operation||owner.transferActive||owner.resourceChoosers>0||owner.resourceFilePreparations>0||owner.fileWorkActive())return;
     String target=queued.isEmpty()?owner.navigationTarget:queued;if(!target.equals(owner.navigationTarget)||!allowedUrl(target)||!identityRequestAllowed(target))return;
     queued=target;ipNavigationFailure=new IpNavigationFailure(session,gate,owner.navigationEpoch,target);
     // A service/clock failure is not evidence that the admitted route died.
-    // Keep the exact target and task state; do not schedule network recovery.
+    // Keep the exact target, any visible old document and task state; do not
+    // schedule network recovery or retry a route awaiting explicit rematching.
     owner.navigating=false;owner.navigationFailed=true;owner.pageError=issue;owner.setStatus(issue);
   }
   boolean retryFailedIpNavigation(String target){
@@ -340,36 +343,25 @@ class GeckoWebView extends FrameLayout {
     if(!timeZoneSessionAlive(session)||popups.contains(session))return;
     startTimeZone(session,ignored->{},true);
   }
-  // DIAGNOSTIC ONLY: values are never read by a native policy or workload gate.
-  static final class TimeZoneWindowDiagnostic {
-    int sequence;boolean revalidate,completed;String reason="none";Boolean received,ready,consumer;
-  }
-  final ArrayList<TimeZoneWindowDiagnostic> timeZoneWindowDiagnostics=new ArrayList<>();int timeZoneWindowDiagnosticSequence;
-  TimeZoneWindowDiagnostic diagnosticWindowStart(boolean revalidate){
-    TimeZoneWindowDiagnostic row=new TimeZoneWindowDiagnostic();row.sequence=timeZoneWindowDiagnosticSequence=Math.min(10000,timeZoneWindowDiagnosticSequence+1);row.revalidate=revalidate;
-    while(timeZoneWindowDiagnostics.size()>=8)timeZoneWindowDiagnostics.remove(0);timeZoneWindowDiagnostics.add(row);return row;
-  }
-  void diagnosticComplete(GeckoResult<Boolean> window,TimeZoneWindowDiagnostic row,boolean result){
-    row.completed=true;row.ready=result;window.complete(result);
-  }
   private void startTimeZone(GeckoSession session,java.util.function.Consumer<Boolean> done,boolean revalidate){
     if(!timeZoneSessionAlive(session)){done.accept(false);return;}if(!revalidate&&timeZoneAllows(session)){done.accept(true);return;}
     if(popups.contains(session)){done.accept(owner.timeZone.popupAllowed());return;}
     TimeZoneGate existing=timeZoneGates.get(session);if(existing==null){existing=new TimeZoneGate();timeZoneGates.put(session,existing);}final TimeZoneGate gate=existing;
     if(revalidate){completeTimeZoneProofs(gate,false);completeTimeZoneRequests(gate,false);gate.documentSerial++;gate.preparing=false;gate.ready=false;gate.revalidating=true;}
     gate.waiting.add(done);if(gate.preparing)return;gate.preparing=true;gate.ready=false;final WebExtension.Port port=routePort;final long document=gate.documentSerial;
-    final TimeZoneWindowDiagnostic diagnostic=diagnosticWindowStart(revalidate);final String[] diagnosticCaller={"none"};
     final GeckoResult<Boolean> window=new GeckoResult<>();
     java.util.concurrent.atomic.AtomicBoolean once=new java.util.concurrent.atomic.AtomicBoolean();
     final Runnable[] deadline={null};
     java.util.function.Consumer<Boolean> windowReady=ready->{
-      if(!once.compareAndSet(false,true))return;diagnostic.reason=diagnosticCaller[0];diagnostic.received=ready;if(deadline[0]!=null)owner.handler.removeCallbacks(deadline[0]);
-      diagnosticComplete(window,diagnostic,ready&&timeZoneSessionAlive(session)&&timeZoneGates.get(session)==gate&&gate.documentSerial==document&&port!=null&&routePort==port);
+      if(!once.compareAndSet(false,true))return;if(deadline[0]!=null)owner.handler.removeCallbacks(deadline[0]);
+      window.complete(ready&&timeZoneSessionAlive(session)&&timeZoneGates.get(session)==gate&&gate.documentSerial==document&&port!=null&&routePort==port);
     };
     GeckoTimeZoneController.NativeAccess access=new GeckoTimeZoneController.NativeAccess(){
       public boolean current(){return timeZoneSessionAlive(session)&&timeZoneGates.get(session)==gate&&gate.documentSerial==document&&port!=null&&routePort==port&&(!autoIpMode()||!ipRouteNeedsReload&&owner.guard.allowed());}
       public String ipRouteStamp(){return GeckoWebView.this.ipRouteStamp();}
-      public void lookupIp(String token,java.util.function.Consumer<String> ok,java.util.function.Consumer<Throwable> fail){if(!current()){fail.accept(new IOException("出口时区查询上下文已变化"));return;}lookupIpTimeZone(session,gate,token,ok,fail);}
+      public void lookupIp(String token,java.util.function.Consumer<String> ok,java.util.function.Consumer<Throwable> fail){
+        window.accept(ready->{if(!ready||!current()){fail.accept(new IOException("出口时区查询上下文已变化"));return;}lookupIpTimeZone(session,gate,token,ok,fail);},fail::accept);
+      }
       void request(String kind,String zone,String token,java.util.function.Consumer<String> ok,java.util.function.Consumer<Throwable> fail){
         window.accept(ready->{if(!ready||!current()){fail.accept(new IOException("浏览器窗口或文档已变化，时区尚未确认"));return;}sendTimeZone(port,session,gate,kind,zone,token,ok,fail);},fail::accept);
       }
@@ -379,16 +371,15 @@ class GeckoWebView extends FrameLayout {
     java.util.function.Consumer<Boolean> finished=ok->{if(timeZoneGates.get(session)==gate&&gate.documentSerial==document)finishTimeZone(session,gate,ok);};
     if(revalidate){
       try{owner.timeZone.revalidate(session,AppSessionIdentity.id(session),gate.epoch,access,finished);}
-      catch(RuntimeException unavailable){finished.accept(false);diagnosticCaller[0]="revalidate-error";windowReady.accept(false);return;}
+      catch(RuntimeException unavailable){finished.accept(false);windowReady.accept(false);return;}
     }else{
       window.accept(ready->{
-        diagnostic.consumer=ready;
         if(!access.current()){finished.accept(false);return;}
         try{owner.timeZone.prepare(session,AppSessionIdentity.id(session),gate.epoch,access,finished);}catch(RuntimeException unavailable){finished.accept(false);}
       },error->finished.accept(false));
     }
-    deadline[0]=()->{diagnosticCaller[0]="timeout";windowReady.accept(false);};owner.handler.postDelayed(deadline[0],5000);
-    try{session.getUserAgent().accept(value->{diagnosticCaller[0]="success";windowReady.accept(true);},error->{diagnosticCaller[0]="error";windowReady.accept(false);});}catch(RuntimeException unavailable){diagnosticCaller[0]="throw";windowReady.accept(false);}
+    deadline[0]=()->windowReady.accept(false);owner.handler.postDelayed(deadline[0],5000);
+    try{session.getUserAgent().accept(value->windowReady.accept(true),error->windowReady.accept(false));}catch(RuntimeException unavailable){windowReady.accept(false);}
     metadata.timeZonePolicy=timeZoneStatus();
   }
   void completeTimeZoneRequests(TimeZoneGate gate,boolean ready){
@@ -502,17 +493,22 @@ class GeckoWebView extends FrameLayout {
     resourceAdmission=owner.resources.request(runtime!=null,startupState!=null||owner.resourceRestoreWork(),memory);
     if(resourceAdmission==ResourcePressureController.Admission.DEFER){resourceDeferred=true;owner.setStatus(ResourcePressureController.DEFERRED_MESSAGE);return;}
     resourceDeferred=false;
+    if(cpuBoot==null){
+      if(!cpuStartupRequested){cpuStartupRequested=true;owner.cpu.prepareStartup(value->{
+        if(destroyed||owner.deleted)return;if(value==null){failure("CPU 冷启动配置未能安全准备，请重新打开当前环境");return;}cpuBoot=value;initialize();
+      });}return;
+    }
+    if(tlsBoot==null){
+      if(!tlsStartupRequested){tlsStartupRequested=true;owner.tls.prepareStartup(value->{
+        if(destroyed||owner.deleted)return;if(value==null){failure("TLS 冷启动配置未能安全准备，请完整冷启动当前环境后重试");return;}tlsBoot=value;initialize();
+      });}return;
+    }
     try{
       if(sdkBuildIdentity==null)sdkBuildIdentity=NormalCaretSdkReceipt.read(owner.context);
-      File directory=new File(owner.context.getNoBackupFilesDir(),"gecko-browser");
-      if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("无法创建浏览器数据目录");
-      File config=new File(owner.context.getNoBackupFilesDir(),"gecko-browser.yaml");
-      // Closed bootstrap route. The built-in route delegate opens only the existing guarded route.
-      String prefs="prefs:\n  network.proxy.type: 1\n  network.proxy.socks: '127.0.0.1'\n  network.proxy.socks_port: 9\n"
-        +"  network.proxy.socks_version: 5\n  network.proxy.socks_remote_dns: true\n  network.proxy.no_proxies_on: ''\n"
-        +"  network.proxy.allow_hijacking_localhost: true\n  network.trr.mode: 5\n  network.dns.disablePrefetch: true\n"
-        +"  network.prefetch-next: false\n  network.http.speculative-parallel-limit: 0\n  media.peerconnection.enabled: false\n";
-      Files.write(config.toPath(),prefs.getBytes(StandardCharsets.UTF_8));
+      File directory=cpuBoot.profile,config=cpuBoot.config;
+      if(!directory.equals(tlsBoot.profile)||!config.equals(tlsBoot.config))throw new IOException("TLS cold runtime profile changed");
+      if(!owner.tls.claimRuntime(tlsBoot))throw new IOException("TLS cold runtime ownership changed");
+      if(!owner.cpu.claimRuntime(cpuBoot))throw new IOException("CPU cold runtime ownership changed");
       runtime=GeckoRuntime.create(new GeckoEnvironmentContext(owner.context),new GeckoRuntimeSettings.Builder()
         .arguments(new String[]{"-profile",directory.getAbsolutePath()}).configFilePath(config.getAbsolutePath())
         .isolatedProcessEnabled(Build.VERSION.SDK_INT>=29).appZygoteProcessEnabled(false)
@@ -520,6 +516,14 @@ class GeckoWebView extends FrameLayout {
         .preferredColorScheme(AppAppearance.dark()?GeckoRuntimeSettings.COLOR_SCHEME_DARK:GeckoRuntimeSettings.COLOR_SCHEME_LIGHT)
         .forceUserScalableEnabled(true).inputAutoZoomEnabled(true).build());
       owner.resources.runtimeCreated();
+      GeckoRuntime cpuRuntime=runtime;
+      owner.cpu.attachRuntime(cpuBoot,cpuRuntime,new GeckoCpuNative(()->!destroyed&&!owner.deleted&&runtime==cpuRuntime),accepted->{
+        if(destroyed||runtime!=cpuRuntime)return;if(!accepted){failure("原生 CPU 配置未确认，请重新打开当前环境");return;}maybeOpen();
+      });
+      final GeckoRuntime tlsRuntime=runtime;
+      owner.tls.attachRuntime(tlsBoot,tlsRuntime,new GeckoTlsNative(()->!destroyed&&!owner.deleted&&runtime==tlsRuntime&&owner.tls.acceptsNativeWork(tlsRuntime)),accepted->{
+        if(destroyed||runtime!=tlsRuntime)return;if(!accepted){failure("原生 TLS 协议尚未确认，请完整冷启动当前环境后重试");return;}maybeOpen();
+      });
       final GeckoRuntime created=runtime;final long addonSerial=addonStateSerial;
       created.getWebExtensionController().setAddonManagerDelegate(new WebExtensionController.AddonManagerDelegate(){
         @Override public void onDisabled(WebExtension value){addonStateChanged(created,value,true);}
@@ -1003,7 +1007,7 @@ class GeckoWebView extends FrameLayout {
     if(metadata.policyAcknowledged){metadata.acceptedBrowserIdentity=BrowserIdentitySpec.legacy(desktop,configuredProtection).withLocales(identityPolicy==null?Collections.emptyList():identityPolicy.locales).json();owner.identityPolicyAcknowledged();}
   }
   private void requestProtection(WebExtension.Port port,String kind,int level){
-    closeExitIpPage();
+    owner.cpu.protectionWillChange();owner.tls.protectionWillChange();closeExitIpPage();
     cancelProtectionTasks();nativeProtection.begin(level);requestedProtection=level;
     if(level<0||level>2){privacyReady=fingerprintingProtected=false;metadata.rfpAcknowledged=metadata.policyAcknowledged=false;owner.setStatus("保护等级无效，请主动重新选择保护等级");owner.changed();return;}
     sendProtectionAttempt(port,kind);
@@ -1029,7 +1033,7 @@ class GeckoWebView extends FrameLayout {
   private void protectionAttemptFinished(WebExtension.Port port){
     protectionLevel=requestedProtection;fingerprintingProtected=nativeProtection.confirmed()&&nativeProtection.fingerprinting();
     metadata.rfpAcknowledged=nativeProtection.confirmed();privacyReady=requestedProtection<2||nativeProtection.confirmed();
-    acknowledgeIdentity();
+    owner.cpu.refreshNative();owner.tls.refreshNative();acknowledgeIdentity();
     if(!privacyReady&&nativeProtection.canRetry()){
       nativeProtection.awaitingRetry();long generation=nativeProtection.generation();
       protectionRetry=()->{protectionRetry=null;if(!destroyed&&port==routePort&&generation==nativeProtection.generation()&&requestedProtection==owner.privacy.level())sendProtectionAttempt(port,"protection");};
@@ -1045,7 +1049,7 @@ class GeckoWebView extends FrameLayout {
     if(restore!=null&&restore.session==current&&restore.navigation==owner.navigationEpoch&&(queued.isEmpty()||queued.equals(restore.url))){queued="";restoreCheckpoint(restore.session,restore.state,restore.url,restore.draftRevision);return;}
     if(!queued.isEmpty()){String target=queued;queued="";loadUrl(target);}
   }
-  boolean protectionAllowsNetwork(){return nativeProtection.allows(owner.privacy.level());}
+  boolean protectionAllowsNetwork(){return owner.cpu.readyFor(runtime)&&owner.tls.readyFor(runtime)&&nativeProtection.allows(owner.privacy.level());}
   boolean protectionBootstrapBlocked(){return !destroyed&&!failed&&!ready&&surface==null&&current==null&&primary==null&&locations.isEmpty()&&popups.isEmpty()&&owner.privacy.level()>=2&&nativeProtection.level()==owner.privacy.level()&&"failed".equals(nativeProtection.state());}
   boolean retryProtection(){
     if(destroyed||nativeProtection.level()==owner.privacy.level()&&("pending".equals(nativeProtection.state())||nativeProtection.confirmed()))return false;
@@ -1054,6 +1058,7 @@ class GeckoWebView extends FrameLayout {
   }
   JSONObject protectionStatus(){boolean current=nativeProtection.level()==owner.privacy.level();return J.obj("state",current?nativeProtection.state():"pending","desiredLevel",owner.privacy.level(),"level",nativeProtection.level(),"generation",nativeProtection.generation(),"token",nativeProtection.token(),"attempt",nativeProtection.attempt(),"maxAttempts",NativeProtectionState.MAX_ATTEMPTS,"reason",current?nativeProtection.reason():"configuration-changed","received",current&&nativeProtection.received(),"settingsReadbackConfirmed",current&&nativeProtection.confirmed(),"observedFingerprinting",nativeProtection.fingerprinting(),"newRequestsBlocked",!protectionAllowsNetwork(),"retryAvailable",!destroyed&&routePort!=null&&(!current||"failed".equals(nativeProtection.state())),"scope","native-setting-new-request-admission","fullApiProtectionAttested",false);}
   String protectionSummary(){
+    if(runtime!=null&&!owner.tls.readyFor(runtime))return owner.tls.summary();
     if(nativeProtection.level()!=owner.privacy.level())return owner.privacy.level()>=2?"强化保护等待当前配置确认，确认前暂停新网页请求":"当前保护配置尚待确认";
     String state=nativeProtection.state();if("confirmed".equals(state))return owner.privacy.level()>=2?"强化保护已确认（原生设置回读）":"原生保护设置已确认";
     if("pending".equals(state))return owner.privacy.level()>=2?"强化保护确认中（"+Math.max(1,nativeProtection.attempt())+"/"+NativeProtectionState.MAX_ATTEMPTS+"），确认前暂停新网页请求":"原生保护设置确认中";

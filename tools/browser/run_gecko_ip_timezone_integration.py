@@ -77,130 +77,6 @@ def safe_trust(receipt):
         'cleanupRootUid','cleanupShellUid','shellRestoredAfterCleanup'}
     return {key:value for key,value in receipt.items() if key in allowed}
 
-EXTENSION_STAGES={'bootstrap-loaded','create-enter','create-rejected','create-ready','lookup-received','lookup-rejected','lookup-start','fetch-start','fetch-response','fetch-rejected','deadline','finish-null','finish-observed','before-request','before-redirect','authorization','native-lookup-received','bootstrap-bound','proxy-event','proxy-authorization','header-event','header-authorization','header-listener','hello-result','hello-send-start','hello-failed','snapshot-send-result','native-prepare-received','native-prepare-result','native-protection-received','native-protection-result','port-message-entry','port-connected','port-disconnected','watchdog-scheduled','watchdog-fired','watchdog-hello-start','watchdog-hello-result','watchdog-hello-failed','watchdog-snapshot-result'}
-EXTENSION_RESULTS={'none','ready','rejected','missing-port','runtime-url','features','registration','exception','shape-or-busy','pending','accepted','absent','invalid','closed','cancelled','observed'}
-EXTENSION_ERRORS={'none','AbortError','NetworkError','TypeError','SecurityError','TimeoutError','NotAllowedError','InvalidStateError','other'}
-EXTENSION_SCRIPTS={'ip-timezone-bootstrap.js','request-headers.js','request-identity-background.js','native-timezone-bridge.js','background.js','other'}
-def extension_debug(value,nonce):
-    require(type(value) is dict and {'registered','accepted','rejected','latest'}<=set(value)<={'registered','accepted','rejected','latest','hello','poll','port','processes','legacyRead','windows'},'extension diagnostic keys differ')
-    require(type(value['registered']) is bool and all(type(value[k]) is int and 0<=value[k]<=10000 for k in ('accepted','rejected')),'extension diagnostic counters differ')
-    if 'hello' in value:require(type(value['hello']) is int and 0<=value['hello']<=10000,'hello counter differs')
-    if 'poll' in value:
-        poll=value['poll'];require(type(poll) is dict and set(poll)=={'count','ineligible','eligible','portPresent','extensionSame','runtimeSame','attempted','returned','threw','consoleEnabled','processPid','processUid'},'poll keys differ')
-        for k,v in poll.items():require(type(v) is int and 0<=v<2**31 if k in ('processPid','processUid') else type(v) is int and 0<=v<=10000 if k in ('count','ineligible','attempted','returned','threw') else type(v) is bool,'poll value differs')
-    if 'port' in value:
-        port=value['port'];require(type(port) is dict and set(port)=={'present','id','disconnected','listenersRegistered','dispatcherPresent','dispatcherAttached','pendingMessages'},'port keys differ')
-        for k,v in port.items():
-            if k in ('present','dispatcherPresent'):require(type(v) is bool,'port present flag differs')
-            elif k in ('id','pendingMessages'):require(v is None or type(v) is int and -1<=v<=2**63-1 and (k!='pendingMessages' or v<=10000),'port number differs')
-            else:require(v is None or type(v) is bool,'port field differs')
-    if 'processes' in value:
-        require(type(value['processes']) is list and len(value['processes'])<=64,'native process bound differs')
-        for process in value['processes']:require(type(process) is dict and set(process)=={'pid','uid','role'} and type(process['pid']) is int and 1<process['pid']<2**31 and type(process['uid']) is int and 0<=process['uid']<2**31 and process['role'] in ('profile6','gecko-env6'),'native process identity differs')
-    if 'windows' in value:
-        require(type(value['windows']) is list and len(value['windows'])<=8,'window diagnostic bound differs')
-        for row in value['windows']:
-            require(type(row) is dict and set(row)=={'sequence','revalidate','completed','reason','received','ready','consumer'} and type(row['sequence']) is int and 1<=row['sequence']<=10000 and all(type(row[k]) is bool for k in ('revalidate','completed')) and row['reason'] in ('none','success','error','timeout','throw','revalidate-error') and all(row[k] is None or type(row[k]) is bool for k in ('received','ready','consumer')),'window diagnostic row differs')
-    if 'legacyRead' in value:
-        control=value['legacyRead'];require(type(control) is dict and set(control)=={'attempted','returned','threw','id','pendingDelta','portCurrent','responseVerified'} and all(type(control[k]) is bool for k in ('attempted','returned','threw','portCurrent','responseVerified')) and control['responseVerified'] is False and type(control['id']) is int and 0<=control['id']<=2147483647 and type(control['pendingDelta']) is int and control['pendingDelta']==0,'legacy readonly control differs')
-    latest=value['latest'];require(type(latest) is dict,'extension diagnostic payload object required')
-    if not latest:return value
-    require(set(latest)=={'schema','diagnosticOnly','releaseAcceptance','requestNonce','runtimeManifest','helperPresence','events','omitted','invalid','bootstrapObject','bootstrapCreate','headersObject'},'extension payload keys differ')
-    require(type(latest['schema']) is int and latest['schema']==1 and latest['diagnosticOnly'] is True and latest['releaseAcceptance'] is False and latest['requestNonce']==nonce,'extension diagnostic scope/nonce differs')
-    require(all(type(latest[k]) is int and 0<=latest[k]<=10000 for k in ('omitted','invalid')) and all(type(latest[k]) is bool for k in ('bootstrapObject','bootstrapCreate','headersObject')),'extension payload counter/flag differs')
-    manifest=latest['runtimeManifest'];require(type(manifest) is dict and set(manifest)=={'available','version','id','scriptCount','scripts'},'runtime manifest keys differ')
-    require(type(manifest['available']) is bool and manifest['version'] in ('2.1.2.104','other','unavailable') and manifest['id'] in ('browser@pocketchat.local','other','unavailable') and type(manifest['scriptCount']) is int and -1<=manifest['scriptCount']<=10000,'runtime manifest values differ')
-    require(type(manifest['scripts']) is list and len(manifest['scripts'])<=8 and all(type(v) is str and v in EXTENSION_SCRIPTS for v in manifest['scripts']),'runtime manifest scripts differ')
-    helpers=latest['helperPresence'];require(type(helpers) is dict and set(helpers)=={'bootstrap','headers','identity','timezone'} and all(type(v) is str and v in ('undefined','object','function','boolean','number','string','symbol','bigint') for v in helpers.values()),'runtime helper presence differs')
-    rows=latest['events'];require(type(rows) is list and len(rows)<=32,'extension event bound differs')
-    for i,row in enumerate(rows):
-        require(type(row) is dict and {'sequence','stage','urlClass','exactGeo','get','origin','document','requestIdPresent','result','errorName'}<=set(row)<={'sequence','stage','urlClass','exactGeo','get','origin','document','requestIdPresent','result','errorName','generation','portCurrent','messageType','kindClass','nestedKindClass','hasKind','hasMessage','hasData'},'extension event keys differ')
-        require(type(row['sequence']) is int and row['sequence']==i+1 and row['stage'] in EXTENSION_STAGES and row['urlClass'] in ('geo-exact','geo-host-variant','other') and row['origin'] in ('own','foreign','absent','invalid','unseen') and row['document'] in ('own','foreign','absent','invalid','unseen') and row['result'] in EXTENSION_RESULTS and row['errorName'] in EXTENSION_ERRORS,'extension event enum differs')
-        require(all(type(row[k]) is bool for k in ('exactGeo','get','requestIdPresent')),'extension event flag differs')
-        extra={'generation','portCurrent','messageType','kindClass','nestedKindClass','hasKind','hasMessage','hasData'}
-        if set(row)&extra:
-            require(extra<=set(row) and type(row['generation']) is int and 0<=row['generation']<=10000 and row['messageType'] in ('undefined','object','string','boolean','number','function','symbol','bigint','null') and row['kindClass'] in ('prepare','protection','lookup','snapshot','cancel','header-policy','timezone-read','other') and row['nestedKindClass'] in ('prepare','protection','lookup','snapshot','cancel','header-policy','timezone-read','other','none') and all(type(row[k]) is bool for k in ('portCurrent','hasKind','hasMessage','hasData')),'port entry fields differ')
-    return value
-
-
-def native_debug(value,binding):
-    """Independent whitelist; a diagnostic cannot export arbitrary app text."""
-    required={'schema','diagnosticOnly','releaseAcceptance','sourceCommit','sourceTree','runNonce',
-        'integrationApkSha256','sdkRunId','sdkRunAttempt','snapshots','actualPublicIpGeolocationVerified','scope'}
-    require(type(value) is dict and required<=set(value)<=required|{'extensionDiagnostic'} and type(value['schema']) is int and value['schema']==1
-        and value['diagnosticOnly'] is True and value['releaseAcceptance'] is False
-        and value['actualPublicIpGeolocationVerified'] is False,'diagnostic envelope differs')
-    for key,expected in binding.items():require(_typed_equal(value.get(key),expected),'native diagnostic binding differs')
-    if 'extensionDiagnostic' in value:extension_debug(value['extensionDiagnostic'],binding['runNonce'])
-    fields={
-        'timeZonePolicy':{'schema','desiredMode','desiredRevision','state','effectiveMode','rfpPriority','ipMatched','nativeSettingReadback','issue'},
-        'defaultNetwork':{'known','internet','vpn','revision','identityPresent'},
-        'view':{'ready','failed','destroyed','privacyReady','addonDisabled','requestHeadersInstalled','routePortPresent','nativeProtectionConfirmed','protectionLevel','currentSessionPresent','currentSessionOpen','currentSessionId','currentPagePortPresent','hasVisibleDocument','ipRouteNeedsReload','routeStamp','guardBlocked','generalRouteReady'},
-        'linkWatch':{'networkPresent','linksPresent','serial'},
-        'routeLeases':{'surfaces','downloads','changes','revision'},
-        'gate':{'present','epoch','documentSerial','preparing','ready','revalidating','waiting','proofWaiting','networkWaiting','routeLeasePresent'},
-        'lookup':{'present','sent','id','currentSession','currentGate','currentPort','currentRuntime','requestToken','routeStamp','remainingMs','leasePresent','leaseClosed','documentSerial','connectionEpoch','desiredRevision'},
-        'operation':{'present','started','retired','finished','ready','verified','unsupported','rfpManaged'},
-        'routingCounters':{'bootstrapGeoAllowed','bootstrapGeoDenied','bootstrapOtherAllowed','bootstrapOtherDenied','protectedGeoBlocked','protectedGeoFixedSocks','protectedGeoFixedHttp','protectedGeoFixedHttps','protectedGeoOther','ordinaryGeoBlocked','ordinaryGeoOther','bootstrapGeoVariantAllowed','bootstrapGeoVariantDenied','protectedGeoVariant','ordinaryGeoVariant','capped'},
-    }
-    base={'elapsedRealtime','stage','terminal','sessionPresent','viewPresent'}
-    optional={'networkReady','connecting','navigating','navigationFailed','navigationEpoch','connectionEpoch','ownerDeleted'}|set(fields)
-    def scalar(v):
-        require(v is None or type(v) in (str,int,bool),'diagnostic primitive differs')
-        if type(v) is str:require(len(v)<=512 and '\n' not in v and '\r' not in v and '\x00' not in v and '://' not in v and 'PRIVATE KEY' not in v and not v.startswith('/'),'unsafe diagnostic text')
-        if type(v) is int:require(-120000<=v<=2**63-1,'diagnostic number exceeds bound')
-    strings={'stage','schemaMode','desiredMode','state','effectiveMode','issue','currentSessionId','routeStamp','epoch','requestToken'}
-    numbers={'schema','elapsedRealtime','desiredRevision','navigationEpoch','connectionEpoch','revision','protectionLevel','serial','surfaces','downloads','changes','documentSerial','waiting','proofWaiting','networkWaiting','id','remainingMs',*fields['routingCounters']-{'capped'}}
-    def leaf(key,item):
-        scalar(item)
-        if key in strings:require(type(item) is str or key=='desiredMode' and item is None,'typed diagnostic string required')
-        elif key in numbers:require(type(item) is int,'typed diagnostic integer required')
-        else:require(type(item) is bool,'typed diagnostic flag required')
-    scalar(value['scope']);require(type(value['scope']) is str,'bounded diagnostic scope required')
-    require(type(value['snapshots']) is list and len(value['snapshots'])<=16,'bounded diagnostic snapshots required')
-    for row in value['snapshots']:
-        require(type(row) is dict and base<=set(row)<=base|optional,'diagnostic snapshot keys differ')
-        for key,v in row.items():
-            if key in fields:
-                require(type(v) is dict and set(v)<=fields[key],'diagnostic native state keys differ')
-                for field,item in v.items():leaf(field,item)
-            else:leaf(key,v)
-    return value
-
-
-CONSOLE_PREFIX='POCKET_IP_TZ_DIAG4 '
-def console_debug(raw,process_raw,binding,native_process,native_children=()):
-    require(type(raw) is bytes and len(raw)<=4*1024*1024 and type(process_raw) is bytes and len(process_raw)<=262144,'bounded console/process data required')
-    processes=[]
-    for line in process_raw.decode('utf-8','strict').splitlines():
-        fields=line.split()
-        if len(fields)!=3 or not fields[0].isdigit() or not fields[1].isdigit():continue
-        pid,uid=int(fields[0]),int(fields[1]);name=fields[2]
-        role='profile6' if name=='local.pocketchat.test:profile6' else 'gecko-env6' if re.fullmatch(r'local\.pocketchat\.test:gecko_env6_[A-Za-z0-9_]+',name) else None
-        if role and 1<pid<2**31 and 10000<=uid<200000:processes.append(dict(pid=pid,uid=uid,role=role))
-    require(len(processes)<=64 and len({p['pid'] for p in processes})==len(processes),'process binding bound differs')
-    owners=[p for p in processes if p['role']=='profile6'];require(len(owners)==1,'one actual canonical process required')
-    owner=owners[0];require(type(native_process) is dict and owner['pid']==native_process.get('processPid') and owner['uid']==native_process.get('processUid'),'console PID differs from installed native report');unverified=sum(1 for p in processes if p['uid']!=owner['uid'] and p not in native_children);processes=[p for p in processes if p['uid']==owner['uid'] or 99000<=p['uid']<=99999 and p in native_children];pids={p['pid'] for p in processes}
-    accepted=[];dropped=0
-    pattern=re.compile(r'^\d\d-\d\d\s+\d\d:\d\d:\d\d\.\d+\s+(\d+)\s+(\d+)\s+[VDIWEF]\s+[^:]+:\s*(.*)$')
-    for line in raw.decode('utf-8','strict').splitlines():
-        if CONSOLE_PREFIX not in line:continue
-        try:
-            match=pattern.fullmatch(line);require(match is not None and int(match[1]) in pids,'console owner differs')
-            message=match[3];index=message.index(CONSOLE_PREFIX);value=strict_json(message[index+len(CONSOLE_PREFIX):])
-            require({'schema','diagnosticOnly','releaseAcceptance','event'}<=set(value)<={'schema','diagnosticOnly','releaseAcceptance','event','runtimeManifest','helperPresence'} and type(value['schema']) is int and value['schema']==1 and value['diagnosticOnly'] is True and value['releaseAcceptance'] is False,'console diagnostic scope differs')
-            event=value['event'];require(type(event) is dict and type(event.get('sequence')) is int and 1<=event['sequence']<=32,'console event sequence differs')
-            row=dict(event,sequence=1)
-            latest=dict(schema=1,diagnosticOnly=True,releaseAcceptance=False,requestNonce=binding['runNonce'],runtimeManifest=dict(available=False,version='unavailable',id='unavailable',scriptCount=-1,scripts=[]),helperPresence=dict(bootstrap='undefined',headers='undefined',identity='undefined',timezone='undefined'),events=[row],omitted=0,invalid=0,bootstrapObject=False,bootstrapCreate=False,headersObject=False)
-            if 'runtimeManifest' in value:latest['runtimeManifest']=value['runtimeManifest']
-            if 'helperPresence' in value:latest['helperPresence']=value['helperPresence']
-            extension_debug(dict(registered=False,accepted=0,rejected=0,latest=latest),binding['runNonce'])
-            record=dict(pid=int(match[1]),tid=int(match[2]),event=event,runtimeManifest=latest['runtimeManifest'],helperPresence=latest['helperPresence'])
-            if record in accepted:continue
-            require(len(accepted)<32,'console row bound differs');accepted.append(record)
-        except (ValueError,TypeError,KeyError,UnicodeError):dropped=min(10000,dropped+1)
-    return dict(schema=1,binding=binding,diagnosticOnly=True,releaseAcceptance=False,actualPublicIpGeolocationVerified=False,processes=processes,unverifiedProcessCount=unverified,isolatedChildRequiresNativeActivityManagerPackageProof=True,events=accepted,rejectedOrOmitted=dropped,wholeLogcatExported=False,scope='Only fixed-prefix typed enum JSON from actual canonical profile6 or its named SDK env6 process PIDs. All other logcat content is omitted; diagnostic timing and console output do not establish a production fix.')
-
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -263,25 +139,6 @@ def main():
     except Exception as failure:
         error=failure;report.update(status='failed',errorType=type(failure).__name__)
     finally:
-        # Additive debug only. A missing/rejected diagnostic does not grant or
-        # revoke acceptance; the original report/checker remains authoritative.
-        debug=dict(schema=1,binding=binding,diagnosticOnly=True,releaseAcceptance=False,
-                   actualPublicIpGeolocationVerified=False,deviceDebugAvailable=False)
-        try:
-            raw_debug=adb('exec-out','content','read','--uri',URI+'/transport-debug',check=False,timeout=15).stdout
-            require(0<len(raw_debug)<=65536,'bounded native debug unavailable')
-            device_debug=native_debug(strict_json(raw_debug),binding)
-            require(device_debug.get('sourceCommit')==source and device_debug.get('sourceTree')==tree
-                and device_debug.get('runNonce')==nonce and device_debug.get('integrationApkSha256')==identity['apkSha256']
-                and device_debug.get('sdkRunId')==sdk['runId'] and device_debug.get('sdkRunAttempt')==sdk['runAttempt'],
-                'native diagnostic source/APK/run differs')
-            debug.update(deviceDebugAvailable=True,device=device_debug)
-        except Exception as diagnostic_error:debug['deviceCollectionErrorType']=type(diagnostic_error).__name__
-        try:
-            process_rows=adb('shell','ps -A -o PID,UID,NAME',check=False,timeout=10).stdout
-            console_rows=adb('shell',"logcat -d -t 2048 -v threadtime GeckoConsole:V Gecko:V '*:S' | grep -F 'POCKET_IP_TZ_DIAG4 '",check=False,timeout=10).stdout
-            debug['console']=console_debug(console_rows,process_rows,binding,device_debug['extensionDiagnostic']['poll'],device_debug['extensionDiagnostic'].get('processes',[]))
-        except Exception as diagnostic_error:debug['consoleCollectionErrorType']=type(diagnostic_error).__name__
         # Every independent cleanup action executes even when an earlier action
         # fails. Never mask the original fixture failure or convert cleanup to a
         # successful result. No replay/input/retry is performed here.
@@ -306,10 +163,6 @@ def main():
             route_receipts={};error=error or failure;report.update(status='failed',errorType=type(error).__name__)
         try:unchanged=all(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==hashes[str(path.relative_to(ROOT))] for path in paths)
         except OSError:unchanged=False
-        try:debug['transport']=server.diagnostics_snapshot() if server is not None else {}
-        except Exception as diagnostic_error:debug['transportCollectionErrorType']=type(diagnostic_error).__name__
-        try:write_json(args.output/'ip-timezone-transport-debug.json',debug)
-        except Exception:pass  # Never replace the original failed device result.
         if not unchanged:error=error or ValueError('Source changed');report.update(status='failed',errorType='SourceChanged')
         report.update(activity=activity or {},hostTls=host_tls,routeReceipts=route_receipts,systemTimeZone=system,sourceFiles=hashes,
             executionInputsUnchanged=unchanged,cleanup=cleanup,deviceReportReceivedSha256=device_raw_sha,

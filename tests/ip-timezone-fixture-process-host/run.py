@@ -37,6 +37,39 @@ sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
 def exact(text,before,after):
  if text.count(before)!=1:raise ValueError('One exact collaborator adaptation required: '+before)
  return text.replace(before,after,1)
+FINAL_LEGACY_ROLES=(':caret_controlled_ime',':environment_intent_fixture',':environment_spec_fixture',':extension_upgrade_test',':fingerprint_followups',':identity_prototype',':management_test',':native_timezone_probe',':native_tls_probe',':network_preflight',':network_protection',':resource_pressure_fixture',':template_fixture',':transport_binding_fixture',':transport_binding_services')
+ANDROID='{http://schemas.android.com/apk/res/android}'
+def declared_legacy_processes(manifest_bytes,application):
+ manifest=ET.fromstring(manifest_bytes);apps=manifest.findall('application')
+ if len(apps)!=1 or apps[0].get(ANDROID+'name')!='local.pocketchat.IpTimeZoneFixtureApplication':raise ValueError('Exact final fixture Application required')
+ processes={x.attrib[ANDROID+'process']for x in manifest.iter()if ANDROID+'process'in x.attrib}
+ legacy=sorted(processes-{':profile'+str(i)for i in range(1,8)}-{':ip_timezone_setup'})
+ match=re.search(r'LEGACY_FIXTURE_PROCESSES=\{([^}]*)\}',application)
+ native=[x for x in apps[0].findall('activity')if x.get(ANDROID+'name')=='local.pocketchat.NativeTlsProbeActivity']
+ if match is None or re.findall(r'"([^\"]+)"',match[1])!=list(FINAL_LEGACY_ROLES) or legacy!=list(FINAL_LEGACY_ROLES) or len(native)!=1 or native[0].get(ANDROID+'process')!=':native_tls_probe':raise ValueError('Exact fifteen actual final manifest and source roles required')
+ return legacy
+
+def reject_manifest_false_proofs(manifest_bytes,application):
+ mutations=[]
+ def changed(label,edit,source=application):
+  root=ET.fromstring(manifest_bytes);edit(root);mutations.append((label,ET.tostring(root),source))
+ native=lambda root:next(x for x in root.find('application').findall('activity')if x.get(ANDROID+'name')=='local.pocketchat.NativeTlsProbeActivity')
+ changed('missing-declared-native-tls-role',lambda root:root.find('application').remove(native(root)))
+ changed('native-tls-prefix-lookalike',lambda root:native(root).set(ANDROID+'process',':native_tls_probe_foreign'))
+ changed('unknown-process-role',lambda root:ET.SubElement(root.find('application'),'service',{ANDROID+'name':'local.pocketchat.Unknown',ANDROID+'process':':arbitrary_fixture'}))
+ changed('foreign-test-application',lambda root:root.find('application').set(ANDROID+'name','foreign.app.Application'))
+ changed('duplicate-native-probe-declaration',lambda root:ET.SubElement(root.find('application'),'activity',dict(native(root).attrib)))
+ mutations.append(('native-tls-source-role-missing',manifest_bytes,application.replace(',":native_tls_probe"','',1)))
+ mutations.append(('source-prefix-wildcard-role',manifest_bytes,application.replace('":native_tls_probe"','":native_tls_probe*"',1)))
+ root=ET.fromstring(manifest_bytes);native(root).set(ANDROID+'process',':native_tls_lookalike')
+ mutations.append(('same-size-source-manifest-role-swap',ET.tostring(root),application.replace('":native_tls_probe"','":native_tls_lookalike"',1)))
+ result=[]
+ for name,data,source in mutations:
+  try:declared_legacy_processes(data,source)
+  except (ValueError,ET.ParseError):result.append(dict(name=name,actualManifestSourceValidatorRejected=True))
+  else:raise AssertionError('Manifest/source role false-proof escaped: '+name)
+ return result
+
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--java-home',type=Path);p.add_argument('--json-jar',type=Path);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
  java=(a.java_home/'bin/java' if a.java_home else Path(os.environ['PROFILE_JAVA']) if os.environ.get('PROFILE_JAVA') else Path(os.environ.get('PROFILE_JAVA_HOME',os.environ.get('JAVA_HOME','')))/'bin/java');javac=java.with_name('javac')
@@ -51,9 +84,7 @@ def main():
   for marker in markers:
    if raw.count(marker)!=1:raise ValueError('Unique actual parent member required: '+name+marker)
    extracted[name+':'+marker]=old.member_at(raw,raw.index(marker))
- manifest=ET.parse(geo/'AndroidManifest.xml');processes={x.attrib['{http://schemas.android.com/apk/res/android}process']for x in manifest.iter()if'{http://schemas.android.com/apk/res/android}process'in x.attrib};legacy=sorted(processes-{':profile'+str(i)for i in range(1,8)}-{':ip_timezone_setup'})
- application=(geo/'IpTimeZoneFixtureApplication.java').read_text();match=re.search(r'LEGACY_FIXTURE_PROCESSES=\{([^}]*)\}',application)
- if match is None or re.findall(r'"([^"]+)"',match[1])!=legacy or len(legacy)!=14:raise ValueError('Exact fourteen actual manifest legacy processes required')
+ application=(geo/'IpTimeZoneFixtureApplication.java').read_text();manifest_bytes=(geo/'AndroidManifest.xml').read_bytes();legacy=declared_legacy_processes(manifest_bytes,application);manifest_controls=reject_manifest_false_proofs(manifest_bytes,application)
  files=whole+[app/n for n in ['PocketApplication.java','Profiles.java','EnvironmentSpec.java','GeckoTimeZoneStore.java']]+[OLD,OLD.parent/'Host.java.in',ROOT/'tests/gecko-navigation-host/run.py',HERE/'Host.java.in',HERE/'README.md',Path(__file__).resolve(),ROOT/'app/build.gradle',geo/'AndroidManifest.xml']
  hashes={str(q.relative_to(ROOT)):sha(q)for q in files};jarhash=sha(jar);stubs=dict(old.STUBS)
  for name,before,after in [
@@ -96,13 +127,13 @@ def main():
   insertion=application[application.index('    // Retain the original package rejection'):application.index('    IpTimeZoneFixtureScopes.declaredGeneric(this);')]
   helper=application[application.index('  static final String[] LEGACY_FIXTURE_PROCESSES='):application.index('  @Override Context profile(int slot)')]
   if application.replace(insertion,'',1).replace(helper,'',1)!=base:raise ValueError('Whole original Application is not preserved after exact candidate inverse')
-  mutants=[('actual-original-application','IpTimeZoneFixtureApplication.java',application,base),('removed-owner-guard','IpTimeZoneFixtureApplication.java',guard,''),('owner-policy-bypass','EnvironmentProcessPolicy.java','&&processName.equals(packageName+(slot==0?"":":profile"+slot))','&&true'),('fake-profile-slot','Profiles.java','if(process.endsWith(":profile"+id))return id;','if(process.endsWith(":profile"+id))return 0;'),('isolated-uid-bypass','IpTimeZoneFixtureApplication.java','if(application==null||android.os.Process.myUid()!=application.uid)return;','if(application==null)return;'),('package-rejection-removed','IpTimeZoneFixtureApplication.java','    IpTimeZoneFixtureScopes.integration(this);\n','')]
+  mutants=[('actual-original-application','IpTimeZoneFixtureApplication.java',application,base),('removed-owner-guard','IpTimeZoneFixtureApplication.java',guard,''),('owner-policy-bypass','EnvironmentProcessPolicy.java','&&processName.equals(packageName+(slot==0?"":":profile"+slot))','&&true'),('fake-profile-slot','Profiles.java','if(process.endsWith(":profile"+id))return id;','if(process.endsWith(":profile"+id))return 0;'),('isolated-uid-bypass','IpTimeZoneFixtureApplication.java','if(application==null||android.os.Process.myUid()!=application.uid)return;','if(application==null)return;'),('package-rejection-removed','IpTimeZoneFixtureApplication.java','    IpTimeZoneFixtureScopes.integration(this);\n',''),('native-tls-role-unlisted','IpTimeZoneFixtureApplication.java',',":native_tls_probe"',''),('legacy-prefix-overgrant','IpTimeZoneFixtureApplication.java','process.equals(packageName+suffix)','process.startsWith(packageName+suffix)')]
   for label,name,before,after in mutants:
    ran,generated=execute(label,(name,before,after))
    if ran.returncode!=1 or 'java.lang.AssertionError:'not in ran.stderr:raise AssertionError('Compiled unsafe process counterfeit escaped: '+label+' '+ran.stderr)
    controls.append(dict(name=label,compiled=True,runtimeRejected=True,assertion=ran.stderr.split('java.lang.AssertionError:',1)[1].splitlines()[0].strip(),generatedSourceSha256=generated['local/pocketchat/'+name]))
  stable=all(sha(ROOT/name)==value for name,value in hashes.items())and sha(jar)==jarhash
- report.update(schema=1,status='passed'if stable else'source-changed',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceFiles=hashes,jsonJarSha256=jarhash,generatedSourceSha256=bodies,manifestLegacyProcesses=legacy,extractedParentMethodSha256={k:hashlib.sha256(v.encode()).hexdigest()for k,v in extracted.items()},negativeControls=controls,originalApplicationInverseSha256=hashlib.sha256(base.encode()).hexdigest(),executionInputsUnchanged=stable,actualAndroidExecution=False,actualGeckoExecution=False,actualNativeTimezoneReadback=False,actualKeystoreExecution=False,actualNetworkExecution=False,scope='Whole actual candidate integration Application and Scopes, complete actual EnvironmentProcessPolicy/J/TZSpec/TZPolicy/strictJSON; actual PocketApplication lifecycle/profile/context and Profiles owner/context methods execute. Original104/7 setup assertions/mutants unchanged and separate; only actual Android UID API declarations are added to their collaborators. Android lifecycle/process name/UID/files/metadata/catalog/vault/TZ store are explicit JVM collaborators; throwing child collaborators enforce zero fixture IO before and after later same-profile access. Name-shaped isolated and generated env6 children are host cases, not Android isolation or runtime-cause proof.')
+ report.update(schema=1,status='passed'if stable else'source-changed',sourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),sourceFiles=hashes,jsonJarSha256=jarhash,generatedSourceSha256=bodies,manifestLegacyProcesses=legacy,manifestRoleNegativeControls=manifest_controls,manifestRoleCount=15,extractedParentMethodSha256={k:hashlib.sha256(v.encode()).hexdigest()for k,v in extracted.items()},negativeControls=controls,originalApplicationInverseSha256=hashlib.sha256(base.encode()).hexdigest(),executionInputsUnchanged=stable,actualAndroidExecution=False,actualGeckoExecution=False,actualNativeTimezoneReadback=False,actualKeystoreExecution=False,actualNetworkExecution=False,scope='Whole actual candidate integration Application and Scopes, complete actual EnvironmentProcessPolicy/J/TZSpec/TZPolicy/strictJSON; actual PocketApplication lifecycle/profile/context and Profiles owner/context methods execute. Original104/7 setup assertions/mutants unchanged and separate; only actual Android UID API declarations are added to their collaborators. Android lifecycle/process name/UID/files/metadata/catalog/vault/TZ store are explicit JVM collaborators; throwing child collaborators enforce zero fixture IO before and after later same-profile access. Name-shaped isolated and generated env6 children are host cases, not Android isolation or runtime-cause proof.')
  a.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps({k:report[k]for k in ['status','passed','total','executionInputsUnchanged','actualAndroidExecution']}))
  if not stable:raise SystemExit(1)
 if __name__=='__main__':main()

@@ -1,14 +1,11 @@
 'use strict';
-const ipProbe=(...args)=>{try{globalThis.PocketIpTimeZoneDiagnostic?.record(...args);}catch(_){}};
 const blocked = {type:'socks', host:'127.0.0.1', port:9, proxyDNS:true, failoverTimeout:1};
 let timezoneIp=null;
-let diagnosticConnection=0;
 // One runtime belongs to exactly one existing Android environment process.
 // All requests, including workers, consult that environment's existing guard.
 browser.proxy.onRequest.addListener(async request => {
-  ipProbe('proxy-event',request);
   try {
-    const bootstrap=timezoneIp,authorization=bootstrap?.authorization(request);ipProbe('proxy-authorization',request,authorization?'accepted':'absent');
+    const bootstrap=timezoneIp,authorization=bootstrap?.authorization(request);
     const message=authorization?{kind:'timezoneIpRoute',url:request.url,method:request.method,requestToken:authorization.requestToken,routeStamp:authorization.routeStamp}:{kind:'route',url:request.url};
     const route = JSON.parse(await browser.runtime.sendNativeMessage('pocketroute', message));
     if(authorization&&(bootstrap!==timezoneIp||bootstrap.authorization(request)!==authorization))return blocked;
@@ -162,9 +159,6 @@ const protect=reference=>{
 };
 const handleHostMessage=async(message,port)=>{
   if(port!==host||!message||typeof message!=='object')return;
-  if(message.kind==='timezoneIpDiagnosticSnapshot'&&Object.keys(message).sort().join(',')==='kind,requestNonce'&&typeof message.requestNonce==='string'&&/^[0-9a-f]{32}$/.test(message.requestNonce)){
-    try{const diagnostic=globalThis.PocketIpTimeZoneDiagnostic?.snapshot(message.requestNonce);if(diagnostic)Promise.resolve(browser.runtime.sendNativeMessage('pocketipdiagnostic',diagnostic)).catch(()=>{});}catch(_){}return;
-  }
   if(message.kind==='requestHeaderPolicyChanged'){
     globalThis.PocketGeckoRequestHeaders?.invalidate(port,message.revision);return;
   }
@@ -172,7 +166,6 @@ const handleHostMessage=async(message,port)=>{
     timezoneIp?.cancel(message);return;
   }
   if(message.kind==='timezoneIpLookup'&&Number.isInteger(message.id)&&message.id>0){
-    ipProbe('native-lookup-received',null,timezoneIp?'ready':'absent');
     const bootstrap=timezoneIp;let result=null;
     try{result=await bootstrap?.lookup(message)??null;}catch(_){}
     if(bootstrap===timezoneIp)postHost(port,{kind:'timezoneIpReady',id:message.id,result:typeof result==='string'?result:'null'});return;
@@ -184,7 +177,6 @@ const handleHostMessage=async(message,port)=>{
     postHost(port,{kind:'timezoneReady',id:message.id,result:JSON.stringify(result)});return;
   }
   if(message.kind==='prepare'){
-    ipProbe('native-prepare-received');
     const claim=claimProtection(message,port);
     try{
       await cookieReady;
@@ -192,17 +184,15 @@ const handleHostMessage=async(message,port)=>{
       // opens a session only after both; a hung setting cannot hide cookie-ready.
       if(!postHost(port,{kind:'cookiePrepared'}))return;
       const result=claim.reference?await protect(claim.reference):{acknowledged:false};
-      ipProbe('native-prepare-result',null,result.acknowledged?'accepted':'rejected');
       if(!claim.reference)rejectProtection(message,port,claim.reason);
       postHost(port,{kind:'ready'});
       if(port===host&&result.acknowledged)reconnectAttempts=0;
     }catch(_){postHost(port,{kind:'cookieRecoveryError'});}return;
   }
   if(message.kind==='protection'){
-    ipProbe('native-protection-received');
     const claim=claimProtection(message,port);
     if(!claim.reference){rejectProtection(message,port,claim.reason);return;}
-    const result=await protect(claim.reference);ipProbe('native-protection-result',null,result.acknowledged?'accepted':'rejected');
+    const result=await protect(claim.reference);
     if(port===host&&result.acknowledged)reconnectAttempts=0;
     return;
   }
@@ -230,13 +220,11 @@ const reconnectHost=()=>{
 const connectHost=()=>{
   let port;
   try{port=browser.runtime.connectNative('pocketroute');}catch(_){reconnectHost();return;}
-  host=port;const diagnosticGeneration=diagnosticConnection=Math.min(10000,diagnosticConnection+1);try{globalThis.PocketIpTimeZoneDiagnostic?.portEvent('port-connected',undefined,port===host,diagnosticGeneration);}catch(_){}
+  host=port;
   timezoneIp?.close();try{timezoneIp=globalThis.PocketIpTimeZoneBootstrap?.create(port)??null;}catch(_){timezoneIp=null;}
-  ipProbe('bootstrap-bound',null,timezoneIp?'ready':'absent');
   const headers=globalThis.PocketGeckoRequestHeaders?.activate(port,timezoneIp);
-  port.onMessage.addListener(message=>{try{globalThis.PocketIpTimeZoneDiagnostic?.portEvent('port-message-entry',message,port===host,diagnosticGeneration,()=>port===host);}catch(_){}return handleHostMessage(message,port);});
+  port.onMessage.addListener(message=>handleHostMessage(message,port));
   port.onDisconnect?.addListener(()=>{
-    try{globalThis.PocketIpTimeZoneDiagnostic?.portEvent('port-disconnected',undefined,port===host,diagnosticGeneration);}catch(_){}
     if(port!==host)return;
     host=null;latestProtection=currentProtectionRequest=confirmedProtection=null;
     timezoneIp?.close();timezoneIp=null;

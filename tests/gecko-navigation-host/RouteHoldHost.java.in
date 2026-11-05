@@ -194,7 +194,7 @@ public final class RouteHoldHost {
         web.current=site(web,"https://chatgpt.com/c/opener");web.owner.timeZone.mayOpen=false;
         ResultBoundary<SessionBoundary> denied=web.onNewSession(web.current,FIRST);
         check("Unconfirmed or custom timezone rejects the unopened popup before construction",denied.value==null&&web.constructCalls==0&&web.popups.isEmpty()&&!ChromiumRouteLease.held());
-        check("Timezone popup denial has an explicit user explanation: "+state,web.owner.message.contains("独立时区"));
+        check("Timezone popup denial delegates once to the blocked-popup entry boundary: "+state,web.blockedPopups.offers==1&&web.blockedPopups.source==web.current&&FIRST.equals(web.blockedPopups.target)&&web.constructCalls==0&&!ChromiumRouteLease.held());
       }finally{dispose(web);}
     }
     WebBoundary web=fresh();ChromiumRouteLease.Handle download=null;try{
@@ -205,8 +205,21 @@ public final class RouteHoldHost {
       check("Explicit system-mode permission retains the original popup path",allowed.value!=null&&web.constructCalls==1&&ChromiumRouteLease.snapshot().surfaces==2&&ChromiumRouteLease.snapshot().downloads==1);
     }finally{if(download!=null)download.close();dispose(web);}
   }
+  static void manualIpBoundary(){
+    WebBoundary web=fresh();try{
+      web.routeAdmissionChanged();web.owner.handler.drain();
+      check("Manual-system route retry counts its IP scheduling boundaries without lookup execution",web.ipRouteChecks>0&&web.ipLookupAttempts>0);
+      web.ipScope=true;boolean queueRejected=false,lookupRejected=false,popupRejected=false;
+      try{web.queueIpRouteCheck();}catch(AssertionError outsideScope){queueRejected=true;}
+      try{web.tryStartIpLookup();}catch(AssertionError outsideScope){lookupRejected=true;}
+      try{web.blockedPopups.offer(new SessionBoundary(),FIRST);}catch(AssertionError outsideScope){popupRejected=true;}
+      check("Automatic IP scheduling cannot silently pass through the manual-system boundary",queueRejected&&lookupRejected);
+      check("The counted popup entry boundary refuses automatic IP scope",popupRejected&&web.blockedPopups.offers==0&&web.constructCalls==0&&!ChromiumRouteLease.held());
+      web.ipScope=false;
+    }finally{dispose(web);}
+  }
   public static void main(String[] args){
-    if(args.length==1){if(args[0].equals("identity"))identityReadiness();else if(args[0].equals("barrier"))barrier();else if(args[0].equals("release")||args[0].equals("guard-release"))blockedRelease();else if(args[0].equals("destroyed"))deniedExisting("destroyed");else if(args[0].equals("popup-failure"))popupFailure();else if(args[0].equals("popup-failed"))popupLate("failed");else if(args[0].equals("popup-crashed"))popupLate("crashed");else if(args[0].equals("popup-timezone"))popupTimeZone();else if(args[0].equals("private-retention"))privateRetention();else if(args[0].equals("private-popup"))privatePopup();else if(args[0].equals("private-pages"))privatePages();else denial(args[0]);}
+    if(args.length==1){if(args[0].equals("manual-ip-boundary"))manualIpBoundary();else if(args[0].equals("identity"))identityReadiness();else if(args[0].equals("barrier"))barrier();else if(args[0].equals("release")||args[0].equals("guard-release"))blockedRelease();else if(args[0].equals("destroyed"))deniedExisting("destroyed");else if(args[0].equals("popup-failure"))popupFailure();else if(args[0].equals("popup-failed"))popupLate("failed");else if(args[0].equals("popup-crashed"))popupLate("crashed");else if(args[0].equals("popup-timezone")||args[0].equals("popup-entry"))popupTimeZone();else if(args[0].equals("private-retention"))privateRetention();else if(args[0].equals("private-popup"))privatePopup();else if(args[0].equals("private-pages"))privatePages();else denial(args[0]);}
     else{readiness();identityReadiness();privateRetention();privatePopup();privatePages();for(String kind:new String[]{"destroyed","failed","crashed","blocked","unprotected","native-protection"})denial(kind);deniedExisting();blockedRelease();barrier();releaseAndDownload();offMainRetry();popupCreation();popupFailure();popupBarrier();popupDenial();popupLate("failed");popupLate("crashed");popupTimeZone();}
     check("Fixture ends with no actual process registry hold or barrier",!ChromiumRouteLease.held()&&ChromiumRouteLease.snapshot().changes==0);
     System.out.println(J.obj("status","passed","passed",checks.length(),"total",checks.length(),"checks",checks,"syntheticControlledHost",true,"actualAndroidExecution",false,"actualGeckoExecution",false,"actualNetworkExecution",false).toString());
@@ -218,7 +231,12 @@ class WebBoundary {
   @PRODUCTION_MEMBERS@
   final OwnerBoundary owner=new OwnerBoundary(this);final SettingsBoundary settings=new SettingsBoundary();final Set<String> extendedAdmission=new HashSet<>();boolean destroyed,failed,addonDisabled,ready=true,networkAllowed=true,generalRouteRetryQueued,failConstruction,identityAllowed=true;int constructCalls,activations;
   SessionBoundary current;ProtectionRestore generalRestore;String queued="",url="";
-  WebBoundary(){ChromiumRouteLease.addListener(routeLeaseChanged);}
+  boolean ipScope=true;int ipRouteChecks,ipLookupAttempts;
+  final PopupEntryBoundary blockedPopups=new PopupEntryBoundary(this);
+  void queueIpRouteCheck(){manualSystemBoundary();ipRouteChecks++;}
+  void tryStartIpLookup(){manualSystemBoundary();ipLookupAttempts++;}
+  void manualSystemBoundary(){if(ipScope)throw new AssertionError("Automatic IP mode is outside the manual-system route host");}
+  WebBoundary(){ipScope=false;ChromiumRouteLease.addListener(routeLeaseChanged);}
   boolean protectionAllowsNetwork(){return networkAllowed;}
   boolean allowedUrl(String value){return GeckoNavigationPolicy.publicWeb(value)||extendedAdmission.contains(value);}
   String getUrl(){return url;}
@@ -246,4 +264,11 @@ class Looper {static final Object MAIN=new Object();static Object current=MAIN;s
 class HandlerBoundary {
   final List<Runnable> queue=new ArrayList<>();Object getLooper(){return Looper.MAIN;}void post(Runnable task){queue.add(task);}
   void drain(){Object prior=Looper.current;Looper.current=Looper.MAIN;try{int count=0;while(!queue.isEmpty()){if(++count>1000)throw new AssertionError("Unbounded retry loop");queue.remove(0).run();}}finally{Looper.current=prior;}}
+}
+
+/** Counted app entry only: no UI creation, native callback, status text or IP success. */
+class PopupEntryBoundary {
+  final WebBoundary web;int offers;SessionBoundary source;String target;
+  PopupEntryBoundary(WebBoundary web){this.web=web;}
+  void offer(SessionBoundary source,String target){web.manualSystemBoundary();offers++;this.source=source;this.target=target;}
 }

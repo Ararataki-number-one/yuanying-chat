@@ -46,8 +46,19 @@ final class NativeProtectionControllerHost {
     boolean popupAllowed(){popupChecks++;return system;}
   }
   static final class Prefs {String proxy="";String getString(String key,String fallback){return proxy;}}
+  // Explicit ready default-policy prerequisites only. These opaque runtime
+  // boundaries execute no CPU/TLS startup, preference API, receipt or wire.
+  static final class ColdPolicyBoundary {
+    Object expectedRuntime;boolean admitted=true,retired;int checks,invalidations,refreshes;
+    boolean readyFor(Object runtime){checks++;return admitted&&!retired&&runtime!=null&&runtime==expectedRuntime;}
+    void protectionWillChange(){invalidations++;}void refreshNative(){refreshes++;}
+    String summary(){return "TLS cold-policy fixture prerequisite is unconfirmed";}
+  }
+  static final List<String> coldPolicyChecks=new ArrayList<>();
+  static void coldCheck(String name,boolean value){if(!value)throw new AssertionError(name);coldPolicyChecks.add(name);}
   static final class Owner {
     final Handler handler=new Handler();final Privacy privacy=new Privacy();final Guard guard=new Guard();final Prefs prefs=new Prefs();final Object context=new Object();final SystemTimeZoneBoundary timeZone=new SystemTimeZoneBoundary();
+    final ColdPolicyBoundary cpu=new ColdPolicyBoundary(),tls=new ColdPolicyBoundary();
     long navigationEpoch,connectionEpoch;int changes;String status="";boolean internal,deleted;Audit audit=new Audit();
     boolean internalNetwork(){return internal;}void changed(){changes++;}void setStatus(String value){status=value;}
   }
@@ -96,6 +107,8 @@ final class NativeProtectionControllerHost {
   // is exercised elsewhere; never simulate successful auxiliary behavior here.
   static final class AuxiliaryPageBoundary {boolean fresh(){throw new AssertionError("Auxiliary IP page is outside this protection fixture");}}
   static final class View {
+    Object runtime=new Object();
+    View(){owner.cpu.expectedRuntime=runtime;owner.tls.expectedRuntime=runtime;}
     final Owner owner=new Owner();final Metadata metadata=new Metadata();final CookieCallbacks cookieCallbacks=new CookieCallbacks();
     final NativeProtectionState nativeProtection=new NativeProtectionState();
     final Map<GeckoSession,String> locations=new IdentityHashMap<>();final List<GeckoSession> popups=new ArrayList<>();
@@ -306,11 +319,30 @@ final class NativeProtectionControllerHost {
     View navigation=browsing();navigation.addonDisabled=true;addonCheck("Actual native navigation delegate denies a disabled addon",navigation.navigation(navigation.current,new LoadRequest(target)).value==AllowOrDeny.DENY&&navigation.nativeNavigationFailures==1);
     View unopened=new View();unopened.addonDisabled=true;unopened.start(1);unopened.reply(true,false);View popup=browsing();popup.addonDisabled=true;addonCheck("Actual bootstrap and popup gates stay closed while addon disabled",unopened.opens==0&&popup.popup(popup.current,target).value==null&&popup.popups.isEmpty());
   }
+  static void coldPolicyAdmission(){
+    String target="https://target.invalid/cold-policy";
+    View confirmed=browsing();coldCheck("Explicit opaque default CPU and TLS prerequisites preserve the existing RFP admission",confirmed.protectionAllowsNetwork()&&confirmed.owner.cpu.checks>0&&confirmed.owner.tls.checks>0);
+    for(boolean tls:new boolean[]{false,true}){
+      String label=tls?"TLS":"CPU";View blocked=browsing();ColdPolicyBoundary boundary=tls?blocked.owner.tls:blocked.owner.cpu;boundary.admitted=false;
+      coldCheck(label+" unconfirmed prerequisite denies actual protection conjunction",!blocked.protectionAllowsNetwork());
+      coldCheck(label+" unconfirmed prerequisite denies actual native navigation",blocked.navigation(blocked.current,new LoadRequest(target)).value==AllowOrDeny.DENY);
+      coldCheck(label+" unconfirmed prerequisite denies actual popup construction",blocked.popup(blocked.current,target).value==null&&blocked.popups.isEmpty());
+      int loads=blocked.loadCount();blocked.loadUrl(target);coldCheck(label+" unconfirmed prerequisite does not emit actual SDK load",blocked.loadCount()==loads);
+      int restores=blocked.restoreCount();blocked.restoreCheckpoint(blocked.current,new GeckoSession.SessionState(target),target,4);coldCheck(label+" unconfirmed prerequisite does not emit actual SDK restore",blocked.restoreCount()==restores);
+      blocked.start(2);blocked.reply(true,true);coldCheck(label+" independent strong RFP ACK cannot manufacture cold-policy readiness",!blocked.protectionAllowsNetwork()&&boundary.invalidations>0&&boundary.refreshes>0);
+      if(tls)coldCheck("Unconfirmed TLS is described before a generic confirmed-protection label",blocked.protectionSummary().contains("unconfirmed")&&!blocked.protectionSummary().contains("已确认"));
+      View retired=browsing();(tls?retired.owner.tls:retired.owner.cpu).retired=true;coldCheck(label+" retired prerequisite denies unchanged runtime",!retired.protectionAllowsNetwork());
+      View foreign=browsing();(tls?foreign.owner.tls:foreign.owner.cpu).expectedRuntime=new Object();coldCheck(label+" foreign opaque runtime cannot borrow readiness",!foreign.protectionAllowsNetwork());
+    }
+    View replaced=browsing();replaced.runtime=new Object();coldCheck("Runtime replacement invalidates both default-policy prerequisites",!replaced.protectionAllowsNetwork());
+    View absent=browsing();absent.runtime=null;coldCheck("Null native runtime cannot use fixture readiness",!absent.protectionAllowsNetwork());
+  }
   public static void main(String[] args){
-    basicPolicy();controller();bootstrap();identityAdmission();disabledAddonAdmission();
+    basicPolicy();controller();bootstrap();identityAdmission();disabledAddonAdmission();coldPolicyAdmission();
     StringBuilder out=new StringBuilder("{\"status\":\"passed\",\"passed\":").append(checks.size()).append(",\"checks\":[");
     for(int i=0;i<checks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(checks.get(i))).append(",\"pass\":true}");}
     out.append("],\"addonBoundaryPassed\":").append(addonChecks.size()).append(",\"addonBoundaryChecks\":[");for(int i=0;i<addonChecks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(addonChecks.get(i))).append(",\"pass\":true}");}
+    out.append("],\"coldPolicyBoundaryPassed\":").append(coldPolicyChecks.size()).append(",\"coldPolicyBoundaryChecks\":[");for(int i=0;i<coldPolicyChecks.size();i++){if(i>0)out.append(',');out.append("{\"name\":").append(quote(coldPolicyChecks.get(i))).append(",\"pass\":true}");}
     System.out.println(out.append("],\"actualAndroidExecution\":false,\"actualGeckoExecution\":false,\"actualAddonLifecycleExecution\":false,\"actualGeneralRouteExecution\":false,\"generalRouteBoundary\":\"Available independent app route with counted readiness/retain and lease facades; actual current production protection/controller methods remain extracted unchanged\"}"));
   }
 }

@@ -62,6 +62,12 @@ def source_input(raw, relative):
     digest = _sha(raw)
     if (digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),
                                   (row['reviewedSha256'], row['reviewedBytes'])):
+        from ip_timezone_source_compatibility import PATHS as ip_paths, source_input as ip_source_input
+        if relative in ip_paths:
+            raw = ip_source_input(raw, relative)
+            digest = _sha(raw)
+    if (digest, len(raw)) not in ((row['previousSha256'], row['previousBytes']),
+                                  (row['reviewedSha256'], row['reviewedBytes'])):
         from page_bridge_budget_source_compatibility import PATHS as budget_paths, source_input as budget_source_input
         if relative in budget_paths:
             raw = budget_source_input(raw, relative)

@@ -26,9 +26,9 @@ class BrowserWorkflowTests(unittest.TestCase):
                     self.assertIsNotNone(found,(name,step.get('name')));position=found+1
                 for key,value in job.items():
                     if key=='steps':continue
-                    self.assertEqual(current[key],value+['browser'] if name=='verify' and key=='needs' else value)
+                    self.assertEqual(current[key],value+['browser','tls'] if name=='verify' and key=='needs' else value)
     def test_single_pipeline_shares_actual_apk_and_gates_browser(self):
-        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*'])
+        self.assertEqual(self.new['on']['push']['branches'],['release/browser-2.1.0','release/browser-2.1.0-*','release/browser-2.1.1','release/browser-2.1.1-*','release/browser-2.1.2','release/browser-2.1.2-*','release/browser-2.1.3','release/browser-2.1.3-*','release/browser-2.1.4','release/browser-2.1.4-*'])
         self.assertIn('browser',self.new['jobs']['verify']['needs'])
         self.assertEqual(self.new['jobs']['browser']['needs'],'build')
         browser=self.new['jobs']['browser'];self.assertNotIn('continue-on-error',browser)
@@ -37,6 +37,18 @@ class BrowserWorkflowTests(unittest.TestCase):
         final='\n'.join(step.get('run','') for step in self.new['jobs']['verify']['steps'])
         self.assertIn('test "$BROWSER_RESULT" = success',final);self.assertIn('tools/browser/check_evidence.py',final)
         self.assertIn('browser-results.json',final)
+        self.assertIn('tls',self.new['jobs']['verify']['needs'])
+        tls=self.new['jobs']['tls']
+        self.assertEqual(tls['needs'],'build');self.assertEqual(tls['timeout-minutes'],40)
+        self.assertEqual(tls['permissions'],{'contents':'read','actions':'read'})
+        self.assertNotIn('continue-on-error',tls)
+        tls_body='\n'.join(step.get('run','') for step in tls['steps'])
+        self.assertIn('ci_bundle.py restore --kind build',tls_body)
+        workload=[step for step in tls['steps'] if step.get('name')=='Execute production Gecko web TLS cold policy and independent wire workloads']
+        self.assertEqual(len(workload),1);self.assertNotIn('if',workload[0]);self.assertNotIn('continue-on-error',workload[0])
+        for required in ('tools/browser/run_gecko_tls_integration.py','--source "$GITHUB_SHA"','--apk app/build/outputs/apk/integration/app-x86_64-integration.apk'):
+            self.assertIn(required,workload[0]['run'])
+        self.assertIn('test "$TLS_RESULT" = success',final)
     def test_new_host_suites_and_exact_history_are_mandatory(self):
         body='\n'.join(step.get('run','') for step in self.new['jobs']['build']['steps'])
         self.assertIn('tools/browser/prepare_baselines.py',body);self.assertIn('tools/browser/run_host_checks.py',body)

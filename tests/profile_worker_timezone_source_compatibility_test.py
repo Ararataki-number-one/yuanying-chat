@@ -13,6 +13,7 @@ from unittest.mock import patch
 import worker_timezone_source_compatibility as overlay
 from phase1_context_fix_source_compatibility import PATHS as context_paths, source_input as context_source_input
 import dual_browser_source_compatibility as dual
+from final_browser_source_compatibility import producer_input as final_producer_input, metadata_input as final_metadata_input
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA = lambda value: hashlib.sha256(value).hexdigest()
@@ -53,6 +54,7 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
             with self.subTest(path=relative):
                 before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)
                 after = (ROOT / relative).read_bytes()
+                after = final_producer_input(after, relative) if relative == 'app/src/main/java/local/pocketchat/ChatSession.java' else after
                 if relative in context_paths:
                     after = context_source_input(after, relative)
                 self.assertEqual((SHA(before), len(before)), (row['previousSha256'], row['previousBytes']))
@@ -73,6 +75,7 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
         rejected = 0
         for relative, row in overlay.manifest()['files'].items():
             after = (ROOT / relative).read_bytes()
+            after = final_producer_input(after, relative) if relative == 'app/src/main/java/local/pocketchat/ChatSession.java' else after
             if relative in context_paths:
                 after = context_source_input(after, relative)
             for delta in row['deltas']:
@@ -245,7 +248,7 @@ class WorkerTimezoneSourceCompatibility(unittest.TestCase):
         relative = 'tests/profile_dual_browser_source_compatibility_test.py'
         before = subprocess.check_output(['git', 'show', overlay.BASE_COMMIT + ':' + relative], cwd=ROOT)
         from page_bridge_budget_source_compatibility import PATHS as budget_paths, source_input as budget_source_input
-        after = budget_source_input((ROOT / relative).read_bytes(), relative) if relative in budget_paths else (ROOT / relative).read_bytes()
+        after = budget_source_input(final_metadata_input((ROOT / relative).read_bytes(), relative), relative) if relative in budget_paths else final_metadata_input((ROOT / relative).read_bytes(), relative)
         # Remove only the reviewed host-adapter historical read ports before
         # the original complete-file oracle below; no actual host sees a view.
         host_import = b'        from worker_timezone_host_source_compatibility import PATHS as host_adapter_paths, source_input as host_adapter_source_input\n'

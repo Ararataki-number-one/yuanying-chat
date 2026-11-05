@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from ip_timezone_source_compatibility import historical_read
 import subprocess
 import tempfile
 import unittest
@@ -28,7 +29,7 @@ class PageBridgeBudgetSourceCompatibility(unittest.TestCase):
   self.assertEqual(subprocess.check_output(['git','rev-parse',overlay.BASE_COMMIT+'^{tree}'],cwd=ROOT,text=True).strip(),overlay.BASE_TREE)
   rows=overlay.manifest()['files'];self.assertEqual(len(rows),3);self.assertEqual(sum(len(row['deltas'])for row in rows.values()),4)
   for relative,row in rows.items():
-   before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+relative],cwd=ROOT);after=(ROOT/relative).read_bytes()
+   before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+relative],cwd=ROOT);after=historical_read(relative)
    self.assertEqual((SHA(before),len(before)),(row['previousSha256'],row['previousBytes']));self.assertEqual((SHA(after),len(after)),(row['reviewedSha256'],row['reviewedBytes']))
    self.assertEqual(overlay.source_input(before,relative),before);self.assertEqual(overlay.source_input(after,relative),before)
    forward=before
@@ -38,7 +39,7 @@ class PageBridgeBudgetSourceCompatibility(unittest.TestCase):
  def test_missing_duplicate_changed_relocated_unknown_source_bytes_reject(self):
   count=0
   for relative,row in overlay.manifest()['files'].items():
-   after=(ROOT/relative).read_bytes()
+   after=historical_read(relative)
    for delta in row['deltas']:
     current=delta['current'].encode();self.assertEqual(after.count(current),1);remaining=after.replace(current,b'',1);moved=remaining+current
     if moved==after:moved=current+remaining
@@ -50,7 +51,7 @@ class PageBridgeBudgetSourceCompatibility(unittest.TestCase):
     count+=1
   self.assertEqual(count,25);type(self).source_negatives=count
  def test_actual_guard_binding_original_oracle_mutants_and_budget_cannot_be_erased(self):
-  relative='tests/profile_page_bridge_lifecycle_test.py';current=(ROOT/relative).read_bytes()
+  relative='tests/profile_page_bridge_lifecycle_test.py';current=historical_read(relative)
   variants=(
    ('from page_bridge_guard_adapters import current_deltas\n',''),
    ("DELTAS = current_deltas((SOURCE / 'GeckoWebView.java').read_bytes(), DELTAS)", 'DELTAS = DELTAS'),
@@ -66,14 +67,14 @@ class PageBridgeBudgetSourceCompatibility(unittest.TestCase):
     with self.assertRaises(ValueError):overlay.source_input(current.replace(before.encode(),after.encode(),1),relative)
   count=len(variants)
   for relative in ('tests/profile_dual_browser_source_compatibility_test.py','tests/profile_worker_timezone_source_compatibility_test.py'):
-   current=(ROOT/relative).read_bytes()
+   current=historical_read(relative)
    for before,after in (('if relative in budget_paths else','if relative not in budget_paths else'),('budget_source_input((ROOT / relative).read_bytes(), relative)',"budget_source_input((ROOT / relative).read_bytes(), 'foreign.py')")):
     self.assertEqual(current.count(before.encode()),1)
     with self.assertRaises(ValueError):overlay.source_input(current.replace(before.encode(),after.encode(),1),relative)
     count+=1
   self.assertEqual(count,11);type(self).guard_negatives=count
  def test_source_type_path_and_whole_pin_precede_context_access(self):
-  relative='tests/profile_page_bridge_lifecycle_test.py';current=(ROOT/relative).read_bytes()
+  relative='tests/profile_page_bridge_lifecycle_test.py';current=historical_read(relative)
   for bad in (current.decode(),bytearray(current),memoryview(current),None):
    with self.assertRaises(ValueError):overlay.source_input(bad,relative)
   for path in ('../'+relative,'/'+relative,relative+'.other',Path(relative),None,'tests/profile_native_protection_test.py','app/src/main/java/local/pocketchat/GeckoWebView.java'):
@@ -103,9 +104,9 @@ class PageBridgeBudgetSourceCompatibility(unittest.TestCase):
    with patch.object(overlay,'DELTA_PATH',p),self.assertRaises(ValueError):overlay.manifest()
   self.assertEqual(len(variants)+2,24);type(self).fixture_negatives=len(variants)+2
  def test_only_exact_historical_hooks_strip_whole_files_and_original_assertions(self):
-  relative='tests/worker_timezone_host_source_compatibility.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+relative],cwd=ROOT);current=(ROOT/relative).read_bytes()
+  relative='tests/worker_timezone_host_source_compatibility.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+relative],cwd=ROOT);current=historical_read(relative)
   self.assertEqual(current.count(HOOK.encode()),1);self.assertEqual(current.replace(HOOK.encode(),b'',1),before)
-  relative='tests/profile_worker_timezone_host_source_compatibility_test.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+relative],cwd=ROOT);current=(ROOT/relative).read_bytes()
+  relative='tests/profile_worker_timezone_host_source_compatibility_test.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+relative],cwd=ROOT);current=historical_read(relative)
   self.assertEqual(assertions(current),assertions(before));self.assertEqual(current.count(IMPORT),1);self.assertEqual(current.count(READ),6)
   self.assertEqual(current.replace(IMPORT,b'',1).replace(READ,b'(ROOT/relative).read_bytes()'),before)
   ports=(
@@ -114,14 +115,14 @@ class PageBridgeBudgetSourceCompatibility(unittest.TestCase):
    ('tests/profile_phase1_context_fix_source_compatibility_test.py',b'  from page_bridge_budget_source_compatibility import source_input as budget_source_input\n',b'current=budget_source_input((ROOT/path).read_bytes(),path)',b'current=(ROOT/path).read_bytes()'),
   )
   for relative,import_line,new_read,old_read in ports:
-   before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+relative],cwd=ROOT);current=(ROOT/relative).read_bytes()
+   before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+relative],cwd=ROOT);current=historical_read(relative)
    self.assertEqual(assertions(current),assertions(before));self.assertEqual(current.count(import_line),1);self.assertEqual(current.count(new_read),1)
    stripped=current.replace(import_line,b'',1).replace(new_read,old_read,1);self.assertEqual(stripped,before)
    # Changed, missing, duplicate and partial read ports cannot satisfy the
    # same complete-file mechanical proof, even if a local fragment survives.
    for bad in (current.replace(new_read,old_read,1),current.replace(new_read,new_read*2,1),current.replace(new_read,new_read+b' ',1),current[:100]):
     self.assertTrue(bad.count(import_line)!=1 or bad.count(new_read)!=1 or bad.replace(import_line,b'',1).replace(new_read,old_read,1)!=before)
-  relative='tests/profile_page_bridge_lifecycle_test.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+relative],cwd=ROOT);current=(ROOT/relative).read_bytes();self.assertEqual(assertions(current),assertions(before));tree=ast.parse(current)
+  relative='tests/profile_page_bridge_lifecycle_test.py';before=subprocess.check_output(['git','show',overlay.BASE_COMMIT+':'+relative],cwd=ROOT);current=historical_read(relative);self.assertEqual(assertions(current),assertions(before));tree=ast.parse(current)
   for old in (n for n in ast.walk(ast.parse(before))if isinstance(n,ast.FunctionDef)and n.name.startswith('test_')):
    matching=[n for n in ast.walk(tree)if isinstance(n,ast.FunctionDef)and n.name==old.name];self.assertEqual(len(matching),1);self.assertEqual(ast.get_source_segment(current.decode(),matching[0]),ast.get_source_segment(before.decode(),old))
   for relative,pin in [('tests/fixtures/dual-browser-source-deltas.json','b593b0db2b56b5a5d8143a920fbd15858dafbab21d1cdaf90ca2a5ba164c9933'),('tests/fixtures/worker-timezone-source-deltas.json','4eafec08cbeb3beb9098ebf5df7b976423616bb213e47e802a1d39315a27602b'),('tests/fixtures/worker-timezone-host-adapter-source-deltas.json','8c3f0c4d629d3d1a584ef3347f511b26081a59d35ba4d8621838db1f4735fbed'),('tests/fixtures/connection-timezone-prerequisite-source-deltas.json','cf99d65553fa119fe6154f591487b103a1b805646220490c6992f19ba073b0b8'),('tests/fixtures/phase1-context-fix-source-deltas.json','6e9b6fb645c5b918c4b18d37fe69f1d3d9a586d6fa1db9b81d7b98c28d070ad4')]:

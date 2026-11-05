@@ -24,7 +24,7 @@ public final class IpTimeZoneFixtureApplication extends PocketApplication {
     initializing=false;
     for(int slot=0;slot<Profiles.MAX;slot++)if(ProfileCatalog.get(this).available(slot))profile(slot);
   }
-  static final String[] LEGACY_FIXTURE_PROCESSES={":caret_controlled_ime",":environment_intent_fixture",":environment_spec_fixture",":extension_upgrade_test",":fingerprint_followups",":identity_prototype",":management_test",":native_timezone_probe",":network_preflight",":network_protection",":resource_pressure_fixture",":template_fixture",":transport_binding_fixture",":transport_binding_services"};
+  static final String[] LEGACY_FIXTURE_PROCESSES={":caret_controlled_ime",":environment_intent_fixture",":environment_spec_fixture",":extension_upgrade_test",":fingerprint_followups",":identity_prototype",":management_test",":native_timezone_probe",":native_tls_probe",":network_preflight",":network_protection",":resource_pressure_fixture",":template_fixture",":transport_binding_fixture",":transport_binding_services"};
   static boolean fixtureProcess(String packageName,String process,int slot){
     if(process==null||packageName==null)return false;
     if(EnvironmentProcessPolicy.owns(packageName,process,slot))return true;

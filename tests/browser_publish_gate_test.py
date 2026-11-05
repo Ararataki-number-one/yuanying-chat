@@ -125,14 +125,32 @@ class BrowserPublishGateTests(unittest.TestCase):
 
     def release_list(self,tree,name,namespace):
         assignments=[node for node in tree.body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id==name for target in node.targets)]
-        updates=[node for node in tree.body if isinstance(node,ast.If) and any(isinstance(value,ast.Call) and ast.unparse(value.func)==name+'.add' for value in ast.walk(node))]
-        self.assertEqual(len(assignments),1);self.assertEqual(len(updates),1);execute(assignments+updates,namespace);return namespace[name]
+        updates=[node for node in tree.body if isinstance(node,ast.If) and any(isinstance(value,ast.Call) and ast.unparse(value.func) in (name+'.add',name+'.update') for value in ast.walk(node))]
+        self.assertEqual(len(assignments),1);self.assertEqual(len(updates),5);execute(assignments+updates,namespace);return namespace[name]
 
     def test_staging_and_publisher_share_checker_source_verification_list(self):
-        for version,required in [('2.0.47',False),('2.1.0',True),('3.0.0',True)]:
-            tool=self.release_list(self.tool,'release_tool_files',dict(browser_release=required))
+        policies=(
+            ('browser_release',(2,1,0),{CHECKER}),
+            ('fingerprint_release',(2,1,1),{'tools/browser/check_fingerprint_evidence.py'}),
+            ('worker_timezone_release',(2,1,2),{'tools/browser/check_worker_policy_evidence.py','tools/browser/check_gecko_environment_policy_evidence.py','tools/browser/ip_timezone_publication.py'}),
+            ('cpu_release',(2,1,3),{'tools/browser/check_gecko_cpu_evidence.py','tools/browser/cpu_ip_combo_publication.py'}),
+            ('tls_release',(2,1,4),{'tools/browser/tls_publication.py'}),
+        )
+        flags=[node for node in self.tool.body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id in {name for name,_,_ in policies} for target in node.targets)]
+        self.assertEqual(len(flags),5)
+        self.assertEqual({target.id for node in flags for target in node.targets},{name for name,_,_ in policies})
+        base={'.github/workflows/publish-gecko-release.yml','tools/publish-gecko-release.py','tools/gecko/release_channel_contract.py','tools/gecko/release_channel_contract_test.py'}
+        for version,required in [('2.0.47',False),('2.1.0',True),('2.1.1',True),('2.1.2',True),('2.1.3',True),('2.1.4',True),('3.0.0',True)]:
+            parts=tuple(map(int,version.split('.')));namespace=dict(version=version);execute(flags,namespace)
+            for flag,minimum,_ in policies:self.assertIs(namespace[flag],parts>=minimum)
+            tool=self.release_list(self.tool,'release_tool_files',namespace)
             workflow=self.release_list(self.workflow,'release_files',dict(m={'version':version}))
             self.assertEqual(tool,workflow);self.assertEqual(CHECKER in tool,required)
+            expected=set(base)
+            for _,minimum,files in policies:
+                self.assertEqual(tool&files,files if parts>=minimum else set())
+                if parts>=minimum:expected.update(files)
+            self.assertEqual(tool,expected)
         checks=[node for node in self.workflow.body if isinstance(node,ast.For) and ast.unparse(node.target)=='name' and 'release_files' in ast.unparse(node.iter)]
         self.assertEqual(len(checks),1)
         files=self.release_list(self.workflow,'release_files',dict(m={'version':'2.1.0'}));files.add('tools/publish-update-feed.py')
@@ -143,6 +161,18 @@ class BrowserPublishGateTests(unittest.TestCase):
             execute(checks,dict(release_files=files,pathlib=types.SimpleNamespace(Path=Path),subprocess=fake,tools_commit=SOURCE))
             Path(CHECKER).write_bytes(b'changed checker cannot replace publication gate')
             with self.assertRaises(AssertionError):execute(checks,dict(release_files=files,pathlib=types.SimpleNamespace(Path=Path),subprocess=fake,tools_commit=SOURCE))
+        files=self.release_list(self.workflow,'release_files',dict(m={'version':'2.1.4'}));files.add('tools/publish-update-feed.py')
+        with tempfile.TemporaryDirectory() as temporary,directory(temporary):
+            expected={name:('selected commit source: '+name).encode() for name in files}
+            for name,raw in expected.items():path=Path(name);path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+            fake=types.SimpleNamespace(check_output=lambda command:expected[command[-1].split(':',1)[1]])
+            namespace=dict(release_files=files,pathlib=types.SimpleNamespace(Path=Path),subprocess=fake,tools_commit=SOURCE)
+            execute(checks,namespace)
+            for name,raw in expected.items():
+                with self.subTest(tampered=name):
+                    Path(name).write_bytes(b'changed release tool cannot replace selected source')
+                    with self.assertRaises(AssertionError):execute(checks,namespace)
+                    Path(name).write_bytes(raw)
 
     def test_actual_staged_checker_imports_without_repository_fallback(self):
         copies=[node for node in self.tool.body if isinstance(node,ast.If)

@@ -85,12 +85,13 @@ class IpTimezonePublishGateTests(unittest.TestCase):
     def test_selected_source_checker_and_servers_are_not_mutable_release_tools(self):
         tool = ast.parse((ROOT / 'tools/publish-gecko-release.py').read_text())
         workflow = workflow_tree()
-        for version in ('2.1.1', '2.1.2', '2.1.3', '3.0.0'):
+        for version in ('2.1.1', '2.1.2', '2.1.3', '2.1.4', '3.0.0'):
             parts = tuple(map(int, version.split('.')))
             sets = []
             for tree, name, namespace in (
                 (tool, 'release_tool_files', dict(version=version, browser_release=parts >= (2, 1, 0),
-                    fingerprint_release=parts >= (2, 1, 1), worker_timezone_release=parts >= (2, 1, 2))),
+                    fingerprint_release=parts >= (2, 1, 1), worker_timezone_release=parts >= (2, 1, 2),
+                    cpu_release=parts >= (2, 1, 3), tls_release=parts >= (2, 1, 4))),
                 (workflow, 'release_files', dict(m=dict(version=version))),
             ):
                 nodes = [node for node in tree.body if isinstance(node, ast.Assign)
@@ -143,12 +144,12 @@ class IpTimezonePublishGateTests(unittest.TestCase):
     def test_ip_android_step_and_verified_raw_transfer_are_mandatory_without_new_jobs(self):
         current = yaml.safe_load((ROOT / '.github/workflows/browser-2_1-acceptance.yml').read_text())
         original = yaml.safe_load((ROOT / '.github/workflows/gecko-integration.yml').read_text())
-        self.assertEqual(set(current['jobs']), set(original['jobs']) | {'browser'})
+        self.assertEqual(set(current['jobs']), set(original['jobs']) | {'browser', 'tls'})
         for name, previous in original['jobs'].items():
             for field in ('timeout-minutes', 'permissions', 'strategy', 'continue-on-error', 'if', 'needs'):
                 expected = previous.get(field)
                 if name == 'verify' and field == 'needs':
-                    expected = expected + ['browser']
+                    expected = expected + ['browser', 'tls']
                 self.assertEqual(current['jobs'][name].get(field), expected, (name, field))
         browser = current['jobs']['browser']
         self.assertEqual(browser['timeout-minutes'], 35)
