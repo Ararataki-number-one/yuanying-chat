@@ -77,6 +77,49 @@ def safe_trust(receipt):
         'cleanupRootUid','cleanupShellUid','shellRestoredAfterCleanup'}
     return {key:value for key,value in receipt.items() if key in allowed}
 
+def native_debug(value,binding):
+    """Independent whitelist; a diagnostic cannot export arbitrary app text."""
+    required={'schema','diagnosticOnly','releaseAcceptance','sourceCommit','sourceTree','runNonce',
+        'integrationApkSha256','sdkRunId','sdkRunAttempt','snapshots','actualPublicIpGeolocationVerified','scope'}
+    require(type(value) is dict and set(value)==required and type(value['schema']) is int and value['schema']==1
+        and value['diagnosticOnly'] is True and value['releaseAcceptance'] is False
+        and value['actualPublicIpGeolocationVerified'] is False,'diagnostic envelope differs')
+    for key,expected in binding.items():require(_typed_equal(value.get(key),expected),'native diagnostic binding differs')
+    fields={
+        'timeZonePolicy':{'schema','desiredMode','desiredRevision','state','effectiveMode','rfpPriority','ipMatched','nativeSettingReadback','issue'},
+        'defaultNetwork':{'known','internet','vpn','revision','identityPresent'},
+        'view':{'ready','failed','destroyed','privacyReady','addonDisabled','requestHeadersInstalled','routePortPresent','nativeProtectionConfirmed','protectionLevel','currentSessionPresent','currentSessionOpen','currentSessionId','currentPagePortPresent','hasVisibleDocument','ipRouteNeedsReload','routeStamp','guardBlocked','generalRouteReady'},
+        'linkWatch':{'networkPresent','linksPresent','serial'},
+        'routeLeases':{'surfaces','downloads','changes','revision'},
+        'gate':{'present','epoch','documentSerial','preparing','ready','revalidating','waiting','proofWaiting','networkWaiting','routeLeasePresent'},
+        'lookup':{'present','sent','id','currentSession','currentGate','currentPort','currentRuntime','requestToken','routeStamp','remainingMs','leasePresent','leaseClosed','documentSerial','connectionEpoch','desiredRevision'},
+        'operation':{'present','started','retired','finished','ready','verified','unsupported','rfpManaged'},
+        'routingCounters':{'bootstrapGeoAllowed','bootstrapGeoDenied','bootstrapOtherAllowed','bootstrapOtherDenied','protectedGeoBlocked','protectedGeoFixedSocks','protectedGeoFixedHttp','protectedGeoFixedHttps','protectedGeoOther','ordinaryGeoBlocked','ordinaryGeoOther','capped'},
+    }
+    base={'elapsedRealtime','stage','terminal','sessionPresent','viewPresent'}
+    optional={'networkReady','connecting','navigating','navigationFailed','navigationEpoch','connectionEpoch','ownerDeleted'}|set(fields)
+    def scalar(v):
+        require(v is None or type(v) in (str,int,bool),'diagnostic primitive differs')
+        if type(v) is str:require(len(v)<=512 and '\n' not in v and '\r' not in v and '\x00' not in v and '://' not in v and 'PRIVATE KEY' not in v and not v.startswith('/'),'unsafe diagnostic text')
+        if type(v) is int:require(-120000<=v<=2**63-1,'diagnostic number exceeds bound')
+    strings={'stage','schemaMode','desiredMode','state','effectiveMode','issue','currentSessionId','routeStamp','epoch','requestToken'}
+    numbers={'schema','elapsedRealtime','desiredRevision','navigationEpoch','connectionEpoch','revision','protectionLevel','serial','surfaces','downloads','changes','documentSerial','waiting','proofWaiting','networkWaiting','id','remainingMs',*fields['routingCounters']-{'capped'}}
+    def leaf(key,item):
+        scalar(item)
+        if key in strings:require(type(item) is str or key=='desiredMode' and item is None,'typed diagnostic string required')
+        elif key in numbers:require(type(item) is int,'typed diagnostic integer required')
+        else:require(type(item) is bool,'typed diagnostic flag required')
+    scalar(value['scope']);require(type(value['scope']) is str,'bounded diagnostic scope required')
+    require(type(value['snapshots']) is list and len(value['snapshots'])<=16,'bounded diagnostic snapshots required')
+    for row in value['snapshots']:
+        require(type(row) is dict and base<=set(row)<=base|optional,'diagnostic snapshot keys differ')
+        for key,v in row.items():
+            if key in fields:
+                require(type(v) is dict and set(v)<=fields[key],'diagnostic native state keys differ')
+                for field,item in v.items():leaf(field,item)
+            else:leaf(key,v)
+    return value
+
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -139,6 +182,20 @@ def main():
     except Exception as failure:
         error=failure;report.update(status='failed',errorType=type(failure).__name__)
     finally:
+        # Additive debug only. A missing/rejected diagnostic does not grant or
+        # revoke acceptance; the original report/checker remains authoritative.
+        debug=dict(schema=1,binding=binding,diagnosticOnly=True,releaseAcceptance=False,
+                   actualPublicIpGeolocationVerified=False,deviceDebugAvailable=False)
+        try:
+            raw_debug=adb('exec-out','content','read','--uri',URI+'/transport-debug',check=False,timeout=15).stdout
+            require(0<len(raw_debug)<=65536,'bounded native debug unavailable')
+            device_debug=native_debug(strict_json(raw_debug),binding)
+            require(device_debug.get('sourceCommit')==source and device_debug.get('sourceTree')==tree
+                and device_debug.get('runNonce')==nonce and device_debug.get('integrationApkSha256')==identity['apkSha256']
+                and device_debug.get('sdkRunId')==sdk['runId'] and device_debug.get('sdkRunAttempt')==sdk['runAttempt'],
+                'native diagnostic source/APK/run differs')
+            debug.update(deviceDebugAvailable=True,device=device_debug)
+        except Exception as diagnostic_error:debug['deviceCollectionErrorType']=type(diagnostic_error).__name__
         # Every independent cleanup action executes even when an earlier action
         # fails. Never mask the original fixture failure or convert cleanup to a
         # successful result. No replay/input/retry is performed here.
@@ -163,6 +220,10 @@ def main():
             route_receipts={};error=error or failure;report.update(status='failed',errorType=type(error).__name__)
         try:unchanged=all(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==hashes[str(path.relative_to(ROOT))] for path in paths)
         except OSError:unchanged=False
+        try:debug['transport']=server.diagnostics_snapshot() if server is not None else {}
+        except Exception as diagnostic_error:debug['transportCollectionErrorType']=type(diagnostic_error).__name__
+        try:write_json(args.output/'ip-timezone-transport-debug.json',debug)
+        except Exception:pass  # Never replace the original failed device result.
         if not unchanged:error=error or ValueError('Source changed');report.update(status='failed',errorType='SourceChanged')
         report.update(activity=activity or {},hostTls=host_tls,routeReceipts=route_receipts,systemTimeZone=system,sourceFiles=hashes,
             executionInputsUnchanged=unchanged,cleanup=cleanup,deviceReportReceivedSha256=device_raw_sha,

@@ -29,6 +29,8 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
   long deadline,wholeDeadline;boolean terminal,roots;GeckoTimeZoneStore.Ticket originalTicket;
   GeckoWebView.IpLookup isolationClaim;ChromiumRouteLease.Handle observedLease;
   JSONObject applyLeaseProof=new JSONObject();
+  final JSONArray diagnosticHistory=new JSONArray();long lastDiagnosticAt=-1000;String lastDiagnosticSignature="";
+  final java.util.concurrent.atomic.AtomicIntegerArray routingCounters=new java.util.concurrent.atomic.AtomicIntegerArray(11);
   interface Ready{boolean get()throws Exception;}interface Step{void run()throws Exception;}
 
   @Override public void onCreate(Bundle saved){try{
@@ -61,6 +63,15 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
 
   final class Observed extends GeckoWebView {
     Observed(android.content.Context context,ChatSession owner){super(context,owner);}
+    @Override boolean ipBootstrapRequest(String target,String method,String token,String stamp){
+      boolean result=super.ipBootstrapRequest(target,method,token,stamp);routingCount(GEO.equals(target)?result?0:1:result?2:3);return result;
+    }
+    @Override JSONObject protectedNetworkRoute(String target){
+      JSONObject result=super.protectedNetworkRoute(target);if(GEO.equals(target))routingCount(4+selectedRoute(result));return result;
+    }
+    @Override JSONObject route(String target){
+      JSONObject result=super.route(target);if(GEO.equals(target))routingCount(selectedRoute(result)==0?9:10);return result;
+    }
     @Override GeckoSession newSession(){runtime.getSettings().setEnterpriseRootsEnabled(true);roots=runtime.getSettings().getEnterpriseRootsEnabled();
       GeckoSession sdk=super.newSession();GeckoSession.ProgressDelegate original=sdk.getProgressDelegate();
       sdk.setProgressDelegate(new GeckoSession.ProgressDelegate(){
@@ -89,11 +100,50 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
       },fail);
     }
   }
+  void routingCount(int index){routingCounters.accumulateAndGet(index,1,(old,value)->Math.min(10000,old+value));}
+  static int selectedRoute(JSONObject value){
+    if(value==null)return 4;String type=value.optString("type"),host=value.optString("host");int port=value.optInt("port",-1);
+    if("socks".equals(type)&&"127.0.0.1".equals(host)&&port==9)return 0;
+    if("socks".equals(type)&&"127.0.0.1".equals(host)&&port==18766)return 1;
+    if("http".equals(type)&&"127.0.0.1".equals(host)&&port==18767)return 2;
+    if("https".equals(type)&&"127.0.0.1".equals(host)&&port==18768)return 3;
+    return 4;
+  }
   void event(String kind,GeckoSession sdk,String url){if(terminal)return;if(events.length()>=160){failed(new IOException("Native event bound exceeded"));return;}String path="other";try{URI value=new URI(url);if(Arrays.asList(BrowserFingerprintFixture.A,BrowserFingerprintFixture.B).contains(value.getHost())&&Arrays.asList("/env-policy","/env-frame").contains(value.getPath()))path=value.getPath();}catch(Exception ignored){}
     events.put(J.obj("sequence",events.length()+1,"kind",kind,"path",path,"sessionId",AppSessionIdentity.id(sdk),"navigation",session==null?0:session.navigationEpoch,"stage",stage));}
   String proxy(String route){if("socks".equals(route))return "socks://127.0.0.1:18766";if("http".equals(route))return "http://127.0.0.1:18767";if("https".equals(route))return "https://127.0.0.1:18768";throw new SecurityException("Fixed proxy route only");}
   void within()throws IOException{long now=SystemClock.elapsedRealtime();if(now>deadline||now>wholeDeadline)throw new IOException("IP timezone fixture stage deadline");}
-  void waitFor(String label,Ready ready,Step after){if(terminal)return;try{within();if(ready.get()){after.run();return;}probe.postDelayed(()->waitFor(label,ready,after),60);}catch(Throwable error){failed(error);}}
+  void waitFor(String label,Ready ready,Step after){if(terminal)return;try{transportDiagnostic(false);within();if(ready.get()){after.run();return;}probe.postDelayed(()->waitFor(label,ready,after),60);}catch(Throwable error){failed(error);}}
+  static String diagnosticToken(String value){return value!=null&&value.matches("[A-Za-z0-9_.:-]{0,160}")?value:"";}
+  void transportDiagnostic(boolean force){
+    long now=SystemClock.elapsedRealtime();if(build==null||!force&&now-lastDiagnosticAt<1000)return;lastDiagnosticAt=now;
+    try{
+      JSONObject value=J.obj("elapsedRealtime",now,"stage",stage,"terminal",terminal,"sessionPresent",session!=null,"viewPresent",remote!=null);
+      JSONObject routing=new JSONObject();String[] counterNames={"bootstrapGeoAllowed","bootstrapGeoDenied","bootstrapOtherAllowed","bootstrapOtherDenied","protectedGeoBlocked","protectedGeoFixedSocks","protectedGeoFixedHttp","protectedGeoFixedHttps","protectedGeoOther","ordinaryGeoBlocked","ordinaryGeoOther"};boolean capped=false;for(int i=0;i<counterNames.length;i++){int count=routingCounters.get(i);routing.put(counterNames[i],count);capped|=count==10000;}routing.put("capped",capped);value.put("routingCounters",routing);
+      if(session!=null){JSONObject currentPolicy=session.timeZone.status(),policy=new JSONObject();for(String name:new String[]{"schema","desiredMode","desiredRevision","state","effectiveMode","rfpPriority","ipMatched","nativeSettingReadback","issue"})policy.put(name,currentPolicy.opt(name));
+        value.put("networkReady",session.networkReady).put("connecting",session.connecting).put("navigating",session.navigating).put("navigationFailed",session.navigationFailed).put("navigationEpoch",session.navigationEpoch).put("connectionEpoch",session.connectionEpoch).put("ownerDeleted",session.deleted).put("timeZonePolicy",policy);
+        NetworkPoolIdentity.NetworkSnapshot network=session.browserDefaultNetwork.snapshot();if(network!=null)value.put("defaultNetwork",J.obj("known",network.known,"internet",network.internet,"vpn",network.vpn,"revision",network.revision,"identityPresent",!network.identity.isEmpty()));
+      }
+      if(remote!=null){
+        GeckoSession current=remote.current;GeckoWebView.TimeZoneGate gate=remote.timeZoneGates.get(current);GeckoWebView.IpLookup lookup=remote.ipLookup;GeckoIpRouteWatch.Snapshot links=remote.ipRoutes.snapshot();ChromiumRouteLease.Snapshot leases=ChromiumRouteLease.snapshot();
+        value.put("view",J.obj("ready",remote.ready,"failed",remote.failed,"destroyed",remote.destroyed,"privacyReady",remote.privacyReady,"addonDisabled",remote.addonDisabled,"requestHeadersInstalled",remote.requestHeadersInstalled,"routePortPresent",remote.routePort!=null,"nativeProtectionConfirmed",remote.nativeProtection.confirmed(),"protectionLevel",remote.protectionLevel,"currentSessionPresent",current!=null,"currentSessionOpen",current!=null&&current.isOpen(),"currentSessionId",current==null?"":diagnosticToken(AppSessionIdentity.id(current)),"currentPagePortPresent",remote.ports.get(current)!=null,"hasVisibleDocument",remote.hasVisibleDocument(),"ipRouteNeedsReload",remote.ipRouteNeedsReload,"routeStamp",diagnosticToken(remote.ipRouteStamp()),"guardBlocked",session==null||session.guard==null||session.guard.blocked,"generalRouteReady",remote.generalRouteReady()));
+        value.put("linkWatch",J.obj("networkPresent",!links.network.isEmpty(),"linksPresent",!links.links.isEmpty(),"serial",links.serial)).put("routeLeases",J.obj("surfaces",leases.surfaces,"downloads",leases.downloads,"changes",leases.changes,"revision",leases.revision));
+        value.put("gate",gate==null?J.obj("present",false):J.obj("present",true,"epoch",diagnosticToken(gate.epoch),"documentSerial",gate.documentSerial,"preparing",gate.preparing,"ready",gate.ready,"revalidating",gate.revalidating,"waiting",gate.waiting.size(),"proofWaiting",gate.proofWaiting.size(),"networkWaiting",gate.networkWaiting.size(),"routeLeasePresent",remote.ipRouteLeases.containsKey(gate)));
+        value.put("lookup",lookup==null?J.obj("present",false):J.obj("present",true,"sent",lookup.sent,"id",lookup.id,"currentSession",lookup.session==current,"currentGate",lookup.gate==gate,"currentPort",lookup.port==remote.routePort,"currentRuntime",lookup.runtime==remote.runtime,"requestToken",diagnosticToken(lookup.token),"routeStamp",diagnosticToken(lookup.stamp),"remainingMs",Math.max(-120000,Math.min(8000,lookup.expires-now)),"leasePresent",lookup.lease!=null,"leaseClosed",lookup.lease!=null&&lookup.lease.closed,"documentSerial",lookup.document,"connectionEpoch",lookup.connection,"desiredRevision",lookup.revision));
+        Field field=GeckoTimeZoneController.class.getDeclaredField("operations");field.setAccessible(true);Object operation=((Map<?,?>)field.get(session.timeZone)).get(current);JSONObject op=J.obj("present",operation!=null);
+        if(operation!=null)for(String name:new String[]{"started","retired","finished","ready","verified","unsupported","rfpManaged"}){Field member=operation.getClass().getDeclaredField(name);member.setAccessible(true);op.put(name,member.getBoolean(operation));}
+        value.put("operation",op);
+      }
+      // Retain state transitions, rather than losing the 8s pending lookup to
+      // eighty later identical timeout samples. Clock-only changes replace the
+      // latest sample. All observations still consume the original deadline.
+      JSONObject signature=J.parse(value.toString());signature.remove("elapsedRealtime");if(signature.optJSONObject("lookup")!=null)signature.getJSONObject("lookup").remove("remainingMs");String key=signature.toString();
+      if(key.equals(lastDiagnosticSignature)&&diagnosticHistory.length()>0)diagnosticHistory.remove(diagnosticHistory.length()-1);
+      while(diagnosticHistory.length()>=16)diagnosticHistory.remove(0);diagnosticHistory.put(value);lastDiagnosticSignature=key;
+      JSONObject report=J.obj("schema",1,"diagnosticOnly",true,"releaseAcceptance",false,"sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"integrationApkSha256",build.getString("apkSha256"),"sdkRunId",build.getJSONObject("sdkBuildIdentity").getString("runId"),"sdkRunAttempt",build.getJSONObject("sdkBuildIdentity").getString("runAttempt"),"snapshots",diagnosticHistory,"actualPublicIpGeolocationVerified",false,"scope","Read-only memory fields of the actual production native gate/lookup; no readiness is forced and no raw URL, address, credential, page body or TLS material is collected.");
+      android.util.AtomicFile file=new android.util.AtomicFile(new File(Profiles.global(this).getFilesDir(),"gecko-ip-timezone-transport-debug.json"));FileOutputStream out=null;try{byte[] raw=(report.toString()+"\n").getBytes(StandardCharsets.UTF_8);if(raw.length>65536)throw new IOException("Bounded native diagnostic overflow");out=file.startWrite();out.write(raw);file.finishWrite(out);}catch(Exception error){if(out!=null)file.failWrite(out);}
+    }catch(Exception unavailable){/* Diagnostic failure never modifies the original workload outcome. */}
+  }
   boolean ready(){return session!=null&&remote!=null&&remote.ready&&session.networkReady&&!session.connecting&&!session.navigating&&remote.hasVisibleDocument()&&remote.ports.get(remote.current)!=null&&remote.timeZoneStatus().optBoolean("nativeSettingReadback")&&roots;}
   void next(String name,Step after){try{stage=name;deadline=SystemClock.elapsedRealtime()+60000;publish();control("stage",J.obj("case",name),ignored->run(after));}catch(Throwable error){failed(error);}}
   void run(Step step){try{step.run();}catch(Throwable error){failed(error);}}
@@ -245,7 +295,7 @@ public final class GeckoIpTimeZoneIntegrationActivity extends MainActivity {
   void failed(Throwable error){if(terminal)return;terminal=true;failedStage=stage;stage="failed";failure=error.getClass().getSimpleName();String message=error.getMessage();
     if(error instanceof AssertionError&&message!=null&&message.matches("[A-Za-z0-9._-]{1,160}"))failure+=":"+message;
     else for(StackTraceElement frame:error.getStackTrace())if(frame.getClassName().startsWith("local.pocketchat.GeckoIpTimeZoneIntegrationActivity")){failure+="@"+frame.getMethodName()+":"+frame.getLineNumber();break;}
-    try{publish();}catch(Exception ignored){}}
+    transportDiagnostic(true);try{publish();}catch(Exception ignored){}}
   void publish()throws Exception{if(build==null)return;JSONObject value=J.obj("schema",1,"fixtureType","gecko-production-ip-timezone-v1","engine","gecko","status",terminal?(failure.isEmpty()?"passed":"failed"):"running","stage",stage,"failedAtStage",failedStage,"failure",failure,"sourceCommit",build.getString("sourceCommit"),"sourceTree",build.getString("sourceTree"),"runNonce",nonce,"buildIdentity",build,"setup",setup==null?new JSONObject():setup,"checks",checks,"cases",cases,"nativeEvents",events,"lastPage",lastPage,"currentTimeZonePolicy",session==null?new JSONObject():session.timeZone.status(),"actualAndroidExecution",true,"actualGeckoExecution",remote!=null&&remote.current!=null,"syntheticGeoService",true,"actualPublicIpGeolocationVerified",false,"workerCoverageVerified",false,"serviceWorkerCoverageVerified",false,"fingerprintProtectionVerified",false,"scope","Canonical MainActivity profile6, actual production UI/native timezone/private bootstrap plus controlled HTTPS proxy responses. Geo JSON is synthetic, not public-location proof; raw Worker clocks and capability-denial observations do not establish full Worker timezone isolation.");
     android.util.AtomicFile file=new android.util.AtomicFile(new File(Profiles.global(this).getFilesDir(),"gecko-ip-timezone-results.json"));FileOutputStream out=null;try{out=file.startWrite();byte[] bytes=(value.toString()+"\n").getBytes(StandardCharsets.UTF_8);if(bytes.length>4*1024*1024)throw new IOException("Bounded IP fixture report overflow");out.write(bytes);file.finishWrite(out);}catch(Exception error){if(out!=null)file.failWrite(out);throw error;}
   }

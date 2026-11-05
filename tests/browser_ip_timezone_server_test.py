@@ -10,11 +10,12 @@ import ssl
 import sys
 import threading
 import unittest
+import copy
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/browser'))
 from ip_timezone_fixture_server import (IpFixtureCertificates, IpTimeZoneFleet,
-    NestedTlsChannel, GEO_HOST, GEO_TARGET, ROUTES, exact_bytes)
+    NestedTlsChannel, GEO_HOST, GEO_TARGET, ROUTES, exact_bytes, transport_reason)
 from fingerprint_fixture_server import HOSTS
 
 
@@ -185,6 +186,100 @@ class NativeProxyTests(unittest.TestCase):
         self.assertTrue(self.fleet.snapshot()['syntheticGeoService'])
         self.assertFalse(self.fleet.snapshot()['actualPublicIpGeolocationVerified'])
         self.assertFalse(self.fleet.snapshot()['productionEndpointOverride'])
+
+    def closed_diagnostic(self, count):
+        for _ in range(200):
+            value = self.fleet.diagnostics_snapshot()
+            if len(value['recentClosed']) >= count:
+                return value['recentClosed'][-1]
+            threading.Event().wait(.01)
+        self.fail('Actual controlled connection did not record its terminal protocol stage')
+
+    def test_actual_protocol_failure_stages_do_not_export_peer_bytes(self):
+        for greeting, stage, reason in ((b'\x04','socks-greeting','socks-version'),
+                                        (b'\x05\x01\x02','socks-methods','socks-auth')):
+            before=len(self.fleet.diagnostics_snapshot()['recentClosed'])
+            with socket.create_connection(('127.0.0.1', self.fleet.proxies['socks'].port),timeout=3) as native:
+                native.sendall(greeting)
+                self.assertEqual(native.recv(1),b'')
+            row=self.closed_diagnostic(before+1)
+            self.assertEqual((row['stage'],row['reason']),(stage,reason))
+            self.assertEqual(row['hostClass'],'unknown')
+        before=len(self.fleet.diagnostics_snapshot()['recentClosed'])
+        with socket.create_connection(('127.0.0.1',self.fleet.proxies['socks'].port),timeout=3) as native:
+            native.sendall(b'\x05\x01\x00');self.assertEqual(exact_bytes(native,2),b'\x05\x00')
+            native.sendall(b'\x05\x01\x00\x01');self.assertEqual(native.recv(1),b'')
+        row=self.closed_diagnostic(before+1)
+        self.assertEqual((row['stage'],row['reason'],row['addressType']),('socks-command','socks-command-domain-dns',1))
+        self.assertFalse(self.fleet.snapshot()['events'],'Diagnostics must not fabricate a geo request')
+
+    def test_unknown_target_is_only_a_category_and_original_geo_contract_stays_exact(self):
+        secret='private-credential-secret.invalid'
+        with self.assertRaises((ValueError,OSError)):
+            self.channel('socks',host=secret)
+        row=self.closed_diagnostic(1)
+        self.assertEqual((row['stage'],row['reason'],row['hostClass']),('socks-port','socks-host','unknown'))
+        self.get('http',GEO_TARGET+'&private=secret')
+        row=self.closed_diagnostic(2)
+        self.assertEqual((row['stage'],row['reason']),('geo-get','fixed-geo-get'))
+        self.assertFalse(row['exactGeoPath'])
+        raw=json.dumps(self.fleet.diagnostics_snapshot())
+        self.assertNotIn(secret,raw);self.assertNotIn('private=secret',raw)
+        self.assertFalse(self.fleet.snapshot()['events'])
+        self.assertEqual(self.fleet.snapshot()['upstreamConnections'],0)
+
+    def test_actual_untrusted_tls_is_a_bounded_enum_without_error_text(self):
+        trusted=self.ctx
+        try:
+            self.ctx=ssl.create_default_context()
+            with self.assertRaises(ssl.SSLCertVerificationError):
+                self.channel('http')
+        finally:self.ctx=trusted
+        row=self.closed_diagnostic(1)
+        self.assertEqual((row['stage'],row['reason']),('target-tls','tls-rejected'))
+        self.assertNotIn('CERTIFICATE_VERIFY_FAILED',json.dumps(row))
+        self.assertFalse(self.fleet.snapshot()['events'])
+
+    def test_diagnostic_schema_bounds_and_read_only_formal_snapshot(self):
+        formal=self.fleet.snapshot()
+        for values in ({'hostClass':'secret'},{'greetingVersion':True},{'command':256},
+                       {'httpMethod':'GET secret'},{'credentialsPresent':'secret'},{'raw':'secret'}):
+            with self.subTest(values=values),self.assertRaises(ValueError):
+                self.fleet.transport_stage(1,'socks-command',**values)
+        with self.assertRaises(ValueError):self.fleet.transport_start('unknown-private-route')
+        for _ in range(40):
+            item=self.fleet.transport_start('socks')
+            self.fleet.transport_stage(item,'socks-command',addressType=1)
+            self.fleet.transport_end(item,ValueError('Not exported private error text'))
+        value=self.fleet.diagnostics_snapshot()
+        self.assertEqual(len(value['recentClosed']),32)
+        self.assertEqual(value['olderClosedOmitted'],8)
+        self.assertEqual(value['connectionsObserved'],40)
+        self.assertEqual(formal,self.fleet.snapshot(),'Diagnostic counters cannot alter original formal evidence')
+        self.assertEqual(transport_reason(ValueError('PRIVATE KEY secret')),'validation-rejected')
+        self.assertNotIn('PRIVATE KEY',json.dumps(value));self.assertNotIn('private error text',json.dumps(value))
+        self.assertFalse(value['releaseAcceptance'])
+        self.assertFalse(value['actualPublicIpGeolocationVerified'])
+
+    def test_native_debug_whitelist_rejects_private_fields_urls_and_foreign_binding(self):
+        from run_gecko_ip_timezone_integration import native_debug
+        value=dict(schema=1,diagnosticOnly=True,releaseAcceptance=False,**self.binding,
+            snapshots=[dict(elapsedRealtime=1,stage='startup',terminal=False,sessionPresent=True,viewPresent=True,
+                lookup=dict(present=True,sent=True,leasePresent=True),
+                timeZonePolicy=dict(schema=1,state='saved',ipMatched=False))],
+            actualPublicIpGeolocationVerified=False,scope='Read-only bounded states')
+        self.assertEqual(native_debug(value,self.binding),value)
+        mutations=(lambda v:v.update(sourceCommit='0'*40),
+            lambda v:v.update(privateKey='secret'),
+            lambda v:v['snapshots'][0]['lookup'].update(rawUrl='https://secret.invalid'),
+            lambda v:v['snapshots'][0]['timeZonePolicy'].update(observedIp='192.0.2.7'),
+            lambda v:v['snapshots'][0]['timeZonePolicy'].update(issue='https://secret.invalid'),
+            lambda v:v['snapshots'][0]['lookup'].update(id=1.5),
+            lambda v:v.update(snapshots=v['snapshots']*17))
+        for change in mutations:
+            with self.subTest(change=change):
+                altered=copy.deepcopy(value);change(altered)
+                with self.assertRaises(ValueError):native_debug(altered,self.binding)
 
 
 if __name__ == '__main__':
